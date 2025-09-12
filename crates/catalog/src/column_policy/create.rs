@@ -126,7 +126,7 @@ mod tests {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "schema",
+				namespace_name: "namespace",
 				table: TableId(1),
 				table_name: "table",
 				column: "col1".to_string(),

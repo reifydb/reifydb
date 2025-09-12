@@ -8,7 +8,7 @@ mod query;
 pub mod resolver;
 
 use identifier::{
-	ColumnIdentifier, SchemaIdentifier, SequenceIdentifier,
+	ColumnIdentifier, NamespaceIdentifier, SequenceIdentifier,
 	SourceIdentifier,
 };
 use reifydb_catalog::{
@@ -18,7 +18,8 @@ use reifydb_catalog::{
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
 	interface::{
-		ColumnPolicyKind, ColumnSaturationPolicy, SchemaDef, TableDef,
+		ColumnPolicyKind, ColumnSaturationPolicy, NamespaceDef,
+		TableDef,
 		expression::{AliasExpression, Expression},
 		identifier,
 	},
@@ -40,9 +41,9 @@ struct Compiler {}
 pub fn compile_logical<'a, 't, T: CatalogQueryTransaction>(
 	tx: &'t mut T,
 	ast: AstStatement<'a>,
-	default_schema: &'static str,
+	default_namespace: &'static str,
 ) -> crate::Result<Vec<LogicalPlan<'a>>> {
-	let mut resolver = IdentifierResolver::new(tx, default_schema);
+	let mut resolver = IdentifierResolver::new(tx, default_namespace);
 	Compiler::compile(ast, &mut resolver)
 }
 
@@ -237,7 +238,7 @@ impl Compiler {
 pub enum LogicalPlan<'a> {
 	CreateDeferredView(CreateDeferredViewNode<'a>),
 	CreateTransactionalView(CreateTransactionalViewNode<'a>),
-	CreateSchema(CreateSchemaNode<'a>),
+	CreateNamespace(CreateNamespaceNode<'a>),
 	CreateSequence(CreateSequenceNode<'a>),
 	CreateTable(CreateTableNode<'a>),
 	CreateIndex(CreateIndexNode<'a>),
@@ -289,8 +290,8 @@ pub struct CreateTransactionalViewNode<'a> {
 }
 
 #[derive(Debug)]
-pub struct CreateSchemaNode<'a> {
-	pub schema: SchemaIdentifier<'a>,
+pub struct CreateNamespaceNode<'a> {
+	pub namespace: NamespaceIdentifier<'a>,
 	pub if_not_exists: bool,
 }
 
@@ -444,13 +445,13 @@ pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 }
 
 /// Extract table information from a physical plan tree
-/// Returns (schema, table) if a unique table can be identified
+/// Returns (namespace, table) if a unique table can be identified
 pub fn extract_table_from_plan(
 	plan: &PhysicalPlan,
-) -> Option<(SchemaDef, TableDef)> {
+) -> Option<(NamespaceDef, TableDef)> {
 	match plan {
 		PhysicalPlan::TableScan(scan) => {
-			Some((scan.schema.clone(), scan.table.clone()))
+			Some((scan.namespace.clone(), scan.table.clone()))
 		}
 		PhysicalPlan::Filter(filter) => {
 			extract_table_from_plan(&filter.input)

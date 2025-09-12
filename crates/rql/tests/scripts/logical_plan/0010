@@ -6,7 +6,7 @@ logical 'create unique index idx_email on test.users {email}'
 > └── CreateIndex
 >     ├── Type: Unique
 >     ├── Name: idx_email
->     ├── Schema: test
+>     ├── Namespace: test
 >     ├── Table: users
 >     └── Columns: email
 > 

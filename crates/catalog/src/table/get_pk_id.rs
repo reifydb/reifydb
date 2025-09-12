@@ -57,7 +57,7 @@ mod tests {
 			table.id,
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: table.id,
 				table_name: "test_table",
 				column: "id".to_string(),

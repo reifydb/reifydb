@@ -38,7 +38,7 @@ impl<'a> Parser<'a> {
 		&mut self,
 		token: Token<'a>,
 	) -> crate::Result<AstAlter<'a>> {
-		// Parse schema.table.column or table.column
+		// Parse namespace.table.column or table.column
 		let first_identifier_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
@@ -58,7 +58,7 @@ impl<'a> Parser<'a> {
 				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
 
 				// Create MaybeQualifiedSequenceIdentifier with
-				// schema
+				// namespace
 				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
 				let sequence =
 					MaybeQualifiedSequenceIdentifier::new(
@@ -66,7 +66,7 @@ impl<'a> Parser<'a> {
 							.fragment
 							.clone(),
 					)
-					.with_schema(
+					.with_namespace(
 						first_identifier_token
 							.fragment
 							.clone(),
@@ -92,7 +92,7 @@ impl<'a> Parser<'a> {
 				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
 
 				// Create MaybeQualifiedSequenceIdentifier
-				// without schema
+				// without namespace
 				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
 				let sequence =
 					MaybeQualifiedSequenceIdentifier::new(
@@ -117,7 +117,7 @@ impl<'a> Parser<'a> {
 			}
 		} else {
 			unimplemented!(
-				"ALTER SEQUENCE requires table.column or schema.table.column"
+				"ALTER SEQUENCE requires table.column or namespace.table.column"
 			);
 		}
 	}
@@ -126,8 +126,8 @@ impl<'a> Parser<'a> {
 		&mut self,
 		token: Token<'a>,
 	) -> crate::Result<AstAlter<'a>> {
-		// Parse schema.table
-		let schema_token = self
+		// Parse namespace.table
+		let namespace_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
 		let table_token = self
@@ -140,7 +140,7 @@ impl<'a> Parser<'a> {
 		let table = MaybeQualifiedSourceIdentifier::new(
 			table_token.fragment.clone(),
 		)
-		.with_schema(schema_token.fragment.clone())
+		.with_namespace(namespace_token.fragment.clone())
 		.with_kind(SourceKind::Table);
 
 		// Parse block of operations
@@ -225,8 +225,8 @@ impl<'a> Parser<'a> {
 		&mut self,
 		token: Token<'a>,
 	) -> crate::Result<AstAlter<'a>> {
-		// Parse schema.view
-		let schema_token = self
+		// Parse namespace.view
+		let namespace_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
 		let view_token = self
@@ -239,7 +239,7 @@ impl<'a> Parser<'a> {
 		let view = MaybeQualifiedSourceIdentifier::new(
 			view_token.fragment.clone(),
 		)
-		.with_schema(schema_token.fragment.clone())
+		.with_namespace(namespace_token.fragment.clone())
 		.with_kind(SourceKind::View);
 
 		// Parse block of operations
@@ -418,9 +418,9 @@ mod tests {
 				value,
 				..
 			}) => {
-				assert!(sequence.schema.is_some());
+				assert!(sequence.namespace.is_some());
 				assert_eq!(
-					sequence.schema
+					sequence.namespace
 						.as_ref()
 						.unwrap()
 						.text(),
@@ -457,7 +457,7 @@ mod tests {
 				value,
 				..
 			}) => {
-				assert!(sequence.schema.is_none());
+				assert!(sequence.namespace.is_none());
 				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.text(), "id");
 				match value {
@@ -490,9 +490,12 @@ mod tests {
 				operations,
 				..
 			}) => {
-				assert!(table.schema.is_some());
+				assert!(table.namespace.is_some());
 				assert_eq!(
-					table.schema.as_ref().unwrap().text(),
+					table.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(table.name.text(), "users");
@@ -531,9 +534,12 @@ mod tests {
 				operations,
 				..
 			}) => {
-				assert!(table.schema.is_some());
+				assert!(table.namespace.is_some());
 				assert_eq!(
-					table.schema.as_ref().unwrap().text(),
+					table.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(table.name.text(), "users");
@@ -572,9 +578,9 @@ mod tests {
 				operations,
 				..
 			}) => {
-				assert!(view.schema.is_some());
+				assert!(view.namespace.is_some());
 				assert_eq!(
-					view.schema.as_ref().unwrap().text(),
+					view.namespace.as_ref().unwrap().text(),
 					"test"
 				);
 				assert_eq!(view.name.text(), "user_view");
@@ -613,9 +619,9 @@ mod tests {
 				operations,
 				..
 			}) => {
-				assert!(view.schema.is_some());
+				assert!(view.namespace.is_some());
 				assert_eq!(
-					view.schema.as_ref().unwrap().text(),
+					view.namespace.as_ref().unwrap().text(),
 					"test"
 				);
 				assert_eq!(view.name.text(), "user_view");

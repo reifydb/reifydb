@@ -25,20 +25,21 @@ impl Compiler {
 		ast: AstAlterSequence<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
-		let (schema, sequence_name) = {
+		let (namespace, sequence_name) = {
 			// Use the resolver's resolve_maybe_sequence method if
-			// we add one For now, just use default schema
+			// we add one For now, just use default namespace
 			// through resolver
-			let schema = ast.sequence.schema.unwrap_or_else(|| {
-				Fragment::borrowed_internal(
-					resolver.default_schema(),
-				)
-			});
-			(schema, ast.sequence.name.clone())
+			let namespace =
+				ast.sequence.namespace.unwrap_or_else(|| {
+					Fragment::borrowed_internal(
+						resolver.default_namespace(),
+					)
+				});
+			(namespace, ast.sequence.name.clone())
 		};
 
 		let sequence = SequenceIdentifier::new(
-			schema.clone(),
+			namespace.clone(),
 			sequence_name.clone(),
 		);
 
@@ -46,7 +47,7 @@ impl Compiler {
 		// The column belongs to the same table as the sequence
 		let column = ColumnIdentifier {
 			source: ColumnSource::Source {
-				schema,
+				namespace,
 				source: sequence_name,
 			},
 			name: ast.column.clone(),

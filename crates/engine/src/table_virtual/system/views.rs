@@ -56,14 +56,15 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Views<T> {
 		let views = CatalogStore::list_views_all(txn)?;
 
 		let mut ids = ColumnData::uint8_with_capacity(views.len());
-		let mut schemas = ColumnData::uint8_with_capacity(views.len());
+		let mut namespaces =
+			ColumnData::uint8_with_capacity(views.len());
 		let mut names = ColumnData::utf8_with_capacity(views.len());
 		let mut primary_keys =
 			ColumnData::uint4_with_capacity(views.len());
 
 		for view in views {
 			ids.push(view.id.0);
-			schemas.push(view.schema.0);
+			namespaces.push(view.namespace.0);
 			names.push(view.name.as_str());
 			primary_keys.push_value(
 				view.primary_key
@@ -79,8 +80,8 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Views<T> {
 				data: ids,
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "schema_id".to_string(),
-				data: schemas,
+				name: "namespace_id".to_string(),
+				data: namespaces,
 			}),
 			Column::ColumnQualified(ColumnQualified {
 				name: "name".to_string(),

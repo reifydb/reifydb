@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{
-	CatalogQueryTransaction, CatalogSchemaQueryOperations,
+	CatalogNamespaceQueryOperations, CatalogQueryTransaction,
 	CatalogTableQueryOperations, CatalogTransaction,
 	CatalogViewQueryOperations, MaterializedCatalog,
 	transaction::CatalogSourceQueryOperations,
@@ -10,12 +10,13 @@ use reifydb_catalog::{
 use reifydb_core::{
 	CommitVersion,
 	interface::{
-		SchemaDef, SchemaId, SourceDef, SourceId, TableDef, TableId,
-		Transaction, VersionedQueryTransaction, ViewDef, ViewId,
+		NamespaceDef, NamespaceId, SourceDef, SourceId, TableDef,
+		TableId, Transaction, VersionedQueryTransaction, ViewDef,
+		ViewId,
 	},
 };
 use reifydb_type::{
-	IntoFragment, diagnostic::catalog::schema_not_found, return_error,
+	IntoFragment, diagnostic::catalog::namespace_not_found, return_error,
 };
 
 use crate::StandardQueryTransaction;
@@ -31,56 +32,61 @@ impl<T: Transaction> CatalogTransaction for StandardQueryTransaction<T> {
 	}
 }
 
-impl<T: Transaction> CatalogSchemaQueryOperations
+impl<T: Transaction> CatalogNamespaceQueryOperations
 	for StandardQueryTransaction<T>
 {
-	fn find_schema_by_name(
+	fn find_namespace_by_name(
 		&mut self,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<SchemaDef>> {
+	) -> crate::Result<Option<NamespaceDef>> {
 		let name = name.as_ref();
 
-		Ok(self.catalog.find_schema_by_name(
+		Ok(self.catalog.find_namespace_by_name(
 			name,
 			VersionedQueryTransaction::version(self),
 		))
 	}
 
-	fn find_schema(
+	fn find_namespace(
 		&mut self,
-		id: SchemaId,
-	) -> crate::Result<Option<SchemaDef>> {
-		Ok(self.catalog.find_schema(
+		id: NamespaceId,
+	) -> crate::Result<Option<NamespaceDef>> {
+		Ok(self.catalog.find_namespace(
 			id,
 			VersionedQueryTransaction::version(self),
 		))
 	}
 
-	fn get_schema(&mut self, id: SchemaId) -> crate::Result<SchemaDef> {
+	fn get_namespace(
+		&mut self,
+		id: NamespaceId,
+	) -> crate::Result<NamespaceDef> {
 		use reifydb_type::{error, internal_error};
 
-		self.find_schema(id)?
+		self.find_namespace(id)?
 			.ok_or_else(|| {
 				error!(internal_error!(
-					"Schema with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+					"Namespace with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 					id
 				))
 			})
 	}
 
-	fn get_schema_by_name<'a>(
+	fn get_namespace_by_name<'a>(
 		&mut self,
 		name: impl IntoFragment<'a>,
-	) -> reifydb_core::Result<SchemaDef> {
+	) -> reifydb_core::Result<NamespaceDef> {
 		let name = name.into_fragment();
 
-		if let Some(result) = self.find_schema_by_name(name.text())? {
+		if let Some(result) =
+			self.find_namespace_by_name(name.text())?
+		{
 			return Ok(result);
 		}
 
 		let text = name.clone();
 		let text = text.text();
-		return_error!(schema_not_found(name, text));
+		return_error!(namespace_not_found(name, text));
 	}
 }
 
@@ -96,7 +102,7 @@ impl<T: Transaction> CatalogSourceQueryOperations
 
 	fn find_source_by_name<'a>(
 		&mut self,
-		_schema: SchemaId,
+		_namespace: NamespaceId,
 		_source: impl IntoFragment<'a>,
 	) -> reifydb_core::Result<Option<SourceDef>> {
 		todo!()
@@ -104,7 +110,7 @@ impl<T: Transaction> CatalogSourceQueryOperations
 
 	fn get_source_by_name<'a>(
 		&mut self,
-		_schema: SchemaId,
+		_namespace: NamespaceId,
 		_name: impl IntoFragment<'a>,
 	) -> reifydb_core::Result<SourceDef> {
 		todo!()
@@ -116,13 +122,13 @@ impl<T: Transaction> CatalogTableQueryOperations
 {
 	fn find_table_by_name(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<TableDef>> {
 		let name = name.as_ref();
 
 		Ok(self.catalog.find_table_by_name(
-			schema,
+			namespace,
 			name,
 			VersionedQueryTransaction::version(self),
 		))
@@ -140,7 +146,7 @@ impl<T: Transaction> CatalogTableQueryOperations
 
 	fn get_table_by_name(
 		&mut self,
-		_schema: SchemaId,
+		_namespace: NamespaceId,
 		_name: impl AsRef<str>,
 	) -> reifydb_core::Result<TableDef> {
 		todo!()
@@ -152,13 +158,13 @@ impl<T: Transaction> CatalogViewQueryOperations
 {
 	fn find_view_by_name(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
 
 		Ok(self.catalog.find_view_by_name(
-			schema,
+			namespace,
 			name,
 			VersionedQueryTransaction::version(self),
 		))
@@ -173,7 +179,7 @@ impl<T: Transaction> CatalogViewQueryOperations
 
 	fn get_view_by_name(
 		&mut self,
-		_schema: SchemaId,
+		_namespace: NamespaceId,
 		_name: impl AsRef<str>,
 	) -> reifydb_core::Result<ViewDef> {
 		todo!()

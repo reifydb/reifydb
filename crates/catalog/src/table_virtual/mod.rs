@@ -23,7 +23,7 @@ impl VirtualTableRegistry {
 
 		Ok(match id {
 			SEQUENCES => Some(SystemCatalog::get_system_sequences_table_def()),
-			SCHEMAS => Some(SystemCatalog::get_system_schemas_table_def()),
+			NAMESPACES => Some(SystemCatalog::get_system_namespaces_table_def()),
 			TABLES => Some(SystemCatalog::get_system_tables_table_def()),
 			VIEWS => Some(SystemCatalog::get_system_views_table_def()),
 			COLUMNS => Some(SystemCatalog::get_system_columns_table_def()),
@@ -42,7 +42,7 @@ impl VirtualTableRegistry {
 		// Return all registered virtual tables
 		Ok(vec![
 			SystemCatalog::get_system_sequences_table_def(),
-			SystemCatalog::get_system_schemas_table_def(),
+			SystemCatalog::get_system_namespaces_table_def(),
 			SystemCatalog::get_system_tables_table_def(),
 			SystemCatalog::get_system_views_table_def(),
 			SystemCatalog::get_system_columns_table_def(),

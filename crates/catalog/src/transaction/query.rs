@@ -4,7 +4,7 @@
 use reifydb_core::{
 	CommitVersion,
 	interface::{
-		OperationType, SchemaDef, SchemaId, SourceDef, SourceId,
+		NamespaceDef, NamespaceId, OperationType, SourceDef, SourceId,
 		TableDef, TableId, TransactionalChanges, ViewDef, ViewId,
 	},
 };
@@ -12,31 +12,34 @@ use reifydb_type::IntoFragment;
 
 use crate::MaterializedCatalog;
 
-// Schema query operations
-pub trait CatalogSchemaQueryOperations {
-	fn find_schema_by_name(
+// Namespace query operations
+pub trait CatalogNamespaceQueryOperations {
+	fn find_namespace_by_name(
 		&mut self,
 		name: impl AsRef<str>,
-	) -> crate::Result<Option<SchemaDef>>;
+	) -> crate::Result<Option<NamespaceDef>>;
 
-	fn find_schema(
+	fn find_namespace(
 		&mut self,
-		id: SchemaId,
-	) -> crate::Result<Option<SchemaDef>>;
+		id: NamespaceId,
+	) -> crate::Result<Option<NamespaceDef>>;
 
-	fn get_schema(&mut self, id: SchemaId) -> crate::Result<SchemaDef>;
+	fn get_namespace(
+		&mut self,
+		id: NamespaceId,
+	) -> crate::Result<NamespaceDef>;
 
-	fn get_schema_by_name<'a>(
+	fn get_namespace_by_name<'a>(
 		&mut self,
 		name: impl IntoFragment<'a>,
-	) -> crate::Result<SchemaDef>;
+	) -> crate::Result<NamespaceDef>;
 }
 
 // Source query operations
 pub trait CatalogSourceQueryOperations {
 	fn find_source_by_name<'a>(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		source: impl IntoFragment<'a>,
 	) -> crate::Result<Option<SourceDef>>;
 
@@ -47,7 +50,7 @@ pub trait CatalogSourceQueryOperations {
 
 	fn get_source_by_name<'a>(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl IntoFragment<'a>,
 	) -> crate::Result<SourceDef>;
 }
@@ -56,7 +59,7 @@ pub trait CatalogSourceQueryOperations {
 pub trait CatalogTableQueryOperations {
 	fn find_table_by_name(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<TableDef>>;
 
@@ -67,7 +70,7 @@ pub trait CatalogTableQueryOperations {
 
 	fn get_table_by_name(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<TableDef>;
 }
@@ -76,7 +79,7 @@ pub trait CatalogTableQueryOperations {
 pub trait CatalogViewQueryOperations {
 	fn find_view_by_name(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>>;
 
@@ -84,14 +87,14 @@ pub trait CatalogViewQueryOperations {
 
 	fn get_view_by_name(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<ViewDef>;
 }
 
 // Combined catalog query transaction trait
 pub trait CatalogQueryTransaction:
-	CatalogSchemaQueryOperations
+	CatalogNamespaceQueryOperations
 	+ CatalogSourceQueryOperations
 	+ CatalogTableQueryOperations
 	+ CatalogViewQueryOperations
@@ -105,41 +108,44 @@ pub trait CatalogTransaction {
 
 // Extension trait for TransactionalChanges with catalog-specific helpers
 pub trait TransactionalChangesExt {
-	fn find_schema_by_name(&self, name: &str) -> Option<&SchemaDef>;
+	fn find_namespace_by_name(&self, name: &str) -> Option<&NamespaceDef>;
 
-	fn is_schema_deleted_by_name(&self, name: &str) -> bool;
+	fn is_namespace_deleted_by_name(&self, name: &str) -> bool;
 
 	fn find_table_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> Option<&TableDef>;
 
 	fn is_table_deleted_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> bool;
 
 	fn find_view_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> Option<&ViewDef>;
 
-	fn is_view_deleted_by_name(&self, schema: SchemaId, name: &str)
-	-> bool;
+	fn is_view_deleted_by_name(
+		&self,
+		namespace: NamespaceId,
+		name: &str,
+	) -> bool;
 }
 
 impl TransactionalChangesExt for TransactionalChanges {
-	fn find_schema_by_name(&self, name: &str) -> Option<&SchemaDef> {
-		self.schema_def.iter().rev().find_map(|change| {
+	fn find_namespace_by_name(&self, name: &str) -> Option<&NamespaceDef> {
+		self.namespace_def.iter().rev().find_map(|change| {
 			change.post.as_ref().filter(|s| s.name == name)
 		})
 	}
 
-	fn is_schema_deleted_by_name(&self, name: &str) -> bool {
-		self.schema_def.iter().rev().any(|change| {
+	fn is_namespace_deleted_by_name(&self, name: &str) -> bool {
+		self.namespace_def.iter().rev().any(|change| {
 			change.op == OperationType::Delete
 				&& change.pre.as_ref().map(|s| s.name.as_str())
 					== Some(name)
@@ -148,19 +154,19 @@ impl TransactionalChangesExt for TransactionalChanges {
 
 	fn find_table_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> Option<&TableDef> {
 		self.table_def.iter().rev().find_map(|change| {
 			change.post.as_ref().filter(|t| {
-				t.schema == schema && t.name == name
+				t.namespace == namespace && t.name == name
 			})
 		})
 	}
 
 	fn is_table_deleted_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> bool {
 		self.table_def.iter().rev().any(|change| {
@@ -169,7 +175,7 @@ impl TransactionalChangesExt for TransactionalChanges {
 					.pre
 					.as_ref()
 					.map(|t| {
-						t.schema == schema
+						t.namespace == namespace
 							&& t.name == name
 					})
 					.unwrap_or(false)
@@ -178,19 +184,19 @@ impl TransactionalChangesExt for TransactionalChanges {
 
 	fn find_view_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> Option<&ViewDef> {
 		self.view_def.iter().rev().find_map(|change| {
 			change.post.as_ref().filter(|v| {
-				v.schema == schema && v.name == name
+				v.namespace == namespace && v.name == name
 			})
 		})
 	}
 
 	fn is_view_deleted_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> bool {
 		self.view_def.iter().rev().any(|change| {
@@ -199,7 +205,7 @@ impl TransactionalChangesExt for TransactionalChanges {
 					.pre
 					.as_ref()
 					.map(|v| {
-						v.schema == schema
+						v.namespace == namespace
 							&& v.name == name
 					})
 					.unwrap_or(false)

@@ -547,7 +547,7 @@ impl JoinOperator {
 		};
 
 		// Determine if this node should be left or right based on
-		// schemas Check if the source matches the right schema
+		// namespaces Check if the source matches the right namespace
 		let is_right_source = right_schema
 			.source_name
 			.as_ref()
@@ -786,9 +786,9 @@ impl JoinOperator {
 		let mut column_vec = Vec::new();
 		let row_ids = vec![left_row.row_id];
 
-		// Add left columns with full qualification from schema
-		// We need to output ALL columns from the left schema, not just
-		// what's stored
+		// Add left columns with full qualification from namespace
+		// We need to output ALL columns from the left namespace, not
+		// just what's stored
 		for column_def in &self.left_schema.columns {
 			// Check if we have this column value in the stored row
 			let data = if let Some(value) =
@@ -802,14 +802,14 @@ impl JoinOperator {
 				ColumnData::undefined(1)
 			};
 
-			if let (Some(schema), Some(source)) = (
-				&self.left_schema.schema_name,
+			if let (Some(namespace), Some(source)) = (
+				&self.left_schema.namespace_name,
 				&self.left_schema.source_name,
 			) {
 				// Create fully qualified columns
 				column_vec.push(Column::FullyQualified(
 					FullyQualified {
-						schema: schema.clone(),
+						namespace: namespace.clone(),
 						source: source.clone(),
 						name: column_def.name.clone(),
 						data,
@@ -855,15 +855,16 @@ impl JoinOperator {
 					ColumnData::undefined(1)
 				};
 
-				if let (Some(schema), Some(source)) = (
-					&self.right_schema.schema_name,
+				if let (Some(namespace), Some(source)) = (
+					&self.right_schema.namespace_name,
 					&self.right_schema.source_name,
 				) {
 					// Create fully qualified columns
 					column_vec
 						.push(Column::FullyQualified(
 						FullyQualified {
-							schema: schema.clone(),
+							namespace: namespace
+								.clone(),
 							source: source.clone(),
 							name: column_def
 								.name
@@ -903,17 +904,17 @@ impl JoinOperator {
 			}
 		} else {
 			// For LEFT JOIN with no match, add NULL values for
-			// right columns using schema
+			// right columns using namespace
 			for column_def in &self.right_schema.columns {
-				if let (Some(schema), Some(source)) = (
-					&self.right_schema.schema_name,
+				if let (Some(namespace), Some(source)) = (
+					&self.right_schema.namespace_name,
 					&self.right_schema.source_name,
 				) {
 					// Create fully qualified columns with
 					// undefined data
 					column_vec.push(Column::FullyQualified(
 						FullyQualified {
-							schema: schema.clone(),
+							namespace: namespace.clone(),
 							source: source.clone(),
 							name: column_def.name.clone(),
 							data: ColumnData::undefined(1),

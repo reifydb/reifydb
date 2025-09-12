@@ -32,7 +32,7 @@ impl<'a> Parser<'a> {
 
 		self.consume_keyword(On)?;
 
-		let schema_token = self.consume(TokenKind::Identifier)?;
+		let namespace_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
 		let table_token = self.consume(TokenKind::Identifier)?;
 
@@ -42,7 +42,7 @@ impl<'a> Parser<'a> {
 			table_token.fragment.clone(),
 			name_token.fragment.clone(),
 		)
-		.with_schema(schema_token.fragment.clone());
+		.with_schema(namespace_token.fragment.clone());
 
 		let columns = self.parse_index_columns()?;
 
@@ -158,7 +158,10 @@ mod tests {
 				assert_eq!(*index_type, IndexType::Index);
 				assert_eq!(index.name.text(), "idx_email");
 				assert_eq!(
-					index.schema.as_ref().unwrap().text(),
+					index.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(index.table.text(), "users");
@@ -198,7 +201,10 @@ mod tests {
 				assert_eq!(*index_type, IndexType::Unique);
 				assert_eq!(index.name.text(), "idx_email");
 				assert_eq!(
-					index.schema.as_ref().unwrap().text(),
+					index.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(index.table.text(), "users");

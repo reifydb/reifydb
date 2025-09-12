@@ -10,7 +10,7 @@ use reifydb_type::{Type, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{SchemaDef, TableDef, ViewDef},
+	interface::{NamespaceDef, TableDef, ViewDef},
 	value::{
 		columnar::{
 			Column, ColumnData, ColumnQualified, FullyQualified,
@@ -275,7 +275,7 @@ impl Columns {
 	}
 
 	pub fn from_table_def_fully_qualified(
-		schema: &SchemaDef,
+		namespace: &NamespaceDef,
 		table: &TableDef,
 	) -> Self {
 		let columns: Vec<Column> = table
@@ -350,7 +350,7 @@ impl Columns {
 					}
 				};
 				Column::FullyQualified(FullyQualified {
-					schema: schema.name.clone(),
+					namespace: namespace.name.clone(),
 					source: table.name.clone(),
 					name,
 					data,
@@ -445,7 +445,7 @@ impl Columns {
 	}
 
 	pub fn from_view_def_fully_qualified(
-		schema: &SchemaDef,
+		namespace: &NamespaceDef,
 		view: &ViewDef,
 	) -> Self {
 		let columns: Vec<Column> = view
@@ -520,7 +520,7 @@ impl Columns {
 					}
 				};
 				Column::FullyQualified(FullyQualified {
-					schema: schema.name.clone(),
+					namespace: namespace.name.clone(),
 					source: view.name.clone(),
 					name,
 					data,

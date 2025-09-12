@@ -28,11 +28,11 @@ impl<'a> Parser<'a> {
 			{
 				self.consume_operator(Operator::Dot)?;
 				let second_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
-				// schema.table
+				// namespace.table
 				Some(MaybeQualifiedSourceIdentifier::new(
 					second_token.fragment.clone(),
 				)
-				.with_schema(first_token.fragment.clone())
+				.with_namespace(first_token.fragment.clone())
 				.with_kind(SourceKind::Table))
 			} else {
 				// table only
@@ -80,7 +80,10 @@ mod tests {
 			} => {
 				let target = target.as_ref().unwrap();
 				assert_eq!(
-					target.schema.as_ref().unwrap().text(),
+					target.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(target.name.text(), "users");
@@ -109,7 +112,7 @@ mod tests {
 				..
 			} => {
 				let target = target.as_ref().unwrap();
-				assert!(target.schema.is_none());
+				assert!(target.namespace.is_none());
 				assert_eq!(target.name.text(), "users");
 			}
 		}

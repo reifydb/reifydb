@@ -44,7 +44,7 @@ pub fn convert_result_to_frames(
 					.collect();
 
 			ws_columns.push(WebsocketColumn {
-				schema: column.schema.clone(),
+				namespace: column.namespace.clone(),
 				store: column.store.clone(),
 				name: column.name.clone(),
 				r#type: column.data.get_type(),

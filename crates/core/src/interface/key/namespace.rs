@@ -3,25 +3,25 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, interface::catalog::SchemaId,
+	EncodedKey, EncodedKeyRange, interface::catalog::NamespaceId,
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SchemaKey {
-	pub schema: SchemaId,
+pub struct NamespaceKey {
+	pub namespace: NamespaceId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for SchemaKey {
-	const KIND: KeyKind = KeyKind::Schema;
+impl EncodableKey for NamespaceKey {
+	const KIND: KeyKind = KeyKind::Namespace;
 
 	fn encode(&self) -> EncodedKey {
 		let mut out = Vec::with_capacity(10);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.schema));
+		out.extend(&keycode::serialize(&self.namespace));
 		EncodedKey::new(out)
 	}
 
@@ -45,28 +45,28 @@ impl EncodableKey for SchemaKey {
 			return None;
 		}
 
-		keycode::deserialize(&payload[..8]).ok().map(|schema| Self {
-			schema,
+		keycode::deserialize(&payload[..8]).ok().map(|namespace| Self {
+			namespace,
 		})
 	}
 }
 
-impl SchemaKey {
+impl NamespaceKey {
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
-			Some(Self::schema_start()),
-			Some(Self::schema_end()),
+			Some(Self::namespace_start()),
+			Some(Self::namespace_end()),
 		)
 	}
 
-	fn schema_start() -> EncodedKey {
+	fn namespace_start() -> EncodedKey {
 		let mut out = Vec::with_capacity(2);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
 		EncodedKey::new(out)
 	}
 
-	fn schema_end() -> EncodedKey {
+	fn namespace_end() -> EncodedKey {
 		let mut out = Vec::with_capacity(2);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
@@ -76,13 +76,13 @@ impl SchemaKey {
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, SchemaKey};
-	use crate::interface::catalog::SchemaId;
+	use super::{EncodableKey, NamespaceKey};
+	use crate::interface::catalog::NamespaceId;
 
 	#[test]
 	fn test_encode_decode() {
-		let key = SchemaKey {
-			schema: SchemaId(0xABCD),
+		let key = NamespaceKey {
+			namespace: NamespaceId(0xABCD),
 		};
 		let encoded = key.encode();
 		let expected = vec![
@@ -91,7 +91,7 @@ mod tests {
 		];
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = SchemaKey::decode(&encoded).unwrap();
-		assert_eq!(key.schema, 0xABCD);
+		let key = NamespaceKey::decode(&encoded).unwrap();
+		assert_eq!(key.namespace, 0xABCD);
 	}
 }

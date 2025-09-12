@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use catalog::schema_not_found;
+use catalog::namespace_not_found;
 use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
 	ColumnDescriptor,
@@ -28,14 +28,16 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterSequencePlan,
 	) -> crate::Result<Columns> {
-		let schema_name = plan.sequence.schema.text();
+		let namespace_name = plan.sequence.namespace.text();
 
-		let Some(schema) =
-			CatalogStore::find_schema_by_name(txn, schema_name)?
+		let Some(namespace) = CatalogStore::find_namespace_by_name(
+			txn,
+			namespace_name,
+		)?
 		else {
-			return_error!(schema_not_found(
-				plan.sequence.schema.clone().into_owned(),
-				schema_name,
+			return_error!(namespace_not_found(
+				plan.sequence.namespace.clone().into_owned(),
+				namespace_name,
 			));
 		};
 
@@ -46,7 +48,9 @@ impl Executor {
 		};
 
 		let Some(table) = CatalogStore::find_table_by_name(
-			txn, schema.id, table_name,
+			txn,
+			namespace.id,
+			table_name,
 		)?
 		else {
 			return_error!(table_not_found(
@@ -55,7 +59,7 @@ impl Executor {
 					.as_fragment()
 					.clone()
 					.into_owned(),
-				&schema.name,
+				&namespace.name,
 				table_name,
 			));
 		};
@@ -83,7 +87,7 @@ impl Executor {
 		let value = evaluate(
 			&EvaluationContext {
 				target_column: Some(ColumnDescriptor {
-					schema: None,
+					namespace: None,
 					table: None,
 					column: None,
 					column_type: Some(column
@@ -113,7 +117,7 @@ impl Executor {
 		)?;
 
 		Ok(Columns::single_row([
-			("schema", Value::Utf8(schema.name)),
+			("namespace", Value::Utf8(namespace.name)),
 			("table", Value::Utf8(table.name)),
 			("column", Value::Utf8(column.name)),
 			("value", value),
@@ -126,7 +130,7 @@ mod tests {
 	use reifydb_catalog::{
 		CatalogStore,
 		table::{TableColumnToCreate, TableToCreate},
-		test_utils::ensure_test_schema,
+		test_utils::ensure_test_namespace,
 	};
 	use reifydb_core::interface::{
 		Params,
@@ -147,13 +151,13 @@ mod tests {
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
-		let test_schema = ensure_test_schema(&mut txn);
+		let test_schema = ensure_test_namespace(&mut txn);
 
 		CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
-				schema: test_schema.id,
+				namespace: test_schema.id,
 				table: "users".to_string(),
 				columns: vec![
 					TableColumnToCreate {
@@ -178,13 +182,13 @@ mod tests {
 		// Alter the sequence to start at 1000
 		let plan = AlterSequencePlan {
 			sequence: SequenceIdentifier::new(
-				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("users_id_seq"),
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					schema: Fragment::owned_internal(
-						"test_schema",
+					namespace: Fragment::owned_internal(
+						"test_namespace",
 					),
 					source: Fragment::owned_internal(
 						"users",
@@ -207,7 +211,7 @@ mod tests {
 
 		assert_eq!(
 			result.row(0)[0],
-			Value::Utf8("test_schema".to_string())
+			Value::Utf8("test_namespace".to_string())
 		);
 		assert_eq!(result.row(0)[1], Value::Utf8("users".to_string()));
 		assert_eq!(result.row(0)[2], Value::Utf8("id".to_string()));
@@ -217,12 +221,12 @@ mod tests {
 	#[test]
 	fn test_non_auto_increment_column() {
 		let mut txn = create_test_command_transaction();
-		let test_schema = ensure_test_schema(&mut txn);
+		let test_schema = ensure_test_namespace(&mut txn);
 		CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
-				schema: test_schema.id,
+				namespace: test_schema.id,
 				table: "items".to_string(),
 				columns: vec![TableColumnToCreate {
 					fragment: None,
@@ -241,13 +245,13 @@ mod tests {
 		// Try to alter sequence on non-auto-increment column
 		let plan = AlterSequencePlan {
 			sequence: SequenceIdentifier::new(
-				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("items_id_seq"),
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					schema: Fragment::owned_internal(
-						"test_schema",
+					namespace: Fragment::owned_internal(
+						"test_namespace",
 					),
 					source: Fragment::owned_internal(
 						"items",
@@ -283,7 +287,7 @@ mod tests {
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					schema: Fragment::owned_internal(
+					namespace: Fragment::owned_internal(
 						"non_existent_schema",
 					),
 					source: Fragment::owned_internal(
@@ -311,19 +315,19 @@ mod tests {
 	#[test]
 	fn test_table_not_found() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
+		ensure_test_namespace(&mut txn);
 
 		let plan = AlterSequencePlan {
 			sequence: SequenceIdentifier::new(
-				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal(
 					"non_existent_table_id_seq",
 				),
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					schema: Fragment::owned_internal(
-						"test_schema",
+					namespace: Fragment::owned_internal(
+						"test_namespace",
 					),
 					source: Fragment::owned_internal(
 						"non_existent_table",
@@ -350,13 +354,13 @@ mod tests {
 	#[test]
 	fn test_column_not_found() {
 		let mut txn = create_test_command_transaction();
-		let test_schema = ensure_test_schema(&mut txn);
+		let test_schema = ensure_test_namespace(&mut txn);
 
 		CatalogStore::create_table(
 			&mut txn,
 			TableToCreate {
 				fragment: None,
-				schema: test_schema.id,
+				namespace: test_schema.id,
 				table: "posts".to_string(),
 				columns: vec![TableColumnToCreate {
 					fragment: None,
@@ -375,15 +379,15 @@ mod tests {
 		// Try to alter sequence on non-existent column
 		let plan = AlterSequencePlan {
 			sequence: SequenceIdentifier::new(
-				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal(
 					"posts_non_existent_column_seq",
 				),
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					schema: Fragment::owned_internal(
-						"test_schema",
+					namespace: Fragment::owned_internal(
+						"test_namespace",
 					),
 					source: Fragment::owned_internal(
 						"posts",

@@ -37,21 +37,25 @@ impl Executor {
 		plan: InsertPlan,
 		params: Params,
 	) -> crate::Result<Columns> {
-		let schema_name = plan.target.schema.text();
+		let namespace_name = plan.target.namespace.text();
 
-		let schema =
-			CatalogStore::find_schema_by_name(txn, schema_name)?
-				.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(
+			txn,
+			namespace_name,
+		)?
+		.unwrap();
 
 		let table_name = plan.target.name.text();
 		let Some(table) = CatalogStore::find_table_by_name(
-			txn, schema.id, table_name,
+			txn,
+			namespace.id,
+			table_name,
 		)?
 		else {
 			let fragment = plan.target.name.clone().into_fragment();
 			return_error!(table_not_found(
 				fragment.clone(),
-				schema_name,
+				namespace_name,
 				table_name,
 			));
 		};
@@ -139,8 +143,8 @@ impl Executor {
 							.constraint
 							.get_type(),
 						ColumnDescriptor::new()
-							.with_schema(
-								&schema.name,
+							.with_namespace(
+								&namespace.name,
 							)
 							.with_table(&table.name)
 							.with_column(
@@ -438,7 +442,7 @@ impl Executor {
 
 		// Return summary columns
 		Ok(Columns::single_row([
-			("schema", Value::Utf8(schema.name)),
+			("namespace", Value::Utf8(namespace.name)),
 			("table", Value::Utf8(table.name)),
 			("inserted", Value::Uint8(inserted_count as u64)),
 		]))

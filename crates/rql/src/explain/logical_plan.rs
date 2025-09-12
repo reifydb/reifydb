@@ -65,7 +65,7 @@ fn render_logical_plan_inner(
 	match plan {
 		LogicalPlan::CreateDeferredView(_) => unimplemented!(),
 		LogicalPlan::CreateTransactionalView(_) => unimplemented!(),
-		LogicalPlan::CreateSchema(_) => unimplemented!(),
+		LogicalPlan::CreateNamespace(_) => unimplemented!(),
 		LogicalPlan::CreateSequence(_) => unimplemented!(),
 		LogicalPlan::CreateTable(_) => unimplemented!(),
 		LogicalPlan::AlterSequence(AlterSequenceNode {
@@ -88,8 +88,8 @@ fn render_logical_plan_inner(
 			);
 
 			output.push_str(&format!(
-				"{}├── Schema: {:?}\n",
-				child_prefix, sequence.schema
+				"{}├── Namespace: {:?}\n",
+				child_prefix, sequence.namespace
 			));
 			output.push_str(&format!(
 				"{}├── Sequence: {:?}\n",
@@ -136,9 +136,9 @@ fn render_logical_plan_inner(
 				index.name.text()
 			));
 			output.push_str(&format!(
-				"{}├── Schema: {}\n",
+				"{}├── Namespace: {}\n",
 				child_prefix,
-				index.schema.text()
+				index.namespace.text()
 			));
 			output.push_str(&format!(
 				"{}├── Table: {}\n",
@@ -205,7 +205,7 @@ fn render_logical_plan_inner(
 				output.push_str(&format!(
 					"{}├── target table: {}.{}\n",
 					child_prefix,
-					target.schema.text(),
+					target.namespace.text(),
 					target.name.text()
 				));
 			} else {
@@ -243,7 +243,7 @@ fn render_logical_plan_inner(
 				output.push_str(&format!(
 					"{}├── target table: {}.{}\n",
 					child_prefix,
-					target.schema.text(),
+					target.namespace.text(),
 					target.name.text()
 				));
 			} else {
@@ -490,14 +490,14 @@ fn render_logical_plan_inner(
 			let name = if let Some(idx) = index {
 				format!(
 					"{}.{}::{}",
-					source.schema.text(),
+					source.namespace.text(),
 					source.name.text(),
 					idx.name.text()
 				)
 			} else {
 				format!(
 					"{}.{}",
-					source.schema.text(),
+					source.namespace.text(),
 					source.name.text()
 				)
 			};
@@ -623,10 +623,10 @@ fn render_logical_plan_inner(
 				prefix, branch
 			));
 
-			// Show schema and table
-			let schema_str = table.schema.text();
+			// Show namespace and table
+			let schema_str = table.namespace.text();
 			output.push_str(&format!(
-				"{}├── Schema: {}\n",
+				"{}├── Namespace: {}\n",
 				child_prefix, schema_str
 			));
 			output.push_str(&format!(
@@ -688,10 +688,10 @@ fn render_logical_plan_inner(
 				prefix, branch
 			));
 
-			// Show schema and view
-			let schema_str = view.schema.text();
+			// Show namespace and view
+			let schema_str = view.namespace.text();
 			output.push_str(&format!(
-				"{}├── Schema: {}\n",
+				"{}├── Namespace: {}\n",
 				child_prefix, schema_str
 			));
 			output.push_str(&format!(

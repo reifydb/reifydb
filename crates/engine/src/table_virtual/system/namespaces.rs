@@ -16,18 +16,18 @@ use crate::{
 	table_virtual::{TableVirtual, TableVirtualContext},
 };
 
-/// Virtual table that exposes system schema information
-pub struct Schemas<T: Transaction> {
+/// Virtual table that exposes system namespace information
+pub struct Namespaces<T: Transaction> {
 	definition: Arc<TableVirtualDef>,
 	exhausted: bool,
 	_phantom: PhantomData<T>,
 }
 
-impl<T: Transaction> Schemas<T> {
+impl<T: Transaction> Namespaces<T> {
 	pub fn new() -> Self {
 		Self {
 			definition:
-				SystemCatalog::get_system_schemas_table_def()
+				SystemCatalog::get_system_namespaces_table_def()
 					.clone(),
 			exhausted: false,
 			_phantom: PhantomData,
@@ -35,7 +35,7 @@ impl<T: Transaction> Schemas<T> {
 	}
 }
 
-impl<'a, T: Transaction> TableVirtual<'a, T> for Schemas<T> {
+impl<'a, T: Transaction> TableVirtual<'a, T> for Namespaces<T> {
 	fn initialize(
 		&mut self,
 		_txn: &mut StandardTransaction<'a, T>,
@@ -53,23 +53,23 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Schemas<T> {
 			return Ok(None);
 		}
 
-		let mut schema_ids = Vec::new();
-		let mut schema_names = Vec::new();
+		let mut namespace_ids = Vec::new();
+		let mut namespace_names = Vec::new();
 
-		let schemas = CatalogStore::list_schemas_all(txn)?;
-		for schema in schemas {
-			schema_ids.push(schema.id.0);
-			schema_names.push(schema.name);
+		let namespaces = CatalogStore::list_namespaces_all(txn)?;
+		for namespace in namespaces {
+			namespace_ids.push(namespace.id.0);
+			namespace_names.push(namespace.name);
 		}
 
 		let columns = vec![
 			Column::ColumnQualified(ColumnQualified {
 				name: "id".to_string(),
-				data: ColumnData::uint8(schema_ids),
+				data: ColumnData::uint8(namespace_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
 				name: "name".to_string(),
-				data: ColumnData::utf8(schema_names),
+				data: ColumnData::utf8(namespace_names),
 			}),
 		];
 

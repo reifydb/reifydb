@@ -4,7 +4,7 @@
 logical 'alter table test.users { create primary key {id, email, created_at} }'
 ---
 > └── AlterTable
->     ├── Schema: test
+>     ├── Namespace: test
 >     ├── Table: users
 >     └──Operation: CREATE PRIMARY KEY
 >          ├──Column: id

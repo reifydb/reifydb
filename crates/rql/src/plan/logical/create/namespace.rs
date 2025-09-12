@@ -4,29 +4,29 @@
 use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
-	ast::AstCreateSchema,
+	ast::AstCreateNamespace,
 	plan::logical::{
-		Compiler, CreateSchemaNode, LogicalPlan,
+		Compiler, CreateNamespaceNode, LogicalPlan,
 		resolver::IdentifierResolver,
 	},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_schema<
+	pub(crate) fn compile_create_namespace<
 		'a,
 		't,
 		T: CatalogQueryTransaction,
 	>(
-		ast: AstCreateSchema<'a>,
+		ast: AstCreateNamespace<'a>,
 		_resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Convert MaybeQualified to fully qualified
-		use reifydb_core::interface::identifier::SchemaIdentifier;
+		use reifydb_core::interface::identifier::NamespaceIdentifier;
 
-		let schema = SchemaIdentifier::new(ast.schema.name);
+		let namespace = NamespaceIdentifier::new(ast.namespace.name);
 
-		Ok(LogicalPlan::CreateSchema(CreateSchemaNode {
-			schema,
+		Ok(LogicalPlan::CreateNamespace(CreateNamespaceNode {
+			namespace,
 			if_not_exists: false,
 		}))
 	}

@@ -6,32 +6,34 @@ use reifydb_type::RowNumber;
 use crate::{
 	CommitVersion,
 	interceptor::{
-		InterceptorChain, PostCommitContext, PostCommitInterceptor,
-		PreCommitContext, PreCommitInterceptor,
-		SchemaDefPostCreateContext, SchemaDefPostCreateInterceptor,
-		SchemaDefPostUpdateContext, SchemaDefPostUpdateInterceptor,
-		SchemaDefPreDeleteContext, SchemaDefPreDeleteInterceptor,
-		SchemaDefPreUpdateContext, SchemaDefPreUpdateInterceptor,
-		TableDefPostCreateContext, TableDefPostCreateInterceptor,
-		TableDefPostUpdateContext, TableDefPostUpdateInterceptor,
-		TableDefPreDeleteContext, TableDefPreDeleteInterceptor,
-		TableDefPreUpdateContext, TableDefPreUpdateInterceptor,
-		TablePostDeleteContext, TablePostDeleteInterceptor,
-		TablePostInsertContext, TablePostInsertInterceptor,
-		TablePostUpdateContext, TablePostUpdateInterceptor,
-		TablePreDeleteContext, TablePreDeleteInterceptor,
-		TablePreInsertContext, TablePreInsertInterceptor,
-		TablePreUpdateContext, TablePreUpdateInterceptor,
-		ViewDefPostCreateContext, ViewDefPostCreateInterceptor,
-		ViewDefPostUpdateContext, ViewDefPostUpdateInterceptor,
-		ViewDefPreDeleteContext, ViewDefPreDeleteInterceptor,
-		ViewDefPreUpdateContext, ViewDefPreUpdateInterceptor,
+		InterceptorChain, NamespaceDefPostCreateContext,
+		NamespaceDefPostCreateInterceptor,
+		NamespaceDefPostUpdateContext,
+		NamespaceDefPostUpdateInterceptor,
+		NamespaceDefPreDeleteContext, NamespaceDefPreDeleteInterceptor,
+		NamespaceDefPreUpdateContext, NamespaceDefPreUpdateInterceptor,
+		PostCommitContext, PostCommitInterceptor, PreCommitContext,
+		PreCommitInterceptor, TableDefPostCreateContext,
+		TableDefPostCreateInterceptor, TableDefPostUpdateContext,
+		TableDefPostUpdateInterceptor, TableDefPreDeleteContext,
+		TableDefPreDeleteInterceptor, TableDefPreUpdateContext,
+		TableDefPreUpdateInterceptor, TablePostDeleteContext,
+		TablePostDeleteInterceptor, TablePostInsertContext,
+		TablePostInsertInterceptor, TablePostUpdateContext,
+		TablePostUpdateInterceptor, TablePreDeleteContext,
+		TablePreDeleteInterceptor, TablePreInsertContext,
+		TablePreInsertInterceptor, TablePreUpdateContext,
+		TablePreUpdateInterceptor, ViewDefPostCreateContext,
+		ViewDefPostCreateInterceptor, ViewDefPostUpdateContext,
+		ViewDefPostUpdateInterceptor, ViewDefPreDeleteContext,
+		ViewDefPreDeleteInterceptor, ViewDefPreUpdateContext,
+		ViewDefPreUpdateInterceptor,
 	},
 	interface::{
-		CommandTransaction, SchemaDef, TableDef, TransactionId,
+		CommandTransaction, NamespaceDef, TableDef, TransactionId,
 		TransactionalChanges, ViewDef,
 		interceptor::{
-			SchemaDefInterceptor, TableDefInterceptor,
+			NamespaceDefInterceptor, TableDefInterceptor,
 			TableInterceptor, TransactionInterceptor,
 			ViewDefInterceptor, WithInterceptors,
 		},
@@ -126,39 +128,39 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT>
 	);
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> SchemaDefInterceptor<CT>
+impl<CT: CommandTransaction + WithInterceptors<CT>> NamespaceDefInterceptor<CT>
 	for CT
 {
 	impl_interceptor_method!(
 		post_create,
-		schema_def_post_create_interceptors,
-		SchemaDefPostCreateInterceptor,
-		SchemaDefPostCreateContext,
-		(post: &SchemaDef)
+		namespace_def_post_create_interceptors,
+		NamespaceDefPostCreateInterceptor,
+		NamespaceDefPostCreateContext,
+		(post: &NamespaceDef)
 	);
 
 	impl_interceptor_method!(
 		pre_update,
-		schema_def_pre_update_interceptors,
-		SchemaDefPreUpdateInterceptor,
-		SchemaDefPreUpdateContext,
-		(pre: &SchemaDef)
+		namespace_def_pre_update_interceptors,
+		NamespaceDefPreUpdateInterceptor,
+		NamespaceDefPreUpdateContext,
+		(pre: &NamespaceDef)
 	);
 
 	impl_interceptor_method!(
 		post_update,
-		schema_def_post_update_interceptors,
-		SchemaDefPostUpdateInterceptor,
-		SchemaDefPostUpdateContext,
-		(pre: &SchemaDef, post: &SchemaDef)
+		namespace_def_post_update_interceptors,
+		NamespaceDefPostUpdateInterceptor,
+		NamespaceDefPostUpdateContext,
+		(pre: &NamespaceDef, post: &NamespaceDef)
 	);
 
 	impl_interceptor_method!(
 		pre_delete,
-		schema_def_pre_delete_interceptors,
-		SchemaDefPreDeleteInterceptor,
-		SchemaDefPreDeleteContext,
-		(pre: &SchemaDef)
+		namespace_def_pre_delete_interceptors,
+		NamespaceDefPreDeleteInterceptor,
+		NamespaceDefPreDeleteContext,
+		(pre: &NamespaceDef)
 	);
 }
 

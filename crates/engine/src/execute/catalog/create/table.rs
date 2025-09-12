@@ -20,15 +20,15 @@ impl Executor {
 		// Check if table already exists using the transaction's catalog
 		// operations
 		if let Some(_) = txn.find_table_by_name(
-			plan.schema.id,
+			plan.namespace.id,
 			plan.table.name.text(),
 		)? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
-						"schema",
+						"namespace",
 						Value::Utf8(
-							plan.schema
+							plan.namespace
 								.name
 								.to_string(),
 						),
@@ -52,12 +52,15 @@ impl Executor {
 		txn.create_table(TableToCreate {
 			fragment: Some(plan.table.name.clone().into_owned()),
 			table: plan.table.name.text().to_string(),
-			schema: plan.schema.id,
+			namespace: plan.namespace.id,
 			columns: plan.columns,
 		})?;
 
 		Ok(Columns::single_row([
-			("schema", Value::Utf8(plan.schema.name.to_string())),
+			(
+				"namespace",
+				Value::Utf8(plan.namespace.name.to_string()),
+			),
 			(
 				"table",
 				Value::Utf8(plan.table.name.text().to_string()),
@@ -69,9 +72,11 @@ impl Executor {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
+	use reifydb_catalog::test_utils::{
+		create_namespace, ensure_test_namespace,
+	};
 	use reifydb_core::interface::{
-		Params, SchemaDef, SchemaId,
+		NamespaceDef, NamespaceId, Params,
 		identifier::{SourceIdentifier, SourceKind},
 	};
 	use reifydb_rql::plan::physical::PhysicalPlan;
@@ -86,15 +91,15 @@ mod tests {
 	fn test_create_table() {
 		let mut txn = create_test_command_transaction();
 
-		let schema = ensure_test_schema(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let mut plan = CreateTablePlan {
-			schema: SchemaDef {
-				id: schema.id,
-				name: schema.name.clone(),
+			namespace: NamespaceDef {
+				id: namespace.id,
+				name: namespace.name.clone(),
 			},
 			table: SourceIdentifier::new(
-				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_table"),
 				SourceKind::Table,
 			),
@@ -112,7 +117,7 @@ mod tests {
 			.unwrap();
 		assert_eq!(
 			result.row(0)[0],
-			Value::Utf8("test_schema".to_string())
+			Value::Utf8("test_namespace".to_string())
 		);
 		assert_eq!(
 			result.row(0)[1],
@@ -132,7 +137,7 @@ mod tests {
 			.unwrap();
 		assert_eq!(
 			result.row(0)[0],
-			Value::Utf8("test_schema".to_string())
+			Value::Utf8("test_namespace".to_string())
 		);
 		assert_eq!(
 			result.row(0)[1],
@@ -157,16 +162,17 @@ mod tests {
 	fn test_create_same_table_in_different_schema() {
 		let mut txn = create_test_command_transaction();
 
-		let schema = ensure_test_schema(&mut txn);
-		let another_schema = create_schema(&mut txn, "another_schema");
+		let namespace = ensure_test_namespace(&mut txn);
+		let another_schema =
+			create_namespace(&mut txn, "another_schema");
 
 		let plan = CreateTablePlan {
-			schema: SchemaDef {
-				id: schema.id,
-				name: schema.name.clone(),
+			namespace: NamespaceDef {
+				id: namespace.id,
+				name: namespace.name.clone(),
 			},
 			table: SourceIdentifier::new(
-				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_table"),
 				SourceKind::Table,
 			),
@@ -183,7 +189,7 @@ mod tests {
 			.unwrap();
 		assert_eq!(
 			result.row(0)[0],
-			Value::Utf8("test_schema".to_string())
+			Value::Utf8("test_namespace".to_string())
 		);
 		assert_eq!(
 			result.row(0)[1],
@@ -191,7 +197,7 @@ mod tests {
 		);
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
 		let plan = CreateTablePlan {
-			schema: SchemaDef {
+			namespace: NamespaceDef {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
@@ -227,8 +233,8 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let plan = CreateTablePlan {
-			schema: SchemaDef {
-				id: SchemaId(999),
+			namespace: NamespaceDef {
+				id: NamespaceId(999),
 				name: "missing_schema".to_string(),
 			},
 			table: SourceIdentifier::new(
@@ -241,8 +247,8 @@ mod tests {
 		};
 
 		// With defensive fallback, this now succeeds even with
-		// non-existent schema The table is created with the provided
-		// schema ID
+		// non-existent namespace The table is created with the provided
+		// namespace ID
 		let result = Executor::testing()
 			.execute_command_plan(
 				&mut txn,

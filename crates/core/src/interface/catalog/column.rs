@@ -27,7 +27,7 @@ pub struct ColumnDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnDescriptor<'a> {
 	// Location information
-	pub schema: Option<&'a str>,
+	pub namespace: Option<&'a str>,
 	pub table: Option<&'a str>,
 	pub column: Option<&'a str>,
 
@@ -39,7 +39,7 @@ pub struct ColumnDescriptor<'a> {
 impl<'a> ColumnDescriptor<'a> {
 	pub fn new() -> Self {
 		Self {
-			schema: None,
+			namespace: None,
 			table: None,
 			column: None,
 			column_type: None,
@@ -47,8 +47,8 @@ impl<'a> ColumnDescriptor<'a> {
 		}
 	}
 
-	pub fn with_schema(mut self, schema: &'a str) -> Self {
-		self.schema = Some(schema);
+	pub fn with_namespace(mut self, namespace: &'a str) -> Self {
+		self.namespace = Some(namespace);
 		self
 	}
 
@@ -77,7 +77,7 @@ impl<'a> ColumnDescriptor<'a> {
 
 	// Location formatting
 	pub fn location_string(&self) -> String {
-		match (self.schema, self.table, self.column) {
+		match (self.namespace, self.table, self.column) {
 			(Some(s), Some(t), Some(c)) => {
 				format!("{}.{}.{}", s, t, c)
 			}
@@ -108,8 +108,8 @@ impl<'a> ColumnDescriptor<'a> {
 		&self,
 	) -> NumberOfRangeColumnDescriptor<'a> {
 		let mut descriptor = NumberOfRangeColumnDescriptor::new();
-		if let Some(schema) = self.schema {
-			descriptor = descriptor.with_schema(schema);
+		if let Some(namespace) = self.namespace {
+			descriptor = descriptor.with_namespace(namespace);
 		}
 		if let Some(table) = self.table {
 			descriptor = descriptor.with_table(table);

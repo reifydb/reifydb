@@ -136,7 +136,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(
-					table.schema.as_ref().unwrap().text(),
+					table.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(table.name.text(), "items");

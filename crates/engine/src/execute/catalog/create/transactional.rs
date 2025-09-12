@@ -18,15 +18,15 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		if let Some(view) = CatalogStore::find_view_by_name(
 			txn,
-			plan.schema.id,
+			plan.namespace.id,
 			plan.view.name.text(),
 		)? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
-						"schema",
+						"namespace",
 						Value::Utf8(
-							plan.schema
+							plan.namespace
 								.name
 								.to_string(),
 						),
@@ -46,7 +46,7 @@ impl Executor {
 
 			return_error!(view_already_exists(
 				Some(plan.view.name.clone().into_owned()),
-				&plan.schema.name,
+				&plan.namespace.name,
 				&view.name,
 			));
 		}
@@ -60,7 +60,7 @@ impl Executor {
 					.clone()
 					.into_owned()),
 				name: plan.view.name.text().to_string(),
-				schema: plan.schema.id,
+				namespace: plan.namespace.id,
 				columns: plan.columns,
 			},
 		)?;
@@ -68,7 +68,10 @@ impl Executor {
 		self.create_flow(txn, &result, plan.with)?;
 
 		Ok(Columns::single_row([
-			("schema", Value::Utf8(plan.schema.name.to_string())),
+			(
+				"namespace",
+				Value::Utf8(plan.namespace.name.to_string()),
+			),
 			(
 				"view",
 				Value::Utf8(plan.view.name.text().to_string()),

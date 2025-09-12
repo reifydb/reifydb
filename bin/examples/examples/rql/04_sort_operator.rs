@@ -17,7 +17,7 @@ fn main() {
 	db.start().unwrap();
 
 	// Set up sample data
-	db.command_as_root("create schema store", Params::None).unwrap();
+	db.command_as_root("create namespace store", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table store.products {

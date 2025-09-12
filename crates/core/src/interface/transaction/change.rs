@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::interface::{
-	OperationType::Delete, SchemaDef, SchemaId, TableDef, TableId,
+	NamespaceDef, NamespaceId, OperationType::Delete, TableDef, TableId,
 	TransactionId, ViewDef, ViewId,
 };
 
@@ -11,8 +11,8 @@ use crate::interface::{
 pub struct TransactionalChanges {
 	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
-	/// All schema definition changes in order (no coalescing)
-	pub schema_def: Vec<Change<SchemaDef>>,
+	/// All namespace definition changes in order (no coalescing)
+	pub namespace_def: Vec<Change<NamespaceDef>>,
 	/// All table definition changes in order (no coalescing)
 	pub table_def: Vec<Change<TableDef>>,
 	/// All view definition changes in order (no coalescing)
@@ -22,7 +22,10 @@ pub struct TransactionalChanges {
 }
 
 impl TransactionalChanges {
-	pub fn add_schema_def_change(&mut self, change: Change<SchemaDef>) {
+	pub fn add_namespace_def_change(
+		&mut self,
+		change: Change<NamespaceDef>,
+	) {
 		let id = change
 			.post
 			.as_ref()
@@ -30,8 +33,8 @@ impl TransactionalChanges {
 			.map(|s| s.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.schema_def.push(change);
-		self.log.push(Operation::Schema {
+		self.namespace_def.push(change);
+		self.log.push(Operation::Namespace {
 			id,
 			op,
 		});
@@ -91,8 +94,8 @@ pub enum OperationType {
 /// Log entry for operation ordering
 #[derive(Debug, Clone)]
 pub enum Operation {
-	Schema {
-		id: SchemaId,
+	Namespace {
+		id: NamespaceId,
 		op: OperationType,
 	},
 	Table {
@@ -109,29 +112,32 @@ impl TransactionalChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,
-			schema_def: Vec::new(),
+			namespace_def: Vec::new(),
 			table_def: Vec::new(),
 			view_def: Vec::new(),
 			log: Vec::new(),
 		}
 	}
 
-	/// Check if a schema exists in this transaction's view
-	pub fn schema_def_exists(&self, id: SchemaId) -> bool {
-		self.get_schema_def(id).is_some()
+	/// Check if a namespace exists in this transaction's view
+	pub fn namespace_def_exists(&self, id: NamespaceId) -> bool {
+		self.get_namespace_def(id).is_some()
 	}
 
-	/// Get current state of a schema within this transaction
-	pub fn get_schema_def(&self, id: SchemaId) -> Option<&SchemaDef> {
-		// Find the last change for this schema ID
-		for change in self.schema_def.iter().rev() {
-			if let Some(schema) = &change.post {
-				if schema.id == id {
-					return Some(schema);
+	/// Get current state of a namespace within this transaction
+	pub fn get_namespace_def(
+		&self,
+		id: NamespaceId,
+	) -> Option<&NamespaceDef> {
+		// Find the last change for this namespace ID
+		for change in self.namespace_def.iter().rev() {
+			if let Some(namespace) = &change.post {
+				if namespace.id == id {
+					return Some(namespace);
 				}
-			} else if let Some(schema) = &change.pre {
-				if schema.id == id && change.op == Delete {
-					// Schema was deleted
+			} else if let Some(namespace) = &change.pre {
+				if namespace.id == id && change.op == Delete {
+					// Namespace was deleted
 					return None;
 				}
 			}
@@ -195,9 +201,9 @@ impl TransactionalChanges {
 		self.txn_id
 	}
 
-	/// Get schema definition changes
-	pub fn schema_def(&self) -> &[Change<SchemaDef>] {
-		&self.schema_def
+	/// Get namespace definition changes
+	pub fn namespace_def(&self) -> &[Change<NamespaceDef>] {
+		&self.namespace_def
 	}
 
 	/// Get table definition changes
@@ -212,7 +218,7 @@ impl TransactionalChanges {
 
 	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
-		self.schema_def.clear();
+		self.namespace_def.clear();
 		self.table_def.clear();
 		self.view_def.clear();
 		self.log.clear();

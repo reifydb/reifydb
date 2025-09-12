@@ -29,7 +29,7 @@ pub enum Column {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FullyQualified {
-	pub schema: String,
+	pub namespace: String,
 	pub source: String,
 	pub name: String,
 	pub data: ColumnData,
@@ -68,7 +68,7 @@ impl Column {
 		match self {
 			Self::FullyQualified(col) => format!(
 				"{}.{}.{}",
-				col.schema, col.source, col.name
+				col.namespace, col.source, col.name
 			),
 			Self::SourceQualified(col) => {
 				format!("{}.{}", col.source, col.name)
@@ -82,7 +82,7 @@ impl Column {
 		match self {
 			Self::FullyQualified(col) => {
 				Self::FullyQualified(FullyQualified {
-					schema: col.schema.clone(),
+					namespace: col.namespace.clone(),
 					source: col.source.clone(),
 					name: col.name.clone(),
 					data,
@@ -133,9 +133,9 @@ impl Column {
 		self.source()
 	}
 
-	pub fn schema(&self) -> Option<&str> {
+	pub fn namespace(&self) -> Option<&str> {
 		match self {
-			Self::FullyQualified(col) => Some(&col.schema),
+			Self::FullyQualified(col) => Some(&col.namespace),
 			Self::SourceQualified(_) => None,
 			Self::ColumnQualified(_) => None,
 			Self::Unqualified(_) => None,
@@ -196,7 +196,7 @@ mod tests {
 		assert_eq!(column.qualified_name(), "public.users.id");
 		match column {
 			Column::FullyQualified(col) => {
-				assert_eq!(col.schema, "public");
+				assert_eq!(col.namespace, "public");
 				assert_eq!(col.source, "users");
 				assert_eq!(col.name, "id");
 			}

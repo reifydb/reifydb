@@ -24,7 +24,7 @@ impl ColumnsLayout {
 
 #[derive(Debug, Clone)]
 pub struct ColumnLayout {
-	pub schema: Option<String>,
+	pub namespace: Option<String>,
 	pub source: Option<String>,
 	pub name: String,
 }
@@ -32,7 +32,7 @@ pub struct ColumnLayout {
 impl ColumnLayout {
 	pub fn from_column(column: &Column) -> Self {
 		Self {
-			schema: column.schema().map(|s| s.to_string()),
+			namespace: column.namespace().map(|s| s.to_string()),
 			source: column.source().map(|s| s.to_string()),
 			name: column.name().to_string(),
 		}

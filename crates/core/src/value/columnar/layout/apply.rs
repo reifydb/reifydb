@@ -26,9 +26,9 @@ impl Columns {
 					ColumnData::undefined(0),
 				);
 
-				*column = match (&column_layout.schema, &column_layout.source) {
-                    (Some(schema), Some(source)) => Column::FullyQualified(FullyQualified {
-                        schema: schema.clone(),
+				*column = match (&column_layout.namespace, &column_layout.source) {
+                    (Some(namespace), Some(source)) => Column::FullyQualified(FullyQualified {
+                        namespace: namespace.clone(),
                         source: source.clone(),
                         name: column_layout.name.clone(),
                         data}),
@@ -55,7 +55,7 @@ impl Columns {
 		layout: &ColumnsLayout,
 	) -> ColumnsLayout {
 		// Group columns by name and check for ambiguity across
-		// different table/schema contexts
+		// different table/namespace contexts
 		let mut name_groups: HashMap<
 			String,
 			Vec<(Option<String>, Option<String>)>,
@@ -65,39 +65,39 @@ impl Columns {
 				.entry(column_layout.name.clone())
 				.or_insert_with(Vec::new)
 				.push((
-					column_layout.schema.clone(),
+					column_layout.namespace.clone(),
 					column_layout.source.clone(),
 				));
 		}
 
 		// Only qualify columns that appear more than once across
-		// different table/schema contexts
+		// different table/namespace contexts
 		let qualified_columns: Vec<_> = layout
             .columns
             .iter()
             .map(|column_layout| {
                 let contexts = name_groups.get(&column_layout.name).unwrap();
 
-                // Check if this column name appears in different source/schema contexts
+                // Check if this column name appears in different source/namespace contexts
                 let mut unique_contexts = HashSet::new();
-                for (schema, source) in contexts {
-                    unique_contexts.insert((schema.clone(), source.clone()));
+                for (namespace, source) in contexts {
+                    unique_contexts.insert((namespace.clone(), source.clone()));
                 }
 
-                // Qualify if there are duplicates OR if the layout explicitly specifies schema/source
+                // Qualify if there are duplicates OR if the layout explicitly specifies namespace/source
                 let has_duplicates = unique_contexts.len() > 1;
                 let has_explicit_qualification =
-                    column_layout.schema.is_some() || column_layout.source.is_some();
+                    column_layout.namespace.is_some() || column_layout.source.is_some();
 
                 if has_duplicates || has_explicit_qualification {
                     // This column has naming conflicts - add qualification using available source info
-                    match (&column_layout.schema, &column_layout.source) {
-                        (Some(schema), Some(source)) => ColumnLayout {
-                            schema: Some(schema.clone()),
+                    match (&column_layout.namespace, &column_layout.source) {
+                        (Some(namespace), Some(source)) => ColumnLayout {
+                            namespace: Some(namespace.clone()),
                             source: Some(source.clone()),
                             name: column_layout.name.clone()},
                         (None, Some(source)) => ColumnLayout {
-                            schema: None,
+                            namespace: None,
                             source: Some(source.clone()),
                             name: column_layout.name.clone()},
                         _ => {
@@ -105,19 +105,19 @@ impl Columns {
                             if let Some(existing_column) =
                                 self.iter().find(|c| c.name() == column_layout.name)
                             {
-                                match (existing_column.schema(), existing_column.source()) {
-                                    (Some(schema), Some(source)) => ColumnLayout {
-                                        schema: Some(schema.to_string()),
+                                match (existing_column.namespace(), existing_column.source()) {
+                                    (Some(namespace), Some(source)) => ColumnLayout {
+                                        namespace: Some(namespace.to_string()),
                                         source: Some(source.to_string()),
                                         name: column_layout.name.clone()},
                                     (None, Some(source)) => ColumnLayout {
-                                        schema: None,
+                                        namespace: None,
                                         source: Some(source.to_string()),
                                         name: column_layout.name.clone()},
                                     _ => {
                                         // Use columns name as fallback source qualification
                                         ColumnLayout {
-                                            schema: None,
+                                            namespace: None,
                                             source: None,
                                             name: column_layout.name.clone()}
                                     }
@@ -125,7 +125,7 @@ impl Columns {
                             } else {
                                 // Use columns name as fallback source qualification
                                 ColumnLayout {
-                                    schema: None,
+                                    namespace: None,
                                     source: None,
                                     name: column_layout.name.clone()}
                             }
@@ -133,7 +133,7 @@ impl Columns {
                     }
                 } else {
                     // No duplicates - remove unnecessary qualification
-                    ColumnLayout { schema: None, source: None, name: column_layout.name.clone() }
+                    ColumnLayout { namespace: None, source: None, name: column_layout.name.clone() }
                 }
             })
             .collect();

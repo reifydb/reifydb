@@ -37,7 +37,9 @@ impl Compiler {
 				// present
 				let index = index_name.map(|idx| {
 					IndexIdentifier::new(
-						qualified_source.schema.clone(),
+						qualified_source
+							.namespace
+							.clone(),
 						qualified_source.name.clone(),
 						idx,
 					)

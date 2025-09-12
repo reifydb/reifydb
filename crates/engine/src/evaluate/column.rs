@@ -28,8 +28,8 @@ impl StandardEvaluator {
 
 		match parts.len() {
 			3 => {
-				// Fully qualified: schema.table.column
-				let schema = parts[0];
+				// Fully qualified: namespace.table.column
+				let namespace = parts[0];
 				let table = parts[1];
 				let col_name = parts[2];
 
@@ -38,7 +38,7 @@ impl StandardEvaluator {
 					ctx.columns.iter().find(|c| {
 						c.name() == col_name && match c {
 						Column::FullyQualified(fq) => {
-							fq.schema == schema && fq.source == table
+							fq.namespace == namespace && fq.source == table
 						}
 						_ => false,
 					}
@@ -59,9 +59,9 @@ impl StandardEvaluator {
 					ctx.columns.iter().find(|c| {
 						c.name() == col_name && match c {
 						Column::FullyQualified(fq) => {
-							// Match if table name matches, or schema.table matches
+							// Match if table name matches, or namespace.table matches
 							fq.source == source ||
-							format!("{}.{}", fq.schema, fq.source) == source
+							format!("{}.{}", fq.namespace, fq.source) == source
 						}
 						Column::SourceQualified(sq) => sq.source == source,
 						_ => false,
@@ -101,10 +101,10 @@ impl StandardEvaluator {
 						.enumerate()
 						.max_by_key(|(idx, c)| {
 							let qualification_level =
-								match (c.schema(), c.table()) {
+								match (c.namespace(), c.table()) {
 									(Some(_), Some(_)) => 3, /* Fully qualified */
 									(None, Some(_)) => 2,    /* Table qualified */
-									(Some(_), None) => 1,    /* Schema qualified (unusual) */
+									(Some(_), None) => 1,    /* Namespace qualified (unusual) */
 									_ => 0,                  /* Unqualified */
 								};
 							// Use index as

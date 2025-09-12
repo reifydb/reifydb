@@ -4,7 +4,7 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::{
-	ColumnDef, ColumnIndex, SchemaId, TableVirtualDef,
+	ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef,
 };
 use reifydb_type::{Type, TypeConstraint};
 
@@ -16,7 +16,7 @@ pub fn versions() -> Arc<TableVirtualDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(TableVirtualDef {
 			id: VERSIONS,
-			schema: SchemaId(1), // system schema
+			namespace: NamespaceId(1), // system namespace
 			name: "versions".to_string(),
 			columns: vec![
 				ColumnDef {

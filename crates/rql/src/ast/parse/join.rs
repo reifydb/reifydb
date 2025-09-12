@@ -257,7 +257,7 @@ mod tests {
 	#[test]
 	fn test_left_join() {
 		let tokens = tokenize(
-			"left join { from schema.orders } on user.id == orders.user_id",
+			"left join { from namespace.orders } on user.id == orders.user_id",
 		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
@@ -276,7 +276,7 @@ mod tests {
 			panic!("Expected LeftJoin");
 		};
 		let with = with.as_infix();
-		assert_eq!(with.left.as_identifier().text(), "schema");
+		assert_eq!(with.left.as_identifier().text(), "namespace");
 		assert!(matches!(with.operator, InfixOperator::AccessTable(_)));
 		assert_eq!(with.right.as_identifier().text(), "orders");
 
@@ -374,7 +374,10 @@ mod tests {
 				..
 			} => {
 				assert_eq!(
-					source.schema.as_ref().unwrap().text(),
+					source.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(source.name.text(), "orders");
@@ -562,7 +565,7 @@ mod tests {
 
 	#[test]
 	fn test_natural_join_with_qualified_table() {
-		let tokens = tokenize("natural join { from schema.orders }")
+		let tokens = tokenize("natural join { from namespace.orders }")
 			.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -580,7 +583,7 @@ mod tests {
 				let with = with.as_infix();
 				assert_eq!(
 					with.left.as_identifier().text(),
-					"schema"
+					"namespace"
 				);
 				assert!(matches!(
 					with.operator,

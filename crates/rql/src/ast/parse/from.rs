@@ -52,18 +52,18 @@ impl<'a> Parser<'a> {
 				self.consume_operator(Operator::Dot)?;
 				let second_token =
 					self.consume(TokenKind::Identifier)?;
-				// schema.table - create
-				// MaybeQualifiedSourceIdentifier with schema
+				// namespace.table - create
+				// MaybeQualifiedSourceIdentifier with namespace
 				let source =
 					MaybeQualifiedSourceIdentifier::new(
 						second_token.fragment.clone(),
 					)
-					.with_schema(
+					.with_namespace(
 						first_token.fragment.clone(),
 					)
 					.with_kind(SourceKind::Unknown); // Will be resolved later
 
-				// Check for alias after schema.table
+				// Check for alias after namespace.table
 				let alias_token = if !self.is_eof()
 					&& self.current()?.is_identifier()
 				{
@@ -77,7 +77,8 @@ impl<'a> Parser<'a> {
 				(source, alias_token)
 			} else {
 				// Just table - create
-				// MaybeQualifiedSourceIdentifier without schema
+				// MaybeQualifiedSourceIdentifier without
+				// namespace
 				let source =
 					MaybeQualifiedSourceIdentifier::new(
 						first_token.fragment.clone(),
@@ -188,7 +189,10 @@ mod tests {
 				..
 			} => {
 				assert_eq!(
-					source.schema.as_ref().unwrap().text(),
+					source.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"reifydb"
 				);
 				assert_eq!(source.name.text(), "users");
@@ -216,7 +220,7 @@ mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(source.schema, None);
+				assert_eq!(source.namespace, None);
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name, &None);
 			}
@@ -362,7 +366,7 @@ mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(source.schema, None);
+				assert_eq!(source.namespace, None);
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(
 					index_name.as_ref().unwrap().text(),
@@ -376,7 +380,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_from_schema_table_with_index_directive() {
+	fn test_from_namespace_table_with_index_directive() {
 		let tokens =
 			tokenize("FROM company.employees::employee_email_pk")
 				.unwrap();
@@ -394,7 +398,10 @@ mod tests {
 				..
 			} => {
 				assert_eq!(
-					source.schema.as_ref().unwrap().text(),
+					source.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"company"
 				);
 				assert_eq!(source.name.text(), "employees");
@@ -425,7 +432,7 @@ mod tests {
 				index_name,
 				..
 			} => {
-				assert!(source.schema.is_none());
+				assert!(source.namespace.is_none());
 				assert_eq!(source.name.text(), "orders");
 				assert_eq!(index_name, &None);
 				assert_eq!(
@@ -440,7 +447,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_from_schema_table_with_alias() {
+	fn test_from_namespace_table_with_alias() {
 		let tokens = tokenize("FROM test.orders o").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -456,7 +463,10 @@ mod tests {
 				..
 			} => {
 				assert_eq!(
-					source.schema.as_ref().unwrap().text(),
+					source.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(source.name.text(), "orders");

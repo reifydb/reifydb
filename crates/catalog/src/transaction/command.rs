@@ -2,26 +2,27 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	CommandTransaction, SchemaDef, TableDef, ViewDef,
+	CommandTransaction, NamespaceDef, TableDef, ViewDef,
 };
 
 use super::query::{CatalogQueryTransaction, CatalogTransaction};
 use crate::{
-	schema::SchemaToCreate, table::TableToCreate,
+	namespace::NamespaceToCreate, table::TableToCreate,
 	transaction::CatalogSourceQueryOperations, view::ViewToCreate,
 };
 
-// Schema command operations
-pub trait CatalogSchemaCommandOperations {
-	fn create_schema(
+// Namespace command operations
+pub trait CatalogNamespaceCommandOperations {
+	fn create_namespace(
 		&mut self,
-		schema: SchemaToCreate,
-	) -> crate::Result<SchemaDef>;
+		namespace: NamespaceToCreate,
+	) -> crate::Result<NamespaceDef>;
 
 	// TODO: Implement when update/delete are ready
-	// fn update_schema(&mut self, schema_id: SchemaId, updates:
-	// SchemaUpdates) -> crate::Result<SchemaDef>; fn delete_schema(&mut
-	// self, schema_id: SchemaId) -> crate::Result<()>;
+	// fn update_namespace(&mut self, namespace_id: NamespaceId, updates:
+	// NamespaceUpdates) -> crate::Result<NamespaceDef>; fn
+	// delete_namespace(&mut self, namespace_id: NamespaceId) ->
+	// crate::Result<()>;
 }
 
 // Table command operations
@@ -51,7 +52,7 @@ pub trait CatalogViewCommandOperations {
 // Combined catalog command transaction trait that extends query capabilities
 pub trait CatalogCommandTransaction:
 	CatalogQueryTransaction
-	+ CatalogSchemaCommandOperations
+	+ CatalogNamespaceCommandOperations
 	+ CatalogSourceQueryOperations
 	+ CatalogTableCommandOperations
 	+ CatalogViewCommandOperations
@@ -63,21 +64,21 @@ pub trait CatalogCommandTransaction:
 pub trait CatalogCommandTransactionOperations:
 	CommandTransaction + CatalogTransaction
 {
-	// Schema tracking methods
-	fn track_schema_def_created(
+	// Namespace tracking methods
+	fn track_namespace_def_created(
 		&mut self,
-		schema: SchemaDef,
+		namespace: NamespaceDef,
 	) -> crate::Result<()>;
 
-	fn track_schema_def_updated(
+	fn track_namespace_def_updated(
 		&mut self,
-		pre: SchemaDef,
-		post: SchemaDef,
+		pre: NamespaceDef,
+		post: NamespaceDef,
 	) -> crate::Result<()>;
 
-	fn track_schema_def_deleted(
+	fn track_namespace_def_deleted(
 		&mut self,
-		schema: SchemaDef,
+		namespace: NamespaceDef,
 	) -> crate::Result<()>;
 
 	// Table tracking methods

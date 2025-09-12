@@ -10,7 +10,8 @@ use crate::ast::{
 	identifier::{
 		MaybeQualifiedColumnIdentifier,
 		MaybeQualifiedFunctionIdentifier,
-		MaybeQualifiedIndexIdentifier, MaybeQualifiedSchemaIdentifier,
+		MaybeQualifiedIndexIdentifier,
+		MaybeQualifiedNamespaceIdentifier,
 		MaybeQualifiedSequenceIdentifier,
 		MaybeQualifiedSourceIdentifier, UnqualifiedIdentifier,
 	},
@@ -589,7 +590,7 @@ impl<'a> Index<usize> for AstInline<'a> {
 pub enum AstCreate<'a> {
 	DeferredView(AstCreateDeferredView<'a>),
 	TransactionalView(AstCreateTransactionalView<'a>),
-	Schema(AstCreateSchema<'a>),
+	Namespace(AstCreateNamespace<'a>),
 	Series(AstCreateSeries<'a>),
 	Table(AstCreateTable<'a>),
 	Index(AstCreateIndex<'a>),
@@ -659,9 +660,9 @@ pub struct AstCreateTransactionalView<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstCreateSchema<'a> {
+pub struct AstCreateNamespace<'a> {
 	pub token: Token<'a>,
-	pub schema: MaybeQualifiedSchemaIdentifier<'a>,
+	pub namespace: MaybeQualifiedNamespaceIdentifier<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -732,7 +733,7 @@ impl<'a> AstCreate<'a> {
 					..
 				},
 			) => token,
-			AstCreate::Schema(AstCreateSchema {
+			AstCreate::Namespace(AstCreateNamespace {
 				token,
 				..
 			}) => token,

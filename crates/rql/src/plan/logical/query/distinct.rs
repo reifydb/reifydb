@@ -22,7 +22,7 @@ impl Compiler {
 		// In a proper implementation, we would need to resolve these
 		// columns based on the SELECT clause and FROM sources in the
 		// query context For now, we'll create columns with a default
-		// schema/source that should be resolved by the query planner
+		// namespace/source that should be resolved by the query planner
 		// based on context
 
 		Ok(LogicalPlan::Distinct(DistinctNode {
@@ -34,10 +34,10 @@ impl Compiler {
 					// For now, if it's already qualified, use that info
 					// Otherwise use placeholder that needs resolution
 					match col.source {
-						crate::ast::identifier::MaybeQualifiedColumnSource::Source { schema, source } => {
+						crate::ast::identifier::MaybeQualifiedColumnSource::Source { namespace, source } => {
 							ColumnIdentifier {
 								source: ColumnSource::Source {
-									schema: schema.unwrap_or_else(|| Fragment::Owned(
+									namespace: namespace.unwrap_or_else(|| Fragment::Owned(
 										OwnedFragment::Internal { text: String::from("_context") }
 									)),
 									source,
@@ -55,7 +55,7 @@ impl Compiler {
 							// Unqualified - needs resolution from context
 							ColumnIdentifier {
 								source: ColumnSource::Source {
-									schema: Fragment::Owned(
+									namespace: Fragment::Owned(
 										OwnedFragment::Internal { text: String::from("_context") }
 									),
 									source: Fragment::Owned(

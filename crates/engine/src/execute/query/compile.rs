@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{IndexId, SchemaId, Transaction};
+use reifydb_core::interface::{IndexId, NamespaceId, Transaction};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
 use crate::{
@@ -30,9 +30,9 @@ use crate::{
 	table_virtual::{
 		TableVirtual, TableVirtualContext,
 		system::{
-			ColumnPolicies, ColumnsTable, PrimaryKeyColumns,
-			PrimaryKeys, Schemas, Sequences, Tables, Versions,
-			Views,
+			ColumnPolicies, ColumnsTable, Namespaces,
+			PrimaryKeyColumns, PrimaryKeys, Sequences, Tables,
+			Versions, Views,
 		},
 	},
 };
@@ -164,7 +164,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 		)),
 
 		PhysicalPlan::IndexScan(physical::IndexScanNode {
-			schema: _,
+			namespace: _,
 			table,
 			index_name: _,
 		}) => {
@@ -183,14 +183,14 @@ pub(crate) fn compile<'a, T: Transaction>(
 		}
 
 		PhysicalPlan::TableScan(physical::TableScanNode {
-			schema: _,
+			namespace: _,
 			table,
 		}) => ExecutionPlan::TableScan(
 			TableScanNode::new(table, context).unwrap(),
 		),
 
 		PhysicalPlan::ViewScan(physical::ViewScanNode {
-			schema: _,
+			namespace: _,
 			view,
 		}) => ExecutionPlan::ViewScan(
 			ViewScanNode::new(view, context).unwrap(),
@@ -198,17 +198,17 @@ pub(crate) fn compile<'a, T: Transaction>(
 
 		PhysicalPlan::TableVirtualScan(
 			physical::TableVirtualScanNode {
-				schema,
+				namespace,
 				table,
 				pushdown_context,
 			},
 		) => {
 			// Create the appropriate virtual table implementation
 			let virtual_table_impl: Box<dyn TableVirtual<T>> =
-				if schema.id == SchemaId(1) {
+				if namespace.id == NamespaceId(1) {
 					match table.name.as_str() {
 						"sequences" => Box::new(Sequences::new()),
-						"schemas" => Box::new(Schemas::new()),
+						"namespaces" => Box::new(Namespaces::new()),
 						"tables" => Box::new(Tables::new()),
 						"views" => Box::new(Views::new()),
 						"columns" => Box::new(ColumnsTable::new()),
@@ -252,7 +252,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 		| PhysicalPlan::AlterView(_)
 		| PhysicalPlan::CreateDeferredView(_)
 		| PhysicalPlan::CreateTransactionalView(_)
-		| PhysicalPlan::CreateSchema(_)
+		| PhysicalPlan::CreateNamespace(_)
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::Delete(_)
 		| PhysicalPlan::Insert(_)

@@ -176,7 +176,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Bool(BoolContainer::new(
@@ -195,7 +195,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Float4(NumberContainer::new(
@@ -214,7 +214,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Float8(NumberContainer::new(
@@ -233,7 +233,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int1(NumberContainer::new(
@@ -252,7 +252,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int2(NumberContainer::new(
@@ -271,7 +271,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int4(NumberContainer::new(
@@ -290,7 +290,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int8(NumberContainer::new(
@@ -309,7 +309,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int16(NumberContainer::new(
@@ -328,7 +328,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint1(NumberContainer::new(
@@ -347,7 +347,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint2(NumberContainer::new(
@@ -366,7 +366,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint4(NumberContainer::new(
@@ -385,7 +385,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint8(NumberContainer::new(
@@ -404,7 +404,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint16(NumberContainer::new(
@@ -423,7 +423,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Utf8(Utf8Container::new(
@@ -442,7 +442,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Date(TemporalContainer::new(
@@ -461,7 +461,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::DateTime(TemporalContainer::new(
@@ -480,7 +480,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Time(TemporalContainer::new(
@@ -499,7 +499,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Interval(TemporalContainer::new(
@@ -518,7 +518,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Blob(BlobContainer::new(
@@ -537,7 +537,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uuid4(UuidContainer::new(
@@ -556,7 +556,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uuid7(UuidContainer::new(
@@ -575,7 +575,7 @@ mod tests {
 				.unzip();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: ROW_NUMBER_COLUMN_NAME.to_string(),
 				data: FrameColumnData::RowNumber(RowNumberContainer::new(
@@ -588,7 +588,7 @@ mod tests {
 
 	fn undefined_column(name: &str, count: usize) -> FrameColumn {
 		FrameColumn {
-			schema: None,
+			namespace: None,
 			store: None,
 			name: name.to_string(),
 			data: FrameColumnData::Undefined(
@@ -603,7 +603,7 @@ mod tests {
 		let data_vec: Vec<RowNumber> = data.into_iter().collect();
 		let bitvec = BitVec::repeat(data_vec.len(), true);
 		FrameColumn {
-			schema: None,
+			namespace: None,
 			store: None,
 			name: ROW_NUMBER_COLUMN_NAME.to_string(),
 			data: FrameColumnData::RowNumber(

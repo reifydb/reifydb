@@ -18,15 +18,15 @@ impl Executor {
 		plan: CreateDeferredViewPlan,
 	) -> crate::Result<Columns> {
 		if let Some(_) = txn.find_view_by_name(
-			plan.schema.id,
+			plan.namespace.id,
 			plan.view.name.text(),
 		)? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
-						"schema",
+						"namespace",
 						Value::Utf8(
-							plan.schema
+							plan.namespace
 								.name
 								.to_string(),
 						),
@@ -48,14 +48,17 @@ impl Executor {
 		let result = txn.create_view(ViewToCreate {
 			fragment: Some(plan.view.name.clone().into_owned()),
 			name: plan.view.name.text().to_string(),
-			schema: plan.schema.id,
+			namespace: plan.namespace.id,
 			columns: plan.columns,
 		})?;
 
 		self.create_flow(txn, &result, plan.with)?;
 
 		Ok(Columns::single_row([
-			("schema", Value::Utf8(plan.schema.name.to_string())),
+			(
+				"namespace",
+				Value::Utf8(plan.namespace.name.to_string()),
+			),
 			(
 				"view",
 				Value::Utf8(plan.view.name.text().to_string()),
@@ -68,9 +71,11 @@ impl Executor {
 #[cfg(test)]
 mod tests {
 	use PhysicalPlan::InlineData;
-	use reifydb_catalog::test_utils::{create_schema, ensure_test_schema};
+	use reifydb_catalog::test_utils::{
+		create_namespace, ensure_test_namespace,
+	};
 	use reifydb_core::interface::{
-		Params, SchemaDef, SchemaId,
+		NamespaceDef, NamespaceId, Params,
 		identifier::{SourceIdentifier, SourceKind},
 	};
 	use reifydb_rql::plan::physical::{
@@ -88,15 +93,15 @@ mod tests {
 		let mut txn =
 			create_test_command_transaction_with_internal_schema();
 
-		let schema = ensure_test_schema(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let mut plan = CreateDeferredViewPlan {
-			schema: SchemaDef {
-				id: schema.id,
-				name: schema.name.clone(),
+			namespace: NamespaceDef {
+				id: namespace.id,
+				name: namespace.name.clone(),
 			},
 			view: SourceIdentifier::new(
-				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_view"),
 				SourceKind::DeferredView,
 			),
@@ -118,7 +123,7 @@ mod tests {
 
 		assert_eq!(
 			result.row(0)[0],
-			Value::Utf8("test_schema".to_string())
+			Value::Utf8("test_namespace".to_string())
 		);
 		assert_eq!(
 			result.row(0)[1],
@@ -139,7 +144,7 @@ mod tests {
 
 		assert_eq!(
 			result.row(0)[0],
-			Value::Utf8("test_schema".to_string())
+			Value::Utf8("test_namespace".to_string())
 		);
 		assert_eq!(
 			result.row(0)[1],
@@ -165,16 +170,17 @@ mod tests {
 		let mut txn =
 			create_test_command_transaction_with_internal_schema();
 
-		let schema = ensure_test_schema(&mut txn);
-		let another_schema = create_schema(&mut txn, "another_schema");
+		let namespace = ensure_test_namespace(&mut txn);
+		let another_schema =
+			create_namespace(&mut txn, "another_schema");
 
 		let plan = CreateDeferredViewPlan {
-			schema: SchemaDef {
-				id: schema.id,
-				name: schema.name.clone(),
+			namespace: NamespaceDef {
+				id: namespace.id,
+				name: namespace.name.clone(),
 			},
 			view: SourceIdentifier::new(
-				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_view"),
 				SourceKind::DeferredView,
 			),
@@ -194,7 +200,7 @@ mod tests {
 			.unwrap();
 		assert_eq!(
 			result.row(0)[0],
-			Value::Utf8("test_schema".to_string())
+			Value::Utf8("test_namespace".to_string())
 		);
 		assert_eq!(
 			result.row(0)[1],
@@ -202,12 +208,12 @@ mod tests {
 		);
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
 		let plan = CreateDeferredViewPlan {
-			schema: SchemaDef {
+			namespace: NamespaceDef {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
 			view: SourceIdentifier::new(
-				Fragment::owned_internal("test_schema"),
+				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_view"),
 				SourceKind::DeferredView,
 			),
@@ -242,8 +248,8 @@ mod tests {
 			create_test_command_transaction_with_internal_schema();
 
 		let plan = CreateDeferredViewPlan {
-			schema: SchemaDef {
-				id: SchemaId(999),
+			namespace: NamespaceDef {
+				id: NamespaceId(999),
 				name: "missing_schema".to_string(),
 			},
 			view: SourceIdentifier::new(

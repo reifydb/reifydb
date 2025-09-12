@@ -4,14 +4,15 @@
 use reifydb_core::{
 	diagnostic::catalog::table_already_exists,
 	interface::{
-		CommandTransaction, SchemaId, TableDef, TableId, WithEventBus,
+		CommandTransaction, NamespaceId, TableDef, TableId,
+		WithEventBus,
 		interceptor::{TableDefInterceptor, WithInterceptors},
 	},
 	log_warn, return_error,
 };
 
 use crate::{
-	CatalogCommandTransactionOperations, CatalogSchemaQueryOperations,
+	CatalogCommandTransactionOperations, CatalogNamespaceQueryOperations,
 	CatalogStore, CatalogTableCommandOperations,
 	CatalogTableQueryOperations, CatalogTransaction,
 	TransactionalChangesExt, table::TableToCreate,
@@ -21,7 +22,7 @@ impl<T> CatalogTableCommandOperations for T
 where
 	T: CommandTransaction
 		+ CatalogCommandTransactionOperations
-		+ CatalogSchemaQueryOperations
+		+ CatalogNamespaceQueryOperations
 		+ CatalogTableQueryOperations
 		+ WithInterceptors<T>
 		+ WithEventBus
@@ -32,14 +33,15 @@ where
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
 		if let Some(table) = self.find_table_by_name(
-			to_create.schema,
+			to_create.namespace,
 			&to_create.table,
 		)? {
-			let schema = self.get_schema(to_create.schema)?;
+			let namespace =
+				self.get_namespace(to_create.namespace)?;
 
 			return_error!(table_already_exists(
 				to_create.fragment,
-				&schema.name,
+				&namespace.name,
 				&table.name
 			));
 		}
@@ -61,25 +63,26 @@ where
 {
 	fn find_table_by_name(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<TableDef>> {
 		let name = name.as_ref();
 
 		// 1. Check transactional changes first
 		if let Some(table) =
-			self.get_changes().find_table_by_name(schema, name)
+			self.get_changes().find_table_by_name(namespace, name)
 		{
 			return Ok(Some(table.clone()));
 		}
 
-		if self.get_changes().is_table_deleted_by_name(schema, name) {
+		if self.get_changes().is_table_deleted_by_name(namespace, name)
+		{
 			return Ok(None);
 		}
 
 		// 2. Check MaterializedCatalog
 		if let Some(table) = self.catalog().find_table_by_name(
-			schema,
+			namespace,
 			name,
 			<T as CatalogTransaction>::version(self),
 		) {
@@ -88,12 +91,12 @@ where
 
 		// 3. Fall back to storage as defensive measure
 		if let Some(table) =
-			CatalogStore::find_table_by_name(self, schema, name)?
+			CatalogStore::find_table_by_name(self, namespace, name)?
 		{
 			log_warn!(
-				"Table '{}' in schema {:?} found in storage but not in MaterializedCatalog",
+				"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 				name,
-				schema
+				namespace
 			);
 			return Ok(Some(table));
 		}
@@ -132,7 +135,7 @@ where
 
 	fn get_table_by_name(
 		&mut self,
-		_schema: SchemaId,
+		_namespace: NamespaceId,
 		_name: impl AsRef<str>,
 	) -> reifydb_core::Result<TableDef> {
 		todo!()

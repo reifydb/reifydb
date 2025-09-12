@@ -8,10 +8,10 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
 pub enum KeyKind {
-	Schema = 0x01,
+	Namespace = 0x01,
 	Table = 0x02,
 	Row = 0x03,
-	SchemaTable = 0x04,
+	NamespaceTable = 0x04,
 	SystemSequence = 0x05,
 	Columns = 0x06,
 	Column = 0x07,
@@ -24,7 +24,7 @@ pub enum KeyKind {
 	ColumnSequence = 0x0E,
 	CdcConsumer = 0x0F,
 	View = 0x10,
-	SchemaView = 0x11,
+	NamespaceView = 0x11,
 	PrimaryKey = 0x12,
 	FlowNodeState = 0x13,
 }
@@ -39,10 +39,10 @@ impl TryFrom<u8> for KeyKind {
 
 	fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
 		match value {
-			0x01 => Ok(Self::Schema),
+			0x01 => Ok(Self::Namespace),
 			0x02 => Ok(Self::Table),
 			0x03 => Ok(Self::Row),
-			0x04 => Ok(Self::SchemaTable),
+			0x04 => Ok(Self::NamespaceTable),
 			0x05 => Ok(Self::SystemSequence),
 			0x06 => Ok(Self::Columns),
 			0x07 => Ok(Self::Column),
@@ -55,7 +55,7 @@ impl TryFrom<u8> for KeyKind {
 			0x0E => Ok(Self::ColumnSequence),
 			0x0F => Ok(Self::CdcConsumer),
 			0x10 => Ok(Self::View),
-			0x11 => Ok(Self::SchemaView),
+			0x11 => Ok(Self::NamespaceView),
 			0x12 => Ok(Self::PrimaryKey),
 			0x13 => Ok(Self::FlowNodeState),
 			_ => Err(serde::de::Error::custom(format!(

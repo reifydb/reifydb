@@ -26,7 +26,7 @@ pub fn plan<'a, T>(
 where
 	T: QueryTransaction + CatalogTransaction + CatalogQueryTransaction,
 {
-	let logical = compile_logical(rx, statement, "default")?; // TODO: Get default schema from session context
+	let logical = compile_logical(rx, statement, "default")?; // TODO: Get default namespace from session context
 	let physical = compile_physical(rx, logical)?;
 	Ok(physical)
 }

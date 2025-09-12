@@ -3,7 +3,7 @@
 
 mod deferred;
 mod index;
-mod schema;
+mod namespace;
 mod series;
 mod table;
 mod transactional;
@@ -27,8 +27,8 @@ impl Compiler {
 			AstCreate::TransactionalView(node) => {
 				Self::compile_transactional_view(node, resolver)
 			}
-			AstCreate::Schema(node) => {
-				Self::compile_create_schema(node, resolver)
+			AstCreate::Namespace(node) => {
+				Self::compile_create_namespace(node, resolver)
 			}
 			AstCreate::Series(node) => {
 				Self::compile_create_series(node, resolver)

@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, QueryTransaction, SchemaId, SchemaViewKey, Versioned,
-	ViewDef, ViewId, ViewKey, ViewKind,
+	EncodableKey, NamespaceId, NamespaceViewKey, QueryTransaction,
+	Versioned, ViewDef, ViewId, ViewKey, ViewKind,
 };
 
 use crate::{
 	CatalogStore,
-	view::layout::{view, view_schema},
+	view::layout::{view, view_namespace},
 };
 
 impl CatalogStore {
@@ -26,7 +26,9 @@ impl CatalogStore {
 
 		let row = versioned.row;
 		let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
-		let schema = SchemaId(view::LAYOUT.get_u64(&row, view::SCHEMA));
+		let namespace = NamespaceId(
+			view::LAYOUT.get_u64(&row, view::NAMESPACE),
+		);
 		let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
 
 		let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
@@ -38,7 +40,7 @@ impl CatalogStore {
 		Ok(Some(ViewDef {
 			id,
 			name,
-			schema,
+			namespace,
 			kind,
 			columns: Self::list_columns(rx, id)?,
 			primary_key: Self::find_view_primary_key(rx, id)?,
@@ -47,19 +49,22 @@ impl CatalogStore {
 
 	pub fn find_view_by_name(
 		rx: &mut impl QueryTransaction,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
 		let Some(view) = rx
-			.range(SchemaViewKey::full_scan(schema))?
+			.range(NamespaceViewKey::full_scan(namespace))?
 			.find_map(|versioned: Versioned| {
 				let row = &versioned.row;
-				let view_name = view_schema::LAYOUT
-					.get_utf8(row, view_schema::NAME);
+				let view_name = view_namespace::LAYOUT
+					.get_utf8(row, view_namespace::NAME);
 				if name == view_name {
-					Some(ViewId(view_schema::LAYOUT
-						.get_u64(row, view_schema::ID)))
+					Some(ViewId(view_namespace::LAYOUT
+						.get_u64(
+							row,
+							view_namespace::ID,
+						)))
 				} else {
 					None
 				}
@@ -74,35 +79,37 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{SchemaId, ViewId};
+	use reifydb_core::interface::{NamespaceId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
 		CatalogStore,
-		test_utils::{create_schema, create_view, ensure_test_schema},
+		test_utils::{
+			create_namespace, create_view, ensure_test_namespace,
+		},
 	};
 
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
-		create_schema(&mut txn, "schema_one");
-		create_schema(&mut txn, "schema_two");
-		create_schema(&mut txn, "schema_three");
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_view(&mut txn, "schema_one", "view_one", &[]);
-		create_view(&mut txn, "schema_two", "view_two", &[]);
-		create_view(&mut txn, "schema_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]);
+		create_view(&mut txn, "namespace_two", "view_two", &[]);
+		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
 		let result = CatalogStore::find_view_by_name(
 			&mut txn,
-			SchemaId(1027),
+			NamespaceId(1027),
 			"view_two",
 		)
 		.unwrap()
 		.unwrap();
 		assert_eq!(result.id, ViewId(1026));
-		assert_eq!(result.schema, SchemaId(1027));
+		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "view_two");
 	}
 
@@ -112,7 +119,7 @@ mod tests {
 
 		let result = CatalogStore::find_view_by_name(
 			&mut txn,
-			SchemaId(1025),
+			NamespaceId(1025),
 			"some_view",
 		)
 		.unwrap();
@@ -122,18 +129,18 @@ mod tests {
 	#[test]
 	fn test_not_found_different_view() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
-		create_schema(&mut txn, "schema_one");
-		create_schema(&mut txn, "schema_two");
-		create_schema(&mut txn, "schema_three");
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_view(&mut txn, "schema_one", "view_one", &[]);
-		create_view(&mut txn, "schema_two", "view_two", &[]);
-		create_view(&mut txn, "schema_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]);
+		create_view(&mut txn, "namespace_two", "view_two", &[]);
+		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
 		let result = CatalogStore::find_view_by_name(
 			&mut txn,
-			SchemaId(1025),
+			NamespaceId(1025),
 			"view_four_two",
 		)
 		.unwrap();
@@ -141,20 +148,20 @@ mod tests {
 	}
 
 	#[test]
-	fn test_not_found_different_schema() {
+	fn test_not_found_different_namespace() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
-		create_schema(&mut txn, "schema_one");
-		create_schema(&mut txn, "schema_two");
-		create_schema(&mut txn, "schema_three");
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_view(&mut txn, "schema_one", "view_one", &[]);
-		create_view(&mut txn, "schema_two", "view_two", &[]);
-		create_view(&mut txn, "schema_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]);
+		create_view(&mut txn, "namespace_two", "view_two", &[]);
+		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
 		let result = CatalogStore::find_view_by_name(
 			&mut txn,
-			SchemaId(2),
+			NamespaceId(2),
 			"view_two",
 		)
 		.unwrap();

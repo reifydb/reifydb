@@ -1,7 +1,7 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-(command 'create schema test')
+(command 'create namespace test')
 
 (command 'create table test.conversion{col: uint16}')
 (command 'from [{ col: 0 }] insert test.conversion')

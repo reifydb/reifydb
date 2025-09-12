@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	PrimaryKeyDef, PrimaryKeyId, SchemaId, TableDef, TableId, TableKey,
+	NamespaceId, PrimaryKeyDef, PrimaryKeyId, TableDef, TableId, TableKey,
 	Versioned, VersionedQueryTransaction,
 };
 
@@ -40,13 +40,14 @@ fn convert_table(
 ) -> TableDef {
 	let row = versioned.row;
 	let id = TableId(table::LAYOUT.get_u64(&row, table::ID));
-	let schema = SchemaId(table::LAYOUT.get_u64(&row, table::SCHEMA));
+	let namespace =
+		NamespaceId(table::LAYOUT.get_u64(&row, table::NAMESPACE));
 	let name = table::LAYOUT.get_utf8(&row, table::NAME).to_string();
 
 	TableDef {
 		id,
 		name,
-		schema,
+		namespace,
 		columns: vec![],
 		primary_key,
 	}

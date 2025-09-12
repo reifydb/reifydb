@@ -29,22 +29,22 @@ impl<T: CommandTransaction> CompileOperator<T> for TableScanCompiler {
 		let table = self.table_scan.table;
 		let table_name = table.name.clone();
 
-		// Get schema information
-		let schema_def = CatalogStore::get_schema(
+		// Get namespace information
+		let namespace_def = CatalogStore::get_namespace(
 			unsafe { &mut *compiler.txn },
-			table.schema,
+			table.namespace,
 		)?;
 
-		let schema = FlowNodeSchema::new(
+		let namespace = FlowNodeSchema::new(
 			table.columns.clone(),
-			Some(schema_def.name.clone()),
+			Some(namespace_def.name.clone()),
 			Some(table.name.clone()),
 		);
 
 		compiler.build_node(FlowNodeType::SourceTable {
 			name: table_name,
 			table: table.id,
-			schema,
+			namespace,
 		})
 		.build()
 	}

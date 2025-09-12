@@ -37,15 +37,15 @@ fn main() {
 		db.start().unwrap();
 		log_info!("✓ Database created and started\n");
 
-		// Create schema
-		log_info!("Creating schema 'store'...");
+		// Create namespace
+		log_info!("Creating namespace 'store'...");
 		let result = db
-			.command_as_root("create schema store", Params::None)
+			.command_as_root("create namespace store", Params::None)
 			.unwrap();
 		for frame in result {
 			log_info!("{}", frame);
 		}
-		log_info!("✓ Schema created\n");
+		log_info!("✓ Namespace created\n");
 
 		// Create table
 		log_info!("Creating table 'products'...");

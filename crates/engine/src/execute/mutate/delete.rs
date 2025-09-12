@@ -20,7 +20,7 @@ use reifydb_rql::plan::{
 use reifydb_type::{
 	ROW_NUMBER_COLUMN_NAME, Value,
 	diagnostic::{
-		catalog::{schema_not_found, table_not_found},
+		catalog::{namespace_not_found, table_not_found},
 		engine,
 	},
 	return_error,
@@ -43,38 +43,39 @@ impl Executor {
 		params: Params,
 	) -> crate::Result<Columns> {
 		// Get table from plan or infer from input pipeline
-		let (schema, table) = if let Some(target) = &plan.target {
-			// Schema and table explicitly specified
-			let schema_name = target.schema.text();
-			let Some(schema) = CatalogStore::find_schema_by_name(
-				txn,
-				schema_name,
-			)?
+		let (namespace, table) = if let Some(target) = &plan.target {
+			// Namespace and table explicitly specified
+			let namespace_name = target.namespace.text();
+			let Some(namespace) =
+				CatalogStore::find_namespace_by_name(
+					txn,
+					namespace_name,
+				)?
 			else {
-				return_error!(schema_not_found(
+				return_error!(namespace_not_found(
 					Some(target
-						.schema
+						.namespace
 						.clone()
 						.into_owned()),
-					schema_name
+					namespace_name
 				));
 			};
 
 			let Some(table) = CatalogStore::find_table_by_name(
 				txn,
-				schema.id,
+				namespace.id,
 				target.name.text(),
 			)?
 			else {
 				let fragment = target.name.clone();
 				return_error!(table_not_found(
 					fragment.clone(),
-					schema_name,
+					namespace_name,
 					target.name.text(),
 				));
 			};
 
-			(schema, table)
+			(namespace, table)
 		} else {
 			// Both should be inferred from the pipeline
 			// Extract table info from the input plan if it
@@ -258,7 +259,7 @@ impl Executor {
 
 		// Return summary columns
 		Ok(Columns::single_row([
-			("schema", Value::Utf8(schema.name)),
+			("namespace", Value::Utf8(namespace.name)),
 			("table", Value::Utf8(table.name)),
 			("deleted", Value::Uint8(deleted_count as u64)),
 		]))

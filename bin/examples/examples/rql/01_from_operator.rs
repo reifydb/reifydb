@@ -98,9 +98,9 @@ fn main() {
 	// Example 4: FROM with tables (after creating a table)
 	log_info!("\nExample 4: FROM with tables");
 
-	// First create a schema and table
-	log_info!("Creating schema and table...");
-	db.command_as_root(r#"create schema demo"#, Params::None).unwrap();
+	// First create a namespace and table
+	log_info!("Creating namespace and table...");
+	db.command_as_root(r#"create namespace demo"#, Params::None).unwrap();
 
 	db.command_as_root(
 		r#"

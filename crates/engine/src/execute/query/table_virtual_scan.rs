@@ -34,7 +34,7 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 				.iter()
 				.map(|col| {
 					reifydb_core::value::columnar::layout::ColumnLayout {
-						schema: None,
+						namespace: None,
 						source: None,
 						name: col.name.clone()}
 				})

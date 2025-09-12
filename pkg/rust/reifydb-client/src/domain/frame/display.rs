@@ -179,7 +179,7 @@ mod tests {
 				.collect();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				r#type: Type::Boolean,
@@ -200,7 +200,7 @@ mod tests {
 				.collect();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				r#type: Type::Float4,
@@ -221,7 +221,7 @@ mod tests {
 				.collect();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				r#type: Type::Float8,
@@ -239,7 +239,7 @@ mod tests {
 				.collect();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				r#type: Type::Utf8,
@@ -258,7 +258,7 @@ mod tests {
 				.collect();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: ROW_NUMBER_COLUMN_NAME.to_string(),
 				r#type: Type::RowNumber,
@@ -277,7 +277,7 @@ mod tests {
 				.collect();
 
 			FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: $name.to_string(),
 				r#type: Type::$type,
@@ -288,7 +288,7 @@ mod tests {
 
 	fn undefined_column(name: &str, count: usize) -> FrameColumn {
 		FrameColumn {
-			schema: None,
+			namespace: None,
 			store: None,
 			name: name.to_string(),
 			r#type: Type::Undefined,
@@ -303,7 +303,7 @@ mod tests {
 			data.into_iter().map(Value::RowNumber).collect();
 
 		FrameColumn {
-			schema: None,
+			namespace: None,
 			store: None,
 			name: ROW_NUMBER_COLUMN_NAME.to_string(),
 			r#type: Type::RowNumber,

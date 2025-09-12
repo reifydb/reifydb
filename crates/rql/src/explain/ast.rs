@@ -89,41 +89,41 @@ fn render_ast_tree_inner(
 		}
 		Ast::Alter(alter) => match alter {
 			AstAlter::Table(t) => {
-				let schema = t
+				let namespace = t
 					.table
-					.schema
+					.namespace
 					.as_ref()
 					.map(|s| format!("{}.", s.text()))
 					.unwrap_or_default();
 				format!(
 					"ALTER TABLE {}{}",
-					schema,
+					namespace,
 					t.table.name.text()
 				)
 			}
 			AstAlter::View(v) => {
-				let schema = v
+				let namespace = v
 					.view
-					.schema
+					.namespace
 					.as_ref()
 					.map(|s| format!("{}.", s.text()))
 					.unwrap_or_default();
 				format!(
 					"ALTER VIEW {}{}",
-					schema,
+					namespace,
 					v.view.name.text()
 				)
 			}
 			AstAlter::Sequence(s) => {
-				let schema = s
+				let namespace = s
 					.sequence
-					.schema
+					.namespace
 					.as_ref()
 					.map(|sch| format!("{}.", sch.text()))
 					.unwrap_or_default();
 				format!(
 					"ALTER SEQUENCE {}{}.{}",
-					schema,
+					namespace,
 					s.sequence.name.text(),
 					s.column.text()
 				)

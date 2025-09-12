@@ -25,7 +25,7 @@ pub(crate) struct MapCompiler {
 }
 
 impl MapCompiler {
-	/// Compute the output schema from Map expressions
+	/// Compute the output namespace from Map expressions
 	pub(crate) fn compute_output_schema(
 		&self,
 		input_schema: &FlowNodeSchema,
@@ -72,10 +72,10 @@ impl MapCompiler {
 			});
 		}
 
-		// Preserve schema and source names from input if available
+		// Preserve namespace and source names from input if available
 		FlowNodeSchema {
 			columns,
-			schema_name: input_schema.schema_name.clone(),
+			namespace_name: input_schema.namespace_name.clone(),
 			source_name: None, /* Map output doesn't have a
 			                    * direct source */
 		}
@@ -98,17 +98,17 @@ impl<T: CommandTransaction> CompileOperator<T> for MapCompiler {
 		mut self,
 		compiler: &mut FlowCompiler<T>,
 	) -> Result<FlowNodeId> {
-		// Compile input and get its schema
+		// Compile input and get its namespace
 		let (input_node, input_schema) =
 			if let Some(input) = self.input.take() {
-				let (node_id, schema) = compiler
+				let (node_id, namespace) = compiler
 					.compile_plan_with_schema(*input)?;
-				(Some(node_id), schema)
+				(Some(node_id), namespace)
 			} else {
 				(None, FlowNodeSchema::empty())
 			};
 
-		// Compute output schema based on Map expressions
+		// Compute output namespace based on Map expressions
 		let output_schema = self.compute_output_schema(&input_schema);
 
 		let mut builder = compiler.build_node(Operator {

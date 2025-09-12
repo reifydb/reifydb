@@ -4,7 +4,7 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb_catalog::{
-	CatalogStore, schema::SchemaToCreate, table::TableToCreate,
+	CatalogStore, namespace::NamespaceToCreate, table::TableToCreate,
 };
 use reifydb_engine::test_utils::create_test_command_transaction;
 use reifydb_rql::explain::{
@@ -66,11 +66,12 @@ impl testscript::Runner for Runner {
 				let mut dummy_tx =
 					create_test_command_transaction();
 
-				let default_schema =
-					CatalogStore::create_schema(
+				let default_namespace =
+					CatalogStore::create_namespace(
 						&mut dummy_tx,
-						SchemaToCreate {
-							schema_fragment: None,
+						NamespaceToCreate {
+							namespace_fragment:
+								None,
 							name: "default"
 								.to_string(),
 						},
@@ -82,18 +83,18 @@ impl testscript::Runner for Runner {
 					TableToCreate {
 						fragment: None,
 						table: "users".to_string(),
-						schema: default_schema.id,
+						namespace: default_namespace.id,
 						columns: vec![],
 					},
 				)
 				.unwrap();
 
-				// Also create test schema for tests that
+				// Also create test namespace for tests that
 				// explicitly use test.users
-				let test_schema = CatalogStore::create_schema(
+				let test_ns = CatalogStore::create_namespace(
 					&mut dummy_tx,
-					SchemaToCreate {
-						schema_fragment: None,
+					NamespaceToCreate {
+						namespace_fragment: None,
 						name: "test".to_string(),
 					},
 				)
@@ -104,7 +105,7 @@ impl testscript::Runner for Runner {
 					TableToCreate {
 						fragment: None,
 						table: "users".to_string(),
-						schema: test_schema.id,
+						namespace: test_ns.id,
 						columns: vec![],
 					},
 				)
@@ -130,10 +131,10 @@ impl testscript::Runner for Runner {
 				let mut dummy_tx =
 					create_test_command_transaction();
 
-				let schema = CatalogStore::create_schema(
+				let namespace = CatalogStore::create_namespace(
 					&mut dummy_tx,
-					SchemaToCreate {
-						schema_fragment: None,
+					NamespaceToCreate {
+						namespace_fragment: None,
 						name: "default".to_string(),
 					},
 				)
@@ -144,7 +145,7 @@ impl testscript::Runner for Runner {
 					TableToCreate {
 						fragment: None,
 						table: "users".to_string(),
-						schema: schema.id,
+						namespace: namespace.id,
 						columns: vec![],
 					},
 				)
@@ -155,7 +156,7 @@ impl testscript::Runner for Runner {
 					TableToCreate {
 						fragment: None,
 						table: "orders".to_string(),
-						schema: schema.id,
+						namespace: namespace.id,
 						columns: vec![],
 					},
 				)

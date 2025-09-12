@@ -450,49 +450,49 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>>
 		&mut self.interceptors.post_commit
 	}
 
-	// Schema definition interceptors
-	fn schema_def_post_create_interceptors(
+	// Namespace definition interceptors
+	fn namespace_def_post_create_interceptors(
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::SchemaDefPostCreateInterceptor<
+		dyn interceptor::NamespaceDefPostCreateInterceptor<
 				StandardCommandTransaction<T>,
 			>,
 	> {
-		&mut self.interceptors.schema_def_post_create
+		&mut self.interceptors.namespace_def_post_create
 	}
 
-	fn schema_def_pre_update_interceptors(
+	fn namespace_def_pre_update_interceptors(
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::SchemaDefPreUpdateInterceptor<
+		dyn interceptor::NamespaceDefPreUpdateInterceptor<
 				StandardCommandTransaction<T>,
 			>,
 	> {
-		&mut self.interceptors.schema_def_pre_update
+		&mut self.interceptors.namespace_def_pre_update
 	}
 
-	fn schema_def_post_update_interceptors(
+	fn namespace_def_post_update_interceptors(
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::SchemaDefPostUpdateInterceptor<
+		dyn interceptor::NamespaceDefPostUpdateInterceptor<
 				StandardCommandTransaction<T>,
 			>,
 	> {
-		&mut self.interceptors.schema_def_post_update
+		&mut self.interceptors.namespace_def_post_update
 	}
 
-	fn schema_def_pre_delete_interceptors(
+	fn namespace_def_pre_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction<T>,
-		dyn interceptor::SchemaDefPreDeleteInterceptor<
+		dyn interceptor::NamespaceDefPreDeleteInterceptor<
 				StandardCommandTransaction<T>,
 			>,
 	> {
-		&mut self.interceptors.schema_def_pre_delete
+		&mut self.interceptors.namespace_def_pre_delete
 	}
 
 	// Table definition interceptors

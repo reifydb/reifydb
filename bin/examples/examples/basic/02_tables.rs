@@ -1,7 +1,7 @@
 //! # Basic Tables Example
 //!
 //! Demonstrates table operations in ReifyDB:
-//! - Creating schemas and tables
+//! - Creating namespaces and tables
 //! - Working with different data types
 //! - Insert, update, and delete operations
 //! - Querying with filters
@@ -16,12 +16,12 @@ fn main() {
 	let mut db = embedded::memory_optimistic().build().unwrap();
 	db.start().unwrap();
 
-	// Create a schema to organize our tables
-	log_info!("Creating schema...");
-	log_query("create schema company");
+	// Create a namespace to organize our tables
+	log_info!("Creating namespace...");
+	log_query("create namespace company");
 	db.command_as_root(
 		r#"
-		create schema company;
+		create namespace company;
 		"#,
 		Params::None,
 	)

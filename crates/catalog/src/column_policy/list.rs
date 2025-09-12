@@ -99,7 +99,7 @@ mod tests {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "with_policy".to_string(),

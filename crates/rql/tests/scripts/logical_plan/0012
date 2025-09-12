@@ -6,7 +6,7 @@ logical 'create index idx_status on test.users {created_at desc, status asc}'
 > └── CreateIndex
 >     ├── Type: Index
 >     ├── Name: idx_status
->     ├── Schema: test
+>     ├── Namespace: test
 >     ├── Table: users
 >     └── Columns: created_at Desc, status Asc
 > 

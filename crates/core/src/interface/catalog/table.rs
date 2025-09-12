@@ -3,12 +3,12 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{ColumnDef, PrimaryKeyDef, SchemaId, TableId};
+use crate::interface::{ColumnDef, NamespaceId, PrimaryKeyDef, TableId};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TableDef {
 	pub id: TableId,
-	pub schema: SchemaId,
+	pub namespace: NamespaceId,
 	pub name: String,
 	pub columns: Vec<ColumnDef>,
 	pub primary_key: Option<PrimaryKeyDef>,

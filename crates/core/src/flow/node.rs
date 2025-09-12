@@ -15,12 +15,12 @@ pub enum FlowNodeType {
 	SourceTable {
 		name: String,
 		table: TableId,
-		schema: FlowNodeSchema,
+		namespace: FlowNodeSchema,
 	},
 	SourceView {
 		name: String,
 		view: ViewId,
-		schema: FlowNodeSchema,
+		namespace: FlowNodeSchema,
 	},
 	Operator {
 		operator: OperatorType,

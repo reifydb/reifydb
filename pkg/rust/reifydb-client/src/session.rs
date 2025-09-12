@@ -72,7 +72,7 @@ pub fn convert_execute_response(payload: crate::CommandResponse) -> Vec<Frame> {
 			.columns
 			.into_iter()
 			.map(|col| FrameColumn {
-				schema: col.schema,
+				namespace: col.namespace,
 				store: col.store,
 				name: col.name,
 				r#type: col.r#type,
@@ -96,7 +96,7 @@ pub fn convert_query_response(payload: crate::QueryResponse) -> Vec<Frame> {
 			.columns
 			.into_iter()
 			.map(|col| FrameColumn {
-				schema: col.schema,
+				namespace: col.namespace,
 				store: col.store,
 				name: col.name,
 				r#type: col.r#type,

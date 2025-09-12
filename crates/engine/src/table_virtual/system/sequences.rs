@@ -54,8 +54,8 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Sequences<T> {
 		}
 
 		let mut sequence_ids = Vec::new();
-		let mut schema_ids = Vec::new();
-		let mut schema_names = Vec::new();
+		let mut namespace_ids = Vec::new();
+		let mut namespace_names = Vec::new();
 		let mut sequence_names = Vec::new();
 		let mut current_values = Vec::new();
 
@@ -63,9 +63,9 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Sequences<T> {
 		for sequence in sequences {
 			sequence_ids.push(sequence.id.0);
 
-			debug_assert_eq!(sequence.schema, 1);
-			schema_ids.push(sequence.schema.0);
-			schema_names.push("system".to_string());
+			debug_assert_eq!(sequence.namespace, 1);
+			namespace_ids.push(sequence.namespace.0);
+			namespace_names.push("system".to_string());
 
 			sequence_names.push(sequence.name);
 			current_values.push(sequence.value);
@@ -77,12 +77,12 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Sequences<T> {
 				data: ColumnData::uint8(sequence_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "schema_id".to_string(),
-				data: ColumnData::uint8(schema_ids),
+				name: "namespace_id".to_string(),
+				data: ColumnData::uint8(namespace_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "schema_schema".to_string(),
-				data: ColumnData::utf8(schema_names),
+				name: "namespace_name".to_string(),
+				data: ColumnData::utf8(namespace_names),
 			}),
 			Column::ColumnQualified(ColumnQualified {
 				name: "name".to_string(),

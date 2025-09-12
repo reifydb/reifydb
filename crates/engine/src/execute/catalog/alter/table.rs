@@ -12,7 +12,7 @@ use reifydb_rql::plan::{
 use reifydb_type::{
 	Value,
 	diagnostic::{
-		catalog::{schema_not_found, table_not_found},
+		catalog::{namespace_not_found, table_not_found},
 		query::column_not_found,
 	},
 	return_error,
@@ -27,32 +27,36 @@ impl Executor {
 		plan: AlterTablePlan,
 	) -> crate::Result<Columns> {
 		// Table is already fully qualified
-		let schema_name = plan.node.table.schema.text();
+		let namespace_name = plan.node.table.namespace.text();
 		let table_name = plan.node.table.name.text();
 
-		// Find the schema
-		let Some(schema) =
-			CatalogStore::find_schema_by_name(txn, schema_name)?
+		// Find the namespace
+		let Some(namespace) = CatalogStore::find_namespace_by_name(
+			txn,
+			namespace_name,
+		)?
 		else {
-			return_error!(schema_not_found(
+			return_error!(namespace_not_found(
 				Some(plan
 					.node
 					.table
-					.schema
+					.namespace
 					.clone()
 					.into_owned()),
-				schema_name,
+				namespace_name,
 			));
 		};
 
 		// Find the table
 		let Some(table) = CatalogStore::find_table_by_name(
-			txn, schema.id, table_name,
+			txn,
+			namespace.id,
+			table_name,
 		)?
 		else {
 			return_error!(table_not_found(
 				plan.node.table.name.clone().into_owned(),
-				&schema.name,
+				&namespace.name,
 				table_name,
 			));
 		};
@@ -114,7 +118,7 @@ impl Executor {
 
 					results.push([
 						("operation", Value::Utf8("CREATE PRIMARY KEY".to_string())),
-						("schema", Value::Utf8(schema.name.clone())),
+						("namespace", Value::Utf8(namespace.name.clone())),
 						("table", Value::Utf8(table.name.clone())),
 						("primary_key", Value::Utf8(pk_name)),
 					]);
@@ -136,7 +140,7 @@ impl Executor {
 						"NO OPERATIONS".to_string(),
 					),
 				),
-				("schema", Value::Utf8(schema.name)),
+				("namespace", Value::Utf8(namespace.name)),
 				("table", Value::Utf8(table.name)),
 			]))
 		} else if results.len() == 1 {
@@ -148,7 +152,7 @@ impl Executor {
 			// structure
 			let column_names = &[
 				"operation",
-				"schema",
+				"namespace",
 				"table",
 				"primary_key",
 			];

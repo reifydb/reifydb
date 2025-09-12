@@ -105,7 +105,7 @@ pub struct WebsocketFrame {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebsocketColumn {
-	pub schema: Option<String>,
+	pub namespace: Option<String>,
 	pub store: Option<String>,
 	pub name: String,
 	pub r#type: Type,

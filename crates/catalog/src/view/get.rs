@@ -25,45 +25,47 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{SchemaId, ViewId};
+	use reifydb_core::interface::{NamespaceId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
 		CatalogStore,
-		test_utils::{create_schema, create_view, ensure_test_schema},
+		test_utils::{
+			create_namespace, create_view, ensure_test_namespace,
+		},
 	};
 
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
-		create_schema(&mut txn, "schema_one");
-		create_schema(&mut txn, "schema_two");
-		create_schema(&mut txn, "schema_three");
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_view(&mut txn, "schema_one", "view_one", &[]);
-		create_view(&mut txn, "schema_two", "view_two", &[]);
-		create_view(&mut txn, "schema_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]);
+		create_view(&mut txn, "namespace_two", "view_two", &[]);
+		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
 		let result =
 			CatalogStore::get_view(&mut txn, ViewId(1026)).unwrap();
 
 		assert_eq!(result.id, ViewId(1026));
-		assert_eq!(result.schema, SchemaId(1027));
+		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "view_two");
 	}
 
 	#[test]
 	fn test_not_found() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_schema(&mut txn);
-		create_schema(&mut txn, "schema_one");
-		create_schema(&mut txn, "schema_two");
-		create_schema(&mut txn, "schema_three");
+		ensure_test_namespace(&mut txn);
+		create_namespace(&mut txn, "namespace_one");
+		create_namespace(&mut txn, "namespace_two");
+		create_namespace(&mut txn, "namespace_three");
 
-		create_view(&mut txn, "schema_one", "view_one", &[]);
-		create_view(&mut txn, "schema_two", "view_two", &[]);
-		create_view(&mut txn, "schema_three", "view_three", &[]);
+		create_view(&mut txn, "namespace_one", "view_one", &[]);
+		create_view(&mut txn, "namespace_two", "view_two", &[]);
+		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
 		let err = CatalogStore::get_view(&mut txn, ViewId(42))
 			.unwrap_err();

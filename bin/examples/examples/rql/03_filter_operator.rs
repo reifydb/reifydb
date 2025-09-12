@@ -18,7 +18,7 @@ fn main() {
 
 	// Set up sample data
 	log_info!("Setting up sample employee data...");
-	db.command_as_root("create schema hr", Params::None).unwrap();
+	db.command_as_root("create namespace hr", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table hr.employees {

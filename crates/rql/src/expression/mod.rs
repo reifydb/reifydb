@@ -67,7 +67,7 @@ impl ExpressionCompiler {
 
 				let column = ColumnIdentifier {
                     source: ColumnSource::Source {
-                        schema: Fragment::Owned(OwnedFragment::Internal { text: String::from("_context") }),
+                        namespace: Fragment::Owned(OwnedFragment::Internal { text: String::from("_context") }),
                         source: Fragment::Owned(OwnedFragment::Internal { text: String::from("_context") }),
                     },
                     name: identifier.token.fragment.clone(),

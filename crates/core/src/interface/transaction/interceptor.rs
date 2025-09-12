@@ -6,19 +6,21 @@ use reifydb_type::RowNumber;
 use crate::{
 	CommitVersion,
 	interceptor::{
-		Chain, PostCommitInterceptor, PreCommitInterceptor,
-		SchemaDefPostCreateInterceptor, SchemaDefPostUpdateInterceptor,
-		SchemaDefPreDeleteInterceptor, SchemaDefPreUpdateInterceptor,
-		TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor,
-		TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor,
-		TablePostDeleteInterceptor, TablePostInsertInterceptor,
-		TablePostUpdateInterceptor, TablePreDeleteInterceptor,
-		TablePreInsertInterceptor, TablePreUpdateInterceptor,
-		ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor,
-		ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
+		Chain, NamespaceDefPostCreateInterceptor,
+		NamespaceDefPostUpdateInterceptor,
+		NamespaceDefPreDeleteInterceptor,
+		NamespaceDefPreUpdateInterceptor, PostCommitInterceptor,
+		PreCommitInterceptor, TableDefPostCreateInterceptor,
+		TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
+		TableDefPreUpdateInterceptor, TablePostDeleteInterceptor,
+		TablePostInsertInterceptor, TablePostUpdateInterceptor,
+		TablePreDeleteInterceptor, TablePreInsertInterceptor,
+		TablePreUpdateInterceptor, ViewDefPostCreateInterceptor,
+		ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
+		ViewDefPreUpdateInterceptor,
 	},
 	interface::{
-		CommandTransaction, SchemaDef, TableDef, TransactionId,
+		CommandTransaction, NamespaceDef, TableDef, TransactionId,
 		ViewDef, transaction::change::TransactionalChanges,
 	},
 	row::EncodedRow,
@@ -73,22 +75,22 @@ pub trait TableInterceptor<CT: CommandTransaction> {
 	) -> crate::Result<()>;
 }
 
-pub trait SchemaDefInterceptor<CT: CommandTransaction> {
-	/// Intercept schema post-create operations
-	fn post_create(&mut self, post: &SchemaDef) -> crate::Result<()>;
+pub trait NamespaceDefInterceptor<CT: CommandTransaction> {
+	/// Intercept namespace post-create operations
+	fn post_create(&mut self, post: &NamespaceDef) -> crate::Result<()>;
 
-	/// Intercept schema pre-update operations
-	fn pre_update(&mut self, pre: &SchemaDef) -> crate::Result<()>;
+	/// Intercept namespace pre-update operations
+	fn pre_update(&mut self, pre: &NamespaceDef) -> crate::Result<()>;
 
-	/// Intercept schema post-update operations
+	/// Intercept namespace post-update operations
 	fn post_update(
 		&mut self,
-		pre: &SchemaDef,
-		post: &SchemaDef,
+		pre: &NamespaceDef,
+		post: &NamespaceDef,
 	) -> crate::Result<()>;
 
-	/// Intercept schema pre-delete operations
-	fn pre_delete(&mut self, pre: &SchemaDef) -> crate::Result<()>;
+	/// Intercept namespace pre-delete operations
+	fn pre_delete(&mut self, pre: &NamespaceDef) -> crate::Result<()>;
 }
 
 pub trait TableDefInterceptor<CT: CommandTransaction> {
@@ -182,26 +184,26 @@ pub trait WithInterceptors<CT: CommandTransaction> {
 		&mut self,
 	) -> &mut Chain<CT, dyn PostCommitInterceptor<CT>>;
 
-	// Schema definition interceptor chains
-	/// Access schema post-create interceptor chain
-	fn schema_def_post_create_interceptors(
+	// Namespace definition interceptor chains
+	/// Access namespace post-create interceptor chain
+	fn namespace_def_post_create_interceptors(
 		&mut self,
-	) -> &mut Chain<CT, dyn SchemaDefPostCreateInterceptor<CT>>;
+	) -> &mut Chain<CT, dyn NamespaceDefPostCreateInterceptor<CT>>;
 
-	/// Access schema pre-update interceptor chain
-	fn schema_def_pre_update_interceptors(
+	/// Access namespace pre-update interceptor chain
+	fn namespace_def_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<CT, dyn SchemaDefPreUpdateInterceptor<CT>>;
+	) -> &mut Chain<CT, dyn NamespaceDefPreUpdateInterceptor<CT>>;
 
-	/// Access schema post-update interceptor chain
-	fn schema_def_post_update_interceptors(
+	/// Access namespace post-update interceptor chain
+	fn namespace_def_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<CT, dyn SchemaDefPostUpdateInterceptor<CT>>;
+	) -> &mut Chain<CT, dyn NamespaceDefPostUpdateInterceptor<CT>>;
 
-	/// Access schema pre-delete interceptor chain
-	fn schema_def_pre_delete_interceptors(
+	/// Access namespace pre-delete interceptor chain
+	fn namespace_def_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<CT, dyn SchemaDefPreDeleteInterceptor<CT>>;
+	) -> &mut Chain<CT, dyn NamespaceDefPreDeleteInterceptor<CT>>;
 
 	// Table definition interceptor chains
 	/// Access table definition post-create interceptor chain

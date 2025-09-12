@@ -83,7 +83,7 @@ mod tests {
 			FlowNodeType::SourceTable {
 				name: "test_table".to_string(),
 				table: TableId(1),
-				schema: FlowNodeSchema::empty(),
+				namespace: FlowNodeSchema::empty(),
 			},
 		));
 

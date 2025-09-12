@@ -25,14 +25,17 @@ impl Compiler {
 		ast: AstCreateIndex<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Get the schema with default from resolver
-		let schema = ast.index.schema.clone().unwrap_or_else(|| {
-			Fragment::borrowed_internal(resolver.default_schema())
-		});
+		// Get the namespace with default from resolver
+		let namespace =
+			ast.index.namespace.clone().unwrap_or_else(|| {
+				Fragment::borrowed_internal(
+					resolver.default_namespace(),
+				)
+			});
 
 		// Create the table source for column qualification
 		let table_source = ColumnSource::Source {
-			schema: schema.clone(),
+			namespace: namespace.clone(),
 			source: ast.index.table.clone(),
 		};
 
@@ -63,7 +66,7 @@ impl Compiler {
 		};
 
 		let index = IndexIdentifier::new(
-			schema,
+			namespace,
 			ast.index.table,
 			ast.index.name,
 		);

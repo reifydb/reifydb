@@ -17,7 +17,7 @@ fn main() {
 	db.start().unwrap();
 
 	// Set up sample data with relationships
-	db.command_as_root("create schema company", Params::None).unwrap();
+	db.command_as_root("create namespace company", Params::None).unwrap();
 
 	// Create employees table
 	db.command_as_root(

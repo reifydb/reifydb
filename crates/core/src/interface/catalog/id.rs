@@ -236,15 +236,15 @@ impl<'de> Deserialize<'de> for ColumnPolicyId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct SchemaId(pub u64);
+pub struct NamespaceId(pub u64);
 
-impl Display for SchemaId {
+impl Display for NamespaceId {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		Display::fmt(&self.0, f)
 	}
 }
 
-impl Deref for SchemaId {
+impl Deref for NamespaceId {
 	type Target = u64;
 
 	fn deref(&self) -> &Self::Target {
@@ -252,19 +252,19 @@ impl Deref for SchemaId {
 	}
 }
 
-impl PartialEq<u64> for SchemaId {
+impl PartialEq<u64> for NamespaceId {
 	fn eq(&self, other: &u64) -> bool {
 		self.0.eq(other)
 	}
 }
 
-impl From<SchemaId> for u64 {
-	fn from(value: SchemaId) -> Self {
+impl From<NamespaceId> for u64 {
+	fn from(value: NamespaceId) -> Self {
 		value.0
 	}
 }
 
-impl Serialize for SchemaId {
+impl Serialize for NamespaceId {
 	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
 	where
 		S: Serializer,
@@ -273,15 +273,15 @@ impl Serialize for SchemaId {
 	}
 }
 
-impl<'de> Deserialize<'de> for SchemaId {
-	fn deserialize<D>(deserializer: D) -> Result<SchemaId, D::Error>
+impl<'de> Deserialize<'de> for NamespaceId {
+	fn deserialize<D>(deserializer: D) -> Result<NamespaceId, D::Error>
 	where
 		D: Deserializer<'de>,
 	{
 		struct U64Visitor;
 
 		impl Visitor<'_> for U64Visitor {
-			type Value = SchemaId;
+			type Value = NamespaceId;
 
 			fn expecting(
 				&self,
@@ -294,7 +294,7 @@ impl<'de> Deserialize<'de> for SchemaId {
 				self,
 				value: u64,
 			) -> Result<Self::Value, E> {
-				Ok(SchemaId(value))
+				Ok(NamespaceId(value))
 			}
 		}
 

@@ -348,7 +348,7 @@ impl Executor {
 			| PhysicalPlan::AlterView(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
-			| PhysicalPlan::CreateSchema(_)
+			| PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::Distinct(_) => unreachable!(), /* FIXME return explanatory diagnostic */
 			PhysicalPlan::Apply(_) => {
@@ -377,8 +377,8 @@ impl Executor {
 			PhysicalPlan::CreateTransactionalView(plan) => {
 				self.create_transactional_view(txn, plan)
 			}
-			PhysicalPlan::CreateSchema(plan) => {
-				self.create_schema(txn, plan)
+			PhysicalPlan::CreateNamespace(plan) => {
+				self.create_namespace(txn, plan)
 			}
 			PhysicalPlan::CreateTable(plan) => {
 				self.create_table(txn, plan)

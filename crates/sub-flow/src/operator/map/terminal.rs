@@ -81,7 +81,7 @@ impl<T: CommandTransaction> Operator<T> for MapTerminalOperator {
 					before,
 				} => {
 					// For removes, we might need to project
-					// to maintain schema consistency
+					// to maintain namespace consistency
 					let projected_columns = self
 						.project(evaluator, &before)?;
 					// Only include if we have valid data
@@ -232,7 +232,7 @@ impl MapTerminalOperator {
 					)
 				}
 			} else {
-				// No schema info for this column
+				// No namespace info for this column
 				// (shouldn't happen for terminal
 				// operator) but we handle it
 				// gracefully

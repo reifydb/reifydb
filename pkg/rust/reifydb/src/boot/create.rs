@@ -26,7 +26,7 @@ impl<T: Transaction> EventListener<OnCreateEvent> for CreateEventListener<T> {
 			&Identity::root(),
 			r#"
 
-create schema reifydb;
+create namespace reifydb;
 
 create table reifydb.flows{
     id: int8 auto increment,
@@ -37,7 +37,7 @@ create table reifydb.flows{
 			Params::None,
 		) {
 			log_error!(
-				"Failed to create initial database schema: {}",
+				"Failed to create initial database namespace: {}",
 				e
 			);
 		}

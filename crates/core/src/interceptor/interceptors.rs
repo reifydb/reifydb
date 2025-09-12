@@ -5,10 +5,11 @@ use std::{marker::PhantomData, rc::Rc};
 
 use crate::{
 	interceptor::{
-		Chain, InterceptorChain, PostCommitInterceptor,
-		PreCommitInterceptor, SchemaDefPostCreateInterceptor,
-		SchemaDefPostUpdateInterceptor, SchemaDefPreDeleteInterceptor,
-		SchemaDefPreUpdateInterceptor, TableDefPostCreateInterceptor,
+		Chain, InterceptorChain, NamespaceDefPostCreateInterceptor,
+		NamespaceDefPostUpdateInterceptor,
+		NamespaceDefPreDeleteInterceptor,
+		NamespaceDefPreUpdateInterceptor, PostCommitInterceptor,
+		PreCommitInterceptor, TableDefPostCreateInterceptor,
 		TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
 		TableDefPreUpdateInterceptor, TablePostDeleteInterceptor,
 		TablePostInsertInterceptor, TablePostUpdateInterceptor,
@@ -32,15 +33,15 @@ pub struct Interceptors<CT: CommandTransaction> {
 	// Transaction interceptors
 	pub pre_commit: Chain<CT, dyn PreCommitInterceptor<CT>>,
 	pub post_commit: Chain<CT, dyn PostCommitInterceptor<CT>>,
-	// Schema definition interceptors
-	pub schema_def_post_create:
-		Chain<CT, dyn SchemaDefPostCreateInterceptor<CT>>,
-	pub schema_def_pre_update:
-		Chain<CT, dyn SchemaDefPreUpdateInterceptor<CT>>,
-	pub schema_def_post_update:
-		Chain<CT, dyn SchemaDefPostUpdateInterceptor<CT>>,
-	pub schema_def_pre_delete:
-		Chain<CT, dyn SchemaDefPreDeleteInterceptor<CT>>,
+	// Namespace definition interceptors
+	pub namespace_def_post_create:
+		Chain<CT, dyn NamespaceDefPostCreateInterceptor<CT>>,
+	pub namespace_def_pre_update:
+		Chain<CT, dyn NamespaceDefPreUpdateInterceptor<CT>>,
+	pub namespace_def_post_update:
+		Chain<CT, dyn NamespaceDefPostUpdateInterceptor<CT>>,
+	pub namespace_def_pre_delete:
+		Chain<CT, dyn NamespaceDefPreDeleteInterceptor<CT>>,
 	// Table definition interceptors
 	pub table_def_post_create:
 		Chain<CT, dyn TableDefPostCreateInterceptor<CT>>,
@@ -78,10 +79,10 @@ impl<CT: CommandTransaction> Interceptors<CT> {
 			table_post_delete: InterceptorChain::new(),
 			pre_commit: InterceptorChain::new(),
 			post_commit: InterceptorChain::new(),
-			schema_def_post_create: InterceptorChain::new(),
-			schema_def_pre_update: InterceptorChain::new(),
-			schema_def_post_update: InterceptorChain::new(),
-			schema_def_pre_delete: InterceptorChain::new(),
+			namespace_def_post_create: InterceptorChain::new(),
+			namespace_def_pre_update: InterceptorChain::new(),
+			namespace_def_post_update: InterceptorChain::new(),
+			namespace_def_pre_delete: InterceptorChain::new(),
 			table_def_post_create: InterceptorChain::new(),
 			table_def_pre_update: InterceptorChain::new(),
 			table_def_post_update: InterceptorChain::new(),
@@ -106,17 +107,17 @@ impl<CT: CommandTransaction> Clone for Interceptors<CT> {
 			table_post_delete: self.table_post_delete.clone(),
 			pre_commit: self.pre_commit.clone(),
 			post_commit: self.post_commit.clone(),
-			schema_def_post_create: self
-				.schema_def_post_create
+			namespace_def_post_create: self
+				.namespace_def_post_create
 				.clone(),
-			schema_def_pre_update: self
-				.schema_def_pre_update
+			namespace_def_pre_update: self
+				.namespace_def_pre_update
 				.clone(),
-			schema_def_post_update: self
-				.schema_def_post_update
+			namespace_def_post_update: self
+				.namespace_def_post_update
 				.clone(),
-			schema_def_pre_delete: self
-				.schema_def_pre_delete
+			namespace_def_pre_delete: self
+				.namespace_def_pre_delete
 				.clone(),
 			table_def_post_create: self
 				.table_def_post_create

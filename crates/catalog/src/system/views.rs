@@ -4,7 +4,7 @@
 use std::sync::{Arc, OnceLock};
 
 use reifydb_core::interface::{
-	ColumnDef, ColumnIndex, SchemaId, TableVirtualDef,
+	ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef,
 };
 use reifydb_type::{Type, TypeConstraint};
 
@@ -18,7 +18,7 @@ pub fn views() -> Arc<TableVirtualDef> {
 	INSTANCE.get_or_init(|| {
 		Arc::new(TableVirtualDef {
 			id: VIEWS,
-			schema: SchemaId(1), // system schema
+			namespace: NamespaceId(1), // system namespace
 			name: "views".to_string(),
 			columns: vec![
 				ColumnDef {
@@ -33,8 +33,8 @@ pub fn views() -> Arc<TableVirtualDef> {
 					auto_increment: false,
 				},
 				ColumnDef {
-					id: SCHEMA_ID,
-					name: "schema_id".to_string(),
+					id: NAMESPACE_ID,
+					name: "namespace_id".to_string(),
 					constraint:
 						TypeConstraint::unconstrained(
 							Type::Uint8,

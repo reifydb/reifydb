@@ -4,7 +4,7 @@
 use PhysicalPlan::CreateTransactionalView;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::interface::QueryTransaction;
-use reifydb_type::{diagnostic::catalog::schema_not_found, return_error};
+use reifydb_type::{diagnostic::catalog::namespace_not_found, return_error};
 
 use crate::plan::{
 	logical::CreateTransactionalViewNode,
@@ -16,19 +16,19 @@ impl Compiler {
 		rx: &mut impl QueryTransaction,
 		create: CreateTransactionalViewNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
-		let Some(schema) = CatalogStore::find_schema_by_name(
+		let Some(namespace) = CatalogStore::find_namespace_by_name(
 			rx,
-			create.view.schema.text(),
+			create.view.namespace.text(),
 		)?
 		else {
-			return_error!(schema_not_found(
-				create.view.schema.clone(),
-				create.view.schema.text()
+			return_error!(namespace_not_found(
+				create.view.namespace.clone(),
+				create.view.namespace.text()
 			));
 		};
 
 		Ok(CreateTransactionalView(CreateTransactionalViewPlan {
-			schema,
+			namespace,
 			view: create.view,
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,

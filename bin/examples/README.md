@@ -16,10 +16,10 @@ cargo run --bin basic-hello-world
 
 ### Basic Operations
 
-| Make Command | Description | Required Features |
-|--------------|-------------|-------------------|
+| Make Command | Description                                        | Required Features |
+|--------------|----------------------------------------------------|-------------------|
 | `make basic-hello-world` | Simple hello world example with in-memory database | None |
-| `make basic-tables` | Table creation and schema definition example | None |
+| `make basic-tables` | Table creation and namespace definition example    | None |
 
 ### RQL (Query Language) Examples
 

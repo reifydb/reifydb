@@ -25,7 +25,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 	// Execute a command to create a table
 	let command_id = session.command(
-		"CREATE SCHEMA test; CREATE TABLE test.users { id: INT4, name: UTF8 }",
+		"CREATE NAMESPACE test; CREATE TABLE test.users { id: INT4, name: UTF8 }",
 		None,
 	)?;
 	println!("Command sent with ID: {}", command_id);

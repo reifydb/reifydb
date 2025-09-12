@@ -64,7 +64,7 @@ pub fn invalid_number_format<'a>(
 }
 
 pub struct NumberOfRangeColumnDescriptor<'a> {
-	pub schema: Option<&'a str>,
+	pub namespace: Option<&'a str>,
 	pub table: Option<&'a str>,
 	pub column: Option<&'a str>,
 	pub column_type: Option<Type>,
@@ -73,15 +73,15 @@ pub struct NumberOfRangeColumnDescriptor<'a> {
 impl<'a> NumberOfRangeColumnDescriptor<'a> {
 	pub fn new() -> Self {
 		Self {
-			schema: None,
+			namespace: None,
 			table: None,
 			column: None,
 			column_type: None,
 		}
 	}
 
-	pub fn with_schema(mut self, schema: &'a str) -> Self {
-		self.schema = Some(schema);
+	pub fn with_namespace(mut self, namespace: &'a str) -> Self {
+		self.namespace = Some(namespace);
 		self
 	}
 
@@ -102,7 +102,7 @@ impl<'a> NumberOfRangeColumnDescriptor<'a> {
 
 	// Location formatting
 	pub fn location_string(&self) -> String {
-		match (self.schema, self.table, self.column) {
+		match (self.namespace, self.table, self.column) {
 			(Some(s), Some(t), Some(c)) => {
 				format!("{}.{}.{}", s, t, c)
 			}
@@ -143,7 +143,7 @@ pub fn number_out_of_range<'a>(
 	};
 
 	let help = if let Some(desc) = descriptor {
-		if desc.schema.is_some() && desc.table.is_some() {
+		if desc.namespace.is_some() && desc.table.is_some() {
 			Some(format!(
 				"use a value within range {} or modify column {}",
 				range,

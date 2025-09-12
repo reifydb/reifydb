@@ -10,12 +10,12 @@ pub use flow_node_state::FlowNodeStateKey;
 pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
+pub use namespace::NamespaceKey;
+pub use namespace_table::NamespaceTableKey;
+pub use namespace_view::NamespaceViewKey;
 pub use primary_key::PrimaryKeyKey;
 pub use row::{RowKey, RowKeyRange};
 pub use row_sequence::RowSequenceKey;
-pub use schema::SchemaKey;
-pub use schema_table::SchemaTableKey;
-pub use schema_view::SchemaViewKey;
 pub use system_sequence::SystemSequenceKey;
 pub use system_version::{SystemVersion, SystemVersionKey};
 pub use table::TableKey;
@@ -33,12 +33,12 @@ mod flow_node_state;
 mod index;
 mod index_entry;
 mod kind;
+mod namespace;
+mod namespace_table;
+mod namespace_view;
 mod primary_key;
 mod row;
 mod row_sequence;
-mod schema;
-mod schema_table;
-mod schema_view;
 mod system_sequence;
 mod system_version;
 mod table;
@@ -48,9 +48,9 @@ mod view;
 #[derive(Debug)]
 pub enum Key {
 	CdcConsumer(CdcConsumerKey),
-	Schema(SchemaKey),
-	SchemaTable(SchemaTableKey),
-	SchemaView(SchemaViewKey),
+	Namespace(NamespaceKey),
+	NamespaceTable(NamespaceTableKey),
+	NamespaceView(NamespaceViewKey),
 	SystemSequence(SystemSequenceKey),
 	Table(TableKey),
 	Column(ColumnKey),
@@ -72,9 +72,9 @@ impl Key {
 	pub fn encode(&self) -> EncodedKey {
 		match &self {
 			Key::CdcConsumer(key) => key.encode(),
-			Key::Schema(key) => key.encode(),
-			Key::SchemaTable(key) => key.encode(),
-			Key::SchemaView(key) => key.encode(),
+			Key::Namespace(key) => key.encode(),
+			Key::NamespaceTable(key) => key.encode(),
+			Key::NamespaceView(key) => key.encode(),
 			Key::Table(key) => key.encode(),
 			Key::Column(key) => key.encode(),
 			Key::Columns(key) => key.encode(),
@@ -131,13 +131,17 @@ impl Key {
 			}
 			KeyKind::ColumnPolicy => ColumnPolicyKey::decode(&key)
 				.map(Self::TableColumnPolicy),
-			KeyKind::Schema => {
-				SchemaKey::decode(&key).map(Self::Schema)
+			KeyKind::Namespace => {
+				NamespaceKey::decode(&key).map(Self::Namespace)
 			}
-			KeyKind::SchemaTable => SchemaTableKey::decode(&key)
-				.map(Self::SchemaTable),
-			KeyKind::SchemaView => SchemaViewKey::decode(&key)
-				.map(Self::SchemaView),
+			KeyKind::NamespaceTable => {
+				NamespaceTableKey::decode(&key)
+					.map(Self::NamespaceTable)
+			}
+			KeyKind::NamespaceView => {
+				NamespaceViewKey::decode(&key)
+					.map(Self::NamespaceView)
+			}
 			KeyKind::Table => {
 				TableKey::decode(&key).map(Self::Table)
 			}
@@ -185,13 +189,13 @@ mod tests {
 
 	use super::{
 		ColumnKey, ColumnPolicyKey, ColumnSequenceKey, ColumnsKey,
-		FlowNodeStateKey, Key, SchemaKey, SchemaTableKey,
+		FlowNodeStateKey, Key, NamespaceKey, NamespaceTableKey,
 		SystemSequenceKey, TableKey,
 	};
 	use crate::interface::{
 		FlowNodeId, SourceId,
 		catalog::{
-			ColumnId, ColumnPolicyId, IndexId, SchemaId,
+			ColumnId, ColumnPolicyId, IndexId, NamespaceId,
 			SequenceId, TableId,
 		},
 		key::{
@@ -263,9 +267,9 @@ mod tests {
 	}
 
 	#[test]
-	fn test_schema() {
-		let key = Key::Schema(SchemaKey {
-			schema: SchemaId(42),
+	fn test_namespace() {
+		let key = Key::Namespace(NamespaceKey {
+			namespace: NamespaceId(42),
 		});
 
 		let encoded = key.encode();
@@ -273,17 +277,17 @@ mod tests {
 			Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
-			Key::Schema(decoded_inner) => {
-				assert_eq!(decoded_inner.schema, 42);
+			Key::Namespace(decoded_inner) => {
+				assert_eq!(decoded_inner.namespace, 42);
 			}
 			_ => unreachable!(),
 		}
 	}
 
 	#[test]
-	fn test_schema_table() {
-		let key = Key::SchemaTable(SchemaTableKey {
-			schema: SchemaId(42),
+	fn test_namespace_table() {
+		let key = Key::NamespaceTable(NamespaceTableKey {
+			namespace: NamespaceId(42),
 			table: TableId(999_999),
 		});
 
@@ -292,8 +296,8 @@ mod tests {
 			Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
-			Key::SchemaTable(decoded_inner) => {
-				assert_eq!(decoded_inner.schema, 42);
+			Key::NamespaceTable(decoded_inner) => {
+				assert_eq!(decoded_inner.namespace, 42);
 				assert_eq!(decoded_inner.table, 999_999);
 			}
 			_ => unreachable!(),

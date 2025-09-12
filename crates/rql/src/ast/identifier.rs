@@ -12,7 +12,7 @@ use crate::ast::tokenize::Token;
 
 /// An unqualified identifier that hasn't been parsed for qualification yet.
 /// This is used in the AST for simple identifiers before they're resolved
-/// to specific types (column, table, schema, etc.)
+/// to specific types (column, table, namespace, etc.)
 #[derive(Debug, Clone, PartialEq)]
 pub struct UnqualifiedIdentifier<'a> {
 	pub token: Token<'a>,
@@ -54,13 +54,13 @@ impl<'a> reifydb_type::IntoFragment<'a> for UnqualifiedIdentifier<'a> {
 	}
 }
 
-/// Maybe-qualified schema identifier - just a name
+/// Maybe-qualified namespace identifier - just a name
 #[derive(Debug, Clone, PartialEq)]
-pub struct MaybeQualifiedSchemaIdentifier<'a> {
+pub struct MaybeQualifiedNamespaceIdentifier<'a> {
 	pub name: Fragment<'a>,
 }
 
-impl<'a> MaybeQualifiedSchemaIdentifier<'a> {
+impl<'a> MaybeQualifiedNamespaceIdentifier<'a> {
 	pub fn new(name: Fragment<'a>) -> Self {
 		Self {
 			name,
@@ -68,11 +68,11 @@ impl<'a> MaybeQualifiedSchemaIdentifier<'a> {
 	}
 }
 
-/// Maybe-qualified source identifier for tables/views - schema is optional
+/// Maybe-qualified source identifier for tables/views - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSourceIdentifier<'a> {
-	/// Schema containing this source (optional in user input)
-	pub schema: Option<Fragment<'a>>,
+	/// Namespace containing this source (optional in user input)
+	pub namespace: Option<Fragment<'a>>,
 	/// Source name
 	pub name: Fragment<'a>,
 	/// Alias for this source in query context
@@ -84,15 +84,15 @@ pub struct MaybeQualifiedSourceIdentifier<'a> {
 impl<'a> MaybeQualifiedSourceIdentifier<'a> {
 	pub fn new(name: Fragment<'a>) -> Self {
 		Self {
-			schema: None,
+			namespace: None,
 			name,
 			alias: None,
 			kind: SourceKind::Unknown,
 		}
 	}
 
-	pub fn with_schema(mut self, schema: Fragment<'a>) -> Self {
-		self.schema = Some(schema);
+	pub fn with_namespace(mut self, namespace: Fragment<'a>) -> Self {
+		self.namespace = Some(namespace);
 		self
 	}
 
@@ -107,31 +107,31 @@ impl<'a> MaybeQualifiedSourceIdentifier<'a> {
 	}
 }
 
-/// Maybe-qualified sequence identifier - schema is optional
+/// Maybe-qualified sequence identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSequenceIdentifier<'a> {
-	pub schema: Option<Fragment<'a>>,
+	pub namespace: Option<Fragment<'a>>,
 	pub name: Fragment<'a>,
 }
 
 impl<'a> MaybeQualifiedSequenceIdentifier<'a> {
 	pub fn new(name: Fragment<'a>) -> Self {
 		Self {
-			schema: None,
+			namespace: None,
 			name,
 		}
 	}
 
-	pub fn with_schema(mut self, schema: Fragment<'a>) -> Self {
-		self.schema = Some(schema);
+	pub fn with_namespace(mut self, namespace: Fragment<'a>) -> Self {
+		self.namespace = Some(namespace);
 		self
 	}
 }
 
-/// Maybe-qualified index identifier - schema is optional
+/// Maybe-qualified index identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedIndexIdentifier<'a> {
-	pub schema: Option<Fragment<'a>>,
+	pub namespace: Option<Fragment<'a>>,
 	pub table: Fragment<'a>,
 	pub name: Fragment<'a>,
 }
@@ -139,14 +139,14 @@ pub struct MaybeQualifiedIndexIdentifier<'a> {
 impl<'a> MaybeQualifiedIndexIdentifier<'a> {
 	pub fn new(table: Fragment<'a>, name: Fragment<'a>) -> Self {
 		Self {
-			schema: None,
+			namespace: None,
 			table,
 			name,
 		}
 	}
 
-	pub fn with_schema(mut self, schema: Fragment<'a>) -> Self {
-		self.schema = Some(schema);
+	pub fn with_schema(mut self, namespace: Fragment<'a>) -> Self {
+		self.namespace = Some(namespace);
 		self
 	}
 }
@@ -154,9 +154,9 @@ impl<'a> MaybeQualifiedIndexIdentifier<'a> {
 /// How a maybe-qualified column is referenced
 #[derive(Debug, Clone, PartialEq)]
 pub enum MaybeQualifiedColumnSource<'a> {
-	/// Qualified by source name (table/view) - schema still optional
+	/// Qualified by source name (table/view) - namespace still optional
 	Source {
-		schema: Option<Fragment<'a>>,
+		namespace: Option<Fragment<'a>>,
 		source: Fragment<'a>,
 	},
 	/// Qualified by alias
@@ -181,13 +181,13 @@ impl<'a> MaybeQualifiedColumnIdentifier<'a> {
 	}
 
 	pub fn with_source(
-		schema: Option<Fragment<'a>>,
+		namespace: Option<Fragment<'a>>,
 		source: Fragment<'a>,
 		name: Fragment<'a>,
 	) -> Self {
 		Self {
 			source: MaybeQualifiedColumnSource::Source {
-				schema,
+				namespace,
 				source,
 			},
 			name,

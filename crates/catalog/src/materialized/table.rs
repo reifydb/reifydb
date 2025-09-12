@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	CommitVersion,
-	interface::{SchemaId, TableDef, TableId},
+	interface::{NamespaceId, TableDef, TableId},
 };
 
 use crate::materialized::{MaterializedCatalog, VersionedTableDef};
@@ -21,19 +21,19 @@ impl MaterializedCatalog {
 		})
 	}
 
-	/// Find a table by name in a schema at a specific version
+	/// Find a table by name in a namespace at a specific version
 	pub fn find_table_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 		version: CommitVersion,
 	) -> Option<TableDef> {
-		self.tables_by_name.get(&(schema, name.to_string())).and_then(
-			|entry| {
+		self.tables_by_name
+			.get(&(namespace, name.to_string()))
+			.and_then(|entry| {
 				let table_id = *entry.value();
 				self.find_table(table_id, version)
-			},
-		)
+			})
 	}
 
 	pub fn set_table(
@@ -47,7 +47,7 @@ impl MaterializedCatalog {
 			if let Some(pre) = entry.value().get_latest() {
 				// Remove old name from index
 				self.tables_by_name.remove(&(
-					pre.schema,
+					pre.namespace,
 					pre.name.clone(),
 				));
 			}
@@ -56,7 +56,7 @@ impl MaterializedCatalog {
 		// Add new name to index if setting a new value
 		if let Some(ref new) = table {
 			self.tables_by_name
-				.insert((new.schema, new.name.clone()), id);
+				.insert((new.namespace, new.name.clone()), id);
 		}
 
 		// Update the versioned table
@@ -76,12 +76,12 @@ mod tests {
 
 	fn create_test_table(
 		id: TableId,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> TableDef {
 		TableDef {
 			id,
-			schema,
+			namespace,
 			name: name.to_string(),
 			columns: vec![
 				ColumnDef {
@@ -115,9 +115,9 @@ mod tests {
 	fn test_set_and_find_table() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
-		let schema_id = SchemaId(1);
+		let namespace_id = NamespaceId(1);
 		let table =
-			create_test_table(table_id, schema_id, "test_table");
+			create_test_table(table_id, namespace_id, "test_table");
 
 		// Set table at version 1
 		catalog.set_table(table_id, 1, Some(table.clone()));
@@ -139,26 +139,35 @@ mod tests {
 	fn test_find_table_by_name() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
-		let schema_id = SchemaId(1);
-		let table =
-			create_test_table(table_id, schema_id, "named_table");
+		let namespace_id = NamespaceId(1);
+		let table = create_test_table(
+			table_id,
+			namespace_id,
+			"named_table",
+		);
 
 		// Set table
 		catalog.set_table(table_id, 1, Some(table.clone()));
 
 		// Find by name
-		let found =
-			catalog.find_table_by_name(schema_id, "named_table", 1);
+		let found = catalog.find_table_by_name(
+			namespace_id,
+			"named_table",
+			1,
+		);
 		assert_eq!(found, Some(table));
 
 		// Shouldn't find with wrong name
-		let found =
-			catalog.find_table_by_name(schema_id, "wrong_name", 1);
+		let found = catalog.find_table_by_name(
+			namespace_id,
+			"wrong_name",
+			1,
+		);
 		assert_eq!(found, None);
 
-		// Shouldn't find in wrong schema
+		// Shouldn't find in wrong namespace
 		let found = catalog.find_table_by_name(
-			SchemaId(2),
+			NamespaceId(2),
 			"named_table",
 			1,
 		);
@@ -169,19 +178,19 @@ mod tests {
 	fn test_table_rename() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
-		let schema_id = SchemaId(1);
+		let namespace_id = NamespaceId(1);
 
 		// Create and set initial table
 		let table_v1 =
-			create_test_table(table_id, schema_id, "old_name");
+			create_test_table(table_id, namespace_id, "old_name");
 		catalog.set_table(table_id, 1, Some(table_v1.clone()));
 
 		// Verify initial state
 		assert!(catalog
-			.find_table_by_name(schema_id, "old_name", 1)
+			.find_table_by_name(namespace_id, "old_name", 1)
 			.is_some());
 		assert!(catalog
-			.find_table_by_name(schema_id, "new_name", 1)
+			.find_table_by_name(namespace_id, "new_name", 1)
 			.is_none());
 
 		// Rename the table
@@ -191,12 +200,12 @@ mod tests {
 
 		// Old name should be gone
 		assert!(catalog
-			.find_table_by_name(schema_id, "old_name", 2)
+			.find_table_by_name(namespace_id, "old_name", 2)
 			.is_none());
 
 		// New name can be found
 		assert_eq!(
-			catalog.find_table_by_name(schema_id, "new_name", 2),
+			catalog.find_table_by_name(namespace_id, "new_name", 2),
 			Some(table_v2.clone())
 		);
 
@@ -208,38 +217,41 @@ mod tests {
 	}
 
 	#[test]
-	fn test_table_move_between_schemas() {
+	fn test_table_move_between_namespaces() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
-		let schema1 = SchemaId(1);
-		let schema2 = SchemaId(2);
+		let namespace1 = NamespaceId(1);
+		let namespace2 = NamespaceId(2);
 
-		// Create table in schema1
-		let table_v1 =
-			create_test_table(table_id, schema1, "movable_table");
+		// Create table in namespace1
+		let table_v1 = create_test_table(
+			table_id,
+			namespace1,
+			"movable_table",
+		);
 		catalog.set_table(table_id, 1, Some(table_v1.clone()));
 
-		// Verify it's in schema1
+		// Verify it's in namespace1
 		assert!(catalog
-			.find_table_by_name(schema1, "movable_table", 1)
+			.find_table_by_name(namespace1, "movable_table", 1)
 			.is_some());
 		assert!(catalog
-			.find_table_by_name(schema2, "movable_table", 1)
+			.find_table_by_name(namespace2, "movable_table", 1)
 			.is_none());
 
-		// Move to schema2
+		// Move to namespace2
 		let mut table_v2 = table_v1.clone();
-		table_v2.schema = schema2;
+		table_v2.namespace = namespace2;
 		catalog.set_table(table_id, 2, Some(table_v2.clone()));
 
-		// Should no longer be in schema1
+		// Should no longer be in namespace1
 		assert!(catalog
-			.find_table_by_name(schema1, "movable_table", 2)
+			.find_table_by_name(namespace1, "movable_table", 2)
 			.is_none());
 
-		// Should now be in schema2
+		// Should now be in namespace2
 		assert!(catalog
-			.find_table_by_name(schema2, "movable_table", 2)
+			.find_table_by_name(namespace2, "movable_table", 2)
 			.is_some());
 	}
 
@@ -247,12 +259,12 @@ mod tests {
 	fn test_table_deletion() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
-		let schema_id = SchemaId(1);
+		let namespace_id = NamespaceId(1);
 
 		// Create and set table
 		let table = create_test_table(
 			table_id,
-			schema_id,
+			namespace_id,
 			"deletable_table",
 		);
 		catalog.set_table(table_id, 1, Some(table.clone()));
@@ -263,7 +275,7 @@ mod tests {
 			Some(table.clone())
 		);
 		assert!(catalog
-			.find_table_by_name(schema_id, "deletable_table", 1)
+			.find_table_by_name(namespace_id, "deletable_table", 1)
 			.is_some());
 
 		// Delete the table
@@ -272,7 +284,7 @@ mod tests {
 		// Should not exist at version 2
 		assert_eq!(catalog.find_table(table_id, 2), None);
 		assert!(catalog
-			.find_table_by_name(schema_id, "deletable_table", 2)
+			.find_table_by_name(namespace_id, "deletable_table", 2)
 			.is_none());
 
 		// Should still exist at version 1 (historical)
@@ -280,13 +292,16 @@ mod tests {
 	}
 
 	#[test]
-	fn test_multiple_tables_in_schema() {
+	fn test_multiple_tables_in_namespace() {
 		let catalog = MaterializedCatalog::new();
-		let schema_id = SchemaId(1);
+		let namespace_id = NamespaceId(1);
 
-		let table1 = create_test_table(TableId(1), schema_id, "table1");
-		let table2 = create_test_table(TableId(2), schema_id, "table2");
-		let table3 = create_test_table(TableId(3), schema_id, "table3");
+		let table1 =
+			create_test_table(TableId(1), namespace_id, "table1");
+		let table2 =
+			create_test_table(TableId(2), namespace_id, "table2");
+		let table3 =
+			create_test_table(TableId(3), namespace_id, "table3");
 
 		// Set multiple tables
 		catalog.set_table(TableId(1), 1, Some(table1.clone()));
@@ -295,15 +310,15 @@ mod tests {
 
 		// All should be findable
 		assert_eq!(
-			catalog.find_table_by_name(schema_id, "table1", 1),
+			catalog.find_table_by_name(namespace_id, "table1", 1),
 			Some(table1)
 		);
 		assert_eq!(
-			catalog.find_table_by_name(schema_id, "table2", 1),
+			catalog.find_table_by_name(namespace_id, "table2", 1),
 			Some(table2)
 		);
 		assert_eq!(
-			catalog.find_table_by_name(schema_id, "table3", 1),
+			catalog.find_table_by_name(namespace_id, "table3", 1),
 			Some(table3)
 		);
 	}
@@ -312,11 +327,11 @@ mod tests {
 	fn test_table_versioning() {
 		let catalog = MaterializedCatalog::new();
 		let table_id = TableId(1);
-		let schema_id = SchemaId(1);
+		let namespace_id = NamespaceId(1);
 
 		// Create multiple versions
 		let table_v1 =
-			create_test_table(table_id, schema_id, "table_v1");
+			create_test_table(table_id, namespace_id, "table_v1");
 		let mut table_v2 = table_v1.clone();
 		table_v2.name = "table_v2".to_string();
 		let mut table_v3 = table_v2.clone();

@@ -10,32 +10,32 @@ use crate::materialized::MaterializedCatalog;
 
 /// Helper methods for identifier resolution
 impl MaterializedCatalog {
-	/// Check if a schema exists at the given version
-	pub fn schema_exists(
+	/// Check if a namespace exists at the given version
+	pub fn namespace_exists(
 		&self,
 		name: &str,
 		version: CommitVersion,
 	) -> bool {
-		self.schemas_by_name
+		self.namespaces_by_name
 			.get(name)
 			.and_then(|entry| {
-				let schema_id = *entry.value();
-				self.find_schema(schema_id, version)
+				let namespace_id = *entry.value();
+				self.find_namespace(namespace_id, version)
 			})
 			.is_some()
 	}
 
-	/// Check if a table exists in the given schema at the given version
+	/// Check if a table exists in the given namespace at the given version
 	pub fn table_exists(
 		&self,
-		schema: &str,
+		namespace: &str,
 		table: &str,
 		version: CommitVersion,
 	) -> bool {
-		self.find_schema_by_name(schema, version)
-			.and_then(|schema_def| {
+		self.find_namespace_by_name(namespace, version)
+			.and_then(|namespace_def| {
 				self.find_table_by_name(
-					schema_def.id,
+					namespace_def.id,
 					table,
 					version,
 				)
@@ -43,17 +43,17 @@ impl MaterializedCatalog {
 			.is_some()
 	}
 
-	/// Check if a view exists in the given schema at the given version
+	/// Check if a view exists in the given namespace at the given version
 	pub fn view_exists(
 		&self,
-		schema: &str,
+		namespace: &str,
 		view: &str,
 		version: CommitVersion,
 	) -> bool {
-		self.find_schema_by_name(schema, version)
-			.and_then(|schema_def| {
+		self.find_namespace_by_name(namespace, version)
+			.and_then(|namespace_def| {
 				self.find_view_by_name(
-					schema_def.id,
+					namespace_def.id,
 					view,
 					version,
 				)
@@ -64,12 +64,12 @@ impl MaterializedCatalog {
 	/// Check if a source (table or view) exists
 	pub fn source_exists(
 		&self,
-		schema: &str,
+		namespace: &str,
 		name: &str,
 		version: CommitVersion,
 	) -> bool {
-		self.table_exists(schema, name, version)
-			|| self.view_exists(schema, name, version)
+		self.table_exists(namespace, name, version)
+			|| self.view_exists(namespace, name, version)
 	}
 
 	/// Check if a function exists (placeholder - functions not yet in
@@ -89,7 +89,7 @@ impl MaterializedCatalog {
 	/// catalog)
 	pub fn sequence_exists(
 		&self,
-		_schema: &str,
+		_namespace: &str,
 		_name: &str,
 		_version: CommitVersion,
 	) -> bool {
@@ -101,7 +101,7 @@ impl MaterializedCatalog {
 	/// Check if an index exists (placeholder - indexes not yet in catalog)
 	pub fn index_exists(
 		&self,
-		_schema: &str,
+		_namespace: &str,
 		_table: &str,
 		_index: &str,
 		_version: CommitVersion,
@@ -114,14 +114,14 @@ impl MaterializedCatalog {
 	/// Get a view definition
 	pub fn get_view(
 		&self,
-		schema: &str,
+		namespace: &str,
 		name: &str,
 		version: CommitVersion,
 	) -> Result<ViewDef> {
-		self.find_schema_by_name(schema, version)
-			.and_then(|schema_def| {
+		self.find_namespace_by_name(namespace, version)
+			.and_then(|namespace_def| {
 				self.find_view_by_name(
-					schema_def.id,
+					namespace_def.id,
 					name,
 					version,
 				)
@@ -129,7 +129,7 @@ impl MaterializedCatalog {
 			.ok_or_else(|| {
 				reifydb_core::error!(reifydb_core::diagnostic::catalog::view_not_found(
 					reifydb_type::Fragment::None,
-					schema,
+					namespace,
 					name
 				))
 			})
@@ -138,15 +138,15 @@ impl MaterializedCatalog {
 	/// Check if a table has a specific column
 	pub fn table_has_column(
 		&self,
-		schema: &str,
+		namespace: &str,
 		table: &str,
 		column: &str,
 		version: CommitVersion,
 	) -> bool {
-		self.find_schema_by_name(schema, version)
-			.and_then(|schema_def| {
+		self.find_namespace_by_name(namespace, version)
+			.and_then(|namespace_def| {
 				self.find_table_by_name(
-					schema_def.id,
+					namespace_def.id,
 					table,
 					version,
 				)
@@ -163,15 +163,15 @@ impl MaterializedCatalog {
 	/// Check if a view has a specific column
 	pub fn view_has_column(
 		&self,
-		schema: &str,
+		namespace: &str,
 		view: &str,
 		column: &str,
 		version: CommitVersion,
 	) -> bool {
-		self.find_schema_by_name(schema, version)
-			.and_then(|schema_def| {
+		self.find_namespace_by_name(namespace, version)
+			.and_then(|namespace_def| {
 				self.find_view_by_name(
-					schema_def.id,
+					namespace_def.id,
 					view,
 					version,
 				)
@@ -187,14 +187,14 @@ impl MaterializedCatalog {
 	/// Get columns for a table
 	pub fn get_table_columns(
 		&self,
-		schema: &str,
+		namespace: &str,
 		table: &str,
 		version: CommitVersion,
 	) -> Result<Vec<ColumnDef>> {
-		self.find_schema_by_name(schema, version)
-			.and_then(|schema_def| {
+		self.find_namespace_by_name(namespace, version)
+			.and_then(|namespace_def| {
 				self.find_table_by_name(
-					schema_def.id,
+					namespace_def.id,
 					table,
 					version,
 				)
@@ -203,7 +203,7 @@ impl MaterializedCatalog {
 			.ok_or_else(|| {
 				reifydb_core::error!(reifydb_core::diagnostic::catalog::table_not_found(
 					reifydb_type::Fragment::None,
-					schema,
+					namespace,
 					table
 				))
 			})
@@ -212,14 +212,14 @@ impl MaterializedCatalog {
 	/// Get columns for a view
 	pub fn get_view_columns(
 		&self,
-		schema: &str,
+		namespace: &str,
 		view: &str,
 		version: CommitVersion,
 	) -> Result<Vec<ColumnDef>> {
-		self.find_schema_by_name(schema, version)
-			.and_then(|schema_def| {
+		self.find_namespace_by_name(namespace, version)
+			.and_then(|namespace_def| {
 				self.find_view_by_name(
-					schema_def.id,
+					namespace_def.id,
 					view,
 					version,
 				)
@@ -228,7 +228,7 @@ impl MaterializedCatalog {
 			.ok_or_else(|| {
 				reifydb_core::error!(reifydb_core::diagnostic::catalog::view_not_found(
 					reifydb_type::Fragment::None,
-					schema,
+					namespace,
 					view
 				))
 			})
@@ -238,7 +238,7 @@ impl MaterializedCatalog {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::{
-		ColumnDef, ColumnId, ColumnIndex, SchemaDef, SchemaId,
+		ColumnDef, ColumnId, ColumnIndex, NamespaceDef, NamespaceId,
 		TableDef, TableId,
 	};
 	use reifydb_type::TypeConstraint;
@@ -246,19 +246,19 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_schema_exists() {
+	fn test_namespace_exists() {
 		let catalog = MaterializedCatalog::new();
 		let version: CommitVersion = 1;
 
-		// Add a schema
-		let schema = SchemaDef {
-			id: SchemaId(1),
-			name: "test_schema".to_string(),
+		// Add a namespace
+		let namespace = NamespaceDef {
+			id: NamespaceId(1),
+			name: "test_namespace".to_string(),
 		};
-		catalog.set_schema(SchemaId(1), version, Some(schema));
+		catalog.set_namespace(NamespaceId(1), version, Some(namespace));
 
-		assert!(catalog.schema_exists("test_schema", version));
-		assert!(!catalog.schema_exists("nonexistent", version));
+		assert!(catalog.namespace_exists("test_namespace", version));
+		assert!(!catalog.namespace_exists("nonexistent", version));
 	}
 
 	#[test]
@@ -266,17 +266,17 @@ mod tests {
 		let catalog = MaterializedCatalog::new();
 		let version: CommitVersion = 1;
 
-		// Add schema
-		let schema = SchemaDef {
-			id: SchemaId(1),
-			name: "test_schema".to_string(),
+		// Add namespace
+		let namespace = NamespaceDef {
+			id: NamespaceId(1),
+			name: "test_namespace".to_string(),
 		};
-		catalog.set_schema(SchemaId(1), version, Some(schema));
+		catalog.set_namespace(NamespaceId(1), version, Some(namespace));
 
 		// Add table
 		let table = TableDef {
 			id: TableId(1),
-			schema: SchemaId(1),
+			namespace: NamespaceId(1),
 			name: "test_table".to_string(),
 			columns: vec![],
 			primary_key: None,
@@ -284,12 +284,12 @@ mod tests {
 		catalog.set_table(TableId(1), version, Some(table));
 
 		assert!(catalog.table_exists(
-			"test_schema",
+			"test_namespace",
 			"test_table",
 			version
 		));
 		assert!(!catalog.table_exists(
-			"test_schema",
+			"test_namespace",
 			"nonexistent",
 			version
 		));
@@ -300,17 +300,17 @@ mod tests {
 		let catalog = MaterializedCatalog::new();
 		let version: CommitVersion = 1;
 
-		// Add schema
-		let schema = SchemaDef {
-			id: SchemaId(1),
-			name: "test_schema".to_string(),
+		// Add namespace
+		let namespace = NamespaceDef {
+			id: NamespaceId(1),
+			name: "test_namespace".to_string(),
 		};
-		catalog.set_schema(SchemaId(1), version, Some(schema));
+		catalog.set_namespace(NamespaceId(1), version, Some(namespace));
 
 		// Add table with columns
 		let table = TableDef {
 			id: TableId(1),
-			schema: SchemaId(1),
+			namespace: NamespaceId(1),
 			name: "test_table".to_string(),
 			columns: vec![
 				ColumnDef {
@@ -339,19 +339,19 @@ mod tests {
 		catalog.set_table(TableId(1), version, Some(table));
 
 		assert!(catalog.table_has_column(
-			"test_schema",
+			"test_namespace",
 			"test_table",
 			"id",
 			version
 		));
 		assert!(catalog.table_has_column(
-			"test_schema",
+			"test_namespace",
 			"test_table",
 			"name",
 			version
 		));
 		assert!(!catalog.table_has_column(
-			"test_schema",
+			"test_namespace",
 			"test_table",
 			"nonexistent",
 			version

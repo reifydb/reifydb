@@ -49,24 +49,26 @@ impl<T: Transaction> FlowConsumer<T> {
 					let table = CatalogStore::get_table(
 						txn, table_id,
 					)?;
-					let schema = CatalogStore::get_schema(
-						txn,
-						table.schema,
-					)?;
+					let namespace =
+						CatalogStore::get_namespace(
+							txn,
+							table.namespace,
+						)?;
 					let layout = table.get_layout();
-					let columns = Columns::from_table_def_fully_qualified(&schema, &table);
+					let columns = Columns::from_table_def_fully_qualified(&namespace, &table);
 					(columns, layout)
 				}
 				SourceId::View(view_id) => {
 					let view = CatalogStore::get_view(
 						txn, view_id,
 					)?;
-					let schema = CatalogStore::get_schema(
-						txn,
-						view.schema,
-					)?;
+					let namespace =
+						CatalogStore::get_namespace(
+							txn,
+							view.namespace,
+						)?;
 					let layout = view.get_layout();
-					let columns = Columns::from_view_def_fully_qualified(&schema, &view);
+					let columns = Columns::from_view_def_fully_qualified(&namespace, &view);
 					(columns, layout)
 				}
 				SourceId::TableVirtual(_) => {

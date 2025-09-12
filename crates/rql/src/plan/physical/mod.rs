@@ -13,9 +13,9 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	JoinType, SortKey,
-	diagnostic::catalog::{schema_not_found, table_not_found},
+	diagnostic::catalog::{namespace_not_found, table_not_found},
 	interface::{
-		QueryTransaction, SchemaDef, TableDef, TableVirtualDef,
+		NamespaceDef, QueryTransaction, TableDef, TableVirtualDef,
 		ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 		identifier::SourceIdentifier,
@@ -61,9 +61,9 @@ impl Compiler {
 					));
 				}
 
-				LogicalPlan::CreateSchema(create) => {
+				LogicalPlan::CreateNamespace(create) => {
 					stack.push(
-						Self::compile_create_schema(
+						Self::compile_create_namespace(
 							rx, create,
 						)?,
 					);
@@ -299,29 +299,29 @@ impl Compiler {
 				}
 
 				LogicalPlan::SourceScan(scan) => {
-					let Some(schema) = CatalogStore::find_schema_by_name(
+					let Some(namespace) = CatalogStore::find_namespace_by_name(
 							rx,
-							scan.source.schema.text(),
+							scan.source.namespace.text(),
 						)?
 					else {
 						return_error!(
-							schema_not_found(
-								scan.source.schema.clone(),
-								scan.source.schema.text()
+							namespace_not_found(
+								scan.source.namespace.clone(),
+								scan.source.namespace.text()
 							)
 						);
 					};
 
 					if let Some(table) = CatalogStore::find_table_by_name(
 							rx,
-							schema.id,
+							namespace.id,
 							scan.source.name.text(),
 						)? {
 						// Check if an index was specified
 						if let Some(index) = scan.index {
 							stack.push(IndexScan(
 								IndexScanNode {
-									schema,
+									namespace,
 									table,
 									index_name: index.name.text().to_string(),
 								},
@@ -329,13 +329,13 @@ impl Compiler {
 						} else {
 							stack.push(TableScan(
 								TableScanNode {
-									schema,
+									namespace,
 									table},
 							));
 						}
 					} else if let Some(view) = CatalogStore::find_view_by_name(
 						rx,
-							schema.id,
+							namespace.id,
 							scan.source.name.text(),
 						)? {
 						// Views cannot use index directives
@@ -344,17 +344,17 @@ impl Compiler {
 						}
 						stack.push(ViewScan(
 							ViewScanNode {
-								schema,
+								namespace,
 								view},
 						));
-					} else if schema.name == "system" {
+					} else if namespace.name == "system" {
 						// System tables cannot use index directives
 						if scan.index.is_some() {
 							unimplemented!("system tables do not support indexes yet");
 						}
 						let table = match scan.source.effective_name() {
 							"sequences" => SystemCatalog::get_system_sequences_table_def(),
-							"schemas" => SystemCatalog::get_system_schemas_table_def(),
+							"namespaces" => SystemCatalog::get_system_namespaces_table_def(),
 							"tables" => SystemCatalog::get_system_tables_table_def(),
 							"views" => SystemCatalog::get_system_views_table_def(),
 							"columns" => SystemCatalog::get_system_columns_table_def(),
@@ -367,7 +367,7 @@ impl Compiler {
 								return_error!(
 									table_not_found(
 										scan.source.name.clone(),
-										scan.source.schema.text(),
+										scan.source.namespace.text(),
 										scan.source.name.text()
 									)
 								);
@@ -375,7 +375,7 @@ impl Compiler {
 						};
 						stack.push(PhysicalPlan::TableVirtualScan(
 							TableVirtualScanNode {
-								schema,
+								namespace,
 								table,
 								pushdown_context: None, // TODO: Detect pushdown opportunities
 							},
@@ -384,7 +384,7 @@ impl Compiler {
 						return_error!(
 							table_not_found(
 								scan.source.name.clone(),
-								scan.source.schema.text(),
+								scan.source.namespace.text(),
 								scan.source.name.text()
 							)
 						);
@@ -435,7 +435,7 @@ impl Compiler {
 pub enum PhysicalPlan<'a> {
 	CreateDeferredView(CreateDeferredViewPlan<'a>),
 	CreateTransactionalView(CreateTransactionalViewPlan<'a>),
-	CreateSchema(CreateSchemaPlan<'a>),
+	CreateNamespace(CreateNamespacePlan<'a>),
 	CreateTable(CreateTablePlan<'a>),
 	// Alter
 	AlterSequence(AlterSequencePlan<'a>),
@@ -467,7 +467,7 @@ pub enum PhysicalPlan<'a> {
 
 #[derive(Debug, Clone)]
 pub struct CreateDeferredViewPlan<'a> {
-	pub schema: SchemaDef,
+	pub namespace: NamespaceDef,
 	pub view: SourceIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -476,7 +476,7 @@ pub struct CreateDeferredViewPlan<'a> {
 
 #[derive(Debug, Clone)]
 pub struct CreateTransactionalViewPlan<'a> {
-	pub schema: SchemaDef,
+	pub namespace: NamespaceDef,
 	pub view: SourceIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
@@ -484,14 +484,14 @@ pub struct CreateTransactionalViewPlan<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateSchemaPlan<'a> {
-	pub schema: Fragment<'a>,
+pub struct CreateNamespacePlan<'a> {
+	pub namespace: Fragment<'a>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug, Clone)]
 pub struct CreateTablePlan<'a> {
-	pub schema: SchemaDef,
+	pub namespace: NamespaceDef,
 	pub table: SourceIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
@@ -597,26 +597,26 @@ pub struct InlineDataNode<'a> {
 
 #[derive(Debug, Clone)]
 pub struct IndexScanNode {
-	pub schema: SchemaDef,
+	pub namespace: NamespaceDef,
 	pub table: TableDef,
 	pub index_name: String,
 }
 
 #[derive(Debug, Clone)]
 pub struct TableScanNode {
-	pub schema: SchemaDef,
+	pub namespace: NamespaceDef,
 	pub table: TableDef,
 }
 
 #[derive(Debug, Clone)]
 pub struct ViewScanNode {
-	pub schema: SchemaDef,
+	pub namespace: NamespaceDef,
 	pub view: ViewDef,
 }
 
 #[derive(Debug, Clone)]
 pub struct TableVirtualScanNode<'a> {
-	pub schema: SchemaDef,
+	pub namespace: NamespaceDef,
 	pub table: Arc<TableVirtualDef>,
 	pub pushdown_context: Option<VirtualPushdownContext<'a>>,
 }

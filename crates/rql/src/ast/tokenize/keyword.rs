@@ -99,7 +99,7 @@ Like       => "LIKE",
 Is         => "IS",
 With       => "WITH",
 
-Schema => "SCHEMA",
+Namespace => "NAMESPACE",
 Sequence => "SEQUENCE",
 Series  => "SERIES",
 Table  => "TABLE",
@@ -169,7 +169,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> =
 		map.insert("LIKE", Keyword::Like);
 		map.insert("IS", Keyword::Is);
 		map.insert("WITH", Keyword::With);
-		map.insert("SCHEMA", Keyword::Schema);
+		map.insert("NAMESPACE", Keyword::Namespace);
 		map.insert("SEQUENCE", Keyword::Sequence);
 		map.insert("SERIES", Keyword::Series);
 		map.insert("TABLE", Keyword::Table);
@@ -338,7 +338,7 @@ mod tests {
 	test_keyword_is => (Is, "IS"),
 	test_keyword_with => (With, "WITH"),
 	test_keyword_is_in => (Filter, "FILTER"),
-	test_keyword_schema => (Schema, "SCHEMA"),
+	test_keyword_namespace => (Namespace, "NAMESPACE"),
 	test_keyword_series => (Series, "SERIES"),
 	test_keyword_table => (Table, "TABLE"),
 	test_keyword_policy => (Policy, "POLICY"),
@@ -454,7 +454,7 @@ mod tests {
 	test_not_keyword_is => ( "is"),
 	test_not_keyword_with => ( "with"),
 	test_not_keyword_filter => ( "filter"),
-	test_not_keyword_schema => ( "schema"),
+	test_not_keyword_namespace => ( "namespace"),
 	test_not_keyword_series => ( "series"),
 	test_not_keyword_table => ( "table"),
 	test_not_keyword_policy => ( "policy"),

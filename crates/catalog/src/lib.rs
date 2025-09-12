@@ -11,8 +11,8 @@ use reifydb_core::interface::version::{
 pub mod column;
 pub mod column_policy;
 mod materialized;
+pub mod namespace;
 pub mod primary_key;
-pub mod schema;
 pub mod sequence;
 pub mod source;
 pub mod system;
@@ -25,8 +25,8 @@ pub mod view;
 pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 pub use transaction::{
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
-	CatalogQueryTransaction, CatalogSchemaCommandOperations,
-	CatalogSchemaQueryOperations, CatalogSourceQueryOperations,
+	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations,
+	CatalogQueryTransaction, CatalogSourceQueryOperations,
 	CatalogTableCommandOperations, CatalogTableQueryOperations,
 	CatalogTransaction, CatalogViewCommandOperations,
 	CatalogViewQueryOperations, TransactionalChangesExt,

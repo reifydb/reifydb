@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 /// Root enum for all qualified identifier types
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum QualifiedIdentifier<'a> {
-	Schema(SchemaIdentifier<'a>),
+	Namespace(NamespaceIdentifier<'a>),
 	Source(SourceIdentifier<'a>),
 	Column(ColumnIdentifier<'a>),
 	Function(FunctionIdentifier<'a>),
@@ -19,8 +19,8 @@ impl<'a> QualifiedIdentifier<'a> {
 	/// Convert to owned version with 'static lifetime
 	pub fn into_owned(self) -> QualifiedIdentifier<'static> {
 		match self {
-			QualifiedIdentifier::Schema(s) => {
-				QualifiedIdentifier::Schema(s.into_owned())
+			QualifiedIdentifier::Namespace(s) => {
+				QualifiedIdentifier::Namespace(s.into_owned())
 			}
 			QualifiedIdentifier::Source(s) => {
 				QualifiedIdentifier::Source(s.into_owned())
@@ -41,21 +41,21 @@ impl<'a> QualifiedIdentifier<'a> {
 	}
 }
 
-/// Schema identifier - always unqualified
+/// Namespace identifier - always unqualified
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SchemaIdentifier<'a> {
+pub struct NamespaceIdentifier<'a> {
 	pub name: Fragment<'a>,
 }
 
-impl<'a> SchemaIdentifier<'a> {
+impl<'a> NamespaceIdentifier<'a> {
 	pub fn new(name: Fragment<'a>) -> Self {
 		Self {
 			name,
 		}
 	}
 
-	pub fn into_owned(self) -> SchemaIdentifier<'static> {
-		SchemaIdentifier {
+	pub fn into_owned(self) -> NamespaceIdentifier<'static> {
+		NamespaceIdentifier {
 			name: Fragment::Owned(self.name.into_owned()),
 		}
 	}
@@ -65,8 +65,8 @@ impl<'a> SchemaIdentifier<'a> {
 /// Used in logical and physical plans where everything must be fully qualified
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SourceIdentifier<'a> {
-	/// Schema containing this source
-	pub schema: Fragment<'a>,
+	/// Namespace containing this source
+	pub namespace: Fragment<'a>,
 	/// Source name
 	pub name: Fragment<'a>,
 	/// Alias for this source in query context
@@ -77,12 +77,12 @@ pub struct SourceIdentifier<'a> {
 
 impl<'a> SourceIdentifier<'a> {
 	pub fn new(
-		schema: Fragment<'a>,
+		namespace: Fragment<'a>,
 		name: Fragment<'a>,
 		kind: SourceKind,
 	) -> Self {
 		Self {
-			schema,
+			namespace,
 			name,
 			alias: None,
 			kind,
@@ -101,7 +101,7 @@ impl<'a> SourceIdentifier<'a> {
 
 	pub fn into_owned(self) -> SourceIdentifier<'static> {
 		SourceIdentifier {
-			schema: Fragment::Owned(self.schema.into_owned()),
+			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
 			alias: self
 				.alias
@@ -165,13 +165,13 @@ pub struct ColumnIdentifier<'a> {
 
 impl<'a> ColumnIdentifier<'a> {
 	pub fn with_source(
-		schema: Fragment<'a>,
+		namespace: Fragment<'a>,
 		source: Fragment<'a>,
 		name: Fragment<'a>,
 	) -> Self {
 		Self {
 			source: ColumnSource::Source {
-				schema,
+				namespace,
 				source,
 			},
 			name,
@@ -196,9 +196,9 @@ impl<'a> ColumnIdentifier<'a> {
 /// How a column is qualified in plans (always fully qualified)
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum ColumnSource<'a> {
-	/// Fully qualified by schema.source
+	/// Fully qualified by namespace.source
 	Source {
-		schema: Fragment<'a>,
+		namespace: Fragment<'a>,
 		source: Fragment<'a>,
 	},
 	/// Qualified by alias (which maps to a fully qualified source)
@@ -209,10 +209,12 @@ impl<'a> ColumnSource<'a> {
 	pub fn into_owned(self) -> ColumnSource<'static> {
 		match self {
 			ColumnSource::Source {
-				schema,
+				namespace,
 				source,
 			} => ColumnSource::Source {
-				schema: Fragment::Owned(schema.into_owned()),
+				namespace: Fragment::Owned(
+					namespace.into_owned(),
+				),
 				source: Fragment::Owned(source.into_owned()),
 			},
 			ColumnSource::Alias(alias) => ColumnSource::Alias(
@@ -288,21 +290,21 @@ impl<'a> FunctionIdentifier<'a> {
 /// Fully qualified sequence identifier
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SequenceIdentifier<'a> {
-	pub schema: Fragment<'a>,
+	pub namespace: Fragment<'a>,
 	pub name: Fragment<'a>,
 }
 
 impl<'a> SequenceIdentifier<'a> {
-	pub fn new(schema: Fragment<'a>, name: Fragment<'a>) -> Self {
+	pub fn new(namespace: Fragment<'a>, name: Fragment<'a>) -> Self {
 		Self {
-			schema,
+			namespace,
 			name,
 		}
 	}
 
 	pub fn into_owned(self) -> SequenceIdentifier<'static> {
 		SequenceIdentifier {
-			schema: Fragment::Owned(self.schema.into_owned()),
+			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
 		}
 	}
@@ -311,19 +313,19 @@ impl<'a> SequenceIdentifier<'a> {
 /// Fully qualified index identifier
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct IndexIdentifier<'a> {
-	pub schema: Fragment<'a>,
+	pub namespace: Fragment<'a>,
 	pub table: Fragment<'a>,
 	pub name: Fragment<'a>,
 }
 
 impl<'a> IndexIdentifier<'a> {
 	pub fn new(
-		schema: Fragment<'a>,
+		namespace: Fragment<'a>,
 		table: Fragment<'a>,
 		name: Fragment<'a>,
 	) -> Self {
 		Self {
-			schema,
+			namespace,
 			table,
 			name,
 		}
@@ -331,7 +333,7 @@ impl<'a> IndexIdentifier<'a> {
 
 	pub fn into_owned(self) -> IndexIdentifier<'static> {
 		IndexIdentifier {
-			schema: Fragment::Owned(self.schema.into_owned()),
+			namespace: Fragment::Owned(self.namespace.into_owned()),
 			table: Fragment::Owned(self.table.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
 		}
@@ -346,37 +348,48 @@ mod tests {
 
 	#[test]
 	fn test_source_identifier_creation() {
-		let schema = Fragment::Owned(OwnedFragment::testing("public"));
+		let namespace =
+			Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
-		let source =
-			SourceIdentifier::new(schema, name, SourceKind::Table);
+		let source = SourceIdentifier::new(
+			namespace,
+			name,
+			SourceKind::Table,
+		);
 
-		assert_eq!(source.schema.text(), "public");
+		assert_eq!(source.namespace.text(), "public");
 		assert_eq!(source.name.text(), "users");
 		assert!(source.alias.is_none());
 		assert_eq!(source.kind, SourceKind::Table);
 	}
 
 	#[test]
-	fn test_source_identifier_with_different_schema() {
-		let schema =
-			Fragment::Owned(OwnedFragment::testing("myschema"));
+	fn test_source_identifier_with_different_namespace() {
+		let namespace =
+			Fragment::Owned(OwnedFragment::testing("mynamespace"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
-		let source =
-			SourceIdentifier::new(schema, name, SourceKind::Table);
+		let source = SourceIdentifier::new(
+			namespace,
+			name,
+			SourceKind::Table,
+		);
 
-		assert_eq!(source.schema.text(), "myschema");
+		assert_eq!(source.namespace.text(), "mynamespace");
 		assert_eq!(source.name.text(), "users");
 	}
 
 	#[test]
 	fn test_source_identifier_with_alias() {
-		let schema = Fragment::Owned(OwnedFragment::testing("public"));
+		let namespace =
+			Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
 		let alias = Fragment::Owned(OwnedFragment::testing("u"));
-		let source =
-			SourceIdentifier::new(schema, name, SourceKind::Table)
-				.with_alias(alias);
+		let source = SourceIdentifier::new(
+			namespace,
+			name,
+			SourceKind::Table,
+		)
+		.with_alias(alias);
 
 		assert_eq!(source.effective_name(), "u");
 		assert_eq!(source.alias.as_ref().unwrap().text(), "u");
@@ -399,16 +412,17 @@ mod tests {
 	fn test_column_identifier_with_source() {
 		let name = Fragment::Owned(OwnedFragment::testing("id"));
 		let source = Fragment::Owned(OwnedFragment::testing("users"));
-		let schema = Fragment::Owned(OwnedFragment::testing("public"));
+		let namespace =
+			Fragment::Owned(OwnedFragment::testing("public"));
 		let column =
-			ColumnIdentifier::with_source(schema, source, name);
+			ColumnIdentifier::with_source(namespace, source, name);
 
 		match &column.source {
 			ColumnSource::Source {
-				schema,
+				namespace,
 				source,
 			} => {
-				assert_eq!(schema.text(), "public");
+				assert_eq!(namespace.text(), "public");
 				assert_eq!(source.text(), "users");
 			}
 			_ => panic!("Expected Source variant"),
@@ -443,13 +457,17 @@ mod tests {
 
 	#[test]
 	fn test_into_owned() {
-		let schema = Fragment::Owned(OwnedFragment::testing("public"));
+		let namespace =
+			Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
-		let source =
-			SourceIdentifier::new(schema, name, SourceKind::Table);
+		let source = SourceIdentifier::new(
+			namespace,
+			name,
+			SourceKind::Table,
+		);
 
 		let owned = source.into_owned();
-		assert_eq!(owned.schema.text(), "public");
+		assert_eq!(owned.namespace.text(), "public");
 		assert_eq!(owned.name.text(), "users");
 		assert_eq!(owned.kind, SourceKind::Table);
 	}

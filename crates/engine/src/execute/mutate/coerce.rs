@@ -14,7 +14,7 @@ use crate::{
 ///
 /// # Arguments
 /// * `value` - The value that needs coercing
-/// * `target` - The type of the target table column from schema
+/// * `target` - The type of the target table column from namespace
 /// * `column` - Name of the column for error reporting
 /// * `ctx` - ExecutionContext for accessing params
 ///

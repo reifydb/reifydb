@@ -27,7 +27,7 @@ impl<'a> Parser<'a> {
 	}
 
 	/// Parse a potentially qualified column identifier
-	/// Handles patterns like: column, table.column, schema.table.column,
+	/// Handles patterns like: column, table.column, namespace.table.column,
 	/// alias.column
 	pub(crate) fn parse_column_identifier(
 		&mut self,
@@ -41,7 +41,8 @@ impl<'a> Parser<'a> {
 			self.consume_operator(Operator::Dot)?;
 			let second = self.consume(TokenKind::Identifier)?;
 
-			// Check for further qualification (schema.table.column)
+			// Check for further qualification
+			// (namespace.table.column)
 			if !self.is_eof()
 				&& self.current_expect_operator(Operator::Dot)
 					.is_ok()
@@ -50,7 +51,7 @@ impl<'a> Parser<'a> {
 				let third =
 					self.consume(TokenKind::Identifier)?;
 
-				// schema.table.column
+				// namespace.table.column
 				Ok(MaybeQualifiedColumnIdentifier::with_source(
 					Some(first.fragment.clone()),
 					second.fragment.clone(),
@@ -97,7 +98,7 @@ impl<'a> Parser<'a> {
 				self.consume_operator(Operator::Dot)?;
 				let third = self.advance()?;
 
-				// schema.table.column
+				// namespace.table.column
 				Ok(MaybeQualifiedColumnIdentifier::with_source(
 					Some(first.fragment.clone()),
 					second.fragment.clone(),

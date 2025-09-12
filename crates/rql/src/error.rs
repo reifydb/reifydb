@@ -16,11 +16,11 @@ pub enum IdentifierError {
 	UnknownAlias(UnknownAliasError),
 	FunctionNotFound(FunctionNotFoundError),
 	SequenceNotFound {
-		schema: String,
+		namespace: String,
 		name: String,
 	},
 	IndexNotFound {
-		schema: String,
+		namespace: String,
 		table: String,
 		name: String,
 	},
@@ -45,24 +45,24 @@ impl fmt::Display for IdentifierError {
 				write!(f, "{}", e)
 			}
 			IdentifierError::SequenceNotFound {
-				schema,
+				namespace,
 				name,
 			} => {
 				write!(
 					f,
 					"Sequence '{}.{}' not found",
-					schema, name
+					namespace, name
 				)
 			}
 			IdentifierError::IndexNotFound {
-				schema,
+				namespace,
 				table,
 				name,
 			} => {
 				write!(
 					f,
 					"Index '{}' on table '{}.{}' not found",
-					name, schema, table
+					name, namespace, table
 				)
 			}
 		}
@@ -81,28 +81,28 @@ impl From<IdentifierError> for reifydb_core::Error {
 	}
 }
 
-/// Schema not found error
+/// Namespace not found error
 #[derive(Debug, Clone)]
 pub struct SchemaNotFoundError {
-	pub schema: String,
+	pub namespace: String,
 }
 
 impl fmt::Display for SchemaNotFoundError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(f, "Schema '{}' does not exist", self.schema)
+		write!(f, "Namespace '{}' does not exist", self.namespace)
 	}
 }
 
 /// Source (table/view) not found error
 #[derive(Debug, Clone)]
 pub struct SourceNotFoundError {
-	pub schema: String,
+	pub namespace: String,
 	pub name: String,
 }
 
 impl fmt::Display for SourceNotFoundError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		if self.schema == "public" || self.schema.is_empty() {
+		if self.namespace == "public" || self.namespace.is_empty() {
 			write!(
 				f,
 				"Table or view '{}' does not exist",
@@ -112,7 +112,7 @@ impl fmt::Display for SourceNotFoundError {
 			write!(
 				f,
 				"Table or view '{}.{}' does not exist",
-				self.schema, self.name
+				self.namespace, self.name
 			)
 		}
 	}
@@ -121,13 +121,13 @@ impl fmt::Display for SourceNotFoundError {
 impl SourceNotFoundError {
 	/// Create error with additional context about what type was expected
 	pub fn with_expected_type(
-		schema: String,
+		namespace: String,
 		name: String,
 		_expected: SourceKind,
 	) -> Self {
 		// Could extend this to include expected type in the error
 		Self {
-			schema,
+			namespace,
 			name,
 		}
 	}
@@ -189,8 +189,8 @@ impl fmt::Display for FunctionNotFoundError {
 	}
 }
 
-/// Check if a fragment represents an injected default schema
-pub fn is_default_schema(fragment: &reifydb_type::Fragment) -> bool {
+/// Check if a fragment represents an injected default namespace
+pub fn is_default_namespace(fragment: &reifydb_type::Fragment) -> bool {
 	matches!(
 		fragment,
 		reifydb_type::Fragment::Owned(
@@ -206,15 +206,18 @@ mod tests {
 	#[test]
 	fn test_schema_not_found_display() {
 		let err = SchemaNotFoundError {
-			schema: "myschema".to_string(),
+			namespace: "myschema".to_string(),
 		};
-		assert_eq!(err.to_string(), "Schema 'myschema' does not exist");
+		assert_eq!(
+			err.to_string(),
+			"Namespace 'myschema' does not exist"
+		);
 	}
 
 	#[test]
 	fn test_source_not_found_display() {
 		let err = SourceNotFoundError {
-			schema: "public".to_string(),
+			namespace: "public".to_string(),
 			name: "users".to_string(),
 		};
 		assert_eq!(
@@ -223,7 +226,7 @@ mod tests {
 		);
 
 		let err = SourceNotFoundError {
-			schema: "myschema".to_string(),
+			namespace: "myschema".to_string(),
 			name: "users".to_string(),
 		};
 		assert_eq!(

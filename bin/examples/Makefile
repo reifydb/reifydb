@@ -7,7 +7,7 @@ help:
 	@echo ""
 	@echo "Basic Examples:"
 	@echo "  make basic-hello-world   - Simple hello world example"
-	@echo "  make basic-tables        - Create and define table schemas"
+	@echo "  make basic-tables        - Create and define table, namespaces"
 	@echo ""
 	@echo "RQL (Query Language) Examples:"
 	@echo "  make rql-from            - FROM operator: loading data from inline arrays and tables"

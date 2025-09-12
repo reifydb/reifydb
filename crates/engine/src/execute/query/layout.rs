@@ -13,7 +13,7 @@ pub fn derive_columns_column_layout(
 	// Add RowNumber column if preserved
 	if preserve_row_numbers {
 		columns.push(ColumnLayout {
-			schema: None,
+			namespace: None,
 			source: None,
 			name: ROW_NUMBER_COLUMN_NAME.to_string(),
 		});
@@ -31,12 +31,12 @@ pub fn derive_columns_column_layout(
 fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 	match expr {
 		Expression::Alias(alias_expr) => ColumnLayout {
-			schema: None,
+			namespace: None,
 			source: None,
 			name: alias_expr.alias.name().to_string(),
 		},
 		Expression::Column(col_expr) => ColumnLayout {
-			schema: None,
+			namespace: None,
 			source: None,
 			name: col_expr.0.name.text().to_string(),
 		},
@@ -55,7 +55,7 @@ fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 			};
 
 			ColumnLayout {
-				schema: None,
+				namespace: None,
 				source: Some(source_name),
 				name: access_expr
 					.column
@@ -67,7 +67,7 @@ fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 		_ => {
 			// For other expressions, generate a simplified name
 			ColumnLayout {
-				schema: None,
+				namespace: None,
 				source: None,
 				name: simplified_name(expr),
 			}

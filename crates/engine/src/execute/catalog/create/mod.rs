@@ -10,7 +10,7 @@ use crate::{StandardCommandTransaction, execute::Executor};
 
 #[allow(dead_code)] // FIXME
 mod deferred;
-mod schema;
+mod namespace;
 mod table;
 #[allow(dead_code)] // FIXME
 mod transactional;

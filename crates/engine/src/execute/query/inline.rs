@@ -54,7 +54,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			.columns
 			.iter()
 			.map(|col| ColumnLayout {
-				schema: None,
+				namespace: None,
 				source: None,
 				name: col.name.clone(),
 			})
@@ -104,11 +104,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
 			}));
 		}
 
-		// Choose execution path based on whether we have table schema
+		// Choose execution path based on whether we have table
+		// namespace
 		if self.layout.is_some() {
-			self.next_with_table_schema(&ctx)
+			self.next_with_table_namespace(&ctx)
 		} else {
-			self.next_infer_schema(&ctx)
+			self.next_infer_namespace(&ctx)
 		}
 	}
 
@@ -166,7 +167,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		}
 	}
 
-	fn next_infer_schema(
+	fn next_infer_namespace(
 		&mut self,
 		ctx: &ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
@@ -370,7 +371,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		}))
 	}
 
-	fn next_with_table_schema(
+	fn next_with_table_namespace(
 		&mut self,
 		ctx: &ExecutionContext,
 	) -> crate::Result<Option<Batch>> {
@@ -395,7 +396,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			rows_data.push(row_map);
 		}
 
-		// Create columns based on table schema
+		// Create columns based on table namespace
 		let mut columns = Vec::new();
 
 		for column_layout in &layout.columns {

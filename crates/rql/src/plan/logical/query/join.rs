@@ -33,8 +33,8 @@ impl Compiler {
 						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
 						use reifydb_type::{Fragment, OwnedFragment};
 
-						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
-						let mut source = SourceIdentifier::new(schema, identifier.token.fragment.clone(), SourceKind::Unknown);
+						let namespace = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
+						let mut source = SourceIdentifier::new(namespace, identifier.token.fragment.clone(), SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
 								.with_alias(a);
@@ -54,7 +54,7 @@ impl Compiler {
 						..
 					}) => {
 						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(schema) =
+						let Ast::Identifier(namespace) =
 							*left
 						else {
 							unreachable!()
@@ -68,7 +68,7 @@ impl Compiler {
 						// SourceIdentifier
 						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
 
-						let mut source = SourceIdentifier::new(schema.token.fragment, table.token.fragment, SourceKind::Unknown);
+						let mut source = SourceIdentifier::new(namespace.token.fragment, table.token.fragment, SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
 								.with_alias(a);
@@ -104,8 +104,8 @@ impl Compiler {
 						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
 						use reifydb_type::{Fragment, OwnedFragment};
 
-						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
-						let mut source = SourceIdentifier::new(schema, identifier.token.fragment.clone(), SourceKind::Unknown);
+						let namespace = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
+						let mut source = SourceIdentifier::new(namespace, identifier.token.fragment.clone(), SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
 								.with_alias(a);
@@ -125,7 +125,7 @@ impl Compiler {
 						..
 					}) => {
 						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(schema) =
+						let Ast::Identifier(namespace) =
 							*left
 						else {
 							unreachable!()
@@ -139,7 +139,7 @@ impl Compiler {
 						// SourceIdentifier
 						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
 
-						let mut source = SourceIdentifier::new(schema.token.fragment, table.token.fragment, SourceKind::Unknown);
+						let mut source = SourceIdentifier::new(namespace.token.fragment, table.token.fragment, SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
 								.with_alias(a);
@@ -175,8 +175,8 @@ impl Compiler {
 						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
 						use reifydb_type::{Fragment, OwnedFragment};
 
-						let schema = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
-						let mut source = SourceIdentifier::new(schema, identifier.token.fragment.clone(), SourceKind::Unknown);
+						let namespace = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
+						let mut source = SourceIdentifier::new(namespace, identifier.token.fragment.clone(), SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
 								.with_alias(a);
@@ -196,7 +196,7 @@ impl Compiler {
 						..
 					}) => {
 						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(schema) =
+						let Ast::Identifier(namespace) =
 							*left
 						else {
 							unreachable!()
@@ -210,7 +210,7 @@ impl Compiler {
 						// SourceIdentifier
 						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
 
-						let mut source = SourceIdentifier::new(schema.token.fragment, table.token.fragment, SourceKind::Unknown);
+						let mut source = SourceIdentifier::new(namespace.token.fragment, table.token.fragment, SourceKind::Unknown);
 						if let Some(a) = alias {
 							source = source
 								.with_alias(a);

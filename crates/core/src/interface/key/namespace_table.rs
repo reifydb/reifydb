@@ -4,26 +4,26 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::catalog::{SchemaId, TableId},
+	interface::catalog::{NamespaceId, TableId},
 	util::encoding::keycode,
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct SchemaTableKey {
-	pub schema: SchemaId,
+pub struct NamespaceTableKey {
+	pub namespace: NamespaceId,
 	pub table: TableId,
 }
 
 const VERSION: u8 = 1;
 
-impl EncodableKey for SchemaTableKey {
-	const KIND: KeyKind = KeyKind::SchemaTable;
+impl EncodableKey for NamespaceTableKey {
+	const KIND: KeyKind = KeyKind::NamespaceTable;
 
 	fn encode(&self) -> EncodedKey {
 		let mut out = Vec::with_capacity(18);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.schema));
+		out.extend(&keycode::serialize(&self.namespace));
 		out.extend(&keycode::serialize(&self.table));
 		EncodedKey::new(out)
 	}
@@ -51,47 +51,47 @@ impl EncodableKey for SchemaTableKey {
 		keycode::deserialize(&payload[..8])
 			.ok()
 			.zip(keycode::deserialize(&payload[8..]).ok())
-			.map(|(schema, table)| Self {
-				schema,
+			.map(|(namespace, table)| Self {
+				namespace,
 				table,
 			})
 	}
 }
 
-impl SchemaTableKey {
-	pub fn full_scan(schema_id: SchemaId) -> EncodedKeyRange {
+impl NamespaceTableKey {
+	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(
-			Some(Self::link_start(schema_id)),
-			Some(Self::link_end(schema_id)),
+			Some(Self::link_start(namespace_id)),
+			Some(Self::link_end(namespace_id)),
 		)
 	}
 
-	fn link_start(schema_id: SchemaId) -> EncodedKey {
+	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
 		let mut out = Vec::with_capacity(6);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&schema_id));
+		out.extend(&keycode::serialize(&namespace_id));
 		EncodedKey::new(out)
 	}
 
-	fn link_end(schema_id: SchemaId) -> EncodedKey {
+	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
 		let mut out = Vec::with_capacity(6);
 		out.extend(&keycode::serialize(&VERSION));
 		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*schema_id - 1)));
+		out.extend(&keycode::serialize(&(*namespace_id - 1)));
 		EncodedKey::new(out)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use super::{EncodableKey, SchemaTableKey};
-	use crate::interface::catalog::{SchemaId, TableId};
+	use super::{EncodableKey, NamespaceTableKey};
+	use crate::interface::catalog::{NamespaceId, TableId};
 
 	#[test]
 	fn test_encode_decode() {
-		let key = SchemaTableKey {
-			schema: SchemaId(0xABCD),
+		let key = NamespaceTableKey {
+			namespace: NamespaceId(0xABCD),
 			table: TableId(0x123456789ABCDEF0),
 		};
 		let encoded = key.encode();
@@ -105,23 +105,23 @@ mod tests {
 
 		assert_eq!(encoded.as_slice(), expected);
 
-		let key = SchemaTableKey::decode(&encoded).unwrap();
-		assert_eq!(key.schema, 0xABCD);
+		let key = NamespaceTableKey::decode(&encoded).unwrap();
+		assert_eq!(key.namespace, 0xABCD);
 		assert_eq!(key.table, 0x123456789ABCDEF0);
 	}
 
 	#[test]
 	fn test_order_preserving() {
-		let key1 = SchemaTableKey {
-			schema: SchemaId(1),
+		let key1 = NamespaceTableKey {
+			namespace: NamespaceId(1),
 			table: TableId(100),
 		};
-		let key2 = SchemaTableKey {
-			schema: SchemaId(1),
+		let key2 = NamespaceTableKey {
+			namespace: NamespaceId(1),
 			table: TableId(200),
 		};
-		let key3 = SchemaTableKey {
-			schema: SchemaId(2),
+		let key3 = NamespaceTableKey {
+			namespace: NamespaceId(2),
 			table: TableId(0),
 		};
 

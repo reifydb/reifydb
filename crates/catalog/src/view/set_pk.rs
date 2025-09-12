@@ -55,21 +55,21 @@ mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::ensure_test_schema,
+		test_utils::ensure_test_namespace,
 		view::{ViewColumnToCreate, ViewToCreate},
 	};
 
 	#[test]
 	fn test_set_view_primary_key() {
 		let mut txn = create_test_command_transaction();
-		let schema = ensure_test_schema(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn);
 
 		let view =
 			CatalogStore::create_deferred_view(
 				&mut txn,
 				ViewToCreate {
 					fragment: None,
-					schema: schema.id,
+					namespace: namespace.id,
 					name: "test_view".to_string(),
 					columns: vec![ViewColumnToCreate {
 					name: "id".to_string(),

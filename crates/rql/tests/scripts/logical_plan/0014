@@ -6,7 +6,7 @@ logical 'create index idx_filtered on test.users {email} filter active == true f
 > └── CreateIndex
 >     ├── Type: Index
 >     ├── Name: idx_filtered
->     ├── Schema: test
+>     ├── Namespace: test
 >     ├── Table: users
 >     ├── Columns: email
 >     ├── Filters: (Column(active) == Constant(true)), (Column(age) > Constant(18))

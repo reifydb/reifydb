@@ -27,7 +27,7 @@ impl<T: Transaction> PostCommitInterceptor<StandardCommandTransaction<T>>
 	fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
 		let version = ctx.version;
 
-		for change in &ctx.changes.schema_def {
+		for change in &ctx.changes.namespace_def {
 			let id = change
 				.post
 				.as_ref()
@@ -36,7 +36,7 @@ impl<T: Transaction> PostCommitInterceptor<StandardCommandTransaction<T>>
 				.expect(
 					"Change must have either pre or post state",
 				);
-			self.catalog.set_schema(
+			self.catalog.set_namespace(
 				id,
 				version,
 				change.post.clone(),

@@ -107,7 +107,7 @@ mod tests {
 	use crate::{
 		CatalogStore,
 		column::{ColumnIndex, ColumnToCreate},
-		test_utils::{ensure_test_schema, ensure_test_table},
+		test_utils::{ensure_test_namespace, ensure_test_table},
 		view::{ViewColumnToCreate, ViewToCreate},
 	};
 
@@ -122,7 +122,7 @@ mod tests {
 			table.id,
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: table.id,
 				table_name: "test_table",
 				column: "id".to_string(),
@@ -142,7 +142,7 @@ mod tests {
 			table.id,
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: table.id,
 				table_name: "test_table",
 				column: "tenant_id".to_string(),
@@ -187,14 +187,14 @@ mod tests {
 	#[test]
 	fn test_create_primary_key_for_view() {
 		let mut txn = create_test_command_transaction();
-		let schema = ensure_test_schema(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn);
 
 		// Create a view
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
 			ViewToCreate {
 				fragment: None,
-				schema: schema.id,
+				namespace: namespace.id,
 				name: "test_view".to_string(),
 				columns: vec![
 					ViewColumnToCreate {
@@ -255,7 +255,7 @@ mod tests {
 				table.id,
 				ColumnToCreate {
 					fragment: None,
-					schema_name: "test_schema",
+					namespace_name: "test_namespace",
 					table: table.id,
 					table_name: "test_table",
 					column: format!("col_{}", i),
@@ -314,7 +314,7 @@ mod tests {
 			table.id,
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: table.id,
 				table_name: "test_table",
 				column: "id".to_string(),
@@ -441,7 +441,7 @@ mod tests {
 			table1.id,
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: table1.id,
 				table_name: "test_table",
 				column: "id".to_string(),
@@ -457,14 +457,15 @@ mod tests {
 		.unwrap();
 
 		// Create another table
-		let schema = CatalogStore::get_schema(&mut txn, table1.schema)
-			.unwrap();
+		let namespace =
+			CatalogStore::get_namespace(&mut txn, table1.namespace)
+				.unwrap();
 		let table2 = CatalogStore::create_table(
 			&mut txn,
 			crate::table::TableToCreate {
 				fragment: None,
 				table: "test_table2".to_string(),
-				schema: schema.id,
+				namespace: namespace.id,
 				columns: vec![],
 			},
 		)
@@ -476,7 +477,7 @@ mod tests {
 			table2.id,
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: table2.id,
 				table_name: "test_table2",
 				column: "id".to_string(),

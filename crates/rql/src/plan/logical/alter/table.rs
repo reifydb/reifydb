@@ -59,7 +59,7 @@ impl Compiler {
                             AlterIndexColumn {
                                 column: ColumnIdentifier {
                                     source: ColumnSource::Source {
-                                        schema: table.schema.clone(),
+                                        namespace: table.namespace.clone(),
                                         source: table.name.clone(),
                                     },
                                     name: col.column.name,

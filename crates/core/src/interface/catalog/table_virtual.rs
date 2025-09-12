@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{ColumnDef, SchemaId};
+use crate::interface::{ColumnDef, NamespaceId};
 
 /// Unique identifier for a virtual table type
 #[derive(
@@ -37,8 +37,8 @@ impl From<TableVirtualId> for u64 {
 pub struct TableVirtualDef {
 	/// Virtual table identifier
 	pub id: TableVirtualId,
-	/// Schema this virtual table belongs to
-	pub schema: SchemaId,
+	/// Namespace this virtual table belongs to
+	pub namespace: NamespaceId,
 	/// Name of the virtual table
 	pub name: String,
 	/// Column definitions

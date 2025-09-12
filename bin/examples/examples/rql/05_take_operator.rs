@@ -47,7 +47,7 @@ take 3"#,
 	}
 
 	// Set up table data for more examples
-	db.command_as_root("create schema demo", Params::None).unwrap();
+	db.command_as_root("create namespace demo", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table demo.events {

@@ -19,14 +19,15 @@ fn main() {
 	db.start().unwrap();
 	log_info!("✓ Database created and started\n");
 
-	// Create a schema
-	log_info!("Creating schema 'app'...");
-	let result =
-		db.command_as_root("create schema app", Params::None).unwrap();
+	// Create a namespace
+	log_info!("Creating namespace 'app'...");
+	let result = db
+		.command_as_root("create namespace app", Params::None)
+		.unwrap();
 	for frame in result {
 		log_info!("{}", frame);
 	}
-	log_info!("✓ Schema created\n");
+	log_info!("✓ Namespace created\n");
 
 	// Create a table
 	log_info!("Creating table 'users'...");

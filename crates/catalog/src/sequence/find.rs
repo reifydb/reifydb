@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		EncodableKey, QueryTransaction, SchemaId, SequenceId,
+		EncodableKey, NamespaceId, QueryTransaction, SequenceId,
 		SystemSequenceKey, UnversionedQueryTransaction,
 	},
 	return_internal_error,
@@ -22,30 +22,30 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		sequence_id: SequenceId,
 	) -> crate::Result<Option<Sequence>> {
-		let (schema, name) = match sequence_id {
-			crate::system::ids::sequences::SCHEMA => {
-				(SchemaId(1), "schema")
+		let (namespace, name) = match sequence_id {
+			crate::system::ids::sequences::NAMESPACE => {
+				(NamespaceId(1), "namespace")
 			}
 			crate::system::ids::sequences::SOURCE => {
-				(SchemaId(1), "source")
+				(NamespaceId(1), "source")
 			}
 			crate::system::ids::sequences::COLUMN => {
-				(SchemaId(1), "column")
+				(NamespaceId(1), "column")
 			}
 			crate::system::ids::sequences::COLUMN_POLICY => {
-				(SchemaId(1), "column_policy")
+				(NamespaceId(1), "column_policy")
 			}
 			crate::system::ids::sequences::FLOW => {
-				(SchemaId(1), "flow")
+				(NamespaceId(1), "flow")
 			}
 			crate::system::ids::sequences::FLOW_NODE => {
-				(SchemaId(1), "flow_node")
+				(NamespaceId(1), "flow_node")
 			}
 			crate::system::ids::sequences::FLOW_EDGE => {
-				(SchemaId(1), "flow_edge")
+				(NamespaceId(1), "flow_edge")
 			}
 			crate::system::ids::sequences::PRIMARY_KEY => {
-				(SchemaId(1), "primary_key")
+				(NamespaceId(1), "primary_key")
 			}
 			_ => return_internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -69,7 +69,7 @@ impl CatalogStore {
 
 		Ok(Some(Sequence {
 			id: sequence_id,
-			schema,
+			namespace,
 			name: name.to_string(),
 			value,
 		}))

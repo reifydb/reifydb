@@ -186,7 +186,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				unimplemented!()
 			}
 
-			PhysicalPlan::CreateSchema(_)
+			PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
@@ -209,7 +209,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	}
 
 	/// Compiles a physical plan and returns both the node ID and its output
-	/// schema
+	/// namespace
 	pub(crate) fn compile_plan_with_schema(
 		&mut self,
 		plan: PhysicalPlan,
@@ -219,83 +219,85 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				// The table_scan already has the table
 				// definition
 				let table = &table_scan.table;
-				let schema_def = CatalogStore::get_schema(
-					unsafe { &mut *self.txn },
-					table.schema,
-				)?;
+				let namespace_def =
+					CatalogStore::get_namespace(
+						unsafe { &mut *self.txn },
+						table.namespace,
+					)?;
 
-				let schema = FlowNodeSchema::new(
+				let namespace = FlowNodeSchema::new(
 					table.columns.clone(),
-					Some(schema_def.name.clone()),
+					Some(namespace_def.name.clone()),
 					Some(table.name.clone()),
 				);
 
 				let node_id =
 					TableScanCompiler::from(table_scan)
 						.compile(self)?;
-				Ok((node_id, schema))
+				Ok((node_id, namespace))
 			}
 			PhysicalPlan::ViewScan(view_scan) => {
 				// The view_scan already has the view definition
 				let view = &view_scan.view;
-				let schema_def = CatalogStore::get_schema(
-					unsafe { &mut *self.txn },
-					view.schema,
-				)?;
+				let namespace_def =
+					CatalogStore::get_namespace(
+						unsafe { &mut *self.txn },
+						view.namespace,
+					)?;
 
-				let schema = FlowNodeSchema::new(
+				let namespace = FlowNodeSchema::new(
 					view.columns.clone(),
-					Some(schema_def.name.clone()),
+					Some(namespace_def.name.clone()),
 					Some(view.name.clone()),
 				);
 
 				let node_id = ViewScanCompiler::from(view_scan)
 					.compile(self)?;
-				Ok((node_id, schema))
+				Ok((node_id, namespace))
 			}
 			PhysicalPlan::JoinInner(join) => {
 				// The JoinCompiler will handle compilation with
-				// schema tracking
+				// namespace tracking
 				let node_id = JoinCompiler::from(join)
 					.compile(self)?;
-				// For now return empty schema - we could
+				// For now return empty namespace - we could
 				// extract it from the flow node if needed
 				Ok((node_id, FlowNodeSchema::empty()))
 			}
 			PhysicalPlan::JoinLeft(join) => {
 				// The JoinCompiler will handle compilation with
-				// schema tracking
+				// namespace tracking
 				let node_id = JoinCompiler::from(join)
 					.compile(self)?;
-				// For now return empty schema - we could
+				// For now return empty namespace - we could
 				// extract it from the flow node if needed
 				Ok((node_id, FlowNodeSchema::empty()))
 			}
 			PhysicalPlan::Map(map) => {
 				// Map needs special handling to compute output
-				// schema
+				// namespace
 				let map_compiler = MapCompiler::from(map);
 
-				// Get input schema if there's an input
+				// Get input namespace if there's an input
 				let input_schema = if let Some(ref input) =
 					map_compiler.input
 				{
 					// We need to compile the input first to
-					// get its schema Clone the input
+					// get its namespace Clone the input
 					// since we need to use it twice
 					let input_plan = to_owned_physical_plan(
 						*input.clone(),
 					);
-					let (_, schema) = self
+					let (_, namespace) = self
 						.compile_plan_with_schema(
 							input_plan,
 						)?;
-					schema
+					namespace
 				} else {
 					FlowNodeSchema::empty()
 				};
 
-				// Compute the output schema
+				// Compute the output namespace
 				let output_schema = map_compiler
 					.compute_output_schema(&input_schema);
 
@@ -305,7 +307,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				Ok((node_id, output_schema))
 			}
 			// For other operators, compile normally and return
-			// empty schema for now
+			// empty namespace for now
 			_ => {
 				let node_id = self.compile_plan(plan)?;
 				Ok((node_id, FlowNodeSchema::empty()))

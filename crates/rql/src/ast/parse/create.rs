@@ -1,16 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use Keyword::{Create, Schema};
+use Keyword::{Create, Namespace};
 use Operator::Colon;
 use reifydb_core::interface::identifier::SourceKind;
 
 use crate::ast::{
-	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateSchema,
-	AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
-	AstDataType,
+	AstColumnToCreate, AstCreate, AstCreateDeferredView,
+	AstCreateNamespace, AstCreateSeries, AstCreateTable,
+	AstCreateTransactionalView, AstDataType,
 	identifier::{
-		MaybeQualifiedSchemaIdentifier,
+		MaybeQualifiedNamespaceIdentifier,
 		MaybeQualifiedSequenceIdentifier,
 		MaybeQualifiedSourceIdentifier,
 	},
@@ -28,8 +28,8 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate<'a>> {
 		let token = self.consume_keyword(Create)?;
 
-		if (self.consume_if(TokenKind::Keyword(Schema))?).is_some() {
-			return self.parse_schema(token);
+		if (self.consume_if(TokenKind::Keyword(Namespace))?).is_some() {
+			return self.parse_namespace(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
@@ -67,18 +67,18 @@ impl<'a> Parser<'a> {
 		unimplemented!();
 	}
 
-	fn parse_schema(
+	fn parse_namespace(
 		&mut self,
 		token: Token<'a>,
 	) -> crate::Result<AstCreate<'a>> {
 		let name_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
-		let schema = MaybeQualifiedSchemaIdentifier::new(
+		let namespace = MaybeQualifiedNamespaceIdentifier::new(
 			name_token.fragment.clone(),
 		);
-		Ok(AstCreate::Schema(AstCreateSchema {
+		Ok(AstCreate::Namespace(AstCreateNamespace {
 			token,
-			schema,
+			namespace,
 		}))
 	}
 
@@ -94,7 +94,7 @@ impl<'a> Parser<'a> {
 		let sequence = MaybeQualifiedSequenceIdentifier::new(
 			name_token.fragment.clone(),
 		)
-		.with_schema(schema_token.fragment.clone());
+		.with_namespace(schema_token.fragment.clone());
 
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
@@ -115,7 +115,7 @@ impl<'a> Parser<'a> {
 		let view = MaybeQualifiedSourceIdentifier::new(
 			name_token.fragment.clone(),
 		)
-		.with_schema(schema_token.fragment.clone())
+		.with_namespace(schema_token.fragment.clone())
 		.with_kind(SourceKind::DeferredView);
 
 		// Parse optional AS clause
@@ -177,7 +177,7 @@ impl<'a> Parser<'a> {
 		let view = MaybeQualifiedSourceIdentifier::new(
 			name_token.fragment.clone(),
 		)
-		.with_schema(schema_token.fragment.clone())
+		.with_namespace(schema_token.fragment.clone())
 		.with_kind(SourceKind::TransactionalView);
 
 		// Parse optional AS clause
@@ -238,7 +238,7 @@ impl<'a> Parser<'a> {
 		let table = MaybeQualifiedSourceIdentifier::new(
 			name_token.fragment.clone(),
 		)
-		.with_schema(schema_token.fragment.clone())
+		.with_namespace(schema_token.fragment.clone())
 		.with_kind(SourceKind::Table);
 
 		Ok(AstCreate::Table(AstCreateTable {
@@ -340,14 +340,14 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstCreate, AstCreateDeferredView, AstCreateSchema,
+		AstCreate, AstCreateDeferredView, AstCreateNamespace,
 		AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
 		AstDataType, AstPolicyKind, parse::Parser, tokenize,
 	};
 
 	#[test]
-	fn test_create_schema() {
-		let tokens = tokenize("CREATE SCHEMA REIFYDB").unwrap();
+	fn test_create_namespace() {
+		let tokens = tokenize("CREATE NAMESPACE REIFYDB").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -356,11 +356,11 @@ mod tests {
 		let create = result.first_unchecked().as_create();
 
 		match create {
-			AstCreate::Schema(AstCreateSchema {
-				schema,
+			AstCreate::Namespace(AstCreateNamespace {
+				namespace,
 				..
 			}) => {
-				assert_eq!(schema.name.text(), "REIFYDB");
+				assert_eq!(namespace.name.text(), "REIFYDB");
 			}
 			_ => unreachable!(),
 		}
@@ -388,7 +388,7 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(
-					sequence.schema
+					sequence.namespace
 						.as_ref()
 						.unwrap()
 						.text(),
@@ -433,7 +433,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(
-					table.schema.as_ref().unwrap().text(),
+					table.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(table.name.text(), "users");
@@ -521,7 +524,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(
-					table.schema.as_ref().unwrap().text(),
+					table.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(table.name.text(), "items");
@@ -580,7 +586,10 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(
-					table.schema.as_ref().unwrap().text(),
+					table.namespace
+						.as_ref()
+						.unwrap()
+						.text(),
 					"test"
 				);
 				assert_eq!(table.name.text(), "users");
@@ -647,7 +656,7 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(
-					view.schema.as_ref().unwrap().text(),
+					view.namespace.as_ref().unwrap().text(),
 					"test"
 				);
 				assert_eq!(view.name.text(), "views");
@@ -707,7 +716,7 @@ mod tests {
 				},
 			) => {
 				assert_eq!(
-					view.schema.as_ref().unwrap().text(),
+					view.namespace.as_ref().unwrap().text(),
 					"test"
 				);
 				assert_eq!(view.name.text(), "myview");
@@ -781,7 +790,7 @@ mod tests {
 				},
 			) => {
 				assert_eq!(
-					view.schema.as_ref().unwrap().text(),
+					view.namespace.as_ref().unwrap().text(),
 					"test"
 				);
 				assert_eq!(view.name.text(), "myview");

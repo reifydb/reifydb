@@ -103,25 +103,25 @@ impl From<Column> for FrameColumn {
 	fn from(value: Column) -> Self {
 		match value {
 			Column::FullyQualified(col) => FrameColumn {
-				schema: Some(col.schema),
+				namespace: Some(col.namespace),
 				store: Some(col.source),
 				name: col.name,
 				data: col.data.into(),
 			},
 			Column::SourceQualified(col) => FrameColumn {
-				schema: None,
+				namespace: None,
 				store: Some(col.source),
 				name: col.name,
 				data: col.data.into(),
 			},
 			Column::ColumnQualified(col) => FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: col.name,
 				data: col.data.into(),
 			},
 			Column::Unqualified(col) => FrameColumn {
-				schema: None,
+				namespace: None,
 				store: None,
 				name: col.name,
 				data: col.data.into(),

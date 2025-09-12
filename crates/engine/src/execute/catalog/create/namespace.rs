@@ -2,30 +2,32 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{
-	CatalogSchemaCommandOperations, CatalogSchemaQueryOperations,
-	schema::SchemaToCreate,
+	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations,
+	namespace::NamespaceToCreate,
 };
 use reifydb_core::{interface::Transaction, value::columnar::Columns};
-use reifydb_rql::plan::physical::CreateSchemaPlan;
+use reifydb_rql::plan::physical::CreateNamespacePlan;
 use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_schema<T: Transaction>(
+	pub(crate) fn create_namespace<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: CreateSchemaPlan,
+		plan: CreateNamespacePlan,
 	) -> crate::Result<Columns> {
-		// Check if schema already exists using the transaction's
+		// Check if namespace already exists using the transaction's
 		// catalog operations
-		if let Some(_) = txn.find_schema_by_name(plan.schema.text())? {
+		if let Some(_) =
+			txn.find_namespace_by_name(plan.namespace.text())?
+		{
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					(
-						"schema",
+						"namespace",
 						Value::Utf8(
-							plan.schema
+							plan.namespace
 								.text()
 								.to_string(),
 						),
@@ -33,17 +35,20 @@ impl Executor {
 					("created", Value::Boolean(false)),
 				]));
 			}
-			// The error will be returned by create_schema if the
-			// schema exists
+			// The error will be returned by create_namespace if the
+			// namespace exists
 		}
 
-		let result = txn.create_schema(SchemaToCreate {
-			schema_fragment: Some(plan.schema.clone().into_owned()),
-			name: plan.schema.text().to_string(),
+		let result = txn.create_namespace(NamespaceToCreate {
+			namespace_fragment: Some(plan
+				.namespace
+				.clone()
+				.into_owned()),
+			name: plan.namespace.text().to_string(),
 		})?;
 
 		Ok(Columns::single_row([
-			("schema", Value::Utf8(result.name)),
+			("namespace", Value::Utf8(result.name)),
 			("created", Value::Boolean(true)),
 		]))
 	}
@@ -52,7 +57,7 @@ impl Executor {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::Params;
-	use reifydb_rql::plan::physical::{CreateSchemaPlan, PhysicalPlan};
+	use reifydb_rql::plan::physical::{CreateNamespacePlan, PhysicalPlan};
 	use reifydb_type::{Fragment, Value};
 
 	use crate::{
@@ -60,11 +65,11 @@ mod tests {
 	};
 
 	#[test]
-	fn test_create_schema() {
+	fn test_create_namespace() {
 		let mut txn = create_test_command_transaction();
 
-		let mut plan = CreateSchemaPlan {
-			schema: Fragment::owned_internal("my_schema"),
+		let mut plan = CreateNamespacePlan {
+			namespace: Fragment::owned_internal("my_schema"),
 			if_not_exists: false,
 		};
 
@@ -72,7 +77,7 @@ mod tests {
 		let result = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
-				PhysicalPlan::CreateSchema(plan.clone()),
+				PhysicalPlan::CreateNamespace(plan.clone()),
 				Params::default(),
 			)
 			.unwrap();
@@ -82,13 +87,13 @@ mod tests {
 		);
 		assert_eq!(result.row(0)[1], Value::Boolean(true));
 
-		// Creating the same schema again with `if_not_exists = true`
+		// Creating the same namespace again with `if_not_exists = true`
 		// should not error
 		plan.if_not_exists = true;
 		let result = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
-				PhysicalPlan::CreateSchema(plan.clone()),
+				PhysicalPlan::CreateNamespace(plan.clone()),
 				Params::default(),
 			)
 			.unwrap();
@@ -98,13 +103,13 @@ mod tests {
 		);
 		assert_eq!(result.row(0)[1], Value::Boolean(false));
 
-		// Creating the same schema again with `if_not_exists = false`
-		// should return error
+		// Creating the same namespace again with `if_not_exists =
+		// false` should return error
 		plan.if_not_exists = false;
 		let err = Executor::testing()
 			.execute_command_plan(
 				&mut txn,
-				PhysicalPlan::CreateSchema(plan),
+				PhysicalPlan::CreateNamespace(plan),
 				Params::default(),
 			)
 			.unwrap_err();

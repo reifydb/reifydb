@@ -67,7 +67,7 @@ impl<T: CommandTransaction> Operator<T> for MapOperator {
 					before,
 				} => {
 					// For removes, we might need to project
-					// to maintain schema consistency
+					// to maintain namespace consistency
 					let projected_columns = self
 						.project(evaluator, &before)?;
 					output.push(FlowDiff::Remove {

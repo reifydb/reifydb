@@ -85,7 +85,7 @@ fn render_physical_plan_inner(
 	match plan {
 		PhysicalPlan::CreateDeferredView(_) => unimplemented!(),
 		PhysicalPlan::CreateTransactionalView(_) => unimplemented!(),
-		PhysicalPlan::CreateSchema(_) => unimplemented!(),
+		PhysicalPlan::CreateNamespace(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::AlterSequence(physical::AlterSequencePlan {
 			sequence,
@@ -94,7 +94,7 @@ fn render_physical_plan_inner(
 		}) => {
 			let label = format!(
 				"AlterSequence {}.{}.{} SET VALUE {}",
-				sequence.schema.text(),
+				sequence.namespace.text(),
 				sequence.name.text(),
 				column.name.text(),
 				value
@@ -387,35 +387,35 @@ fn render_physical_plan_inner(
 		}
 
 		PhysicalPlan::IndexScan(physical::IndexScanNode {
-			schema,
+			namespace,
 			table,
 			index_name,
 		}) => {
 			let label = format!(
 				"IndexScan {}.{}::{}",
-				schema.name, table.name, index_name
+				namespace.name, table.name, index_name
 			);
 			write_node_header(output, prefix, is_last, &label);
 		}
 
 		PhysicalPlan::TableScan(physical::TableScanNode {
-			schema,
+			namespace,
 			table,
 		}) => {
 			let label = format!(
 				"TableScan {}.{}",
-				schema.name, table.name
+				namespace.name, table.name
 			);
 			write_node_header(output, prefix, is_last, &label);
 		}
 
 		PhysicalPlan::ViewScan(physical::ViewScanNode {
-			schema,
+			namespace,
 			view,
 		}) => {
 			let label = format!(
 				"ViewScan {}.{}",
-				schema.name, view.name
+				namespace.name, view.name
 			);
 			write_node_header(output, prefix, is_last, &label);
 		}
@@ -495,14 +495,14 @@ fn render_physical_plan_inner(
 		}
 		PhysicalPlan::TableVirtualScan(
 			physical::TableVirtualScanNode {
-				schema,
+				namespace,
 				table,
 				..
 			},
 		) => {
 			let label = format!(
 				"VirtualScan: {}.{}",
-				schema.name, table.name
+				namespace.name, table.name
 			);
 			write_node_header(output, prefix, is_last, &label);
 		}

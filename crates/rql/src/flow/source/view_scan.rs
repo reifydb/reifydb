@@ -29,22 +29,22 @@ impl<T: CommandTransaction> CompileOperator<T> for ViewScanCompiler {
 		let view = self.view_scan.view;
 		let view_name = view.name.clone();
 
-		// Get schema information
-		let schema_def = CatalogStore::get_schema(
+		// Get namespace information
+		let namespace_def = CatalogStore::get_namespace(
 			unsafe { &mut *compiler.txn },
-			view.schema,
+			view.namespace,
 		)?;
 
-		let schema = FlowNodeSchema::new(
+		let namespace = FlowNodeSchema::new(
 			view.columns.clone(),
-			Some(schema_def.name.clone()),
+			Some(namespace_def.name.clone()),
 			Some(view.name.clone()),
 		);
 
 		compiler.build_node(FlowNodeType::SourceView {
 			name: view_name,
 			view: view.id,
-			schema,
+			namespace,
 		})
 		.build()
 	}

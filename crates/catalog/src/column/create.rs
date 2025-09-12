@@ -40,7 +40,7 @@ use crate::{
 
 pub struct ColumnToCreate<'a> {
 	pub fragment: Option<OwnedFragment>,
-	pub schema_name: &'a str,
+	pub namespace_name: &'a str,
 	pub table: TableId,
 	pub table_name: &'a str,
 	pub column: String,
@@ -67,7 +67,7 @@ impl CatalogStore {
 		)? {
 			return_error!(table_column_already_exists(
 				None::<OwnedFragment>,
-				column_to_create.schema_name,
+				column_to_create.namespace_name,
 				column_to_create.table_name,
 				&column.name,
 			));
@@ -191,7 +191,7 @@ mod test {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
@@ -211,7 +211,7 @@ mod test {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_2".to_string(),
@@ -255,7 +255,7 @@ mod test {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "id".to_string(),
@@ -291,7 +291,7 @@ mod test {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "name".to_string(),
@@ -318,7 +318,7 @@ mod test {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "is_active".to_string(),
@@ -341,7 +341,7 @@ mod test {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "price".to_string(),
@@ -369,7 +369,7 @@ mod test {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
@@ -390,7 +390,7 @@ mod test {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),

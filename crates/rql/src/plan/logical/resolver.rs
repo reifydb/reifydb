@@ -8,7 +8,7 @@ use reifydb_core::{
 	Result,
 	interface::identifier::{
 		ColumnIdentifier, ColumnSource, FunctionIdentifier,
-		IndexIdentifier, SchemaIdentifier, SequenceIdentifier,
+		IndexIdentifier, NamespaceIdentifier, SequenceIdentifier,
 		SourceIdentifier, SourceKind,
 	},
 };
@@ -18,7 +18,8 @@ use crate::{
 	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedColumnSource,
 		MaybeQualifiedFunctionIdentifier,
-		MaybeQualifiedIndexIdentifier, MaybeQualifiedSchemaIdentifier,
+		MaybeQualifiedIndexIdentifier,
+		MaybeQualifiedNamespaceIdentifier,
 		MaybeQualifiedSequenceIdentifier,
 		MaybeQualifiedSourceIdentifier,
 	},
@@ -27,7 +28,7 @@ use crate::{
 
 /// Context for resolving identifiers during logical planning
 pub struct IdentifierResolver<'t, T: CatalogQueryTransaction> {
-	default_schema: &'static str,
+	default_namespace: &'static str,
 	source_aliases: RefCell<HashMap<String, SourceIdentifier<'static>>>,
 	available_columns:
 		RefCell<HashMap<(String, String), ColumnIdentifier<'static>>>,
@@ -37,19 +38,19 @@ pub struct IdentifierResolver<'t, T: CatalogQueryTransaction> {
 impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 	pub fn new(
 		transaction: &'t mut T,
-		default_schema: &'static str,
+		default_namespace: &'static str,
 	) -> Self {
 		Self {
-			default_schema,
+			default_namespace,
 			source_aliases: RefCell::new(HashMap::new()),
 			available_columns: RefCell::new(HashMap::new()),
 			transaction,
 		}
 	}
 
-	/// Get the default schema
-	pub fn default_schema(&self) -> &'static str {
-		self.default_schema
+	/// Get the default namespace
+	pub fn default_namespace(&self) -> &'static str {
+		self.default_namespace
 	}
 
 	/// Register an alias for a source
@@ -67,30 +68,32 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		self.available_columns.borrow_mut().clear();
 	}
 
-	/// Resolve a schema identifier
+	/// Resolve a namespace identifier
 	pub fn resolve_schema(
 		&mut self,
-		schema: &SchemaIdentifier<'_>,
-	) -> Result<SchemaIdentifier<'static>> {
-		let schema_name = schema.name.text();
+		namespace: &NamespaceIdentifier<'_>,
+	) -> Result<NamespaceIdentifier<'static>> {
+		let namespace_name = namespace.name.text();
 
-		// Validate schema exists
-		self.transaction.get_schema_by_name(schema_name)?;
+		// Validate namespace exists
+		self.transaction.get_namespace_by_name(namespace_name)?;
 
-		Ok(SchemaIdentifier {
-			name: Fragment::Owned(schema.name.clone().into_owned()),
+		Ok(NamespaceIdentifier {
+			name: Fragment::Owned(
+				namespace.name.clone().into_owned(),
+			),
 		})
 	}
 
-	/// Convert and resolve a maybe-qualified schema to fully qualified
+	/// Convert and resolve a maybe-qualified namespace to fully qualified
 	pub fn resolve_maybe_schema<'a>(
 		&mut self,
-		schema: &MaybeQualifiedSchemaIdentifier<'a>,
-	) -> Result<SchemaIdentifier<'static>> {
-		let schema_id = SchemaIdentifier {
-			name: schema.name.clone(),
+		namespace: &MaybeQualifiedNamespaceIdentifier<'a>,
+	) -> Result<NamespaceIdentifier<'static>> {
+		let namespace_id = NamespaceIdentifier {
+			name: namespace.name.clone(),
 		};
-		self.resolve_schema(&schema_id)
+		self.resolve_schema(&namespace_id)
 	}
 
 	/// Resolve a source identifier to fully qualified form
@@ -98,14 +101,15 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		&mut self,
 		source: &SourceIdentifier<'_>,
 	) -> Result<SourceIdentifier<'static>> {
-		// Validate the schema exists (schema is always present in fully
-		// qualified identifiers)
-		let schema_name = source.schema.text();
+		// Validate the namespace exists (namespace is always present in
+		// fully qualified identifiers)
+		let namespace_name = source.namespace.text();
 
-		let _schema = self.transaction.get_schema_by_name(schema_name);
+		let _schema =
+			self.transaction.get_namespace_by_name(namespace_name);
 
 		let resolved_schema =
-			Fragment::Owned(source.schema.clone().into_owned());
+			Fragment::Owned(source.namespace.clone().into_owned());
 
 		// Determine source type from catalog
 		let source_kind = self.determine_source_kind(
@@ -143,20 +147,23 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		source: &MaybeQualifiedSourceIdentifier<'a>,
 		validate_existence: bool,
 	) -> Result<SourceIdentifier<'static>> {
-		// Determine schema to use
-		let resolved_schema = match &source.schema {
-			Some(schema) => {
-				// User provided explicit schema - validate it
-				// exists
-				self.transaction.get_schema_by_name(schema)?;
-				Fragment::Owned(schema.clone().into_owned())
+		// Determine namespace to use
+		let resolved_schema = match &source.namespace {
+			Some(namespace) => {
+				// User provided explicit namespace - validate
+				// it exists
+				self.transaction
+					.get_namespace_by_name(namespace)?;
+				Fragment::Owned(namespace.clone().into_owned())
 			}
 			None => {
-				// No schema provided - use default schema
+				// No namespace provided - use default namespace
 				// Use Internal fragment type to indicate this
 				// was injected
 				Fragment::Owned(OwnedFragment::Internal {
-					text: self.default_schema.to_string(),
+					text: self
+						.default_namespace
+						.to_string(),
 				})
 			}
 		};
@@ -191,22 +198,22 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 	) -> Result<ColumnIdentifier<'static>> {
 		let resolved_source = match &column.source {
 			ColumnSource::Source {
-				schema,
+				namespace,
 				source,
 			} => {
 				// Column is already fully qualified - just
 				// validate it exists
-				let schema_name = schema.text();
+				let namespace_name = namespace.text();
 
 				// Validate source exists
 				self.validate_source_exists(
-					Some(schema_name),
+					Some(namespace_name),
 					source.text(),
 				)?;
 
 				ColumnSource::Source {
-					schema: Fragment::Owned(
-						schema.clone().into_owned(),
+					namespace: Fragment::Owned(
+						namespace.clone().into_owned(),
 					),
 					source: Fragment::Owned(
 						source.clone().into_owned(),
@@ -250,26 +257,26 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 	) -> Result<ColumnIdentifier<'static>> {
 		let resolved_source = match &column.source {
 			MaybeQualifiedColumnSource::Source {
-				schema,
+				namespace,
 				source,
 			} => {
 				// Column qualified by source name
-				let resolved_schema = match schema {
+				let resolved_schema = match namespace {
 					Some(s) => {
-						// Validate schema exists
-						let schema_name = s.text();
+						// Validate namespace exists
+						let namespace_name = s.text();
 						self.transaction
-							.get_schema_by_name(
-								schema_name,
+							.get_namespace_by_name(
+								namespace_name,
 							)?;
 						Fragment::Owned(
 							s.clone().into_owned(),
 						)
 					}
 					None => {
-						// Inject default schema
+						// Inject default namespace
 						Fragment::Owned(OwnedFragment::Internal {
-                            text: self.default_schema.to_string(),
+                            text: self.default_namespace.to_string(),
                         })
 					}
 				};
@@ -281,7 +288,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				)?;
 
 				ColumnSource::Source {
-					schema: resolved_schema,
+					namespace: resolved_schema,
 					source: Fragment::Owned(
 						source.clone().into_owned(),
 					),
@@ -344,8 +351,8 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 								.next()
 								.unwrap();
 						ColumnSource::Source {
-							schema: source_id
-								.schema,
+							namespace: source_id
+								.namespace,
 							source: source_id.name,
 						}
 					}
@@ -429,22 +436,22 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		seq: &SequenceIdentifier<'_>,
 	) -> Result<SequenceIdentifier<'static>> {
 		// Validate sequence exists
-		let schema_name = seq.schema.text();
+		let namespace_name = seq.namespace.text();
 		let seq_name = seq.name.text();
 
 		// TODO: Add sequence validation once CatalogQueryTransaction
 		// supports it
 		if false {
 			return Err(IdentifierError::SequenceNotFound {
-				schema: schema_name.to_string(),
+				namespace: namespace_name.to_string(),
 				name: seq_name.to_string(),
 			}
 			.into());
 		}
 
 		Ok(SequenceIdentifier {
-			schema: Fragment::Owned(
-				seq.schema.clone().into_owned(),
+			namespace: Fragment::Owned(
+				seq.namespace.clone().into_owned(),
 			),
 			name: Fragment::Owned(seq.name.clone().into_owned()),
 		})
@@ -455,25 +462,26 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		&mut self,
 		seq: &MaybeQualifiedSequenceIdentifier<'a>,
 	) -> Result<SequenceIdentifier<'static>> {
-		// Determine schema to use
-		let resolved_schema = match &seq.schema {
-			Some(schema) => {
-				// Validate schema exists
-				self.transaction.get_schema_by_name(schema)?;
-				Fragment::Owned(schema.clone().into_owned())
+		// Determine namespace to use
+		let resolved_schema = match &seq.namespace {
+			Some(namespace) => {
+				// Validate namespace exists
+				self.transaction
+					.get_namespace_by_name(namespace)?;
+				Fragment::Owned(namespace.clone().into_owned())
 			}
 			None => {
-				// Inject default schema
-				let default_schema = self.default_schema;
+				// Inject default namespace
+				let default_namespace = self.default_namespace;
 				Fragment::Owned(OwnedFragment::Internal {
-					text: default_schema.to_string(),
+					text: default_namespace.to_string(),
 				})
 			}
 		};
 
 		// Create fully qualified sequence identifier
 		let full_seq = SequenceIdentifier {
-			schema: resolved_schema,
+			namespace: resolved_schema,
 			name: Fragment::Owned(seq.name.clone().into_owned()),
 		};
 		self.resolve_sequence(&full_seq)
@@ -485,7 +493,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		idx: &IndexIdentifier<'_>,
 	) -> Result<IndexIdentifier<'static>> {
 		// Validate index exists
-		let schema_name = idx.schema.text();
+		let namespace_name = idx.namespace.text();
 		let table_name = idx.table.text();
 		let index_name = idx.name.text();
 
@@ -493,7 +501,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		// supports it
 		if false {
 			return Err(IdentifierError::IndexNotFound {
-				schema: schema_name.to_string(),
+				namespace: namespace_name.to_string(),
 				table: table_name.to_string(),
 				name: index_name.to_string(),
 			}
@@ -501,8 +509,8 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		}
 
 		Ok(IndexIdentifier {
-			schema: Fragment::Owned(
-				idx.schema.clone().into_owned(),
+			namespace: Fragment::Owned(
+				idx.namespace.clone().into_owned(),
 			),
 			table: Fragment::Owned(idx.table.clone().into_owned()),
 			name: Fragment::Owned(idx.name.clone().into_owned()),
@@ -514,24 +522,25 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		&mut self,
 		idx: &MaybeQualifiedIndexIdentifier<'a>,
 	) -> Result<IndexIdentifier<'static>> {
-		// Determine schema to use
-		let resolved_schema = match &idx.schema {
-			Some(schema) => {
-				self.transaction.get_schema_by_name(schema)?;
-				Fragment::Owned(schema.clone().into_owned())
+		// Determine namespace to use
+		let resolved_schema = match &idx.namespace {
+			Some(namespace) => {
+				self.transaction
+					.get_namespace_by_name(namespace)?;
+				Fragment::Owned(namespace.clone().into_owned())
 			}
 			None => {
-				// Inject default schema
-				let default_schema = self.default_schema;
+				// Inject default namespace
+				let default_namespace = self.default_namespace;
 				Fragment::Owned(OwnedFragment::Internal {
-					text: default_schema.to_string(),
+					text: default_namespace.to_string(),
 				})
 			}
 		};
 
 		// Create fully qualified index identifier
 		let full_idx = IndexIdentifier {
-			schema: resolved_schema,
+			namespace: resolved_schema,
 			table: Fragment::Owned(idx.table.clone().into_owned()),
 			name: Fragment::Owned(idx.name.clone().into_owned()),
 		};
@@ -542,30 +551,32 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 
 	fn determine_source_kind<'a>(
 		&mut self,
-		schema: Option<&str>,
+		namespace: Option<&str>,
 		name: impl IntoFragment<'a>,
 	) -> Result<SourceKind> {
-		let default_schema = self.default_schema;
-		let schema = schema.unwrap_or_else(|| &*default_schema);
+		let default_namespace = self.default_namespace;
+		let namespace =
+			namespace.unwrap_or_else(|| &*default_namespace);
 
 		// Check catalog for source type
-		// First, get the schema ID
-		let schema = self.transaction.get_schema_by_name(schema)?;
-		// let source = self.transaction.get_source_by_name(schema.id,
-		// name)?;
+		// First, get the namespace ID
+		let namespace =
+			self.transaction.get_namespace_by_name(namespace)?;
+		// let source =
+		// self.transaction.get_source_by_name(namespace.id, name)?;
 
 		let name = name.into_fragment();
 
 		// FIXME todo
 		if self.transaction
-			.find_table_by_name(schema.id, name.text())?
+			.find_table_by_name(namespace.id, name.text())?
 			.is_some()
 		{
 			return Ok(SourceKind::Table);
 		}
 
 		if self.transaction
-			.find_view_by_name(schema.id, name.text())?
+			.find_view_by_name(namespace.id, name.text())?
 			.is_some()
 		{
 			return Ok(SourceKind::View);
@@ -584,18 +595,18 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 	#[allow(dead_code)]
 	fn resolve_schema_fragment(
 		&mut self,
-		schema: &Option<Fragment<'_>>,
+		namespace: &Option<Fragment<'_>>,
 	) -> Result<Option<Fragment<'static>>> {
-		Ok(match schema {
+		Ok(match namespace {
 			Some(s) => {
-				self.transaction.get_schema_by_name(s)?;
+				self.transaction.get_namespace_by_name(s)?;
 				Some(Fragment::Owned(s.clone().into_owned()))
 			}
 			None => {
-				// Inject default schema if available
-				let default_schema = self.default_schema;
+				// Inject default namespace if available
+				let default_namespace = self.default_namespace;
 				Some(Fragment::Owned(OwnedFragment::Internal {
-					text: default_schema.to_string(),
+					text: default_namespace.to_string(),
 				}))
 			}
 		})
@@ -603,11 +614,11 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 
 	fn validate_source_exists(
 		&mut self,
-		schema: Option<&str>,
+		namespace: Option<&str>,
 		name: &str,
 	) -> Result<()> {
 		// Validate source exists using determine_source_kind
-		self.determine_source_kind(schema, name)?;
+		self.determine_source_kind(namespace, name)?;
 		Ok(())
 	}
 
@@ -635,7 +646,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		source: &SourceIdentifier<'static>,
 		_column_name: &str,
 	) -> bool {
-		let _schema = source.schema.text();
+		let _schema = source.namespace.text();
 		let _source_name = source.name.text();
 
 		match source.kind {
@@ -668,7 +679,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		&mut self,
 		source: &SourceIdentifier<'static>,
 	) -> Result<()> {
-		let _schema = source.schema.text();
+		let _schema = source.namespace.text();
 		let _source_name = source.name.text();
 		let effective_name = source.effective_name();
 
@@ -700,7 +711,9 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 					)
 				} else {
 					ColumnSource::Source {
-						schema: source.schema.clone(),
+						namespace: source
+							.namespace
+							.clone(),
 						source: source.name.clone(),
 					}
 				},

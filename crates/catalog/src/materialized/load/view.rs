@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	PrimaryKeyDef, PrimaryKeyId, SchemaId, Versioned,
+	NamespaceId, PrimaryKeyDef, PrimaryKeyId, Versioned,
 	VersionedQueryTransaction, ViewDef, ViewId, ViewKey, ViewKind,
 };
 
@@ -40,7 +40,8 @@ fn convert_view(
 ) -> ViewDef {
 	let row = versioned.row;
 	let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
-	let schema = SchemaId(view::LAYOUT.get_u64(&row, view::SCHEMA));
+	let namespace =
+		NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
 	let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
 
 	let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
@@ -52,7 +53,7 @@ fn convert_view(
 	ViewDef {
 		id,
 		name,
-		schema,
+		namespace,
 		kind,
 		columns: vec![],
 		primary_key,

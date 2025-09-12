@@ -21,27 +21,31 @@ impl Executor {
 		plan: AlterViewPlan,
 	) -> crate::Result<Columns> {
 		// View is already fully qualified
-		let schema_name = plan.node.view.schema.text();
+		let namespace_name = plan.node.view.namespace.text();
 		let view_name = plan.node.view.name.text();
 
-		// Find the schema
-		let Some(schema) =
-			CatalogStore::find_schema_by_name(txn, schema_name)?
+		// Find the namespace
+		let Some(namespace) = CatalogStore::find_namespace_by_name(
+			txn,
+			namespace_name,
+		)?
 		else {
-			return_error!(reifydb_core::diagnostic::catalog::schema_not_found(
-				Some(plan.node.view.schema.clone().into_owned()),
-				schema_name,
+			return_error!(reifydb_core::diagnostic::catalog::namespace_not_found(
+				Some(plan.node.view.namespace.clone().into_owned()),
+				namespace_name,
 			));
 		};
 
 		// Find the view
 		let Some(view) = CatalogStore::find_view_by_name(
-			txn, schema.id, view_name,
+			txn,
+			namespace.id,
+			view_name,
 		)?
 		else {
 			return_error!(reifydb_core::diagnostic::catalog::view_not_found(
 				plan.node.view.name.clone().into_owned(),
-				&schema.name,
+				&namespace.name,
 				view_name,
 			));
 		};
@@ -104,7 +108,7 @@ impl Executor {
 
 					results.push([
 						("operation", Value::Utf8("CREATE PRIMARY KEY".to_string())),
-						("schema", Value::Utf8(schema.name.clone())),
+						("namespace", Value::Utf8(namespace.name.clone())),
 						("view", Value::Utf8(view.name.clone())),
 						("primary_key", Value::Utf8(pk_name)),
 					]);
@@ -126,7 +130,7 @@ impl Executor {
 						"NO OPERATIONS".to_string(),
 					),
 				),
-				("schema", Value::Utf8(schema.name)),
+				("namespace", Value::Utf8(namespace.name)),
 				("view", Value::Utf8(view.name)),
 			]))
 		} else if results.len() == 1 {
@@ -136,8 +140,12 @@ impl Executor {
 		} else {
 			// For multiple results, we need to create proper column
 			// structure
-			let column_names =
-				&["operation", "schema", "view", "primary_key"];
+			let column_names = &[
+				"operation",
+				"namespace",
+				"view",
+				"primary_key",
+			];
 			let rows: Vec<Vec<Value>> = results
 				.into_iter()
 				.map(|row| {

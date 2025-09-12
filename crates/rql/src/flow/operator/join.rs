@@ -51,7 +51,7 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		// Compile with schema tracking
+		// Compile with namespace tracking
 		let (left_node, left_schema) =
 			compiler.compile_plan_with_schema(*self.left)?;
 		let (right_node, right_schema) =
@@ -60,7 +60,7 @@ impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 		// Extract left and right keys from the join conditions
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
 
-		// Merge schemas for output
+		// Merge namespaces for output
 		let output_schema =
 			FlowNodeSchema::merge(&left_schema, &right_schema);
 

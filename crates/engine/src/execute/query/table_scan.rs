@@ -49,7 +49,7 @@ impl<T: Transaction> TableScanNode<T> {
 				.columns
 				.iter()
 				.map(|col| ColumnLayout {
-					schema: None,
+					namespace: None,
 					source: None,
 					name: col.name.clone(),
 				})

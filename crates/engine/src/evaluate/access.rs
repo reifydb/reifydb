@@ -42,12 +42,12 @@ impl StandardEvaluator {
 			match col {
 				Column::FullyQualified(fq) => {
 					// For fully qualified, the source might
-					// be "schema.table" We need to
+					// be "namespace.table" We need to
 					// match against either just table name
-					// or schema.table
+					// or namespace.table
 					let full_source = format!(
 						"{}.{}",
-						fq.schema, fq.source
+						fq.namespace, fq.source
 					);
 					fq.source == source
 						|| full_source == source

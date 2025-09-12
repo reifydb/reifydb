@@ -19,8 +19,8 @@ impl ColumnsLayout {
 			let column_exists =
 				self.columns.iter().any(|existing| {
 					existing.name == column.name
-						&& existing.schema
-							== column.schema && existing.source
+						&& existing.namespace
+							== column.namespace && existing.source
 						== column.source
 				});
 
@@ -46,12 +46,12 @@ mod tests {
 
 	fn create_column_layout(
 		name: &str,
-		schema: Option<&str>,
+		namespace: Option<&str>,
 		source: Option<&str>,
 	) -> ColumnLayout {
 		ColumnLayout {
 			name: name.to_string(),
-			schema: schema.map(|s| s.to_string()),
+			namespace: namespace.map(|s| s.to_string()),
 			source: source.map(|s| s.to_string()),
 		}
 	}
@@ -139,26 +139,26 @@ mod tests {
 	}
 
 	#[test]
-	fn test_extend_duplicate_with_different_schema() {
+	fn test_extend_duplicate_with_different_namespace() {
 		let base = create_layout(vec![create_column_layout(
 			"col1",
-			Some("schema1"),
+			Some("namespace1"),
 			None,
 		)]);
 		let other = create_layout(vec![
-			create_column_layout("col1", Some("schema2"), None), /* Same name, different schema */
+			create_column_layout("col1", Some("namespace2"), None), /* Same name, different namespace */
 		]);
 
-		// Should succeed because schema is different
+		// Should succeed because namespace is different
 		let result = base.extend(&other).unwrap();
 		assert_eq!(result.columns.len(), 2);
 		assert_eq!(
-			result.columns[0].schema,
-			Some("schema1".to_string())
+			result.columns[0].namespace,
+			Some("namespace1".to_string())
 		);
 		assert_eq!(
-			result.columns[1].schema,
-			Some("schema2".to_string())
+			result.columns[1].namespace,
+			Some("namespace2".to_string())
 		);
 	}
 
@@ -190,13 +190,13 @@ mod tests {
 	fn test_extend_exact_duplicate() {
 		let base = create_layout(vec![create_column_layout(
 			"col1",
-			Some("schema1"),
+			Some("namespace1"),
 			Some("table1"),
 		)]);
 		let other = create_layout(vec![
 			create_column_layout(
 				"col1",
-				Some("schema1"),
+				Some("namespace1"),
 				Some("table1"),
 			), // Exact duplicate
 		]);
@@ -213,14 +213,14 @@ mod tests {
 	fn test_extend_mixed_qualifications() {
 		let base = create_layout(vec![
 			create_column_layout("col1", None, None),
-			create_column_layout("col2", Some("schema1"), None),
+			create_column_layout("col2", Some("namespace1"), None),
 			create_column_layout("col3", None, Some("table1")),
 		]);
 		let other = create_layout(vec![
 			create_column_layout("col4", None, None),
 			create_column_layout(
 				"col5",
-				Some("schema2"),
+				Some("namespace2"),
 				Some("table2"),
 			),
 		]);
@@ -262,13 +262,13 @@ mod tests {
 	fn test_extend_preserves_original_order() {
 		let base = create_layout(vec![
 			create_column_layout("base1", None, None),
-			create_column_layout("base2", Some("schema1"), None),
+			create_column_layout("base2", Some("namespace1"), None),
 		]);
 		let other = create_layout(vec![
 			create_column_layout("other1", None, Some("table1")),
 			create_column_layout(
 				"other2",
-				Some("schema2"),
+				Some("namespace2"),
 				Some("table2"),
 			),
 		]);
@@ -321,7 +321,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_extend_none_vs_empty_string_schema() {
+	fn test_extend_none_vs_empty_string_namespace() {
 		let base = create_layout(vec![create_column_layout(
 			"col1", None, None,
 		)]);
@@ -332,7 +332,7 @@ mod tests {
 		// Should succeed because None != Some("")
 		let result = base.extend(&other).unwrap();
 		assert_eq!(result.columns.len(), 2);
-		assert_eq!(result.columns[0].schema, None);
-		assert_eq!(result.columns[1].schema, Some("".to_string()));
+		assert_eq!(result.columns[0].namespace, None);
+		assert_eq!(result.columns[1].namespace, Some("".to_string()));
 	}
 }

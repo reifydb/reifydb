@@ -7,9 +7,9 @@ use reifydb_core::interface::{TableVirtualDef, version::SystemVersion};
 
 mod column_policies;
 mod columns;
+mod namespaces;
 mod primary_key_columns;
 mod primary_keys;
-mod schemas;
 mod sequence;
 mod tables;
 mod versions;
@@ -17,9 +17,9 @@ mod views;
 
 use column_policies::column_policies;
 use columns::columns;
+use namespaces::namespaces;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
-use schemas::schemas;
 use sequence::sequences;
 use tables::tables;
 use versions::versions;
@@ -31,15 +31,15 @@ pub mod ids {
 			use reifydb_core::interface::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const SCHEMA_ID: ColumnId = ColumnId(2);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const VALUE: ColumnId = ColumnId(5);
 
 			pub const ALL: [ColumnId; 4] =
-				[ID, SCHEMA_ID, NAME, VALUE];
+				[ID, NAMESPACE_ID, NAME, VALUE];
 		}
 
-		pub mod schemas {
+		pub mod namespaces {
 			use reifydb_core::interface::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
@@ -52,25 +52,25 @@ pub mod ids {
 			use reifydb_core::interface::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const SCHEMA_ID: ColumnId = ColumnId(2);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(4);
 
 			pub const ALL: [ColumnId; 4] =
-				[ID, SCHEMA_ID, NAME, PRIMARY_KEY_ID];
+				[ID, NAMESPACE_ID, NAME, PRIMARY_KEY_ID];
 		}
 
 		pub mod views {
 			use reifydb_core::interface::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
-			pub const SCHEMA_ID: ColumnId = ColumnId(2);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const KIND: ColumnId = ColumnId(4);
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(5);
 
 			pub const ALL: [ColumnId; 5] =
-				[ID, SCHEMA_ID, NAME, KIND, PRIMARY_KEY_ID];
+				[ID, NAMESPACE_ID, NAME, KIND, PRIMARY_KEY_ID];
 		}
 
 		pub mod columns {
@@ -143,7 +143,7 @@ pub mod ids {
 	pub mod sequences {
 		use reifydb_core::interface::SequenceId;
 
-		pub const SCHEMA: SequenceId = SequenceId(1);
+		pub const NAMESPACE: SequenceId = SequenceId(1);
 		pub const SOURCE: SequenceId = SequenceId(2);
 		pub const COLUMN: SequenceId = SequenceId(3);
 		pub const COLUMN_POLICY: SequenceId = SequenceId(4);
@@ -153,7 +153,7 @@ pub mod ids {
 		pub const PRIMARY_KEY: SequenceId = SequenceId(8);
 
 		pub const ALL: [SequenceId; 8] = [
-			SCHEMA,
+			NAMESPACE,
 			SOURCE,
 			COLUMN,
 			COLUMN_POLICY,
@@ -168,7 +168,7 @@ pub mod ids {
 		use reifydb_core::interface::TableVirtualId;
 
 		pub const SEQUENCES: TableVirtualId = TableVirtualId(1);
-		pub const SCHEMAS: TableVirtualId = TableVirtualId(2);
+		pub const NAMESPACES: TableVirtualId = TableVirtualId(2);
 		pub const TABLES: TableVirtualId = TableVirtualId(3);
 		pub const VIEWS: TableVirtualId = TableVirtualId(4);
 		pub const COLUMNS: TableVirtualId = TableVirtualId(5);
@@ -180,7 +180,7 @@ pub mod ids {
 
 		pub const ALL: [TableVirtualId; 9] = [
 			SEQUENCES,
-			SCHEMAS,
+			NAMESPACES,
 			TABLES,
 			VIEWS,
 			COLUMNS,
@@ -219,9 +219,9 @@ impl SystemCatalog {
 		sequences()
 	}
 
-	/// Get the schemas virtual table definition
-	pub fn get_system_schemas_table_def() -> Arc<TableVirtualDef> {
-		schemas()
+	/// Get the namespaces virtual table definition
+	pub fn get_system_namespaces_table_def() -> Arc<TableVirtualDef> {
+		namespaces()
 	}
 
 	/// Get the tables virtual table definition

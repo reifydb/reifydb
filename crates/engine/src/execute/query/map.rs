@@ -64,7 +64,7 @@ impl<'a, T: Transaction> MapNode<'a, T> {
 		{
 			let alias_name = alias_expr.alias.name();
 
-			// Find the matching column in the table schema
+			// Find the matching column in the table namespace
 			if let Some(table_column) = table
 				.columns
 				.iter()

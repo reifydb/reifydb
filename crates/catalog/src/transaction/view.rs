@@ -4,14 +4,14 @@
 use reifydb_core::{
 	diagnostic::catalog::view_already_exists,
 	interface::{
-		CommandTransaction, SchemaId, ViewDef, ViewId, WithEventBus,
+		CommandTransaction, NamespaceId, ViewDef, ViewId, WithEventBus,
 		interceptor::{ViewDefInterceptor, WithInterceptors},
 	},
 	log_warn, return_error,
 };
 
 use crate::{
-	CatalogCommandTransactionOperations, CatalogSchemaQueryOperations,
+	CatalogCommandTransactionOperations, CatalogNamespaceQueryOperations,
 	CatalogStore, CatalogTransaction, CatalogViewCommandOperations,
 	CatalogViewQueryOperations, TransactionalChangesExt,
 	view::ViewToCreate,
@@ -21,7 +21,7 @@ impl<T> CatalogViewCommandOperations for T
 where
 	T: CommandTransaction
 		+ CatalogCommandTransactionOperations
-		+ CatalogSchemaQueryOperations
+		+ CatalogNamespaceQueryOperations
 		+ CatalogViewQueryOperations
 		+ WithInterceptors<T>
 		+ WithEventBus
@@ -31,13 +31,15 @@ where
 		&mut self,
 		to_create: ViewToCreate,
 	) -> crate::Result<ViewDef> {
-		if let Some(view) = self
-			.find_view_by_name(to_create.schema, &to_create.name)?
-		{
-			let schema = self.get_schema(to_create.schema)?;
+		if let Some(view) = self.find_view_by_name(
+			to_create.namespace,
+			&to_create.name,
+		)? {
+			let namespace =
+				self.get_namespace(to_create.namespace)?;
 			return_error!(view_already_exists(
 				to_create.fragment,
-				&schema.name,
+				&namespace.name,
 				&view.name
 			));
 		}
@@ -60,25 +62,25 @@ where
 {
 	fn find_view_by_name(
 		&mut self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
 
 		// 1. Check transactional changes first
 		if let Some(view) =
-			self.get_changes().find_view_by_name(schema, name)
+			self.get_changes().find_view_by_name(namespace, name)
 		{
 			return Ok(Some(view.clone()));
 		}
 
-		if self.get_changes().is_view_deleted_by_name(schema, name) {
+		if self.get_changes().is_view_deleted_by_name(namespace, name) {
 			return Ok(None);
 		}
 
 		// 2. Check MaterializedCatalog
 		if let Some(view) = self.catalog().find_view_by_name(
-			schema,
+			namespace,
 			name,
 			<T as CatalogTransaction>::version(self),
 		) {
@@ -87,12 +89,12 @@ where
 
 		// 3. Fall back to storage as defensive measure
 		if let Some(view) =
-			CatalogStore::find_view_by_name(self, schema, name)?
+			CatalogStore::find_view_by_name(self, namespace, name)?
 		{
 			log_warn!(
-				"View '{}' in schema {:?} found in storage but not in MaterializedCatalog",
+				"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 				name,
-				schema
+				namespace
 			);
 			return Ok(Some(view));
 		}
@@ -128,7 +130,7 @@ where
 
 	fn get_view_by_name(
 		&mut self,
-		_schema: SchemaId,
+		_namespace: NamespaceId,
 		_name: impl AsRef<str>,
 	) -> reifydb_core::Result<ViewDef> {
 		todo!()

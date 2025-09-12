@@ -211,7 +211,7 @@ impl<T: CommandTransaction> FlowEngine<T> {
 				left,
 				right,
 			} => {
-				// Extract schemas for left and right inputs
+				// Extract namespaces for left and right inputs
 				let left_schema = if input_schemas.len() > 0 {
 					input_schemas[0].clone()
 				} else {

@@ -3,7 +3,7 @@
 
 use reifydb_catalog::{
 	CatalogStore, MaterializedCatalog,
-	schema::SchemaToCreate,
+	namespace::NamespaceToCreate,
 	table::{TableColumnToCreate, TableToCreate},
 };
 use reifydb_core::{event::EventBus, interceptor::Interceptors};
@@ -74,10 +74,10 @@ pub fn create_test_command_transaction_with_internal_schema()
 		Interceptors::new(),
 	);
 
-	let schema = CatalogStore::create_schema(
+	let namespace = CatalogStore::create_namespace(
 		&mut result,
-		SchemaToCreate {
-			schema_fragment: None,
+		NamespaceToCreate {
+			namespace_fragment: None,
 			name: "reifydb".to_string(),
 		},
 	)
@@ -87,7 +87,7 @@ pub fn create_test_command_transaction_with_internal_schema()
 		&mut result,
 		TableToCreate {
 			fragment: None,
-			schema: schema.id,
+			namespace: namespace.id,
 			table: "flows".to_string(),
 			columns: vec![
 				TableColumnToCreate {

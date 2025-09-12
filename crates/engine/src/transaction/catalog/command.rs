@@ -3,22 +3,22 @@
 
 use reifydb_catalog::{
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
-	CatalogQueryTransaction, CatalogSchemaQueryOperations,
+	CatalogNamespaceQueryOperations, CatalogQueryTransaction,
 	CatalogSourceQueryOperations, CatalogTransaction, MaterializedCatalog,
 	TransactionalChangesExt,
 };
 use reifydb_core::{
 	CommitVersion,
 	diagnostic::catalog::{
-		schema_already_pending_in_transaction,
+		namespace_already_pending_in_transaction,
 		table_already_pending_in_transaction,
 		view_already_pending_in_transaction,
 	},
 	interface::{
-		Change, IntoFragment,
+		Change, IntoFragment, NamespaceDef, NamespaceId,
 		OperationType::{Create, Delete, Update},
-		SchemaDef, SchemaId, SourceDef, SourceId, TableDef,
-		Transaction, VersionedQueryTransaction, ViewDef,
+		SourceDef, SourceId, TableDef, Transaction,
+		VersionedQueryTransaction, ViewDef,
 	},
 	return_error,
 };
@@ -40,45 +40,47 @@ impl<T: Transaction> CatalogTransaction for StandardCommandTransaction<T> {
 impl<T: Transaction> CatalogCommandTransactionOperations
 	for StandardCommandTransaction<T>
 {
-	fn track_schema_def_created(
+	fn track_namespace_def_created(
 		&mut self,
-		schema: SchemaDef,
+		namespace: NamespaceDef,
 	) -> crate::Result<()> {
-		// Check if schema was already created in this transaction
+		// Check if namespace was already created in this transaction
 		let already_created =
-			self.changes.schema_def.iter().any(|change| {
+			self.changes.namespace_def.iter().any(|change| {
 				change.post
 					.as_ref()
-					.map(|s| s.id == schema.id)
+					.map(|s| s.id == namespace.id)
 					.unwrap_or(false) && change.op == Create
 			});
 
 		if already_created {
-			return_error!(schema_already_pending_in_transaction(
-				&schema.name
-			));
+			return_error!(
+				namespace_already_pending_in_transaction(
+					&namespace.name
+				)
+			);
 		}
 
-		self.changes.add_schema_def_change(Change {
+		self.changes.add_namespace_def_change(Change {
 			pre: None,
-			post: Some(schema),
+			post: Some(namespace),
 			op: Create,
 		});
 
 		Ok(())
 	}
 
-	fn track_schema_def_updated(
+	fn track_namespace_def_updated(
 		&mut self,
-		pre: SchemaDef,
-		post: SchemaDef,
+		pre: NamespaceDef,
+		post: NamespaceDef,
 	) -> crate::Result<()> {
 		debug_assert_eq!(
 			pre.id, post.id,
-			"Schema ID must remain the same during update"
+			"Namespace ID must remain the same during update"
 		);
 
-		self.changes.add_schema_def_change(Change {
+		self.changes.add_namespace_def_change(Change {
 			pre: Some(pre),
 			post: Some(post),
 			op: Update,
@@ -87,12 +89,12 @@ impl<T: Transaction> CatalogCommandTransactionOperations
 		Ok(())
 	}
 
-	fn track_schema_def_deleted(
+	fn track_namespace_def_deleted(
 		&mut self,
-		schema: SchemaDef,
+		namespace: NamespaceDef,
 	) -> crate::Result<()> {
-		self.changes.add_schema_def_change(Change {
-			pre: Some(schema),
+		self.changes.add_namespace_def_change(Change {
+			pre: Some(namespace),
 			post: None,
 			op: Delete,
 		});
@@ -114,9 +116,9 @@ impl<T: Transaction> CatalogCommandTransactionOperations
 			});
 
 		if already_created {
-			let schema = self.get_schema(table.schema)?;
+			let namespace = self.get_namespace(table.namespace)?;
 			return_error!(table_already_pending_in_transaction(
-				&schema.name,
+				&namespace.name,
 				&table.name
 			));
 		}
@@ -140,8 +142,8 @@ impl<T: Transaction> CatalogCommandTransactionOperations
 			"Table ID must remain the same during update"
 		);
 		debug_assert_eq!(
-			pre.schema, post.schema,
-			"Table schema must remain the same during update"
+			pre.namespace, post.namespace,
+			"Table namespace must remain the same during update"
 		);
 
 		self.changes.add_table_def_change(Change {
@@ -180,9 +182,9 @@ impl<T: Transaction> CatalogCommandTransactionOperations
 			});
 
 		if already_created {
-			let schema = self.get_schema(view.schema)?;
+			let namespace = self.get_namespace(view.namespace)?;
 			return_error!(view_already_pending_in_transaction(
-				&schema.name,
+				&namespace.name,
 				&view.name
 			));
 		}
@@ -206,8 +208,8 @@ impl<T: Transaction> CatalogCommandTransactionOperations
 			"View ID must remain the same during update"
 		);
 		debug_assert_eq!(
-			pre.schema, post.schema,
-			"View schema must remain the same during update"
+			pre.namespace, post.namespace,
+			"View namespace must remain the same during update"
 		);
 
 		self.changes.add_view_def_change(Change {
@@ -245,7 +247,7 @@ impl<T: Transaction> CatalogSourceQueryOperations
 
 	fn find_source_by_name<'a>(
 		&mut self,
-		_schema: SchemaId,
+		_namespace: NamespaceId,
 		_source: impl IntoFragment<'a>,
 	) -> reifydb_core::Result<Option<SourceDef>> {
 		todo!()
@@ -253,7 +255,7 @@ impl<T: Transaction> CatalogSourceQueryOperations
 
 	fn get_source_by_name<'a>(
 		&mut self,
-		_schema: SchemaId,
+		_namespace: NamespaceId,
 		_name: impl IntoFragment<'a>,
 	) -> reifydb_core::Result<SourceDef> {
 		todo!()
@@ -267,44 +269,44 @@ impl<T: Transaction> CatalogCommandTransaction
 {
 }
 impl<T: Transaction> TransactionalChangesExt for StandardCommandTransaction<T> {
-	fn find_schema_by_name(&self, name: &str) -> Option<&SchemaDef> {
-		self.changes.find_schema_by_name(name)
+	fn find_namespace_by_name(&self, name: &str) -> Option<&NamespaceDef> {
+		self.changes.find_namespace_by_name(name)
 	}
 
-	fn is_schema_deleted_by_name(&self, name: &str) -> bool {
-		self.changes.is_schema_deleted_by_name(name)
+	fn is_namespace_deleted_by_name(&self, name: &str) -> bool {
+		self.changes.is_namespace_deleted_by_name(name)
 	}
 
 	fn find_table_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> Option<&TableDef> {
-		self.changes.find_table_by_name(schema, name)
+		self.changes.find_table_by_name(namespace, name)
 	}
 
 	fn is_table_deleted_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> bool {
-		self.changes.is_table_deleted_by_name(schema, name)
+		self.changes.is_table_deleted_by_name(namespace, name)
 	}
 
 	fn find_view_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> Option<&ViewDef> {
-		self.changes.find_view_by_name(schema, name)
+		self.changes.find_view_by_name(namespace, name)
 	}
 
 	fn is_view_deleted_by_name(
 		&self,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		name: &str,
 	) -> bool {
-		self.changes.is_view_deleted_by_name(schema, name)
+		self.changes.is_view_deleted_by_name(namespace, name)
 	}
 }
 
@@ -312,34 +314,34 @@ impl<T: Transaction> TransactionalChangesExt for StandardCommandTransaction<T> {
 mod tests {
 	use reifydb_catalog::CatalogCommandTransactionOperations;
 	use reifydb_core::interface::{
-		Operation, OperationType::Create, SchemaDef, SchemaId,
+		NamespaceDef, NamespaceId, Operation, OperationType::Create,
 		TableDef, TableId, ViewDef, ViewId, ViewKind,
 	};
 
 	use crate::test_utils::create_test_command_transaction;
 
 	// Helper functions to create test definitions
-	fn test_schema_def(id: u64, name: &str) -> SchemaDef {
-		SchemaDef {
-			id: SchemaId(id),
+	fn test_namespace_def(id: u64, name: &str) -> NamespaceDef {
+		NamespaceDef {
+			id: NamespaceId(id),
 			name: name.to_string(),
 		}
 	}
 
-	fn test_table_def(id: u64, schema_id: u64, name: &str) -> TableDef {
+	fn test_table_def(id: u64, namespace_id: u64, name: &str) -> TableDef {
 		TableDef {
 			id: TableId(id),
-			schema: SchemaId(schema_id),
+			namespace: NamespaceId(namespace_id),
 			name: name.to_string(),
 			columns: vec![],
 			primary_key: None,
 		}
 	}
 
-	fn test_view_def(id: u64, schema_id: u64, name: &str) -> ViewDef {
+	fn test_view_def(id: u64, namespace_id: u64, name: &str) -> ViewDef {
 		ViewDef {
 			id: ViewId(id),
-			schema: SchemaId(schema_id),
+			namespace: NamespaceId(namespace_id),
 			name: name.to_string(),
 			columns: vec![],
 			kind: ViewKind::Deferred,
@@ -347,37 +349,37 @@ mod tests {
 		}
 	}
 
-	mod track_schema_def_created {
+	mod track_namespace_def_created {
 		use super::*;
 
 		#[test]
 		fn test_successful_creation() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
+			let namespace = test_namespace_def(1, "test_namespace");
 
-			let result =
-				txn.track_schema_def_created(schema.clone());
+			let result = txn
+				.track_namespace_def_created(namespace.clone());
 			assert!(result.is_ok());
 
 			// Verify the change was recorded in the Vec
-			assert_eq!(txn.changes.schema_def.len(), 1);
-			let change = &txn.changes.schema_def[0];
+			assert_eq!(txn.changes.namespace_def.len(), 1);
+			let change = &txn.changes.namespace_def[0];
 			assert!(change.pre.is_none());
 			assert_eq!(
 				change.post.as_ref().unwrap().name,
-				"test_schema"
+				"test_namespace"
 			);
 			assert_eq!(change.op, Create);
 
 			// Verify operation was logged
 			assert_eq!(txn.changes.log.len(), 1);
 			match &txn.changes.log[0] {
-				Operation::Schema {
+				Operation::Namespace {
 					id,
 					op,
-				} if *id == schema.id && *op == Create => {}
+				} if *id == namespace.id && *op == Create => {}
 				_ => panic!(
-					"Expected Schema operation with Create"
+					"Expected Namespace operation with Create"
 				),
 			}
 		}
@@ -385,111 +387,114 @@ mod tests {
 		#[test]
 		fn test_error_when_already_created() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
+			let namespace = test_namespace_def(1, "test_namespace");
 
 			// First creation should succeed
-			txn.track_schema_def_created(schema.clone()).unwrap();
+			txn.track_namespace_def_created(namespace.clone())
+				.unwrap();
 
 			// Second creation should fail
-			let result = txn.track_schema_def_created(schema);
+			let result = txn.track_namespace_def_created(namespace);
 			assert!(result.is_err());
 			let err = result.unwrap_err();
 			assert_eq!(err.diagnostic().code, "CA_011");
 		}
 	}
 
-	mod track_schema_def_updated {
+	mod track_namespace_def_updated {
 		use reifydb_catalog::CatalogCommandTransactionOperations;
 		use reifydb_core::interface::{
-			Operation,
+			NamespaceId, Operation,
 			OperationType::{Create, Update},
-			SchemaId,
 		};
 
 		use crate::{
 			test_utils::create_test_command_transaction,
-			transaction::catalog::command::tests::test_schema_def,
+			transaction::catalog::command::tests::test_namespace_def,
 		};
 
 		#[test]
 		fn test_multiple_updates_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let schema_v1 = test_schema_def(1, "schema_v1");
-			let schema_v2 = test_schema_def(1, "schema_v2");
-			let schema_v3 = test_schema_def(1, "schema_v3");
+			let namespace_v1 =
+				test_namespace_def(1, "namespace_v1");
+			let namespace_v2 =
+				test_namespace_def(1, "namespace_v2");
+			let namespace_v3 =
+				test_namespace_def(1, "namespace_v3");
 
 			// First update
-			txn.track_schema_def_updated(
-				schema_v1.clone(),
-				schema_v2.clone(),
+			txn.track_namespace_def_updated(
+				namespace_v1.clone(),
+				namespace_v2.clone(),
 			)
 			.unwrap();
 
 			// Should have one change
-			assert_eq!(txn.changes.schema_def.len(), 1);
+			assert_eq!(txn.changes.namespace_def.len(), 1);
 			assert_eq!(
-				txn.changes.schema_def[0]
+				txn.changes.namespace_def[0]
 					.pre
 					.as_ref()
 					.unwrap()
 					.name,
-				"schema_v1"
+				"namespace_v1"
 			);
 			assert_eq!(
-				txn.changes.schema_def[0]
+				txn.changes.namespace_def[0]
 					.post
 					.as_ref()
 					.unwrap()
 					.name,
-				"schema_v2"
+				"namespace_v2"
 			);
-			assert_eq!(txn.changes.schema_def[0].op, Update);
+			assert_eq!(txn.changes.namespace_def[0].op, Update);
 
 			// Second update - should NOT coalesce, just add another
 			// change
-			txn.track_schema_def_updated(
-				schema_v2,
-				schema_v3.clone(),
+			txn.track_namespace_def_updated(
+				namespace_v2,
+				namespace_v3.clone(),
 			)
 			.unwrap();
 
 			// Should now have TWO changes (no coalescing)
-			assert_eq!(txn.changes.schema_def.len(), 2);
+			assert_eq!(txn.changes.namespace_def.len(), 2);
 
 			// First update unchanged
 			assert_eq!(
-				txn.changes.schema_def[0]
+				txn.changes.namespace_def[0]
 					.pre
 					.as_ref()
 					.unwrap()
 					.name,
-				"schema_v1"
+				"namespace_v1"
 			);
 			assert_eq!(
-				txn.changes.schema_def[0]
+				txn.changes.namespace_def[0]
 					.post
 					.as_ref()
 					.unwrap()
 					.name,
-				"schema_v2"
+				"namespace_v2"
 			);
 
 			// Second update recorded separately
 			assert_eq!(
-				txn.changes.schema_def[1]
+				txn.changes.namespace_def[1]
 					.pre
 					.as_ref()
 					.unwrap()
 					.name,
-				"schema_v2"
+				"namespace_v2"
 			);
 			assert_eq!(
-				txn.changes.schema_def[1]
+				txn.changes.namespace_def[1]
 					.post
 					.as_ref()
 					.unwrap()
 					.name,
-				"schema_v3"
+				"namespace_v3"
 			);
 
 			// Should have 2 log entries
@@ -499,53 +504,55 @@ mod tests {
 		#[test]
 		fn test_create_then_update_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let schema_v1 = test_schema_def(1, "schema_v1");
-			let schema_v2 = test_schema_def(1, "schema_v2");
+			let namespace_v1 =
+				test_namespace_def(1, "namespace_v1");
+			let namespace_v2 =
+				test_namespace_def(1, "namespace_v2");
 
 			// First track creation
-			txn.track_schema_def_created(schema_v1.clone())
+			txn.track_namespace_def_created(namespace_v1.clone())
 				.unwrap();
-			assert_eq!(txn.changes.schema_def.len(), 1);
-			assert_eq!(txn.changes.schema_def[0].op, Create);
+			assert_eq!(txn.changes.namespace_def.len(), 1);
+			assert_eq!(txn.changes.namespace_def[0].op, Create);
 
 			// Then track update - should NOT coalesce
-			txn.track_schema_def_updated(
-				schema_v1,
-				schema_v2.clone(),
+			txn.track_namespace_def_updated(
+				namespace_v1,
+				namespace_v2.clone(),
 			)
 			.unwrap();
 
 			// Should have TWO changes now
-			assert_eq!(txn.changes.schema_def.len(), 2);
+			assert_eq!(txn.changes.namespace_def.len(), 2);
 
 			// First is still Create
-			assert_eq!(txn.changes.schema_def[0].op, Create);
+			assert_eq!(txn.changes.namespace_def[0].op, Create);
 			assert_eq!(
-				txn.changes.schema_def[0]
+				txn.changes.namespace_def[0]
 					.post
 					.as_ref()
 					.unwrap()
 					.name,
-				"schema_v1"
+				"namespace_v1"
 			);
 
 			// Second is Update
-			assert_eq!(txn.changes.schema_def[1].op, Update);
+			assert_eq!(txn.changes.namespace_def[1].op, Update);
 			assert_eq!(
-				txn.changes.schema_def[1]
+				txn.changes.namespace_def[1]
 					.pre
 					.as_ref()
 					.unwrap()
 					.name,
-				"schema_v1"
+				"namespace_v1"
 			);
 			assert_eq!(
-				txn.changes.schema_def[1]
+				txn.changes.namespace_def[1]
 					.post
 					.as_ref()
 					.unwrap()
 					.name,
-				"schema_v2"
+				"namespace_v2"
 			);
 
 			// Should have 2 log entries
@@ -555,43 +562,45 @@ mod tests {
 		#[test]
 		fn test_normal_update() {
 			let mut txn = create_test_command_transaction();
-			let schema_v1 = test_schema_def(1, "schema_v1");
-			let schema_v2 = test_schema_def(1, "schema_v2");
+			let namespace_v1 =
+				test_namespace_def(1, "namespace_v1");
+			let namespace_v2 =
+				test_namespace_def(1, "namespace_v2");
 
-			let result = txn.track_schema_def_updated(
-				schema_v1.clone(),
-				schema_v2.clone(),
+			let result = txn.track_namespace_def_updated(
+				namespace_v1.clone(),
+				namespace_v2.clone(),
 			);
 			assert!(result.is_ok());
 
 			// Verify the change was recorded
-			assert_eq!(txn.changes.schema_def.len(), 1);
-			let change = &txn.changes.schema_def[0];
+			assert_eq!(txn.changes.namespace_def.len(), 1);
+			let change = &txn.changes.namespace_def[0];
 			assert_eq!(
 				change.pre.as_ref().unwrap().name,
-				"schema_v1"
+				"namespace_v1"
 			);
 			assert_eq!(
 				change.post.as_ref().unwrap().name,
-				"schema_v2"
+				"namespace_v2"
 			);
 			assert_eq!(change.op, Update);
 
 			// Verify operation was logged
 			assert_eq!(txn.changes.log.len(), 1);
 			match &txn.changes.log[0] {
-				Operation::Schema {
+				Operation::Namespace {
 					id,
 					op,
-				} if *id == SchemaId(1) && *op == Update => {}
+				} if *id == NamespaceId(1) && *op == Update => {}
 				_ => panic!(
-					"Expected Schema operation with Update"
+					"Expected Namespace operation with Update"
 				),
 			}
 		}
 	}
 
-	mod track_schema_def_deleted {
+	mod track_namespace_def_deleted {
 		use reifydb_catalog::CatalogCommandTransactionOperations;
 		use reifydb_core::interface::{
 			Operation,
@@ -600,40 +609,41 @@ mod tests {
 
 		use crate::{
 			test_utils::create_test_command_transaction,
-			transaction::catalog::command::tests::test_schema_def,
+			transaction::catalog::command::tests::test_namespace_def,
 		};
 
 		#[test]
 		fn test_delete_after_create_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
+			let namespace = test_namespace_def(1, "test_namespace");
 
 			// First track creation
-			txn.track_schema_def_created(schema.clone()).unwrap();
+			txn.track_namespace_def_created(namespace.clone())
+				.unwrap();
 			assert_eq!(txn.changes.log.len(), 1);
-			assert_eq!(txn.changes.schema_def.len(), 1);
+			assert_eq!(txn.changes.namespace_def.len(), 1);
 
 			// Then track deletion - should NOT remove, just add
 			// another change
-			let result =
-				txn.track_schema_def_deleted(schema.clone());
+			let result = txn
+				.track_namespace_def_deleted(namespace.clone());
 			assert!(result.is_ok());
 
 			// Should have TWO changes now (no coalescing)
-			assert_eq!(txn.changes.schema_def.len(), 2);
+			assert_eq!(txn.changes.namespace_def.len(), 2);
 
 			// First is Create
-			assert_eq!(txn.changes.schema_def[0].op, Create);
+			assert_eq!(txn.changes.namespace_def[0].op, Create);
 
 			// Second is Delete
-			assert_eq!(txn.changes.schema_def[1].op, Delete);
+			assert_eq!(txn.changes.namespace_def[1].op, Delete);
 			assert_eq!(
-				txn.changes.schema_def[1]
+				txn.changes.namespace_def[1]
 					.pre
 					.as_ref()
 					.unwrap()
 					.name,
-				"test_schema"
+				"test_namespace"
 			);
 
 			// Should have 2 log entries
@@ -643,29 +653,32 @@ mod tests {
 		#[test]
 		fn test_delete_after_update_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let schema_v1 = test_schema_def(1, "schema_v1");
-			let schema_v2 = test_schema_def(1, "schema_v2");
+			let namespace_v1 =
+				test_namespace_def(1, "namespace_v1");
+			let namespace_v2 =
+				test_namespace_def(1, "namespace_v2");
 
 			// First track update
-			txn.track_schema_def_updated(
-				schema_v1.clone(),
-				schema_v2.clone(),
+			txn.track_namespace_def_updated(
+				namespace_v1.clone(),
+				namespace_v2.clone(),
 			)
 			.unwrap();
-			assert_eq!(txn.changes.schema_def.len(), 1);
+			assert_eq!(txn.changes.namespace_def.len(), 1);
 
 			// Then track deletion
-			let result = txn.track_schema_def_deleted(schema_v2);
+			let result =
+				txn.track_namespace_def_deleted(namespace_v2);
 			assert!(result.is_ok());
 
 			// Should have TWO changes (no coalescing)
-			assert_eq!(txn.changes.schema_def.len(), 2);
+			assert_eq!(txn.changes.namespace_def.len(), 2);
 
 			// First is Update
-			assert_eq!(txn.changes.schema_def[0].op, Update);
+			assert_eq!(txn.changes.namespace_def[0].op, Update);
 
 			// Second is Delete
-			assert_eq!(txn.changes.schema_def[1].op, Delete);
+			assert_eq!(txn.changes.namespace_def[1].op, Delete);
 
 			// Should have 2 log entries
 			assert_eq!(txn.changes.log.len(), 2);
@@ -674,18 +687,18 @@ mod tests {
 		#[test]
 		fn test_normal_delete() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
+			let namespace = test_namespace_def(1, "test_namespace");
 
-			let result =
-				txn.track_schema_def_deleted(schema.clone());
+			let result = txn
+				.track_namespace_def_deleted(namespace.clone());
 			assert!(result.is_ok());
 
 			// Verify the change was recorded
-			assert_eq!(txn.changes.schema_def.len(), 1);
-			let change = &txn.changes.schema_def[0];
+			assert_eq!(txn.changes.namespace_def.len(), 1);
+			let change = &txn.changes.namespace_def[0];
 			assert_eq!(
 				change.pre.as_ref().unwrap().name,
-				"test_schema"
+				"test_namespace"
 			);
 			assert!(change.post.is_none());
 			assert_eq!(change.op, Delete);
@@ -693,12 +706,12 @@ mod tests {
 			// Verify operation was logged
 			assert_eq!(txn.changes.log.len(), 1);
 			match &txn.changes.log[0] {
-				Operation::Schema {
+				Operation::Namespace {
 					id,
 					op,
-				} if *id == schema.id && *op == Delete => {}
+				} if *id == namespace.id && *op == Delete => {}
 				_ => panic!(
-					"Expected Schema operation with Delete"
+					"Expected Namespace operation with Delete"
 				),
 			}
 		}
@@ -713,15 +726,16 @@ mod tests {
 		use crate::{
 			test_utils::create_test_command_transaction,
 			transaction::catalog::command::tests::{
-				test_schema_def, test_table_def,
+				test_namespace_def, test_table_def,
 			},
 		};
 
 		#[test]
 		fn test_successful_creation() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
-			txn.track_schema_def_created(schema.clone()).unwrap();
+			let namespace = test_namespace_def(1, "test_namespace");
+			txn.track_namespace_def_created(namespace.clone())
+				.unwrap();
 
 			let table = test_table_def(1, 1, "test_table");
 			let result = txn.track_table_def_created(table.clone());
@@ -737,7 +751,7 @@ mod tests {
 			);
 			assert_eq!(change.op, Create);
 
-			// Verify operation was logged (schema + table)
+			// Verify operation was logged (namespace + table)
 			assert_eq!(txn.changes.log.len(), 2);
 			match &txn.changes.log[1] {
 				Operation::Table {
@@ -753,8 +767,8 @@ mod tests {
 		#[test]
 		fn test_error_when_already_created() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
-			txn.track_schema_def_created(schema).unwrap();
+			let namespace = test_namespace_def(1, "test_namespace");
+			txn.track_namespace_def_created(namespace).unwrap();
 
 			let table = test_table_def(1, 1, "test_table");
 
@@ -776,7 +790,7 @@ mod tests {
 		use crate::{
 			test_utils::create_test_command_transaction,
 			transaction::catalog::command::tests::{
-				test_schema_def, test_table_def,
+				test_namespace_def, test_table_def,
 			},
 		};
 
@@ -864,8 +878,8 @@ mod tests {
 		#[test]
 		fn test_create_then_update_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
-			txn.track_schema_def_created(schema).unwrap();
+			let namespace = test_namespace_def(1, "test_namespace");
+			txn.track_namespace_def_created(namespace).unwrap();
 
 			let table_v1 = test_table_def(1, 1, "table_v1");
 			let table_v2 = test_table_def(1, 1, "table_v2");
@@ -923,15 +937,15 @@ mod tests {
 		use crate::{
 			test_utils::create_test_command_transaction,
 			transaction::catalog::command::tests::{
-				test_schema_def, test_table_def,
+				test_namespace_def, test_table_def,
 			},
 		};
 
 		#[test]
 		fn test_delete_after_create_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
-			txn.track_schema_def_created(schema).unwrap();
+			let namespace = test_namespace_def(1, "test_namespace");
+			txn.track_namespace_def_created(namespace).unwrap();
 
 			let table = test_table_def(1, 1, "test_table");
 
@@ -999,15 +1013,15 @@ mod tests {
 		use crate::{
 			test_utils::create_test_command_transaction,
 			transaction::catalog::command::tests::{
-				test_schema_def, test_view_def,
+				test_namespace_def, test_view_def,
 			},
 		};
 
 		#[test]
 		fn test_successful_creation() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
-			txn.track_schema_def_created(schema).unwrap();
+			let namespace = test_namespace_def(1, "test_namespace");
+			txn.track_namespace_def_created(namespace).unwrap();
 
 			let view = test_view_def(1, 1, "test_view");
 			let result = txn.track_view_def_created(view.clone());
@@ -1024,7 +1038,7 @@ mod tests {
 			assert_eq!(change.op, Create);
 
 			// Verify operation was logged
-			assert_eq!(txn.changes.log.len(), 2); // schema + view
+			assert_eq!(txn.changes.log.len(), 2); // namespace + view
 			match &txn.changes.log[1] {
 				Operation::View {
 					id,
@@ -1039,8 +1053,8 @@ mod tests {
 		#[test]
 		fn test_error_when_already_created() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
-			txn.track_schema_def_created(schema).unwrap();
+			let namespace = test_namespace_def(1, "test_namespace");
+			txn.track_namespace_def_created(namespace).unwrap();
 
 			let view = test_view_def(1, 1, "test_view");
 
@@ -1062,7 +1076,7 @@ mod tests {
 		use crate::{
 			test_utils::create_test_command_transaction,
 			transaction::catalog::command::tests::{
-				test_schema_def, test_view_def,
+				test_namespace_def, test_view_def,
 			},
 		};
 
@@ -1147,8 +1161,8 @@ mod tests {
 		#[test]
 		fn test_create_then_update_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
-			txn.track_schema_def_created(schema).unwrap();
+			let namespace = test_namespace_def(1, "test_namespace");
+			txn.track_namespace_def_created(namespace).unwrap();
 
 			let view_v1 = test_view_def(1, 1, "view_v1");
 			let view_v2 = test_view_def(1, 1, "view_v2");
@@ -1206,15 +1220,15 @@ mod tests {
 		use crate::{
 			test_utils::create_test_command_transaction,
 			transaction::catalog::command::tests::{
-				test_schema_def, test_view_def,
+				test_namespace_def, test_view_def,
 			},
 		};
 
 		#[test]
 		fn test_delete_after_create_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let schema = test_schema_def(1, "test_schema");
-			txn.track_schema_def_created(schema).unwrap();
+			let namespace = test_namespace_def(1, "test_namespace");
+			txn.track_namespace_def_created(namespace).unwrap();
 
 			let view = test_view_def(1, 1, "test_view");
 

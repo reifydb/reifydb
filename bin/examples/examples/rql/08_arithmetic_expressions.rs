@@ -93,7 +93,7 @@ fn main() {
 	}
 
 	// Set up sample data for more comptokenize examples
-	db.command_as_root("create schema shop", Params::None).unwrap();
+	db.command_as_root("create namespace shop", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table shop.products {

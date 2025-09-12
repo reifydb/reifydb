@@ -41,27 +41,27 @@ impl PyEmbedded {
 			.tx(&self.root, &rql)
 			.into_iter()
 			.map(|r| match r {
-				ExecutionResult::CreateSchema {
-					schema,
+				ExecutionResult::CreateNamespace {
+					namespace,
 				} => json!({
-				    "type": "CreateSchema",
-				    "schema": schema
+				    "type": "CreateNamespace",
+				    "namespace": namespace
 				}),
 				ExecutionResult::CreateTable {
-					schema,
+					namespace,
 					table,
 				} => json!({
 				    "type": "CreateTable",
-				    "schema": schema,
+				    "namespace": namespace,
 				    "table": table
 				}),
 				ExecutionResult::InsertIntoTable {
-					schema,
+					namespace,
 					table,
 					inserted,
 				} => json!({
 				    "type": "InsertIntoTable",
-				    "schema": schema,
+				    "namespace": namespace,
 				    "table": table,
 				    "inserted": inserted
 				}),

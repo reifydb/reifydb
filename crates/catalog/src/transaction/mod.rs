@@ -2,19 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod command;
+mod namespace;
 mod query;
-mod schema;
 mod table;
 mod view;
 
 // Re-export the transaction traits
 pub use command::{
 	CatalogCommandTransaction, CatalogCommandTransactionOperations,
-	CatalogSchemaCommandOperations, CatalogTableCommandOperations,
+	CatalogNamespaceCommandOperations, CatalogTableCommandOperations,
 	CatalogViewCommandOperations,
 };
 pub use query::{
-	CatalogQueryTransaction, CatalogSchemaQueryOperations,
+	CatalogNamespaceQueryOperations, CatalogQueryTransaction,
 	CatalogSourceQueryOperations, CatalogTableQueryOperations,
 	CatalogTransaction, CatalogViewQueryOperations,
 	TransactionalChangesExt,

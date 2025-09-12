@@ -5,7 +5,7 @@ use reifydb_core::{
 	diagnostic::catalog::table_already_exists,
 	interface::{
 		ColumnPolicyKind, CommandTransaction, EncodableKey, Key,
-		SchemaId, SchemaTableKey, TableDef, TableId, TableKey,
+		NamespaceId, NamespaceTableKey, TableDef, TableId, TableKey,
 	},
 	return_error,
 };
@@ -15,7 +15,7 @@ use crate::{
 	CatalogStore,
 	column::ColumnIndex,
 	sequence::SystemSequence,
-	table::layout::{table, table_schema},
+	table::layout::{table, table_namespace},
 };
 
 #[derive(Debug, Clone)]
@@ -31,7 +31,7 @@ pub struct TableColumnToCreate {
 pub struct TableToCreate {
 	pub fragment: Option<OwnedFragment>,
 	pub table: String,
-	pub schema: SchemaId,
+	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
@@ -40,26 +40,27 @@ impl CatalogStore {
 		txn: &mut impl CommandTransaction,
 		to_create: TableToCreate,
 	) -> crate::Result<TableDef> {
-		let schema_id = to_create.schema;
+		let namespace_id = to_create.namespace;
 
 		if let Some(table) = CatalogStore::find_table_by_name(
 			txn,
-			schema_id,
+			namespace_id,
 			&to_create.table,
 		)? {
-			let schema = CatalogStore::get_schema(txn, schema_id)?;
+			let namespace =
+				CatalogStore::get_namespace(txn, namespace_id)?;
 			return_error!(table_already_exists(
 				to_create.fragment,
-				&schema.name,
+				&namespace.name,
 				&table.name
 			));
 		}
 
 		let table_id = SystemSequence::next_table_id(txn)?;
-		Self::store_table(txn, table_id, schema_id, &to_create)?;
-		Self::link_table_to_schema(
+		Self::store_table(txn, table_id, namespace_id, &to_create)?;
+		Self::link_table_to_namespace(
 			txn,
-			schema_id,
+			namespace_id,
 			table_id,
 			&to_create.table,
 		)?;
@@ -72,12 +73,12 @@ impl CatalogStore {
 	fn store_table(
 		txn: &mut impl CommandTransaction,
 		table: TableId,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		to_create: &TableToCreate,
 	) -> crate::Result<()> {
 		let mut row = table::LAYOUT.allocate_row();
 		table::LAYOUT.set_u64(&mut row, table::ID, table);
-		table::LAYOUT.set_u64(&mut row, table::SCHEMA, schema);
+		table::LAYOUT.set_u64(&mut row, table::NAMESPACE, namespace);
 		table::LAYOUT.set_utf8(&mut row, table::NAME, &to_create.table);
 
 		// Initialize with no primary key
@@ -94,22 +95,26 @@ impl CatalogStore {
 		Ok(())
 	}
 
-	fn link_table_to_schema(
+	fn link_table_to_namespace(
 		txn: &mut impl CommandTransaction,
-		schema: SchemaId,
+		namespace: NamespaceId,
 		table: TableId,
 		name: &str,
 	) -> crate::Result<()> {
-		let mut row = table_schema::LAYOUT.allocate_row();
-		table_schema::LAYOUT.set_u64(&mut row, table_schema::ID, table);
-		table_schema::LAYOUT.set_utf8(
+		let mut row = table_namespace::LAYOUT.allocate_row();
+		table_namespace::LAYOUT.set_u64(
 			&mut row,
-			table_schema::NAME,
+			table_namespace::ID,
+			table,
+		);
+		table_namespace::LAYOUT.set_utf8(
+			&mut row,
+			table_namespace::NAME,
 			name,
 		);
 		txn.set(
-			&Key::SchemaTable(SchemaTableKey {
-				schema,
+			&Key::NamespaceTable(NamespaceTableKey {
+				namespace,
 				table,
 			})
 			.encode(),
@@ -123,12 +128,16 @@ impl CatalogStore {
 		table: TableId,
 		to_create: TableToCreate,
 	) -> crate::Result<()> {
-		// Look up schema name for error messages
-		let schema_name = Self::find_schema(txn, to_create.schema)?
-			.map(|s| s.name)
-			.unwrap_or_else(|| {
-				format!("schema_{}", to_create.schema)
-			});
+		// Look up namespace name for error messages
+		let namespace_name =
+			Self::find_namespace(txn, to_create.namespace)?
+				.map(|s| s.name)
+				.unwrap_or_else(|| {
+					format!(
+						"namespace_{}",
+						to_create.namespace
+					)
+				});
 
 		for (idx, column_to_create) in
 			to_create.columns.into_iter().enumerate()
@@ -140,7 +149,7 @@ impl CatalogStore {
 					fragment: column_to_create
 						.fragment
 						.clone(),
-					schema_name: &schema_name,
+					namespace_name: &namespace_name,
 					table,
 					table_name: &to_create.table,
 					column: column_to_create.name,
@@ -164,24 +173,25 @@ impl CatalogStore {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::{
-		SchemaId, SchemaTableKey, TableId, VersionedQueryTransaction,
+		NamespaceId, NamespaceTableKey, TableId,
+		VersionedQueryTransaction,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
 		CatalogStore,
-		table::{TableToCreate, layout::table_schema},
-		test_utils::ensure_test_schema,
+		table::{TableToCreate, layout::table_namespace},
+		test_utils::ensure_test_namespace,
 	};
 
 	#[test]
 	fn test_create_table() {
 		let mut txn = create_test_command_transaction();
 
-		let test_schema = ensure_test_schema(&mut txn);
+		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = TableToCreate {
-			schema: test_schema.id,
+			namespace: test_namespace.id,
 			table: "test_table".to_string(),
 			columns: vec![],
 			fragment: None,
@@ -192,7 +202,7 @@ mod tests {
 			CatalogStore::create_table(&mut txn, to_create.clone())
 				.unwrap();
 		assert_eq!(result.id, TableId(1025));
-		assert_eq!(result.schema, SchemaId(1025));
+		assert_eq!(result.namespace, NamespaceId(1025));
 		assert_eq!(result.name, "test_table");
 
 		let err = CatalogStore::create_table(&mut txn, to_create)
@@ -201,12 +211,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_table_linked_to_schema() {
+	fn test_table_linked_to_namespace() {
 		let mut txn = create_test_command_transaction();
-		let test_schema = ensure_test_schema(&mut txn);
+		let test_namespace = ensure_test_namespace(&mut txn);
 
 		let to_create = TableToCreate {
-			schema: test_schema.id,
+			namespace: test_namespace.id,
 			table: "test_table".to_string(),
 			columns: vec![],
 			fragment: None,
@@ -215,7 +225,7 @@ mod tests {
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
 
 		let to_create = TableToCreate {
-			schema: test_schema.id,
+			namespace: test_namespace.id,
 			table: "another_table".to_string(),
 			columns: vec![],
 			fragment: None,
@@ -224,7 +234,7 @@ mod tests {
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
 
 		let links = txn
-			.range(SchemaTableKey::full_scan(test_schema.id))
+			.range(NamespaceTableKey::full_scan(test_namespace.id))
 			.unwrap()
 			.collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
@@ -232,22 +242,26 @@ mod tests {
 		let link = &links[1];
 		let row = &link.row;
 		assert_eq!(
-			table_schema::LAYOUT.get_u64(row, table_schema::ID),
+			table_namespace::LAYOUT
+				.get_u64(row, table_namespace::ID),
 			1025
 		);
 		assert_eq!(
-			table_schema::LAYOUT.get_utf8(row, table_schema::NAME),
+			table_namespace::LAYOUT
+				.get_utf8(row, table_namespace::NAME),
 			"test_table"
 		);
 
 		let link = &links[0];
 		let row = &link.row;
 		assert_eq!(
-			table_schema::LAYOUT.get_u64(row, table_schema::ID),
+			table_namespace::LAYOUT
+				.get_u64(row, table_namespace::ID),
 			1026
 		);
 		assert_eq!(
-			table_schema::LAYOUT.get_utf8(row, table_schema::NAME),
+			table_namespace::LAYOUT
+				.get_utf8(row, table_namespace::NAME),
 			"another_table"
 		);
 	}

@@ -103,7 +103,7 @@ mod tests {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "b_col".to_string(),
@@ -123,7 +123,7 @@ mod tests {
 			TableId(1),
 			ColumnToCreate {
 				fragment: None,
-				schema_name: "test_schema",
+				namespace_name: "test_namespace",
 				table: TableId(1),
 				table_name: "test_table",
 				column: "a_col".to_string(),

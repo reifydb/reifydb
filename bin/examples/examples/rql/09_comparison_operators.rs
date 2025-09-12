@@ -103,7 +103,7 @@ fn main() {
 	}
 
 	// Set up sample data
-	db.command_as_root("create schema test", Params::None).unwrap();
+	db.command_as_root("create namespace test", Params::None).unwrap();
 	db.command_as_root(
 		r#"
 		create table test.scores {
