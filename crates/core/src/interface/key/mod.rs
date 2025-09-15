@@ -11,9 +11,11 @@ pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
 pub use namespace::NamespaceKey;
+pub use namespace_ring_buffer::NamespaceRingBufferKey;
 pub use namespace_table::NamespaceTableKey;
 pub use namespace_view::NamespaceViewKey;
 pub use primary_key::PrimaryKeyKey;
+pub use ring_buffer::{RingBufferKey, RingBufferMetadataKey};
 pub use row::{RowKey, RowKeyRange};
 pub use row_sequence::RowSequenceKey;
 pub use system_sequence::SystemSequenceKey;
@@ -34,9 +36,11 @@ mod index;
 mod index_entry;
 mod kind;
 mod namespace;
+mod namespace_ring_buffer;
 mod namespace_table;
 mod namespace_view;
 mod primary_key;
+mod ring_buffer;
 mod row;
 mod row_sequence;
 mod system_sequence;
@@ -66,6 +70,9 @@ pub enum Key {
 	SystemVersion(SystemVersionKey),
 	TransactionVersion(TransactionVersionKey),
 	View(ViewKey),
+	RingBuffer(RingBufferKey),
+	RingBufferMetadata(RingBufferMetadataKey),
+	NamespaceRingBuffer(NamespaceRingBufferKey),
 }
 
 impl Key {
@@ -90,6 +97,9 @@ impl Key {
 			Key::SystemVersion(key) => key.encode(),
 			Key::TransactionVersion(key) => key.encode(),
 			Key::View(key) => key.encode(),
+			Key::RingBuffer(key) => key.encode(),
+			Key::RingBufferMetadata(key) => key.encode(),
+			Key::NamespaceRingBuffer(key) => key.encode(),
 		}
 	}
 }
@@ -179,6 +189,16 @@ impl Key {
 			KeyKind::View => ViewKey::decode(&key).map(Self::View),
 			KeyKind::PrimaryKey => PrimaryKeyKey::decode(&key)
 				.map(Self::PrimaryKey),
+			KeyKind::RingBuffer => RingBufferKey::decode(&key)
+				.map(Self::RingBuffer),
+			KeyKind::RingBufferMetadata => {
+				RingBufferMetadataKey::decode(&key)
+					.map(Self::RingBufferMetadata)
+			}
+			KeyKind::NamespaceRingBuffer => {
+				NamespaceRingBufferKey::decode(&key)
+					.map(Self::NamespaceRingBuffer)
+			}
 		}
 	}
 }

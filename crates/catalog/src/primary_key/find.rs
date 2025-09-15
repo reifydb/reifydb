@@ -24,7 +24,8 @@ impl CatalogStore {
 		let source_id = source.into();
 
 		// Get the primary key ID for the table or view
-		// Virtual tables don't have primary keys
+		// Virtual tables and ring buffers don't have primary keys
+		// stored separately
 		let primary_key_id = match source_id {
 			SourceId::Table(table_id) => {
 				match Self::get_table_pk_id(rx, table_id)? {
@@ -40,6 +41,13 @@ impl CatalogStore {
 			}
 			SourceId::TableVirtual(_) => {
 				// Virtual tables don't have primary keys
+				return Ok(None);
+			}
+			SourceId::RingBuffer(_) => {
+				// Ring buffers store primary key info in their
+				// definition TODO: Implement
+				// get_ring_buffer_pk when ring buffer catalog
+				// is ready
 				return Ok(None);
 			}
 		};

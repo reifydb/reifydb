@@ -544,6 +544,86 @@ impl<'de> Deserialize<'de> for PrimaryKeyId {
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
+pub struct RingBufferId(pub u64);
+
+impl Display for RingBufferId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
+
+impl Deref for RingBufferId {
+	type Target = u64;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl PartialEq<u64> for RingBufferId {
+	fn eq(&self, other: &u64) -> bool {
+		self.0.eq(other)
+	}
+}
+
+impl From<RingBufferId> for u64 {
+	fn from(value: RingBufferId) -> Self {
+		value.0
+	}
+}
+
+impl From<i32> for RingBufferId {
+	fn from(value: i32) -> Self {
+		Self(value as u64)
+	}
+}
+
+impl From<u64> for RingBufferId {
+	fn from(value: u64) -> Self {
+		Self(value)
+	}
+}
+
+impl Serialize for RingBufferId {
+	fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+	where
+		S: Serializer,
+	{
+		serializer.serialize_u64(self.0)
+	}
+}
+
+impl<'de> Deserialize<'de> for RingBufferId {
+	fn deserialize<D>(deserializer: D) -> Result<RingBufferId, D::Error>
+	where
+		D: Deserializer<'de>,
+	{
+		struct U64Visitor;
+
+		impl Visitor<'_> for U64Visitor {
+			type Value = RingBufferId;
+
+			fn expecting(
+				&self,
+				formatter: &mut fmt::Formatter,
+			) -> fmt::Result {
+				formatter.write_str("an unsigned 64-bit number")
+			}
+
+			fn visit_u64<E>(
+				self,
+				value: u64,
+			) -> Result<Self::Value, E> {
+				Ok(RingBufferId(value))
+			}
+		}
+
+		deserializer.deserialize_u64(U64Visitor)
+	}
+}
+
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct SequenceId(pub u64);
 
 impl Deref for SequenceId {

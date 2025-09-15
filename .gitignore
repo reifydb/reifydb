@@ -7,3 +7,4 @@
 **/dist/
 **/node_modules/
 .claude/
+plan.md

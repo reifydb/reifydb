@@ -91,6 +91,7 @@ pub enum SourceKind {
 	View,
 	DeferredView,
 	TransactionalView,
+	RingBuffer,
 	Unknown,
 }
 

@@ -27,6 +27,9 @@ pub enum KeyKind {
 	NamespaceView = 0x11,
 	PrimaryKey = 0x12,
 	FlowNodeState = 0x13,
+	RingBuffer = 0x14,
+	NamespaceRingBuffer = 0x15,
+	RingBufferMetadata = 0x16,
 }
 
 impl From<KeyKind> for u8 {
@@ -58,6 +61,9 @@ impl TryFrom<u8> for KeyKind {
 			0x11 => Ok(Self::NamespaceView),
 			0x12 => Ok(Self::PrimaryKey),
 			0x13 => Ok(Self::FlowNodeState),
+			0x14 => Ok(Self::RingBuffer),
+			0x15 => Ok(Self::NamespaceRingBuffer),
+			0x16 => Ok(Self::RingBufferMetadata),
 			_ => Err(serde::de::Error::custom(format!(
 				"Invalid KeyKind value: {value:#04x}"
 			))),
