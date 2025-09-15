@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Result,
-	operator::{Operator, stateful::StatefulOperator},
+	operator::{Operator, transform::TransformOperator},
 };
 
 // ============================================================================
@@ -760,7 +760,7 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 	}
 }
 
-impl<T: Transaction> StatefulOperator<T> for AggregateOperator {
+impl<T: Transaction> TransformOperator<T> for AggregateOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}

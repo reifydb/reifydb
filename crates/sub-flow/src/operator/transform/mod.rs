@@ -45,7 +45,7 @@ use reifydb_core::interface::{
 };
 use reifydb_engine::StandardCommandTransaction;
 
-pub trait StatefulOperator<T: Transaction>: Operator<T> {
+pub trait TransformOperator<T: Transaction>: Operator<T> {
 	fn id(&self) -> FlowNodeId;
 
 	fn get(
@@ -156,7 +156,7 @@ pub trait StatefulOperator<T: Transaction>: Operator<T> {
 	}
 }
 
-pub trait StatefulOperatorFactory<T: Transaction>: Send + Sync {
+pub trait TransformOperatorFactory<T: Transaction>: Send + Sync {
 	fn create_from_expressions(
 		node: FlowNodeId,
 		expressions: &[Expression<'static>],

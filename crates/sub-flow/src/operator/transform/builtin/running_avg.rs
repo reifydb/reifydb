@@ -20,7 +20,7 @@ use reifydb_type::Params;
 
 use crate::operator::{
 	Operator,
-	stateful::{StatefulOperator, StatefulOperatorFactory, extract},
+	transform::{TransformOperator, TransformOperatorFactory, extract},
 };
 
 pub struct RunningAvgOperator {
@@ -183,13 +183,13 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 	}
 }
 
-impl<T: Transaction> StatefulOperator<T> for RunningAvgOperator {
+impl<T: Transaction> TransformOperator<T> for RunningAvgOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 }
 
-impl<T: Transaction> StatefulOperatorFactory<T> for RunningAvgOperator {
+impl<T: Transaction> TransformOperatorFactory<T> for RunningAvgOperator {
 	fn create_from_expressions(
 		node: FlowNodeId,
 		expressions: &[Expression<'static>],

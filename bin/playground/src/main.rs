@@ -17,7 +17,7 @@ use reifydb::{
 	embedded,
 	engine::{StandardCommandTransaction, StandardEvaluator},
 	log_info,
-	sub_flow::{FlowBuilder, Operator, StatefulOperator},
+	sub_flow::{FlowBuilder, Operator, TransformOperator},
 	sub_logging::{FormatStyle, LoggingBuilder},
 };
 
@@ -50,7 +50,7 @@ impl<T: Transaction> Operator<T> for MyOP {
 	}
 }
 
-impl<T: Transaction> StatefulOperator<T> for MyOP {
+impl<T: Transaction> TransformOperator<T> for MyOP {
 	fn id(&self) -> FlowNodeId {
 		FlowNodeId(12345)
 	}

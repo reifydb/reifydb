@@ -17,7 +17,7 @@ use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_type::{Error, Value, internal_error};
 use serde::{Deserialize, Serialize};
 
-use crate::operator::{Operator, stateful::StatefulOperator};
+use crate::operator::{Operator, transform::TransformOperator};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctEntry {
@@ -345,7 +345,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 	}
 }
 
-impl<T: Transaction> StatefulOperator<T> for DistinctOperator {
+impl<T: Transaction> TransformOperator<T> for DistinctOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}

@@ -23,7 +23,7 @@ use reifydb_type::Value;
 use super::intercept::Change;
 use crate::{
 	builder::OperatorFactory, engine::FlowEngine,
-	operator::stateful::registry::StatefulOperatorRegistry,
+	operator::transform::registry::TransformOperatorRegistry,
 };
 
 // The table ID for reifydb.flows table
@@ -142,7 +142,7 @@ impl<T: Transaction> FlowConsumer<T> {
 	) -> Result<()> {
 		// Create a new FlowEngine for this processing batch with custom
 		// operators
-		let mut registry = StatefulOperatorRegistry::with_builtins();
+		let mut registry = TransformOperatorRegistry::with_builtins();
 
 		// Register custom operators
 		for (name, factory) in self.operators.iter() {

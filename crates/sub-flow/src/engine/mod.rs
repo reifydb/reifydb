@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_engine::StandardEvaluator;
 
 use crate::operator::{
-	Operators, stateful::registry::StatefulOperatorRegistry,
+	Operators, transform::registry::TransformOperatorRegistry,
 };
 
 pub struct FlowEngine<T: Transaction> {
@@ -25,7 +25,7 @@ pub struct FlowEngine<T: Transaction> {
 	// source
 	sources: HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>,
 	sinks: HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>,
-	registry: StatefulOperatorRegistry<T>,
+	registry: TransformOperatorRegistry<T>,
 }
 
 impl<T: Transaction> FlowEngine<T> {
@@ -36,13 +36,13 @@ impl<T: Transaction> FlowEngine<T> {
 			flows: HashMap::new(),
 			sources: HashMap::new(),
 			sinks: HashMap::new(),
-			registry: StatefulOperatorRegistry::with_builtins(),
+			registry: TransformOperatorRegistry::with_builtins(),
 		}
 	}
 
 	pub fn with_registry(
 		evaluator: StandardEvaluator,
-		registry: StatefulOperatorRegistry<T>,
+		registry: TransformOperatorRegistry<T>,
 	) -> Self {
 		Self {
 			evaluator,

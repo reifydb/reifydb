@@ -9,9 +9,9 @@ use reifydb_core::interface::{
 
 use crate::operator::{
 	Operator,
-	stateful::{
+	transform::{
 		CounterOperator, RunningAvgOperator, RunningSumOperator,
-		StatefulOperatorFactory,
+		TransformOperatorFactory,
 	},
 };
 
@@ -24,11 +24,11 @@ type OperatorFactoryFn<T> = Box<
 		+ Sync,
 >;
 
-pub struct StatefulOperatorRegistry<T: Transaction> {
+pub struct TransformOperatorRegistry<T: Transaction> {
 	factories: HashMap<String, OperatorFactoryFn<T>>,
 }
 
-impl<T: Transaction> StatefulOperatorRegistry<T> {
+impl<T: Transaction> TransformOperatorRegistry<T> {
 	pub fn new() -> Self {
 		Self {
 			factories: HashMap::new(),

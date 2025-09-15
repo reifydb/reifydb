@@ -9,8 +9,8 @@ mod filter;
 mod join;
 mod map;
 mod sort;
-pub(crate) mod stateful;
 mod take;
+pub(crate) mod transform;
 mod union;
 
 pub use aggregate::AggregateOperator;

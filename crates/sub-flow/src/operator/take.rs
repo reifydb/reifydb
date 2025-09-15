@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Result,
-	operator::{Operator, stateful::StatefulOperator},
+	operator::{Operator, transform::TransformOperator},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -249,7 +249,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 	}
 }
 
-impl<T: Transaction> StatefulOperator<T> for TakeOperator {
+impl<T: Transaction> TransformOperator<T> for TakeOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}

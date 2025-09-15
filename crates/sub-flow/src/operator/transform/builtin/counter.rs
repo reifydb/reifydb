@@ -16,7 +16,7 @@ use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 
 use crate::operator::{
 	Operator,
-	stateful::{StatefulOperator, StatefulOperatorFactory, extract},
+	transform::{TransformOperator, TransformOperatorFactory, extract},
 };
 
 pub struct CounterOperator {
@@ -163,13 +163,13 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 	}
 }
 
-impl<T: Transaction> StatefulOperator<T> for CounterOperator {
+impl<T: Transaction> TransformOperator<T> for CounterOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 }
 
-impl<T: Transaction> StatefulOperatorFactory<T> for CounterOperator {
+impl<T: Transaction> TransformOperatorFactory<T> for CounterOperator {
 	fn create_from_expressions(
 		node: FlowNodeId,
 		expressions: &[Expression<'static>],

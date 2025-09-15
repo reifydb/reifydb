@@ -23,7 +23,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Result,
-	operator::{Operator, stateful::StatefulOperator},
+	operator::{Operator, transform::TransformOperator},
 };
 
 // Stored row data for join state
@@ -1264,7 +1264,7 @@ fn value_to_column_data(value: &Value) -> ColumnData {
 	}
 }
 
-impl<T: Transaction> StatefulOperator<T> for JoinOperator {
+impl<T: Transaction> TransformOperator<T> for JoinOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
