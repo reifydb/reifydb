@@ -1,4 +1,4 @@
-use reifydb_core::flow::FlowChange;
+use reifydb_core::{flow::FlowChange, interface::Transaction};
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 
 mod aggregate;
@@ -20,9 +20,9 @@ pub use extend::ExtendOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
 pub use map::{MapOperator, MapTerminalOperator};
-use reifydb_core::interface::Transaction;
 pub use sort::SortOperator;
 pub use take::TakeOperator;
+pub use transform::extract;
 pub use union::UnionOperator;
 
 pub trait Operator<T: Transaction>: Send + Sync {
