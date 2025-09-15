@@ -12,8 +12,9 @@ use reifydb_core::{
 			ColumnIdentifier, ColumnSource, DeferredViewIdentifier,
 			FunctionIdentifier, IndexIdentifier,
 			NamespaceIdentifier, SequenceIdentifier,
-			SourceIdentifier, SourceKind, TableIdentifier,
+			SourceIdentifier, TableIdentifier,
 			TableVirtualIdentifier, TransactionalViewIdentifier,
+			UnresolvedSourceIdentifier,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDeferredView,
@@ -28,11 +29,14 @@ use reifydb_type::{Fragment, IntoFragment, OwnedFragment};
 use crate::{
 	ast::identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedColumnSource,
+		MaybeQualifiedDeferredViewIdentifier,
 		MaybeQualifiedFunctionIdentifier,
 		MaybeQualifiedIndexIdentifier,
 		MaybeQualifiedNamespaceIdentifier,
 		MaybeQualifiedSequenceIdentifier,
-		MaybeQualifiedSourceIdentifier,
+		MaybeQualifiedTableIdentifier,
+		MaybeQualifiedTransactionalViewIdentifier,
+		MaybeQualifiedViewIdentifier,
 	},
 	error::{FunctionNotFoundError, IdentifierError, UnknownAliasError},
 };
@@ -116,93 +120,145 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		// fully qualified identifiers)
 		let namespace_name = source.namespace().text();
 
-		let _schema =
-			self.transaction.get_namespace_by_name(namespace_name);
+		let _schema = self
+			.transaction
+			.get_namespace_by_name(namespace_name)?;
 
 		let resolved_schema = Fragment::Owned(
 			source.namespace().clone().into_owned(),
 		);
+		let resolved_name =
+			Fragment::Owned(source.name().clone().into_owned());
+		let resolved_alias = source
+			.alias()
+			.map(|a| Fragment::Owned(a.clone().into_owned()));
 
-		// Determine source type from catalog
-		let source_kind = self.determine_source_kind(
-			Some(resolved_schema.text()),
-			source.name().clone(),
-		)?;
-
-		let mut result = SourceIdentifier::new(
-			resolved_schema,
-			Fragment::Owned(source.name().clone().into_owned()),
-			source_kind,
-		);
-
-		if let Some(alias) = source.alias() {
-			result = result.with_alias(Fragment::Owned(
-				alias.clone().into_owned(),
-			));
-		}
+		// Create the resolved variant based on the input variant
+		let result = match source {
+			SourceIdentifier::Table(_) => {
+				let mut t = TableIdentifier::new(
+					resolved_schema,
+					resolved_name,
+				);
+				if let Some(a) = resolved_alias {
+					t = t.with_alias(a);
+				}
+				SourceIdentifier::Table(t)
+			}
+			SourceIdentifier::TableVirtual(_) => {
+				let mut t = TableVirtualIdentifier::new(
+					resolved_schema,
+					resolved_name,
+				);
+				if let Some(a) = resolved_alias {
+					t = t.with_alias(a);
+				}
+				SourceIdentifier::TableVirtual(t)
+			}
+			SourceIdentifier::DeferredView(_) => {
+				let mut v = DeferredViewIdentifier::new(
+					resolved_schema,
+					resolved_name,
+				);
+				if let Some(a) = resolved_alias {
+					v = v.with_alias(a);
+				}
+				SourceIdentifier::DeferredView(v)
+			}
+			SourceIdentifier::TransactionalView(_) => {
+				let mut v = TransactionalViewIdentifier::new(
+					resolved_schema,
+					resolved_name,
+				);
+				if let Some(a) = resolved_alias {
+					v = v.with_alias(a);
+				}
+				SourceIdentifier::TransactionalView(v)
+			}
+		};
 
 		Ok(result)
 	}
 
-	/// Convert and resolve a maybe-qualified source to fully qualified
-	pub fn resolve_maybe_source<'a>(
-		&mut self,
-		source: &MaybeQualifiedSourceIdentifier<'a>,
-	) -> Result<SourceIdentifier<'static>> {
-		self.resolve_maybe_source_with_validation(source, true)
-	}
-
-	/// Convert and resolve a maybe-qualified source to fully qualified with
-	/// optional validation
-	pub fn resolve_maybe_source_with_validation<'a>(
-		&mut self,
-		source: &MaybeQualifiedSourceIdentifier<'a>,
-		validate_existence: bool,
-	) -> Result<SourceIdentifier<'static>> {
-		// Determine namespace to use
-		let resolved_schema = match &source.namespace {
-			Some(namespace) => {
-				// User provided explicit namespace - validate
-				// it exists
-				self.transaction
-					.get_namespace_by_name(namespace)?;
-				Fragment::Owned(namespace.clone().into_owned())
-			}
-			None => {
-				// No namespace provided - use default namespace
-				// Use Internal fragment type to indicate this
-				// was injected
-				Fragment::Owned(OwnedFragment::Internal {
-					text: self
-						.default_namespace
-						.to_string(),
-				})
-			}
-		};
-
-		// Now create a fully qualified SourceIdentifier
-		let mut full_source = SourceIdentifier::new(
-			resolved_schema,
-			Fragment::Owned(source.name.clone().into_owned()),
-			source.kind,
-		);
-
-		if let Some(alias) = &source.alias {
-			full_source = full_source.with_alias(Fragment::Owned(
-				alias.clone().into_owned(),
-			));
-		}
-
-		// If validation is disabled, return the resolved identifier
-		// without checking existence
-		if !validate_existence {
-			return Ok(full_source);
-		}
-
-		// Otherwise, perform normal validation
-		self.resolve_source(&full_source)
-	}
-
+	// 	/// Convert and resolve a maybe-qualified source to fully qualified
+	// 	pub fn resolve_maybe_source<'a>(
+	// 		&mut self,
+	// 		source: &MaybeQualifiedSourceIdentifier<'a>,
+	// 	) -> Result<SourceIdentifier<'static>> {
+	// 		self.resolve_maybe_source_with_validation(source, true)
+	// 	}
+	//
+	// 	/// Convert and resolve a maybe-qualified source to fully qualified
+	// with 	/// optional validation
+	// 	pub fn resolve_maybe_source_with_validation<'a>(
+	// 		&mut self,
+	// 		source: &MaybeQualifiedSourceIdentifier<'a>,
+	// 		validate_existence: bool,
+	// 	) -> Result<SourceIdentifier<'static>> {
+	// 		// Determine namespace to use
+	// 		let resolved_schema = match &source.namespace {
+	// 			Some(namespace) => {
+	// 				// User provided explicit namespace - validate
+	// 				// it exists
+	// 				self.transaction
+	// 					.get_namespace_by_name(namespace)?;
+	// 				Fragment::Owned(namespace.clone().into_owned())
+	// 			}
+	// 			None => {
+	// 				// No namespace provided - use default namespace
+	// 				// Use Internal fragment type to indicate this
+	// 				// was injected
+	// 				Fragment::Owned(OwnedFragment::Internal {
+	// 					text: self
+	// 						.default_namespace
+	// 						.to_string(),
+	// 				})
+	// 			}
+	// 		};
+	//
+	// 		// If validation is disabled and kind is Unknown, we can't create a
+	// SourceIdentifier 		// This case typically happens during CREATE
+	// statements where the source doesn't exist yet
+	// 		if !validate_existence && source.kind == SourceKind::Unknown {
+	// 			// For CREATE statements, the caller should use the specific
+	// resolve methods 			// (resolve_table, resolve_deferred_view, etc.)
+	// which handle this case
+	// 			return Err(crate::error::IdentifierError::SourceNotFound(
+	// 				crate::error::SourceNotFoundError {
+	// 					namespace: resolved_schema.text().to_string(),
+	// 					name: source.name.text().to_string(),
+	// 					fragment: source.name.clone().into_owned(),
+	// 				},
+	// 			).into());
+	// 		}
+	//
+	// 		// Create the appropriate identifier based on the source kind
+	// 		let alias = source.alias.as_ref().map(|a|
+	// Fragment::Owned(a.clone().into_owned())); 		let full_source = if
+	// validate_existence { 			// Determine the actual type from the
+	// catalog 			let source_kind = self.determine_source_kind(
+	// 				Some(resolved_schema.text()),
+	// 				source.name.clone(),
+	// 			)?;
+	// 			self.create_source_identifier(
+	// 				resolved_schema.clone(),
+	// 				Fragment::Owned(source.name.clone().into_owned()),
+	// 				source_kind,
+	// 				alias,
+	// 			)?
+	// 		} else {
+	// 			// Use the provided kind (should not be Unknown at this point)
+	// 			self.create_source_identifier(
+	// 				resolved_schema.clone(),
+	// 				Fragment::Owned(source.name.clone().into_owned()),
+	// 				source.kind,
+	// 				alias,
+	// 			)?
+	// 		};
+	//
+	// 		Ok(full_source)
+	// 	}
+	//
 	/// Resolve a column identifier to fully qualified form
 	pub fn resolve_column(
 		&mut self,
@@ -564,57 +620,126 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 
 	// Helper methods
 
-	fn determine_source_kind<'a>(
+	/// Create a SourceIdentifier from resolved components and source kind
+	// Helper method to create a source identifier from an unresolved source
+	// by determining its type from the catalog
+	fn create_source_identifier_from_catalog(
 		&mut self,
-		namespace: Option<&str>,
-		name: impl IntoFragment<'a>,
-	) -> Result<SourceKind> {
-		let default_namespace = self.default_namespace;
-		let namespace_str =
-			namespace.unwrap_or_else(|| &*default_namespace);
-
-		let name = name.into_fragment();
+		namespace: Fragment<'static>,
+		name: Fragment<'static>,
+		alias: Option<Fragment<'static>>,
+	) -> Result<SourceIdentifier<'static>> {
+		let namespace_str = namespace.text();
+		let name_str = name.text();
 
 		// Check if it's a system table (virtual table in system
 		// namespace)
 		if namespace_str == "system" {
 			// Check if it's a known system table
-			if Self::is_system_table(name.text()) {
-				return Ok(SourceKind::TableVirtual);
+			if Self::is_system_table(name_str) {
+				let mut t = TableVirtualIdentifier::new(
+					namespace, name,
+				);
+				if let Some(a) = alias {
+					t = t.with_alias(a);
+				}
+				return Ok(SourceIdentifier::TableVirtual(t));
 			}
 		}
 
-		// Check catalog for source type
-		// First, get the namespace ID
-		let namespace = self
+		// Get the namespace ID
+		let ns = self
 			.transaction
 			.get_namespace_by_name(namespace_str)?;
 
 		// Check for regular table
 		if self.transaction
-			.find_table_by_name(namespace.id, name.text())?
+			.find_table_by_name(ns.id, name_str)?
 			.is_some()
 		{
-			return Ok(SourceKind::Table);
+			let mut t = TableIdentifier::new(namespace, name);
+			if let Some(a) = alias {
+				t = t.with_alias(a);
+			}
+			return Ok(SourceIdentifier::Table(t));
 		}
 
-		// Check for view
+		// Check for view and determine its type
+		if let Some(view) =
+			self.transaction.find_view_by_name(ns.id, name_str)?
+		{
+			match view.kind {
+				ViewKind::Deferred => {
+					let mut v = DeferredViewIdentifier::new(
+						namespace, name,
+					);
+					if let Some(a) = alias {
+						v = v.with_alias(a);
+					}
+					Ok(SourceIdentifier::DeferredView(v))
+				}
+				ViewKind::Transactional => {
+					let mut v = TransactionalViewIdentifier::new(namespace, name);
+					if let Some(a) = alias {
+						v = v.with_alias(a);
+					}
+					Ok(SourceIdentifier::TransactionalView(
+						v,
+					))
+				}
+			}
+		} else {
+			// Source not found
+			Err(crate::error::IdentifierError::SourceNotFound(
+				crate::error::SourceNotFoundError {
+					namespace: namespace_str.to_string(),
+					name: name_str.to_string(),
+					fragment: name.clone().into_owned(),
+				},
+			)
+			.into())
+		}
+	}
+
+	// Helper to check if a source exists in the catalog
+	fn check_source_exists<'a>(
+		&mut self,
+		namespace: Option<&str>,
+		name: impl IntoFragment<'a>,
+	) -> Result<bool> {
+		let default_namespace = self.default_namespace;
+		let namespace_str =
+			namespace.unwrap_or_else(|| &*default_namespace);
+		let name = name.into_fragment();
+
+		// Check if it's a system table
+		if namespace_str == "system"
+			&& Self::is_system_table(name.text())
+		{
+			return Ok(true);
+		}
+
+		// Get the namespace ID
+		let ns = self
+			.transaction
+			.get_namespace_by_name(namespace_str)?;
+
+		// Check for table or view
 		if self.transaction
-			.find_view_by_name(namespace.id, name.text())?
+			.find_table_by_name(ns.id, name.text())?
 			.is_some()
 		{
-			return Ok(SourceKind::View);
+			return Ok(true);
 		}
 
-		// Source not found
-		Err(crate::error::IdentifierError::SourceNotFound(
-			crate::error::SourceNotFoundError {
-				namespace: namespace_str.to_string(),
-				name: name.text().to_string(),
-				fragment: name.into_owned(),
-			},
-		)
-		.into())
+		if self.transaction
+			.find_view_by_name(ns.id, name.text())?
+			.is_some()
+		{
+			return Ok(true);
+		}
+
+		Ok(false)
 	}
 
 	#[allow(dead_code)]
@@ -642,8 +767,22 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		namespace: Option<&str>,
 		name: &str,
 	) -> Result<()> {
-		// Validate source exists using determine_source_kind
-		self.determine_source_kind(namespace, name)?;
+		// Validate source exists
+		if !self.check_source_exists(namespace, name)? {
+			let namespace_str =
+				namespace.unwrap_or(self.default_namespace);
+			return Err(
+				crate::error::IdentifierError::SourceNotFound(
+					crate::error::SourceNotFoundError {
+						namespace: namespace_str
+							.to_string(),
+						name: name.to_string(),
+						fragment: OwnedFragment::None,
+					},
+				)
+				.into(),
+			);
+		}
 		Ok(())
 	}
 
@@ -847,6 +986,113 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		Ok(ResolvedView::new(ident, namespace, def))
 	}
 
+	/// Build a resolved source from an unresolved identifier
+	pub fn build_resolved_source_from_unresolved<'a>(
+		&mut self,
+		ident: UnresolvedSourceIdentifier<'a>,
+	) -> Result<Rc<ResolvedSource<'a>>> {
+		// Try to determine the source type from the catalog
+		let name_text = ident.name.text();
+
+		// Create the resolved namespace fragment and get namespace text
+		let (namespace_fragment, namespace_text) = match ident.namespace
+		{
+			Some(ns) => {
+				let text = ns.text().to_string();
+				(Fragment::Owned(ns.into_owned()), text)
+			}
+			None => {
+				let text = self.default_namespace.to_string();
+				(
+					Fragment::Owned(
+						OwnedFragment::Internal {
+							text: text.clone(),
+						},
+					),
+					text,
+				)
+			}
+		};
+
+		// First check if it's a system table
+		if Self::is_system_table(name_text) {
+			let mut t = TableVirtualIdentifier::new(
+				namespace_fragment.clone(),
+				Fragment::Owned(ident.name.into_owned()),
+			);
+			if let Some(alias) = ident.alias {
+				t = t.with_alias(alias);
+			}
+			let source = SourceIdentifier::TableVirtual(t);
+			return self.build_resolved_source(source);
+		}
+
+		// Try to find it as a table
+		let ns = self
+			.transaction
+			.get_namespace_by_name(&namespace_text)?;
+		if self.transaction
+			.find_table_by_name(ns.id, name_text)?
+			.is_some()
+		{
+			let mut t = TableIdentifier::new(
+				namespace_fragment.clone(),
+				Fragment::Owned(ident.name.into_owned()),
+			);
+			if let Some(alias) = ident.alias {
+				t = t.with_alias(alias);
+			}
+			let source = SourceIdentifier::Table(t);
+			return self.build_resolved_source(source);
+		}
+
+		// Try to find it as a view
+		if let Some(view) =
+			self.transaction.find_view_by_name(ns.id, name_text)?
+		{
+			use reifydb_core::interface::ViewKind;
+			match view.kind {
+				ViewKind::Deferred => {
+					let mut v = DeferredViewIdentifier::new(
+						namespace_fragment.clone(),
+						Fragment::Owned(
+							ident.name.into_owned(),
+						),
+					);
+					if let Some(alias) = ident.alias {
+						v = v.with_alias(alias);
+					}
+					let source =
+						SourceIdentifier::DeferredView(
+							v,
+						);
+					self.build_resolved_source(source)
+				}
+				ViewKind::Transactional => {
+					let mut v = TransactionalViewIdentifier::new(
+						namespace_fragment,
+						Fragment::Owned(ident.name.into_owned()),
+					);
+					if let Some(alias) = ident.alias {
+						v = v.with_alias(alias);
+					}
+					let source = SourceIdentifier::TransactionalView(v);
+					self.build_resolved_source(source)
+				}
+			}
+		} else {
+			// Source not found
+			Err(crate::error::IdentifierError::SourceNotFound(
+				crate::error::SourceNotFoundError {
+					namespace: namespace_text.to_string(),
+					name: name_text.to_string(),
+					fragment: ident.name.into_owned(),
+				},
+			)
+			.into())
+		}
+	}
+
 	/// Build a resolved source (any type)
 	pub fn build_resolved_source<'a>(
 		&mut self,
@@ -1004,11 +1250,15 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				ColumnSource::Source {
 					namespace,
 					source,
-				} => SourceIdentifier::new(
-					namespace.clone(),
-					source.clone(),
-					SourceKind::Unknown,
-				),
+				} => {
+					// We don't know the source type yet, so
+					// we need to determine it from catalog
+					self.create_source_identifier_from_catalog(
+						Fragment::Owned(namespace.clone().into_owned()),
+						Fragment::Owned(source.clone().into_owned()),
+						None,  // Columns don't use aliases on their source references
+					)?
+				}
 				ColumnSource::Alias(alias) => {
 					// Lookup alias in current query context
 					self.source_aliases
@@ -1044,110 +1294,399 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		Ok(ResolvedColumn::new(ident, source, def))
 	}
 
-	/// Resolve a table identifier specifically
-	pub fn resolve_table<'a>(
+	/// Resolve a MaybeQualifiedTableIdentifier specifically
+	pub fn resolve_maybe_qualified_table<'a>(
 		&mut self,
-		source: &MaybeQualifiedSourceIdentifier<'a>,
+		source: &MaybeQualifiedTableIdentifier<'a>,
 		validate_existence: bool,
 	) -> Result<TableIdentifier<'static>> {
-		// Resolve to SourceIdentifier first
-		let resolved = self.resolve_maybe_source_with_validation(
-			source,
-			validate_existence,
-		)?;
+		// Get the table name
+		let name_text = source.name.text();
 
-		// Extract or create TableIdentifier
-		match resolved {
-			SourceIdentifier::Table(t) => Ok(t),
-			_ => {
-				// Create a TableIdentifier from other variants
-				Ok(TableIdentifier {
-					namespace: resolved.namespace().clone(),
-					name: resolved.name().clone(),
-					alias: resolved.alias().cloned(),
-				})
+		// Always validate namespace exists (can't create table in
+		// non-existent namespace) Get namespace, passing the fragment
+		// if available for error reporting
+		let ns = if let Some(namespace_fragment) = &source.namespace {
+			self.transaction.get_namespace_by_name(
+				namespace_fragment.clone(),
+			)?
+		} else {
+			self.transaction
+				.get_namespace_by_name(self.default_namespace)?
+		};
+
+		// Only validate table existence if requested
+		if validate_existence {
+			if self.transaction
+				.find_table_by_name(ns.id, name_text)?
+				.is_none()
+			{
+				return Err(crate::error::IdentifierError::SourceNotFound(
+					crate::error::SourceNotFoundError {
+						namespace: ns.name.clone(),
+						name: name_text.to_string(),
+						fragment: source.name.clone().into_owned(),
+					}
+				).into());
 			}
 		}
+
+		// Get namespace text for creating the identifier
+		let namespace_text = source
+			.namespace
+			.as_ref()
+			.map(|ns| ns.text())
+			.unwrap_or(self.default_namespace);
+
+		// Create the TableIdentifier preserving original fragments
+		use reifydb_type::{Fragment, OwnedFragment};
+
+		// For namespace, use the original fragment if available,
+		// otherwise create Internal
+		let namespace_fragment =
+			if let Some(ns_frag) = &source.namespace {
+				Fragment::Owned(ns_frag.clone().into_owned())
+			} else {
+				Fragment::Owned(OwnedFragment::Internal {
+					text: namespace_text.to_string(),
+				})
+			};
+
+		// For name, always preserve the original fragment for error
+		// reporting
+		let name_fragment =
+			Fragment::Owned(source.name.clone().into_owned());
+
+		let mut table =
+			TableIdentifier::new(namespace_fragment, name_fragment);
+		if let Some(alias) = &source.alias {
+			table.alias = Some(Fragment::Owned(
+				alias.clone().into_owned(),
+			));
+		}
+
+		Ok(table)
 	}
 
-	/// Resolve a deferred view identifier specifically
-	pub fn resolve_deferred_view<'a>(
+	/// Resolve a MaybeQualifiedDeferredViewIdentifier specifically
+	pub fn resolve_maybe_qualified_deferred_view<'a>(
 		&mut self,
-		source: &MaybeQualifiedSourceIdentifier<'a>,
+		source: &MaybeQualifiedDeferredViewIdentifier<'a>,
 		validate_existence: bool,
 	) -> Result<DeferredViewIdentifier<'static>> {
-		// Resolve to SourceIdentifier first
-		let resolved = self.resolve_maybe_source_with_validation(
-			source,
-			validate_existence,
-		)?;
+		// Get the view name
+		let name_text = source.name.text();
 
-		// Extract or create DeferredViewIdentifier
-		match resolved {
-			SourceIdentifier::DeferredView(v) => Ok(v),
-			_ => {
-				// Create a DeferredViewIdentifier from other
-				// variants
-				Ok(DeferredViewIdentifier {
-					namespace: resolved.namespace().clone(),
-					name: resolved.name().clone(),
-					alias: resolved.alias().cloned(),
-				})
+		// Always validate namespace exists (can't create view in
+		// non-existent namespace) Get namespace, passing the fragment
+		// if available for error reporting
+		let ns = if let Some(namespace_fragment) = &source.namespace {
+			self.transaction.get_namespace_by_name(
+				namespace_fragment.clone(),
+			)?
+		} else {
+			self.transaction
+				.get_namespace_by_name(self.default_namespace)?
+		};
+
+		// Only validate view existence if requested
+		if validate_existence {
+			if self.transaction
+				.find_view_by_name(ns.id, name_text)?
+				.is_none()
+			{
+				return Err(crate::error::IdentifierError::SourceNotFound(
+					crate::error::SourceNotFoundError {
+						namespace: ns.name.clone(),
+						name: name_text.to_string(),
+						fragment: source.name.clone().into_owned(),
+					}
+				).into());
 			}
 		}
+
+		// Get namespace text for creating the identifier
+		let namespace_text = source
+			.namespace
+			.as_ref()
+			.map(|ns| ns.text())
+			.unwrap_or(self.default_namespace);
+
+		// Create the DeferredViewIdentifier preserving original
+		// fragments
+		use reifydb_type::{Fragment, OwnedFragment};
+
+		// For namespace, use the original fragment if available,
+		// otherwise create Internal
+		let namespace_fragment =
+			if let Some(ns_frag) = &source.namespace {
+				Fragment::Owned(ns_frag.clone().into_owned())
+			} else {
+				Fragment::Owned(OwnedFragment::Internal {
+					text: namespace_text.to_string(),
+				})
+			};
+
+		// For name, always preserve the original fragment for error
+		// reporting
+		let name_fragment =
+			Fragment::Owned(source.name.clone().into_owned());
+
+		let mut view = DeferredViewIdentifier::new(
+			namespace_fragment,
+			name_fragment,
+		);
+		if let Some(alias) = &source.alias {
+			view.alias = Some(Fragment::Owned(
+				alias.clone().into_owned(),
+			));
+		}
+
+		Ok(view)
 	}
 
-	/// Resolve a transactional view identifier specifically
-	pub fn resolve_transactional_view<'a>(
+	/// Resolve a MaybeQualifiedTransactionalViewIdentifier specifically
+	pub fn resolve_maybe_qualified_transactional_view<'a>(
 		&mut self,
-		source: &MaybeQualifiedSourceIdentifier<'a>,
+		source: &MaybeQualifiedTransactionalViewIdentifier<'a>,
 		validate_existence: bool,
 	) -> Result<TransactionalViewIdentifier<'static>> {
-		// Resolve to SourceIdentifier first
-		let resolved = self.resolve_maybe_source_with_validation(
-			source,
-			validate_existence,
-		)?;
+		// Get the view name
+		let name_text = source.name.text();
 
-		// Extract or create TransactionalViewIdentifier
-		match resolved {
-			SourceIdentifier::TransactionalView(v) => Ok(v),
-			_ => {
-				// Create a TransactionalViewIdentifier from
-				// other variants
-				Ok(TransactionalViewIdentifier {
-					namespace: resolved.namespace().clone(),
-					name: resolved.name().clone(),
-					alias: resolved.alias().cloned(),
-				})
+		// Always validate namespace exists (can't create view in
+		// non-existent namespace) Get namespace, passing the fragment
+		// if available for error reporting
+		let ns = if let Some(namespace_fragment) = &source.namespace {
+			self.transaction.get_namespace_by_name(
+				namespace_fragment.clone(),
+			)?
+		} else {
+			self.transaction
+				.get_namespace_by_name(self.default_namespace)?
+		};
+
+		// Only validate view existence if requested
+		if validate_existence {
+			if self.transaction
+				.find_view_by_name(ns.id, name_text)?
+				.is_none()
+			{
+				return Err(crate::error::IdentifierError::SourceNotFound(
+					crate::error::SourceNotFoundError {
+						namespace: ns.name.clone(),
+						name: name_text.to_string(),
+						fragment: source.name.clone().into_owned(),
+					}
+				).into());
 			}
+		}
+
+		// Get namespace text for creating the identifier
+		let namespace_text = source
+			.namespace
+			.as_ref()
+			.map(|ns| ns.text())
+			.unwrap_or(self.default_namespace);
+
+		// Create the TransactionalViewIdentifier preserving original
+		// fragments
+		use reifydb_type::{Fragment, OwnedFragment};
+
+		// For namespace, use the original fragment if available,
+		// otherwise create Internal
+		let namespace_fragment =
+			if let Some(ns_frag) = &source.namespace {
+				Fragment::Owned(ns_frag.clone().into_owned())
+			} else {
+				Fragment::Owned(OwnedFragment::Internal {
+					text: namespace_text.to_string(),
+				})
+			};
+
+		// For name, always preserve the original fragment for error
+		// reporting
+		let name_fragment =
+			Fragment::Owned(source.name.clone().into_owned());
+
+		let mut view = TransactionalViewIdentifier::new(
+			namespace_fragment,
+			name_fragment,
+		);
+		if let Some(alias) = &source.alias {
+			view.alias = Some(Fragment::Owned(
+				alias.clone().into_owned(),
+			));
+		}
+
+		Ok(view)
+	}
+
+	/// Resolve a MaybeQualifiedViewIdentifier (generic view)
+	pub fn resolve_maybe_qualified_view<'a>(
+		&mut self,
+		source: &MaybeQualifiedViewIdentifier<'a>,
+		validate_existence: bool,
+	) -> Result<SourceIdentifier<'static>> {
+		// Get the view name
+		let name_text = source.name.text();
+
+		// Validate if requested
+		if validate_existence {
+			// Get namespace, passing the fragment if available for
+			// error reporting
+			let ns = if let Some(namespace_fragment) =
+				&source.namespace
+			{
+				self.transaction.get_namespace_by_name(
+					namespace_fragment.clone(),
+				)?
+			} else {
+				self.transaction.get_namespace_by_name(
+					self.default_namespace,
+				)?
+			};
+
+			// Check if it exists as a view and determine its type
+			if self.transaction
+				.find_view_by_name(ns.id, name_text)?
+				.is_none()
+			{
+				return Err(crate::error::IdentifierError::SourceNotFound(
+					crate::error::SourceNotFoundError {
+						namespace: ns.name.clone(),
+						name: name_text.to_string(),
+						fragment: source.name.clone().into_owned(),
+					}
+				).into());
+			}
+
+			// Get the view to determine its type
+			let view = self
+				.transaction
+				.find_view_by_name(ns.id, name_text)?
+				.ok_or_else(|| {
+					crate::error::IdentifierError::SourceNotFound(
+					crate::error::SourceNotFoundError {
+						namespace: ns.name.clone(),
+						name: name_text.to_string(),
+						fragment: source.name.clone().into_owned(),
+					}
+				)
+				})?;
+
+			// Get namespace text for creating the identifier
+			let namespace_text = source
+				.namespace
+				.as_ref()
+				.map(|ns| ns.text())
+				.unwrap_or(self.default_namespace);
+
+			// Create owned fragments
+			use reifydb_type::{Fragment, OwnedFragment};
+			let namespace_fragment =
+				Fragment::Owned(OwnedFragment::Internal {
+					text: namespace_text.to_string(),
+				});
+			let name_fragment =
+				Fragment::Owned(OwnedFragment::Internal {
+					text: name_text.to_string(),
+				});
+
+			// Create the appropriate view identifier based on type
+			match view.kind {
+				ViewKind::Deferred => {
+					let mut v = DeferredViewIdentifier::new(
+						namespace_fragment,
+						name_fragment,
+					);
+					if let Some(alias) = &source.alias {
+						v.alias =
+							Some(Fragment::Owned(
+								alias.clone()
+									.into_owned(
+									),
+							));
+					}
+					Ok(SourceIdentifier::DeferredView(v))
+				}
+				ViewKind::Transactional => {
+					let mut v = TransactionalViewIdentifier::new(
+					namespace_fragment,
+					name_fragment,
+				);
+					if let Some(alias) = &source.alias {
+						v.alias =
+							Some(Fragment::Owned(
+								alias.clone()
+									.into_owned(
+									),
+							));
+					}
+					Ok(SourceIdentifier::TransactionalView(
+						v,
+					))
+				}
+			}
+		} else {
+			// Get namespace text for creating the identifier
+			let namespace_text = source
+				.namespace
+				.as_ref()
+				.map(|ns| ns.text())
+				.unwrap_or(self.default_namespace);
+
+			// Create owned fragments
+			use reifydb_type::{Fragment, OwnedFragment};
+			let namespace_fragment =
+				Fragment::Owned(OwnedFragment::Internal {
+					text: namespace_text.to_string(),
+				});
+			let name_fragment =
+				Fragment::Owned(OwnedFragment::Internal {
+					text: name_text.to_string(),
+				});
+
+			// For ALTER VIEW without validation, we can't determine
+			// the type Default to DeferredView for now
+			let mut v = DeferredViewIdentifier::new(
+				namespace_fragment,
+				name_fragment,
+			);
+			if let Some(alias) = &source.alias {
+				v.alias = Some(Fragment::Owned(
+					alias.clone().into_owned(),
+				));
+			}
+			Ok(SourceIdentifier::DeferredView(v))
 		}
 	}
 
-	/// Resolve a virtual table identifier specifically
-	pub fn resolve_table_virtual<'a>(
+	/// Resolve an unresolved source identifier (used in FROM clauses where
+	/// type is unknown)
+	pub fn resolve_unresolved_source<'a>(
 		&mut self,
-		source: &MaybeQualifiedSourceIdentifier<'a>,
-		validate_existence: bool,
-	) -> Result<TableVirtualIdentifier<'static>> {
-		// Resolve to SourceIdentifier first
-		let resolved = self.resolve_maybe_source_with_validation(
-			source,
-			validate_existence,
-		)?;
+		source: &UnresolvedSourceIdentifier<'a>,
+	) -> Result<SourceIdentifier<'static>> {
+		// Resolve namespace - use default if not provided
+		let namespace_fragment = match &source.namespace {
+			Some(ns) => Fragment::Owned(ns.clone().into_owned()),
+			None => Fragment::Owned(OwnedFragment::Internal {
+				text: self.default_namespace.to_string(),
+			}),
+		};
+		let name_fragment =
+			Fragment::Owned(source.name.clone().into_owned());
+		let alias_fragment = source
+			.alias
+			.as_ref()
+			.map(|a| Fragment::Owned(a.clone().into_owned()));
 
-		// Extract or create TableVirtualIdentifier
-		match resolved {
-			SourceIdentifier::TableVirtual(t) => Ok(t),
-			_ => {
-				// Create a TableVirtualIdentifier from other
-				// variants
-				Ok(TableVirtualIdentifier {
-					namespace: resolved.namespace().clone(),
-					name: resolved.name().clone(),
-					alias: resolved.alias().cloned(),
-				})
-			}
-		}
+		// Use helper to determine type from catalog
+		self.create_source_identifier_from_catalog(
+			namespace_fragment,
+			name_fragment,
+			alias_fragment,
+		)
 	}
 }

@@ -53,7 +53,9 @@ impl Compiler {
 
 		// Resolve directly to DeferredViewIdentifier
 		// Don't validate existence since we're creating the view
-		let view = resolver.resolve_deferred_view(&ast.view, false)?;
+		let view = resolver.resolve_maybe_qualified_deferred_view(
+			&ast.view, false,
+		)?;
 
 		let with = if let Some(as_statement) = ast.as_clause {
 			Compiler::compile(as_statement, resolver)?

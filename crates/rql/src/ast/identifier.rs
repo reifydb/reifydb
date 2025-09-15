@@ -5,7 +5,6 @@
 //! These types allow optional qualification as they come directly from user
 //! input
 
-use reifydb_core::interface::identifier::SourceKind;
 use reifydb_type::Fragment;
 
 use crate::ast::tokenize::Token;
@@ -68,26 +67,23 @@ impl<'a> MaybeQualifiedNamespaceIdentifier<'a> {
 	}
 }
 
-/// Maybe-qualified source identifier for tables/views - namespace is optional
+/// Maybe-qualified table identifier for tables - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
-pub struct MaybeQualifiedSourceIdentifier<'a> {
-	/// Namespace containing this source (optional in user input)
+pub struct MaybeQualifiedTableIdentifier<'a> {
+	/// Namespace containing this table (optional in user input)
 	pub namespace: Option<Fragment<'a>>,
-	/// Source name
+	/// Table name
 	pub name: Fragment<'a>,
-	/// Alias for this source in query context
+	/// Alias for this table in query context
 	pub alias: Option<Fragment<'a>>,
-	/// Type of source (may be Unknown before resolution)
-	pub kind: SourceKind,
 }
 
-impl<'a> MaybeQualifiedSourceIdentifier<'a> {
+impl<'a> MaybeQualifiedTableIdentifier<'a> {
 	pub fn new(name: Fragment<'a>) -> Self {
 		Self {
 			namespace: None,
 			name,
 			alias: None,
-			kind: SourceKind::Unknown,
 		}
 	}
 
@@ -100,9 +96,98 @@ impl<'a> MaybeQualifiedSourceIdentifier<'a> {
 		self.alias = Some(alias);
 		self
 	}
+}
 
-	pub fn with_kind(mut self, kind: SourceKind) -> Self {
-		self.kind = kind;
+/// Maybe-qualified deferred view identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedDeferredViewIdentifier<'a> {
+	/// Namespace containing this view (optional in user input)
+	pub namespace: Option<Fragment<'a>>,
+	/// View name
+	pub name: Fragment<'a>,
+	/// Alias for this view in query context
+	pub alias: Option<Fragment<'a>>,
+}
+
+impl<'a> MaybeQualifiedDeferredViewIdentifier<'a> {
+	pub fn new(name: Fragment<'a>) -> Self {
+		Self {
+			namespace: None,
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Fragment<'a>) -> Self {
+		self.namespace = Some(namespace);
+		self
+	}
+
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+}
+
+/// Maybe-qualified transactional view identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedTransactionalViewIdentifier<'a> {
+	/// Namespace containing this view (optional in user input)
+	pub namespace: Option<Fragment<'a>>,
+	/// View name
+	pub name: Fragment<'a>,
+	/// Alias for this view in query context
+	pub alias: Option<Fragment<'a>>,
+}
+
+impl<'a> MaybeQualifiedTransactionalViewIdentifier<'a> {
+	pub fn new(name: Fragment<'a>) -> Self {
+		Self {
+			namespace: None,
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Fragment<'a>) -> Self {
+		self.namespace = Some(namespace);
+		self
+	}
+
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+}
+
+/// Maybe-qualified view identifier (generic) - namespace is optional
+/// Used when we don't know the specific view type yet (e.g., ALTER VIEW)
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedViewIdentifier<'a> {
+	/// Namespace containing this view (optional in user input)
+	pub namespace: Option<Fragment<'a>>,
+	/// View name
+	pub name: Fragment<'a>,
+	/// Alias for this view in query context
+	pub alias: Option<Fragment<'a>>,
+}
+
+impl<'a> MaybeQualifiedViewIdentifier<'a> {
+	pub fn new(name: Fragment<'a>) -> Self {
+		Self {
+			namespace: None,
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Fragment<'a>) -> Self {
+		self.namespace = Some(namespace);
+		self
+	}
+
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
 		self
 	}
 }

@@ -68,7 +68,8 @@ impl Compiler {
 
 		// Resolve directly to TableIdentifier
 		// Don't validate existence since we're creating the table
-		let table = resolver.resolve_table(&ast.table, false)?;
+		let table = resolver
+			.resolve_maybe_qualified_table(&ast.table, false)?;
 
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
 			table,

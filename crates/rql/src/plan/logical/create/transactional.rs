@@ -53,8 +53,10 @@ impl Compiler {
 
 		// Resolve directly to TransactionalViewIdentifier
 		// Don't validate existence since we're creating the view
-		let view =
-			resolver.resolve_transactional_view(&ast.view, false)?;
+		let view = resolver
+			.resolve_maybe_qualified_transactional_view(
+				&ast.view, false,
+			)?;
 
 		let with = if let Some(as_statement) = ast.as_clause {
 			Compiler::compile(as_statement, resolver)?

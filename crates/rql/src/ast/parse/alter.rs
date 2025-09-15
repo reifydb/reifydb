@@ -133,15 +133,12 @@ impl<'a> Parser<'a> {
 		let table_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
-		// Create MaybeQualifiedSourceIdentifier
-		use reifydb_core::interface::identifier::SourceKind;
-
-		use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
-		let table = MaybeQualifiedSourceIdentifier::new(
+		// Create MaybeQualifiedTableIdentifier
+		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
+		let table = MaybeQualifiedTableIdentifier::new(
 			table_token.fragment.clone(),
 		)
-		.with_namespace(namespace_token.fragment.clone())
-		.with_kind(SourceKind::Table);
+		.with_namespace(namespace_token.fragment.clone());
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -232,15 +229,12 @@ impl<'a> Parser<'a> {
 		let view_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
-		// Create MaybeQualifiedSourceIdentifier for view
-		use reifydb_core::interface::identifier::SourceKind;
-
-		use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
-		let view = MaybeQualifiedSourceIdentifier::new(
+		// Create MaybeQualifiedViewIdentifier for view
+		use crate::ast::identifier::MaybeQualifiedViewIdentifier;
+		let view = MaybeQualifiedViewIdentifier::new(
 			view_token.fragment.clone(),
 		)
-		.with_namespace(namespace_token.fragment.clone())
-		.with_kind(SourceKind::View);
+		.with_namespace(namespace_token.fragment.clone());
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;

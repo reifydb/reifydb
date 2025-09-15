@@ -39,8 +39,10 @@ impl Compiler {
 		ast: AstAlterView<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Resolve the view identifier
-		let view = resolver.resolve_maybe_source(&ast.view)?;
+		// Resolve the view identifier (generic - could be deferred or
+		// transactional)
+		let view =
+			resolver.resolve_maybe_qualified_view(&ast.view, true)?;
 
 		// Convert operations
 		let operations = ast

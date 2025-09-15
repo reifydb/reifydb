@@ -18,7 +18,7 @@ impl Compiler {
 		// Resolve directly to TableIdentifier since DELETE only works
 		// on tables
 		let target = if let Some(t) = &ast.target {
-			Some(resolver.resolve_table(t, true)?)
+			Some(resolver.resolve_maybe_qualified_table(t, true)?)
 		} else {
 			None
 		};

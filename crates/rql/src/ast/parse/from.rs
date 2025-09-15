@@ -29,9 +29,7 @@ impl<'a> Parser<'a> {
 				list: self.parse_static()?,
 			})
 		} else {
-			use reifydb_core::interface::identifier::SourceKind;
-
-			use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+			use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
 			// Get the first identifier token
 			let first_token =
@@ -48,61 +46,55 @@ impl<'a> Parser<'a> {
 				false
 			};
 
-			let (source, alias_token) = if has_dot {
+			let source = if has_dot {
 				self.consume_operator(Operator::Dot)?;
 				let second_token =
 					self.consume(TokenKind::Identifier)?;
+
 				// namespace.table - create
-				// MaybeQualifiedSourceIdentifier with namespace
-				let source =
-					MaybeQualifiedSourceIdentifier::new(
+				// UnresolvedSourceIdentifier with namespace
+				let mut source =
+					UnresolvedSourceIdentifier::new(
+						Some(first_token
+							.fragment
+							.clone()),
 						second_token.fragment.clone(),
-					)
-					.with_namespace(
-						first_token.fragment.clone(),
-					)
-					.with_kind(SourceKind::Unknown); // Will be resolved later
+					);
 
 				// Check for alias after namespace.table
-				let alias_token = if !self.is_eof()
+				if !self.is_eof()
 					&& self.current()?.is_identifier()
 				{
-					Some(self.consume(
+					let alias_token = self.consume(
 						TokenKind::Identifier,
-					)?)
-				} else {
-					None
-				};
+					)?;
+					source = source.with_alias(
+						alias_token.fragment.clone(),
+					);
+				}
 
-				(source, alias_token)
+				source
 			} else {
 				// Just table - create
-				// MaybeQualifiedSourceIdentifier without
-				// namespace
-				let source =
-					MaybeQualifiedSourceIdentifier::new(
+				// UnresolvedSourceIdentifier without namespace
+				let mut source =
+					UnresolvedSourceIdentifier::new(
+						None,
 						first_token.fragment.clone(),
-					)
-					.with_kind(SourceKind::Unknown); // Will be resolved later
+					);
 
 				// Check for alias after table
-				let alias_token = if !self.is_eof()
+				if !self.is_eof()
 					&& self.current()?.is_identifier()
 				{
-					Some(self.consume(
+					let alias_token = self.consume(
 						TokenKind::Identifier,
-					)?)
-				} else {
-					None
-				};
+					)?;
+					source = source.with_alias(
+						alias_token.fragment.clone(),
+					);
+				}
 
-				(source, alias_token)
-			};
-
-			// Add alias to source if present
-			let source = if let Some(alias_tok) = alias_token {
-				source.with_alias(alias_tok.fragment.clone())
-			} else {
 				source
 			};
 

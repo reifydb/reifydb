@@ -95,7 +95,7 @@ impl Compiler {
 							// UPDATE only works on
 							// tables
 							let target = if let Some(t) = &update_ast.target {
-								Some(resolver.resolve_table(t, true)?)
+								Some(resolver.resolve_maybe_qualified_table(t, true)?)
 							} else {
 								None
 							};
@@ -122,7 +122,7 @@ impl Compiler {
 							// DELETE only works on
 							// tables
 							let target = if let Some(t) = &delete_ast.target {
-								Some(resolver.resolve_table(t, true)?)
+								Some(resolver.resolve_maybe_qualified_table(t, true)?)
 							} else {
 								None
 							};

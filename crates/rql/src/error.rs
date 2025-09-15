@@ -3,8 +3,6 @@
 
 use std::fmt;
 
-use reifydb_core::interface::identifier::SourceKind;
-
 /// Errors related to identifier resolution
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
@@ -140,7 +138,7 @@ impl SourceNotFoundError {
 	pub fn with_expected_type(
 		namespace: String,
 		name: String,
-		_expected: SourceKind,
+		_expected: &str,
 		fragment: reifydb_type::OwnedFragment,
 	) -> Self {
 		// Could extend this to include expected type in the error

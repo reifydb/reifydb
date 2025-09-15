@@ -194,87 +194,53 @@ impl<'a> TransactionalViewIdentifier<'a> {
 	}
 }
 
-impl<'a> SourceIdentifier<'a> {
+/// Represents a source identifier that hasn't been resolved to a specific type
+/// yet
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnresolvedSourceIdentifier<'a> {
+	pub namespace: Option<Fragment<'a>>,
+	pub name: Fragment<'a>,
+	pub alias: Option<Fragment<'a>>,
+}
+
+impl<'a> UnresolvedSourceIdentifier<'a> {
 	pub fn new(
-		namespace: Fragment<'a>,
+		namespace: Option<Fragment<'a>>,
 		name: Fragment<'a>,
-		kind: SourceKind,
 	) -> Self {
-		match kind {
-			SourceKind::Table => Self::Table(TableIdentifier::new(
-				namespace, name,
-			)),
-			SourceKind::TableVirtual => Self::TableVirtual(
-				TableVirtualIdentifier::new(namespace, name),
-			),
-			SourceKind::DeferredView => Self::DeferredView(
-				DeferredViewIdentifier::new(namespace, name),
-			),
-			SourceKind::TransactionalView => {
-				Self::TransactionalView(
-					TransactionalViewIdentifier::new(
-						namespace, name,
-					),
-				)
-			}
-			SourceKind::View | SourceKind::Unknown => {
-				// Default to Table for now - this will be
-				// handled properly later
-				Self::Table(TableIdentifier::new(
-					namespace, name,
-				))
-			}
+		Self {
+			namespace,
+			name,
+			alias: None,
 		}
 	}
 
-	pub fn with_alias(self, alias: Fragment<'a>) -> Self {
-		match self {
-			Self::Table(t) => Self::Table(t.with_alias(alias)),
-			Self::TableVirtual(t) => {
-				Self::TableVirtual(t.with_alias(alias))
-			}
-			Self::DeferredView(v) => {
-				Self::DeferredView(v.with_alias(alias))
-			}
-			Self::TransactionalView(v) => {
-				Self::TransactionalView(v.with_alias(alias))
-			}
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+
+	pub fn into_owned(self) -> UnresolvedSourceIdentifier<'static> {
+		UnresolvedSourceIdentifier {
+			namespace: self
+				.namespace
+				.map(|ns| Fragment::Owned(ns.into_owned())),
+			name: Fragment::Owned(self.name.into_owned()),
+			alias: self
+				.alias
+				.map(|a| Fragment::Owned(a.into_owned())),
 		}
 	}
 
-	pub fn with_kind(self, kind: SourceKind) -> Self {
-		// Extract namespace and name from current variant
-		let (namespace, name, alias) = match &self {
-			Self::Table(t) => (
-				t.namespace.clone(),
-				t.name.clone(),
-				t.alias.clone(),
-			),
-			Self::TableVirtual(t) => (
-				t.namespace.clone(),
-				t.name.clone(),
-				t.alias.clone(),
-			),
-			Self::DeferredView(v) => (
-				v.namespace.clone(),
-				v.name.clone(),
-				v.alias.clone(),
-			),
-			Self::TransactionalView(v) => (
-				v.namespace.clone(),
-				v.name.clone(),
-				v.alias.clone(),
-			),
-		};
-
-		// Create new variant with the specified kind
-		let mut result = Self::new(namespace, name, kind);
-		if let Some(a) = alias {
-			result = result.with_alias(a);
-		}
-		result
+	pub fn effective_name(&self) -> &str {
+		self.alias
+			.as_ref()
+			.map(|a| a.text())
+			.unwrap_or_else(|| self.name.text())
 	}
+}
 
+impl<'a> SourceIdentifier<'a> {
 	pub fn into_owned(self) -> SourceIdentifier<'static> {
 		match self {
 			Self::Table(t) => {
@@ -342,19 +308,6 @@ impl<'a> SourceIdentifier<'a> {
 			Self::TransactionalView(v) => v.alias.as_ref(),
 		}
 	}
-}
-
-// Temporary SourceKind enum for backward compatibility during migration
-// TODO: Remove once all usages have been updated to use SourceIdentifier
-// variants directly
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub enum SourceKind {
-	Table,
-	TableVirtual,
-	View,
-	DeferredView,
-	TransactionalView,
-	Unknown,
 }
 
 /// Column identifier with source qualification

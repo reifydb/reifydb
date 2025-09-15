@@ -15,9 +15,7 @@ impl<'a> Parser<'a> {
 		let target = if !self.is_eof()
 			&& self.current()?.is_identifier()
 		{
-			use reifydb_core::interface::identifier::SourceKind;
-
-			use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+			use crate::ast::identifier::MaybeQualifiedTableIdentifier;
 			let first_token = self.consume(
 				crate::ast::tokenize::TokenKind::Identifier,
 			)?;
@@ -29,17 +27,15 @@ impl<'a> Parser<'a> {
 				self.consume_operator(Operator::Dot)?;
 				let second_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 				// namespace.table
-				Some(MaybeQualifiedSourceIdentifier::new(
+				Some(MaybeQualifiedTableIdentifier::new(
 					second_token.fragment.clone(),
 				)
-				.with_namespace(first_token.fragment.clone())
-				.with_kind(SourceKind::Table))
+				.with_namespace(first_token.fragment.clone()))
 			} else {
 				// table only
-				Some(MaybeQualifiedSourceIdentifier::new(
+				Some(MaybeQualifiedTableIdentifier::new(
 					first_token.fragment.clone(),
-				)
-				.with_kind(SourceKind::Table))
+				))
 			}
 		} else {
 			// No target table specified - will be inferred from

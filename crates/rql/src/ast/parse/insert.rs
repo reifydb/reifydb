@@ -11,9 +11,7 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert<'a>> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
-		use reifydb_core::interface::identifier::SourceKind;
-
-		use crate::ast::identifier::MaybeQualifiedSourceIdentifier;
+		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
 		let first_token = self
 			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
@@ -26,17 +24,15 @@ impl<'a> Parser<'a> {
 				crate::ast::tokenize::TokenKind::Identifier,
 			)?;
 			// namespace.table
-			MaybeQualifiedSourceIdentifier::new(
+			MaybeQualifiedTableIdentifier::new(
 				second_token.fragment.clone(),
 			)
 			.with_namespace(first_token.fragment.clone())
-			.with_kind(SourceKind::Table)
 		} else {
 			// table only
-			MaybeQualifiedSourceIdentifier::new(
+			MaybeQualifiedTableIdentifier::new(
 				first_token.fragment.clone(),
 			)
-			.with_kind(SourceKind::Table)
 		};
 
 		Ok(AstInsert {

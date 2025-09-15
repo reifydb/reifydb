@@ -28,22 +28,21 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						// Create fully qualified
-						// SourceIdentifier
-						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
-						use reifydb_type::{Fragment, OwnedFragment};
+						// Create unresolved source
+						// identifier
+						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let namespace = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
-						let mut source = SourceIdentifier::new(namespace, identifier.token.fragment.clone(), SourceKind::Unknown);
+						let mut unresolved = UnresolvedSourceIdentifier::new(None, identifier.token.fragment.clone());
 						if let Some(a) = alias {
-							source = source
+							unresolved = unresolved
 								.with_alias(a);
 						}
 
-						// Build resolved source
+						// Build resolved source from
+						// unresolved identifier
 						let resolved_source = resolver
-							.build_resolved_source(
-								source,
+							.build_resolved_source_from_unresolved(
+								unresolved,
 							)?;
 						vec![SourceScan(
 							SourceScanNode {
@@ -72,18 +71,19 @@ impl Compiler {
 						};
 						// Create fully qualified
 						// SourceIdentifier
-						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let mut source = SourceIdentifier::new(namespace.token.fragment, table.token.fragment, SourceKind::Unknown);
+						let mut unresolved = UnresolvedSourceIdentifier::new(Some(namespace.token.fragment), table.token.fragment);
 						if let Some(a) = alias {
-							source = source
+							unresolved = unresolved
 								.with_alias(a);
 						}
 
-						// Build resolved source
+						// Build resolved source from
+						// unresolved identifier
 						let resolved_source = resolver
-							.build_resolved_source(
-								source,
+							.build_resolved_source_from_unresolved(
+								unresolved,
 							)?;
 						vec![SourceScan(
 							SourceScanNode {
@@ -111,22 +111,21 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						// Create fully qualified
-						// SourceIdentifier
-						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
-						use reifydb_type::{Fragment, OwnedFragment};
+						// Create unresolved source
+						// identifier
+						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let namespace = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
-						let mut source = SourceIdentifier::new(namespace, identifier.token.fragment.clone(), SourceKind::Unknown);
+						let mut unresolved = UnresolvedSourceIdentifier::new(None, identifier.token.fragment.clone());
 						if let Some(a) = alias {
-							source = source
+							unresolved = unresolved
 								.with_alias(a);
 						}
 
-						// Build resolved source
+						// Build resolved source from
+						// unresolved identifier
 						let resolved_source = resolver
-							.build_resolved_source(
-								source,
+							.build_resolved_source_from_unresolved(
+								unresolved,
 							)?;
 						vec![SourceScan(
 							SourceScanNode {
@@ -155,18 +154,19 @@ impl Compiler {
 						};
 						// Create fully qualified
 						// SourceIdentifier
-						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let mut source = SourceIdentifier::new(namespace.token.fragment, table.token.fragment, SourceKind::Unknown);
+						let mut unresolved = UnresolvedSourceIdentifier::new(Some(namespace.token.fragment), table.token.fragment);
 						if let Some(a) = alias {
-							source = source
+							unresolved = unresolved
 								.with_alias(a);
 						}
 
-						// Build resolved source
+						// Build resolved source from
+						// unresolved identifier
 						let resolved_source = resolver
-							.build_resolved_source(
-								source,
+							.build_resolved_source_from_unresolved(
+								unresolved,
 							)?;
 						vec![SourceScan(
 							SourceScanNode {
@@ -194,22 +194,21 @@ impl Compiler {
 			} => {
 				let with = match *with {
 					Ast::Identifier(identifier) => {
-						// Create fully qualified
-						// SourceIdentifier
-						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
-						use reifydb_type::{Fragment, OwnedFragment};
+						// Create unresolved source
+						// identifier
+						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let namespace = Fragment::Owned(OwnedFragment::Internal { text: String::from("default") });
-						let mut source = SourceIdentifier::new(namespace, identifier.token.fragment.clone(), SourceKind::Unknown);
+						let mut unresolved = UnresolvedSourceIdentifier::new(None, identifier.token.fragment.clone());
 						if let Some(a) = alias {
-							source = source
+							unresolved = unresolved
 								.with_alias(a);
 						}
 
-						// Build resolved source
+						// Build resolved source from
+						// unresolved identifier
 						let resolved_source = resolver
-							.build_resolved_source(
-								source,
+							.build_resolved_source_from_unresolved(
+								unresolved,
 							)?;
 						vec![SourceScan(
 							SourceScanNode {
@@ -238,18 +237,19 @@ impl Compiler {
 						};
 						// Create fully qualified
 						// SourceIdentifier
-						use reifydb_core::interface::identifier::{SourceIdentifier, SourceKind};
+						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let mut source = SourceIdentifier::new(namespace.token.fragment, table.token.fragment, SourceKind::Unknown);
+						let mut unresolved = UnresolvedSourceIdentifier::new(Some(namespace.token.fragment), table.token.fragment);
 						if let Some(a) = alias {
-							source = source
+							unresolved = unresolved
 								.with_alias(a);
 						}
 
-						// Build resolved source
+						// Build resolved source from
+						// unresolved identifier
 						let resolved_source = resolver
-							.build_resolved_source(
-								source,
+							.build_resolved_source_from_unresolved(
+								unresolved,
 							)?;
 						vec![SourceScan(
 							SourceScanNode {

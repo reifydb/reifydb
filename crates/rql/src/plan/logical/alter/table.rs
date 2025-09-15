@@ -44,7 +44,8 @@ impl Compiler {
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve the table identifier
-		let table = resolver.resolve_table(&ast.table, true)?;
+		let table = resolver
+			.resolve_maybe_qualified_table(&ast.table, true)?;
 
 		// Convert operations
 		let operations = ast

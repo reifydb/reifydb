@@ -17,7 +17,8 @@ impl Compiler {
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve directly to TableIdentifier since INSERT only works
 		// on tables
-		let target = resolver.resolve_table(&ast.target, true)?;
+		let target = resolver
+			.resolve_maybe_qualified_table(&ast.target, true)?;
 
 		Ok(LogicalPlan::Insert(InsertNode {
 			target,

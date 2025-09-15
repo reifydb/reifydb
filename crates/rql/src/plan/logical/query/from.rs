@@ -26,14 +26,11 @@ impl Compiler {
 				source,
 				..
 			} => {
-				// Use resolver to properly resolve the source
-				let qualified_source_ident =
-					resolver.resolve_maybe_source(&source)?;
-
-				// Build the resolved source
+				// Use resolver to properly resolve
+				// UnresolvedSourceIdentifier
 				let resolved_source = resolver
-					.build_resolved_source(
-						qualified_source_ident,
+					.build_resolved_source_from_unresolved(
+						source,
 					)?;
 
 				// TODO: Resolve index if present

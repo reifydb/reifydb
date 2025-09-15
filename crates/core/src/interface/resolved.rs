@@ -272,10 +272,10 @@ impl<'a> ResolvedSource<'a> {
 					t.identifier.clone(),
 				)
 			}
-			Self::View(v) => v.identifier.clone(), /* Keep as is
-			                                         * for now since
-			                                         * ResolvedView
-			                                         * will be removed */
+			Self::View(v) => v.identifier.clone(), // Keep as is
+			// for now since
+			// ResolvedView
+			// will be removed
 			Self::DeferredView(v) => {
 				SourceIdentifier::DeferredView(
 					v.identifier.clone(),

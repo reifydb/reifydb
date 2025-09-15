@@ -3,7 +3,6 @@
 
 use Keyword::{Create, Namespace};
 use Operator::Colon;
-use reifydb_core::interface::identifier::SourceKind;
 
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView,
@@ -12,7 +11,6 @@ use crate::ast::{
 	identifier::{
 		MaybeQualifiedNamespaceIdentifier,
 		MaybeQualifiedSequenceIdentifier,
-		MaybeQualifiedSourceIdentifier,
 	},
 	parse::Parser,
 	tokenize::{
@@ -112,11 +110,12 @@ impl<'a> Parser<'a> {
 		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
 
-		let view = MaybeQualifiedSourceIdentifier::new(
+		use crate::ast::identifier::MaybeQualifiedDeferredViewIdentifier;
+
+		let view = MaybeQualifiedDeferredViewIdentifier::new(
 			name_token.fragment.clone(),
 		)
-		.with_namespace(schema_token.fragment.clone())
-		.with_kind(SourceKind::DeferredView);
+		.with_namespace(schema_token.fragment.clone());
 
 		// Parse optional AS clause
 		let as_clause = if self
@@ -174,11 +173,12 @@ impl<'a> Parser<'a> {
 		let columns = self.parse_columns()?;
 
 		// Create MaybeQualifiedSourceIdentifier for transactional view
-		let view = MaybeQualifiedSourceIdentifier::new(
+		use crate::ast::identifier::MaybeQualifiedTransactionalViewIdentifier;
+
+		let view = MaybeQualifiedTransactionalViewIdentifier::new(
 			name_token.fragment.clone(),
 		)
-		.with_namespace(schema_token.fragment.clone())
-		.with_kind(SourceKind::TransactionalView);
+		.with_namespace(schema_token.fragment.clone());
 
 		// Parse optional AS clause
 		let as_clause = if self
@@ -235,11 +235,12 @@ impl<'a> Parser<'a> {
 		let name_token = self.advance()?;
 		let columns = self.parse_columns()?;
 
-		let table = MaybeQualifiedSourceIdentifier::new(
+		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
+
+		let table = MaybeQualifiedTableIdentifier::new(
 			name_token.fragment.clone(),
 		)
-		.with_namespace(schema_token.fragment.clone())
-		.with_kind(SourceKind::Table);
+		.with_namespace(schema_token.fragment.clone());
 
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
