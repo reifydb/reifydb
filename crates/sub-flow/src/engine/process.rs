@@ -13,7 +13,6 @@ use reifydb_core::{
 		EncodableKey, GetEncodedRowLayout, RowKey, SourceId,
 		Transaction, VersionedCommandTransaction, ViewId,
 	},
-	log_debug,
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::Value;
@@ -41,12 +40,6 @@ impl<T: Transaction> FlowEngine<T> {
 			if let Some(node_registrations) =
 				self.sources.get(&source)
 			{
-				use reifydb_core::log_debug;
-				log_debug!(
-					"FlowEngine: Source {:?} triggers {} nodes",
-					source,
-					node_registrations.len()
-				);
 				// Process the diffs for each registered node
 				let bulkchange = FlowChange {
 					diffs,
@@ -68,25 +61,9 @@ impl<T: Transaction> FlowEngine<T> {
 								node,
 								&bulkchange,
 							)?;
-						} else {
-							log_debug!(
-								"FlowEngine: Node {:?} not found in flow {:?}",
-								node_id,
-								flow_id
-							);
 						}
-					} else {
-						log_debug!(
-							"FlowEngine: Flow {:?} not found",
-							flow_id
-						);
 					}
 				}
-			} else {
-				log_debug!(
-					"FlowEngine: No nodes registered for source {:?}",
-					source
-				);
 			}
 		}
 		Ok(())
@@ -110,12 +87,6 @@ impl<T: Transaction> FlowEngine<T> {
 		node: &FlowNode,
 		change: &FlowChange,
 	) -> crate::Result<()> {
-		use reifydb_core::log_debug;
-		log_debug!(
-			"process_node: Processing node {:?} with {} diffs",
-			node.id,
-			change.diffs.len()
-		);
 		let node_type = &node.ty;
 		let node_outputs = &node.outputs;
 
@@ -160,12 +131,6 @@ impl<T: Transaction> FlowEngine<T> {
 
 		// Propagate to downstream nodes
 		for output_id in node_outputs {
-			log_debug!(
-				"process_node: Propagating from {:?} to {:?}",
-				node.id,
-				output_id
-			);
-
 			// Add metadata to track which node this data is coming
 			// from
 			let mut output_with_metadata = output.clone();

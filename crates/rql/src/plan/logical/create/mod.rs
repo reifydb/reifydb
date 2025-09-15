@@ -36,6 +36,15 @@ impl Compiler {
 			AstCreate::Table(node) => {
 				Self::compile_create_table(node, resolver)
 			}
+			AstCreate::RingBuffer(node) => {
+				// TODO: Implement ring buffer creation
+				Err(reifydb_type::Error(
+					reifydb_type::diagnostic::ast::unsupported_ast_node(
+						node.token.fragment.clone(),
+						"CREATE RING BUFFER"
+					)
+				))
+			}
 			AstCreate::Index(node) => {
 				Self::compile_create_index(node, resolver)
 			}

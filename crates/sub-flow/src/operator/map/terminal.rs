@@ -4,7 +4,7 @@ use reifydb_core::{
 		EvaluationContext, Evaluator, Params, Transaction, ViewDef,
 		expression::{CastExpression, Expression, TypeExpression},
 	},
-	log_debug, log_error,
+	log_error,
 	value::columnar::{Column, ColumnQualified, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
@@ -155,12 +155,6 @@ impl MapTerminalOperator {
 						// For LEFT JOIN semantics, we
 						// should output UNDEFINED for
 						// missing columns
-						log_debug!(
-							"MapTerminal: Column not found for expression {} ({}), using UNDEFINED: {}",
-							i,
-							view_column.name,
-							e
-						);
 
 						// Create an undefined column
 						// with the correct name

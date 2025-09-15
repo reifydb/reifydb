@@ -23,6 +23,7 @@ impl CatalogStore {
 				SourceId::Table(_) => "Table",
 				SourceId::View(_) => "View",
 				SourceId::TableVirtual(_) => "TableVirtual",
+				SourceId::RingBuffer(_) => "RingBuffer",
 			};
 
 			Error(internal_error!(

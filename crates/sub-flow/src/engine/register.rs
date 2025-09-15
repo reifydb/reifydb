@@ -98,13 +98,6 @@ impl<T: Transaction> FlowEngine<T> {
 		node: FlowNodeId,
 		source: SourceId,
 	) {
-		use reifydb_core::log_debug;
-		log_debug!(
-			"FlowEngine: Registering flow {:?} node {:?} for source {:?}",
-			flow,
-			node,
-			source
-		);
 		let nodes = self.sources.entry(source).or_insert_with(Vec::new);
 
 		// Each node registration is unique
@@ -114,11 +107,6 @@ impl<T: Transaction> FlowEngine<T> {
 		if !nodes.contains(&entry) {
 			nodes.push(entry);
 		}
-		log_debug!(
-			"FlowEngine: Source {:?} now has {} dependent nodes",
-			source,
-			nodes.len()
-		);
 	}
 
 	fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: SourceId) {

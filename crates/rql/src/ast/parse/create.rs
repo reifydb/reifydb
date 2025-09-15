@@ -6,8 +6,8 @@ use Operator::Colon;
 
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView,
-	AstCreateNamespace, AstCreateSeries, AstCreateTable,
-	AstCreateTransactionalView, AstDataType,
+	AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries,
+	AstCreateTable, AstCreateTransactionalView, AstDataType,
 	identifier::{
 		MaybeQualifiedNamespaceIdentifier,
 		MaybeQualifiedSequenceIdentifier,
@@ -15,7 +15,10 @@ use crate::ast::{
 	parse::Parser,
 	tokenize::{
 		Keyword,
-		Keyword::{Deferred, Series, Table, Transactional, View},
+		Keyword::{
+			Buffer, Deferred, Ring, Series, Table, Transactional,
+			View,
+		},
 		Operator,
 		Separator::Comma,
 		Token, TokenKind,
@@ -52,6 +55,11 @@ impl<'a> Parser<'a> {
 
 		if (self.consume_if(TokenKind::Keyword(Table))?).is_some() {
 			return self.parse_table(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Ring))?).is_some() {
+			self.consume_keyword(Buffer)?;
+			return self.parse_ring_buffer(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
@@ -246,6 +254,66 @@ impl<'a> Parser<'a> {
 			token,
 			table,
 			columns,
+		}))
+	}
+
+	fn parse_ring_buffer(
+		&mut self,
+		token: Token<'a>,
+	) -> crate::Result<AstCreate<'a>> {
+		let schema_token = self.consume(TokenKind::Identifier)?;
+		self.consume_operator(Operator::Dot)?;
+		let name_token = self.advance()?;
+		let columns = self.parse_columns()?;
+
+		// Parse WITH clause for capacity
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		// Parse capacity option
+		let capacity_ident = self.consume(TokenKind::Identifier)?;
+		if capacity_ident.fragment.text() != "capacity" {
+			return Err(reifydb_type::Error(
+				reifydb_type::diagnostic::ast::unexpected_token_error(
+					"capacity",
+					capacity_ident.fragment.clone(),
+				)
+			));
+		}
+
+		self.consume_operator(Colon)?;
+		let capacity_token = self.consume(TokenKind::Literal(
+			crate::ast::tokenize::Literal::Number,
+		))?;
+
+		// Parse capacity value
+		let capacity =
+			match capacity_token.fragment.text().parse::<u64>() {
+				Ok(val) => val,
+				Err(_) => {
+					return Err(reifydb_type::Error(
+					reifydb_type::diagnostic::ast::unexpected_token_error(
+						"valid capacity number",
+						capacity_token.fragment.clone(),
+					)
+				));
+				}
+			};
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		use crate::ast::identifier::MaybeQualifiedRingBufferIdentifier;
+
+		let ring_buffer = MaybeQualifiedRingBufferIdentifier::new(
+			name_token.fragment.clone(),
+		)
+		.with_namespace(schema_token.fragment.clone());
+
+		Ok(AstCreate::RingBuffer(AstCreateRingBuffer {
+			token,
+			ring_buffer,
+			columns,
+			capacity,
 		}))
 	}
 

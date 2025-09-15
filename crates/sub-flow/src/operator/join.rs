@@ -1105,8 +1105,6 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		change: &FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
-		use reifydb_core::log_debug;
-
 		// Check which node this data is coming from
 		let from_node = change.metadata.get("from_node").and_then(
 			|v| match v {
@@ -1115,11 +1113,6 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 			},
 		);
 
-		log_debug!(
-			"JoinOperator: Instance {:?} processing {} diffs",
-			self.join_instance_id,
-			change.diffs.len()
-		);
 		let mut output_diffs = Vec::new();
 
 		// Process each diff in the change

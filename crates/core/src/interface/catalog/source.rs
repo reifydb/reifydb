@@ -5,7 +5,8 @@ use reifydb_type::return_internal_error;
 use serde::{Deserialize, Serialize};
 
 use crate::interface::{
-	TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId,
+	RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId,
+	ViewDef, ViewId,
 };
 
 #[derive(
@@ -24,6 +25,7 @@ pub enum SourceId {
 	Table(TableId),
 	View(ViewId),
 	TableVirtual(TableVirtualId),
+	RingBuffer(RingBufferId),
 }
 
 impl std::fmt::Display for SourceId {
@@ -32,6 +34,7 @@ impl std::fmt::Display for SourceId {
 			SourceId::Table(id) => write!(f, "{}", id.0),
 			SourceId::View(id) => write!(f, "{}", id.0),
 			SourceId::TableVirtual(id) => write!(f, "{}", id.0),
+			SourceId::RingBuffer(id) => write!(f, "{}", id.0),
 		}
 	}
 }
@@ -47,6 +50,10 @@ impl SourceId {
 
 	pub fn table_virtual(id: impl Into<TableVirtualId>) -> Self {
 		Self::TableVirtual(id.into())
+	}
+
+	pub fn ring_buffer(id: impl Into<RingBufferId>) -> Self {
+		Self::RingBuffer(id.into())
 	}
 }
 
@@ -68,12 +75,19 @@ impl From<TableVirtualId> for SourceId {
 	}
 }
 
+impl From<RingBufferId> for SourceId {
+	fn from(id: RingBufferId) -> Self {
+		SourceId::RingBuffer(id)
+	}
+}
+
 impl PartialEq<u64> for SourceId {
 	fn eq(&self, other: &u64) -> bool {
 		match self {
 			SourceId::Table(id) => id.0.eq(other),
 			SourceId::View(id) => id.0.eq(other),
 			SourceId::TableVirtual(id) => id.0.eq(other),
+			SourceId::RingBuffer(id) => id.0.eq(other),
 		}
 	}
 }
@@ -105,6 +119,15 @@ impl PartialEq<TableVirtualId> for SourceId {
 	}
 }
 
+impl PartialEq<RingBufferId> for SourceId {
+	fn eq(&self, other: &RingBufferId) -> bool {
+		match self {
+			SourceId::RingBuffer(id) => id.0 == other.0,
+			_ => false,
+		}
+	}
+}
+
 impl From<SourceId> for u64 {
 	fn from(source: SourceId) -> u64 {
 		source.as_u64()
@@ -119,6 +142,7 @@ impl SourceId {
 			SourceId::Table(id) => id.0,
 			SourceId::View(id) => id.0,
 			SourceId::TableVirtual(id) => id.0,
+			SourceId::RingBuffer(id) => id.0,
 		}
 	}
 
@@ -129,6 +153,9 @@ impl SourceId {
 			SourceId::View(view) => SourceId::view(view.0 + 1),
 			SourceId::TableVirtual(table_virtual) => {
 				SourceId::table_virtual(table_virtual.0 + 1)
+			}
+			SourceId::RingBuffer(ring_buffer) => {
+				SourceId::ring_buffer(ring_buffer.0 + 1)
 			}
 		}
 	}
@@ -148,6 +175,11 @@ impl SourceId {
 			SourceId::TableVirtual(table_virtual) => {
 				SourceId::table_virtual(
 					table_virtual.0.wrapping_sub(1),
+				)
+			}
+			SourceId::RingBuffer(ring_buffer) => {
+				SourceId::ring_buffer(
+					ring_buffer.0.wrapping_sub(1),
 				)
 			}
 		}
@@ -187,6 +219,19 @@ impl SourceId {
 				"Data inconsistency: Expected SourceId::TableVirtual but found {:?}. \
 				This indicates a critical catalog inconsistency where a non-virtual-table source ID \
 				was used in a context that requires a virtual table ID.",
+				self
+			)
+		}
+	}
+
+	pub fn to_ring_buffer_id(self) -> crate::Result<RingBufferId> {
+		if let SourceId::RingBuffer(ring_buffer) = self {
+			Ok(ring_buffer)
+		} else {
+			return_internal_error!(
+				"Data inconsistency: Expected SourceId::RingBuffer but found {:?}. \
+				This indicates a critical catalog inconsistency where a non-ring-buffer source ID \
+				was used in a context that requires a ring buffer ID.",
 				self
 			)
 		}

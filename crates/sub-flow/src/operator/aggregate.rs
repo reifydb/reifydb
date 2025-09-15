@@ -300,24 +300,12 @@ impl AggregateOperator {
 	) -> Result<GroupState> {
 		let key = Self::group_key_to_encoded_key(group_key);
 
-		eprintln!(
-			"[AggregateOperator] Loading state for node_id={:?}, group_key={:?}",
-			self.node, group_key
-		);
-
 		let state_row = self.get(txn, &key)?;
 		if state_row.as_ref().is_empty() {
-			eprintln!(
-				"[AggregateOperator] No existing state found, creating new"
-			);
 			Ok(GroupState::new())
 		} else {
 			let state = GroupState::from_encoded_row(&state_row)
 				.unwrap_or_else(GroupState::new);
-			eprintln!(
-				"[AggregateOperator] Loaded existing state: count={}, sum={:?}, ref_count={}",
-				state.count, state.sum, state.ref_count
-			);
 			Ok(state)
 		}
 	}
@@ -330,24 +318,11 @@ impl AggregateOperator {
 	) -> Result<()> {
 		let key = Self::group_key_to_encoded_key(group_key);
 
-		eprintln!(
-			"[AggregateOperator] Saving state for node_id={:?}, group_key={:?}",
-			self.node, group_key
-		);
-		eprintln!(
-			"[AggregateOperator] State to save: count={}, sum={:?}, ref_count={}",
-			state.count, state.sum, state.ref_count
-		);
-
 		if state.ref_count == 0 {
 			// Remove state if no more references
-			eprintln!(
-				"[AggregateOperator] Removing state (ref_count=0)"
-			);
 			self.remove(txn, &key)?;
 		} else {
 			// Save updated state
-			eprintln!("[AggregateOperator] Persisting state");
 			self.set(txn, &key, state.to_encoded_row())?;
 		}
 
@@ -488,18 +463,6 @@ impl AggregateOperator {
 							.push(RowNumber(hash));
 					}
 
-					eprintln!(
-						"[AggregateOperator] Emitting Update diff for group {:?}",
-						group_key
-					);
-					eprintln!(
-						"[AggregateOperator]   Before: {:?}",
-						previous
-					);
-					eprintln!(
-						"[AggregateOperator]   After: {:?}",
-						columns
-					);
 					output_diffs.push(FlowDiff::Update {
 						source: SourceId::View(ViewId(
 							1,
@@ -634,17 +597,6 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 					after,
 					..
 				} => {
-					eprintln!(
-						"[AggregateOperator] Processing Update diff"
-					);
-					eprintln!(
-						"[AggregateOperator]   Before columns: {:?}",
-						before
-					);
-					eprintln!(
-						"[AggregateOperator]   After columns: {:?}",
-						after
-					);
 					// Handle as delete + insert
 					// Compute group keys for old values
 					let old_group_map = self

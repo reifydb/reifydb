@@ -595,6 +595,7 @@ pub enum AstCreate<'a> {
 	Namespace(AstCreateNamespace<'a>),
 	Series(AstCreateSeries<'a>),
 	Table(AstCreateTable<'a>),
+	RingBuffer(AstCreateRingBuffer<'a>),
 	Index(AstCreateIndex<'a>),
 }
 
@@ -684,6 +685,15 @@ pub struct AstCreateTable<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateRingBuffer<'a> {
+	pub token: Token<'a>,
+	pub ring_buffer:
+		crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'a>,
+	pub columns: Vec<AstColumnToCreate<'a>>,
+	pub capacity: u64,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstDescribe<'a> {
 	Query {
 		token: Token<'a>,
@@ -746,6 +756,10 @@ impl<'a> AstCreate<'a> {
 				..
 			}) => token,
 			AstCreate::Table(AstCreateTable {
+				token,
+				..
+			}) => token,
+			AstCreate::RingBuffer(AstCreateRingBuffer {
 				token,
 				..
 			}) => token,

@@ -13,6 +13,7 @@ pub mod column_policy;
 mod materialized;
 pub mod namespace;
 pub mod primary_key;
+pub mod ring_buffer;
 pub mod sequence;
 pub mod source;
 pub mod system;

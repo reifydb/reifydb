@@ -11,8 +11,8 @@ use reifydb_core::{
 		identifier::{
 			ColumnIdentifier, ColumnSource, DeferredViewIdentifier,
 			FunctionIdentifier, IndexIdentifier,
-			NamespaceIdentifier, SequenceIdentifier,
-			SourceIdentifier, TableIdentifier,
+			NamespaceIdentifier, RingBufferIdentifier,
+			SequenceIdentifier, SourceIdentifier, TableIdentifier,
 			TableVirtualIdentifier, TransactionalViewIdentifier,
 			UnresolvedSourceIdentifier,
 		},
@@ -33,6 +33,7 @@ use crate::{
 		MaybeQualifiedFunctionIdentifier,
 		MaybeQualifiedIndexIdentifier,
 		MaybeQualifiedNamespaceIdentifier,
+		MaybeQualifiedRingBufferIdentifier,
 		MaybeQualifiedSequenceIdentifier,
 		MaybeQualifiedTableIdentifier,
 		MaybeQualifiedTransactionalViewIdentifier,
@@ -174,6 +175,16 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 					v = v.with_alias(a);
 				}
 				SourceIdentifier::TransactionalView(v)
+			}
+			SourceIdentifier::RingBuffer(_) => {
+				let mut r = RingBufferIdentifier::new(
+					resolved_schema,
+					resolved_name,
+				);
+				if let Some(a) = resolved_alias {
+					r = r.with_alias(a);
+				}
+				SourceIdentifier::RingBuffer(r)
 			}
 		};
 
@@ -815,8 +826,9 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 
 		match source {
 			SourceIdentifier::Table(_)
-			| SourceIdentifier::TableVirtual(_) => {
-				// TODO: Check table has column once
+			| SourceIdentifier::TableVirtual(_)
+			| SourceIdentifier::RingBuffer(_) => {
+				// TODO: Check table/ring buffer has column once
 				// CatalogQueryTransaction supports it
 				true
 			}
@@ -843,8 +855,9 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		use reifydb_core::interface::ColumnDef;
 		let columns: Vec<ColumnDef> = match source {
 			SourceIdentifier::Table(_)
-			| SourceIdentifier::TableVirtual(_) => {
-				// TODO: Get table columns once
+			| SourceIdentifier::TableVirtual(_)
+			| SourceIdentifier::RingBuffer(_) => {
+				// TODO: Get table/ring buffer columns once
 				// CatalogQueryTransaction supports it
 				Vec::new()
 			}
@@ -1520,6 +1533,85 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		}
 
 		Ok(view)
+	}
+
+	/// Resolve a MaybeQualifiedRingBufferIdentifier specifically
+	pub fn resolve_maybe_qualified_ring_buffer<'a>(
+		&mut self,
+		source: &MaybeQualifiedRingBufferIdentifier<'a>,
+		validate_existence: bool,
+	) -> Result<RingBufferIdentifier<'static>> {
+		// Get the ring buffer name
+		let name_text = source.name.text();
+
+		// Always validate namespace exists (can't create ring buffer in
+		// non-existent namespace) Get namespace, passing the fragment
+		// if available for error reporting
+		let ns = if let Some(namespace_fragment) = &source.namespace {
+			self.transaction.get_namespace_by_name(
+				namespace_fragment.clone(),
+			)?
+		} else {
+			self.transaction
+				.get_namespace_by_name(self.default_namespace)?
+		};
+
+		// Only validate ring buffer existence if requested
+		if validate_existence {
+			// TODO: Add ring buffer catalog operations when
+			// available For now, just check if it exists as a
+			// table
+			if self.transaction
+				.find_table_by_name(ns.id, name_text)?
+				.is_none()
+			{
+				return Err(crate::error::IdentifierError::SourceNotFound(
+					crate::error::SourceNotFoundError {
+						namespace: ns.name.clone(),
+						name: name_text.to_string(),
+						fragment: source.name.clone().into_owned(),
+					}
+				).into());
+			}
+		}
+
+		// Get namespace text for creating the identifier
+		let namespace_text = source
+			.namespace
+			.as_ref()
+			.map(|ns| ns.text())
+			.unwrap_or(self.default_namespace);
+
+		// Create the RingBufferIdentifier preserving original fragments
+		use reifydb_type::{Fragment, OwnedFragment};
+
+		// For namespace, use the original fragment if available,
+		// otherwise create Internal
+		let namespace_fragment =
+			if let Some(ns_frag) = &source.namespace {
+				Fragment::Owned(ns_frag.clone().into_owned())
+			} else {
+				Fragment::Owned(OwnedFragment::Internal {
+					text: namespace_text.to_string(),
+				})
+			};
+
+		// For name, always preserve the original fragment for error
+		// reporting
+		let name_fragment =
+			Fragment::Owned(source.name.clone().into_owned());
+
+		let mut ring_buffer = RingBufferIdentifier::new(
+			namespace_fragment,
+			name_fragment,
+		);
+		if let Some(alias) = &source.alias {
+			ring_buffer.alias = Some(Fragment::Owned(
+				alias.clone().into_owned(),
+			));
+		}
+
+		Ok(ring_buffer)
 	}
 
 	/// Resolve a MaybeQualifiedViewIdentifier (generic view)

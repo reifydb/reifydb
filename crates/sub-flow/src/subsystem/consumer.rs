@@ -54,42 +54,49 @@ impl<T: Transaction> FlowConsumer<T> {
 		row_bytes: &[u8],
 	) -> Result<Columns> {
 		// Get source metadata from catalog
-		let (columns, layout) =
-			match source {
-				SourceId::Table(table_id) => {
-					let table = CatalogStore::get_table(
-						txn, table_id,
-					)?;
-					let namespace =
-						CatalogStore::get_namespace(
-							txn,
-							table.namespace,
-						)?;
-					let layout = table.get_layout();
-					let columns = Columns::from_table_def_fully_qualified(&namespace, &table);
-					(columns, layout)
-				}
-				SourceId::View(view_id) => {
-					let view = CatalogStore::get_view(
-						txn, view_id,
-					)?;
-					let namespace =
-						CatalogStore::get_namespace(
-							txn,
-							view.namespace,
-						)?;
-					let layout = view.get_layout();
-					let columns = Columns::from_view_def_fully_qualified(&namespace, &view);
-					(columns, layout)
-				}
-				SourceId::TableVirtual(_) => {
-					// Virtual tables not supported in flows
-					// yet
-					unimplemented!(
-						"Virtual table sources not supported in flows"
-					)
-				}
-			};
+		let (columns, layout) = match source {
+			SourceId::Table(table_id) => {
+				let table =
+					CatalogStore::get_table(txn, table_id)?;
+				let namespace = CatalogStore::get_namespace(
+					txn,
+					table.namespace,
+				)?;
+				let layout = table.get_layout();
+				let columns =
+					Columns::from_table_def_fully_qualified(
+						&namespace, &table,
+					);
+				(columns, layout)
+			}
+			SourceId::View(view_id) => {
+				let view =
+					CatalogStore::get_view(txn, view_id)?;
+				let namespace = CatalogStore::get_namespace(
+					txn,
+					view.namespace,
+				)?;
+				let layout = view.get_layout();
+				let columns =
+					Columns::from_view_def_fully_qualified(
+						&namespace, &view,
+					);
+				(columns, layout)
+			}
+			SourceId::TableVirtual(_) => {
+				// Virtual tables not supported in flows
+				// yet
+				unimplemented!(
+					"Virtual table sources not supported in flows"
+				)
+			}
+			SourceId::RingBuffer(_) => {
+				// Ring buffers not supported in flows yet
+				unimplemented!(
+					"Ring buffer sources not supported in flows"
+				)
+			}
+		};
 
 		// Convert row bytes to EncodedRow
 		let encoded_row = EncodedRow(CowVec::new(row_bytes.to_vec()));

@@ -64,6 +64,7 @@ pub enum SourceIdentifier<'a> {
 	TableVirtual(TableVirtualIdentifier<'a>),
 	DeferredView(DeferredViewIdentifier<'a>),
 	TransactionalView(TransactionalViewIdentifier<'a>),
+	RingBuffer(RingBufferIdentifier<'a>),
 }
 
 impl<'a> TableIdentifier<'a> {
@@ -114,6 +115,46 @@ impl<'a> TableVirtualIdentifier<'a> {
 
 	pub fn into_owned(self) -> TableVirtualIdentifier<'static> {
 		TableVirtualIdentifier {
+			namespace: Fragment::Owned(self.namespace.into_owned()),
+			name: Fragment::Owned(self.name.into_owned()),
+			alias: self
+				.alias
+				.map(|a| Fragment::Owned(a.into_owned())),
+		}
+	}
+
+	pub fn effective_name(&self) -> &str {
+		self.alias
+			.as_ref()
+			.map(|a| a.text())
+			.unwrap_or_else(|| self.name.text())
+	}
+}
+
+/// Fully qualified ring buffer identifier
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RingBufferIdentifier<'a> {
+	pub namespace: Fragment<'a>,
+	pub name: Fragment<'a>,
+	pub alias: Option<Fragment<'a>>,
+}
+
+impl<'a> RingBufferIdentifier<'a> {
+	pub fn new(namespace: Fragment<'a>, name: Fragment<'a>) -> Self {
+		Self {
+			namespace,
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+
+	pub fn into_owned(self) -> RingBufferIdentifier<'static> {
+		RingBufferIdentifier {
 			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
 			alias: self
@@ -257,6 +298,9 @@ impl<'a> SourceIdentifier<'a> {
 					v.into_owned(),
 				)
 			}
+			Self::RingBuffer(r) => {
+				SourceIdentifier::RingBuffer(r.into_owned())
+			}
 		}
 	}
 
@@ -268,6 +312,7 @@ impl<'a> SourceIdentifier<'a> {
 			Self::TableVirtual(t) => t.effective_name(),
 			Self::DeferredView(v) => v.effective_name(),
 			Self::TransactionalView(v) => v.effective_name(),
+			Self::RingBuffer(r) => r.effective_name(),
 		}
 	}
 
@@ -286,6 +331,7 @@ impl<'a> SourceIdentifier<'a> {
 			Self::TableVirtual(t) => &t.namespace,
 			Self::DeferredView(v) => &v.namespace,
 			Self::TransactionalView(v) => &v.namespace,
+			Self::RingBuffer(r) => &r.namespace,
 		}
 	}
 
@@ -296,6 +342,7 @@ impl<'a> SourceIdentifier<'a> {
 			Self::TableVirtual(t) => &t.name,
 			Self::DeferredView(v) => &v.name,
 			Self::TransactionalView(v) => &v.name,
+			Self::RingBuffer(r) => &r.name,
 		}
 	}
 
@@ -306,6 +353,7 @@ impl<'a> SourceIdentifier<'a> {
 			Self::TableVirtual(t) => t.alias.as_ref(),
 			Self::DeferredView(v) => v.alias.as_ref(),
 			Self::TransactionalView(v) => v.alias.as_ref(),
+			Self::RingBuffer(r) => r.alias.as_ref(),
 		}
 	}
 }
