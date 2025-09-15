@@ -89,14 +89,12 @@ impl CatalogStore {
 					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
 				);
 			}
-			SourceId::RingBuffer(_ring_buffer_id) => {
-				// TODO: Implement set_ring_buffer_primary_key
-				// For now, ring buffers will handle primary
-				// keys differently They will be set during
-				// creation, not as a separate step
-				return_internal_error!(
-					"Primary key for ring buffer should be set during creation, not as a separate operation."
-				);
+			SourceId::RingBuffer(ring_buffer_id) => {
+				Self::set_ring_buffer_primary_key(
+					txn,
+					ring_buffer_id,
+					id,
+				)?;
 			}
 		}
 

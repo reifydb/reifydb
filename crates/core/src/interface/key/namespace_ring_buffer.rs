@@ -3,7 +3,7 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey,
+	EncodedKey, EncodedKeyRange,
 	interface::{NamespaceId, RingBufferId},
 	util::encoding::keycode,
 };
@@ -22,6 +22,29 @@ impl NamespaceRingBufferKey {
 			namespace,
 			ring_buffer,
 		}
+	}
+
+	pub fn full_scan(namespace: NamespaceId) -> EncodedKeyRange {
+		EncodedKeyRange::start_end(
+			Some(Self::link_start(namespace)),
+			Some(Self::link_end(namespace)),
+		)
+	}
+
+	fn link_start(namespace: NamespaceId) -> EncodedKey {
+		let mut out = Vec::with_capacity(10);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&Self::KIND));
+		out.extend(&keycode::serialize(&namespace));
+		EncodedKey::new(out)
+	}
+
+	fn link_end(namespace: NamespaceId) -> EncodedKey {
+		let mut out = Vec::with_capacity(10);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&Self::KIND));
+		out.extend(&keycode::serialize(&(*namespace - 1)));
+		EncodedKey::new(out)
 	}
 }
 

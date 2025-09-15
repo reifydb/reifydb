@@ -17,7 +17,7 @@ pub struct RingBufferDef {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RingBufferMetadata {
-	pub buffer_id: RingBufferId,
+	pub id: RingBufferId,
 	pub capacity: u64,
 	pub current_size: u64,
 	pub head: u64, // Position of oldest entry
@@ -27,7 +27,7 @@ pub struct RingBufferMetadata {
 impl RingBufferMetadata {
 	pub fn new(buffer_id: RingBufferId, capacity: u64) -> Self {
 		Self {
-			buffer_id,
+			id: buffer_id,
 			capacity,
 			current_size: 0,
 			head: 0,

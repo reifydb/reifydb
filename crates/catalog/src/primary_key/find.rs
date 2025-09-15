@@ -43,12 +43,14 @@ impl CatalogStore {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
-			SourceId::RingBuffer(_) => {
-				// Ring buffers store primary key info in their
-				// definition TODO: Implement
-				// get_ring_buffer_pk when ring buffer catalog
-				// is ready
-				return Ok(None);
+			SourceId::RingBuffer(ring_buffer_id) => {
+				match Self::get_ring_buffer_pk_id(
+					rx,
+					ring_buffer_id,
+				)? {
+					Some(pk_id) => pk_id,
+					None => return Ok(None),
+				}
 			}
 		};
 

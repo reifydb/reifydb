@@ -93,6 +93,42 @@ pub fn table_not_found<'a>(
         cause: None}
 }
 
+pub fn ring_buffer_already_exists<'a>(
+	fragment: impl IntoFragment<'a>,
+	namespace: &str,
+	ring_buffer: &str,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+        code: "CA_005".to_string(),
+        statement: None,
+        message: format!("ring buffer `{}.{}` already exists", namespace, ring_buffer),
+        fragment,
+        label: Some("duplicate ring buffer definition".to_string()),
+        help: Some("choose a different name, drop the existing ring buffer or create ring buffer in a different namespace".to_string()),
+        column: None,
+        notes: vec![],
+        cause: None}
+}
+
+pub fn ring_buffer_not_found<'a>(
+	fragment: impl IntoFragment<'a>,
+	namespace: &str,
+	ring_buffer: &str,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+        code: "CA_006".to_string(),
+        statement: None,
+        message: format!("ring buffer `{}.{}` not found", namespace, ring_buffer),
+        fragment,
+        label: Some("unknown ring buffer reference".to_string()),
+        help: Some("ensure the ring buffer exists or create it first using `CREATE RING BUFFER`".to_string()),
+        column: None,
+        notes: vec![],
+        cause: None}
+}
+
 pub fn table_column_already_exists<'a>(
 	fragment: impl IntoFragment<'a>,
 	namespace: &str,

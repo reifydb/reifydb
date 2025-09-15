@@ -2,7 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::{EncodableKey, KeyKind};
-use crate::{EncodedKey, interface::RingBufferId, util::encoding::keycode};
+use crate::{
+	EncodedKey, EncodedKeyRange, interface::RingBufferId,
+	util::encoding::keycode,
+};
 
 const VERSION: u8 = 1;
 
@@ -16,6 +19,27 @@ impl RingBufferKey {
 		Self {
 			ring_buffer,
 		}
+	}
+
+	pub fn full_scan() -> EncodedKeyRange {
+		EncodedKeyRange::start_end(
+			Some(Self::ring_buffer_start()),
+			Some(Self::ring_buffer_end()),
+		)
+	}
+
+	fn ring_buffer_start() -> EncodedKey {
+		let mut out = Vec::with_capacity(2);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&Self::KIND));
+		EncodedKey::new(out)
+	}
+
+	fn ring_buffer_end() -> EncodedKey {
+		let mut out = Vec::with_capacity(2);
+		out.extend(&keycode::serialize(&VERSION));
+		out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
+		EncodedKey::new(out)
 	}
 }
 
