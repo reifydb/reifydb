@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-sub-workerpool"
+name = "reifydb-sub-worker"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,3 +11,6 @@ reifydb-engine = { workspace = true }
 reifydb-type = { workspace = true }
 
 [dev-dependencies]
+reifydb-storage = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-cdc = { workspace = true }

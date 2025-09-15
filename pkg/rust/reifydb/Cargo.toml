@@ -18,11 +18,11 @@ reifydb-rql = { path = "../../../crates/rql" }
 reifydb-transaction = { path = "../../../crates/transaction" }
 reifydb-type = { path = "../../../crates/type" }
 
-reifydb-sub-admin = { path = "../../../crates/sub-admin", optional = true }
-reifydb-sub-flow = { path = "../../../crates/sub-flow", optional = true }
-reifydb-sub-logging = { path = "../../../crates/sub-logging", optional = true }
-reifydb-sub-workerpool = { path = "../../../crates/sub-workerpool", optional = true }
-reifydb-sub-server = { path = "../../../crates/sub-server", optional = true }
+reifydb-sub-admin = { workspace = true, optional = true }
+reifydb-sub-flow = { workspace = true, optional = true }
+reifydb-sub-logging = { workspace = true, optional = true }
+reifydb-sub-server = { workspace = true, optional = true }
+reifydb-sub-worker = { workspace = true, optional = true }
 
 libc = { version = "0.2.175" }
 
@@ -34,6 +34,6 @@ sub_admin = ["dep:reifydb-sub-admin"]
 sub_flow = ["dep:reifydb-sub-flow"]
 sub_logging = ["dep:reifydb-sub-logging"]
 sub_server = ["dep:reifydb-sub-server"]
-sub_workerpool = ["dep:reifydb-sub-workerpool"]
+sub_worker = ["dep:reifydb-sub-worker"]
 
 

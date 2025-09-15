@@ -11,9 +11,41 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb_core::interface::subsystem::workerpool::{Priority, TaskHandle};
+use reifydb_core::{
+	Result,
+	interface::subsystem::worker::{BoxedTask, Priority, TaskContext as CoreTaskContext, TaskHandle},
+};
 
-use super::task::{PoolTask, ScheduledTask};
+use crate::task::{InternalTaskContext, PoolTask, ScheduledTask};
+
+/// Adapter from SchedulableTask to PoolTask
+pub(crate) struct SchedulableTaskAdapter {
+	task: BoxedTask,
+}
+
+impl SchedulableTaskAdapter {
+	pub(crate) fn new(task: BoxedTask) -> Self {
+		Self {
+			task,
+		}
+	}
+}
+
+impl PoolTask for SchedulableTaskAdapter {
+	fn execute(&self, _ctx: &InternalTaskContext) -> Result<()> {
+		// Convert our internal TaskContext to the core TaskContext
+		let core_ctx = CoreTaskContext::new();
+		self.task.execute(&core_ctx)
+	}
+
+	fn priority(&self) -> Priority {
+		self.task.priority()
+	}
+
+	fn name(&self) -> &str {
+		self.task.name()
+	}
+}
 
 /// Manages scheduled and periodic tasks
 pub struct TaskScheduler {
@@ -70,29 +102,14 @@ impl TaskScheduler {
 		}
 	}
 
-	/// Schedule a one-time task to run at a specific time
-	pub fn schedule_at(&mut self, task: Box<dyn PoolTask>, run_at: Instant, priority: Priority) -> TaskHandle {
-		let handle = TaskHandle::from(self.next_handle.fetch_add(1, Ordering::Relaxed));
-
-		let scheduled = ScheduledTask::new(handle, task, run_at, None, priority);
-
-		self.queue.push(ScheduledTaskRef {
-			handle,
-			next_run: run_at,
-			priority,
-		});
-
-		self.tasks.insert(handle, scheduled);
-		handle
+	/// Set the next handle ID to use (for synchronization with
+	/// pre-generated handles)
+	pub fn set_next_handle(&self, handle_id: u64) {
+		self.next_handle.store(handle_id, Ordering::Relaxed);
 	}
 
-	/// Schedule a one-time task to run after a delay
-	pub fn schedule_after(&mut self, task: Box<dyn PoolTask>, delay: Duration, priority: Priority) -> TaskHandle {
-		self.schedule_at(task, Instant::now() + delay, priority)
-	}
-
-	/// Schedule a periodic task
-	pub fn schedule_periodic(
+	/// Schedule a task to run at fixed intervals (internal implementation)
+	pub fn schedule_every_internal(
 		&mut self,
 		task: Box<dyn PoolTask>,
 		interval: Duration,
@@ -177,7 +194,7 @@ impl SharedTask {
 }
 
 impl PoolTask for SharedTask {
-	fn execute(&self, ctx: &super::task::TaskContext) -> crate::Result<()> {
+	fn execute(&self, ctx: &InternalTaskContext) -> crate::Result<()> {
 		self.0.execute(ctx)
 	}
 

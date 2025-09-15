@@ -15,20 +15,17 @@ members = [
     "crates/testing",
     "crates/transaction",
     "crates/type",
-    
     # Subsystem crates
     "crates/sub-admin",
     "crates/sub-flow",
     "crates/sub-logging",
     "crates/sub-server",
-    "crates/sub-workerpool",
-    
+    "crates/sub-worker",
     # Binary projects
     "bin/cli",
     "bin/server",
     "bin/playground",
     "bin/testcontainer",
-    
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
@@ -51,20 +48,17 @@ default-members = [
     "crates/testing",
     "crates/transaction",
     "crates/type",
-    
     # Subsystem crates
     "crates/sub-admin",
     "crates/sub-flow",
     "crates/sub-logging",
     "crates/sub-server",
-    "crates/sub-workerpool",
-    
+    "crates/sub-worker",
     # Binary projects
     "bin/cli",
     "bin/server",
     "bin/playground",
     "bin/testcontainer",
-    
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
@@ -104,6 +98,8 @@ debug-assertions = true
 overflow-checks = true
 
 [workspace.dependencies]
+reifydb = { path = "pkg/rust/reifydb" }
+
 # Internal crates
 reifydb-auth = { path = "crates/auth" }
 reifydb-catalog = { path = "crates/catalog" }
@@ -122,10 +118,13 @@ reifydb-type = { path = "crates/type" }
 reifydb-sub-admin = { path = "crates/sub-admin" }
 reifydb-sub-flow = { path = "crates/sub-flow" }
 reifydb-sub-logging = { path = "crates/sub-logging" }
-reifydb-sub-workerpool = { path = "crates/sub-workerpool" }
+reifydb-sub-worker = { path = "crates/sub-worker" }
 reifydb-sub-server = { path = "crates/sub-server" }
 
 # External dependencies
+
+libc = {  version = "0.2.175" }
+
 once_cell = { version = "1.21.3" }
 uuid = { version = "1.18.1", default-features = false, features = ["v4", "v7", "serde", "std"] }
 num-bigint = { version = "0.4.6", features = ["serde"] }

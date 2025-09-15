@@ -10,11 +10,13 @@ use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
 #[cfg(feature = "sub_admin")]
 use reifydb_sub_admin::{AdminConfig, AdminSubsystemFactory};
 #[cfg(feature = "sub_flow")]
-use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
+use reifydb_sub_flow::FlowBuilder;
 #[cfg(feature = "sub_logging")]
-use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
+use reifydb_sub_logging::LoggingBuilder;
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::{ServerConfig, ServerSubsystemFactory};
+#[cfg(feature = "sub_worker")]
+use reifydb_sub_worker::WorkerBuilder;
 
 use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
@@ -27,6 +29,20 @@ pub struct ServerBuilder<VT: VersionedTransaction, UT: UnversionedTransaction, C
 	eventbus: EventBus,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>>,
+	#[cfg(feature = "sub_logging")]
+	logging_configurator: Option<Box<dyn FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static>>,
+	#[cfg(feature = "sub_worker")]
+	worker_configurator: Option<Box<dyn FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static>>,
+	#[cfg(feature = "sub_flow")]
+	flow_configurator: Option<
+		Box<
+			dyn FnOnce(
+					FlowBuilder<EngineTransaction<VT, UT, C>>,
+				) -> FlowBuilder<EngineTransaction<VT, UT, C>>
+				+ Send
+				+ 'static,
+		>,
+	>,
 }
 
 #[cfg(feature = "sub_server")]
@@ -39,6 +55,12 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Se
 			eventbus,
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
+			#[cfg(feature = "sub_logging")]
+			logging_configurator: None,
+			#[cfg(feature = "sub_worker")]
+			worker_configurator: None,
+			#[cfg(feature = "sub_flow")]
+			flow_configurator: None,
 		}
 	}
 
@@ -75,13 +97,26 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Se
 			DatabaseBuilder::new(self.versioned, self.unversioned, self.cdc, self.eventbus)
 				.with_interceptor_builder(self.interceptors);
 
-		// Add all subsystem factories
+		// Add configured subsystems using the proper methods
+		#[cfg(feature = "sub_logging")]
+		if let Some(configurator) = self.logging_configurator {
+			database_builder = database_builder.with_logging(configurator);
+		}
+
+		#[cfg(feature = "sub_worker")]
+		if let Some(configurator) = self.worker_configurator {
+			database_builder = database_builder.with_worker(configurator);
+		}
+
+		#[cfg(feature = "sub_flow")]
+		if let Some(configurator) = self.flow_configurator {
+			database_builder = database_builder.with_flow(configurator);
+		}
+
+		// Add any other custom subsystem factories
 		for factory in self.subsystem_factories {
 			database_builder = database_builder.add_subsystem_factory(factory);
 		}
-
-		// Add default subsystems
-		database_builder = database_builder.with_default_subsystems();
 
 		database_builder.build()
 	}
@@ -96,7 +131,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 	where
 		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
 	{
-		self.subsystem_factories.push(Box::new(LoggingSubsystemFactory::with_configurator(configurator)));
+		self.logging_configurator = Some(Box::new(configurator));
 		self
 	}
 
@@ -107,7 +142,16 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 			+ Send
 			+ 'static,
 	{
-		self.subsystem_factories.push(Box::new(FlowSubsystemFactory::with_configurator(configurator)));
+		self.flow_configurator = Some(Box::new(configurator));
+		self
+	}
+
+	#[cfg(feature = "sub_worker")]
+	fn with_worker<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
+	{
+		self.worker_configurator = Some(Box::new(configurator));
 		self
 	}
 

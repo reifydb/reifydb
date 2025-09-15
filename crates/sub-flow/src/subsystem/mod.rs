@@ -13,7 +13,7 @@ use reifydb_core::{
 	Result,
 	interface::{
 		ConsumerId, Transaction,
-		subsystem::{HealthStatus, Subsystem, workerpool::Priority},
+		subsystem::{HealthStatus, Subsystem, worker::Priority},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,

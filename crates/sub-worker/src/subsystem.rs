@@ -9,22 +9,23 @@
 
 use std::{
 	any::Any,
-	collections::BinaryHeap,
+	collections::{BinaryHeap, VecDeque},
 	sync::{
 		Arc, Condvar, Mutex,
-		atomic::{AtomicBool, AtomicUsize, Ordering},
+		atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
+		mpsc::{self, Receiver, Sender},
 	},
 	thread::{self, JoinHandle},
 	time::Duration,
 };
 
-pub use reifydb_core::interface::subsystem::workerpool::Priority;
+pub use reifydb_core::interface::subsystem::worker::Priority;
 use reifydb_core::{
 	Result,
 	interface::{
 		subsystem::{
 			HealthStatus, Subsystem,
-			workerpool::{TaskHandle, WorkerPool},
+			worker::{BoxedTask, Scheduler, TaskHandle},
 		},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
@@ -32,14 +33,15 @@ use reifydb_core::{
 };
 
 use crate::{
-	scheduler::TaskScheduler,
-	task::{ClosureTask, PoolTask, PrioritizedTask},
-	worker::Worker,
+	client::{SchedulerClient, SchedulerRequest, SchedulerResponse},
+	scheduler::{SchedulableTaskAdapter, TaskScheduler},
+	task::{PoolTask, PrioritizedTask},
+	thread::Thread,
 };
 
 /// Configuration for the worker pool
 #[derive(Debug, Clone)]
-pub struct WorkerPoolConfig {
+pub struct WorkerConfig {
 	/// Number of worker threads
 	pub num_workers: usize,
 	/// Maximum number of queued tasks
@@ -50,7 +52,7 @@ pub struct WorkerPoolConfig {
 	pub task_timeout_warning: Duration,
 }
 
-impl Default for WorkerPoolConfig {
+impl Default for WorkerConfig {
 	fn default() -> Self {
 		Self {
 			num_workers: 1,
@@ -71,8 +73,8 @@ pub struct PoolStats {
 }
 
 /// Priority Worker Pool Subsystem
-pub struct WorkerPoolSubsystem {
-	config: WorkerPoolConfig,
+pub struct WorkerSubsystem {
+	config: WorkerConfig,
 	running: Arc<AtomicBool>,
 	stats: Arc<PoolStats>,
 
@@ -81,26 +83,51 @@ pub struct WorkerPoolSubsystem {
 	task_condvar: Arc<Condvar>,
 
 	// Worker threads
-	workers: Vec<Worker>,
+	workers: Vec<Thread>,
 
 	// Scheduler for periodic tasks
 	scheduler: Arc<Mutex<TaskScheduler>>,
 	scheduler_condvar: Arc<Condvar>, // Wake scheduler when tasks are added
 	scheduler_handle: Option<JoinHandle<()>>,
+
+	// Scheduler request receiver (set during factory creation) - wrapped
+	// in Mutex for Sync
+	scheduler_receiver: Arc<Mutex<Option<Receiver<(SchedulerRequest, Sender<SchedulerResponse>)>>>>,
+
+	// Pending requests queue for requests made before start()
+	pending_requests: Arc<Mutex<VecDeque<(SchedulerRequest, Sender<SchedulerResponse>)>>>,
+
+	// Next handle ID for generating handles when queuing
+	next_handle: Arc<AtomicU64>,
+
+	// Scheduler client for external access
+	scheduler_client: Arc<dyn Scheduler>,
 }
 
-impl WorkerPoolSubsystem {
-	/// Create a new worker pool with default configuration
-	pub fn new() -> Self {
-		Self::with_config(WorkerPoolConfig::default())
-	}
+impl WorkerSubsystem {
+	/// Create a new worker pool with config
+	pub fn with_config(config: WorkerConfig) -> Self {
+		// Create shared state for pending requests and handle
+		// generation
+		let pending_requests = Arc::new(Mutex::new(VecDeque::new()));
+		let next_handle = Arc::new(AtomicU64::new(1));
+		let running = Arc::new(AtomicBool::new(false));
 
-	/// Create a new worker pool with custom configuration
-	pub fn with_config(config: WorkerPoolConfig) -> Self {
+		// Create channel for scheduler requests
+		let (sender, receiver) = mpsc::channel();
+
+		// Create SchedulerClient with access to shared state
+		let scheduler_client = Arc::new(SchedulerClient::with_queue(
+			sender,
+			Arc::clone(&pending_requests),
+			Arc::clone(&next_handle),
+			Arc::clone(&running),
+		));
+
 		let max_queue_size = config.max_queue_size;
 		Self {
 			config,
-			running: Arc::new(AtomicBool::new(false)),
+			running,
 			stats: Arc::new(PoolStats::default()),
 			task_queue: Arc::new(Mutex::new(BinaryHeap::with_capacity(max_queue_size))),
 			task_condvar: Arc::new(Condvar::new()),
@@ -108,7 +135,21 @@ impl WorkerPoolSubsystem {
 			scheduler: Arc::new(Mutex::new(TaskScheduler::new())),
 			scheduler_condvar: Arc::new(Condvar::new()),
 			scheduler_handle: None,
+			scheduler_receiver: Arc::new(Mutex::new(Some(receiver))),
+			pending_requests,
+			next_handle,
+			scheduler_client,
 		}
+	}
+
+	/// Create a new worker pool with default config
+	pub fn new() -> Self {
+		Self::with_config(WorkerConfig::default())
+	}
+
+	/// Get the scheduler client
+	pub fn get_scheduler(&self) -> Arc<dyn Scheduler> {
+		self.scheduler_client.clone()
 	}
 
 	/// Submit a one-time task to the pool
@@ -136,15 +177,15 @@ impl WorkerPoolSubsystem {
 		Ok(())
 	}
 
-	/// Schedule a periodic task
-	pub fn schedule_periodic(
+	/// Schedule a task to run at fixed intervals (internal)
+	fn schedule_every_internal(
 		&self,
 		task: Box<dyn PoolTask>,
 		interval: Duration,
 		priority: Priority,
 	) -> Result<TaskHandle> {
 		let mut scheduler = self.scheduler.lock().unwrap();
-		let handle = scheduler.schedule_periodic(task, interval, priority);
+		let handle = scheduler.schedule_every_internal(task, interval, priority);
 		drop(scheduler);
 
 		// Wake up the scheduler thread
@@ -184,11 +225,90 @@ impl WorkerPoolSubsystem {
 		let running = Arc::clone(&self.running);
 		let stats = Arc::clone(&self.stats);
 		let max_queue_size = self.config.max_queue_size;
+		let scheduler_receiver = Arc::clone(&self.scheduler_receiver);
+		let pending_requests = Arc::clone(&self.pending_requests);
+		let next_handle = Arc::clone(&self.next_handle);
 
 		let handle = thread::Builder::new()
 			.name("worker-pool-scheduler".to_string())
 			.spawn(move || {
+				// Process any pending requests that were queued before start
+				{
+					let mut pending = pending_requests.lock().unwrap();
+					let mut sched = scheduler.lock().unwrap();
+
+					// Set the scheduler's next handle to match what we've been using
+					sched.set_next_handle(next_handle.load(Ordering::Relaxed));
+
+					while let Some((request, response_tx)) = pending.pop_front() {
+						let response = match request {
+							SchedulerRequest::ScheduleEvery {
+								task,
+								interval,
+							} => {
+								let adapter =
+									Box::new(SchedulableTaskAdapter::new(task));
+								let priority = adapter.priority();
+								let handle = sched.schedule_every_internal(
+									adapter, interval, priority,
+								);
+								SchedulerResponse::TaskScheduled(handle)
+							}
+							SchedulerRequest::Cancel {
+								handle,
+							} => {
+								sched.cancel(handle);
+								SchedulerResponse::TaskCancelled
+							}
+						};
+						// Send response (receiver might be gone if client didn't wait)
+						let _ = response_tx.send(response);
+					}
+					drop(sched);
+					drop(pending);
+				}
+
 				while running.load(Ordering::Relaxed) {
+					// Check for scheduler requests if receiver is available
+					{
+						let receiver_guard = scheduler_receiver.lock().unwrap();
+						if let Some(ref receiver) = *receiver_guard {
+							while let Ok((request, response_tx)) = receiver.try_recv() {
+								let mut sched = scheduler.lock().unwrap();
+								let response = match request {
+									SchedulerRequest::ScheduleEvery {
+										task,
+										interval,
+									} => {
+										// Create adapter from SchedulableTask
+										// to PoolTask
+										let adapter = Box::new(
+											SchedulableTaskAdapter::new(
+												task,
+											),
+										);
+										let priority = adapter.priority();
+										let handle = sched
+											.schedule_every_internal(
+												adapter, interval,
+												priority,
+											);
+										SchedulerResponse::TaskScheduled(handle)
+									}
+									SchedulerRequest::Cancel {
+										handle,
+									} => {
+										sched.cancel(handle);
+										SchedulerResponse::TaskCancelled
+									}
+								};
+								drop(sched);
+								// Send response back
+								let _ = response_tx.send(response);
+							}
+						}
+					}
+
 					let mut sched = scheduler.lock().unwrap();
 
 					// Wait until we have scheduled tasks or need to check for ready tasks
@@ -256,9 +376,9 @@ impl WorkerPoolSubsystem {
 	}
 }
 
-impl Subsystem for WorkerPoolSubsystem {
+impl Subsystem for WorkerSubsystem {
 	fn name(&self) -> &'static str {
-		"WorkerPool"
+		"Worker"
 	}
 
 	fn start(&mut self) -> Result<()> {
@@ -270,7 +390,7 @@ impl Subsystem for WorkerPoolSubsystem {
 
 		// Start worker threads
 		for i in 0..self.config.num_workers {
-			let mut worker = Worker::new(
+			let mut worker = Thread::new(
 				i,
 				Arc::clone(&self.task_queue),
 				Arc::clone(&self.task_condvar),
@@ -362,10 +482,10 @@ impl Subsystem for WorkerPoolSubsystem {
 	}
 }
 
-impl HasVersion for WorkerPoolSubsystem {
+impl HasVersion for WorkerSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-			name: "sub-workerpool".to_string(),
+			name: "sub-worker".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
 			description: "Priority-based task worker pool subsystem".to_string(),
 			r#type: ComponentType::Subsystem,
@@ -373,32 +493,18 @@ impl HasVersion for WorkerPoolSubsystem {
 	}
 }
 
-impl Drop for WorkerPoolSubsystem {
+impl Drop for WorkerSubsystem {
 	fn drop(&mut self) {
 		let _ = self.shutdown();
 	}
 }
 
-impl WorkerPool for WorkerPoolSubsystem {
-	fn schedule_periodic(
-		&self,
-		name: String,
-		task: Box<dyn Fn() -> Result<bool> + Send + Sync>,
-		interval: Duration,
-	) -> Result<TaskHandle> {
-		// Create a closure task that wraps the provided function
-		let closure_task = Box::new(ClosureTask::new(name, Priority::Normal, move |_ctx| {
-			// Execute the task and convert the result
-			match task() {
-				Ok(_) => Ok(()),
-				Err(e) => panic!("Task execution error: {:?}", e),
-			}
-		}));
-
-		// Schedule the periodic task
-		self.schedule_periodic(closure_task, interval, Priority::Normal)
+impl Scheduler for WorkerSubsystem {
+	fn schedule_every(&self, task: BoxedTask, interval: Duration) -> Result<TaskHandle> {
+		let adapter = Box::new(SchedulableTaskAdapter::new(task));
+		let priority = adapter.priority();
+		self.schedule_every_internal(adapter, interval, priority)
 	}
-
 	fn cancel(&self, handle: TaskHandle) -> Result<()> {
 		self.cancel_task(handle)
 	}

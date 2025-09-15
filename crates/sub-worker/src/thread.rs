@@ -13,10 +13,10 @@ use std::{
 
 use reifydb_core::{log_debug, log_warn};
 
-use super::{PoolStats, PoolTask, PrioritizedTask, TaskContext};
+use super::{InternalTaskContext, PoolStats, PoolTask, PrioritizedTask};
 
 /// A worker thread in the pool
-pub struct Worker {
+pub struct Thread {
 	id: usize,
 	task_queue: Arc<Mutex<BinaryHeap<PrioritizedTask>>>,
 	task_condvar: Arc<Condvar>,
@@ -27,7 +27,7 @@ pub struct Worker {
 	task_counter: Arc<AtomicU64>,
 }
 
-impl Worker {
+impl Thread {
 	pub fn new(
 		id: usize,
 		task_queue: Arc<Mutex<BinaryHeap<PrioritizedTask>>>,
@@ -156,7 +156,7 @@ impl Worker {
 
 		stats.tasks_queued.fetch_sub(1, Ordering::Relaxed);
 
-		let ctx = TaskContext {
+		let ctx = InternalTaskContext {
 			task_id,
 			worker_id,
 			start_time,
@@ -214,7 +214,7 @@ impl Worker {
 	}
 }
 
-impl Drop for Worker {
+impl Drop for Thread {
 	fn drop(&mut self) {
 		// Ensure thread is joined on drop
 		if let Some(handle) = self.handle.take() {

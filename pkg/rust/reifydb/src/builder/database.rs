@@ -24,10 +24,12 @@ use reifydb_engine::{
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
 use reifydb_storage::StorageVersion;
+#[cfg(feature = "sub_flow")]
+use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_logging")]
-use reifydb_sub_logging::LoggingSubsystemFactory;
-#[cfg(feature = "sub_workerpool")]
-use reifydb_sub_workerpool::WorkerPoolSubsystemFactory;
+use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
+#[cfg(feature = "sub_worker")]
+use reifydb_sub_worker::{WorkerBuilder, WorkerSubsystem, WorkerSubsystemFactory};
 use reifydb_transaction::TransactionVersion;
 
 use crate::{
@@ -41,6 +43,12 @@ pub struct DatabaseBuilder<VT: VersionedTransaction, UT: UnversionedTransaction,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>,
 	subsystems: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>>,
 	ioc: IocContainer,
+	#[cfg(feature = "sub_logging")]
+	logging_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>>,
+	#[cfg(feature = "sub_worker")]
+	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>>,
+	#[cfg(feature = "sub_flow")]
+	flow_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>>,
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> DatabaseBuilder<VT, UT, C> {
@@ -53,34 +61,18 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 			.register(unversioned.clone())
 			.register(cdc.clone());
 
-		let result = Self {
+		Self {
 			config: DatabaseConfig::default(),
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystems: Vec::new(),
 			ioc,
-		};
-
-		result
-	}
-
-	/// Add default subsystems that are always required
-	#[allow(unused_mut)]
-	pub fn with_default_subsystems(mut self) -> Self {
-		// Add default logging subsystem first so it's initialized
-		// before other subsystems Note: This can be overridden by
-		// adding a custom logging factory before calling this
-		#[cfg(feature = "sub_logging")]
-		if self.subsystems.is_empty() {
-			self = self.add_subsystem_factory(Box::new(LoggingSubsystemFactory::new()));
+			#[cfg(feature = "sub_logging")]
+			logging_factory: None,
+			#[cfg(feature = "sub_worker")]
+			worker_factory: None,
+			#[cfg(feature = "sub_flow")]
+			flow_factory: None,
 		}
-
-		// Add worker pool subsystem if feature enabled
-		#[cfg(feature = "sub_workerpool")]
-		{
-			self = self.add_subsystem_factory(Box::new(WorkerPoolSubsystemFactory::new()));
-		}
-
-		self
 	}
 
 	pub fn with_graceful_shutdown_timeout(mut self, timeout: Duration) -> Self {
@@ -100,6 +92,35 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 
 	pub fn with_config(mut self, config: DatabaseConfig) -> Self {
 		self.config = config;
+		self
+	}
+
+	#[cfg(feature = "sub_logging")]
+	pub fn with_logging<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
+	{
+		self.logging_factory = Some(Box::new(LoggingSubsystemFactory::with_configurator(configurator)));
+		self
+	}
+
+	#[cfg(feature = "sub_worker")]
+	pub fn with_worker<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
+	{
+		self.worker_factory = Some(Box::new(WorkerSubsystemFactory::with_configurator(configurator)));
+		self
+	}
+
+	#[cfg(feature = "sub_flow")]
+	pub fn with_flow<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(FlowBuilder<EngineTransaction<VT, UT, C>>) -> FlowBuilder<EngineTransaction<VT, UT, C>>
+			+ Send
+			+ 'static,
+	{
+		self.flow_factory = Some(Box::new(FlowSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 
@@ -128,6 +149,20 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 	}
 
 	pub fn build(mut self) -> crate::Result<Database<VT, UT, C>> {
+		// Add configured or default subsystems
+		#[cfg(feature = "sub_logging")]
+		self.subsystems.push(self.logging_factory.unwrap_or_else(|| Box::new(LoggingSubsystemFactory::new())));
+
+		#[cfg(feature = "sub_worker")]
+		self.subsystems.push(self
+			.worker_factory
+			.unwrap_or_else(|| Box::new(WorkerSubsystemFactory::<EngineTransaction<VT, UT, C>>::new())));
+
+		#[cfg(feature = "sub_flow")]
+		self.subsystems.push(self
+			.flow_factory
+			.unwrap_or_else(|| Box::new(FlowSubsystemFactory::<EngineTransaction<VT, UT, C>>::new())));
+
 		// Collect interceptors from all factories
 		for factory in &self.subsystems {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
@@ -185,6 +220,13 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 			subsystems.add_subsystem(subsystem);
 		}
 
+		// Get the scheduler - it must exist when feature is enabled
+		#[cfg(feature = "sub_worker")]
+		let scheduler = subsystems
+			.get::<WorkerSubsystem>()
+			.map(|w| w.get_scheduler())
+			.expect("Worker subsystem should always be created when feature is enabled");
+
 		// Add git hash if available
 		if let Some(git_hash) = option_env!("GIT_HASH") {
 			all_versions.push(SystemVersion {
@@ -201,7 +243,14 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 		let system_catalog = SystemCatalog::new(all_versions);
 		catalog.set_system_catalog(system_catalog);
 
-		Ok(Database::new(engine, subsystems, self.config, health_monitor))
+		Ok(Database::new(
+			engine,
+			subsystems,
+			self.config,
+			health_monitor,
+			#[cfg(feature = "sub_worker")]
+			scheduler,
+		))
 	}
 
 	/// Load the materialized catalog from storage

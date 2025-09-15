@@ -376,7 +376,7 @@ dependencies = [
  "reifydb-sub-flow",
  "reifydb-sub-logging",
  "reifydb-sub-server",
- "reifydb-sub-workerpool",
+ "reifydb-sub-worker",
  "reifydb-transaction",
  "reifydb-type",
 ]
@@ -570,11 +570,14 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-sub-workerpool"
+name = "reifydb-sub-worker"
 version = "0.0.1"
 dependencies = [
+ "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-storage",
+ "reifydb-transaction",
  "reifydb-type",
 ]
 
@@ -759,6 +762,7 @@ dependencies = [
 name = "testcontainer"
 version = "0.0.1"
 dependencies = [
+ "libc",
  "reifydb",
 ]
 

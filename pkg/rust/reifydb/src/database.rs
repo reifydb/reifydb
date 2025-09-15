@@ -10,6 +10,10 @@ use std::{
 	time::Duration,
 };
 
+#[cfg(feature = "sub_flow")]
+use reifydb_core::interface::Transaction;
+#[cfg(feature = "sub_worker")]
+use reifydb_core::interface::subsystem::worker::Scheduler;
 use reifydb_core::{
 	Result,
 	event::lifecycle::OnStartEvent,
@@ -19,6 +23,8 @@ use reifydb_core::{
 	log_debug, log_error, log_timed_trace, log_warn,
 };
 use reifydb_engine::{EngineTransaction, StandardEngine};
+#[cfg(feature = "sub_flow")]
+use reifydb_sub_flow::FlowSubsystem;
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::ServerSubsystem;
 
@@ -75,14 +81,15 @@ pub struct Database<VT: VersionedTransaction, UT: UnversionedTransaction, C: Cdc
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
+	#[cfg(feature = "sub_worker")]
+	scheduler: Arc<dyn Scheduler>,
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Database<VT, UT, C> {
-	// Note: FlowSubsystem is now generic over the engine type
-	// #[cfg(feature = "sub_flow")]
-	// pub fn subsystem_flow<E: Engine<T>>(&self) ->
-	// Option<&FlowSubsystem<T, E>> { 	self.subsystem::<FlowSubsystem<T,
-	// E>>() }
+	#[cfg(feature = "sub_flow")]
+	pub fn sub_flow<T: Transaction>(&self) -> Option<&FlowSubsystem<T>> {
+		self.subsystem::<FlowSubsystem<T>>()
+	}
 
 	#[cfg(feature = "sub_server")]
 	pub fn sub_server(&self) -> Option<&ServerSubsystem<EngineTransaction<VT, UT, C>>> {
@@ -96,6 +103,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
+		#[cfg(feature = "sub_worker")] scheduler: Arc<dyn Scheduler>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -104,6 +112,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 			config,
 			health_monitor,
 			running: false,
+			#[cfg(feature = "sub_worker")]
+			scheduler,
 		}
 	}
 
@@ -232,6 +242,11 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 		self.subsystems.get::<S>()
 	}
 
+	#[cfg(feature = "sub_worker")]
+	pub fn scheduler(&self) -> Arc<dyn Scheduler> {
+		self.scheduler.clone()
+	}
+
 	pub fn await_signal(&self) -> Result<()> {
 		static RUNNING: AtomicBool = AtomicBool::new(true);
 
@@ -302,5 +317,10 @@ where
 		session: impl IntoQuerySession<EngineTransaction<VT, UT, C>>,
 	) -> Result<QuerySession<EngineTransaction<VT, UT, C>>> {
 		session.into_query_session(self.engine.clone())
+	}
+
+	#[cfg(feature = "sub_worker")]
+	fn scheduler(&self) -> Arc<dyn Scheduler> {
+		self.scheduler.clone()
 	}
 }

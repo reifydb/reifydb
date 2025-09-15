@@ -9,11 +9,11 @@ use std::{
 
 use reifydb_core::{
 	Result,
-	interface::subsystem::workerpool::{Priority, TaskHandle},
+	interface::subsystem::worker::{Priority, TaskHandle},
 };
 
-/// Context provided to tasks during execution
-pub struct TaskContext {
+/// Internal context provided to tasks during execution
+pub struct InternalTaskContext {
 	/// Unique ID for this task execution
 	pub task_id: u64,
 	/// Worker ID executing this task
@@ -25,7 +25,7 @@ pub struct TaskContext {
 /// Trait for tasks that can be executed by the worker pool
 pub trait PoolTask: Send + Sync {
 	/// Execute the task
-	fn execute(&self, ctx: &TaskContext) -> Result<()>;
+	fn execute(&self, ctx: &InternalTaskContext) -> Result<()>;
 
 	/// Get the priority of this task
 	fn priority(&self) -> Priority {
@@ -93,7 +93,7 @@ impl PeriodicTask {
 }
 
 impl PoolTask for PeriodicTask {
-	fn execute(&self, ctx: &TaskContext) -> Result<()> {
+	fn execute(&self, ctx: &InternalTaskContext) -> Result<()> {
 		self.inner.execute(ctx)
 	}
 
@@ -153,19 +153,19 @@ impl Ord for PrioritizedTask {
 	}
 }
 
-/// Simple closure-based task implementation
-pub struct ClosureTask<F>
+/// Simple closure-based implementation for PoolTask (internal use)
+pub struct InternalClosureTask<F>
 where
-	F: Fn(&TaskContext) -> Result<()> + Send + Sync,
+	F: Fn(&InternalTaskContext) -> Result<()> + Send + Sync,
 {
 	name: String,
 	priority: Priority,
 	closure: F,
 }
 
-impl<F> ClosureTask<F>
+impl<F> InternalClosureTask<F>
 where
-	F: Fn(&TaskContext) -> Result<()> + Send + Sync,
+	F: Fn(&InternalTaskContext) -> Result<()> + Send + Sync,
 {
 	pub fn new(name: impl Into<String>, priority: Priority, closure: F) -> Self {
 		Self {
@@ -176,11 +176,11 @@ where
 	}
 }
 
-impl<F> PoolTask for ClosureTask<F>
+impl<F> PoolTask for InternalClosureTask<F>
 where
-	F: Fn(&TaskContext) -> Result<()> + Send + Sync,
+	F: Fn(&InternalTaskContext) -> Result<()> + Send + Sync,
 {
-	fn execute(&self, ctx: &TaskContext) -> Result<()> {
+	fn execute(&self, ctx: &InternalTaskContext) -> Result<()> {
 		(self.closure)(ctx)
 	}
 

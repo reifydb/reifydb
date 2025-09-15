@@ -17,7 +17,7 @@ use reifydb_core::{
 		CdcEvent, CdcQueryTransaction, CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
 		Transaction, VersionedCommandTransaction,
 		key::{CdcConsumerKey, EncodableKey},
-		subsystem::workerpool::Priority,
+		subsystem::worker::Priority,
 	},
 	log_debug, log_error,
 };

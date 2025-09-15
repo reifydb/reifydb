@@ -27,6 +27,8 @@ pub use reifydb_auth as auth;
 pub use reifydb_cdc as cdc;
 // subsystems
 pub use reifydb_core as core;
+#[cfg(feature = "sub_worker")]
+pub use reifydb_core::interface::subsystem::worker::{Priority, Scheduler, TaskHandle};
 pub use reifydb_core::{
 	Error, Result,
 	event::EventBus,
@@ -49,8 +51,8 @@ pub use reifydb_sub_flow as sub_flow;
 pub use reifydb_sub_logging as sub_logging;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
-#[cfg(feature = "sub_workerpool")]
-pub use reifydb_sub_workerpool as sub_workerpool;
+#[cfg(feature = "sub_worker")]
+pub use reifydb_sub_worker as sub_worker;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{
 	mvcc::transaction::{optimistic::Optimistic, serializable::Serializable},
