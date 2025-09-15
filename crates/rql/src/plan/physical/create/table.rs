@@ -31,7 +31,7 @@ impl Compiler {
 
 		Ok(CreateTable(CreateTablePlan {
 			namespace,
-			table: create.table,
+			table: create.table.clone(),
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
 		}))

@@ -15,9 +15,10 @@ impl Compiler {
 		ast: AstUpdate<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Convert MaybeQualifiedSourceIdentifier to SourceIdentifier
+		// Resolve directly to TableIdentifier since UPDATE only works
+		// on tables
 		let target = if let Some(t) = &ast.target {
-			Some(resolver.resolve_maybe_source(t)?)
+			Some(resolver.resolve_table(t, true)?)
 		} else {
 			None
 		};

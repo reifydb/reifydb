@@ -29,7 +29,7 @@ impl Compiler {
 
 		Ok(CreateDeferredView(CreateDeferredViewPlan {
 			namespace,
-			view: create.view,
+			view: create.view.clone(),
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
 			with: Self::compile(rx, create.with)?

@@ -56,8 +56,8 @@ impl Compiler {
                         AlterIndexColumn {
                             column: ColumnIdentifier {
                                 source: ColumnSource::Source {
-                                    namespace: view.namespace.clone(),
-                                    source: view.name.clone(),
+                                    namespace: view.namespace().clone(),
+                                    source: view.name().clone(),
                                 },
                                 name: col.column.name,
                             },

@@ -51,11 +51,9 @@ impl Compiler {
 			});
 		}
 
-		// Convert MaybeQualified to fully qualified using resolver
+		// Resolve directly to DeferredViewIdentifier
 		// Don't validate existence since we're creating the view
-		let view = resolver.resolve_maybe_source_with_validation(
-			&ast.view, false,
-		)?;
+		let view = resolver.resolve_deferred_view(&ast.view, false)?;
 
 		let with = if let Some(as_statement) = ast.as_clause {
 			Compiler::compile(as_statement, resolver)?

@@ -9,9 +9,11 @@ use reifydb_core::{
 	interface::{
 		TableVirtualDef, ViewKind,
 		identifier::{
-			ColumnIdentifier, ColumnSource, FunctionIdentifier,
-			IndexIdentifier, NamespaceIdentifier,
-			SequenceIdentifier, SourceIdentifier, SourceKind,
+			ColumnIdentifier, ColumnSource, DeferredViewIdentifier,
+			FunctionIdentifier, IndexIdentifier,
+			NamespaceIdentifier, SequenceIdentifier,
+			SourceIdentifier, SourceKind, TableIdentifier,
+			TableVirtualIdentifier, TransactionalViewIdentifier,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDeferredView,
@@ -112,27 +114,28 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 	) -> Result<SourceIdentifier<'static>> {
 		// Validate the namespace exists (namespace is always present in
 		// fully qualified identifiers)
-		let namespace_name = source.namespace.text();
+		let namespace_name = source.namespace().text();
 
 		let _schema =
 			self.transaction.get_namespace_by_name(namespace_name);
 
-		let resolved_schema =
-			Fragment::Owned(source.namespace.clone().into_owned());
+		let resolved_schema = Fragment::Owned(
+			source.namespace().clone().into_owned(),
+		);
 
 		// Determine source type from catalog
 		let source_kind = self.determine_source_kind(
 			Some(resolved_schema.text()),
-			source.name.clone(),
+			source.name().clone(),
 		)?;
 
 		let mut result = SourceIdentifier::new(
 			resolved_schema,
-			Fragment::Owned(source.name.clone().into_owned()),
+			Fragment::Owned(source.name().clone().into_owned()),
 			source_kind,
 		);
 
-		if let Some(alias) = &source.alias {
+		if let Some(alias) = source.alias() {
 			result = result.with_alias(Fragment::Owned(
 				alias.clone().into_owned(),
 			));
@@ -361,8 +364,11 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 								.unwrap();
 						ColumnSource::Source {
 							namespace: source_id
-								.namespace,
-							source: source_id.name,
+								.namespace()
+								.clone(),
+							source: source_id
+								.name()
+								.clone(),
 						}
 					}
 					_ => {
@@ -665,23 +671,22 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		source: &SourceIdentifier<'static>,
 		_column_name: &str,
 	) -> bool {
-		let _schema = source.namespace.text();
-		let _source_name = source.name.text();
+		let _schema = source.namespace().text();
+		let _source_name = source.name().text();
 
-		match source.kind {
-			SourceKind::Table => {
+		match source {
+			SourceIdentifier::Table(_)
+			| SourceIdentifier::TableVirtual(_) => {
 				// TODO: Check table has column once
 				// CatalogQueryTransaction supports it
 				true
 			}
-			SourceKind::View
-			| SourceKind::DeferredView
-			| SourceKind::TransactionalView => {
+			SourceIdentifier::DeferredView(_)
+			| SourceIdentifier::TransactionalView(_) => {
 				// TODO: Check view has column once
 				// CatalogQueryTransaction supports it
 				true
 			}
-			_ => false,
 		}
 	}
 
@@ -691,41 +696,40 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		&mut self,
 		source: &SourceIdentifier<'static>,
 	) -> Result<()> {
-		let _schema = source.namespace.text();
-		let _source_name = source.name.text();
+		let _schema = source.namespace().text();
+		let _source_name = source.name().text();
 		let effective_name = source.effective_name();
 
 		// Get columns based on source type
 		use reifydb_core::interface::ColumnDef;
-		let columns: Vec<ColumnDef> = match source.kind {
-			SourceKind::Table => {
+		let columns: Vec<ColumnDef> = match source {
+			SourceIdentifier::Table(_)
+			| SourceIdentifier::TableVirtual(_) => {
 				// TODO: Get table columns once
 				// CatalogQueryTransaction supports it
 				Vec::new()
 			}
-			SourceKind::View
-			| SourceKind::DeferredView
-			| SourceKind::TransactionalView => {
+			SourceIdentifier::DeferredView(_)
+			| SourceIdentifier::TransactionalView(_) => {
 				// TODO: Get view columns once
 				// CatalogQueryTransaction supports it
 				Vec::new()
 			}
-			_ => Vec::new(),
 		};
 
 		// Register each column as available
 		for column in columns {
 			let col_ident = ColumnIdentifier {
-				source: if source.alias.is_some() {
+				source: if source.alias().is_some() {
 					ColumnSource::Alias(
-						source.alias.clone().unwrap(),
+						source.alias().unwrap().clone(),
 					)
 				} else {
 					ColumnSource::Source {
 						namespace: source
-							.namespace
+							.namespace()
 							.clone(),
-						source: source.name.clone(),
+						source: source.name().clone(),
 					}
 				},
 				name: Fragment::Owned(
@@ -770,15 +774,28 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		&mut self,
 		ident: SourceIdentifier<'a>,
 	) -> Result<ResolvedTable<'a>> {
+		// Extract the TableIdentifier from the enum
+		let table_ident = match ident {
+			SourceIdentifier::Table(t) => t,
+			_ => {
+				// Create a TableIdentifier from other variants
+				TableIdentifier {
+					namespace: ident.namespace().clone(),
+					name: ident.name().clone(),
+					alias: ident.alias().cloned(),
+				}
+			}
+		};
+
 		// Resolve namespace first
 		let namespace_ident = NamespaceIdentifier {
-			name: ident.namespace.clone(),
+			name: table_ident.namespace.clone(),
 		};
 		let namespace =
 			self.build_resolved_namespace(namespace_ident)?;
 
 		// Lookup table in catalog
-		let table_name = ident.name.text();
+		let table_name = table_ident.name.text();
 		let def =
 			self.transaction
 				.find_table_by_name(
@@ -791,12 +808,12 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 					crate::error::SourceNotFoundError {
 						namespace: namespace.def.name.clone(),
 						name: table_name.to_string(),
-						fragment: ident.name.clone().into_owned(),
+						fragment: table_ident.name.clone().into_owned(),
 					}
 				).into()
 				})?;
 
-		Ok(ResolvedTable::new(ident, namespace, def))
+		Ok(ResolvedTable::new(table_ident, namespace, def))
 	}
 
 	/// Build a resolved view
@@ -806,13 +823,13 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 	) -> Result<ResolvedView<'a>> {
 		// Resolve namespace first
 		let namespace_ident = NamespaceIdentifier {
-			name: ident.namespace.clone(),
+			name: ident.namespace().clone(),
 		};
 		let namespace =
 			self.build_resolved_namespace(namespace_ident)?;
 
 		// Lookup view in catalog
-		let view_name = ident.name.text();
+		let view_name = ident.name().text();
 		let def =
 			self.transaction
 				.find_view_by_name(namespace.def.id, view_name)?
@@ -822,7 +839,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 					crate::error::SourceNotFoundError {
 						namespace: namespace.def.name.clone(),
 						name: view_name.to_string(),
-						fragment: ident.name.clone().into_owned(),
+						fragment: ident.name().clone().into_owned(),
 					}
 				).into()
 				})?;
@@ -835,8 +852,8 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		&mut self,
 		ident: SourceIdentifier<'a>,
 	) -> Result<Rc<ResolvedSource<'a>>> {
-		let namespace_name = ident.namespace.text();
-		let source_name = ident.name.text();
+		let namespace_name = ident.namespace().text();
+		let source_name = ident.name().text();
 
 		// Check if it's a system virtual table
 		if namespace_name == "system" {
@@ -846,7 +863,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				// For system tables, we need to get the system
 				// namespace
 				let namespace_ident = NamespaceIdentifier {
-					name: ident.namespace.clone(),
+					name: ident.namespace().clone(),
 				};
 				// Build a resolved namespace for "system"
 				// Since system namespace might not exist in the
@@ -859,8 +876,19 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 					}
 				));
 
+				// Extract or create TableVirtualIdentifier
+				let virtual_ident = match ident {
+					SourceIdentifier::TableVirtual(t) => t,
+					_ => TableVirtualIdentifier {
+						namespace: ident
+							.namespace()
+							.clone(),
+						name: ident.name().clone(),
+						alias: ident.alias().cloned(),
+					},
+				};
 				let virtual_table = ResolvedTableVirtual::new(
-					ident,
+					virtual_ident,
 					namespace,
 					Arc::try_unwrap(def).unwrap_or_else(
 						|arc| (*arc).clone(),
@@ -886,16 +914,36 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 			let resolved =
 				match view.def.kind {
 					ViewKind::Deferred => {
+						// Extract or create
+						// DeferredViewIdentifier
+						let deferred_ident = match ident {
+							SourceIdentifier::DeferredView(d) => d,
+							_ => DeferredViewIdentifier {
+								namespace: ident.namespace().clone(),
+								name: ident.name().clone(),
+								alias: ident.alias().cloned(),
+							}
+						};
 						let deferred = ResolvedDeferredView::new(
-						ident,
+						deferred_ident,
 						view.namespace,
 						view.def,
 					);
 						Rc::new(ResolvedSource::DeferredView(deferred))
 					}
 					ViewKind::Transactional => {
+						// Extract or create
+						// TransactionalViewIdentifier
+						let trans_ident = match ident {
+							SourceIdentifier::TransactionalView(t) => t,
+							_ => TransactionalViewIdentifier {
+								namespace: ident.namespace().clone(),
+								name: ident.name().clone(),
+								alias: ident.alias().cloned(),
+							}
+						};
 						let transactional = ResolvedTransactionalView::new(
-						ident,
+						trans_ident,
 						view.namespace,
 						view.def,
 					);
@@ -911,7 +959,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 			crate::error::SourceNotFoundError {
 				namespace: namespace_name.to_string(),
 				name: source_name.to_string(),
-				fragment: ident.name.clone().into_owned(),
+				fragment: ident.name().clone().into_owned(),
 			},
 		)
 		.into())
@@ -994,5 +1042,112 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				.clone();
 
 		Ok(ResolvedColumn::new(ident, source, def))
+	}
+
+	/// Resolve a table identifier specifically
+	pub fn resolve_table<'a>(
+		&mut self,
+		source: &MaybeQualifiedSourceIdentifier<'a>,
+		validate_existence: bool,
+	) -> Result<TableIdentifier<'static>> {
+		// Resolve to SourceIdentifier first
+		let resolved = self.resolve_maybe_source_with_validation(
+			source,
+			validate_existence,
+		)?;
+
+		// Extract or create TableIdentifier
+		match resolved {
+			SourceIdentifier::Table(t) => Ok(t),
+			_ => {
+				// Create a TableIdentifier from other variants
+				Ok(TableIdentifier {
+					namespace: resolved.namespace().clone(),
+					name: resolved.name().clone(),
+					alias: resolved.alias().cloned(),
+				})
+			}
+		}
+	}
+
+	/// Resolve a deferred view identifier specifically
+	pub fn resolve_deferred_view<'a>(
+		&mut self,
+		source: &MaybeQualifiedSourceIdentifier<'a>,
+		validate_existence: bool,
+	) -> Result<DeferredViewIdentifier<'static>> {
+		// Resolve to SourceIdentifier first
+		let resolved = self.resolve_maybe_source_with_validation(
+			source,
+			validate_existence,
+		)?;
+
+		// Extract or create DeferredViewIdentifier
+		match resolved {
+			SourceIdentifier::DeferredView(v) => Ok(v),
+			_ => {
+				// Create a DeferredViewIdentifier from other
+				// variants
+				Ok(DeferredViewIdentifier {
+					namespace: resolved.namespace().clone(),
+					name: resolved.name().clone(),
+					alias: resolved.alias().cloned(),
+				})
+			}
+		}
+	}
+
+	/// Resolve a transactional view identifier specifically
+	pub fn resolve_transactional_view<'a>(
+		&mut self,
+		source: &MaybeQualifiedSourceIdentifier<'a>,
+		validate_existence: bool,
+	) -> Result<TransactionalViewIdentifier<'static>> {
+		// Resolve to SourceIdentifier first
+		let resolved = self.resolve_maybe_source_with_validation(
+			source,
+			validate_existence,
+		)?;
+
+		// Extract or create TransactionalViewIdentifier
+		match resolved {
+			SourceIdentifier::TransactionalView(v) => Ok(v),
+			_ => {
+				// Create a TransactionalViewIdentifier from
+				// other variants
+				Ok(TransactionalViewIdentifier {
+					namespace: resolved.namespace().clone(),
+					name: resolved.name().clone(),
+					alias: resolved.alias().cloned(),
+				})
+			}
+		}
+	}
+
+	/// Resolve a virtual table identifier specifically
+	pub fn resolve_table_virtual<'a>(
+		&mut self,
+		source: &MaybeQualifiedSourceIdentifier<'a>,
+		validate_existence: bool,
+	) -> Result<TableVirtualIdentifier<'static>> {
+		// Resolve to SourceIdentifier first
+		let resolved = self.resolve_maybe_source_with_validation(
+			source,
+			validate_existence,
+		)?;
+
+		// Extract or create TableVirtualIdentifier
+		match resolved {
+			SourceIdentifier::TableVirtual(t) => Ok(t),
+			_ => {
+				// Create a TableVirtualIdentifier from other
+				// variants
+				Ok(TableVirtualIdentifier {
+					namespace: resolved.namespace().clone(),
+					name: resolved.name().clone(),
+					alias: resolved.alias().cloned(),
+				})
+			}
+		}
 	}
 }

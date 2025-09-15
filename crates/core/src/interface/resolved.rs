@@ -9,17 +9,17 @@ use serde::{Deserialize, Serialize};
 use super::{
 	ColumnDef, NamespaceDef, TableDef, TableVirtualDef, ViewDef,
 	identifier::{
-		ColumnIdentifier, FunctionIdentifier, IndexIdentifier,
-		NamespaceIdentifier, SequenceIdentifier, SourceIdentifier,
+		ColumnIdentifier, DeferredViewIdentifier, FunctionIdentifier,
+		IndexIdentifier, NamespaceIdentifier, SequenceIdentifier,
+		SourceIdentifier, TableIdentifier, TableVirtualIdentifier,
+		TransactionalViewIdentifier,
 	},
 };
 
 /// Resolved namespace with both identifier and definition
 #[derive(Debug, Clone)]
 pub struct ResolvedNamespace<'a> {
-	/// Original identifier with fragment for error reporting
 	pub identifier: NamespaceIdentifier<'a>,
-	/// Resolved namespace definition
 	pub def: NamespaceDef,
 }
 
@@ -48,17 +48,14 @@ impl<'a> ResolvedNamespace<'a> {
 /// Resolved physical table
 #[derive(Debug, Clone)]
 pub struct ResolvedTable<'a> {
-	/// Original identifier with fragments
-	pub identifier: SourceIdentifier<'a>,
-	/// Parent namespace (shared via Rc)
+	pub identifier: TableIdentifier<'a>,
 	pub namespace: Rc<ResolvedNamespace<'a>>,
-	/// Actual table definition
 	pub def: TableDef,
 }
 
 impl<'a> ResolvedTable<'a> {
 	pub fn new(
-		identifier: SourceIdentifier<'a>,
+		identifier: TableIdentifier<'a>,
 		namespace: Rc<ResolvedNamespace<'a>>,
 		def: TableDef,
 	) -> Self {
@@ -98,14 +95,14 @@ impl<'a> ResolvedTable<'a> {
 /// Resolved virtual table (system tables, information_schema)
 #[derive(Debug, Clone)]
 pub struct ResolvedTableVirtual<'a> {
-	pub identifier: SourceIdentifier<'a>,
+	pub identifier: TableVirtualIdentifier<'a>,
 	pub namespace: Rc<ResolvedNamespace<'a>>,
 	pub def: TableVirtualDef,
 }
 
 impl<'a> ResolvedTableVirtual<'a> {
 	pub fn new(
-		identifier: SourceIdentifier<'a>,
+		identifier: TableVirtualIdentifier<'a>,
 		namespace: Rc<ResolvedNamespace<'a>>,
 		def: TableVirtualDef,
 	) -> Self {
@@ -135,7 +132,6 @@ pub struct ResolvedView<'a> {
 	pub identifier: SourceIdentifier<'a>,
 	pub namespace: Rc<ResolvedNamespace<'a>>,
 	pub def: ViewDef,
-	// Query plan will be added when LogicalPlan is available in this crate
 }
 
 impl<'a> ResolvedView<'a> {
@@ -168,17 +164,16 @@ impl<'a> ResolvedView<'a> {
 	}
 }
 
-/// Resolved deferred view (lazy evaluation)
 #[derive(Debug, Clone)]
 pub struct ResolvedDeferredView<'a> {
-	pub identifier: SourceIdentifier<'a>,
+	pub identifier: DeferredViewIdentifier<'a>,
 	pub namespace: Rc<ResolvedNamespace<'a>>,
 	pub def: ViewDef,
 }
 
 impl<'a> ResolvedDeferredView<'a> {
 	pub fn new(
-		identifier: SourceIdentifier<'a>,
+		identifier: DeferredViewIdentifier<'a>,
 		namespace: Rc<ResolvedNamespace<'a>>,
 		def: ViewDef,
 	) -> Self {
@@ -202,17 +197,16 @@ impl<'a> ResolvedDeferredView<'a> {
 	}
 }
 
-/// Resolved transactional view (MVCC-aware)
 #[derive(Debug, Clone)]
 pub struct ResolvedTransactionalView<'a> {
-	pub identifier: SourceIdentifier<'a>,
+	pub identifier: TransactionalViewIdentifier<'a>,
 	pub namespace: Rc<ResolvedNamespace<'a>>,
 	pub def: ViewDef,
 }
 
 impl<'a> ResolvedTransactionalView<'a> {
 	pub fn new(
-		identifier: SourceIdentifier<'a>,
+		identifier: TransactionalViewIdentifier<'a>,
 		namespace: Rc<ResolvedNamespace<'a>>,
 		def: ViewDef,
 	) -> Self {
@@ -236,7 +230,6 @@ impl<'a> ResolvedTransactionalView<'a> {
 	}
 }
 
-/// Resolved sequence
 #[derive(Debug, Clone)]
 pub struct ResolvedSequence<'a> {
 	pub identifier: SequenceIdentifier<'a>,
@@ -244,7 +237,6 @@ pub struct ResolvedSequence<'a> {
 	pub def: SequenceDef,
 }
 
-/// Resolved index
 #[derive(Debug, Clone)]
 pub struct ResolvedIndex<'a> {
 	pub identifier: IndexIdentifier<'a>,
@@ -252,14 +244,12 @@ pub struct ResolvedIndex<'a> {
 	pub def: IndexDef,
 }
 
-/// Resolved function
 #[derive(Debug, Clone)]
 pub struct ResolvedFunction<'a> {
 	pub identifier: FunctionIdentifier<'a>,
-	pub namespace_chain: Vec<Rc<ResolvedNamespace<'a>>>,
+	pub namespace: Vec<Rc<ResolvedNamespace<'a>>>,
 	pub def: FunctionDef,
 }
-
 /// Unified enum for any resolved source type
 #[derive(Debug, Clone)]
 pub enum ResolvedSource<'a> {
@@ -271,14 +261,31 @@ pub enum ResolvedSource<'a> {
 }
 
 impl<'a> ResolvedSource<'a> {
-	/// Get the identifier for any source type
-	pub fn identifier(&self) -> &SourceIdentifier<'a> {
+	/// Get the identifier for any source type as a SourceIdentifier enum
+	pub fn identifier(&self) -> SourceIdentifier<'a> {
 		match self {
-			Self::Table(t) => &t.identifier,
-			Self::TableVirtual(t) => &t.identifier,
-			Self::View(v) => &v.identifier,
-			Self::DeferredView(v) => &v.identifier,
-			Self::TransactionalView(v) => &v.identifier,
+			Self::Table(t) => {
+				SourceIdentifier::Table(t.identifier.clone())
+			}
+			Self::TableVirtual(t) => {
+				SourceIdentifier::TableVirtual(
+					t.identifier.clone(),
+				)
+			}
+			Self::View(v) => v.identifier.clone(), /* Keep as is
+			                                         * for now since
+			                                         * ResolvedView
+			                                         * will be removed */
+			Self::DeferredView(v) => {
+				SourceIdentifier::DeferredView(
+					v.identifier.clone(),
+				)
+			}
+			Self::TransactionalView(v) => {
+				SourceIdentifier::TransactionalView(
+					v.identifier.clone(),
+				)
+			}
 		}
 	}
 
@@ -538,10 +545,9 @@ mod tests {
 			test_namespace_def(),
 		));
 
-		let table_ident = SourceIdentifier::new(
+		let table_ident = TableIdentifier::new(
 			Fragment::Owned(OwnedFragment::testing("public")),
 			Fragment::Owned(OwnedFragment::testing("users")),
-			crate::interface::identifier::SourceKind::Table,
 		);
 		let table = ResolvedTable::new(
 			table_ident,
@@ -568,14 +574,13 @@ mod tests {
 		));
 
 		let table = ResolvedTable::new(
-			SourceIdentifier::new(
+			TableIdentifier::new(
 				Fragment::Owned(OwnedFragment::testing(
 					"public",
 				)),
 				Fragment::Owned(OwnedFragment::testing(
 					"users",
 				)),
-				crate::interface::identifier::SourceKind::Table,
 			),
 			namespace,
 			test_table_def(),
@@ -607,14 +612,13 @@ mod tests {
 		));
 
 		let table = ResolvedTable::new(
-			SourceIdentifier::new(
+			TableIdentifier::new(
 				Fragment::Owned(OwnedFragment::testing(
 					"public",
 				)),
 				Fragment::Owned(OwnedFragment::testing(
 					"users",
 				)),
-				crate::interface::identifier::SourceKind::Table,
 			),
 			namespace,
 			test_table_def(),

@@ -4,7 +4,7 @@
 use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::{
 	SortDirection,
-	interface::identifier::{ColumnIdentifier, SourceIdentifier},
+	interface::identifier::{ColumnIdentifier, TableIdentifier},
 };
 use reifydb_type::Fragment;
 
@@ -15,7 +15,7 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AlterTableNode<'a> {
-	pub table: SourceIdentifier<'a>,
+	pub table: TableIdentifier<'a>,
 	pub operations: Vec<AlterTableOperation<'a>>,
 }
 
@@ -44,7 +44,7 @@ impl Compiler {
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve the table identifier
-		let table = resolver.resolve_maybe_source(&ast.table)?;
+		let table = resolver.resolve_table(&ast.table, true)?;
 
 		// Convert operations
 		let operations = ast

@@ -76,8 +76,7 @@ mod tests {
 		create_namespace, ensure_test_namespace,
 	};
 	use reifydb_core::interface::{
-		NamespaceDef, NamespaceId, Params,
-		identifier::{SourceIdentifier, SourceKind},
+		NamespaceDef, NamespaceId, Params, TableIdentifier,
 	};
 	use reifydb_rql::plan::physical::PhysicalPlan;
 	use reifydb_type::{Fragment, Value};
@@ -98,10 +97,9 @@ mod tests {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			table: SourceIdentifier::new(
+			table: TableIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_table"),
-				SourceKind::Table,
 			),
 			if_not_exists: false,
 			columns: vec![],
@@ -171,10 +169,9 @@ mod tests {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			table: SourceIdentifier::new(
+			table: TableIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_table"),
-				SourceKind::Table,
 			),
 			if_not_exists: false,
 			columns: vec![],
@@ -201,10 +198,9 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			table: SourceIdentifier::new(
+			table: TableIdentifier::new(
 				Fragment::owned_internal("another_schema"),
 				Fragment::owned_internal("test_table"),
-				SourceKind::Table,
 			),
 			if_not_exists: false,
 			columns: vec![],
@@ -237,10 +233,9 @@ mod tests {
 				id: NamespaceId(999),
 				name: "missing_schema".to_string(),
 			},
-			table: SourceIdentifier::new(
+			table: TableIdentifier::new(
 				Fragment::owned_internal("missing_schema"),
 				Fragment::owned_internal("my_table"),
-				SourceKind::Table,
 			),
 			if_not_exists: false,
 			columns: vec![],

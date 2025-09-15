@@ -21,8 +21,8 @@ impl Executor {
 		plan: AlterViewPlan,
 	) -> crate::Result<Columns> {
 		// View is already fully qualified
-		let namespace_name = plan.node.view.namespace.text();
-		let view_name = plan.node.view.name.text();
+		let namespace_name = plan.node.view.namespace().text();
+		let view_name = plan.node.view.name().text();
 
 		// Find the namespace
 		let Some(namespace) = CatalogStore::find_namespace_by_name(
@@ -31,7 +31,7 @@ impl Executor {
 		)?
 		else {
 			return_error!(reifydb_core::diagnostic::catalog::namespace_not_found(
-				Some(plan.node.view.namespace.clone().into_owned()),
+				Some(plan.node.view.namespace().clone().into_owned()),
 				namespace_name,
 			));
 		};
@@ -44,7 +44,7 @@ impl Executor {
 		)?
 		else {
 			return_error!(reifydb_core::diagnostic::catalog::view_not_found(
-				plan.node.view.name.clone().into_owned(),
+				plan.node.view.name().clone().into_owned(),
 				&namespace.name,
 				view_name,
 			));

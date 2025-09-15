@@ -66,11 +66,9 @@ impl Compiler {
 			});
 		}
 
-		// Convert MaybeQualified to fully qualified using resolver
+		// Resolve directly to TableIdentifier
 		// Don't validate existence since we're creating the table
-		let table = resolver.resolve_maybe_source_with_validation(
-			&ast.table, false,
-		)?;
+		let table = resolver.resolve_table(&ast.table, false)?;
 
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
 			table,

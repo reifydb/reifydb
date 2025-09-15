@@ -10,8 +10,8 @@ pub mod resolver;
 use std::rc::Rc;
 
 use identifier::{
-	ColumnIdentifier, NamespaceIdentifier, SequenceIdentifier,
-	SourceIdentifier,
+	ColumnIdentifier, DeferredViewIdentifier, NamespaceIdentifier,
+	SequenceIdentifier, TableIdentifier, TransactionalViewIdentifier,
 };
 use reifydb_catalog::{
 	CatalogQueryTransaction, table::TableColumnToCreate,
@@ -90,9 +90,12 @@ impl Compiler {
 									None
 								};
 
-							// Convert MaybeQualified to fully qualified
+							// Resolve directly to
+							// TableIdentifier since
+							// UPDATE only works on
+							// tables
 							let target = if let Some(t) = &update_ast.target {
-								Some(resolver.resolve_maybe_source(t)?)
+								Some(resolver.resolve_table(t, true)?)
 							} else {
 								None
 							};
@@ -114,9 +117,12 @@ impl Compiler {
 									None
 								};
 
-							// Convert MaybeQualified to fully qualified
+							// Resolve directly to
+							// TableIdentifier since
+							// DELETE only works on
+							// tables
 							let target = if let Some(t) = &delete_ast.target {
-								Some(resolver.resolve_maybe_source(t)?)
+								Some(resolver.resolve_table(t, true)?)
 							} else {
 								None
 							};
@@ -278,7 +284,7 @@ pub struct PipelineNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateDeferredViewNode<'a> {
-	pub view: SourceIdentifier<'a>,
+	pub view: DeferredViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan<'a>>,
@@ -286,7 +292,7 @@ pub struct CreateDeferredViewNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateTransactionalViewNode<'a> {
-	pub view: SourceIdentifier<'a>,
+	pub view: TransactionalViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan<'a>>,
@@ -306,7 +312,7 @@ pub struct CreateSequenceNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateTableNode<'a> {
-	pub table: SourceIdentifier<'a>,
+	pub table: TableIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
@@ -335,18 +341,18 @@ pub struct IndexColumn<'a> {
 
 #[derive(Debug)]
 pub struct DeleteNode<'a> {
-	pub target: Option<SourceIdentifier<'a>>,
+	pub target: Option<TableIdentifier<'a>>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
 #[derive(Debug)]
 pub struct InsertNode<'a> {
-	pub target: SourceIdentifier<'a>,
+	pub target: TableIdentifier<'a>,
 }
 
 #[derive(Debug)]
 pub struct UpdateNode<'a> {
-	pub target: Option<SourceIdentifier<'a>>,
+	pub target: Option<TableIdentifier<'a>>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 

@@ -505,7 +505,7 @@ fn render_logical_plan_inner(
 
 			// Add alias to the display if present
 			let display_name =
-				if source.identifier().alias.is_some() {
+				if source.identifier().alias().is_some() {
 					format!(
 						"{} as {}",
 						name,
@@ -694,7 +694,7 @@ fn render_logical_plan_inner(
 			));
 
 			// Show namespace and view
-			let schema_str = view.namespace.text();
+			let schema_str = view.namespace().text();
 			output.push_str(&format!(
 				"{}├── Namespace: {}\n",
 				child_prefix, schema_str
@@ -702,7 +702,7 @@ fn render_logical_plan_inner(
 			output.push_str(&format!(
 				"{}├── View: {}\n",
 				child_prefix,
-				view.name.text()
+				view.name().text()
 			));
 
 			// Show operations

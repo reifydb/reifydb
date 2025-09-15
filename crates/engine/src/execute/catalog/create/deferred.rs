@@ -75,8 +75,7 @@ mod tests {
 		create_namespace, ensure_test_namespace,
 	};
 	use reifydb_core::interface::{
-		NamespaceDef, NamespaceId, Params,
-		identifier::{SourceIdentifier, SourceKind},
+		DeferredViewIdentifier, NamespaceDef, NamespaceId, Params,
 	};
 	use reifydb_rql::plan::physical::{
 		CreateDeferredViewPlan, InlineDataNode, PhysicalPlan,
@@ -100,10 +99,9 @@ mod tests {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			view: SourceIdentifier::new(
+			view: DeferredViewIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_view"),
-				SourceKind::DeferredView,
 			),
 			if_not_exists: false,
 			columns: vec![],
@@ -179,10 +177,9 @@ mod tests {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			view: SourceIdentifier::new(
+			view: DeferredViewIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_view"),
-				SourceKind::DeferredView,
 			),
 			if_not_exists: false,
 			columns: vec![],
@@ -212,10 +209,9 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			view: SourceIdentifier::new(
+			view: DeferredViewIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_view"),
-				SourceKind::DeferredView,
 			),
 			if_not_exists: false,
 			columns: vec![],
@@ -252,10 +248,9 @@ mod tests {
 				id: NamespaceId(999),
 				name: "missing_schema".to_string(),
 			},
-			view: SourceIdentifier::new(
+			view: DeferredViewIdentifier::new(
 				Fragment::owned_internal("another_schema"),
 				Fragment::owned_internal("my_view"),
-				SourceKind::DeferredView,
 			),
 			if_not_exists: false,
 			columns: vec![],

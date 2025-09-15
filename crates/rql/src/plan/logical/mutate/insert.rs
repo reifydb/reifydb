@@ -15,8 +15,9 @@ impl Compiler {
 		ast: AstInsert<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Convert MaybeQualified to fully qualified using resolver
-		let target = resolver.resolve_maybe_source(&ast.target)?;
+		// Resolve directly to TableIdentifier since INSERT only works
+		// on tables
+		let target = resolver.resolve_table(&ast.target, true)?;
 
 		Ok(LogicalPlan::Insert(InsertNode {
 			target,

@@ -14,7 +14,11 @@ use reifydb_core::{
 		NamespaceDef, QueryTransaction, TableDef, TableVirtualDef,
 		ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
-		identifier::SourceIdentifier,
+		identifier::{
+			ColumnIdentifier, DeferredViewIdentifier,
+			SequenceIdentifier, TableIdentifier,
+			TransactionalViewIdentifier,
+		},
 	},
 };
 use reifydb_type::Fragment;
@@ -161,7 +165,9 @@ impl Compiler {
 					stack.push(PhysicalPlan::Insert(
 						InsertPlan {
 							input: Box::new(input),
-							target: insert.target,
+							target: insert
+								.target
+								.clone(),
 						},
 					))
 				}
@@ -191,7 +197,9 @@ impl Compiler {
 					stack.push(PhysicalPlan::Update(
 						UpdatePlan {
 							input,
-							target: update.target,
+							target: update
+								.target
+								.clone(),
 						},
 					))
 				}
@@ -459,7 +467,7 @@ pub enum PhysicalPlan<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateDeferredViewPlan<'a> {
 	pub namespace: NamespaceDef,
-	pub view: SourceIdentifier<'a>,
+	pub view: DeferredViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
@@ -468,7 +476,7 @@ pub struct CreateDeferredViewPlan<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateTransactionalViewPlan<'a> {
 	pub namespace: NamespaceDef,
-	pub view: SourceIdentifier<'a>,
+	pub view: TransactionalViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
@@ -483,16 +491,15 @@ pub struct CreateNamespacePlan<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateTablePlan<'a> {
 	pub namespace: NamespaceDef,
-	pub table: SourceIdentifier<'a>,
+	pub table: TableIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
 pub struct AlterSequencePlan<'a> {
-	pub sequence:
-		reifydb_core::interface::identifier::SequenceIdentifier<'a>,
-	pub column: reifydb_core::interface::identifier::ColumnIdentifier<'a>,
+	pub sequence: SequenceIdentifier<'a>,
+	pub column: ColumnIdentifier<'a>,
 	pub value: Expression<'a>,
 }
 
@@ -506,9 +513,7 @@ pub struct AggregateNode<'a> {
 #[derive(Debug, Clone)]
 pub struct DistinctNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub columns: Vec<
-		reifydb_core::interface::identifier::ColumnIdentifier<'a>,
-	>,
+	pub columns: Vec<ColumnIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -520,19 +525,19 @@ pub struct FilterNode<'a> {
 #[derive(Debug, Clone)]
 pub struct DeletePlan<'a> {
 	pub input: Option<Box<PhysicalPlan<'a>>>,
-	pub target: Option<SourceIdentifier<'a>>,
+	pub target: Option<TableIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone)]
 pub struct InsertPlan<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub target: SourceIdentifier<'a>,
+	pub target: TableIdentifier<'a>,
 }
 
 #[derive(Debug, Clone)]
 pub struct UpdatePlan<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub target: Option<SourceIdentifier<'a>>,
+	pub target: Option<TableIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone)]

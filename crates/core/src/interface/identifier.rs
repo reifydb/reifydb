@@ -24,31 +24,54 @@ impl<'a> NamespaceIdentifier<'a> {
 	}
 }
 
+/// Fully qualified table identifier
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableIdentifier<'a> {
+	pub namespace: Fragment<'a>,
+	pub name: Fragment<'a>,
+	pub alias: Option<Fragment<'a>>,
+}
+
+/// Fully qualified virtual table identifier (system tables)
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TableVirtualIdentifier<'a> {
+	pub namespace: Fragment<'a>,
+	pub name: Fragment<'a>,
+	pub alias: Option<Fragment<'a>>,
+}
+
+/// Fully qualified deferred view identifier
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct DeferredViewIdentifier<'a> {
+	pub namespace: Fragment<'a>,
+	pub name: Fragment<'a>,
+	pub alias: Option<Fragment<'a>>,
+}
+
+/// Fully qualified transactional view identifier
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TransactionalViewIdentifier<'a> {
+	pub namespace: Fragment<'a>,
+	pub name: Fragment<'a>,
+	pub alias: Option<Fragment<'a>>,
+}
+
 /// Fully qualified source identifier for tables, views, and future source types
 /// Used in logical and physical plans where everything must be fully qualified
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SourceIdentifier<'a> {
-	/// Namespace containing this source
-	pub namespace: Fragment<'a>,
-	/// Source name
-	pub name: Fragment<'a>,
-	/// Alias for this source in query context
-	pub alias: Option<Fragment<'a>>,
-	/// Type of source - must be known
-	pub kind: SourceKind,
+pub enum SourceIdentifier<'a> {
+	Table(TableIdentifier<'a>),
+	TableVirtual(TableVirtualIdentifier<'a>),
+	DeferredView(DeferredViewIdentifier<'a>),
+	TransactionalView(TransactionalViewIdentifier<'a>),
 }
 
-impl<'a> SourceIdentifier<'a> {
-	pub fn new(
-		namespace: Fragment<'a>,
-		name: Fragment<'a>,
-		kind: SourceKind,
-	) -> Self {
+impl<'a> TableIdentifier<'a> {
+	pub fn new(namespace: Fragment<'a>, name: Fragment<'a>) -> Self {
 		Self {
 			namespace,
 			name,
 			alias: None,
-			kind,
 		}
 	}
 
@@ -57,24 +80,16 @@ impl<'a> SourceIdentifier<'a> {
 		self
 	}
 
-	pub fn with_kind(mut self, kind: SourceKind) -> Self {
-		self.kind = kind;
-		self
-	}
-
-	pub fn into_owned(self) -> SourceIdentifier<'static> {
-		SourceIdentifier {
+	pub fn into_owned(self) -> TableIdentifier<'static> {
+		TableIdentifier {
 			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
 			alias: self
 				.alias
 				.map(|a| Fragment::Owned(a.into_owned())),
-			kind: self.kind,
 		}
 	}
 
-	/// Get the effective name for this source (alias if present, otherwise
-	/// name)
 	pub fn effective_name(&self) -> &str {
 		self.alias
 			.as_ref()
@@ -83,7 +98,255 @@ impl<'a> SourceIdentifier<'a> {
 	}
 }
 
-/// Types of sources that can be referenced
+impl<'a> TableVirtualIdentifier<'a> {
+	pub fn new(namespace: Fragment<'a>, name: Fragment<'a>) -> Self {
+		Self {
+			namespace,
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+
+	pub fn into_owned(self) -> TableVirtualIdentifier<'static> {
+		TableVirtualIdentifier {
+			namespace: Fragment::Owned(self.namespace.into_owned()),
+			name: Fragment::Owned(self.name.into_owned()),
+			alias: self
+				.alias
+				.map(|a| Fragment::Owned(a.into_owned())),
+		}
+	}
+
+	pub fn effective_name(&self) -> &str {
+		self.alias
+			.as_ref()
+			.map(|a| a.text())
+			.unwrap_or_else(|| self.name.text())
+	}
+}
+
+impl<'a> DeferredViewIdentifier<'a> {
+	pub fn new(namespace: Fragment<'a>, name: Fragment<'a>) -> Self {
+		Self {
+			namespace,
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+
+	pub fn into_owned(self) -> DeferredViewIdentifier<'static> {
+		DeferredViewIdentifier {
+			namespace: Fragment::Owned(self.namespace.into_owned()),
+			name: Fragment::Owned(self.name.into_owned()),
+			alias: self
+				.alias
+				.map(|a| Fragment::Owned(a.into_owned())),
+		}
+	}
+
+	pub fn effective_name(&self) -> &str {
+		self.alias
+			.as_ref()
+			.map(|a| a.text())
+			.unwrap_or_else(|| self.name.text())
+	}
+}
+
+impl<'a> TransactionalViewIdentifier<'a> {
+	pub fn new(namespace: Fragment<'a>, name: Fragment<'a>) -> Self {
+		Self {
+			namespace,
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+
+	pub fn into_owned(self) -> TransactionalViewIdentifier<'static> {
+		TransactionalViewIdentifier {
+			namespace: Fragment::Owned(self.namespace.into_owned()),
+			name: Fragment::Owned(self.name.into_owned()),
+			alias: self
+				.alias
+				.map(|a| Fragment::Owned(a.into_owned())),
+		}
+	}
+
+	pub fn effective_name(&self) -> &str {
+		self.alias
+			.as_ref()
+			.map(|a| a.text())
+			.unwrap_or_else(|| self.name.text())
+	}
+}
+
+impl<'a> SourceIdentifier<'a> {
+	pub fn new(
+		namespace: Fragment<'a>,
+		name: Fragment<'a>,
+		kind: SourceKind,
+	) -> Self {
+		match kind {
+			SourceKind::Table => Self::Table(TableIdentifier::new(
+				namespace, name,
+			)),
+			SourceKind::TableVirtual => Self::TableVirtual(
+				TableVirtualIdentifier::new(namespace, name),
+			),
+			SourceKind::DeferredView => Self::DeferredView(
+				DeferredViewIdentifier::new(namespace, name),
+			),
+			SourceKind::TransactionalView => {
+				Self::TransactionalView(
+					TransactionalViewIdentifier::new(
+						namespace, name,
+					),
+				)
+			}
+			SourceKind::View | SourceKind::Unknown => {
+				// Default to Table for now - this will be
+				// handled properly later
+				Self::Table(TableIdentifier::new(
+					namespace, name,
+				))
+			}
+		}
+	}
+
+	pub fn with_alias(self, alias: Fragment<'a>) -> Self {
+		match self {
+			Self::Table(t) => Self::Table(t.with_alias(alias)),
+			Self::TableVirtual(t) => {
+				Self::TableVirtual(t.with_alias(alias))
+			}
+			Self::DeferredView(v) => {
+				Self::DeferredView(v.with_alias(alias))
+			}
+			Self::TransactionalView(v) => {
+				Self::TransactionalView(v.with_alias(alias))
+			}
+		}
+	}
+
+	pub fn with_kind(self, kind: SourceKind) -> Self {
+		// Extract namespace and name from current variant
+		let (namespace, name, alias) = match &self {
+			Self::Table(t) => (
+				t.namespace.clone(),
+				t.name.clone(),
+				t.alias.clone(),
+			),
+			Self::TableVirtual(t) => (
+				t.namespace.clone(),
+				t.name.clone(),
+				t.alias.clone(),
+			),
+			Self::DeferredView(v) => (
+				v.namespace.clone(),
+				v.name.clone(),
+				v.alias.clone(),
+			),
+			Self::TransactionalView(v) => (
+				v.namespace.clone(),
+				v.name.clone(),
+				v.alias.clone(),
+			),
+		};
+
+		// Create new variant with the specified kind
+		let mut result = Self::new(namespace, name, kind);
+		if let Some(a) = alias {
+			result = result.with_alias(a);
+		}
+		result
+	}
+
+	pub fn into_owned(self) -> SourceIdentifier<'static> {
+		match self {
+			Self::Table(t) => {
+				SourceIdentifier::Table(t.into_owned())
+			}
+			Self::TableVirtual(t) => {
+				SourceIdentifier::TableVirtual(t.into_owned())
+			}
+			Self::DeferredView(v) => {
+				SourceIdentifier::DeferredView(v.into_owned())
+			}
+			Self::TransactionalView(v) => {
+				SourceIdentifier::TransactionalView(
+					v.into_owned(),
+				)
+			}
+		}
+	}
+
+	/// Get the effective name for this source (alias if present, otherwise
+	/// name)
+	pub fn effective_name(&self) -> &str {
+		match self {
+			Self::Table(t) => t.effective_name(),
+			Self::TableVirtual(t) => t.effective_name(),
+			Self::DeferredView(v) => v.effective_name(),
+			Self::TransactionalView(v) => v.effective_name(),
+		}
+	}
+
+	/// Check if this source is a view
+	pub fn is_view(&self) -> bool {
+		matches!(
+			self,
+			Self::DeferredView(_) | Self::TransactionalView(_)
+		)
+	}
+
+	/// Get the namespace fragment
+	pub fn namespace(&self) -> &Fragment<'a> {
+		match self {
+			Self::Table(t) => &t.namespace,
+			Self::TableVirtual(t) => &t.namespace,
+			Self::DeferredView(v) => &v.namespace,
+			Self::TransactionalView(v) => &v.namespace,
+		}
+	}
+
+	/// Get the name fragment
+	pub fn name(&self) -> &Fragment<'a> {
+		match self {
+			Self::Table(t) => &t.name,
+			Self::TableVirtual(t) => &t.name,
+			Self::DeferredView(v) => &v.name,
+			Self::TransactionalView(v) => &v.name,
+		}
+	}
+
+	/// Get the alias if present
+	pub fn alias(&self) -> Option<&Fragment<'a>> {
+		match self {
+			Self::Table(t) => t.alias.as_ref(),
+			Self::TableVirtual(t) => t.alias.as_ref(),
+			Self::DeferredView(v) => v.alias.as_ref(),
+			Self::TransactionalView(v) => v.alias.as_ref(),
+		}
+	}
+}
+
+// Temporary SourceKind enum for backward compatibility during migration
+// TODO: Remove once all usages have been updated to use SourceIdentifier
+// variants directly
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum SourceKind {
 	Table,
@@ -92,17 +355,6 @@ pub enum SourceKind {
 	DeferredView,
 	TransactionalView,
 	Unknown,
-}
-
-impl SourceKind {
-	pub fn is_view(&self) -> bool {
-		matches!(
-			self,
-			SourceKind::View
-				| SourceKind::DeferredView
-				| SourceKind::TransactionalView
-		)
-	}
 }
 
 /// Column identifier with source qualification
@@ -300,16 +552,17 @@ mod tests {
 		let namespace =
 			Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
-		let source = SourceIdentifier::new(
-			namespace,
-			name,
-			SourceKind::Table,
-		);
+		let source = SourceIdentifier::Table(TableIdentifier::new(
+			namespace, name,
+		));
 
-		assert_eq!(source.namespace.text(), "public");
-		assert_eq!(source.name.text(), "users");
-		assert!(source.alias.is_none());
-		assert_eq!(source.kind, SourceKind::Table);
+		if let SourceIdentifier::Table(t) = &source {
+			assert_eq!(t.namespace.text(), "public");
+			assert_eq!(t.name.text(), "users");
+			assert!(t.alias.is_none());
+		} else {
+			panic!("Expected Table variant");
+		}
 	}
 
 	#[test]
@@ -317,14 +570,16 @@ mod tests {
 		let namespace =
 			Fragment::Owned(OwnedFragment::testing("mynamespace"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
-		let source = SourceIdentifier::new(
-			namespace,
-			name,
-			SourceKind::Table,
-		);
+		let source = SourceIdentifier::Table(TableIdentifier::new(
+			namespace, name,
+		));
 
-		assert_eq!(source.namespace.text(), "mynamespace");
-		assert_eq!(source.name.text(), "users");
+		if let SourceIdentifier::Table(t) = &source {
+			assert_eq!(t.namespace.text(), "mynamespace");
+			assert_eq!(t.name.text(), "users");
+		} else {
+			panic!("Expected Table variant");
+		}
 	}
 
 	#[test]
@@ -333,15 +588,16 @@ mod tests {
 			Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
 		let alias = Fragment::Owned(OwnedFragment::testing("u"));
-		let source = SourceIdentifier::new(
-			namespace,
-			name,
-			SourceKind::Table,
-		)
-		.with_alias(alias);
+		let source = SourceIdentifier::Table(
+			TableIdentifier::new(namespace, name).with_alias(alias),
+		);
 
 		assert_eq!(source.effective_name(), "u");
-		assert_eq!(source.alias.as_ref().unwrap().text(), "u");
+		if let SourceIdentifier::Table(t) = &source {
+			assert_eq!(t.alias.as_ref().unwrap().text(), "u");
+		} else {
+			panic!("Expected Table variant");
+		}
 	}
 
 	#[test]
@@ -391,11 +647,31 @@ mod tests {
 	}
 
 	#[test]
-	fn test_source_kind_predicates() {
-		assert!(SourceKind::View.is_view());
-		assert!(SourceKind::DeferredView.is_view());
-		assert!(SourceKind::TransactionalView.is_view());
-		assert!(!SourceKind::Table.is_view());
+	fn test_source_identifier_is_view() {
+		let namespace =
+			Fragment::Owned(OwnedFragment::testing("public"));
+		let name = Fragment::Owned(OwnedFragment::testing("my_view"));
+
+		let deferred = SourceIdentifier::DeferredView(
+			DeferredViewIdentifier::new(
+				namespace.clone(),
+				name.clone(),
+			),
+		);
+		assert!(deferred.is_view());
+
+		let transactional = SourceIdentifier::TransactionalView(
+			TransactionalViewIdentifier::new(
+				namespace.clone(),
+				name.clone(),
+			),
+		);
+		assert!(transactional.is_view());
+
+		let table = SourceIdentifier::Table(TableIdentifier::new(
+			namespace, name,
+		));
+		assert!(!table.is_view());
 	}
 
 	#[test]
@@ -403,15 +679,16 @@ mod tests {
 		let namespace =
 			Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
-		let source = SourceIdentifier::new(
-			namespace,
-			name,
-			SourceKind::Table,
-		);
+		let source = SourceIdentifier::Table(TableIdentifier::new(
+			namespace, name,
+		));
 
 		let owned = source.into_owned();
-		assert_eq!(owned.namespace.text(), "public");
-		assert_eq!(owned.name.text(), "users");
-		assert_eq!(owned.kind, SourceKind::Table);
+		if let SourceIdentifier::Table(t) = &owned {
+			assert_eq!(t.namespace.text(), "public");
+			assert_eq!(t.name.text(), "users");
+		} else {
+			panic!("Expected Table variant");
+		}
 	}
 }
