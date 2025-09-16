@@ -88,10 +88,28 @@ all: check clean build-testcontainer test-full build push-testcontainer push
 
 .PHONY: check
 check:
+	@echo "🔍 Checking repository status..."
 	@if ! git diff-index --quiet HEAD --; then \
-		echo "Error: You have uncommitted changes. Please commit or stash them before pushing."; \
+		echo "❌ Error: You have uncommitted changes. Please commit or stash them before pushing."; \
 		exit 1; \
 	fi
+	@echo "📡 Fetching from remote..."
+	@git fetch origin --quiet
+	@LOCAL=$$(git rev-parse @); \
+	REMOTE=$$(git rev-parse @{u} 2>/dev/null || echo ""); \
+	BASE=$$(git merge-base @ @{u} 2>/dev/null || echo ""); \
+	if [ -n "$$REMOTE" ]; then \
+		if [ "$$LOCAL" = "$$BASE" ] && [ "$$LOCAL" != "$$REMOTE" ]; then \
+			echo "❌ Error: Your branch is behind the remote. Please pull the latest changes."; \
+			echo "   Run: git pull"; \
+			exit 1; \
+		elif [ "$$LOCAL" != "$$REMOTE" ] && [ "$$REMOTE" != "$$BASE" ]; then \
+			echo "❌ Error: Your branch has diverged from the remote. Please reconcile the branches."; \
+			echo "   Run: git pull --rebase or git pull --merge"; \
+			exit 1; \
+		fi; \
+	fi
+	@echo "✅ Repository check passed."
 
 # Clean target is defined in mk/clean.mk
 

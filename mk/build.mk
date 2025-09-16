@@ -38,12 +38,6 @@ build-pkg-rust:
 			cd $$dir && cargo build --release $(CARGO_OFFLINE) 2>/dev/null || true && cd - >/dev/null; \
 		fi; \
 	done
-	@for dir in pkg/rust/tests/limit pkg/rust/tests/regression; do \
-		if [ -d "$$dir" ]; then \
-			echo "  Building $$dir tests..."; \
-			cd $$dir && cargo build --tests $(CARGO_OFFLINE) 2>/dev/null || true && cd - >/dev/null; \
-		fi; \
-	done
 
 # Build pkg/typescript packages
 build-pkg-typescript:
