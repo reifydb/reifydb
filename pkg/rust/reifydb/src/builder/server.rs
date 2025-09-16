@@ -5,8 +5,8 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 	interface::{
-		CdcTransaction, UnversionedTransaction, VersionedTransaction,
-		subsystem::SubsystemFactory,
+		subsystem::SubsystemFactory, CdcTransaction,
+		UnversionedTransaction, VersionedTransaction,
 	},
 };
 use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
@@ -19,7 +19,7 @@ use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::{ServerConfig, ServerSubsystemFactory};
 
-use super::{DatabaseBuilder, traits::WithSubsystem};
+use super::{traits::WithSubsystem, DatabaseBuilder};
 use crate::Database;
 
 #[cfg(feature = "sub_server")]
@@ -47,8 +47,11 @@ pub struct ServerBuilder<
 }
 
 #[cfg(feature = "sub_server")]
-impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
-	ServerBuilder<VT, UT, C>
+impl<
+		VT: VersionedTransaction,
+		UT: UnversionedTransaction,
+		C: CdcTransaction,
+	> ServerBuilder<VT, UT, C>
 {
 	pub fn new(
 		versioned: VT,
@@ -121,8 +124,11 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 }
 
 #[cfg(feature = "sub_server")]
-impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
-	WithSubsystem<EngineTransaction<VT, UT, C>> for ServerBuilder<VT, UT, C>
+impl<
+		VT: VersionedTransaction,
+		UT: UnversionedTransaction,
+		C: CdcTransaction,
+	> WithSubsystem<EngineTransaction<VT, UT, C>> for ServerBuilder<VT, UT, C>
 {
 	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self

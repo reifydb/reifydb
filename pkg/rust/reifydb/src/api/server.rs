@@ -12,8 +12,8 @@ use reifydb_transaction::mvcc::transaction::{
 };
 
 use crate::{
-	MemoryCdc, ServerBuilder, SqliteCdc, UnversionedMemory,
-	UnversionedSqlite, memory, optimistic, serializable, sqlite,
+	memory, optimistic, serializable, sqlite, MemoryCdc, ServerBuilder,
+	SqliteCdc, UnversionedMemory, UnversionedSqlite,
 };
 
 pub fn memory_optimistic() -> ServerBuilder<

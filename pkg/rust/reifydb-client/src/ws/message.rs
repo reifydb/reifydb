@@ -3,7 +3,7 @@
 
 use std::sync::mpsc;
 
-use crate::{Request, ws::ResponseMessage};
+use crate::{ws::ResponseMessage, Request};
 
 /// Internal messages sent to the background thread
 pub(crate) enum InternalMessage {

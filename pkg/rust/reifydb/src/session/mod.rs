@@ -14,8 +14,8 @@ mod query;
 pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::{
-	Frame,
 	interface::{Engine as EngineInterface, Identity, Params, Transaction},
+	Frame,
 };
 use reifydb_engine::StandardEngine;
 

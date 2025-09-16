@@ -3,15 +3,15 @@
 
 use std::{sync::mpsc, time::Instant};
 
-use reifydb_type::{Error, diagnostic::internal};
+use reifydb_type::{diagnostic::internal, Error};
 
 use crate::{
-	CommandRequest, Params, QueryRequest,
 	http::{
 		client::HttpClient,
 		message::{HttpInternalMessage, HttpResponseRoute},
 	},
 	utils::generate_request_id,
+	CommandRequest, Params, QueryRequest,
 };
 
 /// HTTP Channel response enum for different response types

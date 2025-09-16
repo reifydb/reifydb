@@ -1,0 +1,12 @@
+[package]
+name = "tests-limit"
+version = "0.0.1"
+edition = "2021"
+authors = ["Dominique Chuo <dominique@reifydb.com>"]
+license = "AGPL-3"
+repository = "https://github.com/reifydb/reifydb"
+
+[dev-dependencies]
+reifydb = { path = "../../reifydb" }
+reifydb-testing = { path = "../../../../db/crates/testing" }
+test_each_file = { version = "0.3.5" }

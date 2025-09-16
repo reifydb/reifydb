@@ -13,8 +13,8 @@ use crate::{
 		session::{HttpChannelResponse, HttpResponseMessage},
 	},
 	session::{
-		CommandResult, QueryResult, convert_execute_response,
-		convert_query_response,
+		convert_execute_response, convert_query_response,
+		CommandResult, QueryResult,
 	},
 };
 

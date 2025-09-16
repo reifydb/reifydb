@@ -1,17 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT
 
-use std::sync::{Arc, mpsc};
+use std::sync::{mpsc, Arc};
 
 use super::ResponseMessage;
 use crate::{
-	AuthRequest, CommandRequest, Params, QueryRequest, Request,
-	RequestPayload,
 	utils::generate_request_id,
 	ws::{
 		client::ClientInner,
 		message::{InternalMessage, ResponseRoute},
 	},
+	AuthRequest, CommandRequest, Params, QueryRequest, Request,
+	RequestPayload,
 };
 
 /// A channel-based session for message-passing style communication

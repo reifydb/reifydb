@@ -2,19 +2,19 @@
 // This file is licensed under the MIT
 
 use std::{
-	sync::{Arc, mpsc},
+	sync::{mpsc, Arc},
 	time::Duration,
 };
 
 use reifydb_type::Error;
 
 use crate::{
-	Params,
 	session::{CommandResult, QueryResult},
 	ws::{
 		client::ClientInner,
 		session::{ChannelResponse, ChannelSession, ResponseMessage},
 	},
+	Params,
 };
 
 /// A blocking session that waits for responses synchronously
@@ -78,14 +78,14 @@ impl BlockingSession {
 		params: Option<Params>,
 	) -> Result<CommandResult, Error> {
 		// Send command through channel session
-		let request_id =
-			self.channel_session.command(rql, params).map_err(
-				|e| {
-					reifydb_type::Error(reifydb_type::diagnostic::internal(
+		let request_id = self
+			.channel_session
+			.command(rql, params)
+			.map_err(|e| {
+				reifydb_type::Error(reifydb_type::diagnostic::internal(
 				format!("Failed to send command: {}", e)
 			))
-				},
-			)?;
+			})?;
 
 		// Wait for response
 		match self.receiver.recv_timeout(self.timeout) {
@@ -117,14 +117,14 @@ impl BlockingSession {
 		params: Option<Params>,
 	) -> Result<QueryResult, Error> {
 		// Send query through channel session
-		let request_id =
-			self.channel_session.query(rql, params).map_err(
-				|e| {
-					reifydb_type::Error(reifydb_type::diagnostic::internal(
+		let request_id = self
+			.channel_session
+			.query(rql, params)
+			.map_err(|e| {
+				reifydb_type::Error(reifydb_type::diagnostic::internal(
 				format!("Failed to send query: {}", e)
 			))
-				},
-			)?;
+			})?;
 
 		// Wait for response
 		match self.receiver.recv_timeout(self.timeout) {

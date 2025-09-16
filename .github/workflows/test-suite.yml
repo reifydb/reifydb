@@ -1,0 +1,40 @@
+name: test-suite
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    strategy:
+      matrix:
+        suite: [ smoke, stress, compatibility, diagnostic, functional, integration ]
+
+    steps:
+      - name: ⬇️ Checkout main repo
+        uses: actions/checkout@v4
+        with:
+          path: reifydb
+
+      - name: ⬇️ Checkout private test suite repo
+        run: |
+          git clone https://x-access-token:${{ secrets.GH_REPO_PAT }}@github.com/reifydb/testsuite.git testsuite
+
+      - name: 🧰 Install protoc
+        run: sudo apt-get update && sudo apt-get install -y protobuf-compiler
+
+      - name: 🛠️ Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: 🧪 Run test suite
+        run: |
+          echo "▶ Running ${{ matrix.suite }}"
+          export CARGO_TARGET_DIR=$(realpath reifydb/target)
+          cd testsuite/${{ matrix.suite }}
+          ~/.cargo/bin/cargo test

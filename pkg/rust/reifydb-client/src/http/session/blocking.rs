@@ -3,10 +3,9 @@
 
 use std::{sync::mpsc, time::Duration};
 
-use reifydb_type::{Error, diagnostic::internal};
+use reifydb_type::{diagnostic::internal, Error};
 
 use crate::{
-	Params,
 	http::{
 		client::HttpClient,
 		session::{
@@ -15,6 +14,7 @@ use crate::{
 		},
 	},
 	session::{CommandResult, QueryResult},
+	Params,
 };
 
 /// A blocking HTTP session that waits for responses synchronously

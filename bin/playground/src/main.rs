@@ -6,12 +6,11 @@
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{
-	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
 	core::{
 		flow::FlowChange,
 		interface::{
-			FlowNodeId, Transaction,
-			subsystem::logging::LogLevel::Info,
+			subsystem::logging::LogLevel::Info, FlowNodeId,
+			Transaction,
 		},
 	},
 	embedded,
@@ -19,6 +18,7 @@ use reifydb::{
 	log_info,
 	sub_flow::{FlowBuilder, Operator, TransformOperator},
 	sub_logging::{FormatStyle, LoggingBuilder},
+	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
 };
 
 pub type DB = MemoryDatabaseOptimistic;

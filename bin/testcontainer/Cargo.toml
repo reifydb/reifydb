@@ -1,11 +1,15 @@
 [package]
 name = "testcontainer"
-authors.workspace = true
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
+version = "0.0.1"
+edition = "2021"
+authors = ["Dominique Chuo <dominique@reifydb.com>"]
+license = "AGPL-3"
+repository = "https://github.com/reifydb/reifydb"
+
+[[bin]]
+name = "testcontainer"
+path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true, features = ["sub_logging", "sub_workerpool", "sub_server"] }
-libc = { workspace = true}
+reifydb = { path = "../../pkg/rust/reifydb", features = ["sub_logging", "sub_workerpool", "sub_server"] }
+libc = { version = "0.2.175" }

@@ -1,0 +1,25 @@
+[package]
+name = "reifydb-py"
+authors = ["Dev <dominique@reifydb.com>"]
+homepage = "https://reifydb.com"
+repository = "https://github.com/reifydb/reifydb"
+license = "AGPL-3"
+
+version.workspace = true
+rust-version.workspace = true
+edition.workspace = true
+
+[lib]
+name = "reifydb"
+crate-type = ["cdylib", "rlib"]
+
+[features]
+default = []
+include-python-workspace = []
+
+[dependencies]
+# reifydb = { workspace = true, features = [] }
+pyo3 = { version = "0.24.2", features = ["extension-module", "abi3"] }
+pythonize = "0.24.0"
+serde_json = { workspace = true }
+

@@ -10,7 +10,6 @@ use common::{
 	parse_named_params, parse_positional_params, parse_rql, write_frames,
 };
 use reifydb::{
-	Database,
 	core::{
 		event::EventBus,
 		interface::{
@@ -19,11 +18,11 @@ use reifydb::{
 		},
 		retry,
 	},
-	memory, optimistic,
+	memory, optimistic, Database,
 };
 use reifydb_client::{
-	HttpChannelSession, HttpClient, HttpResponseMessage,
-	http::HttpChannelResponse,
+	http::HttpChannelResponse, HttpChannelSession, HttpClient,
+	HttpResponseMessage,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;

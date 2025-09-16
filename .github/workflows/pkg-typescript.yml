@@ -1,0 +1,194 @@
+name: pkg-typescript
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+  issues: read
+  checks: write
+  pull-requests: write
+
+env:
+  NODE_VERSION: '18'
+  PNPM_VERSION: '8'
+  PKG_DIR: 'pkg/typescript'
+
+jobs:
+  lint-and-typecheck:
+    name: Lint & Type Check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PKG_DIR }}
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Type check
+        run: pnpm tsc --noEmit
+
+      - name: Lint (if you have ESLint)
+        run: pnpm lint
+        continue-on-error: true
+
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PKG_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Run unit tests
+        run: pnpm -r --reporter-hide-prefix --stream test:unit
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()
+        with:
+          files: |
+            ${{ env.PKG_DIR }}/**/test-results/**/*.xml
+          check_name: "Unit Test Results"
+          comment_title: "Unit Test Results"
+          fail_on: "test failures"
+          action_fail: true
+          action_fail_on_inconclusive: true
+
+  integration-tests:
+    name: Integration Tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ env.PKG_DIR }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Get pnpm store directory
+        shell: bash
+        run: |
+          echo "STORE_PATH=$(pnpm store path --silent)" >> $GITHUB_ENV
+
+      - name: Setup pnpm cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.STORE_PATH }}
+          key: ${{ runner.os }}-pnpm-store-${{ hashFiles('**/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-store-
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build project
+        run: pnpm build
+
+      - name: Start ReifyDB testcontainer
+        run: |
+          docker run -d --name reifydb-test -p 8090:8090 reifydb/testcontainer
+
+      - name: Wait for ReifyDB service to be ready
+        run: |
+          echo "Waiting for ReifyDB service to be ready..."
+          timeout 60 bash -c 'until docker ps | grep reifydb-test; do sleep 1; done'
+          echo "Service is running, waiting for it to be ready..."
+          sleep 5
+
+      - name: Run integration tests
+        run: pnpm -r --reporter-hide-prefix --stream test:integration
+        env:
+          CI: true
+          REIFYDB_WS_URL: ws://localhost:8090
+          REIFYDB_TOKEN: mysecrettoken
+
+      - name: Collect service logs on failure
+        if: failure()
+        run: |
+          echo "=== ReifyDB Service Logs ==="
+          docker ps -a
+          docker logs reifydb-test || echo "No service logs available"
+
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always()  #
+        with:
+          files: |
+            ${{ env.PKG_DIR }}/**/test-results/**/*.xml
+          check_name: "Integration Test Results"
+          comment_title: "Integration Test Results"
+          fail_on: "test failures"
+          action_fail: true
+          action_fail_on_inconclusive: true

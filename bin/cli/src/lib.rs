@@ -7,8 +7,8 @@
 //
 // pub fn cli(args: Vec<String>) -> Result<(), Error> {
 //     if args.len() < 3 {
-//         // return Err("Usage: reifydb explain [--ast|--logical|--physical] <query>".into());
-//         panic!()
+//         // return Err("Usage: reifydb explain [--ast|--logical|--physical]
+// <query>".into());         panic!()
 //     }
 //
 //     let command = &args[1];

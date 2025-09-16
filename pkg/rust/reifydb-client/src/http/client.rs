@@ -5,7 +5,7 @@ use std::{
 	collections::HashMap,
 	io::{BufRead, BufReader, Read, Write},
 	net::{SocketAddr, TcpStream, ToSocketAddrs},
-	sync::{Arc, Mutex, mpsc},
+	sync::{mpsc, Arc, Mutex},
 	thread::{self, JoinHandle},
 	time::Duration,
 };
@@ -13,9 +13,9 @@ use std::{
 use serde_json;
 
 use crate::{
+	http::{message::HttpInternalMessage, worker::http_worker_thread},
 	CommandRequest, CommandResponse, ErrResponse, QueryRequest,
 	QueryResponse,
-	http::{message::HttpInternalMessage, worker::http_worker_thread},
 };
 
 /// HTTP client implementation with worker thread

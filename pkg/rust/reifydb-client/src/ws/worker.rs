@@ -3,15 +3,15 @@
 
 use std::{
 	net::SocketAddr,
-	sync::{Arc, Mutex, mpsc},
+	sync::{mpsc, Arc, Mutex},
 	thread,
 	time::Duration,
 };
 
 use crate::ws::{
-	WebSocketClient,
 	message::InternalMessage,
-	router::{RequestRouter, route_error, route_response},
+	router::{route_error, route_response, RequestRouter},
+	WebSocketClient,
 };
 
 /// The background worker thread that handles all WebSocket communication using

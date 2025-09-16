@@ -2,18 +2,18 @@
 // This file is licensed under the MIT
 
 use std::{
-	sync::{Arc, Mutex, mpsc},
+	sync::{mpsc, Arc, Mutex},
 	thread,
 	time::Duration,
 };
 
 use crate::{
-	Params,
 	session::{CommandResult, QueryResult},
 	ws::{
 		client::ClientInner,
 		session::{ChannelResponse, ChannelSession, ResponseMessage},
 	},
+	Params,
 };
 
 /// A callback-based session for asynchronous operations
@@ -111,14 +111,14 @@ impl CallbackSession {
 			+ 'static,
 	{
 		// Send command through channel session
-		let request_id =
-			self.channel_session.command(rql, params).map_err(
-				|e| {
-					reifydb_type::Error(reifydb_type::diagnostic::internal(
+		let request_id = self
+			.channel_session
+			.command(rql, params)
+			.map_err(|e| {
+				reifydb_type::Error(reifydb_type::diagnostic::internal(
 				format!("Failed to send command: {}", e)
 			))
-				},
-			)?;
+			})?;
 
 		// Spawn thread to wait for response and invoke callback with
 		// timeout
@@ -177,14 +177,14 @@ impl CallbackSession {
 			+ 'static,
 	{
 		// Send query through channel session
-		let request_id =
-			self.channel_session.query(rql, params).map_err(
-				|e| {
-					reifydb_type::Error(reifydb_type::diagnostic::internal(
+		let request_id = self
+			.channel_session
+			.query(rql, params)
+			.map_err(|e| {
+				reifydb_type::Error(reifydb_type::diagnostic::internal(
 				format!("Failed to send query: {}", e)
 			))
-				},
-			)?;
+			})?;
 
 		// Spawn thread to wait for response and invoke callback with
 		// timeout

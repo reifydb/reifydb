@@ -4,9 +4,9 @@
 use std::{collections::HashMap, time::Instant};
 
 use crate::{
-	Response, ResponsePayload,
 	session::{parse_command_response, parse_query_response},
-	ws::{ChannelResponse, ResponseMessage, message::ResponseRoute},
+	ws::{message::ResponseRoute, ChannelResponse, ResponseMessage},
+	Response, ResponsePayload,
 };
 
 /// Routes responses to the appropriate session
@@ -84,9 +84,9 @@ pub(crate) fn route_response(response: Response, route: ResponseRoute) {
 					)
 				}
 				ResponsePayload::Err(ref err) => {
-					reifydb_type::err!(
-						err.diagnostic.clone()
-					)
+					reifydb_type::err!(err
+						.diagnostic
+						.clone())
 				}
 			};
 

@@ -23,8 +23,8 @@ pub mod embedded;
 pub mod server;
 
 /// Convenience function to create in-memory storage
-pub fn memory()
--> (Memory, SingleVersionLock<Memory>, StandardCdcTransaction<Memory>, EventBus)
+pub fn memory(
+) -> (Memory, SingleVersionLock<Memory>, StandardCdcTransaction<Memory>, EventBus)
 {
 	let eventbus = EventBus::new();
 	let memory = Memory::default();

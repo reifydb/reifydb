@@ -7,7 +7,7 @@ TEST_SUITE_DIR ?= ../testsuite
 TEST_PKG_DIR := ./pkg
 
 # Check if vendor directory exists and set offline flag
-ifneq (,$(wildcard ./vendor))
+ifneq (,$(wildcard ./db/vendor))
     CARGO_OFFLINE := --offline
 else
     CARGO_OFFLINE :=
@@ -28,46 +28,56 @@ endif
 
 .PHONY: help
 help:
-	@echo "🚀 ReifyDB Development Commands"
-	@echo "================================"
 	@echo ""
-	@echo "📋 Main Targets:"
-	@echo "  make help          Show this help message"
-	@echo "  make all           Full CI/CD pipeline (check, clean, build, test, push)"
+	@echo "  ╔═══════════════════════════════════════════════════════════════╗"
+	@echo "  ║                  🚀 ReifyDB Development Commands              ║"
+	@echo "  ╚═══════════════════════════════════════════════════════════════╝"
 	@echo ""
-	@echo "🧪 Testing:"
-	@echo "  make test-dev      Fast development tests (local + embedded_blocking only)"
-	@echo "  make test          Full test suite (local + all test-suites + test clients)"
-	@echo "  make test-full     Same as 'make test'"
-	@echo "  make test-local    Run only local reifydb crate tests"
+	@echo "  📋 Main Targets"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "help" "Show this help message"
+	@printf "  %-25s %s\n" "all" "Full CI/CD pipeline (check, clean, build, test, push)"
 	@echo ""
-	@echo "🔧 Test Components:"
-	@echo "  make testsuite     Run all test suites (smoke, compatibility, diagnostic, functional, stress)"
-	@echo "  make testsuite-dev Run fast development tests for all test suites"
-	@echo "  make testpkg    	Run test packages (typescript)"
-	@echo "  make test-examples Build and run all examples"
+	@echo "  🧪 Testing"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "test-dev" "Fast development tests (db + embedded_blocking only)"
+	@printf "  %-25s %s\n" "test" "Full test suite (db + all test-suites + test clients)"
+	@printf "  %-25s %s\n" "test-full" "Same as 'make test'"
+	@printf "  %-25s %s\n" "test-db" "Run only database workspace tests"
 	@echo ""
-	@echo "🏎️  Benchmarking:"
-	@echo "  make bench         Run all performance benchmarks"
+	@echo "  🔧 Test Components"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "test-suite" "Run all test suites (smoke, compatibility, etc.)"
+	@printf "  %-25s %s\n" "test-suite-dev" "Run fast development tests for all test suites"
+	@printf "  %-25s %s\n" "test-pkg-rust" "Run test packages (rust)"
+	@printf "  %-25s %s\n" "test-pkg-typescript" "Run test packages (typescript)"
+	@printf "  %-25s %s\n" "test-examples" "Build and run all examples"
 	@echo ""
-	@echo "🏗️  Building:"
-	@echo "  make build         Build release version"
-	@echo "  make clean         Clean all reifydb packages"
-	@echo "  make format        Format all code with rustfmt (nightly)"
+	@echo "  🏎️  Benchmarking"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "bench" "Run all performance benchmarks"
 	@echo ""
-	@echo "🐳 Docker:"
-	@echo "  make build-testcontainer   Build test container"
-	@echo "  make push-testcontainer    Push test container to registry"
+	@echo "  🏗️  Building"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "build" "Build release version"
+	@printf "  %-25s %s\n" "clean" "Clean all reifydb packages"
+	@printf "  %-25s %s\n" "format" "Format all code with rustfmt (nightly)"
 	@echo ""
-	@echo "📊 Other:"
-	@echo "  make deps          Show dependency trees for all crates"
-	@echo "  make coverage      Generate test coverage report"
-	@echo "  make check         Check for uncommitted changes"
-	@echo "  make push          Push changes to git (after check)"
+	@echo "  🐳 Docker"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "build-testcontainer" "Build test container"
+	@printf "  %-25s %s\n" "push-testcontainer" "Push test container to registry"
 	@echo ""
-	@echo "💡 Quick Start:"
+	@echo "  📊 Other"
+	@echo "  ───────────────────────────────────────────────────────────────"
+	@printf "  %-25s %s\n" "check" "Check for uncommitted changes"
+	@printf "  %-25s %s\n" "push" "Push changes to git (after check)"
+	@echo ""
+	@echo "  💡 Quick Start"
+	@echo "  ───────────────────────────────────────────────────────────────"
 	@echo "  make test-dev      # Fast feedback during development"
 	@echo "  make test          # Full test before committing"
+	@echo ""
 
 # =============================================================================
 # Main Pipeline Targets
@@ -83,13 +93,7 @@ check:
 		exit 1; \
 	fi
 
-.PHONY: clean
-clean:
-	@echo "🧹 Cleaning all reifydb packages..."
-	@for pkg in $$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].name' | grep '^reifydb-'); do \
-		echo "  Cleaning $$pkg"; \
-		cargo clean -p $$pkg; \
-	done
+# Clean target is defined in mk/clean.mk
 
 .PHONY: push
 push: check
@@ -103,16 +107,17 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-local testsuite testpkg test-examples
+test-full: test-db test-pkg-rust test-examples test-suite test-pkg-typescript
 	@echo "✅ All tests completed successfully!"
 
-test-dev: test-local testsuite-dev test-examples
+test-dev: test-db test-pkg-rust test-examples test-suite-dev
 	@echo "🚀 Development tests completed!"
 
 # Include testing sub-makefiles
-include mk/test-local.mk
-include mk/test-pkg.mk
+include mk/test-db.mk
 include mk/test-suites.mk
+include mk/test-pkg-rust.mk
+include mk/test-pkg-typescript.mk
 include mk/test-examples.mk
 
 # Only include benchmark makefile when benchmark targets are being run
@@ -120,60 +125,8 @@ ifneq ($(filter bench bench-% ,$(MAKECMDGOALS)),)
 include mk/test-bench.mk
 endif
 
-# Include vendor makefile
 include mk/vendor.mk
-
-# =============================================================================
-# Build Targets
-# =============================================================================
-
-.PHONY: build
-build:
-	@echo "🏗️  Building release version..."
-	@if [ -d "vendor" ]; then \
-		echo "Using vendored dependencies (offline mode)"; \
-		./mk/build-vendored.sh; \
-	else \
-		echo "Using network dependencies"; \
-		cargo build --release --workspace; \
-	fi
-
-.PHONY: format
-format:
-	@echo "🎨 Formatting codebase with rustfmt (nightly)..."
-	@if ! rustup toolchain list | grep -q "nightly"; then \
-		echo "Installing nightly toolchain..."; \
-		rustup toolchain install nightly; \
-	fi
-	@if ! rustup component list --toolchain nightly | grep -q "rustfmt"; then \
-		echo "Installing rustfmt for nightly..."; \
-		rustup component add rustfmt --toolchain nightly; \
-	fi
-	cargo +nightly fmt --all
-	@echo "✅ Code formatting complete!"
-
-.PHONY: coverage
-coverage:
-	@echo "📊 Generating test coverage report..."
-	cargo tarpaulin -o html --all --output-dir target/coverage
-
-# =============================================================================
-# Analysis Targets
-# =============================================================================
-
-.PHONY: deps
-deps:
-	@$(MAKE) -f mk/dependencies.mk deps
-
-# =============================================================================
-# Docker Targets
-# =============================================================================
-
-.PHONY: build-testcontainer push-testcontainer
-build-testcontainer:
-	@echo "🐳 Building test container..."
-	docker build --no-cache -f bin/testcontainer/Dockerfile -t reifydb/testcontainer .
-
-push-testcontainer: check
-	@echo "📤 Pushing test container to registry..."
-	docker push reifydb/testcontainer
+include mk/clean.mk
+include mk/build.mk
+include mk/format.mk
+include mk/container.mk

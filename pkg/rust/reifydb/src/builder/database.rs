@@ -5,21 +5,20 @@ use std::{sync::Arc, time::Duration};
 
 use reifydb_auth::AuthVersion;
 use reifydb_catalog::{
-	CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader,
-	system::SystemCatalog,
+	system::SystemCatalog, CatalogVersion, MaterializedCatalog,
+	MaterializedCatalogLoader,
 };
 use reifydb_cdc::CdcVersion;
 use reifydb_core::{
-	CoreVersion,
 	event::EventBus,
 	interceptor::StandardInterceptorBuilder,
 	interface::{
-		CdcTransaction, UnversionedTransaction, VersionedTransaction,
 		subsystem::SubsystemFactory,
 		version::{ComponentType, HasVersion, SystemVersion},
+		CdcTransaction, UnversionedTransaction, VersionedTransaction,
 	},
 	ioc::IocContainer,
-	log_timed_debug,
+	log_timed_debug, CoreVersion,
 };
 use reifydb_engine::{
 	EngineTransaction, EngineVersion, StandardCommandTransaction,
@@ -61,8 +60,11 @@ pub struct DatabaseBuilder<
 	ioc: IocContainer,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
-	DatabaseBuilder<VT, UT, C>
+impl<
+		VT: VersionedTransaction,
+		UT: UnversionedTransaction,
+		C: CdcTransaction,
+	> DatabaseBuilder<VT, UT, C>
 {
 	#[allow(unused_mut)]
 	pub fn new(
@@ -289,8 +291,11 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 	}
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
-	DatabaseBuilder<VT, UT, C>
+impl<
+		VT: VersionedTransaction,
+		UT: UnversionedTransaction,
+		C: CdcTransaction,
+	> DatabaseBuilder<VT, UT, C>
 {
 	pub fn development_config(self) -> Self {
 		self.with_graceful_shutdown_timeout(Duration::from_secs(10))

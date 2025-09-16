@@ -3,8 +3,8 @@
 
 use reifydb_core::{
 	event::{
-		EventListener,
 		lifecycle::{OnCreateEvent, OnStartEvent},
+		EventListener,
 	},
 	interface::{
 		EncodableKey, SystemVersion, SystemVersionKey,

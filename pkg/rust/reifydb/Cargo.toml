@@ -1,30 +1,30 @@
 [package]
 name = "reifydb"
-authors.workspace = true
-version.workspace = true
-edition.workspace = true
-license.workspace = true
-repository.workspace = true
+version = "0.0.1"
+edition = "2021"
+authors = ["Dominique Chuo <dominique@reifydb.com>"]
+license = "AGPL-3"
+repository = "https://github.com/reifydb/reifydb"
 
 [dependencies]
-reifydb-auth = { workspace = true }
-reifydb-catalog = { workspace = true }
-reifydb-cdc = { workspace = true }
-reifydb-core = { workspace = true }
-reifydb-engine = { workspace = true }
-reifydb-network = { workspace = true }
-reifydb-storage = { workspace = true }
-reifydb-rql = { workspace = true }
-reifydb-transaction = { workspace = true }
-reifydb-type = { workspace = true }
+reifydb-auth = { path = "../../../db/crates/auth" }
+reifydb-catalog = { path = "../../../db/crates/catalog" }
+reifydb-cdc = { path = "../../../db/crates/cdc" }
+reifydb-core = { path = "../../../db/crates/core" }
+reifydb-engine = { path = "../../../db/crates/engine" }
+reifydb-network = { path = "../../../db/crates/network" }
+reifydb-storage = { path = "../../../db/crates/storage" }
+reifydb-rql = { path = "../../../db/crates/rql" }
+reifydb-transaction = { path = "../../../db/crates/transaction" }
+reifydb-type = { path = "../../../db/crates/type" }
 
-reifydb-sub-admin = { workspace = true, optional = true }
-reifydb-sub-flow = { workspace = true, optional = true }
-reifydb-sub-logging = { workspace = true, optional = true }
-reifydb-sub-workerpool = { workspace = true, optional = true }
-reifydb-sub-server = { workspace = true, optional = true }
+reifydb-sub-admin = { path = "../../../db/crates/sub-admin", optional = true }
+reifydb-sub-flow = { path = "../../../db/crates/sub-flow", optional = true }
+reifydb-sub-logging = { path = "../../../db/crates/sub-logging", optional = true }
+reifydb-sub-workerpool = { path = "../../../db/crates/sub-workerpool", optional = true }
+reifydb-sub-server = { path = "../../../db/crates/sub-server", optional = true }
 
-libc = { workspace = true }
+libc = { version = "0.2.175" }
 
 [features]
 default = []

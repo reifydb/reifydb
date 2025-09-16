@@ -16,7 +16,6 @@ use common::{
 	start_server_and_get_port, write_frames,
 };
 use reifydb::{
-	Database,
 	core::{
 		event::EventBus,
 		interface::{
@@ -25,11 +24,11 @@ use reifydb::{
 		},
 		retry,
 	},
-	memory, optimistic,
+	memory, optimistic, Database,
 };
 use reifydb_client::{
-	HttpCallbackSession, HttpClient,
 	session::{CommandResult, QueryResult},
+	HttpCallbackSession, HttpClient,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;

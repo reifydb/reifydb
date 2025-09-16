@@ -9,7 +9,6 @@ use common::{
 	create_server_instance, start_server_and_get_port,
 };
 use reifydb::{
-	Database,
 	core::{
 		event::EventBus,
 		interface::{
@@ -18,7 +17,7 @@ use reifydb::{
 		},
 		retry,
 	},
-	memory, optimistic,
+	memory, optimistic, Database,
 };
 use reifydb_client::{HttpBlockingSession, HttpClient};
 use reifydb_testing::{testscript, testscript::Command};

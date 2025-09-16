@@ -1,0 +1,76 @@
+[package]
+name = "examples"
+version = "0.0.1"
+edition = "2021"
+authors = ["Dominique Chuo <dominique@reifydb.com>"]
+license = "AGPL-3"
+repository = "https://github.com/reifydb/reifydb"
+
+[lib]
+name = "reifydb_examples"
+path = "src/lib.rs"
+
+[dependencies]
+reifydb = { path = "../reifydb", features = ["sub_logging"] }
+
+# Basic examples (no special features required)
+[[bin]]
+name = "basic-hello-world"
+path = "examples/basic/01_hello_world.rs"
+
+[[bin]]
+name = "basic-tables"
+path = "examples/basic/02_tables.rs"
+
+# RQL examples (ReifyDB Query Language)
+[[bin]]
+name = "rql-from"
+path = "examples/rql/01_from_operator.rs"
+
+[[bin]]
+name = "rql-map"
+path = "examples/rql/02_map_operator.rs"
+
+[[bin]]
+name = "rql-filter"
+path = "examples/rql/03_filter_operator.rs"
+
+[[bin]]
+name = "rql-sort"
+path = "examples/rql/04_sort_operator.rs"
+
+[[bin]]
+name = "rql-take"
+path = "examples/rql/05_take_operator.rs"
+
+[[bin]]
+name = "rql-aggregate"
+path = "examples/rql/06_aggregate_operator.rs"
+
+[[bin]]
+name = "rql-join"
+path = "examples/rql/07_join_operator.rs"
+
+[[bin]]
+name = "rql-arithmetic"
+path = "examples/rql/08_arithmetic_expressions.rs"
+
+[[bin]]
+name = "rql-comparison"
+path = "examples/rql/09_comparison_operators.rs"
+
+[[bin]]
+name = "rql-logical"
+path = "examples/rql/10_logical_operators.rs"
+
+[[bin]]
+name = "rql-extend"
+path = "examples/rql/11_extend_operator.rs"
+
+[[bin]]
+name = "storage-memory"
+path = "examples/storage/01_memory_storage.rs"
+
+[[bin]]
+name = "storage-sqlite"
+path = "examples/storage/02_sqlite_storage.rs"

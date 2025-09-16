@@ -10,8 +10,8 @@ use reifydb_transaction::mvcc::transaction::{
 };
 
 use crate::{
-	EmbeddedBuilder, MemoryCdc, SqliteCdc, UnversionedMemory,
-	UnversionedSqlite, memory, optimistic, serializable, sqlite,
+	memory, optimistic, serializable, sqlite, EmbeddedBuilder, MemoryCdc,
+	SqliteCdc, UnversionedMemory, UnversionedSqlite,
 };
 
 pub fn memory_optimistic() -> EmbeddedBuilder<

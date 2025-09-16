@@ -49,7 +49,7 @@ cd bin/examples && make hello-world
 ```
 
 
-📖 See the [examples README](bin/examples/README.md) for the complete list and detailed instructions.
+📖 See the [examples README](bin/examples/readme.md) for the complete list and detailed instructions.
 
 ---
 

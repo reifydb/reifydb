@@ -4,7 +4,7 @@
 use std::fmt::{self, Display, Formatter};
 
 use reifydb_type::{
-	ROW_NUMBER_COLUMN_NAME, Value, util::unicode::UnicodeWidthStr,
+	util::unicode::UnicodeWidthStr, Value, ROW_NUMBER_COLUMN_NAME,
 };
 
 use crate::domain::frame::{Frame, FrameColumn};
@@ -158,9 +158,9 @@ mod tests {
 	use std::convert::TryFrom;
 
 	use reifydb_type::{
-		Blob, Date, DateTime, Interval, OrderedF32, OrderedF64,
-		RowNumber, Time, Type, Uuid4, Uuid7, Value, parse_uuid4,
-		parse_uuid7,
+		parse_uuid4, parse_uuid7, Blob, Date, DateTime, Interval,
+		OrderedF32, OrderedF64, RowNumber, Time, Type, Uuid4, Uuid7,
+		Value,
 	};
 
 	use super::*;
@@ -754,7 +754,8 @@ mod tests {
 		let second_data_line = lines[4]; // Second data row
 
 		assert!(first_data_line.contains("1")); // First RowNumber value
-		assert!(second_data_line.contains("Undefined")); // Second value should be undefined
+		assert!(second_data_line.contains("Undefined")); // Second value should be
+		                                   // undefined
 	}
 
 	#[test]

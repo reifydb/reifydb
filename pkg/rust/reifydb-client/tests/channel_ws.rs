@@ -10,7 +10,6 @@ use common::{
 	parse_named_params, parse_positional_params, parse_rql, write_frames,
 };
 use reifydb::{
-	Database,
 	core::{
 		event::EventBus,
 		interface::{
@@ -19,7 +18,7 @@ use reifydb::{
 		},
 		retry,
 	},
-	memory, optimistic,
+	memory, optimistic, Database,
 };
 use reifydb_client::{
 	ChannelResponse, ResponseMessage, WsChannelSession, WsClient,

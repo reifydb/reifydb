@@ -13,15 +13,15 @@ TEST_SUITES := \
 	integration \
 	stress
 
-.PHONY: testsuite testsuite-dev $(TEST_SUITES)
+.PHONY: test-suite test-suite-dev $(TEST_SUITES)
 
 # Run all test suites in parallel
-testsuite:
+test-suite:
 	@echo "🔍 Running all test suites in parallel..."
 	$(MAKE) -j$(shell nproc) $(TEST_SUITES)
 
 # Run fast development tests for all test suites
-testsuite-dev:
+test-suite-dev:
 	@echo "🚀 Running fast development tests for all test suites..."
 	cd $(TEST_SUITE_DIR) && $(MAKE) test-dev
 

@@ -5,16 +5,15 @@ use std::{
 	any::TypeId,
 	collections::HashMap,
 	sync::{
-		Arc,
 		atomic::{AtomicBool, Ordering},
+		Arc,
 	},
 	time::Duration,
 };
 
 use reifydb_core::{
-	Result,
 	interface::subsystem::{HealthStatus, Subsystem},
-	log_debug, log_error, log_warn,
+	log_debug, log_error, log_warn, Result,
 };
 
 use crate::health::HealthMonitor;
@@ -113,7 +112,8 @@ impl Subsystems {
 						.update_component_health(
 							name.clone(),
 							HealthStatus::Failed {
-								description: format!(
+								description:
+									format!(
 									"Startup failed: {}",
 									e
 								),
@@ -193,7 +193,8 @@ impl Subsystems {
 						.update_component_health(
 							name.clone(),
 							HealthStatus::Failed {
-								description: format!(
+								description:
+									format!(
 									"Shutdown failed: {}",
 									e
 								),

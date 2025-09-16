@@ -17,7 +17,6 @@ use common::{
 	write_frames,
 };
 use reifydb::{
-	Database,
 	core::{
 		event::EventBus,
 		interface::{
@@ -26,11 +25,11 @@ use reifydb::{
 		},
 		retry,
 	},
-	memory, optimistic,
+	memory, optimistic, Database,
 };
 use reifydb_client::{
-	WsCallbackSession, WsClient,
 	session::{CommandResult, QueryResult},
+	WsCallbackSession, WsClient,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;

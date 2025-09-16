@@ -1,0 +1,39 @@
+hard_tabs = true
+tab_spaces = 8
+max_width = 80
+use_small_heuristics = "Off"
+
+# Function and control flow formatting
+fn_params_layout = "Tall"
+brace_style = "SameLineWhere"
+control_brace_style = "AlwaysSameLine"
+indent_style = "Block"
+
+# Spacing and wrapping
+wrap_comments = true
+comment_width = 80
+format_code_in_doc_comments = true
+normalize_comments = true
+normalize_doc_attributes = true
+
+# Import and use statements
+imports_granularity = "Crate"
+group_imports = "StdExternalCrate"
+reorder_imports = true
+reorder_modules = true
+
+trailing_semicolon = true
+trailing_comma = "Vertical"
+match_block_trailing_comma = false
+blank_lines_upper_bound = 1
+blank_lines_lower_bound = 0
+use_field_init_shorthand = true
+use_try_shorthand = true
+format_strings = false
+format_macro_matchers = false
+format_macro_bodies = true
+empty_item_single_line = true
+struct_lit_single_line = true
+fn_single_line = false
+where_single_line = false
+edition = "2024"

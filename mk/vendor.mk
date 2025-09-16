@@ -1,7 +1,4 @@
 # Vendor dependencies using cargo-vendor-filterer
-# Filters based on workspace.metadata.vendor-filter in Cargo.toml
-# Currently configured for: x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu
-# Excludes: dev-dependencies
 
 # Always run vendor target (no caching)
 .PHONY: vendor
@@ -14,11 +11,10 @@ vendor:
 	@echo ""
 	
 	# Clean previous vendor directory
-	@rm -rf vendor/
+	@rm -rf db/vendor/
 	
 	# Vendor dependencies with filtering
-	# Note: Using command line flags as metadata configuration has issues in v0.5.18
-	@cargo vendor-filterer \
+	@cd db && cargo vendor-filterer \
 		--platform x86_64-unknown-linux-gnu \
 		--platform aarch64-unknown-linux-gnu \
 		--platform armv7-unknown-linux-gnueabihf \
@@ -34,7 +30,7 @@ vendor:
 
 	@echo ""
 	@echo "✓ Vendor directory configured"
-	@echo "✓ Vendored dependencies: $$(ls -1 vendor/ 2>/dev/null | wc -l)"
+	@echo "✓ Vendored dependencies: $$(ls -1 db/vendor/ 2>/dev/null | wc -l)"
 	@echo ""
 	@echo "Platform support (configured in Cargo.toml):"
 	@echo "  ✓ Linux (x86_64, ARM64, ARM32)"

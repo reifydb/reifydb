@@ -4,20 +4,19 @@
 use std::{
 	collections::HashMap,
 	sync::{
-		Arc,
 		atomic::{AtomicBool, Ordering},
+		Arc,
 	},
 	time::Duration,
 };
 
 use reifydb_core::{
-	Result,
 	event::lifecycle::OnStartEvent,
 	interface::{
-		CdcTransaction, UnversionedTransaction, VersionedTransaction,
-		WithEventBus, subsystem::HealthStatus,
+		subsystem::HealthStatus, CdcTransaction,
+		UnversionedTransaction, VersionedTransaction, WithEventBus,
 	},
-	log_debug, log_error, log_timed_trace, log_warn,
+	log_debug, log_error, log_timed_trace, log_warn, Result,
 };
 use reifydb_engine::{EngineTransaction, StandardEngine};
 #[cfg(feature = "sub_server")]
@@ -94,8 +93,11 @@ pub struct Database<
 	running: bool,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
-	Database<VT, UT, C>
+impl<
+		VT: VersionedTransaction,
+		UT: UnversionedTransaction,
+		C: CdcTransaction,
+	> Database<VT, UT, C>
 {
 	// Note: FlowSubsystem is now generic over the engine type
 	// #[cfg(feature = "sub_flow")]
@@ -112,8 +114,11 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 	}
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
-	Database<VT, UT, C>
+impl<
+		VT: VersionedTransaction,
+		UT: UnversionedTransaction,
+		C: CdcTransaction,
+	> Database<VT, UT, C>
 {
 	pub(crate) fn new(
 		engine: StandardEngine<EngineTransaction<VT, UT, C>>,
@@ -342,8 +347,11 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 	}
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
-	Drop for Database<VT, UT, C>
+impl<
+		VT: VersionedTransaction,
+		UT: UnversionedTransaction,
+		C: CdcTransaction,
+	> Drop for Database<VT, UT, C>
 {
 	fn drop(&mut self) {
 		if self.running {

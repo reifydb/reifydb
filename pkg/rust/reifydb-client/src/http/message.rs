@@ -3,7 +3,7 @@
 
 use std::sync::mpsc;
 
-use crate::{CommandRequest, QueryRequest, http::session::HttpResponseMessage};
+use crate::{http::session::HttpResponseMessage, CommandRequest, QueryRequest};
 
 /// Internal messages sent to the HTTP worker thread
 pub(crate) enum HttpInternalMessage {
