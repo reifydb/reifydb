@@ -6,21 +6,13 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_u8(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<u8>,
-	) {
+	pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: impl Into<u8>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uint1);
 		row.set_valid(index, true);
 		unsafe {
-			row.make_mut()
-				.as_mut_ptr()
-				.add(field.offset)
-				.write_unaligned(value.into());
+			row.make_mut().as_mut_ptr().add(field.offset).write_unaligned(value.into());
 		}
 	}
 
@@ -97,11 +89,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Uint1,
-			Type::Boolean,
-			Type::Uint1,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Uint1, Type::Boolean, Type::Uint1]);
 		let mut row = layout.allocate_row();
 
 		layout.set_u8(&mut row, 0, 200u8);

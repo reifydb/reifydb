@@ -33,22 +33,12 @@ impl ColumnData {
 				..
 			} => container.filter(mask),
 			ColumnData::Date(container) => container.filter(mask),
-			ColumnData::DateTime(container) => {
-				container.filter(mask)
-			}
+			ColumnData::DateTime(container) => container.filter(mask),
 			ColumnData::Time(container) => container.filter(mask),
-			ColumnData::Interval(container) => {
-				container.filter(mask)
-			}
-			ColumnData::Undefined(container) => {
-				container.filter(mask)
-			}
-			ColumnData::RowNumber(container) => {
-				container.filter(mask)
-			}
-			ColumnData::IdentityId(container) => {
-				container.filter(mask)
-			}
+			ColumnData::Interval(container) => container.filter(mask),
+			ColumnData::Undefined(container) => container.filter(mask),
+			ColumnData::RowNumber(container) => container.filter(mask),
+			ColumnData::IdentityId(container) => container.filter(mask),
 			ColumnData::Uuid4(container) => container.filter(mask),
 			ColumnData::Uuid7(container) => container.filter(mask),
 			ColumnData::Blob {
@@ -93,8 +83,7 @@ mod tests {
 	#[test]
 	fn test_filter_int4() {
 		let mut col = ColumnData::int4([1, 2, 3, 4, 5]);
-		let mask =
-			BitVec::from_slice(&[true, false, true, false, true]);
+		let mask = BitVec::from_slice(&[true, false, true, false, true]);
 
 		col.filter(&mask).unwrap();
 
@@ -137,8 +126,7 @@ mod tests {
 	#[test]
 	fn test_filter_undefined() {
 		let mut col = ColumnData::undefined(5);
-		let mask =
-			BitVec::from_slice(&[true, false, true, false, false]);
+		let mask = BitVec::from_slice(&[true, false, true, false, false]);
 
 		col.filter(&mask).unwrap();
 

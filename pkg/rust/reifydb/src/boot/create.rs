@@ -36,10 +36,7 @@ create table reifydb.flows{
 "#,
 			Params::None,
 		) {
-			log_error!(
-				"Failed to create initial database namespace: {}",
-				e
-			);
+			log_error!("Failed to create initial database namespace: {}", e);
 		}
 	}
 }

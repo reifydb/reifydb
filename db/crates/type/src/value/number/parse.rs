@@ -5,16 +5,12 @@ use std::{any::TypeId, borrow::Cow, num::IntErrorKind, str::FromStr};
 
 use crate::{
 	Error, IntoFragment, Type, err,
-	error::diagnostic::number::{
-		invalid_number_format, nan_not_allowed, number_out_of_range,
-	},
+	error::diagnostic::number::{invalid_number_format, nan_not_allowed, number_out_of_range},
 	return_error,
 	value::is::{IsFloat, IsInt, IsUint},
 };
 
-pub fn parse_primitive_int<'a, T>(
-	fragment: impl IntoFragment<'a>,
-) -> Result<T, Error>
+pub fn parse_primitive_int<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
 	T: IsInt + 'static,
 {
@@ -33,9 +29,7 @@ where
 	}
 }
 
-pub fn parse_primitive_uint<'a, T>(
-	fragment: impl IntoFragment<'a>,
-) -> Result<T, Error>
+pub fn parse_primitive_uint<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
 	T: IsUint + 'static,
 {
@@ -170,9 +164,7 @@ impl TypeInfo for f64 {
 }
 
 #[inline]
-fn parse_signed_generic<'a, T>(
-	fragment: impl IntoFragment<'a>,
-) -> Result<T, Error>
+fn parse_signed_generic<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
@@ -180,14 +172,8 @@ where
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
-	let needs_trimming = raw_value
-		.as_bytes()
-		.first()
-		.map_or(false, |&b| b.is_ascii_whitespace())
-		|| raw_value
-			.as_bytes()
-			.last()
-			.map_or(false, |&b| b.is_ascii_whitespace());
+	let needs_trimming = raw_value.as_bytes().first().map_or(false, |&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().map_or(false, |&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
@@ -205,69 +191,57 @@ where
 
 	match value.parse::<T>() {
 		Ok(v) => Ok(v),
-		Err(err) => {
-			match err.kind() {
-				IntErrorKind::Empty => {
-					err!(invalid_number_format(
-						fragment,
-						T::type_enum()
-					))
-				}
-				IntErrorKind::InvalidDigit => {
-					if let Ok(f) = value.parse::<f64>() {
-						let truncated = f.trunc();
-						let type_enum = T::type_enum();
-						let in_range = match type_enum {
-                        Type::Int1 => truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64,
-                        Type::Int2 => truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64,
-                        Type::Int4 => truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64,
-                        Type::Int8 => truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64,
-                        Type::Int16 => {
-                            truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64
-                        }
-                        _ => false};
-						if in_range {
-							Ok(cast_float_to_int::<T>(truncated))
-						} else {
-							err!(number_out_of_range(fragment, type_enum, None))
-						}
-					} else {
-						err!(invalid_number_format(
-							fragment,
-							T::type_enum()
-						))
-					}
-				}
-				IntErrorKind::PosOverflow => {
-					err!(number_out_of_range(
-						fragment,
-						T::type_enum(),
-						None
-					))
-				}
-				IntErrorKind::NegOverflow => {
-					err!(number_out_of_range(
-						fragment,
-						T::type_enum(),
-						None
-					))
-				}
-				IntErrorKind::Zero => {
-					err!(invalid_number_format(
-						fragment,
-						T::type_enum()
-					))
-				}
-				&_ => unreachable!("{}", err),
+		Err(err) => match err.kind() {
+			IntErrorKind::Empty => {
+				err!(invalid_number_format(fragment, T::type_enum()))
 			}
-		}
+			IntErrorKind::InvalidDigit => {
+				if let Ok(f) = value.parse::<f64>() {
+					let truncated = f.trunc();
+					let type_enum = T::type_enum();
+					let in_range = match type_enum {
+						Type::Int1 => {
+							truncated >= i8::MIN as f64 && truncated <= i8::MAX as f64
+						}
+						Type::Int2 => {
+							truncated >= i16::MIN as f64 && truncated <= i16::MAX as f64
+						}
+						Type::Int4 => {
+							truncated >= i32::MIN as f64 && truncated <= i32::MAX as f64
+						}
+						Type::Int8 => {
+							truncated >= i64::MIN as f64 && truncated <= i64::MAX as f64
+						}
+						Type::Int16 => {
+							truncated >= i128::MIN as f64 && truncated <= i128::MAX as f64
+						}
+						_ => false,
+					};
+					if in_range {
+						Ok(cast_float_to_int::<T>(truncated))
+					} else {
+						err!(number_out_of_range(fragment, type_enum, None))
+					}
+				} else {
+					err!(invalid_number_format(fragment, T::type_enum()))
+				}
+			}
+			IntErrorKind::PosOverflow => {
+				err!(number_out_of_range(fragment, T::type_enum(), None))
+			}
+			IntErrorKind::NegOverflow => {
+				err!(number_out_of_range(fragment, T::type_enum(), None))
+			}
+			IntErrorKind::Zero => {
+				err!(invalid_number_format(fragment, T::type_enum()))
+			}
+			&_ => unreachable!("{}", err),
+		},
 	}
 }
 
 #[inline]
-fn parse_unsigned_generic<'a, T>(
-	fragment: impl IntoFragment<'a>,
-) -> Result<T, Error>
+fn parse_unsigned_generic<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
 	T: FromStr<Err = std::num::ParseIntError> + TypeInfo + 'static,
 {
@@ -275,14 +249,8 @@ where
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
-	let needs_trimming = raw_value
-		.as_bytes()
-		.first()
-		.map_or(false, |&b| b.is_ascii_whitespace())
-		|| raw_value
-			.as_bytes()
-			.last()
-			.map_or(false, |&b| b.is_ascii_whitespace());
+	let needs_trimming = raw_value.as_bytes().first().map_or(false, |&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().map_or(false, |&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
@@ -303,10 +271,7 @@ where
 		Err(err) => {
 			match err.kind() {
 				IntErrorKind::Empty => {
-					err!(invalid_number_format(
-						fragment,
-						T::type_enum()
-					))
+					err!(invalid_number_format(fragment, T::type_enum()))
 				}
 				IntErrorKind::InvalidDigit => {
 					if let Ok(f) = value.parse::<f64>() {
@@ -314,20 +279,23 @@ where
 						// negative values
 						if f < 0.0 {
 							return_error!(number_out_of_range(
-                                fragment,
-                                T::type_enum(),
-                                None
-                            ));
+								fragment,
+								T::type_enum(),
+								None
+							));
 						}
 						let truncated = f.trunc();
 						let type_enum = T::type_enum();
 						let in_range = match type_enum {
-                            Type::Uint1 => truncated >= 0.0 && truncated <= u8::MAX as f64,
-                            Type::Uint2 => truncated >= 0.0 && truncated <= u16::MAX as f64,
-                            Type::Uint4 => truncated >= 0.0 && truncated <= u32::MAX as f64,
-                            Type::Uint8 => truncated >= 0.0 && truncated <= u64::MAX as f64,
-                            Type::Uint16 => truncated >= 0.0 && truncated <= u128::MAX as f64,
-                            _ => false};
+							Type::Uint1 => truncated >= 0.0 && truncated <= u8::MAX as f64,
+							Type::Uint2 => truncated >= 0.0 && truncated <= u16::MAX as f64,
+							Type::Uint4 => truncated >= 0.0 && truncated <= u32::MAX as f64,
+							Type::Uint8 => truncated >= 0.0 && truncated <= u64::MAX as f64,
+							Type::Uint16 => {
+								truncated >= 0.0 && truncated <= u128::MAX as f64
+							}
+							_ => false,
+						};
 						if in_range {
 							Ok(cast_float_to_int::<T>(truncated))
 						} else {
@@ -342,24 +310,13 @@ where
 					}
 				}
 				IntErrorKind::PosOverflow => {
-					err!(number_out_of_range(
-						fragment,
-						T::type_enum(),
-						None
-					))
+					err!(number_out_of_range(fragment, T::type_enum(), None))
 				}
 				IntErrorKind::NegOverflow => {
-					err!(number_out_of_range(
-						fragment,
-						T::type_enum(),
-						None
-					))
+					err!(number_out_of_range(fragment, T::type_enum(), None))
 				}
 				IntErrorKind::Zero => {
-					err!(invalid_number_format(
-						fragment,
-						T::type_enum()
-					))
+					err!(invalid_number_format(fragment, T::type_enum()))
 				}
 				&_ => unreachable!("{}", err),
 			}
@@ -368,28 +325,16 @@ where
 }
 
 #[inline]
-fn parse_float_generic<'a, T>(
-	fragment: impl IntoFragment<'a>,
-) -> Result<T, Error>
+fn parse_float_generic<'a, T>(fragment: impl IntoFragment<'a>) -> Result<T, Error>
 where
-	T: FromStr<Err = std::num::ParseFloatError>
-		+ Copy
-		+ TypeInfo
-		+ PartialEq
-		+ 'static,
+	T: FromStr<Err = std::num::ParseFloatError> + Copy + TypeInfo + PartialEq + 'static,
 {
 	let fragment = fragment.into_fragment();
 	let raw_value = fragment.text();
 
 	// Fast path: check if we need any string processing
-	let needs_trimming = raw_value
-		.as_bytes()
-		.first()
-		.map_or(false, |&b| b.is_ascii_whitespace())
-		|| raw_value
-			.as_bytes()
-			.last()
-			.map_or(false, |&b| b.is_ascii_whitespace());
+	let needs_trimming = raw_value.as_bytes().first().map_or(false, |&b| b.is_ascii_whitespace())
+		|| raw_value.as_bytes().last().map_or(false, |&b| b.is_ascii_whitespace());
 	let has_underscores = raw_value.as_bytes().contains(&b'_');
 
 	let value = match (needs_trimming, has_underscores) {
@@ -409,25 +354,13 @@ where
 		Ok(v) => {
 			if TypeId::of::<T>() == TypeId::of::<f32>() {
 				let v_f32 = cast::<f32, T>(v);
-				if v_f32 == f32::INFINITY
-					|| v_f32 == f32::NEG_INFINITY
-				{
-					return_error!(number_out_of_range(
-						fragment,
-						T::type_enum(),
-						None
-					));
+				if v_f32 == f32::INFINITY || v_f32 == f32::NEG_INFINITY {
+					return_error!(number_out_of_range(fragment, T::type_enum(), None));
 				}
 			} else if TypeId::of::<T>() == TypeId::of::<f64>() {
 				let v_f64 = cast::<f64, T>(v);
-				if v_f64 == f64::INFINITY
-					|| v_f64 == f64::NEG_INFINITY
-				{
-					return_error!(number_out_of_range(
-						fragment,
-						T::type_enum(),
-						None
-					));
+				if v_f64 == f64::INFINITY || v_f64 == f64::NEG_INFINITY {
+					return_error!(number_out_of_range(fragment, T::type_enum(), None));
 				}
 			}
 			Ok(v)
@@ -505,264 +438,142 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("42")
-				),
-				Ok(42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("42")), Ok(42));
 		}
 
 		#[test]
 		fn test_valid_negative() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("-42")
-				),
-				Ok(-42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("-42")), Ok(-42));
 		}
 
 		#[test]
 		fn test_valid_max() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("127")
-				),
-				Ok(127)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("127")), Ok(127));
 		}
 
 		#[test]
 		fn test_valid_min() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("-128")
-				),
-				Ok(-128)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("-128")), Ok(-128));
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_int::<i8>(
-				OwnedFragment::testing("128")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i8>(OwnedFragment::testing("128")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_int::<i8>(
-				OwnedFragment::testing("-129")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i8>(OwnedFragment::testing("-129")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_int::<i8>(
-				OwnedFragment::testing("abc")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i8>(OwnedFragment::testing("abc")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_int::<i8>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i8>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_whitespace() {
-			assert!(parse_primitive_int::<i8>(
-				OwnedFragment::testing("   ")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i8>(OwnedFragment::testing("   ")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("42.9")
-				),
-				Ok(42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("42.9")), Ok(42));
 		}
 
 		#[test]
 		fn test_float_truncation_negative() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("-42.9")
-				),
-				Ok(-42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("-42.9")), Ok(-42));
 		}
 
 		#[test]
 		fn test_float_truncation_zero() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("0.0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("0.0")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_truncation_negative_zero() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("-0.0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("-0.0")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_truncation_max() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("127.9")
-				),
-				Ok(127)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("127.9")), Ok(127));
 		}
 
 		#[test]
 		fn test_float_truncation_min() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("-128.9")
-				),
-				Ok(-128)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("-128.9")), Ok(-128));
 		}
 
 		#[test]
 		fn test_float_scientific_notation() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("1e+2")
-				),
-				Ok(100)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("1e+2")), Ok(100));
 		}
 
 		#[test]
 		fn test_float_scientific_small() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("1.23e-1")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("1.23e-1")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_int::<i8>(
-				OwnedFragment::testing("128.0")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i8>(OwnedFragment::testing("128.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_negative() {
-			assert!(parse_primitive_int::<i8>(
-				OwnedFragment::testing("-129.0")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i8>(OwnedFragment::testing("-129.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_scientific() {
-			assert!(parse_primitive_int::<i8>(
-				OwnedFragment::testing("1e3")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i8>(OwnedFragment::testing("1e3")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_float_format() {
-			assert!(parse_primitive_int::<i8>(
-				OwnedFragment::testing("1.2.3")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i8>(OwnedFragment::testing("1.2.3")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing(" 42")
-				),
-				Ok(42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing(" 42")), Ok(42));
 		}
 
 		#[test]
 		fn trimming_trailing_space() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("42 ")
-				),
-				Ok(42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("42 ")), Ok(42));
 		}
 
 		#[test]
 		fn trimming_both_spaces() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing(" 42 ")
-				),
-				Ok(42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing(" 42 ")), Ok(42));
 		}
 
 		#[test]
 		fn trimming_negative_leading_space() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing(" -42")
-				),
-				Ok(-42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing(" -42")), Ok(-42));
 		}
 
 		#[test]
 		fn trimming_negative_trailing_space() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing("-42 ")
-				),
-				Ok(-42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing("-42 ")), Ok(-42));
 		}
 
 		#[test]
 		fn trimming_negative_both_spaces() {
-			assert_eq!(
-				parse_primitive_int::<i8>(
-					OwnedFragment::testing(" -42 ")
-				),
-				Ok(-42)
-			);
+			assert_eq!(parse_primitive_int::<i8>(OwnedFragment::testing(" -42 ")), Ok(-42));
 		}
 	}
 
@@ -771,218 +582,117 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("1000")
-				),
-				Ok(1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("1000")), Ok(1000));
 		}
 
 		#[test]
 		fn test_valid_negative() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("-1000")
-				),
-				Ok(-1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("-1000")), Ok(-1000));
 		}
 
 		#[test]
 		fn test_valid_max() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("32767")
-				),
-				Ok(32767)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("32767")), Ok(32767));
 		}
 
 		#[test]
 		fn test_valid_min() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("-32768")
-				),
-				Ok(-32768)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("-32768")), Ok(-32768));
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_int::<i16>(
-				OwnedFragment::testing("32768")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i16>(OwnedFragment::testing("32768")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_int::<i16>(
-				OwnedFragment::testing("-32769")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i16>(OwnedFragment::testing("-32769")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_int::<i16>(
-				OwnedFragment::testing("hello")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i16>(OwnedFragment::testing("hello")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_int::<i16>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i16>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("1000.7")
-				),
-				Ok(1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("1000.7")), Ok(1000));
 		}
 
 		#[test]
 		fn test_float_truncation_negative() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("-1000.7")
-				),
-				Ok(-1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("-1000.7")), Ok(-1000));
 		}
 
 		#[test]
 		fn test_float_truncation_max() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("32767.9")
-				),
-				Ok(32767)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("32767.9")), Ok(32767));
 		}
 
 		#[test]
 		fn test_float_truncation_min() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("-32768.9")
-				),
-				Ok(-32768)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("-32768.9")), Ok(-32768));
 		}
 
 		#[test]
 		fn test_float_scientific_notation() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("1.5e3")
-				),
-				Ok(1500)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("1.5e3")), Ok(1500));
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_int::<i16>(
-				OwnedFragment::testing("32768.0")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i16>(OwnedFragment::testing("32768.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_negative() {
-			assert!(parse_primitive_int::<i16>(
-				OwnedFragment::testing("-32769.0")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i16>(OwnedFragment::testing("-32769.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_scientific() {
-			assert!(parse_primitive_int::<i16>(
-				OwnedFragment::testing("1e5")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i16>(OwnedFragment::testing("1e5")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing(" 1000")
-				),
-				Ok(1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing(" 1000")), Ok(1000));
 		}
 
 		#[test]
 		fn trimming_trailing_space() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("1000 ")
-				),
-				Ok(1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("1000 ")), Ok(1000));
 		}
 
 		#[test]
 		fn trimming_both_spaces() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing(" 1000 ")
-				),
-				Ok(1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing(" 1000 ")), Ok(1000));
 		}
 
 		#[test]
 		fn trimming_negative_leading_space() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing(" -1000")
-				),
-				Ok(-1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing(" -1000")), Ok(-1000));
 		}
 
 		#[test]
 		fn trimming_negative_trailing_space() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing("-1000 ")
-				),
-				Ok(-1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing("-1000 ")), Ok(-1000));
 		}
 
 		#[test]
 		fn trimming_negative_both_spaces() {
-			assert_eq!(
-				parse_primitive_int::<i16>(
-					OwnedFragment::testing(" -1000 ")
-				),
-				Ok(-1000)
-			);
+			assert_eq!(parse_primitive_int::<i16>(OwnedFragment::testing(" -1000 ")), Ok(-1000));
 		}
 	}
 
@@ -991,276 +701,147 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("1000000")
-				),
-				Ok(1000000)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("1000000")), Ok(1000000));
 		}
 
 		#[test]
 		fn test_valid_negative() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("-1000000")
-				),
-				Ok(-1000000)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("-1000000")), Ok(-1000000));
 		}
 
 		#[test]
 		fn test_valid_max() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("2147483647")
-				),
-				Ok(2147483647)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("2147483647")), Ok(2147483647));
 		}
 
 		#[test]
 		fn test_valid_min() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("-2147483648")
-				),
-				Ok(-2147483648)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("-2147483648")), Ok(-2147483648));
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_int::<i32>(
-				OwnedFragment::testing("2147483648")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i32>(OwnedFragment::testing("2147483648")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_int::<i32>(
-				OwnedFragment::testing("-2147483649")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i32>(OwnedFragment::testing("-2147483649")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_int::<i32>(
-				OwnedFragment::testing("not_a_number")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i32>(OwnedFragment::testing("not_a_number")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_int::<i32>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i32>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("3.14")
-				),
-				Ok(3)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("3.14")), Ok(3));
 		}
 
 		#[test]
 		fn test_float_truncation_negative() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("-3.14")
-				),
-				Ok(-3)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("-3.14")), Ok(-3));
 		}
 
 		#[test]
 		fn test_float_truncation_zero() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("0.0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("0.0")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_truncation_negative_zero() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("-0.0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("-0.0")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_truncation_large() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("42.999")
-				),
-				Ok(42)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("42.999")), Ok(42));
 		}
 
 		#[test]
 		fn test_float_scientific_notation() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("1e+2")
-				),
-				Ok(100)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("1e+2")), Ok(100));
 		}
 
 		#[test]
 		fn test_float_scientific_decimal() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("2.5e3")
-				),
-				Ok(2500)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("2.5e3")), Ok(2500));
 		}
 
 		#[test]
 		fn test_float_scientific_negative() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("-1.5e2")
-				),
-				Ok(-150)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("-1.5e2")), Ok(-150));
 		}
 
 		#[test]
 		fn test_float_scientific_small() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("1.23e-1")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("1.23e-1")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_scientific_very_small() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("9.9e-1")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("9.9e-1")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_int::<i32>(
-				OwnedFragment::testing("2147483648.0")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i32>(OwnedFragment::testing("2147483648.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_negative() {
-			assert!(parse_primitive_int::<i32>(
-				OwnedFragment::testing("-2147483649.0")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i32>(OwnedFragment::testing("-2147483649.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_scientific() {
-			assert!(parse_primitive_int::<i32>(
-				OwnedFragment::testing("1e10")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i32>(OwnedFragment::testing("1e10")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_float_format() {
-			assert!(parse_primitive_int::<i32>(
-				OwnedFragment::testing("1.2.3")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i32>(OwnedFragment::testing("1.2.3")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing(" 123")
-				),
-				Ok(123)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing(" 123")), Ok(123));
 		}
 
 		#[test]
 		fn trimming_trailing_space() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("123 ")
-				),
-				Ok(123)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("123 ")), Ok(123));
 		}
 
 		#[test]
 		fn trimming_both_spaces() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing(" 123 ")
-				),
-				Ok(123)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing(" 123 ")), Ok(123));
 		}
 
 		#[test]
 		fn trimming_negative_leading_space() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing(" -456")
-				),
-				Ok(-456)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing(" -456")), Ok(-456));
 		}
 
 		#[test]
 		fn trimming_negative_trailing_space() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing("-456 ")
-				),
-				Ok(-456)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing("-456 ")), Ok(-456));
 		}
 
 		#[test]
 		fn trimming_negative_both_spaces() {
-			assert_eq!(
-				parse_primitive_int::<i32>(
-					OwnedFragment::testing(" -456 ")
-				),
-				Ok(-456)
-			);
+			assert_eq!(parse_primitive_int::<i32>(OwnedFragment::testing(" -456 ")), Ok(-456));
 		}
 	}
 
@@ -1269,42 +850,23 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing("1000000000")
-				),
-				Ok(1000000000)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing("1000000000")), Ok(1000000000));
 		}
 
 		#[test]
 		fn test_valid_negative() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing("-1000000000")
-				),
-				Ok(-1000000000)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing("-1000000000")), Ok(-1000000000));
 		}
 
 		#[test]
 		fn test_valid_max() {
 			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing(
-						"9223372036854775807"
-					)
-				),
+				parse_primitive_int::<i64>(OwnedFragment::testing("9223372036854775807")),
 				Ok(i64::MAX)
 			);
 		}
@@ -1312,159 +874,93 @@ mod tests {
 		#[test]
 		fn test_valid_min() {
 			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing(
-						"-9223372036854775808"
-					)
-				),
+				parse_primitive_int::<i64>(OwnedFragment::testing("-9223372036854775808")),
 				Ok(i64::MIN)
 			);
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_int::<i64>(
-				OwnedFragment::testing("9223372036854775808")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i64>(OwnedFragment::testing("9223372036854775808")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_int::<i64>(
-				OwnedFragment::testing("-9223372036854775809")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i64>(OwnedFragment::testing("-9223372036854775809")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_int::<i64>(
-				OwnedFragment::testing("invalid")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i64>(OwnedFragment::testing("invalid")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_int::<i64>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i64>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing("12345.67")
-				),
-				Ok(12345)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing("12345.67")), Ok(12345));
 		}
 
 		#[test]
 		fn test_float_truncation_negative() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing("-12345.67")
-				),
-				Ok(-12345)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing("-12345.67")), Ok(-12345));
 		}
 
 		#[test]
 		fn test_float_scientific_notation() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing("1e10")
-				),
-				Ok(10000000000)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing("1e10")), Ok(10000000000));
 		}
 
 		#[test]
 		fn test_float_scientific_large() {
 			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing("9.223e18")
-				),
+				parse_primitive_int::<i64>(OwnedFragment::testing("9.223e18")),
 				Ok(9223000000000000000)
 			);
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_int::<i64>(
-				OwnedFragment::testing("1e19")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i64>(OwnedFragment::testing("1e19")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_negative() {
-			assert!(parse_primitive_int::<i64>(
-				OwnedFragment::testing("-1e19")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i64>(OwnedFragment::testing("-1e19")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing(" 1000000000")
-				),
-				Ok(1000000000)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing(" 1000000000")), Ok(1000000000));
 		}
 
 		#[test]
 		fn trimming_trailing_space() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing("1000000000 ")
-				),
-				Ok(1000000000)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing("1000000000 ")), Ok(1000000000));
 		}
 
 		#[test]
 		fn trimming_both_spaces() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing(" 1000000000 ")
-				),
-				Ok(1000000000)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing(" 1000000000 ")), Ok(1000000000));
 		}
 
 		#[test]
 		fn trimming_negative_leading_space() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing(" -1000000000")
-				),
-				Ok(-1000000000)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing(" -1000000000")), Ok(-1000000000));
 		}
 
 		#[test]
 		fn trimming_negative_trailing_space() {
-			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing("-1000000000 ")
-				),
-				Ok(-1000000000)
-			);
+			assert_eq!(parse_primitive_int::<i64>(OwnedFragment::testing("-1000000000 ")), Ok(-1000000000));
 		}
 
 		#[test]
 		fn trimming_negative_both_spaces() {
 			assert_eq!(
-				parse_primitive_int::<i64>(
-					OwnedFragment::testing(" -1000000000 ")
-				),
+				parse_primitive_int::<i64>(OwnedFragment::testing(" -1000000000 ")),
 				Ok(-1000000000)
 			);
 		}
@@ -1475,22 +971,13 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_int::<i128>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						"12345678901234567890"
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing("12345678901234567890")),
 				Ok(12345678901234567890)
 			);
 		}
@@ -1498,11 +985,7 @@ mod tests {
 		#[test]
 		fn test_valid_negative() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						"-12345678901234567890"
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing("-12345678901234567890")),
 				Ok(-12345678901234567890)
 			);
 		}
@@ -1510,11 +993,7 @@ mod tests {
 		#[test]
 		fn test_valid_max() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						&i128::MAX.to_string()
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing(&i128::MAX.to_string())),
 				Ok(i128::MAX)
 			);
 		}
@@ -1522,69 +1001,46 @@ mod tests {
 		#[test]
 		fn test_valid_min() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						&i128::MIN.to_string()
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing(&i128::MIN.to_string())),
 				Ok(i128::MIN)
 			);
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_int::<i128>(
-				OwnedFragment::testing(
-					"170141183460469231731687303715884105728"
-				)
-			)
+			assert!(parse_primitive_int::<i128>(OwnedFragment::testing(
+				"170141183460469231731687303715884105728"
+			))
 			.is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_int::<i128>(
-				OwnedFragment::testing(
-					"-170141183460469231731687303715884105729"
-				)
-			)
+			assert!(parse_primitive_int::<i128>(OwnedFragment::testing(
+				"-170141183460469231731687303715884105729"
+			))
 			.is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_int::<i128>(
-				OwnedFragment::testing("abc")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i128>(OwnedFragment::testing("abc")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_int::<i128>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i128>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
-			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing("123456789.123")
-				),
-				Ok(123456789)
-			);
+			assert_eq!(parse_primitive_int::<i128>(OwnedFragment::testing("123456789.123")), Ok(123456789));
 		}
 
 		#[test]
 		fn test_float_truncation_negative() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						"-123456789.123"
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing("-123456789.123")),
 				Ok(-123456789)
 			);
 		}
@@ -1592,37 +1048,25 @@ mod tests {
 		#[test]
 		fn test_float_scientific_notation() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing("1e20")
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing("1e20")),
 				Ok(100000000000000000000)
 			);
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_int::<i128>(
-				OwnedFragment::testing("1e40")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i128>(OwnedFragment::testing("1e40")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_negative() {
-			assert!(parse_primitive_int::<i128>(
-				OwnedFragment::testing("-1e40")
-			)
-			.is_err());
+			assert!(parse_primitive_int::<i128>(OwnedFragment::testing("-1e40")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						" 12345678901234567890"
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing(" 12345678901234567890")),
 				Ok(12345678901234567890)
 			);
 		}
@@ -1630,11 +1074,7 @@ mod tests {
 		#[test]
 		fn trimming_trailing_space() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						"12345678901234567890 "
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing("12345678901234567890 ")),
 				Ok(12345678901234567890)
 			);
 		}
@@ -1642,11 +1082,7 @@ mod tests {
 		#[test]
 		fn trimming_both_spaces() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						" 12345678901234567890 "
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing(" 12345678901234567890 ")),
 				Ok(12345678901234567890)
 			);
 		}
@@ -1654,11 +1090,7 @@ mod tests {
 		#[test]
 		fn trimming_negative_leading_space() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						" -12345678901234567890"
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing(" -12345678901234567890")),
 				Ok(-12345678901234567890)
 			);
 		}
@@ -1666,11 +1098,7 @@ mod tests {
 		#[test]
 		fn trimming_negative_trailing_space() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						"-12345678901234567890 "
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing("-12345678901234567890 ")),
 				Ok(-12345678901234567890)
 			);
 		}
@@ -1678,11 +1106,7 @@ mod tests {
 		#[test]
 		fn trimming_negative_both_spaces() {
 			assert_eq!(
-				parse_primitive_int::<i128>(
-					OwnedFragment::testing(
-						" -12345678901234567890 "
-					)
-				),
+				parse_primitive_int::<i128>(OwnedFragment::testing(" -12345678901234567890 ")),
 				Ok(-12345678901234567890)
 			);
 		}
@@ -1693,184 +1117,102 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing("128")
-				),
-				Ok(128)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing("128")), Ok(128));
 		}
 
 		#[test]
 		fn test_valid_max() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing("255")
-				),
-				Ok(255)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing("255")), Ok(255));
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_uint::<u8>(
-				OwnedFragment::testing("256")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u8>(OwnedFragment::testing("256")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_uint::<u8>(
-				OwnedFragment::testing("-1")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u8>(OwnedFragment::testing("-1")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_uint::<u8>(
-				OwnedFragment::testing("abc")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u8>(OwnedFragment::testing("abc")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_uint::<u8>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u8>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing("128.9")
-				),
-				Ok(128)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing("128.9")), Ok(128));
 		}
 
 		#[test]
 		fn test_float_truncation_zero() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing("0.0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing("0.0")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_truncation_max() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing("255.9")
-				),
-				Ok(255)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing("255.9")), Ok(255));
 		}
 
 		#[test]
 		fn test_float_scientific_notation() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing("2e2")
-				),
-				Ok(200)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing("2e2")), Ok(200));
 		}
 
 		#[test]
 		fn test_float_scientific_small() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing("1.23e-1")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing("1.23e-1")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_negative() {
-			assert!(parse_primitive_uint::<u8>(
-				OwnedFragment::testing("-1.5")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u8>(OwnedFragment::testing("-1.5")).is_err());
 		}
 
 		#[test]
 		fn test_float_negative_zero() {
-			assert!(parse_primitive_uint::<u8>(
-				OwnedFragment::testing("-0.1")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u8>(OwnedFragment::testing("-0.1")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_uint::<u8>(
-				OwnedFragment::testing("256.0")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u8>(OwnedFragment::testing("256.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_scientific() {
-			assert!(parse_primitive_uint::<u8>(
-				OwnedFragment::testing("1e3")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u8>(OwnedFragment::testing("1e3")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_float_format() {
-			assert!(parse_primitive_uint::<u8>(
-				OwnedFragment::testing("1.2.3")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u8>(OwnedFragment::testing("1.2.3")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing(" 128")
-				),
-				Ok(128)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing(" 128")), Ok(128));
 		}
 
 		#[test]
 		fn trimming_trailing_space() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing("128 ")
-				),
-				Ok(128)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing("128 ")), Ok(128));
 		}
 
 		#[test]
 		fn trimming_both_spaces() {
-			assert_eq!(
-				parse_primitive_uint::<u8>(
-					OwnedFragment::testing(" 128 ")
-				),
-				Ok(128)
-			);
+			assert_eq!(parse_primitive_uint::<u8>(OwnedFragment::testing(" 128 ")), Ok(128));
 		}
 	}
 
@@ -1879,148 +1221,82 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_uint::<u16>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_uint::<u16>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
-			assert_eq!(
-				parse_primitive_uint::<u16>(
-					OwnedFragment::testing("32768")
-				),
-				Ok(32768)
-			);
+			assert_eq!(parse_primitive_uint::<u16>(OwnedFragment::testing("32768")), Ok(32768));
 		}
 
 		#[test]
 		fn test_valid_max() {
-			assert_eq!(
-				parse_primitive_uint::<u16>(
-					OwnedFragment::testing("65535")
-				),
-				Ok(65535)
-			);
+			assert_eq!(parse_primitive_uint::<u16>(OwnedFragment::testing("65535")), Ok(65535));
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_uint::<u16>(
-				OwnedFragment::testing("65536")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u16>(OwnedFragment::testing("65536")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_uint::<u16>(
-				OwnedFragment::testing("-1")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u16>(OwnedFragment::testing("-1")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_uint::<u16>(
-				OwnedFragment::testing("invalid")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u16>(OwnedFragment::testing("invalid")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_uint::<u16>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u16>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
-			assert_eq!(
-				parse_primitive_uint::<u16>(
-					OwnedFragment::testing("32768.7")
-				),
-				Ok(32768)
-			);
+			assert_eq!(parse_primitive_uint::<u16>(OwnedFragment::testing("32768.7")), Ok(32768));
 		}
 
 		#[test]
 		fn test_float_truncation_max() {
-			assert_eq!(
-				parse_primitive_uint::<u16>(
-					OwnedFragment::testing("65535.9")
-				),
-				Ok(65535)
-			);
+			assert_eq!(parse_primitive_uint::<u16>(OwnedFragment::testing("65535.9")), Ok(65535));
 		}
 
 		#[test]
 		fn test_float_scientific_notation() {
-			assert_eq!(
-				parse_primitive_uint::<u16>(
-					OwnedFragment::testing("6.5e4")
-				),
-				Ok(65000)
-			);
+			assert_eq!(parse_primitive_uint::<u16>(OwnedFragment::testing("6.5e4")), Ok(65000));
 		}
 
 		#[test]
 		fn test_float_negative() {
-			assert!(parse_primitive_uint::<u16>(
-				OwnedFragment::testing("-100.0")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u16>(OwnedFragment::testing("-100.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_uint::<u16>(
-				OwnedFragment::testing("65536.0")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u16>(OwnedFragment::testing("65536.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_scientific() {
-			assert!(parse_primitive_uint::<u16>(
-				OwnedFragment::testing("1e5")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u16>(OwnedFragment::testing("1e5")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
-			assert_eq!(
-				parse_primitive_uint::<u16>(
-					OwnedFragment::testing(" 32768")
-				),
-				Ok(32768)
-			);
+			assert_eq!(parse_primitive_uint::<u16>(OwnedFragment::testing(" 32768")), Ok(32768));
 		}
 
 		#[test]
 		fn trimming_trailing_space() {
-			assert_eq!(
-				parse_primitive_uint::<u16>(
-					OwnedFragment::testing("32768 ")
-				),
-				Ok(32768)
-			);
+			assert_eq!(parse_primitive_uint::<u16>(OwnedFragment::testing("32768 ")), Ok(32768));
 		}
 
 		#[test]
 		fn trimming_both_spaces() {
-			assert_eq!(
-				parse_primitive_uint::<u16>(
-					OwnedFragment::testing(" 32768 ")
-				),
-				Ok(32768)
-			);
+			assert_eq!(parse_primitive_uint::<u16>(OwnedFragment::testing(" 32768 ")), Ok(32768));
 		}
 	}
 
@@ -2029,202 +1305,112 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("1000000")
-				),
-				Ok(1000000)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("1000000")), Ok(1000000));
 		}
 
 		#[test]
 		fn test_valid_max() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("4294967295")
-				),
-				Ok(4294967295)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("4294967295")), Ok(4294967295));
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("4294967296")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("4294967296")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("-1")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("-1")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("text")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("text")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("3.14")
-				),
-				Ok(3)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("3.14")), Ok(3));
 		}
 
 		#[test]
 		fn test_float_truncation_zero() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("0.0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("0.0")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_truncation_large() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("42.999")
-				),
-				Ok(42)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("42.999")), Ok(42));
 		}
 
 		#[test]
 		fn test_float_scientific_notation() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("1e+2")
-				),
-				Ok(100)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("1e+2")), Ok(100));
 		}
 
 		#[test]
 		fn test_float_scientific_decimal() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("2.5e3")
-				),
-				Ok(2500)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("2.5e3")), Ok(2500));
 		}
 
 		#[test]
 		fn test_float_scientific_small() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("1.23e-1")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("1.23e-1")), Ok(0));
 		}
 
 		#[test]
 		fn test_float_negative() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("-3.14")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("-3.14")).is_err());
 		}
 
 		#[test]
 		fn test_float_negative_small() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("-0.1")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("-0.1")).is_err());
 		}
 
 		#[test]
 		fn test_float_negative_scientific() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("-1e2")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("-1e2")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("4294967296.0")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("4294967296.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_scientific() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("1e10")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("1e10")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_float_format() {
-			assert!(parse_primitive_uint::<u32>(
-				OwnedFragment::testing("1.2.3")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u32>(OwnedFragment::testing("1.2.3")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing(" 1000000")
-				),
-				Ok(1000000)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing(" 1000000")), Ok(1000000));
 		}
 
 		#[test]
 		fn trimming_trailing_space() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing("1000000 ")
-				),
-				Ok(1000000)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing("1000000 ")), Ok(1000000));
 		}
 
 		#[test]
 		fn trimming_both_spaces() {
-			assert_eq!(
-				parse_primitive_uint::<u32>(
-					OwnedFragment::testing(" 1000000 ")
-				),
-				Ok(1000000)
-			);
+			assert_eq!(parse_primitive_uint::<u32>(OwnedFragment::testing(" 1000000 ")), Ok(1000000));
 		}
 	}
 
@@ -2233,20 +1419,13 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_uint::<u64>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_uint::<u64>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
 			assert_eq!(
-				parse_primitive_uint::<u64>(
-					OwnedFragment::testing("1000000000000")
-				),
+				parse_primitive_uint::<u64>(OwnedFragment::testing("1000000000000")),
 				Ok(1000000000000)
 			);
 		}
@@ -2254,99 +1433,60 @@ mod tests {
 		#[test]
 		fn test_valid_max() {
 			assert_eq!(
-				parse_primitive_uint::<u64>(
-					OwnedFragment::testing(
-						"18446744073709551615"
-					)
-				),
+				parse_primitive_uint::<u64>(OwnedFragment::testing("18446744073709551615")),
 				Ok(u64::MAX)
 			);
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_uint::<u64>(
-				OwnedFragment::testing("18446744073709551616")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u64>(OwnedFragment::testing("18446744073709551616")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_uint::<u64>(
-				OwnedFragment::testing("-1")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u64>(OwnedFragment::testing("-1")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_uint::<u64>(
-				OwnedFragment::testing("not_valid")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u64>(OwnedFragment::testing("not_valid")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_uint::<u64>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u64>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
-			assert_eq!(
-				parse_primitive_uint::<u64>(
-					OwnedFragment::testing("123456789.123")
-				),
-				Ok(123456789)
-			);
+			assert_eq!(parse_primitive_uint::<u64>(OwnedFragment::testing("123456789.123")), Ok(123456789));
 		}
 
 		#[test]
 		fn test_float_scientific_notation() {
-			assert_eq!(
-				parse_primitive_uint::<u64>(
-					OwnedFragment::testing("1e12")
-				),
-				Ok(1000000000000)
-			);
+			assert_eq!(parse_primitive_uint::<u64>(OwnedFragment::testing("1e12")), Ok(1000000000000));
 		}
 
 		#[test]
 		fn test_float_negative() {
-			assert!(parse_primitive_uint::<u64>(
-				OwnedFragment::testing("-1.0")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u64>(OwnedFragment::testing("-1.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_uint::<u64>(
-				OwnedFragment::testing("2e19")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u64>(OwnedFragment::testing("2e19")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_scientific() {
-			assert!(parse_primitive_uint::<u64>(
-				OwnedFragment::testing("1e20")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u64>(OwnedFragment::testing("1e20")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
 			assert_eq!(
-				parse_primitive_uint::<u64>(
-					OwnedFragment::testing(
-						" 1000000000000"
-					)
-				),
+				parse_primitive_uint::<u64>(OwnedFragment::testing(" 1000000000000")),
 				Ok(1000000000000)
 			);
 		}
@@ -2354,11 +1494,7 @@ mod tests {
 		#[test]
 		fn trimming_trailing_space() {
 			assert_eq!(
-				parse_primitive_uint::<u64>(
-					OwnedFragment::testing(
-						"1000000000000 "
-					)
-				),
+				parse_primitive_uint::<u64>(OwnedFragment::testing("1000000000000 ")),
 				Ok(1000000000000)
 			);
 		}
@@ -2366,11 +1502,7 @@ mod tests {
 		#[test]
 		fn trimming_both_spaces() {
 			assert_eq!(
-				parse_primitive_uint::<u64>(
-					OwnedFragment::testing(
-						" 1000000000000 "
-					)
-				),
+				parse_primitive_uint::<u64>(OwnedFragment::testing(" 1000000000000 ")),
 				Ok(1000000000000)
 			);
 		}
@@ -2381,22 +1513,13 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_primitive_uint::<u128>(
-					OwnedFragment::testing("0")
-				),
-				Ok(0)
-			);
+			assert_eq!(parse_primitive_uint::<u128>(OwnedFragment::testing("0")), Ok(0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
 			assert_eq!(
-				parse_primitive_uint::<u128>(
-					OwnedFragment::testing(
-						"12345678901234567890"
-					)
-				),
+				parse_primitive_uint::<u128>(OwnedFragment::testing("12345678901234567890")),
 				Ok(12345678901234567890)
 			);
 		}
@@ -2404,55 +1527,38 @@ mod tests {
 		#[test]
 		fn test_valid_max() {
 			assert_eq!(
-				parse_primitive_uint::<u128>(
-					OwnedFragment::testing(
-						&u128::MAX.to_string()
-					)
-				),
+				parse_primitive_uint::<u128>(OwnedFragment::testing(&u128::MAX.to_string())),
 				Ok(u128::MAX)
 			);
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_primitive_uint::<u128>(
-				OwnedFragment::testing(
-					"340282366920938463463374607431768211456"
-				)
-			)
+			assert!(parse_primitive_uint::<u128>(OwnedFragment::testing(
+				"340282366920938463463374607431768211456"
+			))
 			.is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_primitive_uint::<u128>(
-				OwnedFragment::testing("-1")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u128>(OwnedFragment::testing("-1")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_primitive_uint::<u128>(
-				OwnedFragment::testing("abc")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u128>(OwnedFragment::testing("abc")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_primitive_uint::<u128>(
-				OwnedFragment::testing("")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u128>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_float_truncation_positive() {
 			assert_eq!(
-				parse_primitive_uint::<u128>(
-					OwnedFragment::testing("123456789.999")
-				),
+				parse_primitive_uint::<u128>(OwnedFragment::testing("123456789.999")),
 				Ok(123456789)
 			);
 		}
@@ -2460,45 +1566,30 @@ mod tests {
 		#[test]
 		fn test_float_scientific_notation() {
 			assert_eq!(
-				parse_primitive_uint::<u128>(
-					OwnedFragment::testing("1e20")
-				),
+				parse_primitive_uint::<u128>(OwnedFragment::testing("1e20")),
 				Ok(100000000000000000000)
 			);
 		}
 
 		#[test]
 		fn test_float_negative() {
-			assert!(parse_primitive_uint::<u128>(
-				OwnedFragment::testing("-1.0")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u128>(OwnedFragment::testing("-1.0")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_positive() {
-			assert!(parse_primitive_uint::<u128>(
-				OwnedFragment::testing("1e40")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u128>(OwnedFragment::testing("1e40")).is_err());
 		}
 
 		#[test]
 		fn test_float_overflow_scientific() {
-			assert!(parse_primitive_uint::<u128>(
-				OwnedFragment::testing("1e50")
-			)
-			.is_err());
+			assert!(parse_primitive_uint::<u128>(OwnedFragment::testing("1e50")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
 			assert_eq!(
-				parse_primitive_uint::<u128>(
-					OwnedFragment::testing(
-						" 12345678901234567890"
-					)
-				),
+				parse_primitive_uint::<u128>(OwnedFragment::testing(" 12345678901234567890")),
 				Ok(12345678901234567890)
 			);
 		}
@@ -2506,11 +1597,7 @@ mod tests {
 		#[test]
 		fn trimming_trailing_space() {
 			assert_eq!(
-				parse_primitive_uint::<u128>(
-					OwnedFragment::testing(
-						"12345678901234567890 "
-					)
-				),
+				parse_primitive_uint::<u128>(OwnedFragment::testing("12345678901234567890 ")),
 				Ok(12345678901234567890)
 			);
 		}
@@ -2518,11 +1605,7 @@ mod tests {
 		#[test]
 		fn trimming_both_spaces() {
 			assert_eq!(
-				parse_primitive_uint::<u128>(
-					OwnedFragment::testing(
-						" 12345678901234567890 "
-					)
-				),
+				parse_primitive_uint::<u128>(OwnedFragment::testing(" 12345678901234567890 ")),
 				Ok(12345678901234567890)
 			);
 		}
@@ -2533,184 +1616,102 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					"0.0"
-				)),
-				Ok(0.0)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing("0.0")), Ok(0.0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					"1.5"
-				)),
-				Ok(1.5)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing("1.5")), Ok(1.5));
 		}
 
 		#[test]
 		fn test_valid_negative() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					"-3.14"
-				)),
-				Ok(-3.14)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing("-3.14")), Ok(-3.14));
 		}
 
 		#[test]
 		fn test_valid_integer() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					"42"
-				)),
-				Ok(42.0)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing("42")), Ok(42.0));
 		}
 
 		#[test]
 		fn test_valid_scientific() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					"1e2"
-				)),
-				Ok(100.0)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing("1e2")), Ok(100.0));
 		}
 
 		#[test]
 		fn test_valid_scientific_negative() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					"1e-2"
-				)),
-				Ok(0.01)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing("1e-2")), Ok(0.01));
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_float::<f32>(OwnedFragment::testing(
-				"3.5e38"
-			))
-			.is_err());
+			assert!(parse_float::<f32>(OwnedFragment::testing("3.5e38")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_float::<f32>(OwnedFragment::testing(
-				"-3.5e38"
-			))
-			.is_err());
+			assert!(parse_float::<f32>(OwnedFragment::testing("-3.5e38")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_float::<f32>(OwnedFragment::testing(
-				"abc"
-			))
-			.is_err());
+			assert!(parse_float::<f32>(OwnedFragment::testing("abc")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_float::<f32>(OwnedFragment::testing(""))
-				.is_err());
+			assert!(parse_float::<f32>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_whitespace() {
-			assert!(parse_float::<f32>(OwnedFragment::testing(
-				"   "
-			))
-			.is_err());
+			assert!(parse_float::<f32>(OwnedFragment::testing("   ")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_nan() {
-			assert!(parse_float::<f32>(OwnedFragment::testing(
-				"NaN"
-			))
-			.is_err());
+			assert!(parse_float::<f32>(OwnedFragment::testing("NaN")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_nan_lowercase() {
-			assert!(parse_float::<f32>(OwnedFragment::testing(
-				"nan"
-			))
-			.is_err());
+			assert!(parse_float::<f32>(OwnedFragment::testing("nan")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_multiple_dots() {
-			assert!(parse_float::<f32>(OwnedFragment::testing(
-				"1.2.3"
-			))
-			.is_err());
+			assert!(parse_float::<f32>(OwnedFragment::testing("1.2.3")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					" 1.5"
-				)),
-				Ok(1.5)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing(" 1.5")), Ok(1.5));
 		}
 
 		#[test]
 		fn trimming_trailing_space() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					"1.5 "
-				)),
-				Ok(1.5)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing("1.5 ")), Ok(1.5));
 		}
 
 		#[test]
 		fn trimming_both_spaces() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					" 1.5 "
-				)),
-				Ok(1.5)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing(" 1.5 ")), Ok(1.5));
 		}
 
 		#[test]
 		fn trimming_negative_leading_space() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					" -3.14"
-				)),
-				Ok(-3.14)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing(" -3.14")), Ok(-3.14));
 		}
 
 		#[test]
 		fn trimming_negative_trailing_space() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					"-3.14 "
-				)),
-				Ok(-3.14)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing("-3.14 ")), Ok(-3.14));
 		}
 
 		#[test]
 		fn trimming_negative_both_spaces() {
-			assert_eq!(
-				parse_float::<f32>(OwnedFragment::testing(
-					" -3.14 "
-				)),
-				Ok(-3.14)
-			);
+			assert_eq!(parse_float::<f32>(OwnedFragment::testing(" -3.14 ")), Ok(-3.14));
 		}
 	}
 
@@ -2719,184 +1720,102 @@ mod tests {
 
 		#[test]
 		fn test_valid_zero() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					"0.0"
-				)),
-				Ok(0.0)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing("0.0")), Ok(0.0));
 		}
 
 		#[test]
 		fn test_valid_positive() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					"1.23"
-				)),
-				Ok(1.23)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing("1.23")), Ok(1.23));
 		}
 
 		#[test]
 		fn test_valid_negative() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					"-0.001"
-				)),
-				Ok(-0.001)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing("-0.001")), Ok(-0.001));
 		}
 
 		#[test]
 		fn test_valid_integer() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					"42"
-				)),
-				Ok(42.0)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing("42")), Ok(42.0));
 		}
 
 		#[test]
 		fn test_valid_scientific() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					"1e10"
-				)),
-				Ok(1e10)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing("1e10")), Ok(1e10));
 		}
 
 		#[test]
 		fn test_valid_scientific_negative() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					"1e-10"
-				)),
-				Ok(1e-10)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing("1e-10")), Ok(1e-10));
 		}
 
 		#[test]
 		fn test_overflow_positive() {
-			assert!(parse_float::<f64>(OwnedFragment::testing(
-				"1e400"
-			))
-			.is_err());
+			assert!(parse_float::<f64>(OwnedFragment::testing("1e400")).is_err());
 		}
 
 		#[test]
 		fn test_overflow_negative() {
-			assert!(parse_float::<f64>(OwnedFragment::testing(
-				"-1e400"
-			))
-			.is_err());
+			assert!(parse_float::<f64>(OwnedFragment::testing("-1e400")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_text() {
-			assert!(parse_float::<f64>(OwnedFragment::testing(
-				"abc"
-			))
-			.is_err());
+			assert!(parse_float::<f64>(OwnedFragment::testing("abc")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_empty() {
-			assert!(parse_float::<f64>(OwnedFragment::testing(""))
-				.is_err());
+			assert!(parse_float::<f64>(OwnedFragment::testing("")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_whitespace() {
-			assert!(parse_float::<f64>(OwnedFragment::testing(
-				"   "
-			))
-			.is_err());
+			assert!(parse_float::<f64>(OwnedFragment::testing("   ")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_nan() {
-			assert!(parse_float::<f64>(OwnedFragment::testing(
-				"NaN"
-			))
-			.is_err());
+			assert!(parse_float::<f64>(OwnedFragment::testing("NaN")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_nan_mixed_case() {
-			assert!(parse_float::<f64>(OwnedFragment::testing(
-				"NaN"
-			))
-			.is_err());
+			assert!(parse_float::<f64>(OwnedFragment::testing("NaN")).is_err());
 		}
 
 		#[test]
 		fn test_invalid_multiple_dots() {
-			assert!(parse_float::<f64>(OwnedFragment::testing(
-				"1.2.3"
-			))
-			.is_err());
+			assert!(parse_float::<f64>(OwnedFragment::testing("1.2.3")).is_err());
 		}
 
 		#[test]
 		fn trimming_leading_space() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					" 1.23"
-				)),
-				Ok(1.23)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing(" 1.23")), Ok(1.23));
 		}
 
 		#[test]
 		fn trimming_trailing_space() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					"1.23 "
-				)),
-				Ok(1.23)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing("1.23 ")), Ok(1.23));
 		}
 
 		#[test]
 		fn trimming_both_spaces() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					" 1.23 "
-				)),
-				Ok(1.23)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing(" 1.23 ")), Ok(1.23));
 		}
 
 		#[test]
 		fn trimming_negative_leading_space() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					" -0.001"
-				)),
-				Ok(-0.001)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing(" -0.001")), Ok(-0.001));
 		}
 
 		#[test]
 		fn trimming_negative_trailing_space() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					"-0.001 "
-				)),
-				Ok(-0.001)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing("-0.001 ")), Ok(-0.001));
 		}
 
 		#[test]
 		fn trimming_negative_both_spaces() {
-			assert_eq!(
-				parse_float::<f64>(OwnedFragment::testing(
-					" -0.001 "
-				)),
-				Ok(-0.001)
-			);
+			assert_eq!(parse_float::<f64>(OwnedFragment::testing(" -0.001 ")), Ok(-0.001));
 		}
 	}
 }

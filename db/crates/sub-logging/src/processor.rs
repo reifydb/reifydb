@@ -87,8 +87,7 @@ impl LogProcessor {
 			// Track backend errors while preventing logging
 			// failures from affecting the system
 			if let Err(_e) = backend.write(&records) {
-				self.backend_errors
-					.fetch_add(1, Ordering::Relaxed);
+				self.backend_errors.fetch_add(1, Ordering::Relaxed);
 				// In production, might want to log to stderr or
 				// a fallback logger eprintln!("Logging
 				// backend error: {:?}", e);
@@ -111,12 +110,10 @@ impl LogProcessor {
 		let backends = self.backends.read();
 		for backend in backends.iter() {
 			if let Err(_e) = backend.write(&records) {
-				self.backend_errors
-					.fetch_add(1, Ordering::Relaxed);
+				self.backend_errors.fetch_add(1, Ordering::Relaxed);
 			}
 			if let Err(_e) = backend.flush() {
-				self.backend_errors
-					.fetch_add(1, Ordering::Relaxed);
+				self.backend_errors.fetch_add(1, Ordering::Relaxed);
 			}
 		}
 

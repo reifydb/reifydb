@@ -19,13 +19,12 @@ pub fn take_negative_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 			"Negative values are not meaningful in this context".to_string(),
 			"Valid examples: TAKE 10, TAKE 0, TAKE 100".to_string(),
 		],
-		cause: None}
+		cause: None,
+	}
 }
 
 /// Missing aggregate map block error
-pub fn missing_aggregate_map_block<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn missing_aggregate_map_block<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
 		code: "AGGREGATE_001".to_string(),
@@ -44,9 +43,7 @@ pub fn missing_aggregate_map_block<'a>(
 }
 
 /// Multiple aggregate map expressions without braces error
-pub fn aggregate_multiple_map_without_braces<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn aggregate_multiple_map_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
 		code: "AGGREGATE_002".to_string(),
@@ -65,9 +62,7 @@ pub fn aggregate_multiple_map_without_braces<'a>(
 }
 
 /// Multiple aggregate by expressions without braces error
-pub fn aggregate_multiple_by_without_braces<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn aggregate_multiple_by_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
 		code: "AGGREGATE_003".to_string(),
@@ -86,9 +81,7 @@ pub fn aggregate_multiple_by_without_braces<'a>(
 }
 
 /// Multiple SELECT expressions without braces error
-pub fn select_multiple_expressions_without_braces<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn select_multiple_expressions_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
 		code: "SELECT_001".to_string(),
@@ -107,9 +100,7 @@ pub fn select_multiple_expressions_without_braces<'a>(
 }
 
 /// Multiple DISTINCT columns without braces error
-pub fn distinct_multiple_columns_without_braces<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn distinct_multiple_columns_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
 		code: "DISTINCT_001".to_string(),
@@ -129,9 +120,7 @@ pub fn distinct_multiple_columns_without_braces<'a>(
 }
 
 /// Multiple MAP expressions without braces error
-pub fn map_multiple_expressions_without_braces<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn map_multiple_expressions_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
 		code: "MAP_001".to_string(),
@@ -140,19 +129,22 @@ pub fn map_multiple_expressions_without_braces<'a>(
 		column: None,
 		fragment,
 		label: Some("missing curly braces around expressions".to_string()),
-		help: Some("Wrap multiple MAP expressions in curly braces, e.g., 'MAP { name, age, email } FROM users'".to_string()),
+		help: Some(
+			"Wrap multiple MAP expressions in curly braces, e.g., 'MAP { name, age, email } FROM users'"
+				.to_string(),
+		),
 		notes: vec![
-			"When mapping multiple columns or expressions, use curly braces: MAP { expr1, expr2, ... }".to_string(),
+			"When mapping multiple columns or expressions, use curly braces: MAP { expr1, expr2, ... }"
+				.to_string(),
 			"Single expressions can be written without braces: MAP name FROM users".to_string(),
 			"Curly braces make the query more readable and unambiguous".to_string(),
 		],
-		cause: None}
+		cause: None,
+	}
 }
 
 /// Multiple EXTEND expressions without braces error
-pub fn extend_multiple_expressions_without_braces<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn extend_multiple_expressions_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
 		code: "EXTEND_001".to_string(),
@@ -171,9 +163,7 @@ pub fn extend_multiple_expressions_without_braces<'a>(
 }
 
 /// Multiple APPLY arguments without braces error
-pub fn apply_multiple_arguments_without_braces<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn apply_multiple_arguments_without_braces<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
 		code: "APPLY_001".to_string(),
@@ -182,11 +172,13 @@ pub fn apply_multiple_arguments_without_braces<'a>(
 		column: None,
 		fragment,
 		label: Some("missing curly braces around arguments".to_string()),
-		help: Some("Wrap multiple APPLY arguments in curly braces, e.g., 'APPLY operator_name { arg1, arg2 }'".to_string()),
+		help: Some("Wrap multiple APPLY arguments in curly braces, e.g., 'APPLY operator_name { arg1, arg2 }'"
+			.to_string()),
 		notes: vec![
 			"When applying operators with multiple arguments, use curly braces: APPLY operator { arg1, arg2, ... }".to_string(),
 			"Single arguments can be written without braces: APPLY running_sum amount".to_string(),
 			"No arguments should use empty braces: APPLY counter {}".to_string(),
 		],
-		cause: None}
+		cause: None,
+	}
 }

@@ -206,10 +206,7 @@ mod tests {
 	use crossbeam_channel::unbounded;
 
 	use super::super::{mock::with_mock_logger, *};
-	use crate::{
-		log, log_critical, log_debug, log_error, log_info, log_trace,
-		log_warn,
-	};
+	use crate::{log, log_critical, log_debug, log_error, log_info, log_trace, log_warn};
 
 	#[derive(Debug)]
 	#[allow(dead_code)]
@@ -292,16 +289,11 @@ mod tests {
 			let age = 30;
 			let city = "New York";
 
-			log_info!(
-				"{name} is {age} years old and lives in {city}"
-			);
+			log_info!("{name} is {age} years old and lives in {city}");
 		});
 
 		let record = receiver.try_recv().unwrap();
-		assert_eq!(
-			record.message,
-			"Alice is 30 years old and lives in New York"
-		);
+		assert_eq!(record.message, "Alice is 30 years old and lives in New York");
 	}
 
 	#[test]
@@ -317,9 +309,7 @@ mod tests {
 
 		let record = receiver.try_recv().unwrap();
 		assert!(record.message.contains("Found 5 items"));
-		assert!(record
-			.message
-			.contains("[\"apple\", \"banana\", \"orange\"]"));
+		assert!(record.message.contains("[\"apple\", \"banana\", \"orange\"]"));
 		assert_eq!(record.level, LogLevel::Warn);
 	}
 
@@ -373,10 +363,7 @@ mod tests {
 			let numbers = vec![1, 2, 3, 4, 5];
 
 			log_info!("Sum: {}", numbers.iter().sum::<i32>());
-			log_info!(
-				"Sum inline: {sum}",
-				sum = numbers.iter().sum::<i32>()
-			);
+			log_info!("Sum inline: {sum}", sum = numbers.iter().sum::<i32>());
 		});
 
 		let log1 = receiver.try_recv().unwrap();
@@ -449,10 +436,7 @@ mod tests {
 		});
 
 		let record = receiver.try_recv().unwrap();
-		assert_eq!(
-			record.message,
-			"Error occurred:\nConnection failed\nPlease retry"
-		);
+		assert_eq!(record.message, "Error occurred:\nConnection failed\nPlease retry");
 	}
 
 	#[test]

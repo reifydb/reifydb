@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta,
-	interface::TransactionId, row::EncodedRow,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::TransactionId, row::EncodedRow,
 };
 
 #[derive(Debug)]
@@ -44,19 +43,11 @@ pub trait VersionedCommit {
 }
 
 pub trait VersionedGet {
-	fn get(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> crate::Result<Option<Versioned>>;
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<Versioned>>;
 }
 
 pub trait VersionedContains {
-	fn contains(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> crate::Result<bool>;
+	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool>;
 }
 
 pub trait VersionedIter: Iterator<Item = Versioned> + Send {}
@@ -67,10 +58,7 @@ pub trait VersionedScan {
 	where
 		Self: 'a;
 
-	fn scan(
-		&self,
-		version: CommitVersion,
-	) -> crate::Result<Self::ScanIter<'_>>;
+	fn scan(&self, version: CommitVersion) -> crate::Result<Self::ScanIter<'_>>;
 }
 
 pub trait VersionedScanRev {
@@ -78,10 +66,7 @@ pub trait VersionedScanRev {
 	where
 		Self: 'a;
 
-	fn scan_rev(
-		&self,
-		version: CommitVersion,
-	) -> crate::Result<Self::ScanIterRev<'_>>;
+	fn scan_rev(&self, version: CommitVersion) -> crate::Result<Self::ScanIterRev<'_>>;
 }
 
 pub trait VersionedRange {
@@ -89,17 +74,9 @@ pub trait VersionedRange {
 	where
 		Self: 'a;
 
-	fn range(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-	) -> crate::Result<Self::RangeIter<'_>>;
+	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIter<'_>>;
 
-	fn prefix(
-		&self,
-		prefix: &EncodedKey,
-		version: CommitVersion,
-	) -> crate::Result<Self::RangeIter<'_>> {
+	fn prefix(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<Self::RangeIter<'_>> {
 		self.range(EncodedKeyRange::prefix(prefix), version)
 	}
 }
@@ -109,17 +86,9 @@ pub trait VersionedRangeRev {
 	where
 		Self: 'a;
 
-	fn range_rev(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-	) -> crate::Result<Self::RangeIterRev<'_>>;
+	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>>;
 
-	fn prefix_rev(
-		&self,
-		prefix: &EncodedKey,
-		version: CommitVersion,
-	) -> crate::Result<Self::RangeIterRev<'_>> {
+	fn prefix_rev(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>> {
 		self.range_rev(EncodedKeyRange::prefix(prefix), version)
 	}
 }
@@ -154,11 +123,7 @@ pub trait UnversionedContains {
 }
 
 pub trait UnversionedInsert: UnversionedCommit {
-	fn insert(
-		&mut self,
-		key: &EncodedKey,
-		row: EncodedRow,
-	) -> crate::Result<()> {
+	fn insert(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Set {
@@ -204,15 +169,9 @@ pub trait UnversionedRange {
 	where
 		Self: 'a;
 
-	fn range(
-		&self,
-		range: EncodedKeyRange,
-	) -> crate::Result<Self::Range<'_>>;
+	fn range(&self, range: EncodedKeyRange) -> crate::Result<Self::Range<'_>>;
 
-	fn prefix(
-		&self,
-		prefix: &EncodedKey,
-	) -> crate::Result<Self::Range<'_>> {
+	fn prefix(&self, prefix: &EncodedKey) -> crate::Result<Self::Range<'_>> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 }
@@ -222,15 +181,9 @@ pub trait UnversionedRangeRev {
 	where
 		Self: 'a;
 
-	fn range_rev(
-		&self,
-		range: EncodedKeyRange,
-	) -> crate::Result<Self::RangeRev<'_>>;
+	fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<Self::RangeRev<'_>>;
 
-	fn prefix_rev(
-		&self,
-		prefix: &EncodedKey,
-	) -> crate::Result<Self::RangeRev<'_>> {
+	fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<Self::RangeRev<'_>> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }

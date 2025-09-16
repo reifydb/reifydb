@@ -7,15 +7,12 @@ use reifydb_core::{
 	EncodedKey, JoinType,
 	flow::{FlowChange, FlowDiff, FlowNodeSchema},
 	interface::{
-		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId,
-		Transaction,
+		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId, Transaction,
 		evaluate::expression::{ColumnExpression, Expression},
 	},
 	row::EncodedRow,
 	util::CowVec,
-	value::columnar::{
-		Column, ColumnData, Columns, FullyQualified, SourceQualified,
-	},
+	value::columnar::{Column, ColumnData, Columns, FullyQualified, SourceQualified},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{RowNumber, Value};
@@ -107,22 +104,14 @@ impl JoinOperator {
 		self
 	}
 
-	pub fn with_source_suffixes(
-		mut self,
-		left_suffix: Option<String>,
-		right_suffix: Option<String>,
-	) -> Self {
+	pub fn with_source_suffixes(mut self, left_suffix: Option<String>, right_suffix: Option<String>) -> Self {
 		self.left_source_instance_suffix = left_suffix;
 		self.right_source_instance_suffix = right_suffix;
 		self
 	}
 
 	// Create encoded key for join state
-	fn make_join_key(
-		side: u8,
-		join_key_hash: u64,
-		row_id: RowNumber,
-	) -> EncodedKey {
+	fn make_join_key(side: u8, join_key_hash: u64, row_id: RowNumber) -> EncodedKey {
 		let mut key = Vec::new();
 		key.push(side);
 		key.extend(&join_key_hash.to_be_bytes());
@@ -131,10 +120,7 @@ impl JoinOperator {
 	}
 
 	// Create range for scanning join entries
-	fn make_join_range(
-		side: u8,
-		join_key_hash: u64,
-	) -> (Option<EncodedKey>, Option<EncodedKey>) {
+	fn make_join_range(side: u8, join_key_hash: u64) -> (Option<EncodedKey>, Option<EncodedKey>) {
 		let mut start = Vec::new();
 		start.push(side);
 		start.extend(&join_key_hash.to_be_bytes());
@@ -174,15 +160,12 @@ impl JoinOperator {
 					// Convert AccessSource to a simple
 					// Column expression with just the
 					// column name
-					Expression::Column(ColumnExpression(
-						access.column.clone(),
-					))
+					Expression::Column(ColumnExpression(access.column.clone()))
 				}
 				_ => expr.clone(),
 			};
 
-			let result =
-				evaluator.evaluate(&eval_ctx, &column_expr)?;
+			let result = evaluator.evaluate(&eval_ctx, &column_expr)?;
 			let value = result.data().get_value(row_idx);
 			keys.push(value);
 		}
@@ -218,9 +201,7 @@ impl JoinOperator {
 		let source_name = if let Some(first_col) = columns.first() {
 			match first_col {
 				Column::FullyQualified(fq) => fq.source.clone(),
-				Column::SourceQualified(sq) => {
-					sq.source.clone()
-				}
+				Column::SourceQualified(sq) => sq.source.clone(),
 				_ => "unknown".to_string(),
 			}
 		} else {
@@ -231,16 +212,11 @@ impl JoinOperator {
 		let key = Self::make_join_key(side, join_key_hash, row_id);
 
 		// Get existing row data if it exists
-		let mut column_values = if let Ok(existing) =
-			self.get(txn, &key)
-		{
+		let mut column_values = if let Ok(existing) = self.get(txn, &key) {
 			if !existing.as_ref().is_empty() {
 				// Deserialize existing row and start with its
 				// columns
-				if let Ok(existing_row) =
-					serde_json::from_slice::<StoredRow>(
-						existing.as_ref(),
-					) {
+				if let Ok(existing_row) = serde_json::from_slice::<StoredRow>(existing.as_ref()) {
 					existing_row.columns
 				} else {
 					HashMap::new()
@@ -265,8 +241,7 @@ impl JoinOperator {
 			columns: column_values,
 		};
 
-		let serialized =
-			serde_json::to_vec(&stored_row).unwrap_or_default();
+		let serialized = serde_json::to_vec(&stored_row).unwrap_or_default();
 		self.set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
 		Ok(())
 	}
@@ -282,15 +257,10 @@ impl JoinOperator {
 		let (start, end) = Self::make_join_range(side, join_key_hash);
 
 		// Scan the range for matching rows
-		if let Ok(iter) = self.range(txn, start.as_ref(), end.as_ref())
-		{
+		if let Ok(iter) = self.range(txn, start.as_ref(), end.as_ref()) {
 			for (_, row_data) in iter {
 				if !row_data.as_ref().is_empty() {
-					if let Ok(stored_row) =
-						serde_json::from_slice::<
-							StoredRow,
-						>(row_data.as_ref())
-					{
+					if let Ok(stored_row) = serde_json::from_slice::<StoredRow>(row_data.as_ref()) {
 						rows.push(stored_row);
 					}
 				}
@@ -329,22 +299,13 @@ impl JoinOperator {
 		// Try to get existing metadata
 		if let Ok(data) = self.get(txn, &metadata_key) {
 			if !data.as_ref().is_empty() {
-				if let Ok(mut metadata) = serde_json::from_slice::<
-					JoinMetadata,
-				>(data.as_ref())
-				{
+				if let Ok(mut metadata) = serde_json::from_slice::<JoinMetadata>(data.as_ref()) {
 					// Check if we need to track this node
-					let node_key = format!(
-						"node_{}",
-						from_node_id
-					);
+					let node_key = format!("node_{}", from_node_id);
 
 					// Determine if this is left or right
 					// based on tracked nodes
-					let is_left = if let Some(side) =
-						metadata.initialized_nodes
-							.get(&node_key)
-					{
+					let is_left = if let Some(side) = metadata.initialized_nodes.get(&node_key) {
 						*side == "left"
 					} else {
 						// First time seeing this node,
@@ -353,70 +314,47 @@ impl JoinOperator {
 						// already have a left node
 						// tracked, this must be
 						// right
-						let has_left = metadata
-							.initialized_nodes
-							.values()
-							.any(|v| v == "left");
+						let has_left = metadata.initialized_nodes.values().any(|v| v == "left");
 						let is_left = !has_left;
 
 						// Track this node
-						metadata.initialized_nodes
-							.insert(
-								node_key,
-								if is_left {
-									"left".to_string()
-								} else {
-									"right".to_string()
-								},
-							);
+						metadata.initialized_nodes.insert(
+							node_key,
+							if is_left {
+								"left".to_string()
+							} else {
+								"right".to_string()
+							},
+						);
 
 						// Update metadata with source
 						// information from columns if
 						// needed
-						if is_left
-							&& metadata
-								.left_source
-								.is_empty()
-						{
-							if let Some(first_col) =
-								columns.first()
-							{
+						if is_left && metadata.left_source.is_empty() {
+							if let Some(first_col) = columns.first() {
 								metadata.left_source = match first_col {
-								Column::FullyQualified(fq) => fq.source.clone(),
-								Column::SourceQualified(sq) => sq.source.clone(),
-								_ => "unknown".to_string(),
-							};
+									Column::FullyQualified(fq) => fq.source.clone(),
+									Column::SourceQualified(sq) => {
+										sq.source.clone()
+									}
+									_ => "unknown".to_string(),
+								};
 							}
-						} else if !is_left
-							&& metadata
-								.right_source
-								.is_empty()
-						{
-							if let Some(first_col) =
-								columns.first()
-							{
+						} else if !is_left && metadata.right_source.is_empty() {
+							if let Some(first_col) = columns.first() {
 								metadata.right_source = match first_col {
-								Column::FullyQualified(fq) => fq.source.clone(),
-								Column::SourceQualified(sq) => sq.source.clone(),
-								_ => "unknown".to_string(),
-							};
+									Column::FullyQualified(fq) => fq.source.clone(),
+									Column::SourceQualified(sq) => {
+										sq.source.clone()
+									}
+									_ => "unknown".to_string(),
+								};
 							}
 						}
 
 						// Save updated metadata
-						let data = serde_json::to_vec(
-							&metadata,
-						)
-						.unwrap_or_default();
-						self.set(
-							txn,
-							&metadata_key,
-							EncodedRow(
-								CowVec::new(
-									data,
-								),
-							),
-						)?;
+						let data = serde_json::to_vec(&metadata).unwrap_or_default();
+						self.set(txn, &metadata_key, EncodedRow(CowVec::new(data)))?;
 
 						is_left
 					};
@@ -430,9 +368,7 @@ impl JoinOperator {
 		let source_name = if let Some(first_col) = columns.first() {
 			match first_col {
 				Column::FullyQualified(fq) => fq.source.clone(),
-				Column::SourceQualified(sq) => {
-					sq.source.clone()
-				}
+				Column::SourceQualified(sq) => sq.source.clone(),
 				_ => "unknown".to_string(),
 			}
 		} else {
@@ -441,11 +377,7 @@ impl JoinOperator {
 
 		// Determine if this node should be left or right based on
 		// namespaces Check if the source matches the right namespace
-		let is_right_source = right_schema
-			.source_name
-			.as_ref()
-			.map(|s| s == &source_name)
-			.unwrap_or(false);
+		let is_right_source = right_schema.source_name.as_ref().map(|s| s == &source_name).unwrap_or(false);
 
 		let is_left = !is_right_source;
 
@@ -463,20 +395,10 @@ impl JoinOperator {
 			JoinMetadata {
 				join_instance_id: self.join_instance_id,
 				left_source: source_name.clone(),
-				right_source: right_schema
-					.source_name
-					.clone()
-					.unwrap_or_default(),
+				right_source: right_schema.source_name.clone().unwrap_or_default(),
 				initialized: false,
-				left_columns: columns
-					.iter()
-					.map(|c| c.name().to_string())
-					.collect(),
-				right_columns: right_schema
-					.columns
-					.iter()
-					.map(|c| c.name.clone())
-					.collect(),
+				left_columns: columns.iter().map(|c| c.name().to_string()).collect(),
+				right_columns: right_schema.columns.iter().map(|c| c.name.clone()).collect(),
 				left_instance_suffix: None,
 				right_instance_suffix: None,
 				initialized_nodes,
@@ -484,21 +406,11 @@ impl JoinOperator {
 		} else {
 			JoinMetadata {
 				join_instance_id: self.join_instance_id,
-				left_source: left_schema
-					.source_name
-					.clone()
-					.unwrap_or_default(),
+				left_source: left_schema.source_name.clone().unwrap_or_default(),
 				right_source: source_name.clone(),
 				initialized: false,
-				left_columns: left_schema
-					.columns
-					.iter()
-					.map(|c| c.name.clone())
-					.collect(),
-				right_columns: columns
-					.iter()
-					.map(|c| c.name().to_string())
-					.collect(),
+				left_columns: left_schema.columns.iter().map(|c| c.name.clone()).collect(),
+				right_columns: columns.iter().map(|c| c.name().to_string()).collect(),
 				left_instance_suffix: None,
 				right_instance_suffix: None,
 				initialized_nodes,
@@ -526,9 +438,7 @@ impl JoinOperator {
 		let source_name = if let Some(first_col) = columns.first() {
 			match first_col {
 				Column::FullyQualified(fq) => fq.source.clone(),
-				Column::SourceQualified(sq) => {
-					sq.source.clone()
-				}
+				Column::SourceQualified(sq) => sq.source.clone(),
 				_ => "unknown".to_string(),
 			}
 		} else {
@@ -539,14 +449,10 @@ impl JoinOperator {
 		let metadata_key = EncodedKey::new(Vec::new());
 		if let Ok(data) = self.get(txn, &metadata_key) {
 			if !data.as_ref().is_empty() {
-				if let Ok(metadata) = serde_json::from_slice::<
-					JoinMetadata,
-				>(data.as_ref())
-				{
+				if let Ok(metadata) = serde_json::from_slice::<JoinMetadata>(data.as_ref()) {
 					// Determine if this is the left or
 					// right source
-					let is_left = source_name
-						== metadata.left_source;
+					let is_left = source_name == metadata.left_source;
 					return Ok((metadata, is_left));
 				}
 			}
@@ -557,69 +463,38 @@ impl JoinOperator {
 		// but track instance IDs for disambiguation
 		// TODO: This should be passed through flow metadata
 
-		let is_left_by_schema = left_schema
-			.source_name
-			.as_ref()
-			.map(|s| s == &source_name)
-			.unwrap_or(false);
+		let is_left_by_schema = left_schema.source_name.as_ref().map(|s| s == &source_name).unwrap_or(false);
 
 		let metadata = if is_left_by_schema {
 			// This is the left source
 			JoinMetadata {
 				join_instance_id: self.join_instance_id,
 				left_source: source_name.clone(),
-				right_source: right_schema
-					.source_name
-					.clone()
-					.unwrap_or_default(),
+				right_source: right_schema.source_name.clone().unwrap_or_default(),
 				initialized: false,
-				left_columns: columns
-					.iter()
-					.map(|c| c.name().to_string())
-					.collect(),
-				right_columns: right_schema
-					.columns
-					.iter()
-					.map(|c| c.name.clone())
-					.collect(),
+				left_columns: columns.iter().map(|c| c.name().to_string()).collect(),
+				right_columns: right_schema.columns.iter().map(|c| c.name.clone()).collect(),
 				left_instance_suffix: None,
 				right_instance_suffix: None,
-				initialized_nodes:
-					std::collections::HashMap::new(),
+				initialized_nodes: std::collections::HashMap::new(),
 			}
 		} else {
 			// This is the right source
 			JoinMetadata {
 				join_instance_id: self.join_instance_id,
-				left_source: left_schema
-					.source_name
-					.clone()
-					.unwrap_or_default(),
+				left_source: left_schema.source_name.clone().unwrap_or_default(),
 				right_source: source_name.clone(),
 				initialized: false,
-				left_columns: left_schema
-					.columns
-					.iter()
-					.map(|c| c.name.clone())
-					.collect(),
-				right_columns: columns
-					.iter()
-					.map(|c| c.name().to_string())
-					.collect(),
+				left_columns: left_schema.columns.iter().map(|c| c.name.clone()).collect(),
+				right_columns: columns.iter().map(|c| c.name().to_string()).collect(),
 				left_instance_suffix: None,
 				right_instance_suffix: None,
-				initialized_nodes:
-					std::collections::HashMap::new(),
+				initialized_nodes: std::collections::HashMap::new(),
 			}
 		};
 
-		let serialized =
-			serde_json::to_vec(&metadata).unwrap_or_default();
-		self.set(
-			txn,
-			&metadata_key,
-			EncodedRow(CowVec::new(serialized)),
-		)?;
+		let serialized = serde_json::to_vec(&metadata).unwrap_or_default();
+		self.set(txn, &metadata_key, EncodedRow(CowVec::new(serialized)))?;
 
 		Ok((metadata, is_left_by_schema))
 	}
@@ -633,48 +508,30 @@ impl JoinOperator {
 	) -> Result<()> {
 		if metadata.right_source.is_empty() {
 			// Extract source name from columns
-			let source_name =
-				if let Some(first_col) = columns.first() {
-					match first_col {
-						Column::FullyQualified(fq) => {
-							fq.source.clone()
-						}
-						Column::SourceQualified(sq) => {
-							sq.source.clone()
-						}
-						_ => "unknown".to_string(),
-					}
-				} else {
-					"unknown".to_string()
-				};
+			let source_name = if let Some(first_col) = columns.first() {
+				match first_col {
+					Column::FullyQualified(fq) => fq.source.clone(),
+					Column::SourceQualified(sq) => sq.source.clone(),
+					_ => "unknown".to_string(),
+				}
+			} else {
+				"unknown".to_string()
+			};
 
 			metadata.right_source = source_name;
-			metadata.right_columns = columns
-				.iter()
-				.map(|c| c.name().to_string())
-				.collect();
+			metadata.right_columns = columns.iter().map(|c| c.name().to_string()).collect();
 			metadata.initialized = true;
 
 			// Use a special key for metadata (empty key)
 			let metadata_key = EncodedKey::new(Vec::new());
-			let serialized = serde_json::to_vec(&metadata)
-				.unwrap_or_default();
-			self.set(
-				txn,
-				&metadata_key,
-				EncodedRow(CowVec::new(serialized)),
-			)?;
+			let serialized = serde_json::to_vec(&metadata).unwrap_or_default();
+			self.set(txn, &metadata_key, EncodedRow(CowVec::new(serialized)))?;
 		}
 		Ok(())
 	}
 
 	// Combine left and right rows into output columns
-	fn combine_rows(
-		&self,
-		left_row: &StoredRow,
-		right_row: Option<&StoredRow>,
-		source_id: SourceId,
-	) -> FlowDiff {
+	fn combine_rows(&self, left_row: &StoredRow, right_row: Option<&StoredRow>, source_id: SourceId) -> FlowDiff {
 		let mut column_vec = Vec::new();
 		let row_ids = vec![left_row.row_id];
 
@@ -683,9 +540,7 @@ impl JoinOperator {
 		// just what's stored
 		for column_def in &self.left_schema.columns {
 			// Check if we have this column value in the stored row
-			let data = if let Some(value) =
-				left_row.columns.get(&column_def.name)
-			{
+			let data = if let Some(value) = left_row.columns.get(&column_def.name) {
 				value_to_column_data(value)
 			} else {
 				// Column not in stored data - this shouldn't
@@ -694,39 +549,30 @@ impl JoinOperator {
 				ColumnData::undefined(1)
 			};
 
-			if let (Some(namespace), Some(source)) = (
-				&self.left_schema.namespace_name,
-				&self.left_schema.source_name,
-			) {
-				// Create fully qualified columns
-				column_vec.push(Column::FullyQualified(
-					FullyQualified {
-						namespace: namespace.clone(),
-						source: source.clone(),
-						name: column_def.name.clone(),
-						data,
-					},
-				));
-			} else if let Some(source) =
-				&self.left_schema.source_name
+			if let (Some(namespace), Some(source)) =
+				(&self.left_schema.namespace_name, &self.left_schema.source_name)
 			{
+				// Create fully qualified columns
+				column_vec.push(Column::FullyQualified(FullyQualified {
+					namespace: namespace.clone(),
+					source: source.clone(),
+					name: column_def.name.clone(),
+					data,
+				}));
+			} else if let Some(source) = &self.left_schema.source_name {
 				// Fallback to source qualified
-				column_vec.push(Column::SourceQualified(
-					SourceQualified {
-						source: source.clone(),
-						name: column_def.name.clone(),
-						data,
-					},
-				));
+				column_vec.push(Column::SourceQualified(SourceQualified {
+					source: source.clone(),
+					name: column_def.name.clone(),
+					data,
+				}));
 			} else {
 				// Fallback to unqualified (shouldn't happen)
-				column_vec.push(Column::SourceQualified(
-					SourceQualified {
-						source: "unknown".to_string(),
-						name: column_def.name.clone(),
-						data,
-					},
-				));
+				column_vec.push(Column::SourceQualified(SourceQualified {
+					source: "unknown".to_string(),
+					name: column_def.name.clone(),
+					data,
+				}));
 			}
 		}
 
@@ -737,9 +583,7 @@ impl JoinOperator {
 			for column_def in &self.right_schema.columns {
 				// Check if we have this column value in the
 				// stored row
-				let data = if let Some(value) =
-					right.columns.get(&column_def.name)
-				{
+				let data = if let Some(value) = right.columns.get(&column_def.name) {
 					value_to_column_data(value)
 				} else {
 					// Column not in stored data - use
@@ -747,92 +591,63 @@ impl JoinOperator {
 					ColumnData::undefined(1)
 				};
 
-				if let (Some(namespace), Some(source)) = (
-					&self.right_schema.namespace_name,
-					&self.right_schema.source_name,
-				) {
-					// Create fully qualified columns
-					column_vec
-						.push(Column::FullyQualified(
-						FullyQualified {
-							namespace: namespace
-								.clone(),
-							source: source.clone(),
-							name: column_def
-								.name
-								.clone(),
-							data,
-						},
-					));
-				} else if let Some(source) =
-					&self.right_schema.source_name
+				if let (Some(namespace), Some(source)) =
+					(&self.right_schema.namespace_name, &self.right_schema.source_name)
 				{
+					// Create fully qualified columns
+					column_vec.push(Column::FullyQualified(FullyQualified {
+						namespace: namespace.clone(),
+						source: source.clone(),
+						name: column_def.name.clone(),
+						data,
+					}));
+				} else if let Some(source) = &self.right_schema.source_name {
 					// Fallback to source qualified
-					column_vec
-						.push(Column::SourceQualified(
-						SourceQualified {
-							source: source.clone(),
-							name: column_def
-								.name
-								.clone(),
-							data,
-						},
-					));
+					column_vec.push(Column::SourceQualified(SourceQualified {
+						source: source.clone(),
+						name: column_def.name.clone(),
+						data,
+					}));
 				} else {
 					// Fallback to unqualified (shouldn't
 					// happen)
-					column_vec
-						.push(Column::SourceQualified(
-						SourceQualified {
-							source: "unknown"
-								.to_string(),
-							name: column_def
-								.name
-								.clone(),
-							data,
-						},
-					));
+					column_vec.push(Column::SourceQualified(SourceQualified {
+						source: "unknown".to_string(),
+						name: column_def.name.clone(),
+						data,
+					}));
 				}
 			}
 		} else {
 			// For LEFT JOIN with no match, add NULL values for
 			// right columns using namespace
 			for column_def in &self.right_schema.columns {
-				if let (Some(namespace), Some(source)) = (
-					&self.right_schema.namespace_name,
-					&self.right_schema.source_name,
-				) {
+				if let (Some(namespace), Some(source)) =
+					(&self.right_schema.namespace_name, &self.right_schema.source_name)
+				{
 					// Create fully qualified columns with
 					// undefined data
-					column_vec.push(Column::FullyQualified(
-						FullyQualified {
-							namespace: namespace.clone(),
-							source: source.clone(),
-							name: column_def.name.clone(),
-							data: ColumnData::undefined(1),
-						},
-					));
-				} else if let Some(source) =
-					&self.right_schema.source_name
-				{
+					column_vec.push(Column::FullyQualified(FullyQualified {
+						namespace: namespace.clone(),
+						source: source.clone(),
+						name: column_def.name.clone(),
+						data: ColumnData::undefined(1),
+					}));
+				} else if let Some(source) = &self.right_schema.source_name {
 					// Fallback to source qualified
-					column_vec.push(Column::SourceQualified(
-						SourceQualified {
-							source: source.clone(),
-							name: column_def.name.clone(),
-							data: ColumnData::undefined(1),
-						},
-					));
+					column_vec.push(Column::SourceQualified(SourceQualified {
+						source: source.clone(),
+						name: column_def.name.clone(),
+						data: ColumnData::undefined(1),
+					}));
 				} else {
 					// Fallback to unqualified (shouldn't
 					// happen)
-					column_vec.push(Column::SourceQualified(
-						SourceQualified {
-							source: "unknown".to_string(),
-							name: column_def.name.clone(),
-							data: ColumnData::undefined(1),
-						},
-					));
+					column_vec.push(Column::SourceQualified(SourceQualified {
+						source: "unknown".to_string(),
+						name: column_def.name.clone(),
+						data: ColumnData::undefined(1),
+					}));
 				}
 			}
 		}
@@ -878,9 +693,7 @@ impl JoinOperator {
 		let source_name = if let Some(first_col) = after.first() {
 			match first_col {
 				Column::FullyQualified(fq) => fq.source.clone(),
-				Column::SourceQualified(sq) => {
-					sq.source.clone()
-				}
+				Column::SourceQualified(sq) => sq.source.clone(),
 				_ => {
 					if is_left {
 						metadata.left_source.clone()
@@ -899,30 +712,14 @@ impl JoinOperator {
 
 		for (idx, &row_id) in row_ids.iter().enumerate() {
 			// Extract join keys
-			let join_keys = Self::extract_join_keys(
-				evaluator,
-				after,
-				idx,
-				expressions,
-			)?;
+			let join_keys = Self::extract_join_keys(evaluator, after, idx, expressions)?;
 			let join_key_hash = Self::hash_join_keys(&join_keys);
 
 			// Store this row
-			self.store_row(
-				txn,
-				this_side,
-				join_key_hash,
-				row_id,
-				after,
-				idx,
-			)?;
+			self.store_row(txn, this_side, join_key_hash, row_id, after, idx)?;
 
 			// Get matching rows from the other side
-			let other_rows = self.get_matching_rows(
-				txn,
-				other_side,
-				join_key_hash,
-			)?;
+			let other_rows = self.get_matching_rows(txn, other_side, join_key_hash)?;
 
 			// Create a StoredRow for the current row
 			let mut current_columns = HashMap::new();
@@ -939,55 +736,36 @@ impl JoinOperator {
 
 			// For LEFT JOIN:
 			// - If left side changes, emit the join result
-			// - If right side changes AND there are matching left
-			//   rows, emit updates
+			// - If right side changes AND there are matching left rows, emit updates
 			// For INNER JOIN: emit for both sides
 			if is_left {
 				// Left side insert for LEFT or INNER join
 				if other_rows.is_empty() {
 					// LEFT JOIN with no match - emit with
 					// NULLs for right side
-					let diff = self.combine_rows(
-						&current_row,
-						None,
-						source,
-					);
+					let diff = self.combine_rows(&current_row, None, source);
 					output_diffs.push(diff);
 				} else {
 					// Emit joined rows for each match
 					for other_row in &other_rows {
-						let diff = self.combine_rows(
-							&current_row,
-							Some(other_row),
-							source,
-						);
+						let diff = self.combine_rows(&current_row, Some(other_row), source);
 						output_diffs.push(diff);
 					}
 				}
 			} else if matches!(self.join_type, JoinType::Inner) {
 				// Right side insert for INNER join
 				for other_row in &other_rows {
-					let diff = self.combine_rows(
-						other_row,
-						Some(&current_row),
-						source,
-					);
+					let diff = self.combine_rows(other_row, Some(&current_row), source);
 					output_diffs.push(diff);
 				}
-			} else if matches!(self.join_type, JoinType::Left)
-				&& !other_rows.is_empty()
-			{
+			} else if matches!(self.join_type, JoinType::Left) && !other_rows.is_empty() {
 				// Right side insert for LEFT join - emit
 				// updates for matching left rows
 				// This is important! When a customer is added
 				// that matches existing orders, we need to
 				// emit those updated join results
 				for other_row in &other_rows {
-					let diff = self.combine_rows(
-						other_row,
-						Some(&current_row),
-						source,
-					);
+					let diff = self.combine_rows(other_row, Some(&current_row), source);
 					// This should be an UPDATE not INSERT
 					// since the left row already existed
 					// But for now we'll emit as INSERT to
@@ -1029,20 +807,11 @@ impl JoinOperator {
 
 		for (idx, &row_id) in row_ids.iter().enumerate() {
 			// Extract join keys
-			let join_keys = Self::extract_join_keys(
-				evaluator,
-				before,
-				idx,
-				expressions,
-			)?;
+			let join_keys = Self::extract_join_keys(evaluator, before, idx, expressions)?;
 			let join_key_hash = Self::hash_join_keys(&join_keys);
 
 			// Get matching rows from the other side before deleting
-			let other_rows = self.get_matching_rows(
-				txn,
-				other_side,
-				join_key_hash,
-			)?;
+			let other_rows = self.get_matching_rows(txn, other_side, join_key_hash)?;
 
 			// Delete this row from state
 			self.delete_row(txn, this_side, join_key_hash, row_id)?;
@@ -1067,8 +836,7 @@ impl JoinOperator {
 				// NULL for right columns
 				for other_row in &other_rows {
 					let diff = self.combine_rows(
-						other_row,
-						None, // No right row anymore
+						other_row, None, // No right row anymore
 						source,
 					);
 					output_diffs.push(diff);
@@ -1106,12 +874,10 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
 		// Check which node this data is coming from
-		let from_node = change.metadata.get("from_node").and_then(
-			|v| match v {
-				reifydb_type::Value::Uint8(n) => Some(*n),
-				_ => None,
-			},
-		);
+		let from_node = change.metadata.get("from_node").and_then(|v| match v {
+			reifydb_type::Value::Uint8(n) => Some(*n),
+			_ => None,
+		});
 
 		let mut output_diffs = Vec::new();
 
@@ -1151,31 +917,21 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 			// Get or initialize metadata to determine left/right
 			// Use from_node if available to determine which input
 			// this is
-			let (metadata, is_left) =
-				if let Some(from_node_id) = from_node {
-					self.get_or_init_metadata_with_node(
-						txn,
-						columns,
-						&self.left_schema,
-						&self.right_schema,
-						from_node_id,
-					)?
-				} else {
-					self.get_or_init_metadata(
-						txn,
-						columns,
-						&self.left_schema,
-						&self.right_schema,
-					)?
-				};
+			let (metadata, is_left) = if let Some(from_node_id) = from_node {
+				self.get_or_init_metadata_with_node(
+					txn,
+					columns,
+					&self.left_schema,
+					&self.right_schema,
+					from_node_id,
+				)?
+			} else {
+				self.get_or_init_metadata(txn, columns, &self.left_schema, &self.right_schema)?
+			};
 
 			// Update metadata if this is the right source
 			if !is_left && metadata.right_source.is_empty() {
-				self.update_metadata(
-					txn,
-					metadata.clone(),
-					columns,
-				)?;
+				self.update_metadata(txn, metadata.clone(), columns)?;
 			}
 
 			match diff {
@@ -1185,9 +941,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 					after,
 				} => {
 					let diffs = self.process_insert(
-						txn, evaluator, *source,
-						row_ids, after, is_left,
-						&metadata,
+						txn, evaluator, *source, row_ids, after, is_left, &metadata,
 					)?;
 					output_diffs.extend(diffs);
 				}
@@ -1198,19 +952,11 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 					after,
 				} => {
 					// Handle update as remove + insert
-					let remove_diffs = self
-						.process_remove(
-							txn, evaluator,
-							*source, row_ids,
-							before, is_left,
-						)?;
-					let insert_diffs = self
-						.process_insert(
-							txn, evaluator,
-							*source, row_ids,
-							after, is_left,
-							&metadata,
-						)?;
+					let remove_diffs =
+						self.process_remove(txn, evaluator, *source, row_ids, before, is_left)?;
+					let insert_diffs = self.process_insert(
+						txn, evaluator, *source, row_ids, after, is_left, &metadata,
+					)?;
 					output_diffs.extend(remove_diffs);
 					output_diffs.extend(insert_diffs);
 				}
@@ -1219,10 +965,8 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 					row_ids,
 					before,
 				} => {
-					let diffs = self.process_remove(
-						txn, evaluator, *source,
-						row_ids, before, is_left,
-					)?;
+					let diffs =
+						self.process_remove(txn, evaluator, *source, row_ids, before, is_left)?;
 					output_diffs.extend(diffs);
 				}
 			}

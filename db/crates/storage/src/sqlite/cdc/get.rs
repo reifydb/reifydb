@@ -15,11 +15,7 @@ impl CdcGet for Sqlite {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();
 
-		let mut stmt = conn_guard
-			.prepare_cached(
-				"SELECT value FROM cdc WHERE version = ?",
-			)
-			.unwrap();
+		let mut stmt = conn_guard.prepare_cached("SELECT value FROM cdc WHERE version = ?").unwrap();
 
 		let result = stmt
 			.query_row(params![version as i64], |row| {
@@ -30,8 +26,7 @@ impl CdcGet for Sqlite {
 			.unwrap();
 
 		if let Some(encoded_transaction) = result {
-			let transaction =
-				decode_cdc_transaction(&encoded_transaction)?;
+			let transaction = decode_cdc_transaction(&encoded_transaction)?;
 			Ok(transaction.to_events().collect())
 		} else {
 			Ok(vec![])

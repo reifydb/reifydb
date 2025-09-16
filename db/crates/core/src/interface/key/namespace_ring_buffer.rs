@@ -25,27 +25,18 @@ impl NamespaceRingBufferKey {
 	}
 
 	pub fn full_scan(namespace: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::link_start(namespace)),
-			Some(Self::link_end(namespace)),
-		)
+		EncodedKeyRange::start_end(Some(Self::link_start(namespace)), Some(Self::link_end(namespace)))
 	}
 
 	fn link_start(namespace: NamespaceId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(namespace);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(namespace);
 		serializer.to_encoded_key()
 	}
 
 	fn link_end(namespace: NamespaceId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(*namespace - 1);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(*namespace - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -83,10 +74,8 @@ impl EncodableKey for NamespaceRingBufferKey {
 			return None;
 		}
 
-		let namespace: NamespaceId =
-			keycode::deserialize(&payload[0..8]).ok()?;
-		let ring_buffer: RingBufferId =
-			keycode::deserialize(&payload[8..16]).ok()?;
+		let namespace: NamespaceId = keycode::deserialize(&payload[0..8]).ok()?;
+		let ring_buffer: RingBufferId = keycode::deserialize(&payload[8..16]).ok()?;
 
 		Some(Self {
 			namespace,

@@ -3,10 +3,7 @@
 
 use std::marker::PhantomData;
 
-use crate::{
-	define_api_function, define_closure_interceptor, define_interceptor,
-	interface::ViewDef,
-};
+use crate::{define_api_function, define_closure_interceptor, define_interceptor, interface::ViewDef};
 
 // VIEW POST CREATE
 define_interceptor!(

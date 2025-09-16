@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{
-	Date, Error, IntoFragment, error::diagnostic::temporal, return_error,
-};
+use crate::{Date, Error, IntoFragment, error::diagnostic::temporal, return_error};
 
 pub fn parse_date<'a>(fragment: impl IntoFragment<'a>) -> Result<Date, Error> {
 	let fragment = fragment.into_fragment();
@@ -72,8 +70,7 @@ pub fn parse_date<'a>(fragment: impl IntoFragment<'a>) -> Result<Date, Error> {
 		Error(temporal::invalid_day(day_frag))
 	})?;
 
-	Date::new(year, month, day)
-		.ok_or_else(|| Error(temporal::invalid_date_values(fragment)))
+	Date::new(year, month, day).ok_or_else(|| Error(temporal::invalid_date_values(fragment)))
 }
 
 #[cfg(test)]

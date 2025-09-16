@@ -8,6 +8,5 @@ pub mod worker;
 
 pub use client::HttpClient;
 pub use session::{
-	channel::HttpChannelResponse, HttpBlockingSession, HttpCallbackSession,
-	HttpChannelSession, HttpResponseMessage,
+	channel::HttpChannelResponse, HttpBlockingSession, HttpCallbackSession, HttpChannelSession, HttpResponseMessage,
 };

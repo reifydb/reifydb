@@ -26,10 +26,7 @@ where
 	T: CommandTransaction,
 {
 	/// Creates a new FlowNodeBuilder
-	pub fn new(
-		compiler: &'a mut FlowCompiler<T>,
-		node_type: FlowNodeType,
-	) -> Self {
+	pub fn new(compiler: &'a mut FlowCompiler<T>, node_type: FlowNodeType) -> Self {
 		Self {
 			compiler,
 			node_type,
@@ -44,10 +41,7 @@ where
 	}
 
 	/// Adds multiple input nodes to connect to this node
-	pub fn with_inputs(
-		mut self,
-		inputs: impl IntoIterator<Item = FlowNodeId>,
-	) -> Self {
+	pub fn with_inputs(mut self, inputs: impl IntoIterator<Item = FlowNodeId>) -> Self {
 		self.input_nodes.extend(inputs);
 		self
 	}
@@ -72,10 +66,7 @@ where
 	T: CommandTransaction,
 {
 	/// Creates a new FlowNodeBuilder for this compiler
-	pub(crate) fn build_node(
-		&mut self,
-		node_type: FlowNodeType,
-	) -> FlowNodeBuilder<'_, T> {
+	pub(crate) fn build_node(&mut self, node_type: FlowNodeType) -> FlowNodeBuilder<'_, T> {
 		FlowNodeBuilder::new(self, node_type)
 	}
 }

@@ -12,10 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	interface::{NamespaceDef, TableDef, ViewDef},
 	value::{
-		columnar::{
-			Column, ColumnData, ColumnQualified, FullyQualified,
-			SourceQualified,
-		},
+		columnar::{Column, ColumnData, ColumnQualified, FullyQualified, SourceQualified},
 		container::UndefinedContainer,
 	},
 };
@@ -59,9 +56,7 @@ impl Columns {
 		Self(columns)
 	}
 
-	pub fn single_row<'a>(
-		rows: impl IntoIterator<Item = (&'a str, Value)>,
-	) -> Columns {
+	pub fn single_row<'a>(rows: impl IntoIterator<Item = (&'a str, Value)>) -> Columns {
 		let mut columns = Vec::new();
 		let mut index = HashMap::new();
 
@@ -69,12 +64,8 @@ impl Columns {
 			let data = match value {
 				Value::Undefined => ColumnData::undefined(1),
 				Value::Boolean(v) => ColumnData::bool([v]),
-				Value::Float4(v) => {
-					ColumnData::float4([v.into()])
-				}
-				Value::Float8(v) => {
-					ColumnData::float8([v.into()])
-				}
+				Value::Float4(v) => ColumnData::float4([v.into()]),
+				Value::Float8(v) => ColumnData::float8([v.into()]),
 				Value::Int1(v) => ColumnData::int1([v]),
 				Value::Int2(v) => ColumnData::int2([v]),
 				Value::Int4(v) => ColumnData::int4([v]),
@@ -87,27 +78,17 @@ impl Columns {
 				Value::Uint8(v) => ColumnData::uint8([v]),
 				Value::Uint16(v) => ColumnData::uint16([v]),
 				Value::Date(v) => ColumnData::date([v.clone()]),
-				Value::DateTime(v) => {
-					ColumnData::datetime([v.clone()])
-				}
+				Value::DateTime(v) => ColumnData::datetime([v.clone()]),
 				Value::Time(v) => ColumnData::time([v.clone()]),
-				Value::Interval(v) => {
-					ColumnData::interval([v.clone()])
-				}
-				Value::RowNumber(v) => {
-					ColumnData::row_number([v])
-				}
-				Value::IdentityId(v) => {
-					ColumnData::identity_id([v])
-				}
+				Value::Interval(v) => ColumnData::interval([v.clone()]),
+				Value::RowNumber(v) => ColumnData::row_number([v]),
+				Value::IdentityId(v) => ColumnData::identity_id([v]),
 				Value::Uuid4(v) => ColumnData::uuid4([v]),
 				Value::Uuid7(v) => ColumnData::uuid7([v]),
 				Value::Blob(v) => ColumnData::blob([v.clone()]),
 				Value::Int(v) => ColumnData::int(vec![v]),
 				Value::Uint(v) => ColumnData::uint(vec![v]),
-				Value::Decimal(v) => {
-					ColumnData::decimal(vec![v])
-				}
+				Value::Decimal(v) => ColumnData::decimal(vec![v]),
 			};
 
 			let column = Column::ColumnQualified(ColumnQualified {
@@ -162,21 +143,18 @@ impl Columns {
 	pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
 		let column_count = names.len();
 
-		let mut columns: Vec<Column> =
-			names.iter()
-				.map(|name| {
-					Column::ColumnQualified(ColumnQualified {
-                    name: name.to_string(),
-                    data: ColumnData::Undefined(UndefinedContainer::new(0))})
+		let mut columns: Vec<Column> = names
+			.iter()
+			.map(|name| {
+				Column::ColumnQualified(ColumnQualified {
+					name: name.to_string(),
+					data: ColumnData::Undefined(UndefinedContainer::new(0)),
 				})
-				.collect();
+			})
+			.collect();
 
 		for row in result_rows {
-			assert_eq!(
-				row.len(),
-				column_count,
-				"row length does not match column count"
-			);
+			assert_eq!(row.len(), column_count, "row length does not match column count");
 			for (i, value) in row.iter().enumerate() {
 				columns[i].data_mut().push_value(value.clone());
 			}
@@ -198,70 +176,35 @@ impl Columns {
 			.map(|col| {
 				let name = col.name.clone();
 				let data = match col.constraint.get_type() {
-					Type::Boolean => {
-						ColumnData::bool(vec![])
-					}
-					Type::Float4 => {
-						ColumnData::float4(vec![])
-					}
-					Type::Float8 => {
-						ColumnData::float8(vec![])
-					}
+					Type::Boolean => ColumnData::bool(vec![]),
+					Type::Float4 => ColumnData::float4(vec![]),
+					Type::Float8 => ColumnData::float8(vec![]),
 					Type::Int1 => ColumnData::int1(vec![]),
 					Type::Int2 => ColumnData::int2(vec![]),
 					Type::Int4 => ColumnData::int4(vec![]),
 					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => {
-						ColumnData::int16(vec![])
-					}
-					Type::Utf8 => ColumnData::utf8(Vec::<
-						String,
-					>::new(
-					)),
-					Type::Uint1 => {
-						ColumnData::uint1(vec![])
-					}
-					Type::Uint2 => {
-						ColumnData::uint2(vec![])
-					}
-					Type::Uint4 => {
-						ColumnData::uint4(vec![])
-					}
-					Type::Uint8 => {
-						ColumnData::uint8(vec![])
-					}
-					Type::Uint16 => {
-						ColumnData::uint16(vec![])
-					}
+					Type::Int16 => ColumnData::int16(vec![]),
+					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
+					Type::Uint1 => ColumnData::uint1(vec![]),
+					Type::Uint2 => ColumnData::uint2(vec![]),
+					Type::Uint4 => ColumnData::uint4(vec![]),
+					Type::Uint8 => ColumnData::uint8(vec![]),
+					Type::Uint16 => ColumnData::uint16(vec![]),
 					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => {
-						ColumnData::datetime(vec![])
-					}
+					Type::DateTime => ColumnData::datetime(vec![]),
 					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => {
-						ColumnData::interval(vec![])
-					}
-					Type::RowNumber => {
-						ColumnData::row_number(vec![])
-					}
-					Type::IdentityId => {
-						ColumnData::identity_id(vec![])
-					}
-					Type::Uuid4 => {
-						ColumnData::uuid4(vec![])
-					}
-					Type::Uuid7 => {
-						ColumnData::uuid7(vec![])
-					}
+					Type::Interval => ColumnData::interval(vec![]),
+					Type::RowNumber => ColumnData::row_number(vec![]),
+					Type::IdentityId => ColumnData::identity_id(vec![]),
+					Type::Uuid4 => ColumnData::uuid4(vec![]),
+					Type::Uuid7 => ColumnData::uuid7(vec![]),
 					Type::Blob => ColumnData::blob(vec![]),
 					Type::Int => ColumnData::int(vec![]),
 					Type::Uint => ColumnData::uint(vec![]),
 					Type::Decimal {
 						..
 					} => ColumnData::decimal(vec![]),
-					Type::Undefined => {
-						ColumnData::undefined(0)
-					}
+					Type::Undefined => ColumnData::undefined(0),
 				};
 				Column::SourceQualified(SourceQualified {
 					source: table.name.clone(),
@@ -274,80 +217,42 @@ impl Columns {
 		Self::new(columns)
 	}
 
-	pub fn from_table_def_fully_qualified(
-		namespace: &NamespaceDef,
-		table: &TableDef,
-	) -> Self {
+	pub fn from_table_def_fully_qualified(namespace: &NamespaceDef, table: &TableDef) -> Self {
 		let columns: Vec<Column> = table
 			.columns
 			.iter()
 			.map(|col| {
 				let name = col.name.clone();
 				let data = match col.constraint.get_type() {
-					Type::Boolean => {
-						ColumnData::bool(vec![])
-					}
-					Type::Float4 => {
-						ColumnData::float4(vec![])
-					}
-					Type::Float8 => {
-						ColumnData::float8(vec![])
-					}
+					Type::Boolean => ColumnData::bool(vec![]),
+					Type::Float4 => ColumnData::float4(vec![]),
+					Type::Float8 => ColumnData::float8(vec![]),
 					Type::Int1 => ColumnData::int1(vec![]),
 					Type::Int2 => ColumnData::int2(vec![]),
 					Type::Int4 => ColumnData::int4(vec![]),
 					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => {
-						ColumnData::int16(vec![])
-					}
-					Type::Utf8 => ColumnData::utf8(Vec::<
-						String,
-					>::new(
-					)),
-					Type::Uint1 => {
-						ColumnData::uint1(vec![])
-					}
-					Type::Uint2 => {
-						ColumnData::uint2(vec![])
-					}
-					Type::Uint4 => {
-						ColumnData::uint4(vec![])
-					}
-					Type::Uint8 => {
-						ColumnData::uint8(vec![])
-					}
-					Type::Uint16 => {
-						ColumnData::uint16(vec![])
-					}
+					Type::Int16 => ColumnData::int16(vec![]),
+					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
+					Type::Uint1 => ColumnData::uint1(vec![]),
+					Type::Uint2 => ColumnData::uint2(vec![]),
+					Type::Uint4 => ColumnData::uint4(vec![]),
+					Type::Uint8 => ColumnData::uint8(vec![]),
+					Type::Uint16 => ColumnData::uint16(vec![]),
 					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => {
-						ColumnData::datetime(vec![])
-					}
+					Type::DateTime => ColumnData::datetime(vec![]),
 					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => {
-						ColumnData::interval(vec![])
-					}
-					Type::RowNumber => {
-						ColumnData::row_number(vec![])
-					}
-					Type::IdentityId => {
-						ColumnData::identity_id(vec![])
-					}
-					Type::Uuid4 => {
-						ColumnData::uuid4(vec![])
-					}
-					Type::Uuid7 => {
-						ColumnData::uuid7(vec![])
-					}
+					Type::Interval => ColumnData::interval(vec![]),
+					Type::RowNumber => ColumnData::row_number(vec![]),
+					Type::IdentityId => ColumnData::identity_id(vec![]),
+					Type::Uuid4 => ColumnData::uuid4(vec![]),
+					Type::Uuid7 => ColumnData::uuid7(vec![]),
 					Type::Blob => ColumnData::blob(vec![]),
 					Type::Int => ColumnData::int(vec![]),
 					Type::Uint => ColumnData::uint(vec![]),
 					Type::Decimal {
 						..
 					} => ColumnData::decimal(vec![]),
-					Type::Undefined => {
-						ColumnData::undefined(0)
-					}
+					Type::Undefined => ColumnData::undefined(0),
 				};
 				Column::FullyQualified(FullyQualified {
 					namespace: namespace.name.clone(),
@@ -368,70 +273,35 @@ impl Columns {
 			.map(|col| {
 				let name = col.name.clone();
 				let data = match col.constraint.get_type() {
-					Type::Boolean => {
-						ColumnData::bool(vec![])
-					}
-					Type::Float4 => {
-						ColumnData::float4(vec![])
-					}
-					Type::Float8 => {
-						ColumnData::float8(vec![])
-					}
+					Type::Boolean => ColumnData::bool(vec![]),
+					Type::Float4 => ColumnData::float4(vec![]),
+					Type::Float8 => ColumnData::float8(vec![]),
 					Type::Int1 => ColumnData::int1(vec![]),
 					Type::Int2 => ColumnData::int2(vec![]),
 					Type::Int4 => ColumnData::int4(vec![]),
 					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => {
-						ColumnData::int16(vec![])
-					}
-					Type::Utf8 => ColumnData::utf8(Vec::<
-						String,
-					>::new(
-					)),
-					Type::Uint1 => {
-						ColumnData::uint1(vec![])
-					}
-					Type::Uint2 => {
-						ColumnData::uint2(vec![])
-					}
-					Type::Uint4 => {
-						ColumnData::uint4(vec![])
-					}
-					Type::Uint8 => {
-						ColumnData::uint8(vec![])
-					}
-					Type::Uint16 => {
-						ColumnData::uint16(vec![])
-					}
+					Type::Int16 => ColumnData::int16(vec![]),
+					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
+					Type::Uint1 => ColumnData::uint1(vec![]),
+					Type::Uint2 => ColumnData::uint2(vec![]),
+					Type::Uint4 => ColumnData::uint4(vec![]),
+					Type::Uint8 => ColumnData::uint8(vec![]),
+					Type::Uint16 => ColumnData::uint16(vec![]),
 					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => {
-						ColumnData::datetime(vec![])
-					}
+					Type::DateTime => ColumnData::datetime(vec![]),
 					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => {
-						ColumnData::interval(vec![])
-					}
-					Type::RowNumber => {
-						ColumnData::row_number(vec![])
-					}
-					Type::IdentityId => {
-						ColumnData::identity_id(vec![])
-					}
-					Type::Uuid4 => {
-						ColumnData::uuid4(vec![])
-					}
-					Type::Uuid7 => {
-						ColumnData::uuid7(vec![])
-					}
+					Type::Interval => ColumnData::interval(vec![]),
+					Type::RowNumber => ColumnData::row_number(vec![]),
+					Type::IdentityId => ColumnData::identity_id(vec![]),
+					Type::Uuid4 => ColumnData::uuid4(vec![]),
+					Type::Uuid7 => ColumnData::uuid7(vec![]),
 					Type::Blob => ColumnData::blob(vec![]),
 					Type::Int => ColumnData::int(vec![]),
 					Type::Uint => ColumnData::uint(vec![]),
 					Type::Decimal {
 						..
 					} => ColumnData::decimal(vec![]),
-					Type::Undefined => {
-						ColumnData::undefined(0)
-					}
+					Type::Undefined => ColumnData::undefined(0),
 				};
 				Column::SourceQualified(SourceQualified {
 					source: view.name.clone(),
@@ -444,80 +314,42 @@ impl Columns {
 		Self::new(columns)
 	}
 
-	pub fn from_view_def_fully_qualified(
-		namespace: &NamespaceDef,
-		view: &ViewDef,
-	) -> Self {
+	pub fn from_view_def_fully_qualified(namespace: &NamespaceDef, view: &ViewDef) -> Self {
 		let columns: Vec<Column> = view
 			.columns
 			.iter()
 			.map(|col| {
 				let name = col.name.clone();
 				let data = match col.constraint.get_type() {
-					Type::Boolean => {
-						ColumnData::bool(vec![])
-					}
-					Type::Float4 => {
-						ColumnData::float4(vec![])
-					}
-					Type::Float8 => {
-						ColumnData::float8(vec![])
-					}
+					Type::Boolean => ColumnData::bool(vec![]),
+					Type::Float4 => ColumnData::float4(vec![]),
+					Type::Float8 => ColumnData::float8(vec![]),
 					Type::Int1 => ColumnData::int1(vec![]),
 					Type::Int2 => ColumnData::int2(vec![]),
 					Type::Int4 => ColumnData::int4(vec![]),
 					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => {
-						ColumnData::int16(vec![])
-					}
-					Type::Utf8 => ColumnData::utf8(Vec::<
-						String,
-					>::new(
-					)),
-					Type::Uint1 => {
-						ColumnData::uint1(vec![])
-					}
-					Type::Uint2 => {
-						ColumnData::uint2(vec![])
-					}
-					Type::Uint4 => {
-						ColumnData::uint4(vec![])
-					}
-					Type::Uint8 => {
-						ColumnData::uint8(vec![])
-					}
-					Type::Uint16 => {
-						ColumnData::uint16(vec![])
-					}
+					Type::Int16 => ColumnData::int16(vec![]),
+					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
+					Type::Uint1 => ColumnData::uint1(vec![]),
+					Type::Uint2 => ColumnData::uint2(vec![]),
+					Type::Uint4 => ColumnData::uint4(vec![]),
+					Type::Uint8 => ColumnData::uint8(vec![]),
+					Type::Uint16 => ColumnData::uint16(vec![]),
 					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => {
-						ColumnData::datetime(vec![])
-					}
+					Type::DateTime => ColumnData::datetime(vec![]),
 					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => {
-						ColumnData::interval(vec![])
-					}
-					Type::RowNumber => {
-						ColumnData::row_number(vec![])
-					}
-					Type::IdentityId => {
-						ColumnData::identity_id(vec![])
-					}
-					Type::Uuid4 => {
-						ColumnData::uuid4(vec![])
-					}
-					Type::Uuid7 => {
-						ColumnData::uuid7(vec![])
-					}
+					Type::Interval => ColumnData::interval(vec![]),
+					Type::RowNumber => ColumnData::row_number(vec![]),
+					Type::IdentityId => ColumnData::identity_id(vec![]),
+					Type::Uuid4 => ColumnData::uuid4(vec![]),
+					Type::Uuid7 => ColumnData::uuid7(vec![]),
 					Type::Blob => ColumnData::blob(vec![]),
 					Type::Int => ColumnData::int(vec![]),
 					Type::Uint => ColumnData::uint(vec![]),
 					Type::Decimal {
 						..
 					} => ColumnData::decimal(vec![]),
-					Type::Undefined => {
-						ColumnData::undefined(0)
-					}
+					Type::Undefined => ColumnData::undefined(0),
 				};
 				Column::FullyQualified(FullyQualified {
 					namespace: namespace.name.clone(),
@@ -556,28 +388,10 @@ mod tests {
 		assert_eq!(columns.shape(), (1, 4));
 
 		// Check that the values are correctly stored
-		assert_eq!(
-			columns.column("date_col").unwrap().data().get_value(0),
-			Value::Date(date)
-		);
-		assert_eq!(
-			columns.column("datetime_col")
-				.unwrap()
-				.data()
-				.get_value(0),
-			Value::DateTime(datetime)
-		);
-		assert_eq!(
-			columns.column("time_col").unwrap().data().get_value(0),
-			Value::Time(time)
-		);
-		assert_eq!(
-			columns.column("interval_col")
-				.unwrap()
-				.data()
-				.get_value(0),
-			Value::Interval(interval)
-		);
+		assert_eq!(columns.column("date_col").unwrap().data().get_value(0), Value::Date(date));
+		assert_eq!(columns.column("datetime_col").unwrap().data().get_value(0), Value::DateTime(datetime));
+		assert_eq!(columns.column("time_col").unwrap().data().get_value(0), Value::Time(time));
+		assert_eq!(columns.column("interval_col").unwrap().data().get_value(0), Value::Interval(interval));
 	}
 
 	#[test]
@@ -598,48 +412,18 @@ mod tests {
 		assert_eq!(columns.shape(), (1, 6));
 
 		// Check all values are correctly stored
-		assert_eq!(
-			columns.column("bool_col").unwrap().data().get_value(0),
-			Value::Boolean(true)
-		);
-		assert_eq!(
-			columns.column("int_col").unwrap().data().get_value(0),
-			Value::Int4(42)
-		);
-		assert_eq!(
-			columns.column("str_col").unwrap().data().get_value(0),
-			Value::Utf8("hello".to_string())
-		);
-		assert_eq!(
-			columns.column("date_col").unwrap().data().get_value(0),
-			Value::Date(date)
-		);
-		assert_eq!(
-			columns.column("time_col").unwrap().data().get_value(0),
-			Value::Time(time)
-		);
-		assert_eq!(
-			columns.column("undefined_col")
-				.unwrap()
-				.data()
-				.get_value(0),
-			Value::Undefined
-		);
+		assert_eq!(columns.column("bool_col").unwrap().data().get_value(0), Value::Boolean(true));
+		assert_eq!(columns.column("int_col").unwrap().data().get_value(0), Value::Int4(42));
+		assert_eq!(columns.column("str_col").unwrap().data().get_value(0), Value::Utf8("hello".to_string()));
+		assert_eq!(columns.column("date_col").unwrap().data().get_value(0), Value::Date(date));
+		assert_eq!(columns.column("time_col").unwrap().data().get_value(0), Value::Time(time));
+		assert_eq!(columns.column("undefined_col").unwrap().data().get_value(0), Value::Undefined);
 	}
 
 	#[test]
 	fn test_single_row_normal_column_names_work() {
-		let columns = Columns::single_row([(
-			"normal_column",
-			Value::Int4(42),
-		)]);
+		let columns = Columns::single_row([("normal_column", Value::Int4(42))]);
 		assert_eq!(columns.len(), 1);
-		assert_eq!(
-			columns.column("normal_column")
-				.unwrap()
-				.data()
-				.get_value(0),
-			Value::Int4(42)
-		);
+		assert_eq!(columns.column("normal_column").unwrap().data().get_value(0), Value::Int4(42));
 	}
 }

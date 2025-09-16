@@ -6,10 +6,7 @@ use reifydb_catalog::CatalogQueryTransaction;
 use crate::{
 	ast::AstAggregate,
 	expression::ExpressionCompiler,
-	plan::logical::{
-		AggregateNode, Compiler, LogicalPlan,
-		resolver::IdentifierResolver,
-	},
+	plan::logical::{AggregateNode, Compiler, LogicalPlan, resolver::IdentifierResolver},
 };
 
 impl Compiler {
@@ -18,14 +15,8 @@ impl Compiler {
 		_resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::Aggregate(AggregateNode {
-			by: ast.by
-				.into_iter()
-				.map(ExpressionCompiler::compile)
-				.collect::<crate::Result<Vec<_>>>()?,
-			map: ast.map
-				.into_iter()
-				.map(ExpressionCompiler::compile)
-				.collect::<crate::Result<Vec<_>>>()?,
+			by: ast.by.into_iter().map(ExpressionCompiler::compile).collect::<crate::Result<Vec<_>>>()?,
+			map: ast.map.into_iter().map(ExpressionCompiler::compile).collect::<crate::Result<Vec<_>>>()?,
 		}))
 	}
 }

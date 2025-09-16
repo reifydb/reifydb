@@ -5,8 +5,7 @@ use reifydb_catalog::sequence::RowSequence;
 use reifydb_core::{
 	event::catalog::TableInsertedEvent,
 	interface::{
-		EncodableKey, GetEncodedRowLayout, RowKey, TableDef,
-		Transaction, VersionedCommandTransaction,
+		EncodableKey, GetEncodedRowLayout, RowKey, TableDef, Transaction, VersionedCommandTransaction,
 		interceptor::TableInterceptor,
 	},
 	row::{EncodedRow, Row},
@@ -16,32 +15,15 @@ use reifydb_type::RowNumber;
 use crate::StandardCommandTransaction;
 
 pub(crate) trait TableOperations {
-	fn insert_into_table(
-		&mut self,
-		table: TableDef,
-		row: EncodedRow,
-	) -> crate::Result<RowNumber>;
+	fn insert_into_table(&mut self, table: TableDef, row: EncodedRow) -> crate::Result<RowNumber>;
 
-	fn update_table(
-		&mut self,
-		table: TableDef,
-		id: RowNumber,
-		row: EncodedRow,
-	) -> crate::Result<()>;
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedRow) -> crate::Result<()>;
 
-	fn remove_from_table(
-		&mut self,
-		table: TableDef,
-		id: RowNumber,
-	) -> crate::Result<()>;
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()>;
 }
 
 impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
-	fn insert_into_table(
-		&mut self,
-		table: TableDef,
-		row: EncodedRow,
-	) -> crate::Result<RowNumber> {
+	fn insert_into_table(&mut self, table: TableDef, row: EncodedRow) -> crate::Result<RowNumber> {
 		let row_number = RowSequence::next_row_number(self, table.id)?;
 
 		TableInterceptor::pre_insert(self, &table, &row)?;
@@ -71,12 +53,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		Ok(row_number)
 	}
 
-	fn update_table(
-		&mut self,
-		table: TableDef,
-		id: RowNumber,
-		row: EncodedRow,
-	) -> crate::Result<()> {
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedRow) -> crate::Result<()> {
 		let key = RowKey {
 			source: table.id.into(),
 			row: id,
@@ -105,11 +82,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		Ok(())
 	}
 
-	fn remove_from_table(
-		&mut self,
-		table: TableDef,
-		id: RowNumber,
-	) -> crate::Result<()> {
+	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()> {
 		let key = RowKey {
 			source: table.id.into(),
 			row: id,

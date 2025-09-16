@@ -18,18 +18,14 @@ impl CatalogStore {
 
 		match source_id {
 			SourceId::Table(table_id) => {
-				if let Some(table) =
-					Self::find_table(rx, table_id)?
-				{
+				if let Some(table) = Self::find_table(rx, table_id)? {
 					Ok(Some(SourceDef::Table(table)))
 				} else {
 					Ok(None)
 				}
 			}
 			SourceId::View(view_id) => {
-				if let Some(view) =
-					Self::find_view(rx, view_id)?
-				{
+				if let Some(view) = Self::find_view(rx, view_id)? {
 					Ok(Some(SourceDef::View(view)))
 				} else {
 					Ok(None)
@@ -40,8 +36,8 @@ impl CatalogStore {
 					VirtualTableRegistry::find_table_virtual(rx, table_virtual_id)?
 				{
 					// Convert Arc<TableVirtualDef> to TableVirtualDef
-					let table_virtual_def = Arc::try_unwrap(table_virtual)
-						.unwrap_or_else(|arc| (*arc).clone());
+					let table_virtual_def =
+						Arc::try_unwrap(table_virtual).unwrap_or_else(|arc| (*arc).clone());
 					Ok(Some(SourceDef::TableVirtual(table_virtual_def)))
 				} else {
 					Ok(None)
@@ -59,9 +55,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{
-		SourceDef, SourceId, TableId, TableVirtualId, ViewId,
-	};
+	use reifydb_core::interface::{SourceDef, SourceId, TableId, TableVirtualId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 
@@ -77,9 +71,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn);
 
 		// Find source by TableId
-		let source = CatalogStore::find_source(&mut txn, table.id)
-			.unwrap()
-			.expect("Source should exist");
+		let source = CatalogStore::find_source(&mut txn, table.id).unwrap().expect("Source should exist");
 
 		match source {
 			SourceDef::Table(t) => {
@@ -90,12 +82,9 @@ mod tests {
 		}
 
 		// Find source by SourceId::Table
-		let source = CatalogStore::find_source(
-			&mut txn,
-			SourceId::Table(table.id),
-		)
-		.unwrap()
-		.expect("Source should exist");
+		let source = CatalogStore::find_source(&mut txn, SourceId::Table(table.id))
+			.unwrap()
+			.expect("Source should exist");
 
 		match source {
 			SourceDef::Table(t) => {
@@ -110,26 +99,23 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let view =
-			CatalogStore::create_deferred_view(
-				&mut txn,
-				ViewToCreate {
-					fragment: None,
-					namespace: namespace.id,
-					name: "test_view".to_string(),
-					columns: vec![ViewColumnToCreate {
+		let view = CatalogStore::create_deferred_view(
+			&mut txn,
+			ViewToCreate {
+				fragment: None,
+				namespace: namespace.id,
+				name: "test_view".to_string(),
+				columns: vec![ViewColumnToCreate {
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					fragment: None,
 				}],
-				},
-			)
-			.unwrap();
+			},
+		)
+		.unwrap();
 
 		// Find source by ViewId
-		let source = CatalogStore::find_source(&mut txn, view.id)
-			.unwrap()
-			.expect("Source should exist");
+		let source = CatalogStore::find_source(&mut txn, view.id).unwrap().expect("Source should exist");
 
 		match source {
 			SourceDef::View(v) => {
@@ -140,12 +126,9 @@ mod tests {
 		}
 
 		// Find source by SourceId::View
-		let source = CatalogStore::find_source(
-			&mut txn,
-			SourceId::View(view.id),
-		)
-		.unwrap()
-		.expect("Source should exist");
+		let source = CatalogStore::find_source(&mut txn, SourceId::View(view.id))
+			.unwrap()
+			.expect("Source should exist");
 
 		match source {
 			SourceDef::View(v) => {
@@ -160,21 +143,15 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		// Non-existent table
-		let source = CatalogStore::find_source(&mut txn, TableId(999))
-			.unwrap();
+		let source = CatalogStore::find_source(&mut txn, TableId(999)).unwrap();
 		assert!(source.is_none());
 
 		// Non-existent view
-		let source = CatalogStore::find_source(&mut txn, ViewId(999))
-			.unwrap();
+		let source = CatalogStore::find_source(&mut txn, ViewId(999)).unwrap();
 		assert!(source.is_none());
 
 		// Non-existent virtual table
-		let source = CatalogStore::find_source(
-			&mut txn,
-			TableVirtualId(999),
-		)
-		.unwrap();
+		let source = CatalogStore::find_source(&mut txn, TableVirtualId(999)).unwrap();
 		assert!(source.is_none());
 	}
 
@@ -197,12 +174,9 @@ mod tests {
 		}
 
 		// Find source by SourceId::TableVirtual
-		let source = CatalogStore::find_source(
-			&mut txn,
-			SourceId::TableVirtual(sequences_id),
-		)
-		.unwrap()
-		.expect("Source should exist");
+		let source = CatalogStore::find_source(&mut txn, SourceId::TableVirtual(sequences_id))
+			.unwrap()
+			.expect("Source should exist");
 
 		match source {
 			SourceDef::TableVirtual(tv) => {

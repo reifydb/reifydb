@@ -9,9 +9,7 @@
 use super::{
 	Pools,
 	config::PoolConfig,
-	thread_local::{
-		clear_thread_pools, get_thread_pools, set_thread_pools,
-	},
+	thread_local::{clear_thread_pools, get_thread_pools, set_thread_pools},
 };
 
 /// RAII guard that sets thread-local pools and restores previous state on drop

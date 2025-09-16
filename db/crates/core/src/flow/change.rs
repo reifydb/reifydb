@@ -56,10 +56,7 @@ impl FlowDiff {
 				before,
 				after,
 				..
-			} => {
-				row_ids.len() == before.row_count()
-					&& row_ids.len() == after.row_count()
-			}
+			} => row_ids.len() == before.row_count() && row_ids.len() == after.row_count(),
 			FlowDiff::Remove {
 				row_ids,
 				before,
@@ -70,10 +67,7 @@ impl FlowDiff {
 
 	#[cfg(debug_assertions)]
 	pub fn assert_valid(&self) {
-		assert!(
-			self.validate(),
-			"Diff invariant violated: row_ids length must match row count"
-		);
+		assert!(self.validate(), "Diff invariant violated: row_ids length must match row count");
 	}
 }
 

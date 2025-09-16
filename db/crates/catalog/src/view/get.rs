@@ -10,10 +10,7 @@ use reifydb_type::internal_error;
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_view(
-		rx: &mut impl QueryTransaction,
-		view: ViewId,
-	) -> crate::Result<ViewDef> {
+	pub fn get_view(rx: &mut impl QueryTransaction, view: ViewId) -> crate::Result<ViewDef> {
 		CatalogStore::find_view(rx, view)?.ok_or_else(|| {
 			Error(internal_error!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
@@ -30,9 +27,7 @@ mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::{
-			create_namespace, create_view, ensure_test_namespace,
-		},
+		test_utils::{create_namespace, create_view, ensure_test_namespace},
 	};
 
 	#[test]
@@ -47,8 +42,7 @@ mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result =
-			CatalogStore::get_view(&mut txn, ViewId(1026)).unwrap();
+		let result = CatalogStore::get_view(&mut txn, ViewId(1026)).unwrap();
 
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
@@ -67,8 +61,7 @@ mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let err = CatalogStore::get_view(&mut txn, ViewId(42))
-			.unwrap_err();
+		let err = CatalogStore::get_view(&mut txn, ViewId(42)).unwrap_err();
 
 		assert_eq!(err.code, "INTERNAL_ERROR");
 		assert!(err.message.contains("ViewId(42)"));

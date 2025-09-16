@@ -4,20 +4,15 @@
 use OperationType::{Create, Update};
 use reifydb_catalog::transaction::CatalogTrackNamespaceChangeOperations;
 use reifydb_core::interface::{
-	Change, NamespaceDef, NamespaceId, OperationType,
-	OperationType::Delete, Transaction, TransactionalNamespaceChanges,
+	Change, NamespaceDef, NamespaceId, OperationType, OperationType::Delete, Transaction,
+	TransactionalNamespaceChanges,
 };
 use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
-impl<T: Transaction> CatalogTrackNamespaceChangeOperations
-	for StandardCommandTransaction<T>
-{
-	fn track_namespace_def_created(
-		&mut self,
-		namespace: NamespaceDef,
-	) -> reifydb_core::Result<()> {
+impl<T: Transaction> CatalogTrackNamespaceChangeOperations for StandardCommandTransaction<T> {
+	fn track_namespace_def_created(&mut self, namespace: NamespaceDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(namespace),
@@ -27,11 +22,7 @@ impl<T: Transaction> CatalogTrackNamespaceChangeOperations
 		Ok(())
 	}
 
-	fn track_namespace_def_updated(
-		&mut self,
-		pre: NamespaceDef,
-		post: NamespaceDef,
-	) -> reifydb_core::Result<()> {
+	fn track_namespace_def_updated(&mut self, pre: NamespaceDef, post: NamespaceDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -41,10 +32,7 @@ impl<T: Transaction> CatalogTrackNamespaceChangeOperations
 		Ok(())
 	}
 
-	fn track_namespace_def_deleted(
-		&mut self,
-		namespace: NamespaceDef,
-	) -> reifydb_core::Result<()> {
+	fn track_namespace_def_deleted(&mut self, namespace: NamespaceDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: Some(namespace),
 			post: None,
@@ -55,9 +43,7 @@ impl<T: Transaction> CatalogTrackNamespaceChangeOperations
 	}
 }
 
-impl<T: Transaction> TransactionalNamespaceChanges
-	for StandardCommandTransaction<T>
-{
+impl<T: Transaction> TransactionalNamespaceChanges for StandardCommandTransaction<T> {
 	fn find_namespace(&self, id: NamespaceId) -> Option<&NamespaceDef> {
 		// Find the last change for this namespace ID
 		for change in self.changes.namespace_def.iter().rev() {
@@ -75,47 +61,37 @@ impl<T: Transaction> TransactionalNamespaceChanges
 		None
 	}
 
-	fn find_namespace_by_name<'a>(
-		&self,
-		name: impl IntoFragment<'a>,
-	) -> Option<&NamespaceDef> {
+	fn find_namespace_by_name<'a>(&self, name: impl IntoFragment<'a>) -> Option<&NamespaceDef> {
 		let name = name.into_fragment();
-		self.changes.namespace_def.iter().rev().find_map(|change| {
-			change.post.as_ref().filter(|s| s.name == name.text())
-		})
+		self.changes
+			.namespace_def
+			.iter()
+			.rev()
+			.find_map(|change| change.post.as_ref().filter(|s| s.name == name.text()))
 	}
 
 	fn is_namespace_deleted(&self, id: NamespaceId) -> bool {
-		self.changes.namespace_def.iter().rev().any(|change| {
-			change.op == Delete
-				&& change.pre.as_ref().map(|s| s.id) == Some(id)
-		})
+		self.changes
+			.namespace_def
+			.iter()
+			.rev()
+			.any(|change| change.op == Delete && change.pre.as_ref().map(|s| s.id) == Some(id))
 	}
 
-	fn is_namespace_deleted_by_name<'a>(
-		&self,
-		name: impl IntoFragment<'a>,
-	) -> bool {
+	fn is_namespace_deleted_by_name<'a>(&self, name: impl IntoFragment<'a>) -> bool {
 		let name = name.into_fragment();
 		self.changes.namespace_def.iter().rev().any(|change| {
-			change.op == Delete
-				&& change.pre.as_ref().map(|s| s.name.as_str())
-					== Some(name.text())
+			change.op == Delete && change.pre.as_ref().map(|s| s.name.as_str()) == Some(name.text())
 		})
 	}
 }
 
-impl<T: Transaction> TransactionalNamespaceChanges
-	for StandardQueryTransaction<T>
-{
+impl<T: Transaction> TransactionalNamespaceChanges for StandardQueryTransaction<T> {
 	fn find_namespace(&self, _id: NamespaceId) -> Option<&NamespaceDef> {
 		None
 	}
 
-	fn find_namespace_by_name<'a>(
-		&self,
-		_name: impl IntoFragment<'a>,
-	) -> Option<&NamespaceDef> {
+	fn find_namespace_by_name<'a>(&self, _name: impl IntoFragment<'a>) -> Option<&NamespaceDef> {
 		None
 	}
 
@@ -123,10 +99,7 @@ impl<T: Transaction> TransactionalNamespaceChanges
 		false
 	}
 
-	fn is_namespace_deleted_by_name<'a>(
-		&self,
-		_name: impl IntoFragment<'a>,
-	) -> bool {
+	fn is_namespace_deleted_by_name<'a>(&self, _name: impl IntoFragment<'a>) -> bool {
 		false
 	}
 }
@@ -157,18 +130,14 @@ mod tests {
 			let mut txn = create_test_command_transaction();
 			let namespace = test_namespace_def(1, "test_namespace");
 
-			let result = txn
-				.track_namespace_def_created(namespace.clone());
+			let result = txn.track_namespace_def_created(namespace.clone());
 			assert!(result.is_ok());
 
 			// Verify the change was recorded in the Vec
 			assert_eq!(txn.changes.namespace_def.len(), 1);
 			let change = &txn.changes.namespace_def[0];
 			assert!(change.pre.is_none());
-			assert_eq!(
-				change.post.as_ref().unwrap().name,
-				"test_namespace"
-			);
+			assert_eq!(change.post.as_ref().unwrap().name, "test_namespace");
 			assert_eq!(change.op, Create);
 
 			// Verify operation was logged
@@ -178,9 +147,7 @@ mod tests {
 					id,
 					op,
 				} if *id == namespace.id && *op == Create => {}
-				_ => panic!(
-					"Expected Namespace operation with Create"
-				),
+				_ => panic!("Expected Namespace operation with Create"),
 			}
 		}
 	}
@@ -191,77 +158,31 @@ mod tests {
 		#[test]
 		fn test_multiple_updates_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let namespace_v1 =
-				test_namespace_def(1, "namespace_v1");
-			let namespace_v2 =
-				test_namespace_def(1, "namespace_v2");
-			let namespace_v3 =
-				test_namespace_def(1, "namespace_v3");
+			let namespace_v1 = test_namespace_def(1, "namespace_v1");
+			let namespace_v2 = test_namespace_def(1, "namespace_v2");
+			let namespace_v3 = test_namespace_def(1, "namespace_v3");
 
 			// First update
-			txn.track_namespace_def_updated(
-				namespace_v1.clone(),
-				namespace_v2.clone(),
-			)
-			.unwrap();
+			txn.track_namespace_def_updated(namespace_v1.clone(), namespace_v2.clone()).unwrap();
 
 			// Should have one change
 			assert_eq!(txn.changes.namespace_def.len(), 1);
-			assert_eq!(
-				txn.changes.namespace_def[0]
-					.pre
-					.as_ref()
-					.unwrap()
-					.name,
-				"namespace_v1"
-			);
-			assert_eq!(
-				txn.changes.namespace_def[0]
-					.post
-					.as_ref()
-					.unwrap()
-					.name,
-				"namespace_v2"
-			);
+			assert_eq!(txn.changes.namespace_def[0].pre.as_ref().unwrap().name, "namespace_v1");
+			assert_eq!(txn.changes.namespace_def[0].post.as_ref().unwrap().name, "namespace_v2");
 			assert_eq!(txn.changes.namespace_def[0].op, Update);
 
 			// Second update - should NOT coalesce
-			txn.track_namespace_def_updated(
-				namespace_v2,
-				namespace_v3.clone(),
-			)
-			.unwrap();
+			txn.track_namespace_def_updated(namespace_v2, namespace_v3.clone()).unwrap();
 
 			// Should now have TWO changes (no coalescing)
 			assert_eq!(txn.changes.namespace_def.len(), 2);
 
 			// First update unchanged
-			assert_eq!(
-				txn.changes.namespace_def[0]
-					.pre
-					.as_ref()
-					.unwrap()
-					.name,
-				"namespace_v1"
-			);
+			assert_eq!(txn.changes.namespace_def[0].pre.as_ref().unwrap().name, "namespace_v1");
 
 			// Second update recorded separately
-			assert_eq!(
-				txn.changes.namespace_def[1]
-					.pre
-					.as_ref()
-					.unwrap()
-					.name,
-				"namespace_v2"
-			);
-			assert_eq!(
-				txn.changes.namespace_def[1]
-					.post
-					.as_ref()
-					.unwrap()
-					.name,
-				"namespace_v3"
-			);
+			assert_eq!(txn.changes.namespace_def[1].pre.as_ref().unwrap().name, "namespace_v2");
+			assert_eq!(txn.changes.namespace_def[1].post.as_ref().unwrap().name, "namespace_v3");
 
 			// Should have 2 log entries
 			assert_eq!(txn.changes.log.len(), 2);
@@ -270,37 +191,23 @@ mod tests {
 		#[test]
 		fn test_create_then_update_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let namespace_v1 =
-				test_namespace_def(1, "namespace_v1");
-			let namespace_v2 =
-				test_namespace_def(1, "namespace_v2");
+			let namespace_v1 = test_namespace_def(1, "namespace_v1");
+			let namespace_v2 = test_namespace_def(1, "namespace_v2");
 
 			// First track creation
-			txn.track_namespace_def_created(namespace_v1.clone())
-				.unwrap();
+			txn.track_namespace_def_created(namespace_v1.clone()).unwrap();
 			assert_eq!(txn.changes.namespace_def.len(), 1);
 			assert_eq!(txn.changes.namespace_def[0].op, Create);
 
 			// Then track update - should NOT coalesce
-			txn.track_namespace_def_updated(
-				namespace_v1,
-				namespace_v2.clone(),
-			)
-			.unwrap();
+			txn.track_namespace_def_updated(namespace_v1, namespace_v2.clone()).unwrap();
 
 			// Should have TWO changes now
 			assert_eq!(txn.changes.namespace_def.len(), 2);
 
 			// First is still Create
 			assert_eq!(txn.changes.namespace_def[0].op, Create);
-			assert_eq!(
-				txn.changes.namespace_def[0]
-					.post
-					.as_ref()
-					.unwrap()
-					.name,
-				"namespace_v1"
-			);
+			assert_eq!(txn.changes.namespace_def[0].post.as_ref().unwrap().name, "namespace_v1");
 
 			// Second is Update
 			assert_eq!(txn.changes.namespace_def[1].op, Update);
@@ -309,28 +216,17 @@ mod tests {
 		#[test]
 		fn test_normal_update() {
 			let mut txn = create_test_command_transaction();
-			let namespace_v1 =
-				test_namespace_def(1, "namespace_v1");
-			let namespace_v2 =
-				test_namespace_def(1, "namespace_v2");
+			let namespace_v1 = test_namespace_def(1, "namespace_v1");
+			let namespace_v2 = test_namespace_def(1, "namespace_v2");
 
-			let result = txn.track_namespace_def_updated(
-				namespace_v1.clone(),
-				namespace_v2.clone(),
-			);
+			let result = txn.track_namespace_def_updated(namespace_v1.clone(), namespace_v2.clone());
 			assert!(result.is_ok());
 
 			// Verify the change was recorded
 			assert_eq!(txn.changes.namespace_def.len(), 1);
 			let change = &txn.changes.namespace_def[0];
-			assert_eq!(
-				change.pre.as_ref().unwrap().name,
-				"namespace_v1"
-			);
-			assert_eq!(
-				change.post.as_ref().unwrap().name,
-				"namespace_v2"
-			);
+			assert_eq!(change.pre.as_ref().unwrap().name, "namespace_v1");
+			assert_eq!(change.post.as_ref().unwrap().name, "namespace_v2");
 			assert_eq!(change.op, Update);
 
 			// Verify operation was logged
@@ -340,9 +236,7 @@ mod tests {
 					id,
 					op,
 				} if *id == NamespaceId(1) && *op == Update => {}
-				_ => panic!(
-					"Expected Namespace operation with Update"
-				),
+				_ => panic!("Expected Namespace operation with Update"),
 			}
 		}
 	}
@@ -356,14 +250,12 @@ mod tests {
 			let namespace = test_namespace_def(1, "test_namespace");
 
 			// First track creation
-			txn.track_namespace_def_created(namespace.clone())
-				.unwrap();
+			txn.track_namespace_def_created(namespace.clone()).unwrap();
 			assert_eq!(txn.changes.log.len(), 1);
 			assert_eq!(txn.changes.namespace_def.len(), 1);
 
 			// Then track deletion - should NOT remove, just add
-			let result = txn
-				.track_namespace_def_deleted(namespace.clone());
+			let result = txn.track_namespace_def_deleted(namespace.clone());
 			assert!(result.is_ok());
 
 			// Should have TWO changes now (no coalescing)
@@ -374,14 +266,7 @@ mod tests {
 
 			// Second is Delete
 			assert_eq!(txn.changes.namespace_def[1].op, Delete);
-			assert_eq!(
-				txn.changes.namespace_def[1]
-					.pre
-					.as_ref()
-					.unwrap()
-					.name,
-				"test_namespace"
-			);
+			assert_eq!(txn.changes.namespace_def[1].pre.as_ref().unwrap().name, "test_namespace");
 
 			// Should have 2 log entries
 			assert_eq!(txn.changes.log.len(), 2);
@@ -390,22 +275,15 @@ mod tests {
 		#[test]
 		fn test_delete_after_update_no_coalescing() {
 			let mut txn = create_test_command_transaction();
-			let namespace_v1 =
-				test_namespace_def(1, "namespace_v1");
-			let namespace_v2 =
-				test_namespace_def(1, "namespace_v2");
+			let namespace_v1 = test_namespace_def(1, "namespace_v1");
+			let namespace_v2 = test_namespace_def(1, "namespace_v2");
 
 			// First track update
-			txn.track_namespace_def_updated(
-				namespace_v1.clone(),
-				namespace_v2.clone(),
-			)
-			.unwrap();
+			txn.track_namespace_def_updated(namespace_v1.clone(), namespace_v2.clone()).unwrap();
 			assert_eq!(txn.changes.namespace_def.len(), 1);
 
 			// Then track deletion
-			let result =
-				txn.track_namespace_def_deleted(namespace_v2);
+			let result = txn.track_namespace_def_deleted(namespace_v2);
 			assert!(result.is_ok());
 
 			// Should have TWO changes (no coalescing)
@@ -426,17 +304,13 @@ mod tests {
 			let mut txn = create_test_command_transaction();
 			let namespace = test_namespace_def(1, "test_namespace");
 
-			let result = txn
-				.track_namespace_def_deleted(namespace.clone());
+			let result = txn.track_namespace_def_deleted(namespace.clone());
 			assert!(result.is_ok());
 
 			// Verify the change was recorded
 			assert_eq!(txn.changes.namespace_def.len(), 1);
 			let change = &txn.changes.namespace_def[0];
-			assert_eq!(
-				change.pre.as_ref().unwrap().name,
-				"test_namespace"
-			);
+			assert_eq!(change.pre.as_ref().unwrap().name, "test_namespace");
 			assert!(change.post.is_none());
 			assert_eq!(change.op, Delete);
 
@@ -447,9 +321,7 @@ mod tests {
 					id,
 					op,
 				} if *id == namespace.id && *op == Delete => {}
-				_ => panic!(
-					"Expected Namespace operation with Delete"
-				),
+				_ => panic!("Expected Namespace operation with Delete"),
 			}
 		}
 	}

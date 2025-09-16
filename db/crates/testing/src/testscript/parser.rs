@@ -24,11 +24,7 @@ pub struct ParseError {
 
 impl fmt::Display for ParseError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(
-			f,
-			"Parse error at line {}:{}: {}",
-			self.line, self.column, self.message
-		)
+		write!(f, "Parse error at line {}:{}: {}", self.line, self.column, self.message)
 	}
 }
 
@@ -42,12 +38,7 @@ pub struct LocatedSpan {
 }
 
 impl LocatedSpan {
-	fn new(
-		_line_start: usize,
-		column: usize,
-		line: u32,
-		line_text: String,
-	) -> Self {
+	fn new(_line_start: usize, column: usize, line: u32, line_text: String) -> Self {
 		LocatedSpan {
 			column,
 			line,
@@ -118,9 +109,7 @@ impl<'a> Parser<'a> {
 
 		// Make sure we don't split a UTF-8 character
 		let mut safe_end = end;
-		while safe_end > self.pos
-			&& !self.input.is_char_boundary(safe_end)
-		{
+		while safe_end > self.pos && !self.input.is_char_boundary(safe_end) {
 			safe_end -= 1;
 		}
 
@@ -178,12 +167,7 @@ impl<'a> Parser<'a> {
 			message: message.into(),
 			line: self.line,
 			column: self.column,
-			input: LocatedSpan::new(
-				self.line_start_pos,
-				self.column,
-				self.line,
-				line_text.to_string(),
-			),
+			input: LocatedSpan::new(self.line_start_pos, self.column, self.line, line_text.to_string()),
 			code: format!("{:?}", line_text),
 		}
 	}
@@ -209,8 +193,7 @@ impl<'a> Parser<'a> {
 
 		// Capture literal
 		let literal_end = self.pos;
-		let literal =
-			self.input[literal_start..literal_end].to_string();
+		let literal = self.input[literal_start..literal_end].to_string();
 
 		// Handle empty block at EOF
 		if self.is_at_end() && commands.is_empty() {
@@ -266,9 +249,7 @@ impl<'a> Parser<'a> {
 			// commands)
 			if let Some(ch) = self.peek_char() {
 				if ch.is_whitespace() && ch != '\n' {
-					return Err(self.error(
-						"Command cannot start with whitespace",
-					));
+					return Err(self.error("Command cannot start with whitespace"));
 				}
 			}
 
@@ -278,9 +259,7 @@ impl<'a> Parser<'a> {
 				Err(e) => {
 					// If we hit a separator but have no
 					// commands, let parse_command error
-					if self.peek_str(3) == "---"
-						&& commands.is_empty()
-					{
+					if self.peek_str(3) == "---" && commands.is_empty() {
 						return Err(e);
 					}
 					return Err(e);
@@ -356,9 +335,7 @@ impl<'a> Parser<'a> {
 
 		// Parse command name
 		self.skip_whitespace();
-		let name = self
-			.parse_string()
-			.map_err(|_| self.error("Expected command name"))?;
+		let name = self.parse_string().map_err(|_| self.error("Expected command name"))?;
 
 		// Parse arguments
 		let mut args = Vec::new();
@@ -366,9 +343,7 @@ impl<'a> Parser<'a> {
 			self.skip_whitespace();
 			if self.peek_char() == Some('[') {
 				// Might be trailing tags
-				if let Some(parsed_tags) =
-					self.parse_taglist()?
-				{
+				if let Some(parsed_tags) = self.parse_taglist()? {
 					tags.extend(parsed_tags);
 					break;
 				}
@@ -379,9 +354,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			if self.peek_char() == Some('#')
-				|| self.peek_str(2) == "//"
-			{
+			if self.peek_char() == Some('#') || self.peek_str(2) == "//" {
 				break;
 			}
 
@@ -410,9 +383,7 @@ impl<'a> Parser<'a> {
 		if silent {
 			self.skip_whitespace();
 			if self.peek_char() != Some(')') {
-				return Err(self.error(
-					"Expected closing ) for silent command",
-				));
+				return Err(self.error("Expected closing ) for silent command"));
 			}
 			self.advance();
 		}
@@ -453,11 +424,8 @@ impl<'a> Parser<'a> {
 				// First check if we have an empty value (next
 				// is whitespace or another key)
 				let value = if matches!(self.peek_char(), Some(ch) if ch.is_whitespace())
-					|| matches!(
-						self.peek_char(),
-						Some('[' | ')' | '#')
-					) || self.peek_char().is_none()
-					|| self.peek_str(2) == "//"
+					|| matches!(self.peek_char(), Some('[' | ')' | '#'))
+					|| self.peek_char().is_none() || self.peek_str(2) == "//"
 				{
 					// Empty value case
 					String::new()
@@ -471,22 +439,18 @@ impl<'a> Parser<'a> {
 							// key=value pair
 							// by looking for a
 							// string followed by =
-							let check_pos =
-								self.pos;
-							let check_line =
-								self.line;
-							let check_column =
-								self.column;
+							let check_pos = self.pos;
+							let check_line = self.line;
+							let check_column = self.column;
 							let check_line_start = self.line_start_pos;
 
 							// Try to parse what
 							// comes next as a
 							// potential key
-							if let Ok(_) = self
-								.parse_string()
-							{
+							if let Ok(_) = self.parse_string() {
 								if self.peek_char() == Some('=') {
-									// This looks like another key=value, so current value is empty
+									// This looks like another key=value, so current
+									// value is empty
 									self.pos = check_pos;
 									self.line = check_line;
 									self.column = check_column;
@@ -498,7 +462,9 @@ impl<'a> Parser<'a> {
 									self.line = saved_line;
 									self.column = saved_column;
 									self.line_start_pos = saved_line_start;
-									return Err(self.error("Expected argument value after ="));
+									return Err(self.error(
+										"Expected argument value after =",
+									));
 								}
 							} else {
 								// Can't parse
@@ -508,7 +474,9 @@ impl<'a> Parser<'a> {
 								self.line = saved_line;
 								self.column = saved_column;
 								self.line_start_pos = saved_line_start;
-								return Err(self.error("Expected argument value after ="));
+								return Err(
+									self.error("Expected argument value after =")
+								);
 							}
 						}
 					}
@@ -529,9 +497,7 @@ impl<'a> Parser<'a> {
 		Err(self.error("Expected argument"))
 	}
 
-	fn parse_taglist(
-		&mut self,
-	) -> Result<Option<HashSet<String>>, ParseError> {
+	fn parse_taglist(&mut self) -> Result<Option<HashSet<String>>, ParseError> {
 		if self.peek_char() != Some('[') {
 			return Ok(None);
 		}
@@ -545,18 +511,14 @@ impl<'a> Parser<'a> {
 			if self.peek_char() == Some(']') {
 				// Empty tag list is an error
 				if tags.is_empty() {
-					return Err(
-						self.error("Empty tag list")
-					);
+					return Err(self.error("Empty tag list"));
 				}
 				self.advance();
 				break;
 			}
 
 			self.skip_whitespace();
-			let tag = self
-				.parse_string()
-				.map_err(|_| self.error("Expected tag name"))?;
+			let tag = self.parse_string().map_err(|_| self.error("Expected tag name"))?;
 			tags.insert(tag);
 
 			self.skip_whitespace();
@@ -607,17 +569,12 @@ impl<'a> Parser<'a> {
 		Ok(result)
 	}
 
-	fn parse_quoted_string(
-		&mut self,
-		quote: char,
-	) -> Result<String, ParseError> {
+	fn parse_quoted_string(&mut self, quote: char) -> Result<String, ParseError> {
 		let mut result = String::new();
 
 		// Skip opening quote
 		if self.peek_char() != Some(quote) {
-			return Err(
-				self.error(format!("Expected {} quote", quote))
-			);
+			return Err(self.error(format!("Expected {} quote", quote)));
 		}
 		self.advance();
 
@@ -658,65 +615,30 @@ impl<'a> Parser<'a> {
 					}
 					Some('x') => {
 						self.advance();
-						let hex = self
-							.parse_hex_digits(
-								2, 2,
-							)?;
-						let byte = u8::from_str_radix(
-							&hex, 16,
-						)
-						.map_err(|_| {
-							self.error(
-								"Invalid hex escape",
-							)
-						})?;
+						let hex = self.parse_hex_digits(2, 2)?;
+						let byte = u8::from_str_radix(&hex, 16)
+							.map_err(|_| self.error("Invalid hex escape"))?;
 						result.push(char::from(byte));
 					}
 					Some('u') => {
 						self.advance();
-						if self.peek_char() != Some('{')
-						{
-							return Err(self
-								.error(
-									"Expected { after \\u",
-								));
+						if self.peek_char() != Some('{') {
+							return Err(self.error("Expected { after \\u"));
 						}
 						self.advance();
-						let hex = self
-							.parse_hex_digits(
-								1, 6,
-							)?;
-						if self.peek_char() != Some('}')
-						{
-							return Err(self
-								.error(
-									"Expected } after unicode escape",
-								));
+						let hex = self.parse_hex_digits(1, 6)?;
+						if self.peek_char() != Some('}') {
+							return Err(self.error("Expected } after unicode escape"));
 						}
 						self.advance();
-						let codepoint =
-							u32::from_str_radix(
-								&hex, 16,
-							)
-							.map_err(
-								|_| {
-									self.error("Invalid unicode escape")
-								},
-							)?;
-						let ch = char::from_u32(
-							codepoint,
-						)
-						.ok_or_else(|| {
-							self.error(
-								"Invalid unicode codepoint",
-							)
-						})?;
+						let codepoint = u32::from_str_radix(&hex, 16)
+							.map_err(|_| self.error("Invalid unicode escape"))?;
+						let ch = char::from_u32(codepoint)
+							.ok_or_else(|| self.error("Invalid unicode codepoint"))?;
 						result.push(ch);
 					}
 					_ => {
-						return Err(self.error(
-							"Invalid escape sequence",
-						));
+						return Err(self.error("Invalid escape sequence"));
 					}
 				}
 			} else {
@@ -725,17 +647,10 @@ impl<'a> Parser<'a> {
 			}
 		}
 
-		Err(self.error(format!(
-			"Unterminated string (missing {})",
-			quote
-		)))
+		Err(self.error(format!("Unterminated string (missing {})", quote)))
 	}
 
-	fn parse_hex_digits(
-		&mut self,
-		min: usize,
-		max: usize,
-	) -> Result<String, ParseError> {
+	fn parse_hex_digits(&mut self, min: usize, max: usize) -> Result<String, ParseError> {
 		let mut hex = String::new();
 		for i in 0..max {
 			match self.peek_char() {
@@ -745,22 +660,14 @@ impl<'a> Parser<'a> {
 				}
 				_ => {
 					if i < min {
-						return Err(self.error(
-							format!(
-								"Expected at least {} hex digits",
-								min
-							),
-						));
+						return Err(self.error(format!("Expected at least {} hex digits", min)));
 					}
 					break;
 				}
 			}
 		}
 		if hex.len() < min {
-			return Err(self.error(format!(
-				"Expected at least {} hex digits",
-				min
-			)));
+			return Err(self.error(format!("Expected at least {} hex digits", min)));
 		}
 		Ok(hex)
 	}
@@ -810,9 +717,7 @@ impl<'a> Parser<'a> {
 				Ok(true)
 			}
 			None => Ok(true),
-			_ => Err(self.error(
-				"Separator must be followed by newline or EOF",
-			)),
+			_ => Err(self.error("Separator must be followed by newline or EOF")),
 		}
 	}
 

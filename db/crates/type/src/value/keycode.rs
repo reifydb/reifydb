@@ -118,10 +118,7 @@ mod tests {
 		serializer.extend_u64(0u64);
 		let result = serializer.finish();
 		// 0u64 with bitwise NOT should be all 0xff
-		assert_eq!(
-			result,
-			vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
-		);
+		assert_eq!(result, vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 	}
 
 	#[test]
@@ -131,10 +128,7 @@ mod tests {
 		let result = serializer.finish();
 		// 0i64 should encode as 0x7fffffffffffffff after flip sign bit
 		// and NOT
-		assert_eq!(
-			result,
-			vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
-		);
+		assert_eq!(result, vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 	}
 
 	#[test]
@@ -158,10 +152,7 @@ mod tests {
 	#[test]
 	fn test_chaining() {
 		let mut serializer = KeySerializer::new();
-		serializer
-			.extend_u64(1u64)
-			.extend_bytes(b"test")
-			.extend_i32(-1i32);
+		serializer.extend_u64(1u64).extend_bytes(b"test").extend_i32(-1i32);
 		let result = serializer.finish();
 
 		// Check that we got some output (exact values tested above)

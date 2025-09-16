@@ -30,10 +30,7 @@ impl<T: CommandTransaction> CompileOperator<T> for TableScanCompiler {
 		let table_name = table.name.clone();
 
 		// Get namespace information
-		let namespace_def = CatalogStore::get_namespace(
-			unsafe { &mut *compiler.txn },
-			table.namespace,
-		)?;
+		let namespace_def = CatalogStore::get_namespace(unsafe { &mut *compiler.txn }, table.namespace)?;
 
 		let namespace = FlowNodeSchema::new(
 			table.columns.clone(),

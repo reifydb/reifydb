@@ -2,36 +2,26 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::identifier::{
-	ColumnIdentifier, ColumnSource, IndexIdentifier,
-};
+use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource, IndexIdentifier};
 use reifydb_type::Fragment;
 
 use crate::{
 	ast::{AstCreateIndex, AstIndexColumn},
 	expression::ExpressionCompiler,
-	plan::logical::{
-		Compiler, CreateIndexNode, IndexColumn, LogicalPlan,
-		resolver::IdentifierResolver,
-	},
+	plan::logical::{Compiler, CreateIndexNode, IndexColumn, LogicalPlan, resolver::IdentifierResolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_index<
-		'a,
-		't,
-		T: CatalogQueryTransaction,
-	>(
+	pub(crate) fn compile_create_index<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstCreateIndex<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Get the namespace with default from resolver
-		let namespace =
-			ast.index.namespace.clone().unwrap_or_else(|| {
-				Fragment::borrowed_internal(
-					resolver.default_namespace(),
-				)
-			});
+		let namespace = ast
+			.index
+			.namespace
+			.clone()
+			.unwrap_or_else(|| Fragment::borrowed_internal(resolver.default_namespace()));
 
 		// Create the table source for column qualification
 		let table_source = ColumnSource::Source {
@@ -54,9 +44,7 @@ impl Compiler {
 		let filter = ast
 			.filters
 			.into_iter()
-			.map(|filter_ast| {
-				ExpressionCompiler::compile(*filter_ast)
-			})
+			.map(|filter_ast| ExpressionCompiler::compile(*filter_ast))
 			.collect::<Result<Vec<_>, _>>()?;
 
 		let map = if let Some(map_ast) = ast.map {
@@ -65,11 +53,7 @@ impl Compiler {
 			None
 		};
 
-		let index = IndexIdentifier::new(
-			namespace,
-			ast.index.table,
-			ast.index.name,
-		);
+		let index = IndexIdentifier::new(namespace, ast.index.table, ast.index.name);
 
 		Ok(LogicalPlan::CreateIndex(CreateIndexNode {
 			index_type: ast.index_type,

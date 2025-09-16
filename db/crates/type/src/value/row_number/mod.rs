@@ -76,17 +76,11 @@ impl<'de> Deserialize<'de> for RowNumber {
 		impl Visitor<'_> for U64Visitor {
 			type Value = RowNumber;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(RowNumber(value))
 			}
 		}

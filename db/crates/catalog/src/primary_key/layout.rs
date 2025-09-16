@@ -24,9 +24,7 @@ pub(crate) mod primary_key {
 		let mut bytes = Vec::new();
 
 		// Write count
-		bytes.extend_from_slice(
-			&(column_ids.len() as u64).to_le_bytes(),
-		);
+		bytes.extend_from_slice(&(column_ids.len() as u64).to_le_bytes());
 
 		// Write each column ID
 		for col_id in column_ids {
@@ -42,16 +40,13 @@ pub(crate) mod primary_key {
 		let bytes = blob.as_ref();
 
 		// Read count
-		let count = u64::from_le_bytes(bytes[0..8].try_into().unwrap())
-			as usize;
+		let count = u64::from_le_bytes(bytes[0..8].try_into().unwrap()) as usize;
 
 		// Read each column ID
 		let mut column_ids = Vec::with_capacity(count);
 		for i in 0..count {
 			let start = 8 + i * 8;
-			let id = u64::from_le_bytes(
-				bytes[start..start + 8].try_into().unwrap(),
-			);
+			let id = u64::from_le_bytes(bytes[start..start + 8].try_into().unwrap());
 			column_ids.push(ColumnId(id));
 		}
 
@@ -63,9 +58,7 @@ pub(crate) mod primary_key {
 mod tests {
 	use reifydb_core::interface::ColumnId;
 
-	use super::primary_key::{
-		deserialize_column_ids, serialize_column_ids,
-	};
+	use super::primary_key::{deserialize_column_ids, serialize_column_ids};
 
 	#[test]
 	fn test_serialize_deserialize_column_ids() {
@@ -94,30 +87,19 @@ mod tests {
 			// Sequential IDs
 			(0..20).map(ColumnId).collect::<Vec<_>>(),
 			// Non-sequential IDs
-			vec![
-				ColumnId(100),
-				ColumnId(1),
-				ColumnId(50),
-				ColumnId(25),
-			],
+			vec![ColumnId(100), ColumnId(1), ColumnId(50), ColumnId(25)],
 		];
 
 		for original in test_cases {
 			let blob = serialize_column_ids(&original);
 			let deserialized = deserialize_column_ids(&blob);
 
-			assert_eq!(
-				original, deserialized,
-				"Failed to round-trip column IDs: {:?}",
-				original
-			);
+			assert_eq!(original, deserialized, "Failed to round-trip column IDs: {:?}", original);
 
 			// Verify blob format: first 8 bytes should be the count
 			let bytes = blob.as_ref();
 			if !original.is_empty() || bytes.len() >= 8 {
-				let count = u64::from_le_bytes(
-					bytes[0..8].try_into().unwrap(),
-				);
+				let count = u64::from_le_bytes(bytes[0..8].try_into().unwrap());
 				assert_eq!(
 					count as usize,
 					original.len(),
@@ -139,10 +121,7 @@ mod tests {
 	#[test]
 	fn test_serialize_format() {
 		// Test specific format details
-		let column_ids = vec![
-			ColumnId(0x0123456789ABCDEF),
-			ColumnId(0xFEDCBA9876543210),
-		];
+		let column_ids = vec![ColumnId(0x0123456789ABCDEF), ColumnId(0xFEDCBA9876543210)];
 		let blob = serialize_column_ids(&column_ids);
 		let bytes = blob.as_ref();
 
@@ -150,15 +129,9 @@ mod tests {
 		assert_eq!(&bytes[0..8], &[2, 0, 0, 0, 0, 0, 0, 0]);
 
 		// Check first ID (0x0123456789ABCDEF in little-endian)
-		assert_eq!(
-			&bytes[8..16],
-			&[0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01]
-		);
+		assert_eq!(&bytes[8..16], &[0xEF, 0xCD, 0xAB, 0x89, 0x67, 0x45, 0x23, 0x01]);
 
 		// Check second ID (0xFEDCBA9876543210 in little-endian)
-		assert_eq!(
-			&bytes[16..24],
-			&[0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE]
-		);
+		assert_eq!(&bytes[16..24], &[0x10, 0x32, 0x54, 0x76, 0x98, 0xBA, 0xDC, 0xFE]);
 	}
 }

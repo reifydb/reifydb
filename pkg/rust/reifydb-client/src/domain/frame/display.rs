@@ -3,9 +3,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use reifydb_type::{
-	util::unicode::UnicodeWidthStr, Value, ROW_NUMBER_COLUMN_NAME,
-};
+use reifydb_type::{util::unicode::UnicodeWidthStr, Value, ROW_NUMBER_COLUMN_NAME};
 
 use crate::domain::frame::{Frame, FrameColumn};
 
@@ -31,9 +29,7 @@ fn get_column_display_order(frame: &Frame) -> Vec<usize> {
 	let mut indices: Vec<usize> = (0..frame.len()).collect();
 
 	// Find the RowNumber column and move it to the front
-	if let Some(row_number_pos) =
-		frame.iter().position(|col| col.name == ROW_NUMBER_COLUMN_NAME)
-	{
+	if let Some(row_number_pos) = frame.iter().position(|col| col.name == ROW_NUMBER_COLUMN_NAME) {
 		indices.remove(row_number_pos);
 		indices.insert(0, row_number_pos);
 	}
@@ -43,10 +39,7 @@ fn get_column_display_order(frame: &Frame) -> Vec<usize> {
 
 /// Extract string value from column at given row index, with proper escaping
 fn extract_string_value(col: &FrameColumn, row_number: usize) -> String {
-	let s =
-		col.data.get(row_number)
-			.unwrap_or(&Value::Undefined)
-			.as_string();
+	let s = col.data.get(row_number).unwrap_or(&Value::Undefined).as_string();
 
 	escape_control_chars(&s)
 }
@@ -63,20 +56,15 @@ impl Display for Frame {
 
 		for (display_idx, &col_idx) in column_order.iter().enumerate() {
 			let col = &self[col_idx];
-			let display_name =
-				escape_control_chars(&col.qualified_name());
+			let display_name = escape_control_chars(&col.qualified_name());
 			col_widths[display_idx] = display_width(&display_name);
 		}
 
 		for row_numberx in 0..row_count {
-			for (display_idx, &col_idx) in
-				column_order.iter().enumerate()
-			{
+			for (display_idx, &col_idx) in column_order.iter().enumerate() {
 				let col = &self[col_idx];
 				let s = extract_string_value(col, row_numberx);
-				col_widths[display_idx] = col_widths
-					[display_idx]
-					.max(display_width(&s));
+				col_widths[display_idx] = col_widths[display_idx].max(display_width(&s));
 			}
 		}
 
@@ -85,14 +73,7 @@ impl Display for Frame {
 			*w += 2;
 		}
 
-		let sep = format!(
-			"+{}+",
-			col_widths
-				.iter()
-				.map(|w| "-".repeat(*w + 2))
-				.collect::<Vec<_>>()
-				.join("+")
-		);
+		let sep = format!("+{}+", col_widths.iter().map(|w| "-".repeat(*w + 2)).collect::<Vec<_>>().join("+"));
 		writeln!(f, "{}", sep)?;
 
 		let header = column_order
@@ -101,20 +82,11 @@ impl Display for Frame {
 			.map(|(display_idx, &col_idx)| {
 				let col = &self[col_idx];
 				let w = col_widths[display_idx];
-				let name = escape_control_chars(
-					&col.qualified_name(),
-				);
+				let name = escape_control_chars(&col.qualified_name());
 				let pad = w - display_width(&name);
 				let l = pad / 2;
 				let r = pad - l;
-				format!(
-					" {:left$}{}{:right$} ",
-					"",
-					name,
-					"",
-					left = l,
-					right = r
-				)
+				format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r)
 			})
 			.collect::<Vec<_>>();
 		writeln!(f, "|{}|", header.join("|"))?;
@@ -128,21 +100,11 @@ impl Display for Frame {
 				.map(|(display_idx, &col_idx)| {
 					let col = &self[col_idx];
 					let w = col_widths[display_idx];
-					let s = extract_string_value(
-						col,
-						row_numberx,
-					);
+					let s = extract_string_value(col, row_numberx);
 					let pad = w - display_width(&s);
 					let l = pad / 2;
 					let r = pad - l;
-					format!(
-						" {:left$}{}{:right$} ",
-						"",
-						s,
-						"",
-						left = l,
-						right = r
-					)
+					format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r)
 				})
 				.collect::<Vec<_>>();
 
@@ -158,9 +120,8 @@ mod tests {
 	use std::convert::TryFrom;
 
 	use reifydb_type::{
-		parse_uuid4, parse_uuid7, Blob, Date, DateTime, Interval,
-		OrderedF32, OrderedF64, RowNumber, Time, Type, Uuid4, Uuid7,
-		Value,
+		parse_uuid4, parse_uuid7, Blob, Date, DateTime, Interval, OrderedF32, OrderedF64, RowNumber, Time,
+		Type, Uuid4, Uuid7, Value,
 	};
 
 	use super::*;
@@ -168,15 +129,8 @@ mod tests {
 	// Macro to create test columns with optional values (None = undefined)
 	macro_rules! column_with_undefineds {
 		($name:expr, Bool, $data:expr) => {{
-			let result_data: Vec<Value> = $data
-				.into_iter()
-				.map(|opt| {
-					opt.map_or(
-						Value::Undefined,
-						Value::Boolean,
-					)
-				})
-				.collect();
+			let result_data: Vec<Value> =
+				$data.into_iter().map(|opt| opt.map_or(Value::Undefined, Value::Boolean)).collect();
 
 			FrameColumn {
 				namespace: None,
@@ -191,10 +145,7 @@ mod tests {
 				.into_iter()
 				.map(|opt| {
 					opt.map_or(Value::Undefined, |v| {
-						Value::Float4(
-							OrderedF32::try_from(v)
-								.unwrap(),
-						)
+						Value::Float4(OrderedF32::try_from(v).unwrap())
 					})
 				})
 				.collect();
@@ -212,10 +163,7 @@ mod tests {
 				.into_iter()
 				.map(|opt| {
 					opt.map_or(Value::Undefined, |v| {
-						Value::Float8(
-							OrderedF64::try_from(v)
-								.unwrap(),
-						)
+						Value::Float8(OrderedF64::try_from(v).unwrap())
 					})
 				})
 				.collect();
@@ -231,11 +179,7 @@ mod tests {
 		($name:expr, Utf8, $data:expr) => {{
 			let result_data: Vec<Value> = $data
 				.into_iter()
-				.map(|opt| {
-					opt.map_or(Value::Undefined, |v| {
-						Value::Utf8(v.to_string())
-					})
-				})
+				.map(|opt| opt.map_or(Value::Undefined, |v| Value::Utf8(v.to_string())))
 				.collect();
 
 			FrameColumn {
@@ -247,15 +191,8 @@ mod tests {
 			}
 		}};
 		($name:expr, RowNumber, $data:expr) => {{
-			let result_data: Vec<Value> = $data
-				.into_iter()
-				.map(|opt| {
-					opt.map_or(
-						Value::Undefined,
-						Value::RowNumber,
-					)
-				})
-				.collect();
+			let result_data: Vec<Value> =
+				$data.into_iter().map(|opt| opt.map_or(Value::Undefined, Value::RowNumber)).collect();
 
 			FrameColumn {
 				namespace: None,
@@ -266,15 +203,8 @@ mod tests {
 			}
 		}};
 		($name:expr, $type:ident, $data:expr) => {{
-			let result_data: Vec<Value> = $data
-				.into_iter()
-				.map(|opt| {
-					opt.map_or(
-						Value::Undefined,
-						Value::$type,
-					)
-				})
-				.collect();
+			let result_data: Vec<Value> =
+				$data.into_iter().map(|opt| opt.map_or(Value::Undefined, Value::$type)).collect();
 
 			FrameColumn {
 				namespace: None,
@@ -296,11 +226,8 @@ mod tests {
 		}
 	}
 
-	fn row_number_column(
-		data: impl IntoIterator<Item = RowNumber>,
-	) -> FrameColumn {
-		let values: Vec<Value> =
-			data.into_iter().map(Value::RowNumber).collect();
+	fn row_number_column(data: impl IntoIterator<Item = RowNumber>) -> FrameColumn {
+		let values: Vec<Value> = data.into_iter().map(Value::RowNumber).collect();
 
 		FrameColumn {
 			namespace: None,
@@ -313,11 +240,7 @@ mod tests {
 
 	#[test]
 	fn test_bool() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"bool",
-			Bool,
-			[Some(true), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("bool", Bool, [Some(true), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -332,11 +255,7 @@ mod tests {
 
 	#[test]
 	fn test_float4() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"float4",
-			Float4,
-			[Some(1.2_f32), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("float4", Float4, [Some(1.2_f32), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -352,11 +271,7 @@ mod tests {
 	#[test]
 	#[allow(clippy::approx_constant)]
 	fn test_float8() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"float8",
-			Float8,
-			[Some(3.14_f64), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("float8", Float8, [Some(3.14_f64), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -371,11 +286,7 @@ mod tests {
 
 	#[test]
 	fn test_int1() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"int1",
-			Int1,
-			[Some(1_i8), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("int1", Int1, [Some(1_i8), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -390,11 +301,7 @@ mod tests {
 
 	#[test]
 	fn test_int2() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"int2",
-			Int2,
-			[Some(100_i16), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("int2", Int2, [Some(100_i16), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -409,11 +316,7 @@ mod tests {
 
 	#[test]
 	fn test_int4() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"int4",
-			Int4,
-			[Some(1000_i32), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("int4", Int4, [Some(1000_i32), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -428,11 +331,7 @@ mod tests {
 
 	#[test]
 	fn test_int8() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"int8",
-			Int8,
-			[Some(10000_i64), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("int8", Int8, [Some(10000_i64), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -447,11 +346,7 @@ mod tests {
 
 	#[test]
 	fn test_int16() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"int16",
-			Int16,
-			[Some(100000_i128), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("int16", Int16, [Some(100000_i128), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -466,11 +361,7 @@ mod tests {
 
 	#[test]
 	fn test_uint1() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"uint1",
-			Uint1,
-			[Some(1_u8), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("uint1", Uint1, [Some(1_u8), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -485,11 +376,7 @@ mod tests {
 
 	#[test]
 	fn test_uint2() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"uint2",
-			Uint2,
-			[Some(100_u16), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("uint2", Uint2, [Some(100_u16), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -504,11 +391,7 @@ mod tests {
 
 	#[test]
 	fn test_uint4() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"uint4",
-			Uint4,
-			[Some(1000_u32), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("uint4", Uint4, [Some(1000_u32), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -523,11 +406,7 @@ mod tests {
 
 	#[test]
 	fn test_uint8() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"uint8",
-			Uint8,
-			[Some(10000_u64), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("uint8", Uint8, [Some(10000_u64), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -542,11 +421,7 @@ mod tests {
 
 	#[test]
 	fn test_uint16() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"uint16",
-			Uint16,
-			[Some(100000_u128), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("uint16", Uint16, [Some(100000_u128), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -561,11 +436,7 @@ mod tests {
 
 	#[test]
 	fn test_string() {
-		let frame = Frame::new(vec![column_with_undefineds!(
-			"string",
-			Utf8,
-			[Some("foo"), None]
-		)]);
+		let frame = Frame::new(vec![column_with_undefineds!("string", Utf8, [Some("foo"), None])]);
 		let output = format!("{}", frame);
 		let expected = "\
 +-------------+
@@ -617,11 +488,7 @@ mod tests {
 		let frame = Frame::new(vec![column_with_undefineds!(
 			"datetime",
 			DateTime,
-			[
-				Some(DateTime::from_timestamp(1642694400)
-					.unwrap()),
-				None
-			]
+			[Some(DateTime::from_timestamp(1642694400).unwrap()), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -696,30 +563,15 @@ mod tests {
 	#[test]
 	fn test_row_number_column_ordering() {
 		// Create a frame with regular columns and a RowNumber column
-		let regular_column = column_with_undefineds!(
-			"name",
-			Utf8,
-			[Some("Alice"), Some("Bob")]
-		);
+		let regular_column = column_with_undefineds!("name", Utf8, [Some("Alice"), Some("Bob")]);
 
-		let age_column = column_with_undefineds!(
-			"age",
-			Int4,
-			[Some(25_i32), Some(30_i32)]
-		);
+		let age_column = column_with_undefineds!("age", Int4, [Some(25_i32), Some(30_i32)]);
 
-		let row_number_column = row_number_column([
-			RowNumber::new(1),
-			RowNumber::new(2),
-		]);
+		let row_number_column = row_number_column([RowNumber::new(1), RowNumber::new(2)]);
 
 		// Create frame with RowNumber column NOT first (it should be
 		// reordered)
-		let frame = Frame::new(vec![
-			regular_column,
-			age_column,
-			row_number_column,
-		]);
+		let frame = Frame::new(vec![regular_column, age_column, row_number_column]);
 		let output = format!("{}", frame);
 
 		// Verify that __ROW__NUMBER__ appears as the first column in
@@ -782,15 +634,7 @@ mod tests {
 		let frame = Frame::new(vec![column_with_undefineds!(
 			"uuid4",
 			Uuid4,
-			[
-				Some(Uuid4::from(
-					parse_uuid4(
-						"550e8400-e29b-41d4-a716-446655440000"
-					)
-					.unwrap()
-				)),
-				None
-			]
+			[Some(Uuid4::from(parse_uuid4("550e8400-e29b-41d4-a716-446655440000").unwrap())), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\
@@ -809,15 +653,7 @@ mod tests {
 		let frame = Frame::new(vec![column_with_undefineds!(
 			"uuid7",
 			Uuid7,
-			[
-				Some(Uuid7::from(
-					parse_uuid7(
-						"01890a5d-ac96-774b-b9aa-789c0686aaa4"
-					)
-					.unwrap()
-				)),
-				None
-			]
+			[Some(Uuid7::from(parse_uuid7("01890a5d-ac96-774b-b9aa-789c0686aaa4").unwrap())), None]
 		)]);
 		let output = format!("{}", frame);
 		let expected = "\

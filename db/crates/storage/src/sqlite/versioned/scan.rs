@@ -30,11 +30,7 @@ pub struct Iter {
 }
 
 impl Iter {
-	pub fn new(
-		conn: Reader,
-		version: CommitVersion,
-		batch_size: usize,
-	) -> Self {
+	pub fn new(conn: Reader, version: CommitVersion, batch_size: usize) -> Self {
 		let table_names = get_table_names(&conn);
 
 		Self {

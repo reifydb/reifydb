@@ -4,21 +4,15 @@
 use OperationType::{Create, Update};
 use reifydb_catalog::transaction::CatalogTrackRingBufferChangeOperations;
 use reifydb_core::interface::{
-	Change, NamespaceId, OperationType, OperationType::Delete,
-	RingBufferDef, RingBufferId, Transaction,
+	Change, NamespaceId, OperationType, OperationType::Delete, RingBufferDef, RingBufferId, Transaction,
 	TransactionalRingBufferChanges,
 };
 use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
-impl<T: Transaction> CatalogTrackRingBufferChangeOperations
-	for StandardCommandTransaction<T>
-{
-	fn track_ring_buffer_def_created(
-		&mut self,
-		ring_buffer: RingBufferDef,
-	) -> reifydb_core::Result<()> {
+impl<T: Transaction> CatalogTrackRingBufferChangeOperations for StandardCommandTransaction<T> {
+	fn track_ring_buffer_def_created(&mut self, ring_buffer: RingBufferDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(ring_buffer),
@@ -42,10 +36,7 @@ impl<T: Transaction> CatalogTrackRingBufferChangeOperations
 		Ok(())
 	}
 
-	fn track_ring_buffer_def_deleted(
-		&mut self,
-		ring_buffer: RingBufferDef,
-	) -> reifydb_core::Result<()> {
+	fn track_ring_buffer_def_deleted(&mut self, ring_buffer: RingBufferDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: Some(ring_buffer),
 			post: None,
@@ -56,9 +47,7 @@ impl<T: Transaction> CatalogTrackRingBufferChangeOperations
 	}
 }
 
-impl<T: Transaction> TransactionalRingBufferChanges
-	for StandardCommandTransaction<T>
-{
+impl<T: Transaction> TransactionalRingBufferChanges for StandardCommandTransaction<T> {
 	fn find_ring_buffer(&self, id: RingBufferId) -> Option<&RingBufferDef> {
 		// Find the last change for this ring buffer ID
 		for change in self.changes.ring_buffer_def.iter().rev() {
@@ -86,17 +75,13 @@ impl<T: Transaction> TransactionalRingBufferChanges
 		// Find the last change for this ring buffer name
 		for change in self.changes.ring_buffer_def.iter().rev() {
 			if let Some(ring_buffer) = &change.post {
-				if ring_buffer.namespace == namespace
-					&& ring_buffer.name == name.text()
-				{
+				if ring_buffer.namespace == namespace && ring_buffer.name == name.text() {
 					return Some(ring_buffer);
 				}
 			}
 			if let Some(ring_buffer) = &change.pre {
 				if ring_buffer.namespace == namespace
-					&& ring_buffer.name == name.text() && change
-					.op
-					== Delete
+					&& ring_buffer.name == name.text() && change.op == Delete
 				{
 					// Ring buffer was deleted
 					return None;
@@ -108,21 +93,13 @@ impl<T: Transaction> TransactionalRingBufferChanges
 
 	fn is_ring_buffer_deleted(&self, id: RingBufferId) -> bool {
 		// Check if this ring buffer was deleted in this transaction
-		self.changes.ring_buffer_def.iter().any(|change| {
-			change.op == Delete
-				&& change
-					.pre
-					.as_ref()
-					.map(|rb| rb.id == id)
-					.unwrap_or(false)
-		})
+		self.changes
+			.ring_buffer_def
+			.iter()
+			.any(|change| change.op == Delete && change.pre.as_ref().map(|rb| rb.id == id).unwrap_or(false))
 	}
 
-	fn is_ring_buffer_deleted_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> bool {
+	fn is_ring_buffer_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool {
 		let name = name.into_fragment();
 		// Check if this ring buffer was deleted in this transaction
 		self.changes.ring_buffer_def.iter().any(|change| {
@@ -130,23 +107,14 @@ impl<T: Transaction> TransactionalRingBufferChanges
 				&& change
 					.pre
 					.as_ref()
-					.map(|rb| {
-						rb.namespace == namespace
-							&& rb.name
-								== name.text()
-					})
+					.map(|rb| rb.namespace == namespace && rb.name == name.text())
 					.unwrap_or(false)
 		})
 	}
 }
 
-impl<T: Transaction> TransactionalRingBufferChanges
-	for StandardQueryTransaction<T>
-{
-	fn find_ring_buffer(
-		&self,
-		_id: RingBufferId,
-	) -> Option<&RingBufferDef> {
+impl<T: Transaction> TransactionalRingBufferChanges for StandardQueryTransaction<T> {
+	fn find_ring_buffer(&self, _id: RingBufferId) -> Option<&RingBufferDef> {
 		None
 	}
 
@@ -162,11 +130,7 @@ impl<T: Transaction> TransactionalRingBufferChanges
 		false
 	}
 
-	fn is_ring_buffer_deleted_by_name<'a>(
-		&self,
-		_namespace: NamespaceId,
-		_name: impl IntoFragment<'a>,
-	) -> bool {
+	fn is_ring_buffer_deleted_by_name<'a>(&self, _namespace: NamespaceId, _name: impl IntoFragment<'a>) -> bool {
 		false
 	}
 }

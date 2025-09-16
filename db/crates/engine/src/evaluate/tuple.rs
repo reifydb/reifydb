@@ -6,11 +6,7 @@ use reifydb_core::{
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
-	pub(crate) fn tuple(
-		&self,
-		ctx: &EvaluationContext,
-		tuple: &TupleExpression,
-	) -> crate::Result<Column> {
+	pub(crate) fn tuple(&self, ctx: &EvaluationContext, tuple: &TupleExpression) -> crate::Result<Column> {
 		// Handle the common case where parentheses are used for
 		// grouping a single expression e.g., "not (price == 75 and
 		// price == 300)" creates a tuple with one logical expression
@@ -23,9 +19,6 @@ impl StandardEvaluator {
 		// in filter expressions This would be needed for things like
 		// function calls with multiple arguments or tuple literals,
 		// but not for logical expressions with parentheses
-		unimplemented!(
-			"Multi-element tuple evaluation not yet supported: {:?}",
-			tuple
-		)
+		unimplemented!("Multi-element tuple evaluation not yet supported: {:?}", tuple)
 	}
 }

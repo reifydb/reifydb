@@ -41,8 +41,7 @@ impl Compiler {
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve the view identifier (generic - could be deferred or
 		// transactional)
-		let view =
-			resolver.resolve_maybe_qualified_view(&ast.view, true)?;
+		let view = resolver.resolve_maybe_qualified_view(&ast.view, true)?;
 
 		// Convert operations
 		let operations = ast
@@ -50,32 +49,38 @@ impl Compiler {
 			.into_iter()
 			.map(|op| {
 				match op {
-                AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
-                    // Convert columns to use qualified identifiers
-                    let qualified_columns = columns.into_iter().map(|col| {
-                        use reifydb_core::interface::identifier::ColumnSource;
+					AstAlterViewOperation::CreatePrimaryKey {
+						name,
+						columns,
+					} => {
+						// Convert columns to use qualified identifiers
+						let qualified_columns = columns
+							.into_iter()
+							.map(|col| {
+								use reifydb_core::interface::identifier::ColumnSource;
 
-                        AlterIndexColumn {
-                            column: ColumnIdentifier {
-                                source: ColumnSource::Source {
-                                    namespace: view.namespace().clone(),
-                                    source: view.name().clone(),
-                                },
-                                name: col.column.name,
-                            },
-                            order: col.order,
-                        }
-                    }).collect();
+								AlterIndexColumn {
+									column: ColumnIdentifier {
+										source: ColumnSource::Source {
+											namespace: view
+												.namespace()
+												.clone(),
+											source: view.name().clone(),
+										},
+										name: col.column.name,
+									},
+									order: col.order,
+								}
+							})
+							.collect();
 
-                    AlterViewOperation::CreatePrimaryKey {
-                        name,
-                        columns: qualified_columns,
-                    }
-                }
-                AstAlterViewOperation::DropPrimaryKey => {
-                    AlterViewOperation::DropPrimaryKey
-                }
-            }
+						AlterViewOperation::CreatePrimaryKey {
+							name,
+							columns: qualified_columns,
+						}
+					}
+					AstAlterViewOperation::DropPrimaryKey => AlterViewOperation::DropPrimaryKey,
+				}
 			})
 			.collect();
 

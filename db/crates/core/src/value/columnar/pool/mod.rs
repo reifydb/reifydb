@@ -21,16 +21,11 @@ pub mod thread_local;
 
 use std::{collections::HashMap, ops::Deref, rc::Rc};
 
-pub use config::{
-	PoolConfig, init_default_thread_pools, init_test_pools,
-	init_thread_pools,
-};
+pub use config::{PoolConfig, init_default_thread_pools, init_test_pools, init_thread_pools};
 pub use guard::PooledGuard;
 pub use lazy::{ensure_thread_pools, get_or_init_pools, thread_pools_lazy};
 use reifydb_type::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
-pub use scoped::{
-	ScopedPools, with_default_pools, with_scoped_pools, with_test_pools,
-};
+pub use scoped::{ScopedPools, with_default_pools, with_scoped_pools, with_test_pools};
 pub use thread_local::{get_thread_pools, has_thread_pools, thread_pools};
 
 use crate::value::{
@@ -179,17 +174,13 @@ impl Pools {
 	pub fn date_pool(&self) -> &StdPoolAllocator<TemporalContainer<Date>> {
 		&self.date_pool
 	}
-	pub fn datetime_pool(
-		&self,
-	) -> &StdPoolAllocator<TemporalContainer<DateTime>> {
+	pub fn datetime_pool(&self) -> &StdPoolAllocator<TemporalContainer<DateTime>> {
 		&self.datetime_pool
 	}
 	pub fn time_pool(&self) -> &StdPoolAllocator<TemporalContainer<Time>> {
 		&self.time_pool
 	}
-	pub fn interval_pool(
-		&self,
-	) -> &StdPoolAllocator<TemporalContainer<Interval>> {
+	pub fn interval_pool(&self) -> &StdPoolAllocator<TemporalContainer<Interval>> {
 		&self.interval_pool
 	}
 
@@ -237,14 +228,8 @@ impl Pools {
 		stats.insert("bool".to_string(), self.bool_pool.stats());
 		stats.insert("string".to_string(), self.string_pool.stats());
 		stats.insert("blob".to_string(), self.blob_pool.stats());
-		stats.insert(
-			"row_number".to_string(),
-			self.row_number_pool.stats(),
-		);
-		stats.insert(
-			"undefined".to_string(),
-			self.undefined_pool.stats(),
-		);
+		stats.insert("row_number".to_string(), self.row_number_pool.stats());
+		stats.insert("undefined".to_string(), self.undefined_pool.stats());
 
 		stats.insert("i8".to_string(), self.i8_pool.stats());
 		stats.insert("i16".to_string(), self.i16_pool.stats());
@@ -260,15 +245,9 @@ impl Pools {
 		stats.insert("f64".to_string(), self.f64_pool.stats());
 
 		stats.insert("date".to_string(), self.date_pool.stats());
-		stats.insert(
-			"datetime".to_string(),
-			self.datetime_pool.stats(),
-		);
+		stats.insert("datetime".to_string(), self.datetime_pool.stats());
 		stats.insert("time".to_string(), self.time_pool.stats());
-		stats.insert(
-			"interval".to_string(),
-			self.interval_pool.stats(),
-		);
+		stats.insert("interval".to_string(), self.interval_pool.stats());
 
 		stats.insert("uuid4".to_string(), self.uuid4_pool.stats());
 		stats.insert("uuid7".to_string(), self.uuid7_pool.stats());

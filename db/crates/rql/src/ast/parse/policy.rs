@@ -12,17 +12,14 @@ use crate::ast::{
 };
 
 impl<'a> Parser<'a> {
-	pub(crate) fn parse_policy_block(
-		&mut self,
-	) -> crate::Result<AstPolicyBlock<'a>> {
+	pub(crate) fn parse_policy_block(&mut self) -> crate::Result<AstPolicyBlock<'a>> {
 		let token = self.consume_keyword(Policy)?;
 		self.consume_operator(Operator::OpenCurly)?;
 
 		let mut policies = Vec::new();
 		loop {
 			let (token, policy) = self.parse_policy_kind()?;
-			let value =
-				Box::new(self.parse_node(Precedence::None)?);
+			let value = Box::new(self.parse_node(Precedence::None)?);
 
 			policies.push(AstPolicy {
 				token,
@@ -30,9 +27,7 @@ impl<'a> Parser<'a> {
 				value,
 			});
 
-			if self.consume_if(TokenKind::Separator(Comma))?
-				.is_none()
-			{
+			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
 				break;
 			}
 		}
@@ -44,9 +39,7 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	fn parse_policy_kind(
-		&mut self,
-	) -> crate::Result<(Token<'a>, AstPolicyKind)> {
+	fn parse_policy_kind(&mut self) -> crate::Result<(Token<'a>, AstPolicyKind)> {
 		let identifier = self.consume(Identifier)?;
 		let ty = match identifier.fragment.text() {
 			"saturation" => AstPolicyKind::Saturation,
@@ -55,9 +48,7 @@ impl<'a> Parser<'a> {
 				self.consume_literal(Literal::Undefined)?;
 				AstPolicyKind::NotUndefined
 			}
-			_ => return_error!(ast::invalid_policy_error(
-				identifier.fragment
-			)),
+			_ => return_error!(ast::invalid_policy_error(identifier.fragment)),
 		};
 
 		Ok((identifier, ty))
@@ -66,10 +57,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{
-		AstCreate, AstCreateTable, AstDataType, AstPolicyKind,
-		parse::Parser, tokenize::tokenize,
-	};
+	use crate::ast::{AstCreate, AstCreateTable, AstDataType, AstPolicyKind, parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_saturation_error() {
@@ -89,8 +77,7 @@ mod tests {
 
 	#[test]
 	fn test_saturation_undefined() {
-		let tokens =
-			tokenize(r#"policy {saturation undefined}"#).unwrap();
+		let tokens = tokenize(r#"policy {saturation undefined}"#).unwrap();
 
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse_policy_block().unwrap();
@@ -101,10 +88,7 @@ mod tests {
 
 		let saturation = &policies[0];
 		assert!(matches!(saturation.policy, AstPolicyKind::Saturation));
-		assert_eq!(
-			saturation.value.as_literal_undefined().value(),
-			"undefined"
-		);
+		assert_eq!(saturation.value.as_literal_undefined().value(), "undefined");
 	}
 
 	#[test]
@@ -135,13 +119,7 @@ mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(
-					table.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(table.name.text(), "items");
 				assert_eq!(columns.len(), 1);
 
@@ -151,35 +129,19 @@ mod tests {
 					AstDataType::Simple(id) => {
 						assert_eq!(id.text(), "int2")
 					}
-					_ => panic!(
-						"Expected simple data type"
-					),
+					_ => panic!("Expected simple data type"),
 				}
 
 				let policies = col.policies.as_ref().unwrap();
 				assert_eq!(policies.policies.len(), 2);
 
 				let saturation = &policies.policies[0];
-				assert!(matches!(
-					saturation.policy,
-					AstPolicyKind::Saturation
-				));
-				assert_eq!(
-					saturation.value.as_identifier().text(),
-					"error"
-				);
+				assert!(matches!(saturation.policy, AstPolicyKind::Saturation));
+				assert_eq!(saturation.value.as_identifier().text(), "error");
 
 				let default = &policies.policies[1];
-				assert!(matches!(
-					default.policy,
-					AstPolicyKind::Default
-				));
-				assert_eq!(
-					default.value
-						.as_literal_number()
-						.value(),
-					"0"
-				);
+				assert!(matches!(default.policy, AstPolicyKind::Default));
+				assert_eq!(default.value.as_literal_number().value(), "0");
 			}
 			_ => unreachable!(),
 		}

@@ -4,10 +4,7 @@
 use reifydb_core::{
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::{
-		subsystem::SubsystemFactory, CdcTransaction,
-		UnversionedTransaction, VersionedTransaction,
-	},
+	interface::{subsystem::SubsystemFactory, CdcTransaction, UnversionedTransaction, VersionedTransaction},
 };
 use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
 #[cfg(feature = "sub_flow")]
@@ -18,41 +15,17 @@ use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 use super::{traits::WithSubsystem, DatabaseBuilder};
 use crate::Database;
 
-pub struct EmbeddedBuilder<
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
-	C: CdcTransaction,
-> {
+pub struct EmbeddedBuilder<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> {
 	versioned: VT,
 	unversioned: UT,
 	cdc: C,
 	eventbus: EventBus,
-	interceptors: StandardInterceptorBuilder<
-		StandardCommandTransaction<EngineTransaction<VT, UT, C>>,
-	>,
-	subsystem_factories: Vec<
-		Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<VT, UT, C>,
-				>,
-			>,
-		>,
-	>,
+	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>,
+	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>>,
 }
 
-impl<
-		VT: VersionedTransaction,
-		UT: UnversionedTransaction,
-		C: CdcTransaction,
-	> EmbeddedBuilder<VT, UT, C>
-{
-	pub fn new(
-		versioned: VT,
-		unversioned: UT,
-		cdc: C,
-		eventbus: EventBus,
-	) -> Self {
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> EmbeddedBuilder<VT, UT, C> {
+	pub fn new(versioned: VT, unversioned: UT, cdc: C, eventbus: EventBus) -> Self {
 		Self {
 			versioned,
 			unversioned,
@@ -65,30 +38,21 @@ impl<
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
 	where
-		I: RegisterInterceptor<
-				StandardCommandTransaction<
-					EngineTransaction<VT, UT, C>,
-				>,
-			> + Send
+		I: RegisterInterceptor<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>
+			+ Send
 			+ Sync
 			+ Clone
 			+ 'static,
 	{
-		self.interceptors =
-			self.interceptors.add_factory(move |interceptors| {
-				interceptors.register(interceptor.clone());
-			});
+		self.interceptors = self.interceptors.add_factory(move |interceptors| {
+			interceptors.register(interceptor.clone());
+		});
 		self
 	}
 
 	pub fn build(self) -> crate::Result<Database<VT, UT, C>> {
-		let mut builder = DatabaseBuilder::new(
-			self.versioned,
-			self.unversioned,
-			self.cdc,
-			self.eventbus,
-		)
-		.with_interceptor_builder(self.interceptors);
+		let mut builder = DatabaseBuilder::new(self.versioned, self.unversioned, self.cdc, self.eventbus)
+			.with_interceptor_builder(self.interceptors);
 
 		// Add any custom subsystem factories configured via fluent API
 		for factory in self.subsystem_factories {
@@ -103,49 +67,32 @@ impl<
 	}
 }
 
-impl<
-		VT: VersionedTransaction,
-		UT: UnversionedTransaction,
-		C: CdcTransaction,
-	> WithSubsystem<EngineTransaction<VT, UT, C>> for EmbeddedBuilder<VT, UT, C>
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
+	WithSubsystem<EngineTransaction<VT, UT, C>> for EmbeddedBuilder<VT, UT, C>
 {
 	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
 	{
-		self.subsystem_factories.push(Box::new(
-			LoggingSubsystemFactory::with_configurator(
-				configurator,
-			),
-		));
+		self.subsystem_factories.push(Box::new(LoggingSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 
 	#[cfg(feature = "sub_flow")]
 	fn with_flow<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(
-				FlowBuilder<EngineTransaction<VT, UT, C>>,
-			) -> FlowBuilder<EngineTransaction<VT, UT, C>>
+		F: FnOnce(FlowBuilder<EngineTransaction<VT, UT, C>>) -> FlowBuilder<EngineTransaction<VT, UT, C>>
 			+ Send
 			+ 'static,
 	{
-		self.subsystem_factories.push(Box::new(
-			FlowSubsystemFactory::with_configurator(configurator),
-		));
+		self.subsystem_factories.push(Box::new(FlowSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 
 	fn with_subsystem(
 		mut self,
-		factory: Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<VT, UT, C>,
-				>,
-			>,
-		>,
+		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>,
 	) -> Self {
 		self.subsystem_factories.push(factory);
 		self

@@ -2,9 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	flow::{
-		FlowNodeSchema, FlowNodeType::Operator, OperatorType::Distinct,
-	},
+	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Distinct},
 	interface::{
 		CommandTransaction, FlowNodeId,
 		evaluate::expression::{ColumnExpression, Expression},
@@ -12,9 +10,7 @@ use reifydb_core::{
 	},
 };
 
-use super::super::{
-	CompileOperator, FlowCompiler, conversion::to_owned_physical_plan,
-};
+use super::super::{CompileOperator, FlowCompiler, conversion::to_owned_physical_plan};
 use crate::{
 	Result,
 	plan::physical::{DistinctNode, PhysicalPlan},
@@ -29,11 +25,7 @@ impl<'a> From<DistinctNode<'a>> for DistinctCompiler {
 	fn from(node: DistinctNode<'a>) -> Self {
 		Self {
 			input: Box::new(to_owned_physical_plan(*node.input)),
-			columns: node
-				.columns
-				.into_iter()
-				.map(|c| c.into_owned())
-				.collect(),
+			columns: node.columns.into_iter().map(|c| c.into_owned()).collect(),
 		}
 	}
 }
@@ -50,9 +42,7 @@ impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
 			.map(|col| {
 				// Convert the ColumnIdentifier to an owned
 				// version
-				Expression::Column(ColumnExpression(
-					col.into_owned(),
-				))
+				Expression::Column(ColumnExpression(col.into_owned()))
 			})
 			.collect();
 

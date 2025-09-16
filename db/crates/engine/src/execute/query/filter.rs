@@ -22,10 +22,7 @@ pub(crate) struct FilterNode<'a, T: Transaction> {
 }
 
 impl<'a, T: Transaction> FilterNode<'a, T> {
-	pub fn new(
-		input: Box<ExecutionPlan<'a, T>>,
-		expressions: Vec<Expression<'a>>,
-	) -> Self {
+	pub fn new(input: Box<ExecutionPlan<'a, T>>, expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			input,
 			expressions,
@@ -35,24 +32,14 @@ impl<'a, T: Transaction> FilterNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
-	fn initialize(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.context.is_some(),
-			"FilterNode::next() called before initialize()"
-		);
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
 		while let Some(Batch {
@@ -83,23 +70,20 @@ impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
 				let result = evaluate(&eval_ctx, filter_expr)?;
 
 				// Create filter mask from result
-				let filter_mask =
-					match result.data() {
-						ColumnData::Bool(container) => {
-							let mut mask = BitVec::repeat(row_count, false);
-							for i in 0..row_count {
-								if i < container.data().len() && i < container.bitvec().len() {
-                                let valid = container.is_defined(i);
-                                let filter_result = container.data().get(i);
-                                mask.set(i, valid & filter_result);
-                            }
+				let filter_mask = match result.data() {
+					ColumnData::Bool(container) => {
+						let mut mask = BitVec::repeat(row_count, false);
+						for i in 0..row_count {
+							if i < container.data().len() && i < container.bitvec().len() {
+								let valid = container.is_defined(i);
+								let filter_result = container.data().get(i);
+								mask.set(i, valid & filter_result);
 							}
-							mask
 						}
-						_ => panic!(
-							"filter expression must evaluate to a boolean column"
-						),
-					};
+						mask
+					}
+					_ => panic!("filter expression must evaluate to a boolean column"),
+				};
 
 				columns.filter(&filter_mask)?;
 				row_count = columns.row_count();

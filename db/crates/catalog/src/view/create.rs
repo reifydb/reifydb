@@ -5,9 +5,8 @@ use ViewKind::{Deferred, Transactional};
 use reifydb_core::{
 	diagnostic::catalog::view_already_exists,
 	interface::{
-		ColumnIndex, CommandTransaction, EncodableKey, Key,
-		NamespaceId, NamespaceViewKey, TableId, ViewDef, ViewId,
-		ViewKey, ViewKind,
+		ColumnIndex, CommandTransaction, EncodableKey, Key, NamespaceId, NamespaceViewKey, TableId, ViewDef,
+		ViewId, ViewKey, ViewKind,
 	},
 	return_error,
 };
@@ -56,28 +55,14 @@ impl CatalogStore {
 	) -> crate::Result<ViewDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(table) = CatalogStore::find_view_by_name(
-			txn,
-			namespace_id,
-			&to_create.name,
-		)? {
-			let namespace =
-				CatalogStore::get_namespace(txn, namespace_id)?;
-			return_error!(view_already_exists(
-				to_create.fragment,
-				&namespace.name,
-				&table.name
-			));
+		if let Some(table) = CatalogStore::find_view_by_name(txn, namespace_id, &to_create.name)? {
+			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
+			return_error!(view_already_exists(to_create.fragment, &namespace.name, &table.name));
 		}
 
 		let view_id = SystemSequence::next_view_id(txn)?;
 		Self::store_view(txn, view_id, namespace_id, &to_create, kind)?;
-		Self::link_view_to_namespace(
-			txn,
-			namespace_id,
-			view_id,
-			&to_create.name,
-		)?;
+		Self::link_view_to_namespace(txn, namespace_id, view_id, &to_create.name)?;
 
 		Self::insert_columns_for_view(txn, view_id, to_create)?;
 
@@ -123,16 +108,8 @@ impl CatalogStore {
 		name: &str,
 	) -> crate::Result<()> {
 		let mut row = view_namespace::LAYOUT.allocate_row();
-		view_namespace::LAYOUT.set_u64(
-			&mut row,
-			view_namespace::ID,
-			view,
-		);
-		view_namespace::LAYOUT.set_utf8(
-			&mut row,
-			view_namespace::NAME,
-			name,
-		);
+		view_namespace::LAYOUT.set_u64(&mut row, view_namespace::ID, view);
+		view_namespace::LAYOUT.set_utf8(&mut row, view_namespace::NAME, name);
 		txn.set(
 			&Key::NamespaceView(NamespaceViewKey {
 				namespace,
@@ -152,23 +129,17 @@ impl CatalogStore {
 		// Look up namespace name for error messages
 		let namespace = Self::get_namespace(txn, to_create.namespace)?;
 
-		for (idx, column_to_create) in
-			to_create.columns.into_iter().enumerate()
-		{
+		for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
 			Self::create_column(
 				txn,
 				view,
 				crate::column::ColumnToCreate {
-					fragment: column_to_create
-						.fragment
-						.clone(),
+					fragment: column_to_create.fragment.clone(),
 					namespace_name: &namespace.name,
-					table: TableId(view.0), /* Convert ViewId to TableId (both are u64) */
+					table: TableId(view.0), // Convert ViewId to TableId (both are u64)
 					table_name: &to_create.name,
 					column: column_to_create.name,
-					constraint: column_to_create
-						.constraint
-						.clone(),
+					constraint: column_to_create.constraint.clone(),
 					if_not_exists: false,
 					policies: vec![],
 					index: ColumnIndex(idx as u16),
@@ -182,10 +153,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{
-		NamespaceId, NamespaceViewKey, VersionedQueryTransaction,
-		ViewId,
-	};
+	use reifydb_core::interface::{NamespaceId, NamespaceViewKey, VersionedQueryTransaction, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
@@ -208,18 +176,12 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = CatalogStore::create_deferred_view(
-			&mut txn,
-			to_create.clone(),
-		)
-		.unwrap();
+		let result = CatalogStore::create_deferred_view(&mut txn, to_create.clone()).unwrap();
 		assert_eq!(result.id, ViewId(1025));
 		assert_eq!(result.namespace, NamespaceId(1025));
 		assert_eq!(result.name, "test_view");
 
-		let err =
-			CatalogStore::create_deferred_view(&mut txn, to_create)
-				.unwrap_err();
+		let err = CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
@@ -235,8 +197,7 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_deferred_view(&mut txn, to_create)
-			.unwrap();
+		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
 
 		let to_create = ViewToCreate {
 			namespace: namespace.id,
@@ -245,38 +206,20 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_deferred_view(&mut txn, to_create)
-			.unwrap();
+		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap();
 
-		let links = txn
-			.range(NamespaceViewKey::full_scan(namespace.id))
-			.unwrap()
-			.collect::<Vec<_>>();
+		let links = txn.range(NamespaceViewKey::full_scan(namespace.id)).unwrap().collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(
-			view_namespace::LAYOUT.get_u64(row, view_namespace::ID),
-			1025
-		);
-		assert_eq!(
-			view_namespace::LAYOUT
-				.get_utf8(row, view_namespace::NAME),
-			"test_view"
-		);
+		assert_eq!(view_namespace::LAYOUT.get_u64(row, view_namespace::ID), 1025);
+		assert_eq!(view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(
-			view_namespace::LAYOUT.get_u64(row, view_namespace::ID),
-			1026
-		);
-		assert_eq!(
-			view_namespace::LAYOUT
-				.get_utf8(row, view_namespace::NAME),
-			"another_view"
-		);
+		assert_eq!(view_namespace::LAYOUT.get_u64(row, view_namespace::ID), 1026);
+		assert_eq!(view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME), "another_view");
 	}
 
 	#[test]
@@ -290,7 +233,6 @@ mod tests {
 			fragment: None,
 		};
 
-		CatalogStore::create_deferred_view(&mut txn, to_create)
-			.unwrap_err();
+		CatalogStore::create_deferred_view(&mut txn, to_create).unwrap_err();
 	}
 }

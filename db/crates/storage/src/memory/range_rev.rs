@@ -14,10 +14,7 @@ use core::iter::Rev;
 use crossbeam_skiplist::map::Range as MapRange;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Result,
-	interface::{
-		Unversioned, UnversionedRangeRev as RangeRevInterface,
-		Versioned, VersionedRangeRev,
-	},
+	interface::{Unversioned, UnversionedRangeRev as RangeRevInterface, Versioned, VersionedRangeRev},
 	row::EncodedRow,
 };
 
@@ -29,11 +26,7 @@ impl VersionedRangeRev for Memory {
 	where
 		Self: 'a;
 
-	fn range_rev(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-	) -> Result<Self::RangeIterRev<'_>> {
+	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
 		Ok(RangeRev {
 			range: self.versioned.range(range).rev(),
 			version,
@@ -42,15 +35,7 @@ impl VersionedRangeRev for Memory {
 }
 
 pub struct RangeRev<'a> {
-	pub(crate) range: Rev<
-		MapRange<
-			'a,
-			EncodedKey,
-			EncodedKeyRange,
-			EncodedKey,
-			VersionedRow,
-		>,
-	>,
+	pub(crate) range: Rev<MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, VersionedRow>>,
 	pub(crate) version: CommitVersion,
 }
 
@@ -77,10 +62,7 @@ impl RangeRevInterface for Memory {
 	where
 		Self: 'a;
 
-	fn range_rev(
-		&self,
-		range: EncodedKeyRange,
-	) -> Result<Self::RangeRev<'_>> {
+	fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::RangeRev<'_>> {
 		Ok(UnversionedRangeRev {
 			range: self.unversioned.range(range),
 		})
@@ -88,13 +70,7 @@ impl RangeRevInterface for Memory {
 }
 
 pub struct UnversionedRangeRev<'a> {
-	pub(crate) range: MapRange<
-		'a,
-		EncodedKey,
-		EncodedKeyRange,
-		EncodedKey,
-		EncodedRow,
-	>,
+	pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedRow>,
 }
 
 impl Iterator for UnversionedRangeRev<'_> {

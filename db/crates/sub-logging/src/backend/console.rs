@@ -59,10 +59,7 @@ impl ConsoleBackend {
 		self
 	}
 
-	pub fn with_stderr_for_errors(
-		mut self,
-		stderr_for_errors: bool,
-	) -> Self {
+	pub fn with_stderr_for_errors(mut self, stderr_for_errors: bool) -> Self {
 		self.stderr_for_errors = stderr_for_errors;
 		self
 	}
@@ -102,11 +99,8 @@ impl ConsoleBackend {
 			if current_module.as_ref() != Some(&module) {
 				// Flush the current group if any
 				if !current_group.is_empty() {
-					if let Some(ref mod_name) =
-						current_module
-					{
-						output.push(self
-							.format_timeline_group(
+					if let Some(ref mod_name) = current_module {
+						output.push(self.format_timeline_group(
 							&current_group,
 							mod_name,
 							&mut last_timestamp_ms,
@@ -203,25 +197,12 @@ impl ConsoleBackend {
 			if self.use_color {
 				match level {
 					LogLevel::Off => unreachable!(),
-					LogLevel::Trace => {
-						text.bright_black().to_string()
-					}
-					LogLevel::Debug => {
-						text.bright_blue().to_string()
-					}
-					LogLevel::Info => {
-						text.green().to_string()
-					}
-					LogLevel::Warn => {
-						text.yellow().to_string()
-					}
-					LogLevel::Error => {
-						text.red().to_string()
-					}
-					LogLevel::Critical => text
-						.bright_magenta()
-						.bold()
-						.to_string(),
+					LogLevel::Trace => text.bright_black().to_string(),
+					LogLevel::Debug => text.bright_blue().to_string(),
+					LogLevel::Info => text.green().to_string(),
+					LogLevel::Warn => text.yellow().to_string(),
+					LogLevel::Error => text.red().to_string(),
+					LogLevel::Critical => text.bright_magenta().bold().to_string(),
 				}
 			} else {
 				text.to_string()
@@ -232,10 +213,7 @@ impl ConsoleBackend {
 		// connector, only level and module
 		output.push_str(&time_str);
 		output.push(' ');
-		output.push_str(&apply_color(&format!(
-			"{} {}",
-			level_str, module
-		)));
+		output.push_str(&apply_color(&format!("{} {}", level_str, module)));
 		output.push('\n');
 
 		// Maximum width for content (accounting for the indent and tree
@@ -267,27 +245,14 @@ impl ConsoleBackend {
 						// colorize only the branch
 						// chars, not the vertical line
 						output.push_str(INDENT);
-						output.push_str(&apply_color(
-							&format!(
-								"{} ",
-								branch_char
-							),
-						));
-						output.push_str(&format!(
-							"{}\n",
-							line
-						));
+						output.push_str(&apply_color(&format!("{} ", branch_char)));
+						output.push_str(&format!("{}\n", line));
 					} else {
 						// Continuation lines - show
 						// vertical continuation line
 						output.push_str(INDENT);
-						output.push_str(&apply_color(
-							&continuation,
-						));
-						output.push_str(&format!(
-							"{}\n",
-							line
-						));
+						output.push_str(&apply_color(&continuation));
+						output.push_str(&format!("{}\n", line));
 					}
 				} else {
 					// Line needs wrapping
@@ -296,16 +261,17 @@ impl ConsoleBackend {
 
 					while !remaining.is_empty() {
 						// Find a good break point
-						let chunk_end = if remaining
-							.len()
-							> MAX_LINE_WIDTH
-						{
-							let mut break_point =
-								MAX_LINE_WIDTH;
+						let chunk_end = if remaining.len() > MAX_LINE_WIDTH {
+							let mut break_point = MAX_LINE_WIDTH;
 							// Try to break at word
 							// boundaries
-							for (idx, ch) in remaining[..MAX_LINE_WIDTH].char_indices().rev() {
-								if ch == ' ' || ch == ',' || ch == ';' || ch == ':' || ch == ']' || ch == '}' {
+							for (idx, ch) in
+								remaining[..MAX_LINE_WIDTH].char_indices().rev()
+							{
+								if ch == ' '
+									|| ch == ',' || ch == ';' || ch == ':' || ch == ']'
+									|| ch == '}'
+								{
 									break_point = idx + 1;
 									break;
 								}
@@ -318,24 +284,15 @@ impl ConsoleBackend {
 						// Output the chunk
 						output.push_str(INDENT);
 						if is_first_chunk {
-							output.push_str(&apply_color(
-								&format!("{} ", branch_char),
-							));
+							output.push_str(&apply_color(&format!("{} ", branch_char)));
 							is_first_chunk = false;
 						} else {
-							output.push_str(&apply_color(
-								&continuation,
-							));
+							output.push_str(&apply_color(&continuation));
 						}
-						output.push_str(
-							&remaining[..chunk_end]
-								.trim_end(),
-						);
+						output.push_str(&remaining[..chunk_end].trim_end());
 						output.push('\n');
 
-						remaining = &remaining
-							[chunk_end..]
-							.trim_start();
+						remaining = &remaining[chunk_end..].trim_start();
 					}
 				}
 			}
@@ -381,11 +338,7 @@ impl ConsoleBackend {
 
 		// Add structured fields if present
 		let header_with_fields = if !record.fields.is_empty() {
-			let fields: Vec<String> = record
-				.fields
-				.iter()
-				.map(|(k, v)| format!("{}={}", k, v))
-				.collect();
+			let fields: Vec<String> = record.fields.iter().map(|(k, v)| format!("{}={}", k, v)).collect();
 			format!("{} {{{}}}", header_text, fields.join(", "))
 		} else {
 			header_text
@@ -393,26 +346,17 @@ impl ConsoleBackend {
 
 		// Apply color to the entire header based on log level
 		if self.use_color {
-			let (
-				top_border,
-				header_colored,
-				side_border,
-				bottom_border,
-			) = match record.level {
+			let (top_border, header_colored, side_border, bottom_border) = match record.level {
 				LogLevel::Off => unreachable!(),
 				LogLevel::Trace => (
 					"┌─ ".bright_black().to_string(),
-					header_with_fields
-						.bright_black()
-						.to_string(),
+					header_with_fields.bright_black().to_string(),
 					"│ ".bright_black().to_string(),
 					"└────".bright_black().to_string(),
 				),
 				LogLevel::Debug => (
 					"┌─ ".bright_blue().to_string(),
-					header_with_fields
-						.bright_blue()
-						.to_string(),
+					header_with_fields.bright_blue().to_string(),
 					"│ ".bright_blue().to_string(),
 					"└────".bright_blue().to_string(),
 				),
@@ -435,21 +379,10 @@ impl ConsoleBackend {
 					"└────".red().to_string(),
 				),
 				LogLevel::Critical => (
-					"┌─ "
-						.bright_magenta()
-						.bold()
-						.to_string(),
-					header_with_fields
-						.bright_magenta()
-						.bold()
-						.to_string(),
-					"│ ".bright_magenta()
-						.bold()
-						.to_string(),
-					"└────"
-						.bright_magenta()
-						.bold()
-						.to_string(),
+					"┌─ ".bright_magenta().bold().to_string(),
+					header_with_fields.bright_magenta().bold().to_string(),
+					"│ ".bright_magenta().bold().to_string(),
+					"└────".bright_magenta().bold().to_string(),
 				),
 			};
 
@@ -469,26 +402,26 @@ impl ConsoleBackend {
 						let mut remaining = line;
 						while !remaining.is_empty() {
 							let chunk_end = if remaining.len() > MAX_LINE_WIDTH {
-                                let mut break_point = MAX_LINE_WIDTH;
-                                for (i, ch) in remaining[..MAX_LINE_WIDTH].char_indices().rev() {
-                                    if ch == ' ' || ch == ',' || ch == ';' || ch == ':' {
-                                        break_point = i + 1;
-                                        break;
-                                    }
-                                }
-                                break_point
-                            } else {
-                                remaining.len()
-                            };
+								let mut break_point = MAX_LINE_WIDTH;
+								for (i, ch) in
+									remaining[..MAX_LINE_WIDTH].char_indices().rev()
+								{
+									if ch == ' '
+										|| ch == ',' || ch == ';' || ch == ':'
+									{
+										break_point = i + 1;
+										break;
+									}
+								}
+								break_point
+							} else {
+								remaining.len()
+							};
 
-							output.push_str(
-								&side_border,
-							);
+							output.push_str(&side_border);
 							output.push_str(&remaining[..chunk_end]);
 							output.push('\n');
-							remaining = &remaining
-								[chunk_end..]
-								.trim_start();
+							remaining = &remaining[chunk_end..].trim_start();
 						}
 					}
 				}
@@ -513,24 +446,26 @@ impl ConsoleBackend {
 						let mut remaining = line;
 						while !remaining.is_empty() {
 							let chunk_end = if remaining.len() > MAX_LINE_WIDTH {
-                                let mut break_point = MAX_LINE_WIDTH;
-                                for (i, ch) in remaining[..MAX_LINE_WIDTH].char_indices().rev() {
-                                    if ch == ' ' || ch == ',' || ch == ';' || ch == ':' {
-                                        break_point = i + 1;
-                                        break;
-                                    }
-                                }
-                                break_point
-                            } else {
-                                remaining.len()
-                            };
+								let mut break_point = MAX_LINE_WIDTH;
+								for (i, ch) in
+									remaining[..MAX_LINE_WIDTH].char_indices().rev()
+								{
+									if ch == ' '
+										|| ch == ',' || ch == ';' || ch == ':'
+									{
+										break_point = i + 1;
+										break;
+									}
+								}
+								break_point
+							} else {
+								remaining.len()
+							};
 
 							output.push_str("│ ");
 							output.push_str(&remaining[..chunk_end]);
 							output.push('\n');
-							remaining = &remaining
-								[chunk_end..]
-								.trim_start();
+							remaining = &remaining[chunk_end..].trim_start();
 						}
 					}
 				}
@@ -562,8 +497,7 @@ impl LogBackend for ConsoleBackend {
 			FormatStyle::Timeline => {
 				// Process all records together for timeline
 				// formatting
-				let formatted_groups =
-					self.format_timeline_records(records);
+				let formatted_groups = self.format_timeline_records(records);
 				for formatted in formatted_groups {
 					// Check if any record in this group
 					// should go to stderr
@@ -579,14 +513,8 @@ impl LogBackend for ConsoleBackend {
 						continue;
 					}
 
-					let formatted = format!(
-						"{}\n",
-						self.format_record(record)
-					);
-					if self.stderr_for_errors
-						&& record.level
-							>= LogLevel::Error
-					{
+					let formatted = format!("{}\n", self.format_record(record));
+					if self.stderr_for_errors && record.level >= LogLevel::Error {
 						stderr_records.push(formatted);
 					} else {
 						stdout_records.push(formatted);

@@ -8,22 +8,13 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_i128(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<i128>,
-	) {
+	pub fn set_i128(&self, row: &mut EncodedRow, index: usize, value: impl Into<i128>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Int16);
 		row.set_valid(index, true);
 		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut i128,
-				value.into(),
-			)
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i128, value.into())
 		}
 	}
 
@@ -31,17 +22,10 @@ impl EncodedRowLayout {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Int16);
-		unsafe {
-			(row.as_ptr().add(field.offset) as *const i128)
-				.read_unaligned()
-		}
+		unsafe { (row.as_ptr().add(field.offset) as *const i128).read_unaligned() }
 	}
 
-	pub fn try_get_i128(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<i128> {
+	pub fn try_get_i128(&self, row: &EncodedRow, index: usize) -> Option<i128> {
 		if row.is_defined(index) {
 			Some(self.get_i128(row, index))
 		} else {
@@ -60,15 +44,8 @@ mod tests {
 	fn test_set_get_i128() {
 		let layout = EncodedRowLayout::new(&[Type::Int16]);
 		let mut row = layout.allocate_row();
-		layout.set_i128(
-			&mut row,
-			0,
-			123456789012345678901234567890i128,
-		);
-		assert_eq!(
-			layout.get_i128(&row, 0),
-			123456789012345678901234567890i128
-		);
+		layout.set_i128(&mut row, 0, 123456789012345678901234567890i128);
+		assert_eq!(layout.get_i128(&row, 0), 123456789012345678901234567890i128);
 	}
 
 	#[test]
@@ -78,15 +55,8 @@ mod tests {
 
 		assert_eq!(layout.try_get_i128(&row, 0), None);
 
-		layout.set_i128(
-			&mut row,
-			0,
-			123456789012345678901234567890i128,
-		);
-		assert_eq!(
-			layout.try_get_i128(&row, 0),
-			Some(123456789012345678901234567890i128)
-		);
+		layout.set_i128(&mut row, 0, 123456789012345678901234567890i128);
+		assert_eq!(layout.try_get_i128(&row, 0), Some(123456789012345678901234567890i128));
 	}
 
 	#[test]
@@ -111,13 +81,13 @@ mod tests {
 		let layout = EncodedRowLayout::new(&[Type::Int16]);
 
 		let test_values = [
-			-170141183460469231731687303715884105728i128, /* i128::MIN */
+			-170141183460469231731687303715884105728i128, // i128::MIN
 			-99999999999999999999999999999999999999i128,
 			-1i128,
 			0i128,
 			1i128,
 			99999999999999999999999999999999999999i128,
-			170141183460469231731687303715884105727i128, /* i128::MAX */
+			170141183460469231731687303715884105727i128, // i128::MAX
 		];
 
 		for value in test_values {
@@ -159,11 +129,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Int16,
-			Type::Boolean,
-			Type::Int16,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Int16, Type::Boolean, Type::Int16]);
 		let mut row = layout.allocate_row();
 
 		let large_negative = -12345678901234567890123456789012345i128;

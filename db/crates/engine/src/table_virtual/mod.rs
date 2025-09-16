@@ -3,9 +3,7 @@
 
 use reifydb_core::{
 	SortKey,
-	interface::{
-		Params, TableVirtualDef, Transaction, expression::Expression,
-	},
+	interface::{Params, TableVirtualDef, Transaction, expression::Expression},
 };
 
 use crate::{StandardTransaction, execute::Batch};
@@ -44,10 +42,7 @@ pub trait TableVirtual<'a, T: Transaction>: Send + Sync {
 	) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
-	fn next(
-		&mut self,
-		txn: &mut StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>>;
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>>;
 
 	/// Get the table definition
 	fn definition(&self) -> &TableVirtualDef;

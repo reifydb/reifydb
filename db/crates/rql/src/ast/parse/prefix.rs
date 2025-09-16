@@ -4,8 +4,7 @@
 use reifydb_type::{Fragment, OwnedFragment, diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token,
-	TokenKind,
+	Ast, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, Token, TokenKind,
 	parse::{Parser, Precedence},
 	tokenize::{Literal::Number, Operator},
 };
@@ -23,29 +22,15 @@ impl<'a> Parser<'a> {
 		let expr = self.parse_node(precedence)?;
 
 		if matches!(operator, AstPrefixOperator::Negate(_)) {
-			if let Ast::Literal(AstLiteral::Number(literal)) = &expr
-			{
-				return Ok(Ast::Literal(AstLiteral::Number(
-					AstLiteralNumber(Token {
-						kind: TokenKind::Literal(
-							Number,
-						),
-						fragment: Fragment::Owned(OwnedFragment::Statement {
-							column: operator
-								.token()
-								.fragment
-								.column(),
-							line: operator
-								.token()
-								.fragment
-								.line(),
-							text: format!(
-								"-{}",
-								literal.0
-									.fragment
-									.text()
-							)})}),
-				)));
+			if let Ast::Literal(AstLiteral::Number(literal)) = &expr {
+				return Ok(Ast::Literal(AstLiteral::Number(AstLiteralNumber(Token {
+					kind: TokenKind::Literal(Number),
+					fragment: Fragment::Owned(OwnedFragment::Statement {
+						column: operator.token().fragment.column(),
+						line: operator.token().fragment.line(),
+						text: format!("-{}", literal.0.fragment.text()),
+					}),
+				}))));
 			}
 		}
 
@@ -55,33 +40,17 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_prefix_operator(
-		&mut self,
-	) -> crate::Result<AstPrefixOperator<'a>> {
+	fn parse_prefix_operator(&mut self) -> crate::Result<AstPrefixOperator<'a>> {
 		let token = self.advance()?;
 		match &token.kind {
 			TokenKind::Operator(operator) => match operator {
-				Operator::Plus => {
-					Ok(AstPrefixOperator::Plus(token))
-				}
-				Operator::Minus => {
-					Ok(AstPrefixOperator::Negate(token))
-				}
-				Operator::Bang => {
-					Ok(AstPrefixOperator::Not(token))
-				}
-				Operator::Not => {
-					Ok(AstPrefixOperator::Not(token))
-				}
-				_ => return_error!(
-					ast::unsupported_token_error(
-						token.fragment
-					)
-				),
+				Operator::Plus => Ok(AstPrefixOperator::Plus(token)),
+				Operator::Minus => Ok(AstPrefixOperator::Negate(token)),
+				Operator::Bang => Ok(AstPrefixOperator::Not(token)),
+				Operator::Not => Ok(AstPrefixOperator::Not(token)),
+				_ => return_error!(ast::unsupported_token_error(token.fragment)),
 			},
-			_ => return_error!(ast::unsupported_token_error(
-				token.fragment
-			)),
+			_ => return_error!(ast::unsupported_token_error(token.fragment)),
 		}
 	}
 }
@@ -91,8 +60,8 @@ mod tests {
 	use std::ops::Deref;
 
 	use crate::ast::{
-		Ast, Ast::Literal, AstLiteral, AstLiteralNumber, AstPrefix,
-		AstPrefixOperator, parse::parse, tokenize::tokenize,
+		Ast, Ast::Literal, AstLiteral, AstLiteralNumber, AstPrefix, AstPrefixOperator, parse::parse,
+		tokenize::tokenize,
 	};
 
 	#[test]
@@ -101,9 +70,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Number(AstLiteralNumber(token))) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Number(AstLiteralNumber(token))) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(token.fragment.text(), "-2");
@@ -127,9 +94,7 @@ mod tests {
 		let Ast::Tuple(tuple) = node.deref() else {
 			panic!()
 		};
-		let Literal(AstLiteral::Number(node)) =
-			&tuple.nodes.first().unwrap()
-		else {
+		let Literal(AstLiteral::Number(node)) = &tuple.nodes.first().unwrap() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2");
@@ -153,9 +118,7 @@ mod tests {
 		let Ast::Tuple(tuple) = node.deref() else {
 			panic!()
 		};
-		let Literal(AstLiteral::Number(node)) =
-			&tuple.nodes.first().unwrap()
-		else {
+		let Literal(AstLiteral::Number(node)) = &tuple.nodes.first().unwrap() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2");
@@ -179,9 +142,7 @@ mod tests {
 		let Ast::Tuple(tuple) = node.deref() else {
 			panic!()
 		};
-		let Literal(AstLiteral::Number(AstLiteralNumber(token))) =
-			&tuple.nodes.first().unwrap()
-		else {
+		let Literal(AstLiteral::Number(AstLiteralNumber(token))) = &tuple.nodes.first().unwrap() else {
 			panic!()
 		};
 		assert_eq!(token.fragment.text(), "-2");
@@ -241,26 +202,17 @@ mod tests {
 			node,
 		}) = result[0].first_unchecked()
 		else {
-			panic!(
-				"Expected prefix expression, got {:?}",
-				result[0].first_unchecked()
-			)
+			panic!("Expected prefix expression, got {:?}", result[0].first_unchecked())
 		};
 		assert!(matches!(*operator, AstPrefixOperator::Not(_)));
 
 		// The inner expression should be a comparison (x == 5)
 		let Ast::Infix(inner) = node.deref() else {
-			panic!(
-				"Expected infix comparison inside NOT, got {:?}",
-				node.deref()
-			)
+			panic!("Expected infix comparison inside NOT, got {:?}", node.deref())
 		};
 
 		// Verify it's an equality comparison
-		assert!(matches!(
-			inner.operator,
-			crate::ast::InfixOperator::Equal(_)
-		));
+		assert!(matches!(inner.operator, crate::ast::InfixOperator::Equal(_)));
 
 		// Left side should be identifier 'x'
 		let Ast::Identifier(left_id) = inner.left.deref() else {
@@ -269,9 +221,7 @@ mod tests {
 		assert_eq!(left_id.text(), "x");
 
 		// Right side should be number '5'
-		let Literal(AstLiteral::Number(right_num)) =
-			inner.right.deref()
-		else {
+		let Literal(AstLiteral::Number(right_num)) = inner.right.deref() else {
 			panic!("Expected number on right side")
 		};
 		assert_eq!(right_num.value(), "5");

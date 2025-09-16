@@ -22,14 +22,8 @@ use query::{
 };
 use reifydb_core::{
 	Frame,
-	interface::{
-		Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query,
-		TableDef, Transaction,
-	},
-	value::columnar::{
-		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
-		layout::ColumnsLayout,
-	},
+	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, TableDef, Transaction},
+	value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified, layout::ColumnsLayout},
 };
 use reifydb_rql::{
 	ast,
@@ -37,8 +31,7 @@ use reifydb_rql::{
 };
 
 use crate::{
-	StandardCommandTransaction, StandardQueryTransaction,
-	StandardTransaction,
+	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
 	function::{Functions, math},
 };
 
@@ -51,18 +44,11 @@ mod query;
 pub(crate) trait QueryNode<'a, T: Transaction> {
 	/// Initialize the node with execution context
 	/// Called once before iteration begins
-	fn initialize(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()>;
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
 	/// Returns None when exhausted
-	fn next(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>>;
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>>;
 
 	/// Get the layout of columns this node produces
 	fn layout(&self) -> Option<ColumnsLayout>;
@@ -103,18 +89,11 @@ pub(crate) enum ExecutionPlan<'a, T: Transaction> {
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
 impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
-	fn initialize(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
 		(**self).initialize(rx, ctx)
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
 		(**self).next(rx)
 	}
 
@@ -124,57 +103,28 @@ impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
-	fn initialize(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
 		match self {
-			ExecutionPlan::Aggregate(node) => {
-				node.initialize(rx, ctx)
-			}
+			ExecutionPlan::Aggregate(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Filter(node) => node.initialize(rx, ctx),
-			ExecutionPlan::IndexScan(node) => {
-				node.initialize(rx, ctx)
-			}
-			ExecutionPlan::InlineData(node) => {
-				node.initialize(rx, ctx)
-			}
-			ExecutionPlan::InnerJoin(node) => {
-				node.initialize(rx, ctx)
-			}
-			ExecutionPlan::LeftJoin(node) => {
-				node.initialize(rx, ctx)
-			}
-			ExecutionPlan::NaturalJoin(node) => {
-				node.initialize(rx, ctx)
-			}
+			ExecutionPlan::IndexScan(node) => node.initialize(rx, ctx),
+			ExecutionPlan::InlineData(node) => node.initialize(rx, ctx),
+			ExecutionPlan::InnerJoin(node) => node.initialize(rx, ctx),
+			ExecutionPlan::LeftJoin(node) => node.initialize(rx, ctx),
+			ExecutionPlan::NaturalJoin(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Map(node) => node.initialize(rx, ctx),
-			ExecutionPlan::MapWithoutInput(node) => {
-				node.initialize(rx, ctx)
-			}
+			ExecutionPlan::MapWithoutInput(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Extend(node) => node.initialize(rx, ctx),
-			ExecutionPlan::ExtendWithoutInput(node) => {
-				node.initialize(rx, ctx)
-			}
+			ExecutionPlan::ExtendWithoutInput(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Sort(node) => node.initialize(rx, ctx),
-			ExecutionPlan::TableScan(node) => {
-				node.initialize(rx, ctx)
-			}
+			ExecutionPlan::TableScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Take(node) => node.initialize(rx, ctx),
-			ExecutionPlan::ViewScan(node) => {
-				node.initialize(rx, ctx)
-			}
-			ExecutionPlan::VirtualScan(node) => {
-				node.initialize(rx, ctx)
-			}
+			ExecutionPlan::ViewScan(node) => node.initialize(rx, ctx),
+			ExecutionPlan::VirtualScan(node) => node.initialize(rx, ctx),
 		}
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(rx),
 			ExecutionPlan::Filter(node) => node.next(rx),
@@ -186,9 +136,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 			ExecutionPlan::Map(node) => node.next(rx),
 			ExecutionPlan::MapWithoutInput(node) => node.next(rx),
 			ExecutionPlan::Extend(node) => node.next(rx),
-			ExecutionPlan::ExtendWithoutInput(node) => {
-				node.next(rx)
-			}
+			ExecutionPlan::ExtendWithoutInput(node) => node.next(rx),
 			ExecutionPlan::Sort(node) => node.next(rx),
 			ExecutionPlan::TableScan(node) => node.next(rx),
 			ExecutionPlan::Take(node) => node.next(rx),
@@ -209,9 +157,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 			ExecutionPlan::Map(node) => node.layout(),
 			ExecutionPlan::MapWithoutInput(node) => node.layout(),
 			ExecutionPlan::Extend(node) => node.layout(),
-			ExecutionPlan::ExtendWithoutInput(node) => {
-				node.layout()
-			}
+			ExecutionPlan::ExtendWithoutInput(node) => node.layout(),
 			ExecutionPlan::Sort(node) => node.layout(),
 			ExecutionPlan::TableScan(node) => node.layout(),
 			ExecutionPlan::Take(node) => node.layout(),
@@ -230,26 +176,11 @@ impl Executor {
 	pub fn testing() -> Self {
 		Self {
 			functions: Functions::builder()
-				.register_aggregate(
-					"sum",
-					math::aggregate::Sum::new,
-				)
-				.register_aggregate(
-					"min",
-					math::aggregate::Min::new,
-				)
-				.register_aggregate(
-					"max",
-					math::aggregate::Max::new,
-				)
-				.register_aggregate(
-					"avg",
-					math::aggregate::Avg::new,
-				)
-				.register_aggregate(
-					"count",
-					math::aggregate::Count::new,
-				)
+				.register_aggregate("sum", math::aggregate::Sum::new)
+				.register_aggregate("min", math::aggregate::Min::new)
+				.register_aggregate("max", math::aggregate::Max::new)
+				.register_aggregate("avg", math::aggregate::Avg::new)
+				.register_aggregate("count", math::aggregate::Count::new)
 				.register_scalar("abs", math::scalar::Abs::new)
 				.register_scalar("avg", math::scalar::Avg::new)
 				.build(),
@@ -257,9 +188,7 @@ impl Executor {
 	}
 }
 
-impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
-	for Executor
-{
+impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>> for Executor {
 	fn execute_command(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
@@ -270,11 +199,7 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement)? {
-				let er = self.execute_command_plan(
-					txn,
-					plan,
-					cmd.params.clone(),
-				)?;
+				let er = self.execute_command_plan(txn, plan, cmd.params.clone())?;
 				result.push(er);
 			}
 		}
@@ -284,21 +209,13 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
 }
 
 impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>> for Executor {
-	fn execute_query(
-		&self,
-		txn: &mut StandardQueryTransaction<T>,
-		qry: Query<'_>,
-	) -> crate::Result<Vec<Frame>> {
+	fn execute_query(&self, txn: &mut StandardQueryTransaction<T>, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(qry.rql)?;
 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement)? {
-				let er = self.execute_query_plan(
-					txn,
-					plan,
-					qry.params.clone(),
-				)?;
+				let er = self.execute_query_plan(txn, plan, qry.params.clone())?;
 				result.push(er);
 			}
 		}
@@ -307,11 +224,7 @@ impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>> for Executor {
 	}
 }
 
-impl<T: Transaction>
-	Execute<StandardCommandTransaction<T>, StandardQueryTransaction<T>>
-	for Executor
-{
-}
+impl<T: Transaction> Execute<StandardCommandTransaction<T>, StandardQueryTransaction<T>> for Executor {}
 
 impl Executor {
 	pub(crate) fn execute_query_plan<T: Transaction>(
@@ -351,7 +264,7 @@ impl Executor {
 			| PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::CreateRingBuffer(_)
-			| PhysicalPlan::Distinct(_) => unreachable!(), /* FIXME return explanatory diagnostic */
+			| PhysicalPlan::Distinct(_) => unreachable!(), // FIXME return explanatory diagnostic
 			PhysicalPlan::Apply(_) => {
 				// Apply operator requires flow engine for mod
 				// execution
@@ -369,33 +282,15 @@ impl Executor {
 		params: Params,
 	) -> crate::Result<Columns> {
 		match plan {
-			PhysicalPlan::AlterSequence(plan) => {
-				self.alter_table_sequence(txn, plan)
-			}
-			PhysicalPlan::CreateDeferredView(plan) => {
-				self.create_deferred_view(txn, plan)
-			}
-			PhysicalPlan::CreateTransactionalView(plan) => {
-				self.create_transactional_view(txn, plan)
-			}
-			PhysicalPlan::CreateNamespace(plan) => {
-				self.create_namespace(txn, plan)
-			}
-			PhysicalPlan::CreateTable(plan) => {
-				self.create_table(txn, plan)
-			}
-			PhysicalPlan::CreateRingBuffer(plan) => {
-				self.create_ring_buffer(txn, plan)
-			}
-			PhysicalPlan::Delete(plan) => {
-				self.delete(txn, plan, params)
-			}
-			PhysicalPlan::Insert(plan) => {
-				self.insert(txn, plan, params)
-			}
-			PhysicalPlan::Update(plan) => {
-				self.update(txn, plan, params)
-			}
+			PhysicalPlan::AlterSequence(plan) => self.alter_table_sequence(txn, plan),
+			PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(txn, plan),
+			PhysicalPlan::CreateTransactionalView(plan) => self.create_transactional_view(txn, plan),
+			PhysicalPlan::CreateNamespace(plan) => self.create_namespace(txn, plan),
+			PhysicalPlan::CreateTable(plan) => self.create_table(txn, plan),
+			PhysicalPlan::CreateRingBuffer(plan) => self.create_ring_buffer(txn, plan),
+			PhysicalPlan::Delete(plan) => self.delete(txn, plan, params),
+			PhysicalPlan::Insert(plan) => self.insert(txn, plan, params),
+			PhysicalPlan::Update(plan) => self.update(txn, plan, params),
 
 			PhysicalPlan::Aggregate(_)
 			| PhysicalPlan::Filter(_)
@@ -412,22 +307,16 @@ impl Executor {
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::Distinct(_) => {
-				let mut std_txn =
-					StandardTransaction::from(txn);
+				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params)
 			}
 			PhysicalPlan::Apply(_) => {
-				let mut std_txn =
-					StandardTransaction::from(txn);
+				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params)
 			}
 
-			PhysicalPlan::AlterTable(plan) => {
-				self.alter_table(txn, plan)
-			}
-			PhysicalPlan::AlterView(plan) => {
-				self.execute_alter_view(txn, plan)
-			}
+			PhysicalPlan::AlterTable(plan) => self.alter_table(txn, plan),
+			PhysicalPlan::AlterView(plan) => self.execute_alter_view(txn, plan),
 		}
 	}
 
@@ -454,8 +343,7 @@ impl Executor {
 					preserve_row_numbers: false,
 					params: params.clone(),
 				});
-				let mut node =
-					compile(plan, rx, context.clone());
+				let mut node = compile(plan, rx, context.clone());
 
 				// Initialize the node before execution
 				node.initialize(rx, &context)?;
@@ -466,12 +354,8 @@ impl Executor {
 					columns,
 				}) = node.next(rx)?
 				{
-					if let Some(mut result_columns) =
-						result.take()
-					{
-						result_columns.append_columns(
-							columns,
-						)?;
+					if let Some(mut result_columns) = result.take() {
+						result_columns.append_columns(columns)?;
 						result = Some(result_columns);
 					} else {
 						result = Some(columns);
@@ -490,19 +374,24 @@ impl Executor {
 					// empty columns - reconstruct table,
 					// for better UX
 					let columns: Vec<Column> = node
-                        .layout()
-                        .unwrap_or(ColumnsLayout { columns: vec![] })
-                        .columns
-                        .into_iter()
-                        .map(|layout| match layout.source {
-                            Some(source) => Column::SourceQualified(SourceQualified {
-								source: source,
-                                name: layout.name,
-                                data: ColumnData::undefined(0)}),
-                            None => Column::ColumnQualified(ColumnQualified {
-                                name: layout.name,
-                                data: ColumnData::undefined(0)})})
-                        .collect();
+						.layout()
+						.unwrap_or(ColumnsLayout {
+							columns: vec![],
+						})
+						.columns
+						.into_iter()
+						.map(|layout| match layout.source {
+							Some(source) => Column::SourceQualified(SourceQualified {
+								source,
+								name: layout.name,
+								data: ColumnData::undefined(0),
+							}),
+							None => Column::ColumnQualified(ColumnQualified {
+								name: layout.name,
+								data: ColumnData::undefined(0),
+							}),
+						})
+						.collect();
 
 					Ok(Columns::new(columns))
 				}

@@ -32,13 +32,9 @@ impl<'a> Parser<'a> {
 
 			if !self.is_eof()
 				&& !self.current()?.is_separator(Comma)
-				&& (!has_braces
-					|| !self.current()?
-						.is_operator(CloseCurly))
+				&& (!has_braces || !self.current()?.is_operator(CloseCurly))
 			{
-				if self.current()?.is_keyword(Keyword::Asc)
-					|| self.current()?
-						.is_keyword(Keyword::Desc)
+				if self.current()?.is_keyword(Keyword::Asc) || self.current()?.is_keyword(Keyword::Desc)
 				{
 					let token = self.current()?.clone();
 					self.advance()?;
@@ -55,8 +51,7 @@ impl<'a> Parser<'a> {
 			}
 
 			// If we have braces, look for closing brace
-			if has_braces && self.current()?.is_operator(CloseCurly)
-			{
+			if has_braces && self.current()?.is_operator(CloseCurly) {
 				self.advance()?; // consume closing brace
 				break;
 			}
@@ -70,9 +65,7 @@ impl<'a> Parser<'a> {
 		}
 
 		if columns.len() > 1 && !has_braces {
-			return_error!(multiple_expressions_without_braces(
-				token.fragment
-			));
+			return_error!(multiple_expressions_without_braces(token.fragment));
 		}
 
 		Ok(AstSort {
@@ -205,9 +198,6 @@ mod tests {
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 
-		assert!(
-			result.is_err(),
-			"Expected error for multiple columns without braces"
-		);
+		assert!(result.is_err(), "Expected error for multiple columns without braces");
 	}
 }

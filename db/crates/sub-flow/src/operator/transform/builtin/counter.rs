@@ -26,20 +26,12 @@ pub struct CounterOperator {
 }
 
 impl CounterOperator {
-	fn get_counter_value<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-	) -> i64 {
+	fn get_counter_value<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> i64 {
 		let empty_key = EncodedKey::new(Vec::new());
-		let state_row =
-			self.get(txn, &empty_key).unwrap_or_else(|_| {
-				EncodedRow(CowVec::new(Vec::new()))
-			});
+		let state_row = self.get(txn, &empty_key).unwrap_or_else(|_| EncodedRow(CowVec::new(Vec::new())));
 		let state_bytes = state_row.as_ref();
 		if state_bytes.len() >= 8 {
-			i64::from_le_bytes(
-				state_bytes[0..8].try_into().unwrap(),
-			)
+			i64::from_le_bytes(state_bytes[0..8].try_into().unwrap())
 		} else {
 			0
 		}
@@ -51,11 +43,7 @@ impl CounterOperator {
 		value: i64,
 	) -> crate::Result<()> {
 		let empty_key = EncodedKey::new(Vec::new());
-		self.set(
-			txn,
-			&empty_key,
-			EncodedRow(CowVec::new(value.to_le_bytes().to_vec())),
-		)
+		self.set(txn, &empty_key, EncodedRow(CowVec::new(value.to_le_bytes().to_vec())))
 	}
 }
 
@@ -76,13 +64,11 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 					after,
 				} => {
 					// Get current counter value
-					let mut current =
-						self.get_counter_value(txn);
+					let mut current = self.get_counter_value(txn);
 
 					// Generate counter values for each row
 					let row_count = after.row_count();
-					let mut values =
-						Vec::with_capacity(row_count);
+					let mut values = Vec::with_capacity(row_count);
 					for _ in 0..row_count {
 						current += self.increment;
 						values.push(current);
@@ -92,16 +78,12 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 					self.set_counter_value(txn, current)?;
 
 					// Build output with counter column
-					let mut all_columns: Vec<Column> =
-						after.clone()
-							.into_iter()
-							.collect();
+					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
 					all_columns.push(Column::ColumnQualified(ColumnQualified {
-                        name: self.column_name.clone(),
-                        data: ColumnData::Int8(NumberContainer::from_vec(values)),
-                    }));
-					let output_columns =
-						Columns::new(all_columns);
+						name: self.column_name.clone(),
+						data: ColumnData::Int8(NumberContainer::from_vec(values)),
+					}));
+					let output_columns = Columns::new(all_columns);
 
 					output.push(FlowDiff::Insert {
 						source: *source,
@@ -118,12 +100,10 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 				} => {
 					// For updates, continue incrementing
 					// the counter
-					let mut current =
-						self.get_counter_value(txn);
+					let mut current = self.get_counter_value(txn);
 
 					let row_count = after.row_count();
-					let mut values =
-						Vec::with_capacity(row_count);
+					let mut values = Vec::with_capacity(row_count);
 					for _ in 0..row_count {
 						current += self.increment;
 						values.push(current);
@@ -131,16 +111,12 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 
 					self.set_counter_value(txn, current)?;
 
-					let mut all_columns: Vec<Column> =
-						after.clone()
-							.into_iter()
-							.collect();
+					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
 					all_columns.push(Column::ColumnQualified(ColumnQualified {
-                        name: self.column_name.clone(),
-                        data: ColumnData::Int8(NumberContainer::from_vec(values)),
-                    }));
-					let output_columns =
-						Columns::new(all_columns);
+						name: self.column_name.clone(),
+						data: ColumnData::Int8(NumberContainer::from_vec(values)),
+					}));
+					let output_columns = Columns::new(all_columns);
 
 					output.push(FlowDiff::Update {
 						source: *source,
@@ -182,14 +158,10 @@ impl<T: Transaction> TransformOperatorFactory<T> for CounterOperator {
 			if let Expression::Alias(alias_expr) = expr {
 				match alias_expr.alias.to_string().as_str() {
 					"increment" => {
-						increment = extract::int(
-							&alias_expr.expression,
-						)?;
+						increment = extract::int(&alias_expr.expression)?;
 					}
 					"column" | "name" => {
-						column_name = extract::string(
-							&alias_expr.expression,
-						)?;
+						column_name = extract::string(&alias_expr.expression)?;
 					}
 					_ => {
 						// Ignore unknown parameters

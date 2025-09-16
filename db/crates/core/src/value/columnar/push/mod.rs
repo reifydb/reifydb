@@ -39,29 +39,30 @@ impl ColumnData {
 }
 
 macro_rules! impl_push {
-    ($t:ty, $variant:ident, $factory:ident) => {
-        impl Push<$t> for ColumnData {
-            fn push(&mut self, value: $t) {
-                match self {
-                    ColumnData::$variant(container) => {
-                        container.push(value);
-                    }
-                    ColumnData::Undefined(container) => {
-                        let mut new_container =
-                            ColumnData::$factory(vec![<$t>::default(); container.len()]);
-                        if let ColumnData::$variant(new_container) = &mut new_container {
-                            new_container.push(value);
-                        }
-                        *self = new_container;
-                    }
-                    other => panic!(
-                        "called `push::<{}>()` on EngineColumnData::{:?}",
-                        stringify!($t),
-                        other.get_type()
-                    )}
-            }
-        }
-    };
+	($t:ty, $variant:ident, $factory:ident) => {
+		impl Push<$t> for ColumnData {
+			fn push(&mut self, value: $t) {
+				match self {
+					ColumnData::$variant(container) => {
+						container.push(value);
+					}
+					ColumnData::Undefined(container) => {
+						let mut new_container =
+							ColumnData::$factory(vec![<$t>::default(); container.len()]);
+						if let ColumnData::$variant(new_container) = &mut new_container {
+							new_container.push(value);
+						}
+						*self = new_container;
+					}
+					other => panic!(
+						"called `push::<{}>()` on EngineColumnData::{:?}",
+						stringify!($t),
+						other.get_type()
+					),
+				}
+			}
+		}
+	};
 }
 
 impl Push<bool> for ColumnData {
@@ -71,21 +72,13 @@ impl Push<bool> for ColumnData {
 				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::bool(vec![
-						false;
-						container.len()
-					]);
-				if let ColumnData::Bool(new_container) =
-					&mut new_container
-				{
+				let mut new_container = ColumnData::bool(vec![false; container.len()]);
+				if let ColumnData::Bool(new_container) = &mut new_container {
 					new_container.push(value);
 				}
 				*self = new_container;
 			}
-			other => panic!(
-				"called `push::<bool>()` on EngineColumnData::{:?}",
-				other.get_type()
-			),
+			other => panic!("called `push::<bool>()` on EngineColumnData::{:?}", other.get_type()),
 		}
 	}
 }
@@ -107,10 +100,7 @@ impl Push<Blob> for ColumnData {
 				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::blob(vec![
-						Blob::default();
-						container.len()
-					]);
+				let mut new_container = ColumnData::blob(vec![Blob::default(); container.len()]);
 				if let ColumnData::Blob {
 					container: new_container,
 					..
@@ -120,10 +110,7 @@ impl Push<Blob> for ColumnData {
 				}
 				*self = new_container;
 			}
-			other => panic!(
-				"called `push::<Blob>()` on EngineColumnData::{:?}",
-				other.get_type()
-			),
+			other => panic!("called `push::<Blob>()` on EngineColumnData::{:?}", other.get_type()),
 		}
 	}
 }
@@ -138,10 +125,7 @@ impl Push<String> for ColumnData {
 				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
-				let mut new_container = ColumnData::utf8(vec![
-						String::default();
-						container.len()
-					]);
+				let mut new_container = ColumnData::utf8(vec![String::default(); container.len()]);
 				if let ColumnData::Utf8 {
 					container: new_container,
 					..
@@ -152,10 +136,7 @@ impl Push<String> for ColumnData {
 				*self = new_container;
 			}
 			other => {
-				panic!(
-					"called `push::<String>()` on EngineColumnData::{:?}",
-					other.get_type()
-				)
+				panic!("called `push::<String>()` on EngineColumnData::{:?}", other.get_type())
 			}
 		}
 	}

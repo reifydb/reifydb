@@ -7,8 +7,7 @@ use reifydb_core::{
 	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId,
-		Transaction, ViewId, expression::Expression,
+		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId, Transaction, ViewId, expression::Expression,
 	},
 	row::EncodedRow,
 	util::{CowVec, encoding::keycode},
@@ -56,138 +55,87 @@ impl GroupState {
 		}
 	}
 
-	fn update_insert(
-		&mut self,
-		columns: &Columns,
-		row_indices: &[usize],
-		agg_columns: &[String],
-	) {
+	fn update_insert(&mut self, columns: &Columns, row_indices: &[usize], agg_columns: &[String]) {
 		let num_rows = row_indices.len();
 		self.count += num_rows as i64;
 		self.ref_count += num_rows;
 
 		for col_name in agg_columns {
-			if let Some(column) =
-				columns.iter().find(|c| c.name() == col_name)
-			{
+			if let Some(column) = columns.iter().find(|c| c.name() == col_name) {
 				// Process all rows at once for this column
-				let mut values =
-					Vec::with_capacity(row_indices.len());
+				let mut values = Vec::with_capacity(row_indices.len());
 				for &row_idx in row_indices {
-					values.push(column
-						.data()
-						.get_value(row_idx));
+					values.push(column.data().get_value(row_idx));
 				}
 
 				// Update sum - aggregate all values at once
 				if !values.is_empty() {
 					let aggregated_sum =
-						values.iter().fold(
-							None,
-							|acc: Option<Value>,
-							 val| {
-								match acc {
-                                    Some(a) => Some(add_values(&a, val)),
-                                    None => Some(val.clone())
-                                }
-							},
-						);
+						values.iter().fold(None, |acc: Option<Value>, val| match acc {
+							Some(a) => Some(add_values(&a, val)),
+							None => Some(val.clone()),
+						});
 
 					if let Some(new_sum) = aggregated_sum {
 						self.sum.entry(col_name.clone())
-                            .and_modify(|v| {
-                                *v = add_values(v, &new_sum)
-                            })
-                            .or_insert(new_sum);
+							.and_modify(|v| *v = add_values(v, &new_sum))
+							.or_insert(new_sum);
 					}
 
 					// Update min - find minimum across all
 					// values
-					let new_min = values.iter().fold(
-						None,
-						|acc: Option<Value>, val| {
-							match acc {
-                                Some(a) => Some(min_value(&a, val)),
-                                None => Some(val.clone())
-                            }
-						},
-					);
+					let new_min = values.iter().fold(None, |acc: Option<Value>, val| match acc {
+						Some(a) => Some(min_value(&a, val)),
+						None => Some(val.clone()),
+					});
 
 					if let Some(new_min) = new_min {
 						self.min.entry(col_name.clone())
-                            .and_modify(|v| {
-                                *v = min_value(v, &new_min)
-                            })
-                            .or_insert(new_min);
+							.and_modify(|v| *v = min_value(v, &new_min))
+							.or_insert(new_min);
 					}
 
 					// Update max - find maximum across all
 					// values
-					let new_max = values.iter().fold(
-						None,
-						|acc: Option<Value>, val| {
-							match acc {
-                                Some(a) => Some(max_value(&a, val)),
-                                None => Some(val.clone())
-                            }
-						},
-					);
+					let new_max = values.iter().fold(None, |acc: Option<Value>, val| match acc {
+						Some(a) => Some(max_value(&a, val)),
+						None => Some(val.clone()),
+					});
 
 					if let Some(new_max) = new_max {
 						self.max.entry(col_name.clone())
-                            .and_modify(|v| {
-                                *v = max_value(v, &new_max)
-                            })
-                            .or_insert(new_max);
+							.and_modify(|v| *v = max_value(v, &new_max))
+							.or_insert(new_max);
 					}
 				}
 			}
 		}
 	}
 
-	fn update_delete(
-		&mut self,
-		columns: &Columns,
-		row_indices: &[usize],
-		agg_columns: &[String],
-	) {
+	fn update_delete(&mut self, columns: &Columns, row_indices: &[usize], agg_columns: &[String]) {
 		let num_rows = row_indices.len();
 		self.count -= num_rows as i64;
 		self.ref_count -= num_rows;
 
 		for col_name in agg_columns {
-			if let Some(column) =
-				columns.iter().find(|c| c.name() == col_name)
-			{
+			if let Some(column) = columns.iter().find(|c| c.name() == col_name) {
 				// Process all rows at once for this column
-				let mut values =
-					Vec::with_capacity(row_indices.len());
+				let mut values = Vec::with_capacity(row_indices.len());
 				for &row_idx in row_indices {
-					values.push(column
-						.data()
-						.get_value(row_idx));
+					values.push(column.data().get_value(row_idx));
 				}
 
 				// Update sum - subtract all values at once
 				if !values.is_empty() {
 					let aggregated_sum =
-						values.iter().fold(
-							None,
-							|acc: Option<Value>,
-							 val| {
-								match acc {
-                                    Some(a) => Some(add_values(&a, val)),
-                                    None => Some(val.clone())
-                                }
-							},
-						);
+						values.iter().fold(None, |acc: Option<Value>, val| match acc {
+							Some(a) => Some(add_values(&a, val)),
+							None => Some(val.clone()),
+						});
 
-					if let Some(sum_to_subtract) =
-						aggregated_sum
-					{
-						self.sum.entry(col_name.clone()).and_modify(
-                            |v| *v = subtract_values(v, &sum_to_subtract),
-                        );
+					if let Some(sum_to_subtract) = aggregated_sum {
+						self.sum.entry(col_name.clone())
+							.and_modify(|v| *v = subtract_values(v, &sum_to_subtract));
 					}
 				}
 
@@ -224,11 +172,7 @@ pub struct AggregateOperator {
 }
 
 impl AggregateOperator {
-	pub fn new(
-		node: FlowNodeId,
-		by: Vec<Expression<'static>>,
-		map: Vec<Expression<'static>>,
-	) -> Self {
+	pub fn new(node: FlowNodeId, by: Vec<Expression<'static>>, map: Vec<Expression<'static>>) -> Self {
 		// Extract column names from aggregate expressions
 		let agg_columns = extract_aggregate_columns(&map);
 
@@ -241,8 +185,7 @@ impl AggregateOperator {
 	}
 
 	fn group_key_to_encoded_key(group_key: &[Value]) -> EncodedKey {
-		let serialized =
-			serde_json::to_vec(group_key).unwrap_or_default();
+		let serialized = serde_json::to_vec(group_key).unwrap_or_default();
 		EncodedKey::new(serialized)
 	}
 
@@ -284,10 +227,7 @@ impl AggregateOperator {
 			for col in &group_columns {
 				key.push(col.data().get_value(row_idx));
 			}
-			group_map
-				.entry(key)
-				.or_insert_with(Vec::new)
-				.push(row_idx);
+			group_map.entry(key).or_insert_with(Vec::new).push(row_idx);
 		}
 
 		Ok(group_map)
@@ -304,8 +244,7 @@ impl AggregateOperator {
 		if state_row.as_ref().is_empty() {
 			Ok(GroupState::new())
 		} else {
-			let state = GroupState::from_encoded_row(&state_row)
-				.unwrap_or_else(GroupState::new);
+			let state = GroupState::from_encoded_row(&state_row).unwrap_or_else(GroupState::new);
 			Ok(state)
 		}
 	}
@@ -338,13 +277,8 @@ impl AggregateOperator {
 		// Scan all entries for this node
 		let iter = self.scan(txn)?;
 		for (key, row) in iter {
-			if let Ok(group_key) = serde_json::from_slice::<
-				Vec<Value>,
-			>(key.as_ref())
-			{
-				if let Some(state) =
-					GroupState::from_encoded_row(&row)
-				{
+			if let Ok(group_key) = serde_json::from_slice::<Vec<Value>>(key.as_ref()) {
+				if let Some(state) = GroupState::from_encoded_row(&row) {
 					states.insert(group_key, state);
 				}
 			}
@@ -370,73 +304,36 @@ impl AggregateOperator {
 				// Add the aggregated value column (sum)
 				// The view expects a column named "value" which
 				// is the sum
-				if let Some(sum_value) = state.sum.get("value")
-				{
+				if let Some(sum_value) = state.sum.get("value") {
 					let data = match sum_value {
-						Value::Int8(v) => {
-							ColumnData::int8(vec![
-								*v,
-							])
-						}
-						Value::Int4(v) => {
-							ColumnData::int4(vec![
-								*v,
-							])
-						}
-						Value::Float8(v) => {
-							ColumnData::float8(
-								vec![v.value()],
-							)
-						}
+						Value::Int8(v) => ColumnData::int8(vec![*v]),
+						Value::Int4(v) => ColumnData::int4(vec![*v]),
+						Value::Float8(v) => ColumnData::float8(vec![v.value()]),
 						_ => ColumnData::undefined(1),
 					};
-					column_vec.push(
-						Column::ColumnQualified(
-							ColumnQualified {
-								name: "value"
-									.to_string(
-									),
-								data,
-							},
-						),
-					);
+					column_vec.push(Column::ColumnQualified(ColumnQualified {
+						name: "value".to_string(),
+						data,
+					}));
 				} else {
 					column_vec.push(Column::ColumnQualified(ColumnQualified {
-                        name: "value".to_string(),
-                        data: ColumnData::undefined(1),
-                    }));
+						name: "value".to_string(),
+						data: ColumnData::undefined(1),
+					}));
 				}
 
 				// Add group key column (age)
 				if let Some(age_value) = group_key.first() {
 					let data = match age_value {
-						Value::Int8(v) => {
-							ColumnData::int8(vec![
-								*v,
-							])
-						}
-						Value::Int4(v) => {
-							ColumnData::int4(vec![
-								*v,
-							])
-						}
-						Value::Utf8(v) => {
-							ColumnData::utf8(vec![
-								v.clone(),
-							])
-						}
+						Value::Int8(v) => ColumnData::int8(vec![*v]),
+						Value::Int4(v) => ColumnData::int4(vec![*v]),
+						Value::Utf8(v) => ColumnData::utf8(vec![v.clone()]),
 						_ => ColumnData::undefined(1),
 					};
-					column_vec.push(
-						Column::ColumnQualified(
-							ColumnQualified {
-								name: "age"
-									.to_string(
-									),
-								data,
-							},
-						),
-					);
+					column_vec.push(Column::ColumnQualified(ColumnQualified {
+						name: "age".to_string(),
+						data,
+					}));
 				}
 				let columns = Columns::new(column_vec);
 
@@ -451,22 +348,20 @@ impl AggregateOperator {
 						// this aggregate group
 						// Using hash of group_key for
 						// deterministic row_id
-						let hash =
-							{
-								use std::collections::hash_map::DefaultHasher;
-                                use std::hash::{Hash, Hasher};
-								let mut hasher = DefaultHasher::new();
-								group_key.hash(&mut hasher);
-								hasher.finish()
+						let hash = {
+							use std::{
+								collections::hash_map::DefaultHasher,
+								hash::{Hash, Hasher},
 							};
-						update_row_ids
-							.push(RowNumber(hash));
+							let mut hasher = DefaultHasher::new();
+							group_key.hash(&mut hasher);
+							hasher.finish()
+						};
+						update_row_ids.push(RowNumber(hash));
 					}
 
 					output_diffs.push(FlowDiff::Update {
-						source: SourceId::View(ViewId(
-							1,
-						)),
+						source: SourceId::View(ViewId(1)),
 						row_ids: update_row_ids,
 						before: previous.clone(),
 						after: columns.clone(),
@@ -478,20 +373,16 @@ impl AggregateOperator {
 					for _ in 0..columns.row_count() {
 						// Generate a unique row_id for
 						// this aggregate group
-						let hash =
-							{
-								let mut hasher = DefaultHasher::new();
-								group_key.hash(&mut hasher);
-								hasher.finish()
-							};
-						insert_row_ids
-							.push(RowNumber(hash));
+						let hash = {
+							let mut hasher = DefaultHasher::new();
+							group_key.hash(&mut hasher);
+							hasher.finish()
+						};
+						insert_row_ids.push(RowNumber(hash));
 					}
 
 					output_diffs.push(FlowDiff::Insert {
-						source: SourceId::View(ViewId(
-							1,
-						)),
+						source: SourceId::View(ViewId(1)),
 						row_ids: insert_row_ids,
 						after: columns.clone(),
 					});
@@ -501,15 +392,10 @@ impl AggregateOperator {
 				// time
 				let mut updated_state = state.clone();
 				updated_state.previous_output = Some(columns);
-				self.save_state(
-					txn,
-					&group_key,
-					&updated_state,
-				)?;
+				self.save_state(txn, &group_key, &updated_state)?;
 			} else if state.previous_output.is_some() {
 				// Group was deleted, emit retraction
-				let before_columns =
-					state.previous_output.unwrap();
+				let before_columns = state.previous_output.unwrap();
 				let mut remove_row_ids = Vec::new();
 				for _ in 0..before_columns.row_count() {
 					// Use same hash-based row_id for
@@ -519,8 +405,7 @@ impl AggregateOperator {
 							collections::hash_map::DefaultHasher,
 							hash::{Hash, Hasher},
 						};
-						let mut hasher =
-							DefaultHasher::new();
+						let mut hasher = DefaultHasher::new();
 						group_key.hash(&mut hasher);
 						hasher.finish()
 					};
@@ -555,40 +440,22 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 					..
 				} => {
 					// Compute all group keys at once
-					let group_map = self
-						.compute_group_key(
-							evaluator, after, None,
-						)?;
+					let group_map = self.compute_group_key(evaluator, after, None)?;
 
 					// Process each group in batch
-					for (group_key, row_indices) in
-						group_map
-					{
+					for (group_key, row_indices) in group_map {
 						// Load state from storage
-						let mut state = self
-							.load_state(
-								txn, &group_key,
-							)?;
+						let mut state = self.load_state(txn, &group_key)?;
 
 						// Update state with all rows
 						// for this group
-						state.update_insert(
-							after,
-							&row_indices,
-							&self.agg_columns,
-						);
+						state.update_insert(after, &row_indices, &self.agg_columns);
 
 						// Save state back to storage
-						self.save_state(
-							txn, &group_key, &state,
-						)?;
+						self.save_state(txn, &group_key, &state)?;
 
-						if !changed_groups
-							.contains(&group_key)
-						{
-							changed_groups.push(
-								group_key,
-							);
+						if !changed_groups.contains(&group_key) {
+							changed_groups.push(group_key);
 						}
 					}
 				}
@@ -599,66 +466,30 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 				} => {
 					// Handle as delete + insert
 					// Compute group keys for old values
-					let old_group_map = self
-						.compute_group_key(
-							evaluator, before, None,
-						)?;
+					let old_group_map = self.compute_group_key(evaluator, before, None)?;
 
 					// Process deletions for each group
-					for (old_key, row_indices) in
-						old_group_map
-					{
-						let mut old_state = self
-							.load_state(
-								txn, &old_key,
-							)?;
-						old_state.update_delete(
-							before,
-							&row_indices,
-							&self.agg_columns,
-						);
-						self.save_state(
-							txn, &old_key,
-							&old_state,
-						)?;
+					for (old_key, row_indices) in old_group_map {
+						let mut old_state = self.load_state(txn, &old_key)?;
+						old_state.update_delete(before, &row_indices, &self.agg_columns);
+						self.save_state(txn, &old_key, &old_state)?;
 
-						if !changed_groups
-							.contains(&old_key)
-						{
-							changed_groups
-								.push(old_key);
+						if !changed_groups.contains(&old_key) {
+							changed_groups.push(old_key);
 						}
 					}
 
 					// Compute group keys for new values
-					let new_group_map = self
-						.compute_group_key(
-							evaluator, after, None,
-						)?;
+					let new_group_map = self.compute_group_key(evaluator, after, None)?;
 
 					// Process insertions for each group
-					for (new_key, row_indices) in
-						new_group_map
-					{
-						let mut new_state = self
-							.load_state(
-								txn, &new_key,
-							)?;
-						new_state.update_insert(
-							after,
-							&row_indices,
-							&self.agg_columns,
-						);
-						self.save_state(
-							txn, &new_key,
-							&new_state,
-						)?;
+					for (new_key, row_indices) in new_group_map {
+						let mut new_state = self.load_state(txn, &new_key)?;
+						new_state.update_insert(after, &row_indices, &self.agg_columns);
+						self.save_state(txn, &new_key, &new_state)?;
 
-						if !changed_groups
-							.contains(&new_key)
-						{
-							changed_groups
-								.push(new_key);
+						if !changed_groups.contains(&new_key) {
+							changed_groups.push(new_key);
 						}
 					}
 				}
@@ -667,40 +498,22 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 					..
 				} => {
 					// Compute all group keys at once
-					let group_map = self
-						.compute_group_key(
-							evaluator, before, None,
-						)?;
+					let group_map = self.compute_group_key(evaluator, before, None)?;
 
 					// Process each group in batch
-					for (group_key, row_indices) in
-						group_map
-					{
+					for (group_key, row_indices) in group_map {
 						// Load state from storage
-						let mut state = self
-							.load_state(
-								txn, &group_key,
-							)?;
+						let mut state = self.load_state(txn, &group_key)?;
 
 						// Update state with all rows
 						// for this group
-						state.update_delete(
-							before,
-							&row_indices,
-							&self.agg_columns,
-						);
+						state.update_delete(before, &row_indices, &self.agg_columns);
 
 						// Save state back to storage
-						self.save_state(
-							txn, &group_key, &state,
-						)?;
+						self.save_state(txn, &group_key, &state)?;
 
-						if !changed_groups
-							.contains(&group_key)
-						{
-							changed_groups.push(
-								group_key,
-							);
+						if !changed_groups.contains(&group_key) {
+							changed_groups.push(group_key);
 						}
 					}
 				}
@@ -731,11 +544,7 @@ fn extract_aggregate_columns(expressions: &[Expression]) -> Vec<String> {
 		if let Expression::Call(call) = expr {
 			if let Some(arg) = call.args.first() {
 				if let Expression::Column(col) = arg {
-					columns.push(col
-						.0
-						.name
-						.text()
-						.to_string());
+					columns.push(col.0.name.text().to_string());
 				}
 			}
 		}
@@ -753,9 +562,7 @@ fn add_values(a: &Value, b: &Value) -> Value {
 		(Value::Int4(x), Value::Int4(y)) => Value::Int4(x + y),
 		(Value::Float8(x), Value::Float8(y)) => {
 			let result = x.value() + y.value();
-			Value::Float8(
-				OrderedF64::try_from(result).unwrap_or(*x),
-			)
+			Value::Float8(OrderedF64::try_from(result).unwrap_or(*x))
 		}
 		_ => a.clone(), // Simplified
 	}
@@ -767,9 +574,7 @@ fn subtract_values(a: &Value, b: &Value) -> Value {
 		(Value::Int4(x), Value::Int4(y)) => Value::Int4(x - y),
 		(Value::Float8(x), Value::Float8(y)) => {
 			let result = x.value() - y.value();
-			Value::Float8(
-				OrderedF64::try_from(result).unwrap_or(*x),
-			)
+			Value::Float8(OrderedF64::try_from(result).unwrap_or(*x))
 		}
 		_ => a.clone(), // Simplified
 	}

@@ -34,19 +34,12 @@ impl<T: Transaction> PrimaryKeys<T> {
 }
 
 impl<'a, T: Transaction> TableVirtual<'a, T> for PrimaryKeys<T> {
-	fn initialize(
-		&mut self,
-		_txn: &mut StandardTransaction<'a, T>,
-		_ctx: TableVirtualContext<'a>,
-	) -> Result<()> {
+	fn initialize(&mut self, _txn: &mut StandardTransaction<'a, T>, _ctx: TableVirtualContext<'a>) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		txn: &mut StandardTransaction<'a, T>,
-	) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}

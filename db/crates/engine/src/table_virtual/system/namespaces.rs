@@ -26,9 +26,7 @@ pub struct Namespaces<T: Transaction> {
 impl<T: Transaction> Namespaces<T> {
 	pub fn new() -> Self {
 		Self {
-			definition:
-				SystemCatalog::get_system_namespaces_table_def()
-					.clone(),
+			definition: SystemCatalog::get_system_namespaces_table_def().clone(),
 			exhausted: false,
 			_phantom: PhantomData,
 		}
@@ -36,19 +34,12 @@ impl<T: Transaction> Namespaces<T> {
 }
 
 impl<'a, T: Transaction> TableVirtual<'a, T> for Namespaces<T> {
-	fn initialize(
-		&mut self,
-		_txn: &mut StandardTransaction<'a, T>,
-		_ctx: TableVirtualContext<'a>,
-	) -> Result<()> {
+	fn initialize(&mut self, _txn: &mut StandardTransaction<'a, T>, _ctx: TableVirtualContext<'a>) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		txn: &mut StandardTransaction<'a, T>,
-	) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}

@@ -14,10 +14,7 @@ use crate::sqlite::{Sqlite, read::Reader};
 impl VersionedScanRev for Sqlite {
 	type ScanIterRev<'a> = IterRev;
 
-	fn scan_rev(
-		&self,
-		version: CommitVersion,
-	) -> Result<Self::ScanIterRev<'_>> {
+	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>> {
 		Ok(IterRev::new(self.get_reader(), version, 1024))
 	}
 }
@@ -33,11 +30,7 @@ pub struct IterRev {
 }
 
 impl IterRev {
-	pub fn new(
-		conn: Reader,
-		version: CommitVersion,
-		batch_size: usize,
-	) -> Self {
+	pub fn new(conn: Reader, version: CommitVersion, batch_size: usize) -> Self {
 		let table_names = get_table_names(&conn);
 
 		Self {

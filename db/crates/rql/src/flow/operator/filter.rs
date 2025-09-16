@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Filter},
-	interface::{
-		CommandTransaction, FlowNodeId,
-		evaluate::expression::Expression,
-	},
+	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
 };
 
 use super::super::{

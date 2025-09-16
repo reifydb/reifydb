@@ -9,10 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{
-	collections::HashMap, error::Error as StdError, fmt::Write as _,
-	path::Path,
-};
+use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path};
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
@@ -25,10 +22,7 @@ use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	mvcc::{
-		transaction::optimistic::{
-			CommandTransaction, Optimistic, QueryTransaction,
-			Transaction,
-		},
+		transaction::optimistic::{CommandTransaction, Optimistic, QueryTransaction, Transaction},
 		types::TransactionValue,
 	},
 	svl::SingleVersionLock,
@@ -54,14 +48,11 @@ fn test_optimistic(path: &Path) {
 
 pub struct MvccRunner {
 	engine: Optimistic<Memory, SingleVersionLock<Memory>>,
-	transactions:
-		HashMap<String, Transaction<Memory, SingleVersionLock<Memory>>>,
+	transactions: HashMap<String, Transaction<Memory, SingleVersionLock<Memory>>>,
 }
 
 impl MvccRunner {
-	fn new(
-		optimistic: Optimistic<Memory, SingleVersionLock<Memory>>,
-	) -> Self {
+	fn new(optimistic: Optimistic<Memory, SingleVersionLock<Memory>>) -> Self {
 		Self {
 			engine: optimistic,
 			transactions: HashMap::new(),
@@ -72,15 +63,10 @@ impl MvccRunner {
 	fn get_transaction(
 		&mut self,
 		prefix: &Option<String>,
-	) -> Result<
-		&'_ mut Transaction<Memory, SingleVersionLock<Memory>>,
-		Box<dyn StdError>,
-	> {
+	) -> Result<&'_ mut Transaction<Memory, SingleVersionLock<Memory>>, Box<dyn StdError>> {
 		let name = Self::tx_name(prefix)?;
-		self.transactions.get_mut(name).ok_or(format!(
-			"unknown transaction
-{name}"
-		)
+		self.transactions.get_mut(name).ok_or(format!("unknown transaction
+{name}")
 		.into())
 	}
 
@@ -90,25 +76,16 @@ impl MvccRunner {
 	}
 
 	/// Errors if a tx prefix is given.
-	fn no_tx(
-		command: &testscript::Command,
-	) -> Result<(), Box<dyn StdError>> {
+	fn no_tx(command: &testscript::Command) -> Result<(), Box<dyn StdError>> {
 		if let Some(name) = &command.prefix {
-			return Err(format!(
-				"can't run {} with tx {name}",
-				command.name
-			)
-			.into());
+			return Err(format!("can't run {} with tx {name}", command.name).into());
 		}
 		Ok(())
 	}
 }
 
 impl<'a> testscript::Runner for MvccRunner {
-	fn run(
-		&mut self,
-		command: &testscript::Command,
-	) -> Result<String, Box<dyn StdError>> {
+	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		let tags = command.tags.clone();
 
@@ -117,23 +94,14 @@ impl<'a> testscript::Runner for MvccRunner {
 			"begin" => {
 				let name = Self::tx_name(&command.prefix)?;
 				if self.transactions.contains_key(name) {
-					return Err(format!(
-						"tx {name} already exists"
-					)
-					.into());
+					return Err(format!("tx {name} already exists").into());
 				}
 				let mut args = command.consume_args();
-				let readonly = match args
-					.next_pos()
-					.map(|a| a.value.as_str())
-				{
+				let readonly = match args.next_pos().map(|a| a.value.as_str()) {
 					Some("readonly") => true,
 					None => false,
 					Some(v) => {
-						return Err(format!(
-							"invalid argument{v}"
-						)
-						.into());
+						return Err(format!("invalid argument{v}").into());
 					}
 				};
 
@@ -141,17 +109,10 @@ impl<'a> testscript::Runner for MvccRunner {
 				args.reject_rest()?;
 				let t = match readonly {
 					true => Transaction::Query(
-						QueryTransaction::new(
-							self.engine.clone(),
-							version,
-						)
-						.unwrap(),
+						QueryTransaction::new(self.engine.clone(), version).unwrap(),
 					),
 					false => Transaction::Command(
-						CommandTransaction::new(
-							self.engine.clone(),
-						)
-						.unwrap(),
+						CommandTransaction::new(self.engine.clone()).unwrap(),
 					),
 				};
 
@@ -161,17 +122,12 @@ impl<'a> testscript::Runner for MvccRunner {
 			// tx: commit
 			"commit" => {
 				let name = Self::tx_name(&command.prefix)?;
-				let t = self
-					.transactions
-					.remove(name)
-					.ok_or(format!("unknown tx {name}"))?;
+				let t = self.transactions.remove(name).ok_or(format!("unknown tx {name}"))?;
 				command.consume_args().reject_rest()?;
 
 				match t {
 					Transaction::Query(_) => {
-						unreachable!(
-							"can not call commit on rx"
-						)
+						unreachable!("can not call commit on rx")
 					}
 					Transaction::Command(mut tx) => {
 						tx.commit()?;
@@ -181,23 +137,17 @@ impl<'a> testscript::Runner for MvccRunner {
 
 			// tx: remove KEY...
 			"remove" => {
-				let t =
-					self.get_transaction(&command.prefix)?;
+				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for arg in args.rest_pos() {
-					let key = EncodedKey(decode_binary(
-						&arg.value,
-					));
+					let key = EncodedKey(decode_binary(&arg.value));
 
 					match t {
 						Transaction::Query(_) => {
-							unreachable!(
-								"can not call remove on rx"
-							)
+							unreachable!("can not call remove on rx")
 						}
 						Transaction::Command(tx) => {
-							tx.remove(&key)
-								.unwrap();
+							tx.remove(&key).unwrap();
 						}
 					}
 				}
@@ -206,13 +156,10 @@ impl<'a> testscript::Runner for MvccRunner {
 
 			"version" => {
 				command.consume_args().reject_rest()?;
-				let t =
-					self.get_transaction(&command.prefix)?;
+				let t = self.get_transaction(&command.prefix)?;
 				let version = match t {
 					Transaction::Query(rx) => rx.version(),
-					Transaction::Command(tx) => {
-						tx.version()
-					}
+					Transaction::Command(tx) => tx.version(),
 				};
 				writeln!(output, "{}", version)?;
 			}
@@ -221,39 +168,20 @@ impl<'a> testscript::Runner for MvccRunner {
 			"get" => {
 				let mut args = command.consume_args();
 				for arg in args.rest_pos() {
-					let key = EncodedKey(decode_binary(
-						&arg.value,
-					));
-					let t = self.get_transaction(
-						&command.prefix,
-					)?;
+					let key = EncodedKey(decode_binary(&arg.value));
+					let t = self.get_transaction(&command.prefix)?;
 
 					let value = match t {
 						Transaction::Query(rx) => {
-							rx.get(&key).map(|r| {
-								r.and_then(
-									|tv| {
-										Some(tv.row().to_vec())
-									},
-								)
-							})
+							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
 						}
 						Transaction::Command(tx) => {
-							tx.get(&key).map(|r| {
-								r.and_then(
-									|tv| {
-										Some(tv.row().to_vec())
-									},
-								)
-							})
+							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
 						}
 					}
 					.unwrap();
 
-					let fmtkv = format::Raw::key_maybe_row(
-						&key,
-						value.as_ref(),
-					);
+					let fmtkv = format::Raw::key_maybe_row(&key, value.as_ref());
 					writeln!(output, "{fmtkv}")?;
 				}
 				args.reject_rest()?;
@@ -264,18 +192,11 @@ impl<'a> testscript::Runner for MvccRunner {
 				Self::no_tx(command)?;
 				let mut args = command.consume_args();
 
-				let mut tx = CommandTransaction::new(
-					self.engine.clone(),
-				)
-				.unwrap();
+				let mut tx = CommandTransaction::new(self.engine.clone()).unwrap();
 
 				for kv in args.rest_key() {
-					let key = EncodedKey(decode_binary(
-						kv.key.as_ref().unwrap(),
-					));
-					let row = EncodedRow(decode_binary(
-						&kv.value,
-					));
+					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
+					let row = EncodedRow(decode_binary(&kv.value));
 					if row.is_empty() {
 						tx.remove(&key).unwrap();
 					} else {
@@ -289,17 +210,12 @@ impl<'a> testscript::Runner for MvccRunner {
 			// tx: rollback
 			"rollback" => {
 				let name = Self::tx_name(&command.prefix)?;
-				let t = self
-					.transactions
-					.remove(name)
-					.ok_or(format!("unknown tx {name}"))?;
+				let t = self.transactions.remove(name).ok_or(format!("unknown tx {name}"))?;
 				command.consume_args().reject_rest()?;
 
 				match t {
 					Transaction::Query(_) => {
-						unreachable!(
-							"can not call rollback on rx"
-						)
+						unreachable!("can not call rollback on rx")
 					}
 					Transaction::Command(mut tx) => {
 						tx.rollback()?;
@@ -309,8 +225,7 @@ impl<'a> testscript::Runner for MvccRunner {
 
 			// tx: scan
 			"scan" => {
-				let t =
-					self.get_transaction(&command.prefix)?;
+				let t = self.get_transaction(&command.prefix)?;
 				let args = command.consume_args();
 				args.reject_rest()?;
 
@@ -319,98 +234,45 @@ impl<'a> testscript::Runner for MvccRunner {
 					Transaction::Query(rx) => {
 						let iter = rx.scan().unwrap();
 						for versioned in iter {
-							kvs.push((
-								versioned
-									.key
-									.clone(
-									),
-								versioned
-									.row
-									.to_vec(
-									),
-							));
+							kvs.push((versioned.key.clone(), versioned.row.to_vec()));
 						}
 					}
 					Transaction::Command(tx) => {
-						for item in tx
-							.scan()
-							.unwrap()
-							.into_iter()
-						{
-							kvs.push((
-								item.key()
-									.clone(
-									),
-								item.row()
-									.to_vec(
-									),
-							));
+						for item in tx.scan().unwrap().into_iter() {
+							kvs.push((item.key().clone(), item.row().to_vec()));
 						}
 					}
 				}
 
 				for (key, value) in kvs {
-					writeln!(
-						output,
-						"{}",
-						format::Raw::key_row(
-							&key, &value
-						)
-					)?;
+					writeln!(output, "{}", format::Raw::key_row(&key, &value))?;
 				}
 			}
 
 			// range RANGE [reverse=BOOL]
 			"range" => {
-				let t =
-					self.get_transaction(&command.prefix)?;
+				let t = self.get_transaction(&command.prefix)?;
 
 				let mut args = command.consume_args();
-				let reverse = args
-					.lookup_parse("reverse")?
-					.unwrap_or(false);
+				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 				let range = EncodedKeyRange::parse(
-					args.next_pos()
-						.map(|a| a.value.as_str())
-						.unwrap_or(".."),
+					args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
 				);
 				args.reject_rest()?;
 
 				match t {
 					Transaction::Query(rx) => {
 						if !reverse {
-							print_rx(
-								&mut output,
-								rx.range(range)
-									.unwrap(
-									),
-							)
+							print_rx(&mut output, rx.range(range).unwrap())
 						} else {
-							print_rx(
-								&mut output,
-								rx.range_rev(
-									range,
-								)
-								.unwrap(),
-							)
+							print_rx(&mut output, rx.range_rev(range).unwrap())
 						}
 					}
 					Transaction::Command(tx) => {
 						if !reverse {
-							print_tx(
-								&mut output,
-								tx.range(range)
-									.unwrap(
-									),
-							)
+							print_tx(&mut output, tx.range(range).unwrap())
 						} else {
-							print_tx(
-								&mut output,
-								tx.range_rev(
-									range,
-								)
-								.unwrap(),
-							)
+							print_tx(&mut output, tx.range_rev(range).unwrap())
 						}
 					}
 				}
@@ -418,13 +280,10 @@ impl<'a> testscript::Runner for MvccRunner {
 
 			// prefix PREFIX [reverse=BOOL] [version=VERSION]
 			"prefix" => {
-				let t =
-					self.get_transaction(&command.prefix)?;
+				let t = self.get_transaction(&command.prefix)?;
 
 				let mut args = command.consume_args();
-				let reverse = args
-					.lookup_parse("reverse")?
-					.unwrap_or(false);
+				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 				let prefix = EncodedKey(decode_binary(
 					&args.next_pos()
 						.ok_or("prefix
@@ -436,40 +295,16 @@ not given")?
 				match t {
 					Transaction::Query(rx) => {
 						if !reverse {
-							print_rx(
-								&mut output,
-								rx.prefix(
-									&prefix,
-								)
-								.unwrap(),
-							)
+							print_rx(&mut output, rx.prefix(&prefix).unwrap())
 						} else {
-							print_rx(
-								&mut output,
-								rx.prefix_rev(
-									&prefix,
-								)
-								.unwrap(),
-							)
+							print_rx(&mut output, rx.prefix_rev(&prefix).unwrap())
 						}
 					}
 					Transaction::Command(tx) => {
 						if !reverse {
-							print_tx(
-								&mut output,
-								tx.prefix(
-									&prefix,
-								)
-								.unwrap(),
-							)
+							print_tx(&mut output, tx.prefix(&prefix).unwrap())
 						} else {
-							print_tx(
-								&mut output,
-								tx.prefix_rev(
-									&prefix,
-								)
-								.unwrap(),
-							)
+							print_tx(&mut output, tx.prefix_rev(&prefix).unwrap())
 						}
 					}
 				}
@@ -477,25 +312,17 @@ not given")?
 
 			// tx: set KEY=VALUE...
 			"set" => {
-				let t =
-					self.get_transaction(&command.prefix)?;
+				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
-					let key = EncodedKey(decode_binary(
-						kv.key.as_ref().unwrap(),
-					));
-					let row = EncodedRow(decode_binary(
-						&kv.value,
-					));
+					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
+					let row = EncodedRow(decode_binary(&kv.value));
 					match t {
 						Transaction::Query(_) => {
-							unreachable!(
-								"can not call set on rx"
-							)
+							unreachable!("can not call set on rx")
 						}
 						Transaction::Command(tx) => {
-							tx.set(&key, row)
-								.unwrap();
+							tx.set(&key, row).unwrap();
 						}
 					}
 				}
@@ -503,8 +330,7 @@ not given")?
 			}
 
 			name => {
-				return Err(format!("invalid command {name}")
-					.into());
+				return Err(format!("invalid command {name}").into());
 			}
 		}
 

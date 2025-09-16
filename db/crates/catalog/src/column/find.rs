@@ -14,24 +14,17 @@ impl CatalogStore {
 		source: impl Into<SourceId>,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
-		let maybe_id = rx
-			.range(ColumnKey::full_scan(source))?
-			.find_map(|versioned| {
-				let row = versioned.row;
-				let column =
-					ColumnId(table_column::LAYOUT.get_u64(
-						&row,
-						table_column::ID,
-					));
-				let name = table_column::LAYOUT
-					.get_utf8(&row, table_column::NAME);
+		let maybe_id = rx.range(ColumnKey::full_scan(source))?.find_map(|versioned| {
+			let row = versioned.row;
+			let column = ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID));
+			let name = table_column::LAYOUT.get_utf8(&row, table_column::NAME);
 
-				if name == column_name {
-					Some(column)
-				} else {
-					None
-				}
-			});
+			if name == column_name {
+				Some(column)
+			} else {
+				None
+			}
+		});
 
 		if let Some(id) = maybe_id {
 			Ok(Some(Self::get_column(rx, id)?))
@@ -52,32 +45,11 @@ mod tests {
 	#[test]
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
-		create_test_column(
-			&mut txn,
-			"col_1",
-			TypeConstraint::unconstrained(Type::Int1),
-			vec![],
-		);
-		create_test_column(
-			&mut txn,
-			"col_2",
-			TypeConstraint::unconstrained(Type::Int2),
-			vec![],
-		);
-		create_test_column(
-			&mut txn,
-			"col_3",
-			TypeConstraint::unconstrained(Type::Int4),
-			vec![],
-		);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
+		create_test_column(&mut txn, "col_2", TypeConstraint::unconstrained(Type::Int2), vec![]);
+		create_test_column(&mut txn, "col_3", TypeConstraint::unconstrained(Type::Int4), vec![]);
 
-		let result = CatalogStore::find_column_by_name(
-			&mut txn,
-			TableId(1),
-			"col_3",
-		)
-		.unwrap()
-		.unwrap();
+		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "col_3").unwrap().unwrap();
 
 		assert_eq!(result.id, ColumnId(8195));
 		assert_eq!(result.name, "col_3");
@@ -88,19 +60,9 @@ mod tests {
 	#[test]
 	fn test_not_found() {
 		let mut txn = create_test_command_transaction();
-		create_test_column(
-			&mut txn,
-			"col_1",
-			TypeConstraint::unconstrained(Type::Int1),
-			vec![],
-		);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int1), vec![]);
 
-		let result = CatalogStore::find_column_by_name(
-			&mut txn,
-			TableId(1),
-			"not_found",
-		)
-		.unwrap();
+		let result = CatalogStore::find_column_by_name(&mut txn, TableId(1), "not_found").unwrap();
 
 		assert!(result.is_none());
 	}

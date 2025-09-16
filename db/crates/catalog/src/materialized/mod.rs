@@ -11,10 +11,7 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	interface::{
-		NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId,
-		TableDef, TableId, ViewDef, ViewId,
-	},
+	interface::{NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId, TableDef, TableId, ViewDef, ViewId},
 	util::VersionedContainer,
 };
 
@@ -82,8 +79,7 @@ impl MaterializedCatalog {
 		namespaces.insert(system_namespace_id, container);
 
 		let namespaces_by_name = SkipMap::new();
-		namespaces_by_name
-			.insert("system".to_string(), system_namespace_id);
+		namespaces_by_name.insert("system".to_string(), system_namespace_id);
 
 		Self(Arc::new(MaterializedCatalogInner {
 			namespaces,
@@ -102,8 +98,7 @@ impl MaterializedCatalog {
 		// Use unsafe to mutate through Arc (safe because only called
 		// once during init)
 		unsafe {
-			let inner = Arc::as_ptr(&self.0)
-				as *mut MaterializedCatalogInner;
+			let inner = Arc::as_ptr(&self.0) as *mut MaterializedCatalogInner;
 			(*inner).system_catalog = Some(catalog);
 		}
 	}

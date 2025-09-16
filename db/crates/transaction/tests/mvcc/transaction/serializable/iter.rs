@@ -10,8 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_transaction::mvcc::transaction::{
-	iter::TransactionIter, iter_rev::TransactionIterRev,
-	serializable::Serializable,
+	iter::TransactionIter, iter_rev::TransactionIterRev, serializable::Serializable,
 };
 
 use crate::{as_key, as_row, from_row, mvcc::transaction::FromRow};
@@ -180,27 +179,16 @@ fn test_iter_edge_case() {
 	let check_iter = |itr: TransactionIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
-			assert_eq!(
-				expected[i],
-				from_row!(u64, *r.row()),
-				"read_vs={}",
-				r.version()
-			);
+			assert_eq!(expected[i], from_row!(u64, *r.row()), "read_vs={}", r.version());
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |itr: TransactionIterRev<'_, _>,
-	                      expected: &[u64]| {
+	let check_rev_iter = |itr: TransactionIterRev<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
-			assert_eq!(
-				expected[i],
-				from_row!(u64, *r.row()),
-				"read_vs={}",
-				r.version()
-			);
+			assert_eq!(expected[i], from_row!(u64, *r.row()), "read_vs={}", r.version());
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -288,8 +276,7 @@ fn test_iter_edge_case2() {
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |itr: TransactionIterRev<'_, _>,
-	                      expected: &[u64]| {
+	let check_rev_iter = |itr: TransactionIterRev<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
 			assert_eq!(expected[i], from_row!(u64, *r.row()));

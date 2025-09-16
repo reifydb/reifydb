@@ -11,9 +11,7 @@ use std::{
 };
 
 use reifydb_core::interface::subsystem::Subsystem;
-use reifydb_sub_workerpool::{
-	ClosureTask, Priority, WorkerPoolConfig, WorkerPoolSubsystem,
-};
+use reifydb_sub_workerpool::{ClosureTask, Priority, WorkerPoolConfig, WorkerPoolSubsystem};
 
 #[test]
 fn test_worker_pool_basic() {
@@ -36,18 +34,14 @@ fn test_worker_pool_basic() {
 	for i in 0..expected_count {
 		let counter_clone = Arc::clone(&counter);
 		let signal_clone = Arc::clone(&completion_signal);
-		let task = Box::new(ClosureTask::new(
-			format!("task_{}", i),
-			Priority::Normal,
-			move |_ctx| {
-				counter_clone.fetch_add(1, Ordering::Relaxed);
-				let (lock, cvar) = &*signal_clone;
-				let mut count = lock.lock().unwrap();
-				*count += 1;
-				cvar.notify_one();
-				Ok(())
-			},
-		));
+		let task = Box::new(ClosureTask::new(format!("task_{}", i), Priority::Normal, move |_ctx| {
+			counter_clone.fetch_add(1, Ordering::Relaxed);
+			let (lock, cvar) = &*signal_clone;
+			let mut count = lock.lock().unwrap();
+			*count += 1;
+			cvar.notify_one();
+			Ok(())
+		}));
 
 		assert!(pool.submit(task).is_ok());
 	}
@@ -58,12 +52,7 @@ fn test_worker_pool_basic() {
 	let start = Instant::now();
 	let mut completed = lock.lock().unwrap();
 	while *completed < expected_count {
-		let result = cvar
-			.wait_timeout(
-				completed,
-				timeout.saturating_sub(start.elapsed()),
-			)
-			.unwrap();
+		let result = cvar.wait_timeout(completed, timeout.saturating_sub(start.elapsed())).unwrap();
 		completed = result.0;
 		if result.1.timed_out() {
 			panic!(
@@ -107,14 +96,10 @@ fn test_worker_pool_priority() {
 		let results_clone = Arc::clone(&results);
 		let task_id = *i;
 
-		let task = Box::new(ClosureTask::new(
-			format!("task_{}", task_id),
-			*priority,
-			move |_ctx| {
-				results_clone.lock().unwrap().push(task_id);
-				Ok(())
-			},
-		));
+		let task = Box::new(ClosureTask::new(format!("task_{}", task_id), *priority, move |_ctx| {
+			results_clone.lock().unwrap().push(task_id);
+			Ok(())
+		}));
 
 		assert!(pool.submit(task).is_ok());
 	}
@@ -141,14 +126,10 @@ fn test_worker_pool_periodic_tasks() {
 	let counter_clone = Arc::clone(&counter);
 
 	// Schedule a periodic task
-	let task = Box::new(ClosureTask::new(
-		"periodic_task",
-		Priority::Normal,
-		move |_ctx| {
-			counter_clone.fetch_add(1, Ordering::Relaxed);
-			Ok(())
-		},
-	));
+	let task = Box::new(ClosureTask::new("periodic_task", Priority::Normal, move |_ctx| {
+		counter_clone.fetch_add(1, Ordering::Relaxed);
+		Ok(())
+	}));
 
 	let handle = pool
 		.schedule_periodic(
@@ -170,12 +151,7 @@ fn test_worker_pool_periodic_tasks() {
 
 	// Should have executed at least 3 times
 	let count = counter.load(Ordering::Relaxed);
-	assert!(
-		count >= 3,
-		"Expected at least 3 executions, got {} after {} attempts",
-		count,
-		attempts
-	);
+	assert!(count >= 3, "Expected at least 3 executions, got {} after {} attempts", count, attempts);
 
 	// Cancel the task
 	assert!(pool.cancel_task(handle).is_ok());
@@ -214,22 +190,18 @@ fn test_priority_ordering_with_blocking_tasks() {
 	// First, submit a blocking task that will occupy one worker
 	let blocker_clone = Arc::clone(&blocker);
 	let all_queued_clone = Arc::clone(&all_queued);
-	let blocking_task = Box::new(ClosureTask::new(
-		"blocker",
-		Priority::Normal,
-		move |_ctx| {
-			// Signal that we're blocking
-			blocker_clone.store(1, Ordering::Relaxed);
-			// Wait until all tasks are queued before releasing this
-			// worker
-			while all_queued_clone.load(Ordering::Relaxed) == 0 {
-				thread::sleep(Duration::from_millis(5));
-			}
-			// Keep blocking for a bit more to ensure proper queuing
-			thread::sleep(Duration::from_millis(50));
-			Ok(())
-		},
-	));
+	let blocking_task = Box::new(ClosureTask::new("blocker", Priority::Normal, move |_ctx| {
+		// Signal that we're blocking
+		blocker_clone.store(1, Ordering::Relaxed);
+		// Wait until all tasks are queued before releasing this
+		// worker
+		while all_queued_clone.load(Ordering::Relaxed) == 0 {
+			thread::sleep(Duration::from_millis(5));
+		}
+		// Keep blocking for a bit more to ensure proper queuing
+		thread::sleep(Duration::from_millis(50));
+		Ok(())
+	}));
 	assert!(pool.submit(blocking_task).is_ok());
 
 	// Wait for the blocker to start
@@ -241,19 +213,15 @@ fn test_priority_ordering_with_blocking_tasks() {
 	let second_blocker = Arc::new(AtomicUsize::new(0));
 	let second_blocker_clone = Arc::clone(&second_blocker);
 	let all_queued_clone2 = Arc::clone(&all_queued);
-	let second_blocking_task = Box::new(ClosureTask::new(
-		"blocker2",
-		Priority::Normal,
-		move |_ctx| {
-			// Signal that we're blocking
-			second_blocker_clone.store(1, Ordering::Relaxed);
-			// Wait until all tasks are queued
-			while all_queued_clone2.load(Ordering::Relaxed) == 0 {
-				thread::sleep(Duration::from_millis(5));
-			}
-			Ok(())
-		},
-	));
+	let second_blocking_task = Box::new(ClosureTask::new("blocker2", Priority::Normal, move |_ctx| {
+		// Signal that we're blocking
+		second_blocker_clone.store(1, Ordering::Relaxed);
+		// Wait until all tasks are queued
+		while all_queued_clone2.load(Ordering::Relaxed) == 0 {
+			thread::sleep(Duration::from_millis(5));
+		}
+		Ok(())
+	}));
 	assert!(pool.submit(second_blocking_task).is_ok());
 
 	// Wait for the second blocker to start
@@ -276,16 +244,12 @@ fn test_priority_ordering_with_blocking_tasks() {
 		let results_clone = Arc::clone(&results);
 		let task_id = *id;
 
-		let task = Box::new(ClosureTask::new(
-			format!("task_{}", task_id),
-			*priority,
-			move |_ctx| {
-				results_clone.lock().unwrap().push(task_id);
-				// Add small delay to prevent race conditions
-				thread::sleep(Duration::from_millis(2));
-				Ok(())
-			},
-		));
+		let task = Box::new(ClosureTask::new(format!("task_{}", task_id), *priority, move |_ctx| {
+			results_clone.lock().unwrap().push(task_id);
+			// Add small delay to prevent race conditions
+			thread::sleep(Duration::from_millis(2));
+			Ok(())
+		}));
 
 		assert!(pool.submit(task).is_ok());
 	}
@@ -307,11 +271,7 @@ fn test_priority_ordering_with_blocking_tasks() {
 	let low_tasks = vec![1, 3, 7];
 
 	// Ensure all tasks were executed
-	assert_eq!(
-		final_results.len(),
-		7,
-		"All 7 tasks should have been executed"
-	);
+	assert_eq!(final_results.len(), 7, "All 7 tasks should have been executed");
 
 	// Find the average position of each priority group
 	let high_avg_pos: f64 = high_tasks
@@ -370,17 +330,13 @@ fn test_priority_with_all_levels() {
 	// Submit a task that will block initially to allow all other tasks to
 	// queue
 	let start_flag_clone = Arc::clone(&start_flag);
-	let initial_task = Box::new(ClosureTask::new(
-		"initial_blocker",
-		Priority::Normal,
-		move |_ctx| {
-			// Wait for signal that all tasks are queued
-			while start_flag_clone.load(Ordering::Relaxed) == 0 {
-				thread::sleep(Duration::from_millis(5));
-			}
-			Ok(())
-		},
-	));
+	let initial_task = Box::new(ClosureTask::new("initial_blocker", Priority::Normal, move |_ctx| {
+		// Wait for signal that all tasks are queued
+		while start_flag_clone.load(Ordering::Relaxed) == 0 {
+			thread::sleep(Duration::from_millis(5));
+		}
+		Ok(())
+	}));
 	assert!(pool.submit(initial_task).is_ok());
 
 	// Give the initial task time to start
@@ -403,14 +359,10 @@ fn test_priority_with_all_levels() {
 	for (id, priority) in test_tasks {
 		let results_clone = Arc::clone(&results);
 
-		let task = Box::new(ClosureTask::new(
-			format!("task_{}", id),
-			priority,
-			move |_ctx| {
-				results_clone.lock().unwrap().push(id);
-				Ok(())
-			},
-		));
+		let task = Box::new(ClosureTask::new(format!("task_{}", id), priority, move |_ctx| {
+			results_clone.lock().unwrap().push(id);
+			Ok(())
+		}));
 
 		assert!(pool.submit(task).is_ok());
 	}
@@ -429,34 +381,22 @@ fn test_priority_with_all_levels() {
 	let low_tasks = vec![2, 6, 9];
 
 	// Find positions of each priority group
-	let high_positions: Vec<_> = high_tasks
-		.iter()
-		.filter_map(|&id| final_results.iter().position(|&x| x == id))
-		.collect();
-	let normal_positions: Vec<_> = normal_tasks
-		.iter()
-		.filter_map(|&id| final_results.iter().position(|&x| x == id))
-		.collect();
-	let low_positions: Vec<_> = low_tasks
-		.iter()
-		.filter_map(|&id| final_results.iter().position(|&x| x == id))
-		.collect();
+	let high_positions: Vec<_> =
+		high_tasks.iter().filter_map(|&id| final_results.iter().position(|&x| x == id)).collect();
+	let normal_positions: Vec<_> =
+		normal_tasks.iter().filter_map(|&id| final_results.iter().position(|&x| x == id)).collect();
+	let low_positions: Vec<_> =
+		low_tasks.iter().filter_map(|&id| final_results.iter().position(|&x| x == id)).collect();
 
 	// Verify High tasks come before Normal
 	let max_high = high_positions.iter().max().unwrap_or(&0);
 	let min_normal = normal_positions.iter().min().unwrap_or(&usize::MAX);
-	assert!(
-		max_high < min_normal,
-		"All High tasks should execute before Normal tasks"
-	);
+	assert!(max_high < min_normal, "All High tasks should execute before Normal tasks");
 
 	// Verify Normal tasks come before Low
 	let max_normal = normal_positions.iter().max().unwrap_or(&0);
 	let min_low = low_positions.iter().min().unwrap_or(&usize::MAX);
-	assert!(
-		max_normal < min_low,
-		"All Normal tasks should execute before Low tasks"
-	);
+	assert!(max_normal < min_low, "All Normal tasks should execute before Low tasks");
 
 	assert!(pool.shutdown().is_ok());
 }
@@ -480,32 +420,24 @@ fn test_priority_starvation_prevention() {
 	// Submit some low priority tasks first
 	for i in 0..5 {
 		let low_counter = Arc::clone(&low_priority_executed);
-		let task = Box::new(ClosureTask::new(
-			format!("low_{}", i),
-			Priority::Low,
-			move |_ctx| {
-				low_counter.fetch_add(1, Ordering::Relaxed);
-				// Simulate some work
-				thread::sleep(Duration::from_millis(10));
-				Ok(())
-			},
-		));
+		let task = Box::new(ClosureTask::new(format!("low_{}", i), Priority::Low, move |_ctx| {
+			low_counter.fetch_add(1, Ordering::Relaxed);
+			// Simulate some work
+			thread::sleep(Duration::from_millis(10));
+			Ok(())
+		}));
 		assert!(pool.submit(task).is_ok());
 	}
 
 	// Continuously submit high priority tasks
 	for i in 0..10 {
 		let high_counter = Arc::clone(&high_priority_executed);
-		let task = Box::new(ClosureTask::new(
-			format!("high_{}", i),
-			Priority::High,
-			move |_ctx| {
-				high_counter.fetch_add(1, Ordering::Relaxed);
-				// Simulate some work
-				thread::sleep(Duration::from_millis(5));
-				Ok(())
-			},
-		));
+		let task = Box::new(ClosureTask::new(format!("high_{}", i), Priority::High, move |_ctx| {
+			high_counter.fetch_add(1, Ordering::Relaxed);
+			// Simulate some work
+			thread::sleep(Duration::from_millis(5));
+			Ok(())
+		}));
 		assert!(pool.submit(task).is_ok());
 	}
 
@@ -516,14 +448,8 @@ fn test_priority_starvation_prevention() {
 	let low_count = low_priority_executed.load(Ordering::Relaxed);
 	let high_count = high_priority_executed.load(Ordering::Relaxed);
 
-	assert_eq!(
-		high_count, 10,
-		"All high priority tasks should be executed"
-	);
-	assert_eq!(
-		low_count, 5,
-		"All low priority tasks should eventually be executed"
-	);
+	assert_eq!(high_count, 10, "All high priority tasks should be executed");
+	assert_eq!(low_count, 5, "All low priority tasks should eventually be executed");
 
 	assert!(pool.shutdown().is_ok());
 }
@@ -544,41 +470,21 @@ fn test_priority_with_periodic_tasks() {
 
 	// Create periodic tasks with different priorities
 	let high_order = Arc::clone(&execution_order);
-	let high_task = Box::new(ClosureTask::new(
-		"high_periodic",
-		Priority::High,
-		move |_ctx| {
-			high_order.lock().unwrap().push("high");
-			Ok(())
-		},
-	));
+	let high_task = Box::new(ClosureTask::new("high_periodic", Priority::High, move |_ctx| {
+		high_order.lock().unwrap().push("high");
+		Ok(())
+	}));
 
 	let low_order = Arc::clone(&execution_order);
-	let low_task = Box::new(ClosureTask::new(
-		"low_periodic",
-		Priority::Low,
-		move |_ctx| {
-			low_order.lock().unwrap().push("low");
-			Ok(())
-		},
-	));
+	let low_task = Box::new(ClosureTask::new("low_periodic", Priority::Low, move |_ctx| {
+		low_order.lock().unwrap().push("low");
+		Ok(())
+	}));
 
 	// Schedule both at the same interval
-	let high_handle = pool
-		.schedule_periodic(
-			high_task,
-			Duration::from_millis(30),
-			Priority::High,
-		)
-		.unwrap();
+	let high_handle = pool.schedule_periodic(high_task, Duration::from_millis(30), Priority::High).unwrap();
 
-	let low_handle = pool
-		.schedule_periodic(
-			low_task,
-			Duration::from_millis(30),
-			Priority::Low,
-		)
-		.unwrap();
+	let low_handle = pool.schedule_periodic(low_task, Duration::from_millis(30), Priority::Low).unwrap();
 
 	// Wait for several executions
 	thread::sleep(Duration::from_millis(150));
@@ -598,8 +504,7 @@ fn test_priority_with_periodic_tasks() {
 			// If we see a high task, the next low task should come
 			// after If we see a low task, there should have been
 			// a high task before
-			if i > 0 && order[i] == "low" && order[i - 1] != "high"
-			{
+			if i > 0 && order[i] == "low" && order[i - 1] != "high" {
 				// This is okay - tasks might not always align
 				// perfectly due to timing
 			}
@@ -608,14 +513,8 @@ fn test_priority_with_periodic_tasks() {
 	}
 
 	// At minimum, we should have some executions of both
-	assert!(
-		order.contains(&"high"),
-		"High priority periodic task should execute"
-	);
-	assert!(
-		order.contains(&"low"),
-		"Low priority periodic task should execute"
-	);
+	assert!(order.contains(&"high"), "High priority periodic task should execute");
+	assert!(order.contains(&"low"), "Low priority periodic task should execute");
 
 	assert!(pool.shutdown().is_ok());
 }

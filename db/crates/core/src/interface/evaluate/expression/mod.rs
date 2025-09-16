@@ -88,9 +88,10 @@ impl<'a> AccessSourceExpression<'a> {
 	pub fn full_fragment_owned(&self) -> Fragment<'a> {
 		// For backward compatibility, merge source and column fragments
 		match &self.column.source {
-			crate::interface::identifier::ColumnSource::Source { source, .. } => {
-				Fragment::merge_all([source.clone(), self.column.name.clone()])
-			}
+			crate::interface::identifier::ColumnSource::Source {
+				source,
+				..
+			} => Fragment::merge_all([source.clone(), self.column.name.clone()]),
 			crate::interface::identifier::ColumnSource::Alias(alias) => {
 				Fragment::merge_all([alias.clone(), self.column.name.clone()])
 			}
@@ -403,16 +404,19 @@ impl<'a> ColumnExpression<'a> {
 impl<'a> Display for Expression<'a> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			Expression::AccessSource(AccessSourceExpression { column }) => {
-				match &column.source {
-					crate::interface::identifier::ColumnSource::Source { source, .. } => {
-						write!(f, "{}.{}", source.text(), column.name.text())
-					}
-					crate::interface::identifier::ColumnSource::Alias(alias) => {
-						write!(f, "{}.{}", alias.text(), column.name.text())
-					}
+			Expression::AccessSource(AccessSourceExpression {
+				column,
+			}) => match &column.source {
+				crate::interface::identifier::ColumnSource::Source {
+					source,
+					..
+				} => {
+					write!(f, "{}.{}", source.text(), column.name.text())
 				}
-			}
+				crate::interface::identifier::ColumnSource::Alias(alias) => {
+					write!(f, "{}.{}", alias.text(), column.name.text())
+				}
+			},
 			Expression::Alias(AliasExpression {
 				alias,
 				expression,
@@ -475,13 +479,11 @@ impl<'a> Display for Expression<'a> {
 			}) => {
 				write!(f, "({} > {})", left, right)
 			}
-			Expression::GreaterThanEqual(
-				GreaterThanEqExpression {
-					left,
-					right,
-					..
-				},
-			) => {
+			Expression::GreaterThanEqual(GreaterThanEqExpression {
+				left,
+				right,
+				..
+			}) => {
 				write!(f, "({} >= {})", left, right)
 			}
 			Expression::LessThan(LessThanExpression {
@@ -518,11 +520,7 @@ impl<'a> Display for Expression<'a> {
 				upper,
 				..
 			}) => {
-				write!(
-					f,
-					"({} BETWEEN {} AND {})",
-					value, lower, upper
-				)
+				write!(f, "({} BETWEEN {} AND {})", value, lower, upper)
 			}
 			Expression::And(AndExpression {
 				left,
@@ -579,10 +577,7 @@ impl<'a> CallExpression<'a> {
 				self.func.0.text(),
 				self.args
 					.iter()
-					.map(|arg| arg
-						.full_fragment_owned()
-						.text()
-						.to_string())
+					.map(|arg| arg.full_fragment_owned().text().to_string())
 					.collect::<Vec<_>>()
 					.join(",")
 			),
@@ -592,12 +587,7 @@ impl<'a> CallExpression<'a> {
 
 impl<'a> Display for CallExpression<'a> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let args = self
-			.args
-			.iter()
-			.map(|arg| format!("{}", arg))
-			.collect::<Vec<_>>()
-			.join(", ");
+		let args = self.args.iter().map(|arg| format!("{}", arg)).collect::<Vec<_>>().join(", ");
 		write!(f, "{}({})", self.func, args)
 	}
 }
@@ -687,10 +677,7 @@ pub struct PrefixExpression<'a> {
 
 impl<'a> PrefixExpression<'a> {
 	pub fn full_fragment_owned(&self) -> Fragment<'a> {
-		Fragment::merge_all([
-			self.operator.full_fragment_owned(),
-			self.expression.full_fragment_owned(),
-		])
+		Fragment::merge_all([self.operator.full_fragment_owned(), self.expression.full_fragment_owned()])
 	}
 }
 
@@ -708,12 +695,7 @@ pub struct TupleExpression<'a> {
 
 impl<'a> Display for TupleExpression<'a> {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let items = self
-			.expressions
-			.iter()
-			.map(|e| format!("{}", e))
-			.collect::<Vec<_>>()
-			.join(", ");
+		let items = self.expressions.iter().map(|e| format!("{}", e)).collect::<Vec<_>>().join(", ");
 		write!(f, "({})", items)
 	}
 }

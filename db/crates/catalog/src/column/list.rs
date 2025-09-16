@@ -23,16 +23,13 @@ impl CatalogStore {
 		let source = source.into();
 		let mut result = vec![];
 
-		let ids =
-			rx.range(ColumnKey::full_scan(source))?
-				.map(|versioned| {
-					let row = versioned.row;
-					ColumnId(table_column::LAYOUT.get_u64(
-						&row,
-						table_column::ID,
-					))
-				})
-				.collect::<Vec<_>>();
+		let ids = rx
+			.range(ColumnKey::full_scan(source))?
+			.map(|versioned| {
+				let row = versioned.row;
+				ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID))
+			})
+			.collect::<Vec<_>>();
 
 		for id in ids {
 			result.push(Self::get_column(rx, id)?);
@@ -43,9 +40,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub fn list_columns_all(
-		rx: &mut impl QueryTransaction,
-	) -> crate::Result<Vec<ColumnInfo>> {
+	pub fn list_columns_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ColumnInfo>> {
 		let mut result = Vec::new();
 
 		// Get all tables
@@ -105,9 +100,7 @@ mod tests {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "b_col".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Int4,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Int4),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
@@ -125,9 +118,7 @@ mod tests {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "a_col".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Boolean,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -136,8 +127,7 @@ mod tests {
 		)
 		.unwrap();
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1))
-			.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		assert_eq!(columns[0].name, "a_col"); // index 0
@@ -155,8 +145,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1))
-			.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
 		assert!(columns.is_empty());
 	}
 
@@ -164,8 +153,7 @@ mod tests {
 	fn test_table_does_not_exist() {
 		let mut txn = create_test_command_transaction();
 
-		let columns = CatalogStore::list_columns(&mut txn, TableId(1))
-			.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, TableId(1)).unwrap();
 		assert!(columns.is_empty());
 	}
 }

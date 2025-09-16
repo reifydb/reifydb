@@ -18,19 +18,14 @@ use std::{
 
 use crossbeam_channel::{Sender, select};
 
-use super::{
-	MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD,
-	PENDING_CLEANUP_THRESHOLD,
-};
+use super::{MAX_PENDING, MAX_WAITERS, OLD_VERSION_THRESHOLD, PENDING_CLEANUP_THRESHOLD};
 use crate::mvcc::watermark::{Closer, watermark::WatermarkInner};
 
 impl WatermarkInner {
 	pub(crate) fn process(&self, closer: Closer) {
 		let mut indices: BinaryHeap<Reverse<u64>> = BinaryHeap::new();
-		let pending: RefCell<HashMap<u64, i64>> =
-			RefCell::new(HashMap::new());
-		let waiters: RefCell<HashMap<u64, Vec<Sender<()>>>> =
-			RefCell::new(HashMap::new());
+		let pending: RefCell<HashMap<u64, i64>> = RefCell::new(HashMap::new());
+		let waiters: RefCell<HashMap<u64, Vec<Sender<()>>>> = RefCell::new(HashMap::new());
 
 		let mut process_one = |idx: u64, done: bool| {
 			// If not already done, then set. Otherwise, don't undo
@@ -41,20 +36,15 @@ impl WatermarkInner {
 			// Prevent unbounded growth
 			if pending.len() > MAX_PENDING {
 				// Clean up very old pending entries
-				let done_until =
-					self.done_until.load(Ordering::SeqCst);
-				let cutoff = done_until.saturating_sub(
-					PENDING_CLEANUP_THRESHOLD,
-				);
+				let done_until = self.done_until.load(Ordering::SeqCst);
+				let cutoff = done_until.saturating_sub(PENDING_CLEANUP_THRESHOLD);
 				pending.retain(|&k, _| k > cutoff);
 			}
 
 			if waiters.len() > MAX_WAITERS {
 				// Force cleanup of old waiters
-				let done_until =
-					self.done_until.load(Ordering::SeqCst);
-				let cutoff = done_until
-					.saturating_sub(OLD_VERSION_THRESHOLD);
+				let done_until = self.done_until.load(Ordering::SeqCst);
+				let cutoff = done_until.saturating_sub(OLD_VERSION_THRESHOLD);
 				waiters.retain(|&k, waiters_list| {
 					if k <= cutoff {
 						// Signal and remove old waiters
@@ -76,9 +66,7 @@ impl WatermarkInner {
 			if done {
 				delta = -1;
 			}
-			pending.entry(idx)
-				.and_modify(|v| *v += delta)
-				.or_insert(delta);
+			pending.entry(idx).and_modify(|v| *v += delta).or_insert(delta);
 
 			// Update mark by going through all indices in order;
 			// and checking if they have been done. Stop at the
@@ -125,9 +113,7 @@ impl WatermarkInner {
 			if until != done_until {
 				// Notify all waiters up to the new mark
 				(done_until + 1..=until).for_each(|idx| {
-					if let Some(waiters_list) =
-						waiters.remove(&idx)
-					{
+					if let Some(waiters_list) = waiters.remove(&idx) {
 						// Signal all waiters for this
 						// index
 						for waiter in waiters_list {
@@ -139,10 +125,7 @@ impl WatermarkInner {
 				// Even if done_until didn't advance, check for
 				// any waiters that can be satisfied
 				waiters.retain(|&idx, waiters_list| {
-					if idx <= self
-						.done_until
-						.load(Ordering::SeqCst)
-					{
+					if idx <= self.done_until.load(Ordering::SeqCst) {
 						// Signal and remove
 						for waiter in waiters_list {
 							let _ = waiter.send(());

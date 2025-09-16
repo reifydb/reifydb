@@ -21,11 +21,7 @@ pub trait FromKey: Sized {
 
 #[macro_export]
 macro_rules! as_key {
-	($key:expr) => {{
-		reifydb_core::EncodedKey::new(
-			reifydb_core::util::encoding::keycode::serialize(&$key),
-		)
-	}};
+	($key:expr) => {{ reifydb_core::EncodedKey::new(reifydb_core::util::encoding::keycode::serialize(&$key)) }};
 }
 
 #[macro_export]
@@ -51,9 +47,7 @@ macro_rules! impl_kv_for {
 	($t:ty) => {
 		impl IntoRow for $t {
 			fn into_row(self) -> EncodedRow {
-				EncodedRow(CowVec::new(keycode::serialize(
-					&self,
-				)))
+				EncodedRow(CowVec::new(keycode::serialize(&self)))
 			}
 		}
 		impl FromKey for $t {

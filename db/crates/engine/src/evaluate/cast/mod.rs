@@ -15,20 +15,14 @@ use reifydb_core::{
 		Evaluator, LazyFragment,
 		expression::{CastExpression, Expression},
 	},
-	value::columnar::{
-		Column, ColumnData, ColumnQualified, SourceQualified,
-	},
+	value::columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
 };
 use reifydb_type::{Type, diagnostic::cast, err, error};
 
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
-	pub(crate) fn cast(
-		&self,
-		ctx: &EvaluationContext,
-		cast: &CastExpression,
-	) -> crate::Result<Column> {
+	pub(crate) fn cast(&self, ctx: &EvaluationContext, cast: &CastExpression) -> crate::Result<Column> {
 		let cast_fragment = cast.lazy_fragment();
 
 		// FIXME optimization does not apply for prefix expressions,
@@ -38,49 +32,29 @@ impl StandardEvaluator {
 			// target ty, therefore it is possible to create the
 			// data directly which means there is no reason to
 			// further adjust the column
-			Expression::Constant(expr) => {
-				self.constant_of(ctx, expr, cast.to.ty)
-			}
+			Expression::Constant(expr) => self.constant_of(ctx, expr, cast.to.ty),
 			expr => {
 				let column = self.evaluate(ctx, expr)?;
 				let lazy_frag = cast.expression.lazy_fragment();
-				let casted = cast_column_data(
-					ctx,
-					&column.data(),
-					cast.to.ty,
-					&lazy_frag,
-				)
-				.map_err(|e| {
-					error!(cast::invalid_number(
-						cast_fragment().into_owned(),
-						cast.to.ty,
-						e.diagnostic()
-					))
-				})?;
+				let casted =
+					cast_column_data(ctx, &column.data(), cast.to.ty, &lazy_frag).map_err(|e| {
+						error!(cast::invalid_number(
+							cast_fragment().into_owned(),
+							cast.to.ty,
+							e.diagnostic()
+						))
+					})?;
 
 				Ok(match column.table() {
-					Some(source) => {
-						Column::SourceQualified(
-							SourceQualified {
-								source: source
-									.to_string(
-									),
-								name: column
-									.name()
-									.to_string(
-									),
-								data: casted,
-							},
-						)
-					}
-					None => Column::ColumnQualified(
-						ColumnQualified {
-							name: column
-								.name()
-								.to_string(),
-							data: casted,
-						},
-					),
+					Some(source) => Column::SourceQualified(SourceQualified {
+						source: source.to_string(),
+						name: column.name().to_string(),
+						data: casted,
+					}),
+					None => Column::ColumnQualified(ColumnQualified {
+						name: column.name().to_string(),
+						data: casted,
+					}),
 				})
 			}
 		}
@@ -94,8 +68,7 @@ pub fn cast_column_data<'a>(
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	if let ColumnData::Undefined(container) = data {
-		let mut result =
-			ColumnData::with_capacity(target, container.len());
+		let mut result = ColumnData::with_capacity(target, container.len());
 		for _ in 0..container.len() {
 			result.push_undefined();
 		}
@@ -104,33 +77,15 @@ pub fn cast_column_data<'a>(
 	let source_type = data.get_type();
 	match (source_type, target) {
 		_ if target == source_type => Ok(data.clone()),
-		(_, target) if target.is_number() => {
-			number::to_number(ctx, data, target, lazy_fragment)
-		}
-		(_, target) if target.is_blob() => {
-			blob::to_blob(data, lazy_fragment)
-		}
-		(_, target) if target.is_bool() => {
-			boolean::to_boolean(data, lazy_fragment)
-		}
-		(_, target) if target.is_utf8() => {
-			text::to_text(data, lazy_fragment)
-		}
-		(_, target) if target.is_temporal() => {
-			temporal::to_temporal(data, target, lazy_fragment)
-		}
-		(_, target) if target.is_uuid() => {
-			uuid::to_uuid(data, target, lazy_fragment)
-		}
-		(source, target) if source.is_uuid() || target.is_uuid() => {
-			uuid::to_uuid(data, target, lazy_fragment)
-		}
+		(_, target) if target.is_number() => number::to_number(ctx, data, target, lazy_fragment),
+		(_, target) if target.is_blob() => blob::to_blob(data, lazy_fragment),
+		(_, target) if target.is_bool() => boolean::to_boolean(data, lazy_fragment),
+		(_, target) if target.is_utf8() => text::to_text(data, lazy_fragment),
+		(_, target) if target.is_temporal() => temporal::to_temporal(data, target, lazy_fragment),
+		(_, target) if target.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
+		(source, target) if source.is_uuid() || target.is_uuid() => uuid::to_uuid(data, target, lazy_fragment),
 		_ => {
-			err!(cast::unsupported_cast(
-				lazy_fragment.fragment(),
-				source_type,
-				target
-			))
+			err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 		}
 	}
 }
@@ -144,8 +99,7 @@ mod tests {
 				CastExpression, ConstantExpression,
 				ConstantExpression::Number,
 				Expression::{Cast, Constant, Prefix},
-				PrefixExpression, PrefixOperator,
-				TypeExpression,
+				PrefixExpression, PrefixOperator, TypeExpression,
 			},
 		},
 		value::columnar::ColumnData,
@@ -162,9 +116,7 @@ mod tests {
 			&Cast(CastExpression {
 				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal(
-						"42",
-					),
+					fragment: Fragment::owned_internal("42"),
 				})),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
@@ -181,18 +133,23 @@ mod tests {
 	fn test_cast_negative_integer() {
 		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
-        &mut ctx,
-        &Cast(CastExpression {
-            fragment: Fragment::owned_empty(),
-            expression: Box::new(Prefix(PrefixExpression {
-                operator: PrefixOperator::Minus(Fragment::owned_empty()),
-                expression: Box::new(Constant(Number { fragment: Fragment::owned_internal("42") })),
-                fragment: Fragment::owned_empty(),
-            })),
-            to: TypeExpression { fragment: Fragment::owned_empty(), ty: Type::Int4 },
-        }),
-    )
-        .unwrap();
+			&mut ctx,
+			&Cast(CastExpression {
+				fragment: Fragment::owned_empty(),
+				expression: Box::new(Prefix(PrefixExpression {
+					operator: PrefixOperator::Minus(Fragment::owned_empty()),
+					expression: Box::new(Constant(Number {
+						fragment: Fragment::owned_internal("42"),
+					})),
+					fragment: Fragment::owned_empty(),
+				})),
+				to: TypeExpression {
+					fragment: Fragment::owned_empty(),
+					ty: Type::Int4,
+				},
+			}),
+		)
+		.unwrap();
 
 		assert_eq!(*result.data(), ColumnData::int4([-42]));
 	}
@@ -201,18 +158,23 @@ mod tests {
 	fn test_cast_negative_min() {
 		let mut ctx = EvaluationContext::testing();
 		let result = evaluate(
-        &mut ctx,
-        &Cast(CastExpression {
-            fragment: Fragment::owned_empty(),
-            expression: Box::new(Prefix(PrefixExpression {
-                operator: PrefixOperator::Minus(Fragment::owned_empty()),
-                expression: Box::new(Constant(Number { fragment: Fragment::owned_internal("128") })),
-                fragment: Fragment::owned_empty(),
-            })),
-            to: TypeExpression { fragment: Fragment::owned_empty(), ty: Type::Int1 },
-        }),
-    )
-        .unwrap();
+			&mut ctx,
+			&Cast(CastExpression {
+				fragment: Fragment::owned_empty(),
+				expression: Box::new(Prefix(PrefixExpression {
+					operator: PrefixOperator::Minus(Fragment::owned_empty()),
+					expression: Box::new(Constant(Number {
+						fragment: Fragment::owned_internal("128"),
+					})),
+					fragment: Fragment::owned_empty(),
+				})),
+				to: TypeExpression {
+					fragment: Fragment::owned_empty(),
+					ty: Type::Int1,
+				},
+			}),
+		)
+		.unwrap();
 
 		assert_eq!(*result.data(), ColumnData::int1([-128]));
 	}
@@ -225,9 +187,7 @@ mod tests {
 			&Cast(CastExpression {
 				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal(
-						"4.2",
-					),
+					fragment: Fragment::owned_internal("4.2"),
 				})),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
@@ -248,9 +208,7 @@ mod tests {
 			&Cast(CastExpression {
 				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal(
-						"4.2",
-					),
+					fragment: Fragment::owned_internal("4.2"),
 				})),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
@@ -271,9 +229,7 @@ mod tests {
 			&Cast(CastExpression {
 				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal(
-						"-1.1",
-					),
+					fragment: Fragment::owned_internal("-1.1"),
 				})),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
@@ -294,9 +250,7 @@ mod tests {
 			&Cast(CastExpression {
 				fragment: Fragment::owned_empty(),
 				expression: Box::new(Constant(Number {
-					fragment: Fragment::owned_internal(
-						"-1.1",
-					),
+					fragment: Fragment::owned_internal("-1.1"),
 				})),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
@@ -316,14 +270,9 @@ mod tests {
 			&mut ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::owned_empty(),
-				expression: Box::new(Constant(
-					ConstantExpression::Text {
-						fragment:
-							Fragment::owned_internal(
-								"0",
-							),
-					},
-				)),
+				expression: Box::new(Constant(ConstantExpression::Text {
+					fragment: Fragment::owned_internal("0"),
+				})),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
 					ty: Type::Boolean,
@@ -342,14 +291,9 @@ mod tests {
 			&mut ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::owned_empty(),
-				expression: Box::new(Constant(
-					ConstantExpression::Text {
-						fragment:
-							Fragment::owned_internal(
-								"-1",
-							),
-					},
-				)),
+				expression: Box::new(Constant(ConstantExpression::Text {
+					fragment: Fragment::owned_internal("-1"),
+				})),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
 					ty: Type::Boolean,
@@ -376,14 +320,9 @@ mod tests {
 			&mut ctx,
 			&Cast(CastExpression {
 				fragment: Fragment::owned_empty(),
-				expression: Box::new(Constant(
-					ConstantExpression::Bool {
-						fragment:
-							Fragment::owned_internal(
-								"true",
-							),
-					},
-				)),
+				expression: Box::new(Constant(ConstantExpression::Bool {
+					fragment: Fragment::owned_internal("true"),
+				})),
 				to: TypeExpression {
 					fragment: Fragment::owned_empty(),
 					ty: Type::Date,

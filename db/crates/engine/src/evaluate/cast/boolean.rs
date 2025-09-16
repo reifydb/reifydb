@@ -17,58 +17,27 @@ use reifydb_type::{
 	parse_bool,
 };
 
-pub fn to_boolean<'a>(
-	data: &ColumnData,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+pub fn to_boolean<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
 	match data {
-		ColumnData::Int1(container) => {
-			from_int1(container, lazy_fragment)
-		}
-		ColumnData::Int2(container) => {
-			from_int2(container, lazy_fragment)
-		}
-		ColumnData::Int4(container) => {
-			from_int4(container, lazy_fragment)
-		}
-		ColumnData::Int8(container) => {
-			from_int8(container, lazy_fragment)
-		}
-		ColumnData::Int16(container) => {
-			from_int16(container, lazy_fragment)
-		}
-		ColumnData::Uint1(container) => {
-			from_uint1(container, lazy_fragment)
-		}
-		ColumnData::Uint2(container) => {
-			from_uint2(container, lazy_fragment)
-		}
-		ColumnData::Uint4(container) => {
-			from_uint4(container, lazy_fragment)
-		}
-		ColumnData::Uint8(container) => {
-			from_uint8(container, lazy_fragment)
-		}
-		ColumnData::Uint16(container) => {
-			from_uint16(container, lazy_fragment)
-		}
-		ColumnData::Float4(container) => {
-			from_float4(container, lazy_fragment)
-		}
-		ColumnData::Float8(container) => {
-			from_float8(container, lazy_fragment)
-		}
+		ColumnData::Int1(container) => from_int1(container, lazy_fragment),
+		ColumnData::Int2(container) => from_int2(container, lazy_fragment),
+		ColumnData::Int4(container) => from_int4(container, lazy_fragment),
+		ColumnData::Int8(container) => from_int8(container, lazy_fragment),
+		ColumnData::Int16(container) => from_int16(container, lazy_fragment),
+		ColumnData::Uint1(container) => from_uint1(container, lazy_fragment),
+		ColumnData::Uint2(container) => from_uint2(container, lazy_fragment),
+		ColumnData::Uint4(container) => from_uint4(container, lazy_fragment),
+		ColumnData::Uint8(container) => from_uint8(container, lazy_fragment),
+		ColumnData::Uint16(container) => from_uint16(container, lazy_fragment),
+		ColumnData::Float4(container) => from_float4(container, lazy_fragment),
+		ColumnData::Float8(container) => from_float8(container, lazy_fragment),
 		ColumnData::Utf8 {
 			container,
 			..
 		} => from_utf8(container, lazy_fragment),
 		_ => {
 			let source_type = data.get_type();
-			return_error!(cast::unsupported_cast(
-				lazy_fragment.fragment(),
-				source_type,
-				Type::Boolean
-			))
+			return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, Type::Boolean))
 		}
 	}
 }
@@ -87,21 +56,13 @@ where
 			match validate(container[idx]) {
 				Some(b) => out.push::<bool>(b),
 				None => {
-					let base_fragment = lazy_fragment
-						.fragment()
-						.into_owned();
-					let error_fragment =
-						OwnedFragment::Statement {
-							text: container[idx]
-								.to_string(),
-							line: base_fragment
-								.line(),
-							column: base_fragment
-								.column(),
-						};
-					return_error!(invalid_number_boolean(
-						error_fragment
-					));
+					let base_fragment = lazy_fragment.fragment().into_owned();
+					let error_fragment = OwnedFragment::Statement {
+						text: container[idx].to_string(),
+						line: base_fragment.line(),
+						column: base_fragment.column(),
+					};
+					return_error!(invalid_number_boolean(error_fragment));
 				}
 			}
 		} else {
@@ -160,28 +121,20 @@ impl_integer_to_bool!(from_uint16, u128);
 impl_float_to_bool!(from_float4, f32);
 impl_float_to_bool!(from_float8, f64);
 
-fn from_utf8<'a>(
-	container: &Utf8Container,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+fn from_utf8<'a>(container: &Utf8Container, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
 	use reifydb_type::BorrowedFragment;
 	let mut out = ColumnData::with_capacity(Type::Boolean, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			// Parse with internal fragment, then replace with
 			// proper source fragment if error
-			let temp_fragment =
-				BorrowedFragment::new_internal(&container[idx]);
+			let temp_fragment = BorrowedFragment::new_internal(&container[idx]);
 			match parse_bool(temp_fragment) {
 				Ok(b) => out.push(b),
 				Err(mut e) => {
 					// Replace the error's fragment with the
 					// proper source fragment
-					e.0.with_fragment(
-						lazy_fragment
-							.fragment()
-							.into_owned(),
-					);
+					e.0.with_fragment(lazy_fragment.fragment().into_owned());
 					return Err(e);
 				}
 			}

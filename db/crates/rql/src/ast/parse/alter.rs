@@ -4,8 +4,8 @@
 use reifydb_core::SortDirection;
 
 use crate::ast::{
-	AstAlter, AstAlterSequence, AstAlterTable, AstAlterTableOperation,
-	AstAlterView, AstAlterViewOperation, AstIndexColumn,
+	AstAlter, AstAlterSequence, AstAlterTable, AstAlterTableOperation, AstAlterView, AstAlterViewOperation,
+	AstIndexColumn,
 	parse::Parser,
 	tokenize::{Keyword, Operator, Separator, Token, TokenKind},
 };
@@ -29,24 +29,16 @@ impl<'a> Parser<'a> {
 			return self.parse_alter_view(token);
 		}
 
-		unimplemented!(
-			"Only ALTER SEQUENCE, ALTER TABLE, and ALTER VIEW are supported"
-		);
+		unimplemented!("Only ALTER SEQUENCE, ALTER TABLE, and ALTER VIEW are supported");
 	}
 
-	fn parse_alter_sequence(
-		&mut self,
-		token: Token<'a>,
-	) -> crate::Result<AstAlter<'a>> {
+	fn parse_alter_sequence(&mut self, token: Token<'a>) -> crate::Result<AstAlter<'a>> {
 		// Parse namespace.table.column or table.column
-		let first_identifier_token = self
-			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let first_identifier_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 		if self.current()?.is_operator(Operator::Dot) {
 			self.consume_operator(Operator::Dot)?;
-			let second_identifier_token = self.consume(
-				crate::ast::tokenize::TokenKind::Identifier,
-			)?;
+			let second_identifier_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 			if self.current()?.is_operator(Operator::Dot) {
 				self.consume_operator(Operator::Dot)?;
@@ -55,29 +47,20 @@ impl<'a> Parser<'a> {
 				// Expect SET VALUE <number>
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
+				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(
+					crate::ast::tokenize::Literal::Number,
+				))?;
 
 				// Create MaybeQualifiedSequenceIdentifier with
 				// namespace
 				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
 				let sequence =
-					MaybeQualifiedSequenceIdentifier::new(
-						second_identifier_token
-							.fragment
-							.clone(),
-					)
-					.with_namespace(
-						first_identifier_token
-							.fragment
-							.clone(),
-					);
+					MaybeQualifiedSequenceIdentifier::new(second_identifier_token.fragment.clone())
+						.with_namespace(first_identifier_token.fragment.clone());
 
 				let column = column_token.fragment;
-				let value = crate::ast::AstLiteral::Number(
-					crate::ast::ast::AstLiteralNumber(
-						value_token,
-					),
-				);
+				let value =
+					crate::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(value_token));
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
@@ -89,24 +72,19 @@ impl<'a> Parser<'a> {
 				// table.column
 				self.consume_keyword(Keyword::Set)?;
 				self.consume_keyword(Keyword::Value)?;
-				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
+				let value_token = self.consume(crate::ast::tokenize::TokenKind::Literal(
+					crate::ast::tokenize::Literal::Number,
+				))?;
 
 				// Create MaybeQualifiedSequenceIdentifier
 				// without namespace
 				use crate::ast::identifier::MaybeQualifiedSequenceIdentifier;
 				let sequence =
-					MaybeQualifiedSequenceIdentifier::new(
-						first_identifier_token
-							.fragment
-							.clone(),
-					);
+					MaybeQualifiedSequenceIdentifier::new(first_identifier_token.fragment.clone());
 
 				let column = second_identifier_token.fragment;
-				let value = crate::ast::AstLiteral::Number(
-					crate::ast::ast::AstLiteralNumber(
-						value_token,
-					),
-				);
+				let value =
+					crate::ast::AstLiteral::Number(crate::ast::ast::AstLiteralNumber(value_token));
 
 				Ok(AstAlter::Sequence(AstAlterSequence {
 					token,
@@ -116,29 +94,20 @@ impl<'a> Parser<'a> {
 				}))
 			}
 		} else {
-			unimplemented!(
-				"ALTER SEQUENCE requires table.column or namespace.table.column"
-			);
+			unimplemented!("ALTER SEQUENCE requires table.column or namespace.table.column");
 		}
 	}
 
-	fn parse_alter_table(
-		&mut self,
-		token: Token<'a>,
-	) -> crate::Result<AstAlter<'a>> {
+	fn parse_alter_table(&mut self, token: Token<'a>) -> crate::Result<AstAlter<'a>> {
 		// Parse namespace.table
-		let namespace_token = self
-			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let namespace_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let table_token = self
-			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let table_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 		// Create MaybeQualifiedTableIdentifier
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
-		let table = MaybeQualifiedTableIdentifier::new(
-			table_token.fragment.clone(),
-		)
-		.with_namespace(namespace_token.fragment.clone());
+		let table = MaybeQualifiedTableIdentifier::new(table_token.fragment.clone())
+			.with_namespace(namespace_token.fragment.clone());
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -159,48 +128,33 @@ impl<'a> Parser<'a> {
 				self.consume_keyword(Keyword::Key)?;
 
 				// Check for optional name
-				let name = if !self
-					.current()?
-					.is_operator(Operator::OpenCurly)
-				{
-					Some(self
-						.parse_identifier()?
-						.token
-						.fragment)
+				let name = if !self.current()?.is_operator(Operator::OpenCurly) {
+					Some(self.parse_identifier()?.token.fragment)
 				} else {
 					None
 				};
 
 				// Parse columns
-				let columns =
-					self.parse_primary_key_columns()?;
+				let columns = self.parse_primary_key_columns()?;
 
 				operations.push(AstAlterTableOperation::CreatePrimaryKey {
-                    name,
-                    columns,
-                });
+					name,
+					columns,
+				});
 			} else if self.current()?.is_keyword(Keyword::Drop) {
 				self.consume_keyword(Keyword::Drop)?;
 				self.consume_keyword(Keyword::Primary)?;
 				self.consume_keyword(Keyword::Key)?;
 
-				operations.push(
-					AstAlterTableOperation::DropPrimaryKey,
-				);
+				operations.push(AstAlterTableOperation::DropPrimaryKey);
 			} else {
-				unimplemented!(
-					"Unsupported ALTER TABLE operation"
-				);
+				unimplemented!("Unsupported ALTER TABLE operation");
 			}
 
 			self.skip_new_line()?;
 
 			// Check for comma separator for multiple operations
-			if self.consume_if(TokenKind::Separator(
-				Separator::Comma,
-			))?
-			.is_some()
-			{
+			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
 				continue;
 			}
 
@@ -218,23 +172,16 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_alter_view(
-		&mut self,
-		token: Token<'a>,
-	) -> crate::Result<AstAlter<'a>> {
+	fn parse_alter_view(&mut self, token: Token<'a>) -> crate::Result<AstAlter<'a>> {
 		// Parse namespace.view
-		let namespace_token = self
-			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let namespace_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
-		let view_token = self
-			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let view_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 		// Create MaybeQualifiedViewIdentifier for view
 		use crate::ast::identifier::MaybeQualifiedViewIdentifier;
-		let view = MaybeQualifiedViewIdentifier::new(
-			view_token.fragment.clone(),
-		)
-		.with_namespace(namespace_token.fragment.clone());
+		let view = MaybeQualifiedViewIdentifier::new(view_token.fragment.clone())
+			.with_namespace(namespace_token.fragment.clone());
 
 		// Parse block of operations
 		self.consume_operator(Operator::OpenCurly)?;
@@ -255,48 +202,33 @@ impl<'a> Parser<'a> {
 				self.consume_keyword(Keyword::Key)?;
 
 				// Check for optional name
-				let name = if !self
-					.current()?
-					.is_operator(Operator::OpenCurly)
-				{
-					Some(self
-						.parse_identifier()?
-						.token
-						.fragment)
+				let name = if !self.current()?.is_operator(Operator::OpenCurly) {
+					Some(self.parse_identifier()?.token.fragment)
 				} else {
 					None
 				};
 
 				// Parse columns
-				let columns =
-					self.parse_primary_key_columns()?;
+				let columns = self.parse_primary_key_columns()?;
 
 				operations.push(AstAlterViewOperation::CreatePrimaryKey {
-                    name,
-                    columns,
-                });
+					name,
+					columns,
+				});
 			} else if self.current()?.is_keyword(Keyword::Drop) {
 				self.consume_keyword(Keyword::Drop)?;
 				self.consume_keyword(Keyword::Primary)?;
 				self.consume_keyword(Keyword::Key)?;
 
-				operations.push(
-					AstAlterViewOperation::DropPrimaryKey,
-				);
+				operations.push(AstAlterViewOperation::DropPrimaryKey);
 			} else {
-				unimplemented!(
-					"Unsupported ALTER VIEW operation"
-				);
+				unimplemented!("Unsupported ALTER VIEW operation");
 			}
 
 			self.skip_new_line()?;
 
 			// Check for comma separator for multiple operations
-			if self.consume_if(TokenKind::Separator(
-				Separator::Comma,
-			))?
-			.is_some()
-			{
+			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
 				continue;
 			}
 
@@ -314,9 +246,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_primary_key_columns(
-		&mut self,
-	) -> crate::Result<Vec<AstIndexColumn<'a>>> {
+	fn parse_primary_key_columns(&mut self) -> crate::Result<Vec<AstIndexColumn<'a>>> {
 		let mut columns = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -331,19 +261,13 @@ impl<'a> Parser<'a> {
 			let column = self.parse_column_identifier()?;
 
 			// Check for optional sort direction
-			let sort_direction = if self
-				.current()?
-				.is_operator(Operator::Colon)
-			{
+			let sort_direction = if self.current()?.is_operator(Operator::Colon) {
 				self.consume_operator(Operator::Colon)?;
 
 				if self.current()?.is_keyword(Keyword::Asc) {
 					self.consume_keyword(Keyword::Asc)?;
 					SortDirection::Asc
-				} else if self
-					.current()?
-					.is_keyword(Keyword::Desc)
-				{
+				} else if self.current()?.is_keyword(Keyword::Desc) {
 					self.consume_keyword(Keyword::Desc)?;
 					SortDirection::Desc
 				} else {
@@ -360,11 +284,7 @@ impl<'a> Parser<'a> {
 
 			self.skip_new_line()?;
 
-			if self.consume_if(TokenKind::Separator(
-				Separator::Comma,
-			))?
-			.is_some()
-			{
+			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
 				continue;
 			}
 
@@ -376,9 +296,7 @@ impl<'a> Parser<'a> {
 		self.consume_operator(Operator::CloseCurly)?;
 
 		if columns.is_empty() {
-			unimplemented!(
-				"Primary key must have at least one column"
-			);
+			unimplemented!("Primary key must have at least one column");
 		}
 
 		Ok(columns)
@@ -388,16 +306,13 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstAlter, AstAlterSequence, AstAlterTable,
-		AstAlterTableOperation, AstAlterView, AstAlterViewOperation,
+		AstAlter, AstAlterSequence, AstAlterTable, AstAlterTableOperation, AstAlterView, AstAlterViewOperation,
 		parse::Parser, tokenize::tokenize,
 	};
 
 	#[test]
 	fn test_alter_sequence_with_schema() {
-		let tokens =
-			tokenize("ALTER SEQUENCE test.users.id SET VALUE 1000")
-				.unwrap();
+		let tokens = tokenize("ALTER SEQUENCE test.users.id SET VALUE 1000").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -413,13 +328,7 @@ mod tests {
 				..
 			}) => {
 				assert!(sequence.namespace.is_some());
-				assert_eq!(
-					sequence.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(sequence.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(sequence.name.text(), "users");
 				assert_eq!(column.text(), "id");
 				match value {
@@ -435,8 +344,7 @@ mod tests {
 
 	#[test]
 	fn test_alter_sequence_without_schema() {
-		let tokens = tokenize("ALTER SEQUENCE users.id SET VALUE 500")
-			.unwrap();
+		let tokens = tokenize("ALTER SEQUENCE users.id SET VALUE 500").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -467,10 +375,7 @@ mod tests {
 
 	#[test]
 	fn test_alter_table_create_primary_key() {
-		let tokens = tokenize(
-			"ALTER TABLE test.users { create primary key pk_users {id} }",
-		)
-		.unwrap();
+		let tokens = tokenize("ALTER TABLE test.users { create primary key pk_users {id} }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -485,18 +390,15 @@ mod tests {
 				..
 			}) => {
 				assert!(table.namespace.is_some());
-				assert_eq!(
-					table.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(table.name.text(), "users");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
-					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
+					AstAlterTableOperation::CreatePrimaryKey {
+						name,
+						columns,
+					} => {
 						assert!(name.is_some());
 						assert_eq!(name.as_ref().unwrap().text(), "pk_users");
 						assert_eq!(columns.len(), 1);
@@ -511,10 +413,7 @@ mod tests {
 
 	#[test]
 	fn test_alter_table_create_primary_key_no_name() {
-		let tokens = tokenize(
-			"ALTER TABLE test.users { create primary key {id, email} }",
-		)
-		.unwrap();
+		let tokens = tokenize("ALTER TABLE test.users { create primary key {id, email} }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -529,18 +428,15 @@ mod tests {
 				..
 			}) => {
 				assert!(table.namespace.is_some());
-				assert_eq!(
-					table.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(table.name.text(), "users");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
-					AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
+					AstAlterTableOperation::CreatePrimaryKey {
+						name,
+						columns,
+					} => {
 						assert!(name.is_none());
 						assert_eq!(columns.len(), 2);
 						assert_eq!(columns[0].column.name.text(), "id");
@@ -555,10 +451,7 @@ mod tests {
 
 	#[test]
 	fn test_alter_view_create_primary_key() {
-		let tokens = tokenize(
-			"ALTER VIEW test.user_view { create primary key pk_view {user_id} }",
-		)
-		.unwrap();
+		let tokens = tokenize("ALTER VIEW test.user_view { create primary key pk_view {user_id} }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -573,15 +466,15 @@ mod tests {
 				..
 			}) => {
 				assert!(view.namespace.is_some());
-				assert_eq!(
-					view.namespace.as_ref().unwrap().text(),
-					"test"
-				);
+				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(view.name.text(), "user_view");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
-					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
+					AstAlterViewOperation::CreatePrimaryKey {
+						name,
+						columns,
+					} => {
 						assert!(name.is_some());
 						assert_eq!(name.as_ref().unwrap().text(), "pk_view");
 						assert_eq!(columns.len(), 1);
@@ -596,10 +489,8 @@ mod tests {
 
 	#[test]
 	fn test_alter_view_create_primary_key_no_name() {
-		let tokens = tokenize(
-			"ALTER VIEW test.user_view { create primary key {user_id, created_at} }",
-		)
-		.unwrap();
+		let tokens =
+			tokenize("ALTER VIEW test.user_view { create primary key {user_id, created_at} }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -614,15 +505,15 @@ mod tests {
 				..
 			}) => {
 				assert!(view.namespace.is_some());
-				assert_eq!(
-					view.namespace.as_ref().unwrap().text(),
-					"test"
-				);
+				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(view.name.text(), "user_view");
 				assert_eq!(operations.len(), 1);
 
 				match &operations[0] {
-					AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
+					AstAlterViewOperation::CreatePrimaryKey {
+						name,
+						columns,
+					} => {
 						assert!(name.is_none());
 						assert_eq!(columns.len(), 2);
 						assert_eq!(columns[0].column.name.text(), "user_id");

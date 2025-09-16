@@ -3,10 +3,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	JoinType, SortKey,
 	flow::FlowNodeSchema,
-	interface::{
-		FlowEdgeId, FlowNodeId, TableId, ViewId,
-		evaluate::expression::Expression,
-	},
+	interface::{FlowEdgeId, FlowNodeId, TableId, ViewId, evaluate::expression::Expression},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -142,11 +139,7 @@ pub struct FlowEdge {
 }
 
 impl FlowEdge {
-	pub fn new(
-		id: impl Into<FlowEdgeId>,
-		source: impl Into<FlowNodeId>,
-		target: impl Into<FlowNodeId>,
-	) -> Self {
+	pub fn new(id: impl Into<FlowEdgeId>, source: impl Into<FlowNodeId>, target: impl Into<FlowNodeId>) -> Self {
 		Self {
 			id: id.into(),
 			source: source.into(),

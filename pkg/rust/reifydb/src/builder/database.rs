@@ -4,10 +4,7 @@
 use std::{sync::Arc, time::Duration};
 
 use reifydb_auth::AuthVersion;
-use reifydb_catalog::{
-	system::SystemCatalog, CatalogVersion, MaterializedCatalog,
-	MaterializedCatalogLoader,
-};
+use reifydb_catalog::{system::SystemCatalog, CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader};
 use reifydb_cdc::CdcVersion;
 use reifydb_core::{
 	event::EventBus,
@@ -21,8 +18,7 @@ use reifydb_core::{
 	log_timed_debug, CoreVersion,
 };
 use reifydb_engine::{
-	EngineTransaction, EngineVersion, StandardCommandTransaction,
-	StandardEngine, StandardQueryTransaction,
+	EngineTransaction, EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
 };
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
@@ -39,40 +35,16 @@ use crate::{
 	subsystem::Subsystems,
 };
 
-pub struct DatabaseBuilder<
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
-	C: CdcTransaction,
-> {
+pub struct DatabaseBuilder<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> {
 	config: DatabaseConfig,
-	interceptors: StandardInterceptorBuilder<
-		StandardCommandTransaction<EngineTransaction<VT, UT, C>>,
-	>,
-	subsystems: Vec<
-		Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<VT, UT, C>,
-				>,
-			>,
-		>,
-	>,
+	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>,
+	subsystems: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>>,
 	ioc: IocContainer,
 }
 
-impl<
-		VT: VersionedTransaction,
-		UT: UnversionedTransaction,
-		C: CdcTransaction,
-	> DatabaseBuilder<VT, UT, C>
-{
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> DatabaseBuilder<VT, UT, C> {
 	#[allow(unused_mut)]
-	pub fn new(
-		versioned: VT,
-		unversioned: UT,
-		cdc: C,
-		eventbus: EventBus,
-	) -> Self {
+	pub fn new(versioned: VT, unversioned: UT, cdc: C, eventbus: EventBus) -> Self {
 		let ioc = IocContainer::new()
 			.register(MaterializedCatalog::new())
 			.register(eventbus.clone())
@@ -98,35 +70,24 @@ impl<
 		// adding a custom logging factory before calling this
 		#[cfg(feature = "sub_logging")]
 		if self.subsystems.is_empty() {
-			self = self.add_subsystem_factory(Box::new(
-				LoggingSubsystemFactory::new(),
-			));
+			self = self.add_subsystem_factory(Box::new(LoggingSubsystemFactory::new()));
 		}
 
 		// Add worker pool subsystem if feature enabled
 		#[cfg(feature = "sub_workerpool")]
 		{
-			self = self.add_subsystem_factory(Box::new(
-				WorkerPoolSubsystemFactory::new(),
-			));
+			self = self.add_subsystem_factory(Box::new(WorkerPoolSubsystemFactory::new()));
 		}
 
 		self
 	}
 
-	pub fn with_graceful_shutdown_timeout(
-		mut self,
-		timeout: Duration,
-	) -> Self {
-		self.config =
-			self.config.with_graceful_shutdown_timeout(timeout);
+	pub fn with_graceful_shutdown_timeout(mut self, timeout: Duration) -> Self {
+		self.config = self.config.with_graceful_shutdown_timeout(timeout);
 		self
 	}
 
-	pub fn with_health_check_interval(
-		mut self,
-		interval: Duration,
-	) -> Self {
+	pub fn with_health_check_interval(mut self, interval: Duration) -> Self {
 		self.config = self.config.with_health_check_interval(interval);
 		self
 	}
@@ -143,13 +104,7 @@ impl<
 
 	pub fn add_subsystem_factory(
 		mut self,
-		factory: Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<VT, UT, C>,
-				>,
-			>,
-		>,
+		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>,
 	) -> Self {
 		self.subsystems.push(factory);
 		self
@@ -157,11 +112,7 @@ impl<
 
 	pub fn with_interceptor_builder(
 		mut self,
-		builder: StandardInterceptorBuilder<
-			StandardCommandTransaction<
-				EngineTransaction<VT, UT, C>,
-			>,
-		>,
+		builder: StandardInterceptorBuilder<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>,
 	) -> Self {
 		self.interceptors = builder;
 		self
@@ -178,10 +129,7 @@ impl<
 	pub fn build(mut self) -> crate::Result<Database<VT, UT, C>> {
 		// Collect interceptors from all factories
 		for factory in &self.subsystems {
-			self.interceptors = factory.provide_interceptors(
-				self.interceptors,
-				&self.ioc,
-			);
+			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
@@ -190,12 +138,7 @@ impl<
 		let cdc = self.ioc.resolve::<C>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
-		Self::load_materialized_catalog(
-			&versioned,
-			&unversioned,
-			&cdc,
-			&catalog,
-		)?;
+		Self::load_materialized_catalog(&versioned, &unversioned, &cdc, &catalog)?;
 
 		// First create the engine (needed by subsystems)
 		let engine = StandardEngine::new(
@@ -233,8 +176,7 @@ impl<
 
 		// Create subsystems from factories and collect their versions
 		let health_monitor = Arc::new(HealthMonitor::new());
-		let mut subsystems =
-			Subsystems::new(Arc::clone(&health_monitor));
+		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
 		for factory in self.subsystems {
 			let subsystem = factory.create(&self.ioc)?;
@@ -247,8 +189,7 @@ impl<
 			all_versions.push(SystemVersion {
 				name: "git-hash".to_string(),
 				version: git_hash.to_string(),
-				description: "Git commit hash at build time"
-					.to_string(),
+				description: "Git commit hash at build time".to_string(),
 				r#type: ComponentType::Build,
 			});
 		}
@@ -259,12 +200,7 @@ impl<
 		let system_catalog = SystemCatalog::new(all_versions);
 		catalog.set_system_catalog(system_catalog);
 
-		Ok(Database::new(
-			engine,
-			subsystems,
-			self.config,
-			health_monitor,
-		))
+		Ok(Database::new(engine, subsystems, self.config, health_monitor))
 	}
 
 	/// Load the materialized catalog from storage
@@ -274,9 +210,7 @@ impl<
 		cdc: &C,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {
-		let mut qt: StandardQueryTransaction<
-			EngineTransaction<VT, UT, C>,
-		> = StandardQueryTransaction::new(
+		let mut qt: StandardQueryTransaction<EngineTransaction<VT, UT, C>> = StandardQueryTransaction::new(
 			versioned.begin_query()?,
 			unversioned.clone(),
 			cdc.clone(),
@@ -291,12 +225,7 @@ impl<
 	}
 }
 
-impl<
-		VT: VersionedTransaction,
-		UT: UnversionedTransaction,
-		C: CdcTransaction,
-	> DatabaseBuilder<VT, UT, C>
-{
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> DatabaseBuilder<VT, UT, C> {
 	pub fn development_config(self) -> Self {
 		self.with_graceful_shutdown_timeout(Duration::from_secs(10))
 			.with_health_check_interval(Duration::from_secs(2))

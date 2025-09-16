@@ -1,18 +1,10 @@
-use reifydb_type::{
-	Date, DateTime, Interval, ROW_NUMBER_COLUMN_NAME, RowNumber, Time,
-	Uuid4, Uuid7,
-};
+use reifydb_type::{Date, DateTime, Interval, ROW_NUMBER_COLUMN_NAME, RowNumber, Time, Uuid4, Uuid7};
 
 use super::super::{Column, ColumnData, FullyQualified};
 use crate::BitVec;
 
 impl FullyQualified {
-	pub fn bool(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = bool>,
-	) -> Column {
+	pub fn bool(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = bool>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -36,12 +28,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn float4(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = f32>,
-	) -> Column {
+	pub fn float4(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = f32>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -65,12 +52,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn float8(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = f64>,
-	) -> Column {
+	pub fn float8(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = f64>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -94,12 +76,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn int1(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i8>,
-	) -> Column {
+	pub fn int1(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = i8>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -123,12 +100,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn int2(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i16>,
-	) -> Column {
+	pub fn int2(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = i16>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -152,12 +124,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn int4(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i32>,
-	) -> Column {
+	pub fn int4(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = i32>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -181,12 +148,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn int8(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i64>,
-	) -> Column {
+	pub fn int8(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = i64>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -210,12 +172,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn int16(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i128>,
-	) -> Column {
+	pub fn int16(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = i128>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -239,12 +196,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn uint1(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u8>,
-	) -> Column {
+	pub fn uint1(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = u8>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -268,12 +220,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn uint2(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u16>,
-	) -> Column {
+	pub fn uint2(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = u16>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -297,12 +244,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn uint4(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u32>,
-	) -> Column {
+	pub fn uint4(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = u32>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -326,12 +268,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn uint8(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u64>,
-	) -> Column {
+	pub fn uint8(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = u64>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -355,12 +292,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn uint16(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u128>,
-	) -> Column {
+	pub fn uint16(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = u128>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -384,19 +316,12 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn utf8<'a>(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = &'a str>,
-	) -> Column {
+	pub fn utf8<'a>(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = &'a str>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
 			name: name.to_string(),
-			data: ColumnData::utf8(
-				data.into_iter().map(|s| s.to_string()),
-			),
+			data: ColumnData::utf8(data.into_iter().map(|s| s.to_string())),
 		})
 	}
 
@@ -411,19 +336,11 @@ impl FullyQualified {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
 			name: name.to_string(),
-			data: ColumnData::utf8_with_bitvec(
-				data.into_iter().map(|s| s.to_string()),
-				bitvec,
-			),
+			data: ColumnData::utf8_with_bitvec(data.into_iter().map(|s| s.to_string()), bitvec),
 		})
 	}
 
-	pub fn undefined(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		len: usize,
-	) -> Column {
+	pub fn undefined(namespace: &str, source: &str, name: &str, len: usize) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -433,12 +350,7 @@ impl FullyQualified {
 	}
 
 	// Temporal types
-	pub fn date(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Date>,
-	) -> Column {
+	pub fn date(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = Date>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -462,12 +374,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn datetime(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = DateTime>,
-	) -> Column {
+	pub fn datetime(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = DateTime>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -491,12 +398,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn time(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Time>,
-	) -> Column {
+	pub fn time(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = Time>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -520,12 +422,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn interval(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Interval>,
-	) -> Column {
+	pub fn interval(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = Interval>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -550,12 +447,7 @@ impl FullyQualified {
 	}
 
 	// UUID types
-	pub fn uuid4(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Uuid4>,
-	) -> Column {
+	pub fn uuid4(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = Uuid4>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -579,12 +471,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn uuid7(
-		namespace: &str,
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Uuid7>,
-	) -> Column {
+	pub fn uuid7(namespace: &str, source: &str, name: &str, data: impl IntoIterator<Item = Uuid7>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),
@@ -608,11 +495,7 @@ impl FullyQualified {
 		})
 	}
 
-	pub fn row_number(
-		namespace: &str,
-		source: &str,
-		data: impl IntoIterator<Item = RowNumber>,
-	) -> Column {
+	pub fn row_number(namespace: &str, source: &str, data: impl IntoIterator<Item = RowNumber>) -> Column {
 		Column::FullyQualified(Self {
 			namespace: namespace.to_string(),
 			source: source.to_string(),

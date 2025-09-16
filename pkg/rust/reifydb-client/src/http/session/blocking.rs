@@ -8,10 +8,7 @@ use reifydb_type::{diagnostic::internal, Error};
 use crate::{
 	http::{
 		client::HttpClient,
-		session::{
-			HttpChannelResponse, HttpChannelSession,
-			HttpResponseMessage,
-		},
+		session::{HttpChannelResponse, HttpChannelSession, HttpResponseMessage},
 	},
 	session::{CommandResult, QueryResult},
 	Params,
@@ -27,28 +24,16 @@ pub struct HttpBlockingSession {
 
 impl HttpBlockingSession {
 	/// Create a new blocking HTTP session
-	pub fn new(
-		host: &str,
-		port: u16,
-		token: Option<String>,
-	) -> Result<Self, Error> {
-		let client = HttpClient::new((host, port)).map_err(|e| {
-			Error(internal(format!(
-				"Failed to create client: {}",
-				e
-			)))
-		})?;
+	pub fn new(host: &str, port: u16, token: Option<String>) -> Result<Self, Error> {
+		let client = HttpClient::new((host, port))
+			.map_err(|e| Error(internal(format!("Failed to create client: {}", e))))?;
 		Self::from_client(client, token)
 	}
 
 	/// Create a new blocking HTTP session from an existing client
-	pub fn from_client(
-		client: HttpClient,
-		token: Option<String>,
-	) -> Result<Self, Error> {
+	pub fn from_client(client: HttpClient, token: Option<String>) -> Result<Self, Error> {
 		// Create a channel session and get the receiver
-		let (channel_session, receiver) =
-			HttpChannelSession::from_client(client, token.clone())?;
+		let (channel_session, receiver) = HttpChannelSession::from_client(client, token.clone())?;
 
 		let mut session = Self {
 			channel_session,
@@ -66,13 +51,8 @@ impl HttpBlockingSession {
 	}
 
 	/// Create from URL (e.g., "http://localhost:8080")
-	pub fn from_url(
-		url: &str,
-		token: Option<String>,
-	) -> Result<Self, Error> {
-		let client = HttpClient::from_url(url).map_err(|e| {
-			Error(internal(format!("Invalid URL: {}", e)))
-		})?;
+	pub fn from_url(url: &str, token: Option<String>) -> Result<Self, Error> {
+		let client = HttpClient::from_url(url).map_err(|e| Error(internal(format!("Invalid URL: {}", e))))?;
 		Self::from_client(client, token)
 	}
 
@@ -90,13 +70,9 @@ impl HttpBlockingSession {
 					Ok(())
 				}
 				Err(e) => Err(e),
-				_ => Err(Error(internal(
-					"Unexpected response type during authentication",
-				))),
+				_ => Err(Error(internal("Unexpected response type during authentication"))),
 			},
-			Err(_) => {
-				Err(Error(internal("Authentication timeout")))
-			}
+			Err(_) => Err(Error(internal("Authentication timeout"))),
 		}
 	}
 
@@ -107,29 +83,18 @@ impl HttpBlockingSession {
 	}
 
 	/// Send a command and wait for response
-	pub fn command(
-		&mut self,
-		rql: &str,
-		params: Option<Params>,
-	) -> Result<CommandResult, Error> {
+	pub fn command(&mut self, rql: &str, params: Option<Params>) -> Result<CommandResult, Error> {
 		// Send command through channel session
 		let request_id = self
 			.channel_session
 			.command(rql, params)
-			.map_err(|e| {
-				Error(internal(format!(
-					"Failed to send command: {}",
-					e
-				)))
-			})?;
+			.map_err(|e| Error(internal(format!("Failed to send command: {}", e))))?;
 
 		// Wait for response
 		match self.receiver.recv_timeout(self.timeout) {
 			Ok(msg) => {
 				if msg.request_id != request_id {
-					return Err(Error(internal(
-						"Received response for wrong request ID",
-					)));
+					return Err(Error(internal("Received response for wrong request ID")));
 				}
 				match msg.response {
 					Ok(HttpChannelResponse::Command {
@@ -137,9 +102,7 @@ impl HttpBlockingSession {
 						..
 					}) => Ok(result),
 					Err(e) => Err(e),
-					_ => Err(Error(internal(
-						"Unexpected response type for command",
-					))),
+					_ => Err(Error(internal("Unexpected response type for command"))),
 				}
 			}
 			Err(_) => Err(Error(internal("Command timeout"))),
@@ -147,29 +110,18 @@ impl HttpBlockingSession {
 	}
 
 	/// Send a query and wait for response
-	pub fn query(
-		&mut self,
-		rql: &str,
-		params: Option<Params>,
-	) -> Result<QueryResult, Error> {
+	pub fn query(&mut self, rql: &str, params: Option<Params>) -> Result<QueryResult, Error> {
 		// Send query through channel session
 		let request_id = self
 			.channel_session
 			.query(rql, params)
-			.map_err(|e| {
-				Error(internal(format!(
-					"Failed to send query: {}",
-					e
-				)))
-			})?;
+			.map_err(|e| Error(internal(format!("Failed to send query: {}", e))))?;
 
 		// Wait for response
 		match self.receiver.recv_timeout(self.timeout) {
 			Ok(msg) => {
 				if msg.request_id != request_id {
-					return Err(Error(internal(
-						"Received response for wrong request ID",
-					)));
+					return Err(Error(internal("Received response for wrong request ID")));
 				}
 				match msg.response {
 					Ok(HttpChannelResponse::Query {
@@ -177,9 +129,7 @@ impl HttpBlockingSession {
 						..
 					}) => Ok(result),
 					Err(e) => Err(e),
-					_ => Err(Error(internal(
-						"Unexpected response type for query",
-					))),
+					_ => Err(Error(internal("Unexpected response type for query"))),
 				}
 			}
 			Err(_) => Err(Error(internal("Query timeout"))),

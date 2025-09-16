@@ -3,10 +3,7 @@
 
 use std::marker::PhantomData;
 
-use crate::{
-	define_api_function, define_closure_interceptor, define_interceptor,
-	interface::NamespaceDef,
-};
+use crate::{define_api_function, define_closure_interceptor, define_interceptor, interface::NamespaceDef};
 
 // NAMESPACE POST CREATE
 define_interceptor!(

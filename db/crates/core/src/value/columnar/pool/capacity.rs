@@ -4,8 +4,8 @@
 use reifydb_type::{IsNumber, IsTemporal, IsUuid};
 
 use crate::value::container::{
-	BlobContainer, BoolContainer, NumberContainer, RowNumberContainer,
-	TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
+	BlobContainer, BoolContainer, NumberContainer, RowNumberContainer, TemporalContainer, UndefinedContainer,
+	Utf8Container, UuidContainer,
 };
 
 /// Trait for containers that can be created with a specific capacity

@@ -9,12 +9,7 @@ use uuid::Uuid;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_uuid7(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: Uuid7,
-	) {
+	pub fn set_uuid7(&self, row: &mut EncodedRow, index: usize, value: Uuid7) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uuid7);
@@ -22,8 +17,7 @@ impl EncodedRowLayout {
 		unsafe {
 			// UUIDs are 16 bytes
 			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut [u8; 16],
+				row.make_mut().as_mut_ptr().add(field.offset) as *mut [u8; 16],
 				*value.as_bytes(),
 			);
 		}
@@ -35,19 +29,12 @@ impl EncodedRowLayout {
 		debug_assert_eq!(field.value, Type::Uuid7);
 		unsafe {
 			// UUIDs are 16 bytes
-			let bytes: [u8; 16] = ptr::read_unaligned(
-				row.as_ptr().add(field.offset)
-					as *const [u8; 16],
-			);
+			let bytes: [u8; 16] = ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
 			Uuid7::from(Uuid::from_bytes(bytes))
 		}
 	}
 
-	pub fn try_get_uuid7(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<Uuid7> {
+	pub fn try_get_uuid7(&self, row: &EncodedRow, index: usize) -> Option<Uuid7> {
 		if row.is_defined(index) {
 			Some(self.get_uuid7(row, index))
 		} else {
@@ -102,10 +89,7 @@ mod tests {
 		// Ensure all generated UUIDs are unique
 		for i in 0..uuids.len() {
 			for j in (i + 1)..uuids.len() {
-				assert_ne!(
-					uuids[i], uuids[j],
-					"UUIDs should be unique"
-				);
+				assert_ne!(uuids[i], uuids[j], "UUIDs should be unique");
 			}
 		}
 	}
@@ -144,21 +128,13 @@ mod tests {
 
 		// Verify that UUIDs are ordered (timestamp-based)
 		for i in 1..uuids.len() {
-			assert!(
-				uuids[i].as_bytes() >= uuids[i - 1].as_bytes(),
-				"UUID7s should be timestamp-ordered"
-			);
+			assert!(uuids[i].as_bytes() >= uuids[i - 1].as_bytes(), "UUID7s should be timestamp-ordered");
 		}
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Uuid7,
-			Type::Boolean,
-			Type::Uuid7,
-			Type::Int4,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Uuid7, Type::Boolean, Type::Uuid7, Type::Int4]);
 		let mut row = layout.allocate_row();
 
 		let uuid1 = Uuid7::generate();
@@ -223,11 +199,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Uuid7,
-			Type::Uuid7,
-			Type::Uuid7,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Uuid7, Type::Uuid7, Type::Uuid7]);
 		let mut row = layout.allocate_row();
 
 		let uuid1 = Uuid7::generate();

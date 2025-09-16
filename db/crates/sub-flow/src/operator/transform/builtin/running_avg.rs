@@ -4,10 +4,7 @@
 use reifydb_core::{
 	EncodedKey,
 	flow::{FlowChange, FlowDiff},
-	interface::{
-		EvaluationContext, Evaluator, FlowNodeId, Transaction,
-		expression::Expression,
-	},
+	interface::{EvaluationContext, Evaluator, FlowNodeId, Transaction, expression::Expression},
 	row::EncodedRow,
 	util::CowVec,
 	value::{
@@ -32,12 +29,8 @@ pub struct RunningAvgOperator {
 impl RunningAvgOperator {
 	fn parse_state(&self, bytes: &[u8]) -> (f64, usize) {
 		if bytes.len() >= 16 {
-			let sum = f64::from_le_bytes(
-				bytes[0..8].try_into().unwrap(),
-			);
-			let count = usize::from_le_bytes(
-				bytes[8..16].try_into().unwrap(),
-			);
+			let sum = f64::from_le_bytes(bytes[0..8].try_into().unwrap());
+			let count = usize::from_le_bytes(bytes[8..16].try_into().unwrap());
 			(sum, count)
 		} else {
 			(0.0, 0)
@@ -79,79 +72,50 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 						params: &empty_params,
 					};
 
-					let input_column = evaluator.evaluate(
-						&eval_ctx,
-						&self.input_expression,
-					)?;
+					let input_column = evaluator.evaluate(&eval_ctx, &self.input_expression)?;
 
 					// Get current state
-					let empty_key =
-						EncodedKey::new(Vec::new());
-					let state_row =
-						self.get(txn, &empty_key)?;
-					let (mut sum, mut count) = self
-						.parse_state(
-							state_row.as_ref(),
-						);
+					let empty_key = EncodedKey::new(Vec::new());
+					let state_row = self.get(txn, &empty_key)?;
+					let (mut sum, mut count) = self.parse_state(state_row.as_ref());
 
 					let row_count = after.row_count();
-					let mut avgs =
-						Vec::with_capacity(row_count);
+					let mut avgs = Vec::with_capacity(row_count);
 
 					// Process values
 					match input_column.data() {
-						ColumnData::Float8(
-							container,
-						) => {
-							for val in container
-								.data()
-								.iter()
-							{
+						ColumnData::Float8(container) => {
+							for val in container.data().iter() {
 								sum += val;
 								count += 1;
 								avgs.push(sum / count as f64);
 							}
 						}
 						ColumnData::Int8(container) => {
-							for val in container
-								.data()
-								.iter()
-							{
-								sum += *val
-									as f64;
+							for val in container.data().iter() {
+								sum += *val as f64;
 								count += 1;
 								avgs.push(sum / count as f64);
 							}
 						}
-						_ => panic!(
-							"running_avg requires numeric input"
-						),
+						_ => panic!("running_avg requires numeric input"),
 					}
 
 					// Save updated state
-					let empty_key =
-						EncodedKey::new(Vec::new());
+					let empty_key = EncodedKey::new(Vec::new());
 					self.set(
 						txn,
 						&empty_key,
-						EncodedRow(CowVec::new(
-							self.encode_state(
-								sum, count,
-							),
-						)),
+						EncodedRow(CowVec::new(self.encode_state(sum, count))),
 					)?;
 
 					// Build output
-					let mut all_columns: Vec<Column> =
-						after.clone()
-							.into_iter()
-							.collect();
+					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
 					all_columns.push(Column::ColumnQualified(ColumnQualified {
-                        name: self.column_name.clone(),
-                        data: ColumnData::Float8(NumberContainer::from_vec(avgs)),
-                    }));
-					let output_columns =
-						Columns::new(all_columns);
+						name: self.column_name.clone(),
+						data: ColumnData::Float8(NumberContainer::from_vec(avgs)),
+					}));
+					let output_columns = Columns::new(all_columns);
 
 					output.push(FlowDiff::Insert {
 						source: *source,
@@ -201,15 +165,10 @@ impl<T: Transaction> TransformOperatorFactory<T> for RunningAvgOperator {
 			if let Expression::Alias(alias_expr) = expr {
 				match alias_expr.alias.to_string().as_str() {
 					"input" | "value" => {
-						input_expression =
-							Some(alias_expr
-								.expression
-								.clone());
+						input_expression = Some(alias_expr.expression.clone());
 					}
 					"column" | "name" => {
-						column_name = extract::string(
-							&alias_expr.expression,
-						)?;
+						column_name = extract::string(&alias_expr.expression)?;
 					}
 					_ => {}
 				}
@@ -221,9 +180,8 @@ impl<T: Transaction> TransformOperatorFactory<T> for RunningAvgOperator {
 			}
 		}
 
-		let input_expression = *input_expression.unwrap_or_else(|| {
-			panic!("running_avg requires 'input' parameter")
-		});
+		let input_expression =
+			*input_expression.unwrap_or_else(|| panic!("running_avg requires 'input' parameter"));
 
 		Ok(Box::new(RunningAvgOperator {
 			node,

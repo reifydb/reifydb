@@ -40,20 +40,14 @@ pub struct FlowSubsystem<T: Transaction> {
 }
 
 impl<T: Transaction> FlowSubsystem<T> {
-	pub fn new(
-		cfg: FlowSubsystemConfig<T>,
-		ioc: &IocContainer,
-	) -> Result<Self> {
+	pub fn new(cfg: FlowSubsystemConfig<T>, ioc: &IocContainer) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
 
 		let consumer = FlowConsumer::new(engine.clone(), cfg.operators);
 
 		Ok(Self {
 			consumer: PollConsumer::new(
-				PollConsumerConfig::new(
-					cfg.consumer_id.clone(),
-					cfg.poll_interval,
-				),
+				PollConsumerConfig::new(cfg.consumer_id.clone(), cfg.poll_interval),
 				engine,
 				consumer,
 			),
@@ -120,9 +114,7 @@ impl<T: Transaction> HasVersion for FlowSubsystem<T> {
 		SystemVersion {
 			name: "sub-flow".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description:
-				"Data flow and stream processing subsystem"
-					.to_string(),
+			description: "Data flow and stream processing subsystem".to_string(),
 			r#type: ComponentType::Subsystem,
 		}
 	}

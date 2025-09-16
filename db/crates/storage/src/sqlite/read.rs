@@ -24,11 +24,7 @@ pub struct Reader {
 }
 
 impl Reader {
-	fn new(
-		conn: ReadConnection,
-		pool: Weak<Mutex<Vec<ReadConnection>>>,
-		pool_size: usize,
-	) -> Self {
+	fn new(conn: ReadConnection, pool: Weak<Mutex<Vec<ReadConnection>>>, pool_size: usize) -> Self {
 		Self {
 			conn: Some(conn),
 			pool,
@@ -77,23 +73,14 @@ pub struct Readers {
 }
 
 impl Readers {
-	pub fn new(
-		db_path: &Path,
-		flags: OpenFlags,
-		pool_size: usize,
-	) -> Result<Self> {
+	pub fn new(db_path: &Path, flags: OpenFlags, pool_size: usize) -> Result<Self> {
 		debug_assert!(pool_size > 0);
 
 		let mut readers = Vec::new();
 
 		for _ in 0..pool_size {
 			let conn = Connection::open_with_flags(db_path, flags)
-				.map_err(|e| {
-					Error(connection_failed(
-						db_path.display().to_string(),
-						e.to_string(),
-					))
-				})?;
+				.map_err(|e| Error(connection_failed(db_path.display().to_string(), e.to_string())))?;
 			readers.push(Arc::new(Mutex::new(conn)));
 		}
 
@@ -113,16 +100,8 @@ impl Readers {
 			conn
 		} else {
 			// Create a new connection
-			let conn = Connection::open_with_flags(
-				&self.db_path,
-				self.flags,
-			)
-			.unwrap_or_else(|e| {
-				panic!(
-					"Failed to open reader connection: {}",
-					e
-				)
-			});
+			let conn = Connection::open_with_flags(&self.db_path, self.flags)
+				.unwrap_or_else(|e| panic!("Failed to open reader connection: {}", e));
 			Arc::new(Mutex::new(conn))
 		};
 
@@ -143,11 +122,9 @@ mod tests {
 		temp_dir(|path| {
 			let path = path.join("test.db");
 
-			let flags = OpenFlags::SQLITE_OPEN_READ_WRITE
-				| OpenFlags::SQLITE_OPEN_CREATE;
+			let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
 
-			let readers = Readers::new(&path, flags, 2)
-				.expect("Failed to create readers");
+			let readers = Readers::new(&path, flags, 2).expect("Failed to create readers");
 
 			// Get a reader and check pool behavior
 			{
@@ -192,16 +169,12 @@ mod tests {
 		temp_dir(|path| {
 			let path = path.join("test.db");
 
-			let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | {
-				OpenFlags::SQLITE_OPEN_CREATE
-			};
+			let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | { OpenFlags::SQLITE_OPEN_CREATE };
 
-			let readers = Readers::new(&path, flags, 3)
-				.expect("Failed to create readers"); // Pool size of 3
+			let readers = Readers::new(&path, flags, 3).expect("Failed to create readers"); // Pool size of 3
 
 			// Create readers that will be dropped
-			let readers_vec: Vec<_> =
-				(0..5).map(|_| readers.get_reader()).collect();
+			let readers_vec: Vec<_> = (0..5).map(|_| readers.get_reader()).collect();
 
 			// All should have valid connections
 			for reader in &readers_vec {

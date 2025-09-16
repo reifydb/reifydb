@@ -30,8 +30,7 @@ use crate::{
 	table_virtual::{
 		TableVirtual, TableVirtualContext,
 		system::{
-			ColumnPolicies, ColumnsTable, Namespaces,
-			PrimaryKeyColumns, PrimaryKeys, Sequences, Tables,
+			ColumnPolicies, ColumnsTable, Namespaces, PrimaryKeyColumns, PrimaryKeys, Sequences, Tables,
 			Versions, Views,
 		},
 	},
@@ -48,11 +47,8 @@ pub(crate) fn compile<'a, T: Transaction>(
 			map,
 			input,
 		}) => {
-			let input_node =
-				Box::new(compile(*input, rx, context.clone()));
-			ExecutionPlan::Aggregate(AggregateNode::new(
-				input_node, by, map, context,
-			))
+			let input_node = Box::new(compile(*input, rx, context.clone()));
+			ExecutionPlan::Aggregate(AggregateNode::new(input_node, by, map, context))
 		}
 
 		PhysicalPlan::Filter(physical::FilterNode {
@@ -60,9 +56,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 			input,
 		}) => {
 			let input_node = Box::new(compile(*input, rx, context));
-			ExecutionPlan::Filter(FilterNode::new(
-				input_node, conditions,
-			))
+			ExecutionPlan::Filter(FilterNode::new(input_node, conditions))
 		}
 
 		PhysicalPlan::Take(physical::TakeNode {
@@ -86,15 +80,10 @@ pub(crate) fn compile<'a, T: Transaction>(
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node =
-					Box::new(compile(*input, rx, context));
-				ExecutionPlan::Map(MapNode::new(
-					input_node, map,
-				))
+				let input_node = Box::new(compile(*input, rx, context));
+				ExecutionPlan::Map(MapNode::new(input_node, map))
 			} else {
-				ExecutionPlan::MapWithoutInput(
-					MapWithoutInputNode::new(map),
-				)
+				ExecutionPlan::MapWithoutInput(MapWithoutInputNode::new(map))
 			}
 		}
 
@@ -103,15 +92,10 @@ pub(crate) fn compile<'a, T: Transaction>(
 			input,
 		}) => {
 			if let Some(input) = input {
-				let input_node =
-					Box::new(compile(*input, rx, context));
-				ExecutionPlan::Extend(ExtendNode::new(
-					input_node, extend,
-				))
+				let input_node = Box::new(compile(*input, rx, context));
+				ExecutionPlan::Extend(ExtendNode::new(input_node, extend))
 			} else {
-				ExecutionPlan::ExtendWithoutInput(
-					ExtendWithoutInputNode::new(extend),
-				)
+				ExecutionPlan::ExtendWithoutInput(ExtendWithoutInputNode::new(extend))
 			}
 		}
 
@@ -120,13 +104,9 @@ pub(crate) fn compile<'a, T: Transaction>(
 			right,
 			on,
 		}) => {
-			let left_node =
-				Box::new(compile(*left, rx, context.clone()));
-			let right_node =
-				Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::InnerJoin(InnerJoinNode::new(
-				left_node, right_node, on,
-			))
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
+			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on))
 		}
 
 		PhysicalPlan::JoinLeft(physical::JoinLeftNode {
@@ -134,13 +114,9 @@ pub(crate) fn compile<'a, T: Transaction>(
 			right,
 			on,
 		}) => {
-			let left_node =
-				Box::new(compile(*left, rx, context.clone()));
-			let right_node =
-				Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::LeftJoin(LeftJoinNode::new(
-				left_node, right_node, on,
-			))
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
+			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on))
 		}
 
 		PhysicalPlan::JoinNatural(physical::JoinNaturalNode {
@@ -148,20 +124,14 @@ pub(crate) fn compile<'a, T: Transaction>(
 			right,
 			join_type,
 		}) => {
-			let left_node =
-				Box::new(compile(*left, rx, context.clone()));
-			let right_node =
-				Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(
-				left_node, right_node, join_type,
-			))
+			let left_node = Box::new(compile(*left, rx, context.clone()));
+			let right_node = Box::new(compile(*right, rx, context.clone()));
+			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type))
 		}
 
 		PhysicalPlan::InlineData(physical::InlineDataNode {
 			rows,
-		}) => ExecutionPlan::InlineData(InlineDataNode::new(
-			rows, context,
-		)),
+		}) => ExecutionPlan::InlineData(InlineDataNode::new(rows, context)),
 
 		PhysicalPlan::IndexScan(physical::IndexScanNode {
 			namespace: _,
@@ -172,58 +142,41 @@ pub(crate) fn compile<'a, T: Transaction>(
 				unimplemented!()
 			};
 
-			ExecutionPlan::IndexScan(
-				IndexScanNode::new(
-					table,
-					IndexId::primary(pk.id),
-					context,
-				)
-				.unwrap(),
-			)
+			ExecutionPlan::IndexScan(IndexScanNode::new(table, IndexId::primary(pk.id), context).unwrap())
 		}
 
 		PhysicalPlan::TableScan(physical::TableScanNode {
 			namespace: _,
 			table,
-		}) => ExecutionPlan::TableScan(
-			TableScanNode::new(table, context).unwrap(),
-		),
+		}) => ExecutionPlan::TableScan(TableScanNode::new(table, context).unwrap()),
 
 		PhysicalPlan::ViewScan(physical::ViewScanNode {
 			namespace: _,
 			view,
-		}) => ExecutionPlan::ViewScan(
-			ViewScanNode::new(view, context).unwrap(),
-		),
+		}) => ExecutionPlan::ViewScan(ViewScanNode::new(view, context).unwrap()),
 
-		PhysicalPlan::TableVirtualScan(
-			physical::TableVirtualScanNode {
-				namespace,
-				table,
-				pushdown_context,
-			},
-		) => {
+		PhysicalPlan::TableVirtualScan(physical::TableVirtualScanNode {
+			namespace,
+			table,
+			pushdown_context,
+		}) => {
 			// Create the appropriate virtual table implementation
-			let virtual_table_impl: Box<dyn TableVirtual<T>> =
-				if namespace.id == NamespaceId(1) {
-					match table.name.as_str() {
-						"sequences" => Box::new(Sequences::new()),
-						"namespaces" => Box::new(Namespaces::new()),
-						"tables" => Box::new(Tables::new()),
-						"views" => Box::new(Views::new()),
-						"columns" => Box::new(ColumnsTable::new()),
-						"primary_keys" => Box::new(PrimaryKeys::new()),
-						"primary_key_columns" => Box::new(PrimaryKeyColumns::new()),
-						"column_policies" => Box::new(ColumnPolicies::new()),
-						"versions" => Box::new(Versions::new()),
-						_ => panic!("Unknown virtual table type: {}", table.name)
-					}
-				} else {
-					panic!(
-						"Unknown virtual table type: {}",
-						table.name
-					)
-				};
+			let virtual_table_impl: Box<dyn TableVirtual<T>> = if namespace.id == NamespaceId(1) {
+				match table.name.as_str() {
+					"sequences" => Box::new(Sequences::new()),
+					"namespaces" => Box::new(Namespaces::new()),
+					"tables" => Box::new(Tables::new()),
+					"views" => Box::new(Views::new()),
+					"columns" => Box::new(ColumnsTable::new()),
+					"primary_keys" => Box::new(PrimaryKeys::new()),
+					"primary_key_columns" => Box::new(PrimaryKeyColumns::new()),
+					"column_policies" => Box::new(ColumnPolicies::new()),
+					"versions" => Box::new(Versions::new()),
+					_ => panic!("Unknown virtual table type: {}", table.name),
+				}
+			} else {
+				panic!("Unknown virtual table type: {}", table.name)
+			};
 
 			let virtual_context = pushdown_context
 				.map(|ctx| TableVirtualContext::PushDown {
@@ -238,12 +191,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 				});
 
 			ExecutionPlan::VirtualScan(
-				VirtualScanNode::new(
-					virtual_table_impl,
-					context,
-					virtual_context,
-				)
-				.unwrap(),
+				VirtualScanNode::new(virtual_table_impl, context, virtual_context).unwrap(),
 			)
 		}
 

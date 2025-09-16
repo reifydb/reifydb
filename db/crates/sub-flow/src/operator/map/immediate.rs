@@ -1,9 +1,6 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
-	interface::{
-		EvaluationContext, Evaluator, Params, Transaction,
-		expression::Expression,
-	},
+	interface::{EvaluationContext, Evaluator, Params, Transaction, expression::Expression},
 	value::columnar::Columns,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
@@ -38,8 +35,7 @@ impl<T: Transaction> Operator<T> for MapOperator {
 					row_ids,
 					after,
 				} => {
-					let projected_columns = self
-						.project(evaluator, &after)?;
+					let projected_columns = self.project(evaluator, &after)?;
 					output.push(FlowDiff::Insert {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -52,8 +48,7 @@ impl<T: Transaction> Operator<T> for MapOperator {
 					before,
 					after,
 				} => {
-					let projected_columns = self
-						.project(evaluator, &after)?;
+					let projected_columns = self.project(evaluator, &after)?;
 					output.push(FlowDiff::Update {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -68,8 +63,7 @@ impl<T: Transaction> Operator<T> for MapOperator {
 				} => {
 					// For removes, we might need to project
 					// to maintain namespace consistency
-					let projected_columns = self
-						.project(evaluator, &before)?;
+					let projected_columns = self.project(evaluator, &before)?;
 					output.push(FlowDiff::Remove {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -84,11 +78,7 @@ impl<T: Transaction> Operator<T> for MapOperator {
 }
 
 impl MapOperator {
-	fn project(
-		&self,
-		evaluator: &StandardEvaluator,
-		columns: &Columns,
-	) -> crate::Result<Columns> {
+	fn project(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns> {
 		if columns.is_empty() {
 			return Ok(columns.clone());
 		}

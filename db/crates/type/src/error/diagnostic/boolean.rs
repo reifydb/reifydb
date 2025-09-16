@@ -3,13 +3,10 @@
 
 use crate::{error::diagnostic::Diagnostic, fragment::IntoFragment};
 
-pub fn invalid_boolean_format<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn invalid_boolean_format<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.text();
-	let label =
-		Some(format!("expected 'true' or 'false', found '{}'", value));
+	let label = Some(format!("expected 'true' or 'false', found '{}'", value));
 	Diagnostic {
 		code: "BOOLEAN_001".to_string(),
 		statement: None,
@@ -17,10 +14,7 @@ pub fn invalid_boolean_format<'a>(
 		fragment,
 		label,
 		help: Some("use 'true' or 'false'".to_string()),
-		notes: vec![
-			"valid: true, TRUE".to_string(),
-			"valid: false, FALSE".to_string(),
-		],
+		notes: vec!["valid: true, TRUE".to_string(), "valid: false, FALSE".to_string()],
 		column: None,
 		cause: None,
 	}
@@ -36,24 +30,16 @@ pub fn empty_boolean_value<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 		fragment,
 		label,
 		help: Some("provide either 'true' or 'false'".to_string()),
-		notes: vec![
-			"valid: true".to_string(),
-			"valid: false".to_string(),
-		],
+		notes: vec!["valid: true".to_string(), "valid: false".to_string()],
 		column: None,
 		cause: None,
 	}
 }
 
-pub fn invalid_number_boolean<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn invalid_number_boolean<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	let value = fragment.text();
-	let label = Some(format!(
-		"number '{}' cannot be cast to boolean, only 1 or 0 are allowed",
-		value
-	));
+	let label = Some(format!("number '{}' cannot be cast to boolean, only 1 or 0 are allowed", value));
 	Diagnostic {
 		code: "BOOLEAN_003".to_string(),
 		statement: None,

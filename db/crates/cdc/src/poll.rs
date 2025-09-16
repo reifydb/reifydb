@@ -14,9 +14,8 @@ use std::{
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{
-		CdcEvent, CdcQueryTransaction, CommandTransaction, ConsumerId,
-		Engine as EngineInterface, Key, Transaction,
-		VersionedCommandTransaction,
+		CdcEvent, CdcQueryTransaction, CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
+		Transaction, VersionedCommandTransaction,
 		key::{CdcConsumerKey, EncodableKey},
 		subsystem::workerpool::Priority,
 	},
@@ -66,11 +65,7 @@ struct ConsumerState {
 }
 
 impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
-	pub fn new(
-		config: PollConsumerConfig,
-		engine: StandardEngine<T>,
-		consume: C,
-	) -> Self {
+	pub fn new(config: PollConsumerConfig, engine: StandardEngine<T>, consume: C) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: config.consumer_id.clone(),
 		}
@@ -88,48 +83,28 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 		}
 	}
 
-	fn consume_batch(
-		state: &ConsumerState,
-		engine: &StandardEngine<T>,
-		consumer: &C,
-	) -> Result<()> {
+	fn consume_batch(state: &ConsumerState, engine: &StandardEngine<T>, consumer: &C) -> Result<()> {
 		let mut transaction = engine.begin_command()?;
 
-		let checkpoint = CdcCheckpoint::fetch(
-			&mut transaction,
-			&state.consumer_key,
-		)?;
+		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
 
 		let events = fetch_events_since(&mut transaction, checkpoint)?;
 		if events.is_empty() {
 			return transaction.rollback();
 		}
 
-		let latest_version = events
-			.iter()
-			.map(|event| event.version)
-			.max()
-			.unwrap_or(checkpoint);
+		let latest_version = events.iter().map(|event| event.version).max().unwrap_or(checkpoint);
 
 		let table_events = events
 			.into_iter()
-			.filter(|event| {
-				matches!(
-					Key::decode(event.key()),
-					Some(Key::Row(_))
-				)
-			})
+			.filter(|event| matches!(Key::decode(event.key()), Some(Key::Row(_))))
 			.collect::<Vec<_>>();
 
 		if !table_events.is_empty() {
 			consumer.consume(&mut transaction, table_events)?;
 		}
 
-		CdcCheckpoint::persist(
-			&mut transaction,
-			&state.consumer_key,
-			latest_version,
-		)?;
+		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;
 		transaction.commit().map(|_| ())
 	}
 
@@ -146,14 +121,8 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 		);
 
 		while state.running.load(Ordering::Acquire) {
-			if let Err(error) =
-				Self::consume_batch(&state, &engine, &consumer)
-			{
-				log_error!(
-					"[Consumer {:?}] Error consuming events: {}",
-					config.consumer_id,
-					error
-				);
+			if let Err(error) = Self::consume_batch(&state, &engine, &consumer) {
+				log_error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
 			}
 
 			thread::sleep(config.poll_interval);
@@ -163,26 +132,17 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 	}
 }
 
-impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
-	for PollConsumer<T, F>
-{
+impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer for PollConsumer<T, F> {
 	fn start(&mut self) -> Result<()> {
-		assert!(
-			self.worker.is_none(),
-			"start() can only be called once"
-		);
+		assert!(self.worker.is_none(), "start() can only be called once");
 
 		if self.state.running.swap(true, Ordering::AcqRel) {
 			return Ok(());
 		}
 
-		let engine =
-			self.engine.take().expect("engine already consumed");
+		let engine = self.engine.take().expect("engine already consumed");
 
-		let consumer = self
-			.consumer
-			.take()
-			.expect("consumer already consumed");
+		let consumer = self.consumer.take().expect("consumer already consumed");
 
 		let state = Arc::clone(&self.state);
 		let config = self.config.clone();
@@ -211,11 +171,6 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer
 	}
 }
 
-fn fetch_events_since(
-	txn: &mut impl CommandTransaction,
-	since_version: CommitVersion,
-) -> Result<Vec<CdcEvent>> {
-	Ok(txn.begin_cdc_query()?
-		.range(Bound::Excluded(since_version), Bound::Unbounded)?
-		.collect())
+fn fetch_events_since(txn: &mut impl CommandTransaction, since_version: CommitVersion) -> Result<Vec<CdcEvent>> {
+	Ok(txn.begin_cdc_query()?.range(Bound::Excluded(since_version), Bound::Unbounded)?.collect())
 }

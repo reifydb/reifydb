@@ -5,20 +5,13 @@ use Keyword::{Create, Namespace};
 use Operator::Colon;
 
 use crate::ast::{
-	AstColumnToCreate, AstCreate, AstCreateDeferredView,
-	AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries,
+	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries,
 	AstCreateTable, AstCreateTransactionalView, AstDataType,
-	identifier::{
-		MaybeQualifiedNamespaceIdentifier,
-		MaybeQualifiedSequenceIdentifier,
-	},
+	identifier::{MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier},
 	parse::Parser,
 	tokenize::{
 		Keyword,
-		Keyword::{
-			Buffer, Deferred, Ring, Series, Table, Transactional,
-			View,
-		},
+		Keyword::{Buffer, Deferred, Ring, Series, Table, Transactional, View},
 		Operator,
 		Separator::Comma,
 		Token, TokenKind,
@@ -34,20 +27,14 @@ impl<'a> Parser<'a> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Deferred))?).is_some() {
-			if (self.consume_if(TokenKind::Keyword(View))?)
-				.is_some()
-			{
+			if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 				return self.parse_deferred_view(token);
 			}
 			unimplemented!()
 		}
 
-		if (self.consume_if(TokenKind::Keyword(Transactional))?)
-			.is_some()
-		{
-			if (self.consume_if(TokenKind::Keyword(View))?)
-				.is_some()
-			{
+		if (self.consume_if(TokenKind::Keyword(Transactional))?).is_some() {
+			if (self.consume_if(TokenKind::Keyword(View))?).is_some() {
 				return self.parse_transactional_view(token);
 			}
 			unimplemented!()
@@ -73,34 +60,23 @@ impl<'a> Parser<'a> {
 		unimplemented!();
 	}
 
-	fn parse_namespace(
-		&mut self,
-		token: Token<'a>,
-	) -> crate::Result<AstCreate<'a>> {
-		let name_token = self
-			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
-		let namespace = MaybeQualifiedNamespaceIdentifier::new(
-			name_token.fragment.clone(),
-		);
+	fn parse_namespace(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+		let name_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let namespace = MaybeQualifiedNamespaceIdentifier::new(name_token.fragment.clone());
 		Ok(AstCreate::Namespace(AstCreateNamespace {
 			token,
 			namespace,
 		}))
 	}
 
-	fn parse_series(
-		&mut self,
-		token: Token<'a>,
-	) -> crate::Result<AstCreate<'a>> {
+	fn parse_series(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
 		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
 		let name_token = self.consume(TokenKind::Identifier)?;
 		let columns = self.parse_columns()?;
 
-		let sequence = MaybeQualifiedSequenceIdentifier::new(
-			name_token.fragment.clone(),
-		)
-		.with_namespace(schema_token.fragment.clone());
+		let sequence = MaybeQualifiedSequenceIdentifier::new(name_token.fragment.clone())
+			.with_namespace(schema_token.fragment.clone());
 
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
@@ -109,10 +85,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_deferred_view(
-		&mut self,
-		token: Token<'a>,
-	) -> crate::Result<AstCreate<'a>> {
+	fn parse_deferred_view(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
 		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
 		let name_token = self.consume(TokenKind::Identifier)?;
@@ -120,16 +93,11 @@ impl<'a> Parser<'a> {
 
 		use crate::ast::identifier::MaybeQualifiedDeferredViewIdentifier;
 
-		let view = MaybeQualifiedDeferredViewIdentifier::new(
-			name_token.fragment.clone(),
-		)
-		.with_namespace(schema_token.fragment.clone());
+		let view = MaybeQualifiedDeferredViewIdentifier::new(name_token.fragment.clone())
+			.with_namespace(schema_token.fragment.clone());
 
 		// Parse optional AS clause
-		let as_clause = if self
-			.consume_if(TokenKind::Operator(Operator::As))?
-			.is_some()
-		{
+		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
 			// Expect opening curly brace
 			self.consume_operator(Operator::OpenCurly)?;
 
@@ -138,17 +106,11 @@ impl<'a> Parser<'a> {
 
 			// Parse statements until we hit the closing brace
 			loop {
-				if self.is_eof()
-					|| self.current()?.kind
-						== TokenKind::Operator(
-							Operator::CloseCurly,
-						) {
+				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
 					break;
 				}
 
-				let node = self.parse_node(
-					crate::ast::parse::Precedence::None,
-				)?;
+				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
 				query_nodes.push(node);
 			}
 
@@ -171,10 +133,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_transactional_view(
-		&mut self,
-		token: Token<'a>,
-	) -> crate::Result<AstCreate<'a>> {
+	fn parse_transactional_view(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
 		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
 		let name_token = self.consume(TokenKind::Identifier)?;
@@ -183,16 +142,11 @@ impl<'a> Parser<'a> {
 		// Create MaybeQualifiedSourceIdentifier for transactional view
 		use crate::ast::identifier::MaybeQualifiedTransactionalViewIdentifier;
 
-		let view = MaybeQualifiedTransactionalViewIdentifier::new(
-			name_token.fragment.clone(),
-		)
-		.with_namespace(schema_token.fragment.clone());
+		let view = MaybeQualifiedTransactionalViewIdentifier::new(name_token.fragment.clone())
+			.with_namespace(schema_token.fragment.clone());
 
 		// Parse optional AS clause
-		let as_clause = if self
-			.consume_if(TokenKind::Operator(Operator::As))?
-			.is_some()
-		{
+		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
 			// Expect opening curly brace
 			self.consume_operator(Operator::OpenCurly)?;
 
@@ -201,17 +155,11 @@ impl<'a> Parser<'a> {
 
 			// Parse statements until we hit the closing brace
 			loop {
-				if self.is_eof()
-					|| self.current()?.kind
-						== TokenKind::Operator(
-							Operator::CloseCurly,
-						) {
+				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
 					break;
 				}
 
-				let node = self.parse_node(
-					crate::ast::parse::Precedence::None,
-				)?;
+				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
 				query_nodes.push(node);
 			}
 
@@ -234,10 +182,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_table(
-		&mut self,
-		token: Token<'a>,
-	) -> crate::Result<AstCreate<'a>> {
+	fn parse_table(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
 		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
 		let name_token = self.advance()?;
@@ -245,10 +190,8 @@ impl<'a> Parser<'a> {
 
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
 
-		let table = MaybeQualifiedTableIdentifier::new(
-			name_token.fragment.clone(),
-		)
-		.with_namespace(schema_token.fragment.clone());
+		let table = MaybeQualifiedTableIdentifier::new(name_token.fragment.clone())
+			.with_namespace(schema_token.fragment.clone());
 
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
@@ -257,10 +200,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_ring_buffer(
-		&mut self,
-		token: Token<'a>,
-	) -> crate::Result<AstCreate<'a>> {
+	fn parse_ring_buffer(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
 		let schema_token = self.consume(TokenKind::Identifier)?;
 		self.consume_operator(Operator::Dot)?;
 		let name_token = self.advance()?;
@@ -273,41 +213,34 @@ impl<'a> Parser<'a> {
 		// Parse capacity option
 		let capacity_ident = self.consume(TokenKind::Identifier)?;
 		if capacity_ident.fragment.text() != "capacity" {
-			return Err(reifydb_type::Error(
-				reifydb_type::diagnostic::ast::unexpected_token_error(
-					"capacity",
-					capacity_ident.fragment.clone(),
-				)
-			));
+			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
+				"capacity",
+				capacity_ident.fragment.clone(),
+			)));
 		}
 
 		self.consume_operator(Colon)?;
-		let capacity_token = self.consume(TokenKind::Literal(
-			crate::ast::tokenize::Literal::Number,
-		))?;
+		let capacity_token = self.consume(TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
 
 		// Parse capacity value
-		let capacity =
-			match capacity_token.fragment.text().parse::<u64>() {
-				Ok(val) => val,
-				Err(_) => {
-					return Err(reifydb_type::Error(
+		let capacity = match capacity_token.fragment.text().parse::<u64>() {
+			Ok(val) => val,
+			Err(_) => {
+				return Err(reifydb_type::Error(
 					reifydb_type::diagnostic::ast::unexpected_token_error(
 						"valid capacity number",
 						capacity_token.fragment.clone(),
-					)
+					),
 				));
-				}
-			};
+			}
+		};
 
 		self.consume_operator(Operator::CloseCurly)?;
 
 		use crate::ast::identifier::MaybeQualifiedRingBufferIdentifier;
 
-		let ring_buffer = MaybeQualifiedRingBufferIdentifier::new(
-			name_token.fragment.clone(),
-		)
-		.with_namespace(schema_token.fragment.clone());
+		let ring_buffer = MaybeQualifiedRingBufferIdentifier::new(name_token.fragment.clone())
+			.with_namespace(schema_token.fragment.clone());
 
 		Ok(AstCreate::RingBuffer(AstCreateRingBuffer {
 			token,
@@ -317,9 +250,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_columns(
-		&mut self,
-	) -> crate::Result<Vec<AstColumnToCreate<'a>>> {
+	fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate<'a>>> {
 		let mut result = Vec::new();
 
 		self.consume_operator(Operator::OpenCurly)?;
@@ -336,9 +267,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			if self.consume_if(TokenKind::Separator(Comma))?
-				.is_none()
-			{
+			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
 				break;
 			};
 		}
@@ -364,10 +293,7 @@ impl<'a> Parser<'a> {
 			params.push(self.parse_literal_number()?);
 
 			// Parse additional parameters if comma-separated
-			while self
-				.consume_if(TokenKind::Separator(Comma))?
-				.is_some()
-			{
+			while self.consume_if(TokenKind::Separator(Comma))?.is_some() {
 				params.push(self.parse_literal_number()?);
 			}
 
@@ -382,14 +308,13 @@ impl<'a> Parser<'a> {
 			AstDataType::Simple(ty_token.fragment)
 		};
 
-		let auto_increment =
-			if self.current()?.is_keyword(Keyword::Auto) {
-				self.consume_keyword(Keyword::Auto)?;
-				self.consume_keyword(Keyword::Increment)?;
-				true
-			} else {
-				false
-			};
+		let auto_increment = if self.current()?.is_keyword(Keyword::Auto) {
+			self.consume_keyword(Keyword::Auto)?;
+			self.consume_keyword(Keyword::Increment)?;
+			true
+		} else {
+			false
+		};
 
 		let policies = if self.current()?.is_keyword(Keyword::Policy) {
 			Some(self.parse_policy_block()?)
@@ -409,9 +334,8 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstCreate, AstCreateDeferredView, AstCreateNamespace,
-		AstCreateSeries, AstCreateTable, AstCreateTransactionalView,
-		AstDataType, AstPolicyKind, parse::Parser, tokenize,
+		AstCreate, AstCreateDeferredView, AstCreateNamespace, AstCreateSeries, AstCreateTable,
+		AstCreateTransactionalView, AstDataType, AstPolicyKind, parse::Parser, tokenize,
 	};
 
 	#[test]
@@ -456,13 +380,7 @@ mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(
-					sequence.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(sequence.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(sequence.name.text(), "metrics");
 
 				assert_eq!(columns.len(), 1);
@@ -501,13 +419,7 @@ mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(
-					table.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(table.name.text(), "users");
 				assert_eq!(columns.len(), 3);
 
@@ -516,14 +428,9 @@ mod tests {
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
-							assert_eq!(
-								ident.text(),
-								"int2"
-							)
+							assert_eq!(ident.text(), "int2")
 						}
-						_ => panic!(
-							"Expected simple type"
-						),
+						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
@@ -534,34 +441,21 @@ mod tests {
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
-							assert_eq!(
-								ident.text(),
-								"text"
-							)
+							assert_eq!(ident.text(), "text")
 						}
-						_ => panic!(
-							"Expected simple type"
-						),
+						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
 				}
 
 				{
 					let col = &columns[2];
-					assert_eq!(
-						col.name.text(),
-						"is_premium"
-					);
+					assert_eq!(col.name.text(), "is_premium");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
-							assert_eq!(
-								ident.text(),
-								"bool"
-							)
+							assert_eq!(ident.text(), "bool")
 						}
-						_ => panic!(
-							"Expected simple type"
-						),
+						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
@@ -592,13 +486,7 @@ mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(
-					table.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(table.name.text(), "items");
 
 				assert_eq!(columns.len(), 1);
@@ -613,21 +501,11 @@ mod tests {
 				}
 				assert_eq!(col.auto_increment, false);
 
-				let policies = &col
-					.policies
-					.as_ref()
-					.unwrap()
-					.policies;
+				let policies = &col.policies.as_ref().unwrap().policies;
 				assert_eq!(policies.len(), 1);
 				let policy = &policies[0];
-				assert!(matches!(
-					policy.policy,
-					AstPolicyKind::Saturation
-				));
-				assert_eq!(
-					policy.value.as_identifier().text(),
-					"error"
-				);
+				assert!(matches!(policy.policy, AstPolicyKind::Saturation));
+				assert_eq!(policy.value.as_identifier().text(), "error");
 			}
 			_ => unreachable!(),
 		}
@@ -654,13 +532,7 @@ mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(
-					table.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(table.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(table.name.text(), "users");
 				assert_eq!(columns.len(), 2);
 
@@ -669,14 +541,9 @@ mod tests {
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
-							assert_eq!(
-								ident.text(),
-								"int4"
-							)
+							assert_eq!(ident.text(), "int4")
 						}
-						_ => panic!(
-							"Expected simple type"
-						),
+						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, true);
 					assert!(col.policies.is_none());
@@ -687,14 +554,9 @@ mod tests {
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
-							assert_eq!(
-								ident.text(),
-								"utf8"
-							)
+							assert_eq!(ident.text(), "utf8")
 						}
-						_ => panic!(
-							"Expected simple type"
-						),
+						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
@@ -724,10 +586,7 @@ mod tests {
 				columns,
 				..
 			}) => {
-				assert_eq!(
-					view.namespace.as_ref().unwrap().text(),
-					"test"
-				);
+				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(view.name.text(), "views");
 
 				assert_eq!(columns.len(), 1);
@@ -742,21 +601,11 @@ mod tests {
 				}
 				assert_eq!(col.auto_increment, false);
 
-				let policies = &col
-					.policies
-					.as_ref()
-					.unwrap()
-					.policies;
+				let policies = &col.policies.as_ref().unwrap().policies;
 				assert_eq!(policies.len(), 1);
 				let policy = &policies[0];
-				assert!(matches!(
-					policy.policy,
-					AstPolicyKind::Saturation
-				));
-				assert_eq!(
-					policy.value.as_identifier().text(),
-					"error"
-				);
+				assert!(matches!(policy.policy, AstPolicyKind::Saturation));
+				assert_eq!(policy.value.as_identifier().text(), "error");
 			}
 			_ => unreachable!(),
 		}
@@ -777,17 +626,12 @@ mod tests {
 		let result = result.pop().unwrap();
 		let create = result.first_unchecked().as_create();
 		match create {
-			AstCreate::TransactionalView(
-				AstCreateTransactionalView {
-					view,
-					columns,
-					..
-				},
-			) => {
-				assert_eq!(
-					view.namespace.as_ref().unwrap().text(),
-					"test"
-				);
+			AstCreate::TransactionalView(AstCreateTransactionalView {
+				view,
+				columns,
+				..
+			}) => {
+				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(view.name.text(), "myview");
 
 				assert_eq!(columns.len(), 2);
@@ -797,14 +641,9 @@ mod tests {
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
-							assert_eq!(
-								ident.text(),
-								"int4"
-							)
+							assert_eq!(ident.text(), "int4")
 						}
-						_ => panic!(
-							"Expected simple type"
-						),
+						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
@@ -815,14 +654,9 @@ mod tests {
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
 						AstDataType::Simple(ident) => {
-							assert_eq!(
-								ident.text(),
-								"utf8"
-							)
+							assert_eq!(ident.text(), "utf8")
 						}
-						_ => panic!(
-							"Expected simple type"
-						),
+						_ => panic!("Expected simple type"),
 					}
 					assert_eq!(col.auto_increment, false);
 					assert!(col.policies.is_none());
@@ -850,18 +684,13 @@ mod tests {
 		let result = result.pop().unwrap();
 		let create = result.first_unchecked().as_create();
 		match create {
-			AstCreate::TransactionalView(
-				AstCreateTransactionalView {
-					view,
-					columns,
-					as_clause,
-					..
-				},
-			) => {
-				assert_eq!(
-					view.namespace.as_ref().unwrap().text(),
-					"test"
-				);
+			AstCreate::TransactionalView(AstCreateTransactionalView {
+				view,
+				columns,
+				as_clause,
+				..
+			}) => {
+				assert_eq!(view.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(view.name.text(), "myview");
 				assert_eq!(columns.len(), 2);
 				assert!(as_clause.is_some());

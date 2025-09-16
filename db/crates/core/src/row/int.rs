@@ -34,19 +34,12 @@ impl EncodedRowLayout {
 		// Try i128 inline storage first (fits in 127 bits)
 		if let Some(i128_val) = value.0.to_i128() {
 			// Check if value fits in 127 bits (MSB must be 0)
-			if i128_val >= -(1i128 << 126)
-				&& i128_val < (1i128 << 126)
-			{
+			if i128_val >= -(1i128 << 126) && i128_val < (1i128 << 126) {
 				// Mode 0: Store inline in lower 127 bits
-				let packed = MODE_INLINE
-					| ((i128_val as u128)
-						& INLINE_VALUE_MASK);
+				let packed = MODE_INLINE | ((i128_val as u128) & INLINE_VALUE_MASK);
 				unsafe {
 					ptr::write_unaligned(
-						row.make_mut()
-							.as_mut_ptr()
-							.add(field.offset)
-							as *mut u128,
+						row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
 						packed.to_le(),
 					);
 				}
@@ -56,11 +49,7 @@ impl EncodedRowLayout {
 		}
 
 		// Mode 1: Dynamic storage for arbitrary precision
-		debug_assert!(
-			!row.is_defined(index),
-			"Int field {} already set",
-			index
-		);
+		debug_assert!(!row.is_defined(index), "Int field {} already set", index);
 
 		let bytes = value.0.to_signed_bytes_le();
 		let dynamic_offset = self.dynamic_section_size(row);
@@ -69,16 +58,13 @@ impl EncodedRowLayout {
 		row.0.extend_from_slice(&bytes);
 
 		// Pack offset and length in lower 127 bits, set MSB=1
-		let offset_part =
-			(dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
-		let length_part =
-			((bytes.len() as u128) << 64) & DYNAMIC_LENGTH_MASK;
+		let offset_part = (dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
+		let length_part = ((bytes.len() as u128) << 64) & DYNAMIC_LENGTH_MASK;
 		let packed = MODE_DYNAMIC | offset_part | length_part;
 
 		unsafe {
 			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut u128,
+				row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
 				packed.to_le(),
 			);
 		}
@@ -90,10 +76,7 @@ impl EncodedRowLayout {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Int);
 
-		let packed = unsafe {
-			(row.as_ptr().add(field.offset) as *const u128)
-				.read_unaligned()
-		};
+		let packed = unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 
 		let mode = packed & MODE_MASK;
@@ -112,24 +95,17 @@ impl EncodedRowLayout {
 			// MODE_DYNAMIC: Extract offset and length for dynamic
 			// storage
 			let offset = (packed & DYNAMIC_OFFSET_MASK) as usize;
-			let length =
-				((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
+			let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
 
 			let dynamic_start = self.dynamic_section_start();
-			let bigint_bytes = &row.as_slice()[dynamic_start
-				+ offset
-				..dynamic_start + offset + length];
+			let bigint_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
 
 			Int::from(StdBigInt::from_signed_bytes_le(bigint_bytes))
 		}
 	}
 
 	/// Try to get a Int value, returning None if undefined
-	pub fn try_get_int(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<Int> {
+	pub fn try_get_int(&self, row: &EncodedRow, index: usize) -> Option<Int> {
 		if row.is_defined(index) {
 			Some(self.get_int(row, index))
 		} else {
@@ -196,15 +172,8 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		// Create a value larger than i128 can hold
-		let huge_str =
-			"999999999999999999999999999999999999999999999999";
-		let huge = Int::from(
-			num_bigint::BigInt::parse_bytes(
-				huge_str.as_bytes(),
-				10,
-			)
-			.unwrap(),
-		);
+		let huge_str = "999999999999999999999999999999999999999999999999";
+		let huge = Int::from(num_bigint::BigInt::parse_bytes(huge_str.as_bytes(), 10).unwrap());
 
 		layout.set_int(&mut row, 0, &huge);
 		assert!(row.is_defined(0));
@@ -258,12 +227,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Int4,
-			Type::Int,
-			Type::Utf8,
-			Type::Int,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Int4, Type::Int, Type::Utf8, Type::Int]);
 		let mut row = layout.allocate_row();
 
 		layout.set_i32(&mut row, 0, 42);
@@ -300,14 +264,9 @@ mod tests {
 
 		// Huge negative (dynamic)
 		let mut row3 = layout.allocate_row();
-		let huge_neg_str =
-			"-999999999999999999999999999999999999999999999999";
+		let huge_neg_str = "-999999999999999999999999999999999999999999999999";
 		let huge_neg = Int::from(
-			-num_bigint::BigInt::parse_bytes(
-				huge_neg_str.trim_start_matches('-').as_bytes(),
-				10,
-			)
-			.unwrap(),
+			-num_bigint::BigInt::parse_bytes(huge_neg_str.trim_start_matches('-').as_bytes(), 10).unwrap(),
 		);
 		layout.set_int(&mut row3, 0, &huge_neg);
 		assert_eq!(layout.get_int(&row3, 0), huge_neg);

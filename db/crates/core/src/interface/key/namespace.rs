@@ -20,10 +20,7 @@ impl EncodableKey for NamespaceKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.namespace);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.namespace);
 		serializer.to_encoded_key()
 	}
 
@@ -55,10 +52,7 @@ impl EncodableKey for NamespaceKey {
 
 impl NamespaceKey {
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::namespace_start()),
-			Some(Self::namespace_end()),
-		)
+		EncodedKeyRange::start_end(Some(Self::namespace_start()), Some(Self::namespace_end()))
 	}
 
 	fn namespace_start() -> EncodedKey {
@@ -85,10 +79,7 @@ mod tests {
 			namespace: NamespaceId(0xABCD),
 		};
 		let encoded = key.encode();
-		let expected = vec![
-			0xFE, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
-			0x32,
-		];
+		let expected = vec![0xFE, 0xFE, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32];
 		assert_eq!(encoded.as_slice(), expected);
 
 		let key = NamespaceKey::decode(&encoded).unwrap();

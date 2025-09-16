@@ -26,9 +26,7 @@ pub struct ColumnsTable<T: Transaction> {
 impl<T: Transaction> ColumnsTable<T> {
 	pub fn new() -> Self {
 		Self {
-			definition:
-				SystemCatalog::get_system_columns_table_def()
-					.clone(),
+			definition: SystemCatalog::get_system_columns_table_def().clone(),
 			exhausted: false,
 			_phantom: PhantomData,
 		}
@@ -36,19 +34,12 @@ impl<T: Transaction> ColumnsTable<T> {
 }
 
 impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnsTable<T> {
-	fn initialize(
-		&mut self,
-		_txn: &mut StandardTransaction<'a, T>,
-		_ctx: TableVirtualContext<'a>,
-	) -> Result<()> {
+	fn initialize(&mut self, _txn: &mut StandardTransaction<'a, T>, _ctx: TableVirtualContext<'a>) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		txn: &mut StandardTransaction<'a, T>,
-	) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -71,11 +62,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnsTable<T> {
 				0u8
 			});
 			column_names.push(info.column.name);
-			column_types.push(info
-				.column
-				.constraint
-				.get_type()
-				.to_u8());
+			column_types.push(info.column.constraint.get_type().to_u8());
 			positions.push(info.column.index.0);
 			auto_increments.push(info.column.auto_increment);
 		}

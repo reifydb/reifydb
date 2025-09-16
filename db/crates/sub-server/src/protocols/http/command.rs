@@ -20,16 +20,13 @@ pub fn handle_v1_command<T: Transaction>(
 	let mut all_frames = Vec::new();
 
 	for statement in &cmd_req.statements {
-		let params =
-			convert_params(&cmd_req.params).map_err(|_| {
-				ErrResponse {
+		let params = convert_params(&cmd_req.params).map_err(|_| ErrResponse {
 			diagnostic: Diagnostic {
 				code: "PARAM_CONVERSION_ERROR".to_string(),
 				message: "Failed to convert parameters".to_string(),
 				..Default::default()
 			},
-		}
-			})?;
+		})?;
 
 		match conn.engine().command_as(
 			&Identity::System {
@@ -40,15 +37,12 @@ pub fn handle_v1_command<T: Transaction>(
 			params,
 		) {
 			Ok(result) => {
-				let frames = convert_result_to_frames(result)
-					.map_err(|_| {
-					ErrResponse {
+				let frames = convert_result_to_frames(result).map_err(|_| ErrResponse {
 					diagnostic: Diagnostic {
 						code: "FRAME_CONVERSION_ERROR".to_string(),
 						message: "Failed to convert result frames".to_string(),
 						..Default::default()
 					},
-				}
 				})?;
 				all_frames.extend(frames);
 			}

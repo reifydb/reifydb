@@ -7,16 +7,12 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, GetEncodedRowLayout,
-		IndexEntryKey, IndexId, Params, RowKey, RowKeyRange,
-		Transaction, VersionedCommandTransaction,
-		VersionedQueryTransaction,
+		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId, Params, RowKey,
+		RowKeyRange, Transaction, VersionedCommandTransaction, VersionedQueryTransaction,
 	},
 	value::columnar::{ColumnData, Columns},
 };
-use reifydb_rql::plan::{
-	logical::extract_table_from_plan, physical::DeletePlan,
-};
+use reifydb_rql::plan::{logical::extract_table_from_plan, physical::DeletePlan};
 use reifydb_type::{
 	ROW_NUMBER_COLUMN_NAME, Value,
 	diagnostic::{
@@ -29,10 +25,7 @@ use reifydb_type::{
 use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
-	execute::{
-		Batch, ExecutionContext, Executor, QueryNode,
-		query::compile::compile,
-	},
+	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 };
 
 impl Executor {
@@ -46,33 +39,17 @@ impl Executor {
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
 			let namespace_name = target.namespace.text();
-			let Some(namespace) =
-				CatalogStore::find_namespace_by_name(
-					txn,
-					namespace_name,
-				)?
-			else {
+			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 				return_error!(namespace_not_found(
-					Some(target
-						.namespace
-						.clone()
-						.into_owned()),
+					Some(target.namespace.clone().into_owned()),
 					namespace_name
 				));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(
-				txn,
-				namespace.id,
-				target.name.text(),
-			)?
+			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name.text())?
 			else {
 				let fragment = target.name.clone();
-				return_error!(table_not_found(
-					fragment.clone(),
-					namespace_name,
-					target.name.text(),
-				));
+				return_error!(table_not_found(fragment.clone(), namespace_name, target.name.text(),));
 			};
 
 			(namespace, table)
@@ -81,13 +58,10 @@ impl Executor {
 			// Extract table info from the input plan if it
 			// exists
 			if let Some(input_plan) = &plan.input {
-				extract_table_from_plan(input_plan).expect(
-					"Cannot infer target table from pipeline - no table found",
-				)
+				extract_table_from_plan(input_plan)
+					.expect("Cannot infer target table from pipeline - no table found")
 			} else {
-				panic!(
-					"DELETE without input requires explicit target table"
-				);
+				panic!("DELETE without input requires explicit target table");
 			}
 		};
 
@@ -129,52 +103,35 @@ impl Executor {
 				// Find the RowNumber column - return error if
 				// not found
 				let Some(row_number_column) =
-					columns.iter().find(|col| {
-						col.name() == ROW_NUMBER_COLUMN_NAME
-					})
+					columns.iter().find(|col| col.name() == ROW_NUMBER_COLUMN_NAME)
 				else {
-					return_error!(
-						engine::missing_row_number_column()
-					);
+					return_error!(engine::missing_row_number_column());
 				};
 
 				// Extract RowNumber data - return error if any
 				// are undefined
-				let row_numbers = match &row_number_column
-					.data()
-				{
+				let row_numbers = match &row_number_column.data() {
 					ColumnData::RowNumber(container) => {
 						// Check that all row IDs are
 						// defined
-						for i in 0..container
-							.data()
-							.len()
-						{
-							if !container
-								.is_defined(i)
-							{
+						for i in 0..container.data().len() {
+							if !container.is_defined(i) {
 								return_error!(engine::invalid_row_number_values());
 							}
 						}
 						container.data()
 					}
-					_ => return_error!(
-						engine::invalid_row_number_values()
-					),
+					_ => return_error!(engine::invalid_row_number_values()),
 				};
 
 				for row_numberx in 0..columns.row_count() {
-					let row_number =
-						row_numbers[row_numberx];
+					let row_number = row_numbers[row_numberx];
 					row_numbers_to_delete.push(row_number);
 				}
 			}
 
 			// Get primary key info if table has one
-			let pk_def = primary_key::get_primary_key(
-				std_txn.command_mut(),
-				&table,
-			)?;
+			let pk_def = primary_key::get_primary_key(std_txn.command_mut(), &table)?;
 
 			let cmd = std_txn.command();
 			for row_number in row_numbers_to_delete {
@@ -187,24 +144,15 @@ impl Executor {
 				// Remove primary key index entry if table has
 				// one
 				if let Some(ref pk_def) = pk_def {
-					if let Some(row_data) =
-						cmd.get(&row_key)?
-					{
+					if let Some(row_data) = cmd.get(&row_key)? {
 						let row = row_data.row;
 						let layout = table.get_layout();
-						let index_key = primary_key::encode_primary_key(
-							pk_def,
-							&row,
-							&table,
-							&layout,
-						)?;
+						let index_key =
+							primary_key::encode_primary_key(pk_def, &row, &table, &layout)?;
 
-						cmd
-							.remove(&IndexEntryKey::new(
+						cmd.remove(&IndexEntryKey::new(
 							table.id,
-							IndexId::primary(
-								pk_def.id,
-							),
+							IndexId::primary(pk_def.id),
 							index_key,
 						)
 						.encode())?;

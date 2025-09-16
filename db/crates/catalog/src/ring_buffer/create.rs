@@ -4,8 +4,7 @@
 use reifydb_core::{
 	diagnostic::catalog::ring_buffer_already_exists,
 	interface::{
-		ColumnIndex, ColumnPolicyKind, CommandTransaction, NamespaceId,
-		RingBufferDef, RingBufferId, TableId,
+		ColumnIndex, ColumnPolicyKind, CommandTransaction, NamespaceId, RingBufferDef, RingBufferId, TableId,
 	},
 	return_error,
 };
@@ -40,13 +39,9 @@ impl CatalogStore {
 
 		// Check if ring buffer already exists
 		if let Some(ring_buffer) =
-			CatalogStore::find_ring_buffer_by_name(
-				txn,
-				namespace_id,
-				&to_create.ring_buffer,
-			)? {
-			let namespace =
-				CatalogStore::get_namespace(txn, namespace_id)?;
+			CatalogStore::find_ring_buffer_by_name(txn, namespace_id, &to_create.ring_buffer)?
+		{
+			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
 			return_error!(ring_buffer_already_exists(
 				to_create.fragment,
 				&namespace.name,
@@ -58,37 +53,19 @@ impl CatalogStore {
 		let ring_buffer_id = SystemSequence::next_ring_buffer_id(txn)?;
 
 		// Store the ring buffer
-		Self::store_ring_buffer(
-			txn,
-			ring_buffer_id,
-			namespace_id,
-			&to_create,
-		)?;
+		Self::store_ring_buffer(txn, ring_buffer_id, namespace_id, &to_create)?;
 
 		// Link ring buffer to namespace
-		Self::link_ring_buffer_to_namespace(
-			txn,
-			namespace_id,
-			ring_buffer_id,
-			&to_create.ring_buffer,
-		)?;
+		Self::link_ring_buffer_to_namespace(txn, namespace_id, ring_buffer_id, &to_create.ring_buffer)?;
 
 		// Save capacity before moving to_create
 		let capacity = to_create.capacity;
 
 		// Insert columns
-		Self::insert_ring_buffer_columns(
-			txn,
-			ring_buffer_id,
-			to_create,
-		)?;
+		Self::insert_ring_buffer_columns(txn, ring_buffer_id, to_create)?;
 
 		// Initialize ring buffer metadata
-		Self::initialize_ring_buffer_metadata(
-			txn,
-			ring_buffer_id,
-			capacity,
-		)?;
+		Self::initialize_ring_buffer_metadata(txn, ring_buffer_id, capacity)?;
 
 		Ok(Self::get_ring_buffer(txn, ring_buffer_id)?)
 	}
@@ -104,32 +81,12 @@ impl CatalogStore {
 		use crate::ring_buffer::layout::ring_buffer;
 
 		let mut row = ring_buffer::LAYOUT.allocate_row();
-		ring_buffer::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer::ID,
-			ring_buffer,
-		);
-		ring_buffer::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer::NAMESPACE,
-			namespace,
-		);
-		ring_buffer::LAYOUT.set_utf8(
-			&mut row,
-			ring_buffer::NAME,
-			&to_create.ring_buffer,
-		);
-		ring_buffer::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer::CAPACITY,
-			to_create.capacity,
-		);
+		ring_buffer::LAYOUT.set_u64(&mut row, ring_buffer::ID, ring_buffer);
+		ring_buffer::LAYOUT.set_u64(&mut row, ring_buffer::NAMESPACE, namespace);
+		ring_buffer::LAYOUT.set_utf8(&mut row, ring_buffer::NAME, &to_create.ring_buffer);
+		ring_buffer::LAYOUT.set_u64(&mut row, ring_buffer::CAPACITY, to_create.capacity);
 		// Initialize with no primary key
-		ring_buffer::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer::PRIMARY_KEY,
-			0u64,
-		);
+		ring_buffer::LAYOUT.set_u64(&mut row, ring_buffer::PRIMARY_KEY, 0u64);
 
 		let key = RingBufferKey::new(ring_buffer);
 		txn.set(&key.encode(), row)?;
@@ -143,23 +100,13 @@ impl CatalogStore {
 		ring_buffer: RingBufferId,
 		name: &str,
 	) -> crate::Result<()> {
-		use reifydb_core::interface::{
-			EncodableKey, NamespaceRingBufferKey,
-		};
+		use reifydb_core::interface::{EncodableKey, NamespaceRingBufferKey};
 
 		use crate::ring_buffer::layout::ring_buffer_namespace;
 
 		let mut row = ring_buffer_namespace::LAYOUT.allocate_row();
-		ring_buffer_namespace::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer_namespace::ID,
-			ring_buffer,
-		);
-		ring_buffer_namespace::LAYOUT.set_utf8(
-			&mut row,
-			ring_buffer_namespace::NAME,
-			name,
-		);
+		ring_buffer_namespace::LAYOUT.set_u64(&mut row, ring_buffer_namespace::ID, ring_buffer);
+		ring_buffer_namespace::LAYOUT.set_utf8(&mut row, ring_buffer_namespace::NAME, name);
 
 		let key = NamespaceRingBufferKey::new(namespace, ring_buffer);
 		txn.set(&key.encode(), row)?;
@@ -206,38 +153,16 @@ impl CatalogStore {
 		ring_buffer_id: RingBufferId,
 		capacity: u64,
 	) -> crate::Result<()> {
-		use reifydb_core::interface::{
-			EncodableKey, RingBufferMetadataKey,
-		};
+		use reifydb_core::interface::{EncodableKey, RingBufferMetadataKey};
 
 		use crate::ring_buffer::layout::ring_buffer_metadata;
 
 		let mut row = ring_buffer_metadata::LAYOUT.allocate_row();
-		ring_buffer_metadata::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer_metadata::ID,
-			ring_buffer_id,
-		);
-		ring_buffer_metadata::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer_metadata::CAPACITY,
-			capacity,
-		);
-		ring_buffer_metadata::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer_metadata::HEAD,
-			0u64,
-		);
-		ring_buffer_metadata::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer_metadata::TAIL,
-			0u64,
-		);
-		ring_buffer_metadata::LAYOUT.set_u64(
-			&mut row,
-			ring_buffer_metadata::COUNT,
-			0u64,
-		);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::ID, ring_buffer_id);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::CAPACITY, capacity);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::HEAD, 0u64);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::TAIL, 0u64);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::COUNT, 0u64);
 
 		let key = RingBufferMetadataKey::new(ring_buffer_id);
 		txn.set(&key.encode(), row)?;
@@ -248,29 +173,23 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{
-		NamespaceRingBufferKey, VersionedQueryTransaction,
-	};
+	use reifydb_core::interface::{NamespaceRingBufferKey, VersionedQueryTransaction};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 
 	use super::*;
-	use crate::{
-		ring_buffer::layout::ring_buffer_namespace,
-		test_utils::ensure_test_namespace,
-	};
+	use crate::{ring_buffer::layout::ring_buffer_namespace, test_utils::ensure_test_namespace};
 
 	#[test]
 	fn test_create_simple_ring_buffer() {
 		let mut txn = create_test_command_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
-		let to_create =
-			RingBufferToCreate {
-				namespace: test_namespace.id,
-				ring_buffer: "trades".to_string(),
-				capacity: 1000,
-				columns: vec![
+		let to_create = RingBufferToCreate {
+			namespace: test_namespace.id,
+			ring_buffer: "trades".to_string(),
+			capacity: 1000,
+			columns: vec![
 				RingBufferColumnToCreate {
 					name: "symbol".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
@@ -286,12 +205,10 @@ mod tests {
 					auto_increment: false,
 				},
 			],
-				fragment: None,
-			};
+			fragment: None,
+		};
 
-		let result =
-			CatalogStore::create_ring_buffer(&mut txn, to_create)
-				.unwrap();
+		let result = CatalogStore::create_ring_buffer(&mut txn, to_create).unwrap();
 
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id);
@@ -316,9 +233,7 @@ mod tests {
 			fragment: None,
 		};
 
-		let result =
-			CatalogStore::create_ring_buffer(&mut txn, to_create)
-				.unwrap();
+		let result = CatalogStore::create_ring_buffer(&mut txn, to_create).unwrap();
 
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id);
@@ -341,18 +256,13 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = CatalogStore::create_ring_buffer(
-			&mut txn,
-			to_create.clone(),
-		)
-		.unwrap();
+		let result = CatalogStore::create_ring_buffer(&mut txn, to_create.clone()).unwrap();
 		assert!(result.id.0 > 0);
 		assert_eq!(result.namespace, test_namespace.id);
 		assert_eq!(result.name, "test_ring_buffer");
 
 		// Second creation should fail with duplicate error
-		let err = CatalogStore::create_ring_buffer(&mut txn, to_create)
-			.unwrap_err();
+		let err = CatalogStore::create_ring_buffer(&mut txn, to_create).unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_005");
 	}
 
@@ -382,37 +292,23 @@ mod tests {
 		CatalogStore::create_ring_buffer(&mut txn, to_create).unwrap();
 
 		// Check namespace links
-		let links = txn
-			.range(NamespaceRingBufferKey::full_scan(
-				test_namespace.id,
-			))
-			.unwrap()
-			.collect::<Vec<_>>();
+		let links =
+			txn.range(NamespaceRingBufferKey::full_scan(test_namespace.id)).unwrap().collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
 
 		// Check first link (descending order, so buffer2 comes first)
 		let link = &links[0];
 		let row = &link.row;
-		let id2 = ring_buffer_namespace::LAYOUT
-			.get_u64(row, ring_buffer_namespace::ID);
+		let id2 = ring_buffer_namespace::LAYOUT.get_u64(row, ring_buffer_namespace::ID);
 		assert!(id2 > 0);
-		assert_eq!(
-			ring_buffer_namespace::LAYOUT
-				.get_utf8(row, ring_buffer_namespace::NAME),
-			"buffer2"
-		);
+		assert_eq!(ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME), "buffer2");
 
 		// Check second link (buffer1 comes second)
 		let link = &links[1];
 		let row = &link.row;
-		let id1 = ring_buffer_namespace::LAYOUT
-			.get_u64(row, ring_buffer_namespace::ID);
+		let id1 = ring_buffer_namespace::LAYOUT.get_u64(row, ring_buffer_namespace::ID);
 		assert!(id2 > id1);
-		assert_eq!(
-			ring_buffer_namespace::LAYOUT
-				.get_utf8(row, ring_buffer_namespace::NAME),
-			"buffer1"
-		);
+		assert_eq!(ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME), "buffer1");
 	}
 
 	#[test]
@@ -428,16 +324,12 @@ mod tests {
 			fragment: None,
 		};
 
-		let result =
-			CatalogStore::create_ring_buffer(&mut txn, to_create)
-				.unwrap();
+		let result = CatalogStore::create_ring_buffer(&mut txn, to_create).unwrap();
 
 		// Check that metadata was created
-		let metadata = CatalogStore::find_ring_buffer_metadata(
-			&mut txn, result.id,
-		)
-		.unwrap()
-		.expect("Metadata should exist");
+		let metadata = CatalogStore::find_ring_buffer_metadata(&mut txn, result.id)
+			.unwrap()
+			.expect("Metadata should exist");
 
 		assert_eq!(metadata.id, result.id);
 		assert_eq!(metadata.capacity, 500);
@@ -459,9 +351,7 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		let small_result =
-			CatalogStore::create_ring_buffer(&mut txn, small)
-				.unwrap();
+		let small_result = CatalogStore::create_ring_buffer(&mut txn, small).unwrap();
 		assert_eq!(small_result.capacity, 10);
 
 		// Create medium buffer
@@ -472,9 +362,7 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		let medium_result =
-			CatalogStore::create_ring_buffer(&mut txn, medium)
-				.unwrap();
+		let medium_result = CatalogStore::create_ring_buffer(&mut txn, medium).unwrap();
 		assert_eq!(medium_result.capacity, 1000);
 
 		// Create large buffer
@@ -485,9 +373,7 @@ mod tests {
 			columns: vec![],
 			fragment: None,
 		};
-		let large_result =
-			CatalogStore::create_ring_buffer(&mut txn, large)
-				.unwrap();
+		let large_result = CatalogStore::create_ring_buffer(&mut txn, large).unwrap();
 		assert_eq!(large_result.capacity, 1000000);
 
 		// Verify they have different IDs
@@ -504,27 +390,21 @@ mod tests {
 		let columns = vec![
 			RingBufferColumnToCreate {
 				name: "first".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Uint8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				fragment: None,
 				policies: vec![],
 				auto_increment: false,
 			},
 			RingBufferColumnToCreate {
 				name: "second".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Uint16,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Uint16),
 				fragment: None,
 				policies: vec![],
 				auto_increment: false,
 			},
 			RingBufferColumnToCreate {
 				name: "third".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Uint4,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Uint4),
 				fragment: None,
 				policies: vec![],
 				auto_increment: false,
@@ -539,9 +419,7 @@ mod tests {
 			fragment: None,
 		};
 
-		let result =
-			CatalogStore::create_ring_buffer(&mut txn, to_create)
-				.unwrap();
+		let result = CatalogStore::create_ring_buffer(&mut txn, to_create).unwrap();
 
 		assert_eq!(result.columns.len(), 3);
 		assert_eq!(result.columns[0].name, "first");

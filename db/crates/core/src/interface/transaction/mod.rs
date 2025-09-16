@@ -51,10 +51,7 @@ impl TryFrom<&[u8]> for TransactionId {
 
 	fn try_from(bytes: &[u8]) -> std::result::Result<Self, Self::Error> {
 		if bytes.len() != 16 {
-			return_internal_error!(
-				"Invalid transaction ID length: expected 16 bytes, got {}",
-				bytes.len()
-			);
+			return_internal_error!("Invalid transaction ID length: expected 16 bytes, got {}", bytes.len());
 		}
 		let mut uuid_bytes = [0u8; 16];
 		uuid_bytes.copy_from_slice(bytes);

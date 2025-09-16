@@ -22,22 +22,18 @@ use reifydb_type::Error;
 use super::*;
 use crate::mvcc::{
 	transaction::{
-		TransactionManagerCommand, iter::TransactionIter,
-		iter_rev::TransactionIterRev, range::TransactionRange,
-		range_rev::TransactionRangeRev, version::StdVersionProvider,
+		TransactionManagerCommand, iter::TransactionIter, iter_rev::TransactionIterRev,
+		range::TransactionRange, range_rev::TransactionRangeRev, version::StdVersionProvider,
 	},
 	types::TransactionValue,
 };
 
-pub struct CommandTransaction<VS: VersionedStorage, UT: UnversionedTransaction>
-{
+pub struct CommandTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
 	engine: Optimistic<VS, UT>,
 	pub(crate) tm: TransactionManagerCommand<StdVersionProvider<UT>>,
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction>
-	CommandTransaction<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
 	pub fn new(engine: Optimistic<VS, UT>) -> crate::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
@@ -47,9 +43,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction>
-	CommandTransaction<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
 	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
 		let mut version: Option<CommitVersion> = None;
 		let mut deltas = CowVec::with_capacity(8);
@@ -66,11 +60,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 			}
 
 			if let Some(version) = version {
-				self.engine.versioned.commit(
-					deltas.clone(),
-					version,
-					transaction_id,
-				)?;
+				self.engine.versioned.commit(deltas.clone(), version, transaction_id)?;
 			}
 			Ok(())
 		})?;
@@ -86,9 +76,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction>
-	CommandTransaction<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> CommandTransaction<VS, UT> {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -101,10 +89,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		self.tm.rollback()
 	}
 
-	pub fn contains_key(
-		&mut self,
-		key: &EncodedKey,
-	) -> Result<bool, reifydb_type::Error> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, reifydb_type::Error> {
 		let version = self.tm.version();
 		match self.tm.contains_key(key)? {
 			Some(true) => Ok(true),
@@ -113,10 +98,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		}
 	}
 
-	pub fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> Result<Option<TransactionValue>, reifydb_type::Error> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, reifydb_type::Error> {
 		let version = self.tm.version();
 		match self.tm.get(key)? {
 			Some(v) => {
@@ -126,32 +108,19 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 					Ok(None)
 				}
 			}
-			None => Ok(self
-				.engine
-				.versioned
-				.get(key, version)?
-				.map(TransactionValue::from)),
+			None => Ok(self.engine.versioned.get(key, version)?.map(TransactionValue::from)),
 		}
 	}
 
-	pub fn set(
-		&mut self,
-		key: &EncodedKey,
-		row: EncodedRow,
-	) -> Result<(), reifydb_type::Error> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), reifydb_type::Error> {
 		self.tm.set(key, row)
 	}
 
-	pub fn remove(
-		&mut self,
-		key: &EncodedKey,
-	) -> Result<(), reifydb_type::Error> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_type::Error> {
 		self.tm.remove(key)
 	}
 
-	pub fn scan(
-		&mut self,
-	) -> Result<TransactionIter<'_, VS>, reifydb_type::Error> {
+	pub fn scan(&mut self) -> Result<TransactionIter<'_, VS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (marker, pw) = self.tm.marker_with_pending_writes();
 		let pending = pw.iter();
@@ -160,9 +129,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		Ok(TransactionIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn scan_rev(
-		&mut self,
-	) -> Result<TransactionIterRev<'_, VS>, reifydb_type::Error> {
+	pub fn scan_rev(&mut self) -> Result<TransactionIterRev<'_, VS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (marker, pw) = self.tm.marker_with_pending_writes();
 		let pending = pw.iter().rev();
@@ -171,10 +138,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		Ok(TransactionIterRev::new(pending, commited, Some(marker)))
 	}
 
-	pub fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> Result<TransactionRange<'_, VS>, reifydb_type::Error> {
+	pub fn range(&mut self, range: EncodedKeyRange) -> Result<TransactionRange<'_, VS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -194,20 +158,12 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		let start = range.start_bound();
 		let end = range.end_bound();
 		let pending = pw.range((start, end));
-		let commited =
-			self.engine.versioned.range_rev(range, version)?;
+		let commited = self.engine.versioned.range_rev(range, version)?;
 
-		Ok(TransactionRangeRev::new(
-			pending.rev(),
-			commited,
-			Some(marker),
-		))
+		Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))
 	}
 
-	pub fn prefix<'a>(
-		&'a mut self,
-		prefix: &EncodedKey,
-	) -> Result<TransactionRange<'a, VS>, reifydb_type::Error> {
+	pub fn prefix<'a>(&'a mut self, prefix: &EncodedKey) -> Result<TransactionRange<'a, VS>, reifydb_type::Error> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 

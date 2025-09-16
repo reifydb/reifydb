@@ -17,12 +17,7 @@ use crate::{
 };
 
 impl VersionedCommit for Memory {
-	fn commit(
-		&self,
-		delta: CowVec<Delta>,
-		version: CommitVersion,
-		transaction: TransactionId,
-	) -> Result<()> {
+	fn commit(&self, delta: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
 		let timestamp = now_millis();
 
 		let mut cdc_changes = Vec::new();
@@ -33,43 +28,27 @@ impl VersionedCommit for Memory {
 				Err(_) => return_error!(sequence_exhausted()),
 			};
 
-			let before_value = self
-				.versioned
-				.get(delta.key())
-				.and_then(|entry| {
-					let values = entry.value();
-					Some(values
-						.get_latest()
-						.unwrap_or_else(|| {
-							EncodedRow::deleted()
-						}))
-				});
+			let before_value = self.versioned.get(delta.key()).and_then(|entry| {
+				let values = entry.value();
+				Some(values.get_latest().unwrap_or_else(|| EncodedRow::deleted()))
+			});
 
 			match &delta {
 				Delta::Set {
 					key,
 					row,
 				} => {
-					let item = self
-						.versioned
-						.get_or_insert_with(
-							key.clone(),
-							VersionedRow::new,
-						);
+					let item = self.versioned.get_or_insert_with(key.clone(), VersionedRow::new);
 					let val = item.value();
 					val.insert(version, Some(row.clone()));
 				}
 				Delta::Remove {
 					key,
 				} => {
-					if let Some(values) =
-						self.versioned.get(key)
-					{
+					if let Some(values) = self.versioned.get(key) {
 						let values = values.value();
 						if !values.is_empty() {
-							values.insert(
-								version, None,
-							);
+							values.insert(version, None);
 						}
 					}
 				}
@@ -77,20 +56,12 @@ impl VersionedCommit for Memory {
 
 			cdc_changes.push(CdcTransactionChange {
 				sequence,
-				change: generate_cdc_change(
-					delta.clone(),
-					before_value,
-				),
+				change: generate_cdc_change(delta.clone(), before_value),
 			});
 		}
 
 		if !cdc_changes.is_empty() {
-			let cdc_transaction = CdcTransaction::new(
-				version,
-				timestamp,
-				transaction,
-				cdc_changes,
-			);
+			let cdc_transaction = CdcTransaction::new(version, timestamp, transaction, cdc_changes);
 			self.cdc_transactions.insert(version, cdc_transaction);
 		}
 

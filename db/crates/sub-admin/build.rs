@@ -16,28 +16,19 @@ fn main() {
 	let dest_path = Path::new(&out_dir).join("webapp");
 
 	if webapp_dist.exists() {
-		println!(
-			"cargo:warning=Found webapp/dist directory, copying to build output"
-		);
+		println!("cargo:warning=Found webapp/dist directory, copying to build output");
 
-		create_dir_all(&dest_path)
-			.expect("Failed to create webapp directory in OUT_DIR");
-		copy_dir_all(webapp_dist, &dest_path)
-			.expect("Failed to copy webapp dist files");
-		generate_asset_manifest(&dest_path)
-			.expect("Failed to generate asset manifest");
+		create_dir_all(&dest_path).expect("Failed to create webapp directory in OUT_DIR");
+		copy_dir_all(webapp_dist, &dest_path).expect("Failed to copy webapp dist files");
+		generate_asset_manifest(&dest_path).expect("Failed to generate asset manifest");
 
-		println!(
-			"cargo:warning=Webapp files copied to: {}",
-			dest_path.display()
-		);
+		println!("cargo:warning=Webapp files copied to: {}", dest_path.display());
 	} else {
 		println!(
 			"cargo:warning=No webapp/dist directory found. Run 'npm run build' in webapp/ directory first."
 		);
 
-		create_dir_all(&dest_path)
-			.expect("Failed to create webapp directory");
+		create_dir_all(&dest_path).expect("Failed to create webapp directory");
 
 		let placeholder_html = r#"<!DOCTYPE html>
 <html>
@@ -61,15 +52,11 @@ fn main() {
 
 		// Generate an empty asset manifest so the include! macro
 		// doesn't fail
-		generate_empty_asset_manifest(&dest_path)
-			.expect("Failed to generate empty asset manifest");
+		generate_empty_asset_manifest(&dest_path).expect("Failed to generate empty asset manifest");
 	}
 }
 
-fn copy_dir_all(
-	src: impl AsRef<Path>,
-	dst: impl AsRef<Path>,
-) -> std::io::Result<()> {
+fn copy_dir_all(src: impl AsRef<Path>, dst: impl AsRef<Path>) -> std::io::Result<()> {
 	create_dir_all(&dst)?;
 	for entry in fs::read_dir(src)? {
 		let entry = entry?;
@@ -136,20 +123,12 @@ fn collect_assets(
 			}
 
 			// Get relative path from base
-			let rel_path = path
-				.strip_prefix(base)
-				.unwrap()
-				.to_string_lossy()
-				.replace('\\', "/");
+			let rel_path = path.strip_prefix(base).unwrap().to_string_lossy().replace('\\', "/");
 
 			// Determine MIME type
 			let mime_type = get_mime_type(&rel_path);
 
-			assets.push((
-				rel_path,
-				path.clone(),
-				mime_type.to_string(),
-			));
+			assets.push((rel_path, path.clone(), mime_type.to_string()));
 		}
 	}
 	Ok(())
@@ -195,10 +174,7 @@ fn generate_empty_asset_manifest(webapp_path: &Path) -> std::io::Result<()> {
 	writeln!(manifest, "pub const ASSETS: &[(&str, &[u8], &str)] = &[")?;
 
 	// Include just the placeholder index.html
-	writeln!(
-		manifest,
-		"    (\"index.html\", include_bytes!(\"index.html\"), \"text/html; charset=utf-8\"),",
-	)?;
+	writeln!(manifest, "    (\"index.html\", include_bytes!(\"index.html\"), \"text/html; charset=utf-8\"),",)?;
 
 	writeln!(manifest, "];")?;
 	Ok(())

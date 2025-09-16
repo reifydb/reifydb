@@ -97,9 +97,7 @@ insert company.employees"#,
 	}
 
 	// Query with filter - find active employees in Engineering
-	log_query(
-		r#"from company.employees filter { is_active = true and department = "Engineering" }"#,
-	);
+	log_query(r#"from company.employees filter { is_active = true and department = "Engineering" }"#);
 	let results = db
 		.query_as_root(
 			r#"
@@ -148,9 +146,7 @@ update company.employees"#,
 	.unwrap();
 
 	// Query to see the updated salaries
-	log_query(
-		r#"from company.employees filter { department = "Engineering" }"#,
-	);
+	log_query(r#"from company.employees filter { department = "Engineering" }"#);
 	let results = db
 		.query_as_root(
 			r#"

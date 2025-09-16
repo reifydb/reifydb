@@ -3,9 +3,7 @@
 
 use std::{sync::Arc, thread};
 
-use reifydb_transaction::mvcc::transaction::{
-	MAX_COMMITTED_TXNS, optimistic::Optimistic,
-};
+use reifydb_transaction::mvcc::transaction::{MAX_COMMITTED_TXNS, optimistic::Optimistic};
 
 use crate::{as_key, as_row};
 
@@ -39,11 +37,7 @@ fn test_oracle_committed_txns_cleanup() {
 			// exceeding limits We can't directly check the
 			// internal state, but the fact that we can continue
 			// creating transactions shows cleanup is working
-			assert!(
-				i < NUM_TXNS,
-				"Should be able to create {} transactions",
-				NUM_TXNS
-			);
+			assert!(i < NUM_TXNS, "Should be able to create {} transactions", NUM_TXNS);
 		}
 	}
 
@@ -69,26 +63,16 @@ fn test_oracle_high_concurrency() {
 		let engine_clone = engine.clone();
 		let handle = thread::spawn(move || {
 			for i in 0..TXN_PER_THREAD {
-				let mut tx =
-					engine_clone.begin_command().unwrap();
+				let mut tx = engine_clone.begin_command().unwrap();
 
-				let key = as_key!(format!(
-					"t{}_{}",
-					thread_id, i
-				));
-				let value = as_row!(format!(
-					"v{}_{}",
-					thread_id, i
-				));
+				let key = as_key!(format!("t{}_{}", thread_id, i));
+				let value = as_row!(format!("v{}_{}", thread_id, i));
 
 				tx.set(&key, value).unwrap();
 
 				match tx.commit() {
 					Ok(_) => {}
-					Err(e) => panic!(
-						"Unexpected error: {:?}",
-						e
-					),
+					Err(e) => panic!("Unexpected error: {:?}", e),
 				}
 			}
 		});

@@ -75,9 +75,7 @@ impl Subsystems {
 				log_error!("Startup timeout exceeded");
 				// Rollback: stop all previously started
 				// subsystems
-				self.stop_started_subsystems(
-					&started_subsystems,
-				)?;
+				self.stop_started_subsystems(&started_subsystems)?;
 				panic!("Startup timeout exceeded");
 			}
 
@@ -87,44 +85,27 @@ impl Subsystems {
 			match subsystem.start() {
 				Ok(()) => {
 					// Update health monitoring
-					self.health_monitor
-						.update_component_health(
-							name.clone(),
-							subsystem
-								.health_status(
-								),
-							subsystem.is_running(),
-						);
-					started_subsystems.push(name.clone());
-					log_debug!(
-						"Successfully started: {}",
-						name
+					self.health_monitor.update_component_health(
+						name.clone(),
+						subsystem.health_status(),
+						subsystem.is_running(),
 					);
+					started_subsystems.push(name.clone());
+					log_debug!("Successfully started: {}", name);
 				}
 				Err(e) => {
-					log_error!(
-						"Failed to start subsystem '{}': {}",
-						name,
-						e
-					);
+					log_error!("Failed to start subsystem '{}': {}", name, e);
 					// Update health monitoring with failure
-					self.health_monitor
-						.update_component_health(
-							name.clone(),
-							HealthStatus::Failed {
-								description:
-									format!(
-									"Startup failed: {}",
-									e
-								),
-							},
-							false,
-						);
+					self.health_monitor.update_component_health(
+						name.clone(),
+						HealthStatus::Failed {
+							description: format!("Startup failed: {}", e),
+						},
+						false,
+					);
 					// Rollback: stop all previously started
 					// subsystems
-					self.stop_started_subsystems(
-						&started_subsystems,
-					)?;
+					self.stop_started_subsystems(&started_subsystems)?;
 					return Err(e);
 				}
 			}
@@ -134,10 +115,7 @@ impl Subsystems {
 		self.wire_subsystems()?;
 
 		self.running.store(true, Ordering::Relaxed);
-		log_debug!(
-			"All {} subsystems started successfully",
-			started_subsystems.len()
-		);
+		log_debug!("All {} subsystems started successfully", started_subsystems.len());
 		Ok(())
 	}
 
@@ -169,38 +147,23 @@ impl Subsystems {
 			match subsystem.shutdown() {
 				Ok(()) => {
 					// Update health monitoring
-					self.health_monitor
-						.update_component_health(
-							name.clone(),
-							subsystem
-								.health_status(
-								),
-							subsystem.is_running(),
-						);
-					log_debug!(
-						"Successfully stopped: {}",
-						name
+					self.health_monitor.update_component_health(
+						name.clone(),
+						subsystem.health_status(),
+						subsystem.is_running(),
 					);
+					log_debug!("Successfully stopped: {}", name);
 				}
 				Err(e) => {
-					log_error!(
-						"Error stopping subsystem '{}': {}",
-						name,
-						e
-					);
+					log_error!("Error stopping subsystem '{}': {}", name, e);
 					// Update health monitoring with failure
-					self.health_monitor
-						.update_component_health(
-							name.clone(),
-							HealthStatus::Failed {
-								description:
-									format!(
-									"Shutdown failed: {}",
-									e
-								),
-							},
-							subsystem.is_running(),
-						);
+					self.health_monitor.update_component_health(
+						name.clone(),
+						HealthStatus::Failed {
+							description: format!("Shutdown failed: {}", e),
+						},
+						subsystem.is_running(),
+					);
 					errors.push((name.clone(), e));
 				}
 			}
@@ -212,11 +175,8 @@ impl Subsystems {
 			log_debug!("All subsystems stopped successfully");
 			Ok(())
 		} else {
-			let error_msg = format!(
-				"Errors occurred while stopping {} subsystems: {:?}",
-				errors.len(),
-				errors
-			);
+			let error_msg =
+				format!("Errors occurred while stopping {} subsystems: {:?}", errors.len(), errors);
 			log_error!("{}", error_msg);
 			panic!("Errors occurred during shutdown: {:?}", errors)
 		}
@@ -233,10 +193,7 @@ impl Subsystems {
 	}
 
 	pub fn get_subsystem_names(&self) -> Vec<String> {
-		self.subsystems
-			.iter()
-			.map(|subsystem| subsystem.name().to_string())
-			.collect()
+		self.subsystems.iter().map(|subsystem| subsystem.name().to_string()).collect()
 	}
 
 	pub fn get<T: 'static>(&self) -> Option<&T> {
@@ -254,10 +211,7 @@ impl Subsystems {
 		Ok(())
 	}
 
-	fn stop_started_subsystems(
-		&mut self,
-		started_names: &[String],
-	) -> Result<()> {
+	fn stop_started_subsystems(&mut self, started_names: &[String]) -> Result<()> {
 		let mut errors = Vec::new();
 
 		// Stop the started subsystems in reverse order
@@ -266,22 +220,15 @@ impl Subsystems {
 			for subsystem in &mut self.subsystems {
 				if subsystem.name() == name {
 					if let Err(e) = subsystem.shutdown() {
-						log_error!(
-							"Error stopping '{}' during rollback: {}",
-							name,
-							e
-						);
+						log_error!("Error stopping '{}' during rollback: {}", name, e);
 						errors.push((name.clone(), e));
 					}
 					// Update health monitoring
-					self.health_monitor
-						.update_component_health(
-							name.clone(),
-							subsystem
-								.health_status(
-								),
-							subsystem.is_running(),
-						);
+					self.health_monitor.update_component_health(
+						name.clone(),
+						subsystem.health_status(),
+						subsystem.is_running(),
+					);
 					break;
 				}
 			}

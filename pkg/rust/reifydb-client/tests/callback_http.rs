@@ -12,16 +12,12 @@ use std::{
 };
 
 use common::{
-	cleanup_server, parse_named_params, parse_positional_params, parse_rql,
-	start_server_and_get_port, write_frames,
+	cleanup_server, parse_named_params, parse_positional_params, parse_rql, start_server_and_get_port, write_frames,
 };
 use reifydb::{
 	core::{
 		event::EventBus,
-		interface::{
-			CdcTransaction, UnversionedTransaction,
-			VersionedTransaction,
-		},
+		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 		retry,
 	},
 	memory, optimistic, Database,
@@ -34,9 +30,7 @@ use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 use thread::sleep;
 
-use crate::common::{
-	cleanup_http_client, connect_http, create_server_instance,
-};
+use crate::common::{cleanup_http_client, connect_http, create_server_instance};
 
 pub struct CallbackRunner<VT, UT, C>
 where
@@ -75,63 +69,42 @@ where
 	C: CdcTransaction,
 {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
-		let session =
-			self.session.as_ref().ok_or("No session available")?;
+		let session = self.session.as_ref().ok_or("No session available")?;
 
 		match command.name.as_str() {
 			"command" => {
 				let rql = parse_rql(command);
 				println!("command: {rql}");
 
-				let result_holder =
-					self.last_command_result.clone();
+				let result_holder = self.last_command_result.clone();
 
 				// Clear previous result
 				*result_holder.lock().unwrap() = None;
 
-				let _request_id = session.command(
-					&rql,
-					None,
-					move |result| {
-						let mut holder = result_holder
-							.lock()
-							.unwrap();
-						*holder = Some(result.map_err(
-							|e| e.to_string(),
-						));
-					},
-				)?;
+				let _request_id = session.command(&rql, None, move |result| {
+					let mut holder = result_holder.lock().unwrap();
+					*holder = Some(result.map_err(|e| e.to_string()));
+				})?;
 
 				// Wait for callback to execute
 				let mut attempts = 0;
 				loop {
 					sleep(Duration::from_millis(100));
-					let result = self
-						.last_command_result
-						.lock()
-						.unwrap();
+					let result = self.last_command_result.lock().unwrap();
 					if result.is_some() {
 						break;
 					}
 					attempts += 1;
 					if attempts > 50 {
 						// 5 second timeout
-						return Err("Callback timeout"
-							.into());
+						return Err("Callback timeout".into());
 					}
 				}
 
 				// Get the result
-				let result = self
-					.last_command_result
-					.lock()
-					.unwrap()
-					.take()
-					.unwrap();
+				let result = self.last_command_result.lock().unwrap().take().unwrap();
 				match result {
-					Ok(command_result) => write_frames(
-						command_result.frames,
-					),
+					Ok(command_result) => write_frames(command_result.frames),
 					Err(e) => Err(e.into()),
 				}
 			}
@@ -140,109 +113,68 @@ where
 				let rql = parse_rql(command);
 				println!("query: {rql}");
 
-				let result_holder =
-					self.last_query_result.clone();
+				let result_holder = self.last_query_result.clone();
 
 				// Clear previous result
 				*result_holder.lock().unwrap() = None;
 
-				let _request_id = session.query(
-					&rql,
-					None,
-					move |result| {
-						let mut holder = result_holder
-							.lock()
-							.unwrap();
-						*holder = Some(result.map_err(
-							|e| e.to_string(),
-						));
-					},
-				)?;
+				let _request_id = session.query(&rql, None, move |result| {
+					let mut holder = result_holder.lock().unwrap();
+					*holder = Some(result.map_err(|e| e.to_string()));
+				})?;
 
 				// Wait for callback to execute
 				let mut attempts = 0;
 				loop {
 					sleep(Duration::from_millis(100));
-					let result = self
-						.last_query_result
-						.lock()
-						.unwrap();
+					let result = self.last_query_result.lock().unwrap();
 					if result.is_some() {
 						break;
 					}
 					attempts += 1;
 					if attempts > 50 {
 						// 5 second timeout
-						return Err("Callback timeout"
-							.into());
+						return Err("Callback timeout".into());
 					}
 				}
 
 				// Get the result
-				let result = self
-					.last_query_result
-					.lock()
-					.unwrap()
-					.take()
-					.unwrap();
+				let result = self.last_query_result.lock().unwrap().take().unwrap();
 				match result {
-					Ok(query_result) => write_frames(
-						query_result.frames,
-					),
+					Ok(query_result) => write_frames(query_result.frames),
 					Err(e) => Err(e.into()),
 				}
 			}
 
 			"command_positional" => {
-				let (rql, params) =
-					parse_positional_params(command);
+				let (rql, params) = parse_positional_params(command);
 				println!("command_positional: {rql}");
 
-				let result_holder =
-					self.last_command_result.clone();
+				let result_holder = self.last_command_result.clone();
 				*result_holder.lock().unwrap() = None;
 
-				let _request_id = session.command(
-					&rql,
-					Some(params),
-					move |result| {
-						let mut holder = result_holder
-							.lock()
-							.unwrap();
-						*holder = Some(result.map_err(
-							|e| e.to_string(),
-						));
-					},
-				)?;
+				let _request_id = session.command(&rql, Some(params), move |result| {
+					let mut holder = result_holder.lock().unwrap();
+					*holder = Some(result.map_err(|e| e.to_string()));
+				})?;
 
 				// Wait for callback to execute
 				let mut attempts = 0;
 				loop {
 					sleep(Duration::from_millis(100));
-					let result = self
-						.last_command_result
-						.lock()
-						.unwrap();
+					let result = self.last_command_result.lock().unwrap();
 					if result.is_some() {
 						break;
 					}
 					attempts += 1;
 					if attempts > 50 {
-						return Err("Callback timeout"
-							.into());
+						return Err("Callback timeout".into());
 					}
 				}
 
-				let result = self
-					.last_command_result
-					.lock()
-					.unwrap()
-					.take()
-					.unwrap();
+				let result = self.last_command_result.lock().unwrap().take().unwrap();
 				match result {
-					Ok(command_result) => write_frames(
-						command_result.frames,
-					),
+					Ok(command_result) => write_frames(command_result.frames),
 					Err(e) => Err(e.into()),
 				}
 			}
@@ -251,105 +183,64 @@ where
 				let (rql, params) = parse_named_params(command);
 				println!("command_named: {rql}");
 
-				let result_holder =
-					self.last_command_result.clone();
+				let result_holder = self.last_command_result.clone();
 				*result_holder.lock().unwrap() = None;
 
-				let _request_id = session.command(
-					&rql,
-					Some(params),
-					move |result| {
-						let mut holder = result_holder
-							.lock()
-							.unwrap();
-						*holder = Some(result.map_err(
-							|e| e.to_string(),
-						));
-					},
-				)?;
+				let _request_id = session.command(&rql, Some(params), move |result| {
+					let mut holder = result_holder.lock().unwrap();
+					*holder = Some(result.map_err(|e| e.to_string()));
+				})?;
 
 				// Wait for callback to execute
 				let mut attempts = 0;
 				loop {
 					sleep(Duration::from_millis(100));
-					let result = self
-						.last_command_result
-						.lock()
-						.unwrap();
+					let result = self.last_command_result.lock().unwrap();
 					if result.is_some() {
 						break;
 					}
 					attempts += 1;
 					if attempts > 50 {
-						return Err("Callback timeout"
-							.into());
+						return Err("Callback timeout".into());
 					}
 				}
 
-				let result = self
-					.last_command_result
-					.lock()
-					.unwrap()
-					.take()
-					.unwrap();
+				let result = self.last_command_result.lock().unwrap().take().unwrap();
 				match result {
-					Ok(command_result) => write_frames(
-						command_result.frames,
-					),
+					Ok(command_result) => write_frames(command_result.frames),
 					Err(e) => Err(e.into()),
 				}
 			}
 
 			"query_positional" => {
-				let (rql, params) =
-					parse_positional_params(command);
+				let (rql, params) = parse_positional_params(command);
 				println!("query_positional: {rql}");
 
-				let result_holder =
-					self.last_query_result.clone();
+				let result_holder = self.last_query_result.clone();
 				*result_holder.lock().unwrap() = None;
 
-				let _request_id = session.query(
-					&rql,
-					Some(params),
-					move |result| {
-						let mut holder = result_holder
-							.lock()
-							.unwrap();
-						*holder = Some(result.map_err(
-							|e| e.to_string(),
-						));
-					},
-				)?;
+				let _request_id = session.query(&rql, Some(params), move |result| {
+					let mut holder = result_holder.lock().unwrap();
+					*holder = Some(result.map_err(|e| e.to_string()));
+				})?;
 
 				// Wait for callback to execute
 				let mut attempts = 0;
 				loop {
 					sleep(Duration::from_millis(100));
-					let result = self
-						.last_query_result
-						.lock()
-						.unwrap();
+					let result = self.last_query_result.lock().unwrap();
 					if result.is_some() {
 						break;
 					}
 					attempts += 1;
 					if attempts > 50 {
-						return Err("Callback timeout"
-							.into());
+						return Err("Callback timeout".into());
 					}
 				}
 
-				let result = self
-					.last_query_result
-					.lock()
-					.unwrap()
-					.take()
-					.unwrap();
+				let result = self.last_query_result.lock().unwrap().take().unwrap();
 				match result {
-					Ok(query_result) => write_frames(
-						query_result.frames,
-					),
+					Ok(query_result) => write_frames(query_result.frames),
 					Err(e) => Err(e.into()),
 				}
 			}
@@ -358,51 +249,31 @@ where
 				let (rql, params) = parse_named_params(command);
 				println!("query_named: {rql}");
 
-				let result_holder =
-					self.last_query_result.clone();
+				let result_holder = self.last_query_result.clone();
 				*result_holder.lock().unwrap() = None;
 
-				let _request_id = session.query(
-					&rql,
-					Some(params),
-					move |result| {
-						let mut holder = result_holder
-							.lock()
-							.unwrap();
-						*holder = Some(result.map_err(
-							|e| e.to_string(),
-						));
-					},
-				)?;
+				let _request_id = session.query(&rql, Some(params), move |result| {
+					let mut holder = result_holder.lock().unwrap();
+					*holder = Some(result.map_err(|e| e.to_string()));
+				})?;
 
 				// Wait for callback to execute
 				let mut attempts = 0;
 				loop {
 					sleep(Duration::from_millis(100));
-					let result = self
-						.last_query_result
-						.lock()
-						.unwrap();
+					let result = self.last_query_result.lock().unwrap();
 					if result.is_some() {
 						break;
 					}
 					attempts += 1;
 					if attempts > 50 {
-						return Err("Callback timeout"
-							.into());
+						return Err("Callback timeout".into());
 					}
 				}
 
-				let result = self
-					.last_query_result
-					.lock()
-					.unwrap()
-					.take()
-					.unwrap();
+				let result = self.last_query_result.lock().unwrap().take().unwrap();
 				match result {
-					Ok(query_result) => write_frames(
-						query_result.frames,
-					),
+					Ok(query_result) => write_frames(query_result.frames),
 					Err(e) => Err(e.into()),
 				}
 			}
@@ -416,8 +287,7 @@ where
 		let port = start_server_and_get_port(server)?;
 
 		let client = connect_http(("::1", port))?;
-		let session = client
-			.callback_session(Some("mysecrettoken".to_string()))?;
+		let session = client.callback_session(Some("mysecrettoken".to_string()))?;
 
 		self.client = Some(client);
 		self.session = Some(session);
@@ -439,11 +309,5 @@ where
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as callback_http => test_callback }
 
 fn test_callback(path: &Path) {
-	retry(3, || {
-		testscript::run_path(
-			&mut CallbackRunner::new(optimistic(memory())),
-			path,
-		)
-	})
-	.expect("test failed")
+	retry(3, || testscript::run_path(&mut CallbackRunner::new(optimistic(memory())), path)).expect("test failed")
 }

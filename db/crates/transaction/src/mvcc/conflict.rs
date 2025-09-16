@@ -70,10 +70,7 @@ impl ConflictManager {
 		}
 
 		// Fast path: if no reads, no read-write conflicts possible
-		if self.read_keys.is_empty()
-			&& self.read_ranges.is_empty()
-			&& !self.read_all
-		{
+		if self.read_keys.is_empty() && self.read_ranges.is_empty() && !self.read_all {
 			return false;
 		}
 
@@ -84,11 +81,7 @@ impl ConflictManager {
 
 		// Check range read-write conflicts
 		for (start, end) in &self.read_ranges {
-			if self.has_range_conflict(
-				start,
-				end,
-				&other.conflict_keys,
-			) {
+			if self.has_range_conflict(start, end, &other.conflict_keys) {
 				return true;
 			}
 		}
@@ -135,9 +128,7 @@ impl ConflictManager {
 	) -> bool {
 		// For small conflict sets, linear scan is faster than sorting
 		if conflict_keys.len() < 32 {
-			return conflict_keys
-				.iter()
-				.any(|key| self.key_in_range(key, start, end));
+			return conflict_keys.iter().any(|key| self.key_in_range(key, start, end));
 		}
 
 		// For larger sets, convert to sorted vector and use binary
@@ -149,12 +140,7 @@ impl ConflictManager {
 	}
 
 	#[inline]
-	fn key_in_range(
-		&self,
-		key: &EncodedKey,
-		start: &Bound<EncodedKey>,
-		end: &Bound<EncodedKey>,
-	) -> bool {
+	fn key_in_range(&self, key: &EncodedKey, start: &Bound<EncodedKey>, end: &Bound<EncodedKey>) -> bool {
 		let start_ok = match start {
 			Bound::Included(s) => key >= s,
 			Bound::Excluded(s) => key > s,
@@ -182,15 +168,11 @@ impl ConflictManager {
 
 		// Find the first key that could be in range
 		let start_pos = match start {
-			Bound::Included(s) => sorted_keys
-				.binary_search(&s)
-				.unwrap_or_else(|pos| pos),
-			Bound::Excluded(s) => {
-				match sorted_keys.binary_search(&s) {
-					Ok(pos) => pos + 1,
-					Err(pos) => pos,
-				}
-			}
+			Bound::Included(s) => sorted_keys.binary_search(&s).unwrap_or_else(|pos| pos),
+			Bound::Excluded(s) => match sorted_keys.binary_search(&s) {
+				Ok(pos) => pos + 1,
+				Err(pos) => pos,
+			},
 			Bound::Unbounded => 0,
 		};
 

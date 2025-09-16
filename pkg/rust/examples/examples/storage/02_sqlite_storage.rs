@@ -29,19 +29,13 @@ fn main() {
 	{
 		// Create database (will be saved to disk)
 		log_info!("Creating SQLite database...");
-		let mut db = embedded::sqlite_serializable(SqliteConfig::new(
-			db_path,
-		))
-		.build()
-		.unwrap();
+		let mut db = embedded::sqlite_serializable(SqliteConfig::new(db_path)).build().unwrap();
 		db.start().unwrap();
 		log_info!("✓ Database created and started\n");
 
 		// Create namespace
 		log_info!("Creating namespace 'store'...");
-		let result = db
-			.command_as_root("create namespace store", Params::None)
-			.unwrap();
+		let result = db.command_as_root("create namespace store", Params::None).unwrap();
 		for frame in result {
 			log_info!("{}", frame);
 		}
@@ -100,16 +94,11 @@ insert store.products"#,
 		log_info!("Querying products:");
 		log_query("from store.products");
 
-		for frame in db
-			.query_as_root("from store.products", Params::None)
-			.unwrap()
-		{
+		for frame in db.query_as_root("from store.products", Params::None).unwrap() {
 			log_info!("{}", frame);
 		}
 
-		log_info!(
-			"\n✓ Database connection closing. Data saved to disk."
-		);
+		log_info!("\n✓ Database connection closing. Data saved to disk.");
 	} // Database connection closed here
 
 	// Part 2: Reopen database and verify persistence
@@ -121,11 +110,7 @@ insert store.products"#,
 	{
 		// Open existing database
 		log_info!("Opening existing database at: {}", db_path);
-		let mut db = embedded::sqlite_serializable(SqliteConfig::new(
-			db_path,
-		))
-		.build()
-		.unwrap();
+		let mut db = embedded::sqlite_serializable(SqliteConfig::new(db_path)).build().unwrap();
 		db.start().unwrap();
 		log_info!("✓ Database reopened successfully\n");
 
@@ -133,10 +118,7 @@ insert store.products"#,
 		log_info!("Verifying data persistence:");
 		log_query("from store.products");
 
-		for frame in db
-			.query_as_root("from store.products", Params::None)
-			.unwrap()
-		{
+		for frame in db.query_as_root("from store.products", Params::None).unwrap() {
 			log_info!("{}", frame);
 		}
 		log_info!("✓ Data persisted correctly\n");
@@ -166,13 +148,7 @@ insert store.products"#,
 		log_info!("All products after update:");
 		log_query("from store.products sort id");
 
-		for frame in db
-			.query_as_root(
-				"from store.products sort id",
-				Params::None,
-			)
-			.unwrap()
-		{
+		for frame in db.query_as_root("from store.products sort id", Params::None).unwrap() {
 			log_info!("{}", frame);
 		}
 
@@ -180,13 +156,7 @@ insert store.products"#,
 		log_info!("\nQuerying in-stock products:");
 		log_query("from store.products filter in_stock == true");
 
-		for frame in db
-			.query_as_root(
-				"from store.products filter in_stock == true",
-				Params::None,
-			)
-			.unwrap()
-		{
+		for frame in db.query_as_root("from store.products filter in_stock == true", Params::None).unwrap() {
 			log_info!("{}", frame);
 		}
 

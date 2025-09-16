@@ -3,8 +3,7 @@
 
 use reifydb_core::value::columnar::ColumnData;
 use reifydb_type::{
-	IntoFragment, Type, diagnostic::temporal, parse_date, parse_datetime,
-	parse_interval, parse_time, return_error,
+	IntoFragment, Type, diagnostic::temporal, parse_date, parse_datetime, parse_interval, parse_time, return_error,
 };
 
 pub struct TemporalParser;
@@ -22,10 +21,7 @@ impl TemporalParser {
 
 	/// Parse a temporal constant expression and create a column with the
 	/// specified row count
-	pub fn parse_temporal<'a>(
-		fragment: impl IntoFragment<'a>,
-		row_count: usize,
-	) -> crate::Result<ColumnData> {
+	pub fn parse_temporal<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		let value = fragment.text();
 
@@ -60,9 +56,7 @@ impl TemporalParser {
 			Ok(ColumnData::time(vec![time; row_count]))
 		} else {
 			// Unrecognized pattern
-			return_error!(temporal::unrecognized_temporal_pattern(
-				fragment
-			))
+			return_error!(temporal::unrecognized_temporal_pattern(fragment))
 		}
 	}
 
@@ -79,66 +73,32 @@ impl TemporalParser {
 			Type::Date => {
 				let date = match parse_date(&fragment) {
 					Ok(date) => date,
-					Err(e) => return_error!(
-						cast::invalid_temporal(
-							fragment,
-							Type::Date,
-							e.0
-						)
-					),
+					Err(e) => return_error!(cast::invalid_temporal(fragment, Type::Date, e.0)),
 				};
 				Ok(ColumnData::date(vec![date; row_count]))
 			}
 			Type::DateTime => {
 				let datetime = match parse_datetime(&fragment) {
 					Ok(datetime) => datetime,
-					Err(e) => return_error!(
-						cast::invalid_temporal(
-							fragment,
-							Type::DateTime,
-							e.0
-						)
-					),
+					Err(e) => return_error!(cast::invalid_temporal(fragment, Type::DateTime, e.0)),
 				};
-				Ok(ColumnData::datetime(vec![
-					datetime;
-					row_count
-				]))
+				Ok(ColumnData::datetime(vec![datetime; row_count]))
 			}
 			Type::Time => {
 				let time = match parse_time(&fragment) {
 					Ok(time) => time,
-					Err(e) => return_error!(
-						cast::invalid_temporal(
-							fragment,
-							Type::Time,
-							e.0
-						)
-					),
+					Err(e) => return_error!(cast::invalid_temporal(fragment, Type::Time, e.0)),
 				};
 				Ok(ColumnData::time(vec![time; row_count]))
 			}
 			Type::Interval => {
 				let interval = match parse_interval(&fragment) {
 					Ok(interval) => interval,
-					Err(e) => return_error!(
-						cast::invalid_temporal(
-							fragment,
-							Type::Interval,
-							e.0
-						)
-					),
+					Err(e) => return_error!(cast::invalid_temporal(fragment, Type::Interval, e.0)),
 				};
-				Ok(ColumnData::interval(vec![
-					interval;
-					row_count
-				]))
+				Ok(ColumnData::interval(vec![interval; row_count]))
 			}
-			_ => return_error!(cast::unsupported_cast(
-				fragment,
-				Type::DateTime,
-				target
-			)),
+			_ => return_error!(cast::unsupported_cast(fragment, Type::DateTime, target)),
 		}
 	}
 }

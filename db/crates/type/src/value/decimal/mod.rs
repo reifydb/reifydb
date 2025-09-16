@@ -105,13 +105,8 @@ impl FromStr for Decimal {
 	type Err = Error;
 
 	fn from_str(s: &str) -> Result<Self, Self::Err> {
-		let big_decimal =
-			BigDecimalInner::from_str(s).map_err(|_| {
-				error!(invalid_number_format(
-					OwnedFragment::None,
-					Type::Decimal
-				))
-			})?;
+		let big_decimal = BigDecimalInner::from_str(s)
+			.map_err(|_| error!(invalid_number_format(OwnedFragment::None, Type::Decimal)))?;
 
 		Ok(Self(big_decimal))
 	}
@@ -179,16 +174,14 @@ impl From<u128> for Decimal {
 
 impl From<f32> for Decimal {
 	fn from(value: f32) -> Self {
-		let inner = BigDecimalInner::from_f32(value)
-			.unwrap_or_else(|| BigDecimalInner::from(0));
+		let inner = BigDecimalInner::from_f32(value).unwrap_or_else(|| BigDecimalInner::from(0));
 		Self(inner)
 	}
 }
 
 impl From<f64> for Decimal {
 	fn from(value: f64) -> Self {
-		let inner = BigDecimalInner::from_f64(value)
-			.unwrap_or_else(|| BigDecimalInner::from(0));
+		let inner = BigDecimalInner::from_f64(value).unwrap_or_else(|| BigDecimalInner::from(0));
 		Self(inner)
 	}
 }

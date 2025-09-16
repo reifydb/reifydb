@@ -31,9 +31,8 @@ pub fn get_thread_pools() -> Option<Pools> {
 
 /// Get the thread-local pools instance or panic with helpful message
 pub fn thread_pools() -> Pools {
-	get_thread_pools().expect(
-        "Thread-local pools not initialized. Call init_thread_pools() or set_thread_pools() first."
-    )
+	get_thread_pools()
+		.expect("Thread-local pools not initialized. Call init_thread_pools() or set_thread_pools() first.")
 }
 
 /// Execute a function with access to thread-local pools
@@ -42,12 +41,12 @@ where
 	F: FnOnce(&Pools) -> R,
 {
 	THREAD_POOLS.with(|p| {
-        let pools = p.borrow();
-        let pools = pools.as_ref().expect(
-            "Thread-local pools not initialized. Call init_thread_pools() or set_thread_pools() first."
-        );
-        f(pools)
-    })
+		let pools = p.borrow();
+		let pools = pools.as_ref().expect(
+			"Thread-local pools not initialized. Call init_thread_pools() or set_thread_pools() first.",
+		);
+		f(pools)
+	})
 }
 
 /// Clear thread-local pools for the current thread

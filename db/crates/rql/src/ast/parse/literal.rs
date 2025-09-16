@@ -2,49 +2,37 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::{
-	AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralTemporal,
-	AstLiteralText, AstLiteralUndefined, parse::Parser, tokenize::Literal,
+	AstLiteral, AstLiteralBoolean, AstLiteralNumber, AstLiteralTemporal, AstLiteralText, AstLiteralUndefined,
+	parse::Parser, tokenize::Literal,
 };
 
 impl<'a> Parser<'a> {
-	pub(crate) fn parse_literal_number(
-		&mut self,
-	) -> crate::Result<AstLiteral<'a>> {
+	pub(crate) fn parse_literal_number(&mut self) -> crate::Result<AstLiteral<'a>> {
 		let token = self.consume_literal(Literal::Number)?;
 		Ok(AstLiteral::Number(AstLiteralNumber(token)))
 	}
 
-	pub(crate) fn parse_literal_text(
-		&mut self,
-	) -> crate::Result<AstLiteral<'a>> {
+	pub(crate) fn parse_literal_text(&mut self) -> crate::Result<AstLiteral<'a>> {
 		let token = self.consume_literal(Literal::Text)?;
 		Ok(AstLiteral::Text(AstLiteralText(token)))
 	}
 
-	pub(crate) fn parse_literal_true(
-		&mut self,
-	) -> crate::Result<AstLiteral<'a>> {
+	pub(crate) fn parse_literal_true(&mut self) -> crate::Result<AstLiteral<'a>> {
 		let token = self.consume_literal(Literal::True)?;
 		Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
 	}
 
-	pub(crate) fn parse_literal_false(
-		&mut self,
-	) -> crate::Result<AstLiteral<'a>> {
+	pub(crate) fn parse_literal_false(&mut self) -> crate::Result<AstLiteral<'a>> {
 		let token = self.consume_literal(Literal::False)?;
 		Ok(AstLiteral::Boolean(AstLiteralBoolean(token)))
 	}
 
-	pub(crate) fn parse_literal_undefined(
-		&mut self,
-	) -> crate::Result<AstLiteral<'a>> {
+	pub(crate) fn parse_literal_undefined(&mut self) -> crate::Result<AstLiteral<'a>> {
 		let token = self.consume_literal(Literal::Undefined)?;
 		Ok(AstLiteral::Undefined(AstLiteralUndefined(token)))
 	}
 
-	pub(crate) fn parse_literal_temporal(
-		&mut self,
-	) -> crate::Result<AstLiteral<'a>> {
+	pub(crate) fn parse_literal_temporal(&mut self) -> crate::Result<AstLiteral<'a>> {
 		let token = self.consume_literal(Literal::Temporal)?;
 		Ok(AstLiteral::Temporal(AstLiteralTemporal(token)))
 	}
@@ -52,9 +40,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{
-		Ast::Literal, AstLiteral, parse::parse, tokenize::tokenize,
-	};
+	use crate::ast::{Ast::Literal, AstLiteral, parse::parse, tokenize::tokenize};
 
 	#[test]
 	fn test_text() {
@@ -62,9 +48,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Text(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Text(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "ElodiE");
@@ -76,9 +60,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Number(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Number(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "42");
@@ -90,9 +72,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Boolean(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Boolean(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert!(node.value());
@@ -104,9 +84,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Boolean(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Boolean(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert!(!node.value());
@@ -118,9 +96,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15");
@@ -132,9 +108,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00");
@@ -146,9 +120,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00.123");
@@ -160,9 +132,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00.123456");
@@ -174,9 +144,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00.123456789");
@@ -188,9 +156,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00Z");
@@ -202,9 +168,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00.123Z");
@@ -216,9 +180,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00.123456Z");
@@ -230,9 +192,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00.123456789Z");
@@ -244,9 +204,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00+05:30");
@@ -258,9 +216,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15T14:30:00Z");
@@ -272,9 +228,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15T14:30:00.123Z");
@@ -286,9 +240,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15T14:30:00.123456Z");
@@ -296,14 +248,11 @@ mod tests {
 
 	#[test]
 	fn test_datetime_nanoseconds() {
-		let tokens =
-			tokenize("@2024-03-15T14:30:00.123456789Z").unwrap();
+		let tokens = tokenize("@2024-03-15T14:30:00.123456789Z").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15T14:30:00.123456789Z");
@@ -315,9 +264,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15T14:30:00");
@@ -329,9 +276,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15T14:30:00.123");
@@ -343,9 +288,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15T14:30:00.123456");
@@ -353,14 +296,11 @@ mod tests {
 
 	#[test]
 	fn test_datetime_nanoseconds_without_timezone() {
-		let tokens =
-			tokenize("@2024-03-15T14:30:00.123456789").unwrap();
+		let tokens = tokenize("@2024-03-15T14:30:00.123456789").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15T14:30:00.123456789");
@@ -372,9 +312,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15..2024-03-16");
@@ -386,9 +324,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "14:30:00..15:30:00");
@@ -396,21 +332,14 @@ mod tests {
 
 	#[test]
 	fn test_range_interval_datetime() {
-		let tokens =
-			tokenize("@2024-03-15T14:30:00..2024-03-15T15:30:00")
-				.unwrap();
+		let tokens = tokenize("@2024-03-15T14:30:00..2024-03-15T15:30:00").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
-		assert_eq!(
-			node.value(),
-			"2024-03-15T14:30:00..2024-03-15T15:30:00"
-		);
+		assert_eq!(node.value(), "2024-03-15T14:30:00..2024-03-15T15:30:00");
 	}
 
 	#[test]
@@ -419,9 +348,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "2024-03-15..14:30:00");
@@ -433,9 +360,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "P1D");
@@ -447,9 +372,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "PT2H30M");
@@ -461,9 +384,7 @@ mod tests {
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Literal(AstLiteral::Temporal(node)) =
-			&result[0].first_unchecked()
-		else {
+		let Literal(AstLiteral::Temporal(node)) = &result[0].first_unchecked() else {
 			panic!()
 		};
 		assert_eq!(node.value(), "P1Y2M3DT4H5M6S");

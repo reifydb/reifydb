@@ -104,12 +104,8 @@ impl Worker {
 				let mut queue = task_queue.lock().unwrap();
 
 				loop {
-					if let Some(prioritized_task) =
-						queue.pop()
-					{
-						break Some(
-							prioritized_task.task
-						);
+					if let Some(prioritized_task) = queue.pop() {
+						break Some(prioritized_task.task);
 					}
 
 					if !running.load(Ordering::Relaxed) {
@@ -118,14 +114,8 @@ impl Worker {
 
 					// Wait for new tasks with short timeout
 					// to check running flag
-					let result = task_condvar
-						.wait_timeout(
-							queue,
-							Duration::from_millis(
-								10,
-							),
-						)
-						.unwrap();
+					let result =
+						task_condvar.wait_timeout(queue, Duration::from_millis(10)).unwrap();
 					queue = result.0;
 
 					// Check running flag after timeout
@@ -136,13 +126,7 @@ impl Worker {
 			};
 
 			if let Some(task) = task {
-				Self::execute_task(
-					id,
-					task,
-					&stats,
-					timeout_warning,
-					&task_counter,
-				);
+				Self::execute_task(id, task, &stats, timeout_warning, &task_counter);
 			}
 		}
 
@@ -150,13 +134,7 @@ impl Worker {
 		{
 			let mut queue = task_queue.lock().unwrap();
 			while let Some(prioritized_task) = queue.pop() {
-				Self::execute_task(
-					id,
-					prioritized_task.task,
-					&stats,
-					timeout_warning,
-					&task_counter,
-				);
+				Self::execute_task(id, prioritized_task.task, &stats, timeout_warning, &task_counter);
 			}
 		}
 
@@ -195,10 +173,7 @@ impl Worker {
 		loop {
 			match task.execute(&ctx) {
 				Ok(_) => {
-					stats.tasks_completed.fetch_add(
-						1,
-						Ordering::Relaxed,
-					);
+					stats.tasks_completed.fetch_add(1, Ordering::Relaxed);
 
 					let elapsed = start_time.elapsed();
 					if elapsed > timeout_warning {
@@ -222,17 +197,9 @@ impl Worker {
 							e
 						);
 						// Small backoff before retry
-						thread::sleep(
-							Duration::from_millis(
-								100 * retries
-									as u64,
-							),
-						);
+						thread::sleep(Duration::from_millis(100 * retries as u64));
 					} else {
-						stats.tasks_failed.fetch_add(
-							1,
-							Ordering::Relaxed,
-						);
+						stats.tasks_failed.fetch_add(1, Ordering::Relaxed);
 						log_warn!(
 							"Task '{}' failed after {} retries: {}",
 							task_name,

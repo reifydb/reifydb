@@ -40,12 +40,7 @@ pub struct Connection<T: Transaction> {
 }
 
 impl<T: Transaction> Connection<T> {
-	pub fn new(
-		stream: TcpStream,
-		peer: SocketAddr,
-		token: Token,
-		engine: StandardEngine<T>,
-	) -> Self {
+	pub fn new(stream: TcpStream, peer: SocketAddr, token: Token, engine: StandardEngine<T>) -> Self {
 		let now = Instant::now();
 		Self {
 			stream,
@@ -105,15 +100,10 @@ impl<T: Transaction> Connection<T> {
 		let buffer_len = self.buffer.len();
 
 		// If buffer capacity is large but usage is low, shrink it
-		if buffer_capacity > SHRINK_THRESHOLD
-			&& buffer_len < buffer_capacity / 4
-		{
+		if buffer_capacity > SHRINK_THRESHOLD && buffer_len < buffer_capacity / 4 {
 			// Shrink to 2x current usage or initial size, whichever
 			// is larger
-			let new_capacity = std::cmp::max(
-				buffer_len * 2,
-				INITIAL_BUFFER_SIZE,
-			);
+			let new_capacity = std::cmp::max(buffer_len * 2, INITIAL_BUFFER_SIZE);
 
 			if new_capacity < buffer_capacity {
 				self.buffer.shrink_to(new_capacity);
@@ -153,12 +143,8 @@ impl<T: Transaction> Connection<T> {
 	pub fn interests(&self) -> Interest {
 		match &self.state {
 			ConnectionState::Detecting => Interest::READABLE,
-			ConnectionState::WebSocket(ws_state) => {
-				ws_state.interests()
-			}
-			ConnectionState::Http(http_state) => {
-				http_state.interests()
-			}
+			ConnectionState::WebSocket(ws_state) => ws_state.interests(),
+			ConnectionState::Http(http_state) => http_state.interests(),
 			ConnectionState::Closed => Interest::READABLE,
 		}
 	}

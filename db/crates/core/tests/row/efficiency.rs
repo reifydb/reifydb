@@ -42,16 +42,8 @@ fn test_large_row() {
 				4 => layout.set_i64(&mut row, i, 1234567890),
 				5 => layout.set_f32(&mut row, i, 3.14),
 				6 => layout.set_f64(&mut row, i, 3.14159),
-				7 => layout.set_date(
-					&mut row,
-					i,
-					Date::from_ymd(2024, 12, 25).unwrap(),
-				),
-				8 => layout.set_uuid4(
-					&mut row,
-					i,
-					Uuid4::generate(),
-				),
+				7 => layout.set_date(&mut row, i, Date::from_ymd(2024, 12, 25).unwrap()),
+				8 => layout.set_uuid4(&mut row, i, Uuid4::generate()),
 				_ => layout.set_utf8(&mut row, i, "test"),
 			}
 		}
@@ -96,8 +88,7 @@ fn test_large_row() {
 
 #[test]
 fn test_dynamic_field_reallocation() {
-	let layout =
-		EncodedRowLayout::new(&[Type::Utf8, Type::Blob, Type::Int]);
+	let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Blob, Type::Int]);
 
 	let iterations = 1000;
 
@@ -153,8 +144,7 @@ fn test_cache_locality() {
 	let sequential_time = start.elapsed();
 
 	// Random access pattern
-	let indices: Vec<usize> =
-		(0..100).cycle().skip(37).step_by(41).take(100).collect();
+	let indices: Vec<usize> = (0..100).cycle().skip(37).step_by(41).take(100).collect();
 
 	let start = Instant::now();
 	for _ in 0..10000 {
@@ -164,18 +154,12 @@ fn test_cache_locality() {
 	}
 	let random_time = start.elapsed();
 
-	println!(
-		"Sequential: {:?}, Random: {:?}",
-		sequential_time, random_time
-	);
+	println!("Sequential: {:?}, Random: {:?}", sequential_time, random_time);
 
 	// Sequential should be at least somewhat faster due to cache locality
 	// Note: This might not always hold on all systems, so we use a gentle
 	// assertion
-	assert!(
-		sequential_time.as_nanos() * 2 < random_time.as_nanos() * 3,
-		"Cache locality benefit not observed"
-	);
+	assert!(sequential_time.as_nanos() * 2 < random_time.as_nanos() * 3, "Cache locality benefit not observed");
 }
 
 #[test]
@@ -210,10 +194,7 @@ fn test_memory_efficiency() {
 	let large_size = row2.len();
 
 	assert!(small_size > initial_size, "Dynamic field didn't grow");
-	assert!(
-		large_size > small_size,
-		"Dynamic field didn't grow for larger data"
-	);
+	assert!(large_size > small_size, "Dynamic field didn't grow for larger data");
 	assert!(large_size < 1200, "Dynamic field used too much memory");
 
 	// Test that different sized dynamic fields use appropriate memory
@@ -228,9 +209,6 @@ fn test_memory_efficiency() {
 
 	// Row sizes should generally increase with content size
 	for i in 1..row_sizes.len() {
-		assert!(
-			row_sizes[i] >= row_sizes[i - 1],
-			"Row size should increase with content size"
-		);
+		assert!(row_sizes[i] >= row_sizes[i - 1], "Row size should increase with content size");
 	}
 }

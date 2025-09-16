@@ -2,18 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::evaluate::expression::{
-	AliasExpression, IdentExpression,
-};
+use reifydb_core::interface::evaluate::expression::{AliasExpression, IdentExpression};
 use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
 
 use crate::{
 	ast::{Ast, AstFrom},
 	expression::ExpressionCompiler,
-	plan::logical::{
-		Compiler, InlineDataNode, LogicalPlan, SourceScanNode,
-		resolver::IdentifierResolver,
-	},
+	plan::logical::{Compiler, InlineDataNode, LogicalPlan, SourceScanNode, resolver::IdentifierResolver},
 };
 
 impl Compiler {
@@ -28,10 +23,7 @@ impl Compiler {
 			} => {
 				// Use resolver to properly resolve
 				// UnresolvedSourceIdentifier
-				let resolved_source = resolver
-					.build_resolved_source_from_unresolved(
-						source,
-					)?;
+				let resolved_source = resolver.build_resolved_source_from_unresolved(source)?;
 
 				// TODO: Resolve index if present
 				// For now, leave index as None
@@ -53,35 +45,35 @@ impl Compiler {
 				for row in list.nodes {
 					match row {
 						Ast::Inline(row) => {
-							let mut alias_fields =
-								Vec::new();
-							for field in
-								row.keyed_values
-							{
+							let mut alias_fields = Vec::new();
+							for field in row.keyed_values {
 								let key_fragment = field.key.token.fragment.clone();
 								let alias = IdentExpression(key_fragment.clone());
-								let expr =
-                                    ExpressionCompiler::compile(field.value.as_ref().clone())?;
+								let expr = ExpressionCompiler::compile(
+									field.value.as_ref().clone(),
+								)?;
 
 								let alias_expr = AliasExpression {
-                                    alias,
-                                    expression: Box::new(expr),
-                                    fragment: key_fragment};
+									alias,
+									expression: Box::new(expr),
+									fragment: key_fragment,
+								};
 								alias_fields.push(alias_expr);
 							}
 							rows.push(alias_fields);
 						}
 						_ => {
 							return err!(Diagnostic {
-                                code: "E0001".to_string(),
-                                statement: None,
-                                message: "Expected row in static data".to_string(),
-                                column: None,
-                                fragment: OwnedFragment::None,
-                                label: None,
-                                help: None,
-                                notes: vec![],
-                                cause: None});
+								code: "E0001".to_string(),
+								statement: None,
+								message: "Expected row in static data".to_string(),
+								column: None,
+								fragment: OwnedFragment::None,
+								label: None,
+								help: None,
+								notes: vec![],
+								cause: None
+							});
 						}
 					}
 				}

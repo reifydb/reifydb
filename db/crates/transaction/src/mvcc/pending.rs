@@ -4,10 +4,7 @@
 use std::{
 	collections::{
 		BTreeMap,
-		btree_map::{
-			IntoIter as BTreeMapIntoIter, Iter as BTreeMapIter,
-			Range as BTreeMapRange,
-		},
+		btree_map::{IntoIter as BTreeMapIntoIter, Iter as BTreeMapIter, Range as BTreeMapRange},
 	},
 	mem::size_of,
 	ops::RangeBounds,
@@ -73,10 +70,7 @@ impl PendingWrites {
 
 	/// Get key-value pair by key - O(log n) performance  
 	#[inline]
-	pub fn get_entry(
-		&self,
-		key: &EncodedKey,
-	) -> Option<(&EncodedKey, &Pending)> {
+	pub fn get_entry(&self, key: &EncodedKey) -> Option<(&EncodedKey, &Pending)> {
 		self.writes.get_key_value(key)
 	}
 
@@ -94,31 +88,20 @@ impl PendingWrites {
 			// Update existing - might change size
 			let old_size = self.estimate_size(&old_value);
 			if size_estimate != old_size {
-				self.estimated_size = self
-					.estimated_size
-					.saturating_sub(old_size)
-					.saturating_add(size_estimate);
+				self.estimated_size =
+					self.estimated_size.saturating_sub(old_size).saturating_add(size_estimate);
 			}
 		} else {
 			// New entry
-			self.estimated_size = self
-				.estimated_size
-				.saturating_add(size_estimate);
+			self.estimated_size = self.estimated_size.saturating_add(size_estimate);
 		}
 	}
 
 	/// Remove an entry by key - O(log n) performance
-	pub fn remove_entry(
-		&mut self,
-		key: &EncodedKey,
-	) -> Option<(EncodedKey, Pending)> {
-		if let Some((removed_key, removed_value)) =
-			self.writes.remove_entry(key)
-		{
+	pub fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
+		if let Some((removed_key, removed_value)) = self.writes.remove_entry(key) {
 			let size_estimate = self.estimate_size(&removed_value);
-			self.estimated_size = self
-				.estimated_size
-				.saturating_sub(size_estimate);
+			self.estimated_size = self.estimated_size.saturating_sub(size_estimate);
 			Some((removed_key, removed_value))
 		} else {
 			None
@@ -150,10 +133,7 @@ impl PendingWrites {
 
 	/// Range query support - returns BTreeMap range iterator for
 	/// compatibility
-	pub fn range<R>(
-		&self,
-		range: R,
-	) -> BTreeMapRange<'_, EncodedKey, Pending>
+	pub fn range<R>(&self, range: R) -> BTreeMapRange<'_, EncodedKey, Pending>
 	where
 		R: RangeBounds<EncodedKey>,
 	{
@@ -161,10 +141,7 @@ impl PendingWrites {
 	}
 
 	/// Range query with comparable bounds (same as range for compatibility)
-	pub fn range_comparable<R>(
-		&self,
-		range: R,
-	) -> BTreeMapRange<'_, EncodedKey, Pending>
+	pub fn range_comparable<R>(&self, range: R) -> BTreeMapRange<'_, EncodedKey, Pending>
 	where
 		R: RangeBounds<EncodedKey>,
 	{
@@ -178,10 +155,7 @@ impl PendingWrites {
 	}
 
 	#[inline]
-	pub fn get_entry_comparable(
-		&self,
-		key: &EncodedKey,
-	) -> Option<(&EncodedKey, &Pending)> {
+	pub fn get_entry_comparable(&self, key: &EncodedKey) -> Option<(&EncodedKey, &Pending)> {
 		self.get_entry(key)
 	}
 
@@ -191,19 +165,14 @@ impl PendingWrites {
 	}
 
 	#[inline]
-	pub fn remove_entry_comparable(
-		&mut self,
-		key: &EncodedKey,
-	) -> Option<(EncodedKey, Pending)> {
+	pub fn remove_entry_comparable(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
 		self.remove_entry(key)
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		CommitVersion, CowVec, EncodedKey, row::EncodedRow,
-	};
+	use reifydb_core::{CommitVersion, CowVec, EncodedKey, row::EncodedRow};
 
 	use super::*;
 
@@ -215,11 +184,7 @@ mod tests {
 		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn create_test_pending(
-		version: CommitVersion,
-		key: &str,
-		row_data: &str,
-	) -> Pending {
+	fn create_test_pending(version: CommitVersion, key: &str, row_data: &str) -> Pending {
 		use reifydb_core::delta::Delta;
 		Pending {
 			delta: Delta::Set {
@@ -292,11 +257,8 @@ mod tests {
 		// Test that iterators work with transaction system expectations
 		for i in 0..5 {
 			let key = create_test_key(&format!("key{}", i));
-			let pending = create_test_pending(
-				i as CommitVersion,
-				&format!("key{}", i),
-				&format!("value{}", i),
-			);
+			let pending =
+				create_test_pending(i as CommitVersion, &format!("key{}", i), &format!("value{}", i));
 			pw.insert(key, pending);
 		}
 
@@ -354,11 +316,8 @@ mod tests {
 
 		for i in 0..10 {
 			let key = create_test_key(&format!("key{}", i));
-			let pending = create_test_pending(
-				i as CommitVersion,
-				&format!("key{}", i),
-				&format!("value{}", i),
-			);
+			let pending =
+				create_test_pending(i as CommitVersion, &format!("key{}", i), &format!("value{}", i));
 			pw.insert(key, pending);
 		}
 

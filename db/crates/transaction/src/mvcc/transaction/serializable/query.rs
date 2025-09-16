@@ -15,10 +15,7 @@ use reifydb_core::{
 };
 
 use crate::mvcc::{
-	transaction::{
-		query::TransactionManagerQuery, serializable::Serializable,
-		version::StdVersionProvider,
-	},
+	transaction::{query::TransactionManagerQuery, serializable::Serializable, version::StdVersionProvider},
 	types::TransactionValue,
 };
 
@@ -27,13 +24,8 @@ pub struct QueryTransaction<VS: VersionedStorage, UT: UnversionedTransaction> {
 	pub(crate) tm: TransactionManagerQuery<StdVersionProvider<UT>>,
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction>
-	QueryTransaction<VS, UT>
-{
-	pub fn new(
-		engine: Serializable<VS, UT>,
-		version: Option<CommitVersion>,
-	) -> crate::Result<Self> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> QueryTransaction<VS, UT> {
+	pub fn new(engine: Serializable<VS, UT>, version: Option<CommitVersion>) -> crate::Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
 			engine,
@@ -42,17 +34,12 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction>
-	QueryTransaction<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> QueryTransaction<VS, UT> {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
 
-	pub fn get(
-		&self,
-		key: &EncodedKey,
-	) -> crate::Result<Option<TransactionValue>> {
+	pub fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
 		let version = self.tm.version();
 		Ok(self.engine.get(key, version)?.map(Into::into))
 	}
@@ -72,33 +59,21 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction>
 		Ok(self.engine.scan_rev(version)?)
 	}
 
-	pub fn range(
-		&self,
-		range: EncodedKeyRange,
-	) -> crate::Result<VS::RangeIter<'_>> {
+	pub fn range(&self, range: EncodedKeyRange) -> crate::Result<VS::RangeIter<'_>> {
 		let version = self.tm.version();
 		Ok(self.engine.range(range, version)?)
 	}
 
-	pub fn range_rev(
-		&self,
-		range: EncodedKeyRange,
-	) -> crate::Result<VS::RangeIterRev<'_>> {
+	pub fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<VS::RangeIterRev<'_>> {
 		let version = self.tm.version();
 		Ok(self.engine.range_rev(range, version)?)
 	}
 
-	pub fn prefix(
-		&self,
-		prefix: &EncodedKey,
-	) -> crate::Result<VS::RangeIter<'_>> {
+	pub fn prefix(&self, prefix: &EncodedKey) -> crate::Result<VS::RangeIter<'_>> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 
-	pub fn prefix_rev(
-		&self,
-		prefix: &EncodedKey,
-	) -> crate::Result<VS::RangeIterRev<'_>> {
+	pub fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<VS::RangeIterRev<'_>> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }

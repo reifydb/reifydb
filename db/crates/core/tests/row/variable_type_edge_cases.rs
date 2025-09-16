@@ -30,9 +30,8 @@ fn test_int_storage_modes() {
 
 	// Test dynamic storage (exceeds 127 bits)
 	let mut row4 = layout.allocate_row();
-	let huge = Int::from(BigInt::parse_bytes(
-        b"999999999999999999999999999999999999999999999999999999", 10
-    ).unwrap());
+	let huge =
+		Int::from(BigInt::parse_bytes(b"999999999999999999999999999999999999999999999999999999", 10).unwrap());
 	layout.set_int(&mut row4, 0, &huge);
 	assert_eq!(layout.get_int(&row4, 0), huge);
 

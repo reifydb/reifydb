@@ -6,9 +6,7 @@ use Separator::Comma;
 use crate::ast::{
 	AstTuple,
 	parse::{Parser, Precedence},
-	tokenize::{
-		Operator, Operator::CloseParen, Separator, Token, TokenKind,
-	},
+	tokenize::{Operator, Operator::CloseParen, Separator, Token, TokenKind},
 };
 
 impl<'a> Parser<'a> {
@@ -17,10 +15,7 @@ impl<'a> Parser<'a> {
 		self.parse_tuple_call(token)
 	}
 
-	pub(crate) fn parse_tuple_call(
-		&mut self,
-		operator: Token<'a>,
-	) -> crate::Result<AstTuple<'a>> {
+	pub(crate) fn parse_tuple_call(&mut self, operator: Token<'a>) -> crate::Result<AstTuple<'a>> {
 		let mut nodes = Vec::with_capacity(4);
 		loop {
 			self.skip_new_line()?;
@@ -29,9 +24,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 			nodes.push(self.parse_node(Precedence::None)?);
-			if self.consume_if(TokenKind::Separator(Comma))?
-				.is_none()
-			{
+			if self.consume_if(TokenKind::Separator(Comma))?.is_none() {
 				break;
 			};
 		}

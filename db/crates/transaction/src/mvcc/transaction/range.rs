@@ -41,9 +41,7 @@ where
 
 	fn advance_committed(&mut self) {
 		self.next_committed = self.committed.next().map(|sv| sv.into());
-		if let (Some(item), Some(marker)) =
-			(&self.next_committed, &mut self.marker)
-		{
+		if let (Some(item), Some(marker)) = (&self.next_committed, &mut self.marker) {
 			marker.mark(item.key());
 		}
 	}
@@ -85,17 +83,16 @@ where
 						// Pending item has a smaller
 						// key, so yield this one.
 						cmp::Ordering::Less => {
-							let (key, value) = self
-								.next_pending
-								.take()
-								.unwrap();
+							let (key, value) = self.next_pending.take().unwrap();
 							self.advance_pending();
 							self.last_yielded_key = Some(Either::Left(key));
-							let version =
-								value.version;
+							let version = value.version;
 							match value.row() {
-                                Some(value) => return Some((version, key, value).into()),
-                                None => continue}
+								Some(value) => {
+									return Some((version, key, value).into());
+								}
+								None => continue,
+							}
 						}
 						// Keys are equal, so we prefer
 						// the pending item and skip the
@@ -104,8 +101,7 @@ where
 							// Skip committed if it
 							// has the same key as
 							// pending
-							self.advance_committed(
-							);
+							self.advance_committed();
 							// Loop again to check
 							// the next item without
 							// yielding anything
@@ -116,42 +112,32 @@ where
 						// key, so we consider yielding
 						// this one.
 						cmp::Ordering::Greater => {
-							let committed = self
-								.next_committed
-								.take()
-								.unwrap();
-							self.advance_committed(
-							); // Prepare the next committed item for future iterations.
+							let committed = self.next_committed.take().unwrap();
+							self.advance_committed(); // Prepare the next committed item for future iterations.
 							// Yield the committed
 							// item if it has not
 							// been yielded before.
 							if self.last_yielded_key.as_ref().is_none_or(|k| match k {
-                                Either::Left(k) => *k != committed.key(),
-                                Either::Right(item) => item.key() != committed.key()}) {
-                                self.last_yielded_key = Some(Either::Right(committed.clone()));
-                                return Some(committed);
-                            }
+								Either::Left(k) => *k != committed.key(),
+								Either::Right(item) => item.key() != committed.key(),
+							}) {
+								self.last_yielded_key =
+									Some(Either::Right(committed.clone()));
+								return Some(committed);
+							}
 						}
 					}
 				}
 				// Only pending items are left, so yield the
 				// next pending item.
 				(Some((_, _)), None) => {
-					let (key, value) = self
-						.next_pending
-						.take()
-						.unwrap();
+					let (key, value) = self.next_pending.take().unwrap();
 					self.advance_pending(); // Advance the pending iterator for the next iteration.
-					self.last_yielded_key =
-						Some(Either::Left(key)); // Update the last yielded key.
+					self.last_yielded_key = Some(Either::Left(key)); // Update the last yielded key.
 					let version = value.version;
 					match value.row() {
 						Some(value) => {
-							return Some((
-								version, key,
-								value,
-							)
-								.into());
+							return Some((version, key, value).into());
 						}
 						None => continue,
 					}
@@ -160,24 +146,13 @@ where
 				// next committed item if it hasn't been yielded
 				// already.
 				(None, Some(committed)) => {
-					if self.last_yielded_key
-						.as_ref()
-						.is_none_or(|k| {
-							match k {
-                        Either::Left(k) => *k != committed.key(),
-                        Either::Right(item) => item.key() != committed.key()}
-						}) {
-						let committed = self
-							.next_committed
-							.take()
-							.unwrap();
+					if self.last_yielded_key.as_ref().is_none_or(|k| match k {
+						Either::Left(k) => *k != committed.key(),
+						Either::Right(item) => item.key() != committed.key(),
+					}) {
+						let committed = self.next_committed.take().unwrap();
 						self.advance_committed(); // Advance the committed iterator for the next iteration.
-						self.last_yielded_key =
-							Some(Either::Right(
-								committed
-									.clone(
-									),
-							));
+						self.last_yielded_key = Some(Either::Right(committed.clone()));
 						return Some(committed);
 					} else {
 						// The key has already been

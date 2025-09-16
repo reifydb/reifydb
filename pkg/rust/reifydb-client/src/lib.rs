@@ -10,18 +10,14 @@ pub mod ws;
 
 pub use client::Client;
 pub use domain::{Frame, FrameColumn};
-pub use http::{
-	HttpBlockingSession, HttpCallbackSession, HttpChannelSession,
-	HttpClient, HttpResponseMessage,
-};
+pub use http::{HttpBlockingSession, HttpCallbackSession, HttpChannelSession, HttpClient, HttpResponseMessage};
 use reifydb_type::diagnostic::Diagnostic;
 // Re-export types from reifydb
 pub use reifydb_type::{OrderedF32, OrderedF64, Params, Type, Value};
 use serde::{Deserialize, Serialize};
 pub use session::{CommandResult, QueryResult};
 pub use ws::{
-	client::WsClient, ChannelResponse, ResponseMessage, WsBlockingSession,
-	WsCallbackSession, WsChannelSession,
+	client::WsClient, ChannelResponse, ResponseMessage, WsBlockingSession, WsCallbackSession, WsChannelSession,
 };
 
 // ============================================================================

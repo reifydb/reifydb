@@ -127,26 +127,16 @@ where
 			let value = &self.data[index];
 
 			if TypeId::of::<T>() == TypeId::of::<Date>() {
-				let date_val = unsafe {
-					transmute_copy::<T, Date>(value)
-				};
+				let date_val = unsafe { transmute_copy::<T, Date>(value) };
 				Value::Date(date_val)
-			} else if TypeId::of::<T>() == TypeId::of::<DateTime>()
-			{
-				let datetime_val = unsafe {
-					transmute_copy::<T, DateTime>(value)
-				};
+			} else if TypeId::of::<T>() == TypeId::of::<DateTime>() {
+				let datetime_val = unsafe { transmute_copy::<T, DateTime>(value) };
 				Value::DateTime(datetime_val)
 			} else if TypeId::of::<T>() == TypeId::of::<Time>() {
-				let time_val = unsafe {
-					transmute_copy::<T, Time>(value)
-				};
+				let time_val = unsafe { transmute_copy::<T, Time>(value) };
 				Value::Time(time_val)
-			} else if TypeId::of::<T>() == TypeId::of::<Interval>()
-			{
-				let interval_val = unsafe {
-					transmute_copy::<T, Interval>(value)
-				};
+			} else if TypeId::of::<T>() == TypeId::of::<Interval>() {
+				let interval_val = unsafe { transmute_copy::<T, Interval>(value) };
 				Value::Interval(interval_val)
 			} else {
 				Value::Undefined
@@ -181,19 +171,8 @@ where
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<T> = self
-			.data
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.cloned()
-			.collect();
-		let new_bitvec: Vec<bool> = self
-			.bitvec
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.collect();
+		let new_data: Vec<T> = self.data.iter().skip(start).take(end - start).cloned().collect();
+		let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
 		Self {
 			data: CowVec::new(new_data),
 			bitvec: BitVec::from_slice(&new_bitvec),
@@ -304,8 +283,7 @@ mod tests {
 
 	#[test]
 	fn test_interval_container() {
-		let intervals =
-			vec![Interval::from_days(30), Interval::from_hours(24)];
+		let intervals = vec![Interval::from_days(30), Interval::from_hours(24)];
 		let container = TemporalContainer::from_vec(intervals.clone());
 
 		assert_eq!(container.len(), 2);
@@ -315,8 +293,7 @@ mod tests {
 
 	#[test]
 	fn test_with_capacity() {
-		let container: TemporalContainer<Date> =
-			TemporalContainer::with_capacity(10);
+		let container: TemporalContainer<Date> = TemporalContainer::with_capacity(10);
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());
 		assert!(container.capacity() >= 10);
@@ -324,23 +301,16 @@ mod tests {
 
 	#[test]
 	fn test_push_with_undefined() {
-		let mut container: TemporalContainer<Date> =
-			TemporalContainer::with_capacity(3);
+		let mut container: TemporalContainer<Date> = TemporalContainer::with_capacity(3);
 
 		container.push(Date::from_ymd(2023, 1, 1).unwrap());
 		container.push_undefined();
 		container.push(Date::from_ymd(2023, 12, 31).unwrap());
 
 		assert_eq!(container.len(), 3);
-		assert_eq!(
-			container.get(0),
-			Some(&Date::from_ymd(2023, 1, 1).unwrap())
-		);
+		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
 		assert_eq!(container.get(1), None); // undefined
-		assert_eq!(
-			container.get(2),
-			Some(&Date::from_ymd(2023, 12, 31).unwrap())
-		);
+		assert_eq!(container.get(2), Some(&Date::from_ymd(2023, 12, 31).unwrap()));
 
 		assert!(container.is_defined(0));
 		assert!(!container.is_defined(1));
@@ -353,43 +323,23 @@ mod tests {
 			Date::from_ymd(2023, 1, 1).unwrap(),
 			Date::from_ymd(2023, 6, 15).unwrap(),
 		]);
-		let container2 =
-			TemporalContainer::from_vec(vec![Date::from_ymd(
-				2023, 12, 31,
-			)
-			.unwrap()]);
+		let container2 = TemporalContainer::from_vec(vec![Date::from_ymd(2023, 12, 31).unwrap()]);
 
 		container1.extend(&container2).unwrap();
 
 		assert_eq!(container1.len(), 3);
-		assert_eq!(
-			container1.get(0),
-			Some(&Date::from_ymd(2023, 1, 1).unwrap())
-		);
-		assert_eq!(
-			container1.get(1),
-			Some(&Date::from_ymd(2023, 6, 15).unwrap())
-		);
-		assert_eq!(
-			container1.get(2),
-			Some(&Date::from_ymd(2023, 12, 31).unwrap())
-		);
+		assert_eq!(container1.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
+		assert_eq!(container1.get(1), Some(&Date::from_ymd(2023, 6, 15).unwrap()));
+		assert_eq!(container1.get(2), Some(&Date::from_ymd(2023, 12, 31).unwrap()));
 	}
 
 	#[test]
 	fn test_extend_from_undefined() {
-		let mut container =
-			TemporalContainer::from_vec(vec![Date::from_ymd(
-				2023, 1, 1,
-			)
-			.unwrap()]);
+		let mut container = TemporalContainer::from_vec(vec![Date::from_ymd(2023, 1, 1).unwrap()]);
 		container.extend_from_undefined(2);
 
 		assert_eq!(container.len(), 3);
-		assert_eq!(
-			container.get(0),
-			Some(&Date::from_ymd(2023, 1, 1).unwrap())
-		);
+		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
 		assert_eq!(container.get(1), None); // undefined
 		assert_eq!(container.get(2), None); // undefined
 	}
@@ -405,10 +355,7 @@ mod tests {
 		let container = TemporalContainer::new(dates.clone(), bitvec);
 
 		let collected: Vec<Option<Date>> = container.iter().collect();
-		assert_eq!(
-			collected,
-			vec![Some(dates[0]), None, Some(dates[2])]
-		);
+		assert_eq!(collected, vec![Some(dates[0]), None, Some(dates[2])]);
 	}
 
 	#[test]
@@ -422,14 +369,8 @@ mod tests {
 		let sliced = container.slice(1, 3);
 
 		assert_eq!(sliced.len(), 2);
-		assert_eq!(
-			sliced.get(0),
-			Some(&Time::from_hms(12, 0, 0).unwrap())
-		);
-		assert_eq!(
-			sliced.get(1),
-			Some(&Time::from_hms(15, 0, 0).unwrap())
-		);
+		assert_eq!(sliced.get(0), Some(&Time::from_hms(12, 0, 0).unwrap()));
+		assert_eq!(sliced.get(1), Some(&Time::from_hms(15, 0, 0).unwrap()));
 	}
 
 	#[test]
@@ -445,14 +386,8 @@ mod tests {
 		container.filter(&mask);
 
 		assert_eq!(container.len(), 2);
-		assert_eq!(
-			container.get(0),
-			Some(&Date::from_ymd(2023, 1, 1).unwrap())
-		);
-		assert_eq!(
-			container.get(1),
-			Some(&Date::from_ymd(2023, 3, 1).unwrap())
-		);
+		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 1, 1).unwrap()));
+		assert_eq!(container.get(1), Some(&Date::from_ymd(2023, 3, 1).unwrap()));
 	}
 
 	#[test]
@@ -467,24 +402,14 @@ mod tests {
 		container.reorder(&indices);
 
 		assert_eq!(container.len(), 3);
-		assert_eq!(
-			container.get(0),
-			Some(&Date::from_ymd(2023, 12, 31).unwrap())
-		); // was index 2
-		assert_eq!(
-			container.get(1),
-			Some(&Date::from_ymd(2023, 1, 1).unwrap())
-		); // was index 0
-		assert_eq!(
-			container.get(2),
-			Some(&Date::from_ymd(2023, 6, 15).unwrap())
-		); // was index 1
+		assert_eq!(container.get(0), Some(&Date::from_ymd(2023, 12, 31).unwrap())); // was index 2
+		assert_eq!(container.get(1), Some(&Date::from_ymd(2023, 1, 1).unwrap())); // was index 0
+		assert_eq!(container.get(2), Some(&Date::from_ymd(2023, 6, 15).unwrap())); // was index 1
 	}
 
 	#[test]
 	fn test_default() {
-		let container: TemporalContainer<Date> =
-			TemporalContainer::default();
+		let container: TemporalContainer<Date> = TemporalContainer::default();
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());
 	}

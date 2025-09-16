@@ -8,20 +8,14 @@ use reifydb_type::{Time, Type};
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_time(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: Time,
-	) {
+	pub fn set_time(&self, row: &mut EncodedRow, index: usize, value: Time) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Time);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut u64,
+				row.make_mut().as_mut_ptr().add(field.offset) as *mut u64,
 				value.to_nanos_since_midnight(),
 			)
 		}
@@ -32,19 +26,12 @@ impl EncodedRowLayout {
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Time);
 		unsafe {
-			Time::from_nanos_since_midnight(
-				(row.as_ptr().add(field.offset) as *const u64)
-					.read_unaligned(),
-			)
-			.unwrap()
+			Time::from_nanos_since_midnight((row.as_ptr().add(field.offset) as *const u64).read_unaligned())
+				.unwrap()
 		}
 	}
 
-	pub fn try_get_time(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<Time> {
+	pub fn try_get_time(&self, row: &EncodedRow, index: usize) -> Option<Time> {
 		if row.is_defined(index) {
 			Some(self.get_time(row, index))
 		} else {
@@ -106,14 +93,13 @@ mod tests {
 	fn test_time_various_times() {
 		let layout = EncodedRowLayout::new(&[Type::Time]);
 
-		let test_times =
-			[
-				Time::new(0, 0, 0, 0).unwrap(),  // Midnight
-				Time::new(12, 0, 0, 0).unwrap(), // Noon
-				Time::new(23, 59, 59, 999999999).unwrap(), /* Just before midnight */
-				Time::new(6, 30, 15, 500000000).unwrap(), /* Morning time */
-				Time::new(18, 45, 30, 750000000).unwrap(), /* Evening time */
-			];
+		let test_times = [
+			Time::new(0, 0, 0, 0).unwrap(),            // Midnight
+			Time::new(12, 0, 0, 0).unwrap(),           // Noon
+			Time::new(23, 59, 59, 999999999).unwrap(), // Just before midnight
+			Time::new(6, 30, 15, 500000000).unwrap(),  // Morning time
+			Time::new(18, 45, 30, 750000000).unwrap(), // Evening time
+		];
 
 		for time in test_times {
 			let mut row = layout.allocate_row();
@@ -130,8 +116,8 @@ mod tests {
 			Time::new(0, 0, 0, 0).unwrap(), // Start of day
 			Time::new(0, 0, 0, 1).unwrap(), /* One nanosecond
 			                                 * after midnight */
-			Time::new(23, 59, 59, 999999998).unwrap(), /* One nanosecond before midnight */
-			Time::new(23, 59, 59, 999999999).unwrap(), /* Last nanosecond of day */
+			Time::new(23, 59, 59, 999999998).unwrap(), // One nanosecond before midnight
+			Time::new(23, 59, 59, 999999999).unwrap(), // Last nanosecond of day
 		];
 
 		for time in boundary_times {
@@ -143,12 +129,7 @@ mod tests {
 
 	#[test]
 	fn test_time_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Time,
-			Type::Boolean,
-			Type::Time,
-			Type::Int4,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Time, Type::Boolean, Type::Time, Type::Int4]);
 		let mut row = layout.allocate_row();
 
 		let time1 = Time::new(9, 15, 30, 0).unwrap();
@@ -191,10 +172,7 @@ mod tests {
 
 		let retrieved = layout.get_time(&row, 0);
 		assert_eq!(retrieved, high_precision);
-		assert_eq!(
-			retrieved.to_nanos_since_midnight(),
-			high_precision.to_nanos_since_midnight()
-		);
+		assert_eq!(retrieved.to_nanos_since_midnight(), high_precision.to_nanos_since_midnight());
 	}
 
 	#[test]
@@ -203,8 +181,7 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		// Test microsecond precision (common in databases)
-		let microsecond_precision =
-			Time::new(14, 25, 30, 123456000).unwrap();
+		let microsecond_precision = Time::new(14, 25, 30, 123456000).unwrap();
 		layout.set_time(&mut row, 0, microsecond_precision.clone());
 		assert_eq!(layout.get_time(&row, 0), microsecond_precision);
 	}
@@ -215,8 +192,7 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		// Test millisecond precision
-		let millisecond_precision =
-			Time::new(8, 15, 42, 123000000).unwrap();
+		let millisecond_precision = Time::new(8, 15, 42, 123000000).unwrap();
 		layout.set_time(&mut row, 0, millisecond_precision.clone());
 		assert_eq!(layout.get_time(&row, 0), millisecond_precision);
 	}
@@ -226,14 +202,13 @@ mod tests {
 		let layout = EncodedRowLayout::new(&[Type::Time]);
 
 		// Test common business/system times
-		let common_times =
-			[
-				Time::new(9, 0, 0, 0).unwrap(), /* 9 AM start of work */
-				Time::new(12, 0, 0, 0).unwrap(), // Noon
-				Time::new(17, 0, 0, 0).unwrap(), /* 5 PM end of work */
-				Time::new(0, 0, 1, 0).unwrap(), /* 1 second after midnight */
-				Time::new(23, 59, 0, 0).unwrap(), /* 1 minute before midnight */
-			];
+		let common_times = [
+			Time::new(9, 0, 0, 0).unwrap(),   // 9 AM start of work
+			Time::new(12, 0, 0, 0).unwrap(),  // Noon
+			Time::new(17, 0, 0, 0).unwrap(),  // 5 PM end of work
+			Time::new(0, 0, 1, 0).unwrap(),   // 1 second after midnight
+			Time::new(23, 59, 0, 0).unwrap(), // 1 minute before midnight
+		];
 
 		for time in common_times {
 			let mut row = layout.allocate_row();

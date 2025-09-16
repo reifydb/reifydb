@@ -5,18 +5,13 @@ use std::{marker::PhantomData, rc::Rc};
 
 use crate::{
 	interceptor::{
-		Chain, InterceptorChain, NamespaceDefPostCreateInterceptor,
-		NamespaceDefPostUpdateInterceptor,
-		NamespaceDefPreDeleteInterceptor,
-		NamespaceDefPreUpdateInterceptor, PostCommitInterceptor,
-		PreCommitInterceptor, TableDefPostCreateInterceptor,
-		TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
-		TableDefPreUpdateInterceptor, TablePostDeleteInterceptor,
-		TablePostInsertInterceptor, TablePostUpdateInterceptor,
-		TablePreDeleteInterceptor, TablePreInsertInterceptor,
-		TablePreUpdateInterceptor, ViewDefPostCreateInterceptor,
-		ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
-		ViewDefPreUpdateInterceptor,
+		Chain, InterceptorChain, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
+		NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor, PostCommitInterceptor,
+		PreCommitInterceptor, TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor,
+		TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor, TablePostDeleteInterceptor,
+		TablePostInsertInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
+		TablePreInsertInterceptor, TablePreUpdateInterceptor, ViewDefPostCreateInterceptor,
+		ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
 	},
 	interface::CommandTransaction,
 };
@@ -34,29 +29,19 @@ pub struct Interceptors<CT: CommandTransaction> {
 	pub pre_commit: Chain<CT, dyn PreCommitInterceptor<CT>>,
 	pub post_commit: Chain<CT, dyn PostCommitInterceptor<CT>>,
 	// Namespace definition interceptors
-	pub namespace_def_post_create:
-		Chain<CT, dyn NamespaceDefPostCreateInterceptor<CT>>,
-	pub namespace_def_pre_update:
-		Chain<CT, dyn NamespaceDefPreUpdateInterceptor<CT>>,
-	pub namespace_def_post_update:
-		Chain<CT, dyn NamespaceDefPostUpdateInterceptor<CT>>,
-	pub namespace_def_pre_delete:
-		Chain<CT, dyn NamespaceDefPreDeleteInterceptor<CT>>,
+	pub namespace_def_post_create: Chain<CT, dyn NamespaceDefPostCreateInterceptor<CT>>,
+	pub namespace_def_pre_update: Chain<CT, dyn NamespaceDefPreUpdateInterceptor<CT>>,
+	pub namespace_def_post_update: Chain<CT, dyn NamespaceDefPostUpdateInterceptor<CT>>,
+	pub namespace_def_pre_delete: Chain<CT, dyn NamespaceDefPreDeleteInterceptor<CT>>,
 	// Table definition interceptors
-	pub table_def_post_create:
-		Chain<CT, dyn TableDefPostCreateInterceptor<CT>>,
-	pub table_def_pre_update:
-		Chain<CT, dyn TableDefPreUpdateInterceptor<CT>>,
-	pub table_def_post_update:
-		Chain<CT, dyn TableDefPostUpdateInterceptor<CT>>,
-	pub table_def_pre_delete:
-		Chain<CT, dyn TableDefPreDeleteInterceptor<CT>>,
+	pub table_def_post_create: Chain<CT, dyn TableDefPostCreateInterceptor<CT>>,
+	pub table_def_pre_update: Chain<CT, dyn TableDefPreUpdateInterceptor<CT>>,
+	pub table_def_post_update: Chain<CT, dyn TableDefPostUpdateInterceptor<CT>>,
+	pub table_def_pre_delete: Chain<CT, dyn TableDefPreDeleteInterceptor<CT>>,
 	// View definition interceptors
-	pub view_def_post_create:
-		Chain<CT, dyn ViewDefPostCreateInterceptor<CT>>,
+	pub view_def_post_create: Chain<CT, dyn ViewDefPostCreateInterceptor<CT>>,
 	pub view_def_pre_update: Chain<CT, dyn ViewDefPreUpdateInterceptor<CT>>,
-	pub view_def_post_update:
-		Chain<CT, dyn ViewDefPostUpdateInterceptor<CT>>,
+	pub view_def_post_update: Chain<CT, dyn ViewDefPostUpdateInterceptor<CT>>,
 	pub view_def_pre_delete: Chain<CT, dyn ViewDefPreDeleteInterceptor<CT>>,
 	// Marker to prevent Send and Sync
 	_not_send_sync: PhantomData<*const ()>,
@@ -107,25 +92,13 @@ impl<CT: CommandTransaction> Clone for Interceptors<CT> {
 			table_post_delete: self.table_post_delete.clone(),
 			pre_commit: self.pre_commit.clone(),
 			post_commit: self.post_commit.clone(),
-			namespace_def_post_create: self
-				.namespace_def_post_create
-				.clone(),
-			namespace_def_pre_update: self
-				.namespace_def_pre_update
-				.clone(),
-			namespace_def_post_update: self
-				.namespace_def_post_update
-				.clone(),
-			namespace_def_pre_delete: self
-				.namespace_def_pre_delete
-				.clone(),
-			table_def_post_create: self
-				.table_def_post_create
-				.clone(),
+			namespace_def_post_create: self.namespace_def_post_create.clone(),
+			namespace_def_pre_update: self.namespace_def_pre_update.clone(),
+			namespace_def_post_update: self.namespace_def_post_update.clone(),
+			namespace_def_pre_delete: self.namespace_def_pre_delete.clone(),
+			table_def_post_create: self.table_def_post_create.clone(),
 			table_def_pre_update: self.table_def_pre_update.clone(),
-			table_def_post_update: self
-				.table_def_post_update
-				.clone(),
+			table_def_post_update: self.table_def_post_update.clone(),
 			table_def_pre_delete: self.table_def_pre_delete.clone(),
 			view_def_post_create: self.view_def_post_create.clone(),
 			view_def_pre_update: self.view_def_pre_update.clone(),

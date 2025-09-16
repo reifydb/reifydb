@@ -19,9 +19,7 @@ impl CdcCheckpoint {
 			.and_then(|record| {
 				if record.row.len() >= 8 {
 					let mut buffer = [0u8; 8];
-					buffer.copy_from_slice(
-						&record.row[0..8],
-					);
+					buffer.copy_from_slice(&record.row[0..8]);
 					Some(u64::from_be_bytes(buffer))
 				} else {
 					None

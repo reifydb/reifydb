@@ -134,8 +134,7 @@ mod tests {
 
 			// Nested guard
 			{
-				let _guard2 =
-					MockLoggerGuard::new(sender2.clone());
+				let _guard2 = MockLoggerGuard::new(sender2.clone());
 				assert!(is_mock_logger_active());
 				// Should have sender2 active
 			}
@@ -181,9 +180,7 @@ mod tests {
 		let handle1 = thread::spawn(move || {
 			with_mock_logger(sender1, || {
 				let logger = get_mock_logger().unwrap();
-				let record = Record::new(
-					Info, "thread1", "message1",
-				);
+				let record = Record::new(Info, "thread1", "message1");
 				logger.send(record).unwrap();
 			});
 		});
@@ -191,9 +188,7 @@ mod tests {
 		let handle2 = thread::spawn(move || {
 			with_mock_logger(sender2, || {
 				let logger = get_mock_logger().unwrap();
-				let record = Record::new(
-					Info, "thread2", "message2",
-				);
+				let record = Record::new(Info, "thread2", "message2");
 				logger.send(record).unwrap();
 			});
 		});

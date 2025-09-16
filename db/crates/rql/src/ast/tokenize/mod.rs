@@ -15,13 +15,8 @@ mod token;
 
 use cursor::Cursor;
 use reifydb_type::Error;
-use scanner::{
-	scan_identifier, scan_keyword, scan_literal, scan_operator,
-	scan_parameter, scan_separator,
-};
-pub use token::{
-	Keyword, Literal, Operator, ParameterKind, Separator, Token, TokenKind,
-};
+use scanner::{scan_identifier, scan_keyword, scan_literal, scan_operator, scan_parameter, scan_separator};
+pub use token::{Keyword, Literal, Operator, ParameterKind, Separator, Token, TokenKind};
 
 /// Tokenize the input string into a vector of tokens
 pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
@@ -56,36 +51,24 @@ pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
 				'.' => {
 					// Check if followed by digit - if so,
 					// try literal first
-					if cursor
-						.peek_ahead(1)
-						.map_or(false, |ch| {
-							ch.is_ascii_digit()
-						}) {
-						scan_literal(&mut cursor)
-							.or_else(|| {
-								scan_operator(&mut cursor)
-							})
+					if cursor.peek_ahead(1).map_or(false, |ch| ch.is_ascii_digit()) {
+						scan_literal(&mut cursor).or_else(|| scan_operator(&mut cursor))
 					} else {
-						scan_operator(&mut cursor)
-							.or_else(|| {
-								scan_literal(&mut cursor)
-							})
+						scan_operator(&mut cursor).or_else(|| scan_literal(&mut cursor))
 					}
 				}
 
 				// Pure punctuation operators
-				'(' | ')' | '[' | ']' | '{' | '}' | '+'
-				| '*' | '/' | '^' | '%' | '?' => scan_operator(&mut cursor),
-
-				// Multi-char operators starting with these
-				// chars - try operator first
-				'<' | '>' | ':' | '&' | '|' | '=' | '!' => {
+				'(' | ')' | '[' | ']' | '{' | '}' | '+' | '*' | '/' | '^' | '%' | '?' => {
 					scan_operator(&mut cursor)
 				}
 
+				// Multi-char operators starting with these
+				// chars - try operator first
+				'<' | '>' | ':' | '&' | '|' | '=' | '!' => scan_operator(&mut cursor),
+
 				// Minus could be operator or negative number
-				'-' => scan_operator(&mut cursor)
-					.or_else(|| scan_literal(&mut cursor)),
+				'-' => scan_operator(&mut cursor).or_else(|| scan_literal(&mut cursor)),
 
 				// Separators
 				',' | ';' => scan_separator(&mut cursor),
@@ -97,33 +80,17 @@ pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
 					// Try in order: keyword, literal,
 					// operator, identifier
 					scan_keyword(&mut cursor)
-						.or_else(|| {
-							scan_literal(
-								&mut cursor,
-							)
-						})
-						.or_else(|| {
-							scan_operator(
-								&mut cursor,
-							)
-						})
-						.or_else(|| {
-							scan_identifier(
-								&mut cursor,
-							)
-						})
+						.or_else(|| scan_literal(&mut cursor))
+						.or_else(|| scan_operator(&mut cursor))
+						.or_else(|| scan_identifier(&mut cursor))
 				}
 
 				// Everything else - try all scanners in order
 				_ => scan_literal(&mut cursor)
 					.or_else(|| scan_operator(&mut cursor))
 					.or_else(|| scan_parameter(&mut cursor))
-					.or_else(|| {
-						scan_identifier(&mut cursor)
-					})
-					.or_else(|| {
-						scan_separator(&mut cursor)
-					}),
+					.or_else(|| scan_identifier(&mut cursor))
+					.or_else(|| scan_separator(&mut cursor)),
 			},
 			None => None,
 		};
@@ -134,14 +101,12 @@ pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
 				// Unable to tokenize - report error with
 				// current character
 				let ch = cursor.peek().unwrap_or('?');
-				return Err(Error(ast::tokenize_error(
-					format!(
-						"Unexpected character '{}' at line {}, column {}",
-						ch,
-						cursor.line(),
-						cursor.column()
-					),
-				)));
+				return Err(Error(ast::tokenize_error(format!(
+					"Unexpected character '{}' at line {}, column {}",
+					ch,
+					cursor.line(),
+					cursor.column()
+				))));
 			}
 		}
 	}
@@ -158,10 +123,7 @@ mod tests {
 		let tokens = tokenize("MAP * FROM users").unwrap();
 		assert_eq!(tokens.len(), 4);
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
-		assert_eq!(
-			tokens[1].kind,
-			TokenKind::Operator(Operator::Asterisk)
-		);
+		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Asterisk));
 		assert_eq!(tokens[2].kind, TokenKind::Keyword(Keyword::From));
 		assert_eq!(tokens[3].kind, TokenKind::Identifier);
 	}
@@ -171,10 +133,7 @@ mod tests {
 		let tokens = tokenize("   MAP   *   FROM   users   ").unwrap();
 		assert_eq!(tokens.len(), 4);
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
-		assert_eq!(
-			tokens[1].kind,
-			TokenKind::Operator(Operator::Asterisk)
-		);
+		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Asterisk));
 		assert_eq!(tokens[2].kind, TokenKind::Keyword(Keyword::From));
 		assert_eq!(tokens[3].kind, TokenKind::Identifier);
 	}
@@ -209,15 +168,9 @@ mod tests {
 	fn test_tokenize_parameters() {
 		let tokens = tokenize("$1 + $user_id").unwrap();
 		assert_eq!(tokens.len(), 3);
-		assert_eq!(
-			tokens[0].kind,
-			TokenKind::Parameter(ParameterKind::Positional(1))
-		);
+		assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Positional(1)));
 		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Plus));
-		assert_eq!(
-			tokens[2].kind,
-			TokenKind::Parameter(ParameterKind::Named)
-		);
+		assert_eq!(tokens[2].kind, TokenKind::Parameter(ParameterKind::Named));
 	}
 
 	#[test]
@@ -225,20 +178,11 @@ mod tests {
 		let tokens = tokenize("a >= b && c != d").unwrap();
 		assert_eq!(tokens.len(), 7);
 		assert_eq!(tokens[0].kind, TokenKind::Identifier);
-		assert_eq!(
-			tokens[1].kind,
-			TokenKind::Operator(Operator::RightAngleEqual)
-		);
+		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::RightAngleEqual));
 		assert_eq!(tokens[2].kind, TokenKind::Identifier);
-		assert_eq!(
-			tokens[3].kind,
-			TokenKind::Operator(Operator::DoubleAmpersand)
-		);
+		assert_eq!(tokens[3].kind, TokenKind::Operator(Operator::DoubleAmpersand));
 		assert_eq!(tokens[4].kind, TokenKind::Identifier);
-		assert_eq!(
-			tokens[5].kind,
-			TokenKind::Operator(Operator::BangEqual)
-		);
+		assert_eq!(tokens[5].kind, TokenKind::Operator(Operator::BangEqual));
 		assert_eq!(tokens[6].kind, TokenKind::Identifier);
 	}
 
@@ -258,26 +202,17 @@ mod tests {
 
 		assert_eq!(tokens[0].kind, TokenKind::Keyword(Keyword::Map));
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);
-		assert_eq!(
-			tokens[2].kind,
-			TokenKind::Separator(Separator::Comma)
-		);
+		assert_eq!(tokens[2].kind, TokenKind::Separator(Separator::Comma));
 		assert_eq!(tokens[3].kind, TokenKind::Identifier);
 		assert_eq!(tokens[4].kind, TokenKind::Keyword(Keyword::From));
 		assert_eq!(tokens[5].kind, TokenKind::Identifier);
 		assert_eq!(tokens[6].kind, TokenKind::Keyword(Keyword::Where));
 		assert_eq!(tokens[7].kind, TokenKind::Identifier);
-		assert_eq!(
-			tokens[8].kind,
-			TokenKind::Operator(Operator::RightAngle)
-		);
+		assert_eq!(tokens[8].kind, TokenKind::Operator(Operator::RightAngle));
 		assert_eq!(tokens[9].kind, TokenKind::Literal(Literal::Number));
 		assert_eq!(tokens[10].kind, TokenKind::Operator(Operator::And));
 		assert_eq!(tokens[11].kind, TokenKind::Identifier);
-		assert_eq!(
-			tokens[12].kind,
-			TokenKind::Operator(Operator::Equal)
-		);
+		assert_eq!(tokens[12].kind, TokenKind::Operator(Operator::Equal));
 		assert_eq!(tokens[13].kind, TokenKind::Literal(Literal::Text));
 		assert_eq!(tokens[13].value(), "active");
 	}

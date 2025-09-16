@@ -53,84 +53,76 @@ impl Iterator for SvlRangeRev {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
-			match (
-				self.next_pending.as_ref(),
-				self.next_committed.as_ref(),
-			) {
+			match (self.next_pending.as_ref(), self.next_committed.as_ref()) {
 				// Both pending and committed iterators have
 				// items
-				(
-					Some((pending_key, _delta)),
-					Some(committed),
-				) => {
+				(Some((pending_key, _delta)), Some(committed)) => {
 					// For reverse iteration, we want larger
 					// keys first
 					match pending_key.cmp(&committed.key) {
 						// Pending item has a larger
 						// key, yield it
 						cmp::Ordering::Greater => {
-							let (key, delta) = self
-								.next_pending
-								.take()
-								.unwrap();
+							let (key, delta) = self.next_pending.take().unwrap();
 							self.advance_pending();
-							self.last_yielded_key =
-								Some(key.clone(
-								));
+							self.last_yielded_key = Some(key.clone());
 
 							match delta {
-                                Delta::Set { row, .. } => {
-                                    return Some(Unversioned { key, row });
-                                }
-                                Delta::Remove { .. } => {
-                                    // Skip removed entries
-                                    continue;
-                                }
-                            }
+								Delta::Set {
+									row,
+									..
+								} => {
+									return Some(Unversioned {
+										key,
+										row,
+									});
+								}
+								Delta::Remove {
+									..
+								} => {
+									// Skip removed entries
+									continue;
+								}
+							}
 						}
 						// Keys are equal - pending
 						// overrides committed
 						cmp::Ordering::Equal => {
-							let (key, delta) = self
-								.next_pending
-								.take()
-								.unwrap();
+							let (key, delta) = self.next_pending.take().unwrap();
 							self.advance_pending();
-							self.advance_committed(
-							); // Skip the committed version
-							self.last_yielded_key =
-								Some(key.clone(
-								));
+							self.advance_committed(); // Skip the committed version
+							self.last_yielded_key = Some(key.clone());
 
 							match delta {
-                                Delta::Set { row, .. } => {
-                                    return Some(Unversioned { key, row });
-                                }
-                                Delta::Remove { .. } => {
-                                    // Skip removed entries
-                                    continue;
-                                }
-                            }
+								Delta::Set {
+									row,
+									..
+								} => {
+									return Some(Unversioned {
+										key,
+										row,
+									});
+								}
+								Delta::Remove {
+									..
+								} => {
+									// Skip removed entries
+									continue;
+								}
+							}
 						}
 						// Committed item has a larger
 						// key, yield it
 						cmp::Ordering::Less => {
-							let committed = self
-								.next_committed
-								.take()
-								.unwrap();
-							self.advance_committed(
-							);
+							let committed = self.next_committed.take().unwrap();
+							self.advance_committed();
 
 							// Check if this key was
 							// already yielded
 							if self.last_yielded_key
 								.as_ref()
-								.is_none_or(
-									|k| {
-										k != &committed.key
-									},
-								) {
+								.is_none_or(|k| k != &committed.key)
+							{
 								self.last_yielded_key = Some(committed.key.clone());
 								return Some(committed);
 							}
@@ -139,25 +131,19 @@ impl Iterator for SvlRangeRev {
 				}
 				// Only pending items left
 				(Some((_key, _delta)), None) => {
-					let (key, delta) = self
-						.next_pending
-						.take()
-						.unwrap();
+					let (key, delta) = self.next_pending.take().unwrap();
 					self.advance_pending();
-					self.last_yielded_key =
-						Some(key.clone());
+					self.last_yielded_key = Some(key.clone());
 
 					match delta {
 						Delta::Set {
 							row,
 							..
 						} => {
-							return Some(
-								Unversioned {
-									key,
-									row,
-								},
-							);
+							return Some(Unversioned {
+								key,
+								row,
+							});
 						}
 						Delta::Remove {
 							..
@@ -169,24 +155,11 @@ impl Iterator for SvlRangeRev {
 				}
 				// Only committed items left
 				(None, Some(_)) => {
-					let committed = self
-						.next_committed
-						.as_ref()
-						.unwrap();
-					if self.last_yielded_key
-						.as_ref()
-						.is_none_or(|k| {
-							k != &committed.key
-						}) {
-						let committed = self
-							.next_committed
-							.take()
-							.unwrap();
+					let committed = self.next_committed.as_ref().unwrap();
+					if self.last_yielded_key.as_ref().is_none_or(|k| k != &committed.key) {
+						let committed = self.next_committed.take().unwrap();
 						self.advance_committed();
-						self.last_yielded_key =
-							Some(committed
-								.key
-								.clone());
+						self.last_yielded_key = Some(committed.key.clone());
 						return Some(committed);
 					} else {
 						// Already yielded, skip

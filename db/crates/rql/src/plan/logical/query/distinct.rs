@@ -7,10 +7,7 @@ use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast::AstDistinct,
-	plan::logical::{
-		Compiler, DistinctNode, LogicalPlan,
-		resolver::IdentifierResolver,
-	},
+	plan::logical::{Compiler, DistinctNode, LogicalPlan, resolver::IdentifierResolver},
 };
 
 impl Compiler {
@@ -34,32 +31,39 @@ impl Compiler {
 					// For now, if it's already qualified, use that info
 					// Otherwise use placeholder that needs resolution
 					match col.source {
-						crate::ast::identifier::MaybeQualifiedColumnSource::Source { namespace, source } => {
-							ColumnIdentifier {
-								source: ColumnSource::Source {
-									namespace: namespace.unwrap_or_else(|| Fragment::Owned(
-										OwnedFragment::Internal { text: String::from("_context") }
-									)),
-									source,
-								},
-								name: col.name,
-							}
+						crate::ast::identifier::MaybeQualifiedColumnSource::Source {
+							namespace,
+							source,
+						} => ColumnIdentifier {
+							source: ColumnSource::Source {
+								namespace: namespace.unwrap_or_else(|| {
+									Fragment::Owned(OwnedFragment::Internal {
+										text: String::from("_context"),
+									})
+								}),
+								source,
+							},
+							name: col.name,
 						},
 						crate::ast::identifier::MaybeQualifiedColumnSource::Alias(alias) => {
 							ColumnIdentifier {
 								source: ColumnSource::Alias(alias),
 								name: col.name,
 							}
-						},
+						}
 						crate::ast::identifier::MaybeQualifiedColumnSource::Unqualified => {
 							// Unqualified - needs resolution from context
 							ColumnIdentifier {
 								source: ColumnSource::Source {
 									namespace: Fragment::Owned(
-										OwnedFragment::Internal { text: String::from("_context") }
+										OwnedFragment::Internal {
+											text: String::from("_context"),
+										},
 									),
 									source: Fragment::Owned(
-										OwnedFragment::Internal { text: String::from("_context") }
+										OwnedFragment::Internal {
+											text: String::from("_context"),
+										},
 									),
 								},
 								name: col.name,

@@ -7,24 +7,21 @@ use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
 	ColumnDescriptor,
 	interface::{
-		ColumnPolicyKind, EncodableKey, IndexEntryKey, IndexId, Params,
-		Transaction, VersionedCommandTransaction,
+		ColumnPolicyKind, EncodableKey, IndexEntryKey, IndexId, Params, Transaction,
+		VersionedCommandTransaction,
 	},
 	return_error,
 	row::EncodedRowLayout,
 	value::columnar::Columns,
 };
 use reifydb_rql::plan::physical::InsertPlan;
-use reifydb_type::{
-	IntoFragment, Type, Value, diagnostic::catalog::table_not_found,
-};
+use reifydb_type::{IntoFragment, Type, Value, diagnostic::catalog::table_not_found};
 
 use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	execute::{
-		Batch, ExecutionContext, Executor, QueryNode,
-		mutate::coerce::coerce_value_to_column_type,
+		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
 	transaction::operation::TableOperations,
@@ -39,32 +36,15 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace.text();
 
-		let namespace = CatalogStore::find_namespace_by_name(
-			txn,
-			namespace_name,
-		)?
-		.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
 		let table_name = plan.target.name.text();
-		let Some(table) = CatalogStore::find_table_by_name(
-			txn,
-			namespace.id,
-			table_name,
-		)?
-		else {
+		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
 			let fragment = plan.target.name.clone().into_fragment();
-			return_error!(table_not_found(
-				fragment.clone(),
-				namespace_name,
-				table_name,
-			));
+			return_error!(table_not_found(fragment.clone(), namespace_name, table_name,));
 		};
 
-		let table_types: Vec<Type> = table
-			.columns
-			.iter()
-			.map(|c| c.constraint.get_type())
-			.collect();
+		let table_types: Vec<Type> = table.columns.iter().map(|c| c.constraint.get_type()).collect();
 		let layout = EncodedRowLayout::new(&table_types);
 
 		let execution_context = Arc::new(ExecutionContext {
@@ -76,11 +56,7 @@ impl Executor {
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);
-		let mut input_node = compile(
-			*plan.input,
-			&mut std_txn,
-			execution_context.clone(),
-		);
+		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
 
 		let mut inserted_count = 0;
 
@@ -99,211 +75,73 @@ impl Executor {
 
 				// For each table column, find if it exists in
 				// the input columns
-				for (table_idx, table_column) in
-					table.columns.iter().enumerate()
-				{
-					let mut value =
-						if let Some(input_column) =
-							columns.iter().find(
-								|col| {
-									col.name() == table_column.name
-								},
-							) {
-							input_column
-								.data()
-								.get_value(
-								row_numberx,
-							)
-						} else {
-							Value::Undefined
-						};
+				for (table_idx, table_column) in table.columns.iter().enumerate() {
+					let mut value = if let Some(input_column) =
+						columns.iter().find(|col| col.name() == table_column.name)
+					{
+						input_column.data().get_value(row_numberx)
+					} else {
+						Value::Undefined
+					};
 
 					// Handle auto-increment columns
-					if table_column.auto_increment
-						&& matches!(
-							value,
-							Value::Undefined
-						) {
-						value = ColumnSequence::next_value(std_txn.command_mut(), table.id, table_column.id)?;
+					if table_column.auto_increment && matches!(value, Value::Undefined) {
+						value = ColumnSequence::next_value(
+							std_txn.command_mut(),
+							table.id,
+							table_column.id,
+						)?;
 					}
 
 					let policies: Vec<ColumnPolicyKind> =
-						table_column
-							.policies
-							.iter()
-							.map(|cp| {
-								cp.policy
-									.clone()
-							})
-							.collect();
+						table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
 
 					value = coerce_value_to_column_type(
 						value,
-						table_column
-							.constraint
-							.get_type(),
+						table_column.constraint.get_type(),
 						ColumnDescriptor::new()
-							.with_namespace(
-								&namespace.name,
-							)
+							.with_namespace(&namespace.name)
 							.with_table(&table.name)
-							.with_column(
-								&table_column
-									.name,
-							)
-							.with_column_type(
-								table_column
-									.constraint
-									.get_type(
-									),
-							)
-							.with_policies(
-								policies,
-							),
+							.with_column(&table_column.name)
+							.with_column_type(table_column.constraint.get_type())
+							.with_policies(policies),
 						&execution_context,
 					)?;
 
 					// Validate the value against the
 					// column's constraint
-					if let Err(e) = table_column
-						.constraint
-						.validate(&value)
-					{
+					if let Err(e) = table_column.constraint.validate(&value) {
 						return Err(e);
 					}
 
 					match value {
-						Value::Boolean(v) => layout
-							.set_bool(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Float4(v) => layout
-							.set_f32(
-								&mut row,
-								table_idx, *v,
-							),
-						Value::Float8(v) => layout
-							.set_f64(
-								&mut row,
-								table_idx, *v,
-							),
-						Value::Int1(v) => layout
-							.set_i8(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Int2(v) => layout
-							.set_i16(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Int4(v) => layout
-							.set_i32(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Int8(v) => layout
-							.set_i64(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Int16(v) => layout
-							.set_i128(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Utf8(v) => layout
-							.set_utf8(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Uint1(v) => layout
-							.set_u8(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Uint2(v) => layout
-							.set_u16(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Uint4(v) => layout
-							.set_u32(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Uint8(v) => layout
-							.set_u64(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Uint16(v) => layout
-							.set_u128(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Date(v) => layout
-							.set_date(
-								&mut row,
-								table_idx, v,
-							),
-						Value::DateTime(v) => layout
-							.set_datetime(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Time(v) => layout
-							.set_time(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Interval(v) => layout
-							.set_interval(
-								&mut row,
-								table_idx, v,
-							),
+						Value::Boolean(v) => layout.set_bool(&mut row, table_idx, v),
+						Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
+						Value::Float8(v) => layout.set_f64(&mut row, table_idx, *v),
+						Value::Int1(v) => layout.set_i8(&mut row, table_idx, v),
+						Value::Int2(v) => layout.set_i16(&mut row, table_idx, v),
+						Value::Int4(v) => layout.set_i32(&mut row, table_idx, v),
+						Value::Int8(v) => layout.set_i64(&mut row, table_idx, v),
+						Value::Int16(v) => layout.set_i128(&mut row, table_idx, v),
+						Value::Utf8(v) => layout.set_utf8(&mut row, table_idx, v),
+						Value::Uint1(v) => layout.set_u8(&mut row, table_idx, v),
+						Value::Uint2(v) => layout.set_u16(&mut row, table_idx, v),
+						Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
+						Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
+						Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
+						Value::Date(v) => layout.set_date(&mut row, table_idx, v),
+						Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
+						Value::Time(v) => layout.set_time(&mut row, table_idx, v),
+						Value::Interval(v) => layout.set_interval(&mut row, table_idx, v),
 						Value::RowNumber(_v) => {}
-						Value::IdentityId(v) => layout
-							.set_identity_id(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Uuid4(v) => layout
-							.set_uuid4(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Uuid7(v) => layout
-							.set_uuid7(
-								&mut row,
-								table_idx, v,
-							),
-						Value::Blob(v) => layout
-							.set_blob(
-								&mut row,
-								table_idx, &v,
-							),
-						Value::Int(v) => layout
-							.set_int(
-								&mut row,
-								table_idx, &v,
-							),
-						Value::Uint(v) => layout
-							.set_uint(
-								&mut row,
-								table_idx, &v,
-							),
-						Value::Decimal(v) => layout
-							.set_decimal(
-								&mut row,
-								table_idx, &v,
-							),
-						Value::Undefined => layout
-							.set_undefined(
-								&mut row,
-								table_idx,
-							),
+						Value::IdentityId(v) => layout.set_identity_id(&mut row, table_idx, v),
+						Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
+						Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
+						Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
+						Value::Int(v) => layout.set_int(&mut row, table_idx, &v),
+						Value::Uint(v) => layout.set_uint(&mut row, table_idx, &v),
+						Value::Decimal(v) => layout.set_decimal(&mut row, table_idx, &v),
+						Value::Undefined => layout.set_undefined(&mut row, table_idx),
 					}
 				}
 
@@ -331,53 +169,25 @@ impl Executor {
 				//
 				// txn.insert_into_table(table, key, row)
 
-				let row_number = std_txn
-					.command_mut()
-					.insert_into_table(
-						table.clone(),
-						row.clone(),
-					)?;
+				let row_number = std_txn.command_mut().insert_into_table(table.clone(), row.clone())?;
 
 				// Store primary key index entry if table has
 				// one
-				if let Some(pk_def) =
-					primary_key::get_primary_key(
-						std_txn.command_mut(),
-						&table,
-					)? {
-					let index_key = primary_key::encode_primary_key(
-						&pk_def,
-						&row,
-						&table,
-						&layout,
-					)?;
+				if let Some(pk_def) = primary_key::get_primary_key(std_txn.command_mut(), &table)? {
+					let index_key =
+						primary_key::encode_primary_key(&pk_def, &row, &table, &layout)?;
 
 					// Store the index entry with the row
 					// number as value For now, we
 					// encode the row number as a simple
 					// EncodedRow with u64
-					let row_number_layout =
-						EncodedRowLayout::new(&[
-							Type::Uint8,
-						]);
-					let mut row_number_encoded =
-						row_number_layout
-							.allocate_row();
-					row_number_layout.set_u64(
-						&mut row_number_encoded,
-						0,
-						u64::from(row_number),
-					);
+					let row_number_layout = EncodedRowLayout::new(&[Type::Uint8]);
+					let mut row_number_encoded = row_number_layout.allocate_row();
+					row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
 					std_txn.command_mut().set(
-						&IndexEntryKey::new(
-							table.id,
-							IndexId::primary(
-								pk_def.id,
-							),
-							index_key,
-						)
-						.encode(),
+						&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key)
+							.encode(),
 						row_number_encoded,
 					)?;
 				}

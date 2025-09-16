@@ -29,20 +29,12 @@ test_each_path! { in "crates/storage/tests/scripts/versioned" as versioned_memor
 test_each_path! { in "crates/storage/tests/scripts/versioned" as versioned_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	testscript::run_path(&mut Runner::new(Memory::default()), path)
-		.expect("test failed")
+	testscript::run_path(&mut Runner::new(Memory::default()), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
-	temp_dir(|db_path| {
-		testscript::run_path(
-			&mut Runner::new(Sqlite::new(SqliteConfig::fast(
-				db_path,
-			))),
-			path,
-		)
-	})
-	.expect("test failed")
+	temp_dir(|db_path| testscript::run_path(&mut Runner::new(Sqlite::new(SqliteConfig::fast(db_path))), path))
+		.expect("test failed")
 }
 
 /// Runs engine tests.
@@ -59,160 +51,81 @@ impl<VS: VersionedStorage> Runner<VS> {
 }
 
 impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
-	fn run(
-		&mut self,
-		command: &testscript::Command,
-	) -> Result<String, Box<dyn StdError>> {
+	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
 			// get KEY [version=VERSION]
 			"get" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(
-					&args.next_pos()
-						.ok_or("key not given")?
-						.value,
-				));
-				let version = args
-					.lookup_parse("version")?
-					.unwrap_or(0u64);
+				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let version = args.lookup_parse("version")?.unwrap_or(0u64);
 				args.reject_rest()?;
-				let value = self
-					.storage
-					.get(&key, version)?
-					.map(|sv| sv.row.to_vec());
-				writeln!(
-					output,
-					"{}",
-					format::Raw::key_maybe_row(&key, value)
-				)?;
+				let value = self.storage.get(&key, version)?.map(|sv| sv.row.to_vec());
+				writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
 			}
 			// contains KEY [version=VERSION]
 			"contains" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(
-					&args.next_pos()
-						.ok_or("key not given")?
-						.value,
-				));
-				let version = args
-					.lookup_parse("version")?
-					.unwrap_or(0u64);
+				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let version = args.lookup_parse("version")?.unwrap_or(0u64);
 				args.reject_rest()?;
-				let contains =
-					self.storage.contains(&key, version)?;
-				writeln!(
-					output,
-					"{} => {}",
-					format::Raw::key(&key),
-					contains
-				)?;
+				let contains = self.storage.contains(&key, version)?;
+				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
 			}
 
 			// scan [reverse=BOOL] [version=VERSION]
 			"scan" => {
 				let mut args = command.consume_args();
-				let reverse = args
-					.lookup_parse("reverse")?
-					.unwrap_or(false);
-				let version = args
-					.lookup_parse("version")?
-					.unwrap_or(0u64);
+				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
+				let version = args.lookup_parse("version")?.unwrap_or(0u64);
 				args.reject_rest()?;
 
 				if !reverse {
-					print(
-						&mut output,
-						self.storage.scan(version)?,
-					)
+					print(&mut output, self.storage.scan(version)?)
 				} else {
-					print(
-						&mut output,
-						self.storage
-							.scan_rev(version)?,
-					)
+					print(&mut output, self.storage.scan_rev(version)?)
 				};
 			}
 			// range RANGE [reverse=BOOL] [version=VERSION]
 			"range" => {
 				let mut args = command.consume_args();
-				let reverse = args
-					.lookup_parse("reverse")?
-					.unwrap_or(false);
+				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
 				let range = EncodedKeyRange::parse(
-					args.next_pos()
-						.map(|a| a.value.as_str())
-						.unwrap_or(".."),
+					args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
 				);
-				let version = args
-					.lookup_parse("version")?
-					.unwrap_or(0u64);
+				let version = args.lookup_parse("version")?.unwrap_or(0u64);
 				args.reject_rest()?;
 
 				if !reverse {
-					print(
-						&mut output,
-						self.storage.range(
-							range, version,
-						)?,
-					)
+					print(&mut output, self.storage.range(range, version)?)
 				} else {
-					print(
-						&mut output,
-						self.storage.range_rev(
-							range, version,
-						)?,
-					)
+					print(&mut output, self.storage.range_rev(range, version)?)
 				};
 			}
 
 			// prefix PREFIX [reverse=BOOL] [version=VERSION]
 			"prefix" => {
 				let mut args = command.consume_args();
-				let reverse = args
-					.lookup_parse("reverse")?
-					.unwrap_or(false);
-				let version = args
-					.lookup_parse("version")?
-					.unwrap_or(0u64);
-				let prefix = EncodedKey(decode_binary(
-					&args.next_pos()
-						.ok_or("prefix not given")?
-						.value,
-				));
+				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
+				let version = args.lookup_parse("version")?.unwrap_or(0u64);
+				let prefix =
+					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
 				args.reject_rest()?;
 
 				if !reverse {
-					print(
-						&mut output,
-						self.storage.prefix(
-							&prefix, version,
-						)?,
-					)
+					print(&mut output, self.storage.prefix(&prefix, version)?)
 				} else {
-					print(
-						&mut output,
-						self.storage.prefix_rev(
-							&prefix, version,
-						)?,
-					)
+					print(&mut output, self.storage.prefix_rev(&prefix, version)?)
 				};
 			}
 
 			// set KEY=VALUE [version=VERSION]
 			"set" => {
 				let mut args = command.consume_args();
-				let kv = args
-					.next_key()
-					.ok_or("key=value not given")?
-					.clone();
-				let key = EncodedKey(decode_binary(
-					&kv.key.unwrap(),
-				));
+				let kv = args.next_key().ok_or("key=value not given")?.clone();
+				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
 				let row = EncodedRow(decode_binary(&kv.value));
-				let version = args
-					.lookup_parse("version")?
-					.unwrap_or(0u64);
+				let version = args.lookup_parse("version")?.unwrap_or(0u64);
 				args.reject_rest()?;
 
 				self.storage.commit(
@@ -230,14 +143,8 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
 			// remove KEY [version=VERSION]
 			"remove" => {
 				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(
-					&args.next_pos()
-						.ok_or("key not given")?
-						.value,
-				));
-				let version = args
-					.lookup_parse("version")?
-					.unwrap_or(0u64);
+				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				let version = args.lookup_parse("version")?.unwrap_or(0u64);
 				args.reject_rest()?;
 
 				self.storage.commit(
@@ -252,8 +159,7 @@ impl<VS: VersionedStorage> testscript::Runner for Runner<VS> {
 			}
 
 			name => {
-				return Err(format!("invalid command {name}")
-					.into());
+				return Err(format!("invalid command {name}").into());
 			}
 		}
 		Ok(output)

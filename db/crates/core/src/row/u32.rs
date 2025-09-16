@@ -8,40 +8,22 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_u32(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<u32>,
-	) {
+	pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uint4);
 		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut u32,
-				value.into(),
-			)
-		}
+		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u32, value.into()) }
 	}
 
 	pub fn get_u32(&self, row: &EncodedRow, index: usize) -> u32 {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uint4);
-		unsafe {
-			(row.as_ptr().add(field.offset) as *const u32)
-				.read_unaligned()
-		}
+		unsafe { (row.as_ptr().add(field.offset) as *const u32).read_unaligned() }
 	}
 
-	pub fn try_get_u32(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<u32> {
+	pub fn try_get_u32(&self, row: &EncodedRow, index: usize) -> Option<u32> {
 		if row.is_defined(index) {
 			Some(self.get_u32(row, index))
 		} else {
@@ -136,11 +118,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Uint4,
-			Type::Float4,
-			Type::Uint4,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Uint4, Type::Float4, Type::Uint4]);
 		let mut row = layout.allocate_row();
 
 		layout.set_u32(&mut row, 0, 3_000_000_000u32);

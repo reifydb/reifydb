@@ -56,16 +56,9 @@ impl Date {
 	}
 
 	/// Convert year/month/day to days since Unix epoch
-	fn ymd_to_days_since_epoch(
-		year: i32,
-		month: u32,
-		day: u32,
-	) -> Option<i32> {
+	fn ymd_to_days_since_epoch(year: i32, month: u32, day: u32) -> Option<i32> {
 		// Validate input
-		if month < 1
-			|| month > 12 || day < 1
-			|| day > Self::days_in_month(year, month)
-		{
+		if month < 1 || month > 12 || day < 1 || day > Self::days_in_month(year, month) {
 			return None;
 		}
 
@@ -123,30 +116,17 @@ impl Date {
 
 impl Date {
 	pub fn new(year: i32, month: u32, day: u32) -> Option<Self> {
-		Self::ymd_to_days_since_epoch(year, month, day).map(
-			|days_since_epoch| Self {
-				days_since_epoch,
-			},
-		)
-	}
-
-	pub fn from_ymd(
-		year: i32,
-		month: u32,
-		day: u32,
-	) -> Result<Self, String> {
-		Self::new(year, month, day).ok_or_else(|| {
-			format!(
-				"Invalid date: {}-{:02}-{:02}",
-				year, month, day
-			)
+		Self::ymd_to_days_since_epoch(year, month, day).map(|days_since_epoch| Self {
+			days_since_epoch,
 		})
 	}
 
+	pub fn from_ymd(year: i32, month: u32, day: u32) -> Result<Self, String> {
+		Self::new(year, month, day).ok_or_else(|| format!("Invalid date: {}-{:02}-{:02}", year, month, day))
+	}
+
 	pub fn today() -> Self {
-		let duration = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("System time before Unix epoch");
+		let duration = SystemTime::now().duration_since(UNIX_EPOCH).expect("System time before Unix epoch");
 
 		let days = duration.as_secs() / 86400;
 		Self {
@@ -186,8 +166,7 @@ impl Date {
 
 impl Display for Date {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-		let (year, month, day) =
-			Self::days_since_epoch_to_ymd(self.days_since_epoch);
+		let (year, month, day) = Self::days_since_epoch_to_ymd(self.days_since_epoch);
 		if year < 0 {
 			write!(f, "-{:04}-{:02}-{:02}", -year, month, day)
 		} else {
@@ -211,10 +190,7 @@ struct DateVisitor;
 impl<'de> Visitor<'de> for DateVisitor {
 	type Value = Date;
 
-	fn expecting(
-		&self,
-		formatter: &mut std::fmt::Formatter,
-	) -> std::fmt::Result {
+	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
 		formatter.write_str("a date in ISO 8601 format (YYYY-MM-DD)")
 	}
 
@@ -226,38 +202,24 @@ impl<'de> Visitor<'de> for DateVisitor {
 		let parts: Vec<&str> = value.split('-').collect();
 
 		if parts.len() != 3 {
-			return Err(E::custom(format!(
-				"invalid date format: {}",
-				value
-			)));
+			return Err(E::custom(format!("invalid date format: {}", value)));
 		}
 
 		// Handle negative years
-		let (year_str, month_str, day_str) =
-			if parts[0].is_empty() && parts.len() == 4 {
-				// Negative year case: "-YYYY-MM-DD" splits as
-				// ["", "YYYY", "MM", "DD"]
-				(format!("-{}", parts[1]), parts[2], parts[3])
-			} else {
-				(parts[0].to_string(), parts[1], parts[2])
-			};
+		let (year_str, month_str, day_str) = if parts[0].is_empty() && parts.len() == 4 {
+			// Negative year case: "-YYYY-MM-DD" splits as
+			// ["", "YYYY", "MM", "DD"]
+			(format!("-{}", parts[1]), parts[2], parts[3])
+		} else {
+			(parts[0].to_string(), parts[1], parts[2])
+		};
 
-		let year = year_str.parse::<i32>().map_err(|_| {
-			E::custom(format!("invalid year: {}", year_str))
-		})?;
-		let month = month_str.parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid month: {}", month_str))
-		})?;
-		let day = day_str.parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid day: {}", day_str))
-		})?;
+		let year = year_str.parse::<i32>().map_err(|_| E::custom(format!("invalid year: {}", year_str)))?;
+		let month = month_str.parse::<u32>().map_err(|_| E::custom(format!("invalid month: {}", month_str)))?;
+		let day = day_str.parse::<u32>().map_err(|_| E::custom(format!("invalid day: {}", day_str)))?;
 
-		Date::new(year, month, day).ok_or_else(|| {
-			E::custom(format!(
-				"invalid date: {}-{:02}-{:02}",
-				year, month, day
-			))
-		})
+		Date::new(year, month, day)
+			.ok_or_else(|| E::custom(format!("invalid date: {}-{:02}-{:02}", year, month, day)))
 	}
 }
 
@@ -365,10 +327,7 @@ mod tests {
 
 		for (month, expected) in months {
 			let date = Date::new(2024, month, 15).unwrap();
-			assert_eq!(
-				format!("{}", date),
-				format!("2024-{}-15", expected)
-			);
+			assert_eq!(format!("{}", date), format!("2024-{}-15", expected));
 		}
 	}
 
@@ -406,8 +365,7 @@ mod tests {
 		for (year, month, day) in test_dates {
 			let date = Date::new(year, month, day).unwrap();
 			let days = date.to_days_since_epoch();
-			let recovered =
-				Date::from_days_since_epoch(days).unwrap();
+			let recovered = Date::from_days_since_epoch(days).unwrap();
 
 			assert_eq!(date.year(), recovered.year());
 			assert_eq!(date.month(), recovered.month());

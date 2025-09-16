@@ -8,40 +8,22 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_f32(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<f32>,
-	) {
+	pub fn set_f32(&self, row: &mut EncodedRow, index: usize, value: impl Into<f32>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Float4);
 		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut f32,
-				value.into(),
-			)
-		}
+		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut f32, value.into()) }
 	}
 
 	pub fn get_f32(&self, row: &EncodedRow, index: usize) -> f32 {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Float4);
-		unsafe {
-			(row.as_ptr().add(field.offset) as *const f32)
-				.read_unaligned()
-		}
+		unsafe { (row.as_ptr().add(field.offset) as *const f32).read_unaligned() }
 	}
 
-	pub fn try_get_f32(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<f32> {
+	pub fn try_get_f32(&self, row: &EncodedRow, index: usize) -> Option<f32> {
 		if row.is_defined(index) {
 			Some(self.get_f32(row, index))
 		} else {
@@ -125,11 +107,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Float4,
-			Type::Int4,
-			Type::Float4,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Float4, Type::Int4, Type::Float4]);
 		let mut row = layout.allocate_row();
 
 		layout.set_f32(&mut row, 0, 3.14f32);
@@ -143,8 +121,7 @@ mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout =
-			EncodedRowLayout::new(&[Type::Float4, Type::Float4]);
+		let layout = EncodedRowLayout::new(&[Type::Float4, Type::Float4]);
 		let mut row = layout.allocate_row();
 
 		layout.set_f32(&mut row, 0, 3.14f32);
@@ -164,26 +141,17 @@ mod tests {
 		// Test smallest positive subnormal
 		let min_subnormal = f32::from_bits(0x00000001);
 		layout.set_f32(&mut row, 0, min_subnormal);
-		assert_eq!(
-			layout.get_f32(&row, 0).to_bits(),
-			min_subnormal.to_bits()
-		);
+		assert_eq!(layout.get_f32(&row, 0).to_bits(), min_subnormal.to_bits());
 
 		// Test largest subnormal (just below MIN_POSITIVE)
 		let max_subnormal = f32::from_bits(0x007fffff);
 		layout.set_f32(&mut row, 0, max_subnormal);
-		assert_eq!(
-			layout.get_f32(&row, 0).to_bits(),
-			max_subnormal.to_bits()
-		);
+		assert_eq!(layout.get_f32(&row, 0).to_bits(), max_subnormal.to_bits());
 
 		// Test negative subnormals
 		let neg_subnormal = f32::from_bits(0x80000001);
 		layout.set_f32(&mut row, 0, neg_subnormal);
-		assert_eq!(
-			layout.get_f32(&row, 0).to_bits(),
-			neg_subnormal.to_bits()
-		);
+		assert_eq!(layout.get_f32(&row, 0).to_bits(), neg_subnormal.to_bits());
 	}
 
 	#[test]
@@ -199,18 +167,12 @@ mod tests {
 		// Test NaN with specific payload
 		let nan_with_payload = f32::from_bits(0x7fc00001);
 		layout.set_f32(&mut row, 0, nan_with_payload);
-		assert_eq!(
-			layout.get_f32(&row, 0).to_bits(),
-			nan_with_payload.to_bits()
-		);
+		assert_eq!(layout.get_f32(&row, 0).to_bits(), nan_with_payload.to_bits());
 
 		// Test negative NaN
 		let neg_nan = f32::from_bits(0xffc00000);
 		layout.set_f32(&mut row, 0, neg_nan);
-		assert_eq!(
-			layout.get_f32(&row, 0).to_bits(),
-			neg_nan.to_bits()
-		);
+		assert_eq!(layout.get_f32(&row, 0).to_bits(), neg_nan.to_bits());
 	}
 
 	#[test]
@@ -269,10 +231,7 @@ mod tests {
 			} else {
 				// For subnormals, compare bits to ensure exact
 				// preservation
-				assert_eq!(
-					retrieved.to_bits(),
-					value.to_bits()
-				);
+				assert_eq!(retrieved.to_bits(), value.to_bits());
 			}
 		}
 	}

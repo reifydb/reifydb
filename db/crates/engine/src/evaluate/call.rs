@@ -17,19 +17,14 @@ use crate::{
 };
 
 impl StandardEvaluator {
-	pub(crate) fn call(
-		&self,
-		ctx: &EvaluationContext,
-		call: &CallExpression,
-	) -> crate::Result<Column> {
+	pub(crate) fn call(&self, ctx: &EvaluationContext, call: &CallExpression) -> crate::Result<Column> {
 		let arguments = self.evaluate_arguments(ctx, &call.args)?;
 		let function = call.func.0.fragment();
 
-		let functor = self.functions.get_scalar(function).ok_or(
-			error!(function::unknown_function(
-				function.to_string()
-			)),
-		)?;
+		let functor = self
+			.functions
+			.get_scalar(function)
+			.ok_or(error!(function::unknown_function(function.to_string())))?;
 
 		let row_count = ctx.row_count;
 		Ok(Column::ColumnQualified(ColumnQualified {
@@ -46,8 +41,7 @@ impl StandardEvaluator {
 		ctx: &EvaluationContext,
 		expressions: &Vec<Expression>,
 	) -> crate::Result<Columns> {
-		let mut result: Vec<Column> =
-			Vec::with_capacity(expressions.len());
+		let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
 
 		for expression in expressions {
 			result.push(self.evaluate(ctx, expression)?)

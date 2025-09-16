@@ -21,59 +21,32 @@ impl Sum {
 }
 
 impl AggregateFunction for Sum {
-	fn aggregate(
-		&mut self,
-		ctx: AggregateFunctionContext,
-	) -> crate::Result<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::Result<()> {
 		let column = ctx.column;
 		let groups = &ctx.groups;
 
 		match &column.data() {
 			ColumnData::Float8(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: f64 = indices
-						.iter()
-						.filter_map(|&i| {
-							container.get(i)
-						})
-						.sum();
+					let sum: f64 = indices.iter().filter_map(|&i| container.get(i)).sum();
 
-					self.sums.insert(
-						group.clone(),
-						Value::float8(sum),
-					);
+					self.sums.insert(group.clone(), Value::float8(sum));
 				}
 				Ok(())
 			}
 			ColumnData::Int4(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: i32 = indices
-						.iter()
-						.filter_map(|&i| {
-							container.get(i)
-						})
-						.sum();
+					let sum: i32 = indices.iter().filter_map(|&i| container.get(i)).sum();
 
-					self.sums.insert(
-						group.clone(),
-						Value::Int4(sum),
-					);
+					self.sums.insert(group.clone(), Value::Int4(sum));
 				}
 				Ok(())
 			}
 			ColumnData::Int8(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: i64 = indices
-						.iter()
-						.filter_map(|&i| {
-							container.get(i)
-						})
-						.sum();
+					let sum: i64 = indices.iter().filter_map(|&i| container.get(i)).sum();
 
-					self.sums.insert(
-						group.clone(),
-						Value::Int8(sum),
-					);
+					self.sums.insert(group.clone(), Value::Int8(sum));
 				}
 				Ok(())
 			}

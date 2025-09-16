@@ -197,10 +197,7 @@ mod tests {
 		fn test_wrapping_convert() {
 			let x: i16 = -1;
 			let y: u128 = x.wrapping_convert();
-			assert_eq!(
-				y,
-				340282366920938463463374607431768211455u128
-			);
+			assert_eq!(y, 340282366920938463463374607431768211455u128);
 		}
 	}
 

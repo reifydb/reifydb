@@ -1,17 +1,10 @@
-use reifydb_type::{
-	Date, DateTime, Interval, ROW_NUMBER_COLUMN_NAME, RowNumber, Time,
-	Uuid4, Uuid7,
-};
+use reifydb_type::{Date, DateTime, Interval, ROW_NUMBER_COLUMN_NAME, RowNumber, Time, Uuid4, Uuid7};
 
 use super::super::{Column, ColumnData, SourceQualified};
 use crate::BitVec;
 
 impl SourceQualified {
-	pub fn bool(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = bool>,
-	) -> Column {
+	pub fn bool(source: &str, name: &str, data: impl IntoIterator<Item = bool>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -32,11 +25,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn float4(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = f32>,
-	) -> Column {
+	pub fn float4(source: &str, name: &str, data: impl IntoIterator<Item = f32>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -57,11 +46,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn float8(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = f64>,
-	) -> Column {
+	pub fn float8(source: &str, name: &str, data: impl IntoIterator<Item = f64>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -82,11 +67,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn int1(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i8>,
-	) -> Column {
+	pub fn int1(source: &str, name: &str, data: impl IntoIterator<Item = i8>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -107,11 +88,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn int2(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i16>,
-	) -> Column {
+	pub fn int2(source: &str, name: &str, data: impl IntoIterator<Item = i16>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -132,11 +109,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn int4(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i32>,
-	) -> Column {
+	pub fn int4(source: &str, name: &str, data: impl IntoIterator<Item = i32>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -157,11 +130,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn int8(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i64>,
-	) -> Column {
+	pub fn int8(source: &str, name: &str, data: impl IntoIterator<Item = i64>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -182,11 +151,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn int16(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = i128>,
-	) -> Column {
+	pub fn int16(source: &str, name: &str, data: impl IntoIterator<Item = i128>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -207,11 +172,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn uint1(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u8>,
-	) -> Column {
+	pub fn uint1(source: &str, name: &str, data: impl IntoIterator<Item = u8>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -232,11 +193,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn uint2(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u16>,
-	) -> Column {
+	pub fn uint2(source: &str, name: &str, data: impl IntoIterator<Item = u16>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -257,11 +214,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn uint4(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u32>,
-	) -> Column {
+	pub fn uint4(source: &str, name: &str, data: impl IntoIterator<Item = u32>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -282,11 +235,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn uint8(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u64>,
-	) -> Column {
+	pub fn uint8(source: &str, name: &str, data: impl IntoIterator<Item = u64>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -307,11 +256,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn uint16(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = u128>,
-	) -> Column {
+	pub fn uint16(source: &str, name: &str, data: impl IntoIterator<Item = u128>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -332,17 +277,11 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn utf8<'a>(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = &'a str>,
-	) -> Column {
+	pub fn utf8<'a>(source: &str, name: &str, data: impl IntoIterator<Item = &'a str>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
-			data: ColumnData::utf8(
-				data.into_iter().map(|s| s.to_string()),
-			),
+			data: ColumnData::utf8(data.into_iter().map(|s| s.to_string())),
 		})
 	}
 
@@ -355,10 +294,7 @@ impl SourceQualified {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
-			data: ColumnData::utf8_with_bitvec(
-				data.into_iter().map(|s| s.to_string()),
-				bitvec,
-			),
+			data: ColumnData::utf8_with_bitvec(data.into_iter().map(|s| s.to_string()), bitvec),
 		})
 	}
 
@@ -371,11 +307,7 @@ impl SourceQualified {
 	}
 
 	// Temporal types
-	pub fn date(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Date>,
-	) -> Column {
+	pub fn date(source: &str, name: &str, data: impl IntoIterator<Item = Date>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -396,11 +328,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn datetime(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = DateTime>,
-	) -> Column {
+	pub fn datetime(source: &str, name: &str, data: impl IntoIterator<Item = DateTime>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -421,11 +349,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn time(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Time>,
-	) -> Column {
+	pub fn time(source: &str, name: &str, data: impl IntoIterator<Item = Time>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -446,11 +370,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn interval(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Interval>,
-	) -> Column {
+	pub fn interval(source: &str, name: &str, data: impl IntoIterator<Item = Interval>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -472,11 +392,7 @@ impl SourceQualified {
 	}
 
 	// UUID types
-	pub fn uuid4(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Uuid4>,
-	) -> Column {
+	pub fn uuid4(source: &str, name: &str, data: impl IntoIterator<Item = Uuid4>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -497,11 +413,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn uuid7(
-		source: &str,
-		name: &str,
-		data: impl IntoIterator<Item = Uuid7>,
-	) -> Column {
+	pub fn uuid7(source: &str, name: &str, data: impl IntoIterator<Item = Uuid7>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: name.to_string(),
@@ -522,10 +434,7 @@ impl SourceQualified {
 		})
 	}
 
-	pub fn row_number(
-		source: &str,
-		data: impl IntoIterator<Item = RowNumber>,
-	) -> Column {
+	pub fn row_number(source: &str, data: impl IntoIterator<Item = RowNumber>) -> Column {
 		Column::SourceQualified(Self {
 			source: source.to_string(),
 			name: ROW_NUMBER_COLUMN_NAME.to_string(),

@@ -23,10 +23,7 @@ fn test_write() {
 		assert_eq!(tx.version(), 1);
 
 		tx.set(&key, as_row!("foo1".to_string())).unwrap();
-		let value: String = from_row!(
-			String,
-			*tx.get(&key).unwrap().unwrap().row()
-		);
+		let value: String = from_row!(String, *tx.get(&key).unwrap().unwrap().row());
 		assert_eq!(value.as_str(), "foo1");
 		tx.commit().unwrap();
 	}
@@ -34,10 +31,7 @@ fn test_write() {
 	{
 		let rx = engine.begin_query().unwrap();
 		assert_eq!(rx.version(), 2);
-		let value: String = from_row!(
-			String,
-			*rx.get(&key).unwrap().unwrap().row()
-		);
+		let value: String = from_row!(String, *rx.get(&key).unwrap().unwrap().row());
 		assert_eq!(value.as_str(), "foo1");
 	}
 }

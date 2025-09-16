@@ -8,40 +8,22 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_u64(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<u64>,
-	) {
+	pub fn set_u64(&self, row: &mut EncodedRow, index: usize, value: impl Into<u64>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uint8);
 		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut u64,
-				value.into(),
-			)
-		}
+		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u64, value.into()) }
 	}
 
 	pub fn get_u64(&self, row: &EncodedRow, index: usize) -> u64 {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uint8);
-		unsafe {
-			(row.as_ptr().add(field.offset) as *const u64)
-				.read_unaligned()
-		}
+		unsafe { (row.as_ptr().add(field.offset) as *const u64).read_unaligned() }
 	}
 
-	pub fn try_get_u64(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<u64> {
+	pub fn try_get_u64(&self, row: &EncodedRow, index: usize) -> Option<u64> {
 		if row.is_defined(index) {
 			Some(self.get_u64(row, index))
 		} else {
@@ -72,10 +54,7 @@ mod tests {
 		assert_eq!(layout.try_get_u64(&row, 0), None);
 
 		layout.set_u64(&mut row, 0, 18446744073709551615u64);
-		assert_eq!(
-			layout.try_get_u64(&row, 0),
-			Some(18446744073709551615u64)
-		);
+		assert_eq!(layout.try_get_u64(&row, 0), Some(18446744073709551615u64));
 	}
 
 	#[test]
@@ -160,26 +139,16 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Uint8,
-			Type::Float8,
-			Type::Uint8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Uint8, Type::Float8, Type::Uint8]);
 		let mut row = layout.allocate_row();
 
 		layout.set_u64(&mut row, 0, 15_000_000_000_000_000_000u64);
 		layout.set_f64(&mut row, 1, 3.14159265359);
 		layout.set_u64(&mut row, 2, 12_000_000_000_000_000_000u64);
 
-		assert_eq!(
-			layout.get_u64(&row, 0),
-			15_000_000_000_000_000_000u64
-		);
+		assert_eq!(layout.get_u64(&row, 0), 15_000_000_000_000_000_000u64);
 		assert_eq!(layout.get_f64(&row, 1), 3.14159265359);
-		assert_eq!(
-			layout.get_u64(&row, 2),
-			12_000_000_000_000_000_000u64
-		);
+		assert_eq!(layout.get_u64(&row, 2), 12_000_000_000_000_000_000u64);
 	}
 
 	#[test]
@@ -189,10 +158,7 @@ mod tests {
 
 		layout.set_u64(&mut row, 0, 1234567890123456789u64);
 
-		assert_eq!(
-			layout.try_get_u64(&row, 0),
-			Some(1234567890123456789)
-		);
+		assert_eq!(layout.try_get_u64(&row, 0), Some(1234567890123456789));
 		assert_eq!(layout.try_get_u64(&row, 1), None);
 
 		layout.set_undefined(&mut row, 0);

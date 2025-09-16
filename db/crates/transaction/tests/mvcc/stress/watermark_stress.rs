@@ -10,9 +10,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb_transaction::mvcc::watermark::{
-	Closer, MAX_PENDING, MAX_WAITERS, WaterMark,
-};
+use reifydb_transaction::mvcc::watermark::{Closer, MAX_PENDING, MAX_WAITERS, WaterMark};
 
 /// Test watermark with many pending versions to trigger cleanup
 #[test]
@@ -49,10 +47,7 @@ fn test_watermark_pending_cleanup() {
 
 	// Verify the system handled the load without panic
 	let final_done = watermark.done_until();
-	assert!(
-		final_done > 0,
-		"Watermark should have progressed despite high load"
-	);
+	assert!(final_done > 0, "Watermark should have progressed despite high load");
 
 	closer.signal_and_wait();
 }
@@ -61,10 +56,7 @@ fn test_watermark_pending_cleanup() {
 #[test]
 fn test_watermark_waiters_cleanup() {
 	let closer = Closer::new(1);
-	let watermark = Arc::new(WaterMark::new(
-		"stress_waiters".into(),
-		closer.clone(),
-	));
+	let watermark = Arc::new(WaterMark::new("stress_waiters".into(), closer.clone()));
 
 	const NUM_WAITERS: usize = MAX_WAITERS + 5000;
 
@@ -81,10 +73,7 @@ fn test_watermark_waiters_cleanup() {
 		let counter = timeout_count.clone();
 
 		let handle = thread::spawn(move || {
-			if !wm.wait_for_mark_timeout(
-				version,
-				Duration::from_secs(2),
-			) {
+			if !wm.wait_for_mark_timeout(version, Duration::from_secs(2)) {
 				counter.fetch_add(1, Ordering::Relaxed);
 			}
 		});
@@ -105,12 +94,7 @@ fn test_watermark_waiters_cleanup() {
 
 	// Most waiters should have succeeded (some timeouts are acceptable)
 	let timeouts = timeout_count.load(Ordering::Relaxed);
-	assert!(
-		timeouts < NUM_WAITERS / 10,
-		"Too many timeouts: {}/{}",
-		timeouts,
-		NUM_WAITERS
-	);
+	assert!(timeouts < NUM_WAITERS / 10, "Too many timeouts: {}/{}", timeouts, NUM_WAITERS);
 
 	closer.signal_and_wait();
 }
@@ -119,10 +103,7 @@ fn test_watermark_waiters_cleanup() {
 #[test]
 fn test_watermark_channel_saturation() {
 	let closer = Closer::new(1);
-	let watermark = Arc::new(WaterMark::new(
-		"channel_stress".into(),
-		closer.clone(),
-	));
+	let watermark = Arc::new(WaterMark::new("channel_stress".into(), closer.clone()));
 
 	const NUM_THREADS: usize = 50;
 	const OPS_PER_THREAD: usize = 1000;
@@ -136,8 +117,7 @@ fn test_watermark_channel_saturation() {
 		let handle = thread::spawn(move || {
 			// Create sequential, non-overlapping version ranges to
 			// avoid ordering issues
-			let base_version =
-				(thread_id * OPS_PER_THREAD) as u64 + 1;
+			let base_version = (thread_id * OPS_PER_THREAD) as u64 + 1;
 
 			for i in 0..OPS_PER_THREAD {
 				let version = base_version + i as u64;
@@ -149,10 +129,7 @@ fn test_watermark_channel_saturation() {
 				// Occasionally wait, but with shorter timeout
 				// to avoid indefinite hangs
 				if i % 100 == 0 {
-					wm.wait_for_mark_timeout(
-						version,
-						Duration::from_millis(100),
-					);
+					wm.wait_for_mark_timeout(version, Duration::from_millis(100));
 				}
 			}
 		});
@@ -168,10 +145,7 @@ fn test_watermark_channel_saturation() {
 
 	// Verify progress was made
 	let final_done = watermark.done_until();
-	assert!(
-		final_done > 0,
-		"Should have processed versions despite channel pressure"
-	);
+	assert!(final_done > 0, "Should have processed versions despite channel pressure");
 
 	closer.signal_and_wait();
 }
@@ -180,10 +154,7 @@ fn test_watermark_channel_saturation() {
 #[test]
 fn test_watermark_old_version_stress() {
 	let closer = Closer::new(1);
-	let watermark = Arc::new(WaterMark::new(
-		"old_version_stress".into(),
-		closer.clone(),
-	));
+	let watermark = Arc::new(WaterMark::new("old_version_stress".into(), closer.clone()));
 
 	// Advance the watermark significantly
 	for i in 1..=1000 {
@@ -211,10 +182,7 @@ fn test_watermark_old_version_stress() {
 			let elapsed = start.elapsed();
 
 			// Should return very quickly for old versions
-			assert!(
-				elapsed.as_millis() < 50,
-				"Old version should be handled quickly"
-			);
+			assert!(elapsed.as_millis() < 50, "Old version should be handled quickly");
 		});
 		handles.push(handle);
 	}

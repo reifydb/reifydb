@@ -10,8 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_transaction::mvcc::transaction::{
-	iter::TransactionIter, iter_rev::TransactionIterRev,
-	serializable::Serializable,
+	iter::TransactionIter, iter_rev::TransactionIterRev, serializable::Serializable,
 };
 
 use crate::{as_key, as_row, from_row, mvcc::transaction::FromRow};

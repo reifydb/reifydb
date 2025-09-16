@@ -416,10 +416,7 @@ mod tests {
 		fn test_saturating_convert() {
 			let x: u128 = u128::MAX;
 			let y: Decimal = x.saturating_convert();
-			assert_eq!(
-				y.to_string(),
-				"340282366920938463463374607431768211455"
-			);
+			assert_eq!(y.to_string(), "340282366920938463463374607431768211455");
 		}
 
 		#[test]
@@ -439,20 +436,14 @@ mod tests {
 			let x: u128 = u128::MAX;
 			let y: Option<Int> = x.checked_convert();
 			assert!(y.is_some());
-			assert_eq!(
-				y.unwrap().to_string(),
-				"340282366920938463463374607431768211455"
-			);
+			assert_eq!(y.unwrap().to_string(), "340282366920938463463374607431768211455");
 		}
 
 		#[test]
 		fn test_saturating_convert() {
 			let x: u128 = i128::MAX as u128;
 			let y: Int = x.saturating_convert();
-			assert_eq!(
-				y.to_string(),
-				"170141183460469231731687303715884105727"
-			);
+			assert_eq!(y.to_string(), "170141183460469231731687303715884105727");
 		}
 
 		#[test]
@@ -479,10 +470,7 @@ mod tests {
 		fn test_saturating_convert() {
 			let x: u128 = u128::MAX;
 			let y: Uint = x.saturating_convert();
-			assert_eq!(
-				y.to_string(),
-				"340282366920938463463374607431768211455"
-			);
+			assert_eq!(y.to_string(), "340282366920938463463374607431768211455");
 		}
 
 		#[test]

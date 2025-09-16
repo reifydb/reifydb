@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	Command, ExecuteCommand, Identity, Params, Transaction, ViewDef,
-};
+use reifydb_core::interface::{Command, ExecuteCommand, Identity, Params, Transaction, ViewDef};
 use reifydb_rql::{flow::compile_flow, plan::physical::PhysicalPlan};
 
 use crate::{StandardCommandTransaction, execute::Executor};
@@ -29,10 +27,7 @@ impl Executor {
 		         from[{data: blob::utf8('$REPLACE')}]
 		         insert reifydb.flows
 		     "#
-		.replace(
-			"$REPLACE",
-			serde_json::to_string(&flow).unwrap().as_str(),
-		);
+		.replace("$REPLACE", serde_json::to_string(&flow).unwrap().as_str());
 
 		self.execute_command(
 			txn,

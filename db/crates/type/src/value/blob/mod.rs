@@ -14,18 +14,7 @@ use serde::{Deserialize, Serialize};
 
 /// A binary large object (BLOB) wrapper type
 #[repr(transparent)]
-#[derive(
-	Default,
-	Debug,
-	Clone,
-	PartialEq,
-	Eq,
-	Hash,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Blob(Vec<u8>);
 
 impl Blob {

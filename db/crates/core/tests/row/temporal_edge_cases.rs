@@ -12,10 +12,10 @@ fn test_date_boundaries() {
 	let mut row = layout.allocate_row();
 
 	let dates = [
-		Date::from_ymd(1, 1, 1).unwrap(), // Minimum reasonable date
-		Date::from_ymd(1970, 1, 1).unwrap(), // Unix epoch
-		Date::from_ymd(2000, 2, 29).unwrap(), // Leap year
-		Date::from_ymd(2100, 2, 28).unwrap(), // Non-leap century
+		Date::from_ymd(1, 1, 1).unwrap(),      // Minimum reasonable date
+		Date::from_ymd(1970, 1, 1).unwrap(),   // Unix epoch
+		Date::from_ymd(2000, 2, 29).unwrap(),  // Leap year
+		Date::from_ymd(2100, 2, 28).unwrap(),  // Non-leap century
 		Date::from_ymd(9999, 12, 31).unwrap(), // Far future
 	];
 
@@ -49,11 +49,11 @@ fn test_time_edge_values() {
 	let mut row = layout.allocate_row();
 
 	let times = [
-		Time::new(0, 0, 0, 0).unwrap(),  // Midnight
-		Time::new(12, 0, 0, 0).unwrap(), // Noon
+		Time::new(0, 0, 0, 0).unwrap(),            // Midnight
+		Time::new(12, 0, 0, 0).unwrap(),           // Noon
 		Time::new(23, 59, 59, 999999999).unwrap(), // Last nanosecond of day
-		Time::new(0, 0, 0, 1).unwrap(),  /* First nanosecond after
-		                                  * midnight */
+		Time::new(0, 0, 0, 1).unwrap(),            /* First nanosecond after
+		                                            * midnight */
 	];
 
 	for time in times {
@@ -72,8 +72,8 @@ fn test_interval_combinations() {
 		Interval::from_seconds(-1),
 		Interval::from_days(365),
 		Interval::from_weeks(-52),
-		Interval::new(12, 30, 123456789), // Complex interval
-		Interval::new(-12, -30, -123456789), // Negative complex
+		Interval::new(12, 30, 123456789),            // Complex interval
+		Interval::new(-12, -30, -123456789),         // Negative complex
 		Interval::new(i32::MAX, i32::MAX, i64::MAX), // Max values
 		Interval::new(i32::MIN, i32::MIN, i64::MIN), // Min values
 	];

@@ -50,14 +50,8 @@ pub struct WaterMark(Arc<WatermarkInner>);
 impl Debug for WaterMark {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		f.debug_struct("WaterMark")
-			.field(
-				"done_until",
-				&self.done_until.load(Ordering::Relaxed),
-			)
-			.field(
-				"last_index",
-				&self.last_index.load(Ordering::Relaxed),
-			)
+			.field("done_until", &self.done_until.load(Ordering::Relaxed))
+			.field("last_index", &self.last_index.load(Ordering::Relaxed))
 			.finish()
 	}
 }
@@ -135,11 +129,7 @@ impl WaterMark {
 
 	/// Waits until the given index is marked as done with a specified
 	/// timeout.
-	pub fn wait_for_mark_timeout(
-		&self,
-		index: u64,
-		timeout: Duration,
-	) -> bool {
+	pub fn wait_for_mark_timeout(&self, index: u64, timeout: Duration) -> bool {
 		if self.done_until.load(Ordering::SeqCst) >= index {
 			return true;
 		}
@@ -232,10 +222,7 @@ mod tests {
 		use std::{sync::Arc, thread};
 
 		let closer = Closer::new(1);
-		let watermark = Arc::new(WaterMark::new(
-			"concurrent".into(),
-			closer.clone(),
-		));
+		let watermark = Arc::new(WaterMark::new("concurrent".into(), closer.clone()));
 
 		const NUM_THREADS: usize = 50;
 		const OPS_PER_THREAD: usize = 100;
@@ -247,9 +234,7 @@ mod tests {
 			let wm = watermark.clone();
 			let handle = spawn(move || {
 				for i in 0..OPS_PER_THREAD {
-					let version = (thread_id
-						* OPS_PER_THREAD + i)
-						as u64 + 1;
+					let version = (thread_id * OPS_PER_THREAD + i) as u64 + 1;
 					wm.begin(version);
 					wm.done(version);
 				}
@@ -273,10 +258,7 @@ mod tests {
 	#[test]
 	fn test_concurrent_wait_for_mark() {
 		let closer = Closer::new(1);
-		let watermark = Arc::new(WaterMark::new(
-			"wait_concurrent".into(),
-			closer.clone(),
-		));
+		let watermark = Arc::new(WaterMark::new("wait_concurrent".into(), closer.clone()));
 		let success_count = Arc::new(AtomicUsize::new(0));
 
 		// Start some versions
@@ -293,10 +275,7 @@ mod tests {
 			let handle = spawn(move || {
 				// Use timeout to avoid hanging if something
 				// goes wrong
-				if wm.wait_for_mark_timeout(
-					version,
-					Duration::from_secs(5),
-				) {
+				if wm.wait_for_mark_timeout(version, Duration::from_secs(5)) {
 					counter.fetch_add(1, Ordering::Relaxed);
 				}
 			});
@@ -336,25 +315,17 @@ mod tests {
 			thread::sleep(Duration::from_millis(50));
 
 			let done_until = watermark.done_until();
-			assert!(
-				done_until >= 50,
-				"Should have processed many versions"
-			);
+			assert!(done_until >= 50, "Should have processed many versions");
 
 			// Try to wait for a very old version (should return
 			// immediately)
-			let very_old = done_until.saturating_sub(
-				super::super::OLD_VERSION_THRESHOLD + 10,
-			);
+			let very_old = done_until.saturating_sub(super::super::OLD_VERSION_THRESHOLD + 10);
 			let start = Instant::now();
 			watermark.wait_for_mark(very_old);
 			let elapsed = start.elapsed();
 
 			// Should return almost immediately (< 10ms)
-			assert!(
-				elapsed.as_millis() < 10,
-				"Old version wait should return immediately"
-			);
+			assert!(elapsed.as_millis() < 10, "Old version wait should return immediately");
 		});
 	}
 
@@ -366,20 +337,13 @@ mod tests {
 
 			// Wait with short timeout
 			let start = Instant::now();
-			let result = watermark.wait_for_mark_timeout(
-				1,
-				Duration::from_millis(100),
-			);
+			let result = watermark.wait_for_mark_timeout(1, Duration::from_millis(100));
 			let elapsed = start.elapsed();
 
 			// Should timeout and return false
+			assert!(!result, "Should timeout waiting for uncompleted version");
 			assert!(
-				!result,
-				"Should timeout waiting for uncompleted version"
-			);
-			assert!(
-				elapsed.as_millis() >= 100
-					&& elapsed.as_millis() < 200,
+				elapsed.as_millis() >= 100 && elapsed.as_millis() < 200,
 				"Should respect timeout duration"
 			);
 		});
@@ -391,8 +355,7 @@ mod tests {
 	{
 		let closer = Closer::new(1);
 
-		let watermark =
-			WaterMark::new("watermark".into(), closer.clone());
+		let watermark = WaterMark::new("watermark".into(), closer.clone());
 
 		f(&watermark);
 

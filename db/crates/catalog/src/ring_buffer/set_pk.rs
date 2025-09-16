@@ -2,10 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{
-		CommandTransaction, Key, PrimaryKeyId, RingBufferId,
-		RingBufferKey,
-	},
+	interface::{CommandTransaction, Key, PrimaryKeyId, RingBufferId, RingBufferKey},
 	return_internal_error,
 };
 
@@ -19,11 +16,7 @@ impl CatalogStore {
 		ring_buffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let versioned = match txn.get(&Key::RingBuffer(
-			RingBufferKey::new(ring_buffer_id),
-		)
-		.encode())?
-		{
+		let versioned = match txn.get(&Key::RingBuffer(RingBufferKey::new(ring_buffer_id)).encode())? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"Ring buffer with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -32,17 +25,9 @@ impl CatalogStore {
 		};
 
 		let mut updated_row = versioned.row.clone();
-		ring_buffer::LAYOUT.set_u64(
-			&mut updated_row,
-			ring_buffer::PRIMARY_KEY,
-			primary_key_id.0,
-		);
+		ring_buffer::LAYOUT.set_u64(&mut updated_row, ring_buffer::PRIMARY_KEY, primary_key_id.0);
 
-		txn.set(
-			&Key::RingBuffer(RingBufferKey::new(ring_buffer_id))
-				.encode(),
-			updated_row,
-		)?;
+		txn.set(&Key::RingBuffer(RingBufferKey::new(ring_buffer_id)).encode(), updated_row)?;
 
 		Ok(())
 	}
@@ -62,19 +47,10 @@ mod tests {
 
 		// Set primary key
 		let pk_id = PrimaryKeyId(100);
-		CatalogStore::set_ring_buffer_primary_key(
-			&mut txn,
-			ring_buffer.id,
-			pk_id,
-		)
-		.unwrap();
+		CatalogStore::set_ring_buffer_primary_key(&mut txn, ring_buffer.id, pk_id).unwrap();
 
 		// Verify it was set
-		let retrieved_pk = CatalogStore::get_ring_buffer_pk_id(
-			&mut txn,
-			ring_buffer.id,
-		)
-		.unwrap();
+		let retrieved_pk = CatalogStore::get_ring_buffer_pk_id(&mut txn, ring_buffer.id).unwrap();
 		assert_eq!(retrieved_pk, Some(pk_id));
 	}
 
@@ -82,20 +58,12 @@ mod tests {
 	fn test_set_ring_buffer_primary_key_nonexistent() {
 		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::set_ring_buffer_primary_key(
-			&mut txn,
-			RingBufferId(999),
-			PrimaryKeyId(1),
-		);
+		let result = CatalogStore::set_ring_buffer_primary_key(&mut txn, RingBufferId(999), PrimaryKeyId(1));
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(err
-			.to_string()
-			.contains("Ring buffer with ID 999 not found"));
-		assert!(err
-			.to_string()
-			.contains("critical catalog inconsistency"));
+		assert!(err.to_string().contains("Ring buffer with ID 999 not found"));
+		assert!(err.to_string().contains("critical catalog inconsistency"));
 	}
 
 	#[test]
@@ -105,28 +73,14 @@ mod tests {
 
 		// Set first primary key
 		let pk_id1 = PrimaryKeyId(100);
-		CatalogStore::set_ring_buffer_primary_key(
-			&mut txn,
-			ring_buffer.id,
-			pk_id1,
-		)
-		.unwrap();
+		CatalogStore::set_ring_buffer_primary_key(&mut txn, ring_buffer.id, pk_id1).unwrap();
 
 		// Set second primary key (should overwrite)
 		let pk_id2 = PrimaryKeyId(200);
-		CatalogStore::set_ring_buffer_primary_key(
-			&mut txn,
-			ring_buffer.id,
-			pk_id2,
-		)
-		.unwrap();
+		CatalogStore::set_ring_buffer_primary_key(&mut txn, ring_buffer.id, pk_id2).unwrap();
 
 		// Verify second one is set
-		let retrieved_pk = CatalogStore::get_ring_buffer_pk_id(
-			&mut txn,
-			ring_buffer.id,
-		)
-		.unwrap();
+		let retrieved_pk = CatalogStore::get_ring_buffer_pk_id(&mut txn, ring_buffer.id).unwrap();
 		assert_eq!(retrieved_pk, Some(pk_id2));
 	}
 }

@@ -4,9 +4,8 @@ use reifydb_type::Fragment;
 
 use crate::interface::{
 	evaluate::expression::{
-		AddExpression, CastExpression, ConstantExpression,
-		DivExpression, Expression, MulExpression, RemExpression,
-		SubExpression,
+		AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
+		RemExpression, SubExpression,
 	},
 	expression::ParameterExpression,
 };
@@ -14,12 +13,8 @@ use crate::interface::{
 impl<'a> Expression<'a> {
 	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment<'a> + '_ {
 		move || match self {
-			Expression::AccessSource(expr) => {
-				expr.full_fragment_owned()
-			}
-			Expression::Alias(expr) => {
-				expr.expression.full_fragment_owned()
-			}
+			Expression::AccessSource(expr) => expr.full_fragment_owned(),
+			Expression::Alias(expr) => expr.expression.full_fragment_owned(),
 			Expression::Cast(CastExpression {
 				expression: expr,
 				..
@@ -46,13 +41,9 @@ impl<'a> Expression<'a> {
 			Expression::Add(expr) => expr.full_fragment_owned(),
 			Expression::Sub(expr) => expr.full_fragment_owned(),
 			Expression::GreaterThan(expr) => expr.fragment.clone(),
-			Expression::GreaterThanEqual(expr) => {
-				expr.fragment.clone()
-			}
+			Expression::GreaterThanEqual(expr) => expr.fragment.clone(),
 			Expression::LessThan(expr) => expr.fragment.clone(),
-			Expression::LessThanEqual(expr) => {
-				expr.fragment.clone()
-			}
+			Expression::LessThanEqual(expr) => expr.fragment.clone(),
 			Expression::Equal(expr) => expr.fragment.clone(),
 			Expression::NotEqual(expr) => expr.fragment.clone(),
 			Expression::Between(expr) => expr.full_fragment_owned(),
@@ -65,11 +56,8 @@ impl<'a> Expression<'a> {
 			Expression::Rem(expr) => expr.full_fragment_owned(),
 
 			Expression::Tuple(expr) => {
-				let fragments = expr
-					.expressions
-					.iter()
-					.map(|e| e.full_fragment_owned())
-					.collect::<Vec<_>>();
+				let fragments =
+					expr.expressions.iter().map(|e| e.full_fragment_owned()).collect::<Vec<_>>();
 				Fragment::merge_all(fragments)
 			}
 			Expression::Type(expr) => expr.fragment.clone(),

@@ -1,9 +1,7 @@
 use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
 
 /// Array conversion error
-pub fn array_conversion_error(
-	err: std::array::TryFromSliceError,
-) -> Diagnostic {
+pub fn array_conversion_error(err: std::array::TryFromSliceError) -> Diagnostic {
 	Diagnostic {
 		code: "CONV_001".to_string(),
 		statement: None,

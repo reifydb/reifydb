@@ -102,9 +102,7 @@ impl WorkerPoolSubsystem {
 			config,
 			running: Arc::new(AtomicBool::new(false)),
 			stats: Arc::new(PoolStats::default()),
-			task_queue: Arc::new(Mutex::new(
-				BinaryHeap::with_capacity(max_queue_size),
-			)),
+			task_queue: Arc::new(Mutex::new(BinaryHeap::with_capacity(max_queue_size))),
 			task_condvar: Arc::new(Condvar::new()),
 			workers: Vec::new(),
 			scheduler: Arc::new(Mutex::new(TaskScheduler::new())),
@@ -146,8 +144,7 @@ impl WorkerPoolSubsystem {
 		priority: Priority,
 	) -> Result<TaskHandle> {
 		let mut scheduler = self.scheduler.lock().unwrap();
-		let handle =
-			scheduler.schedule_periodic(task, interval, priority);
+		let handle = scheduler.schedule_periodic(task, interval, priority);
 		drop(scheduler);
 
 		// Wake up the scheduler thread
@@ -189,70 +186,71 @@ impl WorkerPoolSubsystem {
 		let max_queue_size = self.config.max_queue_size;
 
 		let handle = thread::Builder::new()
-            .name("worker-pool-scheduler".to_string())
-            .spawn(move || {
-                while running.load(Ordering::Relaxed) {
-                    let mut sched = scheduler.lock().unwrap();
+			.name("worker-pool-scheduler".to_string())
+			.spawn(move || {
+				while running.load(Ordering::Relaxed) {
+					let mut sched = scheduler.lock().unwrap();
 
-                    // Wait until we have scheduled tasks or need to check for ready tasks
-                    if sched.task_count() == 0 {
-                        // No scheduled tasks, wait for notification with timeout
-                        let result = scheduler_condvar.wait_timeout(
-                            sched,
-                            Duration::from_millis(100)
-                        ).unwrap();
-                        sched = result.0;
+					// Wait until we have scheduled tasks or need to check for ready tasks
+					if sched.task_count() == 0 {
+						// No scheduled tasks, wait for notification with timeout
+						let result = scheduler_condvar
+							.wait_timeout(sched, Duration::from_millis(100))
+							.unwrap();
+						sched = result.0;
 
-                        // Check again if we should exit
-                        if !running.load(Ordering::Relaxed) {
-                            break;
-                        }
-                    }
+						// Check again if we should exit
+						if !running.load(Ordering::Relaxed) {
+							break;
+						}
+					}
 
-                    // Check what tasks are ready
-                    let ready_tasks = sched.get_ready_tasks();
+					// Check what tasks are ready
+					let ready_tasks = sched.get_ready_tasks();
 
-                    // Calculate wait time until next task
-                    let wait_duration = if let Some(next_time) = sched.next_run_time() {
-                        let now = std::time::Instant::now();
-                        if next_time > now {
-                            next_time - now
-                        } else {
-                            Duration::from_millis(0)
-                        }
-                    } else {
-                        // No scheduled tasks, wait indefinitely
-                        Duration::from_secs(3600)
-                    };
+					// Calculate wait time until next task
+					let wait_duration = if let Some(next_time) = sched.next_run_time() {
+						let now = std::time::Instant::now();
+						if next_time > now {
+							next_time - now
+						} else {
+							Duration::from_millis(0)
+						}
+					} else {
+						// No scheduled tasks, wait indefinitely
+						Duration::from_secs(3600)
+					};
 
-                    drop(sched);
+					drop(sched);
 
-                    // Submit ready tasks to the work queue
-                    if !ready_tasks.is_empty() {
-                        let mut queue = task_queue.lock().unwrap();
+					// Submit ready tasks to the work queue
+					if !ready_tasks.is_empty() {
+						let mut queue = task_queue.lock().unwrap();
 
-                        for task in ready_tasks {
-                            if queue.len() >= max_queue_size {
-                                log_warn!("Scheduler: Queue full, dropping scheduled task");
-                                break;
-                            }
+						for task in ready_tasks {
+							if queue.len() >= max_queue_size {
+								log_warn!(
+									"Scheduler: Queue full, dropping scheduled task"
+								);
+								break;
+							}
 
-                            queue.push(PrioritizedTask::new(task));
-                            stats.tasks_queued.fetch_add(1, Ordering::Relaxed);
-                        }
+							queue.push(PrioritizedTask::new(task));
+							stats.tasks_queued.fetch_add(1, Ordering::Relaxed);
+						}
 
-                        drop(queue);
-                        task_condvar.notify_all();
-                    }
+						drop(queue);
+						task_condvar.notify_all();
+					}
 
-                    // Wait until the next task is ready or we get a notification
-                    if wait_duration > Duration::from_millis(0) {
-                        let sched = scheduler.lock().unwrap();
-                        let _ = scheduler_condvar.wait_timeout(sched, wait_duration);
-                    }
-                }
-            })
-            .expect("Failed to create scheduler thread");
+					// Wait until the next task is ready or we get a notification
+					if wait_duration > Duration::from_millis(0) {
+						let sched = scheduler.lock().unwrap();
+						let _ = scheduler_condvar.wait_timeout(sched, wait_duration);
+					}
+				}
+			})
+			.expect("Failed to create scheduler thread");
 
 		self.scheduler_handle = Some(handle);
 	}
@@ -340,17 +338,14 @@ impl Subsystem for WorkerPoolSubsystem {
 		if active == 0 && queued > 0 {
 			// No workers but tasks queued - failed
 			HealthStatus::Failed {
-				description:
-					"No active workers but tasks are queued"
-						.into(),
+				description: "No active workers but tasks are queued".into(),
 			}
 		} else if queued > self.config.max_queue_size / 2 {
 			// Queue getting full - degraded
 			HealthStatus::Degraded {
 				description: format!(
 					"Task queue is {}% full",
-					(queued * 100)
-						/ self.config.max_queue_size
+					(queued * 100) / self.config.max_queue_size
 				),
 			}
 		} else {
@@ -372,9 +367,7 @@ impl HasVersion for WorkerPoolSubsystem {
 		SystemVersion {
 			name: "sub-workerpool".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description:
-				"Priority-based task worker pool subsystem"
-					.to_string(),
+			description: "Priority-based task worker pool subsystem".to_string(),
 			r#type: ComponentType::Subsystem,
 		}
 	}
@@ -394,20 +387,13 @@ impl WorkerPool for WorkerPoolSubsystem {
 		interval: Duration,
 	) -> Result<TaskHandle> {
 		// Create a closure task that wraps the provided function
-		let closure_task = Box::new(ClosureTask::new(
-			name,
-			Priority::Normal,
-			move |_ctx| {
-				// Execute the task and convert the result
-				match task() {
-					Ok(_) => Ok(()),
-					Err(e) => panic!(
-						"Task execution error: {:?}",
-						e
-					),
-				}
-			},
-		));
+		let closure_task = Box::new(ClosureTask::new(name, Priority::Normal, move |_ctx| {
+			// Execute the task and convert the result
+			match task() {
+				Ok(_) => Ok(()),
+				Err(e) => panic!("Task execution error: {:?}", e),
+			}
+		}));
 
 		// Schedule the periodic task
 		self.schedule_periodic(closure_task, interval, Priority::Normal)

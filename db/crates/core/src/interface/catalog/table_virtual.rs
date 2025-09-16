@@ -6,18 +6,7 @@ use serde::{Deserialize, Serialize};
 use crate::interface::{ColumnDef, NamespaceId};
 
 /// Unique identifier for a virtual table type
-#[derive(
-	Debug,
-	Clone,
-	Copy,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Hash,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TableVirtualId(pub u64);
 
 impl From<u64> for TableVirtualId {

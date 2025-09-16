@@ -20,10 +20,7 @@ impl EncodableKey for PrimaryKeyKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.primary_key);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.primary_key);
 		serializer.to_encoded_key()
 	}
 
@@ -35,8 +32,7 @@ impl EncodableKey for PrimaryKeyKey {
 		if kind != Self::KIND {
 			return None;
 		}
-		let primary_key: PrimaryKeyId =
-			keycode::deserialize(&key[2..]).ok()?;
+		let primary_key: PrimaryKeyId = keycode::deserialize(&key[2..]).ok()?;
 		Some(Self {
 			primary_key,
 		})
@@ -45,10 +41,7 @@ impl EncodableKey for PrimaryKeyKey {
 
 impl PrimaryKeyKey {
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::primary_key_start()),
-			Some(Self::primary_key_end()),
-		)
+		EncodedKeyRange::start_end(Some(Self::primary_key_start()), Some(Self::primary_key_end()))
 	}
 
 	fn primary_key_start() -> EncodedKey {

@@ -739,8 +739,7 @@ mod tests {
 			// f64 may have precision artifacts, check the integer
 			// part
 			let str_repr = y.to_string();
-			assert!(str_repr.starts_with("999999")
-				|| str_repr.starts_with("1000000"));
+			assert!(str_repr.starts_with("999999") || str_repr.starts_with("1000000"));
 			// Due to f64 rounding, value may be 1000000.0
 		}
 
@@ -772,11 +771,7 @@ mod tests {
 			// f64 may have precision artifacts
 			let str_repr = y.to_string();
 			// f64 representation of 3.14159 may not be exact
-			assert!(
-				str_repr.starts_with("3.141"),
-				"actual: {}",
-				str_repr
-			);
+			assert!(str_repr.starts_with("3.141"), "actual: {}", str_repr);
 		}
 	}
 }

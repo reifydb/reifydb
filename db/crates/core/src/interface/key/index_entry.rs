@@ -25,11 +25,7 @@ pub struct IndexEntryKey {
 }
 
 impl IndexEntryKey {
-	pub fn new(
-		source: impl Into<SourceId>,
-		index: IndexId,
-		key: EncodedIndexKey,
-	) -> Self {
+	pub fn new(source: impl Into<SourceId>, index: IndexId, key: EncodedIndexKey) -> Self {
 		let source = source.into();
 		Self {
 			source,
@@ -67,10 +63,8 @@ impl IndexEntryKeyRange {
 			return None;
 		}
 
-		let source =
-			keycode::deserialize_source_id(&payload[..9]).ok()?;
-		let index =
-			keycode::deserialize_index_id(&payload[9..18]).ok()?;
+		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
+		let index = keycode::deserialize_index_id(&payload[9..18]).ok()?;
 
 		Some(IndexEntryKeyRange {
 			source,
@@ -107,16 +101,12 @@ impl EncodableKeyRange for IndexEntryKeyRange {
 		Self: Sized,
 	{
 		let start_key = match &range.start {
-			Bound::Included(key) | Bound::Excluded(key) => {
-				Self::decode_key(key)
-			}
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_key(key),
 			Bound::Unbounded => None,
 		};
 
 		let end_key = match &range.end {
-			Bound::Included(key) | Bound::Excluded(key) => {
-				Self::decode_key(key)
-			}
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_key(key),
 			Bound::Unbounded => None,
 		};
 
@@ -128,8 +118,7 @@ impl EncodableKey for IndexEntryKey {
 	const KIND: KeyKind = KeyKind::IndexEntry;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer =
-			KeySerializer::with_capacity(20 + self.key.len());
+		let mut serializer = KeySerializer::with_capacity(20 + self.key.len());
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(Self::KIND as u8)
@@ -161,17 +150,13 @@ impl EncodableKey for IndexEntryKey {
 			return None;
 		}
 
-		let source =
-			keycode::deserialize_source_id(&payload[..9]).ok()?;
-		let index =
-			keycode::deserialize_index_id(&payload[9..18]).ok()?;
+		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
+		let index = keycode::deserialize_index_id(&payload[9..18]).ok()?;
 
 		// The remaining bytes are the index key
 		if payload.len() > 18 {
 			let index_key_bytes = &payload[18..];
-			let index_key = EncodedIndexKey(CowVec::new(
-				index_key_bytes.to_vec(),
-			));
+			let index_key = EncodedIndexKey(CowVec::new(index_key_bytes.to_vec()));
 			Some(Self {
 				source,
 				index,
@@ -185,54 +170,35 @@ impl EncodableKey for IndexEntryKey {
 
 impl IndexEntryKey {
 	/// Create a range for scanning all entries of a specific index
-	pub fn index_range(
-		source: impl Into<SourceId>,
-		index: IndexId,
-	) -> EncodedKeyRange {
+	pub fn index_range(source: impl Into<SourceId>, index: IndexId) -> EncodedKeyRange {
 		let range = IndexEntryKeyRange {
 			source: source.into(),
 			index,
 		};
-		EncodedKeyRange::new(
-			Bound::Included(range.start().unwrap()),
-			Bound::Excluded(range.end().unwrap()),
-		)
+		EncodedKeyRange::new(Bound::Included(range.start().unwrap()), Bound::Excluded(range.end().unwrap()))
 	}
 
 	/// Create a range for scanning all entries of a source (all indexes)
 	pub fn source_range(source: impl Into<SourceId>) -> EncodedKeyRange {
 		let source = source.into();
 		let mut start_serializer = KeySerializer::with_capacity(11);
-		start_serializer
-			.extend_u8(VERSION)
-			.extend_u8(KeyKind::IndexEntry as u8)
-			.extend_source_id(source);
+		start_serializer.extend_u8(VERSION).extend_u8(KeyKind::IndexEntry as u8).extend_source_id(source);
 
 		let next_source = source.next();
 		let mut end_serializer = KeySerializer::with_capacity(11);
-		end_serializer
-			.extend_u8(VERSION)
-			.extend_u8(KeyKind::IndexEntry as u8)
-			.extend_source_id(next_source);
+		end_serializer.extend_u8(VERSION).extend_u8(KeyKind::IndexEntry as u8).extend_source_id(next_source);
 
 		EncodedKeyRange {
-			start: Bound::Included(
-				start_serializer.to_encoded_key(),
-			),
+			start: Bound::Included(start_serializer.to_encoded_key()),
 			end: Bound::Excluded(end_serializer.to_encoded_key()),
 		}
 	}
 
 	/// Create a range for scanning entries within an index with a specific
 	/// key prefix
-	pub fn key_prefix_range(
-		source: impl Into<SourceId>,
-		index: IndexId,
-		key_prefix: &[u8],
-	) -> EncodedKeyRange {
+	pub fn key_prefix_range(source: impl Into<SourceId>, index: IndexId, key_prefix: &[u8]) -> EncodedKeyRange {
 		let source = source.into();
-		let mut serializer =
-			KeySerializer::with_capacity(20 + key_prefix.len());
+		let mut serializer = KeySerializer::with_capacity(20 + key_prefix.len());
 		serializer
 			.extend_u8(VERSION)
 			.extend_u8(KeyKind::IndexEntry as u8)
@@ -300,8 +266,7 @@ impl IndexEntryKey {
 			}
 			Bound::Unbounded => {
 				// End at the beginning of the next index
-				let mut serializer =
-					KeySerializer::with_capacity(20);
+				let mut serializer = KeySerializer::with_capacity(20);
 				serializer
 					.extend_u8(VERSION)
 					.extend_u8(KeyKind::IndexEntry as u8)
@@ -355,11 +320,7 @@ mod tests {
 
 	#[test]
 	fn test_ordering() {
-		let layout = EncodedIndexLayout::new(
-			&[Type::Uint8],
-			&[SortDirection::Asc],
-		)
-		.unwrap();
+		let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key1 = layout.allocate_key();
 		layout.set_u64(&mut key1, 0, 100u64);
@@ -389,17 +350,10 @@ mod tests {
 
 	#[test]
 	fn test_index_range() {
-		let range = IndexEntryKey::index_range(
-			SourceId::table(10),
-			IndexId::primary(5),
-		);
+		let range = IndexEntryKey::index_range(SourceId::table(10), IndexId::primary(5));
 
 		// Create entries that should be included
-		let layout = EncodedIndexLayout::new(
-			&[Type::Uint8],
-			&[SortDirection::Asc],
-		)
-		.unwrap();
+		let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 50u64);
@@ -413,9 +367,7 @@ mod tests {
 		let encoded = entry.encode();
 
 		// Check that the entry falls within the range
-		if let (Bound::Included(start), Bound::Excluded(end)) =
-			(&range.start, &range.end)
-		{
+		if let (Bound::Included(start), Bound::Excluded(end)) = (&range.start, &range.end) {
 			assert!(encoded.as_slice() >= start.as_slice());
 			assert!(encoded.as_slice() < end.as_slice());
 		} else {
@@ -435,12 +387,9 @@ mod tests {
 		let encoded2 = entry2.encode();
 		// The entry with IndexId(6) should not be within the range for
 		// IndexId(5)
-		if let (Bound::Included(start), Bound::Excluded(end)) =
-			(&range.start, &range.end)
-		{
+		if let (Bound::Included(start), Bound::Excluded(end)) = (&range.start, &range.end) {
 			// encoded2 should either be < start or >= end
-			assert!(encoded2.as_slice() < start.as_slice()
-				|| encoded2.as_slice() >= end.as_slice());
+			assert!(encoded2.as_slice() < start.as_slice() || encoded2.as_slice() >= end.as_slice());
 		}
 	}
 
@@ -458,11 +407,7 @@ mod tests {
 
 		// Use the full encoded key up to the first field as the prefix
 		let prefix = &key.as_slice()[..layout.fields[1].offset]; // Include bitvec and first field
-		let range = IndexEntryKey::key_prefix_range(
-			SourceId::table(1),
-			IndexId::primary(1),
-			prefix,
-		);
+		let range = IndexEntryKey::key_prefix_range(SourceId::table(1), IndexId::primary(1), prefix);
 
 		// Now create a full key with the same prefix
 		layout.set_row_number(&mut key, 1, 999u64);
@@ -475,9 +420,7 @@ mod tests {
 		let encoded = entry.encode();
 
 		// Should be within range
-		if let (Bound::Included(start), Bound::Excluded(end)) =
-			(&range.start, &range.end)
-		{
+		if let (Bound::Included(start), Bound::Excluded(end)) = (&range.start, &range.end) {
 			assert!(encoded.as_slice() >= start.as_slice());
 			assert!(encoded.as_slice() < end.as_slice());
 		}

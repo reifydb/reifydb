@@ -6,18 +6,7 @@ use std::fmt::{Display, Formatter};
 use serde::{Deserialize, Serialize};
 
 /// Maximum bytes constraint for types like UTF8, BLOB, INT, UINT
-#[derive(
-	Clone,
-	Copy,
-	Debug,
-	PartialEq,
-	Eq,
-	Hash,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct MaxBytes(u32);
 

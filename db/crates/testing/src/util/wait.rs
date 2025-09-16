@@ -27,22 +27,15 @@ pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(1);
 ///
 /// # Panics
 /// Panics if the condition doesn't become true within the timeout period
-pub fn wait_for_condition<F>(
-	condition: F,
-	timeout: Duration,
-	poll_interval: Duration,
-	timeout_message: &str,
-) where
+pub fn wait_for_condition<F>(condition: F, timeout: Duration, poll_interval: Duration, timeout_message: &str)
+where
 	F: Fn() -> bool,
 {
 	let start = Instant::now();
 
 	while !condition() {
 		if start.elapsed() > timeout {
-			panic!(
-				"Timeout after {:?}: {}",
-				timeout, timeout_message
-			);
+			panic!("Timeout after {:?}: {}", timeout, timeout_message);
 		}
 		thread::sleep(poll_interval);
 	}
@@ -55,12 +48,7 @@ pub fn wait_for<F>(condition: F, message: &str)
 where
 	F: Fn() -> bool,
 {
-	wait_for_condition(
-		condition,
-		DEFAULT_TIMEOUT,
-		DEFAULT_POLL_INTERVAL,
-		message,
-	);
+	wait_for_condition(condition, DEFAULT_TIMEOUT, DEFAULT_POLL_INTERVAL, message);
 }
 
 #[cfg(test)]
@@ -85,10 +73,7 @@ mod tests {
 			*counter_clone.lock().unwrap() = 5;
 		});
 
-		wait_for(
-			|| *counter.lock().unwrap() == 5,
-			"Counter should reach 5",
-		);
+		wait_for(|| *counter.lock().unwrap() == 5, "Counter should reach 5");
 
 		assert_eq!(*counter.lock().unwrap(), 5);
 	}

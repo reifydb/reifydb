@@ -24,8 +24,7 @@ pub use execute::*;
 pub use identifier::*;
 pub use key::*;
 pub use reifydb_type::{
-	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment,
-	Params, StatementColumn, StatementLine,
+	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment, Params, StatementColumn, StatementLine,
 };
 pub use resolved::*;
 pub use storage::*;

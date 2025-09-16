@@ -11,8 +11,8 @@ pub use handler::WebSocketHandler;
 use mio::Interest;
 pub use request::{CommandRequest, QueryRequest, Request, RequestPayload};
 pub use response::{
-	AuthResponse, CommandResponse, ErrResponse, QueryResponse, Response,
-	ResponsePayload, WebsocketColumn, WebsocketFrame,
+	AuthResponse, CommandResponse, ErrResponse, QueryResponse, Response, ResponsePayload, WebsocketColumn,
+	WebsocketFrame,
 };
 
 /// WebSocket connection state

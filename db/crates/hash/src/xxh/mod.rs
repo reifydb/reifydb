@@ -22,8 +22,7 @@ pub fn xxh3_64(data: &[u8]) -> Hash64 {
 
 #[inline(always)]
 pub fn xxh3_128(data: &[u8]) -> Hash128 {
-	let result =
-		unsafe { binding::XXH3_128bits(data.as_ptr(), data.len()) };
+	let result = unsafe { binding::XXH3_128bits(data.as_ptr(), data.len()) };
 	Hash128((result.high as u128) << 64 | result.low as u128)
 }
 
@@ -52,8 +51,7 @@ mod tests {
 
 		#[test]
 		fn test_longer_input() {
-			let data =
-				b"The quick brown fox jumps over the lazy dog";
+			let data = b"The quick brown fox jumps over the lazy dog";
 			let result = xxh32(data, 0);
 			assert_eq!(result, Hash32(0xe85ea4de));
 		}
@@ -82,8 +80,7 @@ mod tests {
 
 		#[test]
 		fn test_longer_input() {
-			let data =
-				b"The quick brown fox jumps over the lazy dog";
+			let data = b"The quick brown fox jumps over the lazy dog";
 			let result = xxh64(data, 0);
 			assert_eq!(result, Hash64(0x0b242d361fda71bc));
 		}
@@ -106,8 +103,7 @@ mod tests {
 
 		#[test]
 		fn test_longer_input() {
-			let data =
-				b"The quick brown fox jumps over the lazy dog";
+			let data = b"The quick brown fox jumps over the lazy dog";
 			let result = xxh3_64(data);
 			assert_eq!(result, Hash64(14879076941462221669));
 		}
@@ -126,46 +122,27 @@ mod tests {
 		#[test]
 		fn test_empty_input() {
 			let result = xxh3_128(b"");
-			assert_eq!(
-				result,
-				Hash128(0x99aa06d3014798d86001c324468d497f)
-			);
+			assert_eq!(result, Hash128(0x99aa06d3014798d86001c324468d497f));
 		}
 
 		#[test]
 		fn test_simple_string() {
 			let result = xxh3_128(b"hello");
-			assert_eq!(
-				result,
-				Hash128(
-					241804000618833338782870102822322583576
-				)
-			);
+			assert_eq!(result, Hash128(241804000618833338782870102822322583576));
 		}
 
 		#[test]
 		fn test_longer_input() {
-			let data =
-				b"The quick brown fox jumps over the lazy dog";
+			let data = b"The quick brown fox jumps over the lazy dog";
 			let result = xxh3_128(data);
-			assert_eq!(
-				result,
-				Hash128(
-					294872163752933124907483712859046311505
-				)
-			);
+			assert_eq!(result, Hash128(294872163752933124907483712859046311505));
 		}
 
 		#[test]
 		fn test_large_input() {
 			let data = vec![b'a'; 1024];
 			let result = xxh3_128(&data);
-			assert_eq!(
-				result,
-				Hash128(
-					109508391914506197641422089710284077596
-				)
-			);
+			assert_eq!(result, Hash128(109508391914506197641422089710284077596));
 		}
 	}
 }

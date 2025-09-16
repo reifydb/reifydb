@@ -64,9 +64,7 @@ impl TryFrom<u8> for KeyKind {
 			0x14 => Ok(Self::RingBuffer),
 			0x15 => Ok(Self::NamespaceRingBuffer),
 			0x16 => Ok(Self::RingBufferMetadata),
-			_ => Err(serde::de::Error::custom(format!(
-				"Invalid KeyKind value: {value:#04x}"
-			))),
+			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}
 }

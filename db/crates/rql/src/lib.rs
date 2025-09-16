@@ -48,9 +48,7 @@ pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {
 	})
 }
 
-pub(crate) fn convert_data_type_with_constraints(
-	ast: &AstDataType,
-) -> Result<TypeConstraint> {
+pub(crate) fn convert_data_type_with_constraints(ast: &AstDataType) -> Result<TypeConstraint> {
 	match ast {
 		AstDataType::Simple(name) => {
 			let base_type = convert_data_type(name)?;
@@ -65,54 +63,25 @@ pub(crate) fn convert_data_type_with_constraints(
 			// Parse constraint based on type and parameters
 			let constraint = match (base_type, params.as_slice()) {
 				(Type::Utf8, [AstLiteral::Number(n)]) => {
-					let max_bytes = parse_number_literal(
-						n.value(),
-					)? as u32;
-					Some(Constraint::MaxBytes(
-						max_bytes.into(),
-					))
+					let max_bytes = parse_number_literal(n.value())? as u32;
+					Some(Constraint::MaxBytes(max_bytes.into()))
 				}
 				(Type::Blob, [AstLiteral::Number(n)]) => {
-					let max_bytes = parse_number_literal(
-						n.value(),
-					)? as u32;
-					Some(Constraint::MaxBytes(
-						max_bytes.into(),
-					))
+					let max_bytes = parse_number_literal(n.value())? as u32;
+					Some(Constraint::MaxBytes(max_bytes.into()))
 				}
 				(Type::Int, [AstLiteral::Number(n)]) => {
-					let max_bytes = parse_number_literal(
-						n.value(),
-					)? as u32;
-					Some(Constraint::MaxBytes(
-						max_bytes.into(),
-					))
+					let max_bytes = parse_number_literal(n.value())? as u32;
+					Some(Constraint::MaxBytes(max_bytes.into()))
 				}
 				(Type::Uint, [AstLiteral::Number(n)]) => {
-					let max_bytes = parse_number_literal(
-						n.value(),
-					)? as u32;
-					Some(Constraint::MaxBytes(
-						max_bytes.into(),
-					))
+					let max_bytes = parse_number_literal(n.value())? as u32;
+					Some(Constraint::MaxBytes(max_bytes.into()))
 				}
-				(
-					Type::Decimal,
-					[
-						AstLiteral::Number(p),
-						AstLiteral::Number(s),
-					],
-				) => {
-					let precision = parse_number_literal(
-						p.value(),
-					)? as u8;
-					let scale = parse_number_literal(
-						s.value(),
-					)? as u8;
-					Some(Constraint::PrecisionScale(
-						precision.into(),
-						scale.into(),
-					))
+				(Type::Decimal, [AstLiteral::Number(p), AstLiteral::Number(s)]) => {
+					let precision = parse_number_literal(p.value())? as u8;
+					let scale = parse_number_literal(s.value())? as u8;
+					Some(Constraint::PrecisionScale(precision.into(), scale.into()))
 				}
 				// Type doesn't support constraints or invalid
 				// parameter count
@@ -120,12 +89,8 @@ pub(crate) fn convert_data_type_with_constraints(
 			};
 
 			match constraint {
-				Some(c) => Ok(TypeConstraint::with_constraint(
-					base_type, c,
-				)),
-				None => Ok(TypeConstraint::unconstrained(
-					base_type,
-				)),
+				Some(c) => Ok(TypeConstraint::with_constraint(base_type, c)),
+				None => Ok(TypeConstraint::unconstrained(base_type)),
 			}
 		}
 	}
@@ -133,28 +98,24 @@ pub(crate) fn convert_data_type_with_constraints(
 
 fn parse_number_literal(s: &str) -> Result<usize> {
 	s.parse::<usize>().map_err(|_| {
-		reifydb_core::error!(
-			reifydb_core::diagnostic::internal::internal(format!(
-				"Invalid number literal: {}",
-				s
-			))
-		)
+		reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+			"Invalid number literal: {}",
+			s
+		)))
 	})
 }
 
-use reifydb_core::interface::version::{
-	ComponentType, HasVersion, SystemVersion,
-};
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
 pub struct RqlVersion;
 
 impl HasVersion for RqlVersion {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
-            name: "rql".to_string(),
-            version: env!("CARGO_PKG_VERSION").to_string(),
-            description: "ReifyDB Query Language parser and planner module".to_string(),
-            r#type: ComponentType::Module,
-        }
+			name: "rql".to_string(),
+			version: env!("CARGO_PKG_VERSION").to_string(),
+			description: "ReifyDB Query Language parser and planner module".to_string(),
+			r#type: ComponentType::Module,
+		}
 	}
 }

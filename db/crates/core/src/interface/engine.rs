@@ -1,14 +1,9 @@
 use crate::{
-	interface::{
-		CommandTransaction, Identity, Params, QueryTransaction,
-		Transaction, WithEventBus,
-	},
+	interface::{CommandTransaction, Identity, Params, QueryTransaction, Transaction, WithEventBus},
 	result::frame::Frame,
 };
 
-pub trait Engine<T: Transaction>:
-	WithEventBus + Send + Sync + Clone + 'static
-{
+pub trait Engine<T: Transaction>: WithEventBus + Send + Sync + Clone + 'static {
 	type Command: CommandTransaction;
 	type Query: QueryTransaction;
 
@@ -16,17 +11,7 @@ pub trait Engine<T: Transaction>:
 
 	fn begin_query(&self) -> crate::Result<Self::Query>;
 
-	fn command_as(
-		&self,
-		identity: &Identity,
-		rql: &str,
-		params: Params,
-	) -> crate::Result<Vec<Frame>>;
+	fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> crate::Result<Vec<Frame>>;
 
-	fn query_as(
-		&self,
-		identity: &Identity,
-		rql: &str,
-		params: Params,
-	) -> crate::Result<Vec<Frame>>;
+	fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> crate::Result<Vec<Frame>>;
 }

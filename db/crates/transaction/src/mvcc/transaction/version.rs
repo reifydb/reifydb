@@ -9,8 +9,7 @@ use std::sync::{
 use reifydb_core::{
 	CommitVersion,
 	interface::{
-		EncodableKey, TransactionVersionKey,
-		UnversionedCommandTransaction, UnversionedQueryTransaction,
+		EncodableKey, TransactionVersionKey, UnversionedCommandTransaction, UnversionedQueryTransaction,
 		UnversionedTransaction,
 	},
 	row::EncodedRowLayout,
@@ -85,16 +84,11 @@ where
 
 		unversioned.with_query(|tx| match tx.get(&key)? {
 			None => Ok(0),
-			Some(unversioned) => {
-				Ok(layout.get_u64(&unversioned.row, 0))
-			}
+			Some(unversioned) => Ok(layout.get_u64(&unversioned.row, 0)),
 		})
 	}
 
-	fn persist_version(
-		unversioned: &UT,
-		version: u64,
-	) -> crate::Result<()> {
+	fn persist_version(unversioned: &UT, version: u64) -> crate::Result<()> {
 		let layout = EncodedRowLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut row = layout.allocate_row();
@@ -151,8 +145,7 @@ mod tests {
 	#[test]
 	fn test_new_version_provider() {
 		let memory = Memory::new();
-		let unversioned =
-			SingleVersionLock::new(memory, EventBus::default());
+		let unversioned = SingleVersionLock::new(memory, EventBus::default());
 		let provider = StdVersionProvider::new(unversioned).unwrap();
 
 		// Should start at version 0
@@ -162,8 +155,7 @@ mod tests {
 	#[test]
 	fn test_next_version_sequential() {
 		let memory = Memory::new();
-		let unversioned =
-			SingleVersionLock::new(memory, EventBus::default());
+		let unversioned = SingleVersionLock::new(memory, EventBus::default());
 		let provider = StdVersionProvider::new(unversioned).unwrap();
 
 		assert_eq!(provider.next().unwrap(), 1);
@@ -179,14 +171,11 @@ mod tests {
 	#[test]
 	fn test_version_persistence() {
 		let memory = Memory::new();
-		let unversioned =
-			SingleVersionLock::new(memory, EventBus::default());
+		let unversioned = SingleVersionLock::new(memory, EventBus::default());
 
 		// Create first provider and get some versions
 		{
-			let provider =
-				StdVersionProvider::new(unversioned.clone())
-					.unwrap();
+			let provider = StdVersionProvider::new(unversioned.clone()).unwrap();
 			assert_eq!(provider.next().unwrap(), 1);
 			assert_eq!(provider.next().unwrap(), 2);
 			assert_eq!(provider.next().unwrap(), 3);
@@ -194,8 +183,7 @@ mod tests {
 
 		// Create new provider with same storage - should continue from
 		// persisted version
-		let provider2 =
-			StdVersionProvider::new(unversioned.clone()).unwrap();
+		let provider2 = StdVersionProvider::new(unversioned.clone()).unwrap();
 		assert_eq!(provider2.next().unwrap(), BLOCK_SIZE + 1);
 		assert_eq!(provider2.current().unwrap(), BLOCK_SIZE + 1);
 	}
@@ -203,8 +191,7 @@ mod tests {
 	#[test]
 	fn test_block_exhaustion_and_allocation() {
 		let memory = Memory::new();
-		let unversioned =
-			SingleVersionLock::new(memory, EventBus::default());
+		let unversioned = SingleVersionLock::new(memory, EventBus::default());
 		let provider = StdVersionProvider::new(unversioned).unwrap();
 
 		// Exhaust the first block
@@ -227,10 +214,8 @@ mod tests {
 		use std::{sync::Arc, thread};
 
 		let memory = Memory::new();
-		let unversioned =
-			SingleVersionLock::new(memory, EventBus::default());
-		let provider =
-			Arc::new(StdVersionProvider::new(unversioned).unwrap());
+		let unversioned = SingleVersionLock::new(memory, EventBus::default());
+		let provider = Arc::new(StdVersionProvider::new(unversioned).unwrap());
 
 		let mut handles = vec![];
 
@@ -240,9 +225,7 @@ mod tests {
 			let handle = thread::spawn(move || {
 				let mut versions = vec![];
 				for _ in 0..100 {
-					versions.push(provider_clone
-						.next()
-						.unwrap());
+					versions.push(provider_clone.next().unwrap());
 				}
 				versions
 			});
@@ -311,8 +294,7 @@ mod tests {
 	#[test]
 	fn test_load_existing_version() {
 		let memory = Memory::new();
-		let unversioned =
-			SingleVersionLock::new(memory, EventBus::default());
+		let unversioned = SingleVersionLock::new(memory, EventBus::default());
 
 		// Manually set a version in storage
 		let layout = EncodedRowLayout::new(&[Type::Uint8]);
@@ -327,8 +309,7 @@ mod tests {
 			.unwrap();
 
 		// Create provider - should start from the existing version
-		let provider =
-			StdVersionProvider::new(unversioned.clone()).unwrap();
+		let provider = StdVersionProvider::new(unversioned.clone()).unwrap();
 		assert_eq!(provider.current().unwrap(), 500);
 		assert_eq!(provider.next().unwrap(), 501);
 	}

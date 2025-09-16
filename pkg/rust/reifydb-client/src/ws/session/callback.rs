@@ -25,13 +25,9 @@ pub struct CallbackSession {
 
 impl CallbackSession {
 	/// Create a new callback session
-	pub(crate) fn new(
-		client: Arc<ClientInner>,
-		token: Option<String>,
-	) -> Result<Self, reifydb_type::Error> {
+	pub(crate) fn new(client: Arc<ClientInner>, token: Option<String>) -> Result<Self, reifydb_type::Error> {
 		// Create a channel session and get the receiver
-		let (channel_session, receiver) =
-			ChannelSession::new(client, token.clone())?;
+		let (channel_session, receiver) = ChannelSession::new(client, token.clone())?;
 
 		let channel_session = Arc::new(channel_session);
 		let receiver = Arc::new(Mutex::new(receiver));
@@ -40,22 +36,14 @@ impl CallbackSession {
 		// If token provided, consume the authentication response
 		if token.is_some() {
 			// Try to receive the auth response with a short timeout
-			match receiver
-				.lock()
-				.unwrap()
-				.recv_timeout(Duration::from_millis(500))
-			{
+			match receiver.lock().unwrap().recv_timeout(Duration::from_millis(500)) {
 				Ok(msg) => {
 					match msg.response {
 						Ok(ChannelResponse::Auth {
 							..
 						}) => {
-							*authenticated
-								.lock()
-								.unwrap() = true;
-							println!(
-								"WebSocket Authentication successful"
-							);
+							*authenticated.lock().unwrap() = true;
+							println!("WebSocket Authentication successful");
 						}
 						Err(e) => {
 							// Authentication
@@ -65,9 +53,7 @@ impl CallbackSession {
 								"WebSocket Authentication error (continuing anyway): {}",
 								e
 							);
-							*authenticated
-								.lock()
-								.unwrap() = true;
+							*authenticated.lock().unwrap() = true;
 						}
 						_ => {
 							// Not an auth response
@@ -83,9 +69,7 @@ impl CallbackSession {
 				Err(_) => {
 					// Timeout or disconnected - continue
 					// anyway
-					println!(
-						"WebSocket session created with token (no auth response received)"
-					);
+					println!("WebSocket session created with token (no auth response received)");
 					*authenticated.lock().unwrap() = true;
 				}
 			}
@@ -99,26 +83,17 @@ impl CallbackSession {
 	}
 
 	/// Send a command with callback
-	pub fn command<F>(
-		&self,
-		rql: &str,
-		params: Option<Params>,
-		callback: F,
-	) -> Result<String, reifydb_type::Error>
+	pub fn command<F>(&self, rql: &str, params: Option<Params>, callback: F) -> Result<String, reifydb_type::Error>
 	where
-		F: FnOnce(Result<CommandResult, reifydb_type::Error>)
-			+ Send
-			+ 'static,
+		F: FnOnce(Result<CommandResult, reifydb_type::Error>) + Send + 'static,
 	{
 		// Send command through channel session
-		let request_id = self
-			.channel_session
-			.command(rql, params)
-			.map_err(|e| {
-				reifydb_type::Error(reifydb_type::diagnostic::internal(
-				format!("Failed to send command: {}", e)
-			))
-			})?;
+		let request_id = self.channel_session.command(rql, params).map_err(|e| {
+			reifydb_type::Error(reifydb_type::diagnostic::internal(format!(
+				"Failed to send command: {}",
+				e
+			)))
+		})?;
 
 		// Spawn thread to wait for response and invoke callback with
 		// timeout
@@ -126,36 +101,38 @@ impl CallbackSession {
 		let request_id_clone = request_id.clone();
 		thread::spawn(move || {
 			// Wait up to 30 seconds for response
-			match receiver
-				.lock()
-				.unwrap()
-				.recv_timeout(Duration::from_secs(30))
-			{
+			match receiver.lock().unwrap().recv_timeout(Duration::from_secs(30)) {
 				Ok(msg) => {
 					if msg.request_id == request_id_clone {
 						match msg.response {
-							Ok(ChannelResponse::Command { result, .. }) => {
+							Ok(ChannelResponse::Command {
+								result,
+								..
+							}) => {
 								callback(Ok(result));
 							}
 							Err(e) => {
 								callback(Err(e));
 							}
 							_ => {
-								callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-									"Unexpected response type for command".to_string()
-								))));
+								callback(Err(reifydb_type::Error(
+									reifydb_type::diagnostic::internal(
+										"Unexpected response type for command"
+											.to_string(),
+									),
+								)));
 							}
 						}
 					}
 				}
 				Err(mpsc::RecvTimeoutError::Timeout) => {
 					callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-						"Command request timeout".to_string()
+						"Command request timeout".to_string(),
 					))));
 				}
 				Err(mpsc::RecvTimeoutError::Disconnected) => {
 					callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-						"Command channel disconnected".to_string()
+						"Command channel disconnected".to_string(),
 					))));
 				}
 			}
@@ -165,26 +142,14 @@ impl CallbackSession {
 	}
 
 	/// Send a query with callback
-	pub fn query<F>(
-		&self,
-		rql: &str,
-		params: Option<Params>,
-		callback: F,
-	) -> Result<String, reifydb_type::Error>
+	pub fn query<F>(&self, rql: &str, params: Option<Params>, callback: F) -> Result<String, reifydb_type::Error>
 	where
-		F: FnOnce(Result<QueryResult, reifydb_type::Error>)
-			+ Send
-			+ 'static,
+		F: FnOnce(Result<QueryResult, reifydb_type::Error>) + Send + 'static,
 	{
 		// Send query through channel session
-		let request_id = self
-			.channel_session
-			.query(rql, params)
-			.map_err(|e| {
-				reifydb_type::Error(reifydb_type::diagnostic::internal(
-				format!("Failed to send query: {}", e)
-			))
-			})?;
+		let request_id = self.channel_session.query(rql, params).map_err(|e| {
+			reifydb_type::Error(reifydb_type::diagnostic::internal(format!("Failed to send query: {}", e)))
+		})?;
 
 		// Spawn thread to wait for response and invoke callback with
 		// timeout
@@ -192,36 +157,38 @@ impl CallbackSession {
 		let request_id_clone = request_id.clone();
 		thread::spawn(move || {
 			// Wait up to 30 seconds for response
-			match receiver
-				.lock()
-				.unwrap()
-				.recv_timeout(Duration::from_secs(30))
-			{
+			match receiver.lock().unwrap().recv_timeout(Duration::from_secs(30)) {
 				Ok(msg) => {
 					if msg.request_id == request_id_clone {
 						match msg.response {
-							Ok(ChannelResponse::Query { result, .. }) => {
+							Ok(ChannelResponse::Query {
+								result,
+								..
+							}) => {
 								callback(Ok(result));
 							}
 							Err(e) => {
 								callback(Err(e));
 							}
 							_ => {
-								callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-									"Unexpected response type for query".to_string()
-								))));
+								callback(Err(reifydb_type::Error(
+									reifydb_type::diagnostic::internal(
+										"Unexpected response type for query"
+											.to_string(),
+									),
+								)));
 							}
 						}
 					}
 				}
 				Err(mpsc::RecvTimeoutError::Timeout) => {
 					callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-						"Query request timeout".to_string()
+						"Query request timeout".to_string(),
 					))));
 				}
 				Err(mpsc::RecvTimeoutError::Disconnected) => {
 					callback(Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-						"Query channel disconnected".to_string()
+						"Query channel disconnected".to_string(),
 					))));
 				}
 			}

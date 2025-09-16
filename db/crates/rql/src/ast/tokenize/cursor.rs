@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{
-	BorrowedFragment, Fragment, StatementColumn, StatementLine,
-};
+use reifydb_type::{BorrowedFragment, Fragment, StatementColumn, StatementLine};
 
 /// A cursor over the input string that tracks position for tokenization
 pub struct Cursor<'a> {
@@ -56,10 +54,7 @@ impl<'a> Cursor<'a> {
 
 		// If we're not at the end of the string and not at a char
 		// boundary, back up to the previous char boundary
-		while end > self.pos
-			&& end < self.input.len()
-			&& !self.input.is_char_boundary(end)
-		{
+		while end > self.pos && end < self.input.len() && !self.input.is_char_boundary(end) {
 			end -= 1;
 		}
 
@@ -86,8 +81,7 @@ impl<'a> Cursor<'a> {
 			// Update cached character
 			if self.pos < self.input.len() {
 				let remaining = &self.input[self.pos..];
-				let next_char =
-					remaining.chars().next().unwrap();
+				let next_char = remaining.chars().next().unwrap();
 				self.current_char = Some(next_char);
 				self.current_char_len = next_char.len_utf8();
 			} else {
@@ -179,12 +173,7 @@ impl<'a> Cursor<'a> {
 
 	/// Create a Fragment (borrowed) from a start position to current
 	/// position
-	pub fn make_fragment(
-		&self,
-		start_pos: usize,
-		start_line: u32,
-		start_column: u32,
-	) -> Fragment<'a> {
+	pub fn make_fragment(&self, start_pos: usize, start_line: u32, start_column: u32) -> Fragment<'a> {
 		Fragment::Borrowed(BorrowedFragment::Statement {
 			text: &self.input[start_pos..self.pos],
 			line: StatementLine(start_line),

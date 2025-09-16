@@ -40,17 +40,10 @@ impl<T: Transaction> WorkerPool<T> {
 		let mut workers = Vec::with_capacity(worker_count);
 
 		// Parse bind address
-		let addrs: Vec<SocketAddr> = config
-			.bind_addr
-			.to_socket_addrs()
-			.expect("invalid bind addr")
-			.collect();
+		let addrs: Vec<SocketAddr> = config.bind_addr.to_socket_addrs().expect("invalid bind addr").collect();
 		let addr = *addrs.first().expect("no resolved addr");
 
-		let _enabled_protocols = Self::get_protocol_names(
-			&websocket_handler,
-			&http_handler,
-		);
+		let _enabled_protocols = Self::get_protocol_names(&websocket_handler, &http_handler);
 
 		// Store the actual bound port from the first listener
 		let mut bound_port = addr.port();
@@ -58,11 +51,8 @@ impl<T: Transaction> WorkerPool<T> {
 
 		// Create worker threads using the existing mio-based Worker
 		for worker_id in 0..worker_count {
-			let listener = Self::create_listener(
-				actual_addr,
-				config.network.reuse_port,
-			)
-			.expect("failed to create listener");
+			let listener = Self::create_listener(actual_addr, config.network.reuse_port)
+				.expect("failed to create listener");
 
 			// Get the actual bound port from the first listener
 			// (important for port 0) and update the address for
@@ -85,14 +75,13 @@ impl<T: Transaction> WorkerPool<T> {
 			let handle = thread::Builder::new()
 				.name(format!("reifydb-proto-{}", worker_id))
 				.spawn(move || {
-					let mut worker =
-						super::worker::Worker::new(
-							worker_id,
-							listener,
-							config_clone,
-							shutdown_clone,
-							engine_clone,
-						);
+					let mut worker = super::worker::Worker::new(
+						worker_id,
+						listener,
+						config_clone,
+						shutdown_clone,
+						engine_clone,
+					);
 
 					// Add protocol handlers to the worker
 					if let Some(ws) = ws_handler {
@@ -117,10 +106,7 @@ impl<T: Transaction> WorkerPool<T> {
 		}
 	}
 
-	fn get_protocol_names(
-		websocket: &Option<WebSocketHandler>,
-		http: &Option<HttpHandler>,
-	) -> Vec<String> {
+	fn get_protocol_names(websocket: &Option<WebSocketHandler>, http: &Option<HttpHandler>) -> Vec<String> {
 		let mut protocols = Vec::new();
 		if websocket.is_some() {
 			protocols.push("WebSocket".to_string());
@@ -143,8 +129,7 @@ impl<T: Transaction> WorkerPool<T> {
 			SocketAddr::V6(_) => Domain::IPV6,
 		};
 
-		let socket =
-			Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
+		let socket = Socket::new(domain, Type::STREAM, Some(Protocol::TCP))?;
 
 		if reuse_port {
 			socket.set_reuse_port(true)?;

@@ -24,21 +24,15 @@ impl ColumnPolicyKind {
 		match self {
 			ColumnPolicyKind::Saturation(policy) => match policy {
 				ColumnSaturationPolicy::Error => (0x01, 0x01),
-				ColumnSaturationPolicy::Undefined => {
-					(0x01, 0x02)
-				}
+				ColumnSaturationPolicy::Undefined => (0x01, 0x02),
 			},
 		}
 	}
 
 	pub fn from_u8(policy: u8, value: u8) -> ColumnPolicyKind {
 		match (policy, value) {
-			(0x01, 0x01) => ColumnPolicyKind::Saturation(
-				ColumnSaturationPolicy::Error,
-			),
-			(0x01, 0x02) => ColumnPolicyKind::Saturation(
-				ColumnSaturationPolicy::Undefined,
-			),
+			(0x01, 0x01) => ColumnPolicyKind::Saturation(ColumnSaturationPolicy::Error),
+			(0x01, 0x02) => ColumnPolicyKind::Saturation(ColumnSaturationPolicy::Undefined),
 			_ => unimplemented!(),
 		}
 	}
@@ -60,15 +54,12 @@ pub enum ColumnSaturationPolicy {
 impl Display for ColumnPolicyKind {
 	fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
 		match self {
-			ColumnPolicyKind::Saturation(_) => {
-				f.write_str("saturation")
-			}
+			ColumnPolicyKind::Saturation(_) => f.write_str("saturation"),
 		}
 	}
 }
 
-pub const DEFAULT_COLUMN_SATURATION_POLICY: ColumnSaturationPolicy =
-	ColumnSaturationPolicy::Error;
+pub const DEFAULT_COLUMN_SATURATION_POLICY: ColumnSaturationPolicy = ColumnSaturationPolicy::Error;
 
 impl Default for ColumnSaturationPolicy {
 	fn default() -> Self {

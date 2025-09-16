@@ -2,9 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{CowVec, EncodedKey, row::EncodedRow};
-use rusqlite::{
-	Error::ToSqlConversionFailure, OptionalExtension, Transaction, params,
-};
+use rusqlite::{Error::ToSqlConversionFailure, OptionalExtension, Transaction, params};
 
 use crate::cdc::{CdcTransaction, codec::encode_cdc_transaction};
 
@@ -19,10 +17,7 @@ pub(crate) fn fetch_before_value(
 	key: &EncodedKey,
 	table: &str,
 ) -> rusqlite::Result<Option<EncodedRow>> {
-	let query = format!(
-		"SELECT value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1",
-		table
-	);
+	let query = format!("SELECT value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1", table);
 
 	let mut stmt = tx.prepare_cached(&query)?;
 
@@ -34,12 +29,9 @@ pub(crate) fn fetch_before_value(
 }
 
 /// Store a CDC transaction in the database
-pub(crate) fn store_cdc_transaction(
-	tx: &Transaction,
-	transaction: CdcTransaction,
-) -> rusqlite::Result<()> {
-	let encoded_transaction = encode_cdc_transaction(&transaction)
-		.map_err(|e| ToSqlConversionFailure(Box::new(e)))?;
+pub(crate) fn store_cdc_transaction(tx: &Transaction, transaction: CdcTransaction) -> rusqlite::Result<()> {
+	let encoded_transaction =
+		encode_cdc_transaction(&transaction).map_err(|e| ToSqlConversionFailure(Box::new(e)))?;
 
 	tx.execute(
 		"INSERT OR REPLACE INTO cdc (version, value) VALUES (?1, ?2)",

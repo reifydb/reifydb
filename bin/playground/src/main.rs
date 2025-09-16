@@ -8,10 +8,7 @@ use std::{thread::sleep, time::Duration};
 use reifydb::{
 	core::{
 		flow::FlowChange,
-		interface::{
-			subsystem::logging::LogLevel::Info, FlowNodeId,
-			Transaction,
-		},
+		interface::{subsystem::logging::LogLevel::Info, FlowNodeId, Transaction},
 	},
 	embedded,
 	engine::{StandardCommandTransaction, StandardEvaluator},
@@ -24,16 +21,12 @@ use reifydb::{
 pub type DB = MemoryDatabaseOptimistic;
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
-	logging.with_console(|console| {
-		console.color(true)
-			.stderr_for_errors(true)
-			.format_style(FormatStyle::Timeline)
-	})
-	.buffer_capacity(20000)
-	.batch_size(2000)
-	.flush_interval(Duration::from_millis(50))
-	.immediate_on_error(true)
-	.level(Info)
+	logging.with_console(|console| console.color(true).stderr_for_errors(true).format_style(FormatStyle::Timeline))
+		.buffer_capacity(20000)
+		.batch_size(2000)
+		.flush_interval(Duration::from_millis(50))
+		.immediate_on_error(true)
+		.level(Info)
 }
 
 struct MyOP;
@@ -57,9 +50,7 @@ impl<T: Transaction> TransformOperator<T> for MyOP {
 }
 
 fn flow_configuration<T: Transaction>(flow: FlowBuilder<T>) -> FlowBuilder<T> {
-	flow.register_operator("test".to_string(), |_node, _exprs| {
-		Ok(Box::new(MyOP {}))
-	})
+	flow.register_operator("test".to_string(), |_node, _exprs| Ok(Box::new(MyOP {})))
 }
 
 fn main() {
@@ -198,31 +189,19 @@ fn main() {
 
 	// Query the numbered transactions view
 	log_info!("\n=== Numbered Transactions (with counter) ===");
-	for frame in db
-		.query_as_root(
-			r#"from test.numbered_transactions"#,
-			Params::None,
-		)
-		.unwrap()
-	{
+	for frame in db.query_as_root(r#"from test.numbered_transactions"#, Params::None).unwrap() {
 		log_info!("{frame}");
 	}
 
 	// Query the running totals view
 	log_info!("\n=== Running Totals (with running_sum) ===");
-	for frame in db
-		.query_as_root(r#"from test.running_totals"#, Params::None)
-		.unwrap()
-	{
+	for frame in db.query_as_root(r#"from test.running_totals"#, Params::None).unwrap() {
 		log_info!("{frame}");
 	}
 
 	// Query the running averages view
 	log_info!("\n=== Running Averages (with running_avg) ===");
-	for frame in db
-		.query_as_root(r#"from test.running_averages"#, Params::None)
-		.unwrap()
-	{
+	for frame in db.query_as_root(r#"from test.running_averages"#, Params::None).unwrap() {
 		log_info!("{frame}");
 	}
 

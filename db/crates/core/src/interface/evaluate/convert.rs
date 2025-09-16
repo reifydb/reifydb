@@ -10,22 +10,14 @@ use reifydb_type::{
 use crate::interface::{ColumnSaturationPolicy, evaluate::EvaluationContext};
 
 pub trait Convert {
-	fn convert<From, To>(
-		&self,
-		from: From,
-		fragment: impl IntoFragment<'static>,
-	) -> crate::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl IntoFragment<'static>) -> crate::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType;
 }
 
 impl Convert for EvaluationContext<'_> {
-	fn convert<From, To>(
-		&self,
-		from: From,
-		fragment: impl IntoFragment<'static>,
-	) -> crate::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl IntoFragment<'static>) -> crate::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
@@ -35,11 +27,7 @@ impl Convert for EvaluationContext<'_> {
 }
 
 impl Convert for &EvaluationContext<'_> {
-	fn convert<From, To>(
-		&self,
-		from: From,
-		fragment: impl IntoFragment<'static>,
-	) -> crate::Result<Option<To>>
+	fn convert<From, To>(&self, from: From, fragment: impl IntoFragment<'static>) -> crate::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
 		To: GetType,
@@ -48,26 +36,16 @@ impl Convert for &EvaluationContext<'_> {
 			ColumnSaturationPolicy::Error => from
 				.checked_convert()
 				.ok_or_else(|| {
-					if From::get_type().is_integer()
-						&& To::get_type()
-							.is_floating_point()
-					{
-						return error!(
-							integer_precision_loss(
-								fragment,
-								From::get_type(
-								),
-								To::get_type(),
-							)
-						);
+					if From::get_type().is_integer() && To::get_type().is_floating_point() {
+						return error!(integer_precision_loss(
+							fragment,
+							From::get_type(),
+							To::get_type(),
+						));
 					};
 
-					let descriptor = self
-						.target_column
-						.as_ref()
-						.map(|c| {
-							c.to_number_range_descriptor()
-						});
+					let descriptor =
+						self.target_column.as_ref().map(|c| c.to_number_range_descriptor());
 					return error!(number_out_of_range(
 						fragment,
 						To::get_type(),
@@ -75,12 +53,10 @@ impl Convert for &EvaluationContext<'_> {
 					));
 				})
 				.map(Some),
-			ColumnSaturationPolicy::Undefined => {
-				match from.checked_convert() {
-					None => Ok(None),
-					Some(value) => Ok(Some(value)),
-				}
-			}
+			ColumnSaturationPolicy::Undefined => match from.checked_convert() {
+				None => Ok(None),
+				Some(value) => Ok(Some(value)),
+			},
 		}
 	}
 }

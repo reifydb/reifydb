@@ -118,15 +118,11 @@ impl Value {
 	}
 
 	pub fn float4(v: impl Into<f32>) -> Self {
-		OrderedF32::try_from(v.into())
-			.map(Value::Float4)
-			.unwrap_or(Value::Undefined)
+		OrderedF32::try_from(v.into()).map(Value::Float4).unwrap_or(Value::Undefined)
 	}
 
 	pub fn float8(v: impl Into<f64>) -> Self {
-		OrderedF64::try_from(v.into())
-			.map(Value::Float8)
-			.unwrap_or(Value::Undefined)
+		OrderedF64::try_from(v.into()).map(Value::Float8).unwrap_or(Value::Undefined)
 	}
 
 	pub fn int1(v: impl Into<i8>) -> Self {
@@ -213,15 +209,9 @@ impl Value {
 impl PartialOrd for Value {
 	fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
 		match (self, other) {
-			(Value::Boolean(l), Value::Boolean(r)) => {
-				l.partial_cmp(r)
-			}
-			(Value::Float4(l), Value::Float4(r)) => {
-				l.partial_cmp(r)
-			}
-			(Value::Float8(l), Value::Float8(r)) => {
-				l.partial_cmp(r)
-			}
+			(Value::Boolean(l), Value::Boolean(r)) => l.partial_cmp(r),
+			(Value::Float4(l), Value::Float4(r)) => l.partial_cmp(r),
+			(Value::Float8(l), Value::Float8(r)) => l.partial_cmp(r),
 			(Value::Int1(l), Value::Int1(r)) => l.partial_cmp(r),
 			(Value::Int2(l), Value::Int2(r)) => l.partial_cmp(r),
 			(Value::Int4(l), Value::Int4(r)) => l.partial_cmp(r),
@@ -232,31 +222,19 @@ impl PartialOrd for Value {
 			(Value::Uint2(l), Value::Uint2(r)) => l.partial_cmp(r),
 			(Value::Uint4(l), Value::Uint4(r)) => l.partial_cmp(r),
 			(Value::Uint8(l), Value::Uint8(r)) => l.partial_cmp(r),
-			(Value::Uint16(l), Value::Uint16(r)) => {
-				l.partial_cmp(r)
-			}
+			(Value::Uint16(l), Value::Uint16(r)) => l.partial_cmp(r),
 			(Value::Date(l), Value::Date(r)) => l.partial_cmp(r),
-			(Value::DateTime(l), Value::DateTime(r)) => {
-				l.partial_cmp(r)
-			}
+			(Value::DateTime(l), Value::DateTime(r)) => l.partial_cmp(r),
 			(Value::Time(l), Value::Time(r)) => l.partial_cmp(r),
-			(Value::Interval(l), Value::Interval(r)) => {
-				l.partial_cmp(r)
-			}
-			(Value::RowNumber(l), Value::RowNumber(r)) => {
-				l.partial_cmp(r)
-			}
-			(Value::IdentityId(l), Value::IdentityId(r)) => {
-				l.partial_cmp(r)
-			}
+			(Value::Interval(l), Value::Interval(r)) => l.partial_cmp(r),
+			(Value::RowNumber(l), Value::RowNumber(r)) => l.partial_cmp(r),
+			(Value::IdentityId(l), Value::IdentityId(r)) => l.partial_cmp(r),
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.partial_cmp(r),
 			(Value::Int(l), Value::Int(r)) => l.partial_cmp(r),
 			(Value::Uint(l), Value::Uint(r)) => l.partial_cmp(r),
-			(Value::Decimal(l), Value::Decimal(r)) => {
-				l.partial_cmp(r)
-			}
+			(Value::Decimal(l), Value::Decimal(r)) => l.partial_cmp(r),
 			(Value::Undefined, Value::Undefined) => None,
 			(left, right) => {
 				unimplemented!("partial cmp {left:?} {right:?}")
@@ -287,9 +265,7 @@ impl Ord for Value {
 			(Value::Time(l), Value::Time(r)) => l.cmp(r),
 			(Value::Interval(l), Value::Interval(r)) => l.cmp(r),
 			(Value::RowNumber(l), Value::RowNumber(r)) => l.cmp(r),
-			(Value::IdentityId(l), Value::IdentityId(r)) => {
-				l.cmp(r)
-			}
+			(Value::IdentityId(l), Value::IdentityId(r)) => l.cmp(r),
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
 			(Value::Blob(l), Value::Blob(r)) => l.cmp(r),

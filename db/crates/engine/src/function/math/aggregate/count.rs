@@ -21,10 +21,7 @@ impl Count {
 }
 
 impl AggregateFunction for Count {
-	fn aggregate(
-		&mut self,
-		ctx: AggregateFunctionContext,
-	) -> crate::Result<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::Result<()> {
 		let groups = &ctx.groups;
 
 		for (group, indices) in groups.iter() {
@@ -36,8 +33,7 @@ impl AggregateFunction for Count {
 
 	fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.counts.len());
-		let mut data =
-			ColumnData::int8_with_capacity(self.counts.len());
+		let mut data = ColumnData::int8_with_capacity(self.counts.len());
 
 		for (key, count) in std::mem::take(&mut self.counts) {
 			keys.push(key);

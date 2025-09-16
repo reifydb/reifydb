@@ -8,12 +8,7 @@ use reifydb_type::{DateTime, Type};
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_datetime(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: DateTime,
-	) {
+	pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::DateTime);
@@ -22,18 +17,9 @@ impl EncodedRowLayout {
 		let (seconds, nanos) = value.to_parts();
 		unsafe {
 			// Write seconds at offset
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut i64,
-				seconds,
-			);
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i64, seconds);
 			// Write nanos at offset + 8
-			ptr::write_unaligned(
-				row.make_mut()
-					.as_mut_ptr()
-					.add(field.offset + 8) as *mut u32,
-				nanos,
-			);
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset + 8) as *mut u32, nanos);
 		}
 	}
 
@@ -43,22 +29,14 @@ impl EncodedRowLayout {
 		debug_assert_eq!(field.value, Type::DateTime);
 		unsafe {
 			// Read i64 seconds at offset
-			let seconds = (row.as_ptr().add(field.offset)
-				as *const i64)
-				.read_unaligned();
+			let seconds = (row.as_ptr().add(field.offset) as *const i64).read_unaligned();
 			// Read u32 nanos at offset + 8
-			let nanos = (row.as_ptr().add(field.offset + 8)
-				as *const u32)
-				.read_unaligned();
+			let nanos = (row.as_ptr().add(field.offset + 8) as *const u32).read_unaligned();
 			DateTime::from_parts(seconds, nanos).unwrap()
 		}
 	}
 
-	pub fn try_get_datetime(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<DateTime> {
+	pub fn try_get_datetime(&self, row: &EncodedRow, index: usize) -> Option<DateTime> {
 		if row.is_defined(index) {
 			Some(self.get_datetime(row, index))
 		} else {
@@ -90,13 +68,9 @@ mod tests {
 
 		assert_eq!(layout.try_get_datetime(&row, 0), None);
 
-		let test_datetime =
-			DateTime::from_timestamp(1642694400).unwrap();
+		let test_datetime = DateTime::from_timestamp(1642694400).unwrap();
 		layout.set_datetime(&mut row, 0, test_datetime.clone());
-		assert_eq!(
-			layout.try_get_datetime(&row, 0),
-			Some(test_datetime)
-		);
+		assert_eq!(layout.try_get_datetime(&row, 0), Some(test_datetime));
 	}
 
 	#[test]
@@ -115,9 +89,7 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		// Test with high precision nanoseconds
-		let precise_datetime =
-			DateTime::new(2024, 12, 25, 15, 30, 45, 123456789)
-				.unwrap();
+		let precise_datetime = DateTime::new(2024, 12, 25, 15, 30, 45, 123456789).unwrap();
 		layout.set_datetime(&mut row, 0, precise_datetime.clone());
 		assert_eq!(layout.get_datetime(&row, 0), precise_datetime);
 	}
@@ -127,8 +99,8 @@ mod tests {
 		let layout = EncodedRowLayout::new(&[Type::DateTime]);
 
 		let test_datetimes = [
-			DateTime::from_timestamp(0).unwrap(), // Unix epoch
-			DateTime::from_timestamp(946684800).unwrap(), // 2000-01-01
+			DateTime::from_timestamp(0).unwrap(),          // Unix epoch
+			DateTime::from_timestamp(946684800).unwrap(),  // 2000-01-01
 			DateTime::from_timestamp(1640995200).unwrap(), // 2022-01-01
 			DateTime::from_timestamp(1735689600).unwrap(), // 2025-01-01
 		];
@@ -146,8 +118,8 @@ mod tests {
 
 		// Test dates before Unix epoch
 		let pre_epoch_datetimes = [
-			DateTime::from_timestamp(-86400).unwrap(), /* 1969-12-31 */
-			DateTime::from_timestamp(-31536000).unwrap(), /* 1969-01-01 */
+			DateTime::from_timestamp(-86400).unwrap(),    // 1969-12-31
+			DateTime::from_timestamp(-31536000).unwrap(), // 1969-01-01
 		];
 
 		for datetime in pre_epoch_datetimes {
@@ -159,19 +131,11 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::DateTime,
-			Type::Boolean,
-			Type::DateTime,
-			Type::Int8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::DateTime, Type::Boolean, Type::DateTime, Type::Int8]);
 		let mut row = layout.allocate_row();
 
-		let datetime1 =
-			DateTime::new(2025, 6, 15, 12, 0, 0, 0).unwrap();
-		let datetime2 =
-			DateTime::new(1995, 3, 22, 18, 30, 45, 500000000)
-				.unwrap();
+		let datetime1 = DateTime::new(2025, 6, 15, 12, 0, 0, 0).unwrap();
+		let datetime2 = DateTime::new(1995, 3, 22, 18, 30, 45, 500000000).unwrap();
 
 		layout.set_datetime(&mut row, 0, datetime1.clone());
 		layout.set_bool(&mut row, 1, true);
@@ -186,14 +150,10 @@ mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout = EncodedRowLayout::new(&[
-			Type::DateTime,
-			Type::DateTime,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::DateTime, Type::DateTime]);
 		let mut row = layout.allocate_row();
 
-		let datetime = DateTime::new(2025, 7, 4, 16, 20, 15, 750000000)
-			.unwrap();
+		let datetime = DateTime::new(2025, 7, 4, 16, 20, 15, 750000000).unwrap();
 		layout.set_datetime(&mut row, 0, datetime.clone());
 
 		assert_eq!(layout.try_get_datetime(&row, 0), Some(datetime));
@@ -209,8 +169,7 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		// Test that nanosecond precision is preserved
-		let high_precision =
-			DateTime::new(2024, 1, 1, 0, 0, 0, 999999999).unwrap();
+		let high_precision = DateTime::new(2024, 1, 1, 0, 0, 0, 999999999).unwrap();
 		layout.set_datetime(&mut row, 0, high_precision.clone());
 
 		let retrieved = layout.get_datetime(&row, 0);
@@ -250,9 +209,7 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		// Test microsecond precision (common in databases)
-		let microsecond_precision =
-			DateTime::new(2024, 6, 15, 14, 30, 25, 123456000)
-				.unwrap();
+		let microsecond_precision = DateTime::new(2024, 6, 15, 14, 30, 25, 123456000).unwrap();
 		layout.set_datetime(&mut row, 0, microsecond_precision.clone());
 		assert_eq!(layout.get_datetime(&row, 0), microsecond_precision);
 	}

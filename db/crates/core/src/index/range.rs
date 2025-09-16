@@ -13,10 +13,7 @@ pub struct EncodedIndexKeyRange {
 }
 
 impl EncodedIndexKeyRange {
-	pub fn new(
-		start: Bound<EncodedIndexKey>,
-		end: Bound<EncodedIndexKey>,
-	) -> Self {
+	pub fn new(start: Bound<EncodedIndexKey>, end: Bound<EncodedIndexKey>) -> Self {
 		Self {
 			start,
 			end,
@@ -25,16 +22,12 @@ impl EncodedIndexKeyRange {
 
 	/// Constructs a key range from optional start and end index keys.
 	///
-	/// - `start`: If provided, marks the inclusive lower bound of the
-	///   range. If `None`, the range is unbounded below.
-	/// - `end`: If provided, marks the exclusive upper bound of the range.
-	///   If `None`, the range is unbounded above.
+	/// - `start`: If provided, marks the inclusive lower bound of the range. If `None`, the range is unbounded
+	///   below.
+	/// - `end`: If provided, marks the exclusive upper bound of the range. If `None`, the range is unbounded above.
 	///
 	/// This is useful for creating ranges for index scans.
-	pub fn start_end(
-		start: Option<EncodedIndexKey>,
-		end: Option<EncodedIndexKey>,
-	) -> Self {
+	pub fn start_end(start: Option<EncodedIndexKey>, end: Option<EncodedIndexKey>) -> Self {
 		let start = match start {
 			Some(s) => Bound::Included(s),
 			None => Bound::Unbounded,
@@ -54,16 +47,12 @@ impl EncodedIndexKeyRange {
 	/// Constructs a key range from optional inclusive start and end index
 	/// keys.
 	///
-	/// - `start`: If provided, marks the inclusive lower bound of the
-	///   range. If `None`, the range is unbounded below.
-	/// - `end`: If provided, marks the inclusive upper bound of the range.
-	///   If `None`, the range is unbounded above.
+	/// - `start`: If provided, marks the inclusive lower bound of the range. If `None`, the range is unbounded
+	///   below.
+	/// - `end`: If provided, marks the inclusive upper bound of the range. If `None`, the range is unbounded above.
 	///
 	/// Both bounds are inclusive when provided.
-	pub fn start_end_inclusive(
-		start: Option<EncodedIndexKey>,
-		end: Option<EncodedIndexKey>,
-	) -> Self {
+	pub fn start_end_inclusive(start: Option<EncodedIndexKey>, end: Option<EncodedIndexKey>) -> Self {
 		let start = match start {
 			Some(s) => Bound::Included(s),
 			None => Bound::Unbounded,
@@ -89,20 +78,15 @@ impl EncodedIndexKeyRange {
 	/// that, and truncate the rest. If all bytes are 0xff, we scan to the
 	/// end of the range.
 	pub fn prefix(prefix: &[u8]) -> Self {
-		let start =
-			Bound::Included(EncodedIndexKey::from_bytes(prefix));
+		let start = Bound::Included(EncodedIndexKey::from_bytes(prefix));
 		let end = match prefix.iter().rposition(|&b| b != 0xff) {
-			Some(i) => {
-				Bound::Excluded(EncodedIndexKey::from_bytes(
-					&prefix.iter()
-						.take(i)
-						.copied()
-						.chain(std::iter::once(
-							prefix[i] + 1,
-						))
-						.collect::<Vec<_>>(),
-				))
-			}
+			Some(i) => Bound::Excluded(EncodedIndexKey::from_bytes(
+				&prefix.iter()
+					.take(i)
+					.copied()
+					.chain(std::iter::once(prefix[i] + 1))
+					.collect::<Vec<_>>(),
+			)),
 			None => Bound::Unbounded,
 		};
 		Self {
@@ -124,22 +108,14 @@ impl EncodedIndexKeyRange {
 	/// ranges with storage APIs that expect EncodedKeyRange.
 	pub fn to_encoded_key_range(&self) -> EncodedKeyRange {
 		let start = match &self.start {
-			Bound::Included(key) => {
-				Bound::Included(EncodedKey::new(key.as_slice()))
-			}
-			Bound::Excluded(key) => {
-				Bound::Excluded(EncodedKey::new(key.as_slice()))
-			}
+			Bound::Included(key) => Bound::Included(EncodedKey::new(key.as_slice())),
+			Bound::Excluded(key) => Bound::Excluded(EncodedKey::new(key.as_slice())),
 			Bound::Unbounded => Bound::Unbounded,
 		};
 
 		let end = match &self.end {
-			Bound::Included(key) => {
-				Bound::Included(EncodedKey::new(key.as_slice()))
-			}
-			Bound::Excluded(key) => {
-				Bound::Excluded(EncodedKey::new(key.as_slice()))
-			}
+			Bound::Included(key) => Bound::Included(EncodedKey::new(key.as_slice())),
+			Bound::Excluded(key) => Bound::Excluded(EncodedKey::new(key.as_slice())),
 			Bound::Unbounded => Bound::Unbounded,
 		};
 
@@ -168,11 +144,7 @@ mod tests {
 
 	#[test]
 	fn test_start_end() {
-		let layout = EncodedIndexLayout::new(
-			&[Type::Uint8],
-			&[SortDirection::Asc],
-		)
-		.unwrap();
+		let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key1 = layout.allocate_key();
 		layout.set_u64(&mut key1, 0, 100u64);
@@ -180,10 +152,7 @@ mod tests {
 		let mut key2 = layout.allocate_key();
 		layout.set_u64(&mut key2, 0, 200u64);
 
-		let range = EncodedIndexKeyRange::start_end(
-			Some(key1.clone()),
-			Some(key2.clone()),
-		);
+		let range = EncodedIndexKeyRange::start_end(Some(key1.clone()), Some(key2.clone()));
 
 		match &range.start {
 			Bound::Included(k) => {
@@ -202,11 +171,7 @@ mod tests {
 
 	#[test]
 	fn test_start_end_inclusive() {
-		let layout = EncodedIndexLayout::new(
-			&[Type::Uint8],
-			&[SortDirection::Asc],
-		)
-		.unwrap();
+		let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key1 = layout.allocate_key();
 		layout.set_u64(&mut key1, 0, 100u64);
@@ -214,10 +179,7 @@ mod tests {
 		let mut key2 = layout.allocate_key();
 		layout.set_u64(&mut key2, 0, 200u64);
 
-		let range = EncodedIndexKeyRange::start_end_inclusive(
-			Some(key1.clone()),
-			Some(key2.clone()),
-		);
+		let range = EncodedIndexKeyRange::start_end_inclusive(Some(key1.clone()), Some(key2.clone()));
 
 		match &range.start {
 			Bound::Included(k) => {
@@ -290,19 +252,12 @@ mod tests {
 
 	#[test]
 	fn test_to_encoded_key_range() {
-		let layout = EncodedIndexLayout::new(
-			&[Type::Uint8],
-			&[SortDirection::Asc],
-		)
-		.unwrap();
+		let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 100u64);
 
-		let index_range = EncodedIndexKeyRange::start_end(
-			Some(key.clone()),
-			None,
-		);
+		let index_range = EncodedIndexKeyRange::start_end(Some(key.clone()), None);
 		let key_range = index_range.to_encoded_key_range();
 
 		match &key_range.start {

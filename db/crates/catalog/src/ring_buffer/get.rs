@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	QueryTransaction, RingBufferDef, RingBufferId, RingBufferMetadata,
-};
+use reifydb_core::interface::{QueryTransaction, RingBufferDef, RingBufferId, RingBufferMetadata};
 use reifydb_type::{Error, internal_error};
 
 use crate::CatalogStore;
@@ -46,9 +44,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let ring_buffer = ensure_test_ring_buffer(&mut txn);
 
-		let result =
-			CatalogStore::get_ring_buffer(&mut txn, ring_buffer.id)
-				.unwrap();
+		let result = CatalogStore::get_ring_buffer(&mut txn, ring_buffer.id).unwrap();
 
 		assert_eq!(result.id, ring_buffer.id);
 		assert_eq!(result.name, ring_buffer.name);
@@ -58,10 +54,7 @@ mod tests {
 	fn test_get_ring_buffer_not_exists() {
 		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::get_ring_buffer(
-			&mut txn,
-			RingBufferId(999),
-		);
+		let result = CatalogStore::get_ring_buffer(&mut txn, RingBufferId(999));
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();
@@ -75,11 +68,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let ring_buffer = ensure_test_ring_buffer(&mut txn);
 
-		let result = CatalogStore::get_ring_buffer_metadata(
-			&mut txn,
-			ring_buffer.id,
-		)
-		.unwrap();
+		let result = CatalogStore::get_ring_buffer_metadata(&mut txn, ring_buffer.id).unwrap();
 
 		assert_eq!(result.id, ring_buffer.id);
 		assert_eq!(result.capacity, ring_buffer.capacity);
@@ -89,10 +78,7 @@ mod tests {
 	fn test_get_ring_buffer_metadata_not_exists() {
 		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::get_ring_buffer_metadata(
-			&mut txn,
-			RingBufferId(999),
-		);
+		let result = CatalogStore::get_ring_buffer_metadata(&mut txn, RingBufferId(999));
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();

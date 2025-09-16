@@ -7,12 +7,9 @@ use crate::{
 	row::EncodedRow,
 };
 
-pub type BoxedUnversionedIter<'a> =
-	Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
+pub type BoxedUnversionedIter<'a> = Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
 
-pub trait UnversionedTransaction:
-	WithEventBus + Send + Sync + Clone + 'static
-{
+pub trait UnversionedTransaction: WithEventBus + Send + Sync + Clone + 'static {
 	type Query<'a>: UnversionedQueryTransaction;
 	type Command<'a>: UnversionedCommandTransaction;
 
@@ -40,10 +37,7 @@ pub trait UnversionedTransaction:
 }
 
 pub trait UnversionedQueryTransaction {
-	fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> crate::Result<Option<Unversioned>>;
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>>;
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
@@ -51,37 +45,21 @@ pub trait UnversionedQueryTransaction {
 
 	fn scan_rev(&mut self) -> crate::Result<BoxedUnversionedIter>;
 
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedUnversionedIter>;
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter>;
 
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedUnversionedIter>;
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter>;
 
-	fn prefix(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedUnversionedIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 
-	fn prefix_rev(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedUnversionedIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }
 
 pub trait UnversionedCommandTransaction: UnversionedQueryTransaction {
-	fn set(
-		&mut self,
-		key: &EncodedKey,
-		row: EncodedRow,
-	) -> crate::Result<()>;
+	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 

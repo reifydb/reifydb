@@ -8,40 +8,22 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_f64(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<f64>,
-	) {
+	pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: impl Into<f64>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Float8);
 		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut f64,
-				value.into(),
-			)
-		}
+		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut f64, value.into()) }
 	}
 
 	pub fn get_f64(&self, row: &EncodedRow, index: usize) -> f64 {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Float8);
-		unsafe {
-			(row.as_ptr().add(field.offset) as *const f64)
-				.read_unaligned()
-		}
+		unsafe { (row.as_ptr().add(field.offset) as *const f64).read_unaligned() }
 	}
 
-	pub fn try_get_f64(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<f64> {
+	pub fn try_get_f64(&self, row: &EncodedRow, index: usize) -> Option<f64> {
 		if row.is_defined(index) {
 			Some(self.get_f64(row, index))
 		} else {
@@ -140,11 +122,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Float8,
-			Type::Int8,
-			Type::Float8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Float8, Type::Int8, Type::Float8]);
 		let mut row = layout.allocate_row();
 
 		layout.set_f64(&mut row, 0, 3.14159265359);
@@ -158,16 +136,12 @@ mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout =
-			EncodedRowLayout::new(&[Type::Float8, Type::Float8]);
+		let layout = EncodedRowLayout::new(&[Type::Float8, Type::Float8]);
 		let mut row = layout.allocate_row();
 
 		layout.set_f64(&mut row, 0, 2.718281828459045);
 
-		assert_eq!(
-			layout.try_get_f64(&row, 0),
-			Some(2.718281828459045)
-		);
+		assert_eq!(layout.try_get_f64(&row, 0), Some(2.718281828459045));
 		assert_eq!(layout.try_get_f64(&row, 1), None);
 
 		layout.set_undefined(&mut row, 0);

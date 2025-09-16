@@ -1,10 +1,7 @@
 use reifydb_core::{
 	BitVec,
 	flow::{FlowChange, FlowDiff},
-	interface::{
-		EvaluationContext, Evaluator, Params, Transaction,
-		expression::Expression,
-	},
+	interface::{EvaluationContext, Evaluator, Params, Transaction, expression::Expression},
 	value::columnar::{ColumnData, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
@@ -39,26 +36,18 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 					row_ids,
 					after,
 				} => {
-					let (
-						filtered_columns,
-						filtered_indices,
-					) = self.filter_with_indices(
-						evaluator, &after,
-					)?;
+					let (filtered_columns, filtered_indices) =
+						self.filter_with_indices(evaluator, &after)?;
 					if !filtered_columns.is_empty() {
 						// Extract row_ids for the
 						// filtered rows
-						let mut filtered_row_ids =
-							Vec::new();
+						let mut filtered_row_ids = Vec::new();
 						for idx in &filtered_indices {
-							filtered_row_ids
-								.push(row_ids
-									[*idx]);
+							filtered_row_ids.push(row_ids[*idx]);
 						}
 						output.push(FlowDiff::Insert {
 							source: *source,
-							row_ids:
-								filtered_row_ids,
+							row_ids: filtered_row_ids,
 							after: filtered_columns,
 						});
 					}
@@ -70,23 +59,17 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 					after,
 				} => {
 					let (filtered_new, filtered_indices) =
-						self.filter_with_indices(
-							evaluator, &after,
-						)?;
+						self.filter_with_indices(evaluator, &after)?;
 					if !filtered_new.is_empty() {
 						// Extract row_ids for the
 						// filtered rows
-						let mut filtered_row_ids =
-							Vec::new();
+						let mut filtered_row_ids = Vec::new();
 						for idx in &filtered_indices {
-							filtered_row_ids
-								.push(row_ids
-									[*idx]);
+							filtered_row_ids.push(row_ids[*idx]);
 						}
 						output.push(FlowDiff::Update {
 							source: *source,
-							row_ids:
-								filtered_row_ids,
+							row_ids: filtered_row_ids,
 							before: before.clone(),
 							after: filtered_new,
 						});
@@ -95,8 +78,7 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 						// emit remove of old
 						output.push(FlowDiff::Remove {
 							source: *source,
-							row_ids: row_ids
-								.clone(),
+							row_ids: row_ids.clone(),
 							before: before.clone(),
 						});
 					}
@@ -121,13 +103,8 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 }
 
 impl FilterOperator {
-	fn filter(
-		&self,
-		evaluator: &StandardEvaluator,
-		columns: &Columns,
-	) -> crate::Result<Columns> {
-		let (filtered, _) =
-			self.filter_with_indices(evaluator, columns)?;
+	fn filter(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns> {
+		let (filtered, _) = self.filter_with_indices(evaluator, columns)?;
 		Ok(filtered)
 	}
 
@@ -154,27 +131,16 @@ impl FilterOperator {
 
 		// Evaluate each condition and AND them together
 		for condition in &self.conditions {
-			let result_column =
-				evaluator.evaluate(&eval_ctx, condition)?;
+			let result_column = evaluator.evaluate(&eval_ctx, condition)?;
 
 			match result_column.data() {
 				ColumnData::Bool(container) => {
-					for (idx, val) in container
-						.data()
-						.iter()
-						.enumerate()
-					{
-						debug_assert!(
-							container.is_defined(
-								idx
-							)
-						);
+					for (idx, val) in container.data().iter().enumerate() {
+						debug_assert!(container.is_defined(idx));
 						// AND the current condition
 						// with the accumulated result
 						if !val {
-							final_bv.set(
-								idx, false,
-							);
+							final_bv.set(idx, false);
 						}
 					}
 				}

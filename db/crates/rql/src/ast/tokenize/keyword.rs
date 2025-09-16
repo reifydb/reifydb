@@ -120,76 +120,75 @@ Auto => "AUTO",
 Increment => "INCREMENT",
 Value => "VALUE"}
 
-static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> =
-	LazyLock::new(|| {
-		let mut map = HashMap::new();
-		map.insert("MAP", Keyword::Map);
-		map.insert("APPLY", Keyword::Apply);
-		map.insert("SELECT", Keyword::Select);
-		map.insert("EXTEND", Keyword::Extend);
-		map.insert("BY", Keyword::By);
-		map.insert("FROM", Keyword::From);
-		map.insert("WHERE", Keyword::Where);
-		map.insert("AGGREGATE", Keyword::Aggregate);
-		map.insert("HAVING", Keyword::Having);
-		map.insert("SORT", Keyword::Sort);
-		map.insert("DISTINCT", Keyword::Distinct);
-		map.insert("TAKE", Keyword::Take);
-		map.insert("OFFSET", Keyword::Offset);
-		map.insert("LEFT", Keyword::Left);
-		map.insert("INNER", Keyword::Inner);
-		map.insert("NATURAL", Keyword::Natural);
-		map.insert("JOIN", Keyword::Join);
-		map.insert("ON", Keyword::On);
-		map.insert("USING", Keyword::Using);
-		map.insert("UNION", Keyword::Union);
-		map.insert("INTERSECT", Keyword::Intersect);
-		map.insert("EXCEPT", Keyword::Except);
-		map.insert("INSERT", Keyword::Insert);
-		map.insert("INTO", Keyword::Into);
-		map.insert("UPDATE", Keyword::Update);
-		map.insert("SET", Keyword::Set);
-		map.insert("DELETE", Keyword::Delete);
-		map.insert("LET", Keyword::Let);
-		map.insert("IF", Keyword::If);
-		map.insert("ELSE", Keyword::Else);
-		map.insert("END", Keyword::End);
-		map.insert("LOOP", Keyword::Loop);
-		map.insert("RETURN", Keyword::Return);
-		map.insert("DEFINE", Keyword::Define);
-		map.insert("FUNCTION", Keyword::Function);
-		map.insert("CALL", Keyword::Call);
-		map.insert("CAST", Keyword::Cast);
-		map.insert("DESCRIBE", Keyword::Describe);
-		map.insert("SHOW", Keyword::Show);
-		map.insert("CREATE", Keyword::Create);
-		map.insert("ALTER", Keyword::Alter);
-		map.insert("DROP", Keyword::Drop);
-		map.insert("FILTER", Keyword::Filter);
-		map.insert("IN", Keyword::In);
-		map.insert("BETWEEN", Keyword::Between);
-		map.insert("LIKE", Keyword::Like);
-		map.insert("IS", Keyword::Is);
-		map.insert("WITH", Keyword::With);
-		map.insert("NAMESPACE", Keyword::Namespace);
-		map.insert("SEQUENCE", Keyword::Sequence);
-		map.insert("SERIES", Keyword::Series);
-		map.insert("TABLE", Keyword::Table);
-		map.insert("POLICY", Keyword::Policy);
-		map.insert("VIEW", Keyword::View);
-		map.insert("DEFERRED", Keyword::Deferred);
-		map.insert("TRANSACTIONAL", Keyword::Transactional);
-		map.insert("INDEX", Keyword::Index);
-		map.insert("UNIQUE", Keyword::Unique);
-		map.insert("PRIMARY", Keyword::Primary);
-		map.insert("KEY", Keyword::Key);
-		map.insert("ASC", Keyword::Asc);
-		map.insert("DESC", Keyword::Desc);
-		map.insert("AUTO", Keyword::Auto);
-		map.insert("INCREMENT", Keyword::Increment);
-		map.insert("VALUE", Keyword::Value);
-		map
-	});
+static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
+	let mut map = HashMap::new();
+	map.insert("MAP", Keyword::Map);
+	map.insert("APPLY", Keyword::Apply);
+	map.insert("SELECT", Keyword::Select);
+	map.insert("EXTEND", Keyword::Extend);
+	map.insert("BY", Keyword::By);
+	map.insert("FROM", Keyword::From);
+	map.insert("WHERE", Keyword::Where);
+	map.insert("AGGREGATE", Keyword::Aggregate);
+	map.insert("HAVING", Keyword::Having);
+	map.insert("SORT", Keyword::Sort);
+	map.insert("DISTINCT", Keyword::Distinct);
+	map.insert("TAKE", Keyword::Take);
+	map.insert("OFFSET", Keyword::Offset);
+	map.insert("LEFT", Keyword::Left);
+	map.insert("INNER", Keyword::Inner);
+	map.insert("NATURAL", Keyword::Natural);
+	map.insert("JOIN", Keyword::Join);
+	map.insert("ON", Keyword::On);
+	map.insert("USING", Keyword::Using);
+	map.insert("UNION", Keyword::Union);
+	map.insert("INTERSECT", Keyword::Intersect);
+	map.insert("EXCEPT", Keyword::Except);
+	map.insert("INSERT", Keyword::Insert);
+	map.insert("INTO", Keyword::Into);
+	map.insert("UPDATE", Keyword::Update);
+	map.insert("SET", Keyword::Set);
+	map.insert("DELETE", Keyword::Delete);
+	map.insert("LET", Keyword::Let);
+	map.insert("IF", Keyword::If);
+	map.insert("ELSE", Keyword::Else);
+	map.insert("END", Keyword::End);
+	map.insert("LOOP", Keyword::Loop);
+	map.insert("RETURN", Keyword::Return);
+	map.insert("DEFINE", Keyword::Define);
+	map.insert("FUNCTION", Keyword::Function);
+	map.insert("CALL", Keyword::Call);
+	map.insert("CAST", Keyword::Cast);
+	map.insert("DESCRIBE", Keyword::Describe);
+	map.insert("SHOW", Keyword::Show);
+	map.insert("CREATE", Keyword::Create);
+	map.insert("ALTER", Keyword::Alter);
+	map.insert("DROP", Keyword::Drop);
+	map.insert("FILTER", Keyword::Filter);
+	map.insert("IN", Keyword::In);
+	map.insert("BETWEEN", Keyword::Between);
+	map.insert("LIKE", Keyword::Like);
+	map.insert("IS", Keyword::Is);
+	map.insert("WITH", Keyword::With);
+	map.insert("NAMESPACE", Keyword::Namespace);
+	map.insert("SEQUENCE", Keyword::Sequence);
+	map.insert("SERIES", Keyword::Series);
+	map.insert("TABLE", Keyword::Table);
+	map.insert("POLICY", Keyword::Policy);
+	map.insert("VIEW", Keyword::View);
+	map.insert("DEFERRED", Keyword::Deferred);
+	map.insert("TRANSACTIONAL", Keyword::Transactional);
+	map.insert("INDEX", Keyword::Index);
+	map.insert("UNIQUE", Keyword::Unique);
+	map.insert("PRIMARY", Keyword::Primary);
+	map.insert("KEY", Keyword::Key);
+	map.insert("ASC", Keyword::Asc);
+	map.insert("DESC", Keyword::Desc);
+	map.insert("AUTO", Keyword::Auto);
+	map.insert("INCREMENT", Keyword::Increment);
+	map.insert("VALUE", Keyword::Value);
+	map
+});
 
 /// Scan for a keyword token  
 pub fn scan_keyword<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
@@ -205,11 +204,7 @@ pub fn scan_keyword<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 
 	// Consume identifier characters to get the potential keyword
 	let remaining = cursor.remaining_input();
-	let word_len = remaining
-		.chars()
-		.take_while(|&c| is_identifier_char(c))
-		.map(|c| c.len_utf8())
-		.sum::<usize>();
+	let word_len = remaining.chars().take_while(|&c| is_identifier_char(c)).map(|c| c.len_utf8()).sum::<usize>();
 
 	let word = &remaining[..word_len];
 
@@ -226,20 +221,14 @@ pub fn scan_keyword<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 		// Check that the next character is not an identifier
 		// continuation
 		let next_char = cursor.peek_ahead(word.chars().count());
-		if next_char
-			.map_or(true, |ch| !is_identifier_char(ch) && ch != '.')
-		{
+		if next_char.map_or(true, |ch| !is_identifier_char(ch) && ch != '.') {
 			// Consume the keyword
 			for _ in 0..word.chars().count() {
 				cursor.consume();
 			}
 			return Some(Token {
 				kind: TokenKind::Keyword(keyword),
-				fragment: cursor.make_fragment(
-					start_pos,
-					start_line,
-					start_column,
-				),
+				fragment: cursor.make_fragment(start_pos, start_line, start_column),
 			});
 		}
 	}
@@ -269,16 +258,8 @@ mod tests {
 
 			let tokens = tokenize(&input_str).unwrap();
 			assert!(tokens.len() >= 2);
-			assert_eq!(
-				TokenKind::Keyword(keyword),
-				tokens[0].kind,
-				"type mismatch for keyword: {}",
-				repr
-			);
-			assert_eq!(
-				tokens[0].fragment.fragment().to_lowercase(),
-				repr.to_lowercase()
-			);
+			assert_eq!(TokenKind::Keyword(keyword), tokens[0].kind, "type mismatch for keyword: {}", repr);
+			assert_eq!(tokens[0].fragment.fragment().to_lowercase(), repr.to_lowercase());
 			assert_eq!(tokens[0].fragment.column().0, 1);
 			assert_eq!(tokens[0].fragment.line().0, 1);
 		}
@@ -365,8 +346,8 @@ mod tests {
 		// as keywords For example, "map123" should be an identifier,
 		// not the MAP keyword
 		let test_cases = vec![
-			format!("{repr}_something_else"), /* e.g., "map_something_else" */
-			format!("{repr}SomethingElse"),   /* e.g., "mapSomethingElse" */
+			format!("{repr}_something_else"), // e.g., "map_something_else"
+			format!("{repr}SomethingElse"),   // e.g., "mapSomethingElse"
 			format!("{repr}123"),             // e.g., "map123"
 			format!("_{repr}"),               // e.g., "_map"
 		];

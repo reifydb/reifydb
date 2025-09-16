@@ -1,10 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{
-	Blob, Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64,
-	RowNumber, Time, Uuid4, Uuid7, Value,
-};
+use crate::{Blob, Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64, RowNumber, Time, Uuid4, Uuid7, Value};
 
 pub trait IntoValue {
 	fn into_value(self) -> Value;
@@ -84,17 +81,13 @@ impl IntoValue for u128 {
 
 impl IntoValue for f32 {
 	fn into_value(self) -> Value {
-		OrderedF32::try_from(self)
-			.map(|v| Value::Float4(v))
-			.unwrap_or(Value::Undefined)
+		OrderedF32::try_from(self).map(|v| Value::Float4(v)).unwrap_or(Value::Undefined)
 	}
 }
 
 impl IntoValue for f64 {
 	fn into_value(self) -> Value {
-		OrderedF64::try_from(self)
-			.map(|v| Value::Float8(v))
-			.unwrap_or(Value::Undefined)
+		OrderedF64::try_from(self).map(|v| Value::Float8(v)).unwrap_or(Value::Undefined)
 	}
 }
 
@@ -227,33 +220,18 @@ mod tests {
 		assert_eq!(1234i16.into_value(), Value::Int2(1234));
 		assert_eq!(123456i32.into_value(), Value::Int4(123456));
 		assert_eq!(1234567890i64.into_value(), Value::Int8(1234567890));
-		assert_eq!(
-			12345678901234567890i128.into_value(),
-			Value::Int16(12345678901234567890)
-		);
+		assert_eq!(12345678901234567890i128.into_value(), Value::Int16(12345678901234567890));
 
 		// Test unsigned integers
 		assert_eq!(42u8.into_value(), Value::Uint1(42));
 		assert_eq!(1234u16.into_value(), Value::Uint2(1234));
 		assert_eq!(123456u32.into_value(), Value::Uint4(123456));
-		assert_eq!(
-			1234567890u64.into_value(),
-			Value::Uint8(1234567890)
-		);
-		assert_eq!(
-			12345678901234567890u128.into_value(),
-			Value::Uint16(12345678901234567890)
-		);
+		assert_eq!(1234567890u64.into_value(), Value::Uint8(1234567890));
+		assert_eq!(12345678901234567890u128.into_value(), Value::Uint16(12345678901234567890));
 
 		// Test floats
-		assert_eq!(
-			3.14f32.into_value(),
-			Value::Float4(OrderedF32::try_from(3.14f32).unwrap())
-		);
-		assert_eq!(
-			PI.into_value(),
-			Value::Float8(OrderedF64::try_from(PI).unwrap())
-		);
+		assert_eq!(3.14f32.into_value(), Value::Float4(OrderedF32::try_from(3.14f32).unwrap()));
+		assert_eq!(PI.into_value(), Value::Float8(OrderedF64::try_from(PI).unwrap()));
 
 		// Test NaN handling
 
@@ -263,24 +241,15 @@ mod tests {
 
 	#[test]
 	fn test_into_value_strings() {
-		assert_eq!(
-			"hello".into_value(),
-			Value::Utf8("hello".to_string())
-		);
-		assert_eq!(
-			"world".to_string().into_value(),
-			Value::Utf8("world".to_string())
-		);
+		assert_eq!("hello".into_value(), Value::Utf8("hello".to_string()));
+		assert_eq!("world".to_string().into_value(), Value::Utf8("world".to_string()));
 	}
 
 	#[test]
 	fn test_into_value_option() {
 		assert_eq!(Some(42i32).into_value(), Value::Int4(42));
 		assert_eq!(None::<i32>.into_value(), Value::Undefined);
-		assert_eq!(
-			Some("hello").into_value(),
-			Value::Utf8("hello".to_string())
-		);
+		assert_eq!(Some("hello").into_value(), Value::Utf8("hello".to_string()));
 		assert_eq!(None::<&str>.into_value(), Value::Undefined);
 	}
 
@@ -288,37 +257,22 @@ mod tests {
 	fn test_into_value_bytes() {
 		// Test Vec<u8>
 		let vec_bytes = vec![1u8, 2, 3, 4];
-		assert_eq!(
-			vec_bytes.clone().into_value(),
-			Value::Blob(Blob::new(vec![1, 2, 3, 4]))
-		);
+		assert_eq!(vec_bytes.clone().into_value(), Value::Blob(Blob::new(vec![1, 2, 3, 4])));
 
 		// Test &[u8]
 		let slice_bytes: &[u8] = &[5, 6, 7, 8];
-		assert_eq!(
-			slice_bytes.into_value(),
-			Value::Blob(Blob::from_slice(&[5, 6, 7, 8]))
-		);
+		assert_eq!(slice_bytes.into_value(), Value::Blob(Blob::from_slice(&[5, 6, 7, 8])));
 
 		// Test [u8; N]
 		let array_bytes: [u8; 4] = [9, 10, 11, 12];
-		assert_eq!(
-			array_bytes.into_value(),
-			Value::Blob(Blob::from_slice(&[9, 10, 11, 12]))
-		);
+		assert_eq!(array_bytes.into_value(), Value::Blob(Blob::from_slice(&[9, 10, 11, 12])));
 
 		// Test &[u8; N]
 		let array_ref: &[u8; 3] = &[13, 14, 15];
-		assert_eq!(
-			array_ref.into_value(),
-			Value::Blob(Blob::from_slice(&[13, 14, 15]))
-		);
+		assert_eq!(array_ref.into_value(), Value::Blob(Blob::from_slice(&[13, 14, 15])));
 
 		// Test Vec<u8>
 		let vec = vec![16, 17, 18];
-		assert_eq!(
-			vec.into_value(),
-			Value::Blob(Blob::new(vec![16, 17, 18]))
-		);
+		assert_eq!(vec.into_value(), Value::Blob(Blob::new(vec![16, 17, 18])));
 	}
 }

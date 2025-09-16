@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	Key, PrimaryKeyId, QueryTransaction, TableId, TableKey,
-};
+use reifydb_core::interface::{Key, PrimaryKeyId, QueryTransaction, TableId, TableKey};
 
 use crate::{CatalogStore, table::layout::table};
 
@@ -23,8 +21,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = table::LAYOUT
-			.get_u64(&versioned.row, table::PRIMARY_KEY);
+		let pk_id = table::LAYOUT.get_u64(&versioned.row, table::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)
@@ -81,10 +78,9 @@ mod tests {
 		.unwrap();
 
 		// Get the primary key ID
-		let retrieved_pk_id =
-			CatalogStore::get_table_pk_id(&mut txn, table.id)
-				.unwrap()
-				.expect("Primary key ID should exist");
+		let retrieved_pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id)
+			.unwrap()
+			.expect("Primary key ID should exist");
 
 		assert_eq!(retrieved_pk_id, pk_id);
 	}
@@ -95,8 +91,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn);
 
 		// Get the primary key ID - should be None
-		let pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id)
-			.unwrap();
+		let pk_id = CatalogStore::get_table_pk_id(&mut txn, table.id).unwrap();
 
 		assert!(pk_id.is_none());
 	}
@@ -107,9 +102,7 @@ mod tests {
 
 		// Get the primary key ID for non-existent table - should be
 		// None
-		let pk_id =
-			CatalogStore::get_table_pk_id(&mut txn, TableId(999))
-				.unwrap();
+		let pk_id = CatalogStore::get_table_pk_id(&mut txn, TableId(999)).unwrap();
 
 		assert!(pk_id.is_none());
 	}

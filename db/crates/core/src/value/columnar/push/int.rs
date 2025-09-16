@@ -15,10 +15,7 @@ impl Push<Int> for ColumnData {
 				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
-				let mut new_container =
-					ColumnData::int_with_capacity(
-						container.len(),
-					);
+				let mut new_container = ColumnData::int_with_capacity(container.len());
 
 				if let ColumnData::Int {
 					container: new_container,
@@ -32,9 +29,7 @@ impl Push<Int> for ColumnData {
 				}
 				*self = new_container;
 			}
-			_ => unreachable!(
-				"Push<Int> for ColumnData with incompatible type"
-			),
+			_ => unreachable!("Push<Int> for ColumnData with incompatible type"),
 		}
 	}
 }

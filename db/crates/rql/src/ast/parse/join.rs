@@ -2,9 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::JoinType;
-use reifydb_type::{
-	diagnostic::ast::multiple_expressions_without_braces, return_error,
-};
+use reifydb_type::{diagnostic::ast::multiple_expressions_without_braces, return_error};
 
 use crate::ast::{
 	AstJoin,
@@ -26,8 +24,7 @@ impl<'a> Parser<'a> {
 		self.consume_operator(CloseCurly)?;
 
 		// Check for alias before 'on' keyword
-		let alias = if !self.is_eof() && self.current()?.is_identifier()
-		{
+		let alias = if !self.is_eof() && self.current()?.is_identifier() {
 			let alias_token = self.advance()?;
 			Some(alias_token.fragment)
 		} else {
@@ -50,9 +47,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			if has_on_braces
-				&& self.current()?.is_operator(CloseCurly)
-			{
+			if has_on_braces && self.current()?.is_operator(CloseCurly) {
 				self.advance()?;
 				break;
 			}
@@ -65,9 +60,7 @@ impl<'a> Parser<'a> {
 		}
 
 		if on.len() > 1 && !has_on_braces {
-			return_error!(multiple_expressions_without_braces(
-				token.fragment
-			));
+			return_error!(multiple_expressions_without_braces(token.fragment));
 		}
 
 		Ok(AstJoin::InnerJoin {
@@ -78,9 +71,7 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	pub(crate) fn parse_natural_join(
-		&mut self,
-	) -> crate::Result<AstJoin<'a>> {
+	pub(crate) fn parse_natural_join(&mut self) -> crate::Result<AstJoin<'a>> {
 		let token = self.consume_keyword(Natural)?;
 
 		let join_type = if self.current()?.is_keyword(Left) {
@@ -101,10 +92,7 @@ impl<'a> Parser<'a> {
 		self.consume_operator(CloseCurly)?;
 
 		// Check for alias after the join clause
-		let alias = if !self.is_eof()
-			&& self.current().is_ok()
-			&& self.current()?.is_identifier()
-		{
+		let alias = if !self.is_eof() && self.current().is_ok() && self.current()?.is_identifier() {
 			let alias_token = self.advance()?;
 			Some(alias_token.fragment)
 		} else {
@@ -119,9 +107,7 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	pub(crate) fn parse_inner_join(
-		&mut self,
-	) -> crate::Result<AstJoin<'a>> {
+	pub(crate) fn parse_inner_join(&mut self) -> crate::Result<AstJoin<'a>> {
 		let token = self.consume_keyword(Inner)?;
 		self.consume_keyword(Join)?;
 
@@ -131,8 +117,7 @@ impl<'a> Parser<'a> {
 		self.consume_operator(CloseCurly)?;
 
 		// Check for alias before 'on' keyword
-		let alias = if !self.is_eof() && self.current()?.is_identifier()
-		{
+		let alias = if !self.is_eof() && self.current()?.is_identifier() {
 			let alias_token = self.advance()?;
 			Some(alias_token.fragment)
 		} else {
@@ -155,9 +140,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			if has_on_braces
-				&& self.current()?.is_operator(CloseCurly)
-			{
+			if has_on_braces && self.current()?.is_operator(CloseCurly) {
 				self.advance()?;
 				break;
 			}
@@ -170,9 +153,7 @@ impl<'a> Parser<'a> {
 		}
 
 		if on.len() > 1 && !has_on_braces {
-			return_error!(multiple_expressions_without_braces(
-				token.fragment
-			));
+			return_error!(multiple_expressions_without_braces(token.fragment));
 		}
 
 		Ok(AstJoin::InnerJoin {
@@ -193,8 +174,7 @@ impl<'a> Parser<'a> {
 		self.consume_operator(CloseCurly)?;
 
 		// Check for alias before 'on' keyword
-		let alias = if !self.is_eof() && self.current()?.is_identifier()
-		{
+		let alias = if !self.is_eof() && self.current()?.is_identifier() {
 			let alias_token = self.advance()?;
 			Some(alias_token.fragment)
 		} else {
@@ -217,9 +197,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			if has_on_braces
-				&& self.current()?.is_operator(CloseCurly)
-			{
+			if has_on_braces && self.current()?.is_operator(CloseCurly) {
 				self.advance()?;
 				break;
 			}
@@ -232,9 +210,7 @@ impl<'a> Parser<'a> {
 		}
 
 		if on.len() > 1 && !has_on_braces {
-			return_error!(multiple_expressions_without_braces(
-				token.fragment
-			));
+			return_error!(multiple_expressions_without_braces(token.fragment));
 		}
 
 		Ok(AstJoin::LeftJoin {
@@ -250,16 +226,11 @@ impl<'a> Parser<'a> {
 mod tests {
 	use reifydb_core::JoinType;
 
-	use crate::ast::{
-		AstJoin, InfixOperator, parse::Parser, tokenize::tokenize,
-	};
+	use crate::ast::{AstJoin, InfixOperator, parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_left_join() {
-		let tokens = tokenize(
-			"left join { from namespace.orders } on user.id == orders.user_id",
-		)
-		.unwrap();
+		let tokens = tokenize("left join { from namespace.orders } on user.id == orders.user_id").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -285,10 +256,7 @@ mod tests {
 		{
 			let left = on.left.as_infix();
 			assert_eq!(left.left.as_identifier().text(), "user");
-			assert!(matches!(
-				left.operator,
-				InfixOperator::AccessTable(_)
-			));
+			assert!(matches!(left.operator, InfixOperator::AccessTable(_)));
 			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 
@@ -297,23 +265,14 @@ mod tests {
 		{
 			let right = on.right.as_infix();
 			assert_eq!(right.left.as_identifier().text(), "orders");
-			assert!(matches!(
-				right.operator,
-				InfixOperator::AccessTable(_)
-			));
-			assert_eq!(
-				right.right.as_identifier().text(),
-				"user_id"
-			);
+			assert!(matches!(right.operator, InfixOperator::AccessTable(_)));
+			assert_eq!(right.right.as_identifier().text(), "user_id");
 		}
 	}
 
 	#[test]
 	fn test_left_join_with_alias() {
-		let tokens = tokenize(
-			"left join { from test.customers } c on users.id == c.customer_id",
-		)
-		.unwrap();
+		let tokens = tokenize("left join { from test.customers } c on users.id == c.customer_id").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -357,7 +316,10 @@ mod tests {
 	#[test]
 	fn test_complex_query_with_aliases() {
 		// Test the full example query with aliases
-		let tokens = tokenize("from test.orders o left join { from test.customers } c on o.customer_id == c.customer_id").unwrap();
+		let tokens = tokenize(
+			"from test.orders o left join { from test.customers } c on o.customer_id == c.customer_id",
+		)
+		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1); // This is parsed as one statement with multiple nodes
@@ -373,18 +335,9 @@ mod tests {
 				source,
 				..
 			} => {
-				assert_eq!(
-					source.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(source.name.text(), "orders");
-				assert_eq!(
-					source.alias.as_ref().unwrap().text(),
-					"o"
-				);
+				assert_eq!(source.alias.as_ref().unwrap().text(), "o");
 			}
 			_ => panic!("Expected Source"),
 		}
@@ -426,7 +379,10 @@ mod tests {
 
 	#[test]
 	fn test_left_join_with_curly() {
-		let tokens = tokenize("left join { from orders } on { users.id == orders.user_id, something_else.id == orders.user_id }").unwrap();
+		let tokens = tokenize(
+			"left join { from orders } on { users.id == orders.user_id, something_else.id == orders.user_id }",
+		)
+		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -451,61 +407,37 @@ mod tests {
 		{
 			let left = on1.left.as_infix();
 			assert_eq!(left.left.as_identifier().text(), "users");
-			assert!(matches!(
-				left.operator,
-				InfixOperator::AccessTable(_)
-			));
+			assert!(matches!(left.operator, InfixOperator::AccessTable(_)));
 			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 		assert!(matches!(on1.operator, InfixOperator::Equal(_)));
 		{
 			let right = on1.right.as_infix();
 			assert_eq!(right.left.as_identifier().text(), "orders");
-			assert!(matches!(
-				right.operator,
-				InfixOperator::AccessTable(_)
-			));
-			assert_eq!(
-				right.right.as_identifier().text(),
-				"user_id"
-			);
+			assert!(matches!(right.operator, InfixOperator::AccessTable(_)));
+			assert_eq!(right.right.as_identifier().text(), "user_id");
 		}
 
 		// Second condition: something_else.id == orders.user_id
 		let on2 = on[1].as_infix();
 		{
 			let left = on2.left.as_infix();
-			assert_eq!(
-				left.left.as_identifier().text(),
-				"something_else"
-			);
-			assert!(matches!(
-				left.operator,
-				InfixOperator::AccessTable(_)
-			));
+			assert_eq!(left.left.as_identifier().text(), "something_else");
+			assert!(matches!(left.operator, InfixOperator::AccessTable(_)));
 			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 		assert!(matches!(on2.operator, InfixOperator::Equal(_)));
 		{
 			let right = on2.right.as_infix();
 			assert_eq!(right.left.as_identifier().text(), "orders");
-			assert!(matches!(
-				right.operator,
-				InfixOperator::AccessTable(_)
-			));
-			assert_eq!(
-				right.right.as_identifier().text(),
-				"user_id"
-			);
+			assert!(matches!(right.operator, InfixOperator::AccessTable(_)));
+			assert_eq!(right.right.as_identifier().text(), "user_id");
 		}
 	}
 
 	#[test]
 	fn test_left_join_single_on_with_braces() {
-		let tokens = tokenize(
-			"left join { from orders } on { users.id == orders.user_id }",
-		)
-		.unwrap();
+		let tokens = tokenize("left join { from orders } on { users.id == orders.user_id }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -527,14 +459,14 @@ mod tests {
 
 	#[test]
 	fn test_left_join_multiple_on_without_braces_fails() {
-		let tokens = tokenize("left join { from orders } on users.id == orders.user_id, something_else.id == orders.user_id").unwrap();
+		let tokens = tokenize(
+			"left join { from orders } on users.id == orders.user_id, something_else.id == orders.user_id",
+		)
+		.unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 
-		assert!(
-			result.is_err(),
-			"Expected error for multiple ON conditions without braces"
-		);
+		assert!(result.is_err(), "Expected error for multiple ON conditions without braces");
 	}
 
 	#[test]
@@ -553,10 +485,7 @@ mod tests {
 				join_type,
 				..
 			} => {
-				assert_eq!(
-					with.as_identifier().text(),
-					"orders"
-				);
+				assert_eq!(with.as_identifier().text(), "orders");
 				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -565,8 +494,7 @@ mod tests {
 
 	#[test]
 	fn test_natural_join_with_qualified_table() {
-		let tokens = tokenize("natural join { from namespace.orders }")
-			.unwrap();
+		let tokens = tokenize("natural join { from namespace.orders }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -581,18 +509,9 @@ mod tests {
 				..
 			} => {
 				let with = with.as_infix();
-				assert_eq!(
-					with.left.as_identifier().text(),
-					"namespace"
-				);
-				assert!(matches!(
-					with.operator,
-					InfixOperator::AccessTable(_)
-				));
-				assert_eq!(
-					with.right.as_identifier().text(),
-					"orders"
-				);
+				assert_eq!(with.left.as_identifier().text(), "namespace");
+				assert!(matches!(with.operator, InfixOperator::AccessTable(_)));
+				assert_eq!(with.right.as_identifier().text(), "orders");
 				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -615,10 +534,7 @@ mod tests {
 				join_type,
 				..
 			} => {
-				assert_eq!(
-					with.as_identifier().text(),
-					"orders"
-				);
+				assert_eq!(with.as_identifier().text(), "orders");
 				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -627,8 +543,7 @@ mod tests {
 
 	#[test]
 	fn test_natural_left_join() {
-		let tokens =
-			tokenize("natural left join { from orders }").unwrap();
+		let tokens = tokenize("natural left join { from orders }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -642,10 +557,7 @@ mod tests {
 				join_type,
 				..
 			} => {
-				assert_eq!(
-					with.as_identifier().text(),
-					"orders"
-				);
+				assert_eq!(with.as_identifier().text(), "orders");
 				assert_eq!(join_type, &Some(JoinType::Left));
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -654,8 +566,7 @@ mod tests {
 
 	#[test]
 	fn test_natural_inner_join() {
-		let tokens =
-			tokenize("natural inner join { from orders }").unwrap();
+		let tokens = tokenize("natural inner join { from orders }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -669,10 +580,7 @@ mod tests {
 				join_type,
 				..
 			} => {
-				assert_eq!(
-					with.as_identifier().text(),
-					"orders"
-				);
+				assert_eq!(with.as_identifier().text(), "orders");
 				assert_eq!(join_type, &Some(JoinType::Inner));
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -681,10 +589,7 @@ mod tests {
 
 	#[test]
 	fn test_inner_join() {
-		let tokens = tokenize(
-			"inner join { from orders } on users.id == orders.user_id",
-		)
-		.unwrap();
+		let tokens = tokenize("inner join { from orders } on users.id == orders.user_id").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -707,10 +612,7 @@ mod tests {
 		{
 			let left = on.left.as_infix();
 			assert_eq!(left.left.as_identifier().text(), "users");
-			assert!(matches!(
-				left.operator,
-				InfixOperator::AccessTable(_)
-			));
+			assert!(matches!(left.operator, InfixOperator::AccessTable(_)));
 			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 
@@ -719,23 +621,14 @@ mod tests {
 		{
 			let right = on.right.as_infix();
 			assert_eq!(right.left.as_identifier().text(), "orders");
-			assert!(matches!(
-				right.operator,
-				InfixOperator::AccessTable(_)
-			));
-			assert_eq!(
-				right.right.as_identifier().text(),
-				"user_id"
-			);
+			assert!(matches!(right.operator, InfixOperator::AccessTable(_)));
+			assert_eq!(right.right.as_identifier().text(), "user_id");
 		}
 	}
 
 	#[test]
 	fn test_join() {
-		let tokens = tokenize(
-			"join { from orders } on users.id == orders.user_id",
-		)
-		.unwrap();
+		let tokens = tokenize("join { from orders } on users.id == orders.user_id").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -758,10 +651,7 @@ mod tests {
 		{
 			let left = on.left.as_infix();
 			assert_eq!(left.left.as_identifier().text(), "users");
-			assert!(matches!(
-				left.operator,
-				InfixOperator::AccessTable(_)
-			));
+			assert!(matches!(left.operator, InfixOperator::AccessTable(_)));
 			assert_eq!(left.right.as_identifier().text(), "id");
 		}
 
@@ -770,14 +660,8 @@ mod tests {
 		{
 			let right = on.right.as_infix();
 			assert_eq!(right.left.as_identifier().text(), "orders");
-			assert!(matches!(
-				right.operator,
-				InfixOperator::AccessTable(_)
-			));
-			assert_eq!(
-				right.right.as_identifier().text(),
-				"user_id"
-			);
+			assert!(matches!(right.operator, InfixOperator::AccessTable(_)));
+			assert_eq!(right.right.as_identifier().text(), "user_id");
 		}
 	}
 }

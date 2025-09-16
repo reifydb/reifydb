@@ -27,32 +27,22 @@ impl EncodedRowLayout {
 	/// Set a Uint value with 2-tier storage optimization
 	/// - Values fitting in 127 bits: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
-	pub fn set_uint(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: &Uint,
-	) {
+	pub fn set_uint(&self, row: &mut EncodedRow, index: usize, value: &Uint) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Uint);
 
 		// Uint should already be non-negative, but let's ensure it
-		let unsigned_value =
-			value.0.to_biguint().unwrap_or(BigUint::from(0u32));
+		let unsigned_value = value.0.to_biguint().unwrap_or(BigUint::from(0u32));
 
 		// Try u128 inline storage first (fits in 127 bits)
 		if let Some(u128_val) = unsigned_value.to_u128() {
 			// Check if value fits in 127 bits (MSB must be 0)
 			if u128_val < (1u128 << 127) {
 				// Mode 0: Store inline in lower 127 bits
-				let packed = MODE_INLINE
-					| (u128_val & INLINE_VALUE_MASK);
+				let packed = MODE_INLINE | (u128_val & INLINE_VALUE_MASK);
 				unsafe {
 					ptr::write_unaligned(
-						row.make_mut()
-							.as_mut_ptr()
-							.add(field.offset)
-							as *mut u128,
+						row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
 						packed.to_le(),
 					);
 				}
@@ -62,11 +52,7 @@ impl EncodedRowLayout {
 		}
 
 		// Mode 1: Dynamic storage for arbitrary precision
-		debug_assert!(
-			!row.is_defined(index),
-			"Uint field {} already set",
-			index
-		);
+		debug_assert!(!row.is_defined(index), "Uint field {} already set", index);
 
 		// Serialize as unsigned bytes
 		let bytes = unsigned_value.to_bytes_le();
@@ -78,16 +64,13 @@ impl EncodedRowLayout {
 		row.0.extend_from_slice(&bytes);
 
 		// Pack offset and length in lower 127 bits, set MSB=1
-		let offset_part =
-			(dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
-		let length_part =
-			((total_size as u128) << 64) & DYNAMIC_LENGTH_MASK;
+		let offset_part = (dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
+		let length_part = ((total_size as u128) << 64) & DYNAMIC_LENGTH_MASK;
 		let packed = MODE_DYNAMIC | offset_part | length_part;
 
 		unsafe {
 			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut u128,
+				row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
 				packed.to_le(),
 			);
 		}
@@ -99,10 +82,7 @@ impl EncodedRowLayout {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Uint);
 
-		let packed = unsafe {
-			(row.as_ptr().add(field.offset) as *const u128)
-				.read_unaligned()
-		};
+		let packed = unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 
 		let mode = packed & MODE_MASK;
@@ -117,12 +97,10 @@ impl EncodedRowLayout {
 			// MODE_DYNAMIC: Extract offset and length for dynamic
 			// storage
 			let offset = (packed & DYNAMIC_OFFSET_MASK) as usize;
-			let length =
-				((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
+			let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
 
 			let dynamic_start = self.dynamic_section_start();
-			let data_bytes = &row.as_slice()[dynamic_start + offset
-				..dynamic_start + offset + length];
+			let data_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
 
 			// Parse as unsigned bytes
 			let unsigned = BigUint::from_bytes_le(data_bytes);
@@ -131,11 +109,7 @@ impl EncodedRowLayout {
 	}
 
 	/// Try to get a Uint value, returning None if undefined
-	pub fn try_get_uint(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<Uint> {
+	pub fn try_get_uint(&self, row: &EncodedRow, index: usize) -> Option<Uint> {
 		if row.is_defined(index) {
 			Some(self.get_uint(row, index))
 		} else {
@@ -257,13 +231,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Boolean,
-			Type::Uint,
-			Type::Utf8,
-			Type::Uint,
-			Type::Int4,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Boolean, Type::Uint, Type::Utf8, Type::Uint, Type::Int4]);
 		let mut row = layout.allocate_row();
 
 		layout.set_bool(&mut row, 0, true);

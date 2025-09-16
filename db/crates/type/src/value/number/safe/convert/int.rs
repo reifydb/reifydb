@@ -351,10 +351,7 @@ mod tests {
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());
 			let decimal = y.unwrap();
-			assert_eq!(
-				decimal.to_string(),
-				"170141183460469231731687303715884105727"
-			);
+			assert_eq!(decimal.to_string(), "170141183460469231731687303715884105727");
 		}
 
 		#[test]

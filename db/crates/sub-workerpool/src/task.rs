@@ -83,11 +83,7 @@ pub struct PeriodicTask {
 }
 
 impl PeriodicTask {
-	pub fn new(
-		task: Arc<dyn PoolTask>,
-		interval: Duration,
-		priority: Priority,
-	) -> Self {
+	pub fn new(task: Arc<dyn PoolTask>, interval: Duration, priority: Priority) -> Self {
 		Self {
 			inner: task,
 			interval,
@@ -130,8 +126,7 @@ impl PrioritizedTask {
 
 impl PartialEq for PrioritizedTask {
 	fn eq(&self, other: &Self) -> bool {
-		self.priority == other.priority
-			&& self.submitted_at == other.submitted_at
+		self.priority == other.priority && self.submitted_at == other.submitted_at
 	}
 }
 
@@ -172,11 +167,7 @@ impl<F> ClosureTask<F>
 where
 	F: Fn(&TaskContext) -> Result<()> + Send + Sync,
 {
-	pub fn new(
-		name: impl Into<String>,
-		priority: Priority,
-		closure: F,
-	) -> Self {
+	pub fn new(name: impl Into<String>, priority: Priority, closure: F) -> Self {
 		Self {
 			name: name.into(),
 			priority,

@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	CommandTransaction, QueryTransaction, TransactionalChanges,
-	interceptor::WithInterceptors,
+	CommandTransaction, QueryTransaction, TransactionalChanges, interceptor::WithInterceptors,
 };
 
 mod namespace;
@@ -42,13 +41,7 @@ pub trait CatalogQueryTransaction:
 {
 }
 
-impl<
-	QT: QueryTransaction
-		+ MaterializedCatalogTransaction
-		+ TransactionalChanges,
-> CatalogQueryTransaction for QT
-{
-}
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogQueryTransaction for QT {}
 
 impl<
 	CT: CommandTransaction
@@ -61,21 +54,13 @@ impl<
 }
 
 pub use namespace::{
-	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations,
-	CatalogTrackNamespaceChangeOperations,
+	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogTrackNamespaceChangeOperations,
 };
 pub use ring_buffer::{
-	CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations,
-	CatalogTrackRingBufferChangeOperations,
+	CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations, CatalogTrackRingBufferChangeOperations,
 };
 pub use source::CatalogSourceQueryOperations;
-pub use table::{
-	CatalogTableCommandOperations, CatalogTableQueryOperations,
-	CatalogTrackTableChangeOperations,
-};
-pub use view::{
-	CatalogTrackViewChangeOperations, CatalogViewCommandOperations,
-	CatalogViewQueryOperations,
-};
+pub use table::{CatalogTableCommandOperations, CatalogTableQueryOperations, CatalogTrackTableChangeOperations};
+pub use view::{CatalogTrackViewChangeOperations, CatalogViewCommandOperations, CatalogViewQueryOperations};
 
 use crate::MaterializedCatalog;

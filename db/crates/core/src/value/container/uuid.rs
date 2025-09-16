@@ -123,14 +123,10 @@ where
 			let value = self.data[index].clone();
 
 			if TypeId::of::<T>() == TypeId::of::<Uuid4>() {
-				let uuid_val = unsafe {
-					transmute_copy::<T, Uuid4>(&value)
-				};
+				let uuid_val = unsafe { transmute_copy::<T, Uuid4>(&value) };
 				Value::Uuid4(uuid_val)
 			} else if TypeId::of::<T>() == TypeId::of::<Uuid7>() {
-				let uuid_val = unsafe {
-					transmute_copy::<T, Uuid7>(&value)
-				};
+				let uuid_val = unsafe { transmute_copy::<T, Uuid7>(&value) };
 				Value::Uuid7(uuid_val)
 			} else {
 				Value::Undefined
@@ -165,19 +161,8 @@ where
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<T> = self
-			.data
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.cloned()
-			.collect();
-		let new_bitvec: Vec<bool> = self
-			.bitvec
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.collect();
+		let new_data: Vec<T> = self.data.iter().skip(start).take(end - start).cloned().collect();
+		let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
 		Self {
 			data: CowVec::new(new_data),
 			bitvec: BitVec::from_slice(&new_bitvec),
@@ -270,8 +255,7 @@ mod tests {
 
 	#[test]
 	fn test_with_capacity() {
-		let container: UuidContainer<Uuid4> =
-			UuidContainer::with_capacity(10);
+		let container: UuidContainer<Uuid4> = UuidContainer::with_capacity(10);
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());
 		assert!(container.capacity() >= 10);
@@ -279,8 +263,7 @@ mod tests {
 
 	#[test]
 	fn test_push_with_undefined() {
-		let mut container: UuidContainer<Uuid4> =
-			UuidContainer::with_capacity(3);
+		let mut container: UuidContainer<Uuid4> = UuidContainer::with_capacity(3);
 		let uuid1 = Uuid4::generate();
 		let uuid2 = Uuid4::generate();
 
@@ -304,8 +287,7 @@ mod tests {
 		let uuid2 = Uuid4::generate();
 		let uuid3 = Uuid4::generate();
 
-		let mut container1 =
-			UuidContainer::from_vec(vec![uuid1, uuid2]);
+		let mut container1 = UuidContainer::from_vec(vec![uuid1, uuid2]);
 		let container2 = UuidContainer::from_vec(vec![uuid3]);
 
 		container1.extend(&container2).unwrap();
@@ -338,20 +320,12 @@ mod tests {
 		let container = UuidContainer::new(uuids.clone(), bitvec);
 
 		let collected: Vec<Option<Uuid4>> = container.iter().collect();
-		assert_eq!(
-			collected,
-			vec![Some(uuids[0]), None, Some(uuids[2])]
-		);
+		assert_eq!(collected, vec![Some(uuids[0]), None, Some(uuids[2])]);
 	}
 
 	#[test]
 	fn test_slice() {
-		let uuids = vec![
-			Uuid4::generate(),
-			Uuid4::generate(),
-			Uuid4::generate(),
-			Uuid4::generate(),
-		];
+		let uuids = vec![Uuid4::generate(), Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
 		let container = UuidContainer::from_vec(uuids.clone());
 		let sliced = container.slice(1, 3);
 
@@ -362,12 +336,7 @@ mod tests {
 
 	#[test]
 	fn test_filter() {
-		let uuids = vec![
-			Uuid4::generate(),
-			Uuid4::generate(),
-			Uuid4::generate(),
-			Uuid4::generate(),
-		];
+		let uuids = vec![Uuid4::generate(), Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
 		let mut container = UuidContainer::from_vec(uuids.clone());
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 
@@ -380,11 +349,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder() {
-		let uuids = vec![
-			Uuid4::generate(),
-			Uuid4::generate(),
-			Uuid4::generate(),
-		];
+		let uuids = vec![Uuid4::generate(), Uuid4::generate(), Uuid4::generate()];
 		let mut container = UuidContainer::from_vec(uuids.clone());
 		let indices = [2, 0, 1];
 
@@ -399,10 +364,8 @@ mod tests {
 	#[test]
 	fn test_mixed_uuid_types() {
 		// Test that we can have different UUID containers
-		let uuid4_container: UuidContainer<Uuid4> =
-			UuidContainer::from_vec(vec![Uuid4::generate()]);
-		let uuid7_container: UuidContainer<Uuid7> =
-			UuidContainer::from_vec(vec![Uuid7::generate()]);
+		let uuid4_container: UuidContainer<Uuid4> = UuidContainer::from_vec(vec![Uuid4::generate()]);
+		let uuid7_container: UuidContainer<Uuid7> = UuidContainer::from_vec(vec![Uuid7::generate()]);
 
 		assert_eq!(uuid4_container.len(), 1);
 		assert_eq!(uuid7_container.len(), 1);

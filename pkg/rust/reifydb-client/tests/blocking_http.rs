@@ -4,17 +4,11 @@ mod common;
 
 use std::{error::Error, path::Path};
 
-use common::{
-	cleanup_http_client, cleanup_server, connect_http,
-	create_server_instance, start_server_and_get_port,
-};
+use common::{cleanup_http_client, cleanup_server, connect_http, create_server_instance, start_server_and_get_port};
 use reifydb::{
 	core::{
 		event::EventBus,
-		interface::{
-			CdcTransaction, UnversionedTransaction,
-			VersionedTransaction,
-		},
+		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 		retry,
 	},
 	memory, optimistic, Database,
@@ -23,9 +17,7 @@ use reifydb_client::{HttpBlockingSession, HttpClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-use crate::common::{
-	parse_named_params, parse_positional_params, parse_rql, write_frames,
-};
+use crate::common::{parse_named_params, parse_positional_params, parse_rql, write_frames};
 
 pub struct BlockingRunner<VT, UT, C>
 where
@@ -60,8 +52,7 @@ where
 	C: CdcTransaction,
 {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
-		let session =
-			self.session.as_mut().ok_or("No session available")?;
+		let session = self.session.as_mut().ok_or("No session available")?;
 
 		match command.name.as_str() {
 			"command" => {
@@ -73,12 +64,10 @@ where
 			}
 
 			"command_positional" => {
-				let (rql, params) =
-					parse_positional_params(command);
+				let (rql, params) = parse_positional_params(command);
 				println!("command_positional: {rql}");
 
-				let result =
-					session.command(&rql, Some(params))?;
+				let result = session.command(&rql, Some(params))?;
 				write_frames(result.frames)
 			}
 
@@ -86,8 +75,7 @@ where
 				let (rql, params) = parse_named_params(command);
 				println!("command_named: {rql}");
 
-				let result =
-					session.command(&rql, Some(params))?;
+				let result = session.command(&rql, Some(params))?;
 				write_frames(result.frames)
 			}
 
@@ -100,12 +88,10 @@ where
 			}
 
 			"query_positional" => {
-				let (rql, params) =
-					parse_positional_params(command);
+				let (rql, params) = parse_positional_params(command);
 				println!("query_positional: {rql}");
 
-				let result =
-					session.query(&rql, Some(params))?;
+				let result = session.query(&rql, Some(params))?;
 				write_frames(result.frames)
 			}
 
@@ -113,8 +99,7 @@ where
 				let (rql, params) = parse_named_params(command);
 				println!("query_named: {rql}");
 
-				let result =
-					session.query(&rql, Some(params))?;
+				let result = session.query(&rql, Some(params))?;
 				write_frames(result.frames)
 			}
 
@@ -127,8 +112,7 @@ where
 		let port = start_server_and_get_port(server)?;
 
 		let client = connect_http(("::1", port))?;
-		let session = client
-			.blocking_session(Some("mysecrettoken".to_string()))?;
+		let session = client.blocking_session(Some("mysecrettoken".to_string()))?;
 
 		self.client = Some(client);
 		self.session = Some(session);
@@ -150,11 +134,5 @@ where
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as blocking_http => test_blocking }
 
 fn test_blocking(path: &Path) {
-	retry(3, || {
-		testscript::run_path(
-			&mut BlockingRunner::new(optimistic(memory())),
-			path,
-		)
-	})
-	.expect("test failed")
+	retry(3, || testscript::run_path(&mut BlockingRunner::new(optimistic(memory())), path)).expect("test failed")
 }

@@ -15,10 +15,7 @@ impl BlobB64url {
 }
 
 impl ScalarFunction for BlobB64url {
-	fn scalar(
-		&self,
-		ctx: ScalarFunctionContext,
-	) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 		let column = columns.get(0).unwrap();
@@ -28,32 +25,21 @@ impl ScalarFunction for BlobB64url {
 				container,
 				..
 			} => {
-				let mut result_data = Vec::with_capacity(
-					container.data().len(),
-				);
+				let mut result_data = Vec::with_capacity(container.data().len());
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
 						let b64url_str = &container[i];
-						let blob = Blob::from_b64url(
-							OwnedFragment::internal(
-								b64url_str,
-							),
-						)?;
+						let blob = Blob::from_b64url(OwnedFragment::internal(b64url_str))?;
 						result_data.push(blob);
 					} else {
 						result_data.push(Blob::empty())
 					}
 				}
 
-				Ok(ColumnData::blob_with_bitvec(
-					result_data,
-					container.bitvec().clone(),
-				))
+				Ok(ColumnData::blob_with_bitvec(result_data, container.bitvec().clone()))
 			}
-			_ => unimplemented!(
-				"BlobB64url only supports text input"
-			),
+			_ => unimplemented!("BlobB64url only supports text input"),
 		}
 	}
 }
@@ -79,17 +65,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64url_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -117,17 +98,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64url_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -157,17 +133,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64url_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -183,10 +154,7 @@ mod tests {
 		};
 		assert_eq!(container.len(), 1);
 		assert!(container.is_defined(0));
-		assert_eq!(
-			container[0].as_bytes(),
-			"Hello_World-Hello".as_bytes()
-		);
+		assert_eq!(container[0].as_bytes(), "Hello_World-Hello".as_bytes());
 	}
 
 	#[test]
@@ -200,17 +168,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64url_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -235,26 +198,17 @@ mod tests {
 
 		// "A" = "QQ", "BC" = "QkM", "DEF" = "REVG" (no padding in
 		// base64url)
-		let b64url_data = vec![
-			"QQ".to_string(),
-			"QkM".to_string(),
-			"REVG".to_string(),
-		];
+		let b64url_data = vec!["QQ".to_string(), "QkM".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64url_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -282,26 +236,17 @@ mod tests {
 	fn test_blob_b64url_with_null_data() {
 		let function = BlobB64url::new();
 
-		let b64url_data = vec![
-			"QQ".to_string(),
-			"".to_string(),
-			"REVG".to_string(),
-		];
+		let b64url_data = vec!["QQ".to_string(), "".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64url_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -336,17 +281,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64url_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -376,26 +316,18 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64url_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
 		};
 		let result = function.scalar(ctx);
-		assert!(
-			result.is_err(),
-			"Expected error for invalid base64url input"
-		);
+		assert!(result.is_err(), "Expected error for invalid base64url input");
 	}
 
 	#[test]
@@ -408,25 +340,17 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64url_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64url_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
 		};
 		let result = function.scalar(ctx);
-		assert!(
-			result.is_err(),
-			"Expected error for base64url with padding characters"
-		);
+		assert!(result.is_err(), "Expected error for base64url with padding characters");
 	}
 }

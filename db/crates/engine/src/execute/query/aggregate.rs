@@ -8,10 +8,7 @@ use std::{
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::columnar::{
-		Column, ColumnData, ColumnQualified, Columns,
-		layout::ColumnsLayout,
-	},
+	value::columnar::{Column, ColumnData, ColumnQualified, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::{OwnedFragment, Value, diagnostic};
 
@@ -68,25 +65,15 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.context.is_some(),
-			"AggregateNode::next() called before initialize()"
-		);
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
 		if self.layout.is_some() {
 			return Ok(None);
 		}
 
-		let (keys, mut projections) = parse_keys_and_aggregates(
-			&self.by,
-			&self.map,
-			&ctx.functions,
-		)?;
+		let (keys, mut projections) = parse_keys_and_aggregates(&self.by, &self.map, &ctx.functions)?;
 
 		let mut seen_groups = HashSet::<Vec<Value>>::new();
 		let mut group_key_order: Vec<Vec<Value>> = Vec::new();
@@ -110,14 +97,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 					..
 				} = projection
 				{
-					let column =
-						columns.column(column).unwrap();
-					function.aggregate(
-						AggregateFunctionContext {
-							column,
-							groups: &groups,
-						},
-					)
+					let column = columns.column(column).unwrap();
+					function.aggregate(AggregateFunctionContext {
+						column,
+						groups: &groups,
+					})
 					.unwrap();
 				}
 			}
@@ -132,18 +116,14 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 					column,
 					..
 				} => {
-					let col_idx = keys
-						.iter()
-						.position(|k| k == &column)
-						.unwrap();
+					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
 					let mut c = Column::ColumnQualified(ColumnQualified {
-                        name: alias.fragment().to_string(),
-                        data: ColumnData::undefined(0)});
+						name: alias.fragment().to_string(),
+						data: ColumnData::undefined(0),
+					});
 					for key in &group_key_order {
-						c.data_mut().push_value(
-							key[col_idx].clone(),
-						);
+						c.data_mut().push_value(key[col_idx].clone());
 					}
 					result_columns.push(c);
 				}
@@ -152,26 +132,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 					mut function,
 					..
 				} => {
-					let (keys_out, mut data) =
-						function.finalize().unwrap();
-					align_column_data(
-						&group_key_order,
-						&keys_out,
-						&mut data,
-					)
-					.unwrap();
-					result_columns.push(
-						Column::ColumnQualified(
-							ColumnQualified {
-								name: alias
-									.fragment(
-									)
-									.to_string(
-									),
-								data,
-							},
-						),
-					);
+					let (keys_out, mut data) = function.finalize().unwrap();
+					align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
+					result_columns.push(Column::ColumnQualified(ColumnQualified {
+						name: alias.fragment().to_string(),
+						data,
+					}));
 				}
 			}
 		}
@@ -211,24 +177,14 @@ fn parse_keys_and_aggregates<'a>(
 				// departments.dept_name
 				keys.push(access.column.name.fragment());
 				projections.push(Projection::Group {
-					column: access
-						.column
-						.name
-						.fragment()
-						.to_string(),
-					alias: access
-						.column
-						.name
-						.clone()
-						.to_owned(),
+					column: access.column.name.fragment().to_string(),
+					alias: access.column.name.clone().to_owned(),
 				})
 			}
 			// _ => return
 			// Err(reifydb_type::Error::Unsupported("Non-column
 			// group by not supported".into())),
-			expr => panic!(
-				"Non-column group by not supported: {expr:#?}"
-			),
+			expr => panic!("Non-column group by not supported: {expr:#?}"),
 		}
 	}
 
@@ -238,10 +194,7 @@ fn parse_keys_and_aggregates<'a>(
 			Expression::Alias(alias_expr) => {
 				// This is an aliased expression like
 				// "total_count: count(value)"
-				(
-					alias_expr.expression.as_ref(),
-					alias_expr.alias.0.clone(),
-				)
+				(alias_expr.expression.as_ref(), alias_expr.alias.0.clone())
 			}
 			expr => {
 				// Non-aliased expression, use the expression's
@@ -255,75 +208,41 @@ fn parse_keys_and_aggregates<'a>(
 				let func = call.func.0.fragment();
 				match call.args.first().map(|arg| arg) {
 					Some(Expression::Column(c)) => {
-						let function = functions
-							.get_aggregate(func)
-							.unwrap();
-						projections.push(
-							Projection::Aggregate {
-								column: c
-									.0
-									.name
-									.fragment(
-									)
-									.to_string(
-									),
-								alias: alias
-									.to_owned(
-									),
-								function,
-							},
-						);
+						let function = functions.get_aggregate(func).unwrap();
+						projections.push(Projection::Aggregate {
+							column: c.0.name.fragment().to_string(),
+							alias: alias.to_owned(),
+							function,
+						});
 					}
-					Some(Expression::AccessSource(
-						access,
-					)) => {
+					Some(Expression::AccessSource(access)) => {
 						// Handle qualified column
 						// references in aggregate
 						// functions
-						let function = functions
-							.get_aggregate(func)
-							.unwrap();
-						projections.push(
-							Projection::Aggregate {
-								column: access
-									.column
-									.name
-									.fragment(
-									)
-									.to_string(
-									),
-								alias: alias
-									.to_owned(
-									),
-								function,
-							},
-						);
+						let function = functions.get_aggregate(func).unwrap();
+						projections.push(Projection::Aggregate {
+							column: access.column.name.fragment().to_string(),
+							alias: alias.to_owned(),
+							function,
+						});
 					}
 					// _ => return
 					// Err(reifydb_type::Error::Unsupported("
 					// Aggregate args must be
 					// columns".into())),
-					_ => panic!(
-						"Aggregate args must be columns"
-					),
+					_ => panic!("Aggregate args must be columns"),
 				}
 			}
 			// _ => return
 			// Err(reifydb_type::Error::Unsupported("Expected
 			// aggregate call expression".into())),
-			_ => panic!(
-				"Expected aggregate call expression, got: {actual_expr:#?}"
-			),
+			_ => panic!("Expected aggregate call expression, got: {actual_expr:#?}"),
 		}
 	}
 	Ok((keys, projections))
 }
 
-fn align_column_data(
-	group_key_order: &[Vec<Value>],
-	keys: &[Vec<Value>],
-	data: &mut ColumnData,
-) -> crate::Result<()> {
+fn align_column_data(group_key_order: &[Vec<Value>], keys: &[Vec<Value>], data: &mut ColumnData) -> crate::Result<()> {
 	let mut key_to_index = HashMap::new();
 	for (i, key) in keys.iter().enumerate() {
 		key_to_index.insert(key, i);
@@ -333,14 +252,10 @@ fn align_column_data(
 		.iter()
 		.map(|k| {
 			key_to_index.get(k).copied().ok_or_else(|| {
-				reifydb_type::error!(
-					diagnostic::engine::frame_error(
-						format!(
-							"Group key {:?} missing in aggregate output",
-							k
-						)
-					)
-				)
+				reifydb_type::error!(diagnostic::engine::frame_error(format!(
+					"Group key {:?} missing in aggregate output",
+					k
+				)))
 			})
 		})
 		.collect::<crate::Result<Vec<_>>>()?;

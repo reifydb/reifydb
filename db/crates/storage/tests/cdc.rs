@@ -9,8 +9,8 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, async_cow_vec,
 	delta::Delta,
 	interface::{
-		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage,
-		TransactionId, VersionedCommit, VersionedGet, VersionedStorage,
+		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, TransactionId, VersionedCommit,
+		VersionedGet, VersionedStorage,
 	},
 	row::EncodedRow,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -29,8 +29,7 @@ fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 	let storage = Memory::new();
-	testscript::run_path(&mut Runner::new(storage), path)
-		.expect("test failed")
+	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
@@ -44,18 +43,14 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs CDC tests for storage implementations
-pub struct Runner<
-	VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage,
-> {
+pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> {
 	storage: VS,
 	next_version: CommitVersion,
 	/// Buffer of deltas to be committed
 	deltas: Vec<Delta>,
 }
 
-impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
-	Runner<VS>
-{
+impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<VS> {
 	fn new(storage: VS) -> Self {
 		Self {
 			storage,
@@ -78,11 +73,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 				key,
 				after,
 			} => {
-				format!(
-					"Insert {{ key: {}, after: {} }}",
-					format::Raw::key(key),
-					format_value(after)
-				)
+				format!("Insert {{ key: {}, after: {} }}", format::Raw::key(key), format_value(after))
 			}
 			CdcChange::Update {
 				key,
@@ -100,31 +91,19 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 				key,
 				before,
 			} => {
-				format!(
-					"Delete {{ key: {}, before: {} }}",
-					format::Raw::key(key),
-					format_value(before)
-				)
+				format!("Delete {{ key: {}, before: {} }}", format::Raw::key(key), format_value(before))
 			}
 		};
 
 		format!(
 			"CdcEvent {{ version: {}, seq: {}, ts: {}, change: {} }}",
-			event.version,
-			event.sequence,
-			event.timestamp,
-			change_str
+			event.version, event.sequence, event.timestamp, change_str
 		)
 	}
 }
 
-impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
-	testscript::Runner for Runner<VS>
-{
-	fn run(
-		&mut self,
-		command: &testscript::Command,
-	) -> Result<String, Box<dyn StdError>> {
+impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscript::Runner for Runner<VS> {
+	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
 			// Apply a change with versioning (generates CDC)
@@ -137,13 +116,8 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.value
 					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
-				let kv = args
-					.next_key()
-					.ok_or("key=value not given")?
-					.clone();
-				let key = EncodedKey(decode_binary(
-					&kv.key.unwrap(),
-				));
+				let kv = args.next_key().ok_or("key=value not given")?.clone();
+				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
 				let row = EncodedRow(decode_binary(&kv.value));
 				args.reject_rest()?;
 
@@ -169,13 +143,8 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.value
 					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
-				let kv = args
-					.next_key()
-					.ok_or("key=value not given")?
-					.clone();
-				let key = EncodedKey(decode_binary(
-					&kv.key.unwrap(),
-				));
+				let kv = args.next_key().ok_or("key=value not given")?.clone();
+				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
 				let row = EncodedRow(decode_binary(&kv.value));
 				args.reject_rest()?;
 
@@ -198,13 +167,8 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.value
 					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
-				let kv = args
-					.next_key()
-					.ok_or("key=value not given")?
-					.clone();
-				let key = EncodedKey(decode_binary(
-					&kv.key.unwrap(),
-				));
+				let kv = args.next_key().ok_or("key=value not given")?.clone();
+				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
 				let row = EncodedRow(decode_binary(&kv.value));
 				args.reject_rest()?;
 
@@ -227,11 +191,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.value
 					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
-				let key = EncodedKey(decode_binary(
-					&args.next_pos()
-						.ok_or("key not given")?
-						.value,
-				));
+				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
 				// Update next_version to match the given
@@ -250,15 +210,8 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 
 				if !self.deltas.is_empty() {
 					let version = self.next_version;
-					let deltas =
-						CowVec::new(std::mem::take(
-							&mut self.deltas,
-						));
-					self.storage.commit(
-						deltas,
-						version,
-						TransactionId::default(),
-					)?;
+					let deltas = CowVec::new(std::mem::take(&mut self.deltas));
+					self.storage.commit(deltas, version, TransactionId::default())?;
 					self.next_version += 1;
 				}
 				writeln!(output, "ok")?;
@@ -283,18 +236,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 
 				// Get all events for the version and find the
 				// one with matching sequence
-				let events =
-					CdcGet::get(&self.storage, version)?;
-				let event = events
-					.into_iter()
-					.find(|e| e.sequence == sequence);
+				let events = CdcGet::get(&self.storage, version)?;
+				let event = events.into_iter().find(|e| e.sequence == sequence);
 
 				if let Some(event) = event {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				} else {
 					writeln!(output, "None")?;
 				}
@@ -324,11 +270,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					Bound::Included(end_version),
 				)?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -337,17 +279,9 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
-					&self.storage,
-					Bound::Unbounded,
-					Bound::Unbounded,
-				)?;
+				let events = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Unbounded)?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -374,11 +308,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					Bound::Included(end_version),
 				)?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -405,11 +335,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					Bound::Excluded(end_version),
 				)?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -436,11 +362,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					Bound::Included(end_version),
 				)?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -467,11 +389,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					Bound::Excluded(end_version),
 				)?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -486,17 +404,10 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
-					&self.storage,
-					Bound::Unbounded,
-					Bound::Included(end_version),
-				)?;
+				let events =
+					CdcRange::range(&self.storage, Bound::Unbounded, Bound::Included(end_version))?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -511,17 +422,10 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
-					&self.storage,
-					Bound::Unbounded,
-					Bound::Excluded(end_version),
-				)?;
+				let events =
+					CdcRange::range(&self.storage, Bound::Unbounded, Bound::Excluded(end_version))?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -542,11 +446,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					Bound::Unbounded,
 				)?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -567,11 +467,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 					Bound::Unbounded,
 				)?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -582,11 +478,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 
 				let events = CdcScan::scan(&self.storage)?;
 				for event in events {
-					writeln!(
-						output,
-						"{}",
-						Self::format_cdc_event(&event)
-					)?;
+					writeln!(output, "{}", Self::format_cdc_event(&event))?;
 				}
 			}
 
@@ -651,30 +543,20 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage>
 				let mut deltas = Vec::new();
 
 				for i in 0..count {
-					let key = EncodedKey(CowVec::new(
-						format!("bulk_{}", i)
-							.into_bytes(),
-					));
-					let row = EncodedRow(CowVec::new(
-						i.to_string().into_bytes(),
-					));
+					let key = EncodedKey(CowVec::new(format!("bulk_{}", i).into_bytes()));
+					let row = EncodedRow(CowVec::new(i.to_string().into_bytes()));
 					deltas.push(Delta::Set {
 						key,
 						row,
 					});
 				}
 
-				self.storage.commit(
-					CowVec::new(deltas),
-					version,
-					TransactionId::default(),
-				)?;
+				self.storage.commit(CowVec::new(deltas), version, TransactionId::default())?;
 				writeln!(output, "ok")?;
 			}
 
 			name => {
-				return Err(format!("invalid command {name}")
-					.into());
+				return Err(format!("invalid command {name}").into());
 			}
 		}
 

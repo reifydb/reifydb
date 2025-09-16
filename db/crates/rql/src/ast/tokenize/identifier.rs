@@ -20,11 +20,7 @@ pub fn scan_identifier<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 
 	Some(Token {
 		kind: TokenKind::Identifier,
-		fragment: cursor.make_fragment(
-			start_pos,
-			start_line,
-			start_column,
-		),
+		fragment: cursor.make_fragment(start_pos, start_line, start_column),
 	})
 }
 

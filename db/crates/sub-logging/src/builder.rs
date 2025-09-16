@@ -5,9 +5,7 @@
 
 use std::time::Duration;
 
-use reifydb_core::interface::subsystem::logging::{
-	LogBackend, LogLevel, init_logger,
-};
+use reifydb_core::interface::subsystem::logging::{LogBackend, LogLevel, init_logger};
 
 #[cfg(debug_assertions)]
 use crate::test_utils::TestLoggerHandle;
@@ -88,8 +86,7 @@ impl LoggingBuilder {
 	pub fn build(self) -> LoggingSubsystem {
 		// If no backends configured, add console by default
 		let backends = if self.backends.is_empty() {
-			vec![Box::new(ConsoleBackend::new())
-				as Box<dyn LogBackend>]
+			vec![Box::new(ConsoleBackend::new()) as Box<dyn LogBackend>]
 		} else {
 			self.backends
 		};
@@ -100,12 +97,7 @@ impl LoggingBuilder {
 			immediate_on_error: self.immediate_on_error,
 		};
 
-		let subsystem = LoggingSubsystem::new(
-			self.buffer_capacity,
-			backends,
-			processor_config,
-			self.level,
-		);
+		let subsystem = LoggingSubsystem::new(self.buffer_capacity, backends, processor_config, self.level);
 
 		init_logger(subsystem.get_sender());
 
@@ -119,8 +111,7 @@ impl LoggingBuilder {
 	pub fn build_for_test(self) -> (LoggingSubsystem, TestLoggerHandle) {
 		// If no backends configured, add console by default
 		let backends = if self.backends.is_empty() {
-			vec![Box::new(ConsoleBackend::new())
-				as Box<dyn LogBackend>]
+			vec![Box::new(ConsoleBackend::new()) as Box<dyn LogBackend>]
 		} else {
 			self.backends
 		};
@@ -131,12 +122,7 @@ impl LoggingBuilder {
 			immediate_on_error: self.immediate_on_error,
 		};
 
-		let subsystem = LoggingSubsystem::new(
-			self.buffer_capacity,
-			backends,
-			processor_config,
-			self.level,
-		);
+		let subsystem = LoggingSubsystem::new(self.buffer_capacity, backends, processor_config, self.level);
 
 		// Create a test handle that sets the mock logger for this
 		// thread

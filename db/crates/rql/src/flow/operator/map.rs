@@ -4,8 +4,7 @@
 use reifydb_core::{
 	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Map},
 	interface::{
-		ColumnDef, ColumnId, ColumnIndex, CommandTransaction,
-		FlowNodeId, evaluate::expression::Expression,
+		ColumnDef, ColumnId, ColumnIndex, CommandTransaction, FlowNodeId, evaluate::expression::Expression,
 	},
 };
 use reifydb_type::TypeConstraint;
@@ -26,10 +25,7 @@ pub(crate) struct MapCompiler {
 
 impl MapCompiler {
 	/// Compute the output namespace from Map expressions
-	pub(crate) fn compute_output_schema(
-		&self,
-		input_schema: &FlowNodeSchema,
-	) -> FlowNodeSchema {
+	pub(crate) fn compute_output_schema(&self, input_schema: &FlowNodeSchema) -> FlowNodeSchema {
 		let mut columns = Vec::new();
 
 		for (idx, expr) in self.expressions.iter().enumerate() {
@@ -45,10 +41,7 @@ impl MapCompiler {
 				}
 				Expression::AccessSource(access) => {
 					// Use the column part
-					access.column
-						.name
-						.fragment()
-						.to_string()
+					access.column.name.fragment().to_string()
 				}
 				_ => {
 					// For other expressions, generate a
@@ -63,9 +56,7 @@ impl MapCompiler {
 			columns.push(ColumnDef {
 				id: ColumnId(idx as u64),
 				name: column_name,
-				constraint: TypeConstraint::unconstrained(
-					reifydb_type::Type::Utf8,
-				),
+				constraint: TypeConstraint::unconstrained(reifydb_type::Type::Utf8),
 				policies: vec![],
 				index: ColumnIndex(idx as u16),
 				auto_increment: false,
@@ -85,28 +76,21 @@ impl MapCompiler {
 impl<'a> From<MapNode<'a>> for MapCompiler {
 	fn from(node: MapNode<'a>) -> Self {
 		Self {
-			input: node.input.map(|input| {
-				Box::new(to_owned_physical_plan(*input))
-			}),
+			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			expressions: to_owned_expressions(node.map),
 		}
 	}
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for MapCompiler {
-	fn compile(
-		mut self,
-		compiler: &mut FlowCompiler<T>,
-	) -> Result<FlowNodeId> {
+	fn compile(mut self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		// Compile input and get its namespace
-		let (input_node, input_schema) =
-			if let Some(input) = self.input.take() {
-				let (node_id, namespace) = compiler
-					.compile_plan_with_schema(*input)?;
-				(Some(node_id), namespace)
-			} else {
-				(None, FlowNodeSchema::empty())
-			};
+		let (input_node, input_schema) = if let Some(input) = self.input.take() {
+			let (node_id, namespace) = compiler.compile_plan_with_schema(*input)?;
+			(Some(node_id), namespace)
+		} else {
+			(None, FlowNodeSchema::empty())
+		};
 
 		// Compute output namespace based on Map expressions
 		let output_schema = self.compute_output_schema(&input_schema);

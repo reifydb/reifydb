@@ -35,10 +35,7 @@ impl Time {
 
 	pub fn new(hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
 		// Validate inputs
-		if hour >= 24
-			|| min >= 60 || sec >= 60
-			|| nano >= Self::NANOS_PER_SECOND as u32
-		{
+		if hour >= 24 || min >= 60 || sec >= 60 || nano >= Self::NANOS_PER_SECOND as u32 {
 			return None;
 		}
 
@@ -53,26 +50,12 @@ impl Time {
 	}
 
 	pub fn from_hms(hour: u32, min: u32, sec: u32) -> Result<Self, String> {
-		Self::new(hour, min, sec, 0).ok_or_else(|| {
-			format!(
-				"Invalid time: {:02}:{:02}:{:02}",
-				hour, min, sec
-			)
-		})
+		Self::new(hour, min, sec, 0).ok_or_else(|| format!("Invalid time: {:02}:{:02}:{:02}", hour, min, sec))
 	}
 
-	pub fn from_hms_nano(
-		hour: u32,
-		min: u32,
-		sec: u32,
-		nano: u32,
-	) -> Result<Self, String> {
-		Self::new(hour, min, sec, nano).ok_or_else(|| {
-			format!(
-				"Invalid time: {:02}:{:02}:{:02}.{:09}",
-				hour, min, sec, nano
-			)
-		})
+	pub fn from_hms_nano(hour: u32, min: u32, sec: u32, nano: u32) -> Result<Self, String> {
+		Self::new(hour, min, sec, nano)
+			.ok_or_else(|| format!("Invalid time: {:02}:{:02}:{:02}.{:09}", hour, min, sec, nano))
 	}
 
 	pub fn midnight() -> Self {
@@ -92,13 +75,11 @@ impl Time {
 	}
 
 	pub fn minute(&self) -> u32 {
-		((self.nanos_since_midnight % Self::NANOS_PER_HOUR)
-			/ Self::NANOS_PER_MINUTE) as u32
+		((self.nanos_since_midnight % Self::NANOS_PER_HOUR) / Self::NANOS_PER_MINUTE) as u32
 	}
 
 	pub fn second(&self) -> u32 {
-		((self.nanos_since_midnight % Self::NANOS_PER_MINUTE)
-			/ Self::NANOS_PER_SECOND) as u32
+		((self.nanos_since_midnight % Self::NANOS_PER_MINUTE) / Self::NANOS_PER_SECOND) as u32
 	}
 
 	pub fn nanosecond(&self) -> u32 {
@@ -128,11 +109,7 @@ impl Display for Time {
 		let seconds = self.second();
 		let nanos = self.nanosecond();
 
-		write!(
-			f,
-			"{:02}:{:02}:{:02}.{:09}",
-			hours, minutes, seconds, nanos
-		)
+		write!(f, "{:02}:{:02}:{:02}.{:09}", hours, minutes, seconds, nanos)
 	}
 }
 
@@ -151,13 +128,8 @@ struct TimeVisitor;
 impl<'de> Visitor<'de> for TimeVisitor {
 	type Value = Time;
 
-	fn expecting(
-		&self,
-		formatter: &mut std::fmt::Formatter,
-	) -> std::fmt::Result {
-		formatter.write_str(
-			"a time in ISO 8601 format (HH:MM:SS or HH:MM:SS.nnnnnnnnn)",
-		)
+	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+		formatter.write_str("a time in ISO 8601 format (HH:MM:SS or HH:MM:SS.nnnnnnnnn)")
 	}
 
 	fn visit_str<E>(self, value: &str) -> Result<Time, E>
@@ -165,30 +137,26 @@ impl<'de> Visitor<'de> for TimeVisitor {
 		E: de::Error,
 	{
 		// Parse ISO 8601 time format: HH:MM:SS[.nnnnnnnnn]
-		let (time_part, nano_part) =
-			if let Some(dot_pos) = value.find('.') {
-				(&value[..dot_pos], Some(&value[dot_pos + 1..]))
-			} else {
-				(value, None)
-			};
+		let (time_part, nano_part) = if let Some(dot_pos) = value.find('.') {
+			(&value[..dot_pos], Some(&value[dot_pos + 1..]))
+		} else {
+			(value, None)
+		};
 
 		let time_parts: Vec<&str> = time_part.split(':').collect();
 		if time_parts.len() != 3 {
-			return Err(E::custom(format!(
-				"invalid time format: {}",
-				value
-			)));
+			return Err(E::custom(format!("invalid time format: {}", value)));
 		}
 
-		let hour = time_parts[0].parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid hour: {}", time_parts[0]))
-		})?;
-		let minute = time_parts[1].parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid minute: {}", time_parts[1]))
-		})?;
-		let second = time_parts[2].parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid second: {}", time_parts[2]))
-		})?;
+		let hour = time_parts[0]
+			.parse::<u32>()
+			.map_err(|_| E::custom(format!("invalid hour: {}", time_parts[0])))?;
+		let minute = time_parts[1]
+			.parse::<u32>()
+			.map_err(|_| E::custom(format!("invalid minute: {}", time_parts[1])))?;
+		let second = time_parts[2]
+			.parse::<u32>()
+			.map_err(|_| E::custom(format!("invalid second: {}", time_parts[2])))?;
 
 		let nano = if let Some(nano_str) = nano_part {
 			// Pad or truncate to 9 digits
@@ -197,21 +165,13 @@ impl<'de> Visitor<'de> for TimeVisitor {
 			} else {
 				nano_str[..9].to_string()
 			};
-			padded.parse::<u32>().map_err(|_| {
-				E::custom(format!(
-					"invalid nanoseconds: {}",
-					nano_str
-				))
-			})?
+			padded.parse::<u32>().map_err(|_| E::custom(format!("invalid nanoseconds: {}", nano_str)))?
 		} else {
 			0
 		};
 
 		Time::new(hour, minute, second, nano).ok_or_else(|| {
-			E::custom(format!(
-				"invalid time: {:02}:{:02}:{:02}.{:09}",
-				hour, minute, second, nano
-			))
+			E::custom(format!("invalid time: {:02}:{:02}:{:02}.{:09}", hour, minute, second, nano))
 		})
 	}
 }
@@ -338,8 +298,7 @@ mod tests {
 	#[test]
 	fn test_time_display_all_minutes() {
 		for minute in 0..60 {
-			let time =
-				Time::new(14, minute, 45, 123456789).unwrap();
+			let time = Time::new(14, minute, 45, 123456789).unwrap();
 			let expected = format!("14:{:02}:45.123456789", minute);
 			assert_eq!(format!("{}", time), expected);
 		}
@@ -348,8 +307,7 @@ mod tests {
 	#[test]
 	fn test_time_display_all_seconds() {
 		for second in 0..60 {
-			let time =
-				Time::new(14, 30, second, 123456789).unwrap();
+			let time = Time::new(14, 30, second, 123456789).unwrap();
 			let expected = format!("14:30:{:02}.123456789", second);
 			assert_eq!(format!("{}", time), expected);
 		}
@@ -386,24 +344,19 @@ mod tests {
 		assert_eq!(format!("{}", time), "00:00:00.000000000");
 
 		// Test 1 second
-		let time =
-			Time::from_nanos_since_midnight(1_000_000_000).unwrap();
+		let time = Time::from_nanos_since_midnight(1_000_000_000).unwrap();
 		assert_eq!(format!("{}", time), "00:00:01.000000000");
 
 		// Test 1 minute
-		let time = Time::from_nanos_since_midnight(60_000_000_000)
-			.unwrap();
+		let time = Time::from_nanos_since_midnight(60_000_000_000).unwrap();
 		assert_eq!(format!("{}", time), "00:01:00.000000000");
 
 		// Test 1 hour
-		let time = Time::from_nanos_since_midnight(3_600_000_000_000)
-			.unwrap();
+		let time = Time::from_nanos_since_midnight(3_600_000_000_000).unwrap();
 		assert_eq!(format!("{}", time), "01:00:00.000000000");
 
 		// Test complex time with nanoseconds
-		let nanos = 14 * 3600 * 1_000_000_000
-			+ 30 * 60 * 1_000_000_000
-			+ 45 * 1_000_000_000 + 123456789;
+		let nanos = 14 * 3600 * 1_000_000_000 + 30 * 60 * 1_000_000_000 + 45 * 1_000_000_000 + 123456789;
 		let time = Time::from_nanos_since_midnight(nanos).unwrap();
 		assert_eq!(format!("{}", time), "14:30:45.123456789");
 	}
@@ -461,17 +414,12 @@ mod tests {
 
 	#[test]
 	fn test_time_roundtrip() {
-		let test_times = [
-			(0, 0, 0, 0),
-			(12, 30, 45, 123456789),
-			(23, 59, 59, 999999999),
-		];
+		let test_times = [(0, 0, 0, 0), (12, 30, 45, 123456789), (23, 59, 59, 999999999)];
 
 		for (h, m, s, n) in test_times {
 			let time = Time::new(h, m, s, n).unwrap();
 			let nanos = time.to_nanos_since_midnight();
-			let recovered =
-				Time::from_nanos_since_midnight(nanos).unwrap();
+			let recovered = Time::from_nanos_since_midnight(nanos).unwrap();
 
 			assert_eq!(time.hour(), recovered.hour());
 			assert_eq!(time.minute(), recovered.minute());

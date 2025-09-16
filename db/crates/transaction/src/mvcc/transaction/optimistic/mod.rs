@@ -22,9 +22,7 @@ use reifydb_storage::memory::Memory;
 
 use crate::{
 	mvcc::{
-		transaction::{
-			TransactionManager, version::StdVersionProvider,
-		},
+		transaction::{TransactionManager, version::StdVersionProvider},
 		types::Committed,
 	},
 	svl::SingleVersionLock,
@@ -33,13 +31,9 @@ use crate::{
 mod command;
 mod query;
 
-pub struct Optimistic<VS: VersionedStorage, UT: UnversionedTransaction>(
-	Arc<Inner<VS, UT>>,
-);
+pub struct Optimistic<VS: VersionedStorage, UT: UnversionedTransaction>(Arc<Inner<VS, UT>>);
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> Deref
-	for Optimistic<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> Deref for Optimistic<VS, UT> {
 	type Target = Inner<VS, UT>;
 
 	fn deref(&self) -> &Self::Target {
@@ -47,9 +41,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Deref
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> Clone
-	for Optimistic<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> Clone for Optimistic<VS, UT> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
@@ -63,10 +55,7 @@ pub struct Inner<VS: VersionedStorage, UT: UnversionedTransaction> {
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
 	fn new(versioned: VS, unversioned: UT, event_bus: EventBus) -> Self {
-		let tm = TransactionManager::new(
-			StdVersionProvider::new(unversioned).unwrap(),
-		)
-		.unwrap();
+		let tm = TransactionManager::new(StdVersionProvider::new(unversioned).unwrap()).unwrap();
 		Self {
 			tm,
 			versioned,
@@ -80,11 +69,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
-	pub fn new(
-		versioned: VS,
-		unversioned: UT,
-		event_bus: EventBus,
-	) -> Self {
+	pub fn new(versioned: VS, unversioned: UT, event_bus: EventBus) -> Self {
 		Self(Arc::new(Inner::new(versioned, unversioned, event_bus)))
 	}
 }
@@ -93,11 +78,7 @@ impl Optimistic<Memory, SingleVersionLock<Memory>> {
 	pub fn testing() -> Self {
 		let memory = Memory::new();
 		let event_bus = EventBus::new();
-		Self::new(
-			Memory::default(),
-			SingleVersionLock::new(memory, event_bus.clone()),
-			event_bus,
-		)
+		Self::new(Memory::default(), SingleVersionLock::new(memory, event_bus.clone()), event_bus)
 	}
 }
 
@@ -111,9 +92,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
-	pub fn begin_command(
-		&self,
-	) -> crate::Result<CommandTransaction<VS, UT>> {
+	pub fn begin_command(&self) -> crate::Result<CommandTransaction<VS, UT>> {
 		CommandTransaction::new(self.clone())
 	}
 }
@@ -124,33 +103,19 @@ pub enum Transaction<VS: VersionedStorage, UT: UnversionedTransaction> {
 }
 
 impl<VS: VersionedStorage, UT: UnversionedTransaction> Optimistic<VS, UT> {
-	pub fn get(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<Option<Committed>, reifydb_type::Error> {
+	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(self.versioned.get(key, version)?.map(|sv| sv.into()))
 	}
 
-	pub fn contains_key(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<bool, reifydb_type::Error> {
+	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
 		self.versioned.contains(key, version)
 	}
 
-	pub fn scan(
-		&self,
-		version: CommitVersion,
-	) -> Result<VS::ScanIter<'_>, reifydb_type::Error> {
+	pub fn scan(&self, version: CommitVersion) -> Result<VS::ScanIter<'_>, reifydb_type::Error> {
 		self.versioned.scan(version)
 	}
 
-	pub fn scan_rev(
-		&self,
-		version: CommitVersion,
-	) -> Result<VS::ScanIterRev<'_>, reifydb_type::Error> {
+	pub fn scan_rev(&self, version: CommitVersion) -> Result<VS::ScanIterRev<'_>, reifydb_type::Error> {
 		self.versioned.scan_rev(version)
 	}
 

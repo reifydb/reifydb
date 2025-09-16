@@ -20,10 +20,7 @@ use read::Readers;
 use reifydb_core::{
 	CowVec,
 	delta::Delta,
-	interface::{
-		CdcStorage, UnversionedInsert, UnversionedRemove,
-		UnversionedStorage, VersionedStorage,
-	},
+	interface::{CdcStorage, UnversionedInsert, UnversionedRemove, UnversionedStorage, VersionedStorage},
 };
 use reifydb_type::Error;
 use rusqlite::Connection;
@@ -67,34 +64,14 @@ impl Sqlite {
 		// connection
 		{
 			let conn = Connection::open_with_flags(&db_path, flags)
-				.map_err(|e| {
-					Error(connection_failed(
-						db_path.display().to_string(),
-						e.to_string(),
-					))
-				})
+				.map_err(|e| Error(connection_failed(db_path.display().to_string(), e.to_string())))
 				.unwrap();
 
-			conn.pragma_update(
-				None,
-				"journal_mode",
-				config.journal_mode.as_str(),
-			)
-			.unwrap();
+			conn.pragma_update(None, "journal_mode", config.journal_mode.as_str()).unwrap();
 
-			conn.pragma_update(
-				None,
-				"synchronous",
-				config.synchronous_mode.as_str(),
-			)
-			.unwrap();
+			conn.pragma_update(None, "synchronous", config.synchronous_mode.as_str()).unwrap();
 
-			conn.pragma_update(
-				None,
-				"temp_store",
-				config.temp_store.as_str(),
-			)
-			.unwrap();
+			conn.pragma_update(None, "temp_store", config.temp_store.as_str()).unwrap();
 
 			conn.execute_batch(
 				"BEGIN;
@@ -132,33 +109,27 @@ impl Sqlite {
 		let mut rusqlite_flags = rusqlite::OpenFlags::empty();
 
 		if flags.read_write {
-			rusqlite_flags |=
-				rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE;
+			rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_READ_WRITE;
 		}
 
 		if flags.create {
-			rusqlite_flags |=
-				rusqlite::OpenFlags::SQLITE_OPEN_CREATE;
+			rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_CREATE;
 		}
 
 		if flags.full_mutex {
-			rusqlite_flags |=
-				rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX;
+			rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_FULL_MUTEX;
 		}
 
 		if flags.no_mutex {
-			rusqlite_flags |=
-				rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+			rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
 		}
 
 		if flags.shared_cache {
-			rusqlite_flags |=
-				rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE;
+			rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_SHARED_CACHE;
 		}
 
 		if flags.private_cache {
-			rusqlite_flags |=
-				rusqlite::OpenFlags::SQLITE_OPEN_PRIVATE_CACHE;
+			rusqlite_flags |= rusqlite::OpenFlags::SQLITE_OPEN_PRIVATE_CACHE;
 		}
 
 		if flags.uri {
@@ -173,10 +144,7 @@ impl Sqlite {
 	}
 
 	/// Convert deltas to SQL operations for unversioned storage
-	fn convert_deltas_to_operations(
-		&self,
-		deltas: CowVec<Delta>,
-	) -> Vec<(String, Vec<rusqlite::types::Value>)> {
+	fn convert_deltas_to_operations(&self, deltas: CowVec<Delta>) -> Vec<(String, Vec<rusqlite::types::Value>)> {
 		let mut operations = Vec::new();
 		for delta in deltas.as_ref() {
 			match delta {
@@ -185,7 +153,8 @@ impl Sqlite {
 					row: bytes,
 				} => {
 					operations.push((
-						"INSERT OR REPLACE INTO unversioned (key,value) VALUES (?1, ?2)".to_string(),
+						"INSERT OR REPLACE INTO unversioned (key,value) VALUES (?1, ?2)"
+							.to_string(),
 						vec![
 							rusqlite::types::Value::Blob(key.to_vec()),
 							rusqlite::types::Value::Blob(bytes.to_vec()),
@@ -275,10 +244,7 @@ mod tests {
 	#[test]
 	fn test_resolve_db_path_nested_directory() {
 		temp_dir(|temp_path| {
-			let nested_path = temp_path
-				.join("level1")
-				.join("level2")
-				.join("mydb");
+			let nested_path = temp_path.join("level1").join("level2").join("mydb");
 
 			// Test with nested directory path
 			let result = Sqlite::resolve_db_path(&nested_path);
@@ -296,10 +262,7 @@ mod tests {
 	#[test]
 	fn test_resolve_db_path_nested_file() {
 		temp_dir(|temp_path| {
-			let nested_file = temp_path
-				.join("level1")
-				.join("level2")
-				.join("database.sqlite");
+			let nested_file = temp_path.join("level1").join("level2").join("database.sqlite");
 
 			// Test with nested file path
 			let result = Sqlite::resolve_db_path(&nested_file);
@@ -307,10 +270,7 @@ mod tests {
 			// Should create parent directories and use exact
 			// filename
 			assert_eq!(result, nested_file);
-			assert!(temp_path
-				.join("level1")
-				.join("level2")
-				.exists());
+			assert!(temp_path.join("level1").join("level2").exists());
 
 			Ok(())
 		})
@@ -326,24 +286,15 @@ mod tests {
 
 			// Test with .sqlite extension
 			let sqlite_file = temp_path.join("test.sqlite");
-			assert_eq!(
-				Sqlite::resolve_db_path(&sqlite_file),
-				sqlite_file
-			);
+			assert_eq!(Sqlite::resolve_db_path(&sqlite_file), sqlite_file);
 
 			// Test with .reifydb extension
 			let reifydb_file = temp_path.join("test.reifydb");
-			assert_eq!(
-				Sqlite::resolve_db_path(&reifydb_file),
-				reifydb_file
-			);
+			assert_eq!(Sqlite::resolve_db_path(&reifydb_file), reifydb_file);
 
 			// Test with no extension (directory)
 			let no_ext = temp_path.join("testdb");
-			assert_eq!(
-				Sqlite::resolve_db_path(&no_ext),
-				no_ext.join("reify.db")
-			);
+			assert_eq!(Sqlite::resolve_db_path(&no_ext), no_ext.join("reify.db"));
 
 			Ok(())
 		})
@@ -353,8 +304,7 @@ mod tests {
 	#[test]
 	fn test_sqlite_creation_with_new_config() {
 		temp_dir(|db_path| {
-			let config =
-				SqliteConfig::new(db_path.join("test.reifydb"));
+			let config = SqliteConfig::new(db_path.join("test.reifydb"));
 			let storage = Sqlite::new(config);
 
 			// Verify we can get a reader connection
@@ -368,9 +318,7 @@ mod tests {
 	#[test]
 	fn test_sqlite_creation_with_safe_config() {
 		temp_dir(|db_path| {
-			let config = SqliteConfig::safe(
-				db_path.join("safe.reifydb"),
-			);
+			let config = SqliteConfig::safe(db_path.join("safe.reifydb"));
 			let storage = Sqlite::new(config);
 
 			// Verify we can get a reader connection
@@ -384,9 +332,7 @@ mod tests {
 	#[test]
 	fn test_sqlite_creation_with_fast_config() {
 		temp_dir(|db_path| {
-			let config = SqliteConfig::fast(
-				db_path.join("fast.reifydb"),
-			);
+			let config = SqliteConfig::fast(db_path.join("fast.reifydb"));
 			let storage = Sqlite::new(config);
 
 			// Verify we can get a reader connection
@@ -434,10 +380,7 @@ mod tests {
 	#[test]
 	fn test_custom_flags_conversion() {
 		temp_dir(|db_path| {
-			let config = SqliteConfig::new(
-				db_path.join("flags.reifydb"),
-			)
-			.flags(OpenFlags::new()
+			let config = SqliteConfig::new(db_path.join("flags.reifydb")).flags(OpenFlags::new()
 				.read_write(true)
 				.create(true)
 				.no_mutex(true)
@@ -462,15 +405,19 @@ mod tests {
 			let conn_guard = conn.lock().unwrap();
 
 			// Check that both tables exist
-			let mut stmt = conn_guard.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('versioned', 'unversioned')").unwrap();
-			let table_names: Vec<String> = stmt.query_map([], |row| {
-				Ok(row.get(0)?)
-			}).unwrap().map(Result::unwrap).collect();
+			let mut stmt = conn_guard
+				.prepare(
+					"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('versioned', 'unversioned')",
+				)
+				.unwrap();
+			let table_names: Vec<String> =
+				stmt.query_map([], |row| Ok(row.get(0)?)).unwrap().map(Result::unwrap).collect();
 
 			assert_eq!(table_names.len(), 2);
 			assert!(table_names.contains(&"versioned".to_string()));
 			assert!(table_names.contains(&"unversioned".to_string()));
 			Ok(())
-		}).expect("test failed");
+		})
+		.expect("test failed");
 	}
 }

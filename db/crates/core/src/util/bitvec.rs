@@ -240,15 +240,13 @@ impl BitVec {
 				other.inner.bits[i + 7],
 			]);
 			let result = a & b;
-			result_bits[i..i + 8]
-				.copy_from_slice(&result.to_le_bytes());
+			result_bits[i..i + 8].copy_from_slice(&result.to_le_bytes());
 			i += 8;
 		}
 
 		// Process remaining bytes
 		while i < byte_count {
-			result_bits[i] =
-				self.inner.bits[i] & other.inner.bits[i];
+			result_bits[i] = self.inner.bits[i] & other.inner.bits[i];
 			i += 1;
 		}
 
@@ -266,12 +264,7 @@ impl BitVec {
 
 	pub fn count_ones(&self) -> usize {
 		// Count complete bytes using built-in popcount
-		let mut count = self
-			.inner
-			.bits
-			.iter()
-			.map(|&byte| byte.count_ones() as usize)
-			.sum();
+		let mut count = self.inner.bits.iter().map(|&byte| byte.count_ones() as usize).sum();
 
 		// Adjust for partial last byte if needed
 		let full_bytes = self.inner.len / 8;
@@ -345,15 +338,13 @@ impl BitVec {
 				other.inner.bits[i + 7],
 			]);
 			let result = a | b;
-			result_bits[i..i + 8]
-				.copy_from_slice(&result.to_le_bytes());
+			result_bits[i..i + 8].copy_from_slice(&result.to_le_bytes());
 			i += 8;
 		}
 
 		// Process remaining bytes
 		while i < byte_count {
-			result_bits[i] =
-				self.inner.bits[i] | other.inner.bits[i];
+			result_bits[i] = self.inner.bits[i] | other.inner.bits[i];
 			i += 1;
 		}
 
@@ -460,11 +451,7 @@ mod tests {
 			let bv = BitVec::repeat(10, false);
 			assert_eq!(bv.len(), 10);
 			for i in 0..10 {
-				assert!(
-					!bv.get(i),
-					"expected bit {} to be false",
-					i
-				);
+				assert!(!bv.get(i), "expected bit {} to be false", i);
 			}
 		}
 
@@ -473,11 +460,7 @@ mod tests {
 			let bv = BitVec::repeat(10, true);
 			assert_eq!(bv.len(), 10);
 			for i in 0..10 {
-				assert!(
-					bv.get(i),
-					"expected bit {} to be true",
-					i
-				);
+				assert!(bv.get(i), "expected bit {} to be true", i);
 			}
 		}
 	}
@@ -521,12 +504,7 @@ mod tests {
 		fn test_ok() {
 			let bv = BitVec::from_fn(10, |i| i % 2 == 0);
 			for i in 0..10 {
-				assert_eq!(
-					bv.get(i),
-					i % 2 == 0,
-					"bit {} mismatch",
-					i
-				);
+				assert_eq!(bv.get(i), i % 2 == 0, "bit {} mismatch", i);
 			}
 		}
 	}
@@ -557,17 +535,9 @@ mod tests {
 			let a = BitVec::from_fn(8, |i| i % 2 == 0); // 10101010
 			let b = BitVec::from_fn(8, |i| i < 4); // 11110000
 			let result = a.and(&b); // 10100000
-			let expected = [
-				true, false, true, false, false, false, false,
-				false,
-			];
+			let expected = [true, false, true, false, false, false, false, false];
 			for i in 0..8 {
-				assert_eq!(
-					result.get(i),
-					expected[i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(result.get(i), expected[i], "mismatch at bit {}", i);
 			}
 		}
 	}
@@ -594,9 +564,7 @@ mod tests {
 
 		#[test]
 		fn test_multiple_bits() {
-			let bv = BitVec::from_slice(&[
-				true, false, true, false, true,
-			]);
+			let bv = BitVec::from_slice(&[true, false, true, false, true]);
 			assert_eq!(bv.len(), 5);
 			assert!(bv.get(0));
 			assert!(!bv.get(1));
@@ -607,35 +575,21 @@ mod tests {
 
 		#[test]
 		fn test_cross_byte_boundary() {
-			let input = [
-				true, false, true, false, true, false, true,
-				false, true,
-			];
+			let input = [true, false, true, false, true, false, true, false, true];
 			let bv = BitVec::from_slice(&input);
 			assert_eq!(bv.len(), 9);
 			for i in 0..9 {
-				assert_eq!(
-					bv.get(i),
-					input[i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), input[i], "mismatch at bit {}", i);
 			}
 		}
 
 		#[test]
 		fn test_large_slice() {
-			let input: Vec<bool> =
-				(0..1000).map(|i| i % 3 == 0).collect();
+			let input: Vec<bool> = (0..1000).map(|i| i % 3 == 0).collect();
 			let bv = BitVec::from_slice(&input);
 			assert_eq!(bv.len(), 1000);
 			for i in 0..1000 {
-				assert_eq!(
-					bv.get(i),
-					input[i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), input[i], "mismatch at bit {}", i);
 			}
 		}
 	}
@@ -673,28 +627,16 @@ mod tests {
 			let bv = BitVec::from([true; 16]);
 			assert_eq!(bv.len(), 16);
 			for i in 0..16 {
-				assert!(
-					bv.get(i),
-					"expected bit {} to be true",
-					i
-				);
+				assert!(bv.get(i), "expected bit {} to be true", i);
 			}
 		}
 
 		#[test]
 		fn test_from_array_cross_byte() {
-			let bv = BitVec::from([
-				true, false, true, false, true, false, true,
-				false, true,
-			]);
+			let bv = BitVec::from([true, false, true, false, true, false, true, false, true]);
 			assert_eq!(bv.len(), 9);
 			for i in 0..9 {
-				assert_eq!(
-					bv.get(i),
-					i % 2 == 0,
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), i % 2 == 0, "mismatch at bit {}", i);
 			}
 		}
 	}
@@ -719,17 +661,11 @@ mod tests {
 
 		#[test]
 		fn test_from_vec_large() {
-			let input: Vec<bool> =
-				(0..100).map(|i| i % 7 == 0).collect();
+			let input: Vec<bool> = (0..100).map(|i| i % 7 == 0).collect();
 			let bv = BitVec::from(input.clone());
 			assert_eq!(bv.len(), 100);
 			for i in 0..100 {
-				assert_eq!(
-					bv.get(i),
-					input[i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), input[i], "mismatch at bit {}", i);
 			}
 		}
 	}
@@ -813,19 +749,11 @@ mod tests {
 
 		#[test]
 		fn test_take_cross_byte_boundary() {
-			let bv = BitVec::from([
-				true, false, true, false, true, false, true,
-				false, true,
-			]);
+			let bv = BitVec::from([true, false, true, false, true, false, true, false, true]);
 			let taken = bv.take(6);
 			assert_eq!(taken.len(), 6);
 			for i in 0..6 {
-				assert_eq!(
-					taken.get(i),
-					i % 2 == 0,
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(taken.get(i), i % 2 == 0, "mismatch at bit {}", i);
 			}
 		}
 	}
@@ -875,24 +803,14 @@ mod tests {
 
 		#[test]
 		fn test_extend_cross_byte_boundary() {
-			let mut bv1 = BitVec::from([
-				true, false, true, false, true, false,
-			]);
+			let mut bv1 = BitVec::from([true, false, true, false, true, false]);
 			let bv2 = BitVec::from([false, true, false]);
 			bv1.extend(&bv2);
 			assert_eq!(bv1.len(), 9);
 
-			let expected = [
-				true, false, true, false, true, false, false,
-				true, false,
-			];
+			let expected = [true, false, true, false, true, false, false, true, false];
 			for i in 0..9 {
-				assert_eq!(
-					bv1.get(i),
-					expected[i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv1.get(i), expected[i], "mismatch at bit {}", i);
 			}
 		}
 
@@ -904,20 +822,10 @@ mod tests {
 			assert_eq!(bv1.len(), 100);
 
 			for i in 0..50 {
-				assert_eq!(
-					bv1.get(i),
-					i % 2 == 0,
-					"first half mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv1.get(i), i % 2 == 0, "first half mismatch at bit {}", i);
 			}
 			for i in 50..100 {
-				assert_eq!(
-					bv1.get(i),
-					(i - 50) % 3 == 0,
-					"second half mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv1.get(i), (i - 50) % 3 == 0, "second half mismatch at bit {}", i);
 			}
 		}
 	}
@@ -941,12 +849,7 @@ mod tests {
 			}
 			assert_eq!(bv.len(), 10);
 			for i in 0..10 {
-				assert_eq!(
-					bv.get(i),
-					i % 2 == 0,
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), i % 2 == 0, "mismatch at bit {}", i);
 			}
 		}
 
@@ -958,12 +861,7 @@ mod tests {
 			}
 			assert_eq!(bv.len(), 17);
 			for i in 0..17 {
-				assert_eq!(
-					bv.get(i),
-					i % 3 == 0,
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), i % 3 == 0, "mismatch at bit {}", i);
 			}
 		}
 
@@ -975,12 +873,7 @@ mod tests {
 			}
 			assert_eq!(bv.len(), 1000);
 			for i in 0..1000 {
-				assert_eq!(
-					bv.get(i),
-					i % 7 == 0,
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), i % 7 == 0, "mismatch at bit {}", i);
 			}
 		}
 	}
@@ -1023,24 +916,13 @@ mod tests {
 
 		#[test]
 		fn test_reorder_cross_byte_boundary() {
-			let mut bv = BitVec::from([
-				true, false, true, false, true, false, true,
-				false, true,
-			]);
+			let mut bv = BitVec::from([true, false, true, false, true, false, true, false, true]);
 			bv.reorder(&[8, 7, 6, 5, 4, 3, 2, 1, 0]);
 			assert_eq!(bv.len(), 9);
 
-			let expected = [
-				true, false, true, false, true, false, true,
-				false, true,
-			]; // reversed
+			let expected = [true, false, true, false, true, false, true, false, true]; // reversed
 			for i in 0..9 {
-				assert_eq!(
-					bv.get(i),
-					expected[8 - i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), expected[8 - i], "mismatch at bit {}", i);
 			}
 		}
 
@@ -1156,18 +1038,14 @@ mod tests {
 
 		#[test]
 		fn test_to_vec_cross_byte_boundary() {
-			let input = [
-				true, false, true, false, true, false, true,
-				false, true,
-			];
+			let input = [true, false, true, false, true, false, true, false, true];
 			let bv = BitVec::from(input);
 			assert_eq!(bv.to_vec(), input.to_vec());
 		}
 
 		#[test]
 		fn test_to_vec_large() {
-			let input: Vec<bool> =
-				(0..100).map(|i| i % 3 == 0).collect();
+			let input: Vec<bool> = (0..100).map(|i| i % 3 == 0).collect();
 			let bv = BitVec::from(input.clone());
 			assert_eq!(bv.to_vec(), input);
 		}
@@ -1202,10 +1080,7 @@ mod tests {
 
 		#[test]
 		fn test_display_cross_byte_boundary() {
-			let bv = BitVec::from([
-				true, false, true, false, true, false, true,
-				false, true,
-			]);
+			let bv = BitVec::from([true, false, true, false, true, false, true, false, true]);
 			assert_eq!(format!("{}", bv), "101010101");
 		}
 	}
@@ -1228,11 +1103,7 @@ mod tests {
 			let result = a.and(&b);
 			assert_eq!(result.len(), 5);
 			for i in 0..5 {
-				assert!(
-					result.get(i),
-					"expected bit {} to be true",
-					i
-				);
+				assert!(result.get(i), "expected bit {} to be true", i);
 			}
 		}
 
@@ -1243,11 +1114,7 @@ mod tests {
 			let result = a.and(&b);
 			assert_eq!(result.len(), 5);
 			for i in 0..5 {
-				assert!(
-					!result.get(i),
-					"expected bit {} to be false",
-					i
-				);
+				assert!(!result.get(i), "expected bit {} to be false", i);
 			}
 		}
 
@@ -1271,12 +1138,7 @@ mod tests {
 			assert_eq!(result.len(), 17);
 			for i in 0..17 {
 				let expected = (i % 2 == 0) && (i % 3 == 0);
-				assert_eq!(
-					result.get(i),
-					expected,
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(result.get(i), expected, "mismatch at bit {}", i);
 			}
 		}
 
@@ -1310,67 +1172,41 @@ mod tests {
 
 		#[test]
 		fn test_exactly_one_byte() {
-			let input = [
-				true, false, true, false, true, false, true,
-				false,
-			];
+			let input = [true, false, true, false, true, false, true, false];
 			let bv = BitVec::from(input);
 			assert_eq!(bv.len(), 8);
 			for i in 0..8 {
-				assert_eq!(
-					bv.get(i),
-					input[i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), input[i], "mismatch at bit {}", i);
 			}
 		}
 
 		#[test]
 		fn test_exactly_multiple_bytes() {
-			let input: Vec<bool> =
-				(0..16).map(|i| i % 2 == 0).collect();
+			let input: Vec<bool> = (0..16).map(|i| i % 2 == 0).collect();
 			let bv = BitVec::from(input.clone());
 			assert_eq!(bv.len(), 16);
 			for i in 0..16 {
-				assert_eq!(
-					bv.get(i),
-					input[i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), input[i], "mismatch at bit {}", i);
 			}
 		}
 
 		#[test]
 		fn test_one_bit_past_byte_boundary() {
-			let input: Vec<bool> =
-				(0..9).map(|i| i % 2 == 0).collect();
+			let input: Vec<bool> = (0..9).map(|i| i % 2 == 0).collect();
 			let bv = BitVec::from(input.clone());
 			assert_eq!(bv.len(), 9);
 			for i in 0..9 {
-				assert_eq!(
-					bv.get(i),
-					input[i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), input[i], "mismatch at bit {}", i);
 			}
 		}
 
 		#[test]
 		fn test_seven_bits_in_byte() {
-			let input =
-				[true, false, true, false, true, false, true];
+			let input = [true, false, true, false, true, false, true];
 			let bv = BitVec::from(input);
 			assert_eq!(bv.len(), 7);
 			for i in 0..7 {
-				assert_eq!(
-					bv.get(i),
-					input[i],
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), input[i], "mismatch at bit {}", i);
 			}
 		}
 	}
@@ -1504,17 +1340,11 @@ mod tests {
 
 			// Verify all values
 			for i in 0..size {
-				assert_eq!(
-					bv.get(i),
-					i % 17 == 0,
-					"mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv.get(i), i % 17 == 0, "mismatch at bit {}", i);
 			}
 
 			// Test count_ones on large bitvec
-			let expected_ones =
-				(0..size).filter(|&i| i % 17 == 0).count();
+			let expected_ones = (0..size).filter(|&i| i % 17 == 0).count();
 			assert_eq!(bv.count_ones(), expected_ones);
 		}
 
@@ -1529,54 +1359,28 @@ mod tests {
 
 			// Verify first half
 			for i in 0..size {
-				assert_eq!(
-					bv1.get(i),
-					i % 13 == 0,
-					"first half mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv1.get(i), i % 13 == 0, "first half mismatch at bit {}", i);
 			}
 
 			// Verify second half
 			for i in size..(size * 2) {
-				assert_eq!(
-					bv1.get(i),
-					(i - size) % 19 == 0,
-					"second half mismatch at bit {}",
-					i
-				);
+				assert_eq!(bv1.get(i), (i - size) % 19 == 0, "second half mismatch at bit {}", i);
 			}
 		}
 
 		#[test]
 		fn test_many_byte_boundaries() {
 			// Test various sizes around byte boundaries
-			for size in [
-				7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65,
-				127, 128, 129,
-			] {
+			for size in [7, 8, 9, 15, 16, 17, 31, 32, 33, 63, 64, 65, 127, 128, 129] {
 				let bv = BitVec::from_fn(size, |i| i % 3 == 0);
 				assert_eq!(bv.len(), size);
 
 				for i in 0..size {
-					assert_eq!(
-						bv.get(i),
-						i % 3 == 0,
-						"size {} mismatch at bit {}",
-						size,
-						i
-					);
+					assert_eq!(bv.get(i), i % 3 == 0, "size {} mismatch at bit {}", size, i);
 				}
 
-				let expected_ones = (0..size)
-					.filter(|&i| i % 3 == 0)
-					.count();
-				assert_eq!(
-					bv.count_ones(),
-					expected_ones,
-					"count_ones mismatch for size {}",
-					size
-				);
+				let expected_ones = (0..size).filter(|&i| i % 3 == 0).count();
+				assert_eq!(bv.count_ones(), expected_ones, "count_ones mismatch for size {}", size);
 			}
 		}
 
@@ -1592,14 +1396,8 @@ mod tests {
 
 			assert_eq!(abc.len(), size);
 			for i in 0..size {
-				let expected = (i % 2 == 0)
-					&& (i % 3 == 0) && (i % 5 == 0);
-				assert_eq!(
-					abc.get(i),
-					expected,
-					"mismatch at bit {}",
-					i
-				);
+				let expected = (i % 2 == 0) && (i % 3 == 0) && (i % 5 == 0);
+				assert_eq!(abc.get(i), expected, "mismatch at bit {}", i);
 			}
 		}
 
@@ -1642,20 +1440,14 @@ mod tests {
 				vec![false, true],
 				(0..50).map(|i| i % 2 == 0).collect::<Vec<_>>(),
 				(0..50).map(|i| i % 3 == 0).collect::<Vec<_>>(),
-				(0..100).map(|i| i % 7 == 0)
-					.collect::<Vec<_>>(),
+				(0..100).map(|i| i % 7 == 0).collect::<Vec<_>>(),
 			];
 
 			for pattern in patterns {
 				// Test Vec<bool> -> BitVec -> Vec<bool>
 				let bv = BitVec::from(pattern.clone());
 				let result = bv.to_vec();
-				assert_eq!(
-					pattern,
-					result,
-					"roundtrip failed for pattern length {}",
-					pattern.len()
-				);
+				assert_eq!(pattern, result, "roundtrip failed for pattern length {}", pattern.len());
 
 				// Test slice -> BitVec -> Vec<bool>
 				let bv2 = BitVec::from_slice(&pattern);
@@ -1672,9 +1464,7 @@ mod tests {
 					// patterns
 					let bv3 = BitVec::from_slice(&pattern);
 					assert_eq!(bv3.len(), pattern.len());
-					for (i, &expected) in
-						pattern.iter().enumerate()
-					{
+					for (i, &expected) in pattern.iter().enumerate() {
 						assert_eq!(
 							bv3.get(i),
 							expected,
@@ -1688,13 +1478,8 @@ mod tests {
 
 		#[test]
 		fn test_invariants() {
-			let patterns = [
-				vec![],
-				vec![true],
-				vec![false],
-				(0..100).map(|i| i % 5 == 0)
-					.collect::<Vec<_>>(),
-			];
+			let patterns =
+				[vec![], vec![true], vec![false], (0..100).map(|i| i % 5 == 0).collect::<Vec<_>>()];
 
 			for pattern in patterns {
 				let bv = BitVec::from(pattern.clone());
@@ -1704,12 +1489,8 @@ mod tests {
 
 				// count_ones + count_zeros = len
 				let count_ones = bv.count_ones();
-				let count_zeros =
-					pattern.iter().filter(|&&b| !b).count();
-				assert_eq!(
-					count_ones + count_zeros,
-					pattern.len()
-				);
+				let count_zeros = pattern.iter().filter(|&&b| !b).count();
+				assert_eq!(count_ones + count_zeros, pattern.len());
 
 				// any() and none() consistency
 				if count_ones > 0 {
@@ -1721,14 +1502,8 @@ mod tests {
 				}
 
 				// get() consistency
-				for (i, &expected) in pattern.iter().enumerate()
-				{
-					assert_eq!(
-						bv.get(i),
-						expected,
-						"get() inconsistency at bit {}",
-						i
-					);
+				for (i, &expected) in pattern.iter().enumerate() {
+					assert_eq!(bv.get(i), expected, "get() inconsistency at bit {}", i);
 				}
 			}
 		}

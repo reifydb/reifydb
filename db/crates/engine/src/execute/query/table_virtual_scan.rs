@@ -3,9 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	interface::Transaction, value::columnar::layout::ColumnsLayout,
-};
+use reifydb_core::{interface::Transaction, value::columnar::layout::ColumnsLayout};
 
 use crate::{
 	StandardTransaction,
@@ -32,11 +30,10 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 			columns: def
 				.columns
 				.iter()
-				.map(|col| {
-					reifydb_core::value::columnar::layout::ColumnLayout {
-						namespace: None,
-						source: None,
-						name: col.name.clone()}
+				.map(|col| reifydb_core::value::columnar::layout::ColumnLayout {
+					namespace: None,
+					source: None,
+					name: col.name.clone(),
 				})
 				.collect(),
 		};
@@ -51,33 +48,16 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for VirtualScanNode<'a, T> {
-	fn initialize(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-		_ctx: &ExecutionContext,
-	) -> crate::Result<()> {
-		let ctx = self.table_context.take().unwrap_or_else(|| {
-			TableVirtualContext::Basic {
-				params: self
-					.context
-					.as_ref()
-					.unwrap()
-					.params
-					.clone(),
-			}
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, _ctx: &ExecutionContext) -> crate::Result<()> {
+		let ctx = self.table_context.take().unwrap_or_else(|| TableVirtualContext::Basic {
+			params: self.context.as_ref().unwrap().params.clone(),
 		});
 		self.virtual_table.initialize(rx, ctx)?;
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.context.is_some(),
-			"VirtualScanNode::next() called before initialize()"
-		);
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
 		self.virtual_table.next(rx)
 	}
 

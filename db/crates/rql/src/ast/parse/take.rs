@@ -16,8 +16,7 @@ impl<'a> Parser<'a> {
 		match take {
 			Ast::Literal(literal) => match literal {
 				AstLiteral::Number(number) => {
-					let take_value: i64 =
-						number.value().parse().unwrap();
+					let take_value: i64 = number.value().parse().unwrap();
 					if take_value < 0 {
 						return_error!(operation::take_negative_value(number.0.fragment));
 					}

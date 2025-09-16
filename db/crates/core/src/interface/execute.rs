@@ -4,8 +4,7 @@
 use crate::{
 	Frame,
 	interface::{
-		CommandTransaction, Identity, Params, QueryTransaction,
-		WithEventBus, interceptor::WithInterceptors,
+		CommandTransaction, Identity, Params, QueryTransaction, WithEventBus, interceptor::WithInterceptors,
 	},
 };
 
@@ -23,28 +22,15 @@ pub struct Query<'a> {
 	pub identity: &'a Identity,
 }
 
-pub trait Execute<
-	CT: CommandTransaction + WithInterceptors<CT> + WithEventBus,
-	QT: QueryTransaction,
->: ExecuteCommand<CT> + ExecuteQuery<QT>
+pub trait Execute<CT: CommandTransaction + WithInterceptors<CT> + WithEventBus, QT: QueryTransaction>:
+	ExecuteCommand<CT> + ExecuteQuery<QT>
 {
 }
 
-pub trait ExecuteCommand<
-	CT: CommandTransaction + WithInterceptors<CT> + WithEventBus,
->
-{
-	fn execute_command(
-		&self,
-		txn: &mut CT,
-		cmd: Command<'_>,
-	) -> crate::Result<Vec<Frame>>;
+pub trait ExecuteCommand<CT: CommandTransaction + WithInterceptors<CT> + WithEventBus> {
+	fn execute_command(&self, txn: &mut CT, cmd: Command<'_>) -> crate::Result<Vec<Frame>>;
 }
 
 pub trait ExecuteQuery<QT: QueryTransaction> {
-	fn execute_query(
-		&self,
-		txn: &mut QT,
-		qry: Query<'_>,
-	) -> crate::Result<Vec<Frame>>;
+	fn execute_query(&self, txn: &mut QT, qry: Query<'_>) -> crate::Result<Vec<Frame>>;
 }

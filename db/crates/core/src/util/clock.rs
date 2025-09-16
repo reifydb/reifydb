@@ -25,10 +25,7 @@ pub fn now_nanos() -> u128 {
 		}
 	}
 
-	SystemTime::now()
-		.duration_since(UNIX_EPOCH)
-		.expect("System time is before Unix epoch")
-		.as_nanos()
+	SystemTime::now().duration_since(UNIX_EPOCH).expect("System time is before Unix epoch").as_nanos()
 }
 
 /// Get current time in microseconds since Unix epoch
@@ -51,8 +48,7 @@ pub fn now() -> DateTime {
 	let secs = (nanos / 1_000_000_000) as i64;
 	let nanos_remainder = (nanos % 1_000_000_000) as u32;
 
-	DateTime::from_parts(secs, nanos_remainder)
-		.unwrap_or_else(|_| DateTime::now())
+	DateTime::from_parts(secs, nanos_remainder).unwrap_or_else(|_| DateTime::now())
 }
 
 // ============================================================================
@@ -280,10 +276,7 @@ impl MockTimeControl {
 
 /// Run a function with mock time that can be controlled
 #[cfg(debug_assertions)]
-pub fn mock_time_with_control<T>(
-	initial_millis: u64,
-	f: impl FnOnce(&MockTimeControl) -> T,
-) -> T {
+pub fn mock_time_with_control<T>(initial_millis: u64, f: impl FnOnce(&MockTimeControl) -> T) -> T {
 	let _guard = mock_time_scoped_millis(initial_millis);
 	let control = MockTimeControl;
 	f(&control)

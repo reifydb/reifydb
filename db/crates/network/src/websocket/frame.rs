@@ -33,9 +33,7 @@ impl From<u8> for WebSocketOpcode {
 	}
 }
 
-pub fn parse_ws_frame(
-	data: &[u8],
-) -> Result<Option<(u8, Vec<u8>)>, Box<dyn std::error::Error>> {
+pub fn parse_ws_frame(data: &[u8]) -> Result<Option<(u8, Vec<u8>)>, Box<dyn std::error::Error>> {
 	if data.len() < 2 {
 		return Ok(None);
 	}
@@ -55,8 +53,7 @@ pub fn parse_ws_frame(
 		if data.len() < pos + 2 {
 			return Ok(None);
 		}
-		payload_len =
-			u16::from_be_bytes([data[pos], data[pos + 1]]) as usize;
+		payload_len = u16::from_be_bytes([data[pos], data[pos + 1]]) as usize;
 		pos += 2;
 	} else if payload_len == 127 {
 		if data.len() < pos + 8 {
@@ -80,12 +77,7 @@ pub fn parse_ws_frame(
 		if data.len() < pos + 4 {
 			return Ok(None);
 		}
-		let key = [
-			data[pos],
-			data[pos + 1],
-			data[pos + 2],
-			data[pos + 3],
-		];
+		let key = [data[pos], data[pos + 1], data[pos + 2], data[pos + 3]];
 		pos += 4;
 		Some(key)
 	} else {

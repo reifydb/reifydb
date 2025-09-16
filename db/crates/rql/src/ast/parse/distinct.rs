@@ -1,10 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{
-	diagnostic::operation::distinct_multiple_columns_without_braces,
-	return_error,
-};
+use reifydb_type::{diagnostic::operation::distinct_multiple_columns_without_braces, return_error};
 
 use crate::ast::{
 	AstDistinct, TokenKind,
@@ -14,20 +11,14 @@ use crate::ast::{
 };
 
 impl<'a> Parser<'a> {
-	pub(crate) fn parse_distinct(
-		&mut self,
-	) -> crate::Result<AstDistinct<'a>> {
+	pub(crate) fn parse_distinct(&mut self) -> crate::Result<AstDistinct<'a>> {
 		let token = self.consume_keyword(Keyword::Distinct)?;
 
 		let (columns, has_braces) = self.parse_identifiers()?;
 
 		// Validate multiple columns require braces
 		if columns.len() > 1 && !has_braces {
-			return_error!(
-				distinct_multiple_columns_without_braces(
-					token.fragment
-				)
-			);
+			return_error!(distinct_multiple_columns_without_braces(token.fragment));
 		}
 
 		Ok(AstDistinct {
@@ -38,15 +29,12 @@ impl<'a> Parser<'a> {
 
 	/// Parse a comma-separated list of column identifiers with optional
 	/// braces Returns (identifiers, had_braces) tuple
-	fn parse_identifiers(
-		&mut self,
-	) -> crate::Result<(Vec<MaybeQualifiedColumnIdentifier<'a>>, bool)> {
+	fn parse_identifiers(&mut self) -> crate::Result<(Vec<MaybeQualifiedColumnIdentifier<'a>>, bool)> {
 		if self.is_eof() {
 			return Ok((vec![], false));
 		}
 
-		let has_braces =
-			self.current()?.is_operator(Operator::OpenCurly);
+		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
 		if has_braces {
 			self.advance()?; // consume opening brace
 		}
@@ -55,11 +43,7 @@ impl<'a> Parser<'a> {
 
 		// Check if empty list or next statement keyword
 		if self.should_stop_identifier_parsing(has_braces)? {
-			if has_braces
-				&& !self.is_eof() && self
-				.current()?
-				.is_operator(Operator::CloseCurly)
-			{
+			if has_braces && !self.is_eof() && self.current()?.is_operator(Operator::CloseCurly) {
 				self.advance()?; // consume closing brace
 			}
 			return Ok((identifiers, has_braces));
@@ -67,19 +51,14 @@ impl<'a> Parser<'a> {
 
 		// Parse column identifiers
 		loop {
-			identifiers.push(
-				self.parse_column_identifier_or_keyword()?
-			);
+			identifiers.push(self.parse_column_identifier_or_keyword()?);
 
 			if self.is_eof() {
 				break;
 			}
 
 			// Check for closing brace if we have braces
-			if has_braces
-				&& self.current()?
-					.is_operator(Operator::CloseCurly)
-			{
+			if has_braces && self.current()?.is_operator(Operator::CloseCurly) {
 				self.advance()?; // consume closing brace
 				break;
 			}
@@ -96,10 +75,7 @@ impl<'a> Parser<'a> {
 	}
 
 	/// Check if we should stop parsing identifiers based on next token
-	fn should_stop_identifier_parsing(
-		&mut self,
-		has_braces: bool,
-	) -> crate::Result<bool> {
+	fn should_stop_identifier_parsing(&mut self, has_braces: bool) -> crate::Result<bool> {
 		if self.is_eof() {
 			return Ok(true);
 		}
@@ -127,9 +103,7 @@ mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::Ast::Distinct(distinct) =
-			result.first_unchecked()
-		{
+		if let crate::ast::Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 0);
 		} else {
 			panic!("Expected Distinct node");
@@ -143,9 +117,7 @@ mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::Ast::Distinct(distinct) =
-			result.first_unchecked()
-		{
+		if let crate::ast::Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 1);
 			assert_eq!(distinct.columns[0].name.text(), "name");
 		} else {
@@ -160,9 +132,7 @@ mod tests {
 		let mut result = parser.parse().unwrap();
 
 		let result = result.pop().unwrap();
-		if let crate::ast::Ast::Distinct(distinct) =
-			result.first_unchecked()
-		{
+		if let crate::ast::Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 2);
 			assert_eq!(distinct.columns[0].name.text(), "name");
 			assert_eq!(distinct.columns[1].name.text(), "age");
@@ -177,9 +147,6 @@ mod tests {
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse();
 
-		assert!(
-			result.is_err(),
-			"Expected error for multiple columns without braces"
-		);
+		assert!(result.is_err(), "Expected error for multiple columns without braces");
 	}
 }

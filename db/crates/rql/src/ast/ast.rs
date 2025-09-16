@@ -3,19 +3,13 @@
 
 use std::ops::Index;
 
-use reifydb_core::{
-	IndexType, JoinType, SortDirection,
-	interface::identifier::UnresolvedSourceIdentifier,
-};
+use reifydb_core::{IndexType, JoinType, SortDirection, interface::identifier::UnresolvedSourceIdentifier};
 use reifydb_type::Fragment;
 
 use crate::ast::{
 	identifier::{
-		MaybeQualifiedColumnIdentifier,
-		MaybeQualifiedFunctionIdentifier,
-		MaybeQualifiedIndexIdentifier,
-		MaybeQualifiedNamespaceIdentifier,
-		MaybeQualifiedSequenceIdentifier, UnqualifiedIdentifier,
+		MaybeQualifiedColumnIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier,
+		MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier, UnqualifiedIdentifier,
 	},
 	tokenize::{Literal, ParameterKind, Token, TokenKind},
 };
@@ -649,9 +643,7 @@ pub enum AstAlterViewOperation<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateDeferredView<'a> {
 	pub token: Token<'a>,
-	pub view: crate::ast::identifier::MaybeQualifiedDeferredViewIdentifier<
-		'a,
-	>,
+	pub view: crate::ast::identifier::MaybeQualifiedDeferredViewIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
 }
@@ -687,8 +679,7 @@ pub struct AstCreateTable<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateRingBuffer<'a> {
 	pub token: Token<'a>,
-	pub ring_buffer:
-		crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'a>,
+	pub ring_buffer: crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub capacity: u64,
 }
@@ -741,12 +732,10 @@ impl<'a> AstCreate<'a> {
 				token,
 				..
 			}) => token,
-			AstCreate::TransactionalView(
-				AstCreateTransactionalView {
-					token,
-					..
-				},
-			) => token,
+			AstCreate::TransactionalView(AstCreateTransactionalView {
+				token,
+				..
+			}) => token,
 			AstCreate::Namespace(AstCreateNamespace {
 				token,
 				..
@@ -869,19 +858,11 @@ pub enum AstLiteral<'a> {
 impl<'a> AstLiteral<'a> {
 	pub fn fragment(self) -> Fragment<'a> {
 		match self {
-			AstLiteral::Boolean(literal) => {
-				literal.0.fragment.clone()
-			}
-			AstLiteral::Number(literal) => {
-				literal.0.fragment.clone()
-			}
+			AstLiteral::Boolean(literal) => literal.0.fragment.clone(),
+			AstLiteral::Number(literal) => literal.0.fragment.clone(),
 			AstLiteral::Text(literal) => literal.0.fragment.clone(),
-			AstLiteral::Temporal(literal) => {
-				literal.0.fragment.clone()
-			}
-			AstLiteral::Undefined(literal) => {
-				literal.0.fragment.clone()
-			}
+			AstLiteral::Temporal(literal) => literal.0.fragment.clone(),
+			AstLiteral::Undefined(literal) => literal.0.fragment.clone(),
 		}
 	}
 }
@@ -922,9 +903,7 @@ pub struct AstInfix<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstDelete<'a> {
 	pub token: Token<'a>,
-	pub target: Option<
-		crate::ast::identifier::MaybeQualifiedTableIdentifier<'a>,
-	>,
+	pub target: Option<crate::ast::identifier::MaybeQualifiedTableIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -936,9 +915,7 @@ pub struct AstInsert<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstUpdate<'a> {
 	pub token: Token<'a>,
-	pub target: Option<
-		crate::ast::identifier::MaybeQualifiedTableIdentifier<'a>,
-	>,
+	pub target: Option<crate::ast::identifier::MaybeQualifiedTableIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

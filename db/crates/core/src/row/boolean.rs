@@ -8,22 +8,13 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_bool(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<bool>,
-	) {
+	pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Boolean);
 		row.set_valid(index, true);
 		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut bool,
-				value.into(),
-			)
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut bool, value.into())
 		}
 	}
 
@@ -31,17 +22,10 @@ impl EncodedRowLayout {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Boolean);
-		unsafe {
-			(row.as_ptr().add(field.offset) as *const bool)
-				.read_unaligned()
-		}
+		unsafe { (row.as_ptr().add(field.offset) as *const bool).read_unaligned() }
 	}
 
-	pub fn try_get_bool(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<bool> {
+	pub fn try_get_bool(&self, row: &EncodedRow, index: usize) -> Option<bool> {
 		if row.is_defined(index) {
 			Some(self.get_bool(row, index))
 		} else {
@@ -86,11 +70,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Boolean,
-			Type::Int4,
-			Type::Boolean,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Boolean, Type::Int4, Type::Boolean]);
 		let mut row = layout.allocate_row();
 
 		layout.set_bool(&mut row, 0, true);
@@ -104,8 +84,7 @@ mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout =
-			EncodedRowLayout::new(&[Type::Boolean, Type::Boolean]);
+		let layout = EncodedRowLayout::new(&[Type::Boolean, Type::Boolean]);
 		let mut row = layout.allocate_row();
 
 		layout.set_bool(&mut row, 0, true);

@@ -35,10 +35,7 @@ impl TakeOperator {
 		}
 	}
 
-	fn load_state<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-	) -> Result<TakeState> {
+	fn load_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> Result<TakeState> {
 		let empty_key = EncodedKey::new(Vec::new());
 		let state_row = self.get(txn, &empty_key)?;
 
@@ -48,30 +45,19 @@ impl TakeOperator {
 				row_ids: Vec::new(),
 			})
 		} else {
-			serde_json::from_slice(state_row.as_ref()).map_err(
-				|e| {
-					reifydb_type::Error(
-						reifydb_type::internal_error!(
-							"Failed to deserialize TakeState: {}",
-							e
-						),
-					)
-				},
-			)
+			serde_json::from_slice(state_row.as_ref()).map_err(|e| {
+				reifydb_type::Error(reifydb_type::internal_error!(
+					"Failed to deserialize TakeState: {}",
+					e
+				))
+			})
 		}
 	}
 
-	fn save_state<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		state: &TakeState,
-	) -> Result<()> {
+	fn save_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>, state: &TakeState) -> Result<()> {
 		let empty_key = EncodedKey::new(Vec::new());
 		let serialized = serde_json::to_vec(state).map_err(|e| {
-			reifydb_type::Error(reifydb_type::internal_error!(
-				"Failed to serialize TakeState: {}",
-				e
-			))
+			reifydb_type::Error(reifydb_type::internal_error!("Failed to serialize TakeState: {}", e))
 		})?;
 
 		self.set(txn, &empty_key, EncodedRow(CowVec::new(serialized)))?;
@@ -99,8 +85,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 				} => {
 					// For DESC order (default), we need to
 					// keep the highest row IDs
-					let mut all_rows: Vec<_> =
-						state.row_ids.clone();
+					let mut all_rows: Vec<_> = state.row_ids.clone();
 					all_rows.extend_from_slice(row_ids);
 
 					// Sort in descending order (highest IDs
@@ -108,31 +93,21 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					all_rows.sort_by(|a, b| b.0.cmp(&a.0));
 
 					// Take only the limit
-					let new_top_rows: Vec<_> = all_rows
-						.into_iter()
-						.take(self.limit)
-						.collect();
+					let new_top_rows: Vec<_> = all_rows.into_iter().take(self.limit).collect();
 
 					// Find what changed
 					let mut rows_to_add = Vec::new();
 					let mut rows_to_remove = Vec::new();
 
 					for &row_id in &new_top_rows {
-						if !state
-							.row_ids
-							.contains(&row_id)
-						{
-							rows_to_add
-								.push(row_id);
+						if !state.row_ids.contains(&row_id) {
+							rows_to_add.push(row_id);
 						}
 					}
 
 					for &row_id in &state.row_ids {
-						if !new_top_rows
-							.contains(&row_id)
-						{
-							rows_to_remove
-								.push(row_id);
+						if !new_top_rows.contains(&row_id) {
+							rows_to_remove.push(row_id);
 						}
 					}
 
@@ -140,18 +115,17 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					if !rows_to_remove.is_empty() {
 						// These rows are no longer in
 						// top N
-						output_diffs
-							.push(FlowDiff::Remove {
+						output_diffs.push(FlowDiff::Remove {
 							source: *source,
 							row_ids: rows_to_remove,
-							before: after.clone(), /* Simplified - should track actual data */
+							before: after.clone(), /* Simplified - should track actual
+							                        * data */
 						});
 					}
 
 					if !rows_to_add.is_empty() {
 						// These are new top N rows
-						output_diffs
-							.push(FlowDiff::Insert {
+						output_diffs.push(FlowDiff::Insert {
 							source: *source,
 							row_ids: rows_to_add,
 							after: after.clone(),
@@ -160,8 +134,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 
 					// Update state
 					state.row_ids = new_top_rows;
-					state.current_count =
-						state.row_ids.len();
+					state.current_count = state.row_ids.len();
 				}
 				FlowDiff::Remove {
 					source,
@@ -172,8 +145,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					let mut new_state_rows = Vec::new();
 					for &row_id in &state.row_ids {
 						if !row_ids.contains(&row_id) {
-							new_state_rows
-								.push(row_id);
+							new_state_rows.push(row_id);
 						}
 					}
 
@@ -181,17 +153,13 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					// our top N
 					let mut rows_to_remove = Vec::new();
 					for &row_id in row_ids {
-						if state.row_ids
-							.contains(&row_id)
-						{
-							rows_to_remove
-								.push(row_id);
+						if state.row_ids.contains(&row_id) {
+							rows_to_remove.push(row_id);
 						}
 					}
 
 					if !rows_to_remove.is_empty() {
-						output_diffs
-							.push(FlowDiff::Remove {
+						output_diffs.push(FlowDiff::Remove {
 							source: *source,
 							row_ids: rows_to_remove,
 							before: before.clone(),
@@ -200,8 +168,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 
 					// Update state
 					state.row_ids = new_state_rows;
-					state.current_count =
-						state.row_ids.len();
+					state.current_count = state.row_ids.len();
 
 					// Note: In a full implementation, we'd
 					// need to check if there are
@@ -218,17 +185,13 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					// our top N
 					let mut rows_to_update = Vec::new();
 					for &row_id in row_ids {
-						if state.row_ids
-							.contains(&row_id)
-						{
-							rows_to_update
-								.push(row_id);
+						if state.row_ids.contains(&row_id) {
+							rows_to_update.push(row_id);
 						}
 					}
 
 					if !rows_to_update.is_empty() {
-						output_diffs
-							.push(FlowDiff::Update {
+						output_diffs.push(FlowDiff::Update {
 							source: *source,
 							row_ids: rows_to_update,
 							before: before.clone(),

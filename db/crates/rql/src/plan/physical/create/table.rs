@@ -3,9 +3,7 @@
 
 use PhysicalPlan::CreateTable;
 use reifydb_catalog::CatalogStore;
-use reifydb_core::{
-	diagnostic::catalog::namespace_not_found, interface::QueryTransaction,
-};
+use reifydb_core::{diagnostic::catalog::namespace_not_found, interface::QueryTransaction};
 use reifydb_type::return_error;
 
 use crate::plan::{
@@ -18,11 +16,7 @@ impl Compiler {
 		rx: &mut impl QueryTransaction,
 		create: CreateTableNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
-		let Some(namespace) = CatalogStore::find_namespace_by_name(
-			rx,
-			create.table.namespace.text(),
-		)?
-		else {
+		let Some(namespace) = CatalogStore::find_namespace_by_name(rx, create.table.namespace.text())? else {
 			return_error!(namespace_not_found(
 				create.table.namespace.clone(),
 				create.table.namespace.text()

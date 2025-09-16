@@ -74,11 +74,7 @@ impl OwnedFragment {
 
 	/// Get a sub-fragment starting at the given offset with the given
 	/// length
-	pub fn sub_fragment(
-		&self,
-		offset: usize,
-		length: usize,
-	) -> OwnedFragment {
+	pub fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
 		let text = self.text();
 		let end = std::cmp::min(offset + length, text.len());
 		let sub_text = if offset < text.len() {
@@ -96,9 +92,7 @@ impl OwnedFragment {
 			} => OwnedFragment::Statement {
 				text: sub_text.to_string(),
 				line: *line,
-				column: StatementColumn(
-					column.0 + offset as u32,
-				),
+				column: StatementColumn(column.0 + offset as u32),
 			},
 			OwnedFragment::Internal {
 				..
@@ -135,20 +129,15 @@ impl OwnedFragment {
 
 	/// Merge multiple fragments (in any order) into one encompassing
 	/// fragment
-	pub fn merge_all(
-		fragments: impl IntoIterator<Item = OwnedFragment>,
-	) -> OwnedFragment {
-		let mut fragments: Vec<OwnedFragment> =
-			fragments.into_iter().collect();
+	pub fn merge_all(fragments: impl IntoIterator<Item = OwnedFragment>) -> OwnedFragment {
+		let mut fragments: Vec<OwnedFragment> = fragments.into_iter().collect();
 		assert!(!fragments.is_empty());
 
 		fragments.sort();
 
 		let first = fragments.first().unwrap();
 
-		let mut text = String::with_capacity(
-			fragments.iter().map(|f| f.text().len()).sum(),
-		);
+		let mut text = String::with_capacity(fragments.iter().map(|f| f.text().len()).sum());
 		for fragment in &fragments {
 			text.push_str(fragment.text());
 		}
@@ -204,9 +193,7 @@ impl PartialOrd for OwnedFragment {
 
 impl Ord for OwnedFragment {
 	fn cmp(&self, other: &Self) -> Ordering {
-		self.column()
-			.cmp(&other.column())
-			.then(self.line().cmp(&other.line()))
+		self.column().cmp(&other.column()).then(self.line().cmp(&other.line()))
 	}
 }
 

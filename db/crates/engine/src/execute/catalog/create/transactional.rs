@@ -2,9 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogStore, view::ViewToCreate};
-use reifydb_core::{
-	interface::Transaction, return_error, value::columnar::Columns,
-};
+use reifydb_core::{interface::Transaction, return_error, value::columnar::Columns};
 use reifydb_rql::plan::physical::CreateTransactionalViewPlan;
 use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
 
@@ -16,30 +14,11 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateTransactionalViewPlan,
 	) -> crate::Result<Columns> {
-		if let Some(view) = CatalogStore::find_view_by_name(
-			txn,
-			plan.namespace.id,
-			plan.view.name.text(),
-		)? {
+		if let Some(view) = CatalogStore::find_view_by_name(txn, plan.namespace.id, plan.view.name.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
-					(
-						"namespace",
-						Value::Utf8(
-							plan.namespace
-								.name
-								.to_string(),
-						),
-					),
-					(
-						"view",
-						Value::Utf8(
-							plan.view
-								.name
-								.text()
-								.to_string(),
-						),
-					),
+					("namespace", Value::Utf8(plan.namespace.name.to_string())),
+					("view", Value::Utf8(plan.view.name.text().to_string())),
 					("created", Value::Boolean(false)),
 				]));
 			}
@@ -54,11 +33,7 @@ impl Executor {
 		let result = CatalogStore::create_transactional_view(
 			txn,
 			ViewToCreate {
-				fragment: Some(plan
-					.view
-					.name
-					.clone()
-					.into_owned()),
+				fragment: Some(plan.view.name.clone().into_owned()),
 				name: plan.view.name.text().to_string(),
 				namespace: plan.namespace.id,
 				columns: plan.columns,
@@ -68,14 +43,8 @@ impl Executor {
 		self.create_flow(txn, &result, plan.with)?;
 
 		Ok(Columns::single_row([
-			(
-				"namespace",
-				Value::Utf8(plan.namespace.name.to_string()),
-			),
-			(
-				"view",
-				Value::Utf8(plan.view.name.text().to_string()),
-			),
+			("namespace", Value::Utf8(plan.namespace.name.to_string())),
+			("view", Value::Utf8(plan.view.name.text().to_string())),
 			("created", Value::Boolean(true)),
 		]))
 	}

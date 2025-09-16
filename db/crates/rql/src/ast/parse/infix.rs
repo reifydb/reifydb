@@ -10,21 +10,14 @@ use crate::ast::{
 };
 
 impl<'a> Parser<'a> {
-	pub(crate) fn parse_infix(
-		&mut self,
-		left: Ast<'a>,
-	) -> crate::Result<AstInfix<'a>> {
+	pub(crate) fn parse_infix(&mut self, left: Ast<'a>) -> crate::Result<AstInfix<'a>> {
 		let precedence = self.current_precedence()?;
 		let operator = self.parse_infix_operator()?;
 
 		// Determine the right side based on operator type
 		let right = match &operator {
-			InfixOperator::Call(token) => Ast::Tuple(
-				self.parse_tuple_call(token.clone())?,
-			),
-			InfixOperator::As(_) => {
-				self.parse_node(Precedence::None)?
-			}
+			InfixOperator::Call(token) => Ast::Tuple(self.parse_tuple_call(token.clone())?),
+			InfixOperator::As(_) => self.parse_node(Precedence::None)?,
 			_ => self.parse_node(precedence)?,
 		};
 
@@ -36,74 +29,34 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	pub(crate) fn parse_infix_operator(
-		&mut self,
-	) -> crate::Result<InfixOperator<'a>> {
+	pub(crate) fn parse_infix_operator(&mut self) -> crate::Result<InfixOperator<'a>> {
 		let token = self.advance()?;
 		match &token.kind {
 			TokenKind::Operator(operator) => match operator {
-				Operator::OpenParen => {
-					Ok(InfixOperator::Call(token))
-				}
+				Operator::OpenParen => Ok(InfixOperator::Call(token)),
 				Operator::Plus => Ok(InfixOperator::Add(token)),
-				Operator::Minus => {
-					Ok(InfixOperator::Subtract(token))
-				}
-				Operator::Asterisk => {
-					Ok(InfixOperator::Multiply(token))
-				}
-				Operator::Slash => {
-					Ok(InfixOperator::Divide(token))
-				}
-				Operator::Percent => {
-					Ok(InfixOperator::Rem(token))
-				}
-				Operator::Equal => {
-					Ok(InfixOperator::Assign(token))
-				}
-				Operator::DoubleEqual => {
-					Ok(InfixOperator::Equal(token))
-				}
-				Operator::BangEqual => {
-					Ok(InfixOperator::NotEqual(token))
-				}
-				Operator::LeftAngle => {
-					Ok(InfixOperator::LessThan(token))
-				}
-				Operator::LeftAngleEqual => {
-					Ok(InfixOperator::LessThanEqual(token))
-				}
-				Operator::RightAngle => {
-					Ok(InfixOperator::GreaterThan(token))
-				}
-				Operator::RightAngleEqual => Ok(
-					InfixOperator::GreaterThanEqual(token),
-				),
-				Operator::Colon => {
-					Ok(InfixOperator::TypeAscription(token))
-				}
-				Operator::Arrow => {
-					Ok(InfixOperator::Arrow(token))
-				}
-				Operator::Dot => {
-					Ok(InfixOperator::AccessTable(token))
-				}
-				Operator::DoubleColon => Ok(
-					InfixOperator::AccessNamespace(token),
-				),
+				Operator::Minus => Ok(InfixOperator::Subtract(token)),
+				Operator::Asterisk => Ok(InfixOperator::Multiply(token)),
+				Operator::Slash => Ok(InfixOperator::Divide(token)),
+				Operator::Percent => Ok(InfixOperator::Rem(token)),
+				Operator::Equal => Ok(InfixOperator::Assign(token)),
+				Operator::DoubleEqual => Ok(InfixOperator::Equal(token)),
+				Operator::BangEqual => Ok(InfixOperator::NotEqual(token)),
+				Operator::LeftAngle => Ok(InfixOperator::LessThan(token)),
+				Operator::LeftAngleEqual => Ok(InfixOperator::LessThanEqual(token)),
+				Operator::RightAngle => Ok(InfixOperator::GreaterThan(token)),
+				Operator::RightAngleEqual => Ok(InfixOperator::GreaterThanEqual(token)),
+				Operator::Colon => Ok(InfixOperator::TypeAscription(token)),
+				Operator::Arrow => Ok(InfixOperator::Arrow(token)),
+				Operator::Dot => Ok(InfixOperator::AccessTable(token)),
+				Operator::DoubleColon => Ok(InfixOperator::AccessNamespace(token)),
 				Operator::As => Ok(InfixOperator::As(token)),
 				Operator::And => Ok(InfixOperator::And(token)),
 				Operator::Or => Ok(InfixOperator::Or(token)),
 				Operator::Xor => Ok(InfixOperator::Xor(token)),
-				_ => return_error!(
-					ast::unsupported_token_error(
-						token.fragment
-					)
-				),
+				_ => return_error!(ast::unsupported_token_error(token.fragment)),
 			},
-			_ => return_error!(ast::unsupported_token_error(
-				token.fragment
-			)),
+			_ => return_error!(ast::unsupported_token_error(token.fragment)),
 		}
 	}
 }
@@ -172,8 +125,7 @@ mod tests {
 
 	#[test]
 	fn test_cast_infix() {
-		let tokens =
-			tokenize("cast(-1, int1) < cast(1, int16)").unwrap();
+		let tokens = tokenize("cast(-1, int1) < cast(1, int16)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

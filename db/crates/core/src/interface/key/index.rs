@@ -55,10 +55,8 @@ impl EncodableKey for IndexKey {
 			return None;
 		}
 
-		let source =
-			keycode::deserialize_source_id(&payload[..9]).ok()?;
-		let index: IndexId =
-			keycode::deserialize(&payload[9..]).ok()?;
+		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
+		let index: IndexId = keycode::deserialize(&payload[9..]).ok()?;
 
 		Some(Self {
 			source,
@@ -93,8 +91,7 @@ impl SourceIndexKeyRange {
 			return None;
 		}
 
-		let source =
-			keycode::deserialize_source_id(&payload[..9]).ok()?;
+		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
 		Some(SourceIndexKeyRange {
 			source,
 		})
@@ -106,19 +103,13 @@ impl EncodableKeyRange for SourceIndexKeyRange {
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_source_id(self.source);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_source_id(self.source);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_source_id(self.source.prev());
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_source_id(self.source.prev());
 		Some(serializer.to_encoded_key())
 	}
 
@@ -127,16 +118,12 @@ impl EncodableKeyRange for SourceIndexKeyRange {
 		Self: Sized,
 	{
 		let start_key = match &range.start {
-			Bound::Included(key) | Bound::Excluded(key) => {
-				Self::decode_key(key)
-			}
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_key(key),
 			Bound::Unbounded => None,
 		};
 
 		let end_key = match &range.end {
-			Bound::Included(key) | Bound::Excluded(key) => {
-				Self::decode_key(key)
-			}
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_key(key),
 			Bound::Unbounded => None,
 		};
 
@@ -147,29 +134,20 @@ impl EncodableKeyRange for SourceIndexKeyRange {
 impl IndexKey {
 	pub fn full_scan(source: impl Into<SourceId>) -> EncodedKeyRange {
 		let source = source.into();
-		EncodedKeyRange::start_end(
-			Some(Self::source_start(source)),
-			Some(Self::source_end(source)),
-		)
+		EncodedKeyRange::start_end(Some(Self::source_start(source)), Some(Self::source_end(source)))
 	}
 
 	pub fn source_start(source: impl Into<SourceId>) -> EncodedKey {
 		let source = source.into();
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_source_id(source);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_source_id(source);
 		serializer.to_encoded_key()
 	}
 
 	pub fn source_end(source: impl Into<SourceId>) -> EncodedKey {
 		let source = source.into();
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_source_id(source.prev());
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_source_id(source.prev());
 		serializer.to_encoded_key()
 	}
 }
@@ -191,10 +169,8 @@ mod tests {
 			0xFE, // version
 			0xF3, // kind
 			0x01, // SourceId type discriminator (Table)
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
-			0x32, // source id bytes
-			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21,
-			0x0F, // index id bytes
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // source id bytes
+			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F, // index id bytes
 		];
 
 		assert_eq!(encoded.as_slice(), expected);

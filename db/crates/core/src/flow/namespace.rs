@@ -19,11 +19,7 @@ pub struct FlowNodeSchema {
 
 impl FlowNodeSchema {
 	/// Create a new FlowNodeSchema
-	pub fn new(
-		columns: Vec<ColumnDef>,
-		namespace_name: Option<String>,
-		source_name: Option<String>,
-	) -> Self {
+	pub fn new(columns: Vec<ColumnDef>, namespace_name: Option<String>, source_name: Option<String>) -> Self {
 		Self {
 			columns,
 			namespace_name,

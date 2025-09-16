@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	Key, PrimaryKeyId, QueryTransaction, RingBufferId, RingBufferKey,
-};
+use reifydb_core::interface::{Key, PrimaryKeyId, QueryTransaction, RingBufferId, RingBufferKey};
 
 use crate::{CatalogStore, ring_buffer::layout::ring_buffer};
 
@@ -14,17 +12,12 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		ring_buffer_id: RingBufferId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let versioned = match rx.get(&Key::RingBuffer(
-			RingBufferKey::new(ring_buffer_id),
-		)
-		.encode())?
-		{
+		let versioned = match rx.get(&Key::RingBuffer(RingBufferKey::new(ring_buffer_id)).encode())? {
 			Some(v) => v,
 			None => return Ok(None),
 		};
 
-		let pk_id = ring_buffer::LAYOUT
-			.get_u64(&versioned.row, ring_buffer::PRIMARY_KEY);
+		let pk_id = ring_buffer::LAYOUT.get_u64(&versioned.row, ring_buffer::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)
@@ -46,11 +39,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let ring_buffer = ensure_test_ring_buffer(&mut txn);
 
-		let pk_id = CatalogStore::get_ring_buffer_pk_id(
-			&mut txn,
-			ring_buffer.id,
-		)
-		.unwrap();
+		let pk_id = CatalogStore::get_ring_buffer_pk_id(&mut txn, ring_buffer.id).unwrap();
 
 		assert_eq!(pk_id, None);
 	}
@@ -62,19 +51,10 @@ mod tests {
 
 		// Set primary key
 		let pk_id = PrimaryKeyId(42);
-		CatalogStore::set_ring_buffer_primary_key(
-			&mut txn,
-			ring_buffer.id,
-			pk_id,
-		)
-		.unwrap();
+		CatalogStore::set_ring_buffer_primary_key(&mut txn, ring_buffer.id, pk_id).unwrap();
 
 		// Get and verify
-		let retrieved_pk = CatalogStore::get_ring_buffer_pk_id(
-			&mut txn,
-			ring_buffer.id,
-		)
-		.unwrap();
+		let retrieved_pk = CatalogStore::get_ring_buffer_pk_id(&mut txn, ring_buffer.id).unwrap();
 
 		assert_eq!(retrieved_pk, Some(pk_id));
 	}
@@ -83,11 +63,7 @@ mod tests {
 	fn test_get_ring_buffer_pk_id_nonexistent_ring_buffer() {
 		let mut txn = create_test_command_transaction();
 
-		let pk_id = CatalogStore::get_ring_buffer_pk_id(
-			&mut txn,
-			RingBufferId(999),
-		)
-		.unwrap();
+		let pk_id = CatalogStore::get_ring_buffer_pk_id(&mut txn, RingBufferId(999)).unwrap();
 
 		assert_eq!(pk_id, None);
 	}

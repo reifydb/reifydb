@@ -2,16 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, NamespaceId, NamespaceRingBufferKey, QueryTransaction,
-	RingBufferDef, RingBufferId, RingBufferKey, RingBufferMetadata,
-	RingBufferMetadataKey, Versioned,
+	EncodableKey, NamespaceId, NamespaceRingBufferKey, QueryTransaction, RingBufferDef, RingBufferId,
+	RingBufferKey, RingBufferMetadata, RingBufferMetadataKey, Versioned,
 };
 
 use crate::{
 	CatalogStore,
-	ring_buffer::layout::{
-		ring_buffer, ring_buffer_metadata, ring_buffer_namespace,
-	},
+	ring_buffer::layout::{ring_buffer, ring_buffer_metadata, ring_buffer_namespace},
 };
 
 impl CatalogStore {
@@ -19,25 +16,15 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		ring_buffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let Some(versioned) =
-			rx.get(&RingBufferKey::new(ring_buffer).encode())?
-		else {
+		let Some(versioned) = rx.get(&RingBufferKey::new(ring_buffer).encode())? else {
 			return Ok(None);
 		};
 
 		let row = versioned.row;
-		let id = RingBufferId(
-			ring_buffer::LAYOUT.get_u64(&row, ring_buffer::ID),
-		);
-		let namespace = NamespaceId(
-			ring_buffer::LAYOUT
-				.get_u64(&row, ring_buffer::NAMESPACE),
-		);
-		let name = ring_buffer::LAYOUT
-			.get_utf8(&row, ring_buffer::NAME)
-			.to_string();
-		let capacity = ring_buffer::LAYOUT
-			.get_u64(&row, ring_buffer::CAPACITY);
+		let id = RingBufferId(ring_buffer::LAYOUT.get_u64(&row, ring_buffer::ID));
+		let namespace = NamespaceId(ring_buffer::LAYOUT.get_u64(&row, ring_buffer::NAMESPACE));
+		let name = ring_buffer::LAYOUT.get_utf8(&row, ring_buffer::NAME).to_string();
+		let capacity = ring_buffer::LAYOUT.get_u64(&row, ring_buffer::CAPACITY);
 
 		Ok(Some(RingBufferDef {
 			id,
@@ -53,26 +40,16 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		ring_buffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferMetadata>> {
-		let Some(versioned) = rx
-			.get(&RingBufferMetadataKey::new(ring_buffer)
-				.encode())?
-		else {
+		let Some(versioned) = rx.get(&RingBufferMetadataKey::new(ring_buffer).encode())? else {
 			return Ok(None);
 		};
 
 		let row = versioned.row;
-		let buffer_id = RingBufferId(
-			ring_buffer_metadata::LAYOUT
-				.get_u64(&row, ring_buffer_metadata::ID),
-		);
-		let capacity = ring_buffer_metadata::LAYOUT
-			.get_u64(&row, ring_buffer_metadata::CAPACITY);
-		let head = ring_buffer_metadata::LAYOUT
-			.get_u64(&row, ring_buffer_metadata::HEAD);
-		let tail = ring_buffer_metadata::LAYOUT
-			.get_u64(&row, ring_buffer_metadata::TAIL);
-		let current_size = ring_buffer_metadata::LAYOUT
-			.get_u64(&row, ring_buffer_metadata::COUNT);
+		let buffer_id = RingBufferId(ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::ID));
+		let capacity = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::CAPACITY);
+		let head = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::HEAD);
+		let tail = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::TAIL);
+		let current_size = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::COUNT);
 
 		Ok(Some(RingBufferMetadata {
 			id: buffer_id,
@@ -90,21 +67,18 @@ impl CatalogStore {
 	) -> crate::Result<Option<RingBufferDef>> {
 		let name = name.as_ref();
 		let Some(ring_buffer) =
-			rx.range(NamespaceRingBufferKey::full_scan(namespace))?
-				.find_map(|versioned: Versioned| {
-					let row = &versioned.row;
-					let ring_buffer_name = ring_buffer_namespace::LAYOUT
-					.get_utf8(row, ring_buffer_namespace::NAME);
-					if name == ring_buffer_name {
-						Some(RingBufferId(ring_buffer_namespace::LAYOUT
-						.get_u64(
-							row,
-							ring_buffer_namespace::ID,
-						)))
-					} else {
-						None
-					}
-				})
+			rx.range(NamespaceRingBufferKey::full_scan(namespace))?.find_map(|versioned: Versioned| {
+				let row = &versioned.row;
+				let ring_buffer_name =
+					ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME);
+				if name == ring_buffer_name {
+					Some(RingBufferId(
+						ring_buffer_namespace::LAYOUT.get_u64(row, ring_buffer_namespace::ID),
+					))
+				} else {
+					None
+				}
+			})
 		else {
 			return Ok(None);
 		};
@@ -121,9 +95,7 @@ mod tests {
 
 	use crate::{
 		CatalogStore,
-		ring_buffer::create::{
-			RingBufferColumnToCreate, RingBufferToCreate,
-		},
+		ring_buffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
 		test_utils::{ensure_test_namespace, ensure_test_ring_buffer},
 	};
 
@@ -132,12 +104,9 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let ring_buffer = ensure_test_ring_buffer(&mut txn);
 
-		let found = CatalogStore::find_ring_buffer(
-			&mut txn,
-			ring_buffer.id,
-		)
-		.unwrap()
-		.expect("Ring buffer should exist");
+		let found = CatalogStore::find_ring_buffer(&mut txn, ring_buffer.id)
+			.unwrap()
+			.expect("Ring buffer should exist");
 
 		assert_eq!(found.id, ring_buffer.id);
 		assert_eq!(found.name, ring_buffer.name);
@@ -149,11 +118,7 @@ mod tests {
 	fn test_find_ring_buffer_not_exists() {
 		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::find_ring_buffer(
-			&mut txn,
-			RingBufferId(999),
-		)
-		.unwrap();
+		let result = CatalogStore::find_ring_buffer(&mut txn, RingBufferId(999)).unwrap();
 
 		assert!(result.is_none());
 	}
@@ -163,12 +128,9 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let ring_buffer = ensure_test_ring_buffer(&mut txn);
 
-		let metadata = CatalogStore::find_ring_buffer_metadata(
-			&mut txn,
-			ring_buffer.id,
-		)
-		.unwrap()
-		.expect("Metadata should exist");
+		let metadata = CatalogStore::find_ring_buffer_metadata(&mut txn, ring_buffer.id)
+			.unwrap()
+			.expect("Metadata should exist");
 
 		assert_eq!(metadata.id, ring_buffer.id);
 		assert_eq!(metadata.capacity, ring_buffer.capacity);
@@ -181,11 +143,7 @@ mod tests {
 	fn test_find_ring_buffer_metadata_not_exists() {
 		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::find_ring_buffer_metadata(
-			&mut txn,
-			RingBufferId(999),
-		)
-		.unwrap();
+		let result = CatalogStore::find_ring_buffer_metadata(&mut txn, RingBufferId(999)).unwrap();
 
 		assert!(result.is_none());
 	}
@@ -202,9 +160,7 @@ mod tests {
 			capacity: 200,
 			columns: vec![RingBufferColumnToCreate {
 				name: "symbol".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Utf8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Utf8),
 				fragment: None,
 				policies: vec![],
 				auto_increment: false,
@@ -212,18 +168,12 @@ mod tests {
 			fragment: None,
 		};
 
-		let created =
-			CatalogStore::create_ring_buffer(&mut txn, to_create)
-				.unwrap();
+		let created = CatalogStore::create_ring_buffer(&mut txn, to_create).unwrap();
 
 		// Find by name
-		let found = CatalogStore::find_ring_buffer_by_name(
-			&mut txn,
-			namespace.id,
-			"trades_buffer",
-		)
-		.unwrap()
-		.expect("Should find ring buffer by name");
+		let found = CatalogStore::find_ring_buffer_by_name(&mut txn, namespace.id, "trades_buffer")
+			.unwrap()
+			.expect("Should find ring buffer by name");
 
 		assert_eq!(found.id, created.id);
 		assert_eq!(found.name, "trades_buffer");
@@ -236,12 +186,8 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let result = CatalogStore::find_ring_buffer_by_name(
-			&mut txn,
-			namespace.id,
-			"nonexistent_buffer",
-		)
-		.unwrap();
+		let result =
+			CatalogStore::find_ring_buffer_by_name(&mut txn, namespace.id, "nonexistent_buffer").unwrap();
 
 		assert!(result.is_none());
 	}
@@ -273,22 +219,12 @@ mod tests {
 		CatalogStore::create_ring_buffer(&mut txn, to_create).unwrap();
 
 		// Try to find in namespace2 - should not exist
-		let result = CatalogStore::find_ring_buffer_by_name(
-			&mut txn,
-			namespace2.id,
-			"shared_name",
-		)
-		.unwrap();
+		let result = CatalogStore::find_ring_buffer_by_name(&mut txn, namespace2.id, "shared_name").unwrap();
 
 		assert!(result.is_none());
 
 		// Find in namespace1 - should exist
-		let found = CatalogStore::find_ring_buffer_by_name(
-			&mut txn,
-			namespace1.id,
-			"shared_name",
-		)
-		.unwrap();
+		let found = CatalogStore::find_ring_buffer_by_name(&mut txn, namespace1.id, "shared_name").unwrap();
 
 		assert!(found.is_some());
 	}
@@ -299,12 +235,11 @@ mod tests {
 		let namespace = ensure_test_namespace(&mut txn);
 
 		// Create ring buffer with columns
-		let to_create =
-			RingBufferToCreate {
-				namespace: namespace.id,
-				ring_buffer: "pk_buffer".to_string(),
-				capacity: 100,
-				columns: vec![
+		let to_create = RingBufferToCreate {
+			namespace: namespace.id,
+			ring_buffer: "pk_buffer".to_string(),
+			capacity: 100,
+			columns: vec![
 				RingBufferColumnToCreate {
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
@@ -320,16 +255,13 @@ mod tests {
 					auto_increment: false,
 				},
 			],
-				fragment: None,
-			};
+			fragment: None,
+		};
 
-		let created =
-			CatalogStore::create_ring_buffer(&mut txn, to_create)
-				.unwrap();
+		let created = CatalogStore::create_ring_buffer(&mut txn, to_create).unwrap();
 
 		// Add primary key
-		let columns = CatalogStore::list_columns(&mut txn, created.id)
-			.unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, created.id).unwrap();
 		let pk_id = CatalogStore::create_primary_key(
 			&mut txn,
 			crate::primary_key::PrimaryKeyToCreate {
@@ -340,10 +272,9 @@ mod tests {
 		.unwrap();
 
 		// Find and verify
-		let found =
-			CatalogStore::find_ring_buffer(&mut txn, created.id)
-				.unwrap()
-				.expect("Ring buffer should exist");
+		let found = CatalogStore::find_ring_buffer(&mut txn, created.id)
+			.unwrap()
+			.expect("Ring buffer should exist");
 
 		assert_eq!(found.columns.len(), 2);
 		assert_eq!(found.columns[0].name, "id");

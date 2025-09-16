@@ -3,10 +3,8 @@
 
 //! Simple base64 encoding/decoding implementation
 
-const BASE64_CHARS: &[u8] =
-	b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-const BASE64_URL_CHARS: &[u8] =
-	b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+const BASE64_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+const BASE64_URL_CHARS: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
 
 /// Base64 encoding engine
 pub struct Engine {
@@ -55,20 +53,15 @@ impl Engine {
 				0
 			};
 
-			let n = ((b1 as usize) << 16)
-				| ((b2 as usize) << 8) | (b3 as usize);
+			let n = ((b1 as usize) << 16) | ((b2 as usize) << 8) | (b3 as usize);
 
 			result.push(self.alphabet[(n >> 18) & 63] as char);
 			result.push(self.alphabet[(n >> 12) & 63] as char);
 
 			if i + 1 < input.len() {
-				result.push(
-					self.alphabet[(n >> 6) & 63] as char
-				);
+				result.push(self.alphabet[(n >> 6) & 63] as char);
 				if i + 2 < input.len() {
-					result.push(
-						self.alphabet[n & 63] as char
-					);
+					result.push(self.alphabet[n & 63] as char);
 				} else if self.use_padding {
 					result.push('=');
 				}
@@ -93,10 +86,7 @@ impl Engine {
 		// Validate padding if present
 		if self.use_padding && input.contains('=') {
 			// Count trailing padding characters
-			let padding_start = input
-				.rfind(|c| c != '=')
-				.map(|i| i + 1)
-				.unwrap_or(0);
+			let padding_start = input.rfind(|c| c != '=').map(|i| i + 1).unwrap_or(0);
 			let padding_count = input.len() - padding_start;
 
 			// Valid base64 can only have 0, 1, or 2 padding
@@ -106,9 +96,7 @@ impl Engine {
 			}
 
 			// Check that padding only appears at the end
-			if padding_start > 0
-				&& input[..padding_start].contains('=')
-			{
+			if padding_start > 0 && input[..padding_start].contains('=') {
 				return Err(DecodeError::InvalidPadding);
 			}
 
@@ -144,9 +132,7 @@ impl Engine {
 
 			if bits_collected >= 8 {
 				bits_collected -= 8;
-				result.push(
-					(accumulator >> bits_collected) as u8
-				);
+				result.push((accumulator >> bits_collected) as u8);
 				accumulator &= (1 << bits_collected) - 1;
 			}
 		}
@@ -177,10 +163,7 @@ impl std::fmt::Display for DecodeError {
 			DecodeError::InvalidCharacter(ch) => {
 				write!(f, "Invalid base64 character: '{}'", ch)
 			}
-			DecodeError::UnexpectedPadding => write!(
-				f,
-				"Unexpected padding in URL-safe base64"
-			),
+			DecodeError::UnexpectedPadding => write!(f, "Unexpected padding in URL-safe base64"),
 			DecodeError::InvalidPadding => {
 				write!(f, "Invalid base64 padding")
 			}
@@ -193,12 +176,9 @@ impl std::error::Error for DecodeError {}
 // Convenience module to match the original API
 pub mod engine {
 	pub mod general_purpose {
-		pub const STANDARD: super::super::Engine =
-			super::super::Engine::STANDARD;
-		pub const STANDARD_NO_PAD: super::super::Engine =
-			super::super::Engine::STANDARD_NO_PAD;
-		pub const URL_SAFE_NO_PAD: super::super::Engine =
-			super::super::Engine::URL_SAFE_NO_PAD;
+		pub const STANDARD: super::super::Engine = super::super::Engine::STANDARD;
+		pub const STANDARD_NO_PAD: super::super::Engine = super::super::Engine::STANDARD_NO_PAD;
+		pub const URL_SAFE_NO_PAD: super::super::Engine = super::super::Engine::URL_SAFE_NO_PAD;
 	}
 }
 
@@ -209,32 +189,20 @@ mod tests {
 	#[test]
 	fn test_encode_standard() {
 		assert_eq!(Engine::STANDARD.encode(b"Hello"), "SGVsbG8=");
-		assert_eq!(
-			Engine::STANDARD.encode(b"Hello, World!"),
-			"SGVsbG8sIFdvcmxkIQ=="
-		);
+		assert_eq!(Engine::STANDARD.encode(b"Hello, World!"), "SGVsbG8sIFdvcmxkIQ==");
 		assert_eq!(Engine::STANDARD.encode(b""), "");
 	}
 
 	#[test]
 	fn test_encode_no_pad() {
 		assert_eq!(Engine::STANDARD_NO_PAD.encode(b"Hello"), "SGVsbG8");
-		assert_eq!(
-			Engine::STANDARD_NO_PAD.encode(b"Hello, World!"),
-			"SGVsbG8sIFdvcmxkIQ"
-		);
+		assert_eq!(Engine::STANDARD_NO_PAD.encode(b"Hello, World!"), "SGVsbG8sIFdvcmxkIQ");
 	}
 
 	#[test]
 	fn test_decode_standard() {
-		assert_eq!(
-			Engine::STANDARD.decode("SGVsbG8=").unwrap(),
-			b"Hello"
-		);
-		assert_eq!(
-			Engine::STANDARD.decode("SGVsbG8").unwrap(),
-			b"Hello"
-		);
+		assert_eq!(Engine::STANDARD.decode("SGVsbG8=").unwrap(), b"Hello");
+		assert_eq!(Engine::STANDARD.decode("SGVsbG8").unwrap(), b"Hello");
 		assert_eq!(Engine::STANDARD.decode("").unwrap(), b"");
 	}
 

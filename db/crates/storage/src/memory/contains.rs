@@ -9,11 +9,7 @@ use reifydb_core::{
 use crate::memory::Memory;
 
 impl VersionedContains for Memory {
-	fn contains(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<bool> {
+	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
 		let result = match self.versioned.get(key) {
 			None => false,
 			Some(values) => values.value().get(version).is_some(),

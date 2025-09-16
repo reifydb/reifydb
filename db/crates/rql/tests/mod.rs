@@ -3,14 +3,9 @@
 
 use std::{error::Error, fmt::Write, path::Path};
 
-use reifydb_catalog::{
-	CatalogStore, namespace::NamespaceToCreate, table::TableToCreate,
-};
+use reifydb_catalog::{CatalogStore, namespace::NamespaceToCreate, table::TableToCreate};
 use reifydb_engine::test_utils::create_test_command_transaction;
-use reifydb_rql::explain::{
-	explain_ast, explain_logical_plan, explain_physical_plan,
-	explain_tokenize,
-};
+use reifydb_rql::explain::{explain_ast, explain_logical_plan, explain_physical_plan, explain_tokenize};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
@@ -32,11 +27,7 @@ impl testscript::Runner for Runner {
 			// tokenize QUERY
 			"tokenize" => {
 				let mut args = command.consume_args();
-				let query = args
-					.next_pos()
-					.ok_or("args not given")?
-					.value
-					.as_str();
+				let query = args.next_pos().ok_or("args not given")?.value.as_str();
 				args.reject_rest()?;
 				let result = explain_tokenize(query).unwrap();
 				writeln!(output, "{}", result).unwrap();
@@ -44,11 +35,7 @@ impl testscript::Runner for Runner {
 			// ast QUERY
 			"ast" => {
 				let mut args = command.consume_args();
-				let query = args
-					.next_pos()
-					.ok_or("args not given")?
-					.value
-					.as_str();
+				let query = args.next_pos().ok_or("args not given")?.value.as_str();
 				args.reject_rest()?;
 				let result = explain_ast(query).unwrap();
 				writeln!(output, "{}", result).unwrap();
@@ -56,27 +43,19 @@ impl testscript::Runner for Runner {
 			// logical QUERY
 			"logical" => {
 				let mut args = command.consume_args();
-				let query = args
-					.next_pos()
-					.ok_or("args not given")?
-					.value
-					.as_str();
+				let query = args.next_pos().ok_or("args not given")?.value.as_str();
 				args.reject_rest()?;
 
-				let mut dummy_tx =
-					create_test_command_transaction();
+				let mut dummy_tx = create_test_command_transaction();
 
-				let default_namespace =
-					CatalogStore::create_namespace(
-						&mut dummy_tx,
-						NamespaceToCreate {
-							namespace_fragment:
-								None,
-							name: "default"
-								.to_string(),
-						},
-					)
-					.unwrap();
+				let default_namespace = CatalogStore::create_namespace(
+					&mut dummy_tx,
+					NamespaceToCreate {
+						namespace_fragment: None,
+						name: "default".to_string(),
+					},
+				)
+				.unwrap();
 
 				CatalogStore::create_table(
 					&mut dummy_tx,
@@ -122,25 +101,16 @@ impl testscript::Runner for Runner {
 				)
 				.unwrap();
 
-				let result = explain_logical_plan(
-					&mut dummy_tx,
-					query,
-				)
-				.unwrap();
+				let result = explain_logical_plan(&mut dummy_tx, query).unwrap();
 				writeln!(output, "{}", result).unwrap();
 			}
 			// physical QUERY
 			"physical" => {
 				let mut args = command.consume_args();
-				let query = args
-					.next_pos()
-					.ok_or("args not given")?
-					.value
-					.as_str();
+				let query = args.next_pos().ok_or("args not given")?.value.as_str();
 				args.reject_rest()?;
 
-				let mut dummy_tx =
-					create_test_command_transaction();
+				let mut dummy_tx = create_test_command_transaction();
 
 				let namespace = CatalogStore::create_namespace(
 					&mut dummy_tx,
@@ -173,11 +143,7 @@ impl testscript::Runner for Runner {
 				)
 				.unwrap();
 
-				let result = explain_physical_plan(
-					&mut dummy_tx,
-					query,
-				)
-				.unwrap();
+				let result = explain_physical_plan(&mut dummy_tx, query).unwrap();
 				writeln!(output, "{}", result).unwrap();
 			}
 			_ => unimplemented!(),

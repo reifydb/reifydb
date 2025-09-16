@@ -14,8 +14,7 @@ pub use error::{Error, diagnostic};
 pub type Result<T> = std::result::Result<T, Error>;
 
 pub use fragment::{
-	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment,
-	StatementColumn, StatementLine,
+	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment, StatementColumn, StatementLine,
 };
 pub use params::Params;
 pub use value::{
@@ -45,19 +44,13 @@ pub use value::{
 	Value,
 	boolean::parse_bool,
 	decimal::parse_decimal,
-	is::{
-		IsDate, IsFloat, IsInt, IsNumber, IsTemporal, IsTime, IsUint,
-		IsUuid,
-	},
+	is::{IsDate, IsFloat, IsInt, IsNumber, IsTemporal, IsTime, IsUint, IsUuid},
 	number::{
-		Promote, SafeAdd, SafeConvert, SafeDiv, SafeMul, SafeRemainder,
-		SafeSub, parse_float, parse_primitive_int,
-		parse_primitive_uint,
+		Promote, SafeAdd, SafeConvert, SafeDiv, SafeMul, SafeRemainder, SafeSub, parse_float,
+		parse_primitive_int, parse_primitive_uint,
 	},
 	row_number::ROW_NUMBER_COLUMN_NAME,
-	temporal::parse::{
-		parse_date, parse_datetime, parse_interval, parse_time,
-	},
+	temporal::parse::{parse_date, parse_datetime, parse_interval, parse_time},
 
 	// Parse functions
 	uuid::{parse_uuid4, parse_uuid7},

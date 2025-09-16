@@ -3,13 +3,8 @@
 
 use primary_key::LAYOUT;
 use reifydb_core::{
-	diagnostic::catalog::{
-		primary_key_column_not_found, primary_key_empty,
-	},
-	interface::{
-		ColumnId, CommandTransaction, Key, PrimaryKeyId, PrimaryKeyKey,
-		SourceId,
-	},
+	diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
+	interface::{ColumnId, CommandTransaction, Key, PrimaryKeyId, PrimaryKeyKey, SourceId},
 	return_error, return_internal_error,
 };
 
@@ -37,16 +32,12 @@ impl CatalogStore {
 		// Get the columns for the table/view and validate all primary
 		// key columns belong to it
 		let source_columns = Self::list_columns(txn, to_create.source)?;
-		let source_column_ids: std::collections::HashSet<_> =
-			source_columns.iter().map(|c| c.id).collect();
+		let source_column_ids: std::collections::HashSet<_> = source_columns.iter().map(|c| c.id).collect();
 
 		// Validate that all columns belong to the table/view
 		for column_id in &to_create.column_ids {
 			if !source_column_ids.contains(column_id) {
-				return_error!(primary_key_column_not_found(
-					None,
-					column_id.0
-				));
+				return_error!(primary_key_column_not_found(None, column_id.0));
 			}
 		}
 
@@ -55,16 +46,8 @@ impl CatalogStore {
 		// Create primary key row
 		let mut row = LAYOUT.allocate_row();
 		LAYOUT.set_u64(&mut row, primary_key::ID, id.0);
-		LAYOUT.set_u64(
-			&mut row,
-			primary_key::SOURCE,
-			to_create.source.as_u64(),
-		);
-		LAYOUT.set_blob(
-			&mut row,
-			primary_key::COLUMN_IDS,
-			&serialize_column_ids(&to_create.column_ids),
-		);
+		LAYOUT.set_u64(&mut row, primary_key::SOURCE, to_create.source.as_u64());
+		LAYOUT.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
 		// Store the primary key
 		txn.set(
@@ -90,11 +73,7 @@ impl CatalogStore {
 				);
 			}
 			SourceId::RingBuffer(ring_buffer_id) => {
-				Self::set_ring_buffer_primary_key(
-					txn,
-					ring_buffer_id,
-					id,
-				)?;
+				Self::set_ring_buffer_primary_key(txn, ring_buffer_id, id)?;
 			}
 		}
 
@@ -104,9 +83,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{
-		ColumnId, PrimaryKeyId, SourceId, TableId, ViewId,
-	};
+	use reifydb_core::interface::{ColumnId, PrimaryKeyId, SourceId, TableId, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 
@@ -133,9 +110,7 @@ mod tests {
 				table: table.id,
 				table_name: "test_table",
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Uint8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -153,9 +128,7 @@ mod tests {
 				table: table.id,
 				table_name: "test_table",
 				column: "tenant_id".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Uint8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
@@ -179,9 +152,7 @@ mod tests {
 
 		// Find and verify the primary key
 		let found_pk =
-			CatalogStore::find_primary_key(&mut txn, table.id)
-				.unwrap()
-				.expect("Primary key should exist");
+			CatalogStore::find_primary_key(&mut txn, table.id).unwrap().expect("Primary key should exist");
 
 		assert_eq!(found_pk.id, primary_key_id);
 		assert_eq!(found_pk.columns.len(), 2);
@@ -220,8 +191,7 @@ mod tests {
 		.unwrap();
 
 		// Get column IDs for the view
-		let columns =
-			CatalogStore::list_columns(&mut txn, view.id).unwrap();
+		let columns = CatalogStore::list_columns(&mut txn, view.id).unwrap();
 		assert_eq!(columns.len(), 2);
 
 		// Create primary key on first column only
@@ -239,9 +209,7 @@ mod tests {
 
 		// Find and verify the primary key
 		let found_pk =
-			CatalogStore::find_primary_key(&mut txn, view.id)
-				.unwrap()
-				.expect("Primary key should exist");
+			CatalogStore::find_primary_key(&mut txn, view.id).unwrap().expect("Primary key should exist");
 
 		assert_eq!(found_pk.id, primary_key_id);
 		assert_eq!(found_pk.columns.len(), 1);
@@ -266,10 +234,7 @@ mod tests {
 					table: table.id,
 					table_name: "test_table",
 					column: format!("col_{}", i),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Uint8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					if_not_exists: false,
 					policies: vec![],
 					index: ColumnIndex(i as u16),
@@ -292,9 +257,7 @@ mod tests {
 
 		// Find and verify the primary key
 		let found_pk =
-			CatalogStore::find_primary_key(&mut txn, table.id)
-				.unwrap()
-				.expect("Primary key should exist");
+			CatalogStore::find_primary_key(&mut txn, table.id).unwrap().expect("Primary key should exist");
 
 		assert_eq!(found_pk.id, primary_key_id);
 		assert_eq!(found_pk.columns.len(), 3);
@@ -310,9 +273,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn);
 
 		// Initially, table does not have primary key
-		let initial_pk =
-			CatalogStore::find_primary_key(&mut txn, table.id)
-				.unwrap();
+		let initial_pk = CatalogStore::find_primary_key(&mut txn, table.id).unwrap();
 		assert!(initial_pk.is_none());
 
 		// Create a column
@@ -325,9 +286,7 @@ mod tests {
 				table: table.id,
 				table_name: "test_table",
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Uint8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -348,9 +307,7 @@ mod tests {
 
 		// Now table should have the primary key
 		let updated_pk =
-			CatalogStore::find_primary_key(&mut txn, table.id)
-				.unwrap()
-				.expect("Primary key should exist");
+			CatalogStore::find_primary_key(&mut txn, table.id).unwrap().expect("Primary key should exist");
 
 		assert_eq!(updated_pk.id, primary_key_id);
 	}
@@ -452,9 +409,7 @@ mod tests {
 				table: table1.id,
 				table_name: "test_table",
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Uint8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -464,9 +419,7 @@ mod tests {
 		.unwrap();
 
 		// Create another table
-		let namespace =
-			CatalogStore::get_namespace(&mut txn, table1.namespace)
-				.unwrap();
+		let namespace = CatalogStore::get_namespace(&mut txn, table1.namespace).unwrap();
 		let table2 = CatalogStore::create_table(
 			&mut txn,
 			crate::table::TableToCreate {
@@ -488,9 +441,7 @@ mod tests {
 				table: table2.id,
 				table_name: "test_table2",
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Uint8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),

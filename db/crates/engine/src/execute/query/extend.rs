@@ -4,18 +4,13 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{
-		ColumnDescriptor, Transaction, evaluate::expression::Expression,
-	},
+	interface::{ColumnDescriptor, Transaction, evaluate::expression::Expression},
 	value::columnar::{Columns, layout::ColumnsLayout},
 };
 
 use crate::{
 	evaluate::{EvaluationContext, evaluate},
-	execute::{
-		Batch, ExecutionContext, ExecutionPlan, QueryNode,
-		query::layout::derive_columns_column_layout,
-	},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode, query::layout::derive_columns_column_layout},
 };
 
 pub(crate) struct ExtendNode<'a, T: Transaction> {
@@ -26,10 +21,7 @@ pub(crate) struct ExtendNode<'a, T: Transaction> {
 }
 
 impl<'a, T: Transaction> ExtendNode<'a, T> {
-	pub fn new(
-		input: Box<ExecutionPlan<'a, T>>,
-		expressions: Vec<Expression<'a>>,
-	) -> Self {
+	pub fn new(input: Box<ExecutionPlan<'a, T>>, expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			input,
 			expressions,
@@ -55,32 +47,19 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 
 		// Check if this is an alias expression and we have table
 		// information
-		if let (Expression::Alias(alias_expr), Some(table)) =
-			(expr, &self.context.as_ref().unwrap().table)
-		{
+		if let (Expression::Alias(alias_expr), Some(table)) = (expr, &self.context.as_ref().unwrap().table) {
 			let alias_name = alias_expr.alias.name();
 
 			// Find the matching column in the table namespace
-			if let Some(table_column) = table
-				.columns
-				.iter()
-				.find(|col| col.name == alias_name)
-			{
+			if let Some(table_column) = table.columns.iter().find(|col| col.name == alias_name) {
 				// Extract ColumnPolicyKind from ColumnPolicy
-				let policy_kinds: Vec<_> = table_column
-					.policies
-					.iter()
-					.map(|policy| policy.policy.clone())
-					.collect();
+				let policy_kinds: Vec<_> =
+					table_column.policies.iter().map(|policy| policy.policy.clone()).collect();
 
 				let target_column = ColumnDescriptor::new()
 					.with_table(&table.name)
 					.with_column(&table_column.name)
-					.with_column_type(
-						table_column
-							.constraint
-							.get_type(),
-					)
+					.with_column_type(table_column.constraint.get_type())
 					.with_policies(policy_kinds.clone());
 
 				result.target_column = Some(target_column);
@@ -103,14 +82,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.context.is_some(),
-			"ExtendNode::next() called before initialize()"
-		);
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
 		while let Some(Batch {
@@ -120,17 +93,14 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 			// Start with all existing columns (EXTEND preserves
 			// everything)
 			let row_count = columns.row_count();
-			let mut new_columns =
-				columns.into_iter().collect::<Vec<_>>();
+			let mut new_columns = columns.into_iter().collect::<Vec<_>>();
 
 			// Add the new derived columns
 			for expr in &self.expressions {
 				let column = evaluate(
 					&self.create_evaluation_context(
 						expr,
-						Columns::new(
-							new_columns.clone(),
-						),
+						Columns::new(new_columns.clone()),
 						row_count,
 					),
 					expr,
@@ -143,23 +113,16 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 			// once For extend, we preserve all input columns
 			// plus the new expressions
 			if self.layout.is_none() {
-				let layout = if let Some(input_layout) =
-					self.input.layout()
-				{
+				let layout = if let Some(input_layout) = self.input.layout() {
 					// Combine input layout with new
 					// expression layout
 					let new_expressions_layout = derive_columns_column_layout(
 						&self.expressions,
 						ctx.preserve_row_numbers,
 					);
-					input_layout.extend(
-						&new_expressions_layout,
-					)?
+					input_layout.extend(&new_expressions_layout)?
 				} else {
-					derive_columns_column_layout(
-						&self.expressions,
-						ctx.preserve_row_numbers,
-					)
+					derive_columns_column_layout(&self.expressions, ctx.preserve_row_numbers)
 				};
 
 				self.layout = Some(layout);
@@ -205,14 +168,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		_rx: &mut crate::StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.context.is_some(),
-			"ExtendWithoutInputNode::next() called before initialize()"
-		);
+	fn next(&mut self, _rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
 		if self.layout.is_some() {
@@ -222,8 +179,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 		// Without input, this behaves like MAP without input
 		// (generates a single row with the computed expressions)
 		let columns = Columns::empty();
-		let mut new_columns =
-			Vec::with_capacity(self.expressions.len());
+		let mut new_columns = Vec::with_capacity(self.expressions.len());
 
 		for expr in &self.expressions {
 			let evaluation_context = EvaluationContext {
@@ -239,10 +195,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 			new_columns.push(column);
 		}
 
-		let layout = derive_columns_column_layout(
-			&self.expressions,
-			ctx.preserve_row_numbers,
-		);
+		let layout = derive_columns_column_layout(&self.expressions, ctx.preserve_row_numbers);
 
 		self.layout = Some(layout);
 

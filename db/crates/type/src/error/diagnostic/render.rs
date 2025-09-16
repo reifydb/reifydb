@@ -46,56 +46,29 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic
-				.statement
-				.as_ref()
-				.map(|x| x.as_str())
-				.unwrap_or("");
+			let statement = diagnostic.statement.as_ref().map(|x| x.as_str()).unwrap_or("");
 
 			let _ = writeln!(output, "LOCATION");
-			let _ = writeln!(
-				output,
-				"  line {}, column {}",
-				line, col
-			);
+			let _ = writeln!(output, "  line {}, column {}", line, col);
 			let _ = writeln!(output);
 
 			let line_content = get_line(statement, line);
 
 			let _ = writeln!(output, "CODE");
-			let _ = writeln!(
-				output,
-				"  {} │ {}",
-				line, line_content
-			);
-			let fragment_start = line_content
-				.find(fragment.as_str())
-				.unwrap_or(col as usize);
-			let _ = writeln!(
-				output,
-				"    │ {}{}",
-				" ".repeat(fragment_start),
-				"~".repeat(fragment.len())
-			);
+			let _ = writeln!(output, "  {} │ {}", line, line_content);
+			let fragment_start = line_content.find(fragment.as_str()).unwrap_or(col as usize);
+			let _ = writeln!(output, "    │ {}{}", " ".repeat(fragment_start), "~".repeat(fragment.len()));
 			let _ = writeln!(output, "    │");
 
-			let label_text =
-				diagnostic.label.as_deref().unwrap_or("");
-			let fragment_center =
-				fragment_start + fragment.len() / 2;
-			let label_center_offset =
-				if label_text.len() / 2 > fragment_center {
-					0
-				} else {
-					fragment_center - label_text.len() / 2
-				};
+			let label_text = diagnostic.label.as_deref().unwrap_or("");
+			let fragment_center = fragment_start + fragment.len() / 2;
+			let label_center_offset = if label_text.len() / 2 > fragment_center {
+				0
+			} else {
+				fragment_center - label_text.len() / 2
+			};
 
-			let _ = writeln!(
-				output,
-				"    │ {}{}",
-				" ".repeat(label_center_offset),
-				label_text
-			);
+			let _ = writeln!(output, "    │ {}{}", " ".repeat(label_center_offset), label_text);
 			let _ = writeln!(output);
 		}
 
@@ -107,11 +80,7 @@ impl DefaultRenderer {
 
 		if let Some(col) = &diagnostic.column {
 			let _ = writeln!(output, "COLUMN");
-			let _ = writeln!(
-				output,
-				"  column `{}` is of type `{}`",
-				col.name, col.r#type
-			);
+			let _ = writeln!(output, "  column `{}` is of type `{}`", col.name, col.r#type);
 			let _ = writeln!(output);
 		}
 
@@ -123,12 +92,7 @@ impl DefaultRenderer {
 		}
 	}
 
-	fn render_nested(
-		&self,
-		output: &mut String,
-		diagnostic: &Diagnostic,
-		depth: usize,
-	) {
+	fn render_nested(&self, output: &mut String, diagnostic: &Diagnostic, depth: usize) {
 		let indent = if depth == 0 {
 			""
 		} else {
@@ -141,11 +105,7 @@ impl DefaultRenderer {
 		};
 
 		// Main error line
-		let _ = writeln!(
-			output,
-			"{}{} Error {}: {}",
-			indent, prefix, diagnostic.code, diagnostic.message
-		);
+		let _ = writeln!(output, "{}{} Error {}: {}", indent, prefix, diagnostic.code, diagnostic.message);
 
 		// Location info
 		if let OwnedFragment::Statement {
@@ -158,11 +118,7 @@ impl DefaultRenderer {
 			let fragment = text;
 			let line = line.0;
 			let col = column.0;
-			let statement = diagnostic
-				.statement
-				.as_ref()
-				.map(|x| x.as_str())
-				.unwrap_or("");
+			let statement = diagnostic.statement.as_ref().map(|x| x.as_str()).unwrap_or("");
 
 			let _ = writeln!(
 				output,
@@ -181,14 +137,8 @@ impl DefaultRenderer {
 			// Code visualization
 			let line_content = get_line(statement, line);
 
-			let _ = writeln!(
-				output,
-				"{}  {} │ {}",
-				indent, line, line_content
-			);
-			let fragment_start = line_content
-				.find(fragment.as_str())
-				.unwrap_or(col as usize);
+			let _ = writeln!(output, "{}  {} │ {}", indent, line, line_content);
+			let fragment_start = line_content.find(fragment.as_str()).unwrap_or(col as usize);
 			let _ = writeln!(
 				output,
 				"{}    │ {}{}",
@@ -197,15 +147,10 @@ impl DefaultRenderer {
 				"~".repeat(fragment.len())
 			);
 
-			let label_text =
-				diagnostic.label.as_deref().unwrap_or("");
+			let label_text = diagnostic.label.as_deref().unwrap_or("");
 			if !label_text.is_empty() {
-				let fragment_center =
-					fragment_start + fragment.len() / 2;
-				let label_center_offset = if label_text.len()
-					/ 2
-					> fragment_center
-				{
+				let fragment_center = fragment_start + fragment.len() / 2;
+				let label_center_offset = if label_text.len() / 2 > fragment_center {
 					0
 				} else {
 					fragment_center - label_text.len() / 2
@@ -234,21 +179,13 @@ impl DefaultRenderer {
 
 		// Column info
 		if let Some(col) = &diagnostic.column {
-			let _ = writeln!(
-				output,
-				"{}  column `{}` is of type `{}`",
-				indent, col.name, col.r#type
-			);
+			let _ = writeln!(output, "{}  column `{}` is of type `{}`", indent, col.name, col.r#type);
 		}
 
 		// Notes
 		if !diagnostic.notes.is_empty() {
 			for note in &diagnostic.notes {
-				let _ = writeln!(
-					output,
-					"{}  note: {}",
-					indent, note
-				);
+				let _ = writeln!(output, "{}  note: {}", indent, note);
 			}
 		}
 

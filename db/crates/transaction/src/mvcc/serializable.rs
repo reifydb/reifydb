@@ -5,29 +5,21 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Error,
 	event::EventBus,
 	interface::{
-		BoxedVersionedIter, TransactionId, UnversionedTransaction,
-		Versioned, VersionedCommandTransaction,
-		VersionedQueryTransaction, VersionedStorage,
-		VersionedTransaction, WithEventBus,
+		BoxedVersionedIter, TransactionId, UnversionedTransaction, Versioned, VersionedCommandTransaction,
+		VersionedQueryTransaction, VersionedStorage, VersionedTransaction, WithEventBus,
 	},
 	row::EncodedRow,
 };
 
-use crate::mvcc::transaction::serializable::{
-	CommandTransaction, QueryTransaction, Serializable,
-};
+use crate::mvcc::transaction::serializable::{CommandTransaction, QueryTransaction, Serializable};
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> WithEventBus
-	for Serializable<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> WithEventBus for Serializable<VS, UT> {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction
-	for Serializable<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction for Serializable<VS, UT> {
 	type Query = QueryTransaction<VS, UT>;
 	type Command = CommandTransaction<VS, UT>;
 
@@ -40,9 +32,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
-	for QueryTransaction<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction for QueryTransaction<VS, UT> {
 	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -51,10 +41,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		self.tm.id()
 	}
 
-	fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> Result<Option<Versioned>, Error> {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
 		Ok(QueryTransaction::get(self, key)?.map(|tv| Versioned {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
@@ -76,42 +63,28 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> Result<BoxedVersionedIter, Error> {
+	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
 		let iter = QueryTransaction::range(self, range)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> Result<BoxedVersionedIter, Error> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
 		let iter = QueryTransaction::range_rev(self, range)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn prefix(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> Result<BoxedVersionedIter, Error> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
 		let iter = QueryTransaction::prefix(self, prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn prefix_rev(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> Result<BoxedVersionedIter, Error> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
 		let iter = QueryTransaction::prefix_rev(self, prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
-	for CommandTransaction<VS, UT>
-{
+impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction for CommandTransaction<VS, UT> {
 	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -120,10 +93,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		self.tm.id()
 	}
 
-	fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> Result<Option<Versioned>, Error> {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
 		Ok(CommandTransaction::get(self, key)?.map(|tv| Versioned {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
@@ -155,10 +125,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter))
 	}
 
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> Result<BoxedVersionedIter, Error> {
+	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
 		let iter = self.range(range)?.map(|tv| Versioned {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
@@ -168,10 +135,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter))
 	}
 
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> Result<BoxedVersionedIter, Error> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
 		let iter = self.range_rev(range)?.map(|tv| Versioned {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
@@ -181,10 +145,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter))
 	}
 
-	fn prefix(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> Result<BoxedVersionedIter, Error> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
 		let iter = self.prefix(prefix)?.map(|tv| Versioned {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
@@ -194,10 +155,7 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter))
 	}
 
-	fn prefix_rev(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> Result<BoxedVersionedIter, Error> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
 		let iter = self.prefix_rev(prefix)?.map(|tv| Versioned {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
@@ -208,14 +166,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction>
-	VersionedCommandTransaction for CommandTransaction<VS, UT>
-{
-	fn set(
-		&mut self,
-		key: &EncodedKey,
-		row: EncodedRow,
-	) -> Result<(), Error> {
+impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedCommandTransaction for CommandTransaction<VS, UT> {
+	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
 		CommandTransaction::set(self, key, row)?;
 		Ok(())
 	}

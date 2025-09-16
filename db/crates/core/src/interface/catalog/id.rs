@@ -52,17 +52,11 @@ impl<'de> Deserialize<'de> for ColumnId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = ColumnId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(ColumnId(value))
 			}
 		}
@@ -91,9 +85,9 @@ impl IndexId {
 	/// Creates a next index id for range operations (numerically next)
 	pub fn next(&self) -> IndexId {
 		match self {
-			IndexId::Primary(primary) => {
-				IndexId::Primary(PrimaryKeyId(primary.0 + 1))
-			} // Future: handle other index types
+			IndexId::Primary(primary) => IndexId::Primary(PrimaryKeyId(primary.0 + 1)), /* Future: handle
+			                                                                             * other index
+			                                                                             * types */
 		}
 	}
 
@@ -103,9 +97,7 @@ impl IndexId {
 	/// (wraps to u64::MAX)
 	pub fn prev(&self) -> IndexId {
 		match self {
-			IndexId::Primary(primary) => IndexId::Primary(
-				PrimaryKeyId(primary.0.wrapping_sub(1)),
-			),
+			IndexId::Primary(primary) => IndexId::Primary(PrimaryKeyId(primary.0.wrapping_sub(1))),
 			// Future: handle other index types
 		}
 	}
@@ -152,17 +144,11 @@ impl<'de> Deserialize<'de> for IndexId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = IndexId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				// Deserialize as primary key ID for now
 				Ok(IndexId::Primary(PrimaryKeyId(value)))
 			}
@@ -215,17 +201,11 @@ impl<'de> Deserialize<'de> for ColumnPolicyId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = ColumnPolicyId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(ColumnPolicyId(value))
 			}
 		}
@@ -283,17 +263,11 @@ impl<'de> Deserialize<'de> for NamespaceId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = NamespaceId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(NamespaceId(value))
 			}
 		}
@@ -363,17 +337,11 @@ impl<'de> Deserialize<'de> for TableId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = TableId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(TableId(value))
 			}
 		}
@@ -443,17 +411,11 @@ impl<'de> Deserialize<'de> for ViewId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = ViewId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(ViewId(value))
 			}
 		}
@@ -523,17 +485,11 @@ impl<'de> Deserialize<'de> for PrimaryKeyId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = PrimaryKeyId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(PrimaryKeyId(value))
 			}
 		}
@@ -603,17 +559,11 @@ impl<'de> Deserialize<'de> for RingBufferId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = RingBufferId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(RingBufferId(value))
 			}
 		}
@@ -659,17 +609,11 @@ impl<'de> Deserialize<'de> for SequenceId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = SequenceId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(SequenceId(value))
 			}
 		}

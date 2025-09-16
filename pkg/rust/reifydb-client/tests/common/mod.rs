@@ -6,10 +6,7 @@ use std::{collections::HashMap, error::Error, fmt::Write, net::ToSocketAddrs};
 use reifydb::{
 	core::{
 		event::EventBus,
-		interface::{
-			CdcTransaction, UnversionedTransaction,
-			VersionedTransaction,
-		},
+		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 	},
 	sub_server::{NetworkConfig, ServerConfig},
 	Database, ServerBuilder,
@@ -17,9 +14,7 @@ use reifydb::{
 use reifydb_client::{Client, Frame, HttpClient, Params, Value, WsClient};
 use reifydb_testing::testscript::Command;
 
-pub fn create_server_instance<VT, UT, C>(
-	input: (VT, UT, C, EventBus),
-) -> Database<VT, UT, C>
+pub fn create_server_instance<VT, UT, C>(input: (VT, UT, C, EventBus)) -> Database<VT, UT, C>
 where
 	VT: VersionedTransaction,
 	UT: UnversionedTransaction,
@@ -32,19 +27,13 @@ where
 		..Default::default()
 	};
 	ServerBuilder::new(versioned, unversioned, cdc, eventbus)
-		.with_config(
-			ServerConfig::new()
-				.bind_addr("::1:0")
-				.network(network_config),
-		)
+		.with_config(ServerConfig::new().bind_addr("::1:0").network(network_config))
 		.build()
 		.unwrap()
 }
 
 /// Start server and return WebSocket port
-pub fn start_server_and_get_port<VT, UT, C>(
-	server: &mut Database<VT, UT, C>,
-) -> Result<u16, Box<dyn Error>>
+pub fn start_server_and_get_port<VT, UT, C>(server: &mut Database<VT, UT, C>) -> Result<u16, Box<dyn Error>>
 where
 	VT: VersionedTransaction,
 	UT: UnversionedTransaction,
@@ -55,33 +44,24 @@ where
 }
 
 #[allow(dead_code)]
-pub fn connect_ws<A: ToSocketAddrs>(
-	addr: A,
-) -> Result<WsClient, Box<dyn Error>> {
+pub fn connect_ws<A: ToSocketAddrs>(addr: A) -> Result<WsClient, Box<dyn Error>> {
 	Client::ws(addr)
 }
 
 #[allow(dead_code)]
-pub fn connect_http<A: ToSocketAddrs>(
-	addr: A,
-) -> Result<HttpClient, Box<dyn Error>> {
+pub fn connect_http<A: ToSocketAddrs>(addr: A) -> Result<HttpClient, Box<dyn Error>> {
 	Client::http(addr)
 }
 
 /// Parse RQL command from testscript Command
 pub fn parse_rql(command: &Command) -> String {
-	command.args
-		.iter()
-		.map(|a| a.value.as_str())
-		.collect::<Vec<_>>()
-		.join(" ")
+	command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ")
 }
 
 /// Parse positional parameters from command arguments
 /// First argument is the SQL, rest are positional parameters
 pub fn parse_positional_params(command: &Command) -> (String, Params) {
-	let args: Vec<&str> =
-		command.args.iter().map(|a| a.value.as_str()).collect();
+	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
 
 	if args.is_empty() {
 		return (String::new(), Params::Positional(vec![]));
@@ -96,8 +76,7 @@ pub fn parse_positional_params(command: &Command) -> (String, Params) {
 /// Parse named parameters from command arguments
 /// First argument is the SQL, rest are name=value pairs
 pub fn parse_named_params(command: &Command) -> (String, Params) {
-	let args: Vec<&str> =
-		command.args.iter().map(|a| a.value.as_str()).collect();
+	let args: Vec<&str> = command.args.iter().map(|a| a.value.as_str()).collect();
 
 	if args.is_empty() {
 		return (String::new(), Params::Named(HashMap::new()));
@@ -108,10 +87,7 @@ pub fn parse_named_params(command: &Command) -> (String, Params) {
 
 	for arg in &args[1..] {
 		if let Some((name, value)) = arg.split_once('=') {
-			params.insert(
-				name.to_string(),
-				parse_param_value(value),
-			);
+			params.insert(name.to_string(), parse_param_value(value));
 		}
 	}
 

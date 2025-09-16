@@ -14,10 +14,7 @@ impl Abs {
 }
 
 impl ScalarFunction for Abs {
-	fn scalar(
-		&self,
-		ctx: ScalarFunctionContext,
-	) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -43,21 +40,15 @@ impl ScalarFunction for Abs {
 				} else {
 					// Slow path: some values may be
 					// undefined
-					let mut data = Vec::with_capacity(
-						container.len(),
-					);
+					let mut data = Vec::with_capacity(container.len());
 
 					for i in 0..row_count {
-						if let Some(value) =
-							container.get(i)
-						{
-							data.push(
-								if *value < 0 {
-									*value * -1
-								} else {
-									*value
-								},
-							);
+						if let Some(value) = container.get(i) {
+							data.push(if *value < 0 {
+								*value * -1
+							} else {
+								*value
+							});
 						} else {
 							// Push default value
 							// for undefined entries
@@ -65,10 +56,7 @@ impl ScalarFunction for Abs {
 						}
 					}
 
-					Ok(ColumnData::int1_with_bitvec(
-						data,
-						container.bitvec().clone(),
-					))
+					Ok(ColumnData::int1_with_bitvec(data, container.bitvec().clone()))
 				}
 			}
 			ColumnData::Int2(container) => {
@@ -90,21 +78,15 @@ impl ScalarFunction for Abs {
 				} else {
 					// Slow path: some values may be
 					// undefined
-					let mut data = Vec::with_capacity(
-						container.len(),
-					);
+					let mut data = Vec::with_capacity(container.len());
 
 					for i in 0..row_count {
-						if let Some(value) =
-							container.get(i)
-						{
-							data.push(
-								if *value < 0 {
-									*value * -1
-								} else {
-									*value
-								},
-							);
+						if let Some(value) = container.get(i) {
+							data.push(if *value < 0 {
+								*value * -1
+							} else {
+								*value
+							});
 						} else {
 							// Push default value
 							// for undefined entries
@@ -112,10 +94,7 @@ impl ScalarFunction for Abs {
 						}
 					}
 
-					Ok(ColumnData::int2_with_bitvec(
-						data,
-						container.bitvec().clone(),
-					))
+					Ok(ColumnData::int2_with_bitvec(data, container.bitvec().clone()))
 				}
 			}
 			_ => unimplemented!(),
@@ -156,10 +135,7 @@ mod tests {
 			// Check values
 			let expected = vec![5i8, 3, 2, 0, 7, 1];
 			for (i, &expected_val) in expected.iter().enumerate() {
-				assert_eq!(
-					container.get(i),
-					Some(&expected_val)
-				);
+				assert_eq!(container.get(i), Some(&expected_val));
 			}
 		} else {
 			panic!("Expected Int1 result");
@@ -176,11 +152,7 @@ mod tests {
 		bitvec.set(2, false); // Make index 2 undefined
 		bitvec.set(4, false); // Make index 4 undefined
 
-		let column = Unqualified::int1_with_bitvec(
-			"test",
-			data.clone(),
-			bitvec.clone(),
-		);
+		let column = Unqualified::int1_with_bitvec("test", data.clone(), bitvec.clone());
 
 		let columns = Columns::new(vec![column]);
 		let ctx = ScalarFunctionContext {
@@ -231,10 +203,7 @@ mod tests {
 			// Check values
 			let expected = vec![500i16, 300, 200, 0, 700, 100];
 			for (i, &expected_val) in expected.iter().enumerate() {
-				assert_eq!(
-					container.get(i),
-					Some(&expected_val)
-				);
+				assert_eq!(container.get(i), Some(&expected_val));
 			}
 		} else {
 			panic!("Expected Int2 result");

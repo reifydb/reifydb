@@ -3,9 +3,7 @@
 
 use std::sync::RwLockReadGuard;
 
-use reifydb_core::interface::{
-	BoxedUnversionedIter, UnversionedQueryTransaction,
-};
+use reifydb_core::interface::{BoxedUnversionedIter, UnversionedQueryTransaction};
 
 use super::*;
 
@@ -17,10 +15,7 @@ impl<US> UnversionedQueryTransaction for SvlReadTransaction<'_, US>
 where
 	US: UnversionedStorage,
 {
-	fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> crate::Result<Option<Unversioned>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>> {
 		self.storage.get(key)
 	}
 
@@ -38,34 +33,22 @@ where
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedUnversionedIter> {
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
 		let iter = self.storage.range(range)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedUnversionedIter> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
 		let iter = self.storage.range_rev(range)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn prefix(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedUnversionedIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
 		let iter = self.storage.prefix(prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn prefix_rev(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedUnversionedIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
 		let iter = self.storage.prefix_rev(prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}

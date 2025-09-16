@@ -5,9 +5,7 @@ use std::ops::Bound;
 
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{
-		CdcEvent, CdcQueryTransaction, CdcStorage, CdcTransaction,
-	},
+	interface::{CdcEvent, CdcQueryTransaction, CdcStorage, CdcTransaction},
 };
 
 #[derive(Clone)]

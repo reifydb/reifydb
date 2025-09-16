@@ -9,9 +9,7 @@
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction};
 use reifydb_storage::{memory::Memory, sqlite::Sqlite};
 use reifydb_transaction::{
-	mvcc::transaction::{
-		optimistic::Optimistic, serializable::Serializable,
-	},
+	mvcc::transaction::{optimistic::Optimistic, serializable::Serializable},
 	svl::SingleVersionLock,
 };
 
@@ -27,57 +25,29 @@ pub type MemoryCdc = StandardCdcTransaction<Memory>;
 pub type SqliteCdc = StandardCdcTransaction<Sqlite>;
 
 /// In-memory with serializable isolation
-pub type MemorySerializableTransaction = EngineTransaction<
-	Serializable<Memory, UnversionedMemory>,
-	UnversionedMemory,
-	MemoryCdc,
->;
+pub type MemorySerializableTransaction =
+	EngineTransaction<Serializable<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc>;
 
 /// In-memory post with serializable isolation
-pub type MemoryDatabaseSerializable = Database<
-	Serializable<Memory, UnversionedMemory>,
-	UnversionedMemory,
-	MemoryCdc,
->;
+pub type MemoryDatabaseSerializable = Database<Serializable<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc>;
 
 /// In-memory with optimistic concurrency control
-pub type MemoryOptimisticTransaction = EngineTransaction<
-	Optimistic<Memory, UnversionedMemory>,
-	UnversionedMemory,
-	MemoryCdc,
->;
+pub type MemoryOptimisticTransaction =
+	EngineTransaction<Optimistic<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc>;
 
 /// In-memory post with optimistic concurrency control
-pub type MemoryDatabaseOptimistic = Database<
-	Optimistic<Memory, UnversionedMemory>,
-	UnversionedMemory,
-	MemoryCdc,
->;
+pub type MemoryDatabaseOptimistic = Database<Optimistic<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc>;
 
 /// SQLite with serializable isolation
-pub type SqliteSerializableTransaction = EngineTransaction<
-	Serializable<Sqlite, UnversionedSqlite>,
-	UnversionedSqlite,
-	SqliteCdc,
->;
+pub type SqliteSerializableTransaction =
+	EngineTransaction<Serializable<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc>;
 
 /// SQLite-backed with serializable isolations
-pub type SqliteDatabaseSerializable = Database<
-	Serializable<Sqlite, UnversionedSqlite>,
-	UnversionedSqlite,
-	SqliteCdc,
->;
+pub type SqliteDatabaseSerializable = Database<Serializable<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc>;
 
 /// SQLite with optimistic concurrency control
-pub type SqliteOptimisticTransaction = EngineTransaction<
-	Optimistic<Sqlite, UnversionedSqlite>,
-	UnversionedSqlite,
-	SqliteCdc,
->;
+pub type SqliteOptimisticTransaction =
+	EngineTransaction<Optimistic<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc>;
 
 /// SQLite-backed post with optimistic concurrency control
-pub type SqliteDatabaseOptimistic = Database<
-	Optimistic<Sqlite, UnversionedSqlite>,
-	UnversionedSqlite,
-	SqliteCdc,
->;
+pub type SqliteDatabaseOptimistic = Database<Optimistic<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc>;

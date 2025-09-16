@@ -2,10 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::value::columnar::ColumnData;
-use reifydb_type::{
-	IntoFragment, Type, diagnostic::cast, parse_uuid4, parse_uuid7,
-	return_error,
-};
+use reifydb_type::{IntoFragment, Type, diagnostic::cast, parse_uuid4, parse_uuid7, return_error};
 
 pub(crate) struct UuidParser;
 
@@ -21,48 +18,26 @@ impl UuidParser {
 		match target {
 			Type::Uuid4 => Self::parse_uuid4(fragment, row_count),
 			Type::Uuid7 => Self::parse_uuid7(fragment, row_count),
-			_ => return_error!(cast::unsupported_cast(
-				fragment,
-				Type::Utf8,
-				target
-			)),
+			_ => return_error!(cast::unsupported_cast(fragment, Type::Utf8, target)),
 		}
 	}
 
-	fn parse_uuid4<'a>(
-		fragment: impl IntoFragment<'a>,
-		row_count: usize,
-	) -> crate::Result<ColumnData> {
+	fn parse_uuid4<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		match parse_uuid4(&fragment) {
-			Ok(uuid) => {
-				Ok(ColumnData::uuid4(vec![uuid; row_count]))
-			}
+			Ok(uuid) => Ok(ColumnData::uuid4(vec![uuid; row_count])),
 			Err(err) => {
-				return_error!(cast::invalid_uuid(
-					fragment,
-					Type::Uuid4,
-					err.diagnostic()
-				))
+				return_error!(cast::invalid_uuid(fragment, Type::Uuid4, err.diagnostic()))
 			}
 		}
 	}
 
-	fn parse_uuid7<'a>(
-		fragment: impl IntoFragment<'a>,
-		row_count: usize,
-	) -> crate::Result<ColumnData> {
+	fn parse_uuid7<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		match parse_uuid7(&fragment) {
-			Ok(uuid) => {
-				Ok(ColumnData::uuid7(vec![uuid; row_count]))
-			}
+			Ok(uuid) => Ok(ColumnData::uuid7(vec![uuid; row_count])),
 			Err(err) => {
-				return_error!(cast::invalid_uuid(
-					fragment,
-					Type::Uuid7,
-					err.diagnostic()
-				))
+				return_error!(cast::invalid_uuid(fragment, Type::Uuid7, err.diagnostic()))
 			}
 		}
 	}

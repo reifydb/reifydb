@@ -19,13 +19,7 @@ fn main() {
 	// Example 1: MAP with constants
 	log_info!("Example 1: MAP with constants");
 	log_query(r#"map { 42 as answer, "hello" as greeting }"#);
-	for frame in db
-		.query_as_root(
-			r#"map { 42 as answer, "hello" as greeting }"#,
-			Params::None,
-		)
-		.unwrap()
-	{
+	for frame in db.query_as_root(r#"map { 42 as answer, "hello" as greeting }"#, Params::None).unwrap() {
 		log_info!("{}", frame);
 		// Output:
 		// +----------+------------+
@@ -37,14 +31,9 @@ fn main() {
 
 	// Example 2: MAP with arithmetic expressions
 	log_info!("\nExample 2: MAP with arithmetic expressions");
-	log_query(
-		r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#,
-	);
+	log_query(r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#);
 	for frame in db
-		.query_as_root(
-			r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#,
-			Params::None,
-		)
+		.query_as_root(r#"map { 10 + 5 as sum, 10 * 5 as product, 10 / 5 as quotient }"#, Params::None)
 		.unwrap()
 	{
 		log_info!("{}", frame);

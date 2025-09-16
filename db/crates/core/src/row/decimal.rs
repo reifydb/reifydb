@@ -23,25 +23,15 @@ impl EncodedRowLayout {
 	/// Set a Decimal value with 2-tier storage optimization
 	/// - Values that fit in i128: stored inline with MSB=0
 	/// - Large values: stored in dynamic section with MSB=1
-	pub fn set_decimal(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: &Decimal,
-	) {
+	pub fn set_decimal(&self, row: &mut EncodedRow, index: usize, value: &Decimal) {
 		let field = &self.fields[index];
 		debug_assert!(matches!(field.value, Type::Decimal { .. }));
 
 		// Get the mantissa and original scale from the BigDecimal
-		let (mantissa, original_scale) =
-			value.inner().as_bigint_and_exponent();
+		let (mantissa, original_scale) = value.inner().as_bigint_and_exponent();
 
 		// Always use dynamic storage to store both mantissa and scale
-		debug_assert!(
-			!row.is_defined(index),
-			"Decimal field {} already set",
-			index
-		);
+		debug_assert!(!row.is_defined(index), "Decimal field {} already set", index);
 
 		// Serialize as scale (i64) + mantissa (variable bytes)
 		let scale_bytes = original_scale.to_le_bytes();
@@ -55,16 +45,13 @@ impl EncodedRowLayout {
 		row.0.extend_from_slice(&digits_bytes);
 
 		// Pack offset and length in lower 127 bits, set MSB=1
-		let offset_part =
-			(dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
-		let length_part =
-			((total_size as u128) << 64) & DYNAMIC_LENGTH_MASK;
+		let offset_part = (dynamic_offset as u128) & DYNAMIC_OFFSET_MASK;
+		let length_part = ((total_size as u128) << 64) & DYNAMIC_LENGTH_MASK;
 		let packed = MODE_DYNAMIC | offset_part | length_part;
 
 		unsafe {
 			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut u128,
+				row.make_mut().as_mut_ptr().add(field.offset) as *mut u128,
 				packed.to_le(),
 			);
 		}
@@ -76,32 +63,22 @@ impl EncodedRowLayout {
 		let field = &self.fields[index];
 		debug_assert!(matches!(field.value, Type::Decimal { .. }));
 
-		let packed = unsafe {
-			(row.as_ptr().add(field.offset) as *const u128)
-				.read_unaligned()
-		};
+		let packed = unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);
 
 		// Always expect dynamic storage (MSB=1)
-		debug_assert!(
-			packed & MODE_MASK == MODE_DYNAMIC,
-			"Expected dynamic storage"
-		);
+		debug_assert!(packed & MODE_MASK == MODE_DYNAMIC, "Expected dynamic storage");
 
 		// Extract offset and length
 		let offset = (packed & DYNAMIC_OFFSET_MASK) as usize;
 		let length = ((packed & DYNAMIC_LENGTH_MASK) >> 64) as usize;
 
 		let dynamic_start = self.dynamic_section_start();
-		let data_bytes = &row.as_slice()[dynamic_start + offset
-			..dynamic_start + offset + length];
+		let data_bytes = &row.as_slice()[dynamic_start + offset..dynamic_start + offset + length];
 
 		// Parse scale (first 8 bytes) and mantissa (remaining bytes)
-		let original_scale = i64::from_le_bytes(
-			data_bytes[0..8].try_into().unwrap(),
-		);
-		let mantissa =
-			StdBigInt::from_signed_bytes_le(&data_bytes[8..]);
+		let original_scale = i64::from_le_bytes(data_bytes[0..8].try_into().unwrap());
+		let mantissa = StdBigInt::from_signed_bytes_le(&data_bytes[8..]);
 
 		// Reconstruct the BigDecimal with original scale
 		let big_decimal = StdBigDecimal::new(mantissa, original_scale);
@@ -111,11 +88,7 @@ impl EncodedRowLayout {
 	}
 
 	/// Try to get a Decimal value, returning None if undefined
-	pub fn try_get_decimal(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<Decimal> {
+	pub fn try_get_decimal(&self, row: &EncodedRow, index: usize) -> Option<Decimal> {
 		if row.is_defined(index) {
 			Some(self.get_decimal(row, index))
 		} else {
@@ -158,27 +131,17 @@ mod tests {
 		// Test high precision decimal
 		let layout1 = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row1 = layout1.allocate_row();
-		let high_precision =
-			Decimal::from_str("1.0000000000000000000000000000001")
-				.unwrap();
+		let high_precision = Decimal::from_str("1.0000000000000000000000000000001").unwrap();
 		layout1.set_decimal(&mut row1, 0, &high_precision);
 		let retrieved = layout1.get_decimal(&row1, 0);
-		assert_eq!(
-			retrieved.to_string(),
-			"1.0000000000000000000000000000001"
-		);
+		assert_eq!(retrieved.to_string(), "1.0000000000000000000000000000001");
 
 		// Test large integer (scale 0)
 		let layout2 = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row2 = layout2.allocate_row();
-		let large_int =
-			Decimal::from_str("100000000000000000000000000000000")
-				.unwrap();
+		let large_int = Decimal::from_str("100000000000000000000000000000000").unwrap();
 		layout2.set_decimal(&mut row2, 0, &large_int);
-		assert_eq!(
-			layout2.get_decimal(&row2, 0).to_string(),
-			"100000000000000000000000000000000"
-		);
+		assert_eq!(layout2.get_decimal(&row2, 0).to_string(), "100000000000000000000000000000000");
 	}
 
 	#[test]
@@ -187,17 +150,12 @@ mod tests {
 		let mut row = layout.allocate_row();
 
 		// Value that needs i128 mantissa
-		let large =
-			Decimal::from_str("999999999999999999999.123456789")
-				.unwrap();
+		let large = Decimal::from_str("999999999999999999999.123456789").unwrap();
 		layout.set_decimal(&mut row, 0, &large);
 		assert!(row.is_defined(0));
 
 		let retrieved = layout.get_decimal(&row, 0);
-		assert_eq!(
-			retrieved.to_string(),
-			"999999999999999999999.123456789"
-		);
+		assert_eq!(retrieved.to_string(), "999999999999999999999.123456789");
 	}
 
 	#[test]
@@ -209,19 +167,13 @@ mod tests {
 
 		// Create a value with large precision that will exceed i128
 		// when scaled
-		let huge = Decimal::from_str(
-			"99999999999999999999999999999.123456789",
-		)
-		.unwrap();
+		let huge = Decimal::from_str("99999999999999999999999999999.123456789").unwrap();
 
 		layout.set_decimal(&mut row, 0, &huge);
 		assert!(row.is_defined(0));
 
 		let retrieved = layout.get_decimal(&row, 0);
-		assert_eq!(
-			retrieved.to_string(),
-			"99999999999999999999999999999.123456789"
-		);
+		assert_eq!(retrieved.to_string(), "99999999999999999999999999999.123456789");
 	}
 
 	#[test]
@@ -251,10 +203,7 @@ mod tests {
 		let mut row2 = layout.allocate_row();
 		let large_price = Decimal::from_str("999999999.99").unwrap();
 		layout.set_decimal(&mut row2, 0, &large_price);
-		assert_eq!(
-			layout.get_decimal(&row2, 0).to_string(),
-			"999999999.99"
-		);
+		assert_eq!(layout.get_decimal(&row2, 0).to_string(), "999999999.99");
 
 		// Test small fraction
 		let mut row3 = layout.allocate_row();
@@ -309,13 +258,8 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Boolean,
-			Type::Decimal,
-			Type::Utf8,
-			Type::Decimal,
-			Type::Int4,
-		]);
+		let layout =
+			EncodedRowLayout::new(&[Type::Boolean, Type::Decimal, Type::Utf8, Type::Decimal, Type::Int4]);
 		let mut row = layout.allocate_row();
 
 		layout.set_bool(&mut row, 0, true);
@@ -325,8 +269,7 @@ mod tests {
 
 		layout.set_utf8(&mut row, 2, "test");
 
-		let large_decimal =
-			Decimal::from_str("123456789.987654321").unwrap();
+		let large_decimal = Decimal::from_str("123456789.987654321").unwrap();
 		layout.set_decimal(&mut row, 3, &large_decimal);
 
 		layout.set_i32(&mut row, 4, -42);
@@ -334,10 +277,7 @@ mod tests {
 		assert_eq!(layout.get_bool(&row, 0), true);
 		assert_eq!(layout.get_decimal(&row, 1).to_string(), "99.99");
 		assert_eq!(layout.get_utf8(&row, 2), "test");
-		assert_eq!(
-			layout.get_decimal(&row, 3).to_string(),
-			"123456789.987654321"
-		);
+		assert_eq!(layout.get_decimal(&row, 3).to_string(), "123456789.987654321");
 		assert_eq!(layout.get_i32(&row, 4), -42);
 	}
 
@@ -354,25 +294,15 @@ mod tests {
 		// Large negative (extended i128) - needs scale 3
 		let layout2 = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row2 = layout2.allocate_row();
-		let large_neg =
-			Decimal::from_str("-999999999999999999.999").unwrap();
+		let large_neg = Decimal::from_str("-999999999999999999.999").unwrap();
 		layout2.set_decimal(&mut row2, 0, &large_neg);
-		assert_eq!(
-			layout2.get_decimal(&row2, 0).to_string(),
-			"-999999999999999999.999"
-		);
+		assert_eq!(layout2.get_decimal(&row2, 0).to_string(), "-999999999999999999.999");
 
 		// Huge negative (dynamic) - needs scale 9
 		let layout3 = EncodedRowLayout::new(&[Type::Decimal]);
 		let mut row3 = layout3.allocate_row();
-		let huge_neg = Decimal::from_str(
-			"-99999999999999999999999999999.999999999",
-		)
-		.unwrap();
+		let huge_neg = Decimal::from_str("-99999999999999999999999999999.999999999").unwrap();
 		layout3.set_decimal(&mut row3, 0, &huge_neg);
-		assert_eq!(
-			layout3.get_decimal(&row3, 0).to_string(),
-			"-99999999999999999999999999999.999999999"
-		);
+		assert_eq!(layout3.get_decimal(&row3, 0).to_string(), "-99999999999999999999999999999.999999999");
 	}
 }

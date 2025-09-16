@@ -1,21 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	collections::HashMap, mem::take, ops::RangeBounds,
-	sync::RwLockWriteGuard,
-};
+use std::{collections::HashMap, mem::take, ops::RangeBounds, sync::RwLockWriteGuard};
 
-use reifydb_core::interface::{
-	BoxedUnversionedIter, UnversionedCommandTransaction,
-	UnversionedQueryTransaction,
-};
+use reifydb_core::interface::{BoxedUnversionedIter, UnversionedCommandTransaction, UnversionedQueryTransaction};
 
 use super::*;
-use crate::svl::{
-	range::SvlRange, range_rev::SvlRangeRev, scan::SvlScan,
-	scan_rev::SvlScanRev,
-};
+use crate::svl::{range::SvlRange, range_rev::SvlRangeRev, scan::SvlScan, scan_rev::SvlScanRev};
 
 pub struct SvlWriteTransaction<'a, US> {
 	pending: HashMap<EncodedKey, Delta>,
@@ -27,10 +18,7 @@ impl<US> UnversionedQueryTransaction for SvlWriteTransaction<'_, US>
 where
 	US: UnversionedStorage,
 {
-	fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> crate::Result<Option<Unversioned>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>> {
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {
@@ -66,48 +54,26 @@ where
 	}
 
 	fn scan(&mut self) -> crate::Result<BoxedUnversionedIter> {
-		let (pending_items, committed_items) =
-			self.prepare_scan_data(None, false)?;
-		let iter = SvlScan::new(
-			pending_items.into_iter(),
-			committed_items.into_iter(),
-		);
+		let (pending_items, committed_items) = self.prepare_scan_data(None, false)?;
+		let iter = SvlScan::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
 	fn scan_rev(&mut self) -> crate::Result<BoxedUnversionedIter> {
-		let (pending_items, committed_items) =
-			self.prepare_scan_data(None, true)?;
-		let iter = SvlScanRev::new(
-			pending_items.into_iter(),
-			committed_items.into_iter(),
-		);
+		let (pending_items, committed_items) = self.prepare_scan_data(None, true)?;
+		let iter = SvlScanRev::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedUnversionedIter> {
-		let (pending_items, committed_items) =
-			self.prepare_scan_data(Some(range.clone()), false)?;
-		let iter = SvlRange::new(
-			pending_items.into_iter(),
-			committed_items.into_iter(),
-		);
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
+		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), false)?;
+		let iter = SvlRange::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedUnversionedIter> {
-		let (pending_items, committed_items) =
-			self.prepare_scan_data(Some(range.clone()), true)?;
-		let iter = SvlRangeRev::new(
-			pending_items.into_iter(),
-			committed_items.into_iter(),
-		);
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
+		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), true)?;
+		let iter = SvlRangeRev::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 }
@@ -139,11 +105,7 @@ where
 				.filter(|(k, _)| r.contains(&**k))
 				.map(|(k, v)| (k.clone(), v.clone()))
 				.collect(),
-			None => self
-				.pending
-				.iter()
-				.map(|(k, v)| (k.clone(), v.clone()))
-				.collect(),
+			None => self.pending.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
 		};
 
 		// Sort pending items by key (forward or reverse)
@@ -156,15 +118,9 @@ where
 		// Get committed items from storage
 		let committed_items: Vec<Unversioned> = {
 			match (range, reverse) {
-				(Some(r), true) => {
-					self.storage.range_rev(r)?.collect()
-				}
-				(Some(r), false) => {
-					self.storage.range(r)?.collect()
-				}
-				(None, true) => {
-					self.storage.scan_rev()?.collect()
-				}
+				(Some(r), true) => self.storage.range_rev(r)?.collect(),
+				(Some(r), false) => self.storage.range(r)?.collect(),
+				(None, true) => self.storage.scan_rev()?.collect(),
 				(None, false) => self.storage.scan()?.collect(),
 			}
 		};
@@ -177,11 +133,7 @@ impl<'a, US> UnversionedCommandTransaction for SvlWriteTransaction<'a, US>
 where
 	US: UnversionedStorage,
 {
-	fn set(
-		&mut self,
-		key: &EncodedKey,
-		row: EncodedRow,
-	) -> crate::Result<()> {
+	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
 		let delta = Delta::Set {
 			key: key.clone(),
 			row,
@@ -201,10 +153,7 @@ where
 	}
 
 	fn commit(mut self) -> crate::Result<()> {
-		let deltas: Vec<Delta> = take(&mut self.pending)
-			.into_iter()
-			.map(|(_, delta)| delta)
-			.collect();
+		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
 			self.storage.commit(CowVec::new(deltas))?;

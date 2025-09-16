@@ -17,11 +17,7 @@ use crate::{
 impl CdcRange for Sqlite {
 	type RangeIter<'a> = Range;
 
-	fn range(
-		&self,
-		start: Bound<CommitVersion>,
-		end: Bound<CommitVersion>,
-	) -> Result<Self::RangeIter<'_>> {
+	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Result<Self::RangeIter<'_>> {
 		Ok(Range::new(self.get_reader(), start, end, 1024))
 	}
 }
@@ -37,12 +33,7 @@ pub struct Range {
 }
 
 impl Range {
-	pub fn new(
-		conn: Reader,
-		start: Bound<CommitVersion>,
-		end: Bound<CommitVersion>,
-		batch_size: usize,
-	) -> Self {
+	pub fn new(conn: Reader, start: Bound<CommitVersion>, end: Bound<CommitVersion>, batch_size: usize) -> Self {
 		Self {
 			conn,
 			start,
@@ -67,10 +58,7 @@ impl Range {
 		let query = if where_clause.is_empty() {
 			"SELECT version, value FROM cdc ORDER BY version ASC LIMIT ?".to_string()
 		} else {
-			format!(
-				"SELECT version, value FROM cdc {} ORDER BY version ASC LIMIT ?",
-				where_clause
-			)
+			format!("SELECT version, value FROM cdc {} ORDER BY version ASC LIMIT ?", where_clause)
 		};
 
 		let conn_guard = self.conn.lock().unwrap();
@@ -80,17 +68,11 @@ impl Range {
 		query_params.push(self.batch_size as i64);
 
 		let transactions: Vec<(CommitVersion, EncodedRow)> = stmt
-			.query_map(
-				rusqlite::params_from_iter(query_params),
-				|row| {
-					let version: i64 = row.get(0)?;
-					let bytes: Vec<u8> = row.get(1)?;
-					Ok((
-						version as CommitVersion,
-						EncodedRow(CowVec::new(bytes)),
-					))
-				},
-			)
+			.query_map(rusqlite::params_from_iter(query_params), |row| {
+				let version: i64 = row.get(0)?;
+				let bytes: Vec<u8> = row.get(1)?;
+				Ok((version as CommitVersion, EncodedRow(CowVec::new(bytes))))
+			})
 			.unwrap()
 			.collect::<rusqlite::Result<Vec<_>>>()
 			.unwrap();
@@ -98,9 +80,7 @@ impl Range {
 		let count = transactions.len();
 
 		for (version, encoded_transaction) in transactions {
-			if let Ok(transaction) =
-				decode_cdc_transaction(&encoded_transaction)
-			{
+			if let Ok(transaction) = decode_cdc_transaction(&encoded_transaction) {
 				self.last_version = Some(version);
 				// Add all events from this transaction to the
 				// buffer

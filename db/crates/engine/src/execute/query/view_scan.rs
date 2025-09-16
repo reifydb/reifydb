@@ -9,8 +9,7 @@ use std::{
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, RowKey, RowKeyRange,
-		Transaction, VersionedQueryTransaction, ViewDef,
+		EncodableKey, EncodableKeyRange, RowKey, RowKeyRange, Transaction, VersionedQueryTransaction, ViewDef,
 	},
 	log_debug,
 	row::EncodedRowLayout,
@@ -34,15 +33,8 @@ pub(crate) struct ViewScanNode<T: Transaction> {
 }
 
 impl<T: Transaction> ViewScanNode<T> {
-	pub fn new(
-		view: ViewDef,
-		context: Arc<ExecutionContext>,
-	) -> crate::Result<Self> {
-		let data = view
-			.columns
-			.iter()
-			.map(|c| c.constraint.get_type())
-			.collect::<Vec<_>>();
+	pub fn new(view: ViewDef, context: Arc<ExecutionContext>) -> crate::Result<Self> {
+		let data = view.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedRowLayout::new(&data);
 
 		let layout = ColumnsLayout {
@@ -79,14 +71,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<T> {
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.context.is_some(),
-			"ViewScanNode::next() called before initialize()"
-		);
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
 		if self.exhausted {
@@ -99,15 +85,9 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<T> {
 		};
 
 		let range = if let Some(_) = &self.last_key {
-			EncodedKeyRange::new(
-				Excluded(self.last_key.clone().unwrap()),
-				Included(range.end().unwrap()),
-			)
+			EncodedKeyRange::new(Excluded(self.last_key.clone().unwrap()), Included(range.end().unwrap()))
 		} else {
-			EncodedKeyRange::new(
-				Included(range.start().unwrap()),
-				Included(range.end().unwrap()),
-			)
+			EncodedKeyRange::new(Included(range.start().unwrap()), Included(range.end().unwrap()))
 		};
 
 		log_debug!(
@@ -122,14 +102,9 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<T> {
 		let mut rows_collected = 0;
 		let mut new_last_key = None;
 
-		let versioned_rows: Vec<_> =
-			rx.range(range)?.into_iter().collect();
+		let versioned_rows: Vec<_> = rx.range(range)?.into_iter().collect();
 
-		log_debug!(
-			"ViewScan: Found {} rows for view {:?}",
-			versioned_rows.len(),
-			self.view.id
-		);
+		log_debug!("ViewScan: Found {} rows for view {:?}", versioned_rows.len(), self.view.id);
 
 		for versioned in versioned_rows.into_iter() {
 			if let Some(key) = RowKey::decode(&versioned.key) {
@@ -156,15 +131,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<T> {
 
 		// Add the RowNumber column to the columns if requested
 		if ctx.preserve_row_numbers {
-			let row_number_column =
-				Column::SourceQualified(SourceQualified {
-					source: self.view.name.clone(),
-					name: ROW_NUMBER_COLUMN_NAME
-						.to_string(),
-					data: ColumnData::row_number(
-						row_numbers,
-					),
-				});
+			let row_number_column = Column::SourceQualified(SourceQualified {
+				source: self.view.name.clone(),
+				name: ROW_NUMBER_COLUMN_NAME.to_string(),
+				data: ColumnData::row_number(row_numbers),
+			});
 			columns.0.push(row_number_column);
 		}
 

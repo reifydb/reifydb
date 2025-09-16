@@ -5,17 +5,13 @@ use once_cell::sync::Lazy;
 use reifydb_core::{
 	EncodedKey,
 	diagnostic::sequence::sequence_exhausted,
-	interface::{
-		CommandTransaction, UnversionedCommandTransaction,
-		UnversionedQueryTransaction,
-	},
+	interface::{CommandTransaction, UnversionedCommandTransaction, UnversionedQueryTransaction},
 	return_error,
 	row::EncodedRowLayout,
 };
 use reifydb_type::Type;
 
-static LAYOUT: Lazy<EncodedRowLayout> =
-	Lazy::new(|| EncodedRowLayout::new(&[Type::Int8]));
+static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| EncodedRowLayout::new(&[Type::Int8]));
 
 pub(crate) struct GeneratorI64 {}
 
@@ -29,13 +25,10 @@ impl GeneratorI64 {
 			Some(unversioned_row) => {
 				let mut row = unversioned_row.row;
 				let current_value = LAYOUT.get_i64(&row, 0);
-				let next_value =
-					current_value.saturating_add(1);
+				let next_value = current_value.saturating_add(1);
 
 				if current_value == next_value {
-					return_error!(sequence_exhausted(
-						Type::Int8
-					));
+					return_error!(sequence_exhausted(Type::Int8));
 				}
 
 				LAYOUT.set_i64(&mut row, 0, next_value);
@@ -52,11 +45,7 @@ impl GeneratorI64 {
 		})
 	}
 
-	pub(crate) fn set(
-		txn: &mut impl CommandTransaction,
-		key: &EncodedKey,
-		value: i64,
-	) -> crate::Result<()> {
+	pub(crate) fn set(txn: &mut impl CommandTransaction, key: &EncodedKey, value: i64) -> crate::Result<()> {
 		txn.with_unversioned_command(|tx| {
 			let mut row = match tx.get(key)? {
 				Some(unversioned_row) => unversioned_row.row,
@@ -74,10 +63,7 @@ mod tests {
 	use reifydb_core::{
 		EncodedKey,
 		diagnostic::sequence::sequence_exhausted,
-		interface::{
-			Unversioned, UnversionedCommandTransaction,
-			UnversionedQueryTransaction,
-		},
+		interface::{Unversioned, UnversionedCommandTransaction, UnversionedQueryTransaction},
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
@@ -88,26 +74,17 @@ mod tests {
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
 		for expected in 1..1000 {
-			let got = GeneratorI64::next(
-				&mut txn,
-				&EncodedKey::new("sequence"),
-				None,
-			)
-			.unwrap();
+			let got = GeneratorI64::next(&mut txn, &EncodedKey::new("sequence"), None).unwrap();
 			assert_eq!(got, expected);
 		}
 
 		txn.with_unversioned_query(|tx| {
-			let mut unversioned: Vec<Unversioned> =
-				tx.scan()?.collect();
+			let mut unversioned: Vec<Unversioned> = tx.scan()?.collect();
 			assert_eq!(unversioned.len(), 2);
 
 			unversioned.pop().unwrap();
 			let unversioned = unversioned.pop().unwrap();
-			assert_eq!(
-				unversioned.key,
-				EncodedKey::new("sequence")
-			);
+			assert_eq!(unversioned.key, EncodedKey::new("sequence"));
 			assert_eq!(LAYOUT.get_i64(&unversioned.row, 0), 999);
 
 			Ok(())
@@ -122,17 +99,9 @@ mod tests {
 		let mut row = LAYOUT.allocate_row();
 		LAYOUT.set_i64(&mut row, 0, i64::MAX);
 
-		txn.with_unversioned_command(|tx| {
-			tx.set(&EncodedKey::new("sequence"), row)
-		})
-		.unwrap();
+		txn.with_unversioned_command(|tx| tx.set(&EncodedKey::new("sequence"), row)).unwrap();
 
-		let err = GeneratorI64::next(
-			&mut txn,
-			&EncodedKey::new("sequence"),
-			None,
-		)
-		.unwrap_err();
+		let err = GeneratorI64::next(&mut txn, &EncodedKey::new("sequence"), None).unwrap_err();
 		assert_eq!(err.diagnostic(), sequence_exhausted(Type::Int8));
 	}
 
@@ -140,20 +109,12 @@ mod tests {
 	fn test_default() {
 		let mut txn = create_test_command_transaction();
 
-		let got = GeneratorI64::next(
-			&mut txn,
-			&EncodedKey::new("sequence_with_default"),
-			Some(100i64),
-		)
-		.unwrap();
+		let got =
+			GeneratorI64::next(&mut txn, &EncodedKey::new("sequence_with_default"), Some(100i64)).unwrap();
 		assert_eq!(got, 100);
 
-		let got = GeneratorI64::next(
-			&mut txn,
-			&EncodedKey::new("sequence_with_default"),
-			Some(999i64),
-		)
-		.unwrap();
+		let got =
+			GeneratorI64::next(&mut txn, &EncodedKey::new("sequence_with_default"), Some(999i64)).unwrap();
 		assert_eq!(got, 101);
 	}
 }

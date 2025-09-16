@@ -33,8 +33,7 @@ where
 		// (256-bit SIMD) This ensures we can engine data in chunks
 		// without bounds checking
 		let simd_alignment = 32 / std::mem::size_of::<T>().max(1);
-		let aligned_capacity = ((capacity + simd_alignment - 1)
-			/ simd_alignment) * simd_alignment;
+		let aligned_capacity = ((capacity + simd_alignment - 1) / simd_alignment) * simd_alignment;
 		Self {
 			inner: Arc::new(Vec::with_capacity(aligned_capacity)),
 		}
@@ -171,18 +170,12 @@ impl<T: Clone + PartialEq> CowVec<T> {
 	/// Get aligned chunks for SIMD processing
 	/// Returns slices that are guaranteed to be aligned and sized for SIMD
 	/// operations
-	pub fn aligned_chunks(
-		&self,
-		chunk_size: usize,
-	) -> impl Iterator<Item = &[T]> {
+	pub fn aligned_chunks(&self, chunk_size: usize) -> impl Iterator<Item = &[T]> {
 		self.inner.chunks(chunk_size)
 	}
 
 	/// Get mutable aligned chunks for SIMD processing
-	pub fn aligned_chunks_mut(
-		&mut self,
-		chunk_size: usize,
-	) -> impl Iterator<Item = &mut [T]> {
+	pub fn aligned_chunks_mut(&mut self, chunk_size: usize) -> impl Iterator<Item = &mut [T]> {
 		self.make_mut().chunks_mut(chunk_size)
 	}
 

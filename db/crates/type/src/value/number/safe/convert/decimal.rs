@@ -81,9 +81,7 @@ macro_rules! impl_safe_convert_decimal_to_float {
     };
 }
 
-impl_safe_convert_decimal_to_int!(
-	i8, i16, i32, i64, i128, u8, u16, u32, u64, u128
-);
+impl_safe_convert_decimal_to_int!(i8, i16, i32, i64, i128, u8, u16, u32, u64, u128);
 impl_safe_convert_decimal_to_float!(f32, f64);
 
 impl SafeConvert<Int> for Decimal {

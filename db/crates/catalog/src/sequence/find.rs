@@ -3,8 +3,7 @@
 
 use reifydb_core::{
 	interface::{
-		EncodableKey, NamespaceId, QueryTransaction, SequenceId,
-		SystemSequenceKey, UnversionedQueryTransaction,
+		EncodableKey, NamespaceId, QueryTransaction, SequenceId, SystemSequenceKey, UnversionedQueryTransaction,
 	},
 	return_internal_error,
 };
@@ -23,30 +22,14 @@ impl CatalogStore {
 		sequence_id: SequenceId,
 	) -> crate::Result<Option<Sequence>> {
 		let (namespace, name) = match sequence_id {
-			crate::system::ids::sequences::NAMESPACE => {
-				(NamespaceId(1), "namespace")
-			}
-			crate::system::ids::sequences::SOURCE => {
-				(NamespaceId(1), "source")
-			}
-			crate::system::ids::sequences::COLUMN => {
-				(NamespaceId(1), "column")
-			}
-			crate::system::ids::sequences::COLUMN_POLICY => {
-				(NamespaceId(1), "column_policy")
-			}
-			crate::system::ids::sequences::FLOW => {
-				(NamespaceId(1), "flow")
-			}
-			crate::system::ids::sequences::FLOW_NODE => {
-				(NamespaceId(1), "flow_node")
-			}
-			crate::system::ids::sequences::FLOW_EDGE => {
-				(NamespaceId(1), "flow_edge")
-			}
-			crate::system::ids::sequences::PRIMARY_KEY => {
-				(NamespaceId(1), "primary_key")
-			}
+			crate::system::ids::sequences::NAMESPACE => (NamespaceId(1), "namespace"),
+			crate::system::ids::sequences::SOURCE => (NamespaceId(1), "source"),
+			crate::system::ids::sequences::COLUMN => (NamespaceId(1), "column"),
+			crate::system::ids::sequences::COLUMN_POLICY => (NamespaceId(1), "column_policy"),
+			crate::system::ids::sequences::FLOW => (NamespaceId(1), "flow"),
+			crate::system::ids::sequences::FLOW_NODE => (NamespaceId(1), "flow_node"),
+			crate::system::ids::sequences::FLOW_EDGE => (NamespaceId(1), "flow_edge"),
+			crate::system::ids::sequences::PRIMARY_KEY => (NamespaceId(1), "primary_key"),
 			_ => return_internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				sequence_id
@@ -59,12 +42,9 @@ impl CatalogStore {
 		}
 		.encode();
 
-		let value = rx.with_unversioned_query(|tx| {
-			match tx.get(&sequence_key)? {
-				Some(unversioned_row) => Ok(LAYOUT
-					.get_u64(&unversioned_row.row, VALUE)),
-				None => Ok(0),
-			}
+		let value = rx.with_unversioned_query(|tx| match tx.get(&sequence_key)? {
+			Some(unversioned_row) => Ok(LAYOUT.get_u64(&unversioned_row.row, VALUE)),
+			None => Ok(0),
 		})?;
 
 		Ok(Some(Sequence {

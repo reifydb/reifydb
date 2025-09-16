@@ -20,10 +20,7 @@ impl EncodableKey for TableKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.table);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.table);
 		serializer.to_encoded_key()
 	}
 
@@ -55,10 +52,7 @@ impl EncodableKey for TableKey {
 
 impl TableKey {
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::table_start()),
-			Some(Self::table_end()),
-		)
+		EncodedKeyRange::start_end(Some(Self::table_start()), Some(Self::table_end()))
 	}
 
 	fn table_start() -> EncodedKey {

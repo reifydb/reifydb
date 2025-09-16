@@ -12,10 +12,7 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Get a source (table or view) by its SourceId
 	/// Returns an error if the source doesn't exist
-	pub fn get_source(
-		rx: &mut impl QueryTransaction,
-		source: impl Into<SourceId>,
-	) -> crate::Result<SourceDef> {
+	pub fn get_source(rx: &mut impl QueryTransaction, source: impl Into<SourceId>) -> crate::Result<SourceDef> {
 		let source_id = source.into();
 
 		CatalogStore::find_source(rx, source_id)?.ok_or_else(|| {
@@ -53,8 +50,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn);
 
 		// Get store by TableId
-		let source =
-			CatalogStore::get_source(&mut txn, table.id).unwrap();
+		let source = CatalogStore::get_source(&mut txn, table.id).unwrap();
 
 		match source {
 			SourceDef::Table(t) => {
@@ -65,11 +61,7 @@ mod tests {
 		}
 
 		// Get store by SourceId::Table
-		let source = CatalogStore::get_source(
-			&mut txn,
-			SourceId::Table(table.id),
-		)
-		.unwrap();
+		let source = CatalogStore::get_source(&mut txn, SourceId::Table(table.id)).unwrap();
 
 		match source {
 			SourceDef::Table(t) => {
@@ -84,25 +76,23 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let view =
-			CatalogStore::create_deferred_view(
-				&mut txn,
-				ViewToCreate {
-					fragment: None,
-					namespace: namespace.id,
-					name: "test_view".to_string(),
-					columns: vec![ViewColumnToCreate {
+		let view = CatalogStore::create_deferred_view(
+			&mut txn,
+			ViewToCreate {
+				fragment: None,
+				namespace: namespace.id,
+				name: "test_view".to_string(),
+				columns: vec![ViewColumnToCreate {
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					fragment: None,
 				}],
-				},
-			)
-			.unwrap();
+			},
+		)
+		.unwrap();
 
 		// Get store by ViewId
-		let source =
-			CatalogStore::get_source(&mut txn, view.id).unwrap();
+		let source = CatalogStore::get_source(&mut txn, view.id).unwrap();
 
 		match source {
 			SourceDef::View(v) => {
@@ -113,11 +103,7 @@ mod tests {
 		}
 
 		// Get store by SourceId::View
-		let source = CatalogStore::get_source(
-			&mut txn,
-			SourceId::View(view.id),
-		)
-		.unwrap();
+		let source = CatalogStore::get_source(&mut txn, SourceId::View(view.id)).unwrap();
 
 		match source {
 			SourceDef::View(v) => {
@@ -137,9 +123,7 @@ mod tests {
 
 		let err = result.unwrap_err();
 		assert!(err.to_string().contains("Table with ID"));
-		assert!(err
-			.to_string()
-			.contains("critical catalog inconsistency"));
+		assert!(err.to_string().contains("critical catalog inconsistency"));
 	}
 
 	#[test]
@@ -152,8 +136,6 @@ mod tests {
 
 		let err = result.unwrap_err();
 		assert!(err.to_string().contains("View with ID"));
-		assert!(err
-			.to_string()
-			.contains("critical catalog inconsistency"));
+		assert!(err.to_string().contains("critical catalog inconsistency"));
 	}
 }

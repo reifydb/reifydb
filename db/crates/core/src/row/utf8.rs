@@ -6,19 +6,10 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_utf8(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl AsRef<str>,
-	) {
+	pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Utf8);
-		debug_assert!(
-			!row.is_defined(index),
-			"UTF8 field {} already set",
-			index
-		);
+		debug_assert!(!row.is_defined(index), "UTF8 field {} already set", index);
 
 		let bytes = value.as_ref().as_bytes();
 
@@ -31,54 +22,31 @@ impl EncodedRowLayout {
 
 		// Update reference in static section: [offset: u32][length:
 		// u32]
-		let ref_slice =
-			&mut row.0.make_mut()[field.offset..field.offset + 8];
-		ref_slice[0..4].copy_from_slice(
-			&(dynamic_offset as u32).to_le_bytes(),
-		);
-		ref_slice[4..8]
-			.copy_from_slice(&(bytes.len() as u32).to_le_bytes());
+		let ref_slice = &mut row.0.make_mut()[field.offset..field.offset + 8];
+		ref_slice[0..4].copy_from_slice(&(dynamic_offset as u32).to_le_bytes());
+		ref_slice[4..8].copy_from_slice(&(bytes.len() as u32).to_le_bytes());
 
 		row.set_valid(index, true);
 	}
 
-	pub fn get_utf8<'a>(
-		&'a self,
-		row: &'a EncodedRow,
-		index: usize,
-	) -> &'a str {
+	pub fn get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> &'a str {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Utf8);
 
 		// Read offset and length from static section
 		let ref_slice = &row.as_slice()[field.offset..field.offset + 8];
-		let offset = u32::from_le_bytes([
-			ref_slice[0],
-			ref_slice[1],
-			ref_slice[2],
-			ref_slice[3],
-		]) as usize;
-		let length = u32::from_le_bytes([
-			ref_slice[4],
-			ref_slice[5],
-			ref_slice[6],
-			ref_slice[7],
-		]) as usize;
+		let offset = u32::from_le_bytes([ref_slice[0], ref_slice[1], ref_slice[2], ref_slice[3]]) as usize;
+		let length = u32::from_le_bytes([ref_slice[4], ref_slice[5], ref_slice[6], ref_slice[7]]) as usize;
 
 		// Get string from dynamic section
 		let dynamic_start = self.dynamic_section_start();
 		let string_start = dynamic_start + offset;
-		let string_slice =
-			&row.as_slice()[string_start..string_start + length];
+		let string_slice = &row.as_slice()[string_start..string_start + length];
 
 		unsafe { std::str::from_utf8_unchecked(string_slice) }
 	}
 
-	pub fn try_get_utf8<'a>(
-		&'a self,
-		row: &'a EncodedRow,
-		index: usize,
-	) -> Option<&'a str> {
+	pub fn try_get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> Option<&'a str> {
 		if row.is_defined(index) {
 			Some(self.get_utf8(row, index))
 		} else {
@@ -140,19 +108,12 @@ mod tests {
 		let large_string = "A".repeat(1000);
 		layout.set_utf8(&mut row, 0, &large_string);
 		assert_eq!(layout.get_utf8(&row, 0), large_string);
-		assert_eq!(
-			layout.try_get_utf8(&row, 0),
-			Some(large_string.as_str())
-		);
+		assert_eq!(layout.try_get_utf8(&row, 0), Some(large_string.as_str()));
 	}
 
 	#[test]
 	fn test_multiple_fields() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Utf8,
-			Type::Utf8,
-			Type::Utf8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = layout.allocate_row();
 
 		layout.set_utf8(&mut row, 0, "first");
@@ -166,12 +127,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_static_fields() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Boolean,
-			Type::Utf8,
-			Type::Int4,
-			Type::Utf8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Boolean, Type::Utf8, Type::Int4, Type::Utf8]);
 		let mut row = layout.allocate_row();
 
 		layout.set_bool(&mut row, 0, true);
@@ -187,11 +143,7 @@ mod tests {
 
 	#[test]
 	fn test_different_sizes() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Utf8,
-			Type::Utf8,
-			Type::Utf8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = layout.allocate_row();
 
 		layout.set_utf8(&mut row, 0, "");
@@ -199,21 +151,13 @@ mod tests {
 		layout.set_utf8(&mut row, 2, "x");
 
 		assert_eq!(layout.get_utf8(&row, 0), "");
-		assert_eq!(
-			layout.get_utf8(&row, 1),
-			"medium length string here"
-		);
+		assert_eq!(layout.get_utf8(&row, 1), "medium length string here");
 		assert_eq!(layout.get_utf8(&row, 2), "x");
 	}
 
 	#[test]
 	fn test_arbitrary_setting_order() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Utf8,
-			Type::Utf8,
-			Type::Utf8,
-			Type::Utf8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = layout.allocate_row();
 
 		// Set in reverse order
@@ -254,11 +198,7 @@ mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Utf8,
-			Type::Utf8,
-			Type::Utf8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8, Type::Utf8]);
 		let mut row = layout.allocate_row();
 
 		// Set only some fields

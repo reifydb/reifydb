@@ -10,11 +10,7 @@ use reifydb_type::*;
 
 #[test]
 fn test_uuid_uniqueness() {
-	let layout = EncodedRowLayout::new(&[
-		Type::Uuid4,
-		Type::Uuid7,
-		Type::IdentityId,
-	]);
+	let layout = EncodedRowLayout::new(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 
 	// Generate many UUIDs and verify uniqueness
 	let mut uuid4_set = HashSet::new();
@@ -40,10 +36,7 @@ fn test_uuid_uniqueness() {
 		// Check uniqueness
 		assert!(uuid4_set.insert(uuid4), "UUID4 collision detected");
 		assert!(uuid7_set.insert(uuid7), "UUID7 collision detected");
-		assert!(
-			identity_set.insert(identity),
-			"IdentityId collision detected"
-		);
+		assert!(identity_set.insert(identity), "IdentityId collision detected");
 	}
 }
 
@@ -64,9 +57,6 @@ fn test_uuid7_timestamp_ordering() {
 
 	// UUID7s should be timestamp-ordered
 	for i in 1..uuids.len() {
-		assert!(
-			uuids[i] > uuids[i - 1],
-			"UUID7 not in timestamp order"
-		);
+		assert!(uuids[i] > uuids[i - 1], "UUID7 not in timestamp order");
 	}
 }

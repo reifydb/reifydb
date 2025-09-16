@@ -8,48 +8,33 @@ use crate::ast::{
 };
 
 impl<'a> Parser<'a> {
-	pub(crate) fn parse_identifier(
-		&mut self,
-	) -> crate::Result<UnqualifiedIdentifier<'a>> {
+	pub(crate) fn parse_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier<'a>> {
 		let token = self.consume(TokenKind::Identifier)?;
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
-	pub(crate) fn parse_as_identifier(
-		&mut self,
-	) -> crate::Result<UnqualifiedIdentifier<'a>> {
+	pub(crate) fn parse_as_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier<'a>> {
 		let token = self.advance()?;
-		debug_assert!(matches!(
-			token.kind,
-			TokenKind::Identifier | TokenKind::Keyword(_)
-		));
+		debug_assert!(matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)));
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
 	/// Parse a potentially qualified column identifier
 	/// Handles patterns like: column, table.column, namespace.table.column,
 	/// alias.column
-	pub(crate) fn parse_column_identifier(
-		&mut self,
-	) -> crate::Result<MaybeQualifiedColumnIdentifier<'a>> {
+	pub(crate) fn parse_column_identifier(&mut self) -> crate::Result<MaybeQualifiedColumnIdentifier<'a>> {
 		let first = self.consume(TokenKind::Identifier)?;
 
 		// Check for qualification
-		if !self.is_eof()
-			&& self.current_expect_operator(Operator::Dot).is_ok()
-		{
+		if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
 			self.consume_operator(Operator::Dot)?;
 			let second = self.consume(TokenKind::Identifier)?;
 
 			// Check for further qualification
 			// (namespace.table.column)
-			if !self.is_eof()
-				&& self.current_expect_operator(Operator::Dot)
-					.is_ok()
-			{
+			if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
 				self.consume_operator(Operator::Dot)?;
-				let third =
-					self.consume(TokenKind::Identifier)?;
+				let third = self.consume(TokenKind::Identifier)?;
 
 				// namespace.table.column
 				Ok(MaybeQualifiedColumnIdentifier::with_source(
@@ -70,9 +55,7 @@ impl<'a> Parser<'a> {
 			}
 		} else {
 			// Unqualified column
-			Ok(MaybeQualifiedColumnIdentifier::unqualified(
-				first.fragment.clone(),
-			))
+			Ok(MaybeQualifiedColumnIdentifier::unqualified(first.fragment.clone()))
 		}
 	}
 
@@ -84,17 +67,12 @@ impl<'a> Parser<'a> {
 		let first = self.advance()?;
 
 		// Check for qualification
-		if !self.is_eof()
-			&& self.current_expect_operator(Operator::Dot).is_ok()
-		{
+		if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
 			self.consume_operator(Operator::Dot)?;
 			let second = self.advance()?;
 
 			// Check for further qualification
-			if !self.is_eof()
-				&& self.current_expect_operator(Operator::Dot)
-					.is_ok()
-			{
+			if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
 				self.consume_operator(Operator::Dot)?;
 				let third = self.advance()?;
 
@@ -114,9 +92,7 @@ impl<'a> Parser<'a> {
 			}
 		} else {
 			// Unqualified column
-			Ok(MaybeQualifiedColumnIdentifier::unqualified(
-				first.fragment.clone(),
-			))
+			Ok(MaybeQualifiedColumnIdentifier::unqualified(first.fragment.clone()))
 		}
 	}
 }
@@ -131,9 +107,7 @@ mod tests {
 		let mut result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Identifier(identifier) =
-			result.pop().unwrap().nodes.pop().unwrap()
-		else {
+		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
 			panic!()
 		};
 		assert_eq!(identifier.text(), "x");
@@ -145,9 +119,7 @@ mod tests {
 		let mut result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
-		let Identifier(identifier) =
-			result.pop().unwrap().nodes.pop().unwrap()
-		else {
+		let Identifier(identifier) = result.pop().unwrap().nodes.pop().unwrap() else {
 			panic!()
 		};
 		assert_eq!(identifier.text(), "some_identifier");

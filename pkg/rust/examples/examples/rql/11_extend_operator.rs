@@ -20,13 +20,7 @@ fn main() {
 	log_info!("Example 1: Standalone EXTEND with constants");
 	log_query(r#"extend { total: 42, tax: 3.14 }"#);
 
-	for frame in db
-		.query_as_root(
-			r#"extend { total: 42, tax: 3.14 }"#,
-			Params::None,
-		)
-		.unwrap()
-	{
+	for frame in db.query_as_root(r#"extend { total: 42, tax: 3.14 }"#, Params::None).unwrap() {
 		log_info!("{}", frame);
 	}
 
@@ -34,10 +28,7 @@ fn main() {
 	log_info!("\nExample 2: Standalone EXTEND with computed value");
 	log_query(r#"extend result: 100 + 23"#);
 
-	for frame in db
-		.query_as_root(r#"extend result: 100 + 23"#, Params::None)
-		.unwrap()
-	{
+	for frame in db.query_as_root(r#"extend result: 100 + 23"#, Params::None).unwrap() {
 		log_info!("{}", frame);
 	}
 

@@ -4,14 +4,9 @@
 use std::{collections::HashSet, path::Path, sync::mpsc, thread};
 
 use mpsc::Sender;
-use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, TransactionId, delta::Delta,
-	row::EncodedRow,
-};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, TransactionId, delta::Delta, row::EncodedRow};
 use reifydb_type::{Error, Result, return_error};
-use rusqlite::{
-	Connection, OpenFlags, Transaction, params_from_iter, types::Value,
-};
+use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
 
 use super::diagnostic::{from_rusqlite_error, transaction_failed};
 use crate::{
@@ -45,17 +40,9 @@ pub struct Writer {
 }
 
 impl Writer {
-	pub fn spawn(
-		db_path: &Path,
-		flags: OpenFlags,
-	) -> Result<Sender<WriteCommand>> {
+	pub fn spawn(db_path: &Path, flags: OpenFlags) -> Result<Sender<WriteCommand>> {
 		let conn = Connection::open_with_flags(db_path, flags)
-			.map_err(|e| {
-				Error(connection_failed(
-					db_path.display().to_string(),
-					e.to_string(),
-				))
-			})?;
+			.map_err(|e| Error(connection_failed(db_path.display().to_string(), e.to_string())))?;
 
 		let (sender, receiver) = mpsc::channel();
 
@@ -79,10 +66,7 @@ impl Writer {
 					operations,
 					response,
 				} => {
-					let result = self
-						.handle_unversioned_commit(
-							operations,
-						);
+					let result = self.handle_unversioned_commit(operations);
 
 					let _ = response.send(result);
 				}
@@ -93,13 +77,8 @@ impl Writer {
 					timestamp,
 					respond_to: response,
 				} => {
-					let result = self
-						.handle_versioned_commit(
-							deltas,
-							version,
-							transaction,
-							timestamp,
-						);
+					let result =
+						self.handle_versioned_commit(deltas, version, transaction, timestamp);
 
 					let _ = response.send(result);
 				}
@@ -108,22 +87,14 @@ impl Writer {
 		}
 	}
 
-	fn handle_unversioned_commit(
-		&mut self,
-		operations: Vec<(String, Vec<Value>)>,
-	) -> Result<()> {
-		let tx = self
-			.conn
-			.transaction()
-			.map_err(|e| Error(from_rusqlite_error(e)))?;
+	fn handle_unversioned_commit(&mut self, operations: Vec<(String, Vec<Value>)>) -> Result<()> {
+		let tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		for (rql, params) in operations {
-			tx.execute(&rql, params_from_iter(params))
-				.map_err(|e| Error(from_rusqlite_error(e)))?;
+			tx.execute(&rql, params_from_iter(params)).map_err(|e| Error(from_rusqlite_error(e)))?;
 		}
 
-		tx.commit()
-			.map_err(|e| Error(transaction_failed(e.to_string())))
+		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))
 	}
 
 	fn handle_versioned_commit(
@@ -133,31 +104,15 @@ impl Writer {
 		transaction: TransactionId,
 		timestamp: u64,
 	) -> Result<()> {
-		let mut tx = self
-			.conn
-			.transaction()
-			.map_err(|e| Error(from_rusqlite_error(e)))?;
+		let mut tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
 
-		let cdc_changes = Self::apply_deltas(
-			&mut tx,
-			&deltas,
-			version,
-			&mut self.ensured_tables,
-		)?;
+		let cdc_changes = Self::apply_deltas(&mut tx, &deltas, version, &mut self.ensured_tables)?;
 
 		if !cdc_changes.is_empty() {
-			Self::store_cdc_changes(
-				&tx,
-				version,
-				timestamp,
-				transaction,
-				cdc_changes,
-			)?;
+			Self::store_cdc_changes(&tx, version, timestamp, transaction, cdc_changes)?;
 		}
 
-		tx.commit().map_err(|e| {
-			Error(transaction_failed(e.to_string()))
-		})?;
+		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))?;
 
 		Ok(())
 	}
@@ -177,24 +132,13 @@ impl Writer {
 			};
 
 			let table = table_name(delta.key())?;
-			let before_value =
-				fetch_before_value(tx, delta.key(), table)
-					.ok()
-					.flatten();
+			let before_value = fetch_before_value(tx, delta.key(), table).ok().flatten();
 
-			Self::apply_single_delta(
-				tx,
-				delta,
-				version,
-				ensured_tables,
-			)?;
+			Self::apply_single_delta(tx, delta, version, ensured_tables)?;
 
 			cdc_changes.push(CdcTransactionChange {
 				sequence,
-				change: generate_cdc_change(
-					delta.clone(),
-					before_value,
-				),
+				change: generate_cdc_change(delta.clone(), before_value),
 			});
 		}
 
@@ -211,21 +155,10 @@ impl Writer {
 			Delta::Set {
 				key,
 				row,
-			} => Self::apply_delta_set(
-				tx,
-				key,
-				row,
-				version,
-				ensured_tables,
-			),
+			} => Self::apply_delta_set(tx, key, row, version, ensured_tables),
 			Delta::Remove {
 				key,
-			} => Self::apply_delta_remove(
-				tx,
-				key,
-				version,
-				ensured_tables,
-			),
+			} => Self::apply_delta_remove(tx, key, version, ensured_tables),
 		}
 	}
 
@@ -240,16 +173,10 @@ impl Writer {
 		let table = table_name(&encoded_key)?;
 		Self::ensure_table_if_needed(tx, table, ensured_tables)?;
 
-		let query = format!(
-			"INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)",
-			table
-		);
+		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", table);
 
-		tx.execute(
-			&query,
-			rusqlite::params![key.to_vec(), version, row.to_vec()],
-		)
-		.map_err(|e| Error(from_rusqlite_error(e)))?;
+		tx.execute(&query, rusqlite::params![key.to_vec(), version, row.to_vec()])
+			.map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		Ok(())
 	}
@@ -264,29 +191,15 @@ impl Writer {
 		let table = table_name(&encoded_key)?;
 		Self::ensure_table_if_needed(tx, table, ensured_tables)?;
 
-		let query = format!(
-			"INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)",
-			table
-		);
+		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", table);
 
-		tx.execute(
-			&query,
-			rusqlite::params![
-				key.to_vec(),
-				version,
-				EncodedRow::deleted().to_vec()
-			],
-		)
-		.map_err(|e| Error(from_rusqlite_error(e)))?;
+		tx.execute(&query, rusqlite::params![key.to_vec(), version, EncodedRow::deleted().to_vec()])
+			.map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		Ok(())
 	}
 
-	fn ensure_table_if_needed(
-		tx: &Transaction,
-		table: &str,
-		ensured_tables: &mut HashSet<String>,
-	) -> Result<()> {
+	fn ensure_table_if_needed(tx: &Transaction, table: &str, ensured_tables: &mut HashSet<String>) -> Result<()> {
 		if table != "versioned" && !ensured_tables.contains(table) {
 			ensure_table_exists(tx, table);
 			ensured_tables.insert(table.to_string());
@@ -301,15 +214,7 @@ impl Writer {
 		transaction: TransactionId,
 		cdc_changes: Vec<CdcTransactionChange>,
 	) -> Result<()> {
-		store_cdc_transaction(
-			tx,
-			CdcTransaction::new(
-				version,
-				timestamp,
-				transaction,
-				cdc_changes,
-			),
-		)
-		.map_err(|e| Error(from_rusqlite_error(e)))
+		store_cdc_transaction(tx, CdcTransaction::new(version, timestamp, transaction, cdc_changes))
+			.map_err(|e| Error(from_rusqlite_error(e)))
 	}
 }

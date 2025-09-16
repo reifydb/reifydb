@@ -5,10 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::columnar::{
-		Column, ColumnData, ColumnQualified, Columns, SourceQualified,
-		layout::ColumnsLayout,
-	},
+	value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified, layout::ColumnsLayout},
 };
 use reifydb_type::Value;
 
@@ -27,11 +24,7 @@ pub(crate) struct InnerJoinNode<'a, T: Transaction> {
 }
 
 impl<'a, T: Transaction> InnerJoinNode<'a, T> {
-	pub fn new(
-		left: Box<ExecutionPlan<'a, T>>,
-		right: Box<ExecutionPlan<'a, T>>,
-		on: Vec<Expression<'a>>,
-	) -> Self {
+	pub fn new(left: Box<ExecutionPlan<'a, T>>, right: Box<ExecutionPlan<'a, T>>, on: Vec<Expression<'a>>) -> Self {
 		Self {
 			left,
 			right,
@@ -64,45 +57,30 @@ impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
-	fn initialize(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.context.is_some(),
-			"InnerJoinNode::next() called before initialize()"
-		);
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.context.is_some(), "InnerJoinNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
 		if self.layout.is_some() {
 			return Ok(None);
 		}
 
-		let left_columns =
-			Self::load_and_merge_all(&mut self.left, rx)?;
-		let right_columns =
-			Self::load_and_merge_all(&mut self.right, rx)?;
+		let left_columns = Self::load_and_merge_all(&mut self.left, rx)?;
+		let right_columns = Self::load_and_merge_all(&mut self.right, rx)?;
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
 
 		// Build qualified column names for the join result
-		let qualified_names: Vec<String> = left_columns
-			.iter()
-			.chain(right_columns.iter())
-			.map(|col| col.qualified_name())
-			.collect();
+		let qualified_names: Vec<String> =
+			left_columns.iter().chain(right_columns.iter()).map(|col| col.qualified_name()).collect();
 
 		let mut result_rows = Vec::new();
 
@@ -112,47 +90,40 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 			for j in 0..right_rows {
 				let right_row = right_columns.get_row(j);
 
-				let all_data = left_row
-					.iter()
-					.cloned()
-					.chain(right_row.iter().cloned())
-					.collect::<Vec<_>>();
+				let all_data =
+					left_row.iter().cloned().chain(right_row.iter().cloned()).collect::<Vec<_>>();
 
 				let eval_ctx = EvaluationContext {
-                    target_column: None,
-                    column_policies: Vec::new(),
-                    columns: Columns::new(
-                        all_data
-                            .iter()
-                            .cloned()
-                            .zip(left_columns.iter().chain(right_columns.iter()))
-                            .map(|(v, col)| match col.table() {
-                                Some(source) => Column::SourceQualified(SourceQualified {
-                                    source: source.to_string(),
-                                    name: col.name().to_string(),
-                                    data: ColumnData::from(v)}),
-                                None => Column::ColumnQualified(ColumnQualified {
-                                    name: col.name().to_string(),
-                                    data: ColumnData::from(v)})})
-                            .collect(),
-                    ),
-                    row_count: 1,
-                    take: Some(1),
-                    params: &ctx.params};
+					target_column: None,
+					column_policies: Vec::new(),
+					columns: Columns::new(
+						all_data.iter()
+							.cloned()
+							.zip(left_columns.iter().chain(right_columns.iter()))
+							.map(|(v, col)| match col.table() {
+								Some(source) => {
+									Column::SourceQualified(SourceQualified {
+										source: source.to_string(),
+										name: col.name().to_string(),
+										data: ColumnData::from(v),
+									})
+								}
+								None => Column::ColumnQualified(ColumnQualified {
+									name: col.name().to_string(),
+									data: ColumnData::from(v),
+								}),
+							})
+							.collect(),
+					),
+					row_count: 1,
+					take: Some(1),
+					params: &ctx.params,
+				};
 
-				let all_true = self.on.iter().fold(
-					true,
-					|acc, cond| {
-						let col = evaluate(
-							&eval_ctx, cond,
-						)
-						.unwrap();
-						matches!(
-							col.data().get_value(0),
-							Value::Boolean(true)
-						) && acc
-					},
-				);
+				let all_true = self.on.iter().fold(true, |acc, cond| {
+					let col = evaluate(&eval_ctx, cond).unwrap();
+					matches!(col.data().get_value(0), Value::Boolean(true)) && acc
+				});
 
 				if all_true {
 					let mut combined = left_row.clone();
@@ -163,35 +134,23 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 		}
 
 		// Create columns with proper qualified column structure
-		let column_metadata: Vec<_> = left_columns
-			.iter()
-			.chain(right_columns.iter())
-			.collect();
-		let names_refs: Vec<&str> =
-			qualified_names.iter().map(|s| s.as_str()).collect();
+		let column_metadata: Vec<_> = left_columns.iter().chain(right_columns.iter()).collect();
+		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
 		let mut columns = Columns::from_rows(&names_refs, &result_rows);
 
 		// Update columns with proper metadata
 		for (i, col_meta) in column_metadata.iter().enumerate() {
 			let old_column = &columns[i];
 			columns[i] = match col_meta.table() {
-				Some(source) => Column::SourceQualified(
-					SourceQualified {
-						source: source.to_string(),
-						name: col_meta
-							.name()
-							.to_string(),
-						data: old_column.data().clone(),
-					},
-				),
-				None => Column::ColumnQualified(
-					ColumnQualified {
-						name: col_meta
-							.name()
-							.to_string(),
-						data: old_column.data().clone(),
-					},
-				),
+				Some(source) => Column::SourceQualified(SourceQualified {
+					source: source.to_string(),
+					name: col_meta.name().to_string(),
+					data: old_column.data().clone(),
+				}),
+				None => Column::ColumnQualified(ColumnQualified {
+					name: col_meta.name().to_string(),
+					data: old_column.data().clone(),
+				}),
 			};
 		}
 

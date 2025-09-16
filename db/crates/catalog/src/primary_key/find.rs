@@ -2,18 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{
-		ColumnDef, Key, PrimaryKeyDef, PrimaryKeyKey, QueryTransaction,
-		SourceId, TableId, ViewId,
-	},
+	interface::{ColumnDef, Key, PrimaryKeyDef, PrimaryKeyKey, QueryTransaction, SourceId, TableId, ViewId},
 	return_internal_error,
 };
 
 use crate::{
 	CatalogStore,
-	primary_key::layout::{
-		primary_key, primary_key::deserialize_column_ids,
-	},
+	primary_key::layout::{primary_key, primary_key::deserialize_column_ids},
 };
 
 impl CatalogStore {
@@ -27,27 +22,20 @@ impl CatalogStore {
 		// Virtual tables and ring buffers don't have primary keys
 		// stored separately
 		let primary_key_id = match source_id {
-			SourceId::Table(table_id) => {
-				match Self::get_table_pk_id(rx, table_id)? {
-					Some(pk_id) => pk_id,
-					None => return Ok(None),
-				}
-			}
-			SourceId::View(view_id) => {
-				match Self::get_view_pk_id(rx, view_id)? {
-					Some(pk_id) => pk_id,
-					None => return Ok(None),
-				}
-			}
+			SourceId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
+				Some(pk_id) => pk_id,
+				None => return Ok(None),
+			},
+			SourceId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
+				Some(pk_id) => pk_id,
+				None => return Ok(None),
+			},
 			SourceId::TableVirtual(_) => {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
 			SourceId::RingBuffer(ring_buffer_id) => {
-				match Self::get_ring_buffer_pk_id(
-					rx,
-					ring_buffer_id,
-				)? {
+				match Self::get_ring_buffer_pk_id(rx, ring_buffer_id)? {
 					Some(pk_id) => pk_id,
 					None => return Ok(None),
 				}
@@ -55,24 +43,20 @@ impl CatalogStore {
 		};
 
 		// Fetch the primary key details
-		let primary_key_versioned =
-			match rx.get(&Key::PrimaryKey(PrimaryKeyKey {
-				primary_key: primary_key_id,
-			})
-			.encode())?
-			{
-				Some(versioned) => versioned,
-				None => return_internal_error!(format!(
-					"Primary key with ID {:?} referenced but not found",
-					primary_key_id
-				)),
-			};
+		let primary_key_versioned = match rx.get(&Key::PrimaryKey(PrimaryKeyKey {
+			primary_key: primary_key_id,
+		})
+		.encode())?
+		{
+			Some(versioned) => versioned,
+			None => return_internal_error!(format!(
+				"Primary key with ID {:?} referenced but not found",
+				primary_key_id
+			)),
+		};
 
 		// Deserialize column IDs
-		let column_ids_blob = primary_key::LAYOUT.get_blob(
-			&primary_key_versioned.row,
-			primary_key::COLUMN_IDS,
-		);
+		let column_ids_blob = primary_key::LAYOUT.get_blob(&primary_key_versioned.row, primary_key::COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		// Fetch full ColumnDef for each column ID

@@ -7,9 +7,8 @@ use reifydb_core::{
 		EventListener,
 	},
 	interface::{
-		EncodableKey, SystemVersion, SystemVersionKey,
-		UnversionedCommandTransaction, UnversionedQueryTransaction,
-		UnversionedTransaction,
+		EncodableKey, SystemVersion, SystemVersionKey, UnversionedCommandTransaction,
+		UnversionedQueryTransaction, UnversionedTransaction,
 	},
 	log_error,
 	row::EncodedRowLayout,
@@ -48,34 +47,19 @@ where
 			}
 			.encode();
 
-			let created =
-				self.unversioned.with_command(|tx| match tx
-					.get(&key)?
-				{
-					None => {
-						let mut row =
-							layout.allocate_row();
-						layout.set_u8(
-							&mut row,
-							0,
-							CURRENT_STORAGE_VERSION,
-						);
-						tx.set(&key, row)?;
-						Ok(true)
-					}
-					Some(unversioned) => {
-						let version = layout.get_u8(
-							&unversioned.row,
-							0,
-						);
-						assert_eq!(
-							CURRENT_STORAGE_VERSION,
-							version,
-							"Storage version mismatch"
-						);
-						Ok(false)
-					}
-				})?;
+			let created = self.unversioned.with_command(|tx| match tx.get(&key)? {
+				None => {
+					let mut row = layout.allocate_row();
+					layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
+					tx.set(&key, row)?;
+					Ok(true)
+				}
+				Some(unversioned) => {
+					let version = layout.get_u8(&unversioned.row, 0);
+					assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
+					Ok(false)
+				}
+			})?;
 
 			// the database was never started before
 			if created {

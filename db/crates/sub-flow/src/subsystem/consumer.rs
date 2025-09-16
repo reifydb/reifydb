@@ -7,24 +7,18 @@ use reifydb_core::{
 	Result,
 	flow::{Flow, FlowChange, FlowDiff},
 	interface::{
-		CdcChange, CdcEvent, CommandTransaction, Engine,
-		GetEncodedRowLayout, Identity, Key, Params, QueryTransaction,
-		SourceId, Transaction,
+		CdcChange, CdcEvent, CommandTransaction, Engine, GetEncodedRowLayout, Identity, Key, Params,
+		QueryTransaction, SourceId, Transaction,
 	},
 	row::EncodedRow,
 	util::CowVec,
 	value::columnar::Columns,
 };
-use reifydb_engine::{
-	StandardCommandTransaction, StandardEngine, StandardEvaluator,
-};
+use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardEvaluator};
 use reifydb_type::Value;
 
 use super::intercept::Change;
-use crate::{
-	builder::OperatorFactory, engine::FlowEngine,
-	operator::transform::registry::TransformOperatorRegistry,
-};
+use crate::{builder::OperatorFactory, engine::FlowEngine, operator::transform::registry::TransformOperatorRegistry};
 
 // The table ID for reifydb.flows table
 // This is where flow definitions are stored
@@ -37,10 +31,7 @@ pub struct FlowConsumer<T: Transaction> {
 }
 
 impl<T: Transaction> FlowConsumer<T> {
-	pub fn new(
-		engine: StandardEngine<T>,
-		operators: Vec<(String, OperatorFactory<T>)>,
-	) -> Self {
+	pub fn new(engine: StandardEngine<T>, operators: Vec<(String, OperatorFactory<T>)>) -> Self {
 		Self {
 			engine,
 			operators,
@@ -48,53 +39,31 @@ impl<T: Transaction> FlowConsumer<T> {
 	}
 
 	/// Helper method to convert row bytes to Columns format
-	fn to_columns<CT: CommandTransaction>(
-		txn: &mut CT,
-		source: SourceId,
-		row_bytes: &[u8],
-	) -> Result<Columns> {
+	fn to_columns<CT: CommandTransaction>(txn: &mut CT, source: SourceId, row_bytes: &[u8]) -> Result<Columns> {
 		// Get source metadata from catalog
 		let (columns, layout) = match source {
 			SourceId::Table(table_id) => {
-				let table =
-					CatalogStore::get_table(txn, table_id)?;
-				let namespace = CatalogStore::get_namespace(
-					txn,
-					table.namespace,
-				)?;
+				let table = CatalogStore::get_table(txn, table_id)?;
+				let namespace = CatalogStore::get_namespace(txn, table.namespace)?;
 				let layout = table.get_layout();
-				let columns =
-					Columns::from_table_def_fully_qualified(
-						&namespace, &table,
-					);
+				let columns = Columns::from_table_def_fully_qualified(&namespace, &table);
 				(columns, layout)
 			}
 			SourceId::View(view_id) => {
-				let view =
-					CatalogStore::get_view(txn, view_id)?;
-				let namespace = CatalogStore::get_namespace(
-					txn,
-					view.namespace,
-				)?;
+				let view = CatalogStore::get_view(txn, view_id)?;
+				let namespace = CatalogStore::get_namespace(txn, view.namespace)?;
 				let layout = view.get_layout();
-				let columns =
-					Columns::from_view_def_fully_qualified(
-						&namespace, &view,
-					);
+				let columns = Columns::from_view_def_fully_qualified(&namespace, &view);
 				(columns, layout)
 			}
 			SourceId::TableVirtual(_) => {
 				// Virtual tables not supported in flows
 				// yet
-				unimplemented!(
-					"Virtual table sources not supported in flows"
-				)
+				unimplemented!("Virtual table sources not supported in flows")
 			}
 			SourceId::RingBuffer(_) => {
 				// Ring buffers not supported in flows yet
-				unimplemented!(
-					"Ring buffer sources not supported in flows"
-				)
+				unimplemented!("Ring buffer sources not supported in flows")
 			}
 		};
 
@@ -109,10 +78,7 @@ impl<T: Transaction> FlowConsumer<T> {
 	}
 
 	/// Load flows from the catalog
-	fn load_flows(
-		&self,
-		_txn: &impl QueryTransaction,
-	) -> Result<Vec<Flow>> {
+	fn load_flows(&self, _txn: &impl QueryTransaction) -> Result<Vec<Flow>> {
 		let mut flows = Vec::new();
 
 		// Query the reifydb.flows table
@@ -129,9 +95,7 @@ impl<T: Transaction> FlowConsumer<T> {
 				for row_idx in 0..column.data.len() {
 					let value = column.get_value(row_idx);
 					if !matches!(value, Value::Undefined) {
-						if let Ok(flow) = serde_json::from_str::<Flow>(
-							&value.to_string(),
-						) {
+						if let Ok(flow) = serde_json::from_str::<Flow>(&value.to_string()) {
 							flows.push(flow);
 						}
 					}
@@ -142,11 +106,7 @@ impl<T: Transaction> FlowConsumer<T> {
 		Ok(flows)
 	}
 
-	fn process_changes(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		changes: Vec<Change>,
-	) -> Result<()> {
+	fn process_changes(&self, txn: &mut StandardCommandTransaction<T>, changes: Vec<Change>) -> Result<()> {
 		// Create a new FlowEngine for this processing batch with custom
 		// operators
 		let mut registry = TransformOperatorRegistry::with_builtins();
@@ -155,15 +115,10 @@ impl<T: Transaction> FlowConsumer<T> {
 		for (name, factory) in self.operators.iter() {
 			let factory = factory.clone();
 			let name = name.clone();
-			registry.register(name, move |node, exprs| {
-				factory(node, exprs)
-			});
+			registry.register(name, move |node, exprs| factory(node, exprs));
 		}
 
-		let mut flow_engine = FlowEngine::with_registry(
-			StandardEvaluator::default(),
-			registry,
-		);
+		let mut flow_engine = FlowEngine::with_registry(StandardEvaluator::default(), registry);
 
 		let flows = self.load_flows(txn)?;
 
@@ -182,9 +137,7 @@ impl<T: Transaction> FlowConsumer<T> {
 					row,
 				} => {
 					// Convert row bytes to Columns format
-					let columns = match Self::to_columns(
-						txn, source_id, &row,
-					) {
+					let columns = match Self::to_columns(txn, source_id, &row) {
 						Ok(cols) => cols,
 						Err(e) => {
 							return Err(e);
@@ -205,12 +158,8 @@ impl<T: Transaction> FlowConsumer<T> {
 					after,
 				} => {
 					// Convert row bytes to Columns format
-					let before_columns = Self::to_columns(
-						txn, source_id, &before,
-					)?;
-					let after_columns = Self::to_columns(
-						txn, source_id, &after,
-					)?;
+					let before_columns = Self::to_columns(txn, source_id, &before)?;
+					let after_columns = Self::to_columns(txn, source_id, &after)?;
 
 					let diff = FlowDiff::Update {
 						source: source_id,
@@ -226,9 +175,7 @@ impl<T: Transaction> FlowConsumer<T> {
 					row,
 				} => {
 					// Convert row bytes to Columns format
-					let columns = Self::to_columns(
-						txn, source_id, &row,
-					)?;
+					let columns = Self::to_columns(txn, source_id, &row)?;
 
 					let diff = FlowDiff::Remove {
 						source: source_id,
@@ -250,11 +197,7 @@ impl<T: Transaction> FlowConsumer<T> {
 }
 
 impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
-	fn consume(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		events: Vec<CdcEvent>,
-	) -> Result<()> {
+	fn consume(&self, txn: &mut StandardCommandTransaction<T>, events: Vec<CdcEvent>) -> Result<()> {
 		// We need to downcast to StandardCommandTransaction<T>
 		// In practice, this will always be
 		// StandardCommandTransaction<T> when called from PollConsumer
@@ -270,8 +213,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 
 					// Skip flow table changes - we don't
 					// need to process them as data changes
-					if source_id.as_u64() == FLOWS_TABLE_ID
-					{
+					if source_id.as_u64() == FLOWS_TABLE_ID {
 						continue;
 					}
 
@@ -283,8 +225,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 							..
 						} => Change::Insert {
 							source_id,
-							row_number: table_row
-								.row,
+							row_number: table_row.row,
 							row: after.to_vec(),
 						},
 						CdcChange::Update {
@@ -293,8 +234,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 							..
 						} => Change::Update {
 							source_id,
-							row_number: table_row
-								.row,
+							row_number: table_row.row,
 							before: before.to_vec(),
 							after: after.to_vec(),
 						},
@@ -303,8 +243,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 							..
 						} => Change::Delete {
 							source_id,
-							row_number: table_row
-								.row,
+							row_number: table_row.row,
 							row: before.to_vec(),
 						},
 					};

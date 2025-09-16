@@ -83,10 +83,7 @@ impl Diagnostic {
 
 		// Recursively set statement for all nested diagnostics
 		if let Some(ref mut cause) = self.cause {
-			let mut updated_cause = std::mem::replace(
-				cause.as_mut(),
-				Diagnostic::default(),
-			);
+			let mut updated_cause = std::mem::replace(cause.as_mut(), Diagnostic::default());
 			updated_cause.with_statement(statement);
 			*cause = Box::new(updated_cause);
 		}
@@ -94,10 +91,7 @@ impl Diagnostic {
 
 	/// Set or update the fragment for this diagnostic and all nested
 	/// diagnostics recursively
-	pub fn with_fragment<'a>(
-		&mut self,
-		new_fragment: impl IntoFragment<'a>,
-	) {
+	pub fn with_fragment<'a>(&mut self, new_fragment: impl IntoFragment<'a>) {
 		// Always update the fragment, not just when it's None
 		// This is needed for cast errors that need to update the
 		// fragment

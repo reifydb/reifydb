@@ -43,24 +43,17 @@ impl<T: Transaction> Default for WorkerPoolSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
-	for WorkerPoolSubsystemFactory<T>
-{
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for WorkerPoolSubsystemFactory<T> {
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<
-			StandardCommandTransaction<T>,
-		>,
+		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
 		_ioc: &IocContainer,
 	) -> StandardInterceptorBuilder<StandardCommandTransaction<T>> {
 		// WorkerPool doesn't need any interceptors
 		builder
 	}
 
-	fn create(
-		self: Box<Self>,
-		_ioc: &IocContainer,
-	) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		Ok(Box::new(WorkerPoolSubsystem::with_config(self.config)))
 	}
 }

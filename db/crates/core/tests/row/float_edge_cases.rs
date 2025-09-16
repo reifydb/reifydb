@@ -35,17 +35,9 @@ fn test_float_special_values_preservation() {
 		if value.is_nan() {
 			assert!(retrieved.is_nan(), "NaN not preserved");
 			// Check exact bit pattern for NaN payload
-			assert_eq!(
-				retrieved.to_bits(),
-				value.to_bits(),
-				"NaN payload not preserved"
-			);
+			assert_eq!(retrieved.to_bits(), value.to_bits(), "NaN payload not preserved");
 		} else {
-			assert_eq!(
-				retrieved.to_bits(),
-				value.to_bits(),
-				"Float bits not preserved"
-			);
+			assert_eq!(retrieved.to_bits(), value.to_bits(), "Float bits not preserved");
 		}
 	}
 
@@ -73,17 +65,9 @@ fn test_float_special_values_preservation() {
 
 		if value.is_nan() {
 			assert!(retrieved.is_nan(), "NaN not preserved");
-			assert_eq!(
-				retrieved.to_bits(),
-				value.to_bits(),
-				"NaN payload not preserved"
-			);
+			assert_eq!(retrieved.to_bits(), value.to_bits(), "NaN payload not preserved");
 		} else {
-			assert_eq!(
-				retrieved.to_bits(),
-				value.to_bits(),
-				"Float bits not preserved"
-			);
+			assert_eq!(retrieved.to_bits(), value.to_bits(), "Float bits not preserved");
 		}
 	}
 }

@@ -10,7 +10,6 @@ mod worker;
 
 pub use client::{WebSocketClient, WsClient};
 pub use session::{
-	BlockingSession as WsBlockingSession,
-	CallbackSession as WsCallbackSession, ChannelResponse,
+	BlockingSession as WsBlockingSession, CallbackSession as WsCallbackSession, ChannelResponse,
 	ChannelSession as WsChannelSession, ResponseMessage,
 };

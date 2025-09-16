@@ -47,19 +47,13 @@ impl std::error::Error for Error {}
 
 impl de::Error for Error {
 	fn custom<T: Display>(msg: T) -> Self {
-		crate::error!(
-			diagnostic::serialization::serde_deserialize_error(
-				msg.to_string()
-			)
-		)
+		crate::error!(diagnostic::serialization::serde_deserialize_error(msg.to_string()))
 	}
 }
 
 impl ser::Error for Error {
 	fn custom<T: Display>(msg: T) -> Self {
-		crate::error!(diagnostic::serialization::serde_serialize_error(
-			msg.to_string()
-		))
+		crate::error!(diagnostic::serialization::serde_serialize_error(msg.to_string()))
 	}
 }
 

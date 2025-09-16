@@ -9,12 +9,7 @@ use uuid::Uuid;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_identity_id(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: IdentityId,
-	) {
+	pub fn set_identity_id(&self, row: &mut EncodedRow, index: usize, value: IdentityId) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::IdentityId);
@@ -22,38 +17,26 @@ impl EncodedRowLayout {
 		unsafe {
 			// IdentityId wraps Uuid7 which is 16 bytes
 			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut [u8; 16],
+				row.make_mut().as_mut_ptr().add(field.offset) as *mut [u8; 16],
 				*value.as_bytes(),
 			);
 		}
 	}
 
-	pub fn get_identity_id(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> IdentityId {
+	pub fn get_identity_id(&self, row: &EncodedRow, index: usize) -> IdentityId {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::IdentityId);
 		unsafe {
 			// IdentityId wraps Uuid7 which is 16 bytes
-			let bytes: [u8; 16] = ptr::read_unaligned(
-				row.as_ptr().add(field.offset)
-					as *const [u8; 16],
-			);
+			let bytes: [u8; 16] = ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);
 			let uuid = Uuid::from_bytes(bytes);
 			let uuid7 = Uuid7::from(uuid);
 			IdentityId::from(uuid7)
 		}
 	}
 
-	pub fn try_get_identity_id(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<IdentityId> {
+	pub fn try_get_identity_id(&self, row: &EncodedRow, index: usize) -> Option<IdentityId> {
 		if row.is_defined(index) {
 			Some(self.get_identity_id(row, index))
 		} else {
@@ -108,10 +91,7 @@ mod tests {
 		// Ensure all generated Identity IDs are unique
 		for i in 0..ids.len() {
 			for j in (i + 1)..ids.len() {
-				assert_ne!(
-					ids[i], ids[j],
-					"Identity IDs should be unique"
-				);
+				assert_ne!(ids[i], ids[j], "Identity IDs should be unique");
 			}
 		}
 	}
@@ -151,21 +131,13 @@ mod tests {
 
 		// Verify that Identity IDs are ordered (timestamp-based)
 		for i in 1..ids.len() {
-			assert!(
-				ids[i].as_bytes() >= ids[i - 1].as_bytes(),
-				"Identity IDs should be timestamp-ordered"
-			);
+			assert!(ids[i].as_bytes() >= ids[i - 1].as_bytes(), "Identity IDs should be timestamp-ordered");
 		}
 	}
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::IdentityId,
-			Type::Boolean,
-			Type::IdentityId,
-			Type::Int4,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::IdentityId, Type::Boolean, Type::IdentityId, Type::Int4]);
 		let mut row = layout.allocate_row();
 
 		let id1 = IdentityId::generate();
@@ -184,10 +156,7 @@ mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout = EncodedRowLayout::new(&[
-			Type::IdentityId,
-			Type::IdentityId,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::IdentityId, Type::IdentityId]);
 		let mut row = layout.allocate_row();
 
 		let id = IdentityId::generate();
@@ -234,11 +203,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_fields() {
-		let layout = EncodedRowLayout::new(&[
-			Type::IdentityId,
-			Type::IdentityId,
-			Type::IdentityId,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::IdentityId, Type::IdentityId, Type::IdentityId]);
 		let mut row = layout.allocate_row();
 
 		let id1 = IdentityId::generate();

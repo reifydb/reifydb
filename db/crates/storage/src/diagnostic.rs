@@ -50,19 +50,13 @@ pub fn transaction_failed(reason: impl Into<String>) -> Diagnostic {
 }
 
 /// Creates a diagnostic for connection failures
-pub fn connection_failed(
-	path: impl Into<String>,
-	error: impl Into<String>,
-) -> Diagnostic {
+pub fn connection_failed(path: impl Into<String>, error: impl Into<String>) -> Diagnostic {
 	let path = path.into();
 	let error = error.into();
 	Diagnostic {
 		code: "STORAGE_003".to_string(),
 		statement: None,
-		message: format!(
-			"Failed to connect to database at '{}': {}",
-			path, error
-		),
+		message: format!("Failed to connect to database at '{}': {}", path, error),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: Some("Database connection failed".to_string()),
@@ -72,10 +66,7 @@ pub fn connection_failed(
              • You have appropriate file permissions\n\
              • The database is not locked by another process"
 			.to_string()),
-		notes: vec![
-			format!("Path: {}", path),
-			format!("Error: {}", error),
-		],
+		notes: vec![format!("Path: {}", path), format!("Error: {}", error)],
 		cause: None,
 	}
 }
@@ -83,23 +74,21 @@ pub fn connection_failed(
 /// Creates a diagnostic for sequence exhaustion
 pub fn sequence_exhausted() -> Diagnostic {
 	Diagnostic {
-        code: "STORAGE_004".to_string(),
-        statement: None,
-        message: "Transaction sequence number exhausted (exceeds u16 maximum)".to_string(),
-        column: None,
-        fragment: OwnedFragment::None,
-        label: Some("Too many operations in a single transaction".to_string()),
-        help: Some(
-            "This transaction contains more than 65,535 operations.\n\
+		code: "STORAGE_004".to_string(),
+		statement: None,
+		message: "Transaction sequence number exhausted (exceeds u16 maximum)".to_string(),
+		column: None,
+		fragment: OwnedFragment::None,
+		label: Some("Too many operations in a single transaction".to_string()),
+		help: Some("This transaction contains more than 65,535 operations.\n\
              Consider splitting the transaction into smaller batches."
-                .to_string(),
-        ),
-        notes: vec![
-            "Maximum operations per transaction: 65,535".to_string(),
-            "Large transactions can impact performance".to_string(),
-        ],
-        cause: None,
-    }
+			.to_string()),
+		notes: vec![
+			"Maximum operations per transaction: 65,535".to_string(),
+			"Large transactions can impact performance".to_string(),
+		],
+		cause: None,
+	}
 }
 
 /// Macro to create an internal storage error with automatic source location

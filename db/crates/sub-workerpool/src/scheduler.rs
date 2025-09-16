@@ -36,8 +36,7 @@ struct ScheduledTaskRef {
 
 impl PartialEq for ScheduledTaskRef {
 	fn eq(&self, other: &Self) -> bool {
-		self.next_run == other.next_run
-			&& self.priority == other.priority
+		self.next_run == other.next_run && self.priority == other.priority
 	}
 }
 
@@ -72,19 +71,10 @@ impl TaskScheduler {
 	}
 
 	/// Schedule a one-time task to run at a specific time
-	pub fn schedule_at(
-		&mut self,
-		task: Box<dyn PoolTask>,
-		run_at: Instant,
-		priority: Priority,
-	) -> TaskHandle {
-		let handle = TaskHandle::from(
-			self.next_handle.fetch_add(1, Ordering::Relaxed),
-		);
+	pub fn schedule_at(&mut self, task: Box<dyn PoolTask>, run_at: Instant, priority: Priority) -> TaskHandle {
+		let handle = TaskHandle::from(self.next_handle.fetch_add(1, Ordering::Relaxed));
 
-		let scheduled = ScheduledTask::new(
-			handle, task, run_at, None, priority,
-		);
+		let scheduled = ScheduledTask::new(handle, task, run_at, None, priority);
 
 		self.queue.push(ScheduledTaskRef {
 			handle,
@@ -97,12 +87,7 @@ impl TaskScheduler {
 	}
 
 	/// Schedule a one-time task to run after a delay
-	pub fn schedule_after(
-		&mut self,
-		task: Box<dyn PoolTask>,
-		delay: Duration,
-		priority: Priority,
-	) -> TaskHandle {
+	pub fn schedule_after(&mut self, task: Box<dyn PoolTask>, delay: Duration, priority: Priority) -> TaskHandle {
 		self.schedule_at(task, Instant::now() + delay, priority)
 	}
 
@@ -113,18 +98,10 @@ impl TaskScheduler {
 		interval: Duration,
 		priority: Priority,
 	) -> TaskHandle {
-		let handle = TaskHandle::from(
-			self.next_handle.fetch_add(1, Ordering::Relaxed),
-		);
+		let handle = TaskHandle::from(self.next_handle.fetch_add(1, Ordering::Relaxed));
 		let next_run = Instant::now() + interval;
 
-		let scheduled = ScheduledTask::new(
-			handle,
-			task,
-			next_run,
-			Some(interval),
-			priority,
-		);
+		let scheduled = ScheduledTask::new(handle, task, next_run, Some(interval), priority);
 
 		self.queue.push(ScheduledTaskRef {
 			handle,
@@ -158,13 +135,9 @@ impl TaskScheduler {
 
 			// Check if task still exists (might have been
 			// cancelled)
-			if let Some(mut scheduled) =
-				self.tasks.remove(&task_ref.handle)
-			{
-				let shared_task =
-					SharedTask::new(scheduled.task.clone());
-				ready.push(Box::new(shared_task)
-					as Box<dyn PoolTask>);
+			if let Some(mut scheduled) = self.tasks.remove(&task_ref.handle) {
+				let shared_task = SharedTask::new(scheduled.task.clone());
+				ready.push(Box::new(shared_task) as Box<dyn PoolTask>);
 
 				if let Some(interval) = scheduled.interval {
 					scheduled.next_run = now + interval;
@@ -175,10 +148,7 @@ impl TaskScheduler {
 						priority: scheduled.priority,
 					});
 
-					self.tasks.insert(
-						task_ref.handle,
-						scheduled,
-					);
+					self.tasks.insert(task_ref.handle, scheduled);
 				}
 			}
 		}

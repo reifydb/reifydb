@@ -12,75 +12,45 @@ pub fn unknown_function(name: String) -> Diagnostic {
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
-		help: Some("Check the function name and available functions"
-			.to_string()),
+		help: Some("Check the function name and available functions".to_string()),
 		notes: vec![],
 		cause: None,
 	}
 }
 
 /// Function called with wrong number of arguments
-pub fn arity_mismatch(
-	function: String,
-	expected: usize,
-	actual: usize,
-) -> Diagnostic {
+pub fn arity_mismatch(function: String, expected: usize, actual: usize) -> Diagnostic {
 	Diagnostic {
 		code: "FUNCTION_002".to_string(),
 		statement: None,
-		message: format!(
-			"Function {} expects {} arguments, got {}",
-			function, expected, actual
-		),
+		message: format!("Function {} expects {} arguments, got {}", function, expected, actual),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
-		help: Some(format!(
-			"Provide exactly {} arguments to function {}",
-			expected, function
-		)),
+		help: Some(format!("Provide exactly {} arguments to function {}", expected, function)),
 		notes: vec![],
 		cause: None,
 	}
 }
 
 /// Too many arguments provided to function
-pub fn too_many_arguments(
-	function: String,
-	max_args: usize,
-	actual: usize,
-) -> Diagnostic {
+pub fn too_many_arguments(function: String, max_args: usize, actual: usize) -> Diagnostic {
 	Diagnostic {
 		code: "FUNCTION_003".to_string(),
 		statement: None,
-		message: format!(
-			"Function {} accepts at most {} arguments, got {}",
-			function, max_args, actual
-		),
+		message: format!("Function {} accepts at most {} arguments, got {}", function, max_args, actual),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
-		help: Some(format!(
-			"Provide at most {} arguments to function {}",
-			max_args, function
-		)),
+		help: Some(format!("Provide at most {} arguments to function {}", max_args, function)),
 		notes: vec![],
 		cause: None,
 	}
 }
 
 /// Argument has invalid type for function
-pub fn invalid_argument_type(
-	function: String,
-	index: usize,
-	expected_one_of: Vec<Type>,
-	actual: Type,
-) -> Diagnostic {
-	let expected_types = expected_one_of
-		.iter()
-		.map(|t| format!("{:?}", t))
-		.collect::<Vec<_>>()
-		.join(", ");
+pub fn invalid_argument_type(function: String, index: usize, expected_one_of: Vec<Type>, actual: Type) -> Diagnostic {
+	let expected_types = expected_one_of.iter().map(|t| format!("{:?}", t)).collect::<Vec<_>>().join(", ");
 
 	Diagnostic {
 		code: "FUNCTION_004".to_string(),
@@ -95,10 +65,7 @@ pub fn invalid_argument_type(
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
-		help: Some(format!(
-			"Provide an argument of type: {}",
-			expected_types
-		)),
+		help: Some(format!("Provide an argument of type: {}", expected_types)),
 		notes: vec![],
 		cause: None,
 	}
@@ -109,17 +76,11 @@ pub fn undefined_argument(function: String, index: usize) -> Diagnostic {
 	Diagnostic {
 		code: "FUNCTION_005".to_string(),
 		statement: None,
-		message: format!(
-			"Function {} argument {} is undefined",
-			function,
-			index + 1
-		),
+		message: format!("Function {} argument {} is undefined", function, index + 1),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
-		help: Some(
-			"Provide a defined value for this argument".to_string()
-		),
+		help: Some("Provide a defined value for this argument".to_string()),
 		notes: vec![],
 		cause: None,
 	}
@@ -130,10 +91,7 @@ pub fn missing_input(function: String) -> Diagnostic {
 	Diagnostic {
 		code: "FUNCTION_006".to_string(),
 		statement: None,
-		message: format!(
-			"Function {} requires input but none was provided",
-			function
-		),
+		message: format!("Function {} requires input but none was provided", function),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
@@ -148,10 +106,7 @@ pub fn execution_failed(function: String, reason: String) -> Diagnostic {
 	Diagnostic {
 		code: "FUNCTION_007".to_string(),
 		statement: None,
-		message: format!(
-			"Function {} execution failed: {}",
-			function, reason
-		),
+		message: format!("Function {} execution failed: {}", function, reason),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
@@ -166,17 +121,11 @@ pub fn internal_error(function: String, details: String) -> Diagnostic {
 	Diagnostic {
 		code: "FUNCTION_008".to_string(),
 		statement: None,
-		message: format!(
-			"Internal error in function {}: {}",
-			function, details
-		),
+		message: format!("Internal error in function {}: {}", function, details),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
-		help: Some(
-			"This is an internal error - please report this issue"
-				.to_string(),
-		),
+		help: Some("This is an internal error - please report this issue".to_string()),
 		notes: vec![],
 		cause: None,
 	}

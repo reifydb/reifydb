@@ -1,19 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{
-	Blob, Date, DateTime, Decimal, IdentityId, Int, Interval, RowNumber,
-	Time, Uint, Uuid4, Uuid7,
-};
+use reifydb_type::{Blob, Date, DateTime, Decimal, IdentityId, Int, Interval, RowNumber, Time, Uint, Uuid4, Uuid7};
 
 use crate::{
 	BitVec,
 	value::{
 		columnar::ColumnData,
 		container::{
-			BlobContainer, BoolContainer, IdentityIdContainer,
-			NumberContainer, RowNumberContainer, TemporalContainer,
-			UndefinedContainer, Utf8Container, UuidContainer,
+			BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, RowNumberContainer,
+			TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
 		},
 	},
 };
@@ -24,9 +20,7 @@ impl ColumnData {
 		ColumnData::Bool(BoolContainer::from_vec(data))
 	}
 
-	pub fn bool_optional(
-		data: impl IntoIterator<Item = Option<bool>>,
-	) -> Self {
+	pub fn bool_optional(data: impl IntoIterator<Item = Option<bool>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -43,20 +37,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Bool(BoolContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Bool(BoolContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn bool_with_capacity(capacity: usize) -> Self {
 		ColumnData::Bool(BoolContainer::with_capacity(capacity))
 	}
 
-	pub fn bool_with_bitvec(
-		data: impl IntoIterator<Item = bool>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn bool_with_bitvec(data: impl IntoIterator<Item = bool>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -68,9 +56,7 @@ impl ColumnData {
 		ColumnData::Float4(NumberContainer::from_vec(data))
 	}
 
-	pub fn float4_optional(
-		data: impl IntoIterator<Item = Option<f32>>,
-	) -> Self {
+	pub fn float4_optional(data: impl IntoIterator<Item = Option<f32>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -87,20 +73,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Float4(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Float4(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn float4_with_capacity(capacity: usize) -> Self {
 		ColumnData::Float4(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn float4_with_bitvec(
-		data: impl IntoIterator<Item = f32>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn float4_with_bitvec(data: impl IntoIterator<Item = f32>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -112,9 +92,7 @@ impl ColumnData {
 		ColumnData::Float8(NumberContainer::from_vec(data))
 	}
 
-	pub fn float8_optional(
-		data: impl IntoIterator<Item = Option<f64>>,
-	) -> Self {
+	pub fn float8_optional(data: impl IntoIterator<Item = Option<f64>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -131,20 +109,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Float8(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Float8(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn float8_with_capacity(capacity: usize) -> Self {
 		ColumnData::Float8(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn float8_with_bitvec(
-		data: impl IntoIterator<Item = f64>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn float8_with_bitvec(data: impl IntoIterator<Item = f64>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -156,9 +128,7 @@ impl ColumnData {
 		ColumnData::Int1(NumberContainer::from_vec(data))
 	}
 
-	pub fn int1_optional(
-		data: impl IntoIterator<Item = Option<i8>>,
-	) -> Self {
+	pub fn int1_optional(data: impl IntoIterator<Item = Option<i8>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -175,20 +145,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Int1(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Int1(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn int1_with_capacity(capacity: usize) -> Self {
 		ColumnData::Int1(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn int1_with_bitvec(
-		data: impl IntoIterator<Item = i8>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn int1_with_bitvec(data: impl IntoIterator<Item = i8>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -200,9 +164,7 @@ impl ColumnData {
 		ColumnData::Int2(NumberContainer::from_vec(data))
 	}
 
-	pub fn int2_optional(
-		data: impl IntoIterator<Item = Option<i16>>,
-	) -> Self {
+	pub fn int2_optional(data: impl IntoIterator<Item = Option<i16>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -219,20 +181,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Int2(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Int2(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn int2_with_capacity(capacity: usize) -> Self {
 		ColumnData::Int2(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn int2_with_bitvec(
-		data: impl IntoIterator<Item = i16>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn int2_with_bitvec(data: impl IntoIterator<Item = i16>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -244,9 +200,7 @@ impl ColumnData {
 		ColumnData::Int4(NumberContainer::from_vec(data))
 	}
 
-	pub fn int4_optional(
-		data: impl IntoIterator<Item = Option<i32>>,
-	) -> Self {
+	pub fn int4_optional(data: impl IntoIterator<Item = Option<i32>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -263,20 +217,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Int4(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Int4(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn int4_with_capacity(capacity: usize) -> Self {
 		ColumnData::Int4(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn int4_with_bitvec(
-		data: impl IntoIterator<Item = i32>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn int4_with_bitvec(data: impl IntoIterator<Item = i32>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -288,9 +236,7 @@ impl ColumnData {
 		ColumnData::Int8(NumberContainer::from_vec(data))
 	}
 
-	pub fn int8_optional(
-		data: impl IntoIterator<Item = Option<i64>>,
-	) -> Self {
+	pub fn int8_optional(data: impl IntoIterator<Item = Option<i64>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -307,20 +253,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Int8(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Int8(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn int8_with_capacity(capacity: usize) -> Self {
 		ColumnData::Int8(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn int8_with_bitvec(
-		data: impl IntoIterator<Item = i64>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn int8_with_bitvec(data: impl IntoIterator<Item = i64>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -332,9 +272,7 @@ impl ColumnData {
 		ColumnData::Int16(NumberContainer::from_vec(data))
 	}
 
-	pub fn int16_optional(
-		data: impl IntoIterator<Item = Option<i128>>,
-	) -> Self {
+	pub fn int16_optional(data: impl IntoIterator<Item = Option<i128>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -351,20 +289,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Int16(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Int16(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn int16_with_capacity(capacity: usize) -> Self {
 		ColumnData::Int16(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn int16_with_bitvec(
-		data: impl IntoIterator<Item = i128>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn int16_with_bitvec(data: impl IntoIterator<Item = i128>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -373,17 +305,14 @@ impl ColumnData {
 
 	pub fn utf8(data: impl IntoIterator<Item = impl Into<String>>) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
-		let data =
-			data.into_iter().map(|c| c.into()).collect::<Vec<_>>();
+		let data = data.into_iter().map(|c| c.into()).collect::<Vec<_>>();
 		ColumnData::Utf8 {
 			container: Utf8Container::from_vec(data),
 			max_bytes: MaxBytes::MAX,
 		}
 	}
 
-	pub fn utf8_optional(
-		data: impl IntoIterator<Item = Option<String>>,
-	) -> Self {
+	pub fn utf8_optional(data: impl IntoIterator<Item = Option<String>>) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
@@ -402,10 +331,7 @@ impl ColumnData {
 		}
 
 		ColumnData::Utf8 {
-			container: Utf8Container::new(
-				values,
-				BitVec::from(bitvec),
-			),
+			container: Utf8Container::new(values, BitVec::from(bitvec)),
 			max_bytes: MaxBytes::MAX,
 		}
 	}
@@ -418,10 +344,7 @@ impl ColumnData {
 		}
 	}
 
-	pub fn utf8_with_bitvec<'a>(
-		data: impl IntoIterator<Item = String>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn utf8_with_bitvec<'a>(data: impl IntoIterator<Item = String>, bitvec: impl Into<BitVec>) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
@@ -437,9 +360,7 @@ impl ColumnData {
 		ColumnData::Uint1(NumberContainer::from_vec(data))
 	}
 
-	pub fn uint1_optional(
-		data: impl IntoIterator<Item = Option<u8>>,
-	) -> Self {
+	pub fn uint1_optional(data: impl IntoIterator<Item = Option<u8>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -456,20 +377,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Uint1(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Uint1(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn uint1_with_capacity(capacity: usize) -> Self {
 		ColumnData::Uint1(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn uint1_with_bitvec(
-		data: impl IntoIterator<Item = u8>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn uint1_with_bitvec(data: impl IntoIterator<Item = u8>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -481,9 +396,7 @@ impl ColumnData {
 		ColumnData::Uint2(NumberContainer::from_vec(data))
 	}
 
-	pub fn uint2_optional(
-		data: impl IntoIterator<Item = Option<u16>>,
-	) -> Self {
+	pub fn uint2_optional(data: impl IntoIterator<Item = Option<u16>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -500,20 +413,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Uint2(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Uint2(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn uint2_with_capacity(capacity: usize) -> Self {
 		ColumnData::Uint2(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn uint2_with_bitvec(
-		data: impl IntoIterator<Item = u16>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn uint2_with_bitvec(data: impl IntoIterator<Item = u16>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -525,9 +432,7 @@ impl ColumnData {
 		ColumnData::Uint4(NumberContainer::from_vec(data))
 	}
 
-	pub fn uint4_optional(
-		data: impl IntoIterator<Item = Option<u32>>,
-	) -> Self {
+	pub fn uint4_optional(data: impl IntoIterator<Item = Option<u32>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -544,20 +449,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Uint4(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Uint4(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn uint4_with_capacity(capacity: usize) -> Self {
 		ColumnData::Uint4(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn uint4_with_bitvec(
-		data: impl IntoIterator<Item = u32>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn uint4_with_bitvec(data: impl IntoIterator<Item = u32>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -569,9 +468,7 @@ impl ColumnData {
 		ColumnData::Uint8(NumberContainer::from_vec(data))
 	}
 
-	pub fn uint8_optional(
-		data: impl IntoIterator<Item = Option<u64>>,
-	) -> Self {
+	pub fn uint8_optional(data: impl IntoIterator<Item = Option<u64>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -588,20 +485,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Uint8(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Uint8(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn uint8_with_capacity(capacity: usize) -> Self {
 		ColumnData::Uint8(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn uint8_with_bitvec(
-		data: impl IntoIterator<Item = u64>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn uint8_with_bitvec(data: impl IntoIterator<Item = u64>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -613,9 +504,7 @@ impl ColumnData {
 		ColumnData::Uint16(NumberContainer::from_vec(data))
 	}
 
-	pub fn uint16_optional(
-		data: impl IntoIterator<Item = Option<u128>>,
-	) -> Self {
+	pub fn uint16_optional(data: impl IntoIterator<Item = Option<u128>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -632,20 +521,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Uint16(NumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Uint16(NumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn uint16_with_capacity(capacity: usize) -> Self {
 		ColumnData::Uint16(NumberContainer::with_capacity(capacity))
 	}
 
-	pub fn uint16_with_bitvec(
-		data: impl IntoIterator<Item = u128>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn uint16_with_bitvec(data: impl IntoIterator<Item = u128>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -657,9 +540,7 @@ impl ColumnData {
 		ColumnData::Date(TemporalContainer::from_vec(data))
 	}
 
-	pub fn date_optional(
-		data: impl IntoIterator<Item = Option<Date>>,
-	) -> Self {
+	pub fn date_optional(data: impl IntoIterator<Item = Option<Date>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -676,20 +557,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Date(TemporalContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Date(TemporalContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn date_with_capacity(capacity: usize) -> Self {
 		ColumnData::Date(TemporalContainer::with_capacity(capacity))
 	}
 
-	pub fn date_with_bitvec(
-		data: impl IntoIterator<Item = Date>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn date_with_bitvec(data: impl IntoIterator<Item = Date>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -701,9 +576,7 @@ impl ColumnData {
 		ColumnData::DateTime(TemporalContainer::from_vec(data))
 	}
 
-	pub fn datetime_optional(
-		data: impl IntoIterator<Item = Option<DateTime>>,
-	) -> Self {
+	pub fn datetime_optional(data: impl IntoIterator<Item = Option<DateTime>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -720,20 +593,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::DateTime(TemporalContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::DateTime(TemporalContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn datetime_with_capacity(capacity: usize) -> Self {
 		ColumnData::DateTime(TemporalContainer::with_capacity(capacity))
 	}
 
-	pub fn datetime_with_bitvec(
-		data: impl IntoIterator<Item = DateTime>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn datetime_with_bitvec(data: impl IntoIterator<Item = DateTime>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -745,9 +612,7 @@ impl ColumnData {
 		ColumnData::Time(TemporalContainer::from_vec(data))
 	}
 
-	pub fn time_optional(
-		data: impl IntoIterator<Item = Option<Time>>,
-	) -> Self {
+	pub fn time_optional(data: impl IntoIterator<Item = Option<Time>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -764,20 +629,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Time(TemporalContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Time(TemporalContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn time_with_capacity(capacity: usize) -> Self {
 		ColumnData::Time(TemporalContainer::with_capacity(capacity))
 	}
 
-	pub fn time_with_bitvec(
-		data: impl IntoIterator<Item = Time>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn time_with_bitvec(data: impl IntoIterator<Item = Time>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -789,9 +648,7 @@ impl ColumnData {
 		ColumnData::Interval(TemporalContainer::from_vec(data))
 	}
 
-	pub fn interval_optional(
-		data: impl IntoIterator<Item = Option<Interval>>,
-	) -> Self {
+	pub fn interval_optional(data: impl IntoIterator<Item = Option<Interval>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -808,20 +665,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Interval(TemporalContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Interval(TemporalContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn interval_with_capacity(capacity: usize) -> Self {
 		ColumnData::Interval(TemporalContainer::with_capacity(capacity))
 	}
 
-	pub fn interval_with_bitvec(
-		data: impl IntoIterator<Item = Interval>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn interval_with_bitvec(data: impl IntoIterator<Item = Interval>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -833,9 +684,7 @@ impl ColumnData {
 		ColumnData::Uuid4(UuidContainer::from_vec(data))
 	}
 
-	pub fn uuid4_optional(
-		data: impl IntoIterator<Item = Option<Uuid4>>,
-	) -> Self {
+	pub fn uuid4_optional(data: impl IntoIterator<Item = Option<Uuid4>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -852,20 +701,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Uuid4(UuidContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Uuid4(UuidContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn uuid4_with_capacity(capacity: usize) -> Self {
 		ColumnData::Uuid4(UuidContainer::with_capacity(capacity))
 	}
 
-	pub fn uuid4_with_bitvec(
-		data: impl IntoIterator<Item = Uuid4>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn uuid4_with_bitvec(data: impl IntoIterator<Item = Uuid4>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -877,9 +720,7 @@ impl ColumnData {
 		ColumnData::Uuid7(UuidContainer::from_vec(data))
 	}
 
-	pub fn uuid7_optional(
-		data: impl IntoIterator<Item = Option<Uuid7>>,
-	) -> Self {
+	pub fn uuid7_optional(data: impl IntoIterator<Item = Option<Uuid7>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -896,20 +737,14 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::Uuid7(UuidContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::Uuid7(UuidContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn uuid7_with_capacity(capacity: usize) -> Self {
 		ColumnData::Uuid7(UuidContainer::with_capacity(capacity))
 	}
 
-	pub fn uuid7_with_bitvec(
-		data: impl IntoIterator<Item = Uuid7>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn uuid7_with_bitvec(data: impl IntoIterator<Item = Uuid7>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
@@ -925,9 +760,7 @@ impl ColumnData {
 		}
 	}
 
-	pub fn blob_optional(
-		data: impl IntoIterator<Item = Option<Blob>>,
-	) -> Self {
+	pub fn blob_optional(data: impl IntoIterator<Item = Option<Blob>>) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
@@ -946,10 +779,7 @@ impl ColumnData {
 		}
 
 		ColumnData::Blob {
-			container: BlobContainer::new(
-				values,
-				BitVec::from(bitvec),
-			),
+			container: BlobContainer::new(values, BitVec::from(bitvec)),
 			max_bytes: MaxBytes::MAX,
 		}
 	}
@@ -962,10 +792,7 @@ impl ColumnData {
 		}
 	}
 
-	pub fn blob_with_bitvec(
-		data: impl IntoIterator<Item = Blob>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn blob_with_bitvec(data: impl IntoIterator<Item = Blob>, bitvec: impl Into<BitVec>) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
@@ -976,16 +803,12 @@ impl ColumnData {
 		}
 	}
 
-	pub fn row_number(
-		row_numbers: impl IntoIterator<Item = RowNumber>,
-	) -> Self {
+	pub fn row_number(row_numbers: impl IntoIterator<Item = RowNumber>) -> Self {
 		let data = row_numbers.into_iter().collect::<Vec<_>>();
 		ColumnData::RowNumber(RowNumberContainer::from_vec(data))
 	}
 
-	pub fn row_number_optional(
-		row_numbers: impl IntoIterator<Item = Option<RowNumber>>,
-	) -> Self {
+	pub fn row_number_optional(row_numbers: impl IntoIterator<Item = Option<RowNumber>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -1002,16 +825,11 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::RowNumber(RowNumberContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::RowNumber(RowNumberContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn row_number_with_capacity(capacity: usize) -> Self {
-		ColumnData::RowNumber(RowNumberContainer::with_capacity(
-			capacity,
-		))
+		ColumnData::RowNumber(RowNumberContainer::with_capacity(capacity))
 	}
 
 	pub fn row_number_with_bitvec(
@@ -1024,16 +842,12 @@ impl ColumnData {
 		ColumnData::RowNumber(RowNumberContainer::new(data, bitvec))
 	}
 
-	pub fn identity_id(
-		identity_ids: impl IntoIterator<Item = IdentityId>,
-	) -> Self {
+	pub fn identity_id(identity_ids: impl IntoIterator<Item = IdentityId>) -> Self {
 		let data = identity_ids.into_iter().collect::<Vec<_>>();
 		ColumnData::IdentityId(IdentityIdContainer::from_vec(data))
 	}
 
-	pub fn identity_id_optional(
-		identity_ids: impl IntoIterator<Item = Option<IdentityId>>,
-	) -> Self {
+	pub fn identity_id_optional(identity_ids: impl IntoIterator<Item = Option<IdentityId>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -1050,16 +864,11 @@ impl ColumnData {
 			}
 		}
 
-		ColumnData::IdentityId(IdentityIdContainer::new(
-			values,
-			BitVec::from(bitvec),
-		))
+		ColumnData::IdentityId(IdentityIdContainer::new(values, BitVec::from(bitvec)))
 	}
 
 	pub fn identity_id_with_capacity(capacity: usize) -> Self {
-		ColumnData::IdentityId(IdentityIdContainer::with_capacity(
-			capacity,
-		))
+		ColumnData::IdentityId(IdentityIdContainer::with_capacity(capacity))
 	}
 
 	pub fn identity_id_with_bitvec(
@@ -1081,9 +890,7 @@ impl ColumnData {
 		}
 	}
 
-	pub fn int_optional(
-		data: impl IntoIterator<Item = Option<Int>>,
-	) -> Self {
+	pub fn int_optional(data: impl IntoIterator<Item = Option<Int>>) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
@@ -1102,10 +909,7 @@ impl ColumnData {
 		}
 
 		ColumnData::Int {
-			container: NumberContainer::new(
-				values,
-				BitVec::from(bitvec),
-			),
+			container: NumberContainer::new(values, BitVec::from(bitvec)),
 			max_bytes: MaxBytes::MAX,
 		}
 	}
@@ -1119,9 +923,7 @@ impl ColumnData {
 		}
 	}
 
-	pub fn uint_optional(
-		data: impl IntoIterator<Item = Option<Uint>>,
-	) -> Self {
+	pub fn uint_optional(data: impl IntoIterator<Item = Option<Uint>>) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
@@ -1140,10 +942,7 @@ impl ColumnData {
 		}
 
 		ColumnData::Uint {
-			container: NumberContainer::new(
-				values,
-				BitVec::from(bitvec),
-			),
+			container: NumberContainer::new(values, BitVec::from(bitvec)),
 			max_bytes: MaxBytes::MAX,
 		}
 	}
@@ -1164,10 +963,7 @@ impl ColumnData {
 		}
 	}
 
-	pub fn int_with_bitvec(
-		data: impl IntoIterator<Item = Int>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn int_with_bitvec(data: impl IntoIterator<Item = Int>, bitvec: impl Into<BitVec>) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
@@ -1178,10 +974,7 @@ impl ColumnData {
 		}
 	}
 
-	pub fn uint_with_bitvec(
-		data: impl IntoIterator<Item = Uint>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
+	pub fn uint_with_bitvec(data: impl IntoIterator<Item = Uint>, bitvec: impl Into<BitVec>) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
@@ -1193,9 +986,7 @@ impl ColumnData {
 	}
 
 	pub fn decimal(data: impl IntoIterator<Item = Decimal>) -> Self {
-		use reifydb_type::value::constraint::{
-			precision::Precision, scale::Scale,
-		};
+		use reifydb_type::value::constraint::{precision::Precision, scale::Scale};
 		let data = data.into_iter().collect::<Vec<_>>();
 		ColumnData::Decimal {
 			container: NumberContainer::from_vec(data),
@@ -1204,12 +995,8 @@ impl ColumnData {
 		}
 	}
 
-	pub fn decimal_optional(
-		data: impl IntoIterator<Item = Option<Decimal>>,
-	) -> Self {
-		use reifydb_type::value::constraint::{
-			precision::Precision, scale::Scale,
-		};
+	pub fn decimal_optional(data: impl IntoIterator<Item = Option<Decimal>>) -> Self {
+		use reifydb_type::value::constraint::{precision::Precision, scale::Scale};
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -1227,19 +1014,14 @@ impl ColumnData {
 		}
 
 		ColumnData::Decimal {
-			container: NumberContainer::new(
-				values,
-				BitVec::from(bitvec),
-			),
+			container: NumberContainer::new(values, BitVec::from(bitvec)),
 			precision: Precision::MAX,
 			scale: Scale::new(0),
 		}
 	}
 
 	pub fn decimal_with_capacity(capacity: usize) -> Self {
-		use reifydb_type::value::constraint::{
-			precision::Precision, scale::Scale,
-		};
+		use reifydb_type::value::constraint::{precision::Precision, scale::Scale};
 		ColumnData::Decimal {
 			container: NumberContainer::with_capacity(capacity),
 			precision: Precision::MAX,
@@ -1247,13 +1029,8 @@ impl ColumnData {
 		}
 	}
 
-	pub fn decimal_with_bitvec(
-		data: impl IntoIterator<Item = Decimal>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
-		use reifydb_type::value::constraint::{
-			precision::Precision, scale::Scale,
-		};
+	pub fn decimal_with_bitvec(data: impl IntoIterator<Item = Decimal>, bitvec: impl Into<BitVec>) -> Self {
+		use reifydb_type::value::constraint::{precision::Precision, scale::Scale};
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());

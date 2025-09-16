@@ -3,10 +3,7 @@
 
 use crate::{
 	Error, err,
-	error::diagnostic::boolean::{
-		empty_boolean_value, invalid_boolean_format,
-		invalid_number_boolean,
-	},
+	error::diagnostic::boolean::{empty_boolean_value, invalid_boolean_format, invalid_number_boolean},
 	fragment::IntoFragment,
 	return_error,
 };
@@ -37,8 +34,7 @@ pub fn parse_bool<'a>(fragment: impl IntoFragment<'a>) -> Result<bool, Error> {
 		_ => {
 			// Check if the value contains numbers - if so, use
 			// numeric boolean diagnostic
-			if value.as_bytes().iter().any(|&b| b.is_ascii_digit())
-			{
+			if value.as_bytes().iter().any(|&b| b.is_ascii_digit()) {
 				err!(invalid_number_boolean(fragment))
 			} else {
 				err!(invalid_boolean_format(fragment))
@@ -54,66 +50,36 @@ mod tests {
 
 	#[test]
 	fn test_valid_true() {
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("true")),
-			Ok(true)
-		);
+		assert_eq!(parse_bool(OwnedFragment::testing("true")), Ok(true));
 	}
 
 	#[test]
 	fn test_valid_false() {
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("false")),
-			Ok(false)
-		);
+		assert_eq!(parse_bool(OwnedFragment::testing("false")), Ok(false));
 	}
 
 	#[test]
 	fn test_valid_true_with_spaces() {
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("  true  ")),
-			Ok(true)
-		);
+		assert_eq!(parse_bool(OwnedFragment::testing("  true  ")), Ok(true));
 	}
 
 	#[test]
 	fn test_valid_false_with_spaces() {
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("  false  ")),
-			Ok(false)
-		);
+		assert_eq!(parse_bool(OwnedFragment::testing("  false  ")), Ok(false));
 	}
 
 	#[test]
 	fn test_case_mismatch_true() {
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("True")),
-			Ok(true)
-		);
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("TRUE")),
-			Ok(true)
-		);
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("tRuE")),
-			Ok(true)
-		);
+		assert_eq!(parse_bool(OwnedFragment::testing("True")), Ok(true));
+		assert_eq!(parse_bool(OwnedFragment::testing("TRUE")), Ok(true));
+		assert_eq!(parse_bool(OwnedFragment::testing("tRuE")), Ok(true));
 	}
 
 	#[test]
 	fn test_case_mismatch_false() {
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("False")),
-			Ok(false)
-		);
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("FALSE")),
-			Ok(false)
-		);
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("fAlSe")),
-			Ok(false)
-		);
+		assert_eq!(parse_bool(OwnedFragment::testing("False")), Ok(false));
+		assert_eq!(parse_bool(OwnedFragment::testing("FALSE")), Ok(false));
+		assert_eq!(parse_bool(OwnedFragment::testing("fAlSe")), Ok(false));
 	}
 
 	#[test]
@@ -121,10 +87,7 @@ mod tests {
 		assert_eq!(parse_bool(OwnedFragment::testing("1")), Ok(true));
 		assert_eq!(parse_bool(OwnedFragment::testing("0")), Ok(false));
 		assert_eq!(parse_bool(OwnedFragment::testing("1.0")), Ok(true));
-		assert_eq!(
-			parse_bool(OwnedFragment::testing("0.0")),
-			Ok(false)
-		);
+		assert_eq!(parse_bool(OwnedFragment::testing("0.0")), Ok(false));
 	}
 
 	#[test]

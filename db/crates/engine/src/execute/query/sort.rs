@@ -20,10 +20,7 @@ pub(crate) struct SortNode<'a, T: Transaction> {
 }
 
 impl<'a, T: Transaction> SortNode<'a, T> {
-	pub(crate) fn new(
-		input: Box<ExecutionPlan<'a, T>>,
-		by: Vec<SortKey>,
-	) -> Self {
+	pub(crate) fn new(input: Box<ExecutionPlan<'a, T>>, by: Vec<SortKey>) -> Self {
 		Self {
 			input,
 			by,
@@ -43,14 +40,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.initialized.is_some(),
-			"SortNode::next() called before initialize()"
-		);
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 
 		let mut columns_opt: Option<Columns> = None;
 
@@ -59,11 +50,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 		}) = self.input.next(rx)?
 		{
 			if let Some(existing_columns) = &mut columns_opt {
-				for (i, col) in columns.into_iter().enumerate()
-				{
-					existing_columns[i]
-						.data_mut()
-						.extend(col.data().clone())?;
+				for (i, col) in columns.into_iter().enumerate() {
+					existing_columns[i].data_mut().extend(col.data().clone())?;
 				}
 			} else {
 				columns_opt = Some(columns);
@@ -78,22 +66,14 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 		let key_refs =
 			self.by.iter()
 				.map(|key| {
-					let col =
-						columns.iter()
-							.find(|c| {
-								c.qualified_name()
-								== key.column
-									.fragment() || c.name()
-								== key.column
-									.fragment()
-							})
-							.ok_or_else(|| {
-								error!(query::column_not_found(key.column.clone()))
-							})?;
-					Ok::<_, reifydb_type::Error>((
-						col.data().clone(),
-						key.direction.clone(),
-					))
+					let col = columns
+						.iter()
+						.find(|c| {
+							c.qualified_name() == key.column.fragment()
+								|| c.name() == key.column.fragment()
+						})
+						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
+					Ok::<_, reifydb_type::Error>((col.data().clone(), key.direction.clone()))
 				})
 				.collect::<crate::Result<Vec<_>>>()?;
 

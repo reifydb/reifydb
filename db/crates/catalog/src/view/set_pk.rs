@@ -29,11 +29,7 @@ impl CatalogStore {
 		};
 
 		let mut updated_row = versioned.row.clone();
-		view::LAYOUT.set_u64(
-			&mut updated_row,
-			view::PRIMARY_KEY,
-			primary_key_id.0,
-		);
+		view::LAYOUT.set_u64(&mut updated_row, view::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(
 			&Key::View(ViewKey {
@@ -64,29 +60,23 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let view =
-			CatalogStore::create_deferred_view(
-				&mut txn,
-				ViewToCreate {
-					fragment: None,
-					namespace: namespace.id,
-					name: "test_view".to_string(),
-					columns: vec![ViewColumnToCreate {
+		let view = CatalogStore::create_deferred_view(
+			&mut txn,
+			ViewToCreate {
+				fragment: None,
+				namespace: namespace.id,
+				name: "test_view".to_string(),
+				columns: vec![ViewColumnToCreate {
 					name: "id".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					fragment: None,
 				}],
-				},
-			)
-			.unwrap();
-
-		// Set primary key
-		CatalogStore::set_view_primary_key(
-			&mut txn,
-			view.id,
-			PrimaryKeyId(42),
+			},
 		)
 		.unwrap();
+
+		// Set primary key
+		CatalogStore::set_view_primary_key(&mut txn, view.id, PrimaryKeyId(42)).unwrap();
 
 		// The test succeeds if no error is thrown.
 		// In real usage, create_primary_key would create both the
@@ -99,17 +89,11 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		// Try to set primary key on non-existent view
-		let result = CatalogStore::set_view_primary_key(
-			&mut txn,
-			ViewId(999),
-			PrimaryKeyId(1),
-		);
+		let result = CatalogStore::set_view_primary_key(&mut txn, ViewId(999), PrimaryKeyId(1));
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();
 		assert!(err.to_string().contains("View with ID 999 not found"));
-		assert!(err
-			.to_string()
-			.contains("critical catalog inconsistency"));
+		assert!(err.to_string().contains("critical catalog inconsistency"));
 	}
 }

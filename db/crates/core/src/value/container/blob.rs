@@ -121,8 +121,7 @@ impl BlobContainer {
 	}
 
 	pub fn extend_from_undefined(&mut self, len: usize) {
-		self.data
-			.extend(std::iter::repeat(Blob::new(vec![])).take(len));
+		self.data.extend(std::iter::repeat(Blob::new(vec![])).take(len));
 		self.bitvec.extend(&BitVec::repeat(len, false));
 	}
 
@@ -137,19 +136,8 @@ impl BlobContainer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<Blob> = self
-			.data
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.cloned()
-			.collect();
-		let new_bitvec: Vec<bool> = self
-			.bitvec
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.collect();
+		let new_data: Vec<Blob> = self.data.iter().skip(start).take(end - start).cloned().collect();
+		let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
 		Self {
 			data: CowVec::new(new_data),
 			bitvec: BitVec::from_slice(&new_bitvec),
@@ -272,10 +260,7 @@ mod tests {
 		let blob2 = Blob::new(vec![3, 4]);
 		let blob3 = Blob::new(vec![5, 6]);
 
-		let mut container1 = BlobContainer::from_vec(vec![
-			blob1.clone(),
-			blob2.clone(),
-		]);
+		let mut container1 = BlobContainer::from_vec(vec![blob1.clone(), blob2.clone()]);
 		let container2 = BlobContainer::from_vec(vec![blob3.clone()]);
 
 		container1.extend(&container2).unwrap();
@@ -313,12 +298,7 @@ mod tests {
 
 	#[test]
 	fn test_slice() {
-		let blobs = vec![
-			Blob::new(vec![1]),
-			Blob::new(vec![2]),
-			Blob::new(vec![3]),
-			Blob::new(vec![4]),
-		];
+		let blobs = vec![Blob::new(vec![1]), Blob::new(vec![2]), Blob::new(vec![3]), Blob::new(vec![4])];
 		let container = BlobContainer::from_vec(blobs.clone());
 		let sliced = container.slice(1, 3);
 
@@ -329,12 +309,7 @@ mod tests {
 
 	#[test]
 	fn test_filter() {
-		let blobs = vec![
-			Blob::new(vec![1]),
-			Blob::new(vec![2]),
-			Blob::new(vec![3]),
-			Blob::new(vec![4]),
-		];
+		let blobs = vec![Blob::new(vec![1]), Blob::new(vec![2]), Blob::new(vec![3]), Blob::new(vec![4])];
 		let mut container = BlobContainer::from_vec(blobs.clone());
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 
@@ -347,11 +322,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder() {
-		let blobs = vec![
-			Blob::new(vec![10]),
-			Blob::new(vec![20]),
-			Blob::new(vec![30]),
-		];
+		let blobs = vec![Blob::new(vec![10]), Blob::new(vec![20]), Blob::new(vec![30])];
 		let mut container = BlobContainer::from_vec(blobs.clone());
 		let indices = [2, 0, 1];
 

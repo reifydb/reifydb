@@ -68,10 +68,7 @@ pub trait ProtocolHandler<T: Transaction>: Send + Sync {
 	fn can_handle(&self, buffer: &[u8]) -> bool;
 
 	/// Handle a connection using this protocol
-	fn handle_connection(
-		&self,
-		conn: &mut Connection<T>,
-	) -> ProtocolResult<()>;
+	fn handle_connection(&self, conn: &mut Connection<T>) -> ProtocolResult<()>;
 
 	/// Handle readable events for this connection
 	fn handle_read(&self, conn: &mut Connection<T>) -> ProtocolResult<()>;

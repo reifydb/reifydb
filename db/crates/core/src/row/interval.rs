@@ -8,12 +8,7 @@ use reifydb_type::{Interval, Type};
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_interval(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: Interval,
-	) {
+	pub fn set_interval(&self, row: &mut EncodedRow, index: usize, value: Interval) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Interval);
@@ -24,25 +19,11 @@ impl EncodedRowLayout {
 		let nanos = value.get_nanos();
 		unsafe {
 			// Write months (i32) at offset
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut i32,
-				months,
-			);
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i32, months);
 			// Write days (i32) at offset + 4
-			ptr::write_unaligned(
-				row.make_mut()
-					.as_mut_ptr()
-					.add(field.offset + 4) as *mut i32,
-				days,
-			);
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset + 4) as *mut i32, days);
 			// Write nanos (i64) at offset + 8
-			ptr::write_unaligned(
-				row.make_mut()
-					.as_mut_ptr()
-					.add(field.offset + 8) as *mut i64,
-				nanos,
-			);
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset + 8) as *mut i64, nanos);
 		}
 	}
 
@@ -52,26 +33,16 @@ impl EncodedRowLayout {
 		debug_assert_eq!(field.value, Type::Interval);
 		unsafe {
 			// Read months (i32) from offset
-			let months = (row.as_ptr().add(field.offset)
-				as *const i32)
-				.read_unaligned();
+			let months = (row.as_ptr().add(field.offset) as *const i32).read_unaligned();
 			// Read days (i32) from offset + 4
-			let days = (row.as_ptr().add(field.offset + 4)
-				as *const i32)
-				.read_unaligned();
+			let days = (row.as_ptr().add(field.offset + 4) as *const i32).read_unaligned();
 			// Read nanos (i64) from offset + 8
-			let nanos = (row.as_ptr().add(field.offset + 8)
-				as *const i64)
-				.read_unaligned();
+			let nanos = (row.as_ptr().add(field.offset + 8) as *const i64).read_unaligned();
 			Interval::new(months, days, nanos)
 		}
 	}
 
-	pub fn try_get_interval(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<Interval> {
+	pub fn try_get_interval(&self, row: &EncodedRow, index: usize) -> Option<Interval> {
 		if row.is_defined(index) {
 			Some(self.get_interval(row, index))
 		} else {
@@ -105,10 +76,7 @@ mod tests {
 
 		let test_interval = Interval::from_days(30);
 		layout.set_interval(&mut row, 0, test_interval.clone());
-		assert_eq!(
-			layout.try_get_interval(&row, 0),
-			Some(test_interval)
-		);
+		assert_eq!(layout.try_get_interval(&row, 0), Some(test_interval));
 	}
 
 	#[test]
@@ -178,12 +146,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Interval,
-			Type::Boolean,
-			Type::Interval,
-			Type::Int8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Interval, Type::Boolean, Type::Interval, Type::Int8]);
 		let mut row = layout.allocate_row();
 
 		let interval1 = Interval::from_hours(24);
@@ -202,10 +165,7 @@ mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Interval,
-			Type::Interval,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Interval, Type::Interval]);
 		let mut row = layout.allocate_row();
 
 		let interval = Interval::from_days(100);

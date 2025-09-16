@@ -8,18 +8,15 @@ use std::sync::Arc;
 
 pub use alter::{AlterTablePlan, AlterViewPlan};
 use reifydb_catalog::{
-	ring_buffer::create::RingBufferColumnToCreate,
-	table::TableColumnToCreate, view::ViewColumnToCreate,
+	ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	JoinType, SortKey,
 	interface::{
-		NamespaceDef, QueryTransaction, TableDef, TableVirtualDef,
-		ViewDef,
+		NamespaceDef, QueryTransaction, TableDef, TableVirtualDef, ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 		identifier::{
-			ColumnIdentifier, DeferredViewIdentifier,
-			RingBufferIdentifier, SequenceIdentifier,
+			ColumnIdentifier, DeferredViewIdentifier, RingBufferIdentifier, SequenceIdentifier,
 			TableIdentifier, TransactionalViewIdentifier,
 		},
 	},
@@ -54,260 +51,176 @@ impl Compiler {
 			match plan {
 				LogicalPlan::Aggregate(aggregate) => {
 					let input = stack.pop().unwrap(); // FIXME
-					stack.push(PhysicalPlan::Aggregate(
-						AggregateNode {
-							by: aggregate.by,
-							map: aggregate.map,
-							input: Box::new(input),
-						},
-					));
+					stack.push(PhysicalPlan::Aggregate(AggregateNode {
+						by: aggregate.by,
+						map: aggregate.map,
+						input: Box::new(input),
+					}));
 				}
 
 				LogicalPlan::CreateNamespace(create) => {
-					stack.push(
-						Self::compile_create_namespace(
-							rx, create,
-						)?,
-					);
+					stack.push(Self::compile_create_namespace(rx, create)?);
 				}
 
 				LogicalPlan::CreateTable(create) => {
-					stack.push(Self::compile_create_table(
-						rx, create,
-					)?);
+					stack.push(Self::compile_create_table(rx, create)?);
 				}
 
 				LogicalPlan::CreateRingBuffer(create) => {
-					stack.push(Self::compile_create_ring_buffer(
-						rx, create,
-					)?);
+					stack.push(Self::compile_create_ring_buffer(rx, create)?);
 				}
 
 				LogicalPlan::CreateDeferredView(create) => {
-					stack.push(
-						Self::compile_create_deferred(
-							rx, create,
-						)?,
-					);
+					stack.push(Self::compile_create_deferred(rx, create)?);
 				}
 
-				LogicalPlan::CreateTransactionalView(
-					create,
-				) => {
-					stack.push(
-                        Self::compile_create_transactional(
-                            rx, create,
-                        )?,
-                    );
+				LogicalPlan::CreateTransactionalView(create) => {
+					stack.push(Self::compile_create_transactional(rx, create)?);
 				}
 
 				LogicalPlan::AlterSequence(alter) => {
-					stack.push(
-						Self::compile_alter_sequence(
-							rx, alter,
-						)?,
-					);
+					stack.push(Self::compile_alter_sequence(rx, alter)?);
 				}
 
 				LogicalPlan::AlterTable(alter) => {
-					stack.push(Self::compile_alter_table(
-						rx, alter,
-					)?);
+					stack.push(Self::compile_alter_table(rx, alter)?);
 				}
 
 				LogicalPlan::AlterView(alter) => {
-					stack.push(Self::compile_alter_view(
-						rx, alter,
-					)?);
+					stack.push(Self::compile_alter_view(rx, alter)?);
 				}
 
 				LogicalPlan::Filter(filter) => {
 					let input = stack.pop().unwrap(); // FIXME
-					stack.push(PhysicalPlan::Filter(
-						FilterNode {
-							conditions: vec![filter
-                                .condition],
-							input: Box::new(input),
-						},
-					));
+					stack.push(PhysicalPlan::Filter(FilterNode {
+						conditions: vec![filter.condition],
+						input: Box::new(input),
+					}));
 				}
 
 				LogicalPlan::InlineData(inline) => {
-					stack.push(PhysicalPlan::InlineData(
-						InlineDataNode {
-							rows: inline.rows,
-						},
-					));
+					stack.push(PhysicalPlan::InlineData(InlineDataNode {
+						rows: inline.rows,
+					}));
 				}
 
 				LogicalPlan::Delete(delete) => {
 					// If delete has its own input, compile
 					// it first Otherwise, try to pop
 					// from stack (for pipeline operations)
-					let input =
-						if let Some(delete_input) =
-							delete.input
-						{
-							// Recursively compile
-							// the input pipeline
-							let sub_plan = Self::compile(rx, vec![*delete_input])?
-                                .expect("Delete input must produce a plan");
-							Some(Box::new(sub_plan))
-						} else {
-							stack.pop().map(|i| {
-								Box::new(i)
-							})
-						};
+					let input = if let Some(delete_input) = delete.input {
+						// Recursively compile
+						// the input pipeline
+						let sub_plan = Self::compile(rx, vec![*delete_input])?
+							.expect("Delete input must produce a plan");
+						Some(Box::new(sub_plan))
+					} else {
+						stack.pop().map(|i| Box::new(i))
+					};
 
-					stack.push(PhysicalPlan::Delete(
-						DeletePlan {
-							input,
-							target: delete
-								.target
-								.clone(),
-						},
-					))
+					stack.push(PhysicalPlan::Delete(DeletePlan {
+						input,
+						target: delete.target.clone(),
+					}))
 				}
 
 				LogicalPlan::Insert(insert) => {
 					let input = stack.pop().unwrap();
-					stack.push(PhysicalPlan::Insert(
-						InsertPlan {
-							input: Box::new(input),
-							target: insert
-								.target
-								.clone(),
-						},
-					))
+					stack.push(PhysicalPlan::Insert(InsertPlan {
+						input: Box::new(input),
+						target: insert.target.clone(),
+					}))
 				}
 
 				LogicalPlan::Update(update) => {
 					// If update has its own input, compile
 					// it first Otherwise, pop from
 					// stack (for pipeline operations)
-					let input =
-						if let Some(update_input) =
-							update.input
-						{
-							// Recursively compile
-							// the input pipeline
-							let sub_plan = Self::compile(rx, vec![*update_input])?
-                                .expect("Update input must produce a plan");
-							Box::new(sub_plan)
-						} else {
-							Box::new(
-								stack.pop()
-									.expect(
-										"Update requires input",
-									),
-							)
-						};
+					let input = if let Some(update_input) = update.input {
+						// Recursively compile
+						// the input pipeline
+						let sub_plan = Self::compile(rx, vec![*update_input])?
+							.expect("Update input must produce a plan");
+						Box::new(sub_plan)
+					} else {
+						Box::new(stack.pop().expect("Update requires input"))
+					};
 
-					stack.push(PhysicalPlan::Update(
-						UpdatePlan {
-							input,
-							target: update
-								.target
-								.clone(),
-						},
-					))
+					stack.push(PhysicalPlan::Update(UpdatePlan {
+						input,
+						target: update.target.clone(),
+					}))
 				}
 
 				LogicalPlan::JoinInner(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right =
-						Self::compile(rx, join.with)?
-							.unwrap();
-					stack.push(PhysicalPlan::JoinInner(
-						JoinInnerNode {
-							left: Box::new(left),
-							right: Box::new(right),
-							on: join.on,
-						},
-					));
+					let right = Self::compile(rx, join.with)?.unwrap();
+					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
+						left: Box::new(left),
+						right: Box::new(right),
+						on: join.on,
+					}));
 				}
 
 				LogicalPlan::JoinLeft(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right =
-						Self::compile(rx, join.with)?
-							.unwrap();
-					stack.push(PhysicalPlan::JoinLeft(
-						JoinLeftNode {
-							left: Box::new(left),
-							right: Box::new(right),
-							on: join.on,
-						},
-					));
+					let right = Self::compile(rx, join.with)?.unwrap();
+					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
+						left: Box::new(left),
+						right: Box::new(right),
+						on: join.on,
+					}));
 				}
 
 				LogicalPlan::JoinNatural(join) => {
 					let left = stack.pop().unwrap(); // FIXME;
-					let right =
-						Self::compile(rx, join.with)?
-							.unwrap();
-					stack.push(PhysicalPlan::JoinNatural(
-						JoinNaturalNode {
-							left: Box::new(left),
-							right: Box::new(right),
-							join_type: join
-								.join_type,
-						},
-					));
+					let right = Self::compile(rx, join.with)?.unwrap();
+					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
+						left: Box::new(left),
+						right: Box::new(right),
+						join_type: join.join_type,
+					}));
 				}
 
 				LogicalPlan::Order(order) => {
 					let input = stack.pop().unwrap(); // FIXME
-					stack.push(PhysicalPlan::Sort(
-						SortNode {
-							by: order.by,
-							input: Box::new(input),
-						},
-					));
+					stack.push(PhysicalPlan::Sort(SortNode {
+						by: order.by,
+						input: Box::new(input),
+					}));
 				}
 
 				LogicalPlan::Distinct(distinct) => {
 					let input = stack.pop().unwrap(); // FIXME
-					stack.push(PhysicalPlan::Distinct(
-						DistinctNode {
-							columns: distinct
-								.columns,
-							input: Box::new(input),
-						},
-					));
+					stack.push(PhysicalPlan::Distinct(DistinctNode {
+						columns: distinct.columns,
+						input: Box::new(input),
+					}));
 				}
 
 				LogicalPlan::Map(map) => {
 					let input = stack.pop().map(Box::new);
-					stack.push(PhysicalPlan::Map(
-						MapNode {
-							map: map.map,
-							input,
-						},
-					));
+					stack.push(PhysicalPlan::Map(MapNode {
+						map: map.map,
+						input,
+					}));
 				}
 
 				LogicalPlan::Extend(extend) => {
 					let input = stack.pop().map(Box::new);
-					stack.push(PhysicalPlan::Extend(
-						ExtendNode {
-							extend: extend.extend,
-							input,
-						},
-					));
+					stack.push(PhysicalPlan::Extend(ExtendNode {
+						extend: extend.extend,
+						input,
+					}));
 				}
 
 				LogicalPlan::Apply(apply) => {
 					let input = stack.pop().map(Box::new);
-					stack.push(PhysicalPlan::Apply(
-						ApplyNode {
-							operator: apply
-								.operator_name,
-							expressions: apply
-								.arguments,
-							input,
-						},
-					));
+					stack.push(PhysicalPlan::Apply(ApplyNode {
+						operator: apply.operator_name,
+						expressions: apply.arguments,
+						input,
+					}));
 				}
 
 				LogicalPlan::SourceScan(scan) => {
@@ -316,107 +229,99 @@ impl Compiler {
 					use reifydb_core::interface::resolved::ResolvedSource;
 
 					match scan.source.as_ref() {
-                        ResolvedSource::Table(resolved_table) => {
-                            let namespace = resolved_table.namespace.def.clone();
-                            let table = resolved_table.def.clone();
+						ResolvedSource::Table(resolved_table) => {
+							let namespace = resolved_table.namespace.def.clone();
+							let table = resolved_table.def.clone();
 
-                            // Check if an index was specified
-                            if let Some(index) = &scan.index {
-                                stack.push(IndexScan(
-                                    IndexScanNode {
-                                        namespace,
-                                        table,
-                                        index_name: index.identifier.name.text().to_string(),
-                                    },
-                                ));
-                            } else {
-                                stack.push(TableScan(
-                                    TableScanNode {
-                                        namespace,
-                                        table,
-                                    },
-                                ));
-                            }
-                        }
-                        ResolvedSource::View(resolved_view) => {
-                            // Views cannot use index directives
-                            if scan.index.is_some() {
-                                unimplemented!("views do not support indexes yet");
-                            }
-                            let namespace = resolved_view.namespace.def.clone();
-                            let view = resolved_view.def.clone();
-                            stack.push(ViewScan(
-                                ViewScanNode {
-                                    namespace,
-                                    view,
-                                },
-                            ));
-                        }
-                        ResolvedSource::DeferredView(resolved_view) => {
-                            // Deferred views cannot use index directives
-                            if scan.index.is_some() {
-                                unimplemented!("views do not support indexes yet");
-                            }
-                            let namespace = resolved_view.namespace.def.clone();
-                            let view = resolved_view.def.clone();
-                            stack.push(ViewScan(
-                                ViewScanNode {
-                                    namespace,
-                                    view,
-                                },
-                            ));
-                        }
-                        ResolvedSource::TransactionalView(resolved_view) => {
-                            // Transactional views cannot use index directives
-                            if scan.index.is_some() {
-                                unimplemented!("views do not support indexes yet");
-                            }
-                            let namespace = resolved_view.namespace.def.clone();
-                            let view = resolved_view.def.clone();
-                            stack.push(ViewScan(
-                                ViewScanNode {
-                                    namespace,
-                                    view,
-                                },
-                            ));
-                        }
+							// Check if an index was specified
+							if let Some(index) = &scan.index {
+								stack.push(IndexScan(IndexScanNode {
+									namespace,
+									table,
+									index_name: index
+										.identifier
+										.name
+										.text()
+										.to_string(),
+								}));
+							} else {
+								stack.push(TableScan(TableScanNode {
+									namespace,
+									table,
+								}));
+							}
+						}
+						ResolvedSource::View(resolved_view) => {
+							// Views cannot use index directives
+							if scan.index.is_some() {
+								unimplemented!("views do not support indexes yet");
+							}
+							let namespace = resolved_view.namespace.def.clone();
+							let view = resolved_view.def.clone();
+							stack.push(ViewScan(ViewScanNode {
+								namespace,
+								view,
+							}));
+						}
+						ResolvedSource::DeferredView(resolved_view) => {
+							// Deferred views cannot use index directives
+							if scan.index.is_some() {
+								unimplemented!("views do not support indexes yet");
+							}
+							let namespace = resolved_view.namespace.def.clone();
+							let view = resolved_view.def.clone();
+							stack.push(ViewScan(ViewScanNode {
+								namespace,
+								view,
+							}));
+						}
+						ResolvedSource::TransactionalView(resolved_view) => {
+							// Transactional views cannot use index directives
+							if scan.index.is_some() {
+								unimplemented!("views do not support indexes yet");
+							}
+							let namespace = resolved_view.namespace.def.clone();
+							let view = resolved_view.def.clone();
+							stack.push(ViewScan(ViewScanNode {
+								namespace,
+								view,
+							}));
+						}
 
-                        ResolvedSource::TableVirtual(resolved_virtual) => {
-                            // Virtual tables cannot use index directives
-                            if scan.index.is_some() {
-                                unimplemented!("virtual tables do not support indexes yet");
-                            }
-                            let namespace = resolved_virtual.namespace.def.clone();
-                            let table = Arc::new(resolved_virtual.def.clone());
-                            stack.push(PhysicalPlan::TableVirtualScan(
-                                TableVirtualScanNode {
-                                    namespace,
-                                    table,
-                                    pushdown_context: None, // TODO: Detect pushdown opportunities
-                                },
-                            ));
-                        }
-                    }
+						ResolvedSource::TableVirtual(resolved_virtual) => {
+							// Virtual tables cannot use index directives
+							if scan.index.is_some() {
+								unimplemented!(
+									"virtual tables do not support indexes yet"
+								);
+							}
+							let namespace = resolved_virtual.namespace.def.clone();
+							let table = Arc::new(resolved_virtual.def.clone());
+							stack.push(PhysicalPlan::TableVirtualScan(
+								TableVirtualScanNode {
+									namespace,
+									table,
+									pushdown_context: None, /* TODO: Detect
+									                         * pushdown opportunities */
+								},
+							));
+						}
+					}
 				}
 
 				LogicalPlan::Take(take) => {
 					let input = stack.pop().unwrap(); // FIXME
-					stack.push(PhysicalPlan::Take(
-						TakeNode {
-							take: take.take,
-							input: Box::new(input),
-						},
-					));
+					stack.push(PhysicalPlan::Take(TakeNode {
+						take: take.take,
+						input: Box::new(input),
+					}));
 				}
 
 				LogicalPlan::Pipeline(pipeline) => {
 					// Compile the pipeline of operations
 					// This ensures they all share the same
 					// stack
-					let pipeline_result = Self::compile(
-						rx,
-						pipeline.steps,
-					)?;
+					let pipeline_result = Self::compile(rx, pipeline.steps)?;
 					if let Some(result) = pipeline_result {
 						stack.push(result);
 					}
@@ -430,9 +335,7 @@ impl Compiler {
 			// return Err("Logical plan did not reduce to a single
 			// physical plan".into());
 			dbg!(&stack);
-			panic!(
-				"logical plan did not reduce to a single physical plan"
-			); // FIXME
+			panic!("logical plan did not reduce to a single physical plan"); // FIXME
 		}
 
 		Ok(Some(stack.pop().unwrap()))

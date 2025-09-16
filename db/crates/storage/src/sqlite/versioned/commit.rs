@@ -17,12 +17,7 @@ use crate::{
 };
 
 impl VersionedCommit for Sqlite {
-	fn commit(
-		&self,
-		deltas: CowVec<Delta>,
-		version: CommitVersion,
-		transaction: TransactionId,
-	) -> Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
 		let (respond_to, response) = mpsc::channel();
 
 		self.writer
@@ -33,17 +28,11 @@ impl VersionedCommit for Sqlite {
 				timestamp: now_millis(),
 				respond_to,
 			})
-			.map_err(|_| {
-				Error(storage_internal_error!(
-					"Writer disconnected"
-				))
-			})?;
+			.map_err(|_| Error(storage_internal_error!("Writer disconnected")))?;
 
 		match response.recv() {
 			Ok(result) => result,
-			Err(_) => Err(Error(storage_internal_error!(
-				"Writer failed to response"
-			))),
+			Err(_) => Err(Error(storage_internal_error!("Writer failed to response"))),
 		}
 	}
 }

@@ -232,10 +232,7 @@ impl Display for Interval {
 			write!(f, "{}D", display_days)?;
 		}
 
-		if hours != 0
-			|| minutes != 0 || seconds != 0
-			|| remaining_nanos != 0
-		{
+		if hours != 0 || minutes != 0 || seconds != 0 || remaining_nanos != 0 {
 			write!(f, "T")?;
 
 			if hours != 0 {
@@ -250,19 +247,12 @@ impl Display for Interval {
 				if remaining_nanos != 0 {
 					// Format fractional seconds with
 					// trailing zeros removed
-					let fractional = remaining_nanos as f64
-						/ 1_000_000_000.0;
-					let total_seconds_f =
-						seconds as f64 + fractional;
+					let fractional = remaining_nanos as f64 / 1_000_000_000.0;
+					let total_seconds_f = seconds as f64 + fractional;
 					// Remove trailing zeros from fractional
 					// part
-					let formatted_str = format!(
-						"{:.9}",
-						total_seconds_f
-					);
-					let formatted = formatted_str
-						.trim_end_matches('0')
-						.trim_end_matches('.');
+					let formatted_str = format!("{:.9}", total_seconds_f);
+					let formatted = formatted_str.trim_end_matches('0').trim_end_matches('.');
 					write!(f, "{}S", formatted)?;
 				} else {
 					write!(f, "{}S", seconds)?;
@@ -356,24 +346,15 @@ mod tests {
 	#[test]
 	fn test_interval_display_combined_time() {
 		// Hours and minutes
-		let interval = Interval::new(
-			0,
-			0,
-			(1 * 60 * 60 + 30 * 60) * 1_000_000_000,
-		);
+		let interval = Interval::new(0, 0, (1 * 60 * 60 + 30 * 60) * 1_000_000_000);
 		assert_eq!(format!("{}", interval), "PT1H30M");
 
 		// Minutes and seconds
-		let interval =
-			Interval::new(0, 0, (5 * 60 + 45) * 1_000_000_000);
+		let interval = Interval::new(0, 0, (5 * 60 + 45) * 1_000_000_000);
 		assert_eq!(format!("{}", interval), "PT5M45S");
 
 		// Hours, minutes, and seconds
-		let interval = Interval::new(
-			0,
-			0,
-			(2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000,
-		);
+		let interval = Interval::new(0, 0, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000);
 		assert_eq!(format!("{}", interval), "PT2H30M45S");
 	}
 
@@ -388,19 +369,11 @@ mod tests {
 		assert_eq!(format!("{}", interval), "P1DT30M");
 
 		// Days, hours, and minutes
-		let interval = Interval::new(
-			0,
-			1,
-			(2 * 60 * 60 + 30 * 60) * 1_000_000_000,
-		);
+		let interval = Interval::new(0, 1, (2 * 60 * 60 + 30 * 60) * 1_000_000_000);
 		assert_eq!(format!("{}", interval), "P1DT2H30M");
 
 		// Days, hours, minutes, and seconds
-		let interval = Interval::new(
-			0,
-			1,
-			(2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000,
-		);
+		let interval = Interval::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000);
 		assert_eq!(format!("{}", interval), "P1DT2H30M45S");
 	}
 
@@ -452,42 +425,26 @@ mod tests {
 	#[test]
 	fn test_interval_display_fractional_seconds_with_integers() {
 		// Seconds with milliseconds
-		let interval = Interval::new(
-			0,
-			0,
-			1 * 1_000_000_000 + 500 * 1_000_000,
-		);
+		let interval = Interval::new(0, 0, 1 * 1_000_000_000 + 500 * 1_000_000);
 		assert_eq!(format!("{}", interval), "PT1.5S");
 
 		// Seconds with microseconds
-		let interval =
-			Interval::new(0, 0, 2 * 1_000_000_000 + 123456 * 1_000);
+		let interval = Interval::new(0, 0, 2 * 1_000_000_000 + 123456 * 1_000);
 		assert_eq!(format!("{}", interval), "PT2.123456S");
 
 		// Seconds with nanoseconds
-		let interval =
-			Interval::new(0, 0, 3 * 1_000_000_000 + 123456789);
+		let interval = Interval::new(0, 0, 3 * 1_000_000_000 + 123456789);
 		assert_eq!(format!("{}", interval), "PT3.123456789S");
 	}
 
 	#[test]
 	fn test_interval_display_comptokenize_intervals() {
 		// Comptokenize interval with all components
-		let interval = Interval::new(
-			0,
-			1,
-			(2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000
-				+ 123 * 1_000_000,
-		);
+		let interval = Interval::new(0, 1, (2 * 60 * 60 + 30 * 60 + 45) * 1_000_000_000 + 123 * 1_000_000);
 		assert_eq!(format!("{}", interval), "P1DT2H30M45.123S");
 
 		// Another comptokenize interval
-		let interval = Interval::new(
-			0,
-			7,
-			(12 * 60 * 60 + 45 * 60 + 30) * 1_000_000_000
-				+ 456789 * 1_000,
-		);
+		let interval = Interval::new(0, 7, (12 * 60 * 60 + 45 * 60 + 30) * 1_000_000_000 + 456789 * 1_000);
 		assert_eq!(format!("{}", interval), "P7DT12H45M30.456789S");
 	}
 

@@ -11,10 +11,7 @@
 
 use std::{cmp, cmp::Reverse};
 
-use reifydb_core::{
-	CommitVersion, EncodedKey, delta::Delta, interface::Versioned,
-	row::EncodedRow,
-};
+use reifydb_core::{CommitVersion, EncodedKey, delta::Delta, interface::Versioned, row::EncodedRow};
 
 pub enum TransactionValue {
 	PendingIter {
@@ -93,9 +90,7 @@ impl TransactionValue {
 				row,
 				..
 			} => row,
-			Self::Pending(item) => item
-				.row()
-				.expect("row of pending cannot be `None`"),
+			Self::Pending(item) => item.row().expect("row of pending cannot be `None`"),
 			Self::Committed(item) => &item.row,
 		}
 	}
@@ -106,9 +101,7 @@ impl TransactionValue {
 }
 
 impl From<(CommitVersion, EncodedKey, EncodedRow)> for TransactionValue {
-	fn from(
-		(version, k, b): (CommitVersion, EncodedKey, EncodedRow),
-	) -> Self {
+	fn from((version, k, b): (CommitVersion, EncodedKey, EncodedRow)) -> Self {
 		Self::PendingIter {
 			version,
 			key: k,
@@ -118,9 +111,7 @@ impl From<(CommitVersion, EncodedKey, EncodedRow)> for TransactionValue {
 }
 
 impl From<(CommitVersion, &EncodedKey, &EncodedRow)> for TransactionValue {
-	fn from(
-		(version, k, b): (CommitVersion, &EncodedKey, &EncodedRow),
-	) -> Self {
+	fn from((version, k, b): (CommitVersion, &EncodedKey, &EncodedRow)) -> Self {
 		Self::PendingIter {
 			version,
 			key: k.clone(),
@@ -186,9 +177,7 @@ impl PartialOrd for Pending {
 
 impl Ord for Pending {
 	fn cmp(&self, other: &Self) -> cmp::Ordering {
-		self.delta.key().cmp(other.delta.key()).then_with(|| {
-			Reverse(self.version).cmp(&Reverse(other.version))
-		})
+		self.delta.key().cmp(other.delta.key()).then_with(|| Reverse(self.version).cmp(&Reverse(other.version)))
 	}
 }
 

@@ -7,27 +7,21 @@ use super::ColumnsLayout;
 
 impl ColumnsLayout {
 	pub fn extend(&self, other: &ColumnsLayout) -> crate::Result<Self> {
-		let mut columns = Vec::with_capacity(
-			self.columns.len() + other.columns.len(),
-		);
+		let mut columns = Vec::with_capacity(self.columns.len() + other.columns.len());
 
 		// Add all columns from self (existing columns)
 		columns.extend(self.columns.iter().cloned());
 
 		// Check for duplicate columns and return error if found
 		for column in &other.columns {
-			let column_exists =
-				self.columns.iter().any(|existing| {
-					existing.name == column.name
-						&& existing.namespace
-							== column.namespace && existing.source
-						== column.source
-				});
+			let column_exists = self.columns.iter().any(|existing| {
+				existing.name == column.name
+					&& existing.namespace == column.namespace
+					&& existing.source == column.source
+			});
 
 			if column_exists {
-				return err!(query::extend_duplicate_column(
-					&column.name
-				));
+				return err!(query::extend_duplicate_column(&column.name));
 			}
 
 			columns.push(column.clone());
@@ -44,11 +38,7 @@ mod tests {
 	use super::*;
 	use crate::value::columnar::layout::ColumnLayout;
 
-	fn create_column_layout(
-		name: &str,
-		namespace: Option<&str>,
-		source: Option<&str>,
-	) -> ColumnLayout {
+	fn create_column_layout(name: &str, namespace: Option<&str>, source: Option<&str>) -> ColumnLayout {
 		ColumnLayout {
 			name: name.to_string(),
 			namespace: namespace.map(|s| s.to_string()),
@@ -125,7 +115,7 @@ mod tests {
 			create_column_layout("col2", None, None),
 		]);
 		let other = create_layout(vec![
-			create_column_layout("col2", None, None), /* Duplicate name */
+			create_column_layout("col2", None, None), // Duplicate name
 			create_column_layout("col3", None, None),
 		]);
 
@@ -140,65 +130,37 @@ mod tests {
 
 	#[test]
 	fn test_extend_duplicate_with_different_namespace() {
-		let base = create_layout(vec![create_column_layout(
-			"col1",
-			Some("namespace1"),
-			None,
-		)]);
+		let base = create_layout(vec![create_column_layout("col1", Some("namespace1"), None)]);
 		let other = create_layout(vec![
-			create_column_layout("col1", Some("namespace2"), None), /* Same name, different namespace */
+			create_column_layout("col1", Some("namespace2"), None), // Same name, different namespace
 		]);
 
 		// Should succeed because namespace is different
 		let result = base.extend(&other).unwrap();
 		assert_eq!(result.columns.len(), 2);
-		assert_eq!(
-			result.columns[0].namespace,
-			Some("namespace1".to_string())
-		);
-		assert_eq!(
-			result.columns[1].namespace,
-			Some("namespace2".to_string())
-		);
+		assert_eq!(result.columns[0].namespace, Some("namespace1".to_string()));
+		assert_eq!(result.columns[1].namespace, Some("namespace2".to_string()));
 	}
 
 	#[test]
 	fn test_extend_duplicate_with_different_source() {
-		let base = create_layout(vec![create_column_layout(
-			"col1",
-			None,
-			Some("table1"),
-		)]);
+		let base = create_layout(vec![create_column_layout("col1", None, Some("table1"))]);
 		let other = create_layout(vec![
-			create_column_layout("col1", None, Some("table2")), /* Same name, different source */
+			create_column_layout("col1", None, Some("table2")), // Same name, different source
 		]);
 
 		// Should succeed because source is different
 		let result = base.extend(&other).unwrap();
 		assert_eq!(result.columns.len(), 2);
-		assert_eq!(
-			result.columns[0].source,
-			Some("table1".to_string())
-		);
-		assert_eq!(
-			result.columns[1].source,
-			Some("table2".to_string())
-		);
+		assert_eq!(result.columns[0].source, Some("table1".to_string()));
+		assert_eq!(result.columns[1].source, Some("table2".to_string()));
 	}
 
 	#[test]
 	fn test_extend_exact_duplicate() {
-		let base = create_layout(vec![create_column_layout(
-			"col1",
-			Some("namespace1"),
-			Some("table1"),
-		)]);
+		let base = create_layout(vec![create_column_layout("col1", Some("namespace1"), Some("table1"))]);
 		let other = create_layout(vec![
-			create_column_layout(
-				"col1",
-				Some("namespace1"),
-				Some("table1"),
-			), // Exact duplicate
+			create_column_layout("col1", Some("namespace1"), Some("table1")), // Exact duplicate
 		]);
 
 		let result = base.extend(&other);
@@ -218,11 +180,7 @@ mod tests {
 		]);
 		let other = create_layout(vec![
 			create_column_layout("col4", None, None),
-			create_column_layout(
-				"col5",
-				Some("namespace2"),
-				Some("table2"),
-			),
+			create_column_layout("col5", Some("namespace2"), Some("table2")),
 		]);
 
 		let result = base.extend(&other).unwrap();
@@ -243,9 +201,9 @@ mod tests {
 			create_column_layout("col2", None, None),
 		]);
 		let other = create_layout(vec![
-			create_column_layout("col1", None, None), /* First duplicate */
+			create_column_layout("col1", None, None), // First duplicate
 			create_column_layout("col3", None, None),
-			create_column_layout("col2", None, None), /* Second duplicate */
+			create_column_layout("col2", None, None), // Second duplicate
 		]);
 
 		// Should fail on the first duplicate encountered
@@ -266,11 +224,7 @@ mod tests {
 		]);
 		let other = create_layout(vec![
 			create_column_layout("other1", None, Some("table1")),
-			create_column_layout(
-				"other2",
-				Some("namespace2"),
-				Some("table2"),
-			),
+			create_column_layout("other2", Some("namespace2"), Some("table2")),
 		]);
 
 		let result = base.extend(&other).unwrap();
@@ -287,9 +241,7 @@ mod tests {
 
 	#[test]
 	fn test_extend_capacity_optimization() {
-		let base = create_layout(vec![create_column_layout(
-			"col1", None, None,
-		)]);
+		let base = create_layout(vec![create_column_layout("col1", None, None)]);
 		let other = create_layout(vec![
 			create_column_layout("col2", None, None),
 			create_column_layout("col3", None, None),
@@ -304,12 +256,10 @@ mod tests {
 
 	#[test]
 	fn test_extend_case_sensitive_names() {
-		let base = create_layout(vec![create_column_layout(
-			"Column", None, None,
-		)]);
+		let base = create_layout(vec![create_column_layout("Column", None, None)]);
 		let other = create_layout(vec![
-			create_column_layout("column", None, None), /* Different case */
-			create_column_layout("COLUMN", None, None), /* Different case */
+			create_column_layout("column", None, None), // Different case
+			create_column_layout("COLUMN", None, None), // Different case
 		]);
 
 		// Should succeed because column names are case-sensitive
@@ -322,11 +272,9 @@ mod tests {
 
 	#[test]
 	fn test_extend_none_vs_empty_string_namespace() {
-		let base = create_layout(vec![create_column_layout(
-			"col1", None, None,
-		)]);
+		let base = create_layout(vec![create_column_layout("col1", None, None)]);
 		let other = create_layout(vec![
-			create_column_layout("col1", Some(""), None), /* Empty string vs None */
+			create_column_layout("col1", Some(""), None), // Empty string vs None
 		]);
 
 		// Should succeed because None != Some("")

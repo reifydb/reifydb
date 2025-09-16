@@ -35,8 +35,7 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const VALUE: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 4] =
-				[ID, NAMESPACE_ID, NAME, VALUE];
+			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, VALUE];
 		}
 
 		pub mod namespaces {
@@ -56,8 +55,7 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] =
-				[ID, NAMESPACE_ID, NAME, PRIMARY_KEY_ID];
+			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, PRIMARY_KEY_ID];
 		}
 
 		pub mod views {
@@ -69,8 +67,7 @@ pub mod ids {
 			pub const KIND: ColumnId = ColumnId(4);
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] =
-				[ID, NAMESPACE_ID, NAME, KIND, PRIMARY_KEY_ID];
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, KIND, PRIMARY_KEY_ID];
 		}
 
 		pub mod columns {
@@ -84,15 +81,8 @@ pub mod ids {
 			pub const POSITION: ColumnId = ColumnId(6);
 			pub const AUTO_INCREMENT: ColumnId = ColumnId(7);
 
-			pub const ALL: [ColumnId; 7] = [
-				ID,
-				SOURCE_ID,
-				SOURCE_TYPE,
-				NAME,
-				TYPE,
-				POSITION,
-				AUTO_INCREMENT,
-			];
+			pub const ALL: [ColumnId; 7] =
+				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT];
 		}
 
 		pub mod primary_keys {
@@ -111,8 +101,7 @@ pub mod ids {
 			pub const COLUMN_ID: ColumnId = ColumnId(2);
 			pub const POSITION: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 3] =
-				[PRIMARY_KEY_ID, COLUMN_ID, POSITION];
+			pub const ALL: [ColumnId; 3] = [PRIMARY_KEY_ID, COLUMN_ID, POSITION];
 		}
 
 		pub mod column_policies {
@@ -123,8 +112,7 @@ pub mod ids {
 			pub const TYPE: ColumnId = ColumnId(3);
 			pub const VALUE: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] =
-				[ID, COLUMN_ID, TYPE, VALUE];
+			pub const ALL: [ColumnId; 4] = [ID, COLUMN_ID, TYPE, VALUE];
 		}
 
 		pub mod versions {
@@ -135,8 +123,7 @@ pub mod ids {
 			pub const DESCRIPTION: ColumnId = ColumnId(3);
 			pub const TYPE: ColumnId = ColumnId(4);
 
-			pub const ALL: [ColumnId; 4] =
-				[NAME, VERSION, DESCRIPTION, TYPE];
+			pub const ALL: [ColumnId; 4] = [NAME, VERSION, DESCRIPTION, TYPE];
 		}
 	}
 
@@ -152,16 +139,8 @@ pub mod ids {
 		pub const FLOW_EDGE: SequenceId = SequenceId(7);
 		pub const PRIMARY_KEY: SequenceId = SequenceId(8);
 
-		pub const ALL: [SequenceId; 8] = [
-			NAMESPACE,
-			SOURCE,
-			COLUMN,
-			COLUMN_POLICY,
-			FLOW,
-			FLOW_NODE,
-			FLOW_EDGE,
-			PRIMARY_KEY,
-		];
+		pub const ALL: [SequenceId; 8] =
+			[NAMESPACE, SOURCE, COLUMN, COLUMN_POLICY, FLOW, FLOW_NODE, FLOW_EDGE, PRIMARY_KEY];
 	}
 
 	pub mod table_virtual {
@@ -174,8 +153,7 @@ pub mod ids {
 		pub const COLUMNS: TableVirtualId = TableVirtualId(5);
 		pub const COLUMN_POLICIES: TableVirtualId = TableVirtualId(6);
 		pub const PRIMARY_KEYS: TableVirtualId = TableVirtualId(7);
-		pub const PRIMARY_KEY_COLUMNS: TableVirtualId =
-			TableVirtualId(8);
+		pub const PRIMARY_KEY_COLUMNS: TableVirtualId = TableVirtualId(8);
 		pub const VERSIONS: TableVirtualId = TableVirtualId(9);
 
 		pub const ALL: [TableVirtualId; 9] = [
@@ -245,8 +223,7 @@ impl SystemCatalog {
 	}
 
 	/// Get the primary_key_columns virtual table definition
-	pub fn get_system_primary_key_columns_table_def() -> Arc<TableVirtualDef>
-	{
+	pub fn get_system_primary_key_columns_table_def() -> Arc<TableVirtualDef> {
 		primary_key_columns()
 	}
 

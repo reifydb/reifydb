@@ -46,22 +46,14 @@ impl fmt::Display for IdentifierError {
 				namespace,
 				name,
 			} => {
-				write!(
-					f,
-					"Sequence '{}.{}' not found",
-					namespace, name
-				)
+				write!(f, "Sequence '{}.{}' not found", namespace, name)
 			}
 			IdentifierError::IndexNotFound {
 				namespace,
 				table,
 				name,
 			} => {
-				write!(
-					f,
-					"Index '{}' on table '{}.{}' not found",
-					name, namespace, table
-				)
+				write!(f, "Index '{}' on table '{}.{}' not found", name, namespace, table)
 			}
 		}
 	}
@@ -75,21 +67,15 @@ impl From<IdentifierError> for reifydb_core::Error {
 			IdentifierError::SourceNotFound(ref e) => {
 				// Create a proper catalog error for source not
 				// found
-				reifydb_core::error!(
-					reifydb_type::diagnostic::catalog::table_not_found(
-						e.fragment.clone(),
-						&e.namespace,
-						&e.name
-					)
-				)
+				reifydb_core::error!(reifydb_type::diagnostic::catalog::table_not_found(
+					e.fragment.clone(),
+					&e.namespace,
+					&e.name
+				))
 			}
 			_ => {
 				// For other errors, use internal error
-				reifydb_core::error!(
-					reifydb_core::diagnostic::internal::internal(
-						err.to_string()
-					)
-				)
+				reifydb_core::error!(reifydb_core::diagnostic::internal::internal(err.to_string()))
 			}
 		}
 	}
@@ -118,17 +104,9 @@ pub struct SourceNotFoundError {
 impl fmt::Display for SourceNotFoundError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		if self.namespace == "public" || self.namespace.is_empty() {
-			write!(
-				f,
-				"Table or view '{}' does not exist",
-				self.name
-			)
+			write!(f, "Table or view '{}' does not exist", self.name)
 		} else {
-			write!(
-				f,
-				"Table or view '{}.{}' does not exist",
-				self.namespace, self.name
-			)
+			write!(f, "Table or view '{}.{}' does not exist", self.namespace, self.name)
 		}
 	}
 }
@@ -159,12 +137,7 @@ pub struct AmbiguousColumnError {
 
 impl fmt::Display for AmbiguousColumnError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(
-			f,
-			"Column '{}' is ambiguous, found in sources: {}",
-			self.column,
-			self.sources.join(", ")
-		)
+		write!(f, "Column '{}' is ambiguous, found in sources: {}", self.column, self.sources.join(", "))
 	}
 }
 
@@ -176,11 +149,7 @@ pub struct UnknownAliasError {
 
 impl fmt::Display for UnknownAliasError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-		write!(
-			f,
-			"Alias '{}' is not defined in the current scope",
-			self.alias
-		)
+		write!(f, "Alias '{}' is not defined in the current scope", self.alias)
 	}
 }
 
@@ -196,11 +165,7 @@ impl fmt::Display for FunctionNotFoundError {
 		if self.namespaces.is_empty() {
 			write!(f, "Function '{}' does not exist", self.name)
 		} else {
-			let qualified = format!(
-				"{}::{}",
-				self.namespaces.join("::"),
-				self.name
-			);
+			let qualified = format!("{}::{}", self.namespaces.join("::"), self.name);
 			write!(f, "Function '{}' does not exist", qualified)
 		}
 	}
@@ -208,12 +173,7 @@ impl fmt::Display for FunctionNotFoundError {
 
 /// Check if a fragment represents an injected default namespace
 pub fn is_default_namespace(fragment: &reifydb_type::Fragment) -> bool {
-	matches!(
-		fragment,
-		reifydb_type::Fragment::Owned(
-			reifydb_type::OwnedFragment::Internal { .. }
-		)
-	)
+	matches!(fragment, reifydb_type::Fragment::Owned(reifydb_type::OwnedFragment::Internal { .. }))
 }
 
 #[cfg(test)]
@@ -225,10 +185,7 @@ mod tests {
 		let err = SchemaNotFoundError {
 			namespace: "myschema".to_string(),
 		};
-		assert_eq!(
-			err.to_string(),
-			"Namespace 'myschema' does not exist"
-		);
+		assert_eq!(err.to_string(), "Namespace 'myschema' does not exist");
 	}
 
 	#[test]
@@ -238,35 +195,23 @@ mod tests {
 			name: "users".to_string(),
 			fragment: reifydb_type::OwnedFragment::None,
 		};
-		assert_eq!(
-			err.to_string(),
-			"Table or view 'users' does not exist"
-		);
+		assert_eq!(err.to_string(), "Table or view 'users' does not exist");
 
 		let err = SourceNotFoundError {
 			namespace: "myschema".to_string(),
 			name: "users".to_string(),
 			fragment: reifydb_type::OwnedFragment::None,
 		};
-		assert_eq!(
-			err.to_string(),
-			"Table or view 'myschema.users' does not exist"
-		);
+		assert_eq!(err.to_string(), "Table or view 'myschema.users' does not exist");
 	}
 
 	#[test]
 	fn test_ambiguous_column_display() {
 		let err = AmbiguousColumnError {
 			column: "id".to_string(),
-			sources: vec![
-				"users".to_string(),
-				"profiles".to_string(),
-			],
+			sources: vec!["users".to_string(), "profiles".to_string()],
 		};
-		assert_eq!(
-			err.to_string(),
-			"Column 'id' is ambiguous, found in sources: users, profiles"
-		);
+		assert_eq!(err.to_string(), "Column 'id' is ambiguous, found in sources: users, profiles");
 	}
 
 	#[test]
@@ -274,10 +219,7 @@ mod tests {
 		let err = UnknownAliasError {
 			alias: "u".to_string(),
 		};
-		assert_eq!(
-			err.to_string(),
-			"Alias 'u' is not defined in the current scope"
-		);
+		assert_eq!(err.to_string(), "Alias 'u' is not defined in the current scope");
 	}
 
 	#[test]
@@ -286,21 +228,12 @@ mod tests {
 			namespaces: vec![],
 			name: "my_func".to_string(),
 		};
-		assert_eq!(
-			err.to_string(),
-			"Function 'my_func' does not exist"
-		);
+		assert_eq!(err.to_string(), "Function 'my_func' does not exist");
 
 		let err = FunctionNotFoundError {
-			namespaces: vec![
-				"pg_catalog".to_string(),
-				"string".to_string(),
-			],
+			namespaces: vec!["pg_catalog".to_string(), "string".to_string()],
 			name: "substr".to_string(),
 		};
-		assert_eq!(
-			err.to_string(),
-			"Function 'pg_catalog::string::substr' does not exist"
-		);
+		assert_eq!(err.to_string(), "Function 'pg_catalog::string::substr' does not exist");
 	}
 }

@@ -177,9 +177,7 @@ mod tests {
 	#[test]
 	fn test_filter() {
 		let mut container = UndefinedContainer::new(6);
-		let mask = BitVec::from_slice(&[
-			true, false, true, true, false, true,
-		]);
+		let mask = BitVec::from_slice(&[true, false, true, true, false, true]);
 
 		container.filter(&mask);
 
@@ -189,8 +187,7 @@ mod tests {
 	#[test]
 	fn test_filter_with_mask_longer_than_container() {
 		let mut container = UndefinedContainer::new(3);
-		let mask =
-			BitVec::from_slice(&[true, false, true, true, false]);
+		let mask = BitVec::from_slice(&[true, false, true, true, false]);
 
 		container.filter(&mask);
 
@@ -245,8 +242,7 @@ mod tests {
 		assert_eq!(container.len(), 5);
 
 		// Filter with mask
-		let mask =
-			BitVec::from_slice(&[true, false, true, false, true]);
+		let mask = BitVec::from_slice(&[true, false, true, false, true]);
 		container.filter(&mask);
 		assert_eq!(container.len(), 3);
 

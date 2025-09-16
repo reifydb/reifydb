@@ -121,9 +121,7 @@ impl IdentityIdContainer {
 	}
 
 	pub fn get_value(&self, index: usize) -> Value {
-		self.get(index)
-			.map(Value::IdentityId)
-			.unwrap_or(Value::Undefined)
+		self.get(index).map(Value::IdentityId).unwrap_or(Value::Undefined)
 	}
 
 	pub fn filter(&mut self, mask: &BitVec) {
@@ -167,19 +165,8 @@ impl IdentityIdContainer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<IdentityId> = self
-			.data
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.cloned()
-			.collect();
-		let new_bitvec: Vec<bool> = self
-			.bitvec
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.collect();
+		let new_data: Vec<IdentityId> = self.data.iter().skip(start).take(end - start).cloned().collect();
+		let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
 		Self {
 			data: CowVec::new(new_data),
 			bitvec: BitVec::from_slice(&new_bitvec),
@@ -187,9 +174,7 @@ impl IdentityIdContainer {
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
-		self.get(index)
-			.map(|id| id.to_string())
-			.unwrap_or_else(|| "NULL".to_string())
+		self.get(index).map(|id| id.to_string()).unwrap_or_else(|| "NULL".to_string())
 	}
 
 	pub fn capacity(&self) -> usize {
@@ -212,9 +197,7 @@ impl From<Vec<IdentityId>> for IdentityIdContainer {
 }
 
 impl FromIterator<Option<IdentityId>> for IdentityIdContainer {
-	fn from_iter<T: IntoIterator<Item = Option<IdentityId>>>(
-		iter: T,
-	) -> Self {
+	fn from_iter<T: IntoIterator<Item = Option<IdentityId>>>(iter: T) -> Self {
 		let mut container = Self::with_capacity(0);
 		for item in iter {
 			container.push(item);

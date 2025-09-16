@@ -29,13 +29,9 @@ pub use reifydb_cdc as cdc;
 pub use reifydb_core as core;
 pub use reifydb_core::{
 	event::EventBus,
-	interface::{
-		Identity, Params, UnversionedTransaction, VersionedStorage,
-		VersionedTransaction,
-	},
-	log, log_critical, log_debug, log_error, log_info, log_timed_critical,
-	log_timed_debug, log_timed_error, log_timed_info, log_timed_trace,
-	log_timed_warn, log_trace, log_warn, Error, Result,
+	interface::{Identity, Params, UnversionedTransaction, VersionedStorage, VersionedTransaction},
+	log, log_critical, log_debug, log_error, log_info, log_timed_critical, log_timed_debug, log_timed_error,
+	log_timed_info, log_timed_trace, log_timed_warn, log_trace, log_warn, Error, Result,
 };
 pub use reifydb_engine as engine;
 pub use reifydb_rql as rql;
@@ -56,9 +52,7 @@ pub use reifydb_sub_server as sub_server;
 pub use reifydb_sub_workerpool as sub_workerpool;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{
-	mvcc::transaction::{
-		optimistic::Optimistic, serializable::Serializable,
-	},
+	mvcc::transaction::{optimistic::Optimistic, serializable::Serializable},
 	svl::SingleVersionLock,
 };
 pub use reifydb_type as r#type;

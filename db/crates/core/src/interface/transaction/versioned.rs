@@ -7,12 +7,9 @@ use crate::{
 	row::EncodedRow,
 };
 
-pub type BoxedVersionedIter<'a> =
-	Box<dyn Iterator<Item = Versioned> + Send + 'a>;
+pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
 
-pub trait VersionedTransaction:
-	WithEventBus + Send + Sync + Clone + 'static
-{
+pub trait VersionedTransaction: WithEventBus + Send + Sync + Clone + 'static {
 	type Query: VersionedQueryTransaction;
 	type Command: VersionedCommandTransaction;
 
@@ -44,8 +41,7 @@ pub trait VersionedQueryTransaction {
 
 	fn id(&self) -> TransactionId;
 
-	fn get(&mut self, key: &EncodedKey)
-	-> crate::Result<Option<Versioned>>;
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>>;
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
@@ -53,33 +49,17 @@ pub trait VersionedQueryTransaction {
 
 	fn scan_rev(&mut self) -> crate::Result<BoxedVersionedIter>;
 
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter>;
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter>;
 
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter>;
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter>;
 
-	fn prefix(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter>;
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter>;
 
-	fn prefix_rev(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter>;
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter>;
 }
 
 pub trait VersionedCommandTransaction: VersionedQueryTransaction {
-	fn set(
-		&mut self,
-		key: &EncodedKey,
-		row: EncodedRow,
-	) -> crate::Result<()>;
+	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 

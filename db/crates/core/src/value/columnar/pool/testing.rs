@@ -52,9 +52,7 @@ macro_rules! test_with_pools {
 	($name:ident, $body:block) => {
 		#[test]
 		fn $name() {
-			let _pools =
-										$crate::value::columnar::pool::testing::TestPools::new(
-										);
+			let _pools = $crate::value::columnar::pool::testing::TestPools::new();
 			$body
 		}
 	};
@@ -63,13 +61,13 @@ macro_rules! test_with_pools {
 /// Macro for tests that need custom pool configuration
 #[macro_export]
 macro_rules! test_with_custom_pools {
-    ($name:ident, $config:expr, $body:block) => {
-        #[test]
-        fn $name() {
-            let _pools = $crate::value::columnar::pool::testing::TestPools::with_config($config);
-            $body
-        }
-    };
+	($name:ident, $config:expr, $body:block) => {
+		#[test]
+		fn $name() {
+			let _pools = $crate::value::columnar::pool::testing::TestPools::with_config($config);
+			$body
+		}
+	};
 }
 
 /// Run a test function with temporary test pools

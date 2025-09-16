@@ -21,10 +21,7 @@ impl Max {
 }
 
 impl AggregateFunction for Max {
-	fn aggregate(
-		&mut self,
-		ctx: AggregateFunctionContext,
-	) -> crate::Result<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::Result<()> {
 		let column = ctx.column;
 		let groups = &ctx.groups;
 
@@ -33,20 +30,13 @@ impl AggregateFunction for Max {
 				for (group, indices) in groups.iter() {
 					let max_val = indices
 						.iter()
-						.filter_map(|&i| {
-							container.get(i)
-						})
-						.max_by(|a, b| {
-							a.partial_cmp(b)
-								.unwrap()
-						});
+						.filter_map(|&i| container.get(i))
+						.max_by(|a, b| a.partial_cmp(b).unwrap());
 
 					if let Some(max_val) = max_val {
 						self.maxs
 							.entry(group.clone())
-							.and_modify(|v| {
-								*v = f64::max(*v, *max_val)
-							})
+							.and_modify(|v| *v = f64::max(*v, *max_val))
 							.or_insert(*max_val);
 					}
 				}
@@ -58,8 +48,7 @@ impl AggregateFunction for Max {
 
 	fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.maxs.len());
-		let mut data =
-			ColumnData::float8_with_capacity(self.maxs.len());
+		let mut data = ColumnData::float8_with_capacity(self.maxs.len());
 
 		for (key, max) in std::mem::take(&mut self.maxs) {
 			keys.push(key);

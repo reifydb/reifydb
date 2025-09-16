@@ -3,16 +3,12 @@
 
 use std::marker::PhantomData;
 
-use reifydb_catalog::{
-	MaterializedCatalog, transaction::MaterializedCatalogTransaction,
-};
+use reifydb_catalog::{MaterializedCatalog, transaction::MaterializedCatalogTransaction};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
-		BoxedVersionedIter, CdcTransaction, QueryTransaction,
-		Transaction, TransactionId, TransactionalChanges,
-		UnversionedTransaction, Versioned, VersionedQueryTransaction,
-		VersionedTransaction,
+		BoxedVersionedIter, CdcTransaction, QueryTransaction, Transaction, TransactionId, TransactionalChanges,
+		UnversionedTransaction, Versioned, VersionedQueryTransaction, VersionedTransaction,
 	},
 };
 
@@ -47,11 +43,7 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 	/// Execute a function with query access to the unversioned transaction.
 	pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(
-			&mut <T::Unversioned as UnversionedTransaction>::Query<
-				'_,
-			>,
-		) -> crate::Result<R>,
+		F: FnOnce(&mut <T::Unversioned as UnversionedTransaction>::Query<'_>) -> crate::Result<R>,
 	{
 		self.unversioned.with_query(f)
 	}
@@ -60,9 +52,7 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 	/// This operates within the same transaction context.
 	pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(
-			&mut <T::Versioned as VersionedTransaction>::Query,
-		) -> crate::Result<R>,
+		F: FnOnce(&mut <T::Versioned as VersionedTransaction>::Query) -> crate::Result<R>,
 	{
 		f(&mut self.versioned)
 	}
@@ -85,10 +75,7 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	}
 
 	#[inline]
-	fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> crate::Result<Option<Versioned>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
 		self.versioned.get(key)
 	}
 
@@ -108,46 +95,31 @@ impl<T: Transaction> VersionedQueryTransaction for StandardQueryTransaction<T> {
 	}
 
 	#[inline]
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter> {
 		self.versioned.range(range)
 	}
 
 	#[inline]
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter> {
 		self.versioned.range_rev(range)
 	}
 
 	#[inline]
-	fn prefix(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter> {
 		self.versioned.prefix(prefix)
 	}
 
 	#[inline]
-	fn prefix_rev(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter> {
 		self.versioned.prefix_rev(prefix)
 	}
 }
 
 impl<T: Transaction> QueryTransaction for StandardQueryTransaction<T> {
-	type UnversionedQuery<'a> =
-		<T::Unversioned as UnversionedTransaction>::Query<'a>;
+	type UnversionedQuery<'a> = <T::Unversioned as UnversionedTransaction>::Query<'a>;
 	type CdcQuery<'a> = <T::Cdc as CdcTransaction>::Query<'a>;
 
-	fn begin_unversioned_query(
-		&self,
-	) -> crate::Result<Self::UnversionedQuery<'_>> {
+	fn begin_unversioned_query(&self) -> crate::Result<Self::UnversionedQuery<'_>> {
 		self.unversioned.begin_query()
 	}
 
@@ -156,9 +128,7 @@ impl<T: Transaction> QueryTransaction for StandardQueryTransaction<T> {
 	}
 }
 
-impl<T: Transaction> MaterializedCatalogTransaction
-	for StandardQueryTransaction<T>
-{
+impl<T: Transaction> MaterializedCatalogTransaction for StandardQueryTransaction<T> {
 	fn catalog(&self) -> &MaterializedCatalog {
 		&self.catalog
 	}

@@ -8,9 +8,7 @@ use crate::ast::{
 };
 
 impl<'a> Parser<'a> {
-	pub(crate) fn parse_describe(
-		&mut self,
-	) -> crate::Result<AstDescribe<'a>> {
+	pub(crate) fn parse_describe(&mut self) -> crate::Result<AstDescribe<'a>> {
 		let token = self.consume_keyword(Describe)?;
 		self.consume_operator(Operator::OpenCurly)?;
 		let node = Box::new(self.parse_node(Precedence::None)?);
@@ -24,14 +22,11 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{
-		AstCast, AstDescribe, parse::parse, tokenize::tokenize,
-	};
+	use crate::ast::{AstCast, AstDescribe, parse::parse, tokenize::tokenize};
 
 	#[test]
 	fn describe_query() {
-		let tokens =
-			tokenize("describe { map cast(9924, int8) }").unwrap();
+		let tokens = tokenize("describe { map cast(9924, int8) }").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -49,16 +44,8 @@ mod tests {
 				} = map.nodes[0].as_cast();
 				assert_eq!(tuple.len(), 2);
 
-				assert_eq!(
-					tuple.nodes[0]
-						.as_literal_number()
-						.value(),
-					"9924"
-				);
-				assert!(matches!(
-					tuple.nodes[1].as_identifier().text(),
-					"int8"
-				));
+				assert_eq!(tuple.nodes[0].as_literal_number().value(), "9924");
+				assert!(matches!(tuple.nodes[1].as_identifier().text(), "int8"));
 			}
 		};
 	}

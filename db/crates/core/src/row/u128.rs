@@ -8,22 +8,13 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_u128(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<u128>,
-	) {
+	pub fn set_u128(&self, row: &mut EncodedRow, index: usize, value: impl Into<u128>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uint16);
 		row.set_valid(index, true);
 		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut u128,
-				value.into(),
-			)
+			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u128, value.into())
 		}
 	}
 
@@ -31,17 +22,10 @@ impl EncodedRowLayout {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uint16);
-		unsafe {
-			(row.as_ptr().add(field.offset) as *const u128)
-				.read_unaligned()
-		}
+		unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() }
 	}
 
-	pub fn try_get_u128(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<u128> {
+	pub fn try_get_u128(&self, row: &EncodedRow, index: usize) -> Option<u128> {
 		if row.is_defined(index) {
 			Some(self.get_u128(row, index))
 		} else {
@@ -60,15 +44,8 @@ mod tests {
 	fn test_set_get_u128() {
 		let layout = EncodedRowLayout::new(&[Type::Uint16]);
 		let mut row = layout.allocate_row();
-		layout.set_u128(
-			&mut row,
-			0,
-			340282366920938463463374607431768211455u128,
-		);
-		assert_eq!(
-			layout.get_u128(&row, 0),
-			340282366920938463463374607431768211455u128
-		);
+		layout.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
+		assert_eq!(layout.get_u128(&row, 0), 340282366920938463463374607431768211455u128);
 	}
 
 	#[test]
@@ -78,15 +55,8 @@ mod tests {
 
 		assert_eq!(layout.try_get_u128(&row, 0), None);
 
-		layout.set_u128(
-			&mut row,
-			0,
-			340282366920938463463374607431768211455u128,
-		);
-		assert_eq!(
-			layout.try_get_u128(&row, 0),
-			Some(340282366920938463463374607431768211455u128)
-		);
+		layout.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
+		assert_eq!(layout.try_get_u128(&row, 0), Some(340282366920938463463374607431768211455u128));
 	}
 
 	#[test]
@@ -114,11 +84,11 @@ mod tests {
 			0u128,
 			1u128,
 			99999999999999999999999999999999999999u128,
-			170141183460469231731687303715884105727u128, /* i128::MAX as u128 */
-			170141183460469231731687303715884105728u128, /* i128::MAX + 1 */
+			170141183460469231731687303715884105727u128, // i128::MAX as u128
+			170141183460469231731687303715884105728u128, // i128::MAX + 1
 			300000000000000000000000000000000000000u128,
 			340282366920938463463374607431768211454u128,
-			340282366920938463463374607431768211455u128, /* u128::MAX */
+			340282366920938463463374607431768211455u128, // u128::MAX
 		];
 
 		for value in test_values {
@@ -133,9 +103,8 @@ mod tests {
 		let layout = EncodedRowLayout::new(&[Type::Uint16]);
 
 		let powers = [
-			1u128, 2u128, 4u128, 8u128, 16u128, 32u128, 64u128,
-			128u128, 256u128, 512u128, 1024u128, 2048u128,
-			4096u128, 8192u128, 16384u128, 32768u128, 65536u128,
+			1u128, 2u128, 4u128, 8u128, 16u128, 32u128, 64u128, 128u128, 256u128, 512u128, 1024u128,
+			2048u128, 4096u128, 8192u128, 16384u128, 32768u128, 65536u128,
 		];
 
 		for power in powers {
@@ -152,8 +121,8 @@ mod tests {
 		// Test values representing IPv6 addresses as u128
 		let ipv6_values = [
 			0u128,                                       // ::0
-			1u128,                                       /* ::1 (loopback) */
-			281470681743360u128, // ::ffff:0:0 (IPv4-mapped prefix)
+			1u128,                                       // ::1 (loopback)
+			281470681743360u128,                         // ::ffff:0:0 (IPv4-mapped prefix)
 			338953138925153547590470800371487866880u128, // Example IPv6
 		];
 
@@ -184,11 +153,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Uint16,
-			Type::Boolean,
-			Type::Uint16,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Uint16, Type::Boolean, Type::Uint16]);
 		let mut row = layout.allocate_row();
 
 		let large_value1 = 200000000000000000000000000000000000000u128;
@@ -205,8 +170,7 @@ mod tests {
 
 	#[test]
 	fn test_undefined_handling() {
-		let layout =
-			EncodedRowLayout::new(&[Type::Uint16, Type::Uint16]);
+		let layout = EncodedRowLayout::new(&[Type::Uint16, Type::Uint16]);
 		let mut row = layout.allocate_row();
 
 		let value = 340282366920938463463374607431768211455u128;

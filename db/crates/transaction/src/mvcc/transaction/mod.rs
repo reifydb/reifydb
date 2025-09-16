@@ -33,10 +33,7 @@ mod version;
 
 pub use oracle::MAX_COMMITTED_TXNS;
 
-use crate::mvcc::{
-	conflict::ConflictManager, pending::PendingWrites,
-	transaction::query::TransactionManagerQuery,
-};
+use crate::mvcc::{conflict::ConflictManager, pending::PendingWrites, transaction::query::TransactionManagerQuery};
 
 pub struct TransactionManager<L>
 where
@@ -60,9 +57,7 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	pub fn write(
-		&self,
-	) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
+	pub fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
 		Ok(TransactionManagerCommand {
 			id: TransactionId::generate(),
 			oracle: self.inner.clone(),
@@ -107,16 +102,9 @@ where
 		self.inner.discard_at_or_below()
 	}
 
-	pub fn query(
-		&self,
-		version: Option<CommitVersion>,
-	) -> crate::Result<TransactionManagerQuery<L>> {
+	pub fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
 		Ok(if let Some(version) = version {
-			TransactionManagerQuery::new_time_travel(
-				TransactionId::generate(),
-				self.clone(),
-				version,
-			)
+			TransactionManagerQuery::new_time_travel(TransactionId::generate(), self.clone(), version)
 		} else {
 			TransactionManagerQuery::new_current(
 				TransactionId::generate(),

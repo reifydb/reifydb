@@ -32,9 +32,7 @@ impl TryFrom<u8> for SystemVersion {
 	fn try_from(value: u8) -> Result<Self, Self::Error> {
 		match value {
 			0x01 => Ok(Self::Storage),
-			_ => Err(serde::de::Error::custom(format!(
-				"Invalid SystemVersion value: {value:#04x}"
-			))),
+			_ => Err(serde::de::Error::custom(format!("Invalid SystemVersion value: {value:#04x}"))),
 		}
 	}
 }
@@ -46,10 +44,7 @@ impl EncodableKey for SystemVersionKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(3);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_serialize(&self.version);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_serialize(&self.version);
 		serializer.to_encoded_key()
 	}
 

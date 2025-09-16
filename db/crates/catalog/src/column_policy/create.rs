@@ -3,17 +3,11 @@
 
 use reifydb_core::{
 	diagnostic::catalog::table_column_policy_already_exists,
-	interface::{
-		ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind,
-		CommandTransaction, EncodableKey,
-	},
+	interface::{ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind, CommandTransaction, EncodableKey},
 	return_error,
 };
 
-use crate::{
-	CatalogStore, column::ColumnId, column_policy::layout::column_policy,
-	sequence::SystemSequence,
-};
+use crate::{CatalogStore, column::ColumnId, column_policy::layout::column_policy, sequence::SystemSequence};
 
 impl CatalogStore {
 	pub(crate) fn create_column_policy(
@@ -27,12 +21,7 @@ impl CatalogStore {
 			if existing_kind == policy_kind {
 				let column = Self::get_column(txn, column)?;
 
-				return_error!(
-					table_column_policy_already_exists(
-						&policy.to_string(),
-						&column.name
-					)
-				);
+				return_error!(table_column_policy_already_exists(&policy.to_string(), &column.name));
 			}
 		}
 
@@ -40,24 +29,12 @@ impl CatalogStore {
 
 		let mut row = column_policy::LAYOUT.allocate_row();
 		column_policy::LAYOUT.set_u64(&mut row, column_policy::ID, id);
-		column_policy::LAYOUT.set_u64(
-			&mut row,
-			column_policy::COLUMN,
-			column,
-		);
+		column_policy::LAYOUT.set_u64(&mut row, column_policy::COLUMN, column);
 
 		{
 			let (policy, value) = policy.to_u8();
-			column_policy::LAYOUT.set_u8(
-				&mut row,
-				column_policy::POLICY,
-				policy,
-			);
-			column_policy::LAYOUT.set_u8(
-				&mut row,
-				column_policy::VALUE,
-				value,
-			);
+			column_policy::LAYOUT.set_u8(&mut row, column_policy::POLICY, policy);
+			column_policy::LAYOUT.set_u8(&mut row, column_policy::VALUE, value);
 		}
 
 		txn.set(
@@ -81,9 +58,7 @@ impl CatalogStore {
 mod tests {
 	use ColumnPolicyKind::Saturation;
 	use ColumnSaturationPolicy::Error;
-	use reifydb_core::interface::{
-		ColumnPolicyKind, ColumnSaturationPolicy, TableId,
-	};
+	use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy, TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 
@@ -97,21 +72,11 @@ mod tests {
 	fn test_ok() {
 		let mut txn = create_test_command_transaction();
 		ensure_test_table(&mut txn);
-		create_test_column(
-			&mut txn,
-			"col_1",
-			TypeConstraint::unconstrained(Type::Int2),
-			vec![],
-		);
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int2), vec![]);
 
 		let policy = Saturation(Error);
 
-		let result = CatalogStore::create_column_policy(
-			&mut txn,
-			ColumnId(8193),
-			policy.clone(),
-		)
-		.unwrap();
+		let result = CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap();
 		assert_eq!(result.column, ColumnId(8193));
 		assert_eq!(result.policy, policy);
 	}
@@ -130,9 +95,7 @@ mod tests {
 				table: TableId(1),
 				table_name: "table",
 				column: "col1".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Int2,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Int2),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -142,19 +105,9 @@ mod tests {
 		.unwrap();
 
 		let policy = Saturation(ColumnSaturationPolicy::Undefined);
-		CatalogStore::create_column_policy(
-			&mut txn,
-			ColumnId(8193),
-			policy.clone(),
-		)
-		.unwrap();
+		CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap();
 
-		let err = CatalogStore::create_column_policy(
-			&mut txn,
-			ColumnId(8193),
-			policy.clone(),
-		)
-		.unwrap_err();
+		let err = CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap_err();
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_008");
 	}

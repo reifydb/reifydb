@@ -17,10 +17,7 @@ impl UnversionedRangeRev for Sqlite {
 	where
 		Self: 'a;
 
-	fn range_rev(
-		&self,
-		range: EncodedKeyRange,
-	) -> Result<Self::RangeRev<'_>> {
+	fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::RangeRev<'_>> {
 		Ok(RangeRev::new(self.get_reader(), range, 1024))
 	}
 }
@@ -35,11 +32,7 @@ pub struct RangeRev {
 }
 
 impl RangeRev {
-	pub fn new(
-		conn: Reader,
-		range: EncodedKeyRange,
-		batch_size: usize,
-	) -> Self {
+	pub fn new(conn: Reader, range: EncodedKeyRange, batch_size: usize) -> Self {
 		Self {
 			conn,
 			range,
@@ -69,8 +62,7 @@ impl RangeRev {
 
 		// Build query and parameters based on bounds - note DESC order
 		// for reverse iteration
-		let (query_template, param_count) =
-			build_unversioned_query(start_bound, end_bound, "DESC");
+		let (query_template, param_count) = build_unversioned_query(start_bound, end_bound, "DESC");
 
 		let conn_guard = self.conn.lock().unwrap();
 		let mut stmt = conn_guard.prepare(query_template).unwrap();

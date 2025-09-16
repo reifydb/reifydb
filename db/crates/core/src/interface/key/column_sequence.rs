@@ -52,8 +52,7 @@ impl EncodableKey for ColumnSequenceKey {
 			return None;
 		}
 
-		let source =
-			keycode::deserialize_source_id(&payload[..9]).ok()?;
+		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
 		let column = keycode::deserialize(&payload[9..17]).ok()?;
 		Some(Self {
 			source,
@@ -93,8 +92,7 @@ mod tests {
 		encoded.push(0x0E); // correct kind
 		encoded.extend(&[0; 16]); // payload
 
-		let decoded =
-			ColumnSequenceKey::decode(&EncodedKey::new(encoded));
+		let decoded = ColumnSequenceKey::decode(&EncodedKey::new(encoded));
 		assert!(decoded.is_none());
 	}
 
@@ -104,16 +102,14 @@ mod tests {
 		encoded.push(0xFF); // wrong kind
 		encoded.extend(&[0; 16]); // payload
 
-		let decoded =
-			ColumnSequenceKey::decode(&EncodedKey::new(encoded));
+		let decoded = ColumnSequenceKey::decode(&EncodedKey::new(encoded));
 		assert!(decoded.is_none());
 	}
 
 	#[test]
 	fn test_decode_invalid_length() {
 		let encoded = vec![0x01, 0x0E]; // version and kind only, missing payload
-		let decoded =
-			ColumnSequenceKey::decode(&EncodedKey::new(encoded));
+		let decoded = ColumnSequenceKey::decode(&EncodedKey::new(encoded));
 		assert!(decoded.is_none());
 	}
 }

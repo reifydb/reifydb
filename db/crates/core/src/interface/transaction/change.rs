@@ -4,50 +4,33 @@
 use reifydb_type::IntoFragment;
 
 use crate::interface::{
-	NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef,
-	RingBufferId, TableDef, TableId, TransactionId, ViewDef, ViewId,
+	NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef, RingBufferId, TableDef, TableId,
+	TransactionId, ViewDef, ViewId,
 };
 
 pub trait TransactionalChanges:
-	TransactionalNamespaceChanges
-	+ TransactionalRingBufferChanges
-	+ TransactionalTableChanges
-	+ TransactionalViewChanges
+	TransactionalNamespaceChanges + TransactionalRingBufferChanges + TransactionalTableChanges + TransactionalViewChanges
 {
 }
 
 pub trait TransactionalNamespaceChanges {
 	fn find_namespace(&self, id: NamespaceId) -> Option<&NamespaceDef>;
 
-	fn find_namespace_by_name<'a>(
-		&self,
-		name: impl IntoFragment<'a>,
-	) -> Option<&NamespaceDef>;
+	fn find_namespace_by_name<'a>(&self, name: impl IntoFragment<'a>) -> Option<&NamespaceDef>;
 
 	fn is_namespace_deleted(&self, id: NamespaceId) -> bool;
 
-	fn is_namespace_deleted_by_name<'a>(
-		&self,
-		name: impl IntoFragment<'a>,
-	) -> bool;
+	fn is_namespace_deleted_by_name<'a>(&self, name: impl IntoFragment<'a>) -> bool;
 }
 
 pub trait TransactionalTableChanges {
 	fn find_table(&self, id: TableId) -> Option<&TableDef>;
 
-	fn find_table_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> Option<&TableDef>;
+	fn find_table_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> Option<&TableDef>;
 
 	fn is_table_deleted(&self, id: TableId) -> bool;
 
-	fn is_table_deleted_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> bool;
+	fn is_table_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
 }
 
 pub trait TransactionalRingBufferChanges {
@@ -61,29 +44,17 @@ pub trait TransactionalRingBufferChanges {
 
 	fn is_ring_buffer_deleted(&self, id: RingBufferId) -> bool;
 
-	fn is_ring_buffer_deleted_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> bool;
+	fn is_ring_buffer_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
 }
 
 pub trait TransactionalViewChanges {
 	fn find_view(&self, id: ViewId) -> Option<&ViewDef>;
 
-	fn find_view_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> Option<&ViewDef>;
+	fn find_view_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> Option<&ViewDef>;
 
 	fn is_view_deleted(&self, id: ViewId) -> bool;
 
-	fn is_view_deleted_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> bool;
+	fn is_view_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
 }
 
 #[derive(Default, Debug, Clone)]
@@ -103,10 +74,7 @@ pub struct TransactionalDefChanges {
 }
 
 impl TransactionalDefChanges {
-	pub fn add_namespace_def_change(
-		&mut self,
-		change: Change<NamespaceDef>,
-	) {
+	pub fn add_namespace_def_change(&mut self, change: Change<NamespaceDef>) {
 		let id = change
 			.post
 			.as_ref()
@@ -121,10 +89,7 @@ impl TransactionalDefChanges {
 		});
 	}
 
-	pub fn add_ring_buffer_def_change(
-		&mut self,
-		change: Change<RingBufferDef>,
-	) {
+	pub fn add_ring_buffer_def_change(&mut self, change: Change<RingBufferDef>) {
 		let id = change
 			.post
 			.as_ref()

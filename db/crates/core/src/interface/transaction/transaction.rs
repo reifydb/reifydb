@@ -3,27 +3,20 @@
 
 use super::change::TransactionalDefChanges;
 use crate::interface::{
-	CdcQueryTransaction, UnversionedCommandTransaction,
-	UnversionedQueryTransaction, VersionedCommandTransaction,
+	CdcQueryTransaction, UnversionedCommandTransaction, UnversionedQueryTransaction, VersionedCommandTransaction,
 	VersionedQueryTransaction,
 };
 
-pub trait CommandTransaction:
-	VersionedCommandTransaction + QueryTransaction
-{
+pub trait CommandTransaction: VersionedCommandTransaction + QueryTransaction {
 	type UnversionedCommand<'a>: UnversionedCommandTransaction
 	where
 		Self: 'a;
 
-	fn begin_unversioned_command(
-		&self,
-	) -> crate::Result<Self::UnversionedCommand<'_>>;
+	fn begin_unversioned_command(&self) -> crate::Result<Self::UnversionedCommand<'_>>;
 
 	fn with_unversioned_command<F, R>(&self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(
-			&mut Self::UnversionedCommand<'_>,
-		) -> crate::Result<R>,
+		F: FnOnce(&mut Self::UnversionedCommand<'_>) -> crate::Result<R>,
 	{
 		let mut tx = self.begin_unversioned_command()?;
 		let result = f(&mut tx)?;
@@ -44,9 +37,7 @@ pub trait QueryTransaction: VersionedQueryTransaction {
 	where
 		Self: 'a;
 
-	fn begin_unversioned_query(
-		&self,
-	) -> crate::Result<Self::UnversionedQuery<'_>>;
+	fn begin_unversioned_query(&self) -> crate::Result<Self::UnversionedQuery<'_>>;
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>>;
 

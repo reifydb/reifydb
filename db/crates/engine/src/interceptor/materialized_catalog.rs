@@ -21,9 +21,7 @@ impl MaterializedCatalogInterceptor {
 	}
 }
 
-impl<T: Transaction> PostCommitInterceptor<StandardCommandTransaction<T>>
-	for MaterializedCatalogInterceptor
-{
+impl<T: Transaction> PostCommitInterceptor<StandardCommandTransaction<T>> for MaterializedCatalogInterceptor {
 	fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
 		let version = ctx.version;
 
@@ -33,14 +31,8 @@ impl<T: Transaction> PostCommitInterceptor<StandardCommandTransaction<T>>
 				.as_ref()
 				.or(change.pre.as_ref())
 				.map(|s| s.id)
-				.expect(
-					"Change must have either pre or post state",
-				);
-			self.catalog.set_namespace(
-				id,
-				version,
-				change.post.clone(),
-			);
+				.expect("Change must have either pre or post state");
+			self.catalog.set_namespace(id, version, change.post.clone());
 		}
 
 		for change in &ctx.changes.table_def {
@@ -49,14 +41,8 @@ impl<T: Transaction> PostCommitInterceptor<StandardCommandTransaction<T>>
 				.as_ref()
 				.or(change.pre.as_ref())
 				.map(|t| t.id)
-				.expect(
-					"Change must have either pre or post state",
-				);
-			self.catalog.set_table(
-				id,
-				version,
-				change.post.clone(),
-			);
+				.expect("Change must have either pre or post state");
+			self.catalog.set_table(id, version, change.post.clone());
 		}
 
 		for change in &ctx.changes.view_def {
@@ -65,9 +51,7 @@ impl<T: Transaction> PostCommitInterceptor<StandardCommandTransaction<T>>
 				.as_ref()
 				.or(change.pre.as_ref())
 				.map(|v| v.id)
-				.expect(
-					"Change must have either pre or post state",
-				);
+				.expect("Change must have either pre or post state");
 			self.catalog.set_view(id, version, change.post.clone());
 		}
 

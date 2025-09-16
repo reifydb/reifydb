@@ -8,10 +8,7 @@ pub(crate) fn generate_request_id() -> String {
 	static COUNTER: AtomicU64 = AtomicU64::new(0);
 
 	let count = COUNTER.fetch_add(1, Ordering::Relaxed);
-	let timestamp = std::time::SystemTime::now()
-		.duration_since(std::time::UNIX_EPOCH)
-		.unwrap()
-		.as_millis();
+	let timestamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis();
 
 	format!("{}-{}", timestamp, count)
 }

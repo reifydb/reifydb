@@ -12,11 +12,7 @@ use super::table_name;
 use crate::sqlite::Sqlite;
 
 impl VersionedGet for Sqlite {
-	fn get(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<Option<Versioned>> {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Versioned>> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();
 
@@ -27,31 +23,18 @@ impl VersionedGet for Sqlite {
 		);
 
 		Ok(conn_guard
-			.query_row(
-				&query,
-				params![key.to_vec(), version],
-				|row| {
-					let encoded_row: EncodedRow =
-						EncodedRow(CowVec::new(
-							row.get::<_, Vec<u8>>(
-								1,
-							)?,
-						));
-					if encoded_row.is_deleted() {
-						Ok(None)
-					} else {
-						Ok(Some(Versioned {
-						key: EncodedKey::new(
-							row.get::<_, Vec<u8>>(
-								0,
-							)?,
-						),
+			.query_row(&query, params![key.to_vec(), version], |row| {
+				let encoded_row: EncodedRow = EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?));
+				if encoded_row.is_deleted() {
+					Ok(None)
+				} else {
+					Ok(Some(Versioned {
+						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
 						row: encoded_row,
 						version: row.get(2)?,
 					}))
-					}
-				},
-			)
+				}
+			})
 			.optional()
 			.unwrap()
 			.flatten())

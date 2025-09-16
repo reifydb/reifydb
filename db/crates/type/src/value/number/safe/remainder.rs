@@ -320,74 +320,29 @@ mod tests {
 
 		#[test]
 		fn checked_rem_min_negative_one() {
-			assert_eq!(
-				SafeRemainder::checked_rem(&i8::MIN, &-1),
-				None
-			);
-			assert_eq!(
-				SafeRemainder::checked_rem(&i16::MIN, &-1),
-				None
-			);
-			assert_eq!(
-				SafeRemainder::checked_rem(&i32::MIN, &-1),
-				None
-			);
-			assert_eq!(
-				SafeRemainder::checked_rem(&i64::MIN, &-1),
-				None
-			);
-			assert_eq!(
-				SafeRemainder::checked_rem(&i128::MIN, &-1),
-				None
-			);
+			assert_eq!(SafeRemainder::checked_rem(&i8::MIN, &-1), None);
+			assert_eq!(SafeRemainder::checked_rem(&i16::MIN, &-1), None);
+			assert_eq!(SafeRemainder::checked_rem(&i32::MIN, &-1), None);
+			assert_eq!(SafeRemainder::checked_rem(&i64::MIN, &-1), None);
+			assert_eq!(SafeRemainder::checked_rem(&i128::MIN, &-1), None);
 		}
 
 		#[test]
 		fn saturating_rem_min_negative_one() {
-			assert_eq!(
-				SafeRemainder::saturating_rem(&i8::MIN, &-1),
-				0
-			);
-			assert_eq!(
-				SafeRemainder::saturating_rem(&i16::MIN, &-1),
-				0
-			);
-			assert_eq!(
-				SafeRemainder::saturating_rem(&i32::MIN, &-1),
-				0
-			);
-			assert_eq!(
-				SafeRemainder::saturating_rem(&i64::MIN, &-1),
-				0
-			);
-			assert_eq!(
-				SafeRemainder::saturating_rem(&i128::MIN, &-1),
-				0
-			);
+			assert_eq!(SafeRemainder::saturating_rem(&i8::MIN, &-1), 0);
+			assert_eq!(SafeRemainder::saturating_rem(&i16::MIN, &-1), 0);
+			assert_eq!(SafeRemainder::saturating_rem(&i32::MIN, &-1), 0);
+			assert_eq!(SafeRemainder::saturating_rem(&i64::MIN, &-1), 0);
+			assert_eq!(SafeRemainder::saturating_rem(&i128::MIN, &-1), 0);
 		}
 
 		#[test]
 		fn wrapping_rem_min_negative_one() {
-			assert_eq!(
-				SafeRemainder::wrapping_rem(&i8::MIN, &-1),
-				0
-			);
-			assert_eq!(
-				SafeRemainder::wrapping_rem(&i16::MIN, &-1),
-				0
-			);
-			assert_eq!(
-				SafeRemainder::wrapping_rem(&i32::MIN, &-1),
-				0
-			);
-			assert_eq!(
-				SafeRemainder::wrapping_rem(&i64::MIN, &-1),
-				0
-			);
-			assert_eq!(
-				SafeRemainder::wrapping_rem(&i128::MIN, &-1),
-				0
-			);
+			assert_eq!(SafeRemainder::wrapping_rem(&i8::MIN, &-1), 0);
+			assert_eq!(SafeRemainder::wrapping_rem(&i16::MIN, &-1), 0);
+			assert_eq!(SafeRemainder::wrapping_rem(&i32::MIN, &-1), 0);
+			assert_eq!(SafeRemainder::wrapping_rem(&i64::MIN, &-1), 0);
+			assert_eq!(SafeRemainder::wrapping_rem(&i128::MIN, &-1), 0);
 		}
 	}
 
@@ -398,10 +353,7 @@ mod tests {
 		fn checked_rem_happy() {
 			let x: f32 = 10.5;
 			let y: f32 = 3.0;
-			assert_eq!(
-				SafeRemainder::checked_rem(&x, &y),
-				Some(1.5)
-			);
+			assert_eq!(SafeRemainder::checked_rem(&x, &y), Some(1.5));
 		}
 
 		#[test]
@@ -473,10 +425,7 @@ mod tests {
 		fn checked_rem_happy() {
 			let x: f64 = 10.5;
 			let y: f64 = 3.0;
-			assert_eq!(
-				SafeRemainder::checked_rem(&x, &y),
-				Some(1.5)
-			);
+			assert_eq!(SafeRemainder::checked_rem(&x, &y), Some(1.5));
 		}
 
 		#[test]

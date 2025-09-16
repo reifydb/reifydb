@@ -5,20 +5,11 @@ use std::fmt::Display;
 
 use reifydb_core::value::{
 	columnar::ColumnData,
-	container::{
-		BlobContainer, BoolContainer, NumberContainer,
-		TemporalContainer, UuidContainer,
-	},
+	container::{BlobContainer, BoolContainer, NumberContainer, TemporalContainer, UuidContainer},
 };
-use reifydb_type::{
-	Error, IsNumber, IsTemporal, IsUuid, LazyFragment, Type,
-	diagnostic::cast, err,
-};
+use reifydb_type::{Error, IsNumber, IsTemporal, IsUuid, LazyFragment, Type, diagnostic::cast, err};
 
-pub fn to_text<'a>(
-	data: &ColumnData,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+pub fn to_text<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Blob {
 			container,
@@ -45,33 +36,23 @@ pub fn to_text<'a>(
 		ColumnData::Uuid7(container) => from_uuid(container),
 		_ => {
 			let source_type = data.get_type();
-			err!(cast::unsupported_cast(
-				lazy_fragment.fragment(),
-				source_type,
-				Type::Utf8
-			))
+			err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, Type::Utf8))
 		}
 	}
 }
 
 #[inline]
-pub fn from_blob<'a>(
-	container: &BlobContainer,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+pub fn from_blob<'a>(container: &BlobContainer, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			match container[idx].to_utf8() {
 				Ok(s) => out.push(s),
 				Err(e) => {
-					return Err(Error(
-						cast::invalid_blob_to_utf8(
-							lazy_fragment
-								.fragment(),
-							e.diagnostic(),
-						),
-					));
+					return Err(Error(cast::invalid_blob_to_utf8(
+						lazy_fragment.fragment(),
+						e.diagnostic(),
+					)));
 				}
 			}
 		} else {
@@ -86,9 +67,7 @@ fn from_bool(container: &BoolContainer) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Utf8, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
-			out.push::<String>(
-				container.data().get(idx).to_string(),
-			);
+			out.push::<String>(container.data().get(idx).to_string());
 		} else {
 			out.push_undefined();
 		}
@@ -113,9 +92,7 @@ where
 }
 
 #[inline]
-fn from_temporal<T>(
-	container: &TemporalContainer<T>,
-) -> crate::Result<ColumnData>
+fn from_temporal<T>(container: &TemporalContainer<T>) -> crate::Result<ColumnData>
 where
 	T: Copy + Display + IsTemporal + Default,
 {
@@ -165,9 +142,7 @@ mod tests {
 		let bitvec = BitVec::repeat(2, true);
 		let container = BlobContainer::new(blobs, bitvec);
 
-		let result =
-			from_blob(&container, || Fragment::testing_empty())
-				.unwrap();
+		let result = from_blob(&container, || Fragment::testing_empty()).unwrap();
 
 		match result {
 			ColumnData::Utf8 {
@@ -189,8 +164,7 @@ mod tests {
 		let bitvec = BitVec::repeat(1, true);
 		let container = BlobContainer::new(blobs, bitvec);
 
-		let result =
-			from_blob(&container, || Fragment::testing_empty());
+		let result = from_blob(&container, || Fragment::testing_empty());
 		assert!(result.is_err());
 	}
 }

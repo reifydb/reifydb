@@ -5,9 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Error, OwnedFragment, Type, Value,
-	value::constraint::{
-		bytes::MaxBytes, precision::Precision, scale::Scale,
-	},
+	value::constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 };
 
 pub mod bytes;
@@ -61,18 +59,13 @@ impl TypeConstraint {
 	pub fn validate(&self, value: &Value) -> Result<(), Error> {
 		// First check type compatibility
 		let value_type = value.get_type();
-		if value_type != self.base_type && value_type != Type::Undefined
-		{
+		if value_type != self.base_type && value_type != Type::Undefined {
 			// For now, return a simple error - we'll create proper
 			// diagnostics later
-			return Err(crate::error!(
-				crate::error::diagnostic::internal::internal(
-					format!(
-						"Type mismatch: expected {}, got {}",
-						self.base_type, value_type
-					)
-				)
-			));
+			return Err(crate::error!(crate::error::diagnostic::internal::internal(format!(
+				"Type mismatch: expected {}, got {}",
+				self.base_type, value_type
+			))));
 		}
 
 		// If undefined, no further validation needed
@@ -87,11 +80,13 @@ impl TypeConstraint {
 					let byte_len = s.as_bytes().len();
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
-						return Err(crate::error!(crate::error::diagnostic::constraint::utf8_exceeds_max_bytes(
-                            OwnedFragment::None,
-                            byte_len,
-                            max_value
-                        )));
+						return Err(crate::error!(
+							crate::error::diagnostic::constraint::utf8_exceeds_max_bytes(
+								OwnedFragment::None,
+								byte_len,
+								max_value
+							)
+						));
 					}
 				}
 			}
@@ -100,11 +95,13 @@ impl TypeConstraint {
 					let byte_len = blob.len();
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
-						return Err(crate::error!(crate::error::diagnostic::constraint::blob_exceeds_max_bytes(
-                            OwnedFragment::None,
-                            byte_len,
-                            max_value
-                        )));
+						return Err(crate::error!(
+							crate::error::diagnostic::constraint::blob_exceeds_max_bytes(
+								OwnedFragment::None,
+								byte_len,
+								max_value
+							)
+						));
 					}
 				}
 			}
@@ -116,15 +113,16 @@ impl TypeConstraint {
 					// decimal digit needs ~3.32 bits, so
 					// ~0.415 bytes
 					let str_len = vi.to_string().len();
-					let byte_len =
-						(str_len * 415 / 1000) + 1; // Rough estimate
+					let byte_len = (str_len * 415 / 1000) + 1; // Rough estimate
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
-						return Err(crate::error!(crate::error::diagnostic::constraint::int_exceeds_max_bytes(
-                            OwnedFragment::None,
-                            byte_len,
-                            max_value
-                        )));
+						return Err(crate::error!(
+							crate::error::diagnostic::constraint::int_exceeds_max_bytes(
+								OwnedFragment::None,
+								byte_len,
+								max_value
+							)
+						));
 					}
 				}
 			}
@@ -136,25 +134,20 @@ impl TypeConstraint {
 					// decimal digit needs ~3.32 bits, so
 					// ~0.415 bytes
 					let str_len = vu.to_string().len();
-					let byte_len =
-						(str_len * 415 / 1000) + 1; // Rough estimate
+					let byte_len = (str_len * 415 / 1000) + 1; // Rough estimate
 					let max_value: usize = (*max).into();
 					if byte_len > max_value {
-						return Err(crate::error!(crate::error::diagnostic::constraint::uint_exceeds_max_bytes(
-                            OwnedFragment::None,
-                            byte_len,
-                            max_value
-                        )));
+						return Err(crate::error!(
+							crate::error::diagnostic::constraint::uint_exceeds_max_bytes(
+								OwnedFragment::None,
+								byte_len,
+								max_value
+							)
+						));
 					}
 				}
 			}
-			(
-				Type::Decimal,
-				Some(Constraint::PrecisionScale(
-					precision,
-					scale,
-				)),
-			) => {
+			(Type::Decimal, Some(Constraint::PrecisionScale(precision, scale))) => {
 				if let Value::Decimal(decimal) = value {
 					// Calculate precision and scale from
 					// BigDecimal
@@ -162,43 +155,39 @@ impl TypeConstraint {
 
 					// Calculate scale (digits after decimal
 					// point)
-					let decimal_scale: u8 =
-						if let Some(dot_pos) =
-							decimal_str.find('.')
-						{
-							let after_dot = &decimal_str[dot_pos + 1..];
-							after_dot.len().min(255)
-								as u8
-						} else {
-							0
-						};
+					let decimal_scale: u8 = if let Some(dot_pos) = decimal_str.find('.') {
+						let after_dot = &decimal_str[dot_pos + 1..];
+						after_dot.len().min(255) as u8
+					} else {
+						0
+					};
 
 					// Calculate precision (total number of
 					// significant digits)
-					let decimal_precision: u8 = decimal_str
-						.chars()
-						.filter(|c| c.is_ascii_digit())
-						.count()
-						.min(255)
-						as u8;
+					let decimal_precision: u8 =
+						decimal_str.chars().filter(|c| c.is_ascii_digit()).count().min(255)
+							as u8;
 
 					let scale_value: u8 = (*scale).into();
-					let precision_value: u8 =
-						(*precision).into();
+					let precision_value: u8 = (*precision).into();
 
 					if decimal_scale > scale_value {
-						return Err(crate::error!(crate::error::diagnostic::constraint::decimal_exceeds_scale(
-                            OwnedFragment::None,
-                            decimal_scale,
-                            scale_value
-                        )));
+						return Err(crate::error!(
+							crate::error::diagnostic::constraint::decimal_exceeds_scale(
+								OwnedFragment::None,
+								decimal_scale,
+								scale_value
+							)
+						));
 					}
 					if decimal_precision > precision_value {
-						return Err(crate::error!(crate::error::diagnostic::constraint::decimal_exceeds_precision(
-                            OwnedFragment::None,
-                            decimal_precision,
-                            precision_value
-                        )));
+						return Err(crate::error!(
+							crate::error::diagnostic::constraint::decimal_exceeds_precision(
+								OwnedFragment::None,
+								decimal_precision,
+								precision_value
+							)
+						));
 					}
 				}
 			}
@@ -242,15 +231,9 @@ mod tests {
 
 	#[test]
 	fn test_constrained_utf8() {
-		let tc = TypeConstraint::with_constraint(
-			Type::Utf8,
-			Constraint::MaxBytes(MaxBytes::new(50)),
-		);
+		let tc = TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(50)));
 		assert_eq!(tc.base_type, Type::Utf8);
-		assert_eq!(
-			tc.constraint,
-			Some(Constraint::MaxBytes(MaxBytes::new(50)))
-		);
+		assert_eq!(tc.constraint, Some(Constraint::MaxBytes(MaxBytes::new(50))));
 		assert!(!tc.is_unconstrained());
 	}
 
@@ -258,37 +241,22 @@ mod tests {
 	fn test_constrained_decimal() {
 		let tc = TypeConstraint::with_constraint(
 			Type::Decimal,
-			Constraint::PrecisionScale(
-				Precision::new(10),
-				Scale::new(2),
-			),
+			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
 		);
 		assert_eq!(tc.base_type, Type::Decimal);
-		assert_eq!(
-			tc.constraint,
-			Some(Constraint::PrecisionScale(
-				Precision::new(10),
-				Scale::new(2)
-			))
-		);
+		assert_eq!(tc.constraint, Some(Constraint::PrecisionScale(Precision::new(10), Scale::new(2))));
 	}
 
 	#[test]
 	fn test_validate_utf8_within_limit() {
-		let tc = TypeConstraint::with_constraint(
-			Type::Utf8,
-			Constraint::MaxBytes(MaxBytes::new(10)),
-		);
+		let tc = TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(10)));
 		let value = Value::Utf8("hello".to_string());
 		assert!(tc.validate(&value).is_ok());
 	}
 
 	#[test]
 	fn test_validate_utf8_exceeds_limit() {
-		let tc = TypeConstraint::with_constraint(
-			Type::Utf8,
-			Constraint::MaxBytes(MaxBytes::new(5)),
-		);
+		let tc = TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(5)));
 		let value = Value::Utf8("hello world".to_string());
 		assert!(tc.validate(&value).is_err());
 	}
@@ -296,18 +264,13 @@ mod tests {
 	#[test]
 	fn test_validate_unconstrained() {
 		let tc = TypeConstraint::unconstrained(Type::Utf8);
-		let value = Value::Utf8(
-			"any length string is fine here".to_string(),
-		);
+		let value = Value::Utf8("any length string is fine here".to_string());
 		assert!(tc.validate(&value).is_ok());
 	}
 
 	#[test]
 	fn test_validate_undefined() {
-		let tc = TypeConstraint::with_constraint(
-			Type::Utf8,
-			Constraint::MaxBytes(MaxBytes::new(5)),
-		);
+		let tc = TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(5)));
 		let value = Value::Undefined;
 		assert!(tc.validate(&value).is_ok());
 	}
@@ -317,18 +280,12 @@ mod tests {
 		let tc1 = TypeConstraint::unconstrained(Type::Utf8);
 		assert_eq!(tc1.to_string(), "Utf8");
 
-		let tc2 = TypeConstraint::with_constraint(
-			Type::Utf8,
-			Constraint::MaxBytes(MaxBytes::new(50)),
-		);
+		let tc2 = TypeConstraint::with_constraint(Type::Utf8, Constraint::MaxBytes(MaxBytes::new(50)));
 		assert_eq!(tc2.to_string(), "Utf8(50)");
 
 		let tc3 = TypeConstraint::with_constraint(
 			Type::Decimal,
-			Constraint::PrecisionScale(
-				Precision::new(10),
-				Scale::new(2),
-			),
+			Constraint::PrecisionScale(Precision::new(10), Scale::new(2)),
 		);
 		assert_eq!(tc3.to_string(), "Decimal(10,2)");
 	}

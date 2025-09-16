@@ -57,28 +57,17 @@ fn test_mixed_static_dynamic_stress() {
 	for iteration in 0..100 {
 		for i in (0..100).step_by(2) {
 			// even indices are Int8 (static)
-			layout.set_i64(
-				&mut row,
-				i,
-				iteration as i64 * 100 + i as i64,
-			);
+			layout.set_i64(&mut row, i, iteration as i64 * 100 + i as i64);
 		}
 
 		// Verify static field updates and dynamic field persistence
 		if iteration % 10 == 0 {
 			for i in (0..100).step_by(7) {
 				if i % 2 == 0 {
-					assert_eq!(
-						layout.get_i64(&row, i),
-						iteration as i64 * 100
-							+ i as i64
-					);
+					assert_eq!(layout.get_i64(&row, i), iteration as i64 * 100 + i as i64);
 				} else {
 					let expected = format!("field_{}", i);
-					assert_eq!(
-						layout.get_utf8(&row, i),
-						expected
-					);
+					assert_eq!(layout.get_utf8(&row, i), expected);
 				}
 			}
 		}
@@ -108,17 +97,10 @@ fn test_mixed_static_dynamic_stress() {
 		for i in (0..100).step_by(10) {
 			// Sample every 10th field
 			if i % 2 == 0 {
-				assert_eq!(
-					layout.get_i64(test_row, i),
-					row_idx as i64
-				);
+				assert_eq!(layout.get_i64(test_row, i), row_idx as i64);
 			} else {
-				let expected =
-					format!("row_{}_field_{}", row_idx, i);
-				assert_eq!(
-					layout.get_utf8(test_row, i),
-					expected
-				);
+				let expected = format!("row_{}_field_{}", row_idx, i);
+				assert_eq!(layout.get_utf8(test_row, i), expected);
 			}
 		}
 	}
@@ -127,22 +109,13 @@ fn test_mixed_static_dynamic_stress() {
 #[test]
 fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
-	let layout = EncodedRowLayout::new(&[
-		Type::Utf8,
-		Type::Blob,
-		Type::Int,
-		Type::Decimal,
-	]);
+	let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Blob, Type::Int, Type::Decimal]);
 
 	let mut original = layout.allocate_row();
 	layout.set_utf8(&mut original, 0, &"x".repeat(1000));
 	layout.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
 	layout.set_int(&mut original, 2, &Int::from(i128::MAX));
-	layout.set_decimal(
-		&mut original,
-		3,
-		&Decimal::from_str("99999.99999").unwrap(),
-	);
+	layout.set_decimal(&mut original, 3, &Decimal::from_str("99999.99999").unwrap());
 
 	let mut current = original.clone();
 
@@ -152,10 +125,7 @@ fn test_repeated_clone_stability() {
 
 		// Verify data is still intact
 		assert_eq!(layout.get_utf8(&next, 0), "x".repeat(1000));
-		assert_eq!(
-			layout.get_blob(&next, 1),
-			Blob::from(vec![42u8; 1000])
-		);
+		assert_eq!(layout.get_blob(&next, 1), Blob::from(vec![42u8; 1000]));
 		assert_eq!(layout.get_int(&next, 2), Int::from(i128::MAX));
 
 		current = next;
@@ -206,10 +176,7 @@ fn test_validity_bit_stress() {
 			assert_eq!(layout.try_get_i32(&row, i), None);
 		} else {
 			assert!(row.is_defined(i));
-			assert_eq!(
-				layout.try_get_i32(&row, i),
-				Some(-(i as i32))
-			);
+			assert_eq!(layout.try_get_i32(&row, i), Some(-(i as i32)));
 		}
 	}
 }
@@ -236,10 +203,7 @@ fn test_extreme_string_sizes() {
 		} else {
 			// For very large strings, just verify they're all the
 			// same character
-			assert!(
-				retrieved.chars().all(|c| c == 'a'),
-				"Large string content verification failed"
-			);
+			assert!(retrieved.chars().all(|c| c == 'a'), "Large string content verification failed");
 		}
 	}
 }
@@ -248,12 +212,7 @@ fn test_extreme_string_sizes() {
 fn test_concurrent_field_updates() {
 	// Simulate concurrent-like updates - test rapid field setting across
 	// different rows since dynamic fields can only be set once per row
-	let layout = EncodedRowLayout::new(&[
-		Type::Int8,
-		Type::Utf8,
-		Type::Int8,
-		Type::Utf8,
-	]);
+	let layout = EncodedRowLayout::new(&[Type::Int8, Type::Utf8, Type::Int8, Type::Utf8]);
 
 	let iterations = 1000;
 	let mut rows = Vec::with_capacity(iterations);
@@ -342,10 +301,6 @@ fn test_row_size_stability() {
 	// All rows with same content should have identical size
 	let first_size = same_size_rows[0];
 	for (i, &size) in same_size_rows.iter().enumerate() {
-		assert_eq!(
-			size, first_size,
-			"Row {} has different size {} vs expected {}",
-			i, size, first_size
-		);
+		assert_eq!(size, first_size, "Row {} has different size {} vs expected {}", i, size, first_size);
 	}
 }

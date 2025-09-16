@@ -22,11 +22,7 @@ impl CdcScan for Memory {
 }
 
 pub struct Scan<'a> {
-	version_iter: Box<
-		dyn Iterator<
-				Item = Entry<'a, CommitVersion, CdcTransaction>,
-			> + 'a,
-	>,
+	version_iter: Box<dyn Iterator<Item = Entry<'a, CommitVersion, CdcTransaction>> + 'a>,
 	current_events: Vec<CdcEvent>,
 	current_index: usize,
 }
@@ -37,16 +33,14 @@ impl<'a> Iterator for Scan<'a> {
 	fn next(&mut self) -> Option<Self::Item> {
 		// If we have events in the current batch, return the next one
 		if self.current_index < self.current_events.len() {
-			let event =
-				self.current_events[self.current_index].clone();
+			let event = self.current_events[self.current_index].clone();
 			self.current_index += 1;
 			return Some(event);
 		}
 
 		// Otherwise, get the next version's events
 		if let Some(entry) = self.version_iter.next() {
-			self.current_events =
-				entry.value().to_events().collect();
+			self.current_events = entry.value().to_events().collect();
 			self.current_index = 0;
 
 			// Recursively call next() to get the first event from

@@ -2,10 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	diagnostic::operation::{
-		aggregate_multiple_by_without_braces,
-		aggregate_multiple_map_without_braces,
-	},
+	diagnostic::operation::{aggregate_multiple_by_without_braces, aggregate_multiple_map_without_braces},
 	return_error,
 };
 
@@ -20,16 +17,13 @@ use crate::ast::{
 };
 
 impl<'a> Parser<'a> {
-	pub(crate) fn parse_aggregate(
-		&mut self,
-	) -> crate::Result<AstAggregate<'a>> {
+	pub(crate) fn parse_aggregate(&mut self) -> crate::Result<AstAggregate<'a>> {
 		let token = self.consume_keyword(Keyword::Aggregate)?;
 
 		let mut projections = Vec::new();
 
 		if !self.current()?.is_keyword(Keyword::By) {
-			let has_projections_braces =
-				self.current()?.is_operator(OpenCurly);
+			let has_projections_braces = self.current()?.is_operator(OpenCurly);
 
 			if has_projections_braces {
 				self.advance()?; // consume opening brace
@@ -40,19 +34,14 @@ impl<'a> Parser<'a> {
 					break;
 				}
 
-				projections.push(
-					self.parse_node(Precedence::None)?
-				);
+				projections.push(self.parse_node(Precedence::None)?);
 
 				if self.is_eof() {
 					break;
 				}
 
 				// If we have braces, look for closing brace
-				if has_projections_braces
-					&& self.current()?
-						.is_operator(CloseCurly)
-				{
+				if has_projections_braces && self.current()?.is_operator(CloseCurly) {
 					self.advance()?; // consume closing brace
 					break;
 				}
@@ -65,11 +54,7 @@ impl<'a> Parser<'a> {
 			}
 
 			if projections.len() > 1 && !has_projections_braces {
-				return_error!(
-					aggregate_multiple_map_without_braces(
-						token.fragment
-					)
-				);
+				return_error!(aggregate_multiple_map_without_braces(token.fragment));
 			}
 		}
 
@@ -79,9 +64,7 @@ impl<'a> Parser<'a> {
 
 		// BY clause is optional - if not present, it's a global
 		// aggregation
-		let has_by_keyword = self
-			.current()
-			.map_or(false, |t| t.is_keyword(Keyword::By));
+		let has_by_keyword = self.current().map_or(false, |t| t.is_keyword(Keyword::By));
 
 		if !has_by_keyword {
 			// No BY clause means global aggregation with empty
@@ -116,10 +99,7 @@ impl<'a> Parser<'a> {
 				}
 
 				// If we have braces, look for closing brace
-				if has_by_braces
-					&& self.current()?
-						.is_operator(CloseCurly)
-				{
+				if has_by_braces && self.current()?.is_operator(CloseCurly) {
 					self.advance()?; // consume closing brace
 					break;
 				}
@@ -133,9 +113,7 @@ impl<'a> Parser<'a> {
 		}
 
 		if by.len() > 1 && !has_by_braces {
-			return_error!(aggregate_multiple_by_without_braces(
-				token.fragment
-			));
+			return_error!(aggregate_multiple_by_without_braces(token.fragment));
 		}
 
 		Ok(AstAggregate {
@@ -199,8 +177,7 @@ mod tests {
 
 	#[test]
 	fn test_alias() {
-		let tokens = tokenize("AGGREGATE min(age) as min_age BY name")
-			.unwrap();
+		let tokens = tokenize("AGGREGATE min(age) as min_age BY name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -229,9 +206,7 @@ mod tests {
 
 	#[test]
 	fn test_alias_colon() {
-		let tokens =
-			tokenize("AGGREGATE { min_age: min(age) } BY name")
-				.unwrap();
+		let tokens = tokenize("AGGREGATE { min_age: min(age) } BY name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -244,10 +219,7 @@ mod tests {
 		let identifier = projection.left.as_identifier();
 		assert_eq!(identifier.text(), "min_age");
 
-		assert!(matches!(
-			projection.operator,
-			InfixOperator::TypeAscription(_)
-		));
+		assert!(matches!(projection.operator, InfixOperator::TypeAscription(_)));
 
 		let min_call = projection.right.as_call_function();
 		assert_eq!(min_call.function.name.text(), "min");
@@ -297,10 +269,7 @@ mod tests {
 
 	#[test]
 	fn test_many() {
-		let tokens = tokenize(
-			"AGGREGATE {min(age), max(age)} BY {name, gender}",
-		)
-		.unwrap();
+		let tokens = tokenize("AGGREGATE {min(age), max(age)} BY {name, gender}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -369,8 +338,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_maps_without_braces_fails() {
-		let tokens = tokenize("AGGREGATE min(age), max(age) BY name")
-			.unwrap();
+		let tokens = tokenize("AGGREGATE min(age), max(age) BY name").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "AGGREGATE_002")
@@ -378,9 +346,7 @@ mod tests {
 
 	#[test]
 	fn test_multiple_by_without_braces_fails() {
-		let tokens =
-			tokenize("AGGREGATE { count(value) } BY name, age")
-				.unwrap();
+		let tokens = tokenize("AGGREGATE { count(value) } BY name, age").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap_err();
 		assert_eq!(result.code, "AGGREGATE_003")
@@ -388,8 +354,7 @@ mod tests {
 
 	#[test]
 	fn test_empty_by_clause() {
-		let tokens =
-			tokenize("AGGREGATE { count(value) } BY {}").unwrap();
+		let tokens = tokenize("AGGREGATE { count(value) } BY {}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -405,11 +370,7 @@ mod tests {
 		let identifier = projection.arguments.nodes[0].as_identifier();
 		assert_eq!(identifier.text(), "value");
 
-		assert_eq!(
-			aggregate.by.len(),
-			0,
-			"BY clause should be empty for global aggregation"
-		);
+		assert_eq!(aggregate.by.len(), 0, "BY clause should be empty for global aggregation");
 	}
 
 	#[test]
@@ -430,10 +391,6 @@ mod tests {
 		let identifier = projection.arguments.nodes[0].as_identifier();
 		assert_eq!(identifier.text(), "value");
 
-		assert_eq!(
-			aggregate.by.len(),
-			0,
-			"BY clause should be empty for global aggregation"
-		);
+		assert_eq!(aggregate.by.len(), 0, "BY clause should be empty for global aggregation");
 	}
 }

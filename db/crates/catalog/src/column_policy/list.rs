@@ -1,14 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	ColumnPolicy, ColumnPolicyId, ColumnPolicyKey, ColumnPolicyKind,
-	QueryTransaction,
-};
+use reifydb_core::interface::{ColumnPolicy, ColumnPolicyId, ColumnPolicyKey, ColumnPolicyKind, QueryTransaction};
 
-use crate::{
-	CatalogStore, column::ColumnId, column_policy::layout::column_policy,
-};
+use crate::{CatalogStore, column::ColumnId, column_policy::layout::column_policy};
 
 impl CatalogStore {
 	pub fn list_column_policies(
@@ -18,28 +13,12 @@ impl CatalogStore {
 		Ok(rx.range(ColumnPolicyKey::full_scan(column))?
 			.map(|versioned| {
 				let row = versioned.row;
-				let id = ColumnPolicyId(
-					column_policy::LAYOUT.get_u64(
-						&row,
-						column_policy::ID,
-					),
-				);
-				let column = ColumnId(
-					column_policy::LAYOUT.get_u64(
-						&row,
-						column_policy::COLUMN,
-					),
-				);
+				let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
+				let column = ColumnId(column_policy::LAYOUT.get_u64(&row, column_policy::COLUMN));
 
 				let policy = ColumnPolicyKind::from_u8(
-					column_policy::LAYOUT.get_u8(
-						&row,
-						column_policy::POLICY,
-					),
-					column_policy::LAYOUT.get_u8(
-						&row,
-						column_policy::VALUE,
-					),
+					column_policy::LAYOUT.get_u8(&row, column_policy::POLICY),
+					column_policy::LAYOUT.get_u8(&row, column_policy::VALUE),
 				);
 
 				ColumnPolicy {
@@ -51,9 +30,7 @@ impl CatalogStore {
 			.collect::<Vec<_>>())
 	}
 
-	pub fn list_column_policies_all(
-		rx: &mut impl QueryTransaction,
-	) -> crate::Result<Vec<ColumnPolicy>> {
+	pub fn list_column_policies_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ColumnPolicy>> {
 		let mut result = Vec::new();
 
 		// Get all columns from tables and views
@@ -61,10 +38,7 @@ impl CatalogStore {
 
 		// For each column, get its policies
 		for info in columns {
-			let policies = CatalogStore::list_column_policies(
-				rx,
-				info.column.id,
-			)?;
+			let policies = CatalogStore::list_column_policies(rx, info.column.id)?;
 			result.extend(policies);
 		}
 
@@ -76,9 +50,7 @@ impl CatalogStore {
 mod tests {
 	use ColumnPolicyKind::Saturation;
 	use ColumnSaturationPolicy::Undefined;
-	use reifydb_core::interface::{
-		ColumnPolicyKind, ColumnSaturationPolicy, TableId,
-	};
+	use reifydb_core::interface::{ColumnPolicyKind, ColumnSaturationPolicy, TableId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 
@@ -102,9 +74,7 @@ mod tests {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "with_policy".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Int2,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Int2),
 				if_not_exists: false,
 				policies: vec![Saturation(Undefined)],
 				index: ColumnIndex(0),
@@ -113,12 +83,9 @@ mod tests {
 		)
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut txn, ColumnId(8193))
-			.unwrap();
+		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
 
-		let policies =
-			CatalogStore::list_column_policies(&mut txn, column.id)
-				.unwrap();
+		let policies = CatalogStore::list_column_policies(&mut txn, column.id).unwrap();
 
 		assert_eq!(policies.len(), 1);
 		assert_eq!(policies[0].column, column.id);

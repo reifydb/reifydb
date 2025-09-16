@@ -8,19 +8,13 @@ use reifydb_core::{
 	interface::{Versioned, VersionedRangeRev},
 };
 
-use super::{
-	build_range_query, execute_batched_range_query, table_name_for_range,
-};
+use super::{build_range_query, execute_batched_range_query, table_name_for_range};
 use crate::sqlite::{Sqlite, read::Reader};
 
 impl VersionedRangeRev for Sqlite {
 	type RangeIterRev<'a> = RangeRev;
 
-	fn range_rev(
-		&self,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-	) -> Result<Self::RangeIterRev<'_>> {
+	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
 		Ok(RangeRev::new(self.get_reader(), range, version, 1024))
 	}
 }
@@ -37,12 +31,7 @@ pub struct RangeRev {
 }
 
 impl RangeRev {
-	pub fn new(
-		conn: Reader,
-		range: EncodedKeyRange,
-		version: CommitVersion,
-		batch_size: usize,
-	) -> Self {
+	pub fn new(conn: Reader, range: EncodedKeyRange, version: CommitVersion, batch_size: usize) -> Self {
 		let table = table_name_for_range(&range).to_string();
 
 		Self {
@@ -76,8 +65,7 @@ impl RangeRev {
 
 		// Build query and parameters based on bounds - note DESC order
 		// for reverse
-		let (query_template, param_count) =
-			build_range_query(start_bound, end_bound, "DESC");
+		let (query_template, param_count) = build_range_query(start_bound, end_bound, "DESC");
 
 		let query = query_template.replace("{}", &self.table);
 		let conn_guard = self.conn.lock().unwrap();

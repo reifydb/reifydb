@@ -4,20 +4,15 @@
 use OperationType::{Create, Update};
 use reifydb_catalog::transaction::CatalogTrackTableChangeOperations;
 use reifydb_core::interface::{
-	Change, NamespaceId, OperationType, OperationType::Delete, TableDef,
-	TableId, Transaction, TransactionalTableChanges,
+	Change, NamespaceId, OperationType, OperationType::Delete, TableDef, TableId, Transaction,
+	TransactionalTableChanges,
 };
 use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
-impl<T: Transaction> CatalogTrackTableChangeOperations
-	for StandardCommandTransaction<T>
-{
-	fn track_table_def_created(
-		&mut self,
-		table: TableDef,
-	) -> reifydb_core::Result<()> {
+impl<T: Transaction> CatalogTrackTableChangeOperations for StandardCommandTransaction<T> {
+	fn track_table_def_created(&mut self, table: TableDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: None,
 			post: Some(table),
@@ -27,11 +22,7 @@ impl<T: Transaction> CatalogTrackTableChangeOperations
 		Ok(())
 	}
 
-	fn track_table_def_updated(
-		&mut self,
-		pre: TableDef,
-		post: TableDef,
-	) -> reifydb_core::Result<()> {
+	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: Some(pre),
 			post: Some(post),
@@ -41,10 +32,7 @@ impl<T: Transaction> CatalogTrackTableChangeOperations
 		Ok(())
 	}
 
-	fn track_table_def_deleted(
-		&mut self,
-		table: TableDef,
-	) -> reifydb_core::Result<()> {
+	fn track_table_def_deleted(&mut self, table: TableDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: Some(table),
 			post: None,
@@ -55,9 +43,7 @@ impl<T: Transaction> CatalogTrackTableChangeOperations
 	}
 }
 
-impl<T: Transaction> TransactionalTableChanges
-	for StandardCommandTransaction<T>
-{
+impl<T: Transaction> TransactionalTableChanges for StandardCommandTransaction<T> {
 	fn find_table(&self, id: TableId) -> Option<&TableDef> {
 		// Find the last change for this table ID
 		for change in self.changes.table_def.iter().rev() {
@@ -75,42 +61,29 @@ impl<T: Transaction> TransactionalTableChanges
 		None
 	}
 
-	fn find_table_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> Option<&TableDef> {
+	fn find_table_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> Option<&TableDef> {
 		let name = name.into_fragment();
 		self.changes.table_def.iter().rev().find_map(|change| {
-			change.post.as_ref().filter(|t| {
-				t.namespace == namespace
-					&& t.name == name.text()
-			})
+			change.post.as_ref().filter(|t| t.namespace == namespace && t.name == name.text())
 		})
 	}
 
 	fn is_table_deleted(&self, id: TableId) -> bool {
-		self.changes.table_def.iter().rev().any(|change| {
-			change.op == Delete
-				&& change.pre.as_ref().map(|t| t.id) == Some(id)
-		})
+		self.changes
+			.table_def
+			.iter()
+			.rev()
+			.any(|change| change.op == Delete && change.pre.as_ref().map(|t| t.id) == Some(id))
 	}
 
-	fn is_table_deleted_by_name<'a>(
-		&self,
-		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
-	) -> bool {
+	fn is_table_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool {
 		let name = name.into_fragment();
 		self.changes.table_def.iter().rev().any(|change| {
 			change.op == Delete
 				&& change
 					.pre
 					.as_ref()
-					.map(|t| {
-						t.namespace == namespace
-							&& t.name == name.text()
-					})
+					.map(|t| t.namespace == namespace && t.name == name.text())
 					.unwrap_or(false)
 		})
 	}
@@ -121,11 +94,7 @@ impl<T: Transaction> TransactionalTableChanges for StandardQueryTransaction<T> {
 		None
 	}
 
-	fn find_table_by_name<'a>(
-		&self,
-		_namespace: NamespaceId,
-		_name: impl IntoFragment<'a>,
-	) -> Option<&TableDef> {
+	fn find_table_by_name<'a>(&self, _namespace: NamespaceId, _name: impl IntoFragment<'a>) -> Option<&TableDef> {
 		None
 	}
 
@@ -133,11 +102,7 @@ impl<T: Transaction> TransactionalTableChanges for StandardQueryTransaction<T> {
 		false
 	}
 
-	fn is_table_deleted_by_name<'a>(
-		&self,
-		_namespace: NamespaceId,
-		_name: impl IntoFragment<'a>,
-	) -> bool {
+	fn is_table_deleted_by_name<'a>(&self, _namespace: NamespaceId, _name: impl IntoFragment<'a>) -> bool {
 		false
 	}
 }
@@ -179,10 +144,7 @@ mod tests {
 			assert_eq!(txn.changes.table_def.len(), 1);
 			let change = &txn.changes.table_def[0];
 			assert!(change.pre.is_none());
-			assert_eq!(
-				change.post.as_ref().unwrap().name,
-				"test_table"
-			);
+			assert_eq!(change.post.as_ref().unwrap().name, "test_table");
 			assert_eq!(change.op, Create);
 
 			// Verify operation was logged
@@ -192,9 +154,7 @@ mod tests {
 					id,
 					op,
 				} if *id == table.id && *op == Create => {}
-				_ => panic!(
-					"Expected Table operation with Create"
-				),
+				_ => panic!("Expected Table operation with Create"),
 			}
 		}
 	}
@@ -210,56 +170,23 @@ mod tests {
 			let table_v3 = test_table_def(1, 1, "table_v3");
 
 			// First update
-			txn.track_table_def_updated(
-				table_v1.clone(),
-				table_v2.clone(),
-			)
-			.unwrap();
+			txn.track_table_def_updated(table_v1.clone(), table_v2.clone()).unwrap();
 
 			// Should have one change
 			assert_eq!(txn.changes.table_def.len(), 1);
-			assert_eq!(
-				txn.changes.table_def[0]
-					.pre
-					.as_ref()
-					.unwrap()
-					.name,
-				"table_v1"
-			);
-			assert_eq!(
-				txn.changes.table_def[0]
-					.post
-					.as_ref()
-					.unwrap()
-					.name,
-				"table_v2"
-			);
+			assert_eq!(txn.changes.table_def[0].pre.as_ref().unwrap().name, "table_v1");
+			assert_eq!(txn.changes.table_def[0].post.as_ref().unwrap().name, "table_v2");
 			assert_eq!(txn.changes.table_def[0].op, Update);
 
 			// Second update - should NOT coalesce
-			txn.track_table_def_updated(table_v2, table_v3.clone())
-				.unwrap();
+			txn.track_table_def_updated(table_v2, table_v3.clone()).unwrap();
 
 			// Should now have TWO changes
 			assert_eq!(txn.changes.table_def.len(), 2);
 
 			// Second update recorded separately
-			assert_eq!(
-				txn.changes.table_def[1]
-					.pre
-					.as_ref()
-					.unwrap()
-					.name,
-				"table_v2"
-			);
-			assert_eq!(
-				txn.changes.table_def[1]
-					.post
-					.as_ref()
-					.unwrap()
-					.name,
-				"table_v3"
-			);
+			assert_eq!(txn.changes.table_def[1].pre.as_ref().unwrap().name, "table_v2");
+			assert_eq!(txn.changes.table_def[1].post.as_ref().unwrap().name, "table_v3");
 
 			// Should have 2 log entries
 			assert_eq!(txn.changes.log.len(), 2);
@@ -277,8 +204,7 @@ mod tests {
 			assert_eq!(txn.changes.table_def[0].op, Create);
 
 			// Then track update - should NOT coalesce
-			txn.track_table_def_updated(table_v1, table_v2.clone())
-				.unwrap();
+			txn.track_table_def_updated(table_v1, table_v2.clone()).unwrap();
 
 			// Should have TWO changes now
 			assert_eq!(txn.changes.table_def.len(), 2);
@@ -334,10 +260,7 @@ mod tests {
 			// Verify the change was recorded
 			assert_eq!(txn.changes.table_def.len(), 1);
 			let change = &txn.changes.table_def[0];
-			assert_eq!(
-				change.pre.as_ref().unwrap().name,
-				"test_table"
-			);
+			assert_eq!(change.pre.as_ref().unwrap().name, "test_table");
 			assert!(change.post.is_none());
 			assert_eq!(change.op, Delete);
 
@@ -348,9 +271,7 @@ mod tests {
 					id,
 					op,
 				} if *id == table.id && *op == Delete => {}
-				_ => panic!(
-					"Expected Table operation with Delete"
-				),
+				_ => panic!("Expected Table operation with Delete"),
 			}
 		}
 	}

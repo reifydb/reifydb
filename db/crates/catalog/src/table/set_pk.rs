@@ -29,11 +29,7 @@ impl CatalogStore {
 		};
 
 		let mut updated_row = versioned.row.clone();
-		table::LAYOUT.set_u64(
-			&mut updated_row,
-			table::PRIMARY_KEY,
-			primary_key_id.0,
-		);
+		table::LAYOUT.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(
 			&Key::Table(TableKey {
@@ -60,12 +56,7 @@ mod tests {
 		let table = ensure_test_table(&mut txn);
 
 		// Set primary key
-		CatalogStore::set_table_primary_key(
-			&mut txn,
-			table.id,
-			PrimaryKeyId(42),
-		)
-		.unwrap();
+		CatalogStore::set_table_primary_key(&mut txn, table.id, PrimaryKeyId(42)).unwrap();
 
 		// The test succeeds if no error is thrown.
 		// In real usage, create_primary_key would create both the
@@ -78,19 +69,11 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		// Try to set primary key on non-existent table
-		let result = CatalogStore::set_table_primary_key(
-			&mut txn,
-			TableId(999),
-			PrimaryKeyId(1),
-		);
+		let result = CatalogStore::set_table_primary_key(&mut txn, TableId(999), PrimaryKeyId(1));
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();
-		assert!(err
-			.to_string()
-			.contains("Table with ID 999 not found"));
-		assert!(err
-			.to_string()
-			.contains("critical catalog inconsistency"));
+		assert!(err.to_string().contains("Table with ID 999 not found"));
+		assert!(err.to_string().contains("critical catalog inconsistency"));
 	}
 }

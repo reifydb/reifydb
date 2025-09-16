@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{
-	Error, IntoFragment, Time, error::diagnostic::temporal, return_error,
-};
+use crate::{Error, IntoFragment, Time, error::diagnostic::temporal, return_error};
 
 pub fn parse_time<'a>(fragment: impl IntoFragment<'a>) -> Result<Time, Error> {
 	// Parse time in format HH:MM:SS[.sss[sss[sss]]][Z]
@@ -25,67 +23,47 @@ pub fn parse_time<'a>(fragment: impl IntoFragment<'a>) -> Result<Time, Error> {
 	// Check for empty time parts and calculate their positions
 	let mut offset = 0;
 	if time_fragment_parts[0].trim().is_empty() {
-		let sub_frag = fragment
-			.sub_fragment(offset, time_fragment_parts[0].len());
+		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
 		return_error!(temporal::empty_time_component(sub_frag));
 	}
 	offset += time_fragment_parts[0].len() + 1; // +1 for the colon
 
 	if time_fragment_parts[1].trim().is_empty() {
-		let sub_frag = fragment
-			.sub_fragment(offset, time_fragment_parts[1].len());
+		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[1].len());
 		return_error!(temporal::empty_time_component(sub_frag));
 	}
 	offset += time_fragment_parts[1].len() + 1; // +1 for the colon
 
 	if time_fragment_parts[2].trim().is_empty() {
-		let sub_frag = fragment
-			.sub_fragment(offset, time_fragment_parts[2].len());
+		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
 		return_error!(temporal::empty_time_component(sub_frag));
 	}
 
 	// Reset offset calculation for parsing components
 	offset = 0;
-	let hour =
-		time_fragment_parts[0].trim().parse::<u32>().map_err(|_| {
-			let sub_frag = fragment.sub_fragment(
-				offset,
-				time_fragment_parts[0].len(),
-			);
-			Error(temporal::invalid_hour(sub_frag))
-		})?;
+	let hour = time_fragment_parts[0].trim().parse::<u32>().map_err(|_| {
+		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[0].len());
+		Error(temporal::invalid_hour(sub_frag))
+	})?;
 	offset += time_fragment_parts[0].len() + 1;
 
-	let minute =
-		time_fragment_parts[1].trim().parse::<u32>().map_err(|_| {
-			let sub_frag = fragment.sub_fragment(
-				offset,
-				time_fragment_parts[1].len(),
-			);
-			Error(temporal::invalid_minute(sub_frag))
-		})?;
+	let minute = time_fragment_parts[1].trim().parse::<u32>().map_err(|_| {
+		let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[1].len());
+		Error(temporal::invalid_minute(sub_frag))
+	})?;
 	offset += time_fragment_parts[1].len() + 1;
 
 	// Parse seconds and optional fractional seconds
 	let seconds_with_fraction = time_fragment_parts[2].trim();
 	let (second, nanosecond) = if seconds_with_fraction.contains('.') {
-		let second_parts: Vec<&str> =
-			seconds_with_fraction.split('.').collect();
+		let second_parts: Vec<&str> = seconds_with_fraction.split('.').collect();
 		if second_parts.len() != 2 {
-			let sub_frag = fragment.sub_fragment(
-				offset,
-				time_fragment_parts[2].len(),
-			);
-			return_error!(temporal::invalid_fractional_seconds(
-				sub_frag
-			));
+			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
+			return_error!(temporal::invalid_fractional_seconds(sub_frag));
 		}
 
 		let second = second_parts[0].parse::<u32>().map_err(|_| {
-			let sub_frag = fragment.sub_fragment(
-				offset,
-				time_fragment_parts[2].len(),
-			);
+			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
 			Error(temporal::invalid_second(sub_frag))
 		})?;
 		let fraction_str = second_parts[1];
@@ -97,31 +75,20 @@ pub fn parse_time<'a>(fragment: impl IntoFragment<'a>) -> Result<Time, Error> {
 			fraction_str[..9].to_string()
 		};
 
-		let nanosecond =
-			padded_fraction.parse::<u32>().map_err(|_| {
-				let sub_frag = fragment.sub_fragment(
-					offset,
-					time_fragment_parts[2].len(),
-				);
-				Error(temporal::invalid_fractional_seconds(
-					sub_frag,
-				))
-			})?;
+		let nanosecond = padded_fraction.parse::<u32>().map_err(|_| {
+			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
+			Error(temporal::invalid_fractional_seconds(sub_frag))
+		})?;
 		(second, nanosecond)
 	} else {
-		let second =
-			seconds_with_fraction.parse::<u32>().map_err(|_| {
-				let sub_frag = fragment.sub_fragment(
-					offset,
-					time_fragment_parts[2].len(),
-				);
-				Error(temporal::invalid_second(sub_frag))
-			})?;
+		let second = seconds_with_fraction.parse::<u32>().map_err(|_| {
+			let sub_frag = fragment.sub_fragment(offset, time_fragment_parts[2].len());
+			Error(temporal::invalid_second(sub_frag))
+		})?;
 		(second, 0)
 	};
 
-	Time::new(hour, minute, second, nanosecond)
-		.ok_or_else(|| Error(temporal::invalid_time_values(fragment)))
+	Time::new(hour, minute, second, nanosecond).ok_or_else(|| Error(temporal::invalid_time_values(fragment)))
 }
 
 #[cfg(test)]

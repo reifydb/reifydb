@@ -104,10 +104,8 @@ impl SafeMul for f32 {
 		let result = *self * *r;
 		if result.is_infinite() || result.is_nan() {
 			// For overflow, create a finite wrapped value
-			let sign = if (self.is_sign_positive()
-				&& r.is_sign_positive()) || (self
-				.is_sign_negative()
-				&& r.is_sign_negative())
+			let sign = if (self.is_sign_positive() && r.is_sign_positive())
+				|| (self.is_sign_negative() && r.is_sign_negative())
 			{
 				1.0
 			} else {
@@ -150,10 +148,8 @@ impl SafeMul for f64 {
 		let result = *self * *r;
 		if result.is_infinite() || result.is_nan() {
 			// For overflow, create a finite wrapped value
-			let sign = if (self.is_sign_positive()
-				&& r.is_sign_positive()) || (self
-				.is_sign_negative()
-				&& r.is_sign_negative())
+			let sign = if (self.is_sign_positive() && r.is_sign_positive())
+				|| (self.is_sign_negative() && r.is_sign_negative())
 			{
 				1.0
 			} else {

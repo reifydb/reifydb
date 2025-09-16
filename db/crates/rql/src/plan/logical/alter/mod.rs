@@ -12,14 +12,8 @@ mod sequence;
 mod table;
 mod view;
 
-pub use table::{
-	AlterIndexColumn as AlterTableIndexColumn, AlterTableNode,
-	AlterTableOperation,
-};
-pub use view::{
-	AlterIndexColumn as AlterViewIndexColumn, AlterViewNode,
-	AlterViewOperation,
-};
+pub use table::{AlterIndexColumn as AlterTableIndexColumn, AlterTableNode, AlterTableOperation};
+pub use view::{AlterIndexColumn as AlterViewIndexColumn, AlterViewNode, AlterViewOperation};
 
 impl Compiler {
 	pub(crate) fn compile_alter<'a, 't, T: CatalogQueryTransaction>(
@@ -27,15 +21,9 @@ impl Compiler {
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
-			AstAlter::Sequence(node) => {
-				Self::compile_alter_sequence(node, resolver)
-			}
-			AstAlter::Table(node) => {
-				Self::compile_alter_table(node, resolver)
-			}
-			AstAlter::View(node) => {
-				Self::compile_alter_view(node, resolver)
-			}
+			AstAlter::Sequence(node) => Self::compile_alter_sequence(node, resolver),
+			AstAlter::Table(node) => Self::compile_alter_table(node, resolver),
+			AstAlter::View(node) => Self::compile_alter_view(node, resolver),
 		}
 	}
 }

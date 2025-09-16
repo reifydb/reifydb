@@ -10,17 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::util::{CowVec, encoding::binary::decode_binary};
 
-#[derive(
-	Debug,
-	Clone,
-	PartialOrd,
-	Ord,
-	Hash,
-	PartialEq,
-	Eq,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncodedKey(pub CowVec<u8>);
 
 impl Deref for EncodedKey {
@@ -79,10 +69,9 @@ impl EncodedKeyRange {
 	/// Constructs a key range from an optional inclusive start key to an
 	/// optional inclusive end key.
 	///
-	/// - `start`: If provided, marks the inclusive lower bound of the
-	///   range. If `None`, the range is unbounded below.
-	/// - `end`: If provided, marks the inclusive upper bound of the range.
-	///   If `None`, the range is unbounded above.
+	/// - `start`: If provided, marks the inclusive lower bound of the range. If `None`, the range is unbounded
+	///   below.
+	/// - `end`: If provided, marks the inclusive upper bound of the range. If `None`, the range is unbounded above.
 	///
 	/// This function does not modify the input keys and assumes they are
 	/// already exact keys (not prefixes). If you need to scan all keys
@@ -90,10 +79,7 @@ impl EncodedKeyRange {
 	///
 	/// Useful for scanning between two explicit keys in a sorted key-value
 	/// store.
-	pub fn start_end(
-		start: Option<EncodedKey>,
-		end: Option<EncodedKey>,
-	) -> Self {
+	pub fn start_end(start: Option<EncodedKey>, end: Option<EncodedKey>) -> Self {
 		let start = match start {
 			Some(s) => Bound::Included(s),
 			None => Bound::Unbounded,
@@ -140,10 +126,7 @@ impl EncodedKeyRange {
 	/// If parsing fails, it defaults to a degenerate range from `0xff` to
 	/// `0xff` (empty).
 	pub fn parse(str: &str) -> Self {
-		let (mut start, mut end) = (
-			Bound::<EncodedKey>::Unbounded,
-			Bound::<EncodedKey>::Unbounded,
-		);
+		let (mut start, mut end) = (Bound::<EncodedKey>::Unbounded, Bound::<EncodedKey>::Unbounded);
 
 		// Find the ".." separator
 		if let Some(dot_pos) = str.find("..") {
@@ -152,25 +135,19 @@ impl EncodedKeyRange {
 
 			// Parse start bound
 			if !start_part.is_empty() {
-				start = Bound::Included(EncodedKey(
-					decode_binary(start_part),
-				));
+				start = Bound::Included(EncodedKey(decode_binary(start_part)));
 			}
 
 			// Parse end bound - check for inclusive marker "="
 			if let Some(end_str) = end_part.strip_prefix('=') {
 				// Inclusive end: "..="
 				if !end_str.is_empty() {
-					end = Bound::Included(EncodedKey(
-						decode_binary(end_str),
-					));
+					end = Bound::Included(EncodedKey(decode_binary(end_str)));
 				}
 			} else {
 				// Exclusive end: ".."
 				if !end_part.is_empty() {
-					end = Bound::Excluded(EncodedKey(
-						decode_binary(end_part),
-					));
+					end = Bound::Excluded(EncodedKey(decode_binary(end_part)));
 				}
 			}
 
@@ -232,8 +209,7 @@ mod tests {
 
 		#[test]
 		fn test_with_multiple_trailing_ff() {
-			let range =
-				EncodedKeyRange::prefix(&[0x12, 0xff, 0xff]);
+			let range = EncodedKeyRange::prefix(&[0x12, 0xff, 0xff]);
 			assert_eq!(range.start, included(&[0x12, 0xff, 0xff]));
 			assert_eq!(range.end, excluded(&[0x13]));
 		}
@@ -254,8 +230,7 @@ mod tests {
 
 		#[test]
 		fn test_mid_increment() {
-			let range =
-				EncodedKeyRange::prefix(&[0x12, 0x00, 0xff]);
+			let range = EncodedKeyRange::prefix(&[0x12, 0x00, 0xff]);
 			assert_eq!(range.start, included(&[0x12, 0x00, 0xff]));
 			assert_eq!(range.end, excluded(&[0x12, 0x01]));
 		}
@@ -272,30 +247,21 @@ mod tests {
 
 		#[test]
 		fn test_start_and_end() {
-			let range = EncodedKeyRange::start_end(
-				Some(as_key!(1)),
-				Some(as_key!(2)),
-			);
+			let range = EncodedKeyRange::start_end(Some(as_key!(1)), Some(as_key!(2)));
 			assert_eq!(range.start, included(&as_key!(1)));
 			assert_eq!(range.end, included(&as_key!(2)));
 		}
 
 		#[test]
 		fn test_start_only() {
-			let range = EncodedKeyRange::start_end(
-				Some(as_key!(1)),
-				None,
-			);
+			let range = EncodedKeyRange::start_end(Some(as_key!(1)), None);
 			assert_eq!(range.start, included(&as_key!(1)));
 			assert_eq!(range.end, Bound::Unbounded);
 		}
 
 		#[test]
 		fn test_end_only() {
-			let range = EncodedKeyRange::start_end(
-				None,
-				Some(as_key!(2)),
-			);
+			let range = EncodedKeyRange::start_end(None, Some(as_key!(2)));
 			assert_eq!(range.start, Bound::Unbounded);
 			assert_eq!(range.end, included(&as_key!(2)));
 		}
@@ -309,20 +275,14 @@ mod tests {
 
 		#[test]
 		fn test_full_byte_range() {
-			let range = EncodedKeyRange::start_end(
-				Some(as_key!(0x00)),
-				Some(as_key!(0xff)),
-			);
+			let range = EncodedKeyRange::start_end(Some(as_key!(0x00)), Some(as_key!(0xff)));
 			assert_eq!(range.start, included(&as_key!(0x00)));
 			assert_eq!(range.end, included(&as_key!(0xff)));
 		}
 
 		#[test]
 		fn test_identical_bounds() {
-			let range = EncodedKeyRange::start_end(
-				Some(as_key!(0x42)),
-				Some(as_key!(0x42)),
-			);
+			let range = EncodedKeyRange::start_end(Some(as_key!(0x42)), Some(as_key!(0x42)));
 			assert_eq!(range.start, included(&as_key!(0x42)));
 			assert_eq!(range.end, included(&as_key!(0x42)));
 		}

@@ -55,12 +55,8 @@ impl HttpChannelSession {
 		port: u16,
 		token: Option<String>,
 	) -> Result<(Self, mpsc::Receiver<HttpResponseMessage>), Error> {
-		let client = HttpClient::new((host, port)).map_err(|e| {
-			Error(internal(format!(
-				"Failed to create client: {}",
-				e
-			)))
-		})?;
+		let client = HttpClient::new((host, port))
+			.map_err(|e| Error(internal(format!("Failed to create client: {}", e))))?;
 		Self::from_client(client, token)
 	}
 
@@ -90,9 +86,7 @@ impl HttpChannelSession {
 		url: &str,
 		token: Option<String>,
 	) -> Result<(Self, mpsc::Receiver<HttpResponseMessage>), Error> {
-		let client = HttpClient::from_url(url).map_err(|e| {
-			Error(internal(format!("Invalid URL: {}", e)))
-		})?;
+		let client = HttpClient::from_url(url).map_err(|e| Error(internal(format!("Invalid URL: {}", e))))?;
 		Self::from_client(client, token)
 	}
 
@@ -105,30 +99,19 @@ impl HttpChannelSession {
 		let id = generate_request_id();
 
 		// Send auth message to worker thread
-		if let Err(e) = self.client.command_tx().send(
-			HttpInternalMessage::Auth {
-				id: id.clone(),
-				_token: self.token.clone(),
-				route: HttpResponseRoute::Channel(
-					self.response_tx.clone(),
-				),
-			},
-		) {
-			return Err(Error(internal(format!(
-				"Failed to send auth request: {}",
-				e
-			))));
+		if let Err(e) = self.client.command_tx().send(HttpInternalMessage::Auth {
+			id: id.clone(),
+			_token: self.token.clone(),
+			route: HttpResponseRoute::Channel(self.response_tx.clone()),
+		}) {
+			return Err(Error(internal(format!("Failed to send auth request: {}", e))));
 		}
 
 		Ok(id)
 	}
 
 	/// Send a command (response arrives on channel)
-	pub fn command(
-		&self,
-		rql: &str,
-		params: Option<Params>,
-	) -> Result<String, Box<dyn std::error::Error>> {
+	pub fn command(&self, rql: &str, params: Option<Params>) -> Result<String, Box<dyn std::error::Error>> {
 		let id = generate_request_id();
 
 		let request = CommandRequest {
@@ -137,31 +120,19 @@ impl HttpChannelSession {
 		};
 
 		// Send command message to worker thread
-		if let Err(e) = self.client.command_tx().send(
-			HttpInternalMessage::Command {
-				id: id.clone(),
-				request,
-				route: HttpResponseRoute::Channel(
-					self.response_tx.clone(),
-				),
-			},
-		) {
-			return Err(format!(
-				"Failed to send command request: {}",
-				e
-			)
-			.into());
+		if let Err(e) = self.client.command_tx().send(HttpInternalMessage::Command {
+			id: id.clone(),
+			request,
+			route: HttpResponseRoute::Channel(self.response_tx.clone()),
+		}) {
+			return Err(format!("Failed to send command request: {}", e).into());
 		}
 
 		Ok(id)
 	}
 
 	/// Send a query (response arrives on channel)
-	pub fn query(
-		&self,
-		rql: &str,
-		params: Option<Params>,
-	) -> Result<String, Box<dyn std::error::Error>> {
+	pub fn query(&self, rql: &str, params: Option<Params>) -> Result<String, Box<dyn std::error::Error>> {
 		let id = generate_request_id();
 
 		let request = QueryRequest {
@@ -170,20 +141,12 @@ impl HttpChannelSession {
 		};
 
 		// Send query message to worker thread
-		if let Err(e) = self.client.command_tx().send(
-			HttpInternalMessage::Query {
-				id: id.clone(),
-				request,
-				route: HttpResponseRoute::Channel(
-					self.response_tx.clone(),
-				),
-			},
-		) {
-			return Err(format!(
-				"Failed to send query request: {}",
-				e
-			)
-			.into());
+		if let Err(e) = self.client.command_tx().send(HttpInternalMessage::Query {
+			id: id.clone(),
+			request,
+			route: HttpResponseRoute::Channel(self.response_tx.clone()),
+		}) {
+			return Err(format!("Failed to send query request: {}", e).into());
 		}
 
 		Ok(id)

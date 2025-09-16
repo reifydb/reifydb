@@ -41,29 +41,20 @@ impl ServerConfig {
 	}
 
 	/// Enable WebSocket protocol with configuration
-	pub fn enable_websocket(
-		mut self,
-		config: Option<super::WebSocketConfig>,
-	) -> Self {
+	pub fn enable_websocket(mut self, config: Option<super::WebSocketConfig>) -> Self {
 		self.protocols.ws = config.or_else(|| Some(Default::default()));
 		self
 	}
 
 	/// Enable HTTP protocol with configuration
-	pub fn enable_http(
-		mut self,
-		config: Option<super::HttpConfig>,
-	) -> Self {
-		self.protocols.http =
-			config.or_else(|| Some(Default::default()));
+	pub fn enable_http(mut self, config: Option<super::HttpConfig>) -> Self {
+		self.protocols.http = config.or_else(|| Some(Default::default()));
 		self
 	}
 
 	/// Get the effective number of workers
 	pub fn effective_workers(&self) -> usize {
-		self.network
-			.workers
-			.unwrap_or_else(|| num_cpus::get_physical().max(1))
+		self.network.workers.unwrap_or_else(|| num_cpus::get_physical().max(1))
 	}
 }
 

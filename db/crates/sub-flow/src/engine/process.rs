@@ -10,8 +10,7 @@ use reifydb_core::{
 		FlowNodeType::{SourceInlineData, SourceTable, SourceView},
 	},
 	interface::{
-		EncodableKey, GetEncodedRowLayout, RowKey, SourceId,
-		Transaction, VersionedCommandTransaction, ViewId,
+		EncodableKey, GetEncodedRowLayout, RowKey, SourceId, Transaction, VersionedCommandTransaction, ViewId,
 	},
 };
 use reifydb_engine::StandardCommandTransaction;
@@ -20,26 +19,17 @@ use reifydb_type::Value;
 use crate::engine::FlowEngine;
 
 impl<T: Transaction> FlowEngine<T> {
-	pub fn process(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		change: FlowChange,
-	) -> crate::Result<()> {
+	pub fn process(&self, txn: &mut StandardCommandTransaction<T>, change: FlowChange) -> crate::Result<()> {
 		let mut diffs_by_source = HashMap::new();
 
 		for diff in change.diffs {
 			let source = diff.source();
-			diffs_by_source
-				.entry(source)
-				.or_insert_with(Vec::new)
-				.push(diff);
+			diffs_by_source.entry(source).or_insert_with(Vec::new).push(diff);
 		}
 
 		for (source, diffs) in diffs_by_source {
 			// Find all nodes triggered by this source
-			if let Some(node_registrations) =
-				self.sources.get(&source)
-			{
+			if let Some(node_registrations) = self.sources.get(&source) {
 				// Process the diffs for each registered node
 				let bulkchange = FlowChange {
 					diffs,
@@ -47,20 +37,11 @@ impl<T: Transaction> FlowEngine<T> {
 				};
 
 				for (flow_id, node_id) in node_registrations {
-					if let Some(flow) =
-						self.flows.get(flow_id)
-					{
-						if let Some(node) =
-							flow.get_node(node_id)
-						{
+					if let Some(flow) = self.flows.get(flow_id) {
+						if let Some(node) = flow.get_node(node_id) {
 							// Process this specific
 							// node with the change
-							self.process_node(
-								txn,
-								flow,
-								node,
-								&bulkchange,
-							)?;
+							self.process_node(txn, flow, node, &bulkchange)?;
 						}
 					}
 				}
@@ -113,8 +94,7 @@ impl<T: Transaction> FlowEngine<T> {
 			FlowNodeType::Operator {
 				..
 			} => {
-				operator_result = self
-					.apply_operator(txn, node, &change)?;
+				operator_result = self.apply_operator(txn, node, &change)?;
 				&operator_result
 			}
 			FlowNodeType::SinkView {
@@ -134,17 +114,11 @@ impl<T: Transaction> FlowEngine<T> {
 			// Add metadata to track which node this data is coming
 			// from
 			let mut output_with_metadata = output.clone();
-			output_with_metadata.metadata.insert(
-				"from_node".to_string(),
-				reifydb_type::Value::Uint8(node.id.0),
-			);
+			output_with_metadata
+				.metadata
+				.insert("from_node".to_string(), reifydb_type::Value::Uint8(node.id.0));
 
-			self.process_node(
-				txn,
-				flow,
-				flow.get_node(output_id).unwrap(),
-				&output_with_metadata,
-			)?;
+			self.process_node(txn, flow, flow.get_node(output_id).unwrap(), &output_with_metadata)?;
 		}
 
 		Ok(())
@@ -177,56 +151,90 @@ impl<T: Transaction> FlowEngine<T> {
 						);
 					}
 
-					for (row_idx, &row_id) in
-						row_ids.iter().enumerate()
-					{
-						let mut row =
-							layout.allocate_row();
+					for (row_idx, &row_id) in row_ids.iter().enumerate() {
+						let mut row = layout.allocate_row();
 
 						// For each view column, find if
 						// it exists in the input
 						// columns
-						for (view_idx, view_column) in
-							view.columns
-								.iter()
-								.enumerate()
-						{
+						for (view_idx, view_column) in view.columns.iter().enumerate() {
 							let value = if let Some(input_column) =
-                                after.iter().find(|col| col.name() == view_column.name)
-                            {
-                                input_column.data().get_value(row_idx)
-                            } else {
-                                Value::Undefined
-                            };
+								after.iter().find(|col| col.name() == view_column.name)
+							{
+								input_column.data().get_value(row_idx)
+							} else {
+								Value::Undefined
+							};
 
 							match value {
-                                Value::Boolean(v) => layout.set_bool(&mut row, view_idx, v),
-                                Value::Float4(v) => layout.set_f32(&mut row, view_idx, *v),
-                                Value::Float8(v) => layout.set_f64(&mut row, view_idx, *v),
-                                Value::Int1(v) => layout.set_i8(&mut row, view_idx, v),
-                                Value::Int2(v) => layout.set_i16(&mut row, view_idx, v),
-                                Value::Int4(v) => layout.set_i32(&mut row, view_idx, v),
-                                Value::Int8(v) => layout.set_i64(&mut row, view_idx, v),
-                                Value::Int16(v) => layout.set_i128(&mut row, view_idx, v),
-                                Value::Utf8(v) => layout.set_utf8(&mut row, view_idx, v),
-                                Value::Uint1(v) => layout.set_u8(&mut row, view_idx, v),
-                                Value::Uint2(v) => layout.set_u16(&mut row, view_idx, v),
-                                Value::Uint4(v) => layout.set_u32(&mut row, view_idx, v),
-                                Value::Uint8(v) => layout.set_u64(&mut row, view_idx, v),
-                                Value::Uint16(v) => layout.set_u128(&mut row, view_idx, v),
-                                Value::Date(v) => layout.set_date(&mut row, view_idx, v),
-                                Value::DateTime(v) => layout.set_datetime(&mut row, view_idx, v),
-                                Value::Time(v) => layout.set_time(&mut row, view_idx, v),
-                                Value::Interval(v) => layout.set_interval(&mut row, view_idx, v),
-                                Value::RowNumber(_v) => {}
-                                Value::IdentityId(v) => layout.set_identity_id(&mut row, view_idx, v),
-                                Value::Uuid4(v) => layout.set_uuid4(&mut row, view_idx, v),
-                                Value::Uuid7(v) => layout.set_uuid7(&mut row, view_idx, v),
-                                Value::Blob(v) => layout.set_blob(&mut row, view_idx, &v),
-                                Value::Int(v) => layout.set_int(&mut row, view_idx, &v),
-                                Value::Uint(v) => layout.set_uint(&mut row, view_idx, &v),
-                                Value::Decimal(v) => layout.set_decimal(&mut row, view_idx, &v),
-                                Value::Undefined => layout.set_undefined(&mut row, view_idx)}
+								Value::Boolean(v) => {
+									layout.set_bool(&mut row, view_idx, v)
+								}
+								Value::Float4(v) => {
+									layout.set_f32(&mut row, view_idx, *v)
+								}
+								Value::Float8(v) => {
+									layout.set_f64(&mut row, view_idx, *v)
+								}
+								Value::Int1(v) => layout.set_i8(&mut row, view_idx, v),
+								Value::Int2(v) => layout.set_i16(&mut row, view_idx, v),
+								Value::Int4(v) => layout.set_i32(&mut row, view_idx, v),
+								Value::Int8(v) => layout.set_i64(&mut row, view_idx, v),
+								Value::Int16(v) => {
+									layout.set_i128(&mut row, view_idx, v)
+								}
+								Value::Utf8(v) => {
+									layout.set_utf8(&mut row, view_idx, v)
+								}
+								Value::Uint1(v) => layout.set_u8(&mut row, view_idx, v),
+								Value::Uint2(v) => {
+									layout.set_u16(&mut row, view_idx, v)
+								}
+								Value::Uint4(v) => {
+									layout.set_u32(&mut row, view_idx, v)
+								}
+								Value::Uint8(v) => {
+									layout.set_u64(&mut row, view_idx, v)
+								}
+								Value::Uint16(v) => {
+									layout.set_u128(&mut row, view_idx, v)
+								}
+								Value::Date(v) => {
+									layout.set_date(&mut row, view_idx, v)
+								}
+								Value::DateTime(v) => {
+									layout.set_datetime(&mut row, view_idx, v)
+								}
+								Value::Time(v) => {
+									layout.set_time(&mut row, view_idx, v)
+								}
+								Value::Interval(v) => {
+									layout.set_interval(&mut row, view_idx, v)
+								}
+								Value::RowNumber(_v) => {}
+								Value::IdentityId(v) => {
+									layout.set_identity_id(&mut row, view_idx, v)
+								}
+								Value::Uuid4(v) => {
+									layout.set_uuid4(&mut row, view_idx, v)
+								}
+								Value::Uuid7(v) => {
+									layout.set_uuid7(&mut row, view_idx, v)
+								}
+								Value::Blob(v) => {
+									layout.set_blob(&mut row, view_idx, &v)
+								}
+								Value::Int(v) => layout.set_int(&mut row, view_idx, &v),
+								Value::Uint(v) => {
+									layout.set_uint(&mut row, view_idx, &v)
+								}
+								Value::Decimal(v) => {
+									layout.set_decimal(&mut row, view_idx, &v)
+								}
+								Value::Undefined => {
+									layout.set_undefined(&mut row, view_idx)
+								}
+							}
 						}
 
 						// Use the row_id from the diff
@@ -235,9 +243,7 @@ impl<T: Transaction> FlowEngine<T> {
 						// exists (for idempotent
 						// updates)
 						let key = RowKey {
-							source: SourceId::view(
-								view_id,
-							),
+							source: SourceId::view(view_id),
 							row: row_id,
 						}
 						.encode();
@@ -265,18 +271,11 @@ impl<T: Transaction> FlowEngine<T> {
 						);
 					}
 
-					for (row_idx, &row_id) in
-						row_ids.iter().enumerate()
-					{
+					for (row_idx, &row_id) in row_ids.iter().enumerate() {
 						// Build the new row
-						let mut new_row =
-							layout.allocate_row();
+						let mut new_row = layout.allocate_row();
 
-						for (view_idx, view_column) in
-							view.columns
-								.iter()
-								.enumerate()
-						{
+						for (view_idx, view_column) in view.columns.iter().enumerate() {
 							let value = if let Some(input_column) =
 								after.iter().find(|col| col.name() == view_column.name)
 							{
@@ -286,41 +285,94 @@ impl<T: Transaction> FlowEngine<T> {
 							};
 
 							match value {
-								Value::Boolean(v) => layout.set_bool(&mut new_row, view_idx, v),
-								Value::Float4(v) => layout.set_f32(&mut new_row, view_idx, *v),
-								Value::Float8(v) => layout.set_f64(&mut new_row, view_idx, *v),
-								Value::Int1(v) => layout.set_i8(&mut new_row, view_idx, v),
-								Value::Int2(v) => layout.set_i16(&mut new_row, view_idx, v),
-								Value::Int4(v) => layout.set_i32(&mut new_row, view_idx, v),
-								Value::Int8(v) => layout.set_i64(&mut new_row, view_idx, v),
-								Value::Int16(v) => layout.set_i128(&mut new_row, view_idx, v),
-								Value::Utf8(v) => layout.set_utf8(&mut new_row, view_idx, v),
-								Value::Uint1(v) => layout.set_u8(&mut new_row, view_idx, v),
-								Value::Uint2(v) => layout.set_u16(&mut new_row, view_idx, v),
-								Value::Uint4(v) => layout.set_u32(&mut new_row, view_idx, v),
-								Value::Uint8(v) => layout.set_u64(&mut new_row, view_idx, v),
-								Value::Uint16(v) => layout.set_u128(&mut new_row, view_idx, v),
-								Value::Date(v) => layout.set_date(&mut new_row, view_idx, v),
-								Value::DateTime(v) => layout.set_datetime(&mut new_row, view_idx, v),
-								Value::Time(v) => layout.set_time(&mut new_row, view_idx, v),
-								Value::Interval(v) => layout.set_interval(&mut new_row, view_idx, v),
-								Value::RowNumber(_v) => {},
-								Value::IdentityId(v) => layout.set_identity_id(&mut new_row, view_idx, v),
-								Value::Uuid4(v) => layout.set_uuid4(&mut new_row, view_idx, v),
-								Value::Uuid7(v) => layout.set_uuid7(&mut new_row, view_idx, v),
-								Value::Blob(v) => layout.set_blob(&mut new_row, view_idx, &v),
-								Value::Int(v) => layout.set_int(&mut new_row, view_idx, &v),
-							Value::Uint(v) => layout.set_uint(&mut new_row, view_idx, &v),
-								Value::Decimal(v) => layout.set_decimal(&mut new_row, view_idx, &v),
-								Value::Undefined => layout.set_undefined(&mut new_row, view_idx)}
+								Value::Boolean(v) => {
+									layout.set_bool(&mut new_row, view_idx, v)
+								}
+								Value::Float4(v) => {
+									layout.set_f32(&mut new_row, view_idx, *v)
+								}
+								Value::Float8(v) => {
+									layout.set_f64(&mut new_row, view_idx, *v)
+								}
+								Value::Int1(v) => {
+									layout.set_i8(&mut new_row, view_idx, v)
+								}
+								Value::Int2(v) => {
+									layout.set_i16(&mut new_row, view_idx, v)
+								}
+								Value::Int4(v) => {
+									layout.set_i32(&mut new_row, view_idx, v)
+								}
+								Value::Int8(v) => {
+									layout.set_i64(&mut new_row, view_idx, v)
+								}
+								Value::Int16(v) => {
+									layout.set_i128(&mut new_row, view_idx, v)
+								}
+								Value::Utf8(v) => {
+									layout.set_utf8(&mut new_row, view_idx, v)
+								}
+								Value::Uint1(v) => {
+									layout.set_u8(&mut new_row, view_idx, v)
+								}
+								Value::Uint2(v) => {
+									layout.set_u16(&mut new_row, view_idx, v)
+								}
+								Value::Uint4(v) => {
+									layout.set_u32(&mut new_row, view_idx, v)
+								}
+								Value::Uint8(v) => {
+									layout.set_u64(&mut new_row, view_idx, v)
+								}
+								Value::Uint16(v) => {
+									layout.set_u128(&mut new_row, view_idx, v)
+								}
+								Value::Date(v) => {
+									layout.set_date(&mut new_row, view_idx, v)
+								}
+								Value::DateTime(v) => {
+									layout.set_datetime(&mut new_row, view_idx, v)
+								}
+								Value::Time(v) => {
+									layout.set_time(&mut new_row, view_idx, v)
+								}
+								Value::Interval(v) => {
+									layout.set_interval(&mut new_row, view_idx, v)
+								}
+								Value::RowNumber(_v) => {}
+								Value::IdentityId(v) => layout.set_identity_id(
+									&mut new_row,
+									view_idx,
+									v,
+								),
+								Value::Uuid4(v) => {
+									layout.set_uuid4(&mut new_row, view_idx, v)
+								}
+								Value::Uuid7(v) => {
+									layout.set_uuid7(&mut new_row, view_idx, v)
+								}
+								Value::Blob(v) => {
+									layout.set_blob(&mut new_row, view_idx, &v)
+								}
+								Value::Int(v) => {
+									layout.set_int(&mut new_row, view_idx, &v)
+								}
+								Value::Uint(v) => {
+									layout.set_uint(&mut new_row, view_idx, &v)
+								}
+								Value::Decimal(v) => {
+									layout.set_decimal(&mut new_row, view_idx, &v)
+								}
+								Value::Undefined => {
+									layout.set_undefined(&mut new_row, view_idx)
+								}
+							}
 						}
 
 						// Directly update the row using
 						// its row_id
 						let key = RowKey {
-							source: SourceId::view(
-								view_id,
-							),
+							source: SourceId::view(view_id),
 							row: row_id,
 						}
 						.encode();
@@ -349,9 +401,7 @@ impl<T: Transaction> FlowEngine<T> {
 					// Remove each row by its row_id
 					for &row_id in row_ids {
 						let key = RowKey {
-							source: SourceId::view(
-								view_id,
-							),
+							source: SourceId::view(view_id),
 							row: row_id,
 						}
 						.encode();

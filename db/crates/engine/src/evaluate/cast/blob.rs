@@ -4,28 +4,17 @@
 use reifydb_core::{interface::LazyFragment, value::columnar::ColumnData};
 use reifydb_type::{Blob, BorrowedFragment, Type, diagnostic::cast, err};
 
-pub fn to_blob<'a>(
-	data: &ColumnData,
-	lazy_fragment: impl LazyFragment<'a>,
-) -> crate::Result<ColumnData> {
+pub fn to_blob<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -> crate::Result<ColumnData> {
 	match data {
 		ColumnData::Utf8 {
 			container,
 			..
 		} => {
-			let mut out = ColumnData::with_capacity(
-				Type::Blob,
-				container.len(),
-			);
+			let mut out = ColumnData::with_capacity(Type::Blob, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
-					let temp_fragment =
-						BorrowedFragment::new_internal(
-							container[idx].as_str(),
-						);
-					out.push(Blob::from_utf8(
-						temp_fragment,
-					));
+					let temp_fragment = BorrowedFragment::new_internal(container[idx].as_str());
+					out.push(Blob::from_utf8(temp_fragment));
 				} else {
 					out.push_undefined()
 				}
@@ -34,11 +23,7 @@ pub fn to_blob<'a>(
 		}
 		_ => {
 			let source_type = data.get_type();
-			err!(cast::unsupported_cast(
-				lazy_fragment.fragment(),
-				source_type,
-				Type::Blob
-			))
+			err!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, Type::Blob))
 		}
 	}
 }
@@ -56,8 +41,7 @@ mod tests {
 		let bitvec = BitVec::repeat(2, true);
 		let container = ColumnData::utf8_with_bitvec(strings, bitvec);
 
-		let result = to_blob(&container, || Fragment::testing_empty())
-			.unwrap();
+		let result = to_blob(&container, || Fragment::testing_empty()).unwrap();
 
 		match result {
 			ColumnData::Blob {

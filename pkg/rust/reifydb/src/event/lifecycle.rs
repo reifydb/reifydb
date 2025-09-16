@@ -33,11 +33,7 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 	}
 
 	/// Execute a transactional command as root user
-	pub fn command_as_root(
-		&self,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_type::Error> {
+	pub fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
 		let identity = Identity::System {
 			id: 0,
 			name: "root".to_string(),
@@ -56,11 +52,7 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 	}
 
 	/// Execute a read-only query as root user
-	pub fn query_as_root(
-		&self,
-		rql: &str,
-		params: impl Into<Params>,
-	) -> Result<Vec<Frame>, reifydb_type::Error> {
+	pub fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, reifydb_type::Error> {
 		let identity = Identity::root();
 		self.engine.query_as(&identity, rql, params.into())
 	}
@@ -75,8 +67,7 @@ where
 	pub engine: StandardEngine<T>,
 }
 
-impl<T: Transaction, F> EventListener<OnCreateEvent>
-	for OnCreateEventListener<T, F>
+impl<T: Transaction, F> EventListener<OnCreateEvent> for OnCreateEventListener<T, F>
 where
 	F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
 {

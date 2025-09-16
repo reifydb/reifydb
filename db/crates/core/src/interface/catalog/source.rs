@@ -4,23 +4,9 @@
 use reifydb_type::return_internal_error;
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{
-	RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId,
-	ViewDef, ViewId,
-};
+use crate::interface::{RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId};
 
-#[derive(
-	Debug,
-	Copy,
-	Clone,
-	PartialOrd,
-	PartialEq,
-	Ord,
-	Eq,
-	Hash,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum SourceId {
 	Table(TableId),
 	View(ViewId),
@@ -151,12 +137,8 @@ impl SourceId {
 		match self {
 			SourceId::Table(table) => SourceId::table(table.0 + 1),
 			SourceId::View(view) => SourceId::view(view.0 + 1),
-			SourceId::TableVirtual(table_virtual) => {
-				SourceId::table_virtual(table_virtual.0 + 1)
-			}
-			SourceId::RingBuffer(ring_buffer) => {
-				SourceId::ring_buffer(ring_buffer.0 + 1)
-			}
+			SourceId::TableVirtual(table_virtual) => SourceId::table_virtual(table_virtual.0 + 1),
+			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0 + 1),
 		}
 	}
 
@@ -166,22 +148,12 @@ impl SourceId {
 	/// (wraps to u64::MAX)
 	pub fn prev(&self) -> SourceId {
 		match self {
-			SourceId::Table(table) => {
-				SourceId::table(table.0.wrapping_sub(1))
-			}
-			SourceId::View(view) => {
-				SourceId::view(view.0.wrapping_sub(1))
-			}
+			SourceId::Table(table) => SourceId::table(table.0.wrapping_sub(1)),
+			SourceId::View(view) => SourceId::view(view.0.wrapping_sub(1)),
 			SourceId::TableVirtual(table_virtual) => {
-				SourceId::table_virtual(
-					table_virtual.0.wrapping_sub(1),
-				)
+				SourceId::table_virtual(table_virtual.0.wrapping_sub(1))
 			}
-			SourceId::RingBuffer(ring_buffer) => {
-				SourceId::ring_buffer(
-					ring_buffer.0.wrapping_sub(1),
-				)
-			}
+			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0.wrapping_sub(1)),
 		}
 	}
 
@@ -250,9 +222,7 @@ impl SourceDef {
 		match self {
 			SourceDef::Table(table) => table.id.into(),
 			SourceDef::View(view) => view.id.into(),
-			SourceDef::TableVirtual(table_virtual) => {
-				table_virtual.id.into()
-			}
+			SourceDef::TableVirtual(table_virtual) => table_virtual.id.into(),
 		}
 	}
 
@@ -260,9 +230,7 @@ impl SourceDef {
 		match self {
 			SourceDef::Table(table) => SourceId::Table(table.id),
 			SourceDef::View(view) => SourceId::View(view.id),
-			SourceDef::TableVirtual(table_virtual) => {
-				SourceId::TableVirtual(table_virtual.id)
-			}
+			SourceDef::TableVirtual(table_virtual) => SourceId::TableVirtual(table_virtual.id),
 		}
 	}
 }

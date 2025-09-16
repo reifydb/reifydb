@@ -106,11 +106,7 @@ impl<'a> BorrowedFragment<'a> {
 
 	/// Get a sub-fragment starting at the given offset with the given
 	/// length
-	pub fn sub_fragment(
-		&self,
-		offset: usize,
-		length: usize,
-	) -> OwnedFragment {
+	pub fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
 		let text = self.text();
 		let end = std::cmp::min(offset + length, text.len());
 		let sub_text = if offset < text.len() {
@@ -128,9 +124,7 @@ impl<'a> BorrowedFragment<'a> {
 			} => OwnedFragment::Statement {
 				text: sub_text.to_string(),
 				line: *line,
-				column: StatementColumn(
-					column.0 + offset as u32,
-				),
+				column: StatementColumn(column.0 + offset as u32),
 			},
 			BorrowedFragment::Internal {
 				..

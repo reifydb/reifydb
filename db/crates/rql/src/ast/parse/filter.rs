@@ -12,8 +12,7 @@ impl<'a> Parser<'a> {
 		let token = self.consume_keyword(Keyword::Filter)?;
 
 		// Check if we have an opening brace
-		let has_braces = !self.is_eof()
-			&& self.current()?.is_operator(Operator::OpenCurly);
+		let has_braces = !self.is_eof() && self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
 			self.advance()?;
@@ -21,11 +20,7 @@ impl<'a> Parser<'a> {
 
 		// Handle case where there's no expression (like "filter {}"
 		// alone)
-		let node = if self.is_eof()
-			|| (has_braces
-				&& self.current()?
-					.is_operator(Operator::CloseCurly))
-		{
+		let node = if self.is_eof() || (has_braces && self.current()?.is_operator(Operator::CloseCurly)) {
 			Ast::Nop
 		} else {
 			self.parse_node(Precedence::None)?
@@ -44,10 +39,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{
-		Ast, InfixOperator, TokenKind, parse::Parser, tokenize,
-		tokenize::Keyword,
-	};
+	use crate::ast::{Ast, InfixOperator, TokenKind, parse::Parser, tokenize, tokenize::Keyword};
 
 	#[test]
 	fn test_simple_comparison() {
@@ -55,10 +47,7 @@ mod tests {
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		assert_eq!(
-			filter.token.kind,
-			TokenKind::Keyword(Keyword::Filter)
-		);
+		assert_eq!(filter.token.kind, TokenKind::Keyword(Keyword::Filter));
 
 		let node = filter.node.as_infix();
 		assert_eq!(node.left.as_identifier().text(), "price");
@@ -104,8 +93,7 @@ mod tests {
 
 	#[test]
 	fn test_logical_and() {
-		let tokens =
-			tokenize("filter price > 100 and qty < 50").unwrap();
+		let tokens = tokenize("filter price > 100 and qty < 50").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -125,9 +113,7 @@ mod tests {
 
 	#[test]
 	fn test_logical_or() {
-		let tokens =
-			tokenize("filter active == true or premium == true")
-				.unwrap();
+		let tokens = tokenize("filter active == true or premium == true").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -145,9 +131,7 @@ mod tests {
 
 	#[test]
 	fn test_logical_xor() {
-		let tokens =
-			tokenize("filter active == true xor guest == true")
-				.unwrap();
+		let tokens = tokenize("filter active == true xor guest == true").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -165,10 +149,7 @@ mod tests {
 
 	#[test]
 	fn test_comptokenize_logical_chain() {
-		let tokens = tokenize(
-			"filter active == true and price > 100 or premium == true",
-		)
-		.unwrap();
+		let tokens = tokenize("filter active == true and price > 100 or premium == true").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -192,10 +173,7 @@ mod tests {
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		assert_eq!(
-			filter.token.kind,
-			TokenKind::Keyword(Keyword::Filter)
-		);
+		assert_eq!(filter.token.kind, TokenKind::Keyword(Keyword::Filter));
 
 		let node = filter.node.as_infix();
 		assert_eq!(node.left.as_identifier().text(), "price");
@@ -205,10 +183,7 @@ mod tests {
 
 	#[test]
 	fn test_filter_comptokenize_expression_with_braces() {
-		let tokens = tokenize(
-			"filter { (price + fee) > 100 and active == true }",
-		)
-		.unwrap();
+		let tokens = tokenize("filter { (price + fee) > 100 and active == true }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
@@ -237,10 +212,7 @@ mod tests {
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		assert_eq!(
-			filter.token.kind,
-			TokenKind::Keyword(Keyword::Filter)
-		);
+		assert_eq!(filter.token.kind, TokenKind::Keyword(Keyword::Filter));
 
 		let node = filter.node.as_infix();
 		assert_eq!(node.left.as_identifier().text(), "price");
@@ -250,10 +222,7 @@ mod tests {
 
 	#[test]
 	fn test_filter_with_braces_logical_operators() {
-		let tokens = tokenize(
-			"filter { active == true or premium == true }",
-		)
-		.unwrap();
+		let tokens = tokenize("filter { active == true or premium == true }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 

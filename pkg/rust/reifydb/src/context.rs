@@ -36,9 +36,7 @@ pub struct SyncContext {
 impl SyncContext {
 	pub fn new() -> Self {
 		Self {
-			runtime_provider: RuntimeProvider::None(
-				NoRuntimeProvider,
-			),
+			runtime_provider: RuntimeProvider::None(NoRuntimeProvider),
 		}
 	}
 }

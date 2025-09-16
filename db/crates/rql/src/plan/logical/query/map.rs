@@ -6,9 +6,7 @@ use reifydb_catalog::CatalogQueryTransaction;
 use crate::{
 	ast::AstMap,
 	expression::ExpressionCompiler,
-	plan::logical::{
-		Compiler, LogicalPlan, MapNode, resolver::IdentifierResolver,
-	},
+	plan::logical::{Compiler, LogicalPlan, MapNode, resolver::IdentifierResolver},
 };
 
 impl Compiler {

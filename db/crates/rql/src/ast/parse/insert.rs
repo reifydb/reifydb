@@ -12,27 +12,17 @@ impl<'a> Parser<'a> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
-		let first_token = self
-			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let first_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
-		let target = if self
-			.current_expect_operator(Operator::Dot)
-			.is_ok()
-		{
+		let target = if self.current_expect_operator(Operator::Dot).is_ok() {
 			self.consume_operator(Operator::Dot)?;
-			let second_token = self.consume(
-				crate::ast::tokenize::TokenKind::Identifier,
-			)?;
+			let second_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 			// namespace.table
-			MaybeQualifiedTableIdentifier::new(
-				second_token.fragment.clone(),
-			)
-			.with_namespace(first_token.fragment.clone())
+			MaybeQualifiedTableIdentifier::new(second_token.fragment.clone())
+				.with_namespace(first_token.fragment.clone())
 		} else {
 			// table only
-			MaybeQualifiedTableIdentifier::new(
-				first_token.fragment.clone(),
-			)
+			MaybeQualifiedTableIdentifier::new(first_token.fragment.clone())
 		};
 
 		Ok(AstInsert {
@@ -66,13 +56,7 @@ mod tests {
 				target,
 				..
 			} => {
-				assert_eq!(
-					target.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(target.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(target.name.text(), "users");
 			}
 		}

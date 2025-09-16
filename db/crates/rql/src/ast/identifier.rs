@@ -296,11 +296,7 @@ impl<'a> MaybeQualifiedColumnIdentifier<'a> {
 		}
 	}
 
-	pub fn with_source(
-		namespace: Option<Fragment<'a>>,
-		source: Fragment<'a>,
-		name: Fragment<'a>,
-	) -> Self {
+	pub fn with_source(namespace: Option<Fragment<'a>>, source: Fragment<'a>, name: Fragment<'a>) -> Self {
 		Self {
 			source: MaybeQualifiedColumnSource::Source {
 				namespace,
@@ -335,10 +331,7 @@ impl<'a> MaybeQualifiedFunctionIdentifier<'a> {
 		}
 	}
 
-	pub fn with_namespaces(
-		mut self,
-		namespaces: Vec<Fragment<'a>>,
-	) -> Self {
+	pub fn with_namespaces(mut self, namespaces: Vec<Fragment<'a>>) -> Self {
 		self.namespaces = namespaces;
 		self
 	}

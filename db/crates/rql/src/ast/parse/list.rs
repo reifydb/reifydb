@@ -26,9 +26,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			self.consume_if(TokenKind::Separator(
-				Separator::Comma,
-			))?;
+			self.consume_if(TokenKind::Separator(Separator::Comma))?;
 
 			nodes.push(self.parse_node(Precedence::None)?);
 		}
@@ -108,9 +106,6 @@ mod tests {
 		assert_eq!(row.keyed_values.len(), 1);
 
 		assert_eq!(row.keyed_values[0].key.text(), "field");
-		assert_eq!(
-			row.keyed_values[0].value.as_literal_text().value(),
-			"value"
-		);
+		assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 	}
 }

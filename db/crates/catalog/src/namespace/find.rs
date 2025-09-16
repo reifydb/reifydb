@@ -2,10 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{
-		EncodableKey, NamespaceDef, NamespaceId, NamespaceKey,
-		QueryTransaction,
-	},
+	interface::{EncodableKey, NamespaceDef, NamespaceId, NamespaceKey, QueryTransaction},
 	row::EncodedRow,
 };
 
@@ -28,8 +25,7 @@ impl CatalogStore {
 
 		Ok(rx.range(NamespaceKey::full_scan())?.find_map(|versioned| {
 			let row: &EncodedRow = &versioned.row;
-			let namespace_name = namespace::LAYOUT
-				.get_utf8(row, namespace::NAME);
+			let namespace_name = namespace::LAYOUT.get_utf8(row, namespace::NAME);
 			if name == namespace_name {
 				Some(convert_namespace(versioned))
 			} else {
@@ -38,10 +34,7 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_namespace(
-		rx: &mut impl QueryTransaction,
-		id: NamespaceId,
-	) -> crate::Result<Option<NamespaceDef>> {
+	pub fn find_namespace(rx: &mut impl QueryTransaction, id: NamespaceId) -> crate::Result<Option<NamespaceDef>> {
 		// Special case for system namespace - hardcoded with fixed ID
 		if id == NamespaceId(1) {
 			return Ok(Some(NamespaceDef::system()));
@@ -59,10 +52,7 @@ impl CatalogStore {
 mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
-	use crate::{
-		CatalogStore, namespace::NamespaceId,
-		test_utils::create_namespace,
-	};
+	use crate::{CatalogStore, namespace::NamespaceId, test_utils::create_namespace};
 
 	#[test]
 	fn test_ok() {
@@ -70,12 +60,7 @@ mod tests {
 
 		create_namespace(&mut txn, "test_namespace");
 
-		let namespace = CatalogStore::find_namespace_by_name(
-			&mut txn,
-			"test_namespace",
-		)
-		.unwrap()
-		.unwrap();
+		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
 
 		assert_eq!(namespace.id, NamespaceId(1025));
 		assert_eq!(namespace.name, "test_namespace");
@@ -85,11 +70,7 @@ mod tests {
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::find_namespace_by_name(
-			&mut txn,
-			"test_namespace",
-		)
-		.unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
 
 		assert_eq!(result, None);
 	}
@@ -100,11 +81,7 @@ mod tests {
 
 		create_namespace(&mut txn, "another_namespace");
 
-		let result = CatalogStore::find_namespace_by_name(
-			&mut txn,
-			"test_namespace",
-		)
-		.unwrap();
+		let result = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap();
 		assert_eq!(result, None);
 	}
 }

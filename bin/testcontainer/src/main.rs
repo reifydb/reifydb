@@ -12,16 +12,12 @@ use reifydb::{
 };
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
-	logging.with_console(|console| {
-		console.color(true)
-			.stderr_for_errors(true)
-			.format_style(FormatStyle::Timeline)
-	})
-	.buffer_capacity(20000)
-	.batch_size(2000)
-	.flush_interval(Duration::from_millis(50))
-	.immediate_on_error(true)
-	.level(LogLevel::Trace)
+	logging.with_console(|console| console.color(true).stderr_for_errors(true).format_style(FormatStyle::Timeline))
+		.buffer_capacity(20000)
+		.batch_size(2000)
+		.flush_interval(Duration::from_millis(50))
+		.immediate_on_error(true)
+		.level(LogLevel::Trace)
 }
 
 fn main() {

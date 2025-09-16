@@ -3,18 +3,13 @@
 
 use reifydb_core::{
 	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Apply},
-	interface::{
-		CommandTransaction, FlowNodeId,
-		evaluate::expression::Expression,
-	},
+	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
 };
 use reifydb_type::Fragment;
 
 use super::super::{
 	CompileOperator, FlowCompiler,
-	conversion::{
-		to_owned_expressions, to_owned_fragment, to_owned_physical_plan,
-	},
+	conversion::{to_owned_expressions, to_owned_fragment, to_owned_physical_plan},
 };
 use crate::{
 	Result,
@@ -30,9 +25,7 @@ pub(crate) struct ApplyCompiler {
 impl<'a> From<ApplyNode<'a>> for ApplyCompiler {
 	fn from(node: ApplyNode<'a>) -> Self {
 		Self {
-			input: node.input.map(|input| {
-				Box::new(to_owned_physical_plan(*input))
-			}),
+			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			operator_name: to_owned_fragment(node.operator),
 			arguments: to_owned_expressions(node.expressions),
 		}
@@ -49,10 +42,7 @@ impl<T: CommandTransaction> CompileOperator<T> for ApplyCompiler {
 
 		let mut builder = compiler.build_node(Operator {
 			operator: Apply {
-				operator_name: self
-					.operator_name
-					.fragment()
-					.to_string(),
+				operator_name: self.operator_name.fragment().to_string(),
 				expressions: self.arguments,
 			},
 			input_schemas: vec![],

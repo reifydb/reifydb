@@ -1,10 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::tokenize::{
-	Literal, Token, TokenKind, cursor::Cursor,
-	identifier::is_identifier_char,
-};
+use crate::ast::tokenize::{Literal, Token, TokenKind, cursor::Cursor, identifier::is_identifier_char};
 
 /// Scan for a number literal
 pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
@@ -16,8 +13,7 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	if cursor.peek_str(2).eq_ignore_ascii_case("0x") {
 		cursor.consume();
 		cursor.consume();
-		let hex_part = cursor
-			.consume_while(|c| c.is_ascii_hexdigit() || c == '_');
+		let hex_part = cursor.consume_while(|c| c.is_ascii_hexdigit() || c == '_');
 		if !hex_part.is_empty()
 			&& !hex_part.starts_with('_')
 			&& !hex_part.ends_with('_')
@@ -25,11 +21,7 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 		{
 			return Some(Token {
 				kind: TokenKind::Literal(Literal::Number),
-				fragment: cursor.make_fragment(
-					start_pos,
-					start_line,
-					start_column,
-				),
+				fragment: cursor.make_fragment(start_pos, start_line, start_column),
 			});
 		}
 		return None;
@@ -39,8 +31,7 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	if cursor.peek_str(2).eq_ignore_ascii_case("0b") {
 		cursor.consume();
 		cursor.consume();
-		let bin_part = cursor
-			.consume_while(|c| c == '0' || c == '1' || c == '_');
+		let bin_part = cursor.consume_while(|c| c == '0' || c == '1' || c == '_');
 		if !bin_part.is_empty()
 			&& !bin_part.starts_with('_')
 			&& !bin_part.ends_with('_')
@@ -48,11 +39,7 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 		{
 			return Some(Token {
 				kind: TokenKind::Literal(Literal::Number),
-				fragment: cursor.make_fragment(
-					start_pos,
-					start_line,
-					start_column,
-				),
+				fragment: cursor.make_fragment(start_pos, start_line, start_column),
 			});
 		}
 		return None;
@@ -62,8 +49,7 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	if cursor.peek_str(2).eq_ignore_ascii_case("0o") {
 		cursor.consume();
 		cursor.consume();
-		let oct_part = cursor
-			.consume_while(|c| c >= '0' && c <= '7' || c == '_');
+		let oct_part = cursor.consume_while(|c| c >= '0' && c <= '7' || c == '_');
 		if !oct_part.is_empty()
 			&& !oct_part.starts_with('_')
 			&& !oct_part.ends_with('_')
@@ -71,11 +57,7 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 		{
 			return Some(Token {
 				kind: TokenKind::Literal(Literal::Number),
-				fragment: cursor.make_fragment(
-					start_pos,
-					start_line,
-					start_column,
-				),
+				fragment: cursor.make_fragment(start_pos, start_line, start_column),
 			});
 		}
 		return None;
@@ -105,9 +87,7 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	if cursor.peek() == Some('.') && !has_leading_dot {
 		if cursor.peek_ahead(1).map_or(false, |c| c.is_ascii_digit()) {
 			cursor.consume(); // consume '.'
-			cursor.consume_while(|c| {
-				c.is_ascii_digit() || c == '_'
-			});
+			cursor.consume_while(|c| c.is_ascii_digit() || c == '_');
 		}
 	} else if has_leading_dot {
 		// Already consumed the dot
@@ -123,9 +103,7 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 					cursor.consume();
 				}
 			}
-			let exp_part = cursor.consume_while(|c| {
-				c.is_ascii_digit() || c == '_'
-			});
+			let exp_part = cursor.consume_while(|c| c.is_ascii_digit() || c == '_');
 			if exp_part.is_empty() {
 				// Invalid scientific notation
 				cursor.restore_state(state);
@@ -147,11 +125,7 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 
 	Some(Token {
 		kind: TokenKind::Literal(Literal::Number),
-		fragment: cursor.make_fragment(
-			start_pos,
-			start_line,
-			start_column,
-		),
+		fragment: cursor.make_fragment(start_pos, start_line, start_column),
 	})
 }
 
@@ -254,8 +228,7 @@ mod tests {
 	fn test_invalid_numbers() {
 		// Invalid hex (starts with _)
 		let result = tokenize("0x_FF");
-		assert!(result.is_err()
-			|| result.unwrap()[0].fragment.text() != "0x_FF");
+		assert!(result.is_err() || result.unwrap()[0].fragment.text() != "0x_FF");
 
 		// Invalid binary (contains 2)
 		let result = tokenize("0b102");

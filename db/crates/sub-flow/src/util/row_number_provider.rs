@@ -36,10 +36,7 @@ impl RowNumberProvider {
 	/// Get or create a RowNumber for a given key
 	/// Returns (RowNumber, is_new) where is_new indicates if it was newly
 	/// created
-	pub fn get_or_create_row_number<
-		T: Transaction,
-		O: TransformOperator<T>,
-	>(
+	pub fn get_or_create_row_number<T: Transaction, O: TransformOperator<T>>(
 		&self,
 		operator: &O,
 		txn: &mut StandardCommandTransaction<T>,
@@ -56,8 +53,7 @@ impl RowNumberProvider {
 			let bytes = existing_row.as_ref();
 			if bytes.len() >= 8 {
 				let row_num = u64::from_be_bytes([
-					bytes[0], bytes[1], bytes[2], bytes[3],
-					bytes[4], bytes[5], bytes[6], bytes[7],
+					bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
 				]);
 				return Ok((RowNumber(row_num), false));
 			}
@@ -72,11 +68,7 @@ impl RowNumberProvider {
 
 		// Save the mapping from key to row number
 		let row_num_bytes = counter.to_be_bytes().to_vec();
-		operator.set(
-			txn,
-			&encoded_map_key,
-			EncodedRow(CowVec::new(row_num_bytes)),
-		)?;
+		operator.set(txn, &encoded_map_key, EncodedRow(CowVec::new(row_num_bytes)))?;
 
 		Ok((new_row_number, true))
 	}
@@ -99,8 +91,7 @@ impl RowNumberProvider {
 			let bytes = state_row.as_ref();
 			if bytes.len() >= 8 {
 				Ok(u64::from_be_bytes([
-					bytes[0], bytes[1], bytes[2], bytes[3],
-					bytes[4], bytes[5], bytes[6], bytes[7],
+					bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
 				]))
 			} else {
 				Ok(1)
@@ -117,8 +108,7 @@ impl RowNumberProvider {
 	) -> crate::Result<()> {
 		let key = self.make_counter_key();
 		let encoded_key = EncodedKey::new(key);
-		let value =
-			EncodedRow(CowVec::new(counter.to_be_bytes().to_vec()));
+		let value = EncodedRow(CowVec::new(counter.to_be_bytes().to_vec()));
 		operator.set(txn, &encoded_key, value)?;
 		Ok(())
 	}

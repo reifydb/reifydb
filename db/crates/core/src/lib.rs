@@ -31,9 +31,7 @@ impl HasVersion for CoreVersion {
 		SystemVersion {
 			name: "core".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description:
-				"Core database interfaces and data structures"
-					.to_string(),
+			description: "Core database interfaces and data structures".to_string(),
 			r#type: ComponentType::Module,
 		}
 	}

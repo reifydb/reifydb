@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, NamespaceId, NamespaceViewKey, QueryTransaction,
-	Versioned, ViewDef, ViewId, ViewKey, ViewKind,
+	EncodableKey, NamespaceId, NamespaceViewKey, QueryTransaction, Versioned, ViewDef, ViewId, ViewKey, ViewKind,
 };
 
 use crate::{
@@ -12,10 +11,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_view(
-		rx: &mut impl QueryTransaction,
-		id: ViewId,
-	) -> crate::Result<Option<ViewDef>> {
+	pub fn find_view(rx: &mut impl QueryTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
 		let Some(versioned) = rx.get(&ViewKey {
 			view: id,
 		}
@@ -26,9 +22,7 @@ impl CatalogStore {
 
 		let row = versioned.row;
 		let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
-		let namespace = NamespaceId(
-			view::LAYOUT.get_u64(&row, view::NAMESPACE),
-		);
+		let namespace = NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
 		let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
 
 		let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
@@ -53,23 +47,15 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
-		let Some(view) = rx
-			.range(NamespaceViewKey::full_scan(namespace))?
-			.find_map(|versioned: Versioned| {
-				let row = &versioned.row;
-				let view_name = view_namespace::LAYOUT
-					.get_utf8(row, view_namespace::NAME);
-				if name == view_name {
-					Some(ViewId(view_namespace::LAYOUT
-						.get_u64(
-							row,
-							view_namespace::ID,
-						)))
-				} else {
-					None
-				}
-			})
-		else {
+		let Some(view) = rx.range(NamespaceViewKey::full_scan(namespace))?.find_map(|versioned: Versioned| {
+			let row = &versioned.row;
+			let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
+			if name == view_name {
+				Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)))
+			} else {
+				None
+			}
+		}) else {
 			return Ok(None);
 		};
 
@@ -84,9 +70,7 @@ mod tests {
 
 	use crate::{
 		CatalogStore,
-		test_utils::{
-			create_namespace, create_view, ensure_test_namespace,
-		},
+		test_utils::{create_namespace, create_view, ensure_test_namespace},
 	};
 
 	#[test]
@@ -101,13 +85,7 @@ mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result = CatalogStore::find_view_by_name(
-			&mut txn,
-			NamespaceId(1027),
-			"view_two",
-		)
-		.unwrap()
-		.unwrap();
+		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1027), "view_two").unwrap().unwrap();
 		assert_eq!(result.id, ViewId(1026));
 		assert_eq!(result.namespace, NamespaceId(1027));
 		assert_eq!(result.name, "view_two");
@@ -117,12 +95,7 @@ mod tests {
 	fn test_empty() {
 		let mut txn = create_test_command_transaction();
 
-		let result = CatalogStore::find_view_by_name(
-			&mut txn,
-			NamespaceId(1025),
-			"some_view",
-		)
-		.unwrap();
+		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "some_view").unwrap();
 		assert!(result.is_none());
 	}
 
@@ -138,12 +111,7 @@ mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result = CatalogStore::find_view_by_name(
-			&mut txn,
-			NamespaceId(1025),
-			"view_four_two",
-		)
-		.unwrap();
+		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(1025), "view_four_two").unwrap();
 		assert!(result.is_none());
 	}
 
@@ -159,12 +127,7 @@ mod tests {
 		create_view(&mut txn, "namespace_two", "view_two", &[]);
 		create_view(&mut txn, "namespace_three", "view_three", &[]);
 
-		let result = CatalogStore::find_view_by_name(
-			&mut txn,
-			NamespaceId(2),
-			"view_two",
-		)
-		.unwrap();
+		let result = CatalogStore::find_view_by_name(&mut txn, NamespaceId(2), "view_two").unwrap();
 		assert!(result.is_none());
 	}
 }

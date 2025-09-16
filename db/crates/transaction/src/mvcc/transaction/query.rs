@@ -32,11 +32,7 @@ impl<L> TransactionManagerQuery<L>
 where
 	L: VersionProvider,
 {
-	pub fn new_current(
-		id: TransactionId,
-		engine: TransactionManager<L>,
-		version: CommitVersion,
-	) -> Self {
+	pub fn new_current(id: TransactionId, engine: TransactionManager<L>, version: CommitVersion) -> Self {
 		Self {
 			id,
 			engine,
@@ -44,11 +40,7 @@ where
 		}
 	}
 
-	pub fn new_time_travel(
-		id: TransactionId,
-		engine: TransactionManager<L>,
-		version: CommitVersion,
-	) -> Self {
+	pub fn new_time_travel(id: TransactionId, engine: TransactionManager<L>, version: CommitVersion) -> Self {
 		Self {
 			id,
 			engine,

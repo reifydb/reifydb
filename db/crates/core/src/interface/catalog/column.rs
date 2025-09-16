@@ -3,15 +3,10 @@
 
 use std::ops::Deref;
 
-use reifydb_type::{
-	Type, TypeConstraint, diagnostic::number::NumberOfRangeColumnDescriptor,
-};
+use reifydb_type::{Type, TypeConstraint, diagnostic::number::NumberOfRangeColumnDescriptor};
 use serde::{Deserialize, Serialize};
 
-use super::policy::{
-	ColumnPolicyKind, ColumnSaturationPolicy,
-	DEFAULT_COLUMN_SATURATION_POLICY,
-};
+use super::policy::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY};
 use crate::interface::{ColumnId, ColumnPolicy};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -67,10 +62,7 @@ impl<'a> ColumnDescriptor<'a> {
 		self
 	}
 
-	pub fn with_policies(
-		mut self,
-		policies: Vec<ColumnPolicyKind>,
-	) -> Self {
+	pub fn with_policies(mut self, policies: Vec<ColumnPolicyKind>) -> Self {
 		self.policies = policies;
 		self
 	}
@@ -96,17 +88,13 @@ impl<'a> ColumnDescriptor<'a> {
 		self.policies
 			.iter()
 			.find_map(|p| match p {
-				ColumnPolicyKind::Saturation(policy) => {
-					Some(policy)
-				}
+				ColumnPolicyKind::Saturation(policy) => Some(policy),
 			})
 			.unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
 	}
 
 	// Convert to NumberOfRangeColumnDescriptor for error reporting
-	pub fn to_number_range_descriptor(
-		&self,
-	) -> NumberOfRangeColumnDescriptor<'a> {
+	pub fn to_number_range_descriptor(&self) -> NumberOfRangeColumnDescriptor<'a> {
 		let mut descriptor = NumberOfRangeColumnDescriptor::new();
 		if let Some(namespace) = self.namespace {
 			descriptor = descriptor.with_namespace(namespace);
@@ -125,18 +113,7 @@ impl<'a> ColumnDescriptor<'a> {
 }
 
 #[repr(transparent)]
-#[derive(
-	Debug,
-	Copy,
-	Clone,
-	PartialOrd,
-	PartialEq,
-	Ord,
-	Eq,
-	Hash,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub struct ColumnIndex(pub u16);
 
 impl Deref for ColumnIndex {

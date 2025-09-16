@@ -9,10 +9,10 @@
 //! framework for Go. It combines several testing techniques that make it easy
 //! and efficient to write and update test cases:
 //!
-//! * [Golden master testing](https://en.wikipedia.org/wiki/Characterization_test)
-//!   (aka characterization testing or historical oracle)
-//! * [Data-driven testing](https://en.wikipedia.org/wiki/Data-driven_testing)
-//!   (aka table-driven testing or parameterized testing)
+//! * [Golden master testing](https://en.wikipedia.org/wiki/Characterization_test) (aka characterization testing or
+//!   historical oracle)
+//! * [Data-driven testing](https://en.wikipedia.org/wiki/Data-driven_testing) (aka table-driven testing or
+//!   parameterized testing)
 //! * [Keyword-driven testing](https://en.wikipedia.org/wiki/Keyword-driven_testing)
 //!
 //! A testscript is a plain text file that contains a set of arbitrary input
@@ -54,12 +54,11 @@
 //!
 //! For real-world examples, see e.g.:
 //!
-//! * [toyDB Raft](https://github.com/erikgrinaker/toydb/tree/master/src/raft/testscripts/node):
-//!   distributed consensus cluster.
-//! * [toyDB MVCC](https://github.com/erikgrinaker/toydb/tree/master/src/store/testscripts/mvcc):
-//!   ACID transactions.
-//! * [testscript parser](https://github.com/erikgrinaker/testscript/tree/main/tests/scripts):
-//!   testscript uses itself to test its parser and runner.
+//! * [toyDB Raft](https://github.com/erikgrinaker/toydb/tree/master/src/raft/testscripts/node): distributed consensus
+//!   cluster.
+//! * [toyDB MVCC](https://github.com/erikgrinaker/toydb/tree/master/src/store/testscripts/mvcc): ACID transactions.
+//! * [testscript parser](https://github.com/erikgrinaker/testscript/tree/main/tests/scripts): testscript uses itself to
+//!   test its parser and runner.
 //!
 //! Below is a basic example, testing the Rust standard library's
 //! [`BTreeMap`](https://doc.rust-lang.org/std/collections/struct.BTreeMap.html).
@@ -145,11 +144,9 @@
 //!
 //! It may additionally have:
 //!
-//! * [**Arguments:**](Argument) any number of space-separated arguments. These
-//!   have a string [value](Argument::value), and optionally also a string
-//!   [key](Argument::key) as `key=value`. Keys and values can be empty, and
-//!   duplicate keys are allowed by the parser (the runner can handle this as
-//!   desired).
+//! * [**Arguments:**](Argument) any number of space-separated arguments. These have a string [value](Argument::value),
+//!   and optionally also a string [key](Argument::key) as `key=value`. Keys and values can be empty, and duplicate keys
+//!   are allowed by the parser (the runner can handle this as desired).
 //!
 //!     ```text
 //!     command argument key=value
@@ -158,10 +155,8 @@
 //!     ---
 //!     ```
 //!
-//! * [**Prefix:**](Command::prefix) an optional :-terminated string prefix
-//!   before the command. The command's output will be given the same prefix.
-//!   The prefix can be used by the test runner, e.g. to signify two different
-//!   clients.
+//! * [**Prefix:**](Command::prefix) an optional :-terminated string prefix before the command. The command's output
+//!   will be given the same prefix. The prefix can be used by the test runner, e.g. to signify two different clients.
 //!
 //!     ```text
 //!     client1: put key=value
@@ -171,9 +166,8 @@
 //!     client2: get key=value
 //!     ```
 //!
-//! * [**Silencing:**](Command::silent) a command wrapped in `()` will have its
-//!   output suppressed. This can be useful e.g. for setup commands whose output
-//!   are not of interest in the current test case and would only add noise.
+//! * [**Silencing:**](Command::silent) a command wrapped in `()` will have its output suppressed. This can be useful
+//!   e.g. for setup commands whose output are not of interest in the current test case and would only add noise.
 //!
 //!     ```text
 //!     echo foo
@@ -182,11 +176,10 @@
 //!     foo
 //!     ```
 //!
-//! * [**Failure:**](Command::fail) if `!` precedes the command, it is expected
-//!   to fail with an error or panic, and the failure message is used as output.
-//!   If the command unexpectedly succeeds, the test fails. If the line contains
-//!   other symbols before the command name (e.g. a prefix or silencing), the
-//!   `!` must be used immediately before the command name.
+//! * [**Failure:**](Command::fail) if `!` precedes the command, it is expected to fail with an error or panic, and the
+//!   failure message is used as output. If the command unexpectedly succeeds, the test fails. If the line contains
+//!   other symbols before the command name (e.g. a prefix or silencing), the `!` must be used immediately before the
+//!   command name.
 //!
 //!     ```text
 //!     ! command error=foo
@@ -197,9 +190,8 @@
 //!     prefix: Panic: bar
 //!     ```
 //!
-//! * [**Tags:**](Command::tags) an optional comma- or space-separated list of
-//!   tags (strings) enclosed in [] before or after the command and arguments.
-//!   This can be used by the runner e.g. to modify the execution of a command.
+//! * [**Tags:**](Command::tags) an optional comma- or space-separated list of tags (strings) enclosed in [] before or
+//!   after the command and arguments. This can be used by the runner e.g. to modify the execution of a command.
 //!
 //!     ```text
 //!     command [tag]
@@ -209,11 +201,9 @@
 //!     ---
 //!     ```
 //!
-//!  * **Literal:** if `>` precedes the command, the entire rest of the line is
-//!    taken to be the command name (except leading whitespace). Arguments,
-//!    tags, comments, and any other special characters are ignored and used
-//!    as-is. As a special case (currently only with `>`), lines can fragment
-//!    multiple lines by ending the line with \.
+//!  * **Literal:** if `>` precedes the command, the entire rest of the line is taken to be the command name (except
+//!    leading whitespace). Arguments, tags, comments, and any other special characters are ignored and used as-is. As a
+//!    special case (currently only with `>`), lines can fragment multiple lines by ending the line with \.
 //!
 //!    ```text
 //!    > a long command name including key=value, [tags], # a comment and

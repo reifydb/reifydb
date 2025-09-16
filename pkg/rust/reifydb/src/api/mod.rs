@@ -11,9 +11,7 @@ use reifydb_storage::{
 	sqlite::{Sqlite, SqliteConfig},
 };
 use reifydb_transaction::{
-	mvcc::transaction::{
-		optimistic::Optimistic, serializable::Serializable,
-	},
+	mvcc::transaction::{optimistic::Optimistic, serializable::Serializable},
 	svl::SingleVersionLock,
 };
 
@@ -23,9 +21,7 @@ pub mod embedded;
 pub mod server;
 
 /// Convenience function to create in-memory storage
-pub fn memory(
-) -> (Memory, SingleVersionLock<Memory>, StandardCdcTransaction<Memory>, EventBus)
-{
+pub fn memory() -> (Memory, SingleVersionLock<Memory>, StandardCdcTransaction<Memory>, EventBus) {
 	let eventbus = EventBus::new();
 	let memory = Memory::default();
 	(
@@ -37,10 +33,7 @@ pub fn memory(
 }
 
 /// Convenience function to create SQLite storage
-pub fn sqlite(
-	config: SqliteConfig,
-) -> (Sqlite, SingleVersionLock<Sqlite>, StandardCdcTransaction<Sqlite>, EventBus)
-{
+pub fn sqlite(config: SqliteConfig) -> (Sqlite, SingleVersionLock<Sqlite>, StandardCdcTransaction<Sqlite>, EventBus) {
 	let eventbus = EventBus::new();
 	let result = Sqlite::new(config);
 	(
@@ -52,35 +45,21 @@ pub fn sqlite(
 }
 
 /// Convenience function to create an optimistic transaction layer
-pub fn optimistic<VS, UT, C>(
-	input: (VS, UT, C, EventBus),
-) -> (Optimistic<VS, UT>, UT, C, EventBus)
+pub fn optimistic<VS, UT, C>(input: (VS, UT, C, EventBus)) -> (Optimistic<VS, UT>, UT, C, EventBus)
 where
 	VS: VersionedStorage,
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	(
-		Optimistic::new(input.0, input.1.clone(), input.3.clone()),
-		input.1,
-		input.2,
-		input.3,
-	)
+	(Optimistic::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
 }
 
 /// Convenience function to create a serializable transaction layer
-pub fn serializable<VS, UT, C>(
-	input: (VS, UT, C, EventBus),
-) -> (Serializable<VS, UT>, UT, C, EventBus)
+pub fn serializable<VS, UT, C>(input: (VS, UT, C, EventBus)) -> (Serializable<VS, UT>, UT, C, EventBus)
 where
 	VS: VersionedStorage,
 	UT: UnversionedTransaction,
 	C: CdcTransaction,
 {
-	(
-		Serializable::new(input.0, input.1.clone(), input.3.clone()),
-		input.1,
-		input.2,
-		input.3,
-	)
+	(Serializable::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
 }

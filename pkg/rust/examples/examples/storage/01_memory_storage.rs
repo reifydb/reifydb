@@ -21,9 +21,7 @@ fn main() {
 
 	// Create a namespace
 	log_info!("Creating namespace 'app'...");
-	let result = db
-		.command_as_root("create namespace app", Params::None)
-		.unwrap();
+	let result = db.command_as_root("create namespace app", Params::None).unwrap();
 	for frame in result {
 		log_info!("{}", frame);
 	}
@@ -90,13 +88,7 @@ insert app.users"#,
 	log_info!("\nQuerying active users:");
 	log_query("from app.users filter active == true");
 
-	for frame in db
-		.query_as_root(
-			"from app.users filter active == true",
-			Params::None,
-		)
-		.unwrap()
-	{
+	for frame in db.query_as_root("from app.users filter active == true", Params::None).unwrap() {
 		log_info!("{}", frame);
 	}
 
@@ -125,10 +117,7 @@ insert app.users"#,
 	log_info!("Querying all users after update:");
 	log_query("from app.users sort id");
 
-	for frame in db
-		.query_as_root("from app.users sort id", Params::None)
-		.unwrap()
-	{
+	for frame in db.query_as_root("from app.users sort id", Params::None).unwrap() {
 		log_info!("{}", frame);
 	}
 }

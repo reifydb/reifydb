@@ -17,9 +17,7 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-	interface::{
-		EncodableKeyRange, Key, RowKey, RowKeyRange, TableId, Versioned,
-	},
+	interface::{EncodableKeyRange, Key, RowKey, RowKeyRange, TableId, Versioned},
 	row::EncodedRow,
 };
 use rusqlite::{Connection, Statement, params};
@@ -27,8 +25,7 @@ use rusqlite::{Connection, Statement, params};
 use crate::sqlite::read::ReadConnection;
 
 /// Cache for table names to avoid repeated string allocations
-static TABLE_NAME_CACHE: OnceLock<Mutex<HashMap<TableId, String>>> =
-	OnceLock::new();
+static TABLE_NAME_CACHE: OnceLock<Mutex<HashMap<TableId, String>>> = OnceLock::new();
 
 /// Checks if an EncodedKey represents a RowKey
 pub(crate) fn as_table_row_key(key: &EncodedKey) -> Option<RowKey> {
@@ -44,15 +41,12 @@ pub(crate) fn as_table_row_key(key: &EncodedKey) -> Option<RowKey> {
 /// Returns the appropriate table name for a given key, with caching
 pub(crate) fn table_name(key: &EncodedKey) -> crate::Result<&'static str> {
 	if let Some(key) = as_table_row_key(key) {
-		let cache = TABLE_NAME_CACHE
-			.get_or_init(|| Mutex::new(HashMap::new()));
+		let cache = TABLE_NAME_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 		let mut cache_guard = cache.lock().unwrap();
 
 		let table_id = key.source.to_table_id()?;
 
-		let table_name = cache_guard
-			.entry(table_id)
-			.or_insert_with(|| format!("table_{}", table_id));
+		let table_name = cache_guard.entry(table_id).or_insert_with(|| format!("table_{}", table_id));
 
 		// SAFETY: We're returning a reference to a string that's stored
 		// in the static cache The cache is never cleared, so the
@@ -94,14 +88,10 @@ pub(crate) fn build_range_query(
 ) -> (&'static str, u8) {
 	match (start_bound, end_bound) {
 		(Bound::Unbounded, Bound::Unbounded) => match order {
-			"ASC" => (
-				"SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC LIMIT ?",
-				1,
-			),
-			"DESC" => (
-				"SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key DESC LIMIT ?",
-				1,
-			),
+			"ASC" => ("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC LIMIT ?", 1),
+			"DESC" => {
+				("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key DESC LIMIT ?", 1)
+			}
 			_ => unreachable!(),
 		},
 		(Bound::Included(_), Bound::Unbounded) => match order {
@@ -209,24 +199,20 @@ pub(crate) fn execute_batched_range_query(
 	match param_count {
 		1 => {
 			let rows = stmt
-				.query_map(
-					params![version, batch_size],
-					|row| {
-						Ok(Versioned {
-                        key: EncodedKey(CowVec::new(row.get(0)?)),
-                        row: EncodedRow(CowVec::new(row.get(1)?)),
-                        version: row.get(2)?})
-					},
-				)
+				.query_map(params![version, batch_size], |row| {
+					Ok(Versioned {
+						key: EncodedKey(CowVec::new(row.get(0)?)),
+						row: EncodedRow(CowVec::new(row.get(1)?)),
+						version: row.get(2)?,
+					})
+				})
 				.unwrap();
 
 			for result in rows {
 				match result {
 					Ok(versioned) => {
 						if !versioned.row.is_deleted() {
-							buffer.push_back(
-								versioned,
-							);
+							buffer.push_back(versioned);
 							count += 1;
 						}
 					}
@@ -236,31 +222,25 @@ pub(crate) fn execute_batched_range_query(
 		}
 		2 => {
 			let param = match (start_bound, end_bound) {
-				(Bound::Included(key), _)
-				| (Bound::Excluded(key), _) => key.to_vec(),
-				(_, Bound::Included(key))
-				| (_, Bound::Excluded(key)) => key.to_vec(),
+				(Bound::Included(key), _) | (Bound::Excluded(key), _) => key.to_vec(),
+				(_, Bound::Included(key)) | (_, Bound::Excluded(key)) => key.to_vec(),
 				_ => unreachable!(),
 			};
 			let rows = stmt
-				.query_map(
-					params![param, version, batch_size],
-					|row| {
-						Ok(Versioned {
-                        key: EncodedKey(CowVec::new(row.get(0)?)),
-                        row: EncodedRow(CowVec::new(row.get(1)?)),
-                        version: row.get(2)?})
-					},
-				)
+				.query_map(params![param, version, batch_size], |row| {
+					Ok(Versioned {
+						key: EncodedKey(CowVec::new(row.get(0)?)),
+						row: EncodedRow(CowVec::new(row.get(1)?)),
+						version: row.get(2)?,
+					})
+				})
 				.unwrap();
 
 			for result in rows {
 				match result {
 					Ok(versioned) => {
 						if !versioned.row.is_deleted() {
-							buffer.push_back(
-								versioned,
-							);
+							buffer.push_back(versioned);
 							count += 1;
 						}
 					}
@@ -270,41 +250,28 @@ pub(crate) fn execute_batched_range_query(
 		}
 		3 => {
 			let start_param = match start_bound {
-				Bound::Included(key) | Bound::Excluded(key) => {
-					key.to_vec()
-				}
+				Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
 				_ => unreachable!(),
 			};
 			let end_param = match end_bound {
-				Bound::Included(key) | Bound::Excluded(key) => {
-					key.to_vec()
-				}
+				Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
 				_ => unreachable!(),
 			};
 			let rows = stmt
-				.query_map(
-					params![
-						start_param,
-						end_param,
-						version,
-						batch_size
-					],
-					|row| {
-						Ok(Versioned {
-                        key: EncodedKey(CowVec::new(row.get(0)?)),
-                        row: EncodedRow(CowVec::new(row.get(1)?)),
-                        version: row.get(2)?})
-					},
-				)
+				.query_map(params![start_param, end_param, version, batch_size], |row| {
+					Ok(Versioned {
+						key: EncodedKey(CowVec::new(row.get(0)?)),
+						row: EncodedRow(CowVec::new(row.get(1)?)),
+						version: row.get(2)?,
+					})
+				})
 				.unwrap();
 
 			for result in rows {
 				match result {
 					Ok(versioned) => {
 						if !versioned.row.is_deleted() {
-							buffer.push_back(
-								versioned,
-							);
+							buffer.push_back(versioned);
 							count += 1;
 						}
 					}
@@ -321,13 +288,12 @@ pub(crate) fn execute_batched_range_query(
 pub(crate) fn get_table_names(conn: &ReadConnection) -> Vec<String> {
 	let conn_guard = conn.lock().unwrap();
 	let mut stmt = conn_guard
-        .prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='versioned' OR name LIKE 'table_%')")
-        .unwrap();
+		.prepare(
+			"SELECT name FROM sqlite_master WHERE type='table' AND (name='versioned' OR name LIKE 'table_%')",
+		)
+		.unwrap();
 
-	stmt.query_map([], |row| Ok(row.get::<_, String>(0)?))
-		.unwrap()
-		.map(Result::unwrap)
-		.collect()
+	stmt.query_map([], |row| Ok(row.get::<_, String>(0)?)).unwrap().map(Result::unwrap).collect()
 }
 
 /// Helper function to execute batched iteration queries across multiple tables
@@ -344,71 +310,49 @@ pub(crate) fn execute_scan_query(
 
 	// Query each table
 	for table_name in table_names {
-		let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) =
-			match (last_key, order) {
-				(None, "ASC") => (
-					format!(
-						"SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC LIMIT ?",
-						table_name
-					),
-					vec![
-						Box::new(version),
-						Box::new(batch_size),
-					],
+		let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
+			(None, "ASC") => (
+				format!(
+					"SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC LIMIT ?",
+					table_name
 				),
-				(None, "DESC") => (
-					format!(
-						"SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key DESC LIMIT ?",
-						table_name
-					),
-					vec![
-						Box::new(version),
-						Box::new(batch_size),
-					],
+				vec![Box::new(version), Box::new(batch_size)],
+			),
+			(None, "DESC") => (
+				format!(
+					"SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key DESC LIMIT ?",
+					table_name
 				),
-				(Some(key), "ASC") => (
-					format!(
-						"SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key ASC LIMIT ?",
-						table_name
-					),
-					vec![
-						Box::new(key.to_vec()),
-						Box::new(version),
-						Box::new(batch_size),
-					],
+				vec![Box::new(version), Box::new(batch_size)],
+			),
+			(Some(key), "ASC") => (
+				format!(
+					"SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key ASC LIMIT ?",
+					table_name
 				),
-				(Some(key), "DESC") => (
-					format!(
-						"SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key DESC LIMIT ?",
-						table_name
-					),
-					vec![
-						Box::new(key.to_vec()),
-						Box::new(version),
-						Box::new(batch_size),
-					],
+				vec![Box::new(key.to_vec()), Box::new(version), Box::new(batch_size)],
+			),
+			(Some(key), "DESC") => (
+				format!(
+					"SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key DESC LIMIT ?",
+					table_name
 				),
-				_ => unreachable!(),
-			};
+				vec![Box::new(key.to_vec()), Box::new(version), Box::new(batch_size)],
+			),
+			_ => unreachable!(),
+		};
 
 		let conn_guard = conn.lock().unwrap();
 		let mut stmt = conn_guard.prepare(&query).unwrap();
 
 		let rows = stmt
-			.query_map(
-				rusqlite::params_from_iter(params.iter()),
-				|row| {
-					Ok(Versioned {
-						key: EncodedKey(CowVec::new(
-							row.get(0)?,
-						)),
-						row: EncodedRow(CowVec::new(
-							row.get(1)?,
-						)),
-						version: row.get(2)?,
-					})
-				},
-			)
+			.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+				Ok(Versioned {
+					key: EncodedKey(CowVec::new(row.get(0)?)),
+					row: EncodedRow(CowVec::new(row.get(1)?)),
+					version: row.get(2)?,
+				})
+			})
 			.unwrap();
 
 		for result in rows {

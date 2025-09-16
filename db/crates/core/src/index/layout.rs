@@ -19,17 +19,12 @@ impl Deref for EncodedIndexLayout {
 }
 
 impl EncodedIndexLayout {
-	pub fn new(
-		types: &[Type],
-		directions: &[SortDirection],
-	) -> crate::Result<Self> {
+	pub fn new(types: &[Type], directions: &[SortDirection]) -> crate::Result<Self> {
 		if types.len() != directions.len() {
-			return Err(crate::error!(
-				catalog::index_types_directions_mismatch(
-					types.len(),
-					directions.len()
-				)
-			));
+			return Err(crate::error!(catalog::index_types_directions_mismatch(
+				types.len(),
+				directions.len()
+			)));
 		}
 
 		for typ in types {
@@ -38,9 +33,7 @@ impl EncodedIndexLayout {
 			}
 		}
 
-		Ok(Self(Arc::new(EncodedIndexLayoutInner::new(
-			types, directions,
-		))))
+		Ok(Self(Arc::new(EncodedIndexLayoutInner::new(types, directions))))
 	}
 }
 
@@ -101,21 +94,13 @@ impl EncodedIndexLayoutInner {
 	}
 
 	pub fn allocate_key(&self) -> EncodedIndexKey {
-		let layout = std::alloc::Layout::from_size_align(
-			self.total_size,
-			self.alignment,
-		)
-		.unwrap();
+		let layout = std::alloc::Layout::from_size_align(self.total_size, self.alignment).unwrap();
 		unsafe {
 			let ptr = std::alloc::alloc_zeroed(layout);
 			if ptr.is_null() {
 				std::alloc::handle_alloc_error(layout);
 			}
-			let vec = Vec::from_raw_parts(
-				ptr,
-				self.total_size,
-				self.total_size,
-			);
+			let vec = Vec::from_raw_parts(ptr, self.total_size, self.total_size);
 			EncodedIndexKey(CowVec::new(vec))
 		}
 	}
@@ -132,12 +117,11 @@ impl EncodedIndexLayoutInner {
 
 		let bitvec_slice = &key[..self.bitvec_size];
 		for (i, &byte) in bitvec_slice.iter().enumerate() {
-			let bits_in_byte =
-				if i == self.bitvec_size - 1 && bits % 8 != 0 {
-					bits % 8
-				} else {
-					8
-				};
+			let bits_in_byte = if i == self.bitvec_size - 1 && bits % 8 != 0 {
+				bits % 8
+			} else {
+				8
+			};
 
 			let mask = if bits_in_byte == 8 {
 				0xFF
@@ -172,11 +156,7 @@ mod tests {
 
 	#[test]
 	fn test_single_field_int() {
-		let layout = EncodedIndexLayout::new(
-			&[Type::Int4],
-			&[SortDirection::Asc],
-		)
-		.unwrap();
+		let layout = EncodedIndexLayout::new(&[Type::Int4], &[SortDirection::Asc]).unwrap();
 
 		assert_eq!(layout.bitvec_size, 1);
 		assert_eq!(layout.fields.len(), 1);
@@ -191,11 +171,7 @@ mod tests {
 	fn test_multiple_fields_mixed_directions() {
 		let layout = EncodedIndexLayout::new(
 			&[Type::Int4, Type::Int8, Type::RowNumber],
-			&[
-				SortDirection::Desc,
-				SortDirection::Asc,
-				SortDirection::Asc,
-			],
+			&[SortDirection::Desc, SortDirection::Asc, SortDirection::Asc],
 		)
 		.unwrap();
 
@@ -216,16 +192,11 @@ mod tests {
 
 	#[test]
 	fn test_reject_variable_length_types() {
-		let result = EncodedIndexLayout::new(
-			&[Type::Int4, Type::Utf8],
-			&[SortDirection::Asc, SortDirection::Asc],
-		);
+		let result =
+			EncodedIndexLayout::new(&[Type::Int4, Type::Utf8], &[SortDirection::Asc, SortDirection::Asc]);
 		assert!(result.is_err());
 
-		let result = EncodedIndexLayout::new(
-			&[Type::Blob],
-			&[SortDirection::Desc],
-		);
+		let result = EncodedIndexLayout::new(&[Type::Blob], &[SortDirection::Desc]);
 		assert!(result.is_err());
 	}
 

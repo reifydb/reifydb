@@ -18,10 +18,7 @@ pub struct MapTerminalOperator {
 }
 
 impl MapTerminalOperator {
-	pub fn new(
-		expressions: Vec<Expression<'static>>,
-		view_def: ViewDef,
-	) -> Self {
+	pub fn new(expressions: Vec<Expression<'static>>, view_def: ViewDef) -> Self {
 		Self {
 			expressions,
 			view_def,
@@ -45,8 +42,7 @@ impl<T: Transaction> Operator<T> for MapTerminalOperator {
 					row_ids,
 					after,
 				} => {
-					let projected_columns = self
-						.project(evaluator, &after)?;
+					let projected_columns = self.project(evaluator, &after)?;
 					// Only include if we have valid data
 					if !projected_columns.is_empty() {
 						output.push(FlowDiff::Insert {
@@ -62,8 +58,7 @@ impl<T: Transaction> Operator<T> for MapTerminalOperator {
 					before,
 					after,
 				} => {
-					let projected_columns = self
-						.project(evaluator, &after)?;
+					let projected_columns = self.project(evaluator, &after)?;
 					// Only include if we have valid data
 					if !projected_columns.is_empty() {
 						output.push(FlowDiff::Update {
@@ -81,8 +76,7 @@ impl<T: Transaction> Operator<T> for MapTerminalOperator {
 				} => {
 					// For removes, we might need to project
 					// to maintain namespace consistency
-					let projected_columns = self
-						.project(evaluator, &before)?;
+					let projected_columns = self.project(evaluator, &before)?;
 					// Only include if we have valid data
 					if !projected_columns.is_empty() {
 						output.push(FlowDiff::Remove {
@@ -100,11 +94,7 @@ impl<T: Transaction> Operator<T> for MapTerminalOperator {
 }
 
 impl MapTerminalOperator {
-	fn project(
-		&self,
-		evaluator: &StandardEvaluator,
-		columns: &Columns,
-	) -> crate::Result<Columns> {
+	fn project(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns> {
 		if columns.is_empty() {
 			return Ok(columns.clone());
 		}
@@ -132,20 +122,13 @@ impl MapTerminalOperator {
 		// names.
 
 		for (i, expr) in self.expressions.iter().enumerate() {
-			let column = if let Some(view_column) =
-				self.view_def.columns.get(i)
-			{
+			let column = if let Some(view_column) = self.view_def.columns.get(i) {
 				// Try to evaluate the expression
 				// If it fails due to missing columns,
 				// we'll handle it
-				let result = match evaluator
-					.evaluate(&eval_ctx, expr)
-				{
+				let result = match evaluator.evaluate(&eval_ctx, expr) {
 					Ok(r) => r,
-					Err(e) if e.to_string().contains(
-						"column not found",
-					) =>
-					{
+					Err(e) if e.to_string().contains("column not found") => {
 						// This expression references a
 						// column that doesn't exist
 						// This happens when partial
@@ -158,31 +141,25 @@ impl MapTerminalOperator {
 
 						// Create an undefined column
 						// with the correct name
-						let undefined_data = reifydb_core::value::columnar::ColumnData::undefined(row_count);
+						let undefined_data =
+							reifydb_core::value::columnar::ColumnData::undefined(row_count);
 						Column::ColumnQualified(ColumnQualified {
-									name: view_column.name.clone(),
-									data: undefined_data,
-								})
+							name: view_column.name.clone(),
+							data: undefined_data,
+						})
 					}
 					Err(e) => {
-						log_error!(
-							"MapTerminal: Error evaluating expression {}: {}",
-							i,
-							e
-						);
+						log_error!("MapTerminal: Error evaluating expression {}: {}", i, e);
 						return Err(e);
 					}
 				};
 
 				let current_type = result.data().get_type();
-				let target_type =
-					view_column.constraint.get_type();
+				let target_type = view_column.constraint.get_type();
 
 				// If types don't match and it's not
 				// undefined, create a cast expression
-				if current_type != target_type
-					&& current_type != Type::Undefined
-				{
+				if current_type != target_type && current_type != Type::Undefined {
 					// Create a cast expression to
 					// coerce the type
 					let cast_expr = Expression::Cast(CastExpression {
@@ -190,39 +167,27 @@ impl MapTerminalOperator {
 						expression: Box::new(expr.clone()),
 						to: TypeExpression {
 							fragment: Fragment::owned_internal(target_type.to_string()),
-							ty: target_type}});
+							ty: target_type,
+						},
+					});
 
 					// Evaluate the cast expression
-					let casted = evaluator.evaluate(
-						&eval_ctx, &cast_expr,
-					)?;
+					let casted = evaluator.evaluate(&eval_ctx, &cast_expr)?;
 
 					// Create a properly named
 					// column
-					Column::ColumnQualified(
-						ColumnQualified {
-							name: view_column
-								.name
-								.clone(),
-							data: casted
-								.data()
-								.clone(),
-						},
-					)
+					Column::ColumnQualified(ColumnQualified {
+						name: view_column.name.clone(),
+						data: casted.data().clone(),
+					})
 				} else {
 					// Types match or it's
 					// undefined, just rename if
 					// needed
-					Column::ColumnQualified(
-						ColumnQualified {
-							name: view_column
-								.name
-								.clone(),
-							data: result
-								.data()
-								.clone(),
-						},
-					)
+					Column::ColumnQualified(ColumnQualified {
+						name: view_column.name.clone(),
+						data: result.data().clone(),
+					})
 				}
 			} else {
 				// No namespace info for this column

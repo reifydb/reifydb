@@ -3,9 +3,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{
-	ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef,
-};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
 use reifydb_type::{Type, TypeConstraint};
 
 use super::ids::{columns::namespaces::*, table_virtual::NAMESPACES};
@@ -24,10 +22,7 @@ pub fn namespaces() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: ID,
 					name: "id".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Uint8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -35,10 +30,7 @@ pub fn namespaces() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: NAME,
 					name: "name".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Utf8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,

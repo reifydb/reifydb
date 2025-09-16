@@ -191,10 +191,7 @@ mod tests {
 		fn test_wrapping_convert() {
 			let x: i128 = -1;
 			let y: u128 = x.wrapping_convert();
-			assert_eq!(
-				y,
-				340282366920938463463374607431768211455u128
-			);
+			assert_eq!(y, 340282366920938463463374607431768211455u128);
 		}
 	}
 	mod f32 {
@@ -489,20 +486,14 @@ mod tests {
 		fn test_saturating_convert() {
 			let x: i128 = i128::MIN;
 			let y: Decimal = x.saturating_convert();
-			assert_eq!(
-				y.to_string(),
-				"-170141183460469231731687303715884105728"
-			);
+			assert_eq!(y.to_string(), "-170141183460469231731687303715884105728");
 		}
 
 		#[test]
 		fn test_wrapping_convert() {
 			let x: i128 = i128::MAX;
 			let y: Decimal = x.wrapping_convert();
-			assert_eq!(
-				y.to_string(),
-				"170141183460469231731687303715884105727"
-			);
+			assert_eq!(y.to_string(), "170141183460469231731687303715884105727");
 		}
 	}
 
@@ -515,20 +506,14 @@ mod tests {
 			let x: i128 = i128::MIN;
 			let y: Option<Int> = x.checked_convert();
 			assert!(y.is_some());
-			assert_eq!(
-				y.unwrap().to_string(),
-				"-170141183460469231731687303715884105728"
-			);
+			assert_eq!(y.unwrap().to_string(), "-170141183460469231731687303715884105728");
 		}
 
 		#[test]
 		fn test_saturating_convert() {
 			let x: i128 = i128::MAX;
 			let y: Int = x.saturating_convert();
-			assert_eq!(
-				y.to_string(),
-				"170141183460469231731687303715884105727"
-			);
+			assert_eq!(y.to_string(), "170141183460469231731687303715884105727");
 		}
 
 		#[test]
@@ -569,10 +554,7 @@ mod tests {
 		fn test_wrapping_convert() {
 			let x: i128 = -1;
 			let y: Uint = x.wrapping_convert();
-			assert_eq!(
-				y.to_string(),
-				"340282366920938463463374607431768211455"
-			);
+			assert_eq!(y.to_string(), "340282366920938463463374607431768211455");
 		}
 	}
 }

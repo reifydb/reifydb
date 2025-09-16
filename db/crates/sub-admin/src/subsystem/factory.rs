@@ -29,13 +29,8 @@ impl<T: Transaction> AdminSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
-	for AdminSubsystemFactory<T>
-{
-	fn create(
-		self: Box<Self>,
-		ioc: &IocContainer,
-	) -> reifydb_type::Result<Box<dyn Subsystem>> {
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for AdminSubsystemFactory<T> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine<T>>()?;
 		let subsystem = AdminSubsystem::new(self.config, engine);
 		Ok(Box::new(subsystem))

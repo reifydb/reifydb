@@ -57,10 +57,7 @@ pub trait Runner {
 	/// prepended to the command's output, and is affected e.g. by the
 	/// prefix and silencing of the command.
 	#[allow(unused_variables)]
-	fn start_command(
-		&mut self,
-		command: &Command,
-	) -> Result<String, Box<dyn Error>> {
+	fn start_command(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		Ok(String::new())
 	}
 
@@ -68,10 +65,7 @@ pub trait Runner {
 	/// appended to the command's output, and is affected e.g. by the prefix
 	/// and silencing of the command.
 	#[allow(unused_variables)]
-	fn end_command(
-		&mut self,
-		command: &Command,
-	) -> Result<String, Box<dyn Error>> {
+	fn end_command(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		Ok(String::new())
 	}
 }
@@ -82,22 +76,13 @@ pub trait Runner {
 /// IO, parser, or runner failure. If the environment variable
 /// `UPDATE_TESTFILES=1` is set, the new output file will replace the input
 /// file.
-pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(
-	runner: &mut R,
-	path: P,
-) -> std::io::Result<()> {
+pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(runner: &mut R, path: P) -> std::io::Result<()> {
 	let path = path.as_ref();
 	let Some(dir) = path.parent() else {
-		return Err(std::io::Error::new(
-			std::io::ErrorKind::InvalidInput,
-			format!("invalid path '{path:?}'"),
-		));
+		return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("invalid path '{path:?}'")));
 	};
 	let Some(filename) = path.file_name() else {
-		return Err(std::io::Error::new(
-			std::io::ErrorKind::InvalidInput,
-			format!("invalid path '{path:?}'"),
-		));
+		return Err(std::io::Error::new(std::io::ErrorKind::InvalidInput, format!("invalid path '{path:?}'")));
 	};
 
 	if filename.to_str().unwrap().ends_with(".skip") {
@@ -107,29 +92,21 @@ pub fn run_path<R: Runner, P: AsRef<std::path::Path>>(
 	let input = std::fs::read_to_string(dir.join(filename))?;
 	let output = generate(runner, &input)?;
 
-	crate::goldenfile::Mint::new(dir)
-		.new_goldenfile(filename)?
-		.write_all(output.as_bytes())
+	crate::goldenfile::Mint::new(dir).new_goldenfile(filename)?.write_all(output.as_bytes())
 }
 
 pub fn run<R: Runner, S: Into<String>>(runner: R, test: S) {
 	try_run(runner, test).unwrap();
 }
 
-pub fn try_run<R: Runner, S: Into<String>>(
-	mut runner: R,
-	test: S,
-) -> std::io::Result<()> {
+pub fn try_run<R: Runner, S: Into<String>>(mut runner: R, test: S) -> std::io::Result<()> {
 	let input = test.into();
 
 	let dir = temp_dir();
 	let file_name = format!(
 		"test-{}-{}.txt",
 		std::process::id(),
-		std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_nanos()
+		std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
 	);
 	let file_path = dir.join(&file_name);
 
@@ -137,16 +114,11 @@ pub fn try_run<R: Runner, S: Into<String>>(
 	file.write_all(input.as_bytes())?;
 
 	let output = generate(&mut runner, &input)?;
-	crate::goldenfile::Mint::new(dir)
-		.new_goldenfile(&file_name)?
-		.write_all(output.as_bytes())
+	crate::goldenfile::Mint::new(dir).new_goldenfile(&file_name)?.write_all(output.as_bytes())
 }
 
 /// Generates output for a testscript input, without comparing them.
-pub fn generate<R: Runner>(
-	runner: &mut R,
-	input: &str,
-) -> std::io::Result<String> {
+pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<String> {
 	let mut output = String::with_capacity(input.len()); // common case: output == input
 
 	// Detect end-of-line format.
@@ -164,22 +136,15 @@ pub fn generate<R: Runner>(
 				e.input.location_line(),
 				e.input.get_column(),
 				e.code,
-				String::from_utf8_lossy(
-					e.input.get_line_beginning()
-				),
-				' '.to_string()
-					.repeat(e.input.get_utf8_column() - 1)
+				String::from_utf8_lossy(e.input.get_line_beginning()),
+				' '.to_string().repeat(e.input.get_utf8_column() - 1)
 			),
 		)
 	})?;
 
 	// Call the start_script() hook.
-	runner.start_script().map_err(|e| {
-		std::io::Error::new(
-			std::io::ErrorKind::Other,
-			format!("start_script failed: {e}"),
-		)
-	})?;
+	runner.start_script()
+		.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("start_script failed: {e}")))?;
 
 	for (i, block) in blocks.iter().enumerate() {
 		// There may be a trailing block with no commands if the script
@@ -198,10 +163,7 @@ pub fn generate<R: Runner>(
 			runner.start_block().map_err(|e| {
 				std::io::Error::new(
 					std::io::ErrorKind::Other,
-					format!(
-						"start_block failed at line {}: {e}",
-						block.line_number
-					),
+					format!("start_block failed at line {}: {e}", block.line_number),
 				)
 			})?,
 			eol,
@@ -215,10 +177,7 @@ pub fn generate<R: Runner>(
 				runner.start_command(command).map_err(|e| {
 					std::io::Error::new(
 						std::io::ErrorKind::Other,
-						format!(
-							"start_command failed at line {}: {e}",
-							command.line_number
-						),
+						format!("start_command failed at line {}: {e}", command.line_number),
 					)
 				})?,
 				eol,
@@ -228,52 +187,51 @@ pub fn generate<R: Runner>(
 			// requested. We assume the command is unwind-safe
 			// when handling panics, it is up to callers to
 			// manage this appropriately.
-			let run = std::panic::AssertUnwindSafe(|| {
-				runner.run(command)
-			});
+			let run = std::panic::AssertUnwindSafe(|| runner.run(command));
 			command_output.push_str(&match std::panic::catch_unwind(run) {
-                // Unexpected success, error out.
-                Ok(Ok(output)) if command.fail => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "expected command '{}' to fail at line {}, succeeded with: {output}",
-                            command.name, command.line_number
-                        ),
-                    ));
-                }
+				// Unexpected success, error out.
+				Ok(Ok(output)) if command.fail => {
+					return Err(std::io::Error::new(
+						std::io::ErrorKind::Other,
+						format!(
+							"expected command '{}' to fail at line {}, succeeded with: {output}",
+							command.name, command.line_number
+						),
+					));
+				}
 
-                // Expected success, output the result.
-                Ok(Ok(output)) => output,
+				// Expected success, output the result.
+				Ok(Ok(output)) => output,
 
-                // Expected error, output it.
-                Ok(Err(e)) if command.fail => {
-                    format!("{e}")
-                }
+				// Expected error, output it.
+				Ok(Err(e)) if command.fail => {
+					format!("{e}")
+				}
 
-                // Unexpected error, return it.
-                Ok(Err(e)) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        format!(
-                            "command '{}' failed at line {}: {e}",
-                            command.name, command.line_number
-                        ),
-                    ));
-                }
+				// Unexpected error, return it.
+				Ok(Err(e)) => {
+					return Err(std::io::Error::new(
+						std::io::ErrorKind::Other,
+						format!(
+							"command '{}' failed at line {}: {e}",
+							command.name, command.line_number
+						),
+					));
+				}
 
-                // Expected panic, output it.
-                Err(panic) if command.fail => {
-                    let message = panic
-                        .downcast_ref::<&str>()
-                        .map(|s| s.to_string())
-                        .or_else(|| panic.downcast_ref::<String>().cloned())
-                        .unwrap_or_else(|| std::panic::resume_unwind(panic));
-                    format!("Panic: {message}")
-                }
+				// Expected panic, output it.
+				Err(panic) if command.fail => {
+					let message = panic
+						.downcast_ref::<&str>()
+						.map(|s| s.to_string())
+						.or_else(|| panic.downcast_ref::<String>().cloned())
+						.unwrap_or_else(|| std::panic::resume_unwind(panic));
+					format!("Panic: {message}")
+				}
 
-                // Unexpected panic, throw it.
-                Err(panic) => std::panic::resume_unwind(panic)});
+				// Unexpected panic, throw it.
+				Err(panic) => std::panic::resume_unwind(panic),
+			});
 
 			// Make sure the command output has a trailing newline,
 			// unless empty.
@@ -284,10 +242,7 @@ pub fn generate<R: Runner>(
 				runner.end_command(command).map_err(|e| {
 					std::io::Error::new(
 						std::io::ErrorKind::Other,
-						format!(
-							"end_command failed at line {}: {e}",
-							command.line_number
-						),
+						format!("end_command failed at line {}: {e}", command.line_number),
 					)
 				})?,
 				eol,
@@ -301,14 +256,13 @@ pub fn generate<R: Runner>(
 			// Prefix output lines if requested.
 			if let Some(prefix) = &command.prefix {
 				if !command_output.is_empty() {
-					command_output =
-						format!(
-                        "{prefix}: {}{eol}",
-                        command_output
-                            .strip_suffix(eol)
-                            .unwrap_or(command_output.as_str())
-                            .replace('\n', &format!("\n{prefix}: "))
-                    );
+					command_output = format!(
+						"{prefix}: {}{eol}",
+						command_output
+							.strip_suffix(eol)
+							.unwrap_or(command_output.as_str())
+							.replace('\n', &format!("\n{prefix}: "))
+					);
 				}
 			}
 
@@ -320,10 +274,7 @@ pub fn generate<R: Runner>(
 			runner.end_block().map_err(|e| {
 				std::io::Error::new(
 					std::io::ErrorKind::Other,
-					format!(
-						"end_block failed at line {}: {e}",
-						block.line_number
-					),
+					format!("end_block failed at line {}: {e}", block.line_number),
 				)
 			})?,
 			eol,
@@ -344,10 +295,7 @@ pub fn generate<R: Runner>(
 			|| block_output.contains("\n\n")
 			|| block_output.contains("\n\r\n")
 		{
-			block_output = format!(
-				"> {}",
-				block_output.replace('\n', "\n> ")
-			);
+			block_output = format!("> {}", block_output.replace('\n', "\n> "));
 			// We guarantee above that block output ends with a
 			// newline, so we remove the "> " at the end of the
 			// output.
@@ -357,22 +305,15 @@ pub fn generate<R: Runner>(
 
 		// Add the resulting block to the output. If this is not the
 		// last block, also add a newline separator.
-		output.push_str(&format!(
-			"{}---{eol}{}",
-			block.literal, block_output
-		));
+		output.push_str(&format!("{}---{eol}{}", block.literal, block_output));
 		if i < blocks.len() - 1 {
 			output.push_str(eol);
 		}
 	}
 
 	// Call the end_script() hook.
-	runner.end_script().map_err(|e| {
-		std::io::Error::new(
-			std::io::ErrorKind::Other,
-			format!("end_script failed: {e}"),
-		)
-	})?;
+	runner.end_script()
+		.map_err(|e| std::io::Error::new(std::io::ErrorKind::Other, format!("end_script failed: {e}")))?;
 
 	Ok(output)
 }
@@ -405,10 +346,7 @@ mod tests {
 	}
 
 	impl Runner for HookRunner {
-		fn run(
-			&mut self,
-			_: &Command,
-		) -> Result<String, Box<dyn Error>> {
+		fn run(&mut self, _: &Command) -> Result<String, Box<dyn Error>> {
 			Ok(String::new())
 		}
 
@@ -432,18 +370,12 @@ mod tests {
 			Ok(String::new())
 		}
 
-		fn start_command(
-			&mut self,
-			_: &Command,
-		) -> Result<String, Box<dyn Error>> {
+		fn start_command(&mut self, _: &Command) -> Result<String, Box<dyn Error>> {
 			self.start_command_count += 1;
 			Ok(String::new())
 		}
 
-		fn end_command(
-			&mut self,
-			_: &Command,
-		) -> Result<String, Box<dyn Error>> {
+		fn end_command(&mut self, _: &Command) -> Result<String, Box<dyn Error>> {
 			self.end_command_count += 1;
 			Ok(String::new())
 		}

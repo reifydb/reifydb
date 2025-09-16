@@ -15,15 +15,10 @@ mod catalog;
 mod deserialize;
 mod serialize;
 
-pub use catalog::{
-	deserialize_index_id, deserialize_source_id, serialize_index_id,
-	serialize_source_id,
-};
+pub use catalog::{deserialize_index_id, deserialize_source_id, serialize_index_id, serialize_source_id};
 use reifydb_type::diagnostic::serialization;
 
-use crate::util::encoding::keycode::{
-	deserialize::Deserializer, serialize::Serializer,
-};
+use crate::util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer};
 
 /// Encode a bool value for keycode (true=0x00, false=0x01 for descending order)
 pub fn encode_bool(value: bool) -> u8 {
@@ -38,7 +33,7 @@ pub fn encode_bool(value: bool) -> u8 {
 pub fn encode_f32(value: f32) -> [u8; 4] {
 	let mut bytes = value.to_be_bytes();
 	match value.is_sign_negative() {
-		false => bytes[0] ^= 1 << 7, // positive, flip sign bit
+		false => bytes[0] ^= 1 << 7,                     // positive, flip sign bit
 		true => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
 	}
 	for b in bytes.iter_mut() {
@@ -51,7 +46,7 @@ pub fn encode_f32(value: f32) -> [u8; 4] {
 pub fn encode_f64(value: f64) -> [u8; 8] {
 	let mut bytes = value.to_be_bytes();
 	match value.is_sign_negative() {
-		false => bytes[0] ^= 1 << 7, // positive, flip sign bit
+		false => bytes[0] ^= 1 << 7,                     // positive, flip sign bit
 		true => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
 	}
 	for b in bytes.iter_mut() {
@@ -285,36 +280,23 @@ impl KeySerializer {
 	}
 
 	/// Extend with a Serde-serializable value
-	pub fn extend_serialize<T: Serialize>(
-		&mut self,
-		value: &T,
-	) -> &mut Self {
+	pub fn extend_serialize<T: Serialize>(&mut self, value: &T) -> &mut Self {
 		let serialized = serialize(value);
 		self.buffer.extend(serialized);
 		self
 	}
 
 	/// Extend with a SourceId value (includes type discriminator)
-	pub fn extend_source_id(
-		&mut self,
-		source: impl Into<crate::interface::SourceId>,
-	) -> &mut Self {
+	pub fn extend_source_id(&mut self, source: impl Into<crate::interface::SourceId>) -> &mut Self {
 		let source = source.into();
-		self.buffer.extend_from_slice(&catalog::serialize_source_id(
-			&source,
-		));
+		self.buffer.extend_from_slice(&catalog::serialize_source_id(&source));
 		self
 	}
 
 	/// Extend with an IndexId value (includes type discriminator)  
-	pub fn extend_index_id(
-		&mut self,
-		index: impl Into<crate::interface::IndexId>,
-	) -> &mut Self {
+	pub fn extend_index_id(&mut self, index: impl Into<crate::interface::IndexId>) -> &mut Self {
 		let index = index.into();
-		self.buffer.extend_from_slice(&catalog::serialize_index_id(
-			&index,
-		));
+		self.buffer.extend_from_slice(&catalog::serialize_index_id(&index));
 		self
 	}
 
@@ -359,18 +341,14 @@ pub fn serialize<T: Serialize>(key: &T) -> Vec<u8> {
 }
 
 /// Deserializes a key from a binary Keycode representation (Descending order)
-pub fn deserialize<'a, T: Deserialize<'a>>(
-	input: &'a [u8],
-) -> crate::Result<T> {
+pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> crate::Result<T> {
 	let mut deserializer = Deserializer::from_bytes(input);
 	let t = T::deserialize(&mut deserializer)?;
 	if !deserializer.input.is_empty() {
-		return Err(crate::error!(
-			serialization::keycode_serialization_error(format!(
-				"unexpected trailing bytes {:x?} at end of key {input:x?}",
-				deserializer.input,
-			))
-		));
+		return Err(crate::error!(serialization::keycode_serialization_error(format!(
+			"unexpected trailing bytes {:x?} at end of key {input:x?}",
+			deserializer.input,
+		))));
 	}
 	Ok(t)
 }
@@ -547,18 +525,12 @@ mod tests {
 		// Test u64
 		let mut s = KeySerializer::new();
 		s.extend_u64(0u64);
-		assert_eq!(
-			s.finish(),
-			vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
-		);
+		assert_eq!(s.finish(), vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
 		// Test i64
 		let mut s = KeySerializer::new();
 		s.extend_i64(0i64);
-		assert_eq!(
-			s.finish(),
-			vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
-		);
+		assert_eq!(s.finish(), vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
 		// Test f32
 		let mut s = KeySerializer::new();
@@ -568,10 +540,7 @@ mod tests {
 		// Test f64
 		let mut s = KeySerializer::new();
 		s.extend_f64(0.0f64);
-		assert_eq!(
-			s.finish(),
-			vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
-		);
+		assert_eq!(s.finish(), vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]);
 
 		// Test bytes
 		let mut s = KeySerializer::new();
@@ -580,10 +549,7 @@ mod tests {
 
 		// Test chaining
 		let mut s = KeySerializer::with_capacity(32);
-		s.extend_bool(true)
-			.extend_u32(1u32)
-			.extend_i16(-1i16)
-			.extend_bytes(b"test");
+		s.extend_bool(true).extend_u32(1u32).extend_i16(-1i16).extend_bytes(b"test");
 		let result = s.finish();
 		assert!(!result.is_empty());
 		assert!(result.len() > 10); // Should have all the encoded values

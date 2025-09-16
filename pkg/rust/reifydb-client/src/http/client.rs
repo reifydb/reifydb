@@ -14,8 +14,7 @@ use serde_json;
 
 use crate::{
 	http::{message::HttpInternalMessage, worker::http_worker_thread},
-	CommandRequest, CommandResponse, ErrResponse, QueryRequest,
-	QueryResponse,
+	CommandRequest, CommandResponse, ErrResponse, QueryRequest, QueryResponse,
 };
 
 /// HTTP client implementation with worker thread
@@ -45,14 +44,9 @@ impl Drop for HttpClient {
 
 impl HttpClient {
 	/// Create a new HTTP client from a socket address
-	pub fn new<A: ToSocketAddrs>(
-		addr: A,
-	) -> Result<Self, Box<dyn std::error::Error>> {
+	pub fn new<A: ToSocketAddrs>(addr: A) -> Result<Self, Box<dyn std::error::Error>> {
 		// Resolve the address to get the first valid SocketAddr
-		let socket_addr = addr
-			.to_socket_addrs()?
-			.next()
-			.ok_or("Failed to resolve address")?;
+		let socket_addr = addr.to_socket_addrs()?.next().ok_or("Failed to resolve address")?;
 
 		let host = socket_addr.ip().to_string();
 		let port = socket_addr.port();
@@ -89,9 +83,7 @@ impl HttpClient {
 				};
 				(host.to_string(), port)
 			} else {
-				return Err(
-					"Invalid IPv6 address format".into()
-				);
+				return Err("Invalid IPv6 address format".into());
 			}
 		} else if url.starts_with("::") || url.contains("::") {
 			// IPv6 address without brackets: ::1:8080
@@ -99,13 +91,9 @@ impl HttpClient {
 			if let Some(port_idx) = url.rfind(':') {
 				// Check if what follows the last colon is a
 				// port number
-				if url[port_idx + 1..]
-					.chars()
-					.all(|c| c.is_ascii_digit())
-				{
+				if url[port_idx + 1..].chars().all(|c| c.is_ascii_digit()) {
 					let host = &url[..port_idx];
-					let port: u16 =
-						url[port_idx + 1..].parse()?;
+					let port: u16 = url[port_idx + 1..].parse()?;
 					(host.to_string(), port)
 				} else {
 					// No port specified, use default
@@ -129,9 +117,7 @@ impl HttpClient {
 	}
 
 	/// Create HTTP client with specific configuration
-	fn with_config(
-		config: HttpClientConfig,
-	) -> Result<Self, Box<dyn std::error::Error>> {
+	fn with_config(config: HttpClientConfig) -> Result<Self, Box<dyn std::error::Error>> {
 		let (command_tx, command_rx) = mpsc::channel();
 
 		// Test connection first
@@ -147,9 +133,7 @@ impl HttpClient {
 		Ok(Self {
 			inner: Arc::new(HttpClientInner {
 				command_tx,
-				worker_handle: Arc::new(Mutex::new(Some(
-					worker_handle,
-				))),
+				worker_handle: Arc::new(Mutex::new(Some(worker_handle))),
 			}),
 		})
 	}
@@ -173,9 +157,7 @@ impl HttpClient {
 	}
 
 	/// Test connection to the server
-	pub fn test_connection(
-		&self,
-	) -> Result<(), Box<dyn std::error::Error>> {
+	pub fn test_connection(&self) -> Result<(), Box<dyn std::error::Error>> {
 		// The connection was already tested during creation
 		Ok(())
 	}
@@ -185,10 +167,7 @@ impl HttpClient {
 		&self,
 		token: Option<String>,
 	) -> Result<crate::http::HttpBlockingSession, reifydb_type::Error> {
-		crate::http::HttpBlockingSession::from_client(
-			self.clone(),
-			token,
-		)
+		crate::http::HttpBlockingSession::from_client(self.clone(), token)
 	}
 
 	/// Create a callback session
@@ -196,10 +175,7 @@ impl HttpClient {
 		&self,
 		token: Option<String>,
 	) -> Result<crate::http::HttpCallbackSession, reifydb_type::Error> {
-		crate::http::HttpCallbackSession::from_client(
-			self.clone(),
-			token,
-		)
+		crate::http::HttpCallbackSession::from_client(self.clone(), token)
 	}
 
 	/// Create a channel session
@@ -207,56 +183,35 @@ impl HttpClient {
 		&self,
 		token: Option<String>,
 	) -> Result<
-		(
-			crate::http::HttpChannelSession,
-			mpsc::Receiver<crate::http::HttpResponseMessage>,
-		),
+		(crate::http::HttpChannelSession, mpsc::Receiver<crate::http::HttpResponseMessage>),
 		reifydb_type::Error,
 	> {
-		crate::http::HttpChannelSession::from_client(
-			self.clone(),
-			token,
-		)
+		crate::http::HttpChannelSession::from_client(self.clone(), token)
 	}
 }
 
 impl HttpClientConfig {
 	/// Send a command request
-	pub fn send_command(
-		&self,
-		request: &CommandRequest,
-	) -> Result<CommandResponse, reifydb_type::Error> {
-		let json_body =
-			serde_json::to_string(request).map_err(|e| {
-				reifydb_type::Error(
-					reifydb_type::diagnostic::internal(
-						format!(
-							"Failed to serialize request: {}",
-							e
-						),
-					),
-				)
-			})?;
-		let response_body =
-			self.send_request("/v1/command", &json_body).map_err(
-				|e| {
-					reifydb_type::Error(reifydb_type::diagnostic::internal(
-				format!("Request failed: {}", e)
-			))
-				},
-			)?;
+	pub fn send_command(&self, request: &CommandRequest) -> Result<CommandResponse, reifydb_type::Error> {
+		let json_body = serde_json::to_string(request).map_err(|e| {
+			reifydb_type::Error(reifydb_type::diagnostic::internal(format!(
+				"Failed to serialize request: {}",
+				e
+			)))
+		})?;
+		let response_body = self.send_request("/v1/command", &json_body).map_err(|e| {
+			reifydb_type::Error(reifydb_type::diagnostic::internal(format!("Request failed: {}", e)))
+		})?;
 
 		// Try to parse as CommandResponse first, then as error
 		match serde_json::from_str::<CommandResponse>(&response_body) {
 			Ok(response) => Ok(response),
 			Err(_) => {
 				// Try parsing as error response
-				match serde_json::from_str::<ErrResponse>(
-					&response_body,
-				) {
+				match serde_json::from_str::<ErrResponse>(&response_body) {
 					Ok(err_response) => Err(reifydb_type::Error(err_response.diagnostic)),
 					Err(_) => Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-						format!("Failed to parse response: {}", response_body)
+						format!("Failed to parse response: {}", response_body),
 					))),
 				}
 			}
@@ -264,41 +219,26 @@ impl HttpClientConfig {
 	}
 
 	/// Send a query request
-	pub fn send_query(
-		&self,
-		request: &QueryRequest,
-	) -> Result<QueryResponse, reifydb_type::Error> {
-		let json_body =
-			serde_json::to_string(request).map_err(|e| {
-				reifydb_type::Error(
-					reifydb_type::diagnostic::internal(
-						format!(
-							"Failed to serialize request: {}",
-							e
-						),
-					),
-				)
-			})?;
-		let response_body =
-			self.send_request("/v1/query", &json_body).map_err(
-				|e| {
-					reifydb_type::Error(reifydb_type::diagnostic::internal(
-				format!("Request failed: {}", e)
-			))
-				},
-			)?;
+	pub fn send_query(&self, request: &QueryRequest) -> Result<QueryResponse, reifydb_type::Error> {
+		let json_body = serde_json::to_string(request).map_err(|e| {
+			reifydb_type::Error(reifydb_type::diagnostic::internal(format!(
+				"Failed to serialize request: {}",
+				e
+			)))
+		})?;
+		let response_body = self.send_request("/v1/query", &json_body).map_err(|e| {
+			reifydb_type::Error(reifydb_type::diagnostic::internal(format!("Request failed: {}", e)))
+		})?;
 
 		// Try to parse as QueryResponse first, then as error
 		match serde_json::from_str::<QueryResponse>(&response_body) {
 			Ok(response) => Ok(response),
 			Err(_) => {
 				// Try parsing as error response
-				match serde_json::from_str::<ErrResponse>(
-					&response_body,
-				) {
+				match serde_json::from_str::<ErrResponse>(&response_body) {
 					Ok(err_response) => Err(reifydb_type::Error(err_response.diagnostic)),
 					Err(_) => Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
-						format!("Failed to parse response: {}", response_body)
+						format!("Failed to parse response: {}", response_body),
 					))),
 				}
 			}
@@ -306,11 +246,7 @@ impl HttpClientConfig {
 	}
 
 	/// Send HTTP request and return response body
-	fn send_request(
-		&self,
-		path: &str,
-		body: &str,
-	) -> Result<String, Box<dyn std::error::Error>> {
+	fn send_request(&self, path: &str, body: &str) -> Result<String, Box<dyn std::error::Error>> {
 		// Parse socket address
 		// Check if host is an IPv6 address by looking for colons
 		let addr_str = if self.host.contains(':') {
@@ -349,18 +285,14 @@ impl HttpClientConfig {
 	}
 
 	/// Parse HTTP response using buffered reading for large responses
-	fn parse_http_response_buffered(
-		&self,
-		stream: TcpStream,
-	) -> Result<String, Box<dyn std::error::Error>> {
+	fn parse_http_response_buffered(&self, stream: TcpStream) -> Result<String, Box<dyn std::error::Error>> {
 		let mut reader = BufReader::new(stream);
 		let mut line = String::new();
 
 		// Read status line
 		reader.read_line(&mut line)?;
 		let status_line = line.trim_end();
-		let status_parts: Vec<&str> =
-			status_line.split_whitespace().collect();
+		let status_parts: Vec<&str> = status_line.split_whitespace().collect();
 
 		if status_parts.len() < 3 {
 			return Err("Invalid HTTP status line".into());
@@ -368,12 +300,9 @@ impl HttpClientConfig {
 
 		let status_code: u16 = status_parts[1].parse()?;
 		if status_code < 200 || status_code >= 300 {
-			return Err(format!(
-				"HTTP error {}: {}",
-				status_code,
-				status_parts.get(2).unwrap_or(&"")
-			)
-			.into());
+			return Err(
+				format!("HTTP error {}: {}", status_code, status_parts.get(2).unwrap_or(&"")).into()
+			);
 		}
 
 		// Read headers
@@ -390,17 +319,12 @@ impl HttpClientConfig {
 			}
 
 			if let Some(colon_pos) = line.find(':') {
-				let key =
-					line[..colon_pos].trim().to_lowercase();
-				let value = line[colon_pos + 1..]
-					.trim()
-					.to_string();
+				let key = line[..colon_pos].trim().to_lowercase();
+				let value = line[colon_pos + 1..].trim().to_string();
 
 				if key == "content-length" {
 					content_length = value.parse().ok();
-				} else if key == "transfer-encoding"
-					&& value.contains("chunked")
-				{
+				} else if key == "transfer-encoding" && value.contains("chunked") {
 					is_chunked = true;
 				}
 
@@ -427,10 +351,7 @@ impl HttpClientConfig {
 	}
 
 	/// Read chunked HTTP response body
-	fn read_chunked_body(
-		&self,
-		reader: &mut BufReader<TcpStream>,
-	) -> Result<String, Box<dyn std::error::Error>> {
+	fn read_chunked_body(&self, reader: &mut BufReader<TcpStream>) -> Result<String, Box<dyn std::error::Error>> {
 		let mut result = Vec::new();
 		let mut line = String::new();
 
@@ -441,8 +362,7 @@ impl HttpClientConfig {
 
 			// Parse chunk size (hexadecimal), ignoring any chunk
 			// extensions after ';'
-			let size_str =
-				line.trim().split(';').next().unwrap_or("0");
+			let size_str = line.trim().split(';').next().unwrap_or("0");
 			let chunk_size = usize::from_str_radix(size_str, 16)?;
 
 			if chunk_size == 0 {
@@ -471,9 +391,7 @@ impl HttpClientConfig {
 	}
 
 	/// Test connection to the server
-	pub fn test_connection(
-		&self,
-	) -> Result<(), Box<dyn std::error::Error>> {
+	pub fn test_connection(&self) -> Result<(), Box<dyn std::error::Error>> {
 		// Check if host is an IPv6 address by looking for colons
 		let addr_str = if self.host.contains(':') {
 			format!("[{}]:{}", self.host, self.port)

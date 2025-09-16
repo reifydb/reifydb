@@ -9,11 +9,7 @@ use reifydb_core::{
 use crate::memory::Memory;
 
 impl VersionedGet for Memory {
-	fn get(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> Result<Option<Versioned>> {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Versioned>> {
 		let item = match self.versioned.get(key) {
 			Some(item) => item,
 			None => return Ok(None),

@@ -146,9 +146,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		interface::subsystem::logging::{
-			LogLevel, mock::with_mock_logger,
-		},
+		interface::subsystem::logging::{LogLevel, mock::with_mock_logger},
 		log_timed_debug, log_timed_info, log_timed_trace,
 	};
 
@@ -165,11 +163,10 @@ mod tests {
 		let (sender, receiver) = unbounded();
 
 		with_mock_logger(sender, || {
-			let result =
-				log_timed_debug!("Test operation", {
-					std::thread::sleep(std::time::Duration::from_millis(10));
-					42
-				});
+			let result = log_timed_debug!("Test operation", {
+				std::thread::sleep(std::time::Duration::from_millis(10));
+				42
+			});
 			assert_eq!(result, 42);
 		});
 
@@ -185,19 +182,16 @@ mod tests {
 
 		with_mock_logger(sender, || {
 			let operation = "database init";
-			let result =
-				log_timed_info!("Performing {operation}", {
-					std::thread::sleep(std::time::Duration::from_millis(5));
-					"success"
-				});
+			let result = log_timed_info!("Performing {operation}", {
+				std::thread::sleep(std::time::Duration::from_millis(5));
+				"success"
+			});
 			assert_eq!(result, "success");
 		});
 
 		let record = receiver.try_recv().unwrap();
 		assert_eq!(record.level, LogLevel::Info);
-		assert!(record
-			.message
-			.starts_with("Performing database init (took "));
+		assert!(record.message.starts_with("Performing database init (took "));
 	}
 
 	#[test]
@@ -207,15 +201,11 @@ mod tests {
 		with_mock_logger(sender, || {
 			// Test that the macro properly returns the result of
 			// the code block
-			let value = log_timed_debug!("Computing value", {
-				100 + 200
-			});
+			let value = log_timed_debug!("Computing value", { 100 + 200 });
 			assert_eq!(value, 300);
 
 			// Test with more comptokenize return type
-			let vec = log_timed_info!("Creating vector", {
-				vec![1, 2, 3, 4, 5]
-			});
+			let vec = log_timed_info!("Creating vector", { vec![1, 2, 3, 4, 5] });
 			assert_eq!(vec.len(), 5);
 		});
 	}
@@ -233,8 +223,7 @@ mod tests {
 			log_timed_critical!("Critical operation", { 6 });
 		});
 
-		let logs: Vec<_> =
-			(0..6).map(|_| receiver.try_recv().unwrap()).collect();
+		let logs: Vec<_> = (0..6).map(|_| receiver.try_recv().unwrap()).collect();
 
 		assert_eq!(logs[0].level, LogLevel::Trace);
 		assert!(logs[0].message.starts_with("Trace operation (took "));
@@ -252,8 +241,6 @@ mod tests {
 		assert!(logs[4].message.starts_with("Error operation (took "));
 
 		assert_eq!(logs[5].level, LogLevel::Critical);
-		assert!(logs[5]
-			.message
-			.starts_with("Critical operation (took "));
+		assert!(logs[5].message.starts_with("Critical operation (took "));
 	}
 }

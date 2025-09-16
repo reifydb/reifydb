@@ -17,8 +17,7 @@ use super::{
 };
 
 /// Global default configuration for thread-local pools
-static DEFAULT_CONFIG: Lazy<Mutex<PoolConfig>> =
-	Lazy::new(|| Mutex::new(PoolConfig::default()));
+static DEFAULT_CONFIG: Lazy<Mutex<PoolConfig>> = Lazy::new(|| Mutex::new(PoolConfig::default()));
 
 /// Set the global default pool configuration
 /// This configuration will be used when pools are lazily initialized

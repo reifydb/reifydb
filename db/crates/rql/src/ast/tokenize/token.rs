@@ -3,10 +3,7 @@
 
 use reifydb_type::{Fragment, OwnedFragment};
 
-pub use super::{
-	keyword::Keyword, operator::Operator, parameter::ParameterKind,
-	separator::Separator,
-};
+pub use super::{keyword::Keyword, operator::Operator, parameter::ParameterKind, separator::Separator};
 
 #[derive(Debug, Clone)]
 pub struct Token<'a> {

@@ -20,10 +20,7 @@ impl EncodableKey for ViewKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.view);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.view);
 		serializer.to_encoded_key()
 	}
 
@@ -55,10 +52,7 @@ impl EncodableKey for ViewKey {
 
 impl ViewKey {
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::view_start()),
-			Some(Self::view_end()),
-		)
+		EncodedKeyRange::start_end(Some(Self::view_start()), Some(Self::view_end()))
 	}
 
 	fn view_start() -> EncodedKey {

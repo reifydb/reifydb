@@ -25,8 +25,7 @@ impl<'a> Parser<'a> {
 
 			let key = self.parse_as_identifier()?;
 			self.consume_operator(Colon)?;
-			let value =
-				Box::new(self.parse_node(Precedence::None)?);
+			let value = Box::new(self.parse_node(Precedence::None)?);
 
 			keyed_values.push(AstInlineKeyedValue {
 				key,
@@ -126,16 +125,14 @@ mod tests {
 
 		let id_keyed_value = &inline[0];
 		assert_eq!(id_keyed_value.key.text(), "id");
-		let Literal(Number(value)) = id_keyed_value.value.as_ref()
-		else {
+		let Literal(Number(value)) = id_keyed_value.value.as_ref() else {
 			panic!()
 		};
 		assert_eq!(value.value(), "1");
 
 		let name_keyed_value = &inline[1];
 		assert_eq!(name_keyed_value.key.text(), "name");
-		let Literal(Text(value)) = name_keyed_value.value.as_ref()
-		else {
+		let Literal(Text(value)) = name_keyed_value.value.as_ref() else {
 			panic!()
 		};
 		assert_eq!(value.value(), "Ada");
@@ -176,16 +173,14 @@ mod tests {
 
 		let id_keyed_value = &inline[0];
 		assert_eq!(id_keyed_value.key.text(), "id");
-		let Literal(Number(value)) = id_keyed_value.value.as_ref()
-		else {
+		let Literal(Number(value)) = id_keyed_value.value.as_ref() else {
 			panic!()
 		};
 		assert_eq!(value.value(), "42");
 
 		let name_keyed_value = &inline[1];
 		assert_eq!(name_keyed_value.key.text(), "name");
-		let Literal(Text(value)) = name_keyed_value.value.as_ref()
-		else {
+		let Literal(Text(value)) = name_keyed_value.value.as_ref() else {
 			panic!()
 		};
 		assert_eq!(value.value(), "Database");
@@ -213,8 +208,7 @@ mod tests {
 
 	#[test]
 	fn test_comptokenize_values() {
-		let tokens =
-			tokenize("{result: (1 + 2), enabled: !false}").unwrap();
+		let tokens = tokenize("{result: (1 + 2), enabled: !false}").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 

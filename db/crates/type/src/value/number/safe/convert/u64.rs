@@ -430,10 +430,7 @@ mod tests {
 			let x: u64 = u64::MAX;
 			let y: Option<Int> = x.checked_convert();
 			assert!(y.is_some());
-			assert_eq!(
-				y.unwrap().to_string(),
-				"18446744073709551615"
-			);
+			assert_eq!(y.unwrap().to_string(), "18446744073709551615");
 		}
 
 		#[test]

@@ -8,9 +8,8 @@ use crate::{
 	ast::{Ast, AstInfix, AstJoin, InfixOperator},
 	expression::ExpressionCompiler,
 	plan::logical::{
-		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode,
-		LogicalPlan, LogicalPlan::SourceScan, SourceScanNode,
-		resolver::IdentifierResolver,
+		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::SourceScan,
+		SourceScanNode, resolver::IdentifierResolver,
 	},
 };
 
@@ -32,25 +31,23 @@ impl Compiler {
 						// identifier
 						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(None, identifier.token.fragment.clone());
+						let mut unresolved = UnresolvedSourceIdentifier::new(
+							None,
+							identifier.token.fragment.clone(),
+						);
 						if let Some(a) = alias {
-							unresolved = unresolved
-								.with_alias(a);
+							unresolved = unresolved.with_alias(a);
 						}
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver
-							.build_resolved_source_from_unresolved(
-								unresolved,
-							)?;
-						vec![SourceScan(
-							SourceScanNode {
-								source: resolved_source,
-								columns: None,
-								index: None,
-							},
-						)]
+						let resolved_source =
+							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						vec![SourceScan(SourceScanNode {
+							source: resolved_source,
+							columns: None,
+							index: None,
+						})]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -59,48 +56,41 @@ impl Compiler {
 						..
 					}) => {
 						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(namespace) =
-							*left
-						else {
+						let Ast::Identifier(namespace) = *left else {
 							unreachable!()
 						};
-						let Ast::Identifier(table) =
-							*right
-						else {
+						let Ast::Identifier(table) = *right else {
 							unreachable!()
 						};
 						// Create fully qualified
 						// SourceIdentifier
 						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(Some(namespace.token.fragment), table.token.fragment);
+						let mut unresolved = UnresolvedSourceIdentifier::new(
+							Some(namespace.token.fragment),
+							table.token.fragment,
+						);
 						if let Some(a) = alias {
-							unresolved = unresolved
-								.with_alias(a);
+							unresolved = unresolved.with_alias(a);
 						}
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver
-							.build_resolved_source_from_unresolved(
-								unresolved,
-							)?;
-						vec![SourceScan(
-							SourceScanNode {
-								source: resolved_source,
-								columns: None,
-								index: None,
-							},
-						)]
+						let resolved_source =
+							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						vec![SourceScan(SourceScanNode {
+							source: resolved_source,
+							columns: None,
+							index: None,
+						})]
 					}
 					_ => unimplemented!(),
 				};
 				Ok(LogicalPlan::JoinInner(JoinInnerNode {
-                    with,
-                    on: on
-                        .into_iter()
-                        .map(ExpressionCompiler::compile)
-                        .collect::<crate::Result<Vec<_>>>()?,
+					with,
+					on: on.into_iter()
+						.map(ExpressionCompiler::compile)
+						.collect::<crate::Result<Vec<_>>>()?,
 				}))
 			}
 			AstJoin::LeftJoin {
@@ -115,25 +105,23 @@ impl Compiler {
 						// identifier
 						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(None, identifier.token.fragment.clone());
+						let mut unresolved = UnresolvedSourceIdentifier::new(
+							None,
+							identifier.token.fragment.clone(),
+						);
 						if let Some(a) = alias {
-							unresolved = unresolved
-								.with_alias(a);
+							unresolved = unresolved.with_alias(a);
 						}
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver
-							.build_resolved_source_from_unresolved(
-								unresolved,
-							)?;
-						vec![SourceScan(
-							SourceScanNode {
-								source: resolved_source,
-								columns: None,
-								index: None,
-							},
-						)]
+						let resolved_source =
+							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						vec![SourceScan(SourceScanNode {
+							source: resolved_source,
+							columns: None,
+							index: None,
+						})]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -142,48 +130,41 @@ impl Compiler {
 						..
 					}) => {
 						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(namespace) =
-							*left
-						else {
+						let Ast::Identifier(namespace) = *left else {
 							unreachable!()
 						};
-						let Ast::Identifier(table) =
-							*right
-						else {
+						let Ast::Identifier(table) = *right else {
 							unreachable!()
 						};
 						// Create fully qualified
 						// SourceIdentifier
 						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(Some(namespace.token.fragment), table.token.fragment);
+						let mut unresolved = UnresolvedSourceIdentifier::new(
+							Some(namespace.token.fragment),
+							table.token.fragment,
+						);
 						if let Some(a) = alias {
-							unresolved = unresolved
-								.with_alias(a);
+							unresolved = unresolved.with_alias(a);
 						}
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver
-							.build_resolved_source_from_unresolved(
-								unresolved,
-							)?;
-						vec![SourceScan(
-							SourceScanNode {
-								source: resolved_source,
-								columns: None,
-								index: None,
-							},
-						)]
+						let resolved_source =
+							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						vec![SourceScan(SourceScanNode {
+							source: resolved_source,
+							columns: None,
+							index: None,
+						})]
 					}
 					_ => unimplemented!(),
 				};
 				Ok(LogicalPlan::JoinLeft(JoinLeftNode {
-                    with,
-                    on: on
-                        .into_iter()
-                        .map(ExpressionCompiler::compile)
-                        .collect::<crate::Result<Vec<_>>>()?,
+					with,
+					on: on.into_iter()
+						.map(ExpressionCompiler::compile)
+						.collect::<crate::Result<Vec<_>>>()?,
 				}))
 			}
 			AstJoin::NaturalJoin {
@@ -198,25 +179,23 @@ impl Compiler {
 						// identifier
 						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(None, identifier.token.fragment.clone());
+						let mut unresolved = UnresolvedSourceIdentifier::new(
+							None,
+							identifier.token.fragment.clone(),
+						);
 						if let Some(a) = alias {
-							unresolved = unresolved
-								.with_alias(a);
+							unresolved = unresolved.with_alias(a);
 						}
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver
-							.build_resolved_source_from_unresolved(
-								unresolved,
-							)?;
-						vec![SourceScan(
-							SourceScanNode {
-								source: resolved_source,
-								columns: None,
-								index: None,
-							},
-						)]
+						let resolved_source =
+							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						vec![SourceScan(SourceScanNode {
+							source: resolved_source,
+							columns: None,
+							index: None,
+						})]
 					}
 					Ast::Infix(AstInfix {
 						left,
@@ -225,47 +204,40 @@ impl Compiler {
 						..
 					}) => {
 						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(namespace) =
-							*left
-						else {
+						let Ast::Identifier(namespace) = *left else {
 							unreachable!()
 						};
-						let Ast::Identifier(table) =
-							*right
-						else {
+						let Ast::Identifier(table) = *right else {
 							unreachable!()
 						};
 						// Create fully qualified
 						// SourceIdentifier
 						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(Some(namespace.token.fragment), table.token.fragment);
+						let mut unresolved = UnresolvedSourceIdentifier::new(
+							Some(namespace.token.fragment),
+							table.token.fragment,
+						);
 						if let Some(a) = alias {
-							unresolved = unresolved
-								.with_alias(a);
+							unresolved = unresolved.with_alias(a);
 						}
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver
-							.build_resolved_source_from_unresolved(
-								unresolved,
-							)?;
-						vec![SourceScan(
-							SourceScanNode {
-								source: resolved_source,
-								columns: None,
-								index: None,
-							},
-						)]
+						let resolved_source =
+							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						vec![SourceScan(SourceScanNode {
+							source: resolved_source,
+							columns: None,
+							index: None,
+						})]
 					}
 					_ => unimplemented!(),
 				};
 
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
-					join_type: join_type
-						.unwrap_or(JoinType::Inner),
+					join_type: join_type.unwrap_or(JoinType::Inner),
 				}))
 			}
 		}

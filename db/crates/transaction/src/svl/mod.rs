@@ -7,10 +7,7 @@ use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
 	event::EventBus,
-	interface::{
-		Unversioned, UnversionedStorage, UnversionedTransaction,
-		WithEventBus,
-	},
+	interface::{Unversioned, UnversionedStorage, UnversionedTransaction, WithEventBus},
 	row::EncodedRow,
 };
 

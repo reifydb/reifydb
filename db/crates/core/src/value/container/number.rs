@@ -5,10 +5,7 @@ use std::{any::TypeId, fmt::Debug, mem::transmute_copy, ops::Deref};
 
 use reifydb_type::{
 	IsNumber, OrderedF32, OrderedF64, Value,
-	Value::{
-		Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8,
-		Uint16, Undefined,
-	},
+	Value::{Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16, Undefined},
 };
 use serde::{Deserialize, Serialize};
 
@@ -133,68 +130,40 @@ where
 			let value = self.data[index].clone();
 
 			if TypeId::of::<T>() == TypeId::of::<f32>() {
-				let f_val = unsafe {
-					transmute_copy::<T, f32>(&value)
-				};
-				OrderedF32::try_from(f_val)
-					.map(Value::Float4)
-					.unwrap_or(Undefined)
+				let f_val = unsafe { transmute_copy::<T, f32>(&value) };
+				OrderedF32::try_from(f_val).map(Value::Float4).unwrap_or(Undefined)
 			} else if TypeId::of::<T>() == TypeId::of::<f64>() {
-				let f_val = unsafe {
-					transmute_copy::<T, f64>(&value)
-				};
-				OrderedF64::try_from(f_val)
-					.map(Value::Float8)
-					.unwrap_or(Undefined)
+				let f_val = unsafe { transmute_copy::<T, f64>(&value) };
+				OrderedF64::try_from(f_val).map(Value::Float8).unwrap_or(Undefined)
 			} else if TypeId::of::<T>() == TypeId::of::<i8>() {
-				let i_val = unsafe {
-					transmute_copy::<T, i8>(&value)
-				};
+				let i_val = unsafe { transmute_copy::<T, i8>(&value) };
 				Int1(i_val)
 			} else if TypeId::of::<T>() == TypeId::of::<i16>() {
-				let i_val = unsafe {
-					transmute_copy::<T, i16>(&value)
-				};
+				let i_val = unsafe { transmute_copy::<T, i16>(&value) };
 				Int2(i_val)
 			} else if TypeId::of::<T>() == TypeId::of::<i32>() {
-				let i_val = unsafe {
-					transmute_copy::<T, i32>(&value)
-				};
+				let i_val = unsafe { transmute_copy::<T, i32>(&value) };
 				Int4(i_val)
 			} else if TypeId::of::<T>() == TypeId::of::<i64>() {
-				let i_val = unsafe {
-					transmute_copy::<T, i64>(&value)
-				};
+				let i_val = unsafe { transmute_copy::<T, i64>(&value) };
 				Int8(i_val)
 			} else if TypeId::of::<T>() == TypeId::of::<i128>() {
-				let i_val = unsafe {
-					transmute_copy::<T, i128>(&value)
-				};
+				let i_val = unsafe { transmute_copy::<T, i128>(&value) };
 				Int16(i_val)
 			} else if TypeId::of::<T>() == TypeId::of::<u8>() {
-				let u_val = unsafe {
-					transmute_copy::<T, u8>(&value)
-				};
+				let u_val = unsafe { transmute_copy::<T, u8>(&value) };
 				Uint1(u_val)
 			} else if TypeId::of::<T>() == TypeId::of::<u16>() {
-				let u_val = unsafe {
-					transmute_copy::<T, u16>(&value)
-				};
+				let u_val = unsafe { transmute_copy::<T, u16>(&value) };
 				Uint2(u_val)
 			} else if TypeId::of::<T>() == TypeId::of::<u32>() {
-				let u_val = unsafe {
-					transmute_copy::<T, u32>(&value)
-				};
+				let u_val = unsafe { transmute_copy::<T, u32>(&value) };
 				Uint4(u_val)
 			} else if TypeId::of::<T>() == TypeId::of::<u64>() {
-				let u_val = unsafe {
-					transmute_copy::<T, u64>(&value)
-				};
+				let u_val = unsafe { transmute_copy::<T, u64>(&value) };
 				Uint8(u_val)
 			} else if TypeId::of::<T>() == TypeId::of::<u128>() {
-				let u_val = unsafe {
-					transmute_copy::<T, u128>(&value)
-				};
+				let u_val = unsafe { transmute_copy::<T, u128>(&value) };
 				Uint16(u_val)
 			} else {
 				Undefined
@@ -229,19 +198,8 @@ where
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<T> = self
-			.data
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.cloned()
-			.collect();
-		let new_bitvec: Vec<bool> = self
-			.bitvec
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.collect();
+		let new_data: Vec<T> = self.data.iter().skip(start).take(end - start).cloned().collect();
+		let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
 		Self {
 			data: CowVec::new(new_data),
 			bitvec: BitVec::from_slice(&new_bitvec),
@@ -281,11 +239,7 @@ where
 		self.bitvec = new_bitvec;
 	}
 
-	pub fn push_with_convert<U>(
-		&mut self,
-		value: U,
-		converter: impl FnOnce(U) -> Option<T>,
-	) {
+	pub fn push_with_convert<U>(&mut self, value: U, converter: impl FnOnce(U) -> Option<T>) {
 		match converter(value) {
 			Some(v) => {
 				self.data.push(v);
@@ -341,8 +295,7 @@ mod tests {
 
 	#[test]
 	fn test_with_capacity() {
-		let container: NumberContainer<i32> =
-			NumberContainer::with_capacity(10);
+		let container: NumberContainer<i32> = NumberContainer::with_capacity(10);
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());
 		assert!(container.capacity() >= 10);
@@ -350,8 +303,7 @@ mod tests {
 
 	#[test]
 	fn test_push_i64() {
-		let mut container: NumberContainer<i64> =
-			NumberContainer::with_capacity(3);
+		let mut container: NumberContainer<i64> = NumberContainer::with_capacity(3);
 
 		container.push(100);
 		container.push(-200);
@@ -405,8 +357,7 @@ mod tests {
 
 	#[test]
 	fn test_slice() {
-		let container =
-			NumberContainer::from_vec(vec![10i16, 20, 30, 40]);
+		let container = NumberContainer::from_vec(vec![10i16, 20, 30, 40]);
 		let sliced = container.slice(1, 3);
 
 		assert_eq!(sliced.len(), 2);
@@ -416,8 +367,7 @@ mod tests {
 
 	#[test]
 	fn test_filter() {
-		let mut container =
-			NumberContainer::from_vec(vec![1f32, 2.0, 3.0, 4.0]);
+		let mut container = NumberContainer::from_vec(vec![1f32, 2.0, 3.0, 4.0]);
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 
 		container.filter(&mask);
@@ -429,8 +379,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder() {
-		let mut container =
-			NumberContainer::from_vec(vec![10i32, 20, 30]);
+		let mut container = NumberContainer::from_vec(vec![10i32, 20, 30]);
 		let indices = [2, 0, 1];
 
 		container.reorder(&indices);
@@ -443,8 +392,7 @@ mod tests {
 
 	#[test]
 	fn test_push_with_convert() {
-		let mut container: NumberContainer<i32> =
-			NumberContainer::with_capacity(3);
+		let mut container: NumberContainer<i32> = NumberContainer::with_capacity(3);
 
 		// Successful conversion
 		container.push_with_convert(42u32, |x| {

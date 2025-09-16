@@ -10,10 +10,7 @@ use reifydb_type::internal_error;
 use crate::{CatalogStore, sequence::Sequence};
 
 impl CatalogStore {
-	pub fn get_sequence(
-		rx: &mut impl QueryTransaction,
-		sequence_id: SequenceId,
-	) -> crate::Result<Sequence> {
+	pub fn get_sequence(rx: &mut impl QueryTransaction, sequence_id: SequenceId) -> crate::Result<Sequence> {
 		CatalogStore::find_sequence(rx, sequence_id)?.ok_or_else(|| {
 			Error(internal_error!(
 				"Sequence with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

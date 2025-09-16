@@ -20,13 +20,8 @@ impl EncodableKey for FlowNodeStateKey {
 	const KIND: KeyKind = KeyKind::FlowNodeState;
 
 	fn encode(&self) -> EncodedKey {
-		let mut serializer =
-			KeySerializer::with_capacity(10 + self.key.len());
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.node.0)
-			.extend_raw(&self.key);
+		let mut serializer = KeySerializer::with_capacity(10 + self.key.len());
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.node.0).extend_raw(&self.key);
 		serializer.to_encoded_key()
 	}
 
@@ -76,10 +71,7 @@ impl FlowNodeStateKey {
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::operator_state_start()),
-			Some(Self::operator_state_end()),
-		)
+		EncodedKeyRange::start_end(Some(Self::operator_state_start()), Some(Self::operator_state_end()))
 	}
 
 	/// Create a range for scanning all entries of a specific node
@@ -145,20 +137,14 @@ impl EncodableKeyRange for FlowNodeStateKeyRange {
 
 	fn start(&self) -> Option<EncodedKey> {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.node.0);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.node.0);
 		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let next_node = FlowNodeId(self.node.0 + 1);
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(next_node.0);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(next_node.0);
 		Some(serializer.to_encoded_key())
 	}
 
@@ -169,16 +155,12 @@ impl EncodableKeyRange for FlowNodeStateKeyRange {
 		use std::ops::Bound;
 
 		let start_key = match &range.start {
-			Bound::Included(key) | Bound::Excluded(key) => {
-				Self::decode_key(key)
-			}
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_key(key),
 			Bound::Unbounded => None,
 		};
 
 		let end_key = match &range.end {
-			Bound::Included(key) | Bound::Excluded(key) => {
-				Self::decode_key(key)
-			}
+			Bound::Included(key) | Bound::Excluded(key) => Self::decode_key(key),
 			Bound::Unbounded => None,
 		};
 
@@ -188,10 +170,7 @@ impl EncodableKeyRange for FlowNodeStateKeyRange {
 
 #[cfg(test)]
 mod tests {
-	use super::{
-		EncodableKey, EncodableKeyRange, FlowNodeStateKey,
-		FlowNodeStateKeyRange,
-	};
+	use super::{EncodableKey, EncodableKeyRange, FlowNodeStateKey, FlowNodeStateKeyRange};
 	use crate::{EncodedKey, EncodedKeyRange};
 
 	#[test]
@@ -226,19 +205,14 @@ mod tests {
 
 	#[test]
 	fn test_new() {
-		let key = FlowNodeStateKey::new(
-			crate::interface::FlowNodeId(42),
-			vec![5, 6, 7],
-		);
+		let key = FlowNodeStateKey::new(crate::interface::FlowNodeId(42), vec![5, 6, 7]);
 		assert_eq!(key.node.0, 42);
 		assert_eq!(key.key, vec![5, 6, 7]);
 	}
 
 	#[test]
 	fn test_new_empty() {
-		let key = FlowNodeStateKey::new_empty(
-			crate::interface::FlowNodeId(42),
-		);
+		let key = FlowNodeStateKey::new_empty(crate::interface::FlowNodeId(42));
 		assert_eq!(key.node.0, 42);
 		assert_eq!(key.key, Vec::<u8>::new());
 	}
@@ -308,12 +282,10 @@ mod tests {
 		let range = FlowNodeStateKeyRange::new(node);
 
 		// Create an EncodedKeyRange
-		let encoded_range =
-			EncodedKeyRange::start_end(range.start(), range.end());
+		let encoded_range = EncodedKeyRange::start_end(range.start(), range.end());
 
 		// Decode it back
-		let (start_decoded, end_decoded) =
-			FlowNodeStateKeyRange::decode(&encoded_range);
+		let (start_decoded, end_decoded) = FlowNodeStateKeyRange::decode(&encoded_range);
 
 		assert!(start_decoded.is_some());
 		assert_eq!(start_decoded.unwrap().node, node);
@@ -330,8 +302,7 @@ mod tests {
 		// The range should include all keys for this node
 		// Start should be the node with empty key
 		// End should be the next node with empty key
-		let (start_range, end_range) =
-			FlowNodeStateKeyRange::decode(&range);
+		let (start_range, end_range) = FlowNodeStateKeyRange::decode(&range);
 
 		assert!(start_range.is_some());
 		assert_eq!(start_range.unwrap().node, node);

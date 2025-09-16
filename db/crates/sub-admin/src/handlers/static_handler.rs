@@ -9,10 +9,7 @@ pub fn serve_index() -> HttpResponse {
 	// Try to get embedded index.html
 	if let Some(file) = assets::get_embedded_file("index.html") {
 		HttpResponse::ok()
-			.with_header(
-				"Content-Type".to_string(),
-				file.mime_type.to_string(),
-			)
+			.with_header("Content-Type".to_string(), file.mime_type.to_string())
 			.with_body(file.content.to_vec())
 	} else {
 		// Fallback if no embedded file
@@ -45,19 +42,10 @@ pub fn serve_static(path: &str) -> HttpResponse {
 	// Try to serve embedded static file
 	if let Some(file) = assets::get_embedded_file(clean_path) {
 		HttpResponse::ok()
-			.with_header(
-				"Content-Type".to_string(),
-				file.mime_type.to_string(),
-			)
-			.with_header(
-				"Cache-Control".to_string(),
-				"public, max-age=31536000".to_string(),
-			)
+			.with_header("Content-Type".to_string(), file.mime_type.to_string())
+			.with_header("Cache-Control".to_string(), "public, max-age=31536000".to_string())
 			.with_body(file.content.to_vec())
 	} else {
-		HttpResponse::not_found().with_json(&format!(
-			r#"{{"error":"Static file not found: {}"}}"#,
-			clean_path
-		))
+		HttpResponse::not_found().with_json(&format!(r#"{{"error":"Static file not found: {}"}}"#, clean_path))
 	}
 }

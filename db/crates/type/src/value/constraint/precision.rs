@@ -5,24 +5,10 @@ use std::fmt::{Display, Formatter};
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	Error, error::diagnostic::number::decimal_precision_invalid,
-	return_error,
-};
+use crate::{Error, error::diagnostic::number::decimal_precision_invalid, return_error};
 
 /// Precision for a decimal type (minimum 1 total digit)
-#[derive(
-	Clone,
-	Copy,
-	Debug,
-	PartialEq,
-	Eq,
-	Hash,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 #[repr(transparent)]
 pub struct Precision(u8);
 
@@ -32,11 +18,7 @@ impl Precision {
 	/// # Panics
 	/// Panics if precision is 0
 	pub fn new(precision: u8) -> Self {
-		assert!(
-			precision > 0,
-			"Precision must be at least 1, got {}",
-			precision
-		);
+		assert!(precision > 0, "Precision must be at least 1, got {}", precision);
 		Self(precision)
 	}
 

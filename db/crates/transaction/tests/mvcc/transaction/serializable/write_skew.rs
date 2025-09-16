@@ -39,12 +39,7 @@ fn test_write_skew() {
 	txn.commit().unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	let get_bal = |txn: &mut CommandTransaction<
-		Memory,
-		SingleVersionLock<Memory>,
-	>,
-	               k: &EncodedKey|
-	 -> u64 {
+	let get_bal = |txn: &mut CommandTransaction<Memory, SingleVersionLock<Memory>>, k: &EncodedKey| -> u64 {
 		let sv = txn.get(k).unwrap().unwrap();
 		let val = sv.row();
 		from_row!(u64, val)
@@ -96,11 +91,9 @@ fn test_black_white() {
 	let mut txn = engine.begin_command().unwrap();
 	for i in 1..=10 {
 		if i % 2 == 1 {
-			txn.set(&as_key!(i), as_row!("black".to_string()))
-				.unwrap();
+			txn.set(&as_key!(i), as_row!("black".to_string())).unwrap();
 		} else {
-			txn.set(&as_key!(i), as_row!("white".to_string()))
-				.unwrap();
+			txn.set(&as_key!(i), as_row!("white".to_string())).unwrap();
 		}
 	}
 	txn.commit().unwrap();
@@ -192,14 +185,11 @@ fn test_primary_colors() {
 	let mut txn = engine.begin_command().unwrap();
 	for i in 1..=9000 {
 		if i % 3 == 1 {
-			txn.set(&as_key!(i), as_row!("red".to_string()))
-				.unwrap();
+			txn.set(&as_key!(i), as_row!("red".to_string())).unwrap();
 		} else if i % 3 == 2 {
-			txn.set(&as_key!(i), as_row!("yellow".to_string()))
-				.unwrap();
+			txn.set(&as_key!(i), as_row!("yellow".to_string())).unwrap();
 		} else {
-			txn.set(&as_key!(i), as_row!("blue".to_string()))
-				.unwrap();
+			txn.set(&as_key!(i), as_row!("blue".to_string())).unwrap();
 		}
 	}
 	txn.commit().unwrap();
@@ -368,21 +358,13 @@ fn test_intersecting_data2() {
 	assert_eq!(2, engine.version().unwrap());
 
 	let mut txn1 = engine.begin_command().unwrap();
-	let val = txn1
-		.range(EncodedKeyRange::parse("a..b"))
-		.unwrap()
-		.map(|tv| from_row!(u64, *tv.row()))
-		.sum::<u64>();
+	let val = txn1.range(EncodedKeyRange::parse("a..b")).unwrap().map(|tv| from_row!(u64, *tv.row())).sum::<u64>();
 
 	txn1.set(&as_key!("b3"), as_row!(10)).unwrap();
 	assert_eq!(10, val);
 
 	let mut txn2 = engine.begin_command().unwrap();
-	let val = txn2
-		.range(EncodedKeyRange::parse("b..c"))
-		.unwrap()
-		.map(|tv| from_row!(u64, *tv.row()))
-		.sum::<u64>();
+	let val = txn2.range(EncodedKeyRange::parse("b..c")).unwrap().map(|tv| from_row!(u64, *tv.row())).sum::<u64>();
 
 	assert_eq!(300, val);
 	txn2.set(&as_key!("a3"), as_row!(300u64)).unwrap();
@@ -421,20 +403,12 @@ fn test_intersecting_data3() {
 	assert_eq!(2, engine.version().unwrap());
 
 	let mut txn1 = engine.begin_command().unwrap();
-	let val = txn1
-		.range(EncodedKeyRange::parse("a..b"))
-		.unwrap()
-		.map(|tv| from_row!(u64, *tv.row()))
-		.sum::<u64>();
+	let val = txn1.range(EncodedKeyRange::parse("a..b")).unwrap().map(|tv| from_row!(u64, *tv.row())).sum::<u64>();
 	txn1.set(&as_key!("b3"), as_row!(0u64)).unwrap();
 	assert_eq!(0, val);
 
 	let mut txn2 = engine.begin_command().unwrap();
-	let val = txn2
-		.range(EncodedKeyRange::parse("b..c"))
-		.unwrap()
-		.map(|tv| from_row!(u64, *tv.row()))
-		.sum::<u64>();
+	let val = txn2.range(EncodedKeyRange::parse("b..c")).unwrap().map(|tv| from_row!(u64, *tv.row())).sum::<u64>();
 
 	txn2.set(&as_key!("a3"), as_row!(300u64)).unwrap();
 	assert_eq!(300, val);

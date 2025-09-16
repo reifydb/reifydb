@@ -14,6 +14,4 @@ pub use scheduler::TaskScheduler;
 pub use task::{ClosureTask, PoolTask, PrioritizedTask, TaskContext};
 pub use worker::Worker;
 
-pub use crate::subsystem::{
-	PoolStats, Priority, WorkerPoolConfig, WorkerPoolSubsystem,
-};
+pub use crate::subsystem::{PoolStats, Priority, WorkerPoolConfig, WorkerPoolSubsystem};

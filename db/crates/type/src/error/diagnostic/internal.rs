@@ -23,13 +23,10 @@ pub fn internal_with_context(
 		line
 	);
 
-	let detailed_message =
-		format!("Internal error [{}]: {}", error_id, reason);
+	let detailed_message = format!("Internal error [{}]: {}", error_id, reason);
 
-	let location_info = format!(
-		"Location: {}:{}:{}\nFunction: {}\nModule: {}",
-		file, line, column, function, module_path
-	);
+	let location_info =
+		format!("Location: {}:{}:{}\nFunction: {}\nModule: {}", file, line, column, function, module_path);
 
 	let help_message = format!(
 		"This is an internal error that should never occur in normal operation.\n\n\
@@ -52,21 +49,22 @@ pub fn internal_with_context(
 	);
 
 	Diagnostic {
-        code: "INTERNAL_ERROR".to_string(),
-        statement: None,
-        message: detailed_message,
-        column: None,
-        fragment: OwnedFragment::None,
-        label: Some(format!("Internal invariant violated at {}:{}:{}", file, line, column)),
-        help: Some(help_message),
-        notes: vec![
-            format!("Error occurred in function: {}", function),
-            "This error indicates a critical internal inconsistency.".to_string(),
-            "Your database may be in an inconsistent state.".to_string(),
-            "Consider creating a backup before continuing operations.".to_string(),
-            format!("Error tracking ID: {}", error_id),
-        ],
-        cause: None}
+		code: "INTERNAL_ERROR".to_string(),
+		statement: None,
+		message: detailed_message,
+		column: None,
+		fragment: OwnedFragment::None,
+		label: Some(format!("Internal invariant violated at {}:{}:{}", file, line, column)),
+		help: Some(help_message),
+		notes: vec![
+			format!("Error occurred in function: {}", function),
+			"This error indicates a critical internal inconsistency.".to_string(),
+			"Your database may be in an inconsistent state.".to_string(),
+			"Consider creating a backup before continuing operations.".to_string(),
+			format!("Error tracking ID: {}", error_id),
+		],
+		cause: None,
+	}
 }
 
 /// Simplified internal error without detailed context
@@ -155,11 +153,7 @@ mod tests {
 		assert_eq!(diagnostic.code, "INTERNAL_ERROR");
 		assert!(diagnostic.message.contains("simple error message"));
 		assert!(diagnostic.help.is_some());
-		assert!(diagnostic
-			.help
-			.as_ref()
-			.unwrap()
-			.contains("bug report"));
+		assert!(diagnostic.help.as_ref().unwrap().contains("bug report"));
 		assert!(diagnostic.notes.len() > 0);
 	}
 
@@ -167,22 +161,12 @@ mod tests {
 	fn test_internal_error_with_format() {
 		let value = 42;
 		let name = "test";
-		let diagnostic = internal_error!(
-			"Error with value: {} and name: {}",
-			value,
-			name
-		);
+		let diagnostic = internal_error!("Error with value: {} and name: {}", value, name);
 
 		assert_eq!(diagnostic.code, "INTERNAL_ERROR");
-		assert!(diagnostic
-			.message
-			.contains("Error with value: 42 and name: test"));
+		assert!(diagnostic.message.contains("Error with value: 42 and name: test"));
 		assert!(diagnostic.label.is_some());
-		assert!(diagnostic
-			.label
-			.as_ref()
-			.unwrap()
-			.contains("Internal invariant violated"));
+		assert!(diagnostic.label.as_ref().unwrap().contains("Internal invariant violated"));
 	}
 
 	#[test]
@@ -192,8 +176,7 @@ mod tests {
 			name: "test".to_string(),
 		};
 
-		let diagnostic =
-			internal_error!("Test struct: {:?}", test_struct);
+		let diagnostic = internal_error!("Test struct: {:?}", test_struct);
 
 		assert_eq!(diagnostic.code, "INTERNAL_ERROR");
 		assert!(diagnostic.message.contains("TestStruct"));
@@ -203,8 +186,7 @@ mod tests {
 
 	#[test]
 	fn test_internal_err_literal_string() {
-		let result: Result<(), crate::Error> =
-			internal_err!("test error");
+		let result: Result<(), crate::Error> = internal_err!("test error");
 
 		assert!(result.is_err());
 		let error = result.unwrap_err();
@@ -216,16 +198,12 @@ mod tests {
 	fn test_internal_err_with_format() {
 		let code = "ERR_123";
 		let line = 456;
-		let result: Result<(), crate::Error> =
-			internal_err!("Error code: {} at line {}", code, line);
+		let result: Result<(), crate::Error> = internal_err!("Error code: {} at line {}", code, line);
 
 		assert!(result.is_err());
 		let error = result.unwrap_err();
 		assert_eq!(error.0.code, "INTERNAL_ERROR");
-		assert!(error
-			.0
-			.message
-			.contains("Error code: ERR_123 at line 456"));
+		assert!(error.0.message.contains("Error code: ERR_123 at line 456"));
 	}
 
 	#[test]
@@ -235,36 +213,19 @@ mod tests {
 		assert_eq!(diagnostic.code, "INTERNAL_ERROR");
 		assert!(diagnostic.message.contains("basic internal error"));
 		assert!(diagnostic.label.is_some());
-		assert!(diagnostic
-			.label
-			.as_ref()
-			.unwrap()
-			.contains("unknown:0:0"));
+		assert!(diagnostic.label.as_ref().unwrap().contains("unknown:0:0"));
 	}
 
 	#[test]
 	fn test_internal_with_context_function() {
-		let diagnostic = internal_with_context(
-			"context error",
-			"test.rs",
-			100,
-			20,
-			"test_function",
-			"test::module",
-		);
+		let diagnostic =
+			internal_with_context("context error", "test.rs", 100, 20, "test_function", "test::module");
 
 		assert_eq!(diagnostic.code, "INTERNAL_ERROR");
 		assert!(diagnostic.message.contains("context error"));
 		assert!(diagnostic.label.is_some());
-		assert!(diagnostic
-			.label
-			.as_ref()
-			.unwrap()
-			.contains("test.rs:100:20"));
-		assert!(diagnostic
-			.notes
-			.iter()
-			.any(|n| n.contains("test_function")));
+		assert!(diagnostic.label.as_ref().unwrap().contains("test.rs:100:20"));
+		assert!(diagnostic.notes.iter().any(|n| n.contains("test_function")));
 		assert!(diagnostic.help.is_some());
 		let help = diagnostic.help.as_ref().unwrap();
 		assert!(help.contains("test.rs:100:20"));
@@ -299,34 +260,16 @@ mod tests {
 
 	#[test]
 	fn test_error_id_generation() {
-		let diagnostic1 = internal_with_context(
-			"error 1", "file1.rs", 10, 5, "func1", "mod1",
-		);
+		let diagnostic1 = internal_with_context("error 1", "file1.rs", 10, 5, "func1", "mod1");
 
 		// Small delay to ensure different timestamps
 		std::thread::sleep(std::time::Duration::from_millis(2));
 
-		let diagnostic2 = internal_with_context(
-			"error 2", "file2.rs", 20, 10, "func2", "mod2",
-		);
+		let diagnostic2 = internal_with_context("error 2", "file2.rs", 20, 10, "func2", "mod2");
 
 		// Extract error IDs from messages
-		let id1 = diagnostic1
-			.message
-			.split('[')
-			.nth(1)
-			.unwrap()
-			.split(']')
-			.nth(0)
-			.unwrap();
-		let id2 = diagnostic2
-			.message
-			.split('[')
-			.nth(1)
-			.unwrap()
-			.split(']')
-			.nth(0)
-			.unwrap();
+		let id1 = diagnostic1.message.split('[').nth(1).unwrap().split(']').nth(0).unwrap();
+		let id2 = diagnostic2.message.split('[').nth(1).unwrap().split(']').nth(0).unwrap();
 
 		// Error IDs should be unique
 		assert_ne!(id1, id2);

@@ -19,10 +19,7 @@ pub struct MaterializedCatalogLoader;
 
 impl MaterializedCatalogLoader {
 	/// Load all catalog data from storage into the MaterializedCatalog
-	pub fn load_all(
-		qt: &mut impl QueryTransaction,
-		catalog: &MaterializedCatalog,
-	) -> crate::Result<()> {
+	pub fn load_all(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
 		load_namespaces(qt, catalog)?;
 		// Load primary keys first so they're available when loading
 		// tables/views

@@ -23,16 +23,11 @@ pub fn authorization_denied(resource: String) -> Diagnostic {
 	Diagnostic {
 		code: "AUTH_002".to_string(),
 		statement: None,
-		message: format!(
-			"Authorization denied for resource: {}",
-			resource
-		),
+		message: format!("Authorization denied for resource: {}", resource),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
-		help: Some(
-			"Check your permissions for this resource".to_string()
-		),
+		help: Some("Check your permissions for this resource".to_string()),
 		notes: vec![],
 		cause: None,
 	}
@@ -58,8 +53,7 @@ pub fn invalid_token() -> Diagnostic {
 	Diagnostic {
 		code: "AUTH_004".to_string(),
 		statement: None,
-		message: "Invalid or malformed authentication token"
-			.to_string(),
+		message: "Invalid or malformed authentication token".to_string(),
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,

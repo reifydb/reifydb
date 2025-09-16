@@ -7,9 +7,7 @@ mod tests {
 
 	#[test]
 	fn test_frame_serialization_preserves_column_order() {
-		use crate::value::columnar::{
-			Column, ColumnQualified, Columns,
-		};
+		use crate::value::columnar::{Column, ColumnQualified, Columns};
 
 		// Create columns using the same method as the versions table
 		let mut names_to_insert = ColumnData::utf8_with_capacity(1);
@@ -18,8 +16,7 @@ mod tests {
 		let mut versions_to_insert = ColumnData::utf8_with_capacity(1);
 		versions_to_insert.push("0.0.1");
 
-		let mut descriptions_to_insert =
-			ColumnData::utf8_with_capacity(1);
+		let mut descriptions_to_insert = ColumnData::utf8_with_capacity(1);
 		descriptions_to_insert.push("ReifyDB Database System");
 
 		let mut types_to_insert = ColumnData::utf8_with_capacity(1);

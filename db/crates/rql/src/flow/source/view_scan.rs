@@ -30,10 +30,7 @@ impl<T: CommandTransaction> CompileOperator<T> for ViewScanCompiler {
 		let view_name = view.name.clone();
 
 		// Get namespace information
-		let namespace_def = CatalogStore::get_namespace(
-			unsafe { &mut *compiler.txn },
-			view.namespace,
-		)?;
+		let namespace_def = CatalogStore::get_namespace(unsafe { &mut *compiler.txn }, view.namespace)?;
 
 		let namespace = FlowNodeSchema::new(
 			view.columns.clone(),

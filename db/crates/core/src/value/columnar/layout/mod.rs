@@ -14,10 +14,7 @@ pub struct ColumnsLayout {
 impl ColumnsLayout {
 	pub fn from_columns(columns: &Columns) -> Self {
 		Self {
-			columns: columns
-				.iter()
-				.map(|c| ColumnLayout::from_column(c))
-				.collect(),
+			columns: columns.iter().map(|c| ColumnLayout::from_column(c)).collect(),
 		}
 	}
 }

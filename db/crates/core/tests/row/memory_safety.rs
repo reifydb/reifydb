@@ -77,13 +77,11 @@ fn test_unaligned_access_all_types() {
 			}
 			Type::Float4 => {
 				layout.set_f32(&mut row, 1, 3.14);
-				assert!((layout.get_f32(&row, 1) - 3.14).abs()
-					< f32::EPSILON);
+				assert!((layout.get_f32(&row, 1) - 3.14).abs() < f32::EPSILON);
 			}
 			Type::Float8 => {
 				layout.set_f64(&mut row, 1, 3.14159);
-				assert!((layout.get_f64(&row, 1) - 3.14159)
-					.abs() < f64::EPSILON);
+				assert!((layout.get_f64(&row, 1) - 3.14159).abs() < f64::EPSILON);
 			}
 			Type::Utf8 => {
 				layout.set_utf8(&mut row, 1, "test");
@@ -121,11 +119,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 	}
 
 	// Size should not have grown for static fields
-	assert_eq!(
-		row.len(),
-		initial_size,
-		"Static fields caused memory growth"
-	);
+	assert_eq!(row.len(), initial_size, "Static fields caused memory growth");
 
 	// Set dynamic fields once
 	layout.set_utf8(&mut row, 2, "constant");
@@ -133,14 +127,8 @@ fn test_repeated_overwrites_no_memory_leak() {
 	layout.set_int(&mut row, 4, &Int::from(123i64));
 
 	let size_after_dynamic = row.len();
-	assert!(
-		size_after_dynamic > initial_size,
-		"Dynamic fields should increase size"
-	);
-	assert!(
-		size_after_dynamic < initial_size * 3,
-		"Dynamic fields shouldn't triple size"
-	);
+	assert!(size_after_dynamic > initial_size, "Dynamic fields should increase size");
+	assert!(size_after_dynamic < initial_size * 3, "Dynamic fields shouldn't triple size");
 
 	// Test that many rows with same dynamic content are memory efficient
 	let rows: Vec<_> = (0..100)
@@ -157,11 +145,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 
 	// All rows should have similar size
 	for r in &rows {
-		assert_eq!(
-			r.len(),
-			size_after_dynamic,
-			"Row sizes should be consistent"
-		);
+		assert_eq!(r.len(), size_after_dynamic, "Row sizes should be consistent");
 	}
 }
 

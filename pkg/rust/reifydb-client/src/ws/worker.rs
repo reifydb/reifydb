@@ -42,17 +42,13 @@ pub(crate) fn worker_thread_with_addr(
 				route,
 			}) => {
 				// Send the request via WebSocket
-				if let Err(e) = ws_client.send_request(&request)
-				{
+				if let Err(e) = ws_client.send_request(&request) {
 					// Send error back through the route
 					route_error(&id, e.to_string(), route);
 				} else {
 					// Store the route for when response
 					// arrives
-					request_router
-						.lock()
-						.unwrap()
-						.add_route(id, route);
+					request_router.lock().unwrap().add_route(id, route);
 				}
 			}
 			Ok(InternalMessage::Close) => {
@@ -73,9 +69,7 @@ pub(crate) fn worker_thread_with_addr(
 		match ws_client.receive() {
 			Ok(Some(response)) => {
 				let mut router = request_router.lock().unwrap();
-				if let Some(route) =
-					router.remove_route(&response.id)
-				{
+				if let Some(route) = router.remove_route(&response.id) {
 					// Route the response to the appropriate
 					// session
 					route_response(response, route);
@@ -87,23 +81,15 @@ pub(crate) fn worker_thread_with_addr(
 			Err(e) => {
 				// Handle connection errors
 				if !ws_client.is_connected() {
-					eprintln!(
-						"WebSocket connection lost: {}",
-						e
-					);
+					eprintln!("WebSocket connection lost: {}", e);
 					// Try to reconnect
 					match WebSocketClient::connect(addr) {
 						Ok(new_client) => {
 							ws_client = new_client;
-							println!(
-								"Reconnected to WebSocket"
-							);
+							println!("Reconnected to WebSocket");
 						}
 						Err(e) => {
-							eprintln!(
-								"Failed to reconnect: {}",
-								e
-							);
+							eprintln!("Failed to reconnect: {}", e);
 							thread::sleep(Duration::from_secs(5));
 						}
 					}

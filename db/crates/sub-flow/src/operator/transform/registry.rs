@@ -3,26 +3,15 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::{
-	FlowNodeId, Transaction, expression::Expression,
-};
+use reifydb_core::interface::{FlowNodeId, Transaction, expression::Expression};
 
 use crate::operator::{
 	Operator,
-	transform::{
-		CounterOperator, RunningAvgOperator, RunningSumOperator,
-		TransformOperatorFactory,
-	},
+	transform::{CounterOperator, RunningAvgOperator, RunningSumOperator, TransformOperatorFactory},
 };
 
-type OperatorFactoryFn<T> = Box<
-	dyn Fn(
-			FlowNodeId,
-			&[Expression<'static>],
-		) -> crate::Result<Box<dyn Operator<T>>>
-		+ Send
-		+ Sync,
->;
+type OperatorFactoryFn<T> =
+	Box<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator<T>>> + Send + Sync>;
 
 pub struct TransformOperatorRegistry<T: Transaction> {
 	factories: HashMap<String, OperatorFactoryFn<T>>,
@@ -37,10 +26,7 @@ impl<T: Transaction> TransformOperatorRegistry<T> {
 
 	pub fn register<F>(&mut self, name: String, factory: F)
 	where
-		F: Fn(
-				FlowNodeId,
-				&[Expression<'static>],
-			) -> crate::Result<Box<dyn Operator<T>>>
+		F: Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator<T>>>
 			+ Send
 			+ Sync
 			+ 'static,
@@ -54,9 +40,7 @@ impl<T: Transaction> TransformOperatorRegistry<T> {
 		node: FlowNodeId,
 		expressions: &[Expression<'static>],
 	) -> crate::Result<Box<dyn Operator<T>>> {
-		let factory = self.factories.get(name).unwrap_or_else(|| {
-			panic!("Unknown operator: {}", name)
-		});
+		let factory = self.factories.get(name).unwrap_or_else(|| panic!("Unknown operator: {}", name));
 
 		factory(node, expressions)
 	}

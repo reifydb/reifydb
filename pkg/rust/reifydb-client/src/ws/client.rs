@@ -12,15 +12,13 @@ use crate::{
 	ws::{
 		message::InternalMessage,
 		protocol::{
-			build_ws_frame, calculate_accept_key,
-			calculate_frame_size, find_header_end,
+			build_ws_frame, calculate_accept_key, calculate_frame_size, find_header_end,
 			generate_websocket_key, parse_ws_frame,
 		},
 		router::RequestRouter,
 		worker,
 	},
-	Request, Response, ResponseMessage, WsBlockingSession,
-	WsCallbackSession, WsChannelSession,
+	Request, Response, ResponseMessage, WsBlockingSession, WsCallbackSession, WsChannelSession,
 };
 
 /// WebSocket client implementation
@@ -55,35 +53,26 @@ impl WsClient {
 		let router_clone = router.clone();
 		let socket_addr_clone = socket_addr;
 		let worker_handle = std::thread::spawn(move || {
-			worker::worker_thread_with_addr(
-				socket_addr_clone,
-				command_rx,
-				router_clone,
-			);
+			worker::worker_thread_with_addr(socket_addr_clone, command_rx, router_clone);
 		});
 
 		Ok(Self {
 			inner: Arc::new(ClientInner {
 				command_tx,
-				worker_handle: Arc::new(Mutex::new(Some(
-					worker_handle,
-				))),
+				worker_handle: Arc::new(Mutex::new(Some(worker_handle))),
 			}),
 		})
 	}
 
 	/// Parse a WebSocket URL to extract the socket address
-	fn parse_ws_url(
-		url: &str,
-	) -> Result<SocketAddr, Box<dyn std::error::Error>> {
-		let addr_str =
-			if url.starts_with("ws://") {
-				&url[5..] // Remove "ws://"
-			} else if url.starts_with("wss://") {
-				return Err("WSS (secure WebSocket) is not yet supported".into());
-			} else {
-				url
-			};
+	fn parse_ws_url(url: &str) -> Result<SocketAddr, Box<dyn std::error::Error>> {
+		let addr_str = if url.starts_with("ws://") {
+			&url[5..] // Remove "ws://"
+		} else if url.starts_with("wss://") {
+			return Err("WSS (secure WebSocket) is not yet supported".into());
+		} else {
+			url
+		};
 
 		// Parse the address string to SocketAddr
 		// Handle different formats:
@@ -94,9 +83,7 @@ impl WsClient {
 
 		if addr_str.starts_with('[') {
 			// Already has brackets, parse as-is
-			addr_str.to_socket_addrs()?.next().ok_or_else(|| {
-				"Failed to resolve address".into()
-			})
+			addr_str.to_socket_addrs()?.next().ok_or_else(|| "Failed to resolve address".into())
 		} else if addr_str.starts_with("::") {
 			// IPv6 address without brackets
 			// Find the last colon that's likely the port separator
@@ -107,48 +94,29 @@ impl WsClient {
 				if let Some(port_start) = addr_str.rfind(':') {
 					// Check if what follows is a port
 					// number
-					if addr_str[port_start + 1..]
-						.chars()
-						.all(|c| c.is_ascii_digit())
-					{
-						let ipv6_part =
-							&addr_str[..port_start];
-						let port_part = &addr_str
-							[port_start + 1..];
-						let formatted = format!(
-							"[{}]:{}",
-							ipv6_part, port_part
-						);
+					if addr_str[port_start + 1..].chars().all(|c| c.is_ascii_digit()) {
+						let ipv6_part = &addr_str[..port_start];
+						let port_part = &addr_str[port_start + 1..];
+						let formatted = format!("[{}]:{}", ipv6_part, port_part);
 						return formatted
 							.to_socket_addrs()?
 							.next()
-							.ok_or_else(|| {
-								"Failed to resolve address".into()
-							});
+							.ok_or_else(|| "Failed to resolve address".into());
 					}
 				}
 			}
 			// Try as-is
-			addr_str.to_socket_addrs()?.next().ok_or_else(|| {
-				"Failed to resolve address".into()
-			})
+			addr_str.to_socket_addrs()?.next().ok_or_else(|| "Failed to resolve address".into())
 		} else {
 			// Regular address (hostname or IPv4)
-			addr_str.to_socket_addrs()?.next().ok_or_else(|| {
-				"Failed to resolve address".into()
-			})
+			addr_str.to_socket_addrs()?.next().ok_or_else(|| "Failed to resolve address".into())
 		}
 	}
 
 	/// Create a new WebSocket client
-	pub fn new<A: ToSocketAddrs>(
-		addr: A,
-	) -> Result<Self, Box<dyn std::error::Error>> {
+	pub fn new<A: ToSocketAddrs>(addr: A) -> Result<Self, Box<dyn std::error::Error>> {
 		// Resolve the address to get the first valid SocketAddr
-		let socket_addr = addr
-			.to_socket_addrs()?
-			.next()
-			.ok_or("Failed to resolve address")?;
+		let socket_addr = addr.to_socket_addrs()?.next().ok_or("Failed to resolve address")?;
 
 		let (command_tx, command_rx) = mpsc::channel();
 		let router = Arc::new(Mutex::new(RequestRouter::new()));
@@ -161,36 +129,24 @@ impl WsClient {
 		let router_clone = router.clone();
 		let socket_addr_clone = socket_addr;
 		let worker_handle = std::thread::spawn(move || {
-			worker::worker_thread_with_addr(
-				socket_addr_clone,
-				command_rx,
-				router_clone,
-			);
+			worker::worker_thread_with_addr(socket_addr_clone, command_rx, router_clone);
 		});
 
 		Ok(Self {
 			inner: Arc::new(ClientInner {
 				command_tx,
-				worker_handle: Arc::new(Mutex::new(Some(
-					worker_handle,
-				))),
+				worker_handle: Arc::new(Mutex::new(Some(worker_handle))),
 			}),
 		})
 	}
 
 	/// Create a blocking session
-	pub fn blocking_session(
-		&self,
-		token: Option<String>,
-	) -> Result<WsBlockingSession, reifydb_type::Error> {
+	pub fn blocking_session(&self, token: Option<String>) -> Result<WsBlockingSession, reifydb_type::Error> {
 		WsBlockingSession::new(self.inner.clone(), token)
 	}
 
 	/// Create a callback-based session
-	pub fn callback_session(
-		&self,
-		token: Option<String>,
-	) -> Result<WsCallbackSession, reifydb_type::Error> {
+	pub fn callback_session(&self, token: Option<String>) -> Result<WsCallbackSession, reifydb_type::Error> {
 		WsCallbackSession::new(self.inner.clone(), token)
 	}
 
@@ -198,10 +154,7 @@ impl WsClient {
 	pub fn channel_session(
 		&self,
 		token: Option<String>,
-	) -> Result<
-		(WsChannelSession, mpsc::Receiver<ResponseMessage>),
-		reifydb_type::Error,
-	> {
+	) -> Result<(WsChannelSession, mpsc::Receiver<ResponseMessage>), reifydb_type::Error> {
 		WsChannelSession::new(self.inner.clone(), token)
 	}
 
@@ -234,9 +187,7 @@ pub struct WebSocketClient {
 
 impl WebSocketClient {
 	/// Create a new WebSocket client and connect to the specified address
-	pub fn connect(
-		addr: SocketAddr,
-	) -> Result<Self, Box<dyn std::error::Error>> {
+	pub fn connect(addr: SocketAddr) -> Result<Self, Box<dyn std::error::Error>> {
 		// Connect to the socket address
 		let stream = TcpStream::connect(addr)?;
 		stream.set_nonblocking(true)?;
@@ -282,33 +233,21 @@ impl WebSocketClient {
 
 		loop {
 			match self.stream.read(&mut buffer) {
-				Ok(0) => return Err(
-					"Connection closed during handshake"
-						.into(),
-				),
+				Ok(0) => return Err("Connection closed during handshake".into()),
 				Ok(n) => {
-					response.extend_from_slice(
-						&buffer[..n],
-					);
+					response.extend_from_slice(&buffer[..n]);
 
 					// Check if we have the complete HTTP
 					// response
-					if let Some(end_pos) =
-						find_header_end(&response)
-					{
+					if let Some(end_pos) = find_header_end(&response) {
 						response.truncate(end_pos);
 						break;
 					}
 				}
-				Err(e) if e.kind()
-					== std::io::ErrorKind::WouldBlock =>
-				{
+				Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
 					// No data available yet
 					if start.elapsed() > timeout {
-						return Err(
-							"Handshake timeout"
-								.into(),
-						);
+						return Err("Handshake timeout".into());
 					}
 					std::thread::sleep(std::time::Duration::from_millis(10));
 					continue;
@@ -320,19 +259,12 @@ impl WebSocketClient {
 		// Verify handshake response
 		let response_str = String::from_utf8_lossy(&response);
 		if !response_str.contains("HTTP/1.1 101") {
-			return Err(format!(
-				"Invalid handshake response: {}",
-				response_str
-			)
-			.into());
+			return Err(format!("Invalid handshake response: {}", response_str).into());
 		}
 
 		// Verify Sec-WebSocket-Accept
 		let expected_accept = calculate_accept_key(&key);
-		if !response_str.contains(&format!(
-			"Sec-WebSocket-Accept: {}",
-			expected_accept
-		)) {
+		if !response_str.contains(&format!("Sec-WebSocket-Accept: {}", expected_accept)) {
 			return Err("Invalid Sec-WebSocket-Accept".into());
 		}
 
@@ -341,10 +273,7 @@ impl WebSocketClient {
 	}
 
 	/// Send a request over the WebSocket connection
-	pub(crate) fn send_request(
-		&mut self,
-		request: &Request,
-	) -> Result<(), Box<dyn std::error::Error>> {
+	pub(crate) fn send_request(&mut self, request: &Request) -> Result<(), Box<dyn std::error::Error>> {
 		if !self.is_connected {
 			return Err("Not connected".into());
 		}
@@ -364,9 +293,7 @@ impl WebSocketClient {
 	}
 
 	/// Receive a response from the WebSocket connection
-	pub fn receive(
-		&mut self,
-	) -> Result<Option<Response>, Box<dyn std::error::Error>> {
+	pub fn receive(&mut self) -> Result<Option<Response>, Box<dyn std::error::Error>> {
 		if !self.is_connected {
 			return Err("Not connected".into());
 		}
@@ -381,9 +308,7 @@ impl WebSocketClient {
 			Ok(n) => {
 				self.read_buffer.extend_from_slice(&buf[..n]);
 			}
-			Err(e) if e.kind()
-				== std::io::ErrorKind::WouldBlock =>
-			{
+			Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
 				// No data available
 				return Ok(None);
 			}
@@ -391,9 +316,7 @@ impl WebSocketClient {
 		}
 
 		// Try to parse WebSocket frame
-		if let Some((opcode, payload)) =
-			parse_ws_frame(&self.read_buffer)?
-		{
+		if let Some((opcode, payload)) = parse_ws_frame(&self.read_buffer)? {
 			// Remove parsed frame from buffer
 			let frame_size = calculate_frame_size(&payload, false);
 			self.read_buffer.drain(..frame_size);
@@ -401,25 +324,17 @@ impl WebSocketClient {
 			match opcode {
 				0x01 | 0x02 => {
 					// Text or binary frame
-					let response: Response =
-						serde_json::from_slice(
-							&payload,
-						)?;
+					let response: Response = serde_json::from_slice(&payload)?;
 					return Ok(Some(response));
 				}
 				0x08 => {
 					// Close frame
 					self.is_connected = false;
-					return Err(
-						"Connection closed by server"
-							.into(),
-					);
+					return Err("Connection closed by server".into());
 				}
 				0x09 => {
 					// Ping frame - respond with pong
-					let pong = build_ws_frame(
-						0x0A, &payload, true,
-					);
+					let pong = build_ws_frame(0x0A, &payload, true);
 					self.stream.write_all(&pong)?;
 					self.stream.flush()?;
 				}
@@ -428,11 +343,7 @@ impl WebSocketClient {
 				}
 				_ => {
 					// Unknown opcode
-					return Err(format!(
-						"Unknown opcode: {}",
-						opcode
-					)
-					.into());
+					return Err(format!("Unknown opcode: {}", opcode).into());
 				}
 			}
 		}

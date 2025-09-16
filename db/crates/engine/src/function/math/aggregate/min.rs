@@ -21,10 +21,7 @@ impl Min {
 }
 
 impl AggregateFunction for Min {
-	fn aggregate(
-		&mut self,
-		ctx: AggregateFunctionContext,
-	) -> crate::Result<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::Result<()> {
 		let column = ctx.column;
 		let groups = &ctx.groups;
 
@@ -33,20 +30,13 @@ impl AggregateFunction for Min {
 				for (group, indices) in groups.iter() {
 					let min_val = indices
 						.iter()
-						.filter_map(|&i| {
-							container.get(i)
-						})
-						.min_by(|a, b| {
-							a.partial_cmp(b)
-								.unwrap()
-						});
+						.filter_map(|&i| container.get(i))
+						.min_by(|a, b| a.partial_cmp(b).unwrap());
 
 					if let Some(min_val) = min_val {
 						self.mins
 							.entry(group.clone())
-							.and_modify(|v| {
-								*v = f64::min(*v, *min_val)
-							})
+							.and_modify(|v| *v = f64::min(*v, *min_val))
 							.or_insert(*min_val);
 					}
 				}
@@ -56,23 +46,14 @@ impl AggregateFunction for Min {
 				for (group, indices) in groups.iter() {
 					let min_val = indices
 						.iter()
-						.filter_map(|&i| {
-							container.get(i)
-						})
-						.min_by(|a, b| {
-							a.partial_cmp(b)
-								.unwrap()
-						});
+						.filter_map(|&i| container.get(i))
+						.min_by(|a, b| a.partial_cmp(b).unwrap());
 
 					if let Some(min_val) = min_val {
 						self.mins
 							.entry(group.clone())
-							.and_modify(|v| {
-								*v = f64::min(*v, *min_val as f64)
-							})
-							.or_insert(
-								*min_val as f64,
-							);
+							.and_modify(|v| *v = f64::min(*v, *min_val as f64))
+							.or_insert(*min_val as f64);
 					}
 				}
 				Ok(())
@@ -83,8 +64,7 @@ impl AggregateFunction for Min {
 
 	fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.mins.len());
-		let mut data =
-			ColumnData::float8_with_capacity(self.mins.len());
+		let mut data = ColumnData::float8_with_capacity(self.mins.len());
 
 		for (key, min) in std::mem::take(&mut self.mins) {
 			keys.push(key);

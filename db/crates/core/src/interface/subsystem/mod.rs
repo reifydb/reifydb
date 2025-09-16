@@ -60,10 +60,7 @@ pub trait SubsystemFactory<CT: CommandTransaction> {
 		builder
 	}
 
-	fn create(
-		self: Box<Self>,
-		ioc: &IocContainer,
-	) -> crate::Result<Box<dyn Subsystem>>;
+	fn create(self: Box<Self>, ioc: &IocContainer) -> crate::Result<Box<dyn Subsystem>>;
 }
 
 #[derive(Debug, Clone, PartialEq)]

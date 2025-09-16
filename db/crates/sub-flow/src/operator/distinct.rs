@@ -4,10 +4,7 @@
 use reifydb_core::{
 	EncodedKey,
 	flow::{FlowChange, FlowDiff},
-	interface::{
-		EvaluationContext, Evaluator, FlowNodeId, Params, Transaction,
-		expression::Expression,
-	},
+	interface::{EvaluationContext, Evaluator, FlowNodeId, Params, Transaction, expression::Expression},
 	row::EncodedRow,
 	util::CowVec,
 	value::columnar::Columns,
@@ -32,10 +29,7 @@ pub struct DistinctOperator {
 }
 
 impl DistinctOperator {
-	pub fn new(
-		node: FlowNodeId,
-		expressions: Vec<Expression<'static>>,
-	) -> Self {
+	pub fn new(node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
 		Self {
 			node,
 			expressions,
@@ -75,8 +69,7 @@ impl DistinctOperator {
 				params: &empty_params,
 			};
 			for expr in expressions {
-				let result =
-					evaluator.evaluate(&eval_ctx, expr)?;
+				let result = evaluator.evaluate(&eval_ctx, expr)?;
 				let value = result.data().get_value(row_idx);
 				buffer.extend(format!("{:?}", value).as_bytes());
 			}
@@ -93,10 +86,7 @@ impl DistinctOperator {
 	) -> crate::Result<Vec<Value>> {
 		if expressions.is_empty() {
 			// If no expressions specified, extract all columns
-			Ok(columns
-				.iter()
-				.map(|col| col.data().get_value(row_idx))
-				.collect())
+			Ok(columns.iter().map(|col| col.data().get_value(row_idx)).collect())
 		} else {
 			// Extract only the specified expressions
 			let row_count = columns.row_count();
@@ -111,8 +101,7 @@ impl DistinctOperator {
 			};
 			let mut values = Vec::new();
 			for expr in expressions {
-				let result =
-					evaluator.evaluate(&eval_ctx, expr)?;
+				let result = evaluator.evaluate(&eval_ctx, expr)?;
 				values.push(result.data().get_value(row_idx));
 			}
 			Ok(values)
@@ -138,50 +127,41 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 				} => {
 					let mut new_distinct_rows = Vec::new();
 
-					for (idx, &row_id) in
-						row_ids.iter().enumerate()
-					{
+					for (idx, &row_id) in row_ids.iter().enumerate() {
 						let row_hash = Self::hash_row_with_expressions(
-							evaluator, &self.expressions, after, idx,
+							evaluator,
+							&self.expressions,
+							after,
+							idx,
 						)?;
-						let key = Self::hash_to_key(
-							row_hash,
-						);
+						let key = Self::hash_to_key(row_hash);
 
 						// Check if we've seen this row
 						// before
-						let existing = self
-							.get(txn, &key)
-							.ok();
+						let existing = self.get(txn, &key).ok();
 
-						if existing
-							.as_ref()
-							.map(|r| {
-								r.as_ref()
-									.is_empty(
-									)
-							})
-							.unwrap_or(true)
-						{
+						if existing.as_ref().map(|r| r.as_ref().is_empty()).unwrap_or(true) {
 							// First time seeing
 							// this distinct value
 							let entry = DistinctEntry {
-                                count: 1,
-                                first_row_id: row_id.0,
-                                row_data: Self::extract_row_values(evaluator, &self.expressions, after, idx)?};
+								count: 1,
+								first_row_id: row_id.0,
+								row_data: Self::extract_row_values(
+									evaluator,
+									&self.expressions,
+									after,
+									idx,
+								)?,
+							};
 
-							let serialized = serde_json::to_vec(&entry)
-                                .map_err(|e| Error(internal_error!(
-                                    "Failed to serialize: {}", e
-                                )))?;
-							self.set(txn, &key, EncodedRow(
-                                CowVec::new(serialized)
-                            ))?;
+							let serialized = serde_json::to_vec(&entry).map_err(|e| {
+								Error(internal_error!("Failed to serialize: {}", e))
+							})?;
+							self.set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
 
 							// Emit this row as new
 							// distinct value
-							new_distinct_rows
-								.push(row_id);
+							new_distinct_rows.push(row_id);
 
 							// Add columns for this
 							// row - simplified,
@@ -193,20 +173,18 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 							// Update the count for
 							// existing distinct
 							// value
-							let bytes = existing
-								.unwrap();
-							let mut entry: DistinctEntry = serde_json::from_slice(bytes.as_ref())
-                                .map_err(|e| Error(internal_error!(
-                                    "Failed to deserialize: {}", e
-                                )))?;
+							let bytes = existing.unwrap();
+							let mut entry: DistinctEntry = serde_json::from_slice(
+								bytes.as_ref(),
+							)
+							.map_err(|e| {
+								Error(internal_error!("Failed to deserialize: {}", e))
+							})?;
 							entry.count += 1;
-							let serialized = serde_json::to_vec(&entry)
-                                .map_err(|e| Error(internal_error!(
-                                    "Failed to serialize: {}", e
-                                )))?;
-							self.set(txn, &key, EncodedRow(
-                                CowVec::new(serialized)
-                            ))?;
+							let serialized = serde_json::to_vec(&entry).map_err(|e| {
+								Error(internal_error!("Failed to serialize: {}", e))
+							})?;
+							self.set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
 							// Don't emit since it's
 							// not distinct
 						}
@@ -218,9 +196,10 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 						// A real implementation would
 						// properly handle columnar data
 						output_diffs.push(FlowDiff::Insert {
-                            source: *source,
-                            row_ids: new_distinct_rows,
-                            after: after.clone()});
+							source: *source,
+							row_ids: new_distinct_rows,
+							after: after.clone(),
+						});
 					}
 				}
 
@@ -229,47 +208,48 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 					row_ids,
 					before,
 				} => {
-					let mut removed_distinct_rows =
-						Vec::new();
+					let mut removed_distinct_rows = Vec::new();
 
-					for (idx, &row_id) in
-						row_ids.iter().enumerate()
-					{
+					for (idx, &row_id) in row_ids.iter().enumerate() {
 						let row_hash = Self::hash_row_with_expressions(
-							evaluator, &self.expressions, before, idx,
+							evaluator,
+							&self.expressions,
+							before,
+							idx,
 						)?;
-						let key = Self::hash_to_key(
-							row_hash,
-						);
+						let key = Self::hash_to_key(row_hash);
 
-						let existing = self
-							.get(txn, &key)
-							.ok();
+						let existing = self.get(txn, &key).ok();
 						if let Some(data) = existing {
-							if !data.as_ref()
-								.is_empty()
-							{
-								let mut entry: DistinctEntry = serde_json::from_slice(data.as_ref())
-                                .map_err(|e| Error(internal_error!(
-                                    "Failed to deserialize: {}", e
-                                )))?;
+							if !data.as_ref().is_empty() {
+								let mut entry: DistinctEntry = serde_json::from_slice(
+									data.as_ref(),
+								)
+								.map_err(|e| {
+									Error(internal_error!(
+										"Failed to deserialize: {}",
+										e
+									))
+								})?;
 
-								if entry.count
-									> 1
-								{
+								if entry.count > 1 {
 									// Still
 									// have
 									// other
 									// instances
-									entry.count -=
-									1;
+									entry.count -= 1;
 									let serialized = serde_json::to_vec(&entry)
-                                .map_err(|e| Error(internal_error!(
-                                    "Failed to serialize: {}", e
-                                )))?;
-									self.set(txn, &key, EncodedRow(
-                                    CowVec::new(serialized)
-                                ))?;
+										.map_err(|e| {
+											Error(internal_error!(
+												"Failed to serialize: {}",
+												e
+											))
+										})?;
+									self.set(
+										txn,
+										&key,
+										EncodedRow(CowVec::new(serialized)),
+									)?;
 								} else {
 									// Last instance
 									// - remove from
@@ -278,7 +258,11 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 									// retraction
 									self.remove(txn, &key)?;
 
-									removed_distinct_rows.push(reifydb_type::RowNumber(entry.first_row_id));
+									removed_distinct_rows.push(
+										reifydb_type::RowNumber(
+											entry.first_row_id,
+										),
+									);
 								}
 							}
 						}
@@ -286,9 +270,10 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 
 					if !removed_distinct_rows.is_empty() {
 						output_diffs.push(FlowDiff::Remove {
-                            source: *source,
-                            row_ids: removed_distinct_rows,
-                            before: before.clone()});
+							source: *source,
+							row_ids: removed_distinct_rows,
+							before: before.clone(),
+						});
 					}
 				}
 
@@ -305,17 +290,9 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 						row_ids: row_ids.clone(),
 						before: before.clone(),
 					};
-					let remove_change =
-						FlowChange::new(vec![
-							remove_diff,
-						]);
-					let remove_result = self.apply(
-						txn,
-						&remove_change,
-						evaluator,
-					)?;
-					output_diffs
-						.extend(remove_result.diffs);
+					let remove_change = FlowChange::new(vec![remove_diff]);
+					let remove_result = self.apply(txn, &remove_change, evaluator)?;
+					output_diffs.extend(remove_result.diffs);
 
 					// Then process the insert
 					let insert_diff = FlowDiff::Insert {
@@ -323,17 +300,9 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 						row_ids: row_ids.clone(),
 						after: after.clone(),
 					};
-					let insert_change =
-						FlowChange::new(vec![
-							insert_diff,
-						]);
-					let insert_result = self.apply(
-						txn,
-						&insert_change,
-						evaluator,
-					)?;
-					output_diffs
-						.extend(insert_result.diffs);
+					let insert_change = FlowChange::new(vec![insert_diff]);
+					let insert_result = self.apply(txn, &insert_change, evaluator)?;
+					output_diffs.extend(insert_result.diffs);
 				}
 			}
 		}

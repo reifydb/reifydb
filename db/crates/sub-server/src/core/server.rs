@@ -7,9 +7,7 @@ use reifydb_engine::StandardEngine;
 use super::WorkerPool;
 use crate::{
 	config::ServerConfig,
-	protocols::{
-		HttpHandler, ProtocolHandler, ProtocolResult, WebSocketHandler,
-	},
+	protocols::{HttpHandler, ProtocolHandler, ProtocolResult, WebSocketHandler},
 };
 
 /// Multi-protocol server that can handle WebSocket and HTTP protocols
@@ -54,8 +52,8 @@ impl<T: Transaction> ProtocolServer<T> {
 
 		if enabled_protocols.is_empty() {
 			return Err(crate::protocols::ProtocolError::Custom(
-                "No protocols configured. Use with_websocket() or with_http()".to_string()
-            ));
+				"No protocols configured. Use with_websocket() or with_http()".to_string(),
+			));
 		}
 
 		// Starting protocol server
@@ -83,17 +81,13 @@ impl<T: Transaction> ProtocolServer<T> {
 	pub fn detect_protocol(&self, buffer: &[u8]) -> Option<&str> {
 		// Check protocols in order of likelihood/preference
 		if let Some(ref websocket) = self.websocket {
-			if <WebSocketHandler as ProtocolHandler<T>>::can_handle(
-				websocket, buffer,
-			) {
+			if <WebSocketHandler as ProtocolHandler<T>>::can_handle(websocket, buffer) {
 				return Some("ws");
 			}
 		}
 
 		if let Some(ref http) = self.http {
-			if <HttpHandler as ProtocolHandler<T>>::can_handle(
-				http, buffer,
-			) {
+			if <HttpHandler as ProtocolHandler<T>>::can_handle(http, buffer) {
 				return Some("http");
 			}
 		}

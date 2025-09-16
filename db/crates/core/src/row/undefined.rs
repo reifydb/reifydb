@@ -66,11 +66,7 @@ mod tests {
 
 	#[test]
 	fn test_set_multiple_fields() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Boolean,
-			Type::Int4,
-			Type::Utf8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Boolean, Type::Int4, Type::Utf8]);
 		let mut row = layout.allocate_row();
 
 		// Set all fields
@@ -96,11 +92,7 @@ mod tests {
 
 	#[test]
 	fn test_set_all_fields() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Boolean,
-			Type::Int4,
-			Type::Float8,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Boolean, Type::Int4, Type::Float8]);
 		let mut row = layout.allocate_row();
 
 		// Set all fields
@@ -143,12 +135,7 @@ mod tests {
 	fn test_set_temporal_types() {
 		use reifydb_type::{Date, DateTime, Interval, Time};
 
-		let layout = EncodedRowLayout::new(&[
-			Type::Date,
-			Type::DateTime,
-			Type::Time,
-			Type::Interval,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
 		let mut row = layout.allocate_row();
 
 		// Set temporal values
@@ -188,11 +175,7 @@ mod tests {
 	fn test_set_uuid_types() {
 		use reifydb_type::{IdentityId, Uuid4, Uuid7};
 
-		let layout = EncodedRowLayout::new(&[
-			Type::Uuid4,
-			Type::Uuid7,
-			Type::IdentityId,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 		let mut row = layout.allocate_row();
 
 		// Set UUID values
@@ -219,10 +202,7 @@ mod tests {
 
 		assert_eq!(layout.try_get_uuid4(&row, 0), Some(uuid4));
 		assert_eq!(layout.try_get_uuid7(&row, 1), None);
-		assert_eq!(
-			layout.try_get_identity_id(&row, 2),
-			Some(identity_id)
-		);
+		assert_eq!(layout.try_get_identity_id(&row, 2), Some(identity_id));
 	}
 
 	#[test]
@@ -231,11 +211,7 @@ mod tests {
 
 		use reifydb_type::{Decimal, Int, Uint};
 
-		let layout = EncodedRowLayout::new(&[
-			Type::Decimal,
-			Type::Int,
-			Type::Uint,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Decimal, Type::Int, Type::Uint]);
 		let mut row = layout.allocate_row();
 
 		// Set values

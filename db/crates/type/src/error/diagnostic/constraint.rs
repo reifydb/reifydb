@@ -4,18 +4,11 @@
 use super::Diagnostic;
 use crate::OwnedFragment;
 
-pub fn utf8_exceeds_max_bytes(
-	fragment: OwnedFragment,
-	actual: usize,
-	max: usize,
-) -> Diagnostic {
+pub fn utf8_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_001".to_string(),
 		statement: None,
-		message: format!(
-			"UTF8 value exceeds maximum byte length: {} bytes (max: {} bytes)",
-			actual, max
-		),
+		message: format!("UTF8 value exceeds maximum byte length: {} bytes (max: {} bytes)", actual, max),
 		column: None,
 		fragment,
 		label: Some("constraint violation".to_string()),
@@ -28,18 +21,11 @@ pub fn utf8_exceeds_max_bytes(
 	}
 }
 
-pub fn blob_exceeds_max_bytes(
-	fragment: OwnedFragment,
-	actual: usize,
-	max: usize,
-) -> Diagnostic {
+pub fn blob_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_002".to_string(),
 		statement: None,
-		message: format!(
-			"BLOB value exceeds maximum byte length: {} bytes (max: {} bytes)",
-			actual, max
-		),
+		message: format!("BLOB value exceeds maximum byte length: {} bytes (max: {} bytes)", actual, max),
 		column: None,
 		fragment,
 		label: Some("constraint violation".to_string()),
@@ -52,18 +38,11 @@ pub fn blob_exceeds_max_bytes(
 	}
 }
 
-pub fn int_exceeds_max_bytes(
-	fragment: OwnedFragment,
-	actual: usize,
-	max: usize,
-) -> Diagnostic {
+pub fn int_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_003".to_string(),
 		statement: None,
-		message: format!(
-			"INT value exceeds maximum byte length: {} bytes (max: {} bytes)",
-			actual, max
-		),
+		message: format!("INT value exceeds maximum byte length: {} bytes (max: {} bytes)", actual, max),
 		column: None,
 		fragment,
 		label: Some("constraint violation".to_string()),
@@ -76,18 +55,11 @@ pub fn int_exceeds_max_bytes(
 	}
 }
 
-pub fn uint_exceeds_max_bytes(
-	fragment: OwnedFragment,
-	actual: usize,
-	max: usize,
-) -> Diagnostic {
+pub fn uint_exceeds_max_bytes(fragment: OwnedFragment, actual: usize, max: usize) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_004".to_string(),
 		statement: None,
-		message: format!(
-			"UINT value exceeds maximum byte length: {} bytes (max: {} bytes)",
-			actual, max
-		),
+		message: format!("UINT value exceeds maximum byte length: {} bytes (max: {} bytes)", actual, max),
 		column: None,
 		fragment,
 		label: Some("constraint violation".to_string()),
@@ -100,18 +72,11 @@ pub fn uint_exceeds_max_bytes(
 	}
 }
 
-pub fn decimal_exceeds_precision(
-	fragment: OwnedFragment,
-	actual: u8,
-	max: u8,
-) -> Diagnostic {
+pub fn decimal_exceeds_precision(fragment: OwnedFragment, actual: u8, max: u8) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_005".to_string(),
 		statement: None,
-		message: format!(
-			"DECIMAL value exceeds maximum precision: {} digits (max: {} digits)",
-			actual, max
-		),
+		message: format!("DECIMAL value exceeds maximum precision: {} digits (max: {} digits)", actual, max),
 		column: None,
 		fragment,
 		label: Some("constraint violation".to_string()),
@@ -124,11 +89,7 @@ pub fn decimal_exceeds_precision(
 	}
 }
 
-pub fn decimal_exceeds_scale(
-	fragment: OwnedFragment,
-	actual: u8,
-	max: u8,
-) -> Diagnostic {
+pub fn decimal_exceeds_scale(fragment: OwnedFragment, actual: u8, max: u8) -> Diagnostic {
 	Diagnostic {
 		code: "CONSTRAINT_006".to_string(),
 		statement: None,

@@ -273,10 +273,7 @@ mod tests {
 			.journal_mode(JournalMode::Wal)
 			.synchronous_mode(SynchronousMode::Normal)
 			.temp_store(TempStore::Memory)
-			.flags(OpenFlags::new()
-				.read_write(true)
-				.create(true)
-				.full_mutex(true));
+			.flags(OpenFlags::new().read_write(true).create(true).full_mutex(true));
 
 		assert_eq!(config.path, PathBuf::from("/tmp/test.reifydb"));
 		assert_eq!(config.journal_mode, JournalMode::Wal);
@@ -336,10 +333,7 @@ mod tests {
 
 			assert_eq!(config.path, db_file);
 			assert_eq!(config.journal_mode, JournalMode::Wal);
-			assert_eq!(
-				config.synchronous_mode,
-				SynchronousMode::Full
-			);
+			assert_eq!(config.synchronous_mode, SynchronousMode::Full);
 			assert_eq!(config.temp_store, TempStore::File);
 			Ok(())
 		})
@@ -354,10 +348,7 @@ mod tests {
 
 			assert_eq!(config.path, db_file);
 			assert_eq!(config.journal_mode, JournalMode::Memory);
-			assert_eq!(
-				config.synchronous_mode,
-				SynchronousMode::Off
-			);
+			assert_eq!(config.synchronous_mode, SynchronousMode::Off);
 			assert_eq!(config.temp_store, TempStore::Memory);
 			Ok(())
 		})
@@ -373,16 +364,10 @@ mod tests {
 				.journal_mode(JournalMode::Delete)
 				.synchronous_mode(SynchronousMode::Extra)
 				.temp_store(TempStore::File)
-				.flags(OpenFlags::new()
-					.read_write(false)
-					.create(false)
-					.shared_cache(true));
+				.flags(OpenFlags::new().read_write(false).create(false).shared_cache(true));
 
 			assert_eq!(config.journal_mode, JournalMode::Delete);
-			assert_eq!(
-				config.synchronous_mode,
-				SynchronousMode::Extra
-			);
+			assert_eq!(config.synchronous_mode, SynchronousMode::Extra);
 			assert_eq!(config.temp_store, TempStore::File);
 			assert!(!config.flags.read_write);
 			assert!(!config.flags.create);
@@ -416,12 +401,8 @@ mod tests {
 
 	#[test]
 	fn test_open_flags_all_combinations() {
-		let flags = OpenFlags::new()
-			.read_write(true)
-			.create(true)
-			.full_mutex(true)
-			.shared_cache(true)
-			.uri(true);
+		let flags =
+			OpenFlags::new().read_write(true).create(true).full_mutex(true).shared_cache(true).uri(true);
 
 		assert!(flags.read_write);
 		assert!(flags.create);

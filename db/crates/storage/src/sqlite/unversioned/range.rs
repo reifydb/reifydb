@@ -32,11 +32,7 @@ pub struct Range {
 }
 
 impl Range {
-	pub fn new(
-		conn: Reader,
-		range: EncodedKeyRange,
-		batch_size: usize,
-	) -> Self {
+	pub fn new(conn: Reader, range: EncodedKeyRange, batch_size: usize) -> Self {
 		Self {
 			conn,
 			range,
@@ -64,8 +60,7 @@ impl Range {
 
 		// Build query and parameters based on bounds - note ASC order
 		// for forward iteration
-		let (query_template, param_count) =
-			build_unversioned_query(start_bound, end_bound, "ASC");
+		let (query_template, param_count) = build_unversioned_query(start_bound, end_bound, "ASC");
 
 		let conn_guard = self.conn.lock().unwrap();
 		let mut stmt = conn_guard.prepare(query_template).unwrap();

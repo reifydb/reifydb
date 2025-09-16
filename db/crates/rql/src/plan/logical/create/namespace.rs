@@ -5,18 +5,11 @@ use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
 	ast::AstCreateNamespace,
-	plan::logical::{
-		Compiler, CreateNamespaceNode, LogicalPlan,
-		resolver::IdentifierResolver,
-	},
+	plan::logical::{Compiler, CreateNamespaceNode, LogicalPlan, resolver::IdentifierResolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_namespace<
-		'a,
-		't,
-		T: CatalogQueryTransaction,
-	>(
+	pub(crate) fn compile_create_namespace<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstCreateNamespace<'a>,
 		_resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {

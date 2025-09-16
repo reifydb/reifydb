@@ -7,6 +7,4 @@ pub mod channel; // Make public so HttpResponseMessage can be accessed
 
 pub use blocking::HttpBlockingSession;
 pub use callback::HttpCallbackSession;
-pub use channel::{
-	HttpChannelResponse, HttpChannelSession, HttpResponseMessage,
-};
+pub use channel::{HttpChannelResponse, HttpChannelSession, HttpResponseMessage};

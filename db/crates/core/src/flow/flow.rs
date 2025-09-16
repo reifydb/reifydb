@@ -53,10 +53,7 @@ impl Flow {
 		self.graph.get_node(node_id)
 	}
 
-	pub fn get_node_mut(
-		&mut self,
-		node_id: &FlowNodeId,
-	) -> Option<&mut FlowNode> {
+	pub fn get_node_mut(&mut self, node_id: &FlowNodeId) -> Option<&mut FlowNode> {
 		self.graph.get_node_mut(node_id)
 	}
 
@@ -107,13 +104,9 @@ mod tests {
 		));
 
 		// Add edges
-		assert!(graph
-			.add_edge(FlowEdge::new(1, &table1, &operator))
-			.is_ok());
+		assert!(graph.add_edge(FlowEdge::new(1, &table1, &operator)).is_ok());
 
-		assert!(graph
-			.add_edge(FlowEdge::new(2, &operator, &view))
-			.is_ok());
+		assert!(graph.add_edge(FlowEdge::new(2, &operator, &view)).is_ok());
 
 		// Check that nodes exist
 		assert!(graph.get_node(&table1).is_some());
@@ -125,10 +118,8 @@ mod tests {
 		assert_eq!(order.len(), 3);
 
 		// table1 should come before operator, operator before view
-		let table1_pos =
-			order.iter().position(|id| *id == table1).unwrap();
-		let operator_pos =
-			order.iter().position(|id| *id == operator).unwrap();
+		let table1_pos = order.iter().position(|id| *id == table1).unwrap();
+		let operator_pos = order.iter().position(|id| *id == operator).unwrap();
 		let view_pos = order.iter().position(|id| *id == view).unwrap();
 
 		assert!(table1_pos < operator_pos);

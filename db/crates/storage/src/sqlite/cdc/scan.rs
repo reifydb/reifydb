@@ -48,23 +48,16 @@ impl Scan {
 
 		self.buffer.clear();
 
-		let (where_clause, params) =
-			if let Some(last_version) = self.last_version {
-				(
-					"WHERE version > ?".to_string(),
-					vec![last_version as i64],
-				)
-			} else {
-				(String::new(), vec![])
-			};
+		let (where_clause, params) = if let Some(last_version) = self.last_version {
+			("WHERE version > ?".to_string(), vec![last_version as i64])
+		} else {
+			(String::new(), vec![])
+		};
 
 		let query = if where_clause.is_empty() {
 			"SELECT version, value FROM cdc ORDER BY version ASC LIMIT ?".to_string()
 		} else {
-			format!(
-				"SELECT version, value FROM cdc {} ORDER BY version ASC LIMIT ?",
-				where_clause
-			)
+			format!("SELECT version, value FROM cdc {} ORDER BY version ASC LIMIT ?", where_clause)
 		};
 
 		let conn_guard = self.conn.lock().unwrap();
@@ -74,17 +67,11 @@ impl Scan {
 		query_params.push(self.batch_size as i64);
 
 		let transactions: Vec<(CommitVersion, EncodedRow)> = stmt
-			.query_map(
-				rusqlite::params_from_iter(query_params),
-				|row| {
-					let version: i64 = row.get(0)?;
-					let bytes: Vec<u8> = row.get(1)?;
-					Ok((
-						version as CommitVersion,
-						EncodedRow(CowVec::new(bytes)),
-					))
-				},
-			)
+			.query_map(rusqlite::params_from_iter(query_params), |row| {
+				let version: i64 = row.get(0)?;
+				let bytes: Vec<u8> = row.get(1)?;
+				Ok((version as CommitVersion, EncodedRow(CowVec::new(bytes))))
+			})
 			.unwrap()
 			.collect::<rusqlite::Result<Vec<_>>>()
 			.unwrap();
@@ -92,9 +79,7 @@ impl Scan {
 		let count = transactions.len();
 
 		for (version, encoded_transaction) in transactions {
-			if let Ok(transaction) =
-				decode_cdc_transaction(&encoded_transaction)
-			{
+			if let Ok(transaction) = decode_cdc_transaction(&encoded_transaction) {
 				self.last_version = Some(version);
 				// Add all events from this transaction to the
 				// buffer

@@ -8,8 +8,7 @@ pub struct EmbeddedFile {
 	pub mime_type: &'static str,
 }
 
-static EMBEDDED_FILES: OnceLock<HashMap<&'static str, EmbeddedFile>> =
-	OnceLock::new();
+static EMBEDDED_FILES: OnceLock<HashMap<&'static str, EmbeddedFile>> = OnceLock::new();
 
 include!(concat!(env!("OUT_DIR"), "/webapp/asset_manifest.rs"));
 

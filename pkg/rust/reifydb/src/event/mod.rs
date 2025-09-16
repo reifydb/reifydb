@@ -16,19 +16,14 @@ pub trait WithEventBus<T: Transaction> {
 	fn on_create<F>(self, f: F) -> Self
 	where
 		Self: Sized,
-		F: Fn(&OnCreateContext<T>) -> crate::Result<()>
-			+ Send
-			+ Sync
-			+ 'static,
+		F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
 	{
 		let callback = OnCreateEventListener {
 			callback: f,
 			engine: self.engine().clone(),
 		};
 
-		self.engine()
-			.event_bus()
-			.register::<OnCreateEvent, _>(callback);
+		self.engine().event_bus().register::<OnCreateEvent, _>(callback);
 		self
 	}
 }

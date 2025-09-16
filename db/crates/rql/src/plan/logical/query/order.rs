@@ -6,9 +6,7 @@ use reifydb_core::{SortDirection, SortKey};
 
 use crate::{
 	ast::AstSort,
-	plan::logical::{
-		Compiler, LogicalPlan, OrderNode, resolver::IdentifierResolver,
-	},
+	plan::logical::{Compiler, LogicalPlan, OrderNode, resolver::IdentifierResolver},
 };
 
 impl Compiler {
@@ -22,17 +20,14 @@ impl Compiler {
 				.zip(ast.directions)
 				.map(|(column, direction)| {
 					let direction = direction
-						.map(|direction| {
-							match direction.text().to_lowercase().as_str() {
-                            "asc" => SortDirection::Asc,
-                            _ => SortDirection::Desc}
+						.map(|direction| match direction.text().to_lowercase().as_str() {
+							"asc" => SortDirection::Asc,
+							_ => SortDirection::Desc,
 						})
 						.unwrap_or(SortDirection::Desc);
 
 					SortKey {
-						column: column
-							.name
-							.into_owned(),
+						column: column.name.into_owned(),
 						direction,
 					}
 				})

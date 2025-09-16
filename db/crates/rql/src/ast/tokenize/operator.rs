@@ -66,43 +66,41 @@ operator! {
     Xor              => "xor"
 }
 
-static SINGLE_CHAR_OPERATORS: LazyLock<HashMap<char, Operator>> =
-	LazyLock::new(|| {
-		let mut map = HashMap::new();
-		map.insert('(', Operator::OpenParen);
-		map.insert(')', Operator::CloseParen);
-		map.insert('[', Operator::OpenBracket);
-		map.insert(']', Operator::CloseBracket);
-		map.insert('{', Operator::OpenCurly);
-		map.insert('}', Operator::CloseCurly);
-		map.insert('<', Operator::LeftAngle);
-		map.insert('>', Operator::RightAngle);
-		map.insert('.', Operator::Dot);
-		map.insert(':', Operator::Colon);
-		map.insert('+', Operator::Plus);
-		map.insert('-', Operator::Minus);
-		map.insert('*', Operator::Asterisk);
-		map.insert('/', Operator::Slash);
-		map.insert('&', Operator::Ampersand);
-		map.insert('|', Operator::Pipe);
-		map.insert('^', Operator::Caret);
-		map.insert('%', Operator::Percent);
-		map.insert('=', Operator::Equal);
-		map.insert('!', Operator::Bang);
-		map.insert('?', Operator::QuestionMark);
-		map
-	});
+static SINGLE_CHAR_OPERATORS: LazyLock<HashMap<char, Operator>> = LazyLock::new(|| {
+	let mut map = HashMap::new();
+	map.insert('(', Operator::OpenParen);
+	map.insert(')', Operator::CloseParen);
+	map.insert('[', Operator::OpenBracket);
+	map.insert(']', Operator::CloseBracket);
+	map.insert('{', Operator::OpenCurly);
+	map.insert('}', Operator::CloseCurly);
+	map.insert('<', Operator::LeftAngle);
+	map.insert('>', Operator::RightAngle);
+	map.insert('.', Operator::Dot);
+	map.insert(':', Operator::Colon);
+	map.insert('+', Operator::Plus);
+	map.insert('-', Operator::Minus);
+	map.insert('*', Operator::Asterisk);
+	map.insert('/', Operator::Slash);
+	map.insert('&', Operator::Ampersand);
+	map.insert('|', Operator::Pipe);
+	map.insert('^', Operator::Caret);
+	map.insert('%', Operator::Percent);
+	map.insert('=', Operator::Equal);
+	map.insert('!', Operator::Bang);
+	map.insert('?', Operator::QuestionMark);
+	map
+});
 
-static WORD_OPERATORS: LazyLock<HashMap<&'static str, Operator>> =
-	LazyLock::new(|| {
-		let mut map = HashMap::new();
-		map.insert("AS", Operator::As);
-		map.insert("AND", Operator::And);
-		map.insert("OR", Operator::Or);
-		map.insert("NOT", Operator::Not);
-		map.insert("XOR", Operator::Xor);
-		map
-	});
+static WORD_OPERATORS: LazyLock<HashMap<&'static str, Operator>> = LazyLock::new(|| {
+	let mut map = HashMap::new();
+	map.insert("AS", Operator::As);
+	map.insert("AND", Operator::And);
+	map.insert("OR", Operator::Or);
+	map.insert("NOT", Operator::Not);
+	map.insert("XOR", Operator::Xor);
+	map
+});
 
 /// Scan for an operator token
 pub fn scan_operator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
@@ -198,39 +196,27 @@ pub fn scan_operator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	if let Some(op) = multi_char_op {
 		return Some(Token {
 			kind: TokenKind::Operator(op),
-			fragment: cursor.make_fragment(
-				start_pos,
-				start_line,
-				start_column,
-			),
+			fragment: cursor.make_fragment(start_pos, start_line, start_column),
 		});
 	}
 
 	// Check word operators for alphabetic characters
 	if ch.is_ascii_alphabetic() {
 		let remaining = cursor.remaining_input();
-		let word_len = remaining
-			.chars()
-			.take_while(|&c| is_identifier_char(c))
-			.map(|c| c.len_utf8())
-			.sum::<usize>();
+		let word_len =
+			remaining.chars().take_while(|&c| is_identifier_char(c)).map(|c| c.len_utf8()).sum::<usize>();
 		let word = &remaining[..word_len];
 		let uppercase_word = word.to_uppercase();
 
 		if let Some(&op) = WORD_OPERATORS.get(uppercase_word.as_str()) {
 			let next_char = cursor.peek_ahead(word.chars().count());
-			if next_char.map_or(true, |ch| !is_identifier_char(ch))
-			{
+			if next_char.map_or(true, |ch| !is_identifier_char(ch)) {
 				for _ in 0..word.chars().count() {
 					cursor.consume();
 				}
 				return Some(Token {
 					kind: TokenKind::Operator(op),
-					fragment: cursor.make_fragment(
-						start_pos,
-						start_line,
-						start_column,
-					),
+					fragment: cursor.make_fragment(start_pos, start_line, start_column),
 				});
 			}
 		}
@@ -242,11 +228,7 @@ pub fn scan_operator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 		cursor.consume();
 		Some(Token {
 			kind: TokenKind::Operator(op),
-			fragment: cursor.make_fragment(
-				start_pos,
-				start_line,
-				start_column,
-			),
+			fragment: cursor.make_fragment(start_pos, start_line, start_column),
 		})
 	} else {
 		None
@@ -270,12 +252,7 @@ mod tests {
 		let tokens = tokenize(&input_str).unwrap();
 
 		assert!(tokens.len() >= 2);
-		assert_eq!(
-			TokenKind::Operator(op),
-			tokens[0].kind,
-			"type mismatch for symbol: {}",
-			symbol
-		);
+		assert_eq!(TokenKind::Operator(op), tokens[0].kind, "type mismatch for symbol: {}", symbol);
 		assert_eq!(tokens[0].fragment.fragment(), symbol);
 		assert_eq!(tokens[0].fragment.column().0, 1);
 		assert_eq!(tokens[0].fragment.line().0, 1);

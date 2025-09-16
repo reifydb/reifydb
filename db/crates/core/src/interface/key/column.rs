@@ -49,10 +49,8 @@ impl EncodableKey for ColumnKey {
 			return None;
 		}
 
-		let source =
-			keycode::deserialize_source_id(&payload[..9]).ok()?;
-		let column: ColumnId =
-			keycode::deserialize(&payload[9..]).ok()?;
+		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
+		let column: ColumnId = keycode::deserialize(&payload[9..]).ok()?;
 
 		Some(Self {
 			source,
@@ -64,27 +62,18 @@ impl EncodableKey for ColumnKey {
 impl ColumnKey {
 	pub fn full_scan(source: impl Into<SourceId>) -> EncodedKeyRange {
 		let source = source.into();
-		EncodedKeyRange::start_end(
-			Some(Self::start(source)),
-			Some(Self::end(source)),
-		)
+		EncodedKeyRange::start_end(Some(Self::start(source)), Some(Self::end(source)))
 	}
 
 	fn start(source: SourceId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_source_id(source);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_source_id(source);
 		serializer.to_encoded_key()
 	}
 
 	fn end(source: SourceId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_source_id(source.prev());
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_source_id(source.prev());
 		serializer.to_encoded_key()
 	}
 }
@@ -109,10 +98,8 @@ mod tests {
 			0xFE, // version
 			0xF8, // kind
 			0x01, // SourceId type discriminator (Table)
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
-			0x32, // source id bytes
-			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21,
-			0x0F, // column id bytes
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // source id bytes
+			0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F, // column id bytes
 		];
 
 		assert_eq!(encoded.as_slice(), expected);

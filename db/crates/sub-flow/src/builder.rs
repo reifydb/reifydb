@@ -6,21 +6,14 @@
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
 use reifydb_core::interface::{
-	ConsumerId, FlowNodeId, Transaction, expression::Expression,
-	subsystem::workerpool::Priority,
+	ConsumerId, FlowNodeId, Transaction, expression::Expression, subsystem::workerpool::Priority,
 };
 
 use crate::{operator::Operator, subsystem::FlowSubsystemConfig};
 
 /// Type alias for operator factory functions
-pub type OperatorFactory<T> = Arc<
-	dyn Fn(
-			FlowNodeId,
-			&[Expression<'static>],
-		) -> crate::Result<Box<dyn Operator<T>>>
-		+ Send
-		+ Sync,
->;
+pub type OperatorFactory<T> =
+	Arc<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator<T>>> + Send + Sync>;
 
 pub struct FlowBuilder<T: Transaction> {
 	consumer_id: ConsumerId,
@@ -67,16 +60,9 @@ impl<T: Transaction> FlowBuilder<T> {
 	}
 
 	/// Register a custom operator factory
-	pub fn register_operator<F>(
-		mut self,
-		name: impl Into<String>,
-		factory: F,
-	) -> Self
+	pub fn register_operator<F>(mut self, name: impl Into<String>, factory: F) -> Self
 	where
-		F: Fn(
-				FlowNodeId,
-				&[Expression<'static>],
-			) -> crate::Result<Box<dyn Operator<T>>>
+		F: Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator<T>>>
 			+ Send
 			+ Sync
 			+ 'static,

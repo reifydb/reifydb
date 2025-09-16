@@ -45,14 +45,10 @@ impl Mint {
 				// Use a more unique temp directory name to
 				// avoid conflicts Include thread ID for
 				// better uniqueness in concurrent scenarios
-				let tempdir =
-					env::temp_dir().join(format!(
+				let tempdir = env::temp_dir().join(format!(
 					"goldenfiles-{}-{}-{:?}",
 					id(),
-					SystemTime::now()
-						.duration_since(std::time::UNIX_EPOCH)
-						.unwrap()
-						.as_nanos(),
+					SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos(),
 					thread::current().id()
 				));
 				fs::create_dir_all(&tempdir).ok();
@@ -87,10 +83,7 @@ impl Mint {
 	}
 
 	/// Creates a new golden file with the given name
-	pub fn new_goldenfile<P: AsRef<Path>>(
-		&self,
-		name: P,
-	) -> io::Result<GoldenFile> {
+	pub fn new_goldenfile<P: AsRef<Path>>(&self, name: P) -> io::Result<GoldenFile> {
 		let name = name.as_ref();
 		let golden_path = self.dir.join(name);
 
@@ -108,11 +101,7 @@ impl Mint {
 				fs::create_dir_all(parent)?;
 			}
 
-			let file = OpenOptions::new()
-				.write(true)
-				.create(true)
-				.truncate(true)
-				.open(&temp_path)?;
+			let file = OpenOptions::new().write(true).create(true).truncate(true).open(&temp_path)?;
 
 			Ok(GoldenFile {
 				file,
@@ -121,11 +110,7 @@ impl Mint {
 			})
 		} else {
 			// Update mode: write directly to golden file
-			let file = OpenOptions::new()
-				.write(true)
-				.create(true)
-				.truncate(true)
-				.open(&golden_path)?;
+			let file = OpenOptions::new().write(true).create(true).truncate(true).open(&golden_path)?;
 
 			Ok(GoldenFile {
 				file,
@@ -136,10 +121,7 @@ impl Mint {
 	}
 
 	/// Alias for new_goldenfile for compatibility
-	pub fn new_golden_file<P: AsRef<Path>>(
-		&self,
-		name: P,
-	) -> io::Result<GoldenFile> {
+	pub fn new_golden_file<P: AsRef<Path>>(&self, name: P) -> io::Result<GoldenFile> {
 		self.new_goldenfile(name)
 	}
 }
@@ -177,30 +159,29 @@ impl Drop for GoldenFile {
 			if !self.golden_path.exists() {
 				panic!(
 					"{}\n{}\n\n{}",
-					format!("Golden file '{}' does not exist", self.golden_path.display()).red().bold(),
+					format!("Golden file '{}' does not exist", self.golden_path.display())
+						.red()
+						.bold(),
 					"Run with UPDATE_TESTFILES=1 to create it.".yellow(),
 					format!("Would create: {}", self.golden_path.display()).bright_black()
 				);
 			}
 
 			let temp_content = read(temp_path).unwrap_or_default();
-			let golden_content =
-				read(&self.golden_path).unwrap_or_default();
+			let golden_content = read(&self.golden_path).unwrap_or_default();
 
 			if temp_content != golden_content {
-				let temp_str =
-					String::from_utf8_lossy(&temp_content);
-				let golden_str = String::from_utf8_lossy(
-					&golden_content,
-				);
+				let temp_str = String::from_utf8_lossy(&temp_content);
+				let golden_str = String::from_utf8_lossy(&golden_content);
 
 				// Create a git-like diff
-				let diff_output =
-					create_diff(&golden_str, &temp_str);
+				let diff_output = create_diff(&golden_str, &temp_str);
 
 				panic!(
 					"{}\n\n{}\n\n{}",
-					format!("Golden file test failed for '{}'", self.golden_path.display()).red().bold(),
+					format!("Golden file test failed for '{}'", self.golden_path.display())
+						.red()
+						.bold(),
 					diff_output,
 					"Run with UPDATE_TESTFILES=1 to update the goldenfile.".yellow()
 				);
@@ -232,11 +213,7 @@ fn create_diff(expected: &str, actual: &str) -> String {
 
 	// If no differences found, return empty
 	if differences.is_empty() {
-		output.push_str(&format!(
-			"{}\n",
-			"Files are identical but binary comparison failed."
-				.yellow()
-		));
+		output.push_str(&format!("{}\n", "Files are identical but binary comparison failed.".yellow()));
 		return output;
 	}
 
@@ -252,8 +229,7 @@ fn create_diff(expected: &str, actual: &str) -> String {
 		match current_hunk {
 			None => {
 				// Start a new hunk
-				let start =
-					diff_line.saturating_sub(context_lines);
+				let start = diff_line.saturating_sub(context_lines);
 				current_hunk = Some((start, diff_line + 1));
 			}
 			Some((start, end)) => {
@@ -261,22 +237,13 @@ fn create_diff(expected: &str, actual: &str) -> String {
 				// extend the current hunk
 				if diff_line <= end + context_lines {
 					// Extend current hunk
-					current_hunk =
-						Some((start, diff_line + 1));
+					current_hunk = Some((start, diff_line + 1));
 				} else {
 					// Finish current hunk and start a new
 					// one
-					hunks.push((
-						start,
-						(end + context_lines)
-							.min(max_lines),
-					));
-					let new_start = diff_line
-						.saturating_sub(context_lines);
-					current_hunk = Some((
-						new_start,
-						diff_line + 1,
-					));
+					hunks.push((start, (end + context_lines).min(max_lines)));
+					let new_start = diff_line.saturating_sub(context_lines);
+					current_hunk = Some((new_start, diff_line + 1));
 				}
 			}
 		}
@@ -295,13 +262,9 @@ fn create_diff(expected: &str, actual: &str) -> String {
 	for (hunk_start, hunk_end) in &hunks_to_show {
 		// Calculate line numbers for the hunk header
 		let expected_start = hunk_start + 1;
-		let expected_count = expected_lines
-			[*hunk_start..(*hunk_end).min(expected_lines.len())]
-			.len();
+		let expected_count = expected_lines[*hunk_start..(*hunk_end).min(expected_lines.len())].len();
 		let actual_start = hunk_start + 1;
-		let actual_count = actual_lines
-			[*hunk_start..(*hunk_end).min(actual_lines.len())]
-			.len();
+		let actual_count = actual_lines[*hunk_start..(*hunk_end).min(actual_lines.len())].len();
 
 		output.push_str(&format!(
 			"{} -{},{} +{},{} {}\n",
@@ -324,10 +287,7 @@ fn create_diff(expected: &str, actual: &str) -> String {
 				if line.len() > 100 {
 					// Use char boundary-safe truncation
 					let mut char_boundary = 97;
-					while !line
-						.is_char_boundary(char_boundary)
-						&& char_boundary > 0
-					{
+					while !line.is_char_boundary(char_boundary) && char_boundary > 0 {
 						char_boundary -= 1;
 					}
 					format!("{}...", &line[..char_boundary])
@@ -342,8 +302,7 @@ fn create_diff(expected: &str, actual: &str) -> String {
 					// gray with 4 digits
 					output.push_str(&format!(
 						"{}  {}\n",
-						format!("{:04}", line_num)
-							.bright_black(),
+						format!("{:04}", line_num).bright_black(),
 						truncate_line(e)
 					));
 				}
@@ -352,23 +311,17 @@ fn create_diff(expected: &str, actual: &str) -> String {
 					// both
 					output.push_str(&format!(
 						"{} {}{}\n",
-						format!("{:04}", line_num)
-							.bright_black(),
+						format!("{:04}", line_num).bright_black(),
 						"-".red(),
 						truncate_line(e).red()
 					));
-					output.push_str(&format!(
-						"     {}{}\n",
-						"+".green(),
-						truncate_line(a).green()
-					));
+					output.push_str(&format!("     {}{}\n", "+".green(), truncate_line(a).green()));
 				}
 				(Some(e), None) => {
 					// Deleted line
 					output.push_str(&format!(
 						"{} {}{}\n",
-						format!("{:04}", line_num)
-							.bright_black(),
+						format!("{:04}", line_num).bright_black(),
 						"-".red(),
 						truncate_line(e).red()
 					));
@@ -377,8 +330,7 @@ fn create_diff(expected: &str, actual: &str) -> String {
 					// Added line
 					output.push_str(&format!(
 						"{} {}{}\n",
-						format!("{:04}", line_num)
-							.bright_black(),
+						format!("{:04}", line_num).bright_black(),
 						"+".green(),
 						truncate_line(a).green()
 					));

@@ -18,12 +18,7 @@ pub fn handle_get_config(config: &AdminConfig) -> HttpResponse {
 	HttpResponse::ok().with_json(&config_json.to_string())
 }
 
-pub fn handle_update_config(
-	_config: &AdminConfig,
-	_request: HttpRequest,
-) -> HttpResponse {
+pub fn handle_update_config(_config: &AdminConfig, _request: HttpRequest) -> HttpResponse {
 	// TODO: Implement configuration update logic
-	HttpResponse::ok().with_json(
-		r#"{"message":"Configuration update not yet implemented"}"#,
-	)
+	HttpResponse::ok().with_json(r#"{"message":"Configuration update not yet implemented"}"#)
 }

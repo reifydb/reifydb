@@ -14,15 +14,9 @@ pub fn from_rusqlite_error(error: rusqlite::Error) -> Diagnostic {
 			let extended = err.extended_code;
 
 			let message = if let Some(msg) = msg {
-				format!(
-					"SQLite error (code: {}, extended: {}): {}",
-					code as i32, extended, msg
-				)
+				format!("SQLite error (code: {}, extended: {}): {}", code as i32, extended, msg)
 			} else {
-				format!(
-					"SQLite error (code: {}, extended: {})",
-					code as i32, extended
-				)
+				format!("SQLite error (code: {}, extended: {})", code as i32, extended)
 			};
 
 			database_error(message)

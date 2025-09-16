@@ -11,10 +11,7 @@ where
 	path.push(format!(
 		"reifydb-{}-{}",
 		std::process::id(),
-		std::time::SystemTime::now()
-			.duration_since(std::time::UNIX_EPOCH)
-			.unwrap()
-			.as_nanos()
+		std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()
 	));
 
 	fs::create_dir(&path)?;

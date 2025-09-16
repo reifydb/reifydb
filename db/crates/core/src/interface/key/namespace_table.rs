@@ -49,39 +49,29 @@ impl EncodableKey for NamespaceTableKey {
 			return None;
 		}
 
-		keycode::deserialize(&payload[..8])
-			.ok()
-			.zip(keycode::deserialize(&payload[8..]).ok())
-			.map(|(namespace, table)| Self {
+		keycode::deserialize(&payload[..8]).ok().zip(keycode::deserialize(&payload[8..]).ok()).map(
+			|(namespace, table)| Self {
 				namespace,
 				table,
-			})
+			},
+		)
 	}
 }
 
 impl NamespaceTableKey {
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::link_start(namespace_id)),
-			Some(Self::link_end(namespace_id)),
-		)
+		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
 	}
 
 	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(namespace_id);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(namespace_id);
 		serializer.to_encoded_key()
 	}
 
 	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(*namespace_id - 1);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(*namespace_id - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -102,8 +92,7 @@ mod tests {
 		let expected: Vec<u8> = vec![
 			0xFE, // version
 			0xFB, // kind
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED,
-			0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
 		];
 
 		assert_eq!(encoded.as_slice(), expected);

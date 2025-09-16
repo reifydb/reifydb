@@ -29,11 +29,7 @@ fn test_utf8_special_sequences() {
 		let mut row = layout.allocate_row();
 		layout.set_utf8(&mut row, 0, test_str);
 		let retrieved = layout.get_utf8(&row, 0);
-		assert_eq!(
-			retrieved, test_str,
-			"Failed for string: {:?}",
-			test_str
-		);
+		assert_eq!(retrieved, test_str, "Failed for string: {:?}", test_str);
 	}
 }
 
@@ -52,10 +48,7 @@ fn test_blob_all_byte_values() {
 		vec![0xff; 1000], // All 0xFF
 		vec![0x00; 1000], // All nulls
 		vec![0x80; 1000], // High bit set
-		(0..255).cycle()
-			.take(1000)
-			.map(|x| x as u8)
-			.collect::<Vec<_>>(),
+		(0..255).cycle().take(1000).map(|x| x as u8).collect::<Vec<_>>(),
 	];
 
 	// Create a new row for each pattern since dynamic fields can only be
@@ -70,12 +63,7 @@ fn test_blob_all_byte_values() {
 #[test]
 fn test_dynamic_field_interleaving() {
 	// Tests multiple dynamic fields to ensure they don't corrupt each other
-	let layout = EncodedRowLayout::new(&[
-		Type::Utf8,
-		Type::Blob,
-		Type::Utf8,
-		Type::Int,
-	]);
+	let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Int]);
 
 	// Test initial setting with various sizes
 	let mut row = layout.allocate_row();

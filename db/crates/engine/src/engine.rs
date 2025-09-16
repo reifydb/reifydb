@@ -9,8 +9,7 @@ use reifydb_core::{
 	event::{Event, EventBus},
 	interceptor::InterceptorFactory,
 	interface::{
-		Command, Engine as EngineInterface, ExecuteCommand,
-		ExecuteQuery, Identity, Params, Query, Transaction,
+		Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery, Identity, Params, Query, Transaction,
 		VersionedTransaction, WithEventBus,
 	},
 };
@@ -37,11 +36,7 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	fn begin_command(&self) -> crate::Result<Self::Command> {
 		let mut interceptors = self.interceptors.create();
 
-		interceptors.post_commit.add(Rc::new(
-			MaterializedCatalogInterceptor::new(
-				self.catalog.clone(),
-			),
-		));
+		interceptors.post_commit.add(Rc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
 
 		Ok(StandardCommandTransaction::new(
 			self.versioned.begin_command()?,
@@ -62,12 +57,7 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		))
 	}
 
-	fn command_as(
-		&self,
-		identity: &Identity,
-		rql: &str,
-		params: Params,
-	) -> crate::Result<Vec<Frame>> {
+	fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
 		let mut txn = self.begin_command()?;
 		let result = self.execute_command(
 			&mut txn,
@@ -81,12 +71,7 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		Ok(result)
 	}
 
-	fn query_as(
-		&self,
-		identity: &Identity,
-		rql: &str,
-		params: Params,
-	) -> crate::Result<Vec<Frame>> {
+	fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
 		let mut txn = self.begin_query()?;
 		let result = self.execute_query(
 			&mut txn,
@@ -100,9 +85,7 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
-	for StandardEngine<T>
-{
+impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>> for StandardEngine<T> {
 	#[inline]
 	fn execute_command(
 		&self,
@@ -113,15 +96,9 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>>
 	}
 }
 
-impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>>
-	for StandardEngine<T>
-{
+impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>> for StandardEngine<T> {
 	#[inline]
-	fn execute_query(
-		&self,
-		txn: &mut StandardQueryTransaction<T>,
-		qry: Query<'_>,
-	) -> crate::Result<Vec<Frame>> {
+	fn execute_query(&self, txn: &mut StandardQueryTransaction<T>, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_query(txn, qry)
 	}
 }
@@ -146,8 +123,7 @@ pub struct EngineInner<T: Transaction> {
 	cdc: T::Cdc,
 	event_bus: EventBus,
 	executor: Executor,
-	interceptors:
-		Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
+	interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
 	catalog: MaterializedCatalog,
 }
 
@@ -157,9 +133,7 @@ impl<T: Transaction> StandardEngine<T> {
 		unversioned: T::Unversioned,
 		cdc: T::Cdc,
 		event_bus: EventBus,
-		interceptors: Box<
-			dyn InterceptorFactory<StandardCommandTransaction<T>>,
-		>,
+		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
 		catalog: MaterializedCatalog,
 	) -> Self {
 		Self(Arc::new(EngineInner {
@@ -169,34 +143,13 @@ impl<T: Transaction> StandardEngine<T> {
 			event_bus,
 			executor: Executor {
 				functions: Functions::builder()
-					.register_aggregate(
-						"sum",
-						math::aggregate::Sum::new,
-					)
-					.register_aggregate(
-						"min",
-						math::aggregate::Min::new,
-					)
-					.register_aggregate(
-						"max",
-						math::aggregate::Max::new,
-					)
-					.register_aggregate(
-						"avg",
-						math::aggregate::Avg::new,
-					)
-					.register_aggregate(
-						"count",
-						math::aggregate::Count::new,
-					)
-					.register_scalar(
-						"abs",
-						math::scalar::Abs::new,
-					)
-					.register_scalar(
-						"avg",
-						math::scalar::Avg::new,
-					)
+					.register_aggregate("sum", math::aggregate::Sum::new)
+					.register_aggregate("min", math::aggregate::Min::new)
+					.register_aggregate("max", math::aggregate::Max::new)
+					.register_aggregate("avg", math::aggregate::Avg::new)
+					.register_aggregate("count", math::aggregate::Count::new)
+					.register_scalar("abs", math::scalar::Abs::new)
+					.register_scalar("avg", math::scalar::Avg::new)
 					.build(),
 			},
 			interceptors,

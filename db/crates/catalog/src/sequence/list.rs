@@ -7,9 +7,7 @@ use system::ids::sequences::ALL;
 use crate::{CatalogStore, sequence::Sequence, system};
 
 impl CatalogStore {
-	pub fn list_sequences(
-		rx: &mut impl QueryTransaction,
-	) -> crate::Result<Vec<Sequence>> {
+	pub fn list_sequences(rx: &mut impl QueryTransaction) -> crate::Result<Vec<Sequence>> {
 		let mut result = Vec::with_capacity(ALL.len());
 
 		for seq_id in ALL {

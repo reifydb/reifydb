@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::Transaction, value::columnar::layout::ColumnsLayout,
-};
+use reifydb_core::{interface::Transaction, value::columnar::layout::ColumnsLayout};
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
@@ -14,10 +12,7 @@ pub(crate) struct TakeNode<'a, T: Transaction> {
 }
 
 impl<'a, T: Transaction> TakeNode<'a, T> {
-	pub(crate) fn new(
-		input: Box<ExecutionPlan<'a, T>>,
-		take: usize,
-	) -> Self {
+	pub(crate) fn new(input: Box<ExecutionPlan<'a, T>>, take: usize) -> Self {
 		Self {
 			input,
 			remaining: take,
@@ -37,14 +32,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.initialized.is_some(),
-			"TakeNode::next() called before initialize()"
-		);
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
 
 		while let Some(Batch {
 			mut columns,

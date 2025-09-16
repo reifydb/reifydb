@@ -10,19 +10,17 @@ pub mod resolver;
 use std::rc::Rc;
 
 use identifier::{
-	ColumnIdentifier, DeferredViewIdentifier, NamespaceIdentifier,
-	RingBufferIdentifier, SequenceIdentifier, TableIdentifier,
-	TransactionalViewIdentifier,
+	ColumnIdentifier, DeferredViewIdentifier, NamespaceIdentifier, RingBufferIdentifier, SequenceIdentifier,
+	TableIdentifier, TransactionalViewIdentifier,
 };
 use reifydb_catalog::{
-	CatalogQueryTransaction, ring_buffer::create::RingBufferColumnToCreate,
-	table::TableColumnToCreate, view::ViewColumnToCreate,
+	CatalogQueryTransaction, ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
 	interface::{
-		ColumnPolicyKind, ColumnSaturationPolicy, NamespaceDef,
-		TableDef,
+		ColumnPolicyKind, ColumnSaturationPolicy, NamespaceDef, TableDef,
 		expression::{AliasExpression, Expression},
 		identifier,
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSource},
@@ -65,10 +63,8 @@ impl Compiler {
 		let ast_vec = ast.nodes; // Extract the inner Vec
 
 		// Check if this is a pipeline ending with UPDATE or DELETE
-		let is_update_pipeline = ast_len > 1
-			&& matches!(ast_vec.last(), Some(Ast::AstUpdate(_)));
-		let is_delete_pipeline = ast_len > 1
-			&& matches!(ast_vec.last(), Some(Ast::AstDelete(_)));
+		let is_update_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::AstUpdate(_)));
+		let is_delete_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::AstDelete(_)));
 
 		if is_update_pipeline || is_delete_pipeline {
 			// Build pipeline: compile all nodes except the last one
@@ -82,14 +78,11 @@ impl Compiler {
 						Ast::AstUpdate(update_ast) => {
 							// Build the pipeline as
 							// input to update
-							let input =
-								if !pipeline_nodes
-									.is_empty(
-									) {
-									Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
-								} else {
-									None
-								};
+							let input = if !pipeline_nodes.is_empty() {
+								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
+							} else {
+								None
+							};
 
 							// Resolve directly to
 							// TableIdentifier since
@@ -102,21 +95,18 @@ impl Compiler {
 							};
 
 							return Ok(vec![LogicalPlan::Update(UpdateNode {
-                                target,
-                                input
-                            })]);
+								target,
+								input,
+							})]);
 						}
 						Ast::AstDelete(delete_ast) => {
 							// Build the pipeline as
 							// input to delete
-							let input =
-								if !pipeline_nodes
-									.is_empty(
-									) {
-									Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
-								} else {
-									None
-								};
+							let input = if !pipeline_nodes.is_empty() {
+								Some(Box::new(Self::build_pipeline(pipeline_nodes)?))
+							} else {
+								None
+							};
 
 							// Resolve directly to
 							// TableIdentifier since
@@ -129,19 +119,15 @@ impl Compiler {
 							};
 
 							return Ok(vec![LogicalPlan::Delete(DeleteNode {
-                                target,
-                                input
-                            })]);
+								target,
+								input,
+							})]);
 						}
 						_ => unreachable!(),
 					}
 				} else {
 					// Add to pipeline
-					pipeline_nodes.push(
-						Compiler::compile_single(
-							node, resolver,
-						)?,
-					);
+					pipeline_nodes.push(Compiler::compile_single(node, resolver)?);
 				}
 			}
 			unreachable!("Pipeline should have been handled above");
@@ -153,9 +139,7 @@ impl Compiler {
 			// This uses pipe operators - create a Pipeline node
 			let mut pipeline_nodes = Vec::new();
 			for node in ast_vec {
-				pipeline_nodes.push(Self::compile_single(
-					node, resolver,
-				)?);
+				pipeline_nodes.push(Self::compile_single(node, resolver)?);
 			}
 			return Ok(vec![LogicalPlan::Pipeline(PipelineNode {
 				steps: pipeline_nodes,
@@ -176,60 +160,33 @@ impl Compiler {
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match node {
-			Ast::Create(node) => {
-				Self::compile_create(node, resolver)
-			}
+			Ast::Create(node) => Self::compile_create(node, resolver),
 			Ast::Alter(node) => Self::compile_alter(node, resolver),
-			Ast::AstDelete(node) => {
-				Self::compile_delete(node, resolver)
-			}
-			Ast::AstInsert(node) => {
-				Self::compile_insert(node, resolver)
-			}
-			Ast::AstUpdate(node) => {
-				Self::compile_update(node, resolver)
-			}
-			Ast::Aggregate(node) => {
-				Self::compile_aggregate(node, resolver)
-			}
-			Ast::Filter(node) => {
-				Self::compile_filter(node, resolver)
-			}
+			Ast::AstDelete(node) => Self::compile_delete(node, resolver),
+			Ast::AstInsert(node) => Self::compile_insert(node, resolver),
+			Ast::AstUpdate(node) => Self::compile_update(node, resolver),
+			Ast::Aggregate(node) => Self::compile_aggregate(node, resolver),
+			Ast::Filter(node) => Self::compile_filter(node, resolver),
 			Ast::From(node) => Self::compile_from(node, resolver),
 			Ast::Join(node) => Self::compile_join(node, resolver),
 			Ast::Take(node) => Self::compile_take(node, resolver),
 			Ast::Sort(node) => Self::compile_sort(node, resolver),
-			Ast::Distinct(node) => {
-				Self::compile_distinct(node, resolver)
-			}
+			Ast::Distinct(node) => Self::compile_distinct(node, resolver),
 			Ast::Map(node) => Self::compile_map(node, resolver),
-			Ast::Extend(node) => {
-				Self::compile_extend(node, resolver)
-			}
+			Ast::Extend(node) => Self::compile_extend(node, resolver),
 			Ast::Apply(node) => Self::compile_apply(node),
 			Ast::Identifier(ref id) => {
-				return_error!(unsupported_ast_node(
-					id.clone(),
-					"standalone identifier"
-				))
+				return_error!(unsupported_ast_node(id.clone(), "standalone identifier"))
 			}
 			node => {
-				let node_type = format!("{:?}", node)
-					.split('(')
-					.next()
-					.unwrap_or("Unknown")
-					.to_string();
-				return_error!(unsupported_ast_node(
-					node.token().fragment.clone(),
-					&node_type
-				))
+				let node_type =
+					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
+				return_error!(unsupported_ast_node(node.token().fragment.clone(), &node_type))
 			}
 		}
 	}
 
-	fn build_pipeline<'a>(
-		plans: Vec<LogicalPlan<'a>>,
-	) -> crate::Result<LogicalPlan<'a>> {
+	fn build_pipeline<'a>(plans: Vec<LogicalPlan<'a>>) -> crate::Result<LogicalPlan<'a>> {
 		// The pipeline should be properly structured with inputs
 		// For now, we'll wrap them in a special Pipeline plan
 		// that the physical compiler can handle
@@ -444,15 +401,11 @@ pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 	match ast.policy {
 		AstPolicyKind::Saturation => {
 			if ast.value.is_literal_undefined() {
-				return Saturation(
-					ColumnSaturationPolicy::Undefined,
-				);
+				return Saturation(ColumnSaturationPolicy::Undefined);
 			}
 			let ident = ast.value.as_identifier().text();
 			match ident {
-				"error" => Saturation(
-					ColumnSaturationPolicy::Error,
-				),
+				"error" => Saturation(ColumnSaturationPolicy::Error),
 				// "saturate" => Some(Saturation(Saturate)),
 				// "wrap" => Some(Saturation(Wrap)),
 				// "zero" => Some(Saturation(Zero)),
@@ -466,42 +419,22 @@ pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 
 /// Extract table information from a physical plan tree
 /// Returns (namespace, table) if a unique table can be identified
-pub fn extract_table_from_plan(
-	plan: &PhysicalPlan,
-) -> Option<(NamespaceDef, TableDef)> {
+pub fn extract_table_from_plan(plan: &PhysicalPlan) -> Option<(NamespaceDef, TableDef)> {
 	match plan {
-		PhysicalPlan::TableScan(scan) => {
-			Some((scan.namespace.clone(), scan.table.clone()))
-		}
-		PhysicalPlan::Filter(filter) => {
-			extract_table_from_plan(&filter.input)
-		}
-		PhysicalPlan::Map(map) => map
-			.input
-			.as_ref()
-			.and_then(|input| extract_table_from_plan(input)),
-		PhysicalPlan::Extend(extend) => extend
-			.input
-			.as_ref()
-			.and_then(|input| extract_table_from_plan(input)),
-		PhysicalPlan::Aggregate(agg) => {
-			extract_table_from_plan(&agg.input)
-		}
-		PhysicalPlan::Sort(sort) => {
-			extract_table_from_plan(&sort.input)
-		}
-		PhysicalPlan::Take(take) => {
-			extract_table_from_plan(&take.input)
-		}
+		PhysicalPlan::TableScan(scan) => Some((scan.namespace.clone(), scan.table.clone())),
+		PhysicalPlan::Filter(filter) => extract_table_from_plan(&filter.input),
+		PhysicalPlan::Map(map) => map.input.as_ref().and_then(|input| extract_table_from_plan(input)),
+		PhysicalPlan::Extend(extend) => extend.input.as_ref().and_then(|input| extract_table_from_plan(input)),
+		PhysicalPlan::Aggregate(agg) => extract_table_from_plan(&agg.input),
+		PhysicalPlan::Sort(sort) => extract_table_from_plan(&sort.input),
+		PhysicalPlan::Take(take) => extract_table_from_plan(&take.input),
 		PhysicalPlan::JoinInner(join) => {
 			// Check both sides, prefer table over inline data
 			let left = extract_table_from_plan(&join.left);
 			let right = extract_table_from_plan(&join.right);
 
 			match (left, right) {
-				(Some(table), None) | (None, Some(table)) => {
-					Some(table)
-				}
+				(Some(table), None) | (None, Some(table)) => Some(table),
 				(Some(left_table), Some(_right_table)) => {
 					// Multiple tables - ambiguous, caller
 					// should handle For now, return
@@ -521,9 +454,7 @@ pub fn extract_table_from_plan(
 			let right = extract_table_from_plan(&join.right);
 
 			match (left, right) {
-				(Some(table), None) | (None, Some(table)) => {
-					Some(table)
-				}
+				(Some(table), None) | (None, Some(table)) => Some(table),
 				(Some(left_table), Some(_right_table)) => {
 					// Multiple tables - ambiguous
 					Some(left_table)

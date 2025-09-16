@@ -3,9 +3,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{
-	ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef,
-};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
 use reifydb_type::{Type, TypeConstraint};
 
 use super::ids::{columns::column_policies::*, table_virtual::COLUMN_POLICIES};
@@ -24,10 +22,7 @@ pub fn column_policies() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: ID,
 					name: "id".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Uint8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -35,10 +30,7 @@ pub fn column_policies() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: COLUMN_ID,
 					name: "column_id".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Uint8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
@@ -46,10 +38,7 @@ pub fn column_policies() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: TYPE,
 					name: "type".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Uint1,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Uint1),
 					policies: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
@@ -57,10 +46,7 @@ pub fn column_policies() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: VALUE,
 					name: "value".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Uint1,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Uint1),
 					policies: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,

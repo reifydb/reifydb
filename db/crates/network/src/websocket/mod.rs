@@ -4,7 +4,5 @@
 mod frame;
 mod handshake;
 
-pub use frame::{
-	WebSocketFrame, WebSocketOpcode, build_ws_frame, parse_ws_frame,
-};
+pub use frame::{WebSocketFrame, WebSocketOpcode, build_ws_frame, parse_ws_frame};
 pub use handshake::build_ws_response;

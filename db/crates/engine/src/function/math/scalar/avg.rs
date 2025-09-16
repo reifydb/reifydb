@@ -14,10 +14,7 @@ impl Avg {
 }
 
 impl ScalarFunction for Avg {
-	fn scalar(
-		&self,
-		ctx: ScalarFunctionContext,
-	) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
@@ -28,9 +25,7 @@ impl ScalarFunction for Avg {
 			match &col.data() {
 				ColumnData::Int2(container) => {
 					for i in 0..row_count {
-						if let Some(value) =
-							container.get(i)
-						{
+						if let Some(value) = container.get(i) {
 							sum[i] += *value as f64;
 							count[i] += 1;
 						}
@@ -38,9 +33,7 @@ impl ScalarFunction for Avg {
 				}
 				ColumnData::Float8(container) => {
 					for i in 0..row_count {
-						if let Some(value) =
-							container.get(i)
-						{
+						if let Some(value) = container.get(i) {
 							sum[i] += *value;
 							count[i] += 1;
 						}

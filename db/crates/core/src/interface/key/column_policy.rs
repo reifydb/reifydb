@@ -49,39 +49,29 @@ impl EncodableKey for ColumnPolicyKey {
 			return None;
 		}
 
-		keycode::deserialize(&payload[..8])
-			.ok()
-			.zip(keycode::deserialize(&payload[8..]).ok())
-			.map(|(column, policy)| Self {
+		keycode::deserialize(&payload[..8]).ok().zip(keycode::deserialize(&payload[8..]).ok()).map(
+			|(column, policy)| Self {
 				column,
 				policy,
-			})
+			},
+		)
 	}
 }
 
 impl ColumnPolicyKey {
 	pub fn full_scan(column: ColumnId) -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::link_start(column)),
-			Some(Self::link_end(column)),
-		)
+		EncodedKeyRange::start_end(Some(Self::link_start(column)), Some(Self::link_end(column)))
 	}
 
 	fn link_start(column: ColumnId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(column);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(column);
 		serializer.to_encoded_key()
 	}
 
 	fn link_end(column: ColumnId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(*column - 1);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(*column - 1);
 		serializer.to_encoded_key()
 	}
 }
@@ -102,8 +92,7 @@ mod tests {
 		let expected: Vec<u8> = vec![
 			0xFE, // version
 			0xF6, // kind
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED,
-			0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, 0xED, 0xCB, 0xA9, 0x87, 0x65, 0x43, 0x21, 0x0F,
 		];
 
 		assert_eq!(encoded.as_slice(), expected);

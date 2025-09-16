@@ -34,17 +34,13 @@ mod tests {
 
 	#[test]
 	fn test_from_utf8() {
-		let blob = Blob::from_utf8(OwnedFragment::testing(
-			"Hello, World!",
-		));
+		let blob = Blob::from_utf8(OwnedFragment::testing("Hello, World!"));
 		assert_eq!(blob.as_bytes(), b"Hello, World!");
 	}
 
 	#[test]
 	fn test_from_utf8_unicode() {
-		let blob = Blob::from_utf8(OwnedFragment::testing(
-			"Hello, 世界! 🦀",
-		));
+		let blob = Blob::from_utf8(OwnedFragment::testing("Hello, 世界! 🦀"));
 		assert_eq!(blob.as_bytes(), "Hello, 世界! 🦀".as_bytes());
 	}
 

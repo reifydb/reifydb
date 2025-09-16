@@ -57,11 +57,9 @@ where
 			for listener in self.listeners.read().unwrap().iter() {
 				// Add panic safety - catch panics and continue
 				// with other listeners
-				let result = std::panic::catch_unwind(
-					std::panic::AssertUnwindSafe(|| {
-						listener.on(event);
-					}),
-				);
+				let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+					listener.on(event);
+				}));
 				if let Err(_) = result {
 					log_error!(
 						"Event listener panicked for event type {}",
@@ -106,9 +104,7 @@ impl EventBus {
 			.write()
 			.unwrap()
 			.entry(type_id)
-			.or_insert_with(|| {
-				Box::new(EventListenerListImpl::<E>::new())
-			})
+			.or_insert_with(|| Box::new(EventListenerListImpl::<E>::new()))
 			.as_any_mut()
 			.downcast_mut::<EventListenerListImpl<E>>()
 			.unwrap()
@@ -120,24 +116,17 @@ impl EventBus {
 		E: Event,
 	{
 		// Infallible emit with panic safety
-		let result = std::panic::catch_unwind(
-			std::panic::AssertUnwindSafe(|| {
-				let type_id = TypeId::of::<E>();
-				let listeners = self.listeners.read().unwrap();
+		let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+			let type_id = TypeId::of::<E>();
+			let listeners = self.listeners.read().unwrap();
 
-				if let Some(listener_list) =
-					listeners.get(&type_id)
-				{
-					listener_list.on_any(event.as_any());
-				}
-			}),
-		);
+			if let Some(listener_list) = listeners.get(&type_id) {
+				listener_list.on_any(event.as_any());
+			}
+		}));
 
 		if let Err(_) = result {
-			log_error!(
-				"Event emission panicked for type {}",
-				std::any::type_name::<E>()
-			);
+			log_error!("Event emission panicked for type {}", std::any::type_name::<E>());
 		}
 	}
 }
@@ -211,9 +200,7 @@ mod tests {
 		let event_bus = EventBus::new();
 		let listener = TestEventListener::default();
 
-		event_bus.register::<TestEvent, TestEventListener>(
-			listener.clone(),
-		);
+		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
 		event_bus.emit(TestEvent {});
 		assert_eq!(*listener.0.counter.lock().unwrap(), 1);
 	}
@@ -230,12 +217,8 @@ mod tests {
 		let listener1 = TestEventListener::default();
 		let listener2 = TestEventListener::default();
 
-		event_bus.register::<TestEvent, TestEventListener>(
-			listener1.clone(),
-		);
-		event_bus.register::<TestEvent, TestEventListener>(
-			listener2.clone(),
-		);
+		event_bus.register::<TestEvent, TestEventListener>(listener1.clone());
+		event_bus.register::<TestEvent, TestEventListener>(listener2.clone());
 
 		event_bus.emit(TestEvent {});
 		assert_eq!(*listener1.0.counter.lock().unwrap(), 1);
@@ -246,9 +229,7 @@ mod tests {
 	fn test_event_bus_clone() {
 		let event_bus1 = EventBus::new();
 		let listener = TestEventListener::default();
-		event_bus1.register::<TestEvent, TestEventListener>(
-			listener.clone(),
-		);
+		event_bus1.register::<TestEvent, TestEventListener>(listener.clone());
 
 		let event_bus2 = event_bus1.clone();
 		event_bus2.emit(TestEvent {});
@@ -262,12 +243,8 @@ mod tests {
 			.map(|_| {
 				let event_bus = event_bus.clone();
 				thread::spawn(move || {
-					let listener =
-						TestEventListener::default();
-					event_bus
-						.register::<TestEvent, TestEventListener>(
-							listener,
-						);
+					let listener = TestEventListener::default();
+					event_bus.register::<TestEvent, TestEventListener>(listener);
 				})
 			})
 			.collect();
@@ -283,9 +260,7 @@ mod tests {
 	fn test_concurrent_emitting() {
 		let event_bus = Arc::new(EventBus::new());
 		let listener = TestEventListener::default();
-		event_bus.register::<TestEvent, TestEventListener>(
-			listener.clone(),
-		);
+		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
 
 		let handles: Vec<_> = (0..10)
 			.map(|_| {
@@ -317,10 +292,7 @@ mod tests {
 		};
 		let any_ref = event.as_any();
 		assert!(any_ref.downcast_ref::<MacroTestEvent>().is_some());
-		assert_eq!(
-			any_ref.downcast_ref::<MacroTestEvent>().unwrap().value,
-			42
-		);
+		assert_eq!(any_ref.downcast_ref::<MacroTestEvent>().unwrap().value, 42);
 	}
 
 	#[test]
@@ -328,12 +300,8 @@ mod tests {
 		let event_bus = EventBus::default();
 		let listener = TestEventListener::default();
 
-		event_bus.register::<TestEvent, TestEventListener>(
-			listener.clone(),
-		);
-		event_bus.register::<AnotherEvent, TestEventListener>(
-			listener.clone(),
-		);
+		event_bus.register::<TestEvent, TestEventListener>(listener.clone());
+		event_bus.register::<AnotherEvent, TestEventListener>(listener.clone());
 
 		// Each event type triggers only its own listeners
 		event_bus.emit(TestEvent {});

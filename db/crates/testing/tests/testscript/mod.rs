@@ -12,8 +12,7 @@ use test_each_file::test_each_path;
 test_each_path! { in "crates/testing/tests/testscript/scripts" as scripts => test_testscript }
 
 fn test_testscript(path: &std::path::Path) {
-	testscript::run_path(&mut DebugRunner::new(), path)
-		.expect("runner failed")
+	testscript::run_path(&mut DebugRunner::new(), path).expect("runner failed")
 }
 
 // Run testscripts in tests/generate with output in a separate file. This is
@@ -21,17 +20,13 @@ fn test_testscript(path: &std::path::Path) {
 test_each_path! { for ["in", "out"] in "crates/testing/tests/testscript/generate" as generate => test_generate }
 
 fn test_generate([in_path, out_path]: [&std::path::Path; 2]) {
-	let input =
-		std::fs::read_to_string(in_path).expect("failed to read file");
-	let output = testscript::generate(&mut DebugRunner::new(), &input)
-		.expect("runner failed");
+	let input = std::fs::read_to_string(in_path).expect("failed to read file");
+	let output = testscript::generate(&mut DebugRunner::new(), &input).expect("runner failed");
 
 	let dir = out_path.parent().expect("invalid path");
 	let filename = out_path.file_name().expect("invalid path");
 	let mint = reifydb_testing::goldenfile::Mint::new(dir);
-	let mut f = mint
-		.new_goldenfile(filename)
-		.expect("failed to create goldenfile");
+	let mut f = mint.new_goldenfile(filename).expect("failed to create goldenfile");
 	f.write_all(output.as_bytes()).expect("failed to write output");
 }
 
@@ -41,11 +36,8 @@ fn test_generate([in_path, out_path]: [&std::path::Path; 2]) {
 test_each_path! { for ["in", "error"] in "crates/testing/tests/testscript/errors" as errors => test_error }
 
 fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
-	let input =
-		std::fs::read_to_string(in_path).expect("failed to read file");
-	let run = std::panic::AssertUnwindSafe(|| {
-		testscript::generate(&mut DebugRunner::new(), &input)
-	});
+	let input = std::fs::read_to_string(in_path).expect("failed to read file");
+	let run = std::panic::AssertUnwindSafe(|| testscript::generate(&mut DebugRunner::new(), &input));
 	let message = match std::panic::catch_unwind(run) {
 		Ok(Ok(_)) => panic!("script succeeded"),
 		Ok(Err(e)) => e.to_string(),
@@ -59,9 +51,7 @@ fn test_error([in_path, out_path]: [&std::path::Path; 2]) {
 	let dir = out_path.parent().expect("invalid path");
 	let filename = out_path.file_name().expect("invalid path");
 	let mint = reifydb_testing::goldenfile::Mint::new(dir);
-	let mut f = mint
-		.new_goldenfile(filename)
-		.expect("failed to create goldenfile");
+	let mut f = mint.new_goldenfile(filename).expect("failed to create goldenfile");
 	f.write_all(message.as_bytes()).expect("failed to write goldenfile");
 }
 
@@ -99,10 +89,7 @@ impl DebugRunner {
 }
 
 impl testscript::Runner for DebugRunner {
-	fn run(
-		&mut self,
-		command: &testscript::Command,
-	) -> Result<String, Box<dyn Error>> {
+	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn Error>> {
 		// Process commands.
 		let output = match command.name.as_str() {
 			"_echo" => {
@@ -111,42 +98,31 @@ impl testscript::Runner for DebugRunner {
 						return Err("echo args can't have keys".into());
 					}
 				}
-				command.args
-					.iter()
-					.map(|a| a.value.clone())
-					.collect::<Vec<String>>()
-					.join(" ")
+				command.args.iter().map(|a| a.value.clone()).collect::<Vec<String>>().join(" ")
 			}
 
 			"_error" => {
-				let message = command
-					.args
-					.first()
-					.map(|a| a.value.as_str())
-					.unwrap_or("error");
+				let message = command.args.first().map(|a| a.value.as_str()).unwrap_or("error");
 				return Err(message.to_string().into());
 			}
 
 			"_panic" => {
-				let message = command
-					.args
-					.first()
-					.map(|a| a.value.as_str())
-					.unwrap_or("panic");
+				let message = command.args.first().map(|a| a.value.as_str()).unwrap_or("panic");
 				panic!("{message}");
 			}
 
 			"_set" => {
 				for arg in &command.args {
 					match arg.key.as_deref() {
-                        Some("prefix") => self.prefix = arg.value.clone(),
-                        Some("suffix") => self.suffix = arg.value.clone(),
-                        Some("start_block") => self.start_block = arg.value.clone(),
-                        Some("end_block") => self.end_block = arg.value.clone(),
-                        Some("start_command") => self.start_command = arg.value.clone(),
-                        Some("end_command") => self.end_command = arg.value.clone(),
-                        Some(key) => return Err(format!("unknown argument key {key}").into()),
-                        None => return Err("argument must have a key".into())}
+						Some("prefix") => self.prefix = arg.value.clone(),
+						Some("suffix") => self.suffix = arg.value.clone(),
+						Some("start_block") => self.start_block = arg.value.clone(),
+						Some("end_block") => self.end_block = arg.value.clone(),
+						Some("start_command") => self.start_command = arg.value.clone(),
+						Some("end_command") => self.end_command = arg.value.clone(),
+						Some(key) => return Err(format!("unknown argument key {key}").into()),
+						None => return Err("argument must have a key".into()),
+					}
 				}
 				return Ok(String::new());
 			}
@@ -169,17 +145,11 @@ impl testscript::Runner for DebugRunner {
 		Ok(self.end_block.clone())
 	}
 
-	fn start_command(
-		&mut self,
-		_: &testscript::Command,
-	) -> Result<String, Box<dyn Error>> {
+	fn start_command(&mut self, _: &testscript::Command) -> Result<String, Box<dyn Error>> {
 		Ok(self.start_command.clone())
 	}
 
-	fn end_command(
-		&mut self,
-		_: &testscript::Command,
-	) -> Result<String, Box<dyn Error>> {
+	fn end_command(&mut self, _: &testscript::Command) -> Result<String, Box<dyn Error>> {
 		Ok(self.end_command.clone())
 	}
 }

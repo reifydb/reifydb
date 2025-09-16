@@ -6,8 +6,7 @@ use reifydb_core::{
 	value::{columnar::ColumnData, container::NumberContainer},
 };
 use reifydb_type::{
-	BorrowedFragment, Decimal, GetType, Int, IsNumber, LazyFragment,
-	SafeConvert, Type, Uint,
+	BorrowedFragment, Decimal, GetType, Int, IsNumber, LazyFragment, SafeConvert, Type, Uint,
 	diagnostic::cast,
 	error, parse_decimal, parse_float, return_error,
 	value::number::{parse_primitive_int, parse_primitive_uint},
@@ -21,11 +20,7 @@ pub fn to_number<'a>(
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
 		let source_type = data.get_type();
-		return_error!(cast::unsupported_cast(
-			lazy_fragment.fragment(),
-			source_type,
-			target
-		));
+		return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target));
 	}
 
 	if data.get_type().is_number() {
@@ -38,9 +33,7 @@ pub fn to_number<'a>(
 
 	if data.is_utf8() {
 		return match target {
-			Type::Float4 | Type::Float8 => {
-				text_to_float(data, target, lazy_fragment)
-			}
+			Type::Float4 | Type::Float8 => text_to_float(data, target, lazy_fragment),
 			_ => text_to_integer(data, target, lazy_fragment),
 		};
 	}
@@ -50,11 +43,7 @@ pub fn to_number<'a>(
 	}
 
 	let source_type = data.get_type();
-	return_error!(cast::unsupported_cast(
-		lazy_fragment.fragment(),
-		source_type,
-		target
-	))
+	return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 }
 
 fn boolean_to_number<'a>(
@@ -109,16 +98,14 @@ fn boolean_to_number<'a>(
 				Type::Float8 => {
 					boolean_to_number!(f64, 1.0f64, 0.0f64)
 				}
-				Type::Int => |out: &mut ColumnData,
-				              val: bool| {
+				Type::Int => |out: &mut ColumnData, val: bool| {
 					out.push::<Int>(if val {
 						Int::from_i64(1)
 					} else {
 						Int::from_i64(0)
 					})
 				},
-				Type::Uint => |out: &mut ColumnData,
-				               val: bool| {
+				Type::Uint => |out: &mut ColumnData, val: bool| {
 					out.push::<Uint>(if val {
 						Uint::from_u64(1)
 					} else {
@@ -145,10 +132,7 @@ fn boolean_to_number<'a>(
 				}
 			};
 
-			let mut out = ColumnData::with_capacity(
-				target,
-				container.len(),
-			);
+			let mut out = ColumnData::with_capacity(target, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = container.data().get(idx);
@@ -161,11 +145,7 @@ fn boolean_to_number<'a>(
 		}
 		_ => {
 			let source_type = data.get_type();
-			return_error!(cast::unsupported_cast(
-				lazy_fragment.fragment(),
-				source_type,
-				target
-			))
+			return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 		}
 	}
 }
@@ -194,11 +174,7 @@ fn float_to_integer<'a>(
 			} => f32_to_decimal_vec(container, target),
 			_ => {
 				let source_type = data.get_type();
-				return_error!(cast::unsupported_cast(
-					lazy_fragment.fragment(),
-					source_type,
-					target
-				))
+				return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 			}
 		},
 		ColumnData::Float8(container) => match target {
@@ -219,57 +195,36 @@ fn float_to_integer<'a>(
 			} => f64_to_decimal_vec(container, target),
 			_ => {
 				let source_type = data.get_type();
-				return_error!(cast::unsupported_cast(
-					lazy_fragment.fragment(),
-					source_type,
-					target
-				))
+				return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 			}
 		},
 		_ => {
 			let source_type = data.get_type();
-			return_error!(cast::unsupported_cast(
-				lazy_fragment.fragment(),
-				source_type,
-				target
-			))
+			return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 		}
 	}
 }
 
 macro_rules! parse_and_push {
 	(parse_int, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
-		let result = parse_primitive_int::<$ty>($temp_fragment.clone())
-			.map_err(|mut e| {
-				// Use the base_fragment (column reference) for
-				// the error position
-				e.0.with_fragment($base_fragment.clone());
+		let result = parse_primitive_int::<$ty>($temp_fragment.clone()).map_err(|mut e| {
+			// Use the base_fragment (column reference) for
+			// the error position
+			e.0.with_fragment($base_fragment.clone());
 
-				error!(cast::invalid_number(
-					$base_fragment.clone(),
-					$target_type,
-					e.diagnostic(),
-				))
-			})?;
+			error!(cast::invalid_number($base_fragment.clone(), $target_type, e.diagnostic(),))
+		})?;
 		$out.push::<$ty>(result);
 	}};
 	(parse_uint, $ty:ty, $target_type:expr, $out:expr, $temp_fragment:expr, $base_fragment:expr) => {{
-		let result =
-			parse_primitive_uint::<$ty>($temp_fragment.clone())
-				.map_err(|mut e| {
-					// Use the base_fragment (column
-					// reference) for
-					// the error position
-					e.0.with_fragment(
-						$base_fragment.clone(),
-					);
+		let result = parse_primitive_uint::<$ty>($temp_fragment.clone()).map_err(|mut e| {
+			// Use the base_fragment (column
+			// reference) for
+			// the error position
+			e.0.with_fragment($base_fragment.clone());
 
-					error!(cast::invalid_number(
-						$base_fragment.clone(),
-						$target_type,
-						e.diagnostic(),
-					))
-				})?;
+			error!(cast::invalid_number($base_fragment.clone(), $target_type, e.diagnostic(),))
+		})?;
 		$out.push::<$ty>(result);
 	}};
 }
@@ -284,19 +239,12 @@ fn text_to_integer<'a>(
 			container,
 			..
 		} => {
-			let base_fragment =
-				lazy_fragment.fragment().into_owned();
-			let mut out = ColumnData::with_capacity(
-				target,
-				container.len(),
-			);
+			let base_fragment = lazy_fragment.fragment().into_owned();
+			let mut out = ColumnData::with_capacity(target, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = &container[idx];
-					let temp_fragment =
-						BorrowedFragment::new_internal(
-							val,
-						);
+					let temp_fragment = BorrowedFragment::new_internal(val);
 
 					match target {
 						Type::Int1 => {
@@ -400,32 +348,28 @@ fn text_to_integer<'a>(
 							)
 						}
 						Type::Int => {
-							let result = parse_primitive_int(temp_fragment.clone()).map_err(
-								|mut e| {
+							let result = parse_primitive_int(temp_fragment.clone())
+								.map_err(|mut e| {
 									e.0.with_fragment(base_fragment.clone());
 									error!(cast::invalid_number(
 										base_fragment.clone(),
 										Type::Int,
 										e.diagnostic(),
 									))
-								},
-							)?;
+								})?;
 							out.push::<Int>(result);
 						}
 						Type::Uint => {
-							let result = parse_primitive_uint(temp_fragment.clone()).map_err(
-								|mut e| {
+							let result = parse_primitive_uint(temp_fragment.clone())
+								.map_err(|mut e| {
 									e.0.with_fragment(base_fragment.clone());
 									error!(cast::invalid_number(
 										base_fragment.clone(),
 										Type::Uint,
 										e.diagnostic(),
 									))
-								},
-							)?;
-							out.push::<Uint>(
-								result,
-							);
+								})?;
+							out.push::<Uint>(result);
 						}
 						Type::Decimal {
 							..
@@ -440,18 +384,15 @@ fn text_to_integer<'a>(
 									))
 								},
 							)?;
-							out.push::<Decimal>(
-								result,
-							);
+							out.push::<Decimal>(result);
 						}
 						_ => {
-							let source_type =
-								data.get_type();
+							let source_type = data.get_type();
 							return_error!(cast::unsupported_cast(
-                                base_fragment.clone(),
-                                source_type,
-                                target
-                            ));
+								base_fragment.clone(),
+								source_type,
+								target
+							));
 						}
 					}
 				} else {
@@ -462,11 +403,7 @@ fn text_to_integer<'a>(
 		}
 		_ => {
 			let source_type = data.get_type();
-			return_error!(cast::unsupported_cast(
-				lazy_fragment.fragment(),
-				source_type,
-				target
-			))
+			return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 		}
 	}
 }
@@ -483,70 +420,53 @@ fn text_to_float<'a>(
 	{
 		// Create base fragment once for efficiency
 		let base_fragment = lazy_fragment.fragment().into_owned();
-		let mut out =
-			ColumnData::with_capacity(target, container.len());
+		let mut out = ColumnData::with_capacity(target, container.len());
 		for idx in 0..container.len() {
 			if container.is_defined(idx) {
 				let val = &container[idx];
 				// Create efficient borrowed fragment for
 				// parsing
-				let temp_fragment =
-					BorrowedFragment::new_internal(val);
+				let temp_fragment = BorrowedFragment::new_internal(val);
 
 				match target {
 					Type::Float4 => {
-						out.push::<f32>(
-							parse_float::<f32>(
-								temp_fragment
-									.clone(
-									),
-							)
-							.map_err(
-								|mut e| {
-									// Use the base_fragment (column reference) for the error position
-									e.0.with_fragment(base_fragment.clone());
+						out.push::<f32>(parse_float::<f32>(temp_fragment.clone()).map_err(
+							|mut e| {
+								// Use the base_fragment (column reference) for the
+								// error position
+								e.0.with_fragment(base_fragment.clone());
 
-									error!(cast::invalid_number(
-                                base_fragment.clone(),
-                                Type::Float4,
-                                e.diagnostic(),
-                            ))
-								},
-							)?,
-						)
+								error!(cast::invalid_number(
+									base_fragment.clone(),
+									Type::Float4,
+									e.diagnostic(),
+								))
+							},
+						)?)
 					}
 
 					Type::Float8 => {
-						out.push::<f64>(
-							parse_float::<f64>(
-								temp_fragment,
-							)
-							.map_err(
-								|mut e| {
-									// Use the base_fragment (column reference) for the error position
-									e.0.with_fragment(base_fragment.clone());
+						out.push::<f64>(parse_float::<f64>(temp_fragment).map_err(
+							|mut e| {
+								// Use the base_fragment (column reference) for the
+								// error position
+								e.0.with_fragment(base_fragment.clone());
 
-									error!(cast::invalid_number(
-                                base_fragment.clone(),
-                                Type::Float8,
-                                e.diagnostic(),
-                            ))
-								},
-							)?,
-						)
+								error!(cast::invalid_number(
+									base_fragment.clone(),
+									Type::Float8,
+									e.diagnostic(),
+								))
+							},
+						)?)
 					}
 					_ => {
-						let source_type =
-							column_data.get_type();
-						return_error!(
-							cast::unsupported_cast(
-								base_fragment
-									.clone(
-									),
-								source_type,
-								target
-							)
-						);
+						let source_type = column_data.get_type();
+						return_error!(cast::unsupported_cast(
+							base_fragment.clone(),
+							source_type,
+							target
+						));
 					}
 				}
 			} else {
@@ -556,36 +476,23 @@ fn text_to_float<'a>(
 		Ok(out)
 	} else {
 		let source_type = column_data.get_type();
-		return_error!(cast::unsupported_cast(
-			lazy_fragment.fragment(),
-			source_type,
-			target
-		))
+		return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 	}
 }
 
 macro_rules! float_to_int_vec {
 	($fn_name:ident, $float_ty:ty, $int_ty:ty, $target_type:expr, $min_val:expr, $max_val:expr) => {
-		fn $fn_name(
-			container: &NumberContainer<$float_ty>,
-		) -> crate::Result<ColumnData>
+		fn $fn_name(container: &NumberContainer<$float_ty>) -> crate::Result<ColumnData>
 		where
 			$float_ty: Copy + IsNumber,
 		{
-			let mut out = ColumnData::with_capacity(
-				$target_type,
-				container.len(),
-			);
+			let mut out = ColumnData::with_capacity($target_type, container.len());
 			for idx in 0..container.len() {
 				if container.is_defined(idx) {
 					let val = container[idx];
 					let truncated = val.trunc();
-					if truncated >= $min_val
-						&& truncated <= $max_val
-					{
-						out.push::<$int_ty>(
-							truncated as $int_ty,
-						);
+					if truncated >= $min_val && truncated <= $max_val {
+						out.push::<$int_ty>(truncated as $int_ty);
 					} else {
 						out.push_undefined();
 					}
@@ -598,116 +505,30 @@ macro_rules! float_to_int_vec {
 	};
 }
 
-float_to_int_vec!(
-	f32_to_i8_vec,
-	f32,
-	i8,
-	Type::Int1,
-	i8::MIN as f32,
-	i8::MAX as f32
-);
-float_to_int_vec!(
-	f32_to_i16_vec,
-	f32,
-	i16,
-	Type::Int2,
-	i16::MIN as f32,
-	i16::MAX as f32
-);
-float_to_int_vec!(
-	f32_to_i32_vec,
-	f32,
-	i32,
-	Type::Int4,
-	i32::MIN as f32,
-	i32::MAX as f32
-);
-float_to_int_vec!(
-	f32_to_i64_vec,
-	f32,
-	i64,
-	Type::Int8,
-	i64::MIN as f32,
-	i64::MAX as f32
-);
-float_to_int_vec!(
-	f32_to_i128_vec,
-	f32,
-	i128,
-	Type::Int16,
-	i128::MIN as f32,
-	i128::MAX as f32
-);
+float_to_int_vec!(f32_to_i8_vec, f32, i8, Type::Int1, i8::MIN as f32, i8::MAX as f32);
+float_to_int_vec!(f32_to_i16_vec, f32, i16, Type::Int2, i16::MIN as f32, i16::MAX as f32);
+float_to_int_vec!(f32_to_i32_vec, f32, i32, Type::Int4, i32::MIN as f32, i32::MAX as f32);
+float_to_int_vec!(f32_to_i64_vec, f32, i64, Type::Int8, i64::MIN as f32, i64::MAX as f32);
+float_to_int_vec!(f32_to_i128_vec, f32, i128, Type::Int16, i128::MIN as f32, i128::MAX as f32);
 float_to_int_vec!(f32_to_u8_vec, f32, u8, Type::Uint1, 0.0, u8::MAX as f32);
 float_to_int_vec!(f32_to_u16_vec, f32, u16, Type::Uint2, 0.0, u16::MAX as f32);
 float_to_int_vec!(f32_to_u32_vec, f32, u32, Type::Uint4, 0.0, u32::MAX as f32);
 float_to_int_vec!(f32_to_u64_vec, f32, u64, Type::Uint8, 0.0, u64::MAX as f32);
-float_to_int_vec!(
-	f32_to_u128_vec,
-	f32,
-	u128,
-	Type::Uint16,
-	0.0,
-	u128::MAX as f32
-);
+float_to_int_vec!(f32_to_u128_vec, f32, u128, Type::Uint16, 0.0, u128::MAX as f32);
 
-float_to_int_vec!(
-	f64_to_i8_vec,
-	f64,
-	i8,
-	Type::Int1,
-	i8::MIN as f64,
-	i8::MAX as f64
-);
-float_to_int_vec!(
-	f64_to_i16_vec,
-	f64,
-	i16,
-	Type::Int2,
-	i16::MIN as f64,
-	i16::MAX as f64
-);
-float_to_int_vec!(
-	f64_to_i32_vec,
-	f64,
-	i32,
-	Type::Int4,
-	i32::MIN as f64,
-	i32::MAX as f64
-);
-float_to_int_vec!(
-	f64_to_i64_vec,
-	f64,
-	i64,
-	Type::Int8,
-	i64::MIN as f64,
-	i64::MAX as f64
-);
-float_to_int_vec!(
-	f64_to_i128_vec,
-	f64,
-	i128,
-	Type::Int16,
-	i128::MIN as f64,
-	i128::MAX as f64
-);
+float_to_int_vec!(f64_to_i8_vec, f64, i8, Type::Int1, i8::MIN as f64, i8::MAX as f64);
+float_to_int_vec!(f64_to_i16_vec, f64, i16, Type::Int2, i16::MIN as f64, i16::MAX as f64);
+float_to_int_vec!(f64_to_i32_vec, f64, i32, Type::Int4, i32::MIN as f64, i32::MAX as f64);
+float_to_int_vec!(f64_to_i64_vec, f64, i64, Type::Int8, i64::MIN as f64, i64::MAX as f64);
+float_to_int_vec!(f64_to_i128_vec, f64, i128, Type::Int16, i128::MIN as f64, i128::MAX as f64);
 float_to_int_vec!(f64_to_u8_vec, f64, u8, Type::Uint1, 0.0, u8::MAX as f64);
 float_to_int_vec!(f64_to_u16_vec, f64, u16, Type::Uint2, 0.0, u16::MAX as f64);
 float_to_int_vec!(f64_to_u32_vec, f64, u32, Type::Uint4, 0.0, u32::MAX as f64);
 float_to_int_vec!(f64_to_u64_vec, f64, u64, Type::Uint8, 0.0, u64::MAX as f64);
-float_to_int_vec!(
-	f64_to_u128_vec,
-	f64,
-	u128,
-	Type::Uint16,
-	0.0,
-	u128::MAX as f64
-);
+float_to_int_vec!(f64_to_u128_vec, f64, u128, Type::Uint16, 0.0, u128::MAX as f64);
 
 // Float to Int conversion
-fn f32_to_int_vec(
-	container: &NumberContainer<f32>,
-) -> crate::Result<ColumnData> {
+fn f32_to_int_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Int, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -722,9 +543,7 @@ fn f32_to_int_vec(
 	Ok(out)
 }
 
-fn f64_to_int_vec(
-	container: &NumberContainer<f64>,
-) -> crate::Result<ColumnData> {
+fn f64_to_int_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Int, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -740,9 +559,7 @@ fn f64_to_int_vec(
 }
 
 // Float to Uint conversion
-fn f32_to_uint_vec(
-	container: &NumberContainer<f32>,
-) -> crate::Result<ColumnData> {
+fn f32_to_uint_vec(container: &NumberContainer<f32>) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Uint, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -761,9 +578,7 @@ fn f32_to_uint_vec(
 	Ok(out)
 }
 
-fn f64_to_uint_vec(
-	container: &NumberContainer<f64>,
-) -> crate::Result<ColumnData> {
+fn f64_to_uint_vec(container: &NumberContainer<f64>) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(Type::Uint, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -783,10 +598,7 @@ fn f64_to_uint_vec(
 }
 
 // Float to Decimal conversion
-fn f32_to_decimal_vec(
-	container: &NumberContainer<f32>,
-	target: Type,
-) -> crate::Result<ColumnData> {
+fn f32_to_decimal_vec(container: &NumberContainer<f32>, target: Type) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(target, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -801,10 +613,7 @@ fn f32_to_decimal_vec(
 	Ok(out)
 }
 
-fn f64_to_decimal_vec(
-	container: &NumberContainer<f64>,
-	target: Type,
-) -> crate::Result<ColumnData> {
+fn f64_to_decimal_vec(container: &NumberContainer<f64>, target: Type) -> crate::Result<ColumnData> {
 	let mut out = ColumnData::with_capacity(target, container.len());
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
@@ -826,11 +635,7 @@ fn number_to_number<'a>(
 	lazy_fragment: impl LazyFragment<'a>,
 ) -> crate::Result<ColumnData> {
 	if !target.is_number() {
-		return_error!(cast::unsupported_cast(
-			lazy_fragment.fragment(),
-			data.get_type(),
-			target,
-		));
+		return_error!(cast::unsupported_cast(lazy_fragment.fragment(), data.get_type(), target,));
 	}
 
 	macro_rules! cast {
@@ -1353,11 +1158,7 @@ fn number_to_number<'a>(
 	}
 
 	let source_type = data.get_type();
-	return_error!(cast::unsupported_cast(
-		lazy_fragment.fragment(),
-		source_type,
-		target
-	))
+	return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
 }
 
 pub(crate) fn convert_vec<'a, From, To>(
@@ -1375,9 +1176,7 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx];
-			match ctx.convert::<From, To>(val, || {
-				lazy_fragment.fragment().into_owned()
-			})? {
+			match ctx.convert::<From, To>(val, || lazy_fragment.fragment().into_owned())? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -1403,9 +1202,7 @@ where
 	for idx in 0..container.len() {
 		if container.is_defined(idx) {
 			let val = container[idx].clone();
-			match ctx.convert::<From, To>(val, || {
-				lazy_fragment.fragment().into_owned()
-			})? {
+			match ctx.convert::<From, To>(val, || lazy_fragment.fragment().into_owned())? {
 				Some(v) => push(&mut out, v),
 				None => out.push_undefined(),
 			}
@@ -1419,10 +1216,7 @@ where
 #[cfg(test)]
 mod tests {
 	mod convert {
-		use reifydb_core::{
-			BitVec, interface::Convert,
-			value::container::NumberContainer,
-		};
+		use reifydb_core::{BitVec, interface::Convert, value::container::NumberContainer};
 		use reifydb_type::{Fragment, GetType, SafeConvert, Type};
 
 		use crate::evaluate::cast::number::convert_vec;
@@ -1433,8 +1227,7 @@ mod tests {
 			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec(), bitvec);
 			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
@@ -1455,8 +1248,7 @@ mod tests {
 			let bitvec = BitVec::from_slice(&[true]);
 			let ctx = TestCtx::new();
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec(), bitvec);
 			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
@@ -1475,8 +1267,7 @@ mod tests {
 			let bitvec = BitVec::from_slice(&[false]);
 			let ctx = TestCtx::new();
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec(), bitvec);
 			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
@@ -1492,12 +1283,10 @@ mod tests {
 		#[test]
 		fn test_promote_mixed_bitvec_and_failure() {
 			let data = [1i8, 42i8, 3i8, 4i8];
-			let bitvec =
-				BitVec::from_slice(&[true, true, false, true]);
+			let bitvec = BitVec::from_slice(&[true, true, false, true]);
 			let ctx = TestCtx::new();
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec(), bitvec);
 			let result = convert_vec::<i8, i16>(
 				&container,
 				&ctx,
@@ -1537,16 +1326,12 @@ mod tests {
 				// Only simulate conversion failure for i8 == 42
 				// or i16 == 42
 				if std::mem::size_of::<From>() == 1 {
-					let raw: i8 = unsafe {
-						std::mem::transmute_copy(&val)
-					};
+					let raw: i8 = unsafe { std::mem::transmute_copy(&val) };
 					if raw == 42 {
 						return Ok(None);
 					}
 				} else if std::mem::size_of::<From>() == 2 {
-					let raw: i16 = unsafe {
-						std::mem::transmute_copy(&val)
-					};
+					let raw: i16 = unsafe { std::mem::transmute_copy(&val) };
 					if raw == 42 {
 						return Ok(None);
 					}
@@ -1561,8 +1346,7 @@ mod tests {
 			let bitvec = BitVec::from_slice(&[true, true]);
 			let ctx = TestCtx::new();
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec(), bitvec);
 			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
@@ -1584,8 +1368,7 @@ mod tests {
 			let bitvec = BitVec::from_slice(&[true]);
 			let ctx = TestCtx::new();
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec(), bitvec);
 			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
@@ -1604,8 +1387,7 @@ mod tests {
 			let bitvec = BitVec::repeat(1, false);
 			let ctx = TestCtx::new();
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec(), bitvec);
 			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,
@@ -1621,12 +1403,10 @@ mod tests {
 		#[test]
 		fn test_demote_mixed_bitvec_and_failure() {
 			let data = [1i16, 42i16, 3i16, 4i16];
-			let bitvec =
-				BitVec::from_slice(&[true, true, false, true]);
+			let bitvec = BitVec::from_slice(&[true, true, false, true]);
 			let ctx = TestCtx::new();
 
-			let container =
-				NumberContainer::new(data.to_vec(), bitvec);
+			let container = NumberContainer::new(data.to_vec(), bitvec);
 			let result = convert_vec::<i16, i8>(
 				&container,
 				&ctx,

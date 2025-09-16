@@ -1,9 +1,6 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
-	interface::{
-		EvaluationContext, Evaluator, Params, Transaction,
-		expression::Expression,
-	},
+	interface::{EvaluationContext, Evaluator, Params, Transaction, expression::Expression},
 	value::columnar::Columns,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
@@ -38,8 +35,7 @@ impl<T: Transaction> Operator<T> for ExtendOperator {
 					row_ids,
 					after,
 				} => {
-					let extended_columns =
-						self.extend(evaluator, &after)?;
+					let extended_columns = self.extend(evaluator, &after)?;
 					output.push(FlowDiff::Insert {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -52,10 +48,8 @@ impl<T: Transaction> Operator<T> for ExtendOperator {
 					before,
 					after,
 				} => {
-					let extended_before = self
-						.extend(evaluator, &before)?;
-					let extended_after =
-						self.extend(evaluator, &after)?;
+					let extended_before = self.extend(evaluator, &before)?;
+					let extended_after = self.extend(evaluator, &after)?;
 					output.push(FlowDiff::Update {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -68,8 +62,7 @@ impl<T: Transaction> Operator<T> for ExtendOperator {
 					row_ids,
 					before,
 				} => {
-					let extended_before = self
-						.extend(evaluator, &before)?;
+					let extended_before = self.extend(evaluator, &before)?;
 					output.push(FlowDiff::Remove {
 						source: *source,
 						row_ids: row_ids.clone(),
@@ -84,14 +77,9 @@ impl<T: Transaction> Operator<T> for ExtendOperator {
 }
 
 impl ExtendOperator {
-	fn extend(
-		&self,
-		evaluator: &StandardEvaluator,
-		columns: &Columns,
-	) -> crate::Result<Columns> {
+	fn extend(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns> {
 		// Start with all existing columns (EXTEND preserves everything)
-		let mut result_columns =
-			columns.clone().into_iter().collect::<Vec<_>>();
+		let mut result_columns = columns.clone().into_iter().collect::<Vec<_>>();
 		let row_count = columns.row_count();
 
 		// Add the new derived columns

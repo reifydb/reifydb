@@ -9,8 +9,8 @@ use std::{
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		EncodableKey, IndexEntryKey, IndexId, RowKey, SourceId,
-		TableDef, Transaction, VersionedQueryTransaction,
+		EncodableKey, IndexEntryKey, IndexId, RowKey, SourceId, TableDef, Transaction,
+		VersionedQueryTransaction,
 	},
 	row::EncodedRowLayout,
 	value::columnar::{
@@ -34,16 +34,8 @@ pub(crate) struct IndexScanNode<T: Transaction> {
 }
 
 impl<T: Transaction> IndexScanNode<T> {
-	pub fn new(
-		table: TableDef,
-		index_id: IndexId,
-		context: Arc<ExecutionContext>,
-	) -> crate::Result<Self> {
-		let data = table
-			.columns
-			.iter()
-			.map(|c| c.constraint.get_type())
-			.collect::<Vec<_>>();
+	pub fn new(table: TableDef, index_id: IndexId, context: Arc<ExecutionContext>) -> crate::Result<Self> {
+		let data = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedRowLayout::new(&data);
 
 		let layout = ColumnsLayout {
@@ -81,14 +73,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<T> {
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
-	) -> crate::Result<Option<Batch>> {
-		debug_assert!(
-			self.context.is_some(),
-			"IndexScanNode::next() called before initialize()"
-		);
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+		debug_assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
 		if self.exhausted {
@@ -99,16 +85,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<T> {
 
 		// Create range for scanning index entries
 		let source_id: SourceId = self.table.id.into();
-		let base_range =
-			IndexEntryKey::index_range(source_id, self.index_id);
+		let base_range = IndexEntryKey::index_range(source_id, self.index_id);
 
 		let range = if let Some(ref last_key) = self.last_key {
 			let end = match base_range.end {
 				Included(key) => Included(key),
 				Excluded(key) => Excluded(key),
-				Unbounded => unreachable!(
-					"Index range should have bounds"
-				),
+				Unbounded => unreachable!("Index range should have bounds"),
 			};
 			EncodedKeyRange::new(Excluded(last_key.clone()), end)
 		} else {
@@ -121,14 +104,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<T> {
 		let mut new_last_key = None;
 
 		// Scan index entries
-		let index_entries: Vec<_> =
-			rx.range(range)?.into_iter().collect();
+		let index_entries: Vec<_> = rx.range(range)?.into_iter().collect();
 
 		for entry in index_entries.into_iter() {
 			let row_number_layout = EncodedRowLayout::new(&[Uint8]);
 
-			let row_number =
-				row_number_layout.get_u64(&entry.row, 0);
+			let row_number = row_number_layout.get_u64(&entry.row, 0);
 
 			// Fetch the actual row using the row number
 			let source: SourceId = self.table.id.into();
@@ -163,15 +144,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<T> {
 
 		// Add the RowNumber column to the columns if requested
 		if ctx.preserve_row_numbers {
-			let row_number_column =
-				Column::SourceQualified(SourceQualified {
-					source: self.table.name.clone(),
-					name: ROW_NUMBER_COLUMN_NAME
-						.to_string(),
-					data: ColumnData::row_number(
-						row_numbers,
-					),
-				});
+			let row_number_column = Column::SourceQualified(SourceQualified {
+				source: self.table.name.clone(),
+				name: ROW_NUMBER_COLUMN_NAME.to_string(),
+				data: ColumnData::row_number(row_numbers),
+			});
 			columns.0.push(row_number_column);
 		}
 

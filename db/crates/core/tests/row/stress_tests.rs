@@ -83,22 +83,10 @@ fn test_mixed_type_stress() {
 	assert_eq!(layout.get_f32(&row, 11), f32::MIN);
 	assert_eq!(layout.get_f64(&row, 12), f64::MAX);
 	assert_eq!(layout.get_utf8(&row, 13), "stress test 🎭");
-	assert_eq!(
-		layout.get_blob(&row, 14),
-		Blob::from(vec![0, 255, 127, 128])
-	);
-	assert_eq!(
-		layout.get_date(&row, 15),
-		Date::from_ymd(2024, 12, 25).unwrap()
-	);
-	assert_eq!(
-		layout.get_datetime(&row, 16),
-		DateTime::from_timestamp(0).unwrap()
-	);
-	assert_eq!(
-		layout.get_time(&row, 17),
-		Time::from_hms(23, 59, 59).unwrap()
-	);
+	assert_eq!(layout.get_blob(&row, 14), Blob::from(vec![0, 255, 127, 128]));
+	assert_eq!(layout.get_date(&row, 15), Date::from_ymd(2024, 12, 25).unwrap());
+	assert_eq!(layout.get_datetime(&row, 16), DateTime::from_timestamp(0).unwrap());
+	assert_eq!(layout.get_time(&row, 17), Time::from_hms(23, 59, 59).unwrap());
 	assert_eq!(layout.get_interval(&row, 18), Interval::from_days(365));
 	// UUIDs are generated, so just check they exist
 	assert!(row.is_defined(19));
@@ -106,8 +94,5 @@ fn test_mixed_type_stress() {
 	assert!(row.is_defined(21));
 	assert_eq!(layout.get_int(&row, 22), Int::from(i128::MAX));
 	assert_eq!(layout.get_uint(&row, 23), Uint::from(u128::MAX));
-	assert_eq!(
-		layout.get_decimal(&row, 24),
-		Decimal::from_str("123.45").unwrap()
-	);
+	assert_eq!(layout.get_decimal(&row, 24), Decimal::from_str("123.45").unwrap());
 }

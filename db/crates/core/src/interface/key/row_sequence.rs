@@ -20,10 +20,7 @@ impl EncodableKey for RowSequenceKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(11); // 1 + 1 + 9
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_source_id(self.source);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_source_id(self.source);
 		serializer.to_encoded_key()
 	}
 
@@ -48,20 +45,15 @@ impl EncodableKey for RowSequenceKey {
 			return None;
 		}
 
-		keycode::deserialize_source_id(&payload[..9]).ok().map(
-			|source| Self {
-				source,
-			},
-		)
+		keycode::deserialize_source_id(&payload[..9]).ok().map(|source| Self {
+			source,
+		})
 	}
 }
 
 impl RowSequenceKey {
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::sequence_start()),
-			Some(Self::sequence_end()),
-		)
+		EncodedKeyRange::start_end(Some(Self::sequence_start()), Some(Self::sequence_end()))
 	}
 
 	fn sequence_start() -> EncodedKey {
@@ -92,8 +84,7 @@ mod tests {
 			0xFE, // version
 			0xF7, // kind
 			0x01, // SourceId type discriminator (Table)
-			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54,
-			0x32, // source id bytes
+			0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0x54, 0x32, // source id bytes
 		];
 		assert_eq!(encoded.as_slice(), expected);
 

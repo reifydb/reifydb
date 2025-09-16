@@ -43,30 +43,19 @@ impl IocContainer {
 		}
 	}
 
-	pub fn register<T: Clone + Any + Send + Sync + 'static>(
-		self,
-		service: T,
-	) -> Self {
-		self.dependencies
-			.write()
-			.unwrap()
-			.insert(TypeId::of::<T>(), BoxedValue::new(service));
+	pub fn register<T: Clone + Any + Send + Sync + 'static>(self, service: T) -> Self {
+		self.dependencies.write().unwrap().insert(TypeId::of::<T>(), BoxedValue::new(service));
 		self
 	}
 
-	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(
-		&self,
-	) -> Result<T> {
+	pub fn resolve<T: Clone + Any + Send + Sync + 'static>(&self) -> Result<T> {
 		self.dependencies
 			.read()
 			.unwrap()
 			.get(&TypeId::of::<T>())
 			.and_then(|boxed| boxed.value::<T>())
 			.ok_or_else(|| {
-				error!(internal(format!(
-					"Type {} not registered in IoC container",
-					type_name::<T>()
-				)))
+				error!(internal(format!("Type {} not registered in IoC container", type_name::<T>())))
 			})
 	}
 }

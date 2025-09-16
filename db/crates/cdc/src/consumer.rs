@@ -7,11 +7,7 @@ use reifydb_type::Result;
 
 /// Trait for CDC event processing functions
 pub trait CdcConsume<T: Transaction>: Send + Sync + 'static {
-	fn consume(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		events: Vec<CdcEvent>,
-	) -> Result<()>;
+	fn consume(&self, txn: &mut StandardCommandTransaction<T>, events: Vec<CdcEvent>) -> Result<()>;
 }
 
 /// Trait for CDC event stream consumers

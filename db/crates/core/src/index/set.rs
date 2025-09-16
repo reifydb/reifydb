@@ -3,9 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::{
-	Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7,
-};
+use reifydb_type::{Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7};
 use uuid::Uuid;
 
 use crate::{
@@ -14,12 +12,7 @@ use crate::{
 };
 
 impl EncodedIndexLayout {
-	pub fn set_bool(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<bool>,
-	) {
+	pub fn set_bool(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<bool>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Boolean);
 		key.set_valid(index, true);
@@ -41,20 +34,10 @@ impl EncodedIndexLayout {
 			}
 		};
 
-		unsafe {
-			ptr::write_unaligned(
-				key.make_mut().as_mut_ptr().add(field.offset),
-				byte_value,
-			)
-		}
+		unsafe { ptr::write_unaligned(key.make_mut().as_mut_ptr().add(field.offset), byte_value) }
 	}
 
-	pub fn set_f32(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<f32>,
-	) {
+	pub fn set_f32(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<f32>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Float4);
 		key.set_valid(index, true);
@@ -79,20 +62,11 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				4,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
 	}
 
-	pub fn set_f64(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<f64>,
-	) {
+	pub fn set_f64(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<f64>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Float8);
 		key.set_valid(index, true);
@@ -117,20 +91,11 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				8,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
 	}
 
-	pub fn set_i8(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<i8>,
-	) {
+	pub fn set_i8(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i8>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Int1);
 		key.set_valid(index, true);
@@ -149,20 +114,10 @@ impl EncodedIndexLayout {
 			}
 		}
 
-		unsafe {
-			ptr::write_unaligned(
-				key.make_mut().as_mut_ptr().add(field.offset),
-				bytes[0],
-			)
-		}
+		unsafe { ptr::write_unaligned(key.make_mut().as_mut_ptr().add(field.offset), bytes[0]) }
 	}
 
-	pub fn set_i16(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<i16>,
-	) {
+	pub fn set_i16(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i16>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Int2);
 		key.set_valid(index, true);
@@ -182,20 +137,11 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				2,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 2);
 		}
 	}
 
-	pub fn set_i32(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<i32>,
-	) {
+	pub fn set_i32(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i32>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Int4);
 		key.set_valid(index, true);
@@ -215,20 +161,11 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				4,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
 	}
 
-	pub fn set_i64(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<i64>,
-	) {
+	pub fn set_i64(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i64>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Int8);
 		key.set_valid(index, true);
@@ -248,20 +185,11 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				8,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
 	}
 
-	pub fn set_i128(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<i128>,
-	) {
+	pub fn set_i128(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<i128>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Int16);
 		key.set_valid(index, true);
@@ -281,20 +209,11 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				16,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
 	}
 
-	pub fn set_u8(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<u8>,
-	) {
+	pub fn set_u8(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u8>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Uint1);
 		key.set_valid(index, true);
@@ -304,20 +223,10 @@ impl EncodedIndexLayout {
 			SortDirection::Desc => !value.into(),
 		};
 
-		unsafe {
-			ptr::write_unaligned(
-				key.make_mut().as_mut_ptr().add(field.offset),
-				byte,
-			)
-		}
+		unsafe { ptr::write_unaligned(key.make_mut().as_mut_ptr().add(field.offset), byte) }
 	}
 
-	pub fn set_u16(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<u16>,
-	) {
+	pub fn set_u16(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u16>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Uint2);
 		key.set_valid(index, true);
@@ -328,20 +237,11 @@ impl EncodedIndexLayout {
 		};
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				2,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 2);
 		}
 	}
 
-	pub fn set_u32(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<u32>,
-	) {
+	pub fn set_u32(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u32>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Uint4);
 		key.set_valid(index, true);
@@ -352,20 +252,11 @@ impl EncodedIndexLayout {
 		};
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				4,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
 	}
 
-	pub fn set_u64(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<u64>,
-	) {
+	pub fn set_u64(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u64>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Uint8);
 		key.set_valid(index, true);
@@ -376,20 +267,11 @@ impl EncodedIndexLayout {
 		};
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				8,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
 	}
 
-	pub fn set_u128(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<u128>,
-	) {
+	pub fn set_u128(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u128>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Uint16);
 		key.set_valid(index, true);
@@ -400,20 +282,11 @@ impl EncodedIndexLayout {
 		};
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				16,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
 	}
 
-	pub fn set_row_number(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: impl Into<u64>,
-	) {
+	pub fn set_row_number(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u64>) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::RowNumber);
 		key.set_valid(index, true);
@@ -424,20 +297,11 @@ impl EncodedIndexLayout {
 		};
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				8,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
 	}
 
-	pub fn set_date(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: Date,
-	) {
+	pub fn set_date(&self, key: &mut EncodedIndexKey, index: usize, value: Date) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Date);
 		key.set_valid(index, true);
@@ -458,20 +322,11 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				4,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 4);
 		}
 	}
 
-	pub fn set_datetime(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: DateTime,
-	) {
+	pub fn set_datetime(&self, key: &mut EncodedIndexKey, index: usize, value: DateTime) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::DateTime);
 		key.set_valid(index, true);
@@ -496,27 +351,16 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				sec_bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				8,
-			);
+			ptr::copy_nonoverlapping(sec_bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 			ptr::copy_nonoverlapping(
 				nano_bytes.as_ptr(),
-				key.make_mut()
-					.as_mut_ptr()
-					.add(field.offset + 8),
+				key.make_mut().as_mut_ptr().add(field.offset + 8),
 				4,
 			);
 		}
 	}
 
-	pub fn set_time(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: Time,
-	) {
+	pub fn set_time(&self, key: &mut EncodedIndexKey, index: usize, value: Time) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Time);
 		key.set_valid(index, true);
@@ -528,20 +372,11 @@ impl EncodedIndexLayout {
 		};
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				8,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 8);
 		}
 	}
 
-	pub fn set_interval(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: Interval,
-	) {
+	pub fn set_interval(&self, key: &mut EncodedIndexKey, index: usize, value: Interval) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Interval);
 		key.set_valid(index, true);
@@ -580,27 +415,18 @@ impl EncodedIndexLayout {
 			);
 			ptr::copy_nonoverlapping(
 				days_bytes.as_ptr(),
-				key.make_mut()
-					.as_mut_ptr()
-					.add(field.offset + 4),
+				key.make_mut().as_mut_ptr().add(field.offset + 4),
 				4,
 			);
 			ptr::copy_nonoverlapping(
 				nanos_bytes.as_ptr(),
-				key.make_mut()
-					.as_mut_ptr()
-					.add(field.offset + 8),
+				key.make_mut().as_mut_ptr().add(field.offset + 8),
 				8,
 			);
 		}
 	}
 
-	pub fn set_uuid4(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: Uuid4,
-	) {
+	pub fn set_uuid4(&self, key: &mut EncodedIndexKey, index: usize, value: Uuid4) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Uuid4);
 		key.set_valid(index, true);
@@ -617,20 +443,11 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				16,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
 	}
 
-	pub fn set_uuid7(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: Uuid7,
-	) {
+	pub fn set_uuid7(&self, key: &mut EncodedIndexKey, index: usize, value: Uuid7) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::Uuid7);
 		key.set_valid(index, true);
@@ -647,20 +464,11 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				16,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
 	}
 
-	pub fn set_identity_id(
-		&self,
-		key: &mut EncodedIndexKey,
-		index: usize,
-		value: IdentityId,
-	) {
+	pub fn set_identity_id(&self, key: &mut EncodedIndexKey, index: usize, value: IdentityId) {
 		let field = &self.fields[index];
 		debug_assert_eq!(field.value, Type::IdentityId);
 		key.set_valid(index, true);
@@ -678,11 +486,7 @@ impl EncodedIndexLayout {
 		}
 
 		unsafe {
-			ptr::copy_nonoverlapping(
-				bytes.as_ptr(),
-				key.make_mut().as_mut_ptr().add(field.offset),
-				16,
-			);
+			ptr::copy_nonoverlapping(bytes.as_ptr(), key.make_mut().as_mut_ptr().add(field.offset), 16);
 		}
 	}
 
@@ -708,11 +512,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Boolean],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Boolean], &[SortDirection::Asc]).unwrap();
 			let mut key_false = layout.allocate_key();
 			let mut key_true = layout.allocate_key();
 
@@ -734,11 +534,7 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Boolean],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Boolean], &[SortDirection::Desc]).unwrap();
 			let mut key_false = layout.allocate_key();
 			let mut key_true = layout.allocate_key();
 
@@ -762,11 +558,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Int1],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Int1], &[SortDirection::Asc]).unwrap();
 			let mut key_neg = layout.allocate_key();
 			let mut key_zero = layout.allocate_key();
 			let mut key_pos = layout.allocate_key();
@@ -790,11 +582,7 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Int1],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Int1], &[SortDirection::Desc]).unwrap();
 			let mut key_neg = layout.allocate_key();
 			let mut key_zero = layout.allocate_key();
 			let mut key_pos = layout.allocate_key();
@@ -824,11 +612,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Int4],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Int4], &[SortDirection::Asc]).unwrap();
 			let mut key_neg = layout.allocate_key();
 			let mut key_zero = layout.allocate_key();
 			let mut key_pos = layout.allocate_key();
@@ -839,20 +623,11 @@ mod tests {
 
 			let offset = layout.fields[0].offset;
 			// i32::MIN in big-endian with sign bit flipped
-			assert_eq!(
-				&key_neg[offset..offset + 4],
-				&[0x00, 0x00, 0x00, 0x00]
-			);
+			assert_eq!(&key_neg[offset..offset + 4], &[0x00, 0x00, 0x00, 0x00]);
 			// 0 with sign bit flipped
-			assert_eq!(
-				&key_zero[offset..offset + 4],
-				&[0x80, 0x00, 0x00, 0x00]
-			);
+			assert_eq!(&key_zero[offset..offset + 4], &[0x80, 0x00, 0x00, 0x00]);
 			// i32::MAX with sign bit flipped
-			assert_eq!(
-				&key_pos[offset..offset + 4],
-				&[0xFF, 0xFF, 0xFF, 0xFF]
-			);
+			assert_eq!(&key_pos[offset..offset + 4], &[0xFF, 0xFF, 0xFF, 0xFF]);
 
 			// Verify ordering
 			assert!(key_neg.as_slice() < key_zero.as_slice());
@@ -861,11 +636,7 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Int4],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Int4], &[SortDirection::Desc]).unwrap();
 			let mut key_neg = layout.allocate_key();
 			let mut key_zero = layout.allocate_key();
 			let mut key_pos = layout.allocate_key();
@@ -876,20 +647,11 @@ mod tests {
 
 			let offset = layout.fields[0].offset;
 			// i32::MIN: flip sign then invert all
-			assert_eq!(
-				&key_neg[offset..offset + 4],
-				&[0xFF, 0xFF, 0xFF, 0xFF]
-			);
+			assert_eq!(&key_neg[offset..offset + 4], &[0xFF, 0xFF, 0xFF, 0xFF]);
 			// 0: flip sign then invert all
-			assert_eq!(
-				&key_zero[offset..offset + 4],
-				&[0x7F, 0xFF, 0xFF, 0xFF]
-			);
+			assert_eq!(&key_zero[offset..offset + 4], &[0x7F, 0xFF, 0xFF, 0xFF]);
 			// i32::MAX: flip sign then invert all
-			assert_eq!(
-				&key_pos[offset..offset + 4],
-				&[0x00, 0x00, 0x00, 0x00]
-			);
+			assert_eq!(&key_pos[offset..offset + 4], &[0x00, 0x00, 0x00, 0x00]);
 
 			// Verify ordering (reversed)
 			assert!(key_neg.as_slice() > key_zero.as_slice());
@@ -904,11 +666,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Int8],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Int8], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_i64(&mut key, 0, -1i64);
@@ -916,35 +674,19 @@ mod tests {
 			let offset = layout.fields[0].offset;
 			// -1 in two's complement is all 1s, with sign bit
 			// flipped becomes 0x7F...
-			assert_eq!(
-				&key[offset..offset + 8],
-				&[
-					0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF,
-					0xFF, 0xFF
-				]
-			);
+			assert_eq!(&key[offset..offset + 8], &[0x7F, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF]);
 		}
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Int8],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Int8], &[SortDirection::Desc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_i64(&mut key, 0, -1i64);
 
 			let offset = layout.fields[0].offset;
 			// -1: flip sign then invert all
-			assert_eq!(
-				&key[offset..offset + 8],
-				&[
-					0x80, 0x00, 0x00, 0x00, 0x00, 0x00,
-					0x00, 0x00
-				]
-			);
+			assert_eq!(&key[offset..offset + 8], &[0x80, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00]);
 		}
 	}
 
@@ -955,11 +697,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uint1],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint1], &[SortDirection::Asc]).unwrap();
 			let mut key_min = layout.allocate_key();
 			let mut key_mid = layout.allocate_key();
 			let mut key_max = layout.allocate_key();
@@ -980,11 +718,7 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uint1],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint1], &[SortDirection::Desc]).unwrap();
 			let mut key_min = layout.allocate_key();
 			let mut key_mid = layout.allocate_key();
 			let mut key_max = layout.allocate_key();
@@ -1012,40 +746,26 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uint4],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint4], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_u32(&mut key, 0, 0x12345678u32);
 
 			let offset = layout.fields[0].offset;
 			// Big-endian representation
-			assert_eq!(
-				&key[offset..offset + 4],
-				&[0x12, 0x34, 0x56, 0x78]
-			);
+			assert_eq!(&key[offset..offset + 4], &[0x12, 0x34, 0x56, 0x78]);
 		}
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uint4],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint4], &[SortDirection::Desc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_u32(&mut key, 0, 0x12345678u32);
 
 			let offset = layout.fields[0].offset;
 			// Inverted for DESC
-			assert_eq!(
-				&key[offset..offset + 4],
-				&[0xED, 0xCB, 0xA9, 0x87]
-			);
+			assert_eq!(&key[offset..offset + 4], &[0xED, 0xCB, 0xA9, 0x87]);
 		}
 	}
 
@@ -1056,11 +776,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uint8],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_u64(&mut key, 0, u64::MAX);
@@ -1071,11 +787,7 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uint8],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Desc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_u64(&mut key, 0, u64::MAX);
@@ -1092,11 +804,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Float4],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Float4], &[SortDirection::Asc]).unwrap();
 			let mut key_neg = layout.allocate_key();
 			let mut key_zero = layout.allocate_key();
 			let mut key_pos = layout.allocate_key();
@@ -1108,20 +816,11 @@ mod tests {
 			let offset = layout.fields[0].offset;
 
 			// -1.0f32: 0xBF800000 -> invert all: 0x407FFFFF
-			assert_eq!(
-				&key_neg[offset..offset + 4],
-				&[0x40, 0x7F, 0xFF, 0xFF]
-			);
+			assert_eq!(&key_neg[offset..offset + 4], &[0x40, 0x7F, 0xFF, 0xFF]);
 			// 0.0f32: 0x00000000 -> flip sign: 0x80000000
-			assert_eq!(
-				&key_zero[offset..offset + 4],
-				&[0x80, 0x00, 0x00, 0x00]
-			);
+			assert_eq!(&key_zero[offset..offset + 4], &[0x80, 0x00, 0x00, 0x00]);
 			// 1.0f32: 0x3F800000 -> flip sign: 0xBF800000
-			assert_eq!(
-				&key_pos[offset..offset + 4],
-				&[0xBF, 0x80, 0x00, 0x00]
-			);
+			assert_eq!(&key_pos[offset..offset + 4], &[0xBF, 0x80, 0x00, 0x00]);
 
 			// Verify ordering
 			assert!(key_neg.as_slice() < key_zero.as_slice());
@@ -1130,11 +829,7 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Float4],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Float4], &[SortDirection::Desc]).unwrap();
 			let mut key_neg = layout.allocate_key();
 			let mut key_pos = layout.allocate_key();
 
@@ -1144,15 +839,9 @@ mod tests {
 			let offset = layout.fields[0].offset;
 
 			// -1.0f32: ASC encoding then invert for DESC
-			assert_eq!(
-				&key_neg[offset..offset + 4],
-				&[0xBF, 0x80, 0x00, 0x00]
-			);
+			assert_eq!(&key_neg[offset..offset + 4], &[0xBF, 0x80, 0x00, 0x00]);
 			// 1.0f32: ASC encoding then invert for DESC
-			assert_eq!(
-				&key_pos[offset..offset + 4],
-				&[0x40, 0x7F, 0xFF, 0xFF]
-			);
+			assert_eq!(&key_pos[offset..offset + 4], &[0x40, 0x7F, 0xFF, 0xFF]);
 
 			// Verify ordering (reversed)
 			assert!(key_neg.as_slice() > key_pos.as_slice());
@@ -1166,46 +855,26 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Float8],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Float8], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_f64(&mut key, 0, std::f64::consts::PI);
 
 			let offset = layout.fields[0].offset;
 			// PI in IEEE 754: 0x400921FB54442D18 -> flip sign bit
-			assert_eq!(
-				&key[offset..offset + 8],
-				&[
-					0xC0, 0x09, 0x21, 0xFB, 0x54, 0x44,
-					0x2D, 0x18
-				]
-			);
+			assert_eq!(&key[offset..offset + 8], &[0xC0, 0x09, 0x21, 0xFB, 0x54, 0x44, 0x2D, 0x18]);
 		}
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Float8],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Float8], &[SortDirection::Desc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_f64(&mut key, 0, std::f64::consts::PI);
 
 			let offset = layout.fields[0].offset;
 			// PI: ASC encoding then invert for DESC
-			assert_eq!(
-				&key[offset..offset + 8],
-				&[
-					0x3F, 0xF6, 0xDE, 0x04, 0xAB, 0xBB,
-					0xD2, 0xE7
-				]
-			);
+			assert_eq!(&key[offset..offset + 8], &[0x3F, 0xF6, 0xDE, 0x04, 0xAB, 0xBB, 0xD2, 0xE7]);
 		}
 	}
 
@@ -1216,53 +885,25 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::RowNumber],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::RowNumber], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
-			layout.set_row_number(
-				&mut key,
-				0,
-				0x123456789ABCDEFu64,
-			);
+			layout.set_row_number(&mut key, 0, 0x123456789ABCDEFu64);
 
 			let offset = layout.fields[0].offset;
-			assert_eq!(
-				&key[offset..offset + 8],
-				&[
-					0x01, 0x23, 0x45, 0x67, 0x89, 0xAB,
-					0xCD, 0xEF
-				]
-			);
+			assert_eq!(&key[offset..offset + 8], &[0x01, 0x23, 0x45, 0x67, 0x89, 0xAB, 0xCD, 0xEF]);
 		}
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::RowNumber],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::RowNumber], &[SortDirection::Desc]).unwrap();
 			let mut key = layout.allocate_key();
 
-			layout.set_row_number(
-				&mut key,
-				0,
-				0x123456789ABCDEFu64,
-			);
+			layout.set_row_number(&mut key, 0, 0x123456789ABCDEFu64);
 
 			let offset = layout.fields[0].offset;
 			// Inverted for DESC
-			assert_eq!(
-				&key[offset..offset + 8],
-				&[
-					0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54,
-					0x32, 0x10
-				]
-			);
+			assert_eq!(&key[offset..offset + 8], &[0xFE, 0xDC, 0xBA, 0x98, 0x76, 0x54, 0x32, 0x10]);
 		}
 	}
 
@@ -1273,11 +914,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Date],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Date], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			let date = Date::new(2025, 1, 1).unwrap();
@@ -1289,19 +926,14 @@ mod tests {
 			let bytes = &key[offset..offset + 4];
 
 			// Verify it's properly encoded
-			let mut expected =
-				date.to_days_since_epoch().to_be_bytes();
+			let mut expected = date.to_days_since_epoch().to_be_bytes();
 			expected[0] ^= 0x80;
 			assert_eq!(bytes, expected);
 		}
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Date],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Date], &[SortDirection::Desc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			let date = Date::new(2025, 1, 1).unwrap();
@@ -1311,8 +943,7 @@ mod tests {
 			let bytes = &key[offset..offset + 4];
 
 			// Date with sign bit flipped then all inverted for DESC
-			let mut expected =
-				date.to_days_since_epoch().to_be_bytes();
+			let mut expected = date.to_days_since_epoch().to_be_bytes();
 			expected[0] ^= 0x80;
 			for b in expected.iter_mut() {
 				*b = !*b;
@@ -1361,11 +992,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uuid4],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uuid4], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
@@ -1384,23 +1011,13 @@ mod tests {
 			let uuid1_bytes: Vec<u8> = uuid1.as_bytes().to_vec();
 			let uuid2_bytes: Vec<u8> = uuid2.as_bytes().to_vec();
 
-			assert_eq!(
-				&key1[offset..offset + 16],
-				&uuid1_bytes[..]
-			);
-			assert_eq!(
-				&key2[offset..offset + 16],
-				&uuid2_bytes[..]
-			);
+			assert_eq!(&key1[offset..offset + 16], &uuid1_bytes[..]);
+			assert_eq!(&key2[offset..offset + 16], &uuid2_bytes[..]);
 		}
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uuid4],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uuid4], &[SortDirection::Desc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			let uuid = Uuid4::generate();
@@ -1413,10 +1030,7 @@ mod tests {
 				*b = !*b;
 			}
 
-			assert_eq!(
-				&key[offset..offset + 16],
-				&expected_bytes[..]
-			);
+			assert_eq!(&key[offset..offset + 16], &expected_bytes[..]);
 		}
 	}
 
@@ -1427,19 +1041,13 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uuid7],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uuid7], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let uuid1 = Uuid7::generate();
 			// Sleep a bit to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(
-				10,
-			));
+			std::thread::sleep(std::time::Duration::from_millis(10));
 			let uuid2 = Uuid7::generate();
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
@@ -1454,14 +1062,8 @@ mod tests {
 			let uuid1_bytes: Vec<u8> = uuid1.as_bytes().to_vec();
 			let uuid2_bytes: Vec<u8> = uuid2.as_bytes().to_vec();
 
-			assert_eq!(
-				&key1[offset..offset + 16],
-				&uuid1_bytes[..]
-			);
-			assert_eq!(
-				&key2[offset..offset + 16],
-				&uuid2_bytes[..]
-			);
+			assert_eq!(&key1[offset..offset + 16], &uuid1_bytes[..]);
+			assert_eq!(&key2[offset..offset + 16], &uuid2_bytes[..]);
 
 			// UUID7 has timestamp prefix, so later should be
 			// greater
@@ -1470,19 +1072,13 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Uuid7],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uuid7], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let uuid1 = Uuid7::generate();
 			// Sleep a bit to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(
-				10,
-			));
+			std::thread::sleep(std::time::Duration::from_millis(10));
 			let uuid2 = Uuid7::generate();
 
 			layout.set_uuid7(&mut key1, 0, uuid1.clone());
@@ -1499,14 +1095,8 @@ mod tests {
 				*b = !*b;
 			}
 
-			assert_eq!(
-				&key1[offset..offset + 16],
-				&expected_bytes1[..]
-			);
-			assert_eq!(
-				&key2[offset..offset + 16],
-				&expected_bytes2[..]
-			);
+			assert_eq!(&key1[offset..offset + 16], &expected_bytes1[..]);
+			assert_eq!(&key2[offset..offset + 16], &expected_bytes2[..]);
 
 			// Verify ordering (reversed due to DESC)
 			assert!(key1.as_slice() > key2.as_slice());
@@ -1520,20 +1110,14 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::IdentityId],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::IdentityId], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let id1 = IdentityId::generate();
 			// Sleep a bit to ensure different timestamps
 			// (IdentityId wraps Uuid7)
-			std::thread::sleep(std::time::Duration::from_millis(
-				10,
-			));
+			std::thread::sleep(std::time::Duration::from_millis(10));
 			let id2 = IdentityId::generate();
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
@@ -1560,19 +1144,13 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::IdentityId],
-				&[SortDirection::Desc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::IdentityId], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 
 			let id1 = IdentityId::generate();
 			// Sleep a bit to ensure different timestamps
-			std::thread::sleep(std::time::Duration::from_millis(
-				10,
-			));
+			std::thread::sleep(std::time::Duration::from_millis(10));
 			let id2 = IdentityId::generate();
 
 			layout.set_identity_id(&mut key1, 0, id1.clone());
@@ -1591,14 +1169,8 @@ mod tests {
 				*b = !*b;
 			}
 
-			assert_eq!(
-				&key1[offset..offset + 16],
-				&expected_bytes1[..]
-			);
-			assert_eq!(
-				&key2[offset..offset + 16],
-				&expected_bytes2[..]
-			);
+			assert_eq!(&key1[offset..offset + 16], &expected_bytes1[..]);
+			assert_eq!(&key2[offset..offset + 16], &expected_bytes2[..]);
 
 			// Verify ordering (reversed due to DESC)
 			assert!(key1.as_slice() > key2.as_slice());
@@ -1612,11 +1184,7 @@ mod tests {
 
 		#[test]
 		fn test_undefined() {
-			let layout = EncodedIndexLayout::new(
-				&[Type::Int4],
-				&[SortDirection::Asc],
-			)
-			.unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Int4], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			// Set a value first

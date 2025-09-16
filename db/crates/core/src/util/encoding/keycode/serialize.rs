@@ -3,15 +3,12 @@
 
 use serde::{
 	Serialize,
-	ser::{
-		Impossible, SerializeSeq, SerializeTuple, SerializeTupleVariant,
-	},
+	ser::{Impossible, SerializeSeq, SerializeTuple, SerializeTupleVariant},
 };
 
 use super::{
-	encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8,
-	encode_i16, encode_i32, encode_i64, encode_i128, encode_u8, encode_u16,
-	encode_u32, encode_u64, encode_u128,
+	encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8, encode_i16, encode_i32, encode_i64, encode_i128,
+	encode_u8, encode_u16, encode_u32, encode_u64, encode_u128,
 };
 use crate::util::encoding::Error;
 
@@ -113,10 +110,7 @@ impl serde::ser::Serializer for &mut Serializer {
 		unimplemented!()
 	}
 
-	fn serialize_some<T: Serialize + ?Sized>(
-		self,
-		_: &T,
-	) -> crate::Result<()> {
+	fn serialize_some<T: Serialize + ?Sized>(self, _: &T) -> crate::Result<()> {
 		unimplemented!()
 	}
 
@@ -128,21 +122,12 @@ impl serde::ser::Serializer for &mut Serializer {
 		unimplemented!()
 	}
 
-	fn serialize_unit_variant(
-		self,
-		_: &'static str,
-		index: u32,
-		_: &'static str,
-	) -> crate::Result<()> {
+	fn serialize_unit_variant(self, _: &'static str, index: u32, _: &'static str) -> crate::Result<()> {
 		self.output.push(index.try_into()?);
 		Ok(())
 	}
 
-	fn serialize_newtype_struct<T: Serialize + ?Sized>(
-		self,
-		_: &'static str,
-		_: &T,
-	) -> crate::Result<()> {
+	fn serialize_newtype_struct<T: Serialize + ?Sized>(self, _: &'static str, _: &T) -> crate::Result<()> {
 		unimplemented!()
 	}
 
@@ -157,25 +142,15 @@ impl serde::ser::Serializer for &mut Serializer {
 		value.serialize(self)
 	}
 
-	fn serialize_seq(
-		self,
-		_: Option<usize>,
-	) -> crate::Result<Self::SerializeSeq> {
+	fn serialize_seq(self, _: Option<usize>) -> crate::Result<Self::SerializeSeq> {
 		Ok(self)
 	}
 
-	fn serialize_tuple(
-		self,
-		_: usize,
-	) -> crate::Result<Self::SerializeTuple> {
+	fn serialize_tuple(self, _: usize) -> crate::Result<Self::SerializeTuple> {
 		Ok(self)
 	}
 
-	fn serialize_tuple_struct(
-		self,
-		_: &'static str,
-		_: usize,
-	) -> crate::Result<Self::SerializeTupleStruct> {
+	fn serialize_tuple_struct(self, _: &'static str, _: usize) -> crate::Result<Self::SerializeTupleStruct> {
 		unimplemented!()
 	}
 
@@ -190,18 +165,11 @@ impl serde::ser::Serializer for &mut Serializer {
 		Ok(self)
 	}
 
-	fn serialize_map(
-		self,
-		_: Option<usize>,
-	) -> crate::Result<Self::SerializeMap> {
+	fn serialize_map(self, _: Option<usize>) -> crate::Result<Self::SerializeMap> {
 		unimplemented!()
 	}
 
-	fn serialize_struct(
-		self,
-		_: &'static str,
-		_: usize,
-	) -> crate::Result<Self::SerializeStruct> {
+	fn serialize_struct(self, _: &'static str, _: usize) -> crate::Result<Self::SerializeStruct> {
 		unimplemented!()
 	}
 
@@ -220,10 +188,7 @@ impl SerializeSeq for &mut Serializer {
 	type Ok = ();
 	type Error = Error;
 
-	fn serialize_element<T: Serialize + ?Sized>(
-		&mut self,
-		value: &T,
-	) -> crate::Result<()> {
+	fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> crate::Result<()> {
 		value.serialize(&mut **self)
 	}
 
@@ -236,10 +201,7 @@ impl SerializeTuple for &mut Serializer {
 	type Ok = ();
 	type Error = Error;
 
-	fn serialize_element<T: Serialize + ?Sized>(
-		&mut self,
-		value: &T,
-	) -> crate::Result<()> {
+	fn serialize_element<T: Serialize + ?Sized>(&mut self, value: &T) -> crate::Result<()> {
 		value.serialize(&mut **self)
 	}
 
@@ -252,10 +214,7 @@ impl SerializeTupleVariant for &mut Serializer {
 	type Ok = ();
 	type Error = Error;
 
-	fn serialize_field<T: Serialize + ?Sized>(
-		&mut self,
-		value: &T,
-	) -> crate::Result<()> {
+	fn serialize_field<T: Serialize + ?Sized>(&mut self, value: &T) -> crate::Result<()> {
 		value.serialize(&mut **self)
 	}
 

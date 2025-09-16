@@ -106,9 +106,7 @@ impl Argument {
 		T: std::str::FromStr,
 		<T as std::str::FromStr>::Err: std::fmt::Display,
 	{
-		self.value.parse().map_err(|e| {
-			format!("invalid argument '{}': {e}", self.value).into()
-		})
+		self.value.parse().map_err(|e| format!("invalid argument '{}': {e}", self.value).into())
 	}
 }
 
@@ -142,12 +140,7 @@ impl<'a> ArgumentConsumer<'a> {
 	/// arguments use the same key, the last one is returned (but all are
 	/// removed).
 	pub fn lookup(&mut self, key: &str) -> Option<&'a Argument> {
-		let arg = self
-			.args
-			.iter()
-			.rev()
-			.find(|a| a.key.as_deref() == Some(key))
-			.copied();
+		let arg = self.args.iter().rev().find(|a| a.key.as_deref() == Some(key)).copied();
 		if arg.is_some() {
 			self.args.retain(|a| a.key.as_deref() != Some(key))
 		}
@@ -156,10 +149,7 @@ impl<'a> ArgumentConsumer<'a> {
 
 	/// Looks up and parses a key/value argument by key, removing it. If
 	/// parsing errors, the argument is not removed.
-	pub fn lookup_parse<T>(
-		&mut self,
-		key: &str,
-	) -> Result<Option<T>, Box<dyn Error>>
+	pub fn lookup_parse<T>(&mut self, key: &str) -> Result<Option<T>, Box<dyn Error>>
 	where
 		T: std::str::FromStr,
 		<T as std::str::FromStr>::Err: std::fmt::Display,
@@ -179,28 +169,18 @@ impl<'a> ArgumentConsumer<'a> {
 
 	/// Returns and removes the next key/value argument, if any.
 	pub fn next_key(&mut self) -> Option<&'a Argument> {
-		self.args
-			.iter()
-			.position(|a| a.key.is_some())
-			.map(|i| self.args.remove(i).unwrap())
+		self.args.iter().position(|a| a.key.is_some()).map(|i| self.args.remove(i).unwrap())
 	}
 
 	/// Returns and removes the next positional argument, if any.
 	pub fn next_pos(&mut self) -> Option<&'a Argument> {
-		self.args
-			.iter()
-			.position(|a| a.key.is_none())
-			.map(|i| self.args.remove(i).unwrap())
+		self.args.iter().position(|a| a.key.is_none()).map(|i| self.args.remove(i).unwrap())
 	}
 
 	/// Rejects any remaining arguments with an error.
 	pub fn reject_rest(&self) -> Result<(), Box<dyn Error>> {
 		if let Some(arg) = self.args.front() {
-			return Err(format!(
-				"invalid argument '{}'",
-				arg.name()
-			)
-			.into());
+			return Err(format!("invalid argument '{}'", arg.name()).into());
 		}
 		Ok(())
 	}
@@ -212,12 +192,7 @@ impl<'a> ArgumentConsumer<'a> {
 
 	/// Returns and removes all remaining key/value arguments.
 	pub fn rest_key(&mut self) -> Vec<&'a Argument> {
-		let keyed: Vec<_> = self
-			.args
-			.iter()
-			.filter(|a| a.key.is_some())
-			.copied()
-			.collect();
+		let keyed: Vec<_> = self.args.iter().filter(|a| a.key.is_some()).copied().collect();
 		if !keyed.is_empty() {
 			self.args.retain(|a| a.key.is_none());
 		}
@@ -226,12 +201,7 @@ impl<'a> ArgumentConsumer<'a> {
 
 	/// Returns and removes all remaining positional arguments.
 	pub fn rest_pos(&mut self) -> Vec<&'a Argument> {
-		let pos: Vec<_> = self
-			.args
-			.iter()
-			.filter(|a| a.key.is_none())
-			.copied()
-			.collect();
+		let pos: Vec<_> = self.args.iter().filter(|a| a.key.is_none()).copied().collect();
 		if !pos.is_empty() {
 			self.args.retain(|a| a.key.is_some());
 		}
@@ -261,13 +231,7 @@ mod tests {
 
 	/// Constructs a Command by parsing the given input string.
 	macro_rules! cmd {
-		($input:expr) => {{
-			crate::testscript::parser::parse_command(&format!(
-				"{}\n",
-				$input
-			))
-			.expect("invalid command")
-		}};
+		($input:expr) => {{ crate::testscript::parser::parse_command(&format!("{}\n", $input)).expect("invalid command") }};
 	}
 
 	/// Tests Argument.name().
@@ -307,10 +271,7 @@ mod tests {
 	#[test]
 	fn test_command_consume_args() {
 		let cmd = cmd!("cmd foo key=value bar");
-		assert_eq!(
-			cmd.consume_args().rest(),
-			vec![&cmd.args[0], &cmd.args[1], &cmd.args[2]]
-		);
+		assert_eq!(cmd.consume_args().rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[2]]);
 	}
 
 	/// Tests ArgumentConsumer.lookup().
@@ -333,10 +294,7 @@ mod tests {
 		// lookup() removes single keys.
 		let mut args = cmd.consume_args();
 		assert_eq!(args.lookup("foo"), Some(&cmd.args[2]));
-		assert_eq!(
-			args.rest(),
-			vec![&cmd.args[0], &cmd.args[1], &cmd.args[3]]
-		);
+		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[3]]);
 	}
 
 	/// Tests ArgumentConsumer.lookup_parse().
@@ -347,10 +305,7 @@ mod tests {
 		// lookup_parse() returns None on unknown keys, including ones
 		// that match a value argument.
 		let mut args = cmd.consume_args();
-		assert_eq!(
-			args.lookup_parse::<String>("unknown").unwrap(),
-			None
-		);
+		assert_eq!(args.lookup_parse::<String>("unknown").unwrap(), None);
 		assert_eq!(args.lookup_parse::<String>("value").unwrap(), None);
 		assert_eq!(args.rest().len(), 4);
 
@@ -363,28 +318,14 @@ mod tests {
 		// lookup_parse() parses and removes single keys, with string
 		// parsing being a noop.
 		let mut args = cmd.consume_args();
-		assert_eq!(
-			args.lookup_parse("foo").unwrap(),
-			Some("bar".to_string())
-		);
-		assert_eq!(
-			args.rest(),
-			vec![&cmd.args[0], &cmd.args[1], &cmd.args[3]]
-		);
+		assert_eq!(args.lookup_parse("foo").unwrap(), Some("bar".to_string()));
+		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[3]]);
 
 		// lookup_parse() does not remove arguments on parse errors,
 		// even with duplicate keys.
 		let mut args = cmd.consume_args();
 		assert!(args.lookup_parse::<bool>("key").is_err());
-		assert_eq!(
-			args.rest(),
-			vec![
-				&cmd.args[0],
-				&cmd.args[1],
-				&cmd.args[2],
-				&cmd.args[3]
-			]
-		);
+		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[2], &cmd.args[3]]);
 	}
 
 	/// Tests ArgumentConsumer.next(), next_pos(), and next_key().
@@ -434,19 +375,13 @@ mod tests {
 		// Positional argument fails. It does not consume the arg.
 		let cmd = cmd!("cmd value");
 		let mut args = cmd.consume_args();
-		assert_eq!(
-			args.reject_rest().unwrap_err().to_string(),
-			"invalid argument 'value'"
-		);
+		assert_eq!(args.reject_rest().unwrap_err().to_string(), "invalid argument 'value'");
 		assert!(!args.rest().is_empty());
 
 		// Key/value argument fails.
 		let cmd = cmd!("cmd key=value");
 		let mut args = cmd.consume_args();
-		assert_eq!(
-			args.reject_rest().unwrap_err().to_string(),
-			"invalid argument 'key'"
-		);
+		assert_eq!(args.reject_rest().unwrap_err().to_string(), "invalid argument 'key'");
 		assert!(!args.rest().is_empty());
 	}
 
@@ -457,15 +392,7 @@ mod tests {
 
 		// rest() returns references to all arguments and consumes them.
 		let mut args = cmd.consume_args();
-		assert_eq!(
-			args.rest(),
-			vec![
-				&cmd.args[0],
-				&cmd.args[1],
-				&cmd.args[2],
-				&cmd.args[3]
-			]
-		);
+		assert_eq!(args.rest(), vec![&cmd.args[0], &cmd.args[1], &cmd.args[2], &cmd.args[3]]);
 		assert!(args.rest().is_empty());
 
 		// rest_pos() returns and consumes positional arguments.

@@ -10,8 +10,7 @@ use crate::{
 		client::ClientInner,
 		message::{InternalMessage, ResponseRoute},
 	},
-	AuthRequest, CommandRequest, Params, QueryRequest, Request,
-	RequestPayload,
+	AuthRequest, CommandRequest, Params, QueryRequest, Request, RequestPayload,
 };
 
 /// A channel-based session for message-passing style communication
@@ -26,8 +25,7 @@ impl ChannelSession {
 	pub(crate) fn new(
 		client: Arc<ClientInner>,
 		token: Option<String>,
-	) -> Result<(Self, mpsc::Receiver<ResponseMessage>), reifydb_type::Error>
-	{
+	) -> Result<(Self, mpsc::Receiver<ResponseMessage>), reifydb_type::Error> {
 		let (tx, rx) = mpsc::channel();
 
 		let session = Self {
@@ -59,14 +57,11 @@ impl ChannelSession {
 			}),
 		};
 
-		if let Err(e) =
-			self.client.command_tx.send(InternalMessage::Request {
-				id: id.clone(),
-				request,
-				route: ResponseRoute::Channel(
-					self.response_tx.clone(),
-				),
-			}) {
+		if let Err(e) = self.client.command_tx.send(InternalMessage::Request {
+			id: id.clone(),
+			request,
+			route: ResponseRoute::Channel(self.response_tx.clone()),
+		}) {
 			panic!("Failed to send request: {}", e);
 		}
 
@@ -74,11 +69,7 @@ impl ChannelSession {
 	}
 
 	/// Send a command (response arrives on channel)
-	pub fn command(
-		&self,
-		rql: &str,
-		params: Option<Params>,
-	) -> Result<String, Box<dyn std::error::Error>> {
+	pub fn command(&self, rql: &str, params: Option<Params>) -> Result<String, Box<dyn std::error::Error>> {
 		let id = generate_request_id();
 
 		let request = Request {
@@ -89,14 +80,11 @@ impl ChannelSession {
 			}),
 		};
 
-		if let Err(e) =
-			self.client.command_tx.send(InternalMessage::Request {
-				id: id.clone(),
-				request,
-				route: ResponseRoute::Channel(
-					self.response_tx.clone(),
-				),
-			}) {
+		if let Err(e) = self.client.command_tx.send(InternalMessage::Request {
+			id: id.clone(),
+			request,
+			route: ResponseRoute::Channel(self.response_tx.clone()),
+		}) {
 			panic!("Failed to send request: {}", e);
 		}
 
@@ -104,11 +92,7 @@ impl ChannelSession {
 	}
 
 	/// Send a query (response arrives on channel)
-	pub fn query(
-		&self,
-		rql: &str,
-		params: Option<Params>,
-	) -> Result<String, Box<dyn std::error::Error>> {
+	pub fn query(&self, rql: &str, params: Option<Params>) -> Result<String, Box<dyn std::error::Error>> {
 		let id = generate_request_id();
 
 		let request = Request {
@@ -119,14 +103,11 @@ impl ChannelSession {
 			}),
 		};
 
-		if let Err(e) =
-			self.client.command_tx.send(InternalMessage::Request {
-				id: id.clone(),
-				request,
-				route: ResponseRoute::Channel(
-					self.response_tx.clone(),
-				),
-			}) {
+		if let Err(e) = self.client.command_tx.send(InternalMessage::Request {
+			id: id.clone(),
+			request,
+			route: ResponseRoute::Channel(self.response_tx.clone()),
+		}) {
 			panic!("Failed to send request: {}", e);
 		}
 

@@ -19,17 +19,7 @@ mod macros;
 pub mod mock;
 pub mod timed;
 
-#[derive(
-	Debug,
-	Clone,
-	Copy,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum LogLevel {
 	Off = 0,
 	Trace = 1,
@@ -82,11 +72,7 @@ pub struct Record {
 }
 
 impl Record {
-	pub fn new(
-		level: LogLevel,
-		module: impl Into<String>,
-		message: impl Into<String>,
-	) -> Self {
+	pub fn new(level: LogLevel, module: impl Into<String>, message: impl Into<String>) -> Self {
 		Self {
 			timestamp: util::now(),
 			level,
@@ -99,20 +85,12 @@ impl Record {
 		}
 	}
 
-	pub fn with_field(
-		mut self,
-		key: impl IntoValue,
-		value: impl IntoValue,
-	) -> Self {
+	pub fn with_field(mut self, key: impl IntoValue, value: impl IntoValue) -> Self {
 		self.fields.insert(key.into_value(), value.into_value());
 		self
 	}
 
-	pub fn with_location(
-		mut self,
-		file: impl Into<String>,
-		line: u32,
-	) -> Self {
+	pub fn with_location(mut self, file: impl Into<String>, line: u32) -> Self {
 		self.file = Some(file.into());
 		self.line = Some(line);
 		self

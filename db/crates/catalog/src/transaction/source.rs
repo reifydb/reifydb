@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	NamespaceId, QueryTransaction, SourceDef, SourceId,
-};
+use reifydb_core::interface::{NamespaceId, QueryTransaction, SourceDef, SourceId};
 use reifydb_type::IntoFragment;
 
 pub trait CatalogSourceQueryOperations {
@@ -13,10 +11,7 @@ pub trait CatalogSourceQueryOperations {
 		source: impl IntoFragment<'a>,
 	) -> crate::Result<Option<SourceDef>>;
 
-	fn find_source(
-		&mut self,
-		id: SourceId,
-	) -> crate::Result<Option<SourceDef>>;
+	fn find_source(&mut self, id: SourceId) -> crate::Result<Option<SourceDef>>;
 
 	fn get_source_by_name<'a>(
 		&mut self,
@@ -34,10 +29,7 @@ impl<T: QueryTransaction> CatalogSourceQueryOperations for T {
 		todo!()
 	}
 
-	fn find_source(
-		&mut self,
-		_id: SourceId,
-	) -> reifydb_core::Result<Option<SourceDef>> {
+	fn find_source(&mut self, _id: SourceId) -> reifydb_core::Result<Option<SourceDef>> {
 		todo!()
 	}
 

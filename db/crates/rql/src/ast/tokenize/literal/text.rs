@@ -64,20 +64,14 @@ mod tests {
 	fn test_text_single_quotes_with_double_inside() {
 		let tokens = tokenize("'some text\"xx\"no problem'").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
-		assert_eq!(
-			tokens[0].fragment.text(),
-			"some text\"xx\"no problem"
-		);
+		assert_eq!(tokens[0].fragment.text(), "some text\"xx\"no problem");
 	}
 
 	#[test]
 	fn test_text_double_quotes_with_single_inside() {
 		let tokens = tokenize("\"some text'xx'no problem\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
-		assert_eq!(
-			tokens[0].fragment.text(),
-			"some text'xx'no problem"
-		);
+		assert_eq!(tokens[0].fragment.text(), "some text'xx'no problem");
 	}
 
 	#[test]
@@ -100,22 +94,14 @@ mod tests {
 	fn test_text_single_unterminated_fails() {
 		let tokens = tokenize("'not closed");
 		// Should fail or return no text token
-		assert!(tokens.is_err()
-			|| tokens.unwrap().iter().all(|t| !matches!(
-				t.kind,
-				TokenKind::Literal(Text)
-			)));
+		assert!(tokens.is_err() || tokens.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Literal(Text))));
 	}
 
 	#[test]
 	fn test_text_double_unterminated_fails() {
 		let tokens = tokenize("\"not closed");
 		// Should fail or return no text token
-		assert!(tokens.is_err()
-			|| tokens.unwrap().iter().all(|t| !matches!(
-				t.kind,
-				TokenKind::Literal(Text)
-			)));
+		assert!(tokens.is_err() || tokens.unwrap().iter().all(|t| !matches!(t.kind, TokenKind::Literal(Text))));
 	}
 
 	#[test]
@@ -134,24 +120,15 @@ mod tests {
 
 	#[test]
 	fn test_text_mixed_quotes_comptokenize() {
-		let tokens =
-			tokenize("'He said \"Hello\" and she replied \"Hi\"'")
-				.unwrap();
+		let tokens = tokenize("'He said \"Hello\" and she replied \"Hi\"'").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
-		assert_eq!(
-			tokens[0].fragment.text(),
-			"He said \"Hello\" and she replied \"Hi\""
-		);
+		assert_eq!(tokens[0].fragment.text(), "He said \"Hello\" and she replied \"Hi\"");
 	}
 
 	#[test]
 	fn test_text_multiple_nested_quotes() {
-		let tokens =
-			tokenize("\"It's a 'nice' day, isn't it?\"").unwrap();
+		let tokens = tokenize("\"It's a 'nice' day, isn't it?\"").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Text));
-		assert_eq!(
-			tokens[0].fragment.text(),
-			"It's a 'nice' day, isn't it?"
-		);
+		assert_eq!(tokens[0].fragment.text(), "It's a 'nice' day, isn't it?");
 	}
 }

@@ -44,11 +44,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	/// Inserts a definition at a specific version.
 	///
 	/// Returns the previous definition at this version if one existed.
-	pub fn insert(
-		&self,
-		version: CommitVersion,
-		def: Option<T>,
-	) -> Option<Option<T>> {
+	pub fn insert(&self, version: CommitVersion, def: Option<T>) -> Option<Option<T>> {
 		let inner = self.inner.write().unwrap();
 		if let Some(entry) = inner.versions.get(&version) {
 			let old_value = entry.value().clone();
@@ -68,10 +64,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 		let inner = self.inner.read().unwrap();
 
 		// Find the entry with the highest version <= requested version
-		inner.versions
-			.range(..=version)
-			.next_back()
-			.and_then(|entry| entry.value().clone())
+		inner.versions.range(..=version).next_back().and_then(|entry| entry.value().clone())
 	}
 
 	/// Gets the exact definition at a specific version.
@@ -80,9 +73,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	/// version match.
 	pub fn get_exact(&self, version: CommitVersion) -> Option<T> {
 		let inner = self.inner.read().unwrap();
-		inner.versions
-			.get(&version)
-			.and_then(|entry| entry.value().clone())
+		inner.versions.get(&version).and_then(|entry| entry.value().clone())
 	}
 
 	/// Gets the latest (most recent) definition.
@@ -92,16 +83,9 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	}
 
 	/// Gets all definitions within a version range (inclusive).
-	pub fn get_range(
-		&self,
-		start: CommitVersion,
-		end: CommitVersion,
-	) -> Vec<(CommitVersion, Option<T>)> {
+	pub fn get_range(&self, start: CommitVersion, end: CommitVersion) -> Vec<(CommitVersion, Option<T>)> {
 		let inner = self.inner.read().unwrap();
-		inner.versions
-			.range(start..=end)
-			.map(|entry| (*entry.key(), entry.value().clone()))
-			.collect()
+		inner.versions.range(start..=end).map(|entry| (*entry.key(), entry.value().clone())).collect()
 	}
 
 	/// Gets all versions that have definitions.
@@ -115,9 +99,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	/// Returns the removed definition if one existed.
 	pub fn remove(&self, version: CommitVersion) -> Option<Option<T>> {
 		let inner = self.inner.write().unwrap();
-		inner.versions
-			.remove(&version)
-			.map(|entry| entry.value().clone())
+		inner.versions.remove(&version).map(|entry| entry.value().clone())
 	}
 
 	/// Checks if a definition exists at a specific version.
@@ -148,10 +130,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> VersionedContainer<T> {
 	///
 	/// This is more efficient than multiple individual inserts as it
 	/// acquires the write lock only once.
-	pub fn bulk_insert(
-		&self,
-		versions: impl IntoIterator<Item = (CommitVersion, Option<T>)>,
-	) {
+	pub fn bulk_insert(&self, versions: impl IntoIterator<Item = (CommitVersion, Option<T>)>) {
 		let inner = self.inner.write().unwrap();
 		for (version, def) in versions {
 			inner.versions.insert(version, def);
@@ -167,9 +146,7 @@ impl<T: Debug + Clone + Send + Sync + 'static> Clone for VersionedContainer<T> {
 	}
 }
 
-impl<T: Debug + Clone + Send + Sync + 'static> Default
-	for VersionedContainer<T>
-{
+impl<T: Debug + Clone + Send + Sync + 'static> Default for VersionedContainer<T> {
 	fn default() -> Self {
 		Self::new()
 	}

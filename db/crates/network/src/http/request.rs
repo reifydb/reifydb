@@ -12,12 +12,7 @@ pub struct HttpRequest {
 }
 
 impl HttpRequest {
-	pub fn new(
-		method: String,
-		path: String,
-		headers: HashMap<String, String>,
-		body: Vec<u8>,
-	) -> Self {
+	pub fn new(method: String, path: String, headers: HashMap<String, String>, body: Vec<u8>) -> Self {
 		Self {
 			method,
 			path,
@@ -35,14 +30,12 @@ impl HttpRequest {
 	}
 
 	pub fn is_websocket_upgrade(&self) -> bool {
-		self.get_header("upgrade")
-			.map(|v| v.to_lowercase() == "websocket")
-			.unwrap_or(false) && self
-			.get_header("connection")
-			.map(|v| {
-				let v_lower = v.to_lowercase();
-				v_lower.contains("upgrade")
-			})
-			.unwrap_or(false)
+		self.get_header("upgrade").map(|v| v.to_lowercase() == "websocket").unwrap_or(false)
+			&& self.get_header("connection")
+				.map(|v| {
+					let v_lower = v.to_lowercase();
+					v_lower.contains("upgrade")
+				})
+				.unwrap_or(false)
 	}
 }

@@ -28,8 +28,7 @@ struct Canceler {
 impl Canceler {
 	fn cancel(&self) {
 		// Safely take the sender out of the AtomicPtr.
-		let tx_ptr =
-			self.ptr.swap(std::ptr::null_mut(), Ordering::AcqRel);
+		let tx_ptr = self.ptr.swap(std::ptr::null_mut(), Ordering::AcqRel);
 
 		// Check if the pointer is not null (indicating it hasn't been
 		// taken already).
@@ -40,9 +39,7 @@ impl Canceler {
 			unsafe {
 				// Convert the pointer back to a Box to take
 				// ownership and drop the sender.
-				let tx = Box::from_raw(
-					tx_ptr as *mut Sender<()>,
-				);
+				let tx = Box::from_raw(tx_ptr as *mut Sender<()>);
 				drop(tx);
 			}
 		}
@@ -69,9 +66,7 @@ impl CancelContext {
 				rx,
 			},
 			Canceler {
-				ptr: AtomicPtr::new(
-					Box::into_raw(Box::new(tx)) as _,
-				),
+				ptr: AtomicPtr::new(Box::into_raw(Box::new(tx)) as _),
 			},
 		)
 	}

@@ -35,15 +35,7 @@ impl Default for DateTime {
 }
 
 impl DateTime {
-	pub fn new(
-		year: i32,
-		month: u32,
-		day: u32,
-		hour: u32,
-		min: u32,
-		sec: u32,
-		nano: u32,
-	) -> Option<Self> {
+	pub fn new(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
 		// Validate date
 		let date = Date::new(year, month, day)?;
 
@@ -65,22 +57,10 @@ impl DateTime {
 		})
 	}
 
-	pub fn from_ymd_hms(
-		year: i32,
-		month: u32,
-		day: u32,
-		hour: u32,
-		min: u32,
-		sec: u32,
-	) -> Result<Self, String> {
-		Self::new(year, month, day, hour, min, sec, 0).ok_or_else(
-			|| {
-				format!(
-					"Invalid datetime: {}-{:02}-{:02} {:02}:{:02}:{:02}",
-					year, month, day, hour, min, sec
-				)
-			},
-		)
+	pub fn from_ymd_hms(year: i32, month: u32, day: u32, hour: u32, min: u32, sec: u32) -> Result<Self, String> {
+		Self::new(year, month, day, hour, min, sec, 0).ok_or_else(|| {
+			format!("Invalid datetime: {}-{:02}-{:02} {:02}:{:02}:{:02}", year, month, day, hour, min, sec)
+		})
 	}
 
 	pub fn from_timestamp(timestamp: i64) -> Result<Self, String> {
@@ -100,9 +80,7 @@ impl DateTime {
 	}
 
 	pub fn now() -> Self {
-		let duration = SystemTime::now()
-			.duration_since(UNIX_EPOCH)
-			.expect("System time before Unix epoch");
+		let duration = SystemTime::now().duration_since(UNIX_EPOCH).expect("System time before Unix epoch");
 
 		Self {
 			seconds: duration.as_secs() as i64,
@@ -119,9 +97,7 @@ impl DateTime {
 	}
 
 	pub fn timestamp_nanos(&self) -> i64 {
-		self.seconds
-			.saturating_mul(1_000_000_000)
-			.saturating_add(self.nanos as i64)
+		self.seconds.saturating_mul(1_000_000_000).saturating_add(self.nanos as i64)
 	}
 
 	pub fn date(&self) -> Date {
@@ -139,8 +115,7 @@ impl DateTime {
 			seconds_in_day
 		} as u64;
 
-		let nanos_in_day =
-			seconds_in_day * 1_000_000_000 + self.nanos as u64;
+		let nanos_in_day = seconds_in_day * 1_000_000_000 + self.nanos as u64;
 		Time::from_nanos_since_midnight(nanos_in_day).unwrap()
 	}
 
@@ -170,10 +145,7 @@ impl DateTime {
 	/// Create from separate seconds and nanoseconds
 	pub fn from_parts(seconds: i64, nanos: u32) -> Result<Self, String> {
 		if nanos >= 1_000_000_000 {
-			return Err(format!(
-				"Invalid nanoseconds: {} (must be < 1_000_000_000)",
-				nanos
-			));
+			return Err(format!("Invalid nanoseconds: {} (must be < 1_000_000_000)", nanos));
 		}
 		Ok(Self {
 			seconds,
@@ -247,13 +219,8 @@ struct DateTimeVisitor;
 impl<'de> Visitor<'de> for DateTimeVisitor {
 	type Value = DateTime;
 
-	fn expecting(
-		&self,
-		formatter: &mut std::fmt::Formatter,
-	) -> std::fmt::Result {
-		formatter.write_str(
-			"a datetime in ISO 8601 format (YYYY-MM-DDTHH:MM:SS[.nnnnnnnnn]Z)",
-		)
+	fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+		formatter.write_str("a datetime in ISO 8601 format (YYYY-MM-DDTHH:MM:SS[.nnnnnnnnn]Z)")
 	}
 
 	fn visit_str<E>(self, value: &str) -> Result<DateTime, E>
@@ -268,52 +235,29 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 		// Split on T
 		let parts: Vec<&str> = value.split('T').collect();
 		if parts.len() != 2 {
-			return Err(E::custom(format!(
-				"invalid datetime format: {}",
-				value
-			)));
+			return Err(E::custom(format!("invalid datetime format: {}", value)));
 		}
 
 		// Parse date part
 		let date_parts: Vec<&str> = parts[0].split('-').collect();
 		if date_parts.len() != 3 {
-			return Err(E::custom(format!(
-				"invalid date format: {}",
-				parts[0]
-			)));
+			return Err(E::custom(format!("invalid date format: {}", parts[0])));
 		}
 
 		// Handle negative years
-		let (year_str, month_str, day_str) =
-			if date_parts[0].is_empty() && date_parts.len() == 4 {
-				// Negative year case
-				(
-					format!("-{}", date_parts[1]),
-					date_parts[2],
-					date_parts[3],
-				)
-			} else {
-				(
-					date_parts[0].to_string(),
-					date_parts[1],
-					date_parts[2],
-				)
-			};
+		let (year_str, month_str, day_str) = if date_parts[0].is_empty() && date_parts.len() == 4 {
+			// Negative year case
+			(format!("-{}", date_parts[1]), date_parts[2], date_parts[3])
+		} else {
+			(date_parts[0].to_string(), date_parts[1], date_parts[2])
+		};
 
-		let year = year_str.parse::<i32>().map_err(|_| {
-			E::custom(format!("invalid year: {}", year_str))
-		})?;
-		let month = month_str.parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid month: {}", month_str))
-		})?;
-		let day = day_str.parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid day: {}", day_str))
-		})?;
+		let year = year_str.parse::<i32>().map_err(|_| E::custom(format!("invalid year: {}", year_str)))?;
+		let month = month_str.parse::<u32>().map_err(|_| E::custom(format!("invalid month: {}", month_str)))?;
+		let day = day_str.parse::<u32>().map_err(|_| E::custom(format!("invalid day: {}", day_str)))?;
 
 		// Parse time part
-		let (time_part, nano_part) = if let Some(dot_pos) =
-			parts[1].find('.')
-		{
+		let (time_part, nano_part) = if let Some(dot_pos) = parts[1].find('.') {
 			(&parts[1][..dot_pos], Some(&parts[1][dot_pos + 1..]))
 		} else {
 			(parts[1], None)
@@ -321,21 +265,18 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 
 		let time_parts: Vec<&str> = time_part.split(':').collect();
 		if time_parts.len() != 3 {
-			return Err(E::custom(format!(
-				"invalid time format: {}",
-				parts[1]
-			)));
+			return Err(E::custom(format!("invalid time format: {}", parts[1])));
 		}
 
-		let hour = time_parts[0].parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid hour: {}", time_parts[0]))
-		})?;
-		let minute = time_parts[1].parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid minute: {}", time_parts[1]))
-		})?;
-		let second = time_parts[2].parse::<u32>().map_err(|_| {
-			E::custom(format!("invalid second: {}", time_parts[2]))
-		})?;
+		let hour = time_parts[0]
+			.parse::<u32>()
+			.map_err(|_| E::custom(format!("invalid hour: {}", time_parts[0])))?;
+		let minute = time_parts[1]
+			.parse::<u32>()
+			.map_err(|_| E::custom(format!("invalid minute: {}", time_parts[1])))?;
+		let second = time_parts[2]
+			.parse::<u32>()
+			.map_err(|_| E::custom(format!("invalid second: {}", time_parts[2])))?;
 
 		let nano = if let Some(nano_str) = nano_part {
 			// Pad or truncate to 9 digits
@@ -344,29 +285,17 @@ impl<'de> Visitor<'de> for DateTimeVisitor {
 			} else {
 				nano_str[..9].to_string()
 			};
-			padded.parse::<u32>().map_err(|_| {
-				E::custom(format!(
-					"invalid nanoseconds: {}",
-					nano_str
-				))
-			})?
+			padded.parse::<u32>().map_err(|_| E::custom(format!("invalid nanoseconds: {}", nano_str)))?
 		} else {
 			0
 		};
 
-		DateTime::new(year, month, day, hour, minute, second, nano)
-			.ok_or_else(|| {
-				E::custom(format!(
-					"invalid datetime: {}-{:02}-{:02}T{:02}:{:02}:{:02}.{:09}Z",
-					year,
-					month,
-					day,
-					hour,
-					minute,
-					second,
-					nano
-				))
-			})
+		DateTime::new(year, month, day, hour, minute, second, nano).ok_or_else(|| {
+			E::custom(format!(
+				"invalid datetime: {}-{:02}-{:02}T{:02}:{:02}:{:02}.{:09}Z",
+				year, month, day, hour, minute, second, nano
+			))
+		})
 	}
 }
 
@@ -385,245 +314,129 @@ mod tests {
 
 	#[test]
 	fn test_datetime_display_standard_format() {
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.123456789Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123456789Z");
 
 		let datetime = DateTime::new(2000, 1, 1, 0, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2000-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "2000-01-01T00:00:00.000000000Z");
 
-		let datetime =
-			DateTime::new(1999, 12, 31, 23, 59, 59, 999999999)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"1999-12-31T23:59:59.999999999Z"
-		);
+		let datetime = DateTime::new(1999, 12, 31, 23, 59, 59, 999999999).unwrap();
+		assert_eq!(format!("{}", datetime), "1999-12-31T23:59:59.999999999Z");
 	}
 
 	#[test]
 	fn test_datetime_display_millisecond_precision() {
 		// Test various millisecond values
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 123000000)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.123000000Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123000000).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123000000Z");
 
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 001000000)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.001000000Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 001000000).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.001000000Z");
 
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 999000000)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.999000000Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 999000000).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.999000000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_microsecond_precision() {
 		// Test various microsecond values
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 123456000)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.123456000Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456000).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123456000Z");
 
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 000001000)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.000001000Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 000001000).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.000001000Z");
 
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 999999000)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.999999000Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 999999000).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.999999000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_nanosecond_precision() {
 		// Test various nanosecond values
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.123456789Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.123456789Z");
 
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 000000001)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.000000001Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 000000001).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.000000001Z");
 
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 999999999)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.999999999Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 999999999).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.999999999Z");
 	}
 
 	#[test]
 	fn test_datetime_display_zero_fractional_seconds() {
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T14:30:45.000000000Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 0).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T14:30:45.000000000Z");
 
 		let datetime = DateTime::new(2024, 3, 15, 0, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "2024-03-15T00:00:00.000000000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_edge_times() {
 		// Midnight
 		let datetime = DateTime::new(2024, 3, 15, 0, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "2024-03-15T00:00:00.000000000Z");
 
 		// Almost midnight next day
-		let datetime =
-			DateTime::new(2024, 3, 15, 23, 59, 59, 999999999)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T23:59:59.999999999Z"
-		);
+		let datetime = DateTime::new(2024, 3, 15, 23, 59, 59, 999999999).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-03-15T23:59:59.999999999Z");
 
 		// Noon
 		let datetime = DateTime::new(2024, 3, 15, 12, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-03-15T12:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "2024-03-15T12:00:00.000000000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_unix_epoch() {
 		let datetime = DateTime::new(1970, 1, 1, 0, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"1970-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "1970-01-01T00:00:00.000000000Z");
 
 		let datetime = DateTime::new(1970, 1, 1, 0, 0, 1, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"1970-01-01T00:00:01.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "1970-01-01T00:00:01.000000000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_leap_year() {
-		let datetime =
-			DateTime::new(2024, 2, 29, 12, 30, 45, 123456789)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2024-02-29T12:30:45.123456789Z"
-		);
+		let datetime = DateTime::new(2024, 2, 29, 12, 30, 45, 123456789).unwrap();
+		assert_eq!(format!("{}", datetime), "2024-02-29T12:30:45.123456789Z");
 
 		let datetime = DateTime::new(2000, 2, 29, 0, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2000-02-29T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "2000-02-29T00:00:00.000000000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_boundary_dates() {
 		// Very early date
 		let datetime = DateTime::new(1, 1, 1, 0, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"0001-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "0001-01-01T00:00:00.000000000Z");
 
 		// Far future date
-		let datetime =
-			DateTime::new(9999, 12, 31, 23, 59, 59, 999999999)
-				.unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"9999-12-31T23:59:59.999999999Z"
-		);
+		let datetime = DateTime::new(9999, 12, 31, 23, 59, 59, 999999999).unwrap();
+		assert_eq!(format!("{}", datetime), "9999-12-31T23:59:59.999999999Z");
 
 		// Century boundaries
 		let datetime = DateTime::new(1900, 1, 1, 0, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"1900-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "1900-01-01T00:00:00.000000000Z");
 
 		let datetime = DateTime::new(2000, 1, 1, 0, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2000-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "2000-01-01T00:00:00.000000000Z");
 
 		let datetime = DateTime::new(2100, 1, 1, 0, 0, 0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2100-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "2100-01-01T00:00:00.000000000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_default() {
 		let datetime = DateTime::default();
-		assert_eq!(
-			format!("{}", datetime),
-			"1970-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "1970-01-01T00:00:00.000000000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_all_hours() {
 		for hour in 0..24 {
-			let datetime = DateTime::new(
-				2024, 3, 15, hour, 30, 45, 123456789,
-			)
-			.unwrap();
-			let expected = format!(
-				"2024-03-15T{:02}:30:45.123456789Z",
-				hour
-			);
+			let datetime = DateTime::new(2024, 3, 15, hour, 30, 45, 123456789).unwrap();
+			let expected = format!("2024-03-15T{:02}:30:45.123456789Z", hour);
 			assert_eq!(format!("{}", datetime), expected);
 		}
 	}
@@ -631,14 +444,8 @@ mod tests {
 	#[test]
 	fn test_datetime_display_all_minutes() {
 		for minute in 0..60 {
-			let datetime = DateTime::new(
-				2024, 3, 15, 14, minute, 45, 123456789,
-			)
-			.unwrap();
-			let expected = format!(
-				"2024-03-15T14:{:02}:45.123456789Z",
-				minute
-			);
+			let datetime = DateTime::new(2024, 3, 15, 14, minute, 45, 123456789).unwrap();
+			let expected = format!("2024-03-15T14:{:02}:45.123456789Z", minute);
 			assert_eq!(format!("{}", datetime), expected);
 		}
 	}
@@ -646,14 +453,8 @@ mod tests {
 	#[test]
 	fn test_datetime_display_all_seconds() {
 		for second in 0..60 {
-			let datetime = DateTime::new(
-				2024, 3, 15, 14, 30, second, 123456789,
-			)
-			.unwrap();
-			let expected = format!(
-				"2024-03-15T14:30:{:02}.123456789Z",
-				second
-			);
+			let datetime = DateTime::new(2024, 3, 15, 14, 30, second, 123456789).unwrap();
+			let expected = format!("2024-03-15T14:30:{:02}.123456789Z", second);
 			assert_eq!(format!("{}", datetime), expected);
 		}
 	}
@@ -661,48 +462,28 @@ mod tests {
 	#[test]
 	fn test_datetime_display_from_timestamp() {
 		let datetime = DateTime::from_timestamp(0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"1970-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "1970-01-01T00:00:00.000000000Z");
 
 		let datetime = DateTime::from_timestamp(1234567890).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2009-02-13T23:31:30.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "2009-02-13T23:31:30.000000000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_from_timestamp_millis() {
-		let datetime =
-			DateTime::from_timestamp_millis(1234567890123).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2009-02-13T23:31:30.123000000Z"
-		);
+		let datetime = DateTime::from_timestamp_millis(1234567890123).unwrap();
+		assert_eq!(format!("{}", datetime), "2009-02-13T23:31:30.123000000Z");
 
 		let datetime = DateTime::from_timestamp_millis(0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"1970-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "1970-01-01T00:00:00.000000000Z");
 	}
 
 	#[test]
 	fn test_datetime_display_from_parts() {
-		let datetime =
-			DateTime::from_parts(1234567890, 123456789).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"2009-02-13T23:31:30.123456789Z"
-		);
+		let datetime = DateTime::from_parts(1234567890, 123456789).unwrap();
+		assert_eq!(format!("{}", datetime), "2009-02-13T23:31:30.123456789Z");
 
 		let datetime = DateTime::from_parts(0, 0).unwrap();
-		assert_eq!(
-			format!("{}", datetime),
-			"1970-01-01T00:00:00.000000000Z"
-		);
+		assert_eq!(format!("{}", datetime), "1970-01-01T00:00:00.000000000Z");
 	}
 
 	#[test]
@@ -714,8 +495,7 @@ mod tests {
 		];
 
 		for (y, m, d, h, min, s, n) in test_cases {
-			let datetime =
-				DateTime::new(y, m, d, h, min, s, n).unwrap();
+			let datetime = DateTime::new(y, m, d, h, min, s, n).unwrap();
 			let nanos = datetime.to_nanos_since_epoch();
 			let recovered = DateTime::from_nanos_since_epoch(nanos);
 
@@ -725,18 +505,13 @@ mod tests {
 			assert_eq!(datetime.hour(), recovered.hour());
 			assert_eq!(datetime.minute(), recovered.minute());
 			assert_eq!(datetime.second(), recovered.second());
-			assert_eq!(
-				datetime.nanosecond(),
-				recovered.nanosecond()
-			);
+			assert_eq!(datetime.nanosecond(), recovered.nanosecond());
 		}
 	}
 
 	#[test]
 	fn test_datetime_components() {
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789)
-				.unwrap();
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap();
 
 		assert_eq!(datetime.year(), 2024);
 		assert_eq!(datetime.month(), 3);
@@ -749,9 +524,7 @@ mod tests {
 
 	#[test]
 	fn test_serde_roundtrip() {
-		let datetime =
-			DateTime::new(2024, 3, 15, 14, 30, 45, 123456789)
-				.unwrap();
+		let datetime = DateTime::new(2024, 3, 15, 14, 30, 45, 123456789).unwrap();
 		let json = serde_json::to_string(&datetime).unwrap();
 		assert_eq!(json, "\"2024-03-15T14:30:45.123456789Z\"");
 

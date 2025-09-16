@@ -3,8 +3,8 @@
 
 use num_bigint;
 use reifydb_type::{
-	err, parse_uuid4, parse_uuid7, util::hex, Blob, Date, DateTime,
-	Decimal, Error, IdentityId, Int, RowNumber, Time, Uint, Uuid7,
+	err, parse_uuid4, parse_uuid7, util::hex, Blob, Date, DateTime, Decimal, Error, IdentityId, Int, RowNumber,
+	Time, Uint, Uuid7,
 };
 
 use crate::{
@@ -25,15 +25,11 @@ pub struct QueryResult {
 }
 
 // Helper functions for parsing responses - made public for ws module
-pub fn parse_command_response(
-	response: crate::Response,
-) -> Result<CommandResult, Error> {
+pub fn parse_command_response(response: crate::Response) -> Result<CommandResult, Error> {
 	match response.payload {
-		crate::ResponsePayload::Command(cmd_response) => {
-			Ok(CommandResult {
-				frames: convert_execute_response(cmd_response),
-			})
-		}
+		crate::ResponsePayload::Command(cmd_response) => Ok(CommandResult {
+			frames: convert_execute_response(cmd_response),
+		}),
 		crate::ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
 		}
@@ -44,9 +40,7 @@ pub fn parse_command_response(
 	}
 }
 
-pub fn parse_query_response(
-	response: crate::Response,
-) -> Result<QueryResult, Error> {
+pub fn parse_query_response(response: crate::Response) -> Result<QueryResult, Error> {
 	match response.payload {
 		crate::ResponsePayload::Query(query_response) => {
 			let frames = convert_query_response(query_response);
@@ -76,9 +70,7 @@ pub fn convert_execute_response(payload: crate::CommandResponse) -> Vec<Frame> {
 				store: col.store,
 				name: col.name,
 				r#type: col.r#type,
-				data: convert_column_values(
-					col.r#type, col.data,
-				),
+				data: convert_column_values(col.r#type, col.data),
 			})
 			.collect();
 
@@ -100,9 +92,7 @@ pub fn convert_query_response(payload: crate::QueryResponse) -> Vec<Frame> {
 				store: col.store,
 				name: col.name,
 				r#type: col.r#type,
-				data: convert_column_values(
-					col.r#type, col.data,
-				),
+				data: convert_column_values(col.r#type, col.data),
 			})
 			.collect();
 
@@ -140,59 +130,25 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 			.and_then(|f| OrderedF64::try_from(f).ok())
 			.map(Value::Float8)
 			.unwrap_or(Value::Undefined),
-		Type::Int1 => s
-			.parse::<i8>()
-			.map(Value::Int1)
-			.unwrap_or(Value::Undefined),
-		Type::Int2 => s
-			.parse::<i16>()
-			.map(Value::Int2)
-			.unwrap_or(Value::Undefined),
-		Type::Int4 => s
-			.parse::<i32>()
-			.map(Value::Int4)
-			.unwrap_or(Value::Undefined),
-		Type::Int8 => s
-			.parse::<i64>()
-			.map(Value::Int8)
-			.unwrap_or(Value::Undefined),
-		Type::Int16 => s
-			.parse::<i128>()
-			.map(Value::Int16)
-			.unwrap_or(Value::Undefined),
-		Type::Uint1 => s
-			.parse::<u8>()
-			.map(Value::Uint1)
-			.unwrap_or(Value::Undefined),
-		Type::Uint2 => s
-			.parse::<u16>()
-			.map(Value::Uint2)
-			.unwrap_or(Value::Undefined),
-		Type::Uint4 => s
-			.parse::<u32>()
-			.map(Value::Uint4)
-			.unwrap_or(Value::Undefined),
-		Type::Uint8 => s
-			.parse::<u64>()
-			.map(Value::Uint8)
-			.unwrap_or(Value::Undefined),
-		Type::Uint16 => s
-			.parse::<u128>()
-			.map(Value::Uint16)
-			.unwrap_or(Value::Undefined),
+		Type::Int1 => s.parse::<i8>().map(Value::Int1).unwrap_or(Value::Undefined),
+		Type::Int2 => s.parse::<i16>().map(Value::Int2).unwrap_or(Value::Undefined),
+		Type::Int4 => s.parse::<i32>().map(Value::Int4).unwrap_or(Value::Undefined),
+		Type::Int8 => s.parse::<i64>().map(Value::Int8).unwrap_or(Value::Undefined),
+		Type::Int16 => s.parse::<i128>().map(Value::Int16).unwrap_or(Value::Undefined),
+		Type::Uint1 => s.parse::<u8>().map(Value::Uint1).unwrap_or(Value::Undefined),
+		Type::Uint2 => s.parse::<u16>().map(Value::Uint2).unwrap_or(Value::Undefined),
+		Type::Uint4 => s.parse::<u32>().map(Value::Uint4).unwrap_or(Value::Undefined),
+		Type::Uint8 => s.parse::<u64>().map(Value::Uint8).unwrap_or(Value::Undefined),
+		Type::Uint16 => s.parse::<u128>().map(Value::Uint16).unwrap_or(Value::Undefined),
 		Type::Utf8 => Value::Utf8(s.to_string()),
 		Type::Date => {
 			// Parse date from ISO format (YYYY-MM-DD)
 			let parts: Vec<&str> = s.split('-').collect();
 			if parts.len() == 3 {
-				let year =
-					parts[0].parse::<i32>().unwrap_or(1970);
-				let month =
-					parts[1].parse::<u32>().unwrap_or(1);
+				let year = parts[0].parse::<i32>().unwrap_or(1970);
+				let month = parts[1].parse::<u32>().unwrap_or(1);
 				let day = parts[2].parse::<u32>().unwrap_or(1);
-				Date::from_ymd(year, month, day)
-					.map(Value::Date)
-					.unwrap_or(Value::Undefined)
+				Date::from_ymd(year, month, day).map(Value::Date).unwrap_or(Value::Undefined)
 			} else {
 				Value::Undefined
 			}
@@ -200,9 +156,7 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 		Type::DateTime => {
 			// Try parsing as timestamp first
 			if let Ok(timestamp) = s.parse::<i64>() {
-				DateTime::from_timestamp(timestamp)
-					.map(Value::DateTime)
-					.unwrap_or(Value::Undefined)
+				DateTime::from_timestamp(timestamp).map(Value::DateTime).unwrap_or(Value::Undefined)
 			} else {
 				// For now, store as string - proper RFC3339
 				// parsing would need chrono
@@ -217,11 +171,8 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 				let min = parts[1].parse::<u32>().unwrap_or(0);
 
 				// Handle seconds and nanoseconds
-				let sec_parts: Vec<&str> =
-					parts[2].split('.').collect();
-				let sec = sec_parts[0]
-					.parse::<u32>()
-					.unwrap_or(0);
+				let sec_parts: Vec<&str> = parts[2].split('.').collect();
+				let sec = sec_parts[0].parse::<u32>().unwrap_or(0);
 
 				let nano = if sec_parts.len() > 1 {
 					let frac_str = sec_parts[1];
@@ -235,9 +186,7 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 					0
 				};
 
-				Time::from_hms_nano(hour, min, sec, nano)
-					.map(Value::Time)
-					.unwrap_or(Value::Undefined)
+				Time::from_hms_nano(hour, min, sec, nano).map(Value::Time).unwrap_or(Value::Undefined)
 			} else {
 				Value::Undefined
 			}
@@ -273,9 +222,7 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 		Type::IdentityId => {
 			// Try to parse UUID for IdentityId
 			if let Ok(uuid) = parse_uuid7(s) {
-				Value::IdentityId(IdentityId::from(
-					Uuid7::from(uuid),
-				))
+				Value::IdentityId(IdentityId::from(Uuid7::from(uuid)))
 			} else {
 				Value::Undefined
 			}

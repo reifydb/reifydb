@@ -32,8 +32,7 @@ impl<'a> Parser<'a> {
 			use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 
 			// Get the first identifier token
-			let first_token =
-				self.consume(TokenKind::Identifier)?;
+			let first_token = self.consume(TokenKind::Identifier)?;
 
 			// Check if there's a dot following
 			let has_dot = if !self.is_eof() {
@@ -48,76 +47,52 @@ impl<'a> Parser<'a> {
 
 			let source = if has_dot {
 				self.consume_operator(Operator::Dot)?;
-				let second_token =
-					self.consume(TokenKind::Identifier)?;
+				let second_token = self.consume(TokenKind::Identifier)?;
 
 				// namespace.table - create
 				// UnresolvedSourceIdentifier with namespace
-				let mut source =
-					UnresolvedSourceIdentifier::new(
-						Some(first_token
-							.fragment
-							.clone()),
-						second_token.fragment.clone(),
-					);
+				let mut source = UnresolvedSourceIdentifier::new(
+					Some(first_token.fragment.clone()),
+					second_token.fragment.clone(),
+				);
 
 				// Check for alias after namespace.table
-				if !self.is_eof()
-					&& self.current()?.is_identifier()
-				{
-					let alias_token = self.consume(
-						TokenKind::Identifier,
-					)?;
-					source = source.with_alias(
-						alias_token.fragment.clone(),
-					);
+				if !self.is_eof() && self.current()?.is_identifier() {
+					let alias_token = self.consume(TokenKind::Identifier)?;
+					source = source.with_alias(alias_token.fragment.clone());
 				}
 
 				source
 			} else {
 				// Just table - create
 				// UnresolvedSourceIdentifier without namespace
-				let mut source =
-					UnresolvedSourceIdentifier::new(
-						None,
-						first_token.fragment.clone(),
-					);
+				let mut source = UnresolvedSourceIdentifier::new(None, first_token.fragment.clone());
 
 				// Check for alias after table
-				if !self.is_eof()
-					&& self.current()?.is_identifier()
-				{
-					let alias_token = self.consume(
-						TokenKind::Identifier,
-					)?;
-					source = source.with_alias(
-						alias_token.fragment.clone(),
-					);
+				if !self.is_eof() && self.current()?.is_identifier() {
+					let alias_token = self.consume(TokenKind::Identifier)?;
+					source = source.with_alias(alias_token.fragment.clone());
 				}
 
 				source
 			};
 
 			// Check for index directive using ::
-			let index_name =
-				if !self.is_eof() {
-					if let Ok(current) = self.current() {
-						if current.is_operator(
-							Operator::DoubleColon,
-						) {
-							self.consume_operator(Operator::DoubleColon)?;
-							let index_token = self.consume(TokenKind::Identifier)?;
-							Some(index_token
-								.fragment)
-						} else {
-							None
-						}
+			let index_name = if !self.is_eof() {
+				if let Ok(current) = self.current() {
+					if current.is_operator(Operator::DoubleColon) {
+						self.consume_operator(Operator::DoubleColon)?;
+						let index_token = self.consume(TokenKind::Identifier)?;
+						Some(index_token.fragment)
 					} else {
 						None
 					}
 				} else {
 					None
-				};
+				}
+			} else {
+				None
+			};
 
 			Ok(AstFrom::Source {
 				token,
@@ -147,9 +122,7 @@ impl<'a> Parser<'a> {
 
 			nodes.push(Ast::Inline(self.parse_inline()?));
 
-			self.consume_if(TokenKind::Separator(
-				Separator::Comma,
-			))?;
+			self.consume_if(TokenKind::Separator(Separator::Comma))?;
 		}
 
 		self.consume_operator(CloseBracket)?;
@@ -180,13 +153,7 @@ mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(
-					source.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"reifydb"
-				);
+				assert_eq!(source.namespace.as_ref().unwrap().text(), "reifydb");
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name, &None);
 			}
@@ -269,17 +236,8 @@ mod tests {
 				let row = list[0].as_inline();
 				assert_eq!(row.keyed_values.len(), 1);
 
-				assert_eq!(
-					row.keyed_values[0].key.text(),
-					"field"
-				);
-				assert_eq!(
-					row.keyed_values[0]
-						.value
-						.as_literal_text()
-						.value(),
-					"value"
-				);
+				assert_eq!(row.keyed_values[0].key.text(), "field");
+				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 			}
 		}
 	}
@@ -312,32 +270,14 @@ mod tests {
 				let row = list[0].as_inline();
 				assert_eq!(row.keyed_values.len(), 1);
 
-				assert_eq!(
-					row.keyed_values[0].key.text(),
-					"field"
-				);
-				assert_eq!(
-					row.keyed_values[0]
-						.value
-						.as_literal_text()
-						.value(),
-					"value"
-				);
+				assert_eq!(row.keyed_values[0].key.text(), "field");
+				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 
 				let row = list[1].as_inline();
 				assert_eq!(row.keyed_values.len(), 1);
 
-				assert_eq!(
-					row.keyed_values[0].key.text(),
-					"field"
-				);
-				assert_eq!(
-					row.keyed_values[0]
-						.value
-						.as_literal_text()
-						.value(),
-					"value2"
-				);
+				assert_eq!(row.keyed_values[0].key.text(), "field");
+				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value2");
 			}
 		}
 	}
@@ -360,10 +300,7 @@ mod tests {
 			} => {
 				assert_eq!(source.namespace, None);
 				assert_eq!(source.name.text(), "users");
-				assert_eq!(
-					index_name.as_ref().unwrap().text(),
-					"user_id_pk"
-				);
+				assert_eq!(index_name.as_ref().unwrap().text(), "user_id_pk");
 			}
 			AstFrom::Inline {
 				..
@@ -373,9 +310,7 @@ mod tests {
 
 	#[test]
 	fn test_from_namespace_table_with_index_directive() {
-		let tokens =
-			tokenize("FROM company.employees::employee_email_pk")
-				.unwrap();
+		let tokens = tokenize("FROM company.employees::employee_email_pk").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);
@@ -389,18 +324,9 @@ mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(
-					source.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"company"
-				);
+				assert_eq!(source.namespace.as_ref().unwrap().text(), "company");
 				assert_eq!(source.name.text(), "employees");
-				assert_eq!(
-					index_name.as_ref().unwrap().text(),
-					"employee_email_pk"
-				);
+				assert_eq!(index_name.as_ref().unwrap().text(), "employee_email_pk");
 			}
 			AstFrom::Inline {
 				..
@@ -427,10 +353,7 @@ mod tests {
 				assert!(source.namespace.is_none());
 				assert_eq!(source.name.text(), "orders");
 				assert_eq!(index_name, &None);
-				assert_eq!(
-					source.alias.as_ref().unwrap().text(),
-					"o"
-				);
+				assert_eq!(source.alias.as_ref().unwrap().text(), "o");
 			}
 			AstFrom::Inline {
 				..
@@ -454,19 +377,10 @@ mod tests {
 				index_name,
 				..
 			} => {
-				assert_eq!(
-					source.namespace
-						.as_ref()
-						.unwrap()
-						.text(),
-					"test"
-				);
+				assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(source.name.text(), "orders");
 				assert_eq!(index_name, &None);
-				assert_eq!(
-					source.alias.as_ref().unwrap().text(),
-					"o"
-				);
+				assert_eq!(source.alias.as_ref().unwrap().text(), "o");
 			}
 			AstFrom::Inline {
 				..
@@ -497,17 +411,8 @@ mod tests {
 				let row = list[0].as_inline();
 				assert_eq!(row.keyed_values.len(), 1);
 
-				assert_eq!(
-					row.keyed_values[0].key.text(),
-					"field"
-				);
-				assert_eq!(
-					row.keyed_values[0]
-						.value
-						.as_literal_text()
-						.value(),
-					"value"
-				);
+				assert_eq!(row.keyed_values[0].key.text(), "field");
+				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 			}
 		}
 	}

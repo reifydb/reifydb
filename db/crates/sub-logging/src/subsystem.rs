@@ -149,15 +149,7 @@ impl Subsystem for LoggingSubsystem {
 
 	fn start(&mut self) -> Result<()> {
 		// Just set the running flag so the receiver thread buffers logs
-		if self.running
-			.compare_exchange(
-				false,
-				true,
-				Ordering::AcqRel,
-				Ordering::Acquire,
-			)
-			.is_err()
-		{
+		if self.running.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			// Already running
 			return Ok(());
 		}
@@ -189,15 +181,11 @@ impl Subsystem for LoggingSubsystem {
 				while running.load(Ordering::Acquire) {
 					// Drain channel into buffer
 					let mut received_count = 0;
-					while let Ok(record) =
-						receiver.try_recv()
-					{
+					while let Ok(record) = receiver.try_recv() {
 						// Filter out logs below the
 						// minimum level
 						if record.level >= min_level {
-							buffer.force_push(
-								record,
-							);
+							buffer.force_push(record);
 						}
 						received_count += 1;
 						// Process in batches to avoid
@@ -210,22 +198,15 @@ impl Subsystem for LoggingSubsystem {
 					// Process buffer to backends
 					// periodically
 					let now = Instant::now();
-					if now.duration_since(last_process)
-						>= flush_interval || buffer.is_full()
-					{
-						let _ = processor
-							.process_batch();
+					if now.duration_since(last_process) >= flush_interval || buffer.is_full() {
+						let _ = processor.process_batch();
 						last_process = now;
 					}
 
 					// Sleep briefly if no logs received to
 					// avoid busy waiting
 					if received_count == 0 {
-						thread::sleep(
-							Duration::from_millis(
-								1,
-							),
-						);
+						thread::sleep(Duration::from_millis(1));
 					}
 				}
 
@@ -244,15 +225,7 @@ impl Subsystem for LoggingSubsystem {
 		// Try to set running flag from true to false
 		// Note: This is a terminal operation - the subsystem cannot be
 		// restarted
-		if self.running
-			.compare_exchange(
-				true,
-				false,
-				Ordering::AcqRel,
-				Ordering::Acquire,
-			)
-			.is_err()
-		{
+		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			// Already shutdown
 			return Ok(());
 		}
@@ -282,10 +255,7 @@ impl Subsystem for LoggingSubsystem {
 		let utilization = self.buffer_utilization();
 		if utilization > 90 {
 			HealthStatus::Degraded {
-				description: format!(
-					"Buffer utilization high: {}%",
-					utilization
-				),
+				description: format!("Buffer utilization high: {}%", utilization),
 			}
 		} else {
 			HealthStatus::Healthy
@@ -313,8 +283,7 @@ impl HasVersion for LoggingSubsystem {
 		SystemVersion {
 			name: "sub-logging".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "Asynchronous logging subsystem"
-				.to_string(),
+			description: "Asynchronous logging subsystem".to_string(),
 			r#type: ComponentType::Subsystem,
 		}
 	}

@@ -9,8 +9,7 @@ pub fn parse_request(data: &[u8]) -> Result<HttpRequest, String> {
 	let mut headers_buf = [httparse::EMPTY_HEADER; 32];
 	let mut req = httparse::Request::new(&mut headers_buf);
 
-	let status =
-		req.parse(data).map_err(|e| format!("Parse error: {:?}", e))?;
+	let status = req.parse(data).map_err(|e| format!("Parse error: {:?}", e))?;
 
 	if status.is_partial() {
 		return Err("Incomplete request".to_string());

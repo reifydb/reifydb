@@ -46,23 +46,16 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 
 		// Starting server
 
-		let mut server = ProtocolServer::new(
-			self.config.clone(),
-			self.engine.clone(),
-		);
+		let mut server = ProtocolServer::new(self.config.clone(), self.engine.clone());
 
 		// Configure protocol handlers
 		server.with_websocket().with_http();
 
 		server.start().map_err(|e| {
-			reifydb_type::error!(
-				reifydb_type::diagnostic::internal::internal(
-					format!(
-						"Failed to start server: {:?}",
-						e
-					)
-				)
-			)
+			reifydb_type::error!(reifydb_type::diagnostic::internal::internal(format!(
+				"Failed to start server: {:?}",
+				e
+			)))
 		})?;
 
 		self.server = Some(server);
@@ -86,8 +79,7 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 			HealthStatus::Healthy
 		} else {
 			HealthStatus::Failed {
-				description: "Server is not running"
-					.to_string(),
+				description: "Server is not running".to_string(),
 			}
 		}
 	}
@@ -106,8 +98,7 @@ impl<T: Transaction> HasVersion for ServerSubsystem<T> {
 		SystemVersion {
 			name: "sub-server".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "Network protocol server subsystem"
-				.to_string(),
+			description: "Network protocol server subsystem".to_string(),
 			r#type: ComponentType::Subsystem,
 		}
 	}

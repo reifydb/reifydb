@@ -16,15 +16,8 @@ impl Compiler {
 		rx: &mut impl QueryTransaction,
 		create: CreateTransactionalViewNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
-		let Some(namespace) = CatalogStore::find_namespace_by_name(
-			rx,
-			create.view.namespace.text(),
-		)?
-		else {
-			return_error!(namespace_not_found(
-				create.view.namespace.clone(),
-				create.view.namespace.text()
-			));
+		let Some(namespace) = CatalogStore::find_namespace_by_name(rx, create.view.namespace.text())? else {
+			return_error!(namespace_not_found(create.view.namespace.clone(), create.view.namespace.text()));
 		};
 
 		Ok(CreateTransactionalView(CreateTransactionalViewPlan {
@@ -32,9 +25,7 @@ impl Compiler {
 			view: create.view.clone(),
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
-			with: Self::compile(rx, create.with)?
-				.map(Box::new)
-				.unwrap(), // FIXME
+			with: Self::compile(rx, create.with)?.map(Box::new).unwrap(), // FIXME
 		}))
 	}
 }

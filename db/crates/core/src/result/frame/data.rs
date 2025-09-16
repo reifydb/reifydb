@@ -1,16 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{
-	Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4, Uuid7,
-	Value,
-};
+use reifydb_type::{Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4, Uuid7, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::value::container::{
-	BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
-	RowNumberContainer, TemporalContainer, UndefinedContainer,
-	Utf8Container, UuidContainer,
+	BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, RowNumberContainer, TemporalContainer,
+	UndefinedContainer, Utf8Container, UuidContainer,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -80,84 +76,32 @@ impl FrameColumnData {
 
 	pub fn is_defined(&self, idx: usize) -> bool {
 		match self {
-			FrameColumnData::Bool(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Float4(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Float8(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Int1(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Int2(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Int4(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Int8(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Int16(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Uint1(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Uint2(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Uint4(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Uint8(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Uint16(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Utf8(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Date(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::DateTime(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Time(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Interval(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::RowNumber(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::IdentityId(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Uuid4(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Uuid7(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Blob(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Int(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Uint(container) => {
-				container.is_defined(idx)
-			}
-			FrameColumnData::Decimal(container) => {
-				container.is_defined(idx)
-			}
+			FrameColumnData::Bool(container) => container.is_defined(idx),
+			FrameColumnData::Float4(container) => container.is_defined(idx),
+			FrameColumnData::Float8(container) => container.is_defined(idx),
+			FrameColumnData::Int1(container) => container.is_defined(idx),
+			FrameColumnData::Int2(container) => container.is_defined(idx),
+			FrameColumnData::Int4(container) => container.is_defined(idx),
+			FrameColumnData::Int8(container) => container.is_defined(idx),
+			FrameColumnData::Int16(container) => container.is_defined(idx),
+			FrameColumnData::Uint1(container) => container.is_defined(idx),
+			FrameColumnData::Uint2(container) => container.is_defined(idx),
+			FrameColumnData::Uint4(container) => container.is_defined(idx),
+			FrameColumnData::Uint8(container) => container.is_defined(idx),
+			FrameColumnData::Uint16(container) => container.is_defined(idx),
+			FrameColumnData::Utf8(container) => container.is_defined(idx),
+			FrameColumnData::Date(container) => container.is_defined(idx),
+			FrameColumnData::DateTime(container) => container.is_defined(idx),
+			FrameColumnData::Time(container) => container.is_defined(idx),
+			FrameColumnData::Interval(container) => container.is_defined(idx),
+			FrameColumnData::RowNumber(container) => container.is_defined(idx),
+			FrameColumnData::IdentityId(container) => container.is_defined(idx),
+			FrameColumnData::Uuid4(container) => container.is_defined(idx),
+			FrameColumnData::Uuid7(container) => container.is_defined(idx),
+			FrameColumnData::Blob(container) => container.is_defined(idx),
+			FrameColumnData::Int(container) => container.is_defined(idx),
+			FrameColumnData::Uint(container) => container.is_defined(idx),
+			FrameColumnData::Decimal(container) => container.is_defined(idx),
 			FrameColumnData::Undefined(_) => false,
 		}
 	}
@@ -167,8 +111,7 @@ impl FrameColumnData {
 	}
 
 	pub fn is_float(&self) -> bool {
-		self.get_type() == Type::Float4
-			|| self.get_type() == Type::Float8
+		self.get_type() == Type::Float4 || self.get_type() == Type::Float8
 	}
 
 	pub fn is_utf8(&self) -> bool {
@@ -191,12 +134,7 @@ impl FrameColumnData {
 	}
 
 	pub fn is_temporal(&self) -> bool {
-		matches!(
-			self.get_type(),
-			Type::Date
-				| Type::DateTime | Type::Time
-				| Type::Interval
-		)
+		matches!(self.get_type(), Type::Date | Type::DateTime | Type::Time | Type::Interval)
 	}
 
 	pub fn is_uuid(&self) -> bool {
@@ -229,107 +167,47 @@ impl FrameColumnData {
 			FrameColumnData::DateTime(container) => container.len(),
 			FrameColumnData::Time(container) => container.len(),
 			FrameColumnData::Interval(container) => container.len(),
-			FrameColumnData::RowNumber(container) => {
-				container.len()
-			}
-			FrameColumnData::IdentityId(container) => {
-				container.len()
-			}
+			FrameColumnData::RowNumber(container) => container.len(),
+			FrameColumnData::IdentityId(container) => container.len(),
 			FrameColumnData::Uuid4(container) => container.len(),
 			FrameColumnData::Uuid7(container) => container.len(),
 			FrameColumnData::Blob(container) => container.len(),
 			FrameColumnData::Int(container) => container.len(),
 			FrameColumnData::Uint(container) => container.len(),
 			FrameColumnData::Decimal(container) => container.len(),
-			FrameColumnData::Undefined(container) => {
-				container.len()
-			}
+			FrameColumnData::Undefined(container) => container.len(),
 		}
 	}
 
 	pub fn as_string(&self, index: usize) -> String {
 		match self {
-			FrameColumnData::Bool(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Float4(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Float8(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Int1(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Int2(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Int4(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Int8(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Int16(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Uint1(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Uint2(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Uint4(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Uint8(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Uint16(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Utf8(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Date(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::DateTime(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Time(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Interval(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::RowNumber(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::IdentityId(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Uuid4(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Uuid7(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Blob(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Int(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Uint(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Decimal(container) => {
-				container.as_string(index)
-			}
-			FrameColumnData::Undefined(container) => {
-				container.as_string(index)
-			}
+			FrameColumnData::Bool(container) => container.as_string(index),
+			FrameColumnData::Float4(container) => container.as_string(index),
+			FrameColumnData::Float8(container) => container.as_string(index),
+			FrameColumnData::Int1(container) => container.as_string(index),
+			FrameColumnData::Int2(container) => container.as_string(index),
+			FrameColumnData::Int4(container) => container.as_string(index),
+			FrameColumnData::Int8(container) => container.as_string(index),
+			FrameColumnData::Int16(container) => container.as_string(index),
+			FrameColumnData::Uint1(container) => container.as_string(index),
+			FrameColumnData::Uint2(container) => container.as_string(index),
+			FrameColumnData::Uint4(container) => container.as_string(index),
+			FrameColumnData::Uint8(container) => container.as_string(index),
+			FrameColumnData::Uint16(container) => container.as_string(index),
+			FrameColumnData::Utf8(container) => container.as_string(index),
+			FrameColumnData::Date(container) => container.as_string(index),
+			FrameColumnData::DateTime(container) => container.as_string(index),
+			FrameColumnData::Time(container) => container.as_string(index),
+			FrameColumnData::Interval(container) => container.as_string(index),
+			FrameColumnData::RowNumber(container) => container.as_string(index),
+			FrameColumnData::IdentityId(container) => container.as_string(index),
+			FrameColumnData::Uuid4(container) => container.as_string(index),
+			FrameColumnData::Uuid7(container) => container.as_string(index),
+			FrameColumnData::Blob(container) => container.as_string(index),
+			FrameColumnData::Int(container) => container.as_string(index),
+			FrameColumnData::Uint(container) => container.as_string(index),
+			FrameColumnData::Decimal(container) => container.as_string(index),
+			FrameColumnData::Undefined(container) => container.as_string(index),
 		}
 	}
 }
@@ -337,87 +215,33 @@ impl FrameColumnData {
 impl FrameColumnData {
 	pub fn get_value(&self, index: usize) -> Value {
 		match self {
-			FrameColumnData::Bool(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Float4(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Float8(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Int1(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Int2(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Int4(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Int8(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Int16(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Uint1(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Uint2(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Uint4(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Uint8(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Uint16(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Utf8(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Date(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::DateTime(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Time(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Interval(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::RowNumber(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::IdentityId(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Uuid4(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Uuid7(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Blob(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Int(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Uint(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Decimal(container) => {
-				container.get_value(index)
-			}
-			FrameColumnData::Undefined(container) => {
-				container.get_value(index)
-			}
+			FrameColumnData::Bool(container) => container.get_value(index),
+			FrameColumnData::Float4(container) => container.get_value(index),
+			FrameColumnData::Float8(container) => container.get_value(index),
+			FrameColumnData::Int1(container) => container.get_value(index),
+			FrameColumnData::Int2(container) => container.get_value(index),
+			FrameColumnData::Int4(container) => container.get_value(index),
+			FrameColumnData::Int8(container) => container.get_value(index),
+			FrameColumnData::Int16(container) => container.get_value(index),
+			FrameColumnData::Uint1(container) => container.get_value(index),
+			FrameColumnData::Uint2(container) => container.get_value(index),
+			FrameColumnData::Uint4(container) => container.get_value(index),
+			FrameColumnData::Uint8(container) => container.get_value(index),
+			FrameColumnData::Uint16(container) => container.get_value(index),
+			FrameColumnData::Utf8(container) => container.get_value(index),
+			FrameColumnData::Date(container) => container.get_value(index),
+			FrameColumnData::DateTime(container) => container.get_value(index),
+			FrameColumnData::Time(container) => container.get_value(index),
+			FrameColumnData::Interval(container) => container.get_value(index),
+			FrameColumnData::RowNumber(container) => container.get_value(index),
+			FrameColumnData::IdentityId(container) => container.get_value(index),
+			FrameColumnData::Uuid4(container) => container.get_value(index),
+			FrameColumnData::Uuid7(container) => container.get_value(index),
+			FrameColumnData::Blob(container) => container.get_value(index),
+			FrameColumnData::Int(container) => container.get_value(index),
+			FrameColumnData::Uint(container) => container.get_value(index),
+			FrameColumnData::Decimal(container) => container.get_value(index),
+			FrameColumnData::Undefined(container) => container.get_value(index),
 		}
 	}
 }

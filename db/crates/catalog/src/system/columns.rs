@@ -3,9 +3,7 @@
 
 use std::sync::{Arc, OnceLock};
 
-use reifydb_core::interface::{
-	ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef,
-};
+use reifydb_core::interface::{ColumnDef, ColumnIndex, NamespaceId, TableVirtualDef};
 use reifydb_type::{Type, TypeConstraint};
 
 use super::ids::{columns::columns::*, table_virtual::COLUMNS};
@@ -24,10 +22,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: ID,
 					name: "id".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Uint8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -35,10 +30,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: SOURCE_ID,
 					name: "source_id".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Uint8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
@@ -46,10 +38,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: SOURCE_TYPE,
 					name: "source_type".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Utf8,
-						), // "table" or "view"
+					constraint: TypeConstraint::unconstrained(Type::Utf8), // "table" or "view"
 					policies: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
@@ -57,10 +46,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: NAME,
 					name: "name".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Utf8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					policies: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
@@ -68,10 +54,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: TYPE,
 					name: "type".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Utf8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					policies: vec![],
 					index: ColumnIndex(4),
 					auto_increment: false,
@@ -79,10 +62,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: POSITION,
 					name: "position".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Uint4,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Uint4),
 					policies: vec![],
 					index: ColumnIndex(5),
 					auto_increment: false,
@@ -90,10 +70,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: AUTO_INCREMENT,
 					name: "auto_increment".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Boolean,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Boolean),
 					policies: vec![],
 					index: ColumnIndex(6),
 					auto_increment: false,

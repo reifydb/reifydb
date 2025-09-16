@@ -5,8 +5,7 @@
 ///
 /// Usage:
 /// - `error!(diagnostic_function(args))` - Creates an error without fragment
-/// - `error!(diagnostic_function(args), fragment)` - Creates an error with
-///   fragment
+/// - `error!(diagnostic_function(args), fragment)` - Creates an error with fragment
 ///
 /// Expands to: `Error(diagnostic_function(args))` or
 /// `Error(diagnostic_function(args).with_fragment(fragment))`
@@ -21,10 +20,7 @@ macro_rules! error {
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_fragment(
-			$crate::IntoFragment::into_fragment($fragment)
-				.into_owned(),
-		);
+		diag.with_fragment($crate::IntoFragment::into_fragment($fragment).into_owned());
 		$crate::Error(diag)
 	}};
 }
@@ -32,10 +28,8 @@ macro_rules! error {
 /// Macro to return an error from a diagnostic function call
 ///
 /// Usage:
-/// - `return_error!(diagnostic_function(args))` - Returns an error without
-///   fragment
-/// - `return_error!(diagnostic_function(args), fragment)` - Returns an error
-///   with fragment
+/// - `return_error!(diagnostic_function(args))` - Returns an error without fragment
+/// - `return_error!(diagnostic_function(args), fragment)` - Returns an error with fragment
 ///
 /// Expands to: `return Err(Error(diagnostic_function(args)))` or `return
 /// Err(Error(diagnostic_function(args).with_fragment(fragment)))`
@@ -50,10 +44,7 @@ macro_rules! return_error {
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_fragment(
-			$crate::IntoFragment::into_fragment($fragment)
-				.into_owned(),
-		);
+		diag.with_fragment($crate::IntoFragment::into_fragment($fragment).into_owned());
 		return Err($crate::Error(diag));
 	}};
 }
@@ -77,10 +68,7 @@ macro_rules! err {
 	};
 	($diagnostic:expr, $fragment:expr) => {{
 		let mut diag = $diagnostic;
-		diag.with_fragment(
-			$crate::IntoFragment::into_fragment($fragment)
-				.into_owned(),
-		);
+		diag.with_fragment($crate::IntoFragment::into_fragment($fragment).into_owned());
 		Err($crate::Error(diag))
 	}};
 }
@@ -88,8 +76,7 @@ macro_rules! err {
 #[cfg(test)]
 mod tests {
 	use crate::{
-		OwnedFragment, StatementColumn, StatementLine, Type,
-		error::diagnostic::sequence::sequence_exhausted,
+		OwnedFragment, StatementColumn, StatementLine, Type, error::diagnostic::sequence::sequence_exhausted,
 	};
 
 	#[test]
@@ -123,8 +110,7 @@ mod tests {
 	#[test]
 	fn test_err_macro() {
 		// Test that err! macro creates correct Result type with Err
-		let result: Result<(), crate::Error> =
-			err!(sequence_exhausted(Type::Uint8));
+		let result: Result<(), crate::Error> = err!(sequence_exhausted(Type::Uint8));
 
 		assert!(result.is_err());
 
@@ -145,10 +131,7 @@ mod tests {
 
 		// Test that error! macro with fragment creates correct Error
 		// type
-		let err = error!(
-			sequence_exhausted(Type::Uint8),
-			fragment.clone()
-		);
+		let err = error!(sequence_exhausted(Type::Uint8), fragment.clone());
 
 		// Verify it creates the correct Error type
 		assert!(matches!(err, crate::Error(_)));
@@ -176,10 +159,7 @@ mod tests {
 				column: StatementColumn(25),
 				text: "error location".to_string(),
 			};
-			return_error!(
-				sequence_exhausted(Type::Uint8),
-				fragment
-			);
+			return_error!(sequence_exhausted(Type::Uint8), fragment);
 		}
 
 		let result = test_fn();
@@ -211,8 +191,7 @@ mod tests {
 
 		// Test that err! macro with fragment creates correct Result
 		// type with Err
-		let result: Result<(), crate::Error> =
-			err!(sequence_exhausted(Type::Uint8), fragment);
+		let result: Result<(), crate::Error> = err!(sequence_exhausted(Type::Uint8), fragment);
 
 		assert!(result.is_err());
 

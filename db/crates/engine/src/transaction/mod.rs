@@ -6,9 +6,8 @@ use std::marker::PhantomData;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
-		BoxedVersionedIter, CdcTransaction, QueryTransaction,
-		Transaction, TransactionId, UnversionedTransaction, Versioned,
-		VersionedQueryTransaction, VersionedTransaction,
+		BoxedVersionedIter, CdcTransaction, QueryTransaction, Transaction, TransactionId,
+		UnversionedTransaction, Versioned, VersionedQueryTransaction, VersionedTransaction,
 	},
 };
 
@@ -58,9 +57,7 @@ impl<'a, T: Transaction> QueryTransaction for StandardTransaction<'a, T> {
 	where
 		Self: 'b;
 
-	fn begin_unversioned_query(
-		&self,
-	) -> crate::Result<Self::UnversionedQuery<'_>> {
+	fn begin_unversioned_query(&self) -> crate::Result<Self::UnversionedQuery<'_>> {
 		match self {
 			Self::Command(txn) => txn.begin_unversioned_query(),
 			Self::Query(txn) => txn.begin_unversioned_query(),
@@ -75,17 +72,11 @@ impl<'a, T: Transaction> QueryTransaction for StandardTransaction<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> VersionedQueryTransaction
-	for StandardTransaction<'a, T>
-{
+impl<'a, T: Transaction> VersionedQueryTransaction for StandardTransaction<'a, T> {
 	fn version(&self) -> CommitVersion {
 		match self {
-			Self::Command(txn) => {
-				VersionedQueryTransaction::version(*txn)
-			}
-			Self::Query(txn) => {
-				VersionedQueryTransaction::version(*txn)
-			}
+			Self::Command(txn) => VersionedQueryTransaction::version(*txn),
+			Self::Query(txn) => VersionedQueryTransaction::version(*txn),
 		}
 	}
 
@@ -96,10 +87,7 @@ impl<'a, T: Transaction> VersionedQueryTransaction
 		}
 	}
 
-	fn get(
-		&mut self,
-		key: &EncodedKey,
-	) -> crate::Result<Option<Versioned>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
 		match self {
 			Self::Command(txn) => txn.get(key),
 			Self::Query(txn) => txn.get(key),
@@ -127,40 +115,28 @@ impl<'a, T: Transaction> VersionedQueryTransaction
 		}
 	}
 
-	fn range(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter> {
 		match self {
 			Self::Command(txn) => txn.range(range),
 			Self::Query(txn) => txn.range(range),
 		}
 	}
 
-	fn range_rev(
-		&mut self,
-		range: EncodedKeyRange,
-	) -> crate::Result<BoxedVersionedIter> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter> {
 		match self {
 			Self::Command(txn) => txn.range_rev(range),
 			Self::Query(txn) => txn.range_rev(range),
 		}
 	}
 
-	fn prefix(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter> {
 		match self {
 			Self::Command(txn) => txn.prefix(prefix),
 			Self::Query(txn) => txn.prefix(prefix),
 		}
 	}
 
-	fn prefix_rev(
-		&mut self,
-		prefix: &EncodedKey,
-	) -> crate::Result<BoxedVersionedIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter> {
 		match self {
 			Self::Command(txn) => txn.prefix_rev(prefix),
 			Self::Query(txn) => txn.prefix_rev(prefix),
@@ -168,17 +144,13 @@ impl<'a, T: Transaction> VersionedQueryTransaction
 	}
 }
 
-impl<'a, T: Transaction> From<&'a mut StandardCommandTransaction<T>>
-	for StandardTransaction<'a, T>
-{
+impl<'a, T: Transaction> From<&'a mut StandardCommandTransaction<T>> for StandardTransaction<'a, T> {
 	fn from(txn: &'a mut StandardCommandTransaction<T>) -> Self {
 		Self::Command(txn)
 	}
 }
 
-impl<'a, T: Transaction> From<&'a mut StandardQueryTransaction<T>>
-	for StandardTransaction<'a, T>
-{
+impl<'a, T: Transaction> From<&'a mut StandardQueryTransaction<T>> for StandardTransaction<'a, T> {
 	fn from(txn: &'a mut StandardQueryTransaction<T>) -> Self {
 		Self::Query(txn)
 	}
@@ -190,9 +162,7 @@ impl<'a, T: Transaction> StandardTransaction<'a, T> {
 	pub fn command(self) -> &'a mut StandardCommandTransaction<T> {
 		match self {
 			Self::Command(txn) => txn,
-			Self::Query(_) => panic!(
-				"Expected Command transaction but found Query transaction"
-			),
+			Self::Query(_) => panic!("Expected Command transaction but found Query transaction"),
 		}
 	}
 
@@ -201,9 +171,7 @@ impl<'a, T: Transaction> StandardTransaction<'a, T> {
 	pub fn query(self) -> &'a mut StandardQueryTransaction<T> {
 		match self {
 			Self::Query(txn) => txn,
-			Self::Command(_) => panic!(
-				"Expected Query transaction but found Command transaction"
-			),
+			Self::Command(_) => panic!("Expected Query transaction but found Command transaction"),
 		}
 	}
 
@@ -212,9 +180,7 @@ impl<'a, T: Transaction> StandardTransaction<'a, T> {
 	pub fn command_mut(&mut self) -> &mut StandardCommandTransaction<T> {
 		match self {
 			Self::Command(txn) => txn,
-			Self::Query(_) => panic!(
-				"Expected Command transaction but found Query transaction"
-			),
+			Self::Query(_) => panic!("Expected Command transaction but found Query transaction"),
 		}
 	}
 
@@ -223,9 +189,7 @@ impl<'a, T: Transaction> StandardTransaction<'a, T> {
 	pub fn query_mut(&mut self) -> &mut StandardQueryTransaction<T> {
 		match self {
 			Self::Query(txn) => txn,
-			Self::Command(_) => panic!(
-				"Expected Query transaction but found Command transaction"
-			),
+			Self::Command(_) => panic!("Expected Query transaction but found Command transaction"),
 		}
 	}
 
@@ -238,12 +202,8 @@ impl<'a, T: Transaction> StandardTransaction<'a, T> {
 
 	pub fn version(&self) -> CommitVersion {
 		match self {
-			StandardTransaction::Command(txn) => {
-				VersionedQueryTransaction::version(*txn)
-			}
-			StandardTransaction::Query(txn) => {
-				VersionedQueryTransaction::version(*txn)
-			}
+			StandardTransaction::Command(txn) => VersionedQueryTransaction::version(*txn),
+			StandardTransaction::Query(txn) => VersionedQueryTransaction::version(*txn),
 		}
 	}
 }

@@ -20,16 +20,8 @@ impl UnversionedGet for Sqlite {
 				params![key.to_vec()],
 				|row| {
 					Ok(Unversioned {
-						key: EncodedKey::new(
-							row.get::<_, Vec<u8>>(
-								0,
-							)?,
-						),
-						row: EncodedRow(CowVec::new(
-							row.get::<_, Vec<u8>>(
-								1,
-							)?,
-						)),
+						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
+						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					})
 				},
 			)

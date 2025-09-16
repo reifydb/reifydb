@@ -16,18 +16,7 @@ pub use get::GetType;
 use crate::Value;
 
 /// All possible RQL data types
-#[derive(
-	Clone,
-	Copy,
-	Debug,
-	Hash,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Clone, Copy, Debug, Hash, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum Type {
 	/// A boolean: true or false.
 	Boolean,
@@ -103,21 +92,11 @@ impl Type {
 	}
 
 	pub fn is_signed_integer(&self) -> bool {
-		matches!(
-			self,
-			Type::Int1
-				| Type::Int2 | Type::Int4 | Type::Int8
-				| Type::Int16 | Type::Int
-		)
+		matches!(self, Type::Int1 | Type::Int2 | Type::Int4 | Type::Int8 | Type::Int16 | Type::Int)
 	}
 
 	pub fn is_unsigned_integer(&self) -> bool {
-		matches!(
-			self,
-			Type::Uint1
-				| Type::Uint2 | Type::Uint4 | Type::Uint8
-				| Type::Uint16 | Type::Uint
-		)
+		matches!(self, Type::Uint1 | Type::Uint2 | Type::Uint4 | Type::Uint8 | Type::Uint16 | Type::Uint)
 	}
 
 	pub fn is_integer(&self) -> bool {
@@ -133,12 +112,7 @@ impl Type {
 	}
 
 	pub fn is_temporal(&self) -> bool {
-		matches!(
-			self,
-			Type::Date
-				| Type::DateTime | Type::Time
-				| Type::Interval
-		)
+		matches!(self, Type::Date | Type::DateTime | Type::Time | Type::Interval)
 	}
 
 	pub fn is_uuid(&self) -> bool {

@@ -12,15 +12,12 @@ use reifydb_rql::plan::physical::AlterSequencePlan;
 use reifydb_type::{
 	Value,
 	diagnostic::{
-		catalog, catalog::table_not_found, query::column_not_found,
-		sequence::can_not_alter_not_auto_increment,
+		catalog, catalog::table_not_found, query::column_not_found, sequence::can_not_alter_not_auto_increment,
 	},
 	return_error,
 };
 
-use crate::{
-	StandardCommandTransaction, evaluate::evaluate, execute::Executor,
-};
+use crate::{StandardCommandTransaction, evaluate::evaluate, execute::Executor};
 
 impl Executor {
 	pub(crate) fn alter_table_sequence<T: Transaction>(
@@ -30,11 +27,7 @@ impl Executor {
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.sequence.namespace.text();
 
-		let Some(namespace) = CatalogStore::find_namespace_by_name(
-			txn,
-			namespace_name,
-		)?
-		else {
+		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 			return_error!(namespace_not_found(
 				plan.sequence.namespace.clone().into_owned(),
 				namespace_name,
@@ -43,42 +36,27 @@ impl Executor {
 
 		// Get the table name from the column's source
 		let table_name = match &plan.column.source {
-			reifydb_core::interface::identifier::ColumnSource::Source { source, .. } => source.text(),
+			reifydb_core::interface::identifier::ColumnSource::Source {
+				source,
+				..
+			} => source.text(),
 			reifydb_core::interface::identifier::ColumnSource::Alias(alias) => alias.text(),
 		};
 
-		let Some(table) = CatalogStore::find_table_by_name(
-			txn,
-			namespace.id,
-			table_name,
-		)?
-		else {
+		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
 			return_error!(table_not_found(
-				plan.column
-					.source
-					.as_fragment()
-					.clone()
-					.into_owned(),
+				plan.column.source.as_fragment().clone().into_owned(),
 				&namespace.name,
 				table_name,
 			));
 		};
 
-		let Some(column) = CatalogStore::find_column_by_name(
-			txn,
-			table.id,
-			plan.column.name.text(),
-		)?
-		else {
-			return_error!(column_not_found(
-				plan.column.name.clone().into_owned()
-			));
+		let Some(column) = CatalogStore::find_column_by_name(txn, table.id, plan.column.name.text())? else {
+			return_error!(column_not_found(plan.column.name.clone().into_owned()));
 		};
 
 		if !column.auto_increment {
-			return_error!(can_not_alter_not_auto_increment(
-				plan.column.name
-			));
+			return_error!(can_not_alter_not_auto_increment(plan.column.name));
 		}
 
 		// For catalog operations, use empty params since no
@@ -90,10 +68,7 @@ impl Executor {
 					namespace: None,
 					table: None,
 					column: None,
-					column_type: Some(column
-						.constraint
-						.get_type()
-						.clone()),
+					column_type: Some(column.constraint.get_type().clone()),
 					policies: vec![],
 				}),
 				column_policies: vec![],
@@ -109,12 +84,7 @@ impl Executor {
 		debug_assert_eq!(data.len(), 1);
 
 		let value = data.get_value(0);
-		ColumnSequence::set_value(
-			txn,
-			table.id,
-			column.id,
-			value.clone(),
-		)?;
+		ColumnSequence::set_value(txn, table.id, column.id, value.clone())?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(namespace.name)),
@@ -134,19 +104,13 @@ mod tests {
 	};
 	use reifydb_core::interface::{
 		Params,
-		expression::{
-			ConstantExpression::Number, Expression::Constant,
-		},
-		identifier::{
-			ColumnIdentifier, ColumnSource, SequenceIdentifier,
-		},
+		expression::{ConstantExpression::Number, Expression::Constant},
+		identifier::{ColumnIdentifier, ColumnSource, SequenceIdentifier},
 	};
 	use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
 	use reifydb_type::{Fragment, Type, TypeConstraint, Value};
 
-	use crate::{
-		execute::Executor, test_utils::create_test_command_transaction,
-	};
+	use crate::{execute::Executor, test_utils::create_test_command_transaction};
 
 	#[test]
 	fn test_ok() {
@@ -187,12 +151,8 @@ mod tests {
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal(
-						"test_namespace",
-					),
-					source: Fragment::owned_internal(
-						"users",
-					),
+					namespace: Fragment::owned_internal("test_namespace"),
+					source: Fragment::owned_internal("users"),
 				},
 				name: Fragment::owned_internal("id"),
 			},
@@ -202,17 +162,10 @@ mod tests {
 		};
 
 		let result = Executor::testing()
-			.execute_command_plan(
-				&mut txn,
-				PhysicalPlan::AlterSequence(plan),
-				Params::default(),
-			)
+			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap();
 
-		assert_eq!(
-			result.row(0)[0],
-			Value::Utf8("test_namespace".to_string())
-		);
+		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("users".to_string()));
 		assert_eq!(result.row(0)[2], Value::Utf8("id".to_string()));
 		assert_eq!(result.row(0)[3], Value::Int4(1000));
@@ -231,10 +184,7 @@ mod tests {
 				columns: vec![TableColumnToCreate {
 					fragment: None,
 					name: "id".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Int4,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Int4),
 					policies: vec![],
 					auto_increment: false,
 				}],
@@ -250,12 +200,8 @@ mod tests {
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal(
-						"test_namespace",
-					),
-					source: Fragment::owned_internal(
-						"items",
-					),
+					namespace: Fragment::owned_internal("test_namespace"),
+					source: Fragment::owned_internal("items"),
 				},
 				name: Fragment::owned_internal("id"),
 			},
@@ -265,11 +211,7 @@ mod tests {
 		};
 
 		let err = Executor::testing()
-			.execute_command_plan(
-				&mut txn,
-				PhysicalPlan::AlterSequence(plan),
-				Params::default(),
-			)
+			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap_err();
 
 		let diagnostic = err.diagnostic();
@@ -287,12 +229,8 @@ mod tests {
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal(
-						"non_existent_schema",
-					),
-					source: Fragment::owned_internal(
-						"some_table",
-					),
+					namespace: Fragment::owned_internal("non_existent_schema"),
+					source: Fragment::owned_internal("some_table"),
 				},
 				name: Fragment::owned_internal("id"),
 			},
@@ -302,11 +240,7 @@ mod tests {
 		};
 
 		let err = Executor::testing()
-			.execute_command_plan(
-				&mut txn,
-				PhysicalPlan::AlterSequence(plan),
-				Params::default(),
-			)
+			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap_err();
 
 		assert_eq!(err.diagnostic().code, "CA_002");
@@ -320,18 +254,12 @@ mod tests {
 		let plan = AlterSequencePlan {
 			sequence: SequenceIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal(
-					"non_existent_table_id_seq",
-				),
+				Fragment::owned_internal("non_existent_table_id_seq"),
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal(
-						"test_namespace",
-					),
-					source: Fragment::owned_internal(
-						"non_existent_table",
-					),
+					namespace: Fragment::owned_internal("test_namespace"),
+					source: Fragment::owned_internal("non_existent_table"),
 				},
 				name: Fragment::owned_internal("id"),
 			},
@@ -341,11 +269,7 @@ mod tests {
 		};
 
 		let err = Executor::testing()
-			.execute_command_plan(
-				&mut txn,
-				PhysicalPlan::AlterSequence(plan),
-				Params::default(),
-			)
+			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap_err();
 
 		assert_eq!(err.diagnostic().code, "CA_004");
@@ -365,10 +289,7 @@ mod tests {
 				columns: vec![TableColumnToCreate {
 					fragment: None,
 					name: "id".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Int4,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Int4),
 					policies: vec![],
 					auto_increment: true,
 				}],
@@ -380,22 +301,14 @@ mod tests {
 		let plan = AlterSequencePlan {
 			sequence: SequenceIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal(
-					"posts_non_existent_column_seq",
-				),
+				Fragment::owned_internal("posts_non_existent_column_seq"),
 			),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal(
-						"test_namespace",
-					),
-					source: Fragment::owned_internal(
-						"posts",
-					),
+					namespace: Fragment::owned_internal("test_namespace"),
+					source: Fragment::owned_internal("posts"),
 				},
-				name: Fragment::owned_internal(
-					"non_existent_column",
-				),
+				name: Fragment::owned_internal("non_existent_column"),
 			},
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("1000"),
@@ -403,11 +316,7 @@ mod tests {
 		};
 
 		let err = Executor::testing()
-			.execute_command_plan(
-				&mut txn,
-				PhysicalPlan::AlterSequence(plan),
-				Params::default(),
-			)
+			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap_err();
 
 		assert_eq!(err.diagnostic().code, "QUERY_001");

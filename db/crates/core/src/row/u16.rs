@@ -8,40 +8,22 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_u16(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<u16>,
-	) {
+	pub fn set_u16(&self, row: &mut EncodedRow, index: usize, value: impl Into<u16>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uint2);
 		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut u16,
-				value.into(),
-			)
-		}
+		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u16, value.into()) }
 	}
 
 	pub fn get_u16(&self, row: &EncodedRow, index: usize) -> u16 {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Uint2);
-		unsafe {
-			(row.as_ptr().add(field.offset) as *const u16)
-				.read_unaligned()
-		}
+		unsafe { (row.as_ptr().add(field.offset) as *const u16).read_unaligned() }
 	}
 
-	pub fn try_get_u16(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<u16> {
+	pub fn try_get_u16(&self, row: &EncodedRow, index: usize) -> Option<u16> {
 		if row.is_defined(index) {
 			Some(self.get_u16(row, index))
 		} else {
@@ -96,10 +78,7 @@ mod tests {
 	fn test_various_values() {
 		let layout = EncodedRowLayout::new(&[Type::Uint2]);
 
-		let test_values = [
-			0u16, 1u16, 255u16, 256u16, 32767u16, 32768u16,
-			65534u16, 65535u16,
-		];
+		let test_values = [0u16, 1u16, 255u16, 256u16, 32767u16, 32768u16, 65534u16, 65535u16];
 
 		for value in test_values {
 			let mut row = layout.allocate_row();
@@ -113,8 +92,7 @@ mod tests {
 		let layout = EncodedRowLayout::new(&[Type::Uint2]);
 
 		// Test common port numbers
-		let ports =
-			[80u16, 443u16, 8080u16, 3000u16, 5432u16, 27017u16];
+		let ports = [80u16, 443u16, 8080u16, 3000u16, 5432u16, 27017u16];
 
 		for port in ports {
 			let mut row = layout.allocate_row();
@@ -125,11 +103,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Uint2,
-			Type::Uint1,
-			Type::Uint2,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Uint2, Type::Uint1, Type::Uint2]);
 		let mut row = layout.allocate_row();
 
 		layout.set_u16(&mut row, 0, 60000u16);

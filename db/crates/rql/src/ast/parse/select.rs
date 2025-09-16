@@ -15,11 +15,7 @@ impl<'a> Parser<'a> {
 		let (nodes, has_braces) = self.parse_expressions(true)?;
 
 		if nodes.len() > 1 && !has_braces {
-			return_error!(
-				select_multiple_expressions_without_braces(
-					token.fragment
-				)
-			);
+			return_error!(select_multiple_expressions_without_braces(token.fragment));
 		}
 
 		Ok(AstMap {
@@ -127,8 +123,7 @@ mod tests {
 
 	#[test]
 	fn test_select_colon_syntax() {
-		let tokens =
-			tokenize("SELECT total: price * quantity").unwrap();
+		let tokens = tokenize("SELECT total: price * quantity").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -142,10 +137,7 @@ mod tests {
 
 		// Left side should be "price * quantity"
 		let left_infix = infix.left.as_infix();
-		assert!(matches!(
-			left_infix.operator,
-			InfixOperator::Multiply(_)
-		));
+		assert!(matches!(left_infix.operator, InfixOperator::Multiply(_)));
 		assert_eq!(left_infix.left.as_identifier().text(), "price");
 		assert_eq!(left_infix.right.as_identifier().text(), "quantity");
 

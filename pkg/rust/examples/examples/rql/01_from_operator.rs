@@ -18,13 +18,7 @@ fn main() {
 	// Example 1: FROM with inline data (single row)
 	log_info!("Example 1: FROM with single inline row");
 	log_query(r#"from [{ name: "Alice", age: 30 }]"#);
-	for frame in db
-		.query_as_root(
-			r#"from [{ name: "Alice", age: 30 }]"#,
-			Params::None,
-		)
-		.unwrap()
-	{
+	for frame in db.query_as_root(r#"from [{ name: "Alice", age: 30 }]"#, Params::None).unwrap() {
 		log_info!("{}", frame);
 		// Output:
 		// +--------+-------+
@@ -69,9 +63,7 @@ fn main() {
 
 	// Example 3: FROM with different data types
 	log_info!("\nExample 3: FROM with various data types");
-	log_query(
-		r#"from [{ id: 1, active: true, price: 19.99, description: "Product A" }]"#,
-	);
+	log_query(r#"from [{ id: 1, active: true, price: 19.99, description: "Product A" }]"#);
 	for frame in db
 		.query_as_root(
 			r#"
@@ -132,9 +124,7 @@ fn main() {
 
 	// Now query from the table
 	log_query(r#"from demo.users"#);
-	for frame in
-		db.query_as_root(r#"from demo.users"#, Params::None).unwrap()
-	{
+	for frame in db.query_as_root(r#"from demo.users"#, Params::None).unwrap() {
 		log_info!("{}", frame);
 		// Output:
 		// +------+------------+----------------------+-------------+

@@ -2,23 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{
-		EvaluationContext, evaluate::expression::AccessSourceExpression,
-	},
+	interface::{EvaluationContext, evaluate::expression::AccessSourceExpression},
 	value::columnar::Column,
 };
-use reifydb_type::{
-	Fragment, OwnedFragment, diagnostic::query::column_not_found, error,
-};
+use reifydb_type::{Fragment, OwnedFragment, diagnostic::query::column_not_found, error};
 
 use crate::evaluate::StandardEvaluator;
 
 impl StandardEvaluator {
-	pub(crate) fn access(
-		&self,
-		ctx: &EvaluationContext,
-		expr: &AccessSourceExpression,
-	) -> crate::Result<Column> {
+	pub(crate) fn access(&self, ctx: &EvaluationContext, expr: &AccessSourceExpression) -> crate::Result<Column> {
 		use reifydb_core::interface::identifier::ColumnSource;
 
 		// Extract source name based on the ColumnSource type
@@ -45,16 +37,10 @@ impl StandardEvaluator {
 					// be "namespace.table" We need to
 					// match against either just table name
 					// or namespace.table
-					let full_source = format!(
-						"{}.{}",
-						fq.namespace, fq.source
-					);
-					fq.source == source
-						|| full_source == source
+					let full_source = format!("{}.{}", fq.namespace, fq.source);
+					fq.source == source || full_source == source
 				}
-				Column::SourceQualified(sq) => {
-					sq.source == source
-				}
+				Column::SourceQualified(sq) => sq.source == source,
 				_ => false,
 			}
 		});
@@ -64,13 +50,11 @@ impl StandardEvaluator {
 			Ok(col.with_new_data(col.data().clone()))
 		} else {
 			// If not found, return an error with proper diagnostic
-			Err(error!(column_not_found(Fragment::Owned(
-				OwnedFragment::Statement {
-					column: expr.column.name.column(),
-					line: expr.column.name.line(),
-					text: format!("{}.{}", source, column),
-				}
-			))))
+			Err(error!(column_not_found(Fragment::Owned(OwnedFragment::Statement {
+				column: expr.column.name.column(),
+				line: expr.column.name.line(),
+				text: format!("{}.{}", source, column),
+			}))))
 		}
 	}
 }

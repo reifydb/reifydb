@@ -2,9 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::{
-	QueryTransaction, evaluate::expression::Expression,
-};
+use reifydb_core::interface::{QueryTransaction, evaluate::expression::Expression};
 
 use crate::{
 	ast::AstStatement,
@@ -19,10 +17,7 @@ pub mod physical;
 
 pub type RowToInsert = Vec<Expression<'static>>;
 
-pub fn plan<'a, T>(
-	rx: &mut T,
-	statement: AstStatement<'a>,
-) -> crate::Result<Option<PhysicalPlan<'a>>>
+pub fn plan<'a, T>(rx: &mut T, statement: AstStatement<'a>) -> crate::Result<Option<PhysicalPlan<'a>>>
 where
 	T: QueryTransaction + CatalogQueryTransaction,
 {

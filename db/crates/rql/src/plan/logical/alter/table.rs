@@ -35,50 +35,51 @@ pub struct AlterIndexColumn<'a> {
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_table<
-		'a,
-		't,
-		T: CatalogQueryTransaction,
-	>(
+	pub(crate) fn compile_alter_table<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstAlterTable<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve the table identifier
-		let table = resolver
-			.resolve_maybe_qualified_table(&ast.table, true)?;
+		let table = resolver.resolve_maybe_qualified_table(&ast.table, true)?;
 
 		// Convert operations
 		let operations = ast
-            .operations
-            .into_iter()
-            .map(|op| {
-                match op {
-                    AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
-                        // Convert columns to use qualified identifiers
-                        let qualified_columns = columns.into_iter().map(|col| {
-                            use reifydb_core::interface::identifier::ColumnSource;
-                            AlterIndexColumn {
-                                column: ColumnIdentifier {
-                                    source: ColumnSource::Source {
-                                        namespace: table.namespace.clone(),
-                                        source: table.name.clone(),
-                                    },
-                                    name: col.column.name,
-                                },
-                                order: col.order,
-                            }
-                        }).collect();
+			.operations
+			.into_iter()
+			.map(|op| {
+				match op {
+					AstAlterTableOperation::CreatePrimaryKey {
+						name,
+						columns,
+					} => {
+						// Convert columns to use qualified identifiers
+						let qualified_columns = columns
+							.into_iter()
+							.map(|col| {
+								use reifydb_core::interface::identifier::ColumnSource;
+								AlterIndexColumn {
+									column: ColumnIdentifier {
+										source: ColumnSource::Source {
+											namespace: table
+												.namespace
+												.clone(),
+											source: table.name.clone(),
+										},
+										name: col.column.name,
+									},
+									order: col.order,
+								}
+							})
+							.collect();
 						AlterTableOperation::CreatePrimaryKey {
-                            name,
-                            columns: qualified_columns,
-                        }
-                    }
-                    AstAlterTableOperation::DropPrimaryKey => {
-                        AlterTableOperation::DropPrimaryKey
-                    }
-                }
-            })
-            .collect();
+							name,
+							columns: qualified_columns,
+						}
+					}
+					AstAlterTableOperation::DropPrimaryKey => AlterTableOperation::DropPrimaryKey,
+				}
+			})
+			.collect();
 
 		let node = AlterTableNode {
 			table,

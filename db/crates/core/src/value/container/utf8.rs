@@ -132,19 +132,8 @@ impl Utf8Container {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<String> = self
-			.data
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.cloned()
-			.collect();
-		let new_bitvec: Vec<bool> = self
-			.bitvec
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.collect();
+		let new_data: Vec<String> = self.data.iter().skip(start).take(end - start).cloned().collect();
+		let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
 		Self {
 			data: CowVec::new(new_data),
 			bitvec: BitVec::from_slice(&new_bitvec),
@@ -213,11 +202,7 @@ mod tests {
 
 	#[test]
 	fn test_new() {
-		let data = vec![
-			"hello".to_string(),
-			"world".to_string(),
-			"test".to_string(),
-		];
+		let data = vec!["hello".to_string(), "world".to_string(), "test".to_string()];
 		let bitvec = BitVec::from_slice(&[true, true, true]);
 		let container = Utf8Container::new(data.clone(), bitvec);
 
@@ -229,11 +214,7 @@ mod tests {
 
 	#[test]
 	fn test_from_vec() {
-		let data = vec![
-			"foo".to_string(),
-			"bar".to_string(),
-			"baz".to_string(),
-		];
+		let data = vec!["foo".to_string(), "bar".to_string(), "baz".to_string()];
 		let container = Utf8Container::from_vec(data);
 
 		assert_eq!(container.len(), 3);
@@ -275,14 +256,8 @@ mod tests {
 
 	#[test]
 	fn test_extend() {
-		let mut container1 = Utf8Container::from_vec(vec![
-			"a".to_string(),
-			"b".to_string(),
-		]);
-		let container2 = Utf8Container::from_vec(vec![
-			"c".to_string(),
-			"d".to_string(),
-		]);
+		let mut container1 = Utf8Container::from_vec(vec!["a".to_string(), "b".to_string()]);
+		let container2 = Utf8Container::from_vec(vec!["c".to_string(), "d".to_string()]);
 
 		container1.extend(&container2).unwrap();
 
@@ -295,8 +270,7 @@ mod tests {
 
 	#[test]
 	fn test_extend_from_undefined() {
-		let mut container =
-			Utf8Container::from_vec(vec!["test".to_string()]);
+		let mut container = Utf8Container::from_vec(vec!["test".to_string()]);
 		container.extend_from_undefined(2);
 
 		assert_eq!(container.len(), 3);
@@ -307,21 +281,12 @@ mod tests {
 
 	#[test]
 	fn test_iter() {
-		let data =
-			vec!["x".to_string(), "y".to_string(), "z".to_string()];
+		let data = vec!["x".to_string(), "y".to_string(), "z".to_string()];
 		let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
 		let container = Utf8Container::new(data, bitvec);
 
-		let collected: Vec<Option<&String>> =
-			container.iter().collect();
-		assert_eq!(
-			collected,
-			vec![
-				Some(&"x".to_string()),
-				None,
-				Some(&"z".to_string())
-			]
-		);
+		let collected: Vec<Option<&String>> = container.iter().collect();
+		assert_eq!(collected, vec![Some(&"x".to_string()), None, Some(&"z".to_string())]);
 	}
 
 	#[test]
@@ -358,11 +323,8 @@ mod tests {
 
 	#[test]
 	fn test_reorder() {
-		let mut container = Utf8Container::from_vec(vec![
-			"first".to_string(),
-			"second".to_string(),
-			"third".to_string(),
-		]);
+		let mut container =
+			Utf8Container::from_vec(vec!["first".to_string(), "second".to_string(), "third".to_string()]);
 		let indices = [2, 0, 1];
 
 		container.reorder(&indices);
@@ -375,10 +337,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder_with_out_of_bounds() {
-		let mut container = Utf8Container::from_vec(vec![
-			"a".to_string(),
-			"b".to_string(),
-		]);
+		let mut container = Utf8Container::from_vec(vec!["a".to_string(), "b".to_string()]);
 		let indices = [1, 5, 0]; // index 5 is out of bounds
 
 		container.reorder(&indices);

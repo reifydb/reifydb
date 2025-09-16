@@ -10,14 +10,14 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, delta::Delta, diagnostic::transaction,
-	error, interface::TransactionId, return_error, row::EncodedRow,
+	CommitVersion, EncodedKey, delta::Delta, diagnostic::transaction, error, interface::TransactionId,
+	return_error, row::EncodedRow,
 };
 
 use super::*;
 use crate::mvcc::{
-	conflict::ConflictManager, marker::Marker, pending::PendingWrites,
-	transaction::version::VersionProvider, types::Pending,
+	conflict::ConflictManager, marker::Marker, pending::PendingWrites, transaction::version::VersionProvider,
+	types::Pending,
 };
 
 pub struct TransactionManagerCommand<L>
@@ -94,9 +94,7 @@ where
 	/// Returns a marker for the keys that are operated and the pending
 	/// writes manager. As Rust's borrow checker does not allow to borrow
 	/// mutable marker and the immutable pending writes manager at the same
-	pub fn marker_with_pending_writes(
-		&mut self,
-	) -> (Marker<'_>, &PendingWrites) {
+	pub fn marker_with_pending_writes(&mut self) -> (Marker<'_>, &PendingWrites) {
 		(Marker::new(&mut self.conflicts), &self.pending_writes)
 	}
 
@@ -116,11 +114,7 @@ where
 	L: VersionProvider,
 {
 	/// Set a key-value pair to the transaction.
-	pub fn set(
-		&mut self,
-		key: &EncodedKey,
-		row: EncodedRow,
-	) -> Result<(), reifydb_type::Error> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -133,10 +127,7 @@ where
 	/// This is done by adding a delete marker for the key at commit
 	/// timestamp.  Any reads happening before this timestamp would be
 	/// unaffected. Any reads after this commit would see the deletion.
-	pub fn remove(
-		&mut self,
-		key: &EncodedKey,
-	) -> Result<(), reifydb_type::Error> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -160,10 +151,7 @@ where
 	}
 
 	/// Returns `true` if the pending writes contains the key.
-	pub fn contains_key(
-		&mut self,
-		key: &EncodedKey,
-	) -> Result<Option<bool>, reifydb_type::Error> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<Option<bool>, reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -187,10 +175,7 @@ where
 
 	/// Looks for the key in the pending writes, if such key is not in the
 	/// pending writes, the end user can read the key from the database.
-	pub fn get<'a, 'b: 'a>(
-		&'a mut self,
-		key: &'b EncodedKey,
-	) -> Result<Option<Pending>, reifydb_type::Error> {
+	pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b EncodedKey) -> Result<Option<Pending>, reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -225,9 +210,7 @@ where
 {
 	pub fn commit<F>(&mut self, apply: F) -> Result<(), reifydb_type::Error>
 	where
-		F: FnOnce(
-			Vec<Pending>,
-		) -> Result<(), Box<dyn std::error::Error>>,
+		F: FnOnce(Vec<Pending>) -> Result<(), Box<dyn std::error::Error>>,
 	{
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -239,17 +222,16 @@ where
 			return Ok(());
 		}
 
-		let (version, entries) =
-			self.commit_pending().map_err(|e| {
-				// Check if this is a conflict error by
-				// examining the error code
-				if e.0.code == "TXN_001" {
-					e // Don't discard on conflict, let caller handle retry
-				} else {
-					self.discard();
-					e
-				}
-			})?;
+		let (version, entries) = self.commit_pending().map_err(|e| {
+			// Check if this is a conflict error by
+			// examining the error code
+			if e.0.code == "TXN_001" {
+				e // Don't discard on conflict, let caller handle retry
+			} else {
+				self.discard();
+				e
+			}
+		})?;
 
 		apply(entries)
 			.map(|_| {
@@ -259,9 +241,7 @@ where
 			.map_err(|e| {
 				self.oracle().done_commit(version);
 				self.discard();
-				error!(transaction::commit_failed(
-					e.to_string()
-				))
+				error!(transaction::commit_failed(e.to_string()))
 			})
 	}
 }
@@ -270,11 +250,7 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
-	fn set_internal(
-		&mut self,
-		key: &EncodedKey,
-		row: EncodedRow,
-	) -> Result<(), reifydb_type::Error> {
+	fn set_internal(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -288,10 +264,7 @@ where
 		})
 	}
 
-	fn modify(
-		&mut self,
-		pending: Pending,
-	) -> Result<(), reifydb_type::Error> {
+	fn modify(&mut self, pending: Pending) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -301,9 +274,7 @@ where
 		let cnt = self.count + 1;
 		// Extra row for the version in key.
 		let size = self.size + pending_writes.estimate_size(&pending);
-		if cnt >= pending_writes.max_batch_entries()
-			|| size >= pending_writes.max_batch_size()
-		{
+		if cnt >= pending_writes.max_batch_entries() || size >= pending_writes.max_batch_size() {
 			return_error!(transaction::transaction_too_large());
 		}
 
@@ -321,9 +292,7 @@ where
 		let row = pending.row();
 		let version = pending.version;
 
-		if let Some((old_key, old_value)) =
-			pending_writes.remove_entry(key)
-		{
+		if let Some((old_key, old_value)) = pending_writes.remove_entry(key) {
 			if old_value.version != version {
 				self.duplicates.push(Pending {
 					delta: match row {
@@ -349,9 +318,7 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
-	fn commit_pending(
-		&mut self,
-	) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
+	fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -362,54 +329,46 @@ where
 
 		let conflict_manager = mem::take(&mut self.conflicts);
 
-		match self.oracle.new_commit(
-			&mut self.done_query,
-			self.version,
-			conflict_manager,
-		)? {
+		match self.oracle.new_commit(&mut self.done_query, self.version, conflict_manager)? {
 			CreateCommitResult::Conflict(conflicts) => {
 				// If there is a conflict, we should not send
 				// the updates to the write channel.
 				// Instead, we should return the conflict error
 				// to the user.
 				self.conflicts = conflicts;
-				return_error!(
-					transaction::transaction_conflict()
-				)
+				return_error!(transaction::transaction_conflict())
 			}
 			CreateCommitResult::Success(version) => {
-				let pending_writes =
-					mem::take(&mut self.pending_writes);
-				let duplicate_writes =
-					mem::take(&mut self.duplicates);
+				let pending_writes = mem::take(&mut self.pending_writes);
+				let duplicate_writes = mem::take(&mut self.duplicates);
 				// Pre-allocate exact capacity to avoid
 				// reallocations
-				let mut all = Vec::with_capacity(
-					pending_writes.len()
-						+ duplicate_writes.len(),
-				);
+				let mut all = Vec::with_capacity(pending_writes.len() + duplicate_writes.len());
 
-				let process =
-					|entries: &mut Vec<Pending>,
-					 mut pending: Pending| {
-						pending.version = version;
-						entries.push(pending);
-					};
+				let process = |entries: &mut Vec<Pending>, mut pending: Pending| {
+					pending.version = version;
+					entries.push(pending);
+				};
 
 				pending_writes.into_iter().for_each(|(k, v)| {
-                    process(
-                        &mut all,
-                        Pending {
-                            delta: match v.row() {
-                                Some(row) => Delta::Set { key: k, row: row.clone() },
-                                None => Delta::Remove { key: k }},
-                            version: v.version},
-                    )
-                });
-
-				duplicate_writes.into_iter().for_each(|item| {
-					process(&mut all, item)
+					process(
+						&mut all,
+						Pending {
+							delta: match v.row() {
+								Some(row) => Delta::Set {
+									key: k,
+									row: row.clone(),
+								},
+								None => Delta::Remove {
+									key: k,
+								},
+							},
+							version: v.version,
+						},
+					)
 				});
+
+				duplicate_writes.into_iter().for_each(|item| process(&mut all, item));
 
 				// version should not be zero if we're inserting
 				// transaction markers.

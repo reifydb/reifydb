@@ -12,9 +12,7 @@ use reifydb_core::{
 };
 use reifydb_type::Fragment;
 
-use super::super::{
-	CompileOperator, FlowCompiler, conversion::to_owned_expression,
-};
+use super::super::{CompileOperator, FlowCompiler, conversion::to_owned_expression};
 use crate::{Result, plan::physical::InlineDataNode};
 
 pub(crate) struct InlineDataCompiler {
@@ -24,21 +22,21 @@ pub(crate) struct InlineDataCompiler {
 impl<'a> From<InlineDataNode<'a>> for InlineDataCompiler {
 	fn from(inline_data: InlineDataNode<'a>) -> Self {
 		// Convert InlineDataNode<'a> to InlineDataNode<'static>
-		let converted_rows =
-			inline_data
-				.rows
-				.into_iter()
-				.map(|row| {
-					row.into_iter()
-						.map(|alias_expr| {
-							AliasExpression {
-					alias: IdentExpression(Fragment::Owned(alias_expr.alias.0.into_owned())),
-					expression: Box::new(to_owned_expression(*alias_expr.expression)),
-					fragment: Fragment::Owned(alias_expr.fragment.into_owned())}
-						})
-						.collect()
-				})
-				.collect();
+		let converted_rows = inline_data
+			.rows
+			.into_iter()
+			.map(|row| {
+				row.into_iter()
+					.map(|alias_expr| AliasExpression {
+						alias: IdentExpression(Fragment::Owned(
+							alias_expr.alias.0.into_owned(),
+						)),
+						expression: Box::new(to_owned_expression(*alias_expr.expression)),
+						fragment: Fragment::Owned(alias_expr.fragment.into_owned()),
+					})
+					.collect()
+			})
+			.collect();
 
 		Self {
 			inline_data: InlineDataNode {

@@ -5,9 +5,7 @@
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
-use crossbeam_channel::{
-	Receiver, Sender, TryRecvError, TrySendError, bounded,
-};
+use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
 use reifydb_core::interface::subsystem::logging::Record;
 
 /// Lock-free buffer for log records
@@ -46,13 +44,11 @@ impl Buffer {
 		match self.sender.try_send(record) {
 			Ok(()) => {
 				self.size.fetch_add(1, Ordering::AcqRel);
-				self.total_processed
-					.fetch_add(1, Ordering::Relaxed);
+				self.total_processed.fetch_add(1, Ordering::Relaxed);
 				Ok(())
 			}
 			Err(TrySendError::Full(record)) => {
-				self.total_dropped
-					.fetch_add(1, Ordering::Relaxed);
+				self.total_dropped.fetch_add(1, Ordering::Relaxed);
 				Err(record)
 			}
 			Err(TrySendError::Disconnected(record)) => Err(record),
@@ -70,20 +66,13 @@ impl Buffer {
 				// If buffer is full, try to remove one old item
 				// and retry
 				if self.receiver.try_recv().is_ok() {
-					self.size
-						.fetch_sub(1, Ordering::AcqRel);
-					self.total_dropped.fetch_add(
-						1,
-						Ordering::Relaxed,
-					);
+					self.size.fetch_sub(1, Ordering::AcqRel);
+					self.total_dropped.fetch_add(1, Ordering::Relaxed);
 					// Try again after making space
 					let _ = self.try_push(record);
 				} else {
 					// Couldn't make space, drop the record
-					self.total_dropped.fetch_add(
-						1,
-						Ordering::Relaxed,
-					);
+					self.total_dropped.fetch_add(1, Ordering::Relaxed);
 				}
 			}
 		}
@@ -91,15 +80,12 @@ impl Buffer {
 
 	/// Drain up to `max_count` records from the buffer
 	pub fn drain(&self, max_count: usize) -> Vec<Record> {
-		let mut records = Vec::with_capacity(
-			max_count.min(self.size.load(Ordering::Acquire)),
-		);
+		let mut records = Vec::with_capacity(max_count.min(self.size.load(Ordering::Acquire)));
 
 		for _ in 0..max_count {
 			match self.receiver.try_recv() {
 				Ok(record) => {
-					self.size
-						.fetch_sub(1, Ordering::AcqRel);
+					self.size.fetch_sub(1, Ordering::AcqRel);
 					records.push(record);
 				}
 				Err(TryRecvError::Empty) => break,

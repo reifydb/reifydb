@@ -17,8 +17,7 @@ use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
 use crate::builder::FlowBuilder;
 
 /// Configuration function for the flow subsystem
-pub type FlowConfigurator<T> =
-	Box<dyn FnOnce(FlowBuilder<T>) -> FlowBuilder<T> + Send>;
+pub type FlowConfigurator<T> = Box<dyn FnOnce(FlowBuilder<T>) -> FlowBuilder<T> + Send>;
 
 /// Factory for creating FlowSubsystem with proper interceptor registration
 pub struct FlowSubsystemFactory<T: Transaction> {
@@ -51,30 +50,19 @@ impl<T: Transaction> Default for FlowSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>>
-	for FlowSubsystemFactory<T>
-{
+impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for FlowSubsystemFactory<T> {
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<
-			StandardCommandTransaction<T>,
-		>,
+		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
 		ioc: &IocContainer,
 	) -> StandardInterceptorBuilder<StandardCommandTransaction<T>> {
 		let ioc = ioc.clone();
 		builder.add_factory(move |interceptors| {
-			interceptors.register(
-				TransactionalFlowInterceptor::<T>::new(
-					ioc.clone(),
-				),
-			);
+			interceptors.register(TransactionalFlowInterceptor::<T>::new(ioc.clone()));
 		})
 	}
 
-	fn create(
-		self: Box<Self>,
-		ioc: &IocContainer,
-	) -> crate::Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> crate::Result<Box<dyn Subsystem>> {
 		let builder = if let Some(configurator) = self.configurator {
 			configurator(FlowBuilder::new())
 		} else {

@@ -518,9 +518,6 @@ mod tests {
 	#[test]
 	fn test_chaining() {
 		let s = "Complex".red().bold().underline();
-		assert_eq!(
-			format!("{}", s),
-			"\x1b[1m\x1b[4m\x1b[31mComplex\x1b[0m"
-		);
+		assert_eq!(format!("{}", s), "\x1b[1m\x1b[4m\x1b[31mComplex\x1b[0m");
 	}
 }

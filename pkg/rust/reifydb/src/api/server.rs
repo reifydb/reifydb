@@ -7,75 +7,37 @@ use reifydb_storage::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };
-use reifydb_transaction::mvcc::transaction::{
-	optimistic::Optimistic, serializable::Serializable,
-};
+use reifydb_transaction::mvcc::transaction::{optimistic::Optimistic, serializable::Serializable};
 
 use crate::{
-	memory, optimistic, serializable, sqlite, MemoryCdc, ServerBuilder,
-	SqliteCdc, UnversionedMemory, UnversionedSqlite,
+	memory, optimistic, serializable, sqlite, MemoryCdc, ServerBuilder, SqliteCdc, UnversionedMemory,
+	UnversionedSqlite,
 };
 
-pub fn memory_optimistic() -> ServerBuilder<
-	Optimistic<Memory, UnversionedMemory>,
-	UnversionedMemory,
-	MemoryCdc,
-> {
+pub fn memory_optimistic() -> ServerBuilder<Optimistic<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc> {
 	let (storage, unversioned, cdc, eventbus) = memory();
-	let (versioned, _, _, _) = optimistic((
-		storage.clone(),
-		unversioned.clone(),
-		cdc.clone(),
-		eventbus.clone(),
-	));
+	let (versioned, _, _, _) = optimistic((storage.clone(), unversioned.clone(), cdc.clone(), eventbus.clone()));
 	ServerBuilder::new(versioned, unversioned, cdc, eventbus)
 }
 
-pub fn memory_serializable() -> ServerBuilder<
-	Serializable<Memory, UnversionedMemory>,
-	UnversionedMemory,
-	MemoryCdc,
-> {
+pub fn memory_serializable() -> ServerBuilder<Serializable<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc> {
 	let (storage, unversioned, cdc, eventbus) = memory();
-	let (versioned, _, _, _) = serializable((
-		storage.clone(),
-		unversioned.clone(),
-		cdc.clone(),
-		eventbus.clone(),
-	));
+	let (versioned, _, _, _) = serializable((storage.clone(), unversioned.clone(), cdc.clone(), eventbus.clone()));
 	ServerBuilder::new(versioned, unversioned, cdc, eventbus)
 }
 
 pub fn sqlite_optimistic(
 	config: SqliteConfig,
-) -> ServerBuilder<
-	Optimistic<Sqlite, UnversionedSqlite>,
-	UnversionedSqlite,
-	SqliteCdc,
-> {
+) -> ServerBuilder<Optimistic<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc> {
 	let (storage, unversioned, cdc, eventbus) = sqlite(config);
-	let (versioned, _, _, _) = optimistic((
-		storage.clone(),
-		unversioned.clone(),
-		cdc.clone(),
-		eventbus.clone(),
-	));
+	let (versioned, _, _, _) = optimistic((storage.clone(), unversioned.clone(), cdc.clone(), eventbus.clone()));
 	ServerBuilder::new(versioned, unversioned, cdc, eventbus)
 }
 
 pub fn sqlite_serializable(
 	config: SqliteConfig,
-) -> ServerBuilder<
-	Serializable<Sqlite, UnversionedSqlite>,
-	UnversionedSqlite,
-	SqliteCdc,
-> {
+) -> ServerBuilder<Serializable<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc> {
 	let (storage, unversioned, cdc, eventbus) = sqlite(config);
-	let (versioned, _, _, _) = serializable((
-		storage.clone(),
-		unversioned.clone(),
-		cdc.clone(),
-		eventbus.clone(),
-	));
+	let (versioned, _, _, _) = serializable((storage.clone(), unversioned.clone(), cdc.clone(), eventbus.clone()));
 	ServerBuilder::new(versioned, unversioned, cdc, eventbus)
 }

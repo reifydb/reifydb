@@ -8,15 +8,10 @@ use reifydb_catalog::{
 };
 use reifydb_core::{event::EventBus, interceptor::Interceptors};
 use reifydb_storage::memory::Memory;
-use reifydb_transaction::{
-	mvcc::transaction::serializable::Serializable, svl::SingleVersionLock,
-};
+use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
 use reifydb_type::{Type, TypeConstraint};
 
-use crate::{
-	EngineTransaction, StandardCommandTransaction,
-	transaction::StandardCdcTransaction,
-};
+use crate::{EngineTransaction, StandardCommandTransaction, transaction::StandardCdcTransaction};
 
 pub fn create_test_command_transaction() -> StandardCommandTransaction<
 	EngineTransaction<
@@ -27,17 +22,10 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 > {
 	let memory = Memory::new();
 	let event_bus = EventBus::new();
-	let unversioned =
-		SingleVersionLock::new(memory.clone(), event_bus.clone());
+	let unversioned = SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
 	StandardCommandTransaction::new(
-		Serializable::new(
-			memory,
-			unversioned.clone(),
-			event_bus.clone(),
-		)
-		.begin_command()
-		.unwrap(),
+		Serializable::new(memory, unversioned.clone(), event_bus.clone()).begin_command().unwrap(),
 		unversioned,
 		cdc,
 		event_bus,
@@ -46,8 +34,7 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 	)
 }
 
-pub fn create_test_command_transaction_with_internal_schema()
--> StandardCommandTransaction<
+pub fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction<
 	EngineTransaction<
 		Serializable<Memory, SingleVersionLock<Memory>>,
 		SingleVersionLock<Memory>,
@@ -56,17 +43,10 @@ pub fn create_test_command_transaction_with_internal_schema()
 > {
 	let memory = Memory::new();
 	let event_bus = EventBus::new();
-	let unversioned =
-		SingleVersionLock::new(memory.clone(), event_bus.clone());
+	let unversioned = SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
 	let mut result = StandardCommandTransaction::new(
-		Serializable::new(
-			memory,
-			unversioned.clone(),
-			event_bus.clone(),
-		)
-		.begin_command()
-		.unwrap(),
+		Serializable::new(memory, unversioned.clone(), event_bus.clone()).begin_command().unwrap(),
 		unversioned,
 		cdc,
 		event_bus,
@@ -92,20 +72,14 @@ pub fn create_test_command_transaction_with_internal_schema()
 			columns: vec![
 				TableColumnToCreate {
 					name: "id".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Int8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Int8),
 					policies: vec![],
 					auto_increment: true,
 					fragment: None,
 				},
 				TableColumnToCreate {
 					name: "data".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Blob,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Blob),
 					policies: vec![],
 					auto_increment: false,
 					fragment: None,

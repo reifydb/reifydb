@@ -54,17 +54,11 @@ impl<'de> Deserialize<'de> for FlowId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = FlowId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(FlowId(value))
 			}
 		}
@@ -128,17 +122,11 @@ impl<'de> Deserialize<'de> for FlowNodeId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = FlowNodeId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(FlowNodeId(value))
 			}
 		}
@@ -196,17 +184,11 @@ impl<'de> Deserialize<'de> for FlowEdgeId {
 		impl Visitor<'_> for U64Visitor {
 			type Value = FlowEdgeId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(
-				self,
-				value: u64,
-			) -> Result<Self::Value, E> {
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
 				Ok(FlowEdgeId(value))
 			}
 		}

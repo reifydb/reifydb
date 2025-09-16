@@ -6,76 +6,32 @@ use crate::value::columnar::ColumnData;
 impl ColumnData {
 	pub fn reorder(&mut self, indices: &[usize]) {
 		match self {
-			ColumnData::Bool(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Float4(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Float8(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Int1(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Int2(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Int4(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Int8(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Int16(container) => {
-				container.reorder(indices)
-			}
+			ColumnData::Bool(container) => container.reorder(indices),
+			ColumnData::Float4(container) => container.reorder(indices),
+			ColumnData::Float8(container) => container.reorder(indices),
+			ColumnData::Int1(container) => container.reorder(indices),
+			ColumnData::Int2(container) => container.reorder(indices),
+			ColumnData::Int4(container) => container.reorder(indices),
+			ColumnData::Int8(container) => container.reorder(indices),
+			ColumnData::Int16(container) => container.reorder(indices),
 			ColumnData::Utf8 {
 				container,
 				..
 			} => container.reorder(indices),
-			ColumnData::Uint1(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Uint2(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Uint4(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Uint8(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Uint16(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Date(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::DateTime(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Time(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Interval(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Undefined(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::RowNumber(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::IdentityId(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Uuid4(container) => {
-				container.reorder(indices)
-			}
-			ColumnData::Uuid7(container) => {
-				container.reorder(indices)
-			}
+			ColumnData::Uint1(container) => container.reorder(indices),
+			ColumnData::Uint2(container) => container.reorder(indices),
+			ColumnData::Uint4(container) => container.reorder(indices),
+			ColumnData::Uint8(container) => container.reorder(indices),
+			ColumnData::Uint16(container) => container.reorder(indices),
+			ColumnData::Date(container) => container.reorder(indices),
+			ColumnData::DateTime(container) => container.reorder(indices),
+			ColumnData::Time(container) => container.reorder(indices),
+			ColumnData::Interval(container) => container.reorder(indices),
+			ColumnData::Undefined(container) => container.reorder(indices),
+			ColumnData::RowNumber(container) => container.reorder(indices),
+			ColumnData::IdentityId(container) => container.reorder(indices),
+			ColumnData::Uuid4(container) => container.reorder(indices),
+			ColumnData::Uuid7(container) => container.reorder(indices),
 			ColumnData::Blob {
 				container,
 				..
@@ -147,11 +103,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder_string() {
-		let mut col = ColumnData::utf8([
-			"a".to_string(),
-			"b".to_string(),
-			"c".to_string(),
-		]);
+		let mut col = ColumnData::utf8(["a".to_string(), "b".to_string(), "c".to_string()]);
 		col.reorder(&[2, 0, 1]);
 
 		assert_eq!(col.len(), 3);

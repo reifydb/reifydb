@@ -32,37 +32,19 @@ impl Default for StandardEvaluator {
 			functions: Functions::builder()
 				.register_scalar("abs", math::scalar::Abs::new)
 				.register_scalar("avg", math::scalar::Avg::new)
-				.register_scalar(
-					"blob::hex",
-					blob::BlobHex::new,
-				)
-				.register_scalar(
-					"blob::b64",
-					blob::BlobB64::new,
-				)
-				.register_scalar(
-					"blob::b64url",
-					blob::BlobB64url::new,
-				)
-				.register_scalar(
-					"blob::utf8",
-					blob::BlobUtf8::new,
-				)
+				.register_scalar("blob::hex", blob::BlobHex::new)
+				.register_scalar("blob::b64", blob::BlobB64::new)
+				.register_scalar("blob::b64url", blob::BlobB64url::new)
+				.register_scalar("blob::utf8", blob::BlobUtf8::new)
 				.build(),
 		}
 	}
 }
 
 impl Evaluator for StandardEvaluator {
-	fn evaluate(
-		&self,
-		ctx: &EvaluationContext,
-		expr: &Expression,
-	) -> crate::Result<Column> {
+	fn evaluate(&self, ctx: &EvaluationContext, expr: &Expression) -> crate::Result<Column> {
 		match expr {
-			Expression::AccessSource(expr) => {
-				self.access(ctx, expr)
-			}
+			Expression::AccessSource(expr) => self.access(ctx, expr),
 			Expression::Alias(expr) => self.alias(ctx, expr),
 			Expression::Add(expr) => self.add(ctx, expr),
 			Expression::Div(expr) => self.div(ctx, expr),
@@ -70,16 +52,10 @@ impl Evaluator for StandardEvaluator {
 			Expression::Cast(expr) => self.cast(ctx, expr),
 			Expression::Column(expr) => self.column(ctx, expr),
 			Expression::Constant(expr) => self.constant(ctx, expr),
-			Expression::GreaterThan(expr) => {
-				self.greater_than(ctx, expr)
-			}
-			Expression::GreaterThanEqual(expr) => {
-				self.greater_than_equal(ctx, expr)
-			}
+			Expression::GreaterThan(expr) => self.greater_than(ctx, expr),
+			Expression::GreaterThanEqual(expr) => self.greater_than_equal(ctx, expr),
 			Expression::LessThan(expr) => self.less_than(ctx, expr),
-			Expression::LessThanEqual(expr) => {
-				self.less_than_equal(ctx, expr)
-			}
+			Expression::LessThanEqual(expr) => self.less_than_equal(ctx, expr),
 			Expression::Equal(expr) => self.equal(ctx, expr),
 			Expression::NotEqual(expr) => self.not_equal(ctx, expr),
 			Expression::Between(expr) => self.between(ctx, expr),
@@ -91,18 +67,13 @@ impl Evaluator for StandardEvaluator {
 			Expression::Prefix(expr) => self.prefix(ctx, expr),
 			Expression::Sub(expr) => self.sub(ctx, expr),
 			Expression::Tuple(expr) => self.tuple(ctx, expr),
-			Expression::Parameter(expr) => {
-				self.parameter(ctx, expr)
-			}
+			Expression::Parameter(expr) => self.parameter(ctx, expr),
 			expr => unimplemented!("{expr:?}"),
 		}
 	}
 }
 
-pub fn evaluate(
-	ctx: &EvaluationContext,
-	expr: &Expression,
-) -> crate::Result<Column> {
+pub fn evaluate(ctx: &EvaluationContext, expr: &Expression) -> crate::Result<Column> {
 	let evaluator = StandardEvaluator {
 		functions: Functions::builder()
 			.register_scalar("abs", math::scalar::Abs::new)
@@ -116,23 +87,15 @@ pub fn evaluate(
 
 	// Ensures that result column data type matches the expected target
 	// column type
-	if let Some(ty) = ctx.target_column.as_ref().and_then(|c| c.column_type)
-	{
+	if let Some(ty) = ctx.target_column.as_ref().and_then(|c| c.column_type) {
 		let mut column = evaluator.evaluate(ctx, expr)?;
-		let data = cast::cast_column_data(
-			ctx,
-			&column.data(),
-			ty,
-			&expr.lazy_fragment(),
-		)?;
+		let data = cast::cast_column_data(ctx, &column.data(), ty, &expr.lazy_fragment())?;
 		column = match column.table() {
-			Some(source) => {
-				Column::SourceQualified(SourceQualified {
-					source: source.to_string(),
-					name: column.name().to_string(),
-					data,
-				})
-			}
+			Some(source) => Column::SourceQualified(SourceQualified {
+				source: source.to_string(),
+				name: column.name().to_string(),
+				data,
+			}),
 			None => Column::ColumnQualified(ColumnQualified {
 				name: column.name().to_string(),
 				data,

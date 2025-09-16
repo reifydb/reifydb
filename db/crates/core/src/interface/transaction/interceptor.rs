@@ -6,49 +6,30 @@ use reifydb_type::RowNumber;
 use crate::{
 	CommitVersion,
 	interceptor::{
-		Chain, NamespaceDefPostCreateInterceptor,
-		NamespaceDefPostUpdateInterceptor,
-		NamespaceDefPreDeleteInterceptor,
-		NamespaceDefPreUpdateInterceptor, PostCommitInterceptor,
-		PreCommitInterceptor, TableDefPostCreateInterceptor,
-		TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor,
-		TableDefPreUpdateInterceptor, TablePostDeleteInterceptor,
-		TablePostInsertInterceptor, TablePostUpdateInterceptor,
-		TablePreDeleteInterceptor, TablePreInsertInterceptor,
-		TablePreUpdateInterceptor, ViewDefPostCreateInterceptor,
-		ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
-		ViewDefPreUpdateInterceptor,
+		Chain, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
+		NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor, PostCommitInterceptor,
+		PreCommitInterceptor, TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor,
+		TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor, TablePostDeleteInterceptor,
+		TablePostInsertInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
+		TablePreInsertInterceptor, TablePreUpdateInterceptor, ViewDefPostCreateInterceptor,
+		ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
 	},
 	interface::{
-		CommandTransaction, NamespaceDef, TableDef, TransactionId,
-		ViewDef, transaction::change::TransactionalDefChanges,
+		CommandTransaction, NamespaceDef, TableDef, TransactionId, ViewDef,
+		transaction::change::TransactionalDefChanges,
 	},
 	row::EncodedRow,
 };
 
 pub trait TableInterceptor<CT: CommandTransaction> {
 	/// Intercept table pre-insert operations
-	fn pre_insert(
-		&mut self,
-		table: &TableDef,
-		row: &EncodedRow,
-	) -> crate::Result<()>;
+	fn pre_insert(&mut self, table: &TableDef, row: &EncodedRow) -> crate::Result<()>;
 
 	/// Intercept table post-insert operations
-	fn post_insert(
-		&mut self,
-		table: &TableDef,
-		id: RowNumber,
-		row: &EncodedRow,
-	) -> crate::Result<()>;
+	fn post_insert(&mut self, table: &TableDef, id: RowNumber, row: &EncodedRow) -> crate::Result<()>;
 
 	/// Intercept table pre-update operations
-	fn pre_update(
-		&mut self,
-		table: &TableDef,
-		id: RowNumber,
-		row: &EncodedRow,
-	) -> crate::Result<()>;
+	fn pre_update(&mut self, table: &TableDef, id: RowNumber, row: &EncodedRow) -> crate::Result<()>;
 
 	/// Intercept table post-update operations
 	fn post_update(
@@ -60,19 +41,10 @@ pub trait TableInterceptor<CT: CommandTransaction> {
 	) -> crate::Result<()>;
 
 	/// Intercept table pre-delete operations
-	fn pre_delete(
-		&mut self,
-		table: &TableDef,
-		id: RowNumber,
-	) -> crate::Result<()>;
+	fn pre_delete(&mut self, table: &TableDef, id: RowNumber) -> crate::Result<()>;
 
 	/// Intercept table post-delete operations
-	fn post_delete(
-		&mut self,
-		table: &TableDef,
-		id: RowNumber,
-		deleted_row: &EncodedRow,
-	) -> crate::Result<()>;
+	fn post_delete(&mut self, table: &TableDef, id: RowNumber, deleted_row: &EncodedRow) -> crate::Result<()>;
 }
 
 pub trait NamespaceDefInterceptor<CT: CommandTransaction> {
@@ -83,11 +55,7 @@ pub trait NamespaceDefInterceptor<CT: CommandTransaction> {
 	fn pre_update(&mut self, pre: &NamespaceDef) -> crate::Result<()>;
 
 	/// Intercept namespace post-update operations
-	fn post_update(
-		&mut self,
-		pre: &NamespaceDef,
-		post: &NamespaceDef,
-	) -> crate::Result<()>;
+	fn post_update(&mut self, pre: &NamespaceDef, post: &NamespaceDef) -> crate::Result<()>;
 
 	/// Intercept namespace pre-delete operations
 	fn pre_delete(&mut self, pre: &NamespaceDef) -> crate::Result<()>;
@@ -101,11 +69,7 @@ pub trait TableDefInterceptor<CT: CommandTransaction> {
 	fn pre_update(&mut self, pre: &TableDef) -> crate::Result<()>;
 
 	/// Intercept table definition post-update operations
-	fn post_update(
-		&mut self,
-		pre: &TableDef,
-		post: &TableDef,
-	) -> crate::Result<()>;
+	fn post_update(&mut self, pre: &TableDef, post: &TableDef) -> crate::Result<()>;
 
 	/// Intercept table definition pre-delete operations
 	fn pre_delete(&mut self, pre: &TableDef) -> crate::Result<()>;
@@ -119,11 +83,7 @@ pub trait ViewDefInterceptor<CT: CommandTransaction> {
 	fn pre_update(&mut self, pre: &ViewDef) -> crate::Result<()>;
 
 	/// Intercept view post-update operations
-	fn post_update(
-		&mut self,
-		pre: &ViewDef,
-		post: &ViewDef,
-	) -> crate::Result<()>;
+	fn post_update(&mut self, pre: &ViewDef, post: &ViewDef) -> crate::Result<()>;
 
 	/// Intercept view pre-delete operations
 	fn pre_delete(&mut self, pre: &ViewDef) -> crate::Result<()>;
@@ -145,44 +105,28 @@ pub trait TransactionInterceptor<CT: CommandTransaction> {
 /// Trait for accessing interceptor chains from transaction types
 pub trait WithInterceptors<CT: CommandTransaction> {
 	/// Access table pre-insert interceptor chain
-	fn table_pre_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TablePreInsertInterceptor<CT>>;
+	fn table_pre_insert_interceptors(&mut self) -> &mut Chain<CT, dyn TablePreInsertInterceptor<CT>>;
 
 	/// Access table post-insert interceptor chain
-	fn table_post_insert_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TablePostInsertInterceptor<CT>>;
+	fn table_post_insert_interceptors(&mut self) -> &mut Chain<CT, dyn TablePostInsertInterceptor<CT>>;
 
 	/// Access table pre-update interceptor chain
-	fn table_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TablePreUpdateInterceptor<CT>>;
+	fn table_pre_update_interceptors(&mut self) -> &mut Chain<CT, dyn TablePreUpdateInterceptor<CT>>;
 
 	/// Access table post-update interceptor chain
-	fn table_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TablePostUpdateInterceptor<CT>>;
+	fn table_post_update_interceptors(&mut self) -> &mut Chain<CT, dyn TablePostUpdateInterceptor<CT>>;
 
 	/// Access table pre-delete interceptor chain
-	fn table_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TablePreDeleteInterceptor<CT>>;
+	fn table_pre_delete_interceptors(&mut self) -> &mut Chain<CT, dyn TablePreDeleteInterceptor<CT>>;
 
 	/// Access table post-delete interceptor chain
-	fn table_post_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TablePostDeleteInterceptor<CT>>;
+	fn table_post_delete_interceptors(&mut self) -> &mut Chain<CT, dyn TablePostDeleteInterceptor<CT>>;
 
 	/// Access pre-commit interceptor chain
-	fn pre_commit_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn PreCommitInterceptor<CT>>;
+	fn pre_commit_interceptors(&mut self) -> &mut Chain<CT, dyn PreCommitInterceptor<CT>>;
 
 	/// Access post-commit interceptor chain
-	fn post_commit_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn PostCommitInterceptor<CT>>;
+	fn post_commit_interceptors(&mut self) -> &mut Chain<CT, dyn PostCommitInterceptor<CT>>;
 
 	// Namespace definition interceptor chains
 	/// Access namespace post-create interceptor chain
@@ -191,9 +135,8 @@ pub trait WithInterceptors<CT: CommandTransaction> {
 	) -> &mut Chain<CT, dyn NamespaceDefPostCreateInterceptor<CT>>;
 
 	/// Access namespace pre-update interceptor chain
-	fn namespace_def_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn NamespaceDefPreUpdateInterceptor<CT>>;
+	fn namespace_def_pre_update_interceptors(&mut self)
+	-> &mut Chain<CT, dyn NamespaceDefPreUpdateInterceptor<CT>>;
 
 	/// Access namespace post-update interceptor chain
 	fn namespace_def_post_update_interceptors(
@@ -201,49 +144,32 @@ pub trait WithInterceptors<CT: CommandTransaction> {
 	) -> &mut Chain<CT, dyn NamespaceDefPostUpdateInterceptor<CT>>;
 
 	/// Access namespace pre-delete interceptor chain
-	fn namespace_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn NamespaceDefPreDeleteInterceptor<CT>>;
+	fn namespace_def_pre_delete_interceptors(&mut self)
+	-> &mut Chain<CT, dyn NamespaceDefPreDeleteInterceptor<CT>>;
 
 	// Table definition interceptor chains
 	/// Access table definition post-create interceptor chain
-	fn table_def_post_create_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TableDefPostCreateInterceptor<CT>>;
+	fn table_def_post_create_interceptors(&mut self) -> &mut Chain<CT, dyn TableDefPostCreateInterceptor<CT>>;
 
 	/// Access table definition pre-update interceptor chain
-	fn table_def_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TableDefPreUpdateInterceptor<CT>>;
+	fn table_def_pre_update_interceptors(&mut self) -> &mut Chain<CT, dyn TableDefPreUpdateInterceptor<CT>>;
 
 	/// Access table definition post-update interceptor chain
-	fn table_def_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TableDefPostUpdateInterceptor<CT>>;
+	fn table_def_post_update_interceptors(&mut self) -> &mut Chain<CT, dyn TableDefPostUpdateInterceptor<CT>>;
 
 	/// Access table definition pre-delete interceptor chain
-	fn table_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn TableDefPreDeleteInterceptor<CT>>;
+	fn table_def_pre_delete_interceptors(&mut self) -> &mut Chain<CT, dyn TableDefPreDeleteInterceptor<CT>>;
 
 	// View definition interceptor chains
 	/// Access view post-create interceptor chain
-	fn view_def_post_create_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn ViewDefPostCreateInterceptor<CT>>;
+	fn view_def_post_create_interceptors(&mut self) -> &mut Chain<CT, dyn ViewDefPostCreateInterceptor<CT>>;
 
 	/// Access view pre-update interceptor chain
-	fn view_def_pre_update_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn ViewDefPreUpdateInterceptor<CT>>;
+	fn view_def_pre_update_interceptors(&mut self) -> &mut Chain<CT, dyn ViewDefPreUpdateInterceptor<CT>>;
 
 	/// Access view post-update interceptor chain
-	fn view_def_post_update_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn ViewDefPostUpdateInterceptor<CT>>;
+	fn view_def_post_update_interceptors(&mut self) -> &mut Chain<CT, dyn ViewDefPostUpdateInterceptor<CT>>;
 
 	/// Access view pre-delete interceptor chain
-	fn view_def_pre_delete_interceptors(
-		&mut self,
-	) -> &mut Chain<CT, dyn ViewDefPreDeleteInterceptor<CT>>;
+	fn view_def_pre_delete_interceptors(&mut self) -> &mut Chain<CT, dyn ViewDefPreDeleteInterceptor<CT>>;
 }

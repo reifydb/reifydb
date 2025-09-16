@@ -43,19 +43,13 @@ impl HttpResponse {
 	}
 
 	pub fn with_json(mut self, json: &str) -> Self {
-		self.headers.insert(
-			"Content-Type".to_string(),
-			"application/json".to_string(),
-		);
+		self.headers.insert("Content-Type".to_string(), "application/json".to_string());
 		self.body = json.as_bytes().to_vec();
 		self
 	}
 
 	pub fn with_html(mut self, html: &str) -> Self {
-		self.headers.insert(
-			"Content-Type".to_string(),
-			"text/html; charset=utf-8".to_string(),
-		);
+		self.headers.insert("Content-Type".to_string(), "text/html; charset=utf-8".to_string());
 		self.body = html.as_bytes().to_vec();
 		self
 	}
@@ -66,16 +60,10 @@ impl HttpResponse {
 	}
 
 	pub fn to_bytes(&self) -> Vec<u8> {
-		let mut response = format!(
-			"HTTP/1.1 {} {}\r\n",
-			self.status_code, self.status_text
-		);
+		let mut response = format!("HTTP/1.1 {} {}\r\n", self.status_code, self.status_text);
 
 		// Add content-length header
-		response.push_str(&format!(
-			"Content-Length: {}\r\n",
-			self.body.len()
-		));
+		response.push_str(&format!("Content-Length: {}\r\n", self.body.len()));
 
 		// Add custom headers
 		for (key, value) in &self.headers {

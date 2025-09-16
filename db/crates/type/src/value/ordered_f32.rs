@@ -9,9 +9,7 @@ use std::{
 	ops::Deref,
 };
 
-use serde::{
-	Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor,
-};
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de, de::Visitor};
 
 use crate::{Error, err, error::diagnostic::number::nan_not_allowed};
 
@@ -42,26 +40,15 @@ impl<'de> Deserialize<'de> for OrderedF32 {
 		impl Visitor<'_> for F32Visitor {
 			type Value = OrderedF32;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
-				formatter.write_str(
-					"a 32-bit floating point number",
-				)
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+				formatter.write_str("a 32-bit floating point number")
 			}
 
-			fn visit_f32<E>(
-				self,
-				value: f32,
-			) -> Result<Self::Value, E> {
+			fn visit_f32<E>(self, value: f32) -> Result<Self::Value, E> {
 				Ok(OrderedF32(value))
 			}
 
-			fn visit_f64<E>(
-				self,
-				value: f64,
-			) -> Result<Self::Value, E>
+			fn visit_f64<E>(self, value: f64) -> Result<Self::Value, E>
 			where
 				E: de::Error,
 			{
@@ -113,10 +100,8 @@ impl PartialOrd for OrderedF32 {
 
 impl Ord for OrderedF32 {
 	fn cmp(&self, other: &Self) -> Ordering {
-		let l = self.0.to_bits()
-			^ ((self.0.to_bits() >> 31) & 0x7fffffff);
-		let r = other.0.to_bits()
-			^ ((other.0.to_bits() >> 31) & 0x7fffffff);
+		let l = self.0.to_bits() ^ ((self.0.to_bits() >> 31) & 0x7fffffff);
+		let r = other.0.to_bits() ^ ((other.0.to_bits() >> 31) & 0x7fffffff);
 		l.cmp(&r)
 	}
 }
@@ -164,8 +149,7 @@ mod tests {
 			OrderedF32::try_from(5.0).unwrap(),
 		];
 		values.sort();
-		let sorted: Vec<f32> =
-			values.into_iter().map(|v| v.0).collect();
+		let sorted: Vec<f32> = values.into_iter().map(|v| v.0).collect();
 		assert_eq!(sorted, vec![2.0, 5.0, 10.0]);
 	}
 

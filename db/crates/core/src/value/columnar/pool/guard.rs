@@ -193,8 +193,7 @@ impl<T: Releasable> PooledGuard<T> {
 	/// This returns a clone of the container while automatically releasing
 	/// the original back to the pool for reuse.
 	pub fn to_owned(mut self) -> T {
-		let container =
-			self.container.take().expect("Container already taken");
+		let container = self.container.take().expect("Container already taken");
 		let cloned_container = container.clone();
 
 		// Release the original container back to the pool
@@ -408,9 +407,7 @@ impl PooledGuard<UuidContainer<Uuid7>> {
 // Implement Drop for automatic pool release
 impl<T: Releasable> Drop for PooledGuard<T> {
 	fn drop(&mut self) {
-		if let (Some(container), Some(pools_inner)) =
-			(self.container.take(), self.pools.upgrade())
-		{
+		if let (Some(container), Some(pools_inner)) = (self.container.take(), self.pools.upgrade()) {
 			container.release_to_pool(&Pools(pools_inner));
 		}
 	}
@@ -488,8 +485,7 @@ mod tests {
 		let pools = Pools::default();
 
 		{
-			let mut guard =
-				PooledGuard::new_string(pools.clone(), 5);
+			let mut guard = PooledGuard::new_string(pools.clone(), 5);
 			guard.push("hello".to_string());
 			guard.push("world".to_string());
 			assert_eq!(guard.len(), 2);
@@ -567,14 +563,10 @@ mod tests {
 		let pools = Pools::default();
 
 		{
-			let _date_guard =
-				PooledGuard::new_date(pools.clone(), 10);
-			let _datetime_guard =
-				PooledGuard::new_datetime(pools.clone(), 20);
-			let _time_guard =
-				PooledGuard::new_time(pools.clone(), 30);
-			let _interval_guard =
-				PooledGuard::new_interval(pools.clone(), 40);
+			let _date_guard = PooledGuard::new_date(pools.clone(), 10);
+			let _datetime_guard = PooledGuard::new_datetime(pools.clone(), 20);
+			let _time_guard = PooledGuard::new_time(pools.clone(), 30);
+			let _interval_guard = PooledGuard::new_interval(pools.clone(), 40);
 		}
 
 		let all_stats = pools.all_stats();
@@ -589,10 +581,8 @@ mod tests {
 		let pools = Pools::default();
 
 		{
-			let _uuid4_guard =
-				PooledGuard::new_uuid4(pools.clone(), 15);
-			let _uuid7_guard =
-				PooledGuard::new_uuid7(pools.clone(), 25);
+			let _uuid4_guard = PooledGuard::new_uuid4(pools.clone(), 15);
+			let _uuid7_guard = PooledGuard::new_uuid7(pools.clone(), 25);
 		}
 
 		let all_stats = pools.all_stats();

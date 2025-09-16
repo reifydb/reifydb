@@ -16,11 +16,7 @@ pub(crate) fn load_namespaces(
 	for versioned in namespaces {
 		let version = versioned.version;
 		let namespace_def = namespace::convert_namespace(versioned);
-		catalog.set_namespace(
-			namespace_def.id,
-			version,
-			Some(namespace_def),
-		);
+		catalog.set_namespace(namespace_def.id, version, Some(namespace_def));
 	}
 
 	Ok(())

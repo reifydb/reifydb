@@ -29,12 +29,7 @@ impl HealthMonitor {
 		}
 	}
 
-	pub fn update_component_health(
-		&self,
-		name: String,
-		status: HealthStatus,
-		is_running: bool,
-	) {
+	pub fn update_component_health(&self, name: String, status: HealthStatus, is_running: bool) {
 		let mut components = self.components.lock().unwrap();
 		components.insert(
 			name.clone(),
@@ -47,10 +42,7 @@ impl HealthMonitor {
 		);
 	}
 
-	pub fn get_component_health(
-		&self,
-		name: &str,
-	) -> Option<ComponentHealth> {
+	pub fn get_component_health(&self, name: &str) -> Option<ComponentHealth> {
 		let components = self.components.lock().unwrap();
 		components.get(name).cloned()
 	}
@@ -84,10 +76,7 @@ impl HealthMonitor {
 					description: message,
 				} => {
 					return HealthStatus::Failed {
-						description: format!(
-							"Component '{}' failed: {}",
-							health.name, message
-						),
+						description: format!("Component '{}' failed: {}", health.name, message),
 					};
 				}
 				HealthStatus::Unknown => has_unknown = true,
@@ -98,15 +87,11 @@ impl HealthMonitor {
 			HealthStatus::Unknown
 		} else if has_degraded {
 			HealthStatus::Degraded {
-				description:
-					"One or more components are degraded"
-						.to_string(),
+				description: "One or more components are degraded".to_string(),
 			}
 		} else if has_warning {
 			HealthStatus::Warning {
-				description:
-					"One or more components have warnings"
-						.to_string(),
+				description: "One or more components have warnings".to_string(),
 			}
 		} else {
 			HealthStatus::Healthy
@@ -125,9 +110,7 @@ impl HealthMonitor {
 		components
 			.values()
 			.filter_map(|health| {
-				if now.duration_since(health.last_updated)
-					> max_age
-				{
+				if now.duration_since(health.last_updated) > max_age {
 					Some(health.name.clone())
 				} else {
 					None

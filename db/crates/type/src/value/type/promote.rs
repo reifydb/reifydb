@@ -47,18 +47,14 @@ impl Type {
 		};
 
 		if is_signed(left) && is_signed(right) {
-			return signed_order
-				[min(rank(left).max(rank(right)), 3) + 1];
+			return signed_order[min(rank(left).max(rank(right)), 3) + 1];
 		}
 
 		if is_unsigned(left) && is_unsigned(right) {
-			return unsigned_order
-				[min(rank(left).max(rank(right)), 3) + 1];
+			return unsigned_order[min(rank(left).max(rank(right)), 3) + 1];
 		}
 
-		if (is_signed(left) && is_unsigned(right))
-			|| (is_unsigned(left) && is_signed(right))
-		{
+		if (is_signed(left) && is_unsigned(right)) || (is_unsigned(left) && is_signed(right)) {
 			return match rank(left).max(rank(right)) + 1 {
 				0 => Int1,
 				1 => Int2,
@@ -78,8 +74,8 @@ mod tests {
 	use crate::{
 		Type,
 		Type::{
-			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
-			Uint1, Uint2, Uint4, Uint8, Uint16, Undefined, Utf8,
+			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16,
+			Undefined, Utf8,
 		},
 	};
 
@@ -278,8 +274,8 @@ mod tests {
 	#[test]
 	fn test_promote_string() {
 		let kinds = [
-			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
-			Utf8, Uint1, Uint2, Uint4, Uint8, Uint16,
+			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Utf8, Uint1, Uint2, Uint4, Uint8,
+			Uint16,
 		];
 		for ty in kinds {
 			assert_eq!(Type::promote(Utf8, ty), Utf8);
@@ -411,8 +407,8 @@ mod tests {
 	#[test]
 	fn test_promote_undefined() {
 		let kinds = [
-			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16,
-			Utf8, Uint1, Uint2, Uint4, Uint8, Uint16, Undefined,
+			Boolean, Float4, Float8, Int1, Int2, Int4, Int8, Int16, Utf8, Uint1, Uint2, Uint4, Uint8,
+			Uint16, Undefined,
 		];
 		for ty in kinds {
 			assert_eq!(Type::promote(Undefined, ty), Undefined);

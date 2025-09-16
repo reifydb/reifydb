@@ -60,10 +60,7 @@ impl<T: Transaction> Worker<T> {
 		}
 	}
 
-	pub fn with_websocket(
-		&mut self,
-		handler: WebSocketHandler,
-	) -> &mut Self {
+	pub fn with_websocket(&mut self, handler: WebSocketHandler) -> &mut Self {
 		self.websocket_handler = Some(handler);
 		self
 	}
@@ -75,9 +72,7 @@ impl<T: Transaction> Worker<T> {
 
 	pub fn run(&mut self) {
 		if self.config.network.pin_threads {
-			if let Some(core) = core_affinity::get_core_ids()
-				.and_then(|v| v.get(self.worker_id).cloned())
-			{
+			if let Some(core) = core_affinity::get_core_ids().and_then(|v| v.get(self.worker_id).cloned()) {
 				core_affinity::set_for_current(core);
 				// Core pinned successfully
 			}
@@ -87,15 +82,10 @@ impl<T: Transaction> Worker<T> {
 		let mut events = Events::with_capacity(1024);
 
 		poll.registry()
-			.register(
-				&mut self.listener,
-				LISTENER,
-				Interest::READABLE,
-			)
+			.register(&mut self.listener, LISTENER, Interest::READABLE)
 			.expect("failed to register listener");
 
-		let waker = Waker::new(poll.registry(), WAKE_TOKEN)
-			.expect("failed to create waker");
+		let waker = Waker::new(poll.registry(), WAKE_TOKEN).expect("failed to create waker");
 		let _ctrl = Arc::new(waker);
 
 		let mut connections = Slab::<Connection<T>>::new();
@@ -109,10 +99,7 @@ impl<T: Transaction> Worker<T> {
 				break;
 			}
 
-			if let Err(e) = poll.poll(
-				&mut events,
-				Some(std::time::Duration::from_millis(1)),
-			) {
+			if let Err(e) = poll.poll(&mut events, Some(std::time::Duration::from_millis(1))) {
 				if e.kind() == std::io::ErrorKind::Interrupted {
 					continue;
 				}
@@ -123,43 +110,30 @@ impl<T: Transaction> Worker<T> {
 			for event in events.iter() {
 				match event.token() {
 					LISTENER => {
-						self.handle_accept(
-							&mut connections,
-							&poll,
-						);
+						self.handle_accept(&mut connections, &poll);
 					}
 					WAKE_TOKEN => {
 						// Handle control-plane
 						// operations if needed
 					}
 					token => {
-						self.handle_connection_event(
-							&mut connections,
-							&poll,
-							token,
-							event,
-						);
+						self.handle_connection_event(&mut connections, &poll, token, event);
 					}
 				}
 			}
 
 			// Periodic cleanup every 30 seconds
 			if last_cleanup.elapsed().as_secs() >= 30 {
-				self.cleanup_abandoned_connections(
-					&mut connections,
-				);
+				self.cleanup_abandoned_connections(&mut connections);
 				last_cleanup = std::time::Instant::now();
 			}
 		}
 
 		// Clean up connections on shutdown
-		let keys: Vec<usize> =
-			connections.iter().map(|(key, _)| key).collect();
+		let keys: Vec<usize> = connections.iter().map(|(key, _)| key).collect();
 		for key in keys {
 			if let Some(mut conn) = connections.try_remove(key) {
-				let _ = poll
-					.registry()
-					.deregister(conn.stream());
+				let _ = poll.registry().deregister(conn.stream());
 				// Properly close TCP connection
 				conn.shutdown();
 			}
@@ -168,34 +142,22 @@ impl<T: Transaction> Worker<T> {
 		// Worker stopped
 	}
 
-	fn handle_accept(
-		&mut self,
-		connections: &mut Slab<Connection<T>>,
-		poll: &Poll,
-	) {
+	fn handle_accept(&mut self, connections: &mut Slab<Connection<T>>, poll: &Poll) {
 		loop {
 			match self.listener.accept() {
 				Ok((stream, peer)) => {
-					if let Err(_e) = self.on_accept(
-						connections,
-						poll,
-						stream,
-						peer,
-					) {
+					if let Err(_e) = self.on_accept(connections, poll, stream, peer) {
 						// Accept error - ignore and
 						// continue
 					}
 				}
-				Err(e) if e.kind()
-					== std::io::ErrorKind::WouldBlock =>
-				{
+				Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
 					break;
 				}
 				Err(e) => {
 					// If it's "too many open files", force
 					// immediate cleanup
-					if e.kind() == std::io::ErrorKind::Other
-					{
+					if e.kind() == std::io::ErrorKind::Other {
 						self.cleanup_abandoned_connections(connections);
 					}
 					break;
@@ -220,12 +182,7 @@ impl<T: Transaction> Worker<T> {
 			return;
 		}
 
-		if let Err(_e) = self.on_connection_event(
-			connections,
-			&_poll,
-			key,
-			event,
-		) {
+		if let Err(_e) = self.on_connection_event(connections, &_poll, key, event) {
 			// Silently close connection on error (suppress logging
 			// for benchmarks)
 			self.close_connection(connections, key);
@@ -280,8 +237,7 @@ impl<T: Transaction> Worker<T> {
 		let socket_ref = SockRef::from(&stream);
 
 		// Set linger to 0 to force immediate close without TIME_WAIT
-		socket_ref
-			.set_linger(Some(std::time::Duration::from_secs(0)))?;
+		socket_ref.set_linger(Some(std::time::Duration::from_secs(0)))?;
 
 		let entry = connections.vacant_entry();
 		let key = entry.key();
@@ -289,18 +245,9 @@ impl<T: Transaction> Worker<T> {
 
 		// Start with combined interests to minimize reregistration for
 		// WebSocket connections
-		poll.registry().register(
-			&mut stream,
-			token,
-			Interest::READABLE | Interest::WRITABLE,
-		)?;
+		poll.registry().register(&mut stream, token, Interest::READABLE | Interest::WRITABLE)?;
 
-		let conn = Connection::new(
-			stream,
-			peer,
-			token,
-			self.engine.clone(),
-		);
+		let conn = Connection::new(stream, peer, token, self.engine.clone());
 		entry.insert(conn);
 		Ok(())
 	}
@@ -316,10 +263,7 @@ impl<T: Transaction> Worker<T> {
 
 		if event.is_readable() {
 			// Detect protocol if still in detecting state
-			if matches!(
-				conn.state(),
-				crate::core::ConnectionState::Detecting
-			) {
+			if matches!(conn.state(), crate::core::ConnectionState::Detecting) {
 				self.detect_and_init_protocol(conn)?;
 			}
 			self.handle_read_event(conn)?;
@@ -329,13 +273,11 @@ impl<T: Transaction> Worker<T> {
 				ConnectionState::Http(crate::protocols::http::HttpState::WritingResponse(_)) => {
 					// HTTP needs to switch to writable for response
 					let token = conn.token();
-					poll.registry().reregister(
-						conn.stream(),
-						token,
-						Interest::WRITABLE,
-					)?;
+					poll.registry().reregister(conn.stream(), token, Interest::WRITABLE)?;
 				}
-				ConnectionState::WebSocket(crate::protocols::ws::WsState::Handshake(data)) if data.handshake_response.is_some() => {
+				ConnectionState::WebSocket(crate::protocols::ws::WsState::Handshake(data))
+					if data.handshake_response.is_some() =>
+				{
 					// WebSocket handshake needs to write response, then maintain both interests
 					let token = conn.token();
 					poll.registry().reregister(
@@ -345,7 +287,8 @@ impl<T: Transaction> Worker<T> {
 					)?;
 				}
 				ConnectionState::WebSocket(crate::protocols::ws::WsState::Active(_)) => {
-					// WebSocket active connections should have both interests to avoid reregistration
+					// WebSocket active connections should have both interests to avoid
+					// reregistration
 					let token = conn.token();
 					poll.registry().reregister(
 						conn.stream(),
@@ -354,7 +297,8 @@ impl<T: Transaction> Worker<T> {
 					)?;
 				}
 				_ => {
-					// No reregistration needed for other states
+					// No reregistration needed for other
+					// states
 				}
 			}
 		}
@@ -368,19 +312,17 @@ impl<T: Transaction> Worker<T> {
 			// different handling
 			match conn.state() {
 				ConnectionState::Closed => {
-					// Connection is closed, will be cleaned up
+					// Connection is closed, will be cleaned
+					// up
 				}
 				ConnectionState::Http(crate::protocols::http::HttpState::ReadingRequest(_)) => {
 					// HTTP may need to switch back to readable only
 					let token = conn.token();
-					poll.registry().reregister(
-						conn.stream(),
-						token,
-						Interest::READABLE,
-					)?;
+					poll.registry().reregister(conn.stream(), token, Interest::READABLE)?;
 				}
 				_ => {
-					// For WebSocket and other states, interests are already optimal
+					// For WebSocket and other states,
+					// interests are already optimal
 				}
 			}
 		}
@@ -392,10 +334,7 @@ impl<T: Transaction> Worker<T> {
 		Ok(())
 	}
 
-	fn detect_and_init_protocol(
-		&self,
-		conn: &mut Connection<T>,
-	) -> Result<(), Box<dyn std::error::Error>> {
+	fn detect_and_init_protocol(&self, conn: &mut Connection<T>) -> Result<(), Box<dyn std::error::Error>> {
 		// Read some data to detect protocol
 		let mut buf = [0u8; 1024];
 		match conn.stream().read(&mut buf) {
@@ -406,30 +345,19 @@ impl<T: Transaction> Worker<T> {
 				conn.buffer_mut().extend_from_slice(&buf[..n]);
 
 				// Try to detect protocol
-				let detected_protocol =
-					self.detect_protocol(conn.buffer());
+				let detected_protocol = self.detect_protocol(conn.buffer());
 
 				match detected_protocol {
 					Some("ws") => {
-						if let Some(ref ws_handler) =
-							self.websocket_handler
-						{
-							ws_handler
-								.handle_connection(
-									conn,
-								)?;
+						if let Some(ref ws_handler) = self.websocket_handler {
+							ws_handler.handle_connection(conn)?;
 						} else {
 							return Err("WebSocket handler not available".into());
 						}
 					}
 					Some("http") => {
-						if let Some(ref http_handler) =
-							self.http_handler
-						{
-							http_handler
-								.handle_connection(
-									conn,
-								)?;
+						if let Some(ref http_handler) = self.http_handler {
+							http_handler.handle_connection(conn)?;
 						} else {
 							return Err("HTTP handler not available".into());
 						}
@@ -444,22 +372,15 @@ impl<T: Transaction> Worker<T> {
 						// If buffer is large but no
 						// protocol detected, default to
 						// HTTP
-						if let Some(ref http_handler) =
-							self.http_handler
-						{
-							http_handler
-								.handle_connection(
-									conn,
-								)?;
+						if let Some(ref http_handler) = self.http_handler {
+							http_handler.handle_connection(conn)?;
 						} else {
 							return Err("No suitable protocol handler found".into());
 						}
 					}
 				}
 			}
-			Err(e) if e.kind()
-				== std::io::ErrorKind::WouldBlock =>
-			{
+			Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
 				// No data available yet
 				return Ok(());
 			}
@@ -473,19 +394,14 @@ impl<T: Transaction> Worker<T> {
 	fn detect_protocol(&self, buffer: &[u8]) -> Option<&'static str> {
 		// Check WebSocket first (more specific)
 		if let Some(ref ws_handler) = self.websocket_handler {
-			if <WebSocketHandler as ProtocolHandler<T>>::can_handle(
-				ws_handler, buffer,
-			) {
+			if <WebSocketHandler as ProtocolHandler<T>>::can_handle(ws_handler, buffer) {
 				return Some("ws");
 			}
 		}
 
 		// Check HTTP
 		if let Some(ref http_handler) = self.http_handler {
-			if <HttpHandler as ProtocolHandler<T>>::can_handle(
-				http_handler,
-				buffer,
-			) {
+			if <HttpHandler as ProtocolHandler<T>>::can_handle(http_handler, buffer) {
 				return Some("http");
 			}
 		}
@@ -493,37 +409,20 @@ impl<T: Transaction> Worker<T> {
 		None
 	}
 
-	fn handle_read_event(
-		&self,
-		conn: &mut Connection<T>,
-	) -> Result<(), Box<dyn std::error::Error>> {
+	fn handle_read_event(&self, conn: &mut Connection<T>) -> Result<(), Box<dyn std::error::Error>> {
 		match conn.state() {
 			ConnectionState::WebSocket(_) => {
-				if let Some(ref ws_handler) =
-					self.websocket_handler
-				{
-					ws_handler.handle_read(conn).map_err(
-						|e| {
-							format!(
-								"WebSocket read error: {}",
-								e
-							)
-						},
-					)?;
+				if let Some(ref ws_handler) = self.websocket_handler {
+					ws_handler
+						.handle_read(conn)
+						.map_err(|e| format!("WebSocket read error: {}", e))?;
 				}
 			}
 			ConnectionState::Http(_) => {
-				if let Some(ref http_handler) =
-					self.http_handler
-				{
+				if let Some(ref http_handler) = self.http_handler {
 					http_handler
 						.handle_read(conn)
-						.map_err(|e| {
-							format!(
-								"HTTP read error: {}",
-								e
-							)
-						})?;
+						.map_err(|e| format!("HTTP read error: {}", e))?;
 				}
 			}
 			ConnectionState::Detecting => {
@@ -536,37 +435,20 @@ impl<T: Transaction> Worker<T> {
 		Ok(())
 	}
 
-	fn handle_write_event(
-		&self,
-		conn: &mut Connection<T>,
-	) -> Result<(), Box<dyn std::error::Error>> {
+	fn handle_write_event(&self, conn: &mut Connection<T>) -> Result<(), Box<dyn std::error::Error>> {
 		match conn.state() {
 			ConnectionState::WebSocket(_) => {
-				if let Some(ref ws_handler) =
-					self.websocket_handler
-				{
-					ws_handler.handle_write(conn).map_err(
-						|e| {
-							format!(
-								"WebSocket write error: {}",
-								e
-							)
-						},
-					)?;
+				if let Some(ref ws_handler) = self.websocket_handler {
+					ws_handler
+						.handle_write(conn)
+						.map_err(|e| format!("WebSocket write error: {}", e))?;
 				}
 			}
 			ConnectionState::Http(_) => {
-				if let Some(ref http_handler) =
-					self.http_handler
-				{
+				if let Some(ref http_handler) = self.http_handler {
 					http_handler
 						.handle_write(conn)
-						.map_err(|e| {
-							format!(
-								"HTTP write error: {}",
-								e
-							)
-						})?;
+						.map_err(|e| format!("HTTP write error: {}", e))?;
 				}
 			}
 			ConnectionState::Detecting => {
@@ -579,20 +461,13 @@ impl<T: Transaction> Worker<T> {
 		Ok(())
 	}
 
-	fn close_connection(
-		&self,
-		connections: &mut Slab<Connection<T>>,
-		key: usize,
-	) {
+	fn close_connection(&self, connections: &mut Slab<Connection<T>>, key: usize) {
 		if let Some(mut conn) = connections.try_remove(key) {
 			conn.shutdown();
 		}
 	}
 
-	fn cleanup_abandoned_connections(
-		&self,
-		connections: &mut Slab<Connection<T>>,
-	) {
+	fn cleanup_abandoned_connections(&self, connections: &mut Slab<Connection<T>>) {
 		let mut to_close = Vec::new();
 		let mut _state_closed = 0;
 		let mut _eof_connections = 0;
@@ -600,8 +475,7 @@ impl<T: Transaction> Worker<T> {
 		let mut _active_connections = 0;
 
 		// Collect keys to check for abandoned connections
-		let keys_to_check: Vec<usize> =
-			connections.iter().map(|(key, _)| key).collect();
+		let keys_to_check: Vec<usize> = connections.iter().map(|(key, _)| key).collect();
 
 		for key in keys_to_check {
 			if let Some(conn) = connections.get_mut(key) {
@@ -625,12 +499,14 @@ impl<T: Transaction> Worker<T> {
 								_eof_connections += 1;
 							}
 							Ok(_n) => {
-								// Got data - put it back in buffer for proper processing
+								// Got data - put it back in buffer for proper
+								// processing
 								conn.buffer_mut().extend_from_slice(&buf[..1]);
 								_active_connections += 1;
 							}
 							Err(ref e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-								// Connection is alive but no data available - this is fine
+								// Connection is alive but no data available - this is
+								// fine
 								_active_connections += 1;
 							}
 							Err(_) => {

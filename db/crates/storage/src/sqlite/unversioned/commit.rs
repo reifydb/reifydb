@@ -3,9 +3,7 @@
 
 use std::sync::mpsc;
 
-use reifydb_core::{
-	CowVec, Result, delta::Delta, interface::UnversionedCommit,
-};
+use reifydb_core::{CowVec, Result, delta::Delta, interface::UnversionedCommit};
 
 use crate::sqlite::{Sqlite, write::WriteCommand};
 
@@ -14,24 +12,17 @@ impl UnversionedCommit for Sqlite {
 		let (tx, rx) = mpsc::channel();
 		self.writer
 			.send(WriteCommand::UnversionedCommit {
-				operations: self
-					.convert_deltas_to_operations(deltas),
+				operations: self.convert_deltas_to_operations(deltas),
 				response: tx,
 			})
 			.map_err(|_| {
-				reifydb_type::Error(
-					crate::storage_internal_error!(
-						"Writer actor disconnected"
-					),
-				)
+				reifydb_type::Error(crate::storage_internal_error!("Writer actor disconnected"))
 			})?;
 		match rx.recv() {
 			Ok(result) => result,
-			Err(_) => Err(reifydb_type::Error(
-				crate::storage_internal_error!(
-					"Writer actor response failed"
-				),
-			)),
+			Err(_) => {
+				Err(reifydb_type::Error(crate::storage_internal_error!("Writer actor response failed")))
+			}
 		}
 	}
 }

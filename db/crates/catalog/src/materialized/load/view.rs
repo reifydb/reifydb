@@ -2,16 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	NamespaceId, PrimaryKeyDef, PrimaryKeyId, Versioned,
-	VersionedQueryTransaction, ViewDef, ViewId, ViewKey, ViewKind,
+	NamespaceId, PrimaryKeyDef, PrimaryKeyId, Versioned, VersionedQueryTransaction, ViewDef, ViewId, ViewKey,
+	ViewKind,
 };
 
 use crate::{MaterializedCatalog, view::layout::view};
 
-pub(crate) fn load_views(
-	qt: &mut impl VersionedQueryTransaction,
-	catalog: &MaterializedCatalog,
-) -> crate::Result<()> {
+pub(crate) fn load_views(qt: &mut impl VersionedQueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
 	let range = ViewKey::full_scan();
 	let views = qt.range(range)?;
 
@@ -22,8 +19,7 @@ pub(crate) fn load_views(
 		let pk_id = get_view_primary_key_id(&versioned);
 
 		// Look up the primary key from the catalog if it exists
-		let primary_key = pk_id
-			.and_then(|id| catalog.find_primary_key(id, version));
+		let primary_key = pk_id.and_then(|id| catalog.find_primary_key(id, version));
 
 		// Convert the view with its primary key
 		let view_def = convert_view(versioned, primary_key);
@@ -34,14 +30,10 @@ pub(crate) fn load_views(
 	Ok(())
 }
 
-fn convert_view(
-	versioned: Versioned,
-	primary_key: Option<PrimaryKeyDef>,
-) -> ViewDef {
+fn convert_view(versioned: Versioned, primary_key: Option<PrimaryKeyDef>) -> ViewDef {
 	let row = versioned.row;
 	let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
-	let namespace =
-		NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
+	let namespace = NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
 	let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
 
 	let kind = match view::LAYOUT.get_u8(&row, view::KIND) {

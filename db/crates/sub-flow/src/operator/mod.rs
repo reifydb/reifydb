@@ -55,31 +55,17 @@ impl<T: Transaction> Operators<T> {
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let result = match self {
-			Operators::Filter(op) => {
-				op.apply(txn, change, evaluator)
-			}
+			Operators::Filter(op) => op.apply(txn, change, evaluator),
 			Operators::Map(op) => op.apply(txn, change, evaluator),
-			Operators::Extend(op) => {
-				op.apply(txn, change, evaluator)
-			}
-			Operators::MapTerminal(op) => {
-				op.apply(txn, change, evaluator)
-			}
-			Operators::Aggregate(op) => {
-				op.apply(txn, change, evaluator)
-			}
+			Operators::Extend(op) => op.apply(txn, change, evaluator),
+			Operators::MapTerminal(op) => op.apply(txn, change, evaluator),
+			Operators::Aggregate(op) => op.apply(txn, change, evaluator),
 			Operators::Join(op) => op.apply(txn, change, evaluator),
 			Operators::Sort(op) => op.apply(txn, change, evaluator),
 			Operators::Take(op) => op.apply(txn, change, evaluator),
-			Operators::Distinct(op) => {
-				op.apply(txn, change, evaluator)
-			}
-			Operators::Union(op) => {
-				op.apply(txn, change, evaluator)
-			}
-			Operators::Apply(op) => {
-				op.apply(txn, change, evaluator)
-			}
+			Operators::Distinct(op) => op.apply(txn, change, evaluator),
+			Operators::Union(op) => op.apply(txn, change, evaluator),
+			Operators::Apply(op) => op.apply(txn, change, evaluator),
 		};
 		result
 	}

@@ -312,10 +312,7 @@ mod tests {
 			let y: Option<Decimal> = x.checked_convert();
 			assert!(y.is_some());
 			let decimal = y.unwrap();
-			assert_eq!(
-				decimal.to_string(),
-				"340282366920938463463374607431768211455"
-			);
+			assert_eq!(decimal.to_string(), "340282366920938463463374607431768211455");
 		}
 
 		#[test]

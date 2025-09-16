@@ -41,8 +41,7 @@ impl ConsoleBuilder {
 	/// Use stderr for error and critical level logs
 	///
 	/// # Arguments
-	/// * `enabled` - true to send errors to stderr, false to send all to
-	///   stdout
+	/// * `enabled` - true to send errors to stderr, false to send all to stdout
 	///
 	/// # Example
 	/// ```

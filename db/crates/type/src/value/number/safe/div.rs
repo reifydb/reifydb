@@ -383,10 +383,7 @@ mod tests {
 		fn checked_div_happy() {
 			let x: f32 = 20.0;
 			let y: f32 = 2.0;
-			assert_eq!(
-				super::SafeDiv::checked_div(&x, &y),
-				Some(10.0)
-			);
+			assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(10.0));
 		}
 
 		#[test]
@@ -400,20 +397,14 @@ mod tests {
 		fn saturating_div_happy() {
 			let x: f32 = 20.0;
 			let y: f32 = 2.0;
-			assert_eq!(
-				super::SafeDiv::saturating_div(&x, &y),
-				10.0
-			);
+			assert_eq!(super::SafeDiv::saturating_div(&x, &y), 10.0);
 		}
 
 		#[test]
 		fn saturating_div_unhappy() {
 			let x: f32 = f32::MAX;
 			let y: f32 = 0.1;
-			assert_eq!(
-				super::SafeDiv::saturating_div(&x, &y),
-				f32::MAX
-			);
+			assert_eq!(super::SafeDiv::saturating_div(&x, &y), f32::MAX);
 		}
 
 		#[test]
@@ -448,10 +439,7 @@ mod tests {
 		fn checked_div_happy() {
 			let x: f64 = 20.0;
 			let y: f64 = 2.0;
-			assert_eq!(
-				super::SafeDiv::checked_div(&x, &y),
-				Some(10.0)
-			);
+			assert_eq!(super::SafeDiv::checked_div(&x, &y), Some(10.0));
 		}
 
 		#[test]
@@ -465,20 +453,14 @@ mod tests {
 		fn saturating_div_happy() {
 			let x: f64 = 20.0;
 			let y: f64 = 2.0;
-			assert_eq!(
-				super::SafeDiv::saturating_div(&x, &y),
-				10.0
-			);
+			assert_eq!(super::SafeDiv::saturating_div(&x, &y), 10.0);
 		}
 
 		#[test]
 		fn saturating_div_unhappy() {
 			let x: f64 = f64::MAX;
 			let y: f64 = 0.1;
-			assert_eq!(
-				super::SafeDiv::saturating_div(&x, &y),
-				f64::MAX
-			);
+			assert_eq!(super::SafeDiv::saturating_div(&x, &y), f64::MAX);
 		}
 
 		#[test]

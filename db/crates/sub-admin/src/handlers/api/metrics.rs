@@ -6,9 +6,7 @@ use reifydb_engine::StandardEngine;
 use reifydb_network::HttpResponse;
 use serde_json::json;
 
-pub fn handle_metrics<T: Transaction>(
-	_engine: &StandardEngine<T>,
-) -> HttpResponse {
+pub fn handle_metrics<T: Transaction>(_engine: &StandardEngine<T>) -> HttpResponse {
 	// TODO: Collect actual metrics from the engine
 	let metrics = json!({
 		"connections": 0,

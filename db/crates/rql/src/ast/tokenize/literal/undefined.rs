@@ -1,10 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::ast::tokenize::{
-	Literal::Undefined, Token, TokenKind, cursor::Cursor,
-	identifier::is_identifier_char,
-};
+use crate::ast::tokenize::{Literal::Undefined, Token, TokenKind, cursor::Cursor, identifier::is_identifier_char};
 
 /// Scan for undefined literal
 pub fn scan_undefined<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
@@ -18,11 +15,7 @@ pub fn scan_undefined<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 			cursor.consume_str_ignore_case("undefined");
 			return Some(Token {
 				kind: TokenKind::Literal(Undefined),
-				fragment: cursor.make_fragment(
-					start_pos,
-					start_line,
-					start_column,
-				),
+				fragment: cursor.make_fragment(start_pos, start_line, start_column),
 			});
 		}
 	}

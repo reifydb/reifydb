@@ -121,9 +121,7 @@ impl RowNumberContainer {
 	}
 
 	pub fn extend_from_undefined(&mut self, len: usize) {
-		self.data
-			.extend(std::iter::repeat(RowNumber::default())
-				.take(len));
+		self.data.extend(std::iter::repeat(RowNumber::default()).take(len));
 		self.bitvec.extend(&BitVec::repeat(len, false));
 	}
 
@@ -138,19 +136,8 @@ impl RowNumberContainer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<RowNumber> = self
-			.data
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.cloned()
-			.collect();
-		let new_bitvec: Vec<bool> = self
-			.bitvec
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.collect();
+		let new_data: Vec<RowNumber> = self.data.iter().skip(start).take(end - start).cloned().collect();
+		let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
 		Self {
 			data: CowVec::new(new_data),
 			bitvec: BitVec::from_slice(&new_bitvec),
@@ -214,8 +201,7 @@ mod tests {
 		let row_number2 = RowNumber::new(2);
 		let row_numbers = vec![row_number1, row_number2];
 		let bitvec = BitVec::from_slice(&[true, true]);
-		let container =
-			RowNumberContainer::new(row_numbers.clone(), bitvec);
+		let container = RowNumberContainer::new(row_numbers.clone(), bitvec);
 
 		assert_eq!(container.len(), 2);
 		assert_eq!(container.get(0), Some(&row_numbers[0]));
@@ -224,13 +210,8 @@ mod tests {
 
 	#[test]
 	fn test_from_vec() {
-		let row_numbers = vec![
-			RowNumber::new(10),
-			RowNumber::new(20),
-			RowNumber::new(30),
-		];
-		let container =
-			RowNumberContainer::from_vec(row_numbers.clone());
+		let row_numbers = vec![RowNumber::new(10), RowNumber::new(20), RowNumber::new(30)];
+		let container = RowNumberContainer::from_vec(row_numbers.clone());
 
 		assert_eq!(container.len(), 3);
 		assert_eq!(container.get(0), Some(&row_numbers[0]));
@@ -277,12 +258,8 @@ mod tests {
 		let row_number2 = RowNumber::new(2);
 		let row_number3 = RowNumber::new(3);
 
-		let mut container1 = RowNumberContainer::from_vec(vec![
-			row_number1,
-			row_number2,
-		]);
-		let container2 =
-			RowNumberContainer::from_vec(vec![row_number3]);
+		let mut container1 = RowNumberContainer::from_vec(vec![row_number1, row_number2]);
+		let container2 = RowNumberContainer::from_vec(vec![row_number3]);
 
 		container1.extend(&container2).unwrap();
 
@@ -295,8 +272,7 @@ mod tests {
 	#[test]
 	fn test_extend_from_undefined() {
 		let row_number = RowNumber::new(42);
-		let mut container =
-			RowNumberContainer::from_vec(vec![row_number]);
+		let mut container = RowNumberContainer::from_vec(vec![row_number]);
 		container.extend_from_undefined(2);
 
 		assert_eq!(container.len(), 3);
@@ -312,15 +288,10 @@ mod tests {
 		let row_number3 = RowNumber::new(30);
 		let row_numbers = vec![row_number1, row_number2, row_number3];
 		let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-		let container =
-			RowNumberContainer::new(row_numbers.clone(), bitvec);
+		let container = RowNumberContainer::new(row_numbers.clone(), bitvec);
 
-		let collected: Vec<Option<RowNumber>> =
-			container.iter().collect();
-		assert_eq!(
-			collected,
-			vec![Some(row_numbers[0]), None, Some(row_numbers[2])]
-		);
+		let collected: Vec<Option<RowNumber>> = container.iter().collect();
+		assert_eq!(collected, vec![Some(row_numbers[0]), None, Some(row_numbers[2])]);
 	}
 
 	#[test]
@@ -357,11 +328,8 @@ mod tests {
 
 	#[test]
 	fn test_reorder() {
-		let mut container = RowNumberContainer::from_vec(vec![
-			RowNumber::new(10),
-			RowNumber::new(20),
-			RowNumber::new(30),
-		]);
+		let mut container =
+			RowNumberContainer::from_vec(vec![RowNumber::new(10), RowNumber::new(20), RowNumber::new(30)]);
 		let indices = [2, 0, 1];
 
 		container.reorder(&indices);
@@ -374,10 +342,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder_with_out_of_bounds() {
-		let mut container = RowNumberContainer::from_vec(vec![
-			RowNumber::new(1),
-			RowNumber::new(2),
-		]);
+		let mut container = RowNumberContainer::from_vec(vec![RowNumber::new(1), RowNumber::new(2)]);
 		let indices = [1, 5, 0]; // index 5 is out of bounds
 
 		container.reorder(&indices);
@@ -397,10 +362,7 @@ mod tests {
 
 	#[test]
 	fn test_data_access() {
-		let mut container = RowNumberContainer::from_vec(vec![
-			RowNumber::new(1),
-			RowNumber::new(2),
-		]);
+		let mut container = RowNumberContainer::from_vec(vec![RowNumber::new(1), RowNumber::new(2)]);
 
 		// Test immutable access
 		assert_eq!(container.data().len(), 2);

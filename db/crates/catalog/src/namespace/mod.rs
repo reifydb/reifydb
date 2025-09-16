@@ -15,8 +15,7 @@ mod list;
 pub(crate) fn convert_namespace(versioned: Versioned) -> NamespaceDef {
 	let row = versioned.row;
 	let id = NamespaceId(namespace::LAYOUT.get_u64(&row, namespace::ID));
-	let name =
-		namespace::LAYOUT.get_utf8(&row, namespace::NAME).to_string();
+	let name = namespace::LAYOUT.get_utf8(&row, namespace::NAME).to_string();
 
 	NamespaceDef {
 		id,

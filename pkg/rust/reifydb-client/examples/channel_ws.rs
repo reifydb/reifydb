@@ -10,8 +10,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	let client = Client::ws(("127.0.0.1", 8090))?;
 
 	// Create a channel session with authentication
-	let (session, receiver) =
-		client.channel_session(Some("mysecrettoken".to_string()))?;
+	let (session, receiver) = client.channel_session(Some("mysecrettoken".to_string()))?;
 
 	// Consume authentication response
 	if let Ok(msg) = receiver.recv_timeout(Duration::from_millis(100)) {
@@ -24,10 +23,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 	}
 
 	// Execute a command to create a table
-	let command_id = session.command(
-		"CREATE NAMESPACE test; CREATE TABLE test.users { id: INT4, name: UTF8 }",
-		None,
-	)?;
+	let command_id =
+		session.command("CREATE NAMESPACE test; CREATE TABLE test.users { id: INT4, name: UTF8 }", None)?;
 	println!("Command sent with ID: {}", command_id);
 
 	// Execute a query
@@ -62,13 +59,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						);
 						// Print first frame if
 						// available
-						if let Some(frame) =
-							result.frames.first()
-						{
-							println!(
-								"First frame:\n{}",
-								frame
-							);
+						if let Some(frame) = result.frames.first() {
+							println!("First frame:\n{}", frame);
 						}
 						received += 1;
 					}
@@ -78,10 +70,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 						// Already handled above
 					}
 					Err(e) => {
-						println!(
-							"Request {} failed: {}",
-							msg.request_id, e
-						);
+						println!("Request {} failed: {}", msg.request_id, e);
 						received += 1;
 					}
 				}

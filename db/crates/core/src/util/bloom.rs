@@ -80,11 +80,7 @@ impl BloomFilter {
 	/// Estimate the number of items in the bloom filter
 	/// This is based on the number of set bits
 	pub fn estimated_items(&self) -> usize {
-		let set_bits = self
-			.bits
-			.iter()
-			.map(|&word| word.count_ones() as usize)
-			.sum::<usize>();
+		let set_bits = self.bits.iter().map(|&word| word.count_ones() as usize).sum::<usize>();
 
 		// Formula: n ≈ -m/k * ln(1 - X/m) where X is set bits
 		let fill_ratio = set_bits as f64 / self.size as f64;
@@ -93,18 +89,13 @@ impl BloomFilter {
 			return usize::MAX;
 		}
 
-		let estimated = -(self.size as f64 / self.hash_count as f64)
-			* (1.0 - fill_ratio).ln();
+		let estimated = -(self.size as f64 / self.hash_count as f64) * (1.0 - fill_ratio).ln();
 		estimated as usize
 	}
 
 	/// Get the fill ratio (proportion of bits set)
 	pub fn fill_ratio(&self) -> f64 {
-		let set_bits = self
-			.bits
-			.iter()
-			.map(|&word| word.count_ones() as usize)
-			.sum::<usize>();
+		let set_bits = self.bits.iter().map(|&word| word.count_ones() as usize).sum::<usize>();
 		set_bits as f64 / self.size as f64
 	}
 
@@ -143,10 +134,7 @@ impl BloomFilterBuilder {
 
 	/// Set the desired false positive rate (between 0 and 1)
 	pub fn false_positive_rate(mut self, rate: f64) -> Self {
-		assert!(
-			rate > 0.0 && rate < 1.0,
-			"False positive rate must be between 0 and 1"
-		);
+		assert!(rate > 0.0 && rate < 1.0, "False positive rate must be between 0 and 1");
 		self.false_positive_rate = rate;
 		self
 	}
@@ -156,16 +144,11 @@ impl BloomFilterBuilder {
 		// Calculate optimal bit array size
 		// m = -n * ln(p) / (ln(2)^2)
 		let ln2_squared = 0.693147f64.powi(2);
-		let size_bits = (-(self.expected_items as f64)
-			* self.false_positive_rate.ln()
-			/ ln2_squared) as usize;
+		let size_bits = (-(self.expected_items as f64) * self.false_positive_rate.ln() / ln2_squared) as usize;
 
 		// Calculate optimal number of hash functions
 		// k = m/n * ln(2)
-		let hash_count = ((size_bits as f64
-			/ self.expected_items as f64)
-			* 0.693147)
-			.round() as usize;
+		let hash_count = ((size_bits as f64 / self.expected_items as f64) * 0.693147).round() as usize;
 
 		BloomFilter::with_params(size_bits, hash_count.max(1))
 	}
@@ -193,8 +176,7 @@ mod tests {
 		assert!(bloom.might_contain(&42));
 
 		// Should not contain items not added (with high probability)
-		assert!(!bloom.might_contain(&"foo")
-			|| !bloom.might_contain(&"bar"));
+		assert!(!bloom.might_contain(&"foo") || !bloom.might_contain(&"bar"));
 
 		// Clear and test
 		bloom.clear();
@@ -228,11 +210,7 @@ mod tests {
 
 		// Should be roughly around 0.1% (10 out of 10000)
 		// Allow some variance
-		assert!(
-			false_positives < 30,
-			"Too many false positives: {}",
-			false_positives
-		);
+		assert!(false_positives < 30, "Too many false positives: {}", false_positives);
 	}
 
 	#[test]

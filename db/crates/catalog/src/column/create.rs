@@ -2,12 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	diagnostic::catalog::{
-		auto_increment_invalid_type, table_column_already_exists,
-	},
+	diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
 	interface::{
-		ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction,
-		EncodableKey, Key, SourceId, TableId,
+		ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, EncodableKey, Key, SourceId, TableId,
 	},
 	return_error,
 };
@@ -60,11 +57,7 @@ impl CatalogStore {
 		let source = source.into();
 
 		// FIXME policies
-		if let Some(column) = Self::find_column_by_name(
-			txn,
-			source,
-			&column_to_create.column,
-		)? {
+		if let Some(column) = Self::find_column_by_name(txn, source, &column_to_create.column)? {
 			return_error!(table_column_already_exists(
 				None::<OwnedFragment>,
 				column_to_create.namespace_name,
@@ -98,31 +91,13 @@ impl CatalogStore {
 		let mut row = column::LAYOUT.allocate_row();
 		column::LAYOUT.set_u64(&mut row, column::ID, id);
 		column::LAYOUT.set_u64(&mut row, column::TABLE, source);
-		column::LAYOUT.set_utf8(
-			&mut row,
-			column::NAME,
-			&column_to_create.column,
-		);
-		column::LAYOUT.set_u8(
-			&mut row,
-			column::VALUE,
-			column_to_create.constraint.get_type().to_u8(),
-		);
-		column::LAYOUT.set_u16(
-			&mut row,
-			column::INDEX,
-			column_to_create.index,
-		);
-		column::LAYOUT.set_bool(
-			&mut row,
-			column::AUTO_INCREMENT,
-			column_to_create.auto_increment,
-		);
+		column::LAYOUT.set_utf8(&mut row, column::NAME, &column_to_create.column);
+		column::LAYOUT.set_u8(&mut row, column::VALUE, column_to_create.constraint.get_type().to_u8());
+		column::LAYOUT.set_u16(&mut row, column::INDEX, column_to_create.index);
+		column::LAYOUT.set_bool(&mut row, column::AUTO_INCREMENT, column_to_create.auto_increment);
 
 		// Store constraint as encoded blob
-		let constraint_bytes = encode_constraint(
-			column_to_create.constraint.constraint(),
-		);
+		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
 		let blob = reifydb_type::Blob::from(constraint_bytes);
 		column::LAYOUT.set_blob(&mut row, column::CONSTRAINT, &blob);
 
@@ -136,16 +111,8 @@ impl CatalogStore {
 
 		let mut row = table_column::LAYOUT.allocate_row();
 		table_column::LAYOUT.set_u64(&mut row, table_column::ID, id);
-		table_column::LAYOUT.set_utf8(
-			&mut row,
-			table_column::NAME,
-			&column_to_create.column,
-		);
-		table_column::LAYOUT.set_u16(
-			&mut row,
-			table_column::INDEX,
-			column_to_create.index,
-		);
+		table_column::LAYOUT.set_utf8(&mut row, table_column::NAME, &column_to_create.column);
+		table_column::LAYOUT.set_u16(&mut row, table_column::INDEX, column_to_create.index);
 		txn.set(
 			&ColumnKey {
 				source,
@@ -176,10 +143,7 @@ mod test {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::{Type, TypeConstraint};
 
-	use crate::{
-		CatalogStore, column::ColumnToCreate,
-		test_utils::ensure_test_table,
-	};
+	use crate::{CatalogStore, column::ColumnToCreate, test_utils::ensure_test_table};
 
 	#[test]
 	fn test_create_column() {
@@ -195,9 +159,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Boolean,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -215,9 +177,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_2".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Int2,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Int2),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),
@@ -226,18 +186,14 @@ mod test {
 		)
 		.unwrap();
 
-		let column_1 =
-			CatalogStore::get_column(&mut txn, ColumnId(8193))
-				.unwrap();
+		let column_1 = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
 
 		assert_eq!(column_1.id, 8193);
 		assert_eq!(column_1.name, "col_1");
 		assert_eq!(column_1.constraint.get_type(), Type::Boolean);
 		assert_eq!(column_1.auto_increment, false);
 
-		let column_2 =
-			CatalogStore::get_column(&mut txn, ColumnId(8194))
-				.unwrap();
+		let column_2 = CatalogStore::get_column(&mut txn, ColumnId(8194)).unwrap();
 
 		assert_eq!(column_2.id, 8194);
 		assert_eq!(column_2.name, "col_2");
@@ -259,9 +215,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "id".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Uint8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Uint8),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -270,8 +224,7 @@ mod test {
 		)
 		.unwrap();
 
-		let column = CatalogStore::get_column(&mut txn, ColumnId(8193))
-			.unwrap();
+		let column = CatalogStore::get_column(&mut txn, ColumnId(8193)).unwrap();
 
 		assert_eq!(column.id, ColumnId(8193));
 		assert_eq!(column.name, "id");
@@ -295,9 +248,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "name".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Utf8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Utf8),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -308,9 +259,7 @@ mod test {
 
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_006");
-		assert!(diagnostic
-			.message
-			.contains("auto increment is not supported for type"));
+		assert!(diagnostic.message.contains("auto increment is not supported for type"));
 
 		// Try with bool type
 		let err = CatalogStore::create_column(
@@ -322,9 +271,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "is_active".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Boolean,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -345,9 +292,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "price".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Float8,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Float8),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -373,9 +318,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Boolean,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(0),
@@ -394,9 +337,7 @@ mod test {
 				table: TableId(1),
 				table_name: "test_table",
 				column: "col_1".to_string(),
-				constraint: TypeConstraint::unconstrained(
-					Type::Boolean,
-				),
+				constraint: TypeConstraint::unconstrained(Type::Boolean),
 				if_not_exists: false,
 				policies: vec![],
 				index: ColumnIndex(1),

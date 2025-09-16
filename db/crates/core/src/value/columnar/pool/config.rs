@@ -109,9 +109,7 @@ pub fn init_development_pools() -> Pools {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::value::columnar::pool::thread_local::{
-		clear_thread_pools, has_thread_pools,
-	};
+	use crate::value::columnar::pool::thread_local::{clear_thread_pools, has_thread_pools};
 
 	#[test]
 	fn test_pool_config_defaults() {

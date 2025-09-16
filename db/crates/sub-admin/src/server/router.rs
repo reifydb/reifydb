@@ -40,13 +40,9 @@ impl Router {
 
 			// React app routes - serve at root
 			("GET", "/") => Route::ServeIndex,
-			("GET", p) if p.starts_with("/assets/") => {
-				Route::ServeStatic(p.to_string())
-			}
+			("GET", p) if p.starts_with("/assets/") => Route::ServeStatic(p.to_string()),
 			// SPA fallback - any other GET not under /v1/
-			("GET", p) if !p.starts_with("/v1/") => {
-				Route::ServeIndex
-			}
+			("GET", p) if !p.starts_with("/v1/") => Route::ServeIndex,
 
 			_ => Route::NotFound,
 		}

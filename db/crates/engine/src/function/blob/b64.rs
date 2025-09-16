@@ -15,10 +15,7 @@ impl BlobB64 {
 }
 
 impl ScalarFunction for BlobB64 {
-	fn scalar(
-		&self,
-		ctx: ScalarFunctionContext,
-	) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 		let column = columns.get(0).unwrap();
@@ -28,28 +25,19 @@ impl ScalarFunction for BlobB64 {
 				container,
 				..
 			} => {
-				let mut result_data = Vec::with_capacity(
-					container.data().len(),
-				);
+				let mut result_data = Vec::with_capacity(container.data().len());
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
 						let b64_str = &container[i];
-						let blob = Blob::from_b64(
-							OwnedFragment::internal(
-								b64_str,
-							),
-						)?;
+						let blob = Blob::from_b64(OwnedFragment::internal(b64_str))?;
 						result_data.push(blob);
 					} else {
 						result_data.push(Blob::empty())
 					}
 				}
 
-				Ok(ColumnData::blob_with_bitvec(
-					result_data,
-					container.bitvec().clone(),
-				))
+				Ok(ColumnData::blob_with_bitvec(result_data, container.bitvec().clone()))
 			}
 			_ => unimplemented!("BlobB64 only supports text input"),
 		}
@@ -77,17 +65,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -115,17 +98,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -154,17 +132,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -188,26 +161,17 @@ mod tests {
 		let function = BlobB64::new();
 
 		// "A" = "QQ==", "BC" = "QkM=", "DEF" = "REVG"
-		let b64_data = vec![
-			"QQ==".to_string(),
-			"QkM=".to_string(),
-			"REVG".to_string(),
-		];
+		let b64_data = vec!["QQ==".to_string(), "QkM=".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -235,26 +199,17 @@ mod tests {
 	fn test_blob_b64_with_null_data() {
 		let function = BlobB64::new();
 
-		let b64_data = vec![
-			"QQ==".to_string(),
-			"".to_string(),
-			"REVG".to_string(),
-		];
+		let b64_data = vec!["QQ==".to_string(), "".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -288,17 +243,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -326,26 +276,18 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
 		};
 		let result = function.scalar(ctx);
-		assert!(
-			result.is_err(),
-			"Expected error for invalid base64 input"
-		);
+		assert!(result.is_err(), "Expected error for invalid base64 input");
 	}
 
 	#[test]
@@ -357,25 +299,17 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					b64_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
 		};
 		let result = function.scalar(ctx);
-		assert!(
-			result.is_err(),
-			"Expected error for malformed base64 padding"
-		);
+		assert!(result.is_err(), "Expected error for malformed base64 padding");
 	}
 }

@@ -3,9 +3,7 @@
 
 use crate::{Type, error::diagnostic::Diagnostic, fragment::IntoFragment};
 
-pub fn not_can_not_applied_to_number<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn not_can_not_applied_to_number<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_001".to_string(),
@@ -23,9 +21,7 @@ pub fn not_can_not_applied_to_number<'a>(
         cause: None}
 }
 
-pub fn not_can_not_applied_to_text<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn not_can_not_applied_to_text<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_002".to_string(),
@@ -43,9 +39,7 @@ pub fn not_can_not_applied_to_text<'a>(
         cause: None}
 }
 
-pub fn not_can_not_applied_to_temporal<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn not_can_not_applied_to_temporal<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_003".to_string(),
@@ -63,9 +57,7 @@ pub fn not_can_not_applied_to_temporal<'a>(
         cause: None}
 }
 
-pub fn not_can_not_applied_to_uuid<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn not_can_not_applied_to_uuid<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_004".to_string(),
@@ -83,9 +75,7 @@ pub fn not_can_not_applied_to_uuid<'a>(
         cause: None}
 }
 
-pub fn and_can_not_applied_to_number<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn and_can_not_applied_to_number<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_005".to_string(),
@@ -103,9 +93,7 @@ pub fn and_can_not_applied_to_number<'a>(
         cause: None}
 }
 
-pub fn and_can_not_applied_to_text<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn and_can_not_applied_to_text<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_006".to_string(),
@@ -123,9 +111,7 @@ pub fn and_can_not_applied_to_text<'a>(
         cause: None}
 }
 
-pub fn and_can_not_applied_to_temporal<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn and_can_not_applied_to_temporal<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_007".to_string(),
@@ -143,9 +129,7 @@ pub fn and_can_not_applied_to_temporal<'a>(
         cause: None}
 }
 
-pub fn and_can_not_applied_to_uuid<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn and_can_not_applied_to_uuid<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_008".to_string(),
@@ -163,9 +147,7 @@ pub fn and_can_not_applied_to_uuid<'a>(
         cause: None}
 }
 
-pub fn or_can_not_applied_to_number<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn or_can_not_applied_to_number<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_009".to_string(),
@@ -183,9 +165,7 @@ pub fn or_can_not_applied_to_number<'a>(
         cause: None}
 }
 
-pub fn or_can_not_applied_to_text<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn or_can_not_applied_to_text<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_010".to_string(),
@@ -203,9 +183,7 @@ pub fn or_can_not_applied_to_text<'a>(
         cause: None}
 }
 
-pub fn or_can_not_applied_to_temporal<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn or_can_not_applied_to_temporal<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_011".to_string(),
@@ -223,9 +201,7 @@ pub fn or_can_not_applied_to_temporal<'a>(
         cause: None}
 }
 
-pub fn or_can_not_applied_to_uuid<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn or_can_not_applied_to_uuid<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_012".to_string(),
@@ -243,9 +219,7 @@ pub fn or_can_not_applied_to_uuid<'a>(
         cause: None}
 }
 
-pub fn xor_can_not_applied_to_number<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn xor_can_not_applied_to_number<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_013".to_string(),
@@ -263,9 +237,7 @@ pub fn xor_can_not_applied_to_number<'a>(
         cause: None}
 }
 
-pub fn xor_can_not_applied_to_text<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn xor_can_not_applied_to_text<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_014".to_string(),
@@ -283,9 +255,7 @@ pub fn xor_can_not_applied_to_text<'a>(
         cause: None}
 }
 
-pub fn xor_can_not_applied_to_temporal<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn xor_can_not_applied_to_temporal<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_015".to_string(),
@@ -303,9 +273,7 @@ pub fn xor_can_not_applied_to_temporal<'a>(
         cause: None}
 }
 
-pub fn xor_can_not_applied_to_uuid<'a>(
-	fragment: impl IntoFragment<'a>,
-) -> Diagnostic {
+pub fn xor_can_not_applied_to_uuid<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
         code: "OPERATOR_016".to_string(),
@@ -330,19 +298,20 @@ pub fn add_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_017".to_string(),
-        statement: None,
-        message: format!("Cannot apply '+' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'+' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Consider converting operands to compatible numeric types first".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_017".to_string(),
+		statement: None,
+		message: format!("Cannot apply '+' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'+' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Consider converting operands to compatible numeric types first".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn sub_cannot_be_applied_to_incompatible_types<'a>(
@@ -352,19 +321,20 @@ pub fn sub_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_018".to_string(),
-        statement: None,
-        message: format!("Cannot apply '-' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'-' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Consider converting operands to compatible numeric types first".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_018".to_string(),
+		statement: None,
+		message: format!("Cannot apply '-' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'-' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Consider converting operands to compatible numeric types first".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn mul_cannot_be_applied_to_incompatible_types<'a>(
@@ -374,19 +344,20 @@ pub fn mul_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_019".to_string(),
-        statement: None,
-        message: format!("Cannot apply '*' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'*' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Consider converting operands to compatible numeric types first".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_019".to_string(),
+		statement: None,
+		message: format!("Cannot apply '*' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'*' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Consider converting operands to compatible numeric types first".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn div_cannot_be_applied_to_incompatible_types<'a>(
@@ -396,19 +367,20 @@ pub fn div_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_020".to_string(),
-        statement: None,
-        message: format!("Cannot apply '/' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'/' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Consider converting operands to compatible numeric types first".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_020".to_string(),
+		statement: None,
+		message: format!("Cannot apply '/' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'/' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Consider converting operands to compatible numeric types first".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn rem_cannot_be_applied_to_incompatible_types<'a>(
@@ -418,19 +390,20 @@ pub fn rem_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_021".to_string(),
-        statement: None,
-        message: format!("Cannot apply '%' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'%' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Consider converting operands to compatible numeric types first".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_021".to_string(),
+		statement: None,
+		message: format!("Cannot apply '%' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'%' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Consider converting operands to compatible numeric types first".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn equal_cannot_be_applied_to_incompatible_types<'a>(
@@ -440,19 +413,20 @@ pub fn equal_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_022".to_string(),
-        statement: None,
-        message: format!("Cannot apply '==' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'==' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Equality comparison is only supported between compatible types".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_022".to_string(),
+		statement: None,
+		message: format!("Cannot apply '==' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'==' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Equality comparison is only supported between compatible types".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn not_equal_cannot_be_applied_to_incompatible_types<'a>(
@@ -462,19 +436,20 @@ pub fn not_equal_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_023".to_string(),
-        statement: None,
-        message: format!("Cannot apply '!=' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'!=' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Inequality comparison is only supported between compatible types".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_023".to_string(),
+		statement: None,
+		message: format!("Cannot apply '!=' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'!=' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Inequality comparison is only supported between compatible types".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn less_than_cannot_be_applied_to_incompatible_types<'a>(
@@ -484,19 +459,20 @@ pub fn less_than_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_024".to_string(),
-        statement: None,
-        message: format!("Cannot apply '<' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'<' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Less than comparison is only supported between compatible types".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_024".to_string(),
+		statement: None,
+		message: format!("Cannot apply '<' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'<' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Less than comparison is only supported between compatible types".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn less_than_equal_cannot_be_applied_to_incompatible_types<'a>(
@@ -506,19 +482,20 @@ pub fn less_than_equal_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_025".to_string(),
-        statement: None,
-        message: format!("Cannot apply '<=' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'<=' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Less than or equal comparison is only supported between compatible types".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_025".to_string(),
+		statement: None,
+		message: format!("Cannot apply '<=' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'<=' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Less than or equal comparison is only supported between compatible types".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn greater_than_cannot_be_applied_to_incompatible_types<'a>(
@@ -528,19 +505,20 @@ pub fn greater_than_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_026".to_string(),
-        statement: None,
-        message: format!("Cannot apply '>' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'>' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Greater than comparison is only supported between compatible types".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_026".to_string(),
+		statement: None,
+		message: format!("Cannot apply '>' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'>' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Greater than comparison is only supported between compatible types".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn greater_than_equal_cannot_be_applied_to_incompatible_types<'a>(
@@ -550,20 +528,20 @@ pub fn greater_than_equal_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_027".to_string(),
-        statement: None,
-        message: format!("Cannot apply '>=' operator to {} and {}", left, right),
-        column: None,
-        fragment,
-        label: Some("'>=' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Left operand is of type: {}", left),
-            format!("Right operand is of type: {}", right),
-            "Greater than or equal comparison is only supported between compatible types"
-                .to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_027".to_string(),
+		statement: None,
+		message: format!("Cannot apply '>=' operator to {} and {}", left, right),
+		column: None,
+		fragment,
+		label: Some("'>=' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Left operand is of type: {}", left),
+			format!("Right operand is of type: {}", right),
+			"Greater than or equal comparison is only supported between compatible types".to_string(),
+		],
+		cause: None,
+	}
 }
 
 pub fn between_cannot_be_applied_to_incompatible_types<'a>(
@@ -573,20 +551,18 @@ pub fn between_cannot_be_applied_to_incompatible_types<'a>(
 ) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {
-        code: "OPERATOR_028".to_string(),
-        statement: None,
-        message: format!(
-            "Cannot apply 'BETWEEN' operator to {} with range of {}",
-            value_type, range_type
-        ),
-        column: None,
-        fragment,
-        label: Some("'BETWEEN' operator on incompatible types".to_string()),
-        help: None,
-        notes: vec![
-            format!("Value is of type: {}", value_type),
-            format!("Range bounds are of type: {}", range_type),
-            "BETWEEN comparison is only supported between compatible types".to_string(),
-        ],
-        cause: None}
+		code: "OPERATOR_028".to_string(),
+		statement: None,
+		message: format!("Cannot apply 'BETWEEN' operator to {} with range of {}", value_type, range_type),
+		column: None,
+		fragment,
+		label: Some("'BETWEEN' operator on incompatible types".to_string()),
+		help: None,
+		notes: vec![
+			format!("Value is of type: {}", value_type),
+			format!("Range bounds are of type: {}", range_type),
+			"BETWEEN comparison is only supported between compatible types".to_string(),
+		],
+		cause: None,
+	}
 }

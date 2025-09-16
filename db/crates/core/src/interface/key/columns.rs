@@ -20,10 +20,7 @@ impl EncodableKey for ColumnsKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.column);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.column);
 		serializer.to_encoded_key()
 	}
 
@@ -55,10 +52,7 @@ impl EncodableKey for ColumnsKey {
 
 impl ColumnsKey {
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::column_start()),
-			Some(Self::column_end()),
-		)
+		EncodedKeyRange::start_end(Some(Self::column_start()), Some(Self::column_end()))
 	}
 
 	fn column_start() -> EncodedKey {

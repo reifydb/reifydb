@@ -58,35 +58,23 @@ pub(crate) fn route_response(response: Response, route: ResponseRoute) {
 			// Parse the response based on its type
 			let request_id = response.id.clone();
 			let channel_response = match response.payload {
-				ResponsePayload::Auth(_) => {
-					Ok(ChannelResponse::Auth {
+				ResponsePayload::Auth(_) => Ok(ChannelResponse::Auth {
+					request_id: request_id.clone(),
+				}),
+				ResponsePayload::Command(_) => {
+					parse_command_response(response).map(|result| ChannelResponse::Command {
 						request_id: request_id.clone(),
+						result,
 					})
 				}
-				ResponsePayload::Command(_) => {
-					parse_command_response(response).map(
-						|result| {
-							ChannelResponse::Command {
-							request_id: request_id.clone(),
-							result,
-						}
-						},
-					)
-				}
 				ResponsePayload::Query(_) => {
-					parse_query_response(response).map(
-						|result| {
-							ChannelResponse::Query {
-							request_id: request_id.clone(),
-							result,
-						}
-						},
-					)
+					parse_query_response(response).map(|result| ChannelResponse::Query {
+						request_id: request_id.clone(),
+						result,
+					})
 				}
 				ResponsePayload::Err(ref err) => {
-					reifydb_type::err!(err
-						.diagnostic
-						.clone())
+					reifydb_type::err!(err.diagnostic.clone())
 				}
 			};
 

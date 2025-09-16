@@ -31,9 +31,6 @@ mod tests {
 		assert_eq!(tuple.len(), 2);
 
 		assert_eq!(tuple.nodes[0].as_literal_number().value(), "9924");
-		assert!(matches!(
-			tuple.nodes[1].as_identifier().text(),
-			"int8"
-		));
+		assert!(matches!(tuple.nodes[1].as_identifier().text(), "int8"));
 	}
 }

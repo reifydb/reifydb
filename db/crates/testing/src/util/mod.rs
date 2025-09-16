@@ -16,13 +16,8 @@ use std::{error::Error, ops::Bound};
 use reifydb_core::{CowVec, util::encoding::binary::decode_binary};
 
 /// Parses an binary key range, using Rust range syntax.
-pub fn parse_key_range(
-	s: &str,
-) -> Result<(Bound<CowVec<u8>>, Bound<CowVec<u8>>), Box<dyn Error>> {
-	let mut bound = (
-		Bound::<CowVec<u8>>::Unbounded,
-		Bound::<CowVec<u8>>::Unbounded,
-	);
+pub fn parse_key_range(s: &str) -> Result<(Bound<CowVec<u8>>, Bound<CowVec<u8>>), Box<dyn Error>> {
+	let mut bound = (Bound::<CowVec<u8>>::Unbounded, Bound::<CowVec<u8>>::Unbounded);
 
 	if let Some(dot_pos) = s.find("..") {
 		let start_part = &s[..dot_pos];
@@ -36,8 +31,7 @@ pub fn parse_key_range(
 		// Parse end bound - check for inclusive marker "="
 		if let Some(end_str) = end_part.strip_prefix('=') {
 			if !end_str.is_empty() {
-				bound.1 =
-					Bound::Included(decode_binary(end_str));
+				bound.1 = Bound::Included(decode_binary(end_str));
 			}
 		} else if !end_part.is_empty() {
 			bound.1 = Bound::Excluded(decode_binary(end_part));

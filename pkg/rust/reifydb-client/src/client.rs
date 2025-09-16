@@ -14,30 +14,22 @@ pub enum Client {
 
 impl Client {
 	/// Create a WebSocket client
-	pub fn ws<A: ToSocketAddrs>(
-		addr: A,
-	) -> Result<WsClient, Box<dyn std::error::Error>> {
+	pub fn ws<A: ToSocketAddrs>(addr: A) -> Result<WsClient, Box<dyn std::error::Error>> {
 		WsClient::new(addr)
 	}
 
 	/// Create a WebSocket client from URL
-	pub fn ws_from_url(
-		url: &str,
-	) -> Result<WsClient, Box<dyn std::error::Error>> {
+	pub fn ws_from_url(url: &str) -> Result<WsClient, Box<dyn std::error::Error>> {
 		WsClient::from_url(url)
 	}
 
 	/// Create an HTTP client
-	pub fn http<A: ToSocketAddrs>(
-		addr: A,
-	) -> Result<HttpClient, Box<dyn std::error::Error>> {
+	pub fn http<A: ToSocketAddrs>(addr: A) -> Result<HttpClient, Box<dyn std::error::Error>> {
 		HttpClient::new(addr)
 	}
 
 	/// Create an HTTP client from URL
-	pub fn http_from_url(
-		url: &str,
-	) -> Result<HttpClient, Box<dyn std::error::Error>> {
+	pub fn http_from_url(url: &str) -> Result<HttpClient, Box<dyn std::error::Error>> {
 		HttpClient::from_url(url)
 	}
 

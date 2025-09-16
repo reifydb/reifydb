@@ -2,23 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::evaluate::expression::{
-	AccessSourceExpression, AddExpression, AliasExpression, AndExpression,
-	BetweenExpression, CallExpression, CastExpression, ColumnExpression,
-	ConstantExpression, DivExpression, EqExpression, Expression,
-	GreaterThanEqExpression, GreaterThanExpression, IdentExpression,
-	LessThanEqExpression, LessThanExpression, MulExpression,
-	NotEqExpression, OrExpression, ParameterExpression, PrefixExpression,
-	PrefixOperator, RemExpression, SubExpression, TupleExpression,
-	TypeExpression, XorExpression,
+	AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
+	CastExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression,
+	GreaterThanEqExpression, GreaterThanExpression, IdentExpression, LessThanEqExpression, LessThanExpression,
+	MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator,
+	RemExpression, SubExpression, TupleExpression, TypeExpression, XorExpression,
 };
 use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast,
-	ast::{
-		Ast, AstInfix, AstLiteral, InfixOperator, parse_str,
-		tokenize::ParameterKind,
-	},
+	ast::{Ast, AstInfix, AstLiteral, InfixOperator, parse_str, tokenize::ParameterKind},
 	convert_data_type,
 };
 
@@ -43,125 +37,141 @@ pub struct ExpressionCompiler {}
 impl ExpressionCompiler {
 	pub fn compile<'a>(ast: Ast<'a>) -> crate::Result<Expression<'a>> {
 		match ast {
-            Ast::Literal(literal) => match literal {
-                AstLiteral::Boolean(_) => {
-                    Ok(Expression::Constant(ConstantExpression::Bool { fragment: literal.fragment() }))
-                }
-                AstLiteral::Number(_) => {
-                    Ok(Expression::Constant(ConstantExpression::Number { fragment: literal.fragment() }))
-                }
-                AstLiteral::Temporal(_) => {
-                    Ok(Expression::Constant(ConstantExpression::Temporal { fragment: literal.fragment() }))
-                }
-                AstLiteral::Text(_) => {
-                    Ok(Expression::Constant(ConstantExpression::Text { fragment: literal.fragment() }))
-                }
-                AstLiteral::Undefined(_) => {
-                    Ok(Expression::Constant(ConstantExpression::Undefined { fragment: literal.fragment() }))
-                }
-            },
-            Ast::Identifier(identifier) => {
-                // Create an unqualified column identifier
-                use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
-                use reifydb_type::OwnedFragment;
+			Ast::Literal(literal) => match literal {
+				AstLiteral::Boolean(_) => Ok(Expression::Constant(ConstantExpression::Bool {
+					fragment: literal.fragment(),
+				})),
+				AstLiteral::Number(_) => Ok(Expression::Constant(ConstantExpression::Number {
+					fragment: literal.fragment(),
+				})),
+				AstLiteral::Temporal(_) => Ok(Expression::Constant(ConstantExpression::Temporal {
+					fragment: literal.fragment(),
+				})),
+				AstLiteral::Text(_) => Ok(Expression::Constant(ConstantExpression::Text {
+					fragment: literal.fragment(),
+				})),
+				AstLiteral::Undefined(_) => Ok(Expression::Constant(ConstantExpression::Undefined {
+					fragment: literal.fragment(),
+				})),
+			},
+			Ast::Identifier(identifier) => {
+				// Create an unqualified column identifier
+				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
+				use reifydb_type::OwnedFragment;
 
 				let column = ColumnIdentifier {
-                    source: ColumnSource::Source {
-                        namespace: Fragment::Owned(OwnedFragment::Internal { text: String::from("_context") }),
-                        source: Fragment::Owned(OwnedFragment::Internal { text: String::from("_context") }),
-                    },
-                    name: identifier.token.fragment.clone(),
-                };
-                Ok(Expression::Column(ColumnExpression(column)))
-            }
-            Ast::CallFunction(call) => {
-                // Build the full function name from namespace + function
-                let full_name = if call.function.namespaces.is_empty() {
-                    call.function.name.text().to_string()
-                } else {
-                    let namespace_path = call.function.namespaces.iter()
-                        .map(|ns| ns.text())
-                        .collect::<Vec<_>>()
-                        .join("::");
-                    format!("{}::{}", namespace_path, call.function.name.text())
-                };
+					source: ColumnSource::Source {
+						namespace: Fragment::Owned(OwnedFragment::Internal {
+							text: String::from("_context"),
+						}),
+						source: Fragment::Owned(OwnedFragment::Internal {
+							text: String::from("_context"),
+						}),
+					},
+					name: identifier.token.fragment.clone(),
+				};
+				Ok(Expression::Column(ColumnExpression(column)))
+			}
+			Ast::CallFunction(call) => {
+				// Build the full function name from namespace + function
+				let full_name = if call.function.namespaces.is_empty() {
+					call.function.name.text().to_string()
+				} else {
+					let namespace_path = call
+						.function
+						.namespaces
+						.iter()
+						.map(|ns| ns.text())
+						.collect::<Vec<_>>()
+						.join("::");
+					format!("{}::{}", namespace_path, call.function.name.text())
+				};
 
-                // Compile arguments
-                let mut arg_expressions = Vec::new();
-                for arg_ast in call.arguments.nodes {
-                    arg_expressions.push(Self::compile(arg_ast)?);
-                }
+				// Compile arguments
+				let mut arg_expressions = Vec::new();
+				for arg_ast in call.arguments.nodes {
+					arg_expressions.push(Self::compile(arg_ast)?);
+				}
 
-                Ok(Expression::Call(CallExpression {
-                    func: IdentExpression(Fragment::Owned(OwnedFragment::testing(&full_name))),
-                    args: arg_expressions,
-                    fragment: call.token.fragment}))
-            }
-            Ast::Infix(ast) => Self::infix(ast),
-            Ast::Between(between) => {
-                let value = Self::compile(*between.value)?;
-                let lower = Self::compile(*between.lower)?;
-                let upper = Self::compile(*between.upper)?;
+				Ok(Expression::Call(CallExpression {
+					func: IdentExpression(Fragment::Owned(OwnedFragment::testing(&full_name))),
+					args: arg_expressions,
+					fragment: call.token.fragment,
+				}))
+			}
+			Ast::Infix(ast) => Self::infix(ast),
+			Ast::Between(between) => {
+				let value = Self::compile(*between.value)?;
+				let lower = Self::compile(*between.lower)?;
+				let upper = Self::compile(*between.upper)?;
 
-                Ok(Expression::Between(BetweenExpression {
-                    value: Box::new(value),
-                    lower: Box::new(lower),
-                    upper: Box::new(upper),
-                    fragment: between.token.fragment}))
-            }
-            Ast::Tuple(tuple) => {
-                let mut expressions = Vec::with_capacity(tuple.len());
+				Ok(Expression::Between(BetweenExpression {
+					value: Box::new(value),
+					lower: Box::new(lower),
+					upper: Box::new(upper),
+					fragment: between.token.fragment,
+				}))
+			}
+			Ast::Tuple(tuple) => {
+				let mut expressions = Vec::with_capacity(tuple.len());
 
-                for ast in tuple.nodes {
-                    expressions.push(Self::compile(ast)?);
-                }
+				for ast in tuple.nodes {
+					expressions.push(Self::compile(ast)?);
+				}
 
-                Ok(Expression::Tuple(TupleExpression { expressions, fragment: tuple.token.fragment }))
-            }
-            Ast::Prefix(prefix) => {
-                let (fragment, operator) = match prefix.operator {
-                    ast::AstPrefixOperator::Plus(token) => {
-                        (token.fragment.clone(), PrefixOperator::Plus(token.fragment))
-                    }
-                    ast::AstPrefixOperator::Negate(token) => {
-                        (token.fragment.clone(), PrefixOperator::Minus(token.fragment))
-                    }
-                    ast::AstPrefixOperator::Not(token) => {
-                        (token.fragment.clone(), PrefixOperator::Not(token.fragment))
-                    }
-                };
+				Ok(Expression::Tuple(TupleExpression {
+					expressions,
+					fragment: tuple.token.fragment,
+				}))
+			}
+			Ast::Prefix(prefix) => {
+				let (fragment, operator) = match prefix.operator {
+					ast::AstPrefixOperator::Plus(token) => {
+						(token.fragment.clone(), PrefixOperator::Plus(token.fragment))
+					}
+					ast::AstPrefixOperator::Negate(token) => {
+						(token.fragment.clone(), PrefixOperator::Minus(token.fragment))
+					}
+					ast::AstPrefixOperator::Not(token) => {
+						(token.fragment.clone(), PrefixOperator::Not(token.fragment))
+					}
+				};
 
-                Ok(Expression::Prefix(PrefixExpression {
-                    operator,
-                    expression: Box::new(Self::compile(*prefix.node)?),
-                    fragment}))
-            }
-            Ast::Cast(node) => {
-                let mut tuple = node.tuple;
-                let node = tuple.nodes.pop().unwrap();
-                let fragment = node.as_identifier().token.fragment.clone();
-                let ty = convert_data_type(&fragment)?;
+				Ok(Expression::Prefix(PrefixExpression {
+					operator,
+					expression: Box::new(Self::compile(*prefix.node)?),
+					fragment,
+				}))
+			}
+			Ast::Cast(node) => {
+				let mut tuple = node.tuple;
+				let node = tuple.nodes.pop().unwrap();
+				let fragment = node.as_identifier().token.fragment.clone();
+				let ty = convert_data_type(&fragment)?;
 
-                let expr = tuple.nodes.pop().unwrap();
+				let expr = tuple.nodes.pop().unwrap();
 
-                Ok(Expression::Cast(CastExpression {
-                    fragment: tuple.token.fragment,
-                    expression: Box::new(Self::compile(expr)?),
-                    to: TypeExpression { fragment, ty }}))
-            }
-            Ast::ParameterRef(param) => {
-                match param.kind {
-                    ParameterKind::Positional(_) => {
-                        Ok(Expression::Parameter(ParameterExpression::Positional {
-                            fragment: param.token.fragment}))
-                    }
-                    ParameterKind::Named => {
-                        Ok(Expression::Parameter(ParameterExpression::Named {
-                            fragment: param.token.fragment}))
-                    }
-                }
-            }
-            ast => unimplemented!("{:?}", ast)}
+				Ok(Expression::Cast(CastExpression {
+					fragment: tuple.token.fragment,
+					expression: Box::new(Self::compile(expr)?),
+					to: TypeExpression {
+						fragment,
+						ty,
+					},
+				}))
+			}
+			Ast::ParameterRef(param) => match param.kind {
+				ParameterKind::Positional(_) => {
+					Ok(Expression::Parameter(ParameterExpression::Positional {
+						fragment: param.token.fragment,
+					}))
+				}
+				ParameterKind::Named => Ok(Expression::Parameter(ParameterExpression::Named {
+					fragment: param.token.fragment,
+				})),
+			},
+			ast => unimplemented!("{:?}", ast),
+		}
 	}
 
 	fn infix<'a>(ast: AstInfix<'a>) -> crate::Result<Expression<'a>> {
@@ -174,24 +184,18 @@ impl ExpressionCompiler {
 					unimplemented!()
 				};
 
-				use reifydb_core::interface::identifier::{
-					ColumnIdentifier, ColumnSource,
-				};
+				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
 
 				// Create a column identifier with alias source
 				// (the table/alias name)
 				let column = ColumnIdentifier {
-					source: ColumnSource::Alias(
-						left.token.fragment,
-					),
+					source: ColumnSource::Alias(left.token.fragment),
 					name: right.token.fragment,
 				};
 
-				Ok(Expression::AccessSource(
-					AccessSourceExpression {
-						column,
-					},
-				))
+				Ok(Expression::AccessSource(AccessSourceExpression {
+					column,
+				}))
 			}
 
 			InfixOperator::Add(token) => {
@@ -243,10 +247,7 @@ impl ExpressionCompiler {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				let Expression::Column(ColumnExpression(
-					column,
-				)) = left
-				else {
+				let Expression::Column(ColumnExpression(column)) = left else {
 					panic!()
 				};
 				let Expression::Tuple(tuple) = right else {
@@ -263,25 +264,21 @@ impl ExpressionCompiler {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::GreaterThan(
-					GreaterThanExpression {
-						left: Box::new(left),
-						right: Box::new(right),
-						fragment: token.fragment,
-					},
-				))
+				Ok(Expression::GreaterThan(GreaterThanExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					fragment: token.fragment,
+				}))
 			}
 			InfixOperator::GreaterThanEqual(token) => {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::GreaterThanEqual(
-					GreaterThanEqExpression {
-						left: Box::new(left),
-						right: Box::new(right),
-						fragment: token.fragment,
-					},
-				))
+				Ok(Expression::GreaterThanEqual(GreaterThanEqExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					fragment: token.fragment,
+				}))
 			}
 			InfixOperator::LessThan(token) => {
 				let left = Self::compile(*ast.left)?;
@@ -297,13 +294,11 @@ impl ExpressionCompiler {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::LessThanEqual(
-					LessThanEqExpression {
-						left: Box::new(left),
-						right: Box::new(right),
-						fragment: token.fragment,
-					},
-				))
+				Ok(Expression::LessThanEqual(LessThanEqExpression {
+					left: Box::new(left),
+					right: Box::new(right),
+					fragment: token.fragment,
+				}))
 			}
 			InfixOperator::Equal(token) => {
 				let left = Self::compile(*ast.left)?;
@@ -332,9 +327,7 @@ impl ExpressionCompiler {
 				};
 
 				Ok(Expression::Alias(AliasExpression {
-					alias: IdentExpression(
-						right.token.fragment,
-					),
+					alias: IdentExpression(right.token.fragment),
 					expression: Box::new(left),
 					fragment: token.fragment,
 				}))
@@ -394,9 +387,7 @@ impl ExpressionCompiler {
 				let right = Self::compile(*ast.right)?;
 
 				Ok(Expression::Alias(AliasExpression {
-					alias: IdentExpression(
-						alias.token.fragment,
-					),
+					alias: IdentExpression(alias.token.fragment),
 					expression: Box::new(right),
 					fragment: token.fragment,
 				}))

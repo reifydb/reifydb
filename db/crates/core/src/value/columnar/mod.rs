@@ -66,10 +66,7 @@ impl Column {
 
 	pub fn qualified_name(&self) -> String {
 		match self {
-			Self::FullyQualified(col) => format!(
-				"{}.{}.{}",
-				col.namespace, col.source, col.name
-			),
+			Self::FullyQualified(col) => format!("{}.{}.{}", col.namespace, col.source, col.name),
 			Self::SourceQualified(col) => {
 				format!("{}.{}", col.source, col.name)
 			}
@@ -80,33 +77,25 @@ impl Column {
 
 	pub fn with_new_data(&self, data: ColumnData) -> Column {
 		match self {
-			Self::FullyQualified(col) => {
-				Self::FullyQualified(FullyQualified {
-					namespace: col.namespace.clone(),
-					source: col.source.clone(),
-					name: col.name.clone(),
-					data,
-				})
-			}
-			Self::SourceQualified(col) => {
-				Self::SourceQualified(SourceQualified {
-					source: col.source.clone(),
-					name: col.name.clone(),
-					data,
-				})
-			}
-			Self::ColumnQualified(col) => {
-				Self::ColumnQualified(ColumnQualified {
-					name: col.name.clone(),
-					data,
-				})
-			}
-			Self::Unqualified(col) => {
-				Self::Unqualified(Unqualified {
-					name: col.name.clone(),
-					data,
-				})
-			}
+			Self::FullyQualified(col) => Self::FullyQualified(FullyQualified {
+				namespace: col.namespace.clone(),
+				source: col.source.clone(),
+				name: col.name.clone(),
+				data,
+			}),
+			Self::SourceQualified(col) => Self::SourceQualified(SourceQualified {
+				source: col.source.clone(),
+				name: col.name.clone(),
+				data,
+			}),
+			Self::ColumnQualified(col) => Self::ColumnQualified(ColumnQualified {
+				name: col.name.clone(),
+				data,
+			}),
+			Self::Unqualified(col) => Self::Unqualified(Unqualified {
+				name: col.name.clone(),
+				data,
+			}),
 		}
 	}
 
@@ -167,15 +156,8 @@ mod tests {
 
 	#[test]
 	fn test_source_qualified_column() {
-		let column = SourceQualified::int4(
-			"test_columns",
-			"normal_column",
-			[1, 2, 3],
-		);
-		assert_eq!(
-			column.qualified_name(),
-			"test_columns.normal_column"
-		);
+		let column = SourceQualified::int4("test_columns", "normal_column", [1, 2, 3]);
+		assert_eq!(column.qualified_name(), "test_columns.normal_column");
 		match column {
 			Column::SourceQualified(col) => {
 				assert_eq!(col.source, "test_columns");
@@ -187,12 +169,7 @@ mod tests {
 
 	#[test]
 	fn test_fully_qualified_column() {
-		let column = FullyQualified::int4(
-			"public",
-			"users",
-			"id",
-			[1, 2, 3],
-		);
+		let column = FullyQualified::int4("public", "users", "id", [1, 2, 3]);
 		assert_eq!(column.qualified_name(), "public.users.id");
 		match column {
 			Column::FullyQualified(col) => {

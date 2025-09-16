@@ -9,7 +9,5 @@ mod subsystem;
 pub use core::ProtocolServer;
 
 pub use config::{NetworkConfig, ServerConfig};
-pub use protocols::{
-	HttpHandler, ProtocolError, ProtocolHandler, WebSocketHandler,
-};
+pub use protocols::{HttpHandler, ProtocolError, ProtocolHandler, WebSocketHandler};
 pub use subsystem::{ServerSubsystem, ServerSubsystemFactory};

@@ -5,10 +5,7 @@ use JoinType::{Inner, Left};
 use reifydb_core::{
 	JoinType,
 	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Join},
-	interface::{
-		CommandTransaction, FlowNodeId,
-		evaluate::expression::Expression,
-	},
+	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
 };
 
 use super::super::{
@@ -52,17 +49,14 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		// Compile with namespace tracking
-		let (left_node, left_schema) =
-			compiler.compile_plan_with_schema(*self.left)?;
-		let (right_node, right_schema) =
-			compiler.compile_plan_with_schema(*self.right)?;
+		let (left_node, left_schema) = compiler.compile_plan_with_schema(*self.left)?;
+		let (right_node, right_schema) = compiler.compile_plan_with_schema(*self.right)?;
 
 		// Extract left and right keys from the join conditions
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
 
 		// Merge namespaces for output
-		let output_schema =
-			FlowNodeSchema::merge(&left_schema, &right_schema);
+		let output_schema = FlowNodeSchema::merge(&left_schema, &right_schema);
 
 		compiler.build_node(Operator {
 			operator: Join {

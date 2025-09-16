@@ -40,10 +40,7 @@ impl EncodableKey for CdcConsumerKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer
-			.extend_u8(VERSION_BYTE)
-			.extend_u8(Self::KIND as u8)
-			.extend_str(&self.consumer);
+		serializer.extend_u8(VERSION_BYTE).extend_u8(Self::KIND as u8).extend_str(&self.consumer);
 		serializer.to_encoded_key()
 	}
 
@@ -85,8 +82,7 @@ mod tests {
 		};
 
 		let encoded = key.encode();
-		let decoded = CdcConsumerKey::decode(&encoded)
-			.expect("Failed to decode key");
+		let decoded = CdcConsumerKey::decode(&encoded).expect("Failed to decode key");
 
 		assert_eq!(decoded.consumer, ConsumerId::new("test-consumer"));
 	}

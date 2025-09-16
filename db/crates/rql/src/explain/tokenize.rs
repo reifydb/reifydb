@@ -11,9 +11,7 @@ pub fn explain_tokenize(query: &str) -> crate::Result<String> {
 
 	let mut lines: BTreeMap<u32, Vec<(usize, &Token)>> = BTreeMap::new();
 	for (i, token) in tokens.iter().enumerate() {
-		lines.entry(token.fragment.line().0)
-			.or_default()
-			.push((i, token));
+		lines.entry(token.fragment.line().0).or_default().push((i, token));
 	}
 
 	let mut result = String::new();
@@ -23,10 +21,7 @@ pub fn explain_tokenize(query: &str) -> crate::Result<String> {
 		for (i, token) in tokens {
 			let label = match &token.kind {
 				TokenKind::EOF => "EOF".to_string(),
-				TokenKind::Identifier => format!(
-					"Identifier(\"{}\")",
-					token.value()
-				),
+				TokenKind::Identifier => format!("Identifier(\"{}\")", token.value()),
 				TokenKind::Keyword(kw) => {
 					format!("Keyword({:?})", kw)
 				}

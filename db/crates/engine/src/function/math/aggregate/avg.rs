@@ -23,10 +23,7 @@ impl Avg {
 }
 
 impl AggregateFunction for Avg {
-	fn aggregate(
-		&mut self,
-		ctx: AggregateFunctionContext,
-	) -> crate::Result<()> {
+	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::Result<()> {
 		let column = ctx.column;
 		let groups = &ctx.groups;
 
@@ -37,27 +34,18 @@ impl AggregateFunction for Avg {
 					let mut count = 0;
 
 					for &i in indices {
-						if let Some(value) =
-							container.get(i)
-						{
+						if let Some(value) = container.get(i) {
 							sum += *value;
 							count += 1;
 						}
 					}
 
 					if count > 0 {
-						self.sums
-							.entry(group.clone())
-							.and_modify(|v| {
-								*v += sum
-							})
-							.or_insert(sum);
+						self.sums.entry(group.clone()).and_modify(|v| *v += sum).or_insert(sum);
 
 						self.counts
 							.entry(group.clone())
-							.and_modify(|c| {
-								*c += count
-							})
+							.and_modify(|c| *c += count)
 							.or_insert(count);
 					}
 				}
@@ -69,27 +57,18 @@ impl AggregateFunction for Avg {
 					let mut count = 0;
 
 					for &i in indices {
-						if let Some(value) =
-							container.get(i)
-						{
+						if let Some(value) = container.get(i) {
 							sum += *value as f64;
 							count += 1;
 						}
 					}
 
 					if count > 0 {
-						self.sums
-							.entry(group.clone())
-							.and_modify(|v| {
-								*v += sum
-							})
-							.or_insert(sum);
+						self.sums.entry(group.clone()).and_modify(|v| *v += sum).or_insert(sum);
 
 						self.counts
 							.entry(group.clone())
-							.and_modify(|c| {
-								*c += count
-							})
+							.and_modify(|c| *c += count)
 							.or_insert(count);
 					}
 				}
@@ -101,27 +80,18 @@ impl AggregateFunction for Avg {
 					let mut count = 0;
 
 					for &i in indices {
-						if let Some(value) =
-							container.get(i)
-						{
+						if let Some(value) = container.get(i) {
 							sum += *value as f64;
 							count += 1;
 						}
 					}
 
 					if count > 0 {
-						self.sums
-							.entry(group.clone())
-							.and_modify(|v| {
-								*v += sum
-							})
-							.or_insert(sum);
+						self.sums.entry(group.clone()).and_modify(|v| *v += sum).or_insert(sum);
 
 						self.counts
 							.entry(group.clone())
-							.and_modify(|c| {
-								*c += count
-							})
+							.and_modify(|c| *c += count)
 							.or_insert(count);
 					}
 				}
@@ -133,27 +103,18 @@ impl AggregateFunction for Avg {
 					let mut count = 0;
 
 					for &i in indices {
-						if let Some(value) =
-							container.get(i)
-						{
+						if let Some(value) = container.get(i) {
 							sum += *value as f64;
 							count += 1;
 						}
 					}
 
 					if count > 0 {
-						self.sums
-							.entry(group.clone())
-							.and_modify(|v| {
-								*v += sum
-							})
-							.or_insert(sum);
+						self.sums.entry(group.clone()).and_modify(|v| *v += sum).or_insert(sum);
 
 						self.counts
 							.entry(group.clone())
-							.and_modify(|c| {
-								*c += count
-							})
+							.and_modify(|c| *c += count)
 							.or_insert(count);
 					}
 				}
@@ -165,8 +126,7 @@ impl AggregateFunction for Avg {
 
 	fn finalize(&mut self) -> crate::Result<(Vec<Vec<Value>>, ColumnData)> {
 		let mut keys = Vec::with_capacity(self.sums.len());
-		let mut data =
-			ColumnData::float8_with_capacity(self.sums.len());
+		let mut data = ColumnData::float8_with_capacity(self.sums.len());
 
 		for (key, sum) in std::mem::take(&mut self.sums) {
 			let count = self.counts.remove(&key).unwrap_or(0);

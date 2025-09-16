@@ -18,11 +18,7 @@ pub fn scan_boolean<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 			cursor.consume_str_ignore_case("true");
 			return Some(Token {
 				kind: TokenKind::Literal(Literal::True),
-				fragment: cursor.make_fragment(
-					start_pos,
-					start_line,
-					start_column,
-				),
+				fragment: cursor.make_fragment(start_pos, start_line, start_column),
 			});
 		}
 	}
@@ -33,11 +29,7 @@ pub fn scan_boolean<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 			cursor.consume_str_ignore_case("false");
 			return Some(Token {
 				kind: TokenKind::Literal(Literal::False),
-				fragment: cursor.make_fragment(
-					start_pos,
-					start_line,
-					start_column,
-				),
+				fragment: cursor.make_fragment(start_pos, start_line, start_column),
 			});
 		}
 	}

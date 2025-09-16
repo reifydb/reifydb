@@ -15,10 +15,7 @@ impl BlobHex {
 }
 
 impl ScalarFunction for BlobHex {
-	fn scalar(
-		&self,
-		ctx: ScalarFunctionContext,
-	) -> crate::Result<ColumnData> {
+	fn scalar(&self, ctx: ScalarFunctionContext) -> crate::Result<ColumnData> {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 		let column = columns.get(0).unwrap();
@@ -28,28 +25,19 @@ impl ScalarFunction for BlobHex {
 				container,
 				..
 			} => {
-				let mut result_data = Vec::with_capacity(
-					container.data().len(),
-				);
+				let mut result_data = Vec::with_capacity(container.data().len());
 
 				for i in 0..row_count {
 					if container.is_defined(i) {
 						let hex_str = &container[i];
-						let blob = Blob::from_hex(
-							OwnedFragment::internal(
-								hex_str,
-							),
-						)?;
+						let blob = Blob::from_hex(OwnedFragment::internal(hex_str))?;
 						result_data.push(blob);
 					} else {
 						result_data.push(Blob::empty())
 					}
 				}
 
-				Ok(ColumnData::blob_with_bitvec(
-					result_data,
-					container.bitvec().clone(),
-				))
+				Ok(ColumnData::blob_with_bitvec(result_data, container.bitvec().clone()))
 			}
 			_ => unimplemented!("BlobHex only supports text input"),
 		}
@@ -76,17 +64,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					hex_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -114,17 +97,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					hex_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -152,17 +130,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					hex_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -190,17 +163,12 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					hex_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -223,26 +191,17 @@ mod tests {
 	fn test_blob_hex_multiple_rows() {
 		let function = BlobHex::new();
 
-		let hex_data = vec![
-			"ff".to_string(),
-			"00".to_string(),
-			"deadbeef".to_string(),
-		];
+		let hex_data = vec!["ff".to_string(), "00".to_string(), "deadbeef".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					hex_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -270,26 +229,17 @@ mod tests {
 	fn test_blob_hex_with_null_data() {
 		let function = BlobHex::new();
 
-		let hex_data = vec![
-			"ff".to_string(),
-			"".to_string(),
-			"deadbeef".to_string(),
-		];
+		let hex_data = vec!["ff".to_string(), "".to_string(), "deadbeef".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					hex_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -322,26 +272,18 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					hex_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
 		};
 		let result = function.scalar(ctx);
-		assert!(
-			result.is_err(),
-			"Expected error for invalid hex input"
-		);
+		assert!(result.is_err(), "Expected error for invalid hex input");
 	}
 
 	#[test]
@@ -353,25 +295,17 @@ mod tests {
 		let input_column = ColumnQualified {
 			name: "input".to_string(),
 			data: ColumnData::Utf8 {
-				container: Utf8Container::new(
-					hex_data,
-					bitvec.into(),
-				),
+				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(
-			input_column,
-		)]);
+		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
 		};
 		let result = function.scalar(ctx);
-		assert!(
-			result.is_err(),
-			"Expected error for odd length hex string"
-		);
+		assert!(result.is_err(), "Expected error for odd length hex string");
 	}
 }

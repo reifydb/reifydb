@@ -3,9 +3,7 @@
 
 use PhysicalPlan::CreateRingBuffer;
 use reifydb_catalog::CatalogStore;
-use reifydb_core::{
-	diagnostic::catalog::namespace_not_found, interface::QueryTransaction,
-};
+use reifydb_core::{diagnostic::catalog::namespace_not_found, interface::QueryTransaction};
 use reifydb_type::return_error;
 
 use crate::plan::{
@@ -18,10 +16,7 @@ impl Compiler {
 		rx: &mut impl QueryTransaction,
 		create: CreateRingBufferNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
-		let Some(namespace) = CatalogStore::find_namespace_by_name(
-			rx,
-			create.ring_buffer.namespace.text(),
-		)?
+		let Some(namespace) = CatalogStore::find_namespace_by_name(rx, create.ring_buffer.namespace.text())?
 		else {
 			return_error!(namespace_not_found(
 				create.ring_buffer.namespace.clone(),

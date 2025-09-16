@@ -13,8 +13,7 @@ use std::{
 use reifydb_core::{
 	event::lifecycle::OnStartEvent,
 	interface::{
-		subsystem::HealthStatus, CdcTransaction,
-		UnversionedTransaction, VersionedTransaction, WithEventBus,
+		subsystem::HealthStatus, CdcTransaction, UnversionedTransaction, VersionedTransaction, WithEventBus,
 	},
 	log_debug, log_error, log_timed_trace, log_warn, Result,
 };
@@ -24,15 +23,9 @@ use reifydb_sub_server::ServerSubsystem;
 
 use crate::{
 	boot::Bootloader,
-	defaults::{
-		GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL,
-		MAX_STARTUP_TIME,
-	},
+	defaults::{GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL, MAX_STARTUP_TIME},
 	health::{ComponentHealth, HealthMonitor},
-	session::{
-		CommandSession, IntoCommandSession, IntoQuerySession,
-		QuerySession, Session,
-	},
+	session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session},
 	subsystem::Subsystems,
 };
 
@@ -52,18 +45,12 @@ impl DatabaseConfig {
 		}
 	}
 
-	pub fn with_graceful_shutdown_timeout(
-		mut self,
-		timeout: Duration,
-	) -> Self {
+	pub fn with_graceful_shutdown_timeout(mut self, timeout: Duration) -> Self {
 		self.graceful_shutdown_timeout = timeout;
 		self
 	}
 
-	pub fn with_health_check_interval(
-		mut self,
-		interval: Duration,
-	) -> Self {
+	pub fn with_health_check_interval(mut self, interval: Duration) -> Self {
 		self.health_check_interval = interval;
 		self
 	}
@@ -80,11 +67,7 @@ impl Default for DatabaseConfig {
 	}
 }
 
-pub struct Database<
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
-	C: CdcTransaction,
-> {
+pub struct Database<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> {
 	config: DatabaseConfig,
 	engine: StandardEngine<EngineTransaction<VT, UT, C>>,
 	bootloader: Bootloader<EngineTransaction<VT, UT, C>>,
@@ -93,12 +76,7 @@ pub struct Database<
 	running: bool,
 }
 
-impl<
-		VT: VersionedTransaction,
-		UT: UnversionedTransaction,
-		C: CdcTransaction,
-	> Database<VT, UT, C>
-{
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Database<VT, UT, C> {
 	// Note: FlowSubsystem is now generic over the engine type
 	// #[cfg(feature = "sub_flow")]
 	// pub fn subsystem_flow<E: Engine<T>>(&self) ->
@@ -106,20 +84,12 @@ impl<
 	// E>>() }
 
 	#[cfg(feature = "sub_server")]
-	pub fn sub_server(
-		&self,
-	) -> Option<&ServerSubsystem<EngineTransaction<VT, UT, C>>> {
-		self.subsystems
-			.get::<ServerSubsystem<EngineTransaction<VT, UT, C>>>()
+	pub fn sub_server(&self) -> Option<&ServerSubsystem<EngineTransaction<VT, UT, C>>> {
+		self.subsystems.get::<ServerSubsystem<EngineTransaction<VT, UT, C>>>()
 	}
 }
 
-impl<
-		VT: VersionedTransaction,
-		UT: UnversionedTransaction,
-		C: CdcTransaction,
-	> Database<VT, UT, C>
-{
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Database<VT, UT, C> {
 	pub(crate) fn new(
 		engine: StandardEngine<EngineTransaction<VT, UT, C>>,
 		subsystem_manager: Subsystems,
@@ -157,14 +127,9 @@ impl<
 			return Ok(()); // Already running
 		}
 
-		log_timed_trace!("Bootloader setup", {
-			self.bootloader.load()?
-		});
+		log_timed_trace!("Bootloader setup", { self.bootloader.load()? });
 
-		log_debug!(
-			"Starting system with {} subsystems",
-			self.subsystem_count()
-		);
+		log_debug!("Starting system with {} subsystems", self.subsystem_count());
 
 		log_timed_trace!("Database initialization", {
 			self.engine.event_bus().emit(OnStartEvent {});
@@ -172,9 +137,7 @@ impl<
 
 		// Start all subsystems
 		match log_timed_trace!("Starting all subsystems", {
-			let result = self
-				.subsystems
-				.start_all(self.config.max_startup_time);
+			let result = self.subsystems.start_all(self.config.max_startup_time);
 			result
 		}) {
 			Ok(()) => {
@@ -189,10 +152,7 @@ impl<
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Failed {
-						description: format!(
-							"Startup failed: {}",
-							e
-						),
+						description: format!("Startup failed: {}", e),
 					},
 					false,
 				);
@@ -209,9 +169,7 @@ impl<
 		log_debug!("Stopping system gracefully");
 
 		// Stop all subsystems
-		let result = self
-			.subsystems
-			.stop_all(self.config.graceful_shutdown_timeout);
+		let result = self.subsystems.stop_all(self.config.graceful_shutdown_timeout);
 
 		self.running = false;
 
@@ -226,17 +184,11 @@ impl<
 				Ok(())
 			}
 			Err(e) => {
-				log_warn!(
-					"System shutdown completed with errors: {}",
-					e
-				);
+				log_warn!("System shutdown completed with errors: {}", e);
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Warning {
-						description: format!(
-							"Shutdown completed with errors: {}",
-							e
-						),
+						description: format!("Shutdown completed with errors: {}", e),
 					},
 					false,
 				);
@@ -249,9 +201,7 @@ impl<
 		self.health_monitor.get_system_health()
 	}
 
-	pub fn get_all_component_health(
-		&self,
-	) -> HashMap<String, ComponentHealth> {
+	pub fn get_all_component_health(&self) -> HashMap<String, ComponentHealth> {
 		self.health_monitor.get_all_health()
 	}
 
@@ -266,11 +216,7 @@ impl<
 			HealthStatus::Healthy
 		};
 
-		self.health_monitor.update_component_health(
-			"system".to_string(),
-			system_health,
-			self.running,
-		);
+		self.health_monitor.update_component_health("system".to_string(), system_health, self.running);
 	}
 
 	pub fn get_subsystem_names(&self) -> Vec<String> {
@@ -278,9 +224,7 @@ impl<
 	}
 
 	pub fn get_stale_components(&self) -> Vec<String> {
-		self.health_monitor.get_stale_components(
-			self.config.health_check_interval * 2,
-		)
+		self.health_monitor.get_stale_components(self.config.health_check_interval * 2)
 	}
 
 	pub fn subsystem<S: 'static>(&self) -> Option<&S> {
@@ -298,30 +242,15 @@ impl<
 				libc::SIGHUP => "SIGHUP",
 				_ => "Unknown signal",
 			};
-			log_debug!(
-				"Received {}, signaling shutdown...",
-				signal_name
-			);
+			log_debug!("Received {}, signaling shutdown...", signal_name);
 			RUNNING.store(false, Ordering::SeqCst);
 		}
 
 		unsafe {
-			libc::signal(
-				libc::SIGINT,
-				handle_signal as libc::sighandler_t,
-			);
-			libc::signal(
-				libc::SIGTERM,
-				handle_signal as libc::sighandler_t,
-			);
-			libc::signal(
-				libc::SIGQUIT,
-				handle_signal as libc::sighandler_t,
-			);
-			libc::signal(
-				libc::SIGHUP,
-				handle_signal as libc::sighandler_t,
-			);
+			libc::signal(libc::SIGINT, handle_signal as libc::sighandler_t);
+			libc::signal(libc::SIGTERM, handle_signal as libc::sighandler_t);
+			libc::signal(libc::SIGQUIT, handle_signal as libc::sighandler_t);
+			libc::signal(libc::SIGHUP, handle_signal as libc::sighandler_t);
 		}
 
 		log_debug!("Waiting for termination signal...");
@@ -334,9 +263,7 @@ impl<
 
 	pub fn start_and_await_signal(&mut self) -> Result<()> {
 		self.start()?;
-		log_debug!(
-			"Database started, waiting for termination signal..."
-		);
+		log_debug!("Database started, waiting for termination signal...");
 
 		self.await_signal()?;
 
@@ -347,17 +274,10 @@ impl<
 	}
 }
 
-impl<
-		VT: VersionedTransaction,
-		UT: UnversionedTransaction,
-		C: CdcTransaction,
-	> Drop for Database<VT, UT, C>
-{
+impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Drop for Database<VT, UT, C> {
 	fn drop(&mut self) {
 		if self.running {
-			log_warn!(
-				"System being dropped while running, attempting graceful shutdown"
-			);
+			log_warn!("System being dropped while running, attempting graceful shutdown");
 			let _ = self.stop();
 		}
 	}

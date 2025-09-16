@@ -8,20 +8,14 @@ use reifydb_type::{Date, Type};
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_date(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: Date,
-	) {
+	pub fn set_date(&self, row: &mut EncodedRow, index: usize, value: Date) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Date);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut i32,
+				row.make_mut().as_mut_ptr().add(field.offset) as *mut i32,
 				value.to_days_since_epoch(),
 			)
 		}
@@ -32,19 +26,12 @@ impl EncodedRowLayout {
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Date);
 		unsafe {
-			Date::from_days_since_epoch(
-				(row.as_ptr().add(field.offset) as *const i32)
-					.read_unaligned(),
-			)
-			.unwrap()
+			Date::from_days_since_epoch((row.as_ptr().add(field.offset) as *const i32).read_unaligned())
+				.unwrap()
 		}
 	}
 
-	pub fn try_get_date(
-		&self,
-		row: &EncodedRow,
-		index: usize,
-	) -> Option<Date> {
+	pub fn try_get_date(&self, row: &EncodedRow, index: usize) -> Option<Date> {
 		if row.is_defined(index) {
 			Some(self.get_date(row, index))
 		} else {
@@ -130,12 +117,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Date,
-			Type::Boolean,
-			Type::Date,
-			Type::Int4,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Date, Type::Boolean, Type::Date, Type::Int4]);
 		let mut row = layout.allocate_row();
 
 		let date1 = Date::new(2025, 6, 15).unwrap();
@@ -179,10 +161,7 @@ mod tests {
 		assert_eq!(retrieved_date, original_date);
 
 		// Verify that the retrieved date is functionally equivalent
-		assert_eq!(
-			retrieved_date.to_days_since_epoch(),
-			original_date.to_days_since_epoch()
-		);
+		assert_eq!(retrieved_date.to_days_since_epoch(), original_date.to_days_since_epoch());
 	}
 
 	#[test]

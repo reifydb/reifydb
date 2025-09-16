@@ -23,10 +23,7 @@ impl RingBufferKey {
 	}
 
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::ring_buffer_start()),
-			Some(Self::ring_buffer_end()),
-		)
+		EncodedKeyRange::start_end(Some(Self::ring_buffer_start()), Some(Self::ring_buffer_end()))
 	}
 
 	fn ring_buffer_start() -> EncodedKey {
@@ -48,10 +45,7 @@ impl EncodableKey for RingBufferKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.ring_buffer);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.ring_buffer);
 		serializer.to_encoded_key()
 	}
 
@@ -75,8 +69,7 @@ impl EncodableKey for RingBufferKey {
 			return None;
 		}
 
-		let ring_buffer: RingBufferId =
-			keycode::deserialize(&payload[0..8]).ok()?;
+		let ring_buffer: RingBufferId = keycode::deserialize(&payload[0..8]).ok()?;
 
 		Some(Self {
 			ring_buffer,
@@ -102,10 +95,7 @@ impl EncodableKey for RingBufferMetadataKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.ring_buffer);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.ring_buffer);
 		serializer.to_encoded_key()
 	}
 
@@ -129,8 +119,7 @@ impl EncodableKey for RingBufferMetadataKey {
 			return None;
 		}
 
-		let ring_buffer: RingBufferId =
-			keycode::deserialize(&payload[0..8]).ok()?;
+		let ring_buffer: RingBufferId = keycode::deserialize(&payload[0..8]).ok()?;
 
 		Some(Self {
 			ring_buffer,

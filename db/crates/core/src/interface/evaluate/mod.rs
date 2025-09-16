@@ -11,8 +11,7 @@ use reifydb_type::Type;
 use crate::{
 	ColumnDescriptor,
 	interface::{
-		ColumnPolicyKind, ColumnSaturationPolicy,
-		DEFAULT_COLUMN_SATURATION_POLICY, Params,
+		ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY, Params,
 		expression::Expression,
 	},
 	value::columnar::{Column, ColumnData, Columns},
@@ -31,8 +30,7 @@ pub struct EvaluationContext<'a> {
 impl<'a> EvaluationContext<'a> {
 	pub fn testing() -> Self {
 		use std::sync::LazyLock;
-		static EMPTY_PARAMS: LazyLock<Params> =
-			LazyLock::new(|| Params::None);
+		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 		Self {
 			target_column: None,
 			column_policies: Vec::new(),
@@ -47,9 +45,7 @@ impl<'a> EvaluationContext<'a> {
 		self.column_policies
 			.iter()
 			.find_map(|p| match p {
-				ColumnPolicyKind::Saturation(policy) => {
-					Some(policy)
-				}
+				ColumnPolicyKind::Saturation(policy) => Some(policy),
 			})
 			.unwrap_or(&DEFAULT_COLUMN_SATURATION_POLICY)
 	}
@@ -61,9 +57,5 @@ impl<'a> EvaluationContext<'a> {
 }
 
 pub trait Evaluator: Send + Sync + 'static {
-	fn evaluate(
-		&self,
-		ctx: &EvaluationContext,
-		expr: &Expression,
-	) -> crate::Result<Column>;
+	fn evaluate(&self, ctx: &EvaluationContext, expr: &Expression) -> crate::Result<Column>;
 }

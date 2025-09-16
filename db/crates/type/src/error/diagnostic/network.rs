@@ -12,8 +12,7 @@ pub fn connection_error(message: String) -> Diagnostic {
 		column: None,
 		fragment: OwnedFragment::None,
 		label: None,
-		help: Some("Check network connectivity and server status"
-			.to_string()),
+		help: Some("Check network connectivity and server status".to_string()),
 		notes: vec![],
 		cause: None,
 	}

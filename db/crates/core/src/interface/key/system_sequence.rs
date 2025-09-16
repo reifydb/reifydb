@@ -20,10 +20,7 @@ impl EncodableKey for SystemSequenceKey {
 
 	fn encode(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer
-			.extend_u8(VERSION)
-			.extend_u8(Self::KIND as u8)
-			.extend_u64(self.sequence.0);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.sequence.0);
 		serializer.to_encoded_key()
 	}
 
@@ -55,10 +52,7 @@ impl EncodableKey for SystemSequenceKey {
 
 impl SystemSequenceKey {
 	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(
-			Some(Self::sequence_start()),
-			Some(Self::sequence_end()),
-		)
+		EncodedKeyRange::start_end(Some(Self::sequence_start()), Some(Self::sequence_end()))
 	}
 
 	fn sequence_start() -> EncodedKey {

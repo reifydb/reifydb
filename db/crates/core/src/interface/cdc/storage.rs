@@ -9,10 +9,7 @@ use super::CdcEvent;
 use crate::CommitVersion;
 
 /// Combined trait for all CDC storage operations
-pub trait CdcStorage:
-	Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount
-{
-}
+pub trait CdcStorage: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
 
 /// Retrieve CDC events for a specific version
 pub trait CdcGet: Send + Sync {
@@ -25,11 +22,7 @@ pub trait CdcRange: Send + Sync {
 	where
 		Self: 'a;
 
-	fn range(
-		&self,
-		start: Bound<CommitVersion>,
-		end: Bound<CommitVersion>,
-	) -> Result<Self::RangeIter<'_>>;
+	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Result<Self::RangeIter<'_>>;
 }
 
 /// Scan all CDC events

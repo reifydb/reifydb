@@ -26,14 +26,9 @@ pub trait Formatter {
 	}
 
 	/// Formats a key/row pair, where the value may not exist.
-	fn key_maybe_row(
-		key: &[u8],
-		value: Option<impl AsRef<[u8]>>,
-	) -> String {
+	fn key_maybe_row(key: &[u8], value: Option<impl AsRef<[u8]>>) -> String {
 		let fmtkey = Self::key(key);
-		let fmtvalue = value.map_or("None".to_string(), |v| {
-			Self::value(key, v.as_ref())
-		});
+		let fmtvalue = value.map_or("None".to_string(), |v| Self::value(key, v.as_ref()));
 		format!("{fmtkey} => {fmtvalue}")
 	}
 }

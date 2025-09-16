@@ -3,9 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{
-	QueryTransaction, TableVirtualDef, TableVirtualId,
-};
+use reifydb_core::interface::{QueryTransaction, TableVirtualDef, TableVirtualId};
 
 use crate::system::SystemCatalog;
 
@@ -36,9 +34,7 @@ impl VirtualTableRegistry {
 	}
 
 	/// List all virtual tables
-	pub fn list_table_virtuals(
-		_rx: &mut impl QueryTransaction,
-	) -> crate::Result<Vec<Arc<TableVirtualDef>>> {
+	pub fn list_table_virtuals(_rx: &mut impl QueryTransaction) -> crate::Result<Vec<Arc<TableVirtualDef>>> {
 		// Return all registered virtual tables
 		Ok(vec![
 			SystemCatalog::get_system_sequences_table_def(),
@@ -48,8 +44,7 @@ impl VirtualTableRegistry {
 			SystemCatalog::get_system_columns_table_def(),
 			SystemCatalog::get_system_column_policies_table_def(),
 			SystemCatalog::get_system_primary_keys_table_def(),
-			SystemCatalog::get_system_primary_key_columns_table_def(
-			),
+			SystemCatalog::get_system_primary_key_columns_table_def(),
 			SystemCatalog::get_system_versions_table_def(),
 		])
 	}

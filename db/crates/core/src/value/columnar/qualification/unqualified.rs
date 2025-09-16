@@ -1,37 +1,24 @@
-use reifydb_type::{
-	Date, DateTime, Interval, ROW_NUMBER_COLUMN_NAME, RowNumber, Time,
-	Uuid4, Uuid7,
-};
+use reifydb_type::{Date, DateTime, Interval, ROW_NUMBER_COLUMN_NAME, RowNumber, Time, Uuid4, Uuid7};
 
 use super::super::{Column, ColumnData, Unqualified};
 use crate::BitVec;
 
 impl Unqualified {
-	pub fn bool(
-		name: &str,
-		data: impl IntoIterator<Item = bool>,
-	) -> Column {
+	pub fn bool(name: &str, data: impl IntoIterator<Item = bool>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::bool(data),
 		})
 	}
 
-	pub fn bool_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = bool>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn bool_with_bitvec(name: &str, data: impl IntoIterator<Item = bool>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
 		})
 	}
 
-	pub fn float4(
-		name: &str,
-		data: impl IntoIterator<Item = f32>,
-	) -> Column {
+	pub fn float4(name: &str, data: impl IntoIterator<Item = f32>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::float4(data),
@@ -49,10 +36,7 @@ impl Unqualified {
 		})
 	}
 
-	pub fn float8(
-		name: &str,
-		data: impl IntoIterator<Item = f64>,
-	) -> Column {
+	pub fn float8(name: &str, data: impl IntoIterator<Item = f64>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::float8(data),
@@ -77,11 +61,7 @@ impl Unqualified {
 		})
 	}
 
-	pub fn int1_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = i8>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn int1_with_bitvec(name: &str, data: impl IntoIterator<Item = i8>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::int1_with_bitvec(data, bitvec),
@@ -95,11 +75,7 @@ impl Unqualified {
 		})
 	}
 
-	pub fn int2_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = i16>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn int2_with_bitvec(name: &str, data: impl IntoIterator<Item = i16>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::int2_with_bitvec(data, bitvec),
@@ -113,11 +89,7 @@ impl Unqualified {
 		})
 	}
 
-	pub fn int4_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = i32>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn int4_with_bitvec(name: &str, data: impl IntoIterator<Item = i32>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::int4_with_bitvec(data, bitvec),
@@ -131,21 +103,14 @@ impl Unqualified {
 		})
 	}
 
-	pub fn int8_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = i64>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn int8_with_bitvec(name: &str, data: impl IntoIterator<Item = i64>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::int8_with_bitvec(data, bitvec),
 		})
 	}
 
-	pub fn int16(
-		name: &str,
-		data: impl IntoIterator<Item = i128>,
-	) -> Column {
+	pub fn int16(name: &str, data: impl IntoIterator<Item = i128>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::int16(data),
@@ -170,84 +135,56 @@ impl Unqualified {
 		})
 	}
 
-	pub fn uint1_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = u8>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn uint1_with_bitvec(name: &str, data: impl IntoIterator<Item = u8>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uint1_with_bitvec(data, bitvec),
 		})
 	}
 
-	pub fn uint2(
-		name: &str,
-		data: impl IntoIterator<Item = u16>,
-	) -> Column {
+	pub fn uint2(name: &str, data: impl IntoIterator<Item = u16>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uint2(data),
 		})
 	}
 
-	pub fn uint2_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = u16>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn uint2_with_bitvec(name: &str, data: impl IntoIterator<Item = u16>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uint2_with_bitvec(data, bitvec),
 		})
 	}
 
-	pub fn uint4(
-		name: &str,
-		data: impl IntoIterator<Item = u32>,
-	) -> Column {
+	pub fn uint4(name: &str, data: impl IntoIterator<Item = u32>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uint4(data),
 		})
 	}
 
-	pub fn uint4_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = u32>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn uint4_with_bitvec(name: &str, data: impl IntoIterator<Item = u32>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uint4_with_bitvec(data, bitvec),
 		})
 	}
 
-	pub fn uint8(
-		name: &str,
-		data: impl IntoIterator<Item = u64>,
-	) -> Column {
+	pub fn uint8(name: &str, data: impl IntoIterator<Item = u64>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uint8(data),
 		})
 	}
 
-	pub fn uint8_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = u64>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn uint8_with_bitvec(name: &str, data: impl IntoIterator<Item = u64>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uint8_with_bitvec(data, bitvec),
 		})
 	}
 
-	pub fn uint16(
-		name: &str,
-		data: impl IntoIterator<Item = u128>,
-	) -> Column {
+	pub fn uint16(name: &str, data: impl IntoIterator<Item = u128>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uint16(data),
@@ -265,15 +202,10 @@ impl Unqualified {
 		})
 	}
 
-	pub fn utf8<'a>(
-		name: &str,
-		data: impl IntoIterator<Item = &'a str>,
-	) -> Column {
+	pub fn utf8<'a>(name: &str, data: impl IntoIterator<Item = &'a str>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
-			data: ColumnData::utf8(
-				data.into_iter().map(|s| s.to_string()),
-			),
+			data: ColumnData::utf8(data.into_iter().map(|s| s.to_string())),
 		})
 	}
 
@@ -284,10 +216,7 @@ impl Unqualified {
 	) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
-			data: ColumnData::utf8_with_bitvec(
-				data.into_iter().map(|s| s.to_string()),
-				bitvec,
-			),
+			data: ColumnData::utf8_with_bitvec(data.into_iter().map(|s| s.to_string()), bitvec),
 		})
 	}
 
@@ -299,31 +228,21 @@ impl Unqualified {
 	}
 
 	// Temporal types
-	pub fn date(
-		name: &str,
-		data: impl IntoIterator<Item = Date>,
-	) -> Column {
+	pub fn date(name: &str, data: impl IntoIterator<Item = Date>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::date(data),
 		})
 	}
 
-	pub fn date_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = Date>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn date_with_bitvec(name: &str, data: impl IntoIterator<Item = Date>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::date_with_bitvec(data, bitvec),
 		})
 	}
 
-	pub fn datetime(
-		name: &str,
-		data: impl IntoIterator<Item = DateTime>,
-	) -> Column {
+	pub fn datetime(name: &str, data: impl IntoIterator<Item = DateTime>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::datetime(data),
@@ -341,31 +260,21 @@ impl Unqualified {
 		})
 	}
 
-	pub fn time(
-		name: &str,
-		data: impl IntoIterator<Item = Time>,
-	) -> Column {
+	pub fn time(name: &str, data: impl IntoIterator<Item = Time>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::time(data),
 		})
 	}
 
-	pub fn time_with_bitvec(
-		name: &str,
-		data: impl IntoIterator<Item = Time>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn time_with_bitvec(name: &str, data: impl IntoIterator<Item = Time>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::time_with_bitvec(data, bitvec),
 		})
 	}
 
-	pub fn interval(
-		name: &str,
-		data: impl IntoIterator<Item = Interval>,
-	) -> Column {
+	pub fn interval(name: &str, data: impl IntoIterator<Item = Interval>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::interval(data),
@@ -384,10 +293,7 @@ impl Unqualified {
 	}
 
 	// UUID types
-	pub fn uuid4(
-		name: &str,
-		data: impl IntoIterator<Item = Uuid4>,
-	) -> Column {
+	pub fn uuid4(name: &str, data: impl IntoIterator<Item = Uuid4>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uuid4(data),
@@ -405,10 +311,7 @@ impl Unqualified {
 		})
 	}
 
-	pub fn uuid7(
-		name: &str,
-		data: impl IntoIterator<Item = Uuid7>,
-	) -> Column {
+	pub fn uuid7(name: &str, data: impl IntoIterator<Item = Uuid7>) -> Column {
 		Column::Unqualified(Self {
 			name: name.to_string(),
 			data: ColumnData::uuid7(data),
@@ -433,10 +336,7 @@ impl Unqualified {
 		})
 	}
 
-	pub fn row_number_with_bitvec(
-		data: impl IntoIterator<Item = RowNumber>,
-		bitvec: impl Into<BitVec>,
-	) -> Column {
+	pub fn row_number_with_bitvec(data: impl IntoIterator<Item = RowNumber>, bitvec: impl Into<BitVec>) -> Column {
 		Column::Unqualified(Self {
 			name: ROW_NUMBER_COLUMN_NAME.to_string(),
 			data: ColumnData::row_number_with_bitvec(data, bitvec),

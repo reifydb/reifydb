@@ -27,9 +27,7 @@ pub struct Tables<T: Transaction> {
 impl<T: Transaction> Tables<T> {
 	pub fn new() -> Self {
 		Self {
-			definition: SystemCatalog::get_system_tables_table_def(
-			)
-			.clone(),
+			definition: SystemCatalog::get_system_tables_table_def().clone(),
 			exhausted: false,
 			_phantom: PhantomData,
 		}
@@ -37,19 +35,12 @@ impl<T: Transaction> Tables<T> {
 }
 
 impl<'a, T: Transaction> TableVirtual<'a, T> for Tables<T> {
-	fn initialize(
-		&mut self,
-		_txn: &mut StandardTransaction<'a, T>,
-		_ctx: TableVirtualContext<'a>,
-	) -> Result<()> {
+	fn initialize(&mut self, _txn: &mut StandardTransaction<'a, T>, _ctx: TableVirtualContext<'a>) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(
-		&mut self,
-		txn: &mut StandardTransaction<'a, T>,
-	) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -57,21 +48,16 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Tables<T> {
 		let tables = CatalogStore::list_tables_all(txn)?;
 
 		let mut ids = ColumnData::uint8_with_capacity(tables.len());
-		let mut namespaces =
-			ColumnData::uint8_with_capacity(tables.len());
+		let mut namespaces = ColumnData::uint8_with_capacity(tables.len());
 		let mut names = ColumnData::utf8_with_capacity(tables.len());
-		let mut primary_keys =
-			ColumnData::uint4_with_capacity(tables.len());
+		let mut primary_keys = ColumnData::uint4_with_capacity(tables.len());
 
 		for table in tables {
 			ids.push(table.id.0);
 			namespaces.push(table.namespace.0);
 			names.push(table.name.as_str());
 			primary_keys.push_value(
-				table.primary_key
-					.map(|pk| pk.id.0)
-					.map(Value::Uint8)
-					.unwrap_or(Value::Undefined),
+				table.primary_key.map(|pk| pk.id.0).map(Value::Uint8).unwrap_or(Value::Undefined),
 			);
 		}
 

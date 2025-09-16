@@ -80,28 +80,17 @@ impl<'de> Deserialize<'de> for IdentityId {
 		impl<'de> Visitor<'de> for Uuid7Visitor {
 			type Value = IdentityId;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str("a UUID version 7")
 			}
 
-			fn visit_str<E>(
-				self,
-				value: &str,
-			) -> Result<Self::Value, E>
+			fn visit_str<E>(self, value: &str) -> Result<Self::Value, E>
 			where
 				E: serde::de::Error,
 			{
 				use std::str::FromStr;
 				let uuid = uuid::Uuid::from_str(value)
-					.map_err(|e| {
-						E::custom(format!(
-							"invalid UUID: {}",
-							e
-						))
-					})?;
+					.map_err(|e| E::custom(format!("invalid UUID: {}", e)))?;
 
 				if uuid.get_version_num() != 7 {
 					return Err(E::custom(format!(
@@ -113,20 +102,12 @@ impl<'de> Deserialize<'de> for IdentityId {
 				Ok(IdentityId(Uuid7::from(uuid)))
 			}
 
-			fn visit_bytes<E>(
-				self,
-				value: &[u8],
-			) -> Result<Self::Value, E>
+			fn visit_bytes<E>(self, value: &[u8]) -> Result<Self::Value, E>
 			where
 				E: serde::de::Error,
 			{
 				let uuid = uuid::Uuid::from_slice(value)
-					.map_err(|e| {
-						E::custom(format!(
-							"invalid UUID bytes: {}",
-							e
-						))
-					})?;
+					.map_err(|e| E::custom(format!("invalid UUID bytes: {}", e)))?;
 
 				// Verify it's a v7 UUID or nil
 				if uuid.get_version_num() != 7 {

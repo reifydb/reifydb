@@ -46,20 +46,13 @@ impl<T: Transaction> Subsystem for AdminSubsystem<T> {
 			return Ok(());
 		}
 
-		let mut server = AdminServer::new(
-			self.config.clone(),
-			self.engine.clone(),
-		);
+		let mut server = AdminServer::new(self.config.clone(), self.engine.clone());
 
 		server.start().map_err(|e| {
-			reifydb_type::error!(
-				reifydb_type::diagnostic::internal::internal(
-					format!(
-						"Failed to start admin server: {:?}",
-						e
-					)
-				)
-			)
+			reifydb_type::error!(reifydb_type::diagnostic::internal::internal(format!(
+				"Failed to start admin server: {:?}",
+				e
+			)))
 		})?;
 
 		self.server = Some(server);
@@ -86,8 +79,7 @@ impl<T: Transaction> Subsystem for AdminSubsystem<T> {
 			HealthStatus::Healthy
 		} else {
 			HealthStatus::Failed {
-				description: "Admin server is not running"
-					.to_string(),
+				description: "Admin server is not running".to_string(),
 			}
 		}
 	}
@@ -106,8 +98,7 @@ impl<T: Transaction> HasVersion for AdminSubsystem<T> {
 		SystemVersion {
 			name: "sub-admin".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
-			description: "Web administration interface subsystem"
-				.to_string(),
+			description: "Web administration interface subsystem".to_string(),
 			r#type: ComponentType::Subsystem,
 		}
 	}

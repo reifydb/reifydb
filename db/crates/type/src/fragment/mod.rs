@@ -12,17 +12,7 @@ use serde::{Deserialize, Serialize};
 
 // Position types for fragments
 #[repr(transparent)]
-#[derive(
-	Debug,
-	Clone,
-	Copy,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StatementColumn(pub u32);
 
 impl Deref for StatementColumn {
@@ -40,17 +30,7 @@ impl PartialEq<i32> for StatementColumn {
 }
 
 #[repr(transparent)]
-#[derive(
-	Debug,
-	Clone,
-	Copy,
-	PartialEq,
-	Eq,
-	PartialOrd,
-	Ord,
-	Serialize,
-	Deserialize,
-)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct StatementLine(pub u32);
 
 impl Deref for StatementLine {
@@ -159,33 +139,25 @@ impl<'a> Fragment<'a> {
 					text,
 					line,
 					column,
-				} => Fragment::Borrowed(
-					BorrowedFragment::Statement {
-						text: text.as_str(),
-						line: *line,
-						column: *column,
-					},
-				),
+				} => Fragment::Borrowed(BorrowedFragment::Statement {
+					text: text.as_str(),
+					line: *line,
+					column: *column,
+				}),
 				OwnedFragment::Internal {
 					text,
-				} => Fragment::Borrowed(
-					BorrowedFragment::Internal {
-						text: text.as_str(),
-					},
-				),
+				} => Fragment::Borrowed(BorrowedFragment::Internal {
+					text: text.as_str(),
+				}),
 			},
-			Fragment::Borrowed(b) => Fragment::Borrowed(*b), /* Copy since BorrowedFragment is Copy */
+			Fragment::Borrowed(b) => Fragment::Borrowed(*b), // Copy since BorrowedFragment is Copy
 			Fragment::None => Fragment::None,
 		}
 	}
 
 	/// Get a sub-fragment starting at the given offset with the given
 	/// length
-	pub fn sub_fragment(
-		&self,
-		offset: usize,
-		length: usize,
-	) -> OwnedFragment {
+	pub fn sub_fragment(&self, offset: usize, length: usize) -> OwnedFragment {
 		match self {
 			Fragment::Owned(f) => f.sub_fragment(offset, length),
 			Fragment::Borrowed(f) => f.sub_fragment(offset, length),
@@ -195,11 +167,8 @@ impl<'a> Fragment<'a> {
 
 	/// Merge multiple fragments (in any order) into one encompassing
 	/// fragment
-	pub fn merge_all(
-		fragments: impl IntoIterator<Item = Fragment<'a>>,
-	) -> Fragment<'a> {
-		let owned_fragments: Vec<OwnedFragment> =
-			fragments.into_iter().map(|f| f.into_owned()).collect();
+	pub fn merge_all(fragments: impl IntoIterator<Item = Fragment<'a>>) -> Fragment<'a> {
+		let owned_fragments: Vec<OwnedFragment> = fragments.into_iter().map(|f| f.into_owned()).collect();
 		Fragment::Owned(OwnedFragment::merge_all(owned_fragments))
 	}
 }
@@ -373,9 +342,7 @@ impl<'de, 'a> serde::Deserialize<'de> for Fragment<'a> {
 // PartialEq implementation for Fragment<'a>
 impl<'a> PartialEq for Fragment<'a> {
 	fn eq(&self, other: &Self) -> bool {
-		self.text() == other.text()
-			&& self.line() == other.line()
-			&& self.column() == other.column()
+		self.text() == other.text() && self.line() == other.line() && self.column() == other.column()
 	}
 }
 

@@ -9,9 +9,8 @@ use serde::{
 };
 
 use crate::{
-	Blob, BorrowedFragment, OrderedF32, OrderedF64, RowNumber, Type, Value,
-	parse_bool, parse_date, parse_datetime, parse_float, parse_interval,
-	parse_time, parse_uuid4, parse_uuid7,
+	Blob, BorrowedFragment, OrderedF32, OrderedF64, RowNumber, Type, Value, parse_bool, parse_date, parse_datetime,
+	parse_float, parse_interval, parse_time, parse_uuid4, parse_uuid7,
 	value::{
 		IdentityId,
 		number::{parse_primitive_int, parse_primitive_uint},
@@ -77,23 +76,16 @@ impl Serialize for Params {
 	{
 		match self {
 			Params::None => serializer.serialize_none(),
-			Params::Positional(values) => {
-				values.serialize(serializer)
-			}
+			Params::Positional(values) => values.serialize(serializer),
 			Params::Named(map) => map.serialize(serializer),
 		}
 	}
 }
 
 // Helper function to parse value from type/value format
-fn parse_typed_value(
-	type_str: &str,
-	value_val: &serde_json::Value,
-) -> Result<Value, String> {
+fn parse_typed_value(type_str: &str, value_val: &serde_json::Value) -> Result<Value, String> {
 	// Always expect string values for consistency
-	let str_val = value_val.as_str().ok_or_else(|| {
-		format!("expected string value for type {}", type_str)
-	})?;
+	let str_val = value_val.as_str().ok_or_else(|| format!("expected string value for type {}", type_str))?;
 
 	// Parse the type string to Type enum
 	let value_type = match Type::from_str(type_str) {
@@ -107,9 +99,7 @@ fn parse_typed_value(
 	let fragment = BorrowedFragment::new_internal(str_val);
 
 	let parsed_value = match value_type {
-		Type::Boolean => parse_bool(fragment)
-			.map(Value::Boolean)
-			.unwrap_or(Value::Undefined),
+		Type::Boolean => parse_bool(fragment).map(Value::Boolean).unwrap_or(Value::Undefined),
 		Type::Float4 => parse_float::<f32>(fragment)
 			.ok()
 			.and_then(|f| OrderedF32::try_from(f).ok())
@@ -120,64 +110,30 @@ fn parse_typed_value(
 			.and_then(|f| OrderedF64::try_from(f).ok())
 			.map(Value::Float8)
 			.unwrap_or(Value::Undefined),
-		Type::Int1 => parse_primitive_int::<i8>(fragment)
-			.map(Value::Int1)
-			.unwrap_or(Value::Undefined),
-		Type::Int2 => parse_primitive_int::<i16>(fragment)
-			.map(Value::Int2)
-			.unwrap_or(Value::Undefined),
-		Type::Int4 => parse_primitive_int::<i32>(fragment)
-			.map(Value::Int4)
-			.unwrap_or(Value::Undefined),
-		Type::Int8 => parse_primitive_int::<i64>(fragment)
-			.map(Value::Int8)
-			.unwrap_or(Value::Undefined),
-		Type::Int16 => parse_primitive_int::<i128>(fragment)
-			.map(Value::Int16)
-			.unwrap_or(Value::Undefined),
+		Type::Int1 => parse_primitive_int::<i8>(fragment).map(Value::Int1).unwrap_or(Value::Undefined),
+		Type::Int2 => parse_primitive_int::<i16>(fragment).map(Value::Int2).unwrap_or(Value::Undefined),
+		Type::Int4 => parse_primitive_int::<i32>(fragment).map(Value::Int4).unwrap_or(Value::Undefined),
+		Type::Int8 => parse_primitive_int::<i64>(fragment).map(Value::Int8).unwrap_or(Value::Undefined),
+		Type::Int16 => parse_primitive_int::<i128>(fragment).map(Value::Int16).unwrap_or(Value::Undefined),
 		Type::Utf8 => Value::Utf8(str_val.to_string()),
-		Type::Uint1 => parse_primitive_uint::<u8>(fragment)
-			.map(Value::Uint1)
-			.unwrap_or(Value::Undefined),
-		Type::Uint2 => parse_primitive_uint::<u16>(fragment)
-			.map(Value::Uint2)
-			.unwrap_or(Value::Undefined),
-		Type::Uint4 => parse_primitive_uint::<u32>(fragment)
-			.map(Value::Uint4)
-			.unwrap_or(Value::Undefined),
-		Type::Uint8 => parse_primitive_uint::<u64>(fragment)
-			.map(Value::Uint8)
-			.unwrap_or(Value::Undefined),
-		Type::Uint16 => parse_primitive_uint::<u128>(fragment)
-			.map(Value::Uint16)
-			.unwrap_or(Value::Undefined),
-		Type::Date => parse_date(fragment)
-			.map(Value::Date)
-			.unwrap_or(Value::Undefined),
-		Type::DateTime => parse_datetime(fragment)
-			.map(Value::DateTime)
-			.unwrap_or(Value::Undefined),
-		Type::Time => parse_time(fragment)
-			.map(Value::Time)
-			.unwrap_or(Value::Undefined),
-		Type::Interval => parse_interval(fragment)
-			.map(Value::Interval)
-			.unwrap_or(Value::Undefined),
+		Type::Uint1 => parse_primitive_uint::<u8>(fragment).map(Value::Uint1).unwrap_or(Value::Undefined),
+		Type::Uint2 => parse_primitive_uint::<u16>(fragment).map(Value::Uint2).unwrap_or(Value::Undefined),
+		Type::Uint4 => parse_primitive_uint::<u32>(fragment).map(Value::Uint4).unwrap_or(Value::Undefined),
+		Type::Uint8 => parse_primitive_uint::<u64>(fragment).map(Value::Uint8).unwrap_or(Value::Undefined),
+		Type::Uint16 => parse_primitive_uint::<u128>(fragment).map(Value::Uint16).unwrap_or(Value::Undefined),
+		Type::Date => parse_date(fragment).map(Value::Date).unwrap_or(Value::Undefined),
+		Type::DateTime => parse_datetime(fragment).map(Value::DateTime).unwrap_or(Value::Undefined),
+		Type::Time => parse_time(fragment).map(Value::Time).unwrap_or(Value::Undefined),
+		Type::Interval => parse_interval(fragment).map(Value::Interval).unwrap_or(Value::Undefined),
 		Type::RowNumber => parse_primitive_uint::<u64>(fragment)
 			.map(|id| Value::RowNumber(RowNumber::from(id)))
 			.unwrap_or(Value::Undefined),
-		Type::Uuid4 => parse_uuid4(fragment)
-			.map(Value::Uuid4)
-			.unwrap_or(Value::Undefined),
-		Type::Uuid7 => parse_uuid7(fragment)
-			.map(Value::Uuid7)
-			.unwrap_or(Value::Undefined),
+		Type::Uuid4 => parse_uuid4(fragment).map(Value::Uuid4).unwrap_or(Value::Undefined),
+		Type::Uuid7 => parse_uuid7(fragment).map(Value::Uuid7).unwrap_or(Value::Undefined),
 		Type::IdentityId => parse_uuid7(fragment)
 			.map(|uuid7| Value::IdentityId(IdentityId::from(uuid7)))
 			.unwrap_or(Value::Undefined),
-		Type::Blob => Blob::from_hex(fragment)
-			.map(Value::Blob)
-			.unwrap_or(Value::Undefined),
+		Type::Blob => Blob::from_hex(fragment).map(Value::Blob).unwrap_or(Value::Undefined),
 		Type::Undefined => Value::Undefined,
 		Type::Int | Type::Uint | Type::Decimal => {
 			unimplemented!()
@@ -197,10 +153,7 @@ impl<'de> Deserialize<'de> for Params {
 		impl<'de> Visitor<'de> for ParamsVisitor {
 			type Value = Params;
 
-			fn expecting(
-				&self,
-				formatter: &mut fmt::Formatter,
-			) -> fmt::Result {
+			fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
 				formatter.write_str(
 					"null, an array for positional parameters, or an object for named parameters",
 				)
@@ -220,92 +173,66 @@ impl<'de> Deserialize<'de> for Params {
 				Ok(Params::None)
 			}
 
-			fn visit_seq<A>(
-				self,
-				mut seq: A,
-			) -> Result<Self::Value, A::Error>
+			fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
 			where
 				A: de::SeqAccess<'de>,
 			{
 				let mut values = Vec::new();
 
-				while let Some(value) =
-					seq.next_element::<serde_json::Value>()?
-				{
+				while let Some(value) = seq.next_element::<serde_json::Value>()? {
 					// Check if it's in the {"type": "Bool",
 					// "value": "true"} format
 					if let Some(obj) = value.as_object() {
-						if obj.contains_key("type")
-							&& obj.contains_key(
-								"value",
-							) {
-							let type_str = obj["type"]
-								.as_str()
-								.ok_or_else(|| de::Error::custom("type must be a string"))?;
-							let value_val =
-								&obj["value"];
+						if obj.contains_key("type") && obj.contains_key("value") {
+							let type_str = obj["type"].as_str().ok_or_else(|| {
+								de::Error::custom("type must be a string")
+							})?;
+							let value_val = &obj["value"];
 
 							let parsed_value = parse_typed_value(type_str, value_val)
 								.map_err(de::Error::custom)?;
-							values.push(
-								parsed_value,
-							);
+							values.push(parsed_value);
 							continue;
 						}
 					}
 
 					// Otherwise try to deserialize as a
 					// normal Value
-					let val = Value::deserialize(value)
-						.map_err(de::Error::custom)?;
+					let val = Value::deserialize(value).map_err(de::Error::custom)?;
 					values.push(val);
 				}
 
 				Ok(Params::Positional(values))
 			}
 
-			fn visit_map<A>(
-				self,
-				mut map: A,
-			) -> Result<Self::Value, A::Error>
+			fn visit_map<A>(self, mut map: A) -> Result<Self::Value, A::Error>
 			where
 				A: de::MapAccess<'de>,
 			{
 				let mut result_map = HashMap::new();
 
-				while let Some(key) =
-					map.next_key::<String>()?
-				{
-					let value: serde_json::Value =
-						map.next_value()?;
+				while let Some(key) = map.next_key::<String>()? {
+					let value: serde_json::Value = map.next_value()?;
 
 					// Check if it's in the {"type": "Bool",
 					// "value": "true"} format
 					if let Some(obj) = value.as_object() {
-						if obj.contains_key("type")
-							&& obj.contains_key(
-								"value",
-							) {
-							let type_str = obj["type"]
-								.as_str()
-								.ok_or_else(|| de::Error::custom("type must be a string"))?;
-							let value_val =
-								&obj["value"];
+						if obj.contains_key("type") && obj.contains_key("value") {
+							let type_str = obj["type"].as_str().ok_or_else(|| {
+								de::Error::custom("type must be a string")
+							})?;
+							let value_val = &obj["value"];
 
 							let parsed_value = parse_typed_value(type_str, value_val)
 								.map_err(de::Error::custom)?;
-							result_map.insert(
-								key,
-								parsed_value,
-							);
+							result_map.insert(key, parsed_value);
 							continue;
 						}
 					}
 
 					// Otherwise try to deserialize as a
 					// normal Value
-					let val = Value::deserialize(value)
-						.map_err(de::Error::custom)?;
+					let val = Value::deserialize(value).map_err(de::Error::custom)?;
 					result_map.insert(key, val);
 				}
 
@@ -380,10 +307,7 @@ mod tests {
 				assert_eq!(values.len(), 3);
 				assert_eq!(values[0], Value::Int4(42));
 				assert_eq!(values[1], Value::Boolean(true));
-				assert_eq!(
-					values[2],
-					Value::Utf8("hello".to_string())
-				);
+				assert_eq!(values[2], Value::Utf8("hello".to_string()));
 			}
 			_ => panic!("Expected positional params"),
 		}
@@ -399,18 +323,9 @@ mod tests {
 		match params {
 			Params::Named(map) => {
 				assert_eq!(map.len(), 3);
-				assert_eq!(
-					map.get("name"),
-					Some(&Value::Boolean(true))
-				);
-				assert_eq!(
-					map.get("other"),
-					Some(&Value::Int4(42))
-				);
-				assert_eq!(
-					map.get("message"),
-					Some(&Value::Utf8("test".to_string()))
-				);
+				assert_eq!(map.get("name"), Some(&Value::Boolean(true)));
+				assert_eq!(map.get("other"), Some(&Value::Int4(42)));
+				assert_eq!(map.get("message"), Some(&Value::Utf8("test".to_string())));
 			}
 			_ => panic!("Expected named params"),
 		}
@@ -426,18 +341,9 @@ mod tests {
 		match params {
 			Params::Named(map) => {
 				assert_eq!(map.len(), 3);
-				assert_eq!(
-					map.get("string_key"),
-					Some(&Value::Int4(100))
-				);
-				assert_eq!(
-					map.get("ident_key"),
-					Some(&Value::Int4(200))
-				);
-				assert_eq!(
-					map.get("another-key"),
-					Some(&Value::Utf8("value".to_string()))
-				);
+				assert_eq!(map.get("string_key"), Some(&Value::Int4(100)));
+				assert_eq!(map.get("ident_key"), Some(&Value::Int4(200)));
+				assert_eq!(map.get("another-key"), Some(&Value::Utf8("value".to_string())));
 			}
 			_ => panic!("Expected named params"),
 		}

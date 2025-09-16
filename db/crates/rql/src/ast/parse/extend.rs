@@ -1,10 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{
-	diagnostic::operation::extend_multiple_expressions_without_braces,
-	return_error,
-};
+use reifydb_type::{diagnostic::operation::extend_multiple_expressions_without_braces, return_error};
 
 use crate::ast::{AstExtend, parse::Parser, tokenize::Keyword};
 
@@ -15,11 +12,7 @@ impl<'a> Parser<'a> {
 		let (nodes, has_braces) = self.parse_expressions(true)?;
 
 		if nodes.len() > 1 && !has_braces {
-			return_error!(
-				extend_multiple_expressions_without_braces(
-					token.fragment
-				)
-			);
+			return_error!(extend_multiple_expressions_without_braces(token.fragment));
 		}
 
 		Ok(AstExtend {
@@ -54,8 +47,7 @@ mod tests {
 
 	#[test]
 	fn test_extend_colon_syntax() {
-		let tokens =
-			tokenize("EXTEND total: price * quantity").unwrap();
+		let tokens = tokenize("EXTEND total: price * quantity").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -69,10 +61,7 @@ mod tests {
 
 		// Left side should be "price * quantity"
 		let left_infix = infix.left.as_infix();
-		assert!(matches!(
-			left_infix.operator,
-			InfixOperator::Multiply(_)
-		));
+		assert!(matches!(left_infix.operator, InfixOperator::Multiply(_)));
 		assert_eq!(left_infix.left.as_identifier().text(), "price");
 		assert_eq!(left_infix.right.as_identifier().text(), "quantity");
 
@@ -83,10 +72,7 @@ mod tests {
 
 	#[test]
 	fn test_extend_multiple_columns() {
-		let tokens = tokenize(
-			"EXTEND {total: price * quantity, tax: price * 0.1}",
-		)
-		.unwrap();
+		let tokens = tokenize("EXTEND {total: price * quantity, tax: price * 0.1}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 
@@ -107,10 +93,7 @@ mod tests {
 
 	#[test]
 	fn test_extend_without_braces_fails() {
-		let tokens = tokenize(
-			"EXTEND total: price * quantity, tax: price * 0.1",
-		)
-		.unwrap();
+		let tokens = tokenize("EXTEND total: price * quantity, tax: price * 0.1").unwrap();
 		let mut parser = Parser::new(tokens);
 
 		let result = parser.parse().unwrap_err();

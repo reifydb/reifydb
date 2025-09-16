@@ -10,15 +10,10 @@ impl ColumnData {
 			Value::Boolean(v) => match self {
 				ColumnData::Bool(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::bool(vec![]);
-					if let ColumnData::Bool(new_container) =
-						&mut new_container
-					{
+					let mut new_container = ColumnData::bool(vec![]);
+					if let ColumnData::Bool(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -30,16 +25,10 @@ impl ColumnData {
 			Value::Float4(v) => match self {
 				ColumnData::Float4(_) => self.push(v.value()),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::float4(vec![]);
-					if let ColumnData::Float4(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::float4(vec![]);
+					if let ColumnData::Float4(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v.value());
 					}
@@ -51,16 +40,10 @@ impl ColumnData {
 			Value::Float8(v) => match self {
 				ColumnData::Float8(_) => self.push(v.value()),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::float8(vec![]);
-					if let ColumnData::Float8(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::float8(vec![]);
+					if let ColumnData::Float8(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v.value());
 					}
@@ -72,15 +55,10 @@ impl ColumnData {
 			Value::Int1(v) => match self {
 				ColumnData::Int1(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::int1(vec![]);
-					if let ColumnData::Int1(new_container) =
-						&mut new_container
-					{
+					let mut new_container = ColumnData::int1(vec![]);
+					if let ColumnData::Int1(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -92,15 +70,10 @@ impl ColumnData {
 			Value::Int2(v) => match self {
 				ColumnData::Int2(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::int2(vec![]);
-					if let ColumnData::Int2(new_container) =
-						&mut new_container
-					{
+					let mut new_container = ColumnData::int2(vec![]);
+					if let ColumnData::Int2(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -112,15 +85,10 @@ impl ColumnData {
 			Value::Int4(v) => match self {
 				ColumnData::Int4(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::int4(vec![]);
-					if let ColumnData::Int4(new_container) =
-						&mut new_container
-					{
+					let mut new_container = ColumnData::int4(vec![]);
+					if let ColumnData::Int4(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -132,15 +100,10 @@ impl ColumnData {
 			Value::Int8(v) => match self {
 				ColumnData::Int8(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::int8(vec![]);
-					if let ColumnData::Int8(new_container) =
-						&mut new_container
-					{
+					let mut new_container = ColumnData::int8(vec![]);
+					if let ColumnData::Int8(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -152,16 +115,10 @@ impl ColumnData {
 			Value::Int16(v) => match self {
 				ColumnData::Int16(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::int16(vec![]);
-					if let ColumnData::Int16(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::int16(vec![]);
+					if let ColumnData::Int16(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -175,19 +132,14 @@ impl ColumnData {
 					..
 				} => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::utf8(
-							Vec::<String>::new(),
-						);
+					let mut new_container = ColumnData::utf8(Vec::<String>::new());
 					if let ColumnData::Utf8 {
 						container: new_container,
 						..
 					} = &mut new_container
 					{
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -199,16 +151,10 @@ impl ColumnData {
 			Value::Uint1(v) => match self {
 				ColumnData::Uint1(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::uint1(vec![]);
-					if let ColumnData::Uint1(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::uint1(vec![]);
+					if let ColumnData::Uint1(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -220,16 +166,10 @@ impl ColumnData {
 			Value::Uint2(v) => match self {
 				ColumnData::Uint2(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::uint2(vec![]);
-					if let ColumnData::Uint2(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::uint2(vec![]);
+					if let ColumnData::Uint2(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -241,16 +181,10 @@ impl ColumnData {
 			Value::Uint4(v) => match self {
 				ColumnData::Uint4(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::uint4(vec![]);
-					if let ColumnData::Uint4(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::uint4(vec![]);
+					if let ColumnData::Uint4(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -262,16 +196,10 @@ impl ColumnData {
 			Value::Uint8(v) => match self {
 				ColumnData::Uint8(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::uint8(vec![]);
-					if let ColumnData::Uint8(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::uint8(vec![]);
+					if let ColumnData::Uint8(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -283,16 +211,10 @@ impl ColumnData {
 			Value::Uint16(v) => match self {
 				ColumnData::Uint16(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::uint16(vec![]);
-					if let ColumnData::Uint16(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::uint16(vec![]);
+					if let ColumnData::Uint16(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -304,15 +226,10 @@ impl ColumnData {
 			Value::Date(v) => match self {
 				ColumnData::Date(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::date(vec![]);
-					if let ColumnData::Date(new_container) =
-						&mut new_container
-					{
+					let mut new_container = ColumnData::date(vec![]);
+					if let ColumnData::Date(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -324,16 +241,10 @@ impl ColumnData {
 			Value::DateTime(v) => match self {
 				ColumnData::DateTime(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::datetime(vec![]);
-					if let ColumnData::DateTime(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::datetime(vec![]);
+					if let ColumnData::DateTime(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -345,15 +256,10 @@ impl ColumnData {
 			Value::Time(v) => match self {
 				ColumnData::Time(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::time(vec![]);
-					if let ColumnData::Time(new_container) =
-						&mut new_container
-					{
+					let mut new_container = ColumnData::time(vec![]);
+					if let ColumnData::Time(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -365,16 +271,10 @@ impl ColumnData {
 			Value::Interval(v) => match self {
 				ColumnData::Interval(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::interval(vec![]);
-					if let ColumnData::Interval(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::interval(vec![]);
+					if let ColumnData::Interval(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -386,16 +286,10 @@ impl ColumnData {
 			Value::Uuid4(v) => match self {
 				ColumnData::Uuid4(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::uuid4(vec![]);
-					if let ColumnData::Uuid4(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::uuid4(vec![]);
+					if let ColumnData::Uuid4(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -407,16 +301,10 @@ impl ColumnData {
 			Value::Uuid7(v) => match self {
 				ColumnData::Uuid7(_) => self.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::uuid7(vec![]);
-					if let ColumnData::Uuid7(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::uuid7(vec![]);
+					if let ColumnData::Uuid7(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -427,20 +315,12 @@ impl ColumnData {
 
 			Value::Undefined => self.push_undefined(),
 			Value::RowNumber(row_number) => match self {
-				ColumnData::RowNumber(container) => {
-					container.push(row_number)
-				}
+				ColumnData::RowNumber(container) => container.push(row_number),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::row_number(vec![]);
-					if let ColumnData::RowNumber(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::row_number(vec![]);
+					if let ColumnData::RowNumber(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(row_number);
 					}
@@ -449,20 +329,12 @@ impl ColumnData {
 				_ => unimplemented!(),
 			},
 			Value::IdentityId(id) => match self {
-				ColumnData::IdentityId(container) => {
-					container.push(id)
-				}
+				ColumnData::IdentityId(container) => container.push(id),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::identity_id(vec![]);
-					if let ColumnData::IdentityId(
-						new_container,
-					) = &mut new_container
-					{
+					let mut new_container = ColumnData::identity_id(vec![]);
+					if let ColumnData::IdentityId(new_container) = &mut new_container {
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(id);
 					}
@@ -476,17 +348,14 @@ impl ColumnData {
 					..
 				} => container.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::blob(vec![]);
+					let mut new_container = ColumnData::blob(vec![]);
 					if let ColumnData::Blob {
 						container: new_container,
 						..
 					} = &mut new_container
 					{
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -501,17 +370,14 @@ impl ColumnData {
 					..
 				} => container.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::int(vec![]);
+					let mut new_container = ColumnData::int(vec![]);
 					if let ColumnData::Int {
 						container: new_container,
 						..
 					} = &mut new_container
 					{
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -525,17 +391,14 @@ impl ColumnData {
 					..
 				} => container.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::uint(vec![]);
+					let mut new_container = ColumnData::uint(vec![]);
 					if let ColumnData::Uint {
 						container: new_container,
 						..
 					} = &mut new_container
 					{
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -550,17 +413,14 @@ impl ColumnData {
 					..
 				} => container.push(v),
 				ColumnData::Undefined(container) => {
-					let mut new_container =
-						ColumnData::decimal(vec![]);
+					let mut new_container = ColumnData::decimal(vec![]);
 					if let ColumnData::Decimal {
 						container: new_container,
 						..
 					} = &mut new_container
 					{
 						for _ in 0..container.len() {
-							new_container
-								.push_undefined(
-								);
+							new_container.push_undefined();
 						}
 						new_container.push(v);
 					}
@@ -576,8 +436,7 @@ impl ColumnData {
 #[allow(clippy::approx_constant)]
 mod tests {
 	use reifydb_type::{
-		Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64,
-		RowNumber, Time, Uuid4, Uuid7, Value,
+		Date, DateTime, IdentityId, Interval, OrderedF32, OrderedF64, RowNumber, Time, Uuid4, Uuid7, Value,
 	};
 	use uuid::Uuid;
 
@@ -613,18 +472,13 @@ mod tests {
 			panic!("Expected Bool");
 		};
 		assert_eq!(container.data().to_vec(), vec![false, false, true]);
-		assert_eq!(
-			container.bitvec().to_vec(),
-			vec![false, false, true]
-		);
+		assert_eq!(container.bitvec().to_vec(), vec![false, false, true]);
 	}
 
 	#[test]
 	fn test_float4() {
 		let mut col = ColumnData::float4(vec![1.0]);
-		col.push_value(Value::Float4(
-			OrderedF32::try_from(2.0).unwrap(),
-		));
+		col.push_value(Value::Float4(OrderedF32::try_from(2.0).unwrap()));
 		let ColumnData::Float4(container) = col else {
 			panic!("Expected Float4");
 		};
@@ -646,9 +500,7 @@ mod tests {
 	#[test]
 	fn test_push_value_to_undefined_float4() {
 		let mut col = ColumnData::undefined(1);
-		col.push_value(Value::Float4(
-			OrderedF32::try_from(3.14).unwrap(),
-		));
+		col.push_value(Value::Float4(OrderedF32::try_from(3.14).unwrap()));
 		let ColumnData::Float4(container) = col else {
 			panic!("Expected Float4");
 		};
@@ -659,9 +511,7 @@ mod tests {
 	#[test]
 	fn test_float8() {
 		let mut col = ColumnData::float8(vec![1.0]);
-		col.push_value(Value::Float8(
-			OrderedF64::try_from(2.0).unwrap(),
-		));
+		col.push_value(Value::Float8(OrderedF64::try_from(2.0).unwrap()));
 		let ColumnData::Float8(container) = col else {
 			panic!("Expected Float8");
 		};
@@ -683,9 +533,7 @@ mod tests {
 	#[test]
 	fn test_push_value_to_undefined_float8() {
 		let mut col = ColumnData::undefined(1);
-		col.push_value(Value::Float8(
-			OrderedF64::try_from(2.718).unwrap(),
-		));
+		col.push_value(Value::Float8(OrderedF64::try_from(2.718).unwrap()));
 		let ColumnData::Float8(container) = col else {
 			panic!("Expected Float8");
 		};
@@ -1034,10 +882,7 @@ mod tests {
 		else {
 			panic!("Expected Utf8");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&["hello".to_string(), "world".to_string()]
-		);
+		assert_eq!(container.data().as_slice(), &["hello".to_string(), "world".to_string()]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, true]);
 	}
 
@@ -1052,10 +897,7 @@ mod tests {
 		else {
 			panic!("Expected Utf8");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&["hello".to_string(), "".to_string()]
-		);
+		assert_eq!(container.data().as_slice(), &["hello".to_string(), "".to_string()]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
@@ -1070,10 +912,7 @@ mod tests {
 		else {
 			panic!("Expected Utf8");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&["".to_string(), "ok".to_string()]
-		);
+		assert_eq!(container.data().as_slice(), &["".to_string(), "ok".to_string()]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 
@@ -1109,10 +948,7 @@ mod tests {
 		let ColumnData::Date(container) = col else {
 			panic!("Expected Date");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[date1, Date::default()]
-		);
+		assert_eq!(container.data().as_slice(), &[date1, Date::default()]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
@@ -1124,10 +960,7 @@ mod tests {
 		let ColumnData::Date(container) = col else {
 			panic!("Expected Date");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[Date::default(), date]
-		);
+		assert_eq!(container.data().as_slice(), &[Date::default(), date]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 
@@ -1153,10 +986,7 @@ mod tests {
 		let ColumnData::DateTime(container) = col else {
 			panic!("Expected DateTime");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[dt1, DateTime::default()]
-		);
+		assert_eq!(container.data().as_slice(), &[dt1, DateTime::default()]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
@@ -1168,10 +998,7 @@ mod tests {
 		let ColumnData::DateTime(container) = col else {
 			panic!("Expected DateTime");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[DateTime::default(), dt]
-		);
+		assert_eq!(container.data().as_slice(), &[DateTime::default(), dt]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 
@@ -1196,10 +1023,7 @@ mod tests {
 		let ColumnData::Time(container) = col else {
 			panic!("Expected Time");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[time1, Time::default()]
-		);
+		assert_eq!(container.data().as_slice(), &[time1, Time::default()]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
@@ -1211,10 +1035,7 @@ mod tests {
 		let ColumnData::Time(container) = col else {
 			panic!("Expected Time");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[Time::default(), time]
-		);
+		assert_eq!(container.data().as_slice(), &[Time::default(), time]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 
@@ -1227,10 +1048,7 @@ mod tests {
 		let ColumnData::Interval(container) = col else {
 			panic!("Expected Interval");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[interval1, interval2]
-		);
+		assert_eq!(container.data().as_slice(), &[interval1, interval2]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, true]);
 	}
 
@@ -1242,10 +1060,7 @@ mod tests {
 		let ColumnData::Interval(container) = col else {
 			panic!("Expected Interval");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[interval1, Interval::default()]
-		);
+		assert_eq!(container.data().as_slice(), &[interval1, Interval::default()]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
@@ -1257,10 +1072,7 @@ mod tests {
 		let ColumnData::Interval(container) = col else {
 			panic!("Expected Interval");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[Interval::default(), interval]
-		);
+		assert_eq!(container.data().as_slice(), &[Interval::default(), interval]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 
@@ -1273,10 +1085,7 @@ mod tests {
 		let ColumnData::RowNumber(container) = col else {
 			panic!("Expected RowNumber");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[row_number1, row_number2]
-		);
+		assert_eq!(container.data().as_slice(), &[row_number1, row_number2]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, true]);
 	}
 
@@ -1288,10 +1097,7 @@ mod tests {
 		let ColumnData::RowNumber(container) = col else {
 			panic!("Expected RowNumber");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[row_number1, RowNumber::default()]
-		);
+		assert_eq!(container.data().as_slice(), &[row_number1, RowNumber::default()]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
@@ -1303,10 +1109,7 @@ mod tests {
 		let ColumnData::RowNumber(container) = col else {
 			panic!("Expected RowNumber");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[RowNumber::default(), row_number]
-		);
+		assert_eq!(container.data().as_slice(), &[RowNumber::default(), row_number]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 
@@ -1331,10 +1134,7 @@ mod tests {
 		let ColumnData::IdentityId(container) = col else {
 			panic!("Expected IdentityId");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[id1, IdentityId::default()]
-		);
+		assert_eq!(container.data().as_slice(), &[id1, IdentityId::default()]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
@@ -1346,10 +1146,7 @@ mod tests {
 		let ColumnData::IdentityId(container) = col else {
 			panic!("Expected IdentityId");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[IdentityId::default(), id]
-		);
+		assert_eq!(container.data().as_slice(), &[IdentityId::default(), id]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 
@@ -1374,10 +1171,7 @@ mod tests {
 		let ColumnData::Uuid4(container) = col else {
 			panic!("Expected Uuid4");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[uuid1, Uuid4::from(Uuid::nil())]
-		);
+		assert_eq!(container.data().as_slice(), &[uuid1, Uuid4::from(Uuid::nil())]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
@@ -1389,10 +1183,7 @@ mod tests {
 		let ColumnData::Uuid4(container) = col else {
 			panic!("Expected Uuid4");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[Uuid4::from(Uuid::nil()), uuid]
-		);
+		assert_eq!(container.data().as_slice(), &[Uuid4::from(Uuid::nil()), uuid]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 
@@ -1417,10 +1208,7 @@ mod tests {
 		let ColumnData::Uuid7(container) = col else {
 			panic!("Expected Uuid7");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[uuid1, Uuid7::from(Uuid::nil())]
-		);
+		assert_eq!(container.data().as_slice(), &[uuid1, Uuid7::from(Uuid::nil())]);
 		assert_eq!(container.bitvec().to_vec(), vec![true, false]);
 	}
 
@@ -1432,10 +1220,7 @@ mod tests {
 		let ColumnData::Uuid7(container) = col else {
 			panic!("Expected Uuid7");
 		};
-		assert_eq!(
-			container.data().as_slice(),
-			&[Uuid7::from(Uuid::nil()), uuid]
-		);
+		assert_eq!(container.data().as_slice(), &[Uuid7::from(Uuid::nil()), uuid]);
 		assert_eq!(container.bitvec().to_vec(), vec![false, true]);
 	}
 }

@@ -45,11 +45,7 @@ pub fn scan_separator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	cursor.consume();
 	Some(Token {
 		kind: TokenKind::Separator(sep),
-		fragment: cursor.make_fragment(
-			start_pos,
-			start_line,
-			start_column,
-		),
+		fragment: cursor.make_fragment(start_pos, start_line, start_column),
 	})
 }
 
@@ -70,12 +66,7 @@ mod tests {
 		let tokens = tokenize(&input_str).unwrap();
 
 		assert!(tokens.len() >= 2);
-		assert_eq!(
-			TokenKind::Separator(op),
-			tokens[0].kind,
-			"type mismatch for symbol: {}",
-			symbol
-		);
+		assert_eq!(TokenKind::Separator(op), tokens[0].kind, "type mismatch for symbol: {}", symbol);
 		assert_eq!(tokens[0].fragment.fragment(), symbol);
 		assert_eq!(tokens[0].fragment.column().0, 1);
 		assert_eq!(tokens[0].fragment.line().0, 1);

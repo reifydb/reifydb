@@ -4,9 +4,7 @@
 use reifydb_hash::sha1;
 use reifydb_type::util::base64;
 
-pub fn build_ws_response(
-	req_bytes: &[u8],
-) -> Result<(Vec<u8>, String), Box<dyn std::error::Error>> {
+pub fn build_ws_response(req_bytes: &[u8]) -> Result<(Vec<u8>, String), Box<dyn std::error::Error>> {
 	let mut headers = [httparse::EMPTY_HEADER; 32];
 	let mut req = httparse::Request::new(&mut headers);
 	let status = req.parse(req_bytes)?;

@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Extend},
-	interface::{
-		CommandTransaction, FlowNodeId,
-		evaluate::expression::Expression,
-	},
+	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
 };
 
 use super::super::{
@@ -26,9 +23,7 @@ pub(crate) struct ExtendCompiler {
 impl<'a> From<ExtendNode<'a>> for ExtendCompiler {
 	fn from(node: ExtendNode<'a>) -> Self {
 		Self {
-			input: node.input.map(|input| {
-				Box::new(to_owned_physical_plan(*input))
-			}),
+			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			expressions: to_owned_expressions(node.extend),
 		}
 	}

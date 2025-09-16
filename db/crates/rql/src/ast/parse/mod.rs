@@ -38,10 +38,7 @@ use reifydb_type::diagnostic::ast;
 
 use crate::ast::{
 	Ast, AstInfix, AstStatement, InfixOperator,
-	tokenize::{
-		Keyword, Literal, Operator, Separator, Separator::NewLine,
-		Token, TokenKind,
-	},
+	tokenize::{Keyword, Literal, Operator, Separator, Separator::NewLine, Token, TokenKind},
 };
 
 #[derive(Clone, Debug, PartialEq, PartialOrd)]
@@ -65,8 +62,9 @@ const fn get_precedence_for_operator(op: Operator) -> Precedence {
 
 	match op {
 		As => Assignment,
-		Equal | DoubleEqual | BangEqual | LeftAngle
-		| LeftAngleEqual | RightAngle | RightAngleEqual => Comparison,
+		Equal | DoubleEqual | BangEqual | LeftAngle | LeftAngleEqual | RightAngle | RightAngleEqual => {
+			Comparison
+		}
 		Plus | Minus => Term,
 		Asterisk | Slash | Percent => Factor,
 		OpenParen => Call,
@@ -78,9 +76,7 @@ const fn get_precedence_for_operator(op: Operator) -> Precedence {
 	}
 }
 
-pub fn parse<'a>(
-	tokens: Vec<Token<'a>>,
-) -> crate::Result<Vec<AstStatement<'a>>> {
+pub fn parse<'a>(tokens: Vec<Token<'a>>) -> crate::Result<Vec<AstStatement<'a>>> {
 	let mut parser = Parser::new(tokens);
 	parser.parse()
 }
@@ -109,12 +105,7 @@ impl<'a> Parser<'a> {
 			let mut has_pipes = false;
 			loop {
 				if self.is_eof()
-					|| self.consume_if(
-						TokenKind::Separator(
-							Separator::Semicolon,
-						),
-					)?
-					.is_some()
+					|| self.consume_if(TokenKind::Separator(Separator::Semicolon))?.is_some()
 				{
 					break;
 				}
@@ -122,17 +113,11 @@ impl<'a> Parser<'a> {
 				if !self.is_eof() {
 					// Check for pipe operator or newline as
 					// separator
-					if self.current()?
-						.is_operator(Operator::Pipe)
-					{
+					if self.current()?.is_operator(Operator::Pipe) {
 						self.advance()?; // consume the pipe
 						has_pipes = true;
 					} else {
-						self.consume_if(
-							TokenKind::Separator(
-								NewLine,
-							),
-						)?;
+						self.consume_if(TokenKind::Separator(NewLine))?;
 					}
 				}
 			}
@@ -145,10 +130,7 @@ impl<'a> Parser<'a> {
 		Ok(result)
 	}
 
-	pub(crate) fn parse_node(
-		&mut self,
-		precedence: Precedence,
-	) -> crate::Result<Ast<'a>> {
+	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> crate::Result<Ast<'a>> {
 		let mut left = self.parse_primary()?;
 
 		while !self.is_eof() {
@@ -158,10 +140,7 @@ impl<'a> Parser<'a> {
 
 			// Check token type before consuming
 			let is_between = if let Ok(current) = self.current() {
-				matches!(
-					current.kind,
-					TokenKind::Keyword(Keyword::Between)
-				)
+				matches!(current.kind, TokenKind::Keyword(Keyword::Between))
 			} else {
 				break;
 			};
@@ -177,27 +156,19 @@ impl<'a> Parser<'a> {
 
 	pub(crate) fn advance(&mut self) -> crate::Result<Token<'a>> {
 		if self.position >= self.tokens.len() {
-			return Err(reifydb_type::Error(
-				ast::unexpected_eof_error(),
-			));
+			return Err(reifydb_type::Error(ast::unexpected_eof_error()));
 		}
 		let token = self.tokens[self.position].clone();
 		self.position += 1;
 		Ok(token)
 	}
 
-	pub(crate) fn consume(
-		&mut self,
-		expected: TokenKind,
-	) -> crate::Result<Token<'a>> {
+	pub(crate) fn consume(&mut self, expected: TokenKind) -> crate::Result<Token<'a>> {
 		self.current_expect(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_if(
-		&mut self,
-		expected: TokenKind,
-	) -> crate::Result<Option<Token<'a>>> {
+	pub(crate) fn consume_if(&mut self, expected: TokenKind) -> crate::Result<Option<Token<'a>>> {
 		if self.is_eof() || self.current()?.kind != expected {
 			return Ok(None);
 		}
@@ -205,10 +176,7 @@ impl<'a> Parser<'a> {
 		Ok(Some(self.consume(expected)?))
 	}
 
-	pub(crate) fn consume_while(
-		&mut self,
-		expected: TokenKind,
-	) -> crate::Result<()> {
+	pub(crate) fn consume_while(&mut self, expected: TokenKind) -> crate::Result<()> {
 		loop {
 			if self.is_eof() || self.current()?.kind != expected {
 				return Ok(());
@@ -217,43 +185,29 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	pub(crate) fn consume_literal(
-		&mut self,
-		expected: Literal,
-	) -> crate::Result<Token<'a>> {
+	pub(crate) fn consume_literal(&mut self, expected: Literal) -> crate::Result<Token<'a>> {
 		self.current_expect_literal(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_operator(
-		&mut self,
-		expected: Operator,
-	) -> crate::Result<Token<'a>> {
+	pub(crate) fn consume_operator(&mut self, expected: Operator) -> crate::Result<Token<'a>> {
 		self.current_expect_operator(expected)?;
 		self.advance()
 	}
 
-	pub(crate) fn consume_keyword(
-		&mut self,
-		expected: Keyword,
-	) -> crate::Result<Token<'a>> {
+	pub(crate) fn consume_keyword(&mut self, expected: Keyword) -> crate::Result<Token<'a>> {
 		self.current_expect_keyword(expected)?;
 		self.advance()
 	}
 
 	pub(crate) fn current(&self) -> crate::Result<&Token<'a>> {
 		if self.position >= self.tokens.len() {
-			return Err(reifydb_type::Error(
-				ast::unexpected_eof_error(),
-			));
+			return Err(reifydb_type::Error(ast::unexpected_eof_error()));
 		}
 		Ok(&self.tokens[self.position])
 	}
 
-	pub(crate) fn current_expect(
-		&self,
-		expected: TokenKind,
-	) -> crate::Result<()> {
+	pub(crate) fn current_expect(&self, expected: TokenKind) -> crate::Result<()> {
 		let got = self.current()?;
 		if got.kind == expected {
 			Ok(())
@@ -261,9 +215,7 @@ impl<'a> Parser<'a> {
 			// Use specific error for identifier expectations to
 			// match test format
 			if let TokenKind::Identifier = expected {
-				return_error!(ast::expected_identifier_error(
-					got.clone().fragment
-				))
+				return_error!(ast::expected_identifier_error(got.clone().fragment))
 			} else {
 				return_error!(ast::unexpected_token_error(
 					&format!("{:?}", expected),
@@ -273,24 +225,15 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	pub(crate) fn current_expect_literal(
-		&self,
-		literal: Literal,
-	) -> crate::Result<()> {
+	pub(crate) fn current_expect_literal(&self, literal: Literal) -> crate::Result<()> {
 		self.current_expect(TokenKind::Literal(literal))
 	}
 
-	pub(crate) fn current_expect_operator(
-		&self,
-		operator: Operator,
-	) -> crate::Result<()> {
+	pub(crate) fn current_expect_operator(&self, operator: Operator) -> crate::Result<()> {
 		self.current_expect(TokenKind::Operator(operator))
 	}
 
-	pub(crate) fn current_expect_keyword(
-		&self,
-		keyword: Keyword,
-	) -> crate::Result<()> {
+	pub(crate) fn current_expect_keyword(&self, keyword: Keyword) -> crate::Result<()> {
 		self.current_expect(TokenKind::Keyword(keyword))
 	}
 
@@ -301,12 +244,8 @@ impl<'a> Parser<'a> {
 
 		let current = self.current()?;
 		match current.kind {
-			TokenKind::Operator(operator) => {
-				Ok(get_precedence_for_operator(operator))
-			}
-			TokenKind::Keyword(Keyword::Between) => {
-				Ok(Precedence::Comparison)
-			}
+			TokenKind::Operator(operator) => Ok(get_precedence_for_operator(operator)),
+			TokenKind::Keyword(Keyword::Between) => Ok(Precedence::Comparison),
 			_ => Ok(Precedence::None),
 		}
 	}
@@ -320,10 +259,7 @@ impl<'a> Parser<'a> {
 		Ok(())
 	}
 
-	pub(crate) fn parse_between(
-		&mut self,
-		value: Ast<'a>,
-	) -> crate::Result<crate::ast::AstBetween<'a>> {
+	pub(crate) fn parse_between(&mut self, value: Ast<'a>) -> crate::Result<crate::ast::AstBetween<'a>> {
 		let token = self.consume_keyword(Keyword::Between)?;
 		let lower = Box::new(self.parse_node(Precedence::Comparison)?);
 		self.consume_operator(Operator::And)?;
@@ -339,12 +275,8 @@ impl<'a> Parser<'a> {
 
 	/// Parse a comma-separated list of expressions with optional braces
 	/// Returns (nodes, had_braces) tuple
-	pub(crate) fn parse_expressions(
-		&mut self,
-		allow_colon_alias: bool,
-	) -> crate::Result<(Vec<Ast<'a>>, bool)> {
-		let has_braces =
-			self.current()?.is_operator(Operator::OpenCurly);
+	pub(crate) fn parse_expressions(&mut self, allow_colon_alias: bool) -> crate::Result<(Vec<Ast<'a>>, bool)> {
+		let has_braces = self.current()?.is_operator(Operator::OpenCurly);
 
 		if has_braces {
 			self.advance()?; // consume opening brace
@@ -353,14 +285,10 @@ impl<'a> Parser<'a> {
 		let mut nodes = Vec::with_capacity(4);
 		loop {
 			if allow_colon_alias {
-				if let Ok(alias_expr) =
-					self.try_parse_colon_alias()
-				{
+				if let Ok(alias_expr) = self.try_parse_colon_alias() {
 					nodes.push(alias_expr);
 				} else {
-					nodes.push(self.parse_node(
-						Precedence::None,
-					)?);
+					nodes.push(self.parse_node(Precedence::None)?);
 				}
 			} else {
 				nodes.push(self.parse_node(Precedence::None)?);
@@ -373,10 +301,7 @@ impl<'a> Parser<'a> {
 			// consume comma and continue
 			if self.current()?.is_separator(Separator::Comma) {
 				self.advance()?;
-			} else if has_braces
-				&& self.current()?
-					.is_operator(Operator::CloseCurly)
-			{
+			} else if has_braces && self.current()?.is_operator(Operator::CloseCurly) {
 				// If we have braces, look for closing brace
 				self.advance()?; // consume closing brace
 				break;
@@ -390,29 +315,20 @@ impl<'a> Parser<'a> {
 
 	/// Try to parse "identifier: expression" syntax and convert it to
 	/// "expression AS identifier"
-	pub(crate) fn try_parse_colon_alias(
-		&mut self,
-	) -> crate::Result<Ast<'a>> {
+	pub(crate) fn try_parse_colon_alias(&mut self) -> crate::Result<Ast<'a>> {
 		// Check if we have enough tokens from current position
 		if self.position + 1 >= self.tokens.len() {
-			return_error!(ast::unsupported_token_error(
-				self.current()?.clone().fragment
-			));
+			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
 		}
 
 		// Check if current token is identifier
 		if !self.tokens[self.position].is_identifier() {
-			return_error!(ast::unsupported_token_error(
-				self.current()?.clone().fragment
-			));
+			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
 		}
 
 		// Check if next token is colon
-		if !self.tokens[self.position + 1].is_operator(Operator::Colon)
-		{
-			return_error!(ast::unsupported_token_error(
-				self.current()?.clone().fragment
-			));
+		if !self.tokens[self.position + 1].is_operator(Operator::Colon) {
+			return_error!(ast::unsupported_token_error(self.current()?.clone().fragment));
 		}
 
 		// Parse the identifier and consume colon
@@ -529,8 +445,7 @@ mod tests {
 		let result = parser.consume_if(Literal(True)).unwrap().unwrap();
 		assert_eq!(result.kind, Literal(True));
 
-		let result =
-			parser.consume_if(Literal(Number)).unwrap().unwrap();
+		let result = parser.consume_if(Literal(Number)).unwrap().unwrap();
 		assert_eq!(result.kind, Literal(Number));
 	}
 
@@ -647,10 +562,7 @@ mod tests {
 	#[test]
 	fn test_pipe_operator_multiple() {
 		use crate::ast::Ast;
-		let tokens = tokenize(
-			"from users | filter age > 18 | sort name | take 10",
-		)
-		.unwrap();
+		let tokens = tokenize("from users | filter age > 18 | sort name | take 10").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 
@@ -697,10 +609,7 @@ mod tests {
 	#[test]
 	fn test_mixed_pipe_and_newline() {
 		use crate::ast::Ast;
-		let tokens = tokenize(
-			"from users | filter age > 18\nsort name | take 10",
-		)
-		.unwrap();
+		let tokens = tokenize("from users | filter age > 18\nsort name | take 10").unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 

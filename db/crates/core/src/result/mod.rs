@@ -4,8 +4,6 @@
 pub mod frame;
 
 pub use frame::*;
-pub use reifydb_type::{
-	Error, diagnostic, err, error, return_error, return_internal_error,
-};
+pub use reifydb_type::{Error, diagnostic, err, error, return_error, return_internal_error};
 
 pub type Result<T> = std::result::Result<T, Error>;

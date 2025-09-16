@@ -6,10 +6,7 @@ mod storage;
 use serde::{Deserialize, Serialize};
 pub use storage::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStorage};
 
-use crate::{
-	CommitVersion, EncodedKey, interface::transaction::TransactionId,
-	row::EncodedRow,
-};
+use crate::{CommitVersion, EncodedKey, interface::transaction::TransactionId, row::EncodedRow};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]

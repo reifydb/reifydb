@@ -39,19 +39,13 @@ impl HttpResponseBuilder {
 	}
 
 	pub fn json(mut self, json: &str) -> Self {
-		self.headers.insert(
-			"Content-Type".to_string(),
-			"application/json".to_string(),
-		);
+		self.headers.insert("Content-Type".to_string(), "application/json".to_string());
 		self.body = json.as_bytes().to_vec();
 		self
 	}
 
 	pub fn html(mut self, html: &str) -> Self {
-		self.headers.insert(
-			"Content-Type".to_string(),
-			"text/html; charset=utf-8".to_string(),
-		);
+		self.headers.insert("Content-Type".to_string(), "text/html; charset=utf-8".to_string());
 		self.body = html.as_bytes().to_vec();
 		self
 	}

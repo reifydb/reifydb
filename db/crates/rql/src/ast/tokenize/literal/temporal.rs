@@ -19,10 +19,7 @@ pub fn scan_temporal<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 	// literal. This includes letters, digits, colons, hyphens, dots, +, -,
 	// /, T, etc.
 	let content = cursor.consume_while(|c| {
-		c.is_ascii_alphanumeric()
-			|| c == '-' || c == ':'
-			|| c == '.' || c == '+'
-			|| c == '/' || c == 'T'
+		c.is_ascii_alphanumeric() || c == '-' || c == ':' || c == '.' || c == '+' || c == '/' || c == 'T'
 	});
 
 	if content.is_empty() {
@@ -71,10 +68,7 @@ mod tests {
 	fn test_temporal_with_timezone() {
 		let tokens = tokenize("@2024-01-15T10:30:00+05:30").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(
-			tokens[0].fragment.text(),
-			"2024-01-15T10:30:00+05:30"
-		);
+		assert_eq!(tokens[0].fragment.text(), "2024-01-15T10:30:00+05:30");
 	}
 
 	#[test]
@@ -88,10 +82,7 @@ mod tests {
 	fn test_temporal_with_microseconds() {
 		let tokens = tokenize("@2024-01-15T10:30:00.123456").unwrap();
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Temporal));
-		assert_eq!(
-			tokens[0].fragment.text(),
-			"2024-01-15T10:30:00.123456"
-		);
+		assert_eq!(tokens[0].fragment.text(), "2024-01-15T10:30:00.123456");
 	}
 
 	#[test]
@@ -118,16 +109,10 @@ mod tests {
 
 		// @ followed by invalid characters should fail
 		let result = tokenize("@#invalid");
-		assert!(
-			result.is_err(),
-			"@# should fail to tokenize as # is not valid"
-		);
+		assert!(result.is_err(), "@# should fail to tokenize as # is not valid");
 
 		// @ followed by space should fail since @ alone is not valid
 		let result = tokenize("@ 2024");
-		assert!(
-			result.is_err(),
-			"@ followed by space should fail to tokenize"
-		);
+		assert!(result.is_err(), "@ followed by space should fail to tokenize");
 	}
 }

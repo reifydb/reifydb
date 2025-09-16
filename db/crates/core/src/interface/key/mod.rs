@@ -134,70 +134,33 @@ impl Key {
 
 		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
 		match kind {
-			KeyKind::CdcConsumer => CdcConsumerKey::decode(&key)
-				.map(Self::CdcConsumer),
-			KeyKind::Columns => {
-				ColumnsKey::decode(&key).map(Self::Columns)
-			}
-			KeyKind::ColumnPolicy => ColumnPolicyKey::decode(&key)
-				.map(Self::TableColumnPolicy),
-			KeyKind::Namespace => {
-				NamespaceKey::decode(&key).map(Self::Namespace)
-			}
-			KeyKind::NamespaceTable => {
-				NamespaceTableKey::decode(&key)
-					.map(Self::NamespaceTable)
-			}
-			KeyKind::NamespaceView => {
-				NamespaceViewKey::decode(&key)
-					.map(Self::NamespaceView)
-			}
-			KeyKind::Table => {
-				TableKey::decode(&key).map(Self::Table)
-			}
-			KeyKind::Column => {
-				ColumnKey::decode(&key).map(Self::Column)
-			}
-			KeyKind::Index => {
-				IndexKey::decode(&key).map(Self::Index)
-			}
-			KeyKind::IndexEntry => IndexEntryKey::decode(&key)
-				.map(Self::IndexEntry),
-			KeyKind::FlowNodeState => {
-				FlowNodeStateKey::decode(&key)
-					.map(Self::FlowNodeState)
-			}
+			KeyKind::CdcConsumer => CdcConsumerKey::decode(&key).map(Self::CdcConsumer),
+			KeyKind::Columns => ColumnsKey::decode(&key).map(Self::Columns),
+			KeyKind::ColumnPolicy => ColumnPolicyKey::decode(&key).map(Self::TableColumnPolicy),
+			KeyKind::Namespace => NamespaceKey::decode(&key).map(Self::Namespace),
+			KeyKind::NamespaceTable => NamespaceTableKey::decode(&key).map(Self::NamespaceTable),
+			KeyKind::NamespaceView => NamespaceViewKey::decode(&key).map(Self::NamespaceView),
+			KeyKind::Table => TableKey::decode(&key).map(Self::Table),
+			KeyKind::Column => ColumnKey::decode(&key).map(Self::Column),
+			KeyKind::Index => IndexKey::decode(&key).map(Self::Index),
+			KeyKind::IndexEntry => IndexEntryKey::decode(&key).map(Self::IndexEntry),
+			KeyKind::FlowNodeState => FlowNodeStateKey::decode(&key).map(Self::FlowNodeState),
 			KeyKind::Row => RowKey::decode(&key).map(Self::Row),
-			KeyKind::RowSequence => RowSequenceKey::decode(&key)
-				.map(Self::RowSequence),
-			KeyKind::ColumnSequence => {
-				ColumnSequenceKey::decode(&key)
-					.map(Self::TableColumnSequence)
-			}
-			KeyKind::SystemSequence => {
-				SystemSequenceKey::decode(&key)
-					.map(Self::SystemSequence)
-			}
-			KeyKind::SystemVersion => {
-				SystemVersionKey::decode(&key)
-					.map(Self::SystemVersion)
-			}
+			KeyKind::RowSequence => RowSequenceKey::decode(&key).map(Self::RowSequence),
+			KeyKind::ColumnSequence => ColumnSequenceKey::decode(&key).map(Self::TableColumnSequence),
+			KeyKind::SystemSequence => SystemSequenceKey::decode(&key).map(Self::SystemSequence),
+			KeyKind::SystemVersion => SystemVersionKey::decode(&key).map(Self::SystemVersion),
 			KeyKind::TransactionVersion => {
-				TransactionVersionKey::decode(&key)
-					.map(Self::TransactionVersion)
+				TransactionVersionKey::decode(&key).map(Self::TransactionVersion)
 			}
 			KeyKind::View => ViewKey::decode(&key).map(Self::View),
-			KeyKind::PrimaryKey => PrimaryKeyKey::decode(&key)
-				.map(Self::PrimaryKey),
-			KeyKind::RingBuffer => RingBufferKey::decode(&key)
-				.map(Self::RingBuffer),
+			KeyKind::PrimaryKey => PrimaryKeyKey::decode(&key).map(Self::PrimaryKey),
+			KeyKind::RingBuffer => RingBufferKey::decode(&key).map(Self::RingBuffer),
 			KeyKind::RingBufferMetadata => {
-				RingBufferMetadataKey::decode(&key)
-					.map(Self::RingBufferMetadata)
+				RingBufferMetadataKey::decode(&key).map(Self::RingBufferMetadata)
 			}
 			KeyKind::NamespaceRingBuffer => {
-				NamespaceRingBufferKey::decode(&key)
-					.map(Self::NamespaceRingBuffer)
+				NamespaceRingBufferKey::decode(&key).map(Self::NamespaceRingBuffer)
 			}
 		}
 	}
@@ -208,19 +171,14 @@ mod tests {
 	use reifydb_type::RowNumber;
 
 	use super::{
-		ColumnKey, ColumnPolicyKey, ColumnSequenceKey, ColumnsKey,
-		FlowNodeStateKey, Key, NamespaceKey, NamespaceTableKey,
-		SystemSequenceKey, TableKey,
+		ColumnKey, ColumnPolicyKey, ColumnSequenceKey, ColumnsKey, FlowNodeStateKey, Key, NamespaceKey,
+		NamespaceTableKey, SystemSequenceKey, TableKey,
 	};
 	use crate::interface::{
 		FlowNodeId, SourceId,
-		catalog::{
-			ColumnId, ColumnPolicyId, IndexId, NamespaceId,
-			SequenceId, TableId,
-		},
+		catalog::{ColumnId, ColumnPolicyId, IndexId, NamespaceId, SequenceId, TableId},
 		key::{
-			index::IndexKey, row::RowKey,
-			row_sequence::RowSequenceKey,
+			index::IndexKey, row::RowKey, row_sequence::RowSequenceKey,
 			transaction_version::TransactionVersionKey,
 		},
 	};
@@ -232,8 +190,7 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::Columns(decoded_inner) => {
@@ -251,15 +208,11 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::Column(decoded_inner) => {
-				assert_eq!(
-					decoded_inner.source,
-					SourceId::table(1)
-				);
+				assert_eq!(decoded_inner.source, SourceId::table(1));
 				assert_eq!(decoded_inner.column, 42);
 			}
 			_ => unreachable!(),
@@ -274,8 +227,7 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::TableColumnPolicy(decoded_inner) => {
@@ -293,8 +245,7 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::Namespace(decoded_inner) => {
@@ -312,8 +263,7 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::NamespaceTable(decoded_inner) => {
@@ -331,8 +281,7 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::SystemSequence(decoded_inner) => {
@@ -349,8 +298,7 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::Table(decoded_inner) => {
@@ -368,15 +316,11 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::Index(decoded_inner) => {
-				assert_eq!(
-					decoded_inner.source,
-					SourceId::table(42)
-				);
+				assert_eq!(decoded_inner.source, SourceId::table(42));
 				assert_eq!(decoded_inner.index, 999_999);
 			}
 			_ => unreachable!(),
@@ -391,15 +335,11 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::Row(decoded_inner) => {
-				assert_eq!(
-					decoded_inner.source,
-					SourceId::table(42)
-				);
+				assert_eq!(decoded_inner.source, SourceId::table(42));
 				assert_eq!(decoded_inner.row, 999_999);
 			}
 			_ => unreachable!(),
@@ -413,15 +353,11 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::RowSequence(decoded_inner) => {
-				assert_eq!(
-					decoded_inner.source,
-					SourceId::table(42)
-				);
+				assert_eq!(decoded_inner.source, SourceId::table(42));
 			}
 			_ => unreachable!(),
 		}
@@ -435,15 +371,11 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::TableColumnSequence(decoded_inner) => {
-				assert_eq!(
-					decoded_inner.source,
-					SourceId::table(42)
-				);
+				assert_eq!(decoded_inner.source, SourceId::table(42));
 				assert_eq!(decoded_inner.column, 123);
 			}
 			_ => unreachable!(),
@@ -465,8 +397,7 @@ mod tests {
 		});
 
 		let encoded = key.encode();
-		let decoded =
-			Key::decode(&encoded).expect("Failed to decode key");
+		let decoded = Key::decode(&encoded).expect("Failed to decode key");
 
 		match decoded {
 			Key::FlowNodeState(decoded_inner) => {

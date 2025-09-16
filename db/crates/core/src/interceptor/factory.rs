@@ -13,8 +13,7 @@ pub trait InterceptorFactory<CT: CommandTransaction>: Send + Sync {
 /// This allows the factory to be Send+Sync while creating non-Send/Sync
 /// interceptors
 pub struct StandardInterceptorFactory<CT: CommandTransaction> {
-	pub(crate) factories:
-		Vec<Box<dyn Fn(&mut Interceptors<CT>) + Send + Sync>>,
+	pub(crate) factories: Vec<Box<dyn Fn(&mut Interceptors<CT>) + Send + Sync>>,
 }
 
 impl<CT: CommandTransaction> Default for StandardInterceptorFactory<CT> {
@@ -27,17 +26,12 @@ impl<CT: CommandTransaction> Default for StandardInterceptorFactory<CT> {
 
 impl<CT: CommandTransaction> StandardInterceptorFactory<CT> {
 	/// Add a custom factory that directly registers interceptors
-	pub fn add(
-		&mut self,
-		factory: Box<dyn Fn(&mut Interceptors<CT>) + Send + Sync>,
-	) {
+	pub fn add(&mut self, factory: Box<dyn Fn(&mut Interceptors<CT>) + Send + Sync>) {
 		self.factories.push(factory);
 	}
 }
 
-impl<CT: CommandTransaction> InterceptorFactory<CT>
-	for StandardInterceptorFactory<CT>
-{
+impl<CT: CommandTransaction> InterceptorFactory<CT> for StandardInterceptorFactory<CT> {
 	fn create(&self) -> Interceptors<CT> {
 		let mut interceptors = Interceptors::new();
 

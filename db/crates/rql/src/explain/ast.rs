@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::ast::{
-	Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom,
-	AstJoin,
+	Ast, AstAlter, AstAlterTableOperation, AstAlterViewOperation, AstFrom, AstJoin,
 	parse::parse,
 	tokenize::{Token, TokenKind, tokenize},
 };
@@ -23,12 +22,7 @@ pub fn explain_ast(query: &str) -> crate::Result<String> {
 	Ok(result)
 }
 
-fn render_ast_tree_inner(
-	ast: Ast,
-	prefix: &str,
-	is_last: bool,
-	output: &mut String,
-) {
+fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut String) {
 	let token = ast.token();
 	let fragment = &token.fragment;
 	let ty = match ast {
@@ -75,44 +69,22 @@ fn render_ast_tree_inner(
 	// Special handling for Row and Alter to show more detail
 	let description = match &ast {
 		Ast::Inline(r) => {
-			let field_names: Vec<&str> = r
-				.keyed_values
-				.iter()
-				.map(|f| f.key.text())
-				.collect();
-			format!(
-				"{} ({} fields: {})",
-				ty,
-				r.keyed_values.len(),
-				field_names.join(", ")
-			)
+			let field_names: Vec<&str> = r.keyed_values.iter().map(|f| f.key.text()).collect();
+			format!("{} ({} fields: {})", ty, r.keyed_values.len(), field_names.join(", "))
 		}
 		Ast::Alter(alter) => match alter {
 			AstAlter::Table(t) => {
-				let namespace = t
-					.table
-					.namespace
-					.as_ref()
-					.map(|s| format!("{}.", s.text()))
-					.unwrap_or_default();
-				format!(
-					"ALTER TABLE {}{}",
-					namespace,
-					t.table.name.text()
-				)
+				let namespace =
+					t.table.namespace
+						.as_ref()
+						.map(|s| format!("{}.", s.text()))
+						.unwrap_or_default();
+				format!("ALTER TABLE {}{}", namespace, t.table.name.text())
 			}
 			AstAlter::View(v) => {
-				let namespace = v
-					.view
-					.namespace
-					.as_ref()
-					.map(|s| format!("{}.", s.text()))
-					.unwrap_or_default();
-				format!(
-					"ALTER VIEW {}{}",
-					namespace,
-					v.view.name.text()
-				)
+				let namespace =
+					v.view.namespace.as_ref().map(|s| format!("{}.", s.text())).unwrap_or_default();
+				format!("ALTER VIEW {}{}", namespace, v.view.name.text())
 			}
 			AstAlter::Sequence(s) => {
 				let namespace = s
@@ -121,12 +93,7 @@ fn render_ast_tree_inner(
 					.as_ref()
 					.map(|sch| format!("{}.", sch.text()))
 					.unwrap_or_default();
-				format!(
-					"ALTER SEQUENCE {}{}.{}",
-					namespace,
-					s.sequence.name.text(),
-					s.column.text()
-				)
+				format!("ALTER SEQUENCE {}{}.{}", namespace, s.sequence.name.text(), s.column.text())
 			}
 		},
 		_ => ty.to_string(),
@@ -173,21 +140,14 @@ fn render_ast_tree_inner(
 						fragment: source.name.clone(),
 					};
 					use crate::ast::identifier::UnqualifiedIdentifier;
-					children.push(Ast::Identifier(
-						UnqualifiedIdentifier::new(
-							source_token,
-						),
-					));
+					children.push(Ast::Identifier(UnqualifiedIdentifier::new(source_token)));
 
 					// If there's an index directive, add it
 					// as a child too
 					if let Some(index) = index_name {
 						use crate::ast::{
 							identifier::UnqualifiedIdentifier,
-							tokenize::{
-								Token,
-								TokenKind,
-							},
+							tokenize::{Token, TokenKind},
 						};
 						let index_token = Token {
 							kind: TokenKind::Identifier,
@@ -209,46 +169,26 @@ fn render_ast_tree_inner(
 			if !a.map.is_empty() {
 				// Create a synthetic node for "Aggregate Map"
 				// label
-				output.push_str(&format!(
-					"{}├── Aggregate Map\n",
-					child_prefix
-				));
-				let map_prefix =
-					format!("{}│   ", child_prefix);
+				output.push_str(&format!("{}├── Aggregate Map\n", child_prefix));
+				let map_prefix = format!("{}│   ", child_prefix);
 				for (i, child) in a.map.iter().enumerate() {
 					let last = i == a.map.len() - 1;
-					render_ast_tree_inner(
-						child.clone(),
-						&map_prefix,
-						last,
-						output,
-					);
+					render_ast_tree_inner(child.clone(), &map_prefix, last, output);
 				}
 			}
 			if !a.by.is_empty() {
 				// Create a synthetic node for "Aggregate By"
 				// label
-				output.push_str(&format!(
-					"{}└── Aggregate By\n",
-					child_prefix
-				));
+				output.push_str(&format!("{}└── Aggregate By\n", child_prefix));
 				let by_prefix = format!("{}    ", child_prefix);
 				for (i, child) in a.by.iter().enumerate() {
 					let last = i == a.by.len() - 1;
-					render_ast_tree_inner(
-						child.clone(),
-						&by_prefix,
-						last,
-						output,
-					);
+					render_ast_tree_inner(child.clone(), &by_prefix, last, output);
 				}
 			} else if a.map.is_empty() {
 				// If both are empty (shouldn't happen), or just
 				// By is empty
-				output.push_str(&format!(
-					"{}└── Aggregate By\n",
-					child_prefix
-				));
+				output.push_str(&format!("{}└── Aggregate By\n", child_prefix));
 			}
 			// Return early since we handled the children
 			return;
@@ -270,11 +210,9 @@ fn render_ast_tree_inner(
 			// simple AST nodes Skip adding them as children for
 			// explain purposes
 		}
-		Ast::PolicyBlock(pb) => children.extend(pb
-			.policies
-			.iter()
-			.map(|p| *p.value.clone())
-			.collect::<Vec<_>>()),
+		Ast::PolicyBlock(pb) => {
+			children.extend(pb.policies.iter().map(|p| *p.value.clone()).collect::<Vec<_>>())
+		}
 		Ast::Policy(p) => children.push(*p.value),
 		Ast::Inline(r) => {
 			// Add each field as a child - they will be displayed as
@@ -282,8 +220,7 @@ fn render_ast_tree_inner(
 			for field in &r.keyed_values {
 				// Create an infix node to represent "key:
 				// value"
-				let key_ast =
-					Ast::Identifier(field.key.clone());
+				let key_ast = Ast::Identifier(field.key.clone());
 				let value_ast = *field.value.clone();
 				children.push(key_ast);
 				children.push(value_ast);
@@ -297,12 +234,8 @@ fn render_ast_tree_inner(
 			// Handle ALTER operations as child nodes
 			match alter {
 				AstAlter::Table(t) => {
-					for (i, op) in
-						t.operations.iter().enumerate()
-					{
-						let last = i == t
-							.operations
-							.len() - 1;
+					for (i, op) in t.operations.iter().enumerate() {
+						let last = i == t.operations.len() - 1;
 						let op_branch = if last {
 							"└──"
 						} else {
@@ -310,9 +243,13 @@ fn render_ast_tree_inner(
 						};
 
 						match op {
-							AstAlterTableOperation::CreatePrimaryKey { name, columns } => {
+							AstAlterTableOperation::CreatePrimaryKey {
+								name,
+								columns,
+							} => {
 								// Show the CREATE PRIMARY KEY operation
-								let pk_name = name.as_ref()
+								let pk_name = name
+									.as_ref()
 									.map(|n| format!(" {}", n.text()))
 									.unwrap_or_default();
 								output.push_str(&format!(
@@ -321,13 +258,27 @@ fn render_ast_tree_inner(
 								));
 
 								// Show columns as children of the primary key
-								let pk_prefix = format!("{}{}    ", child_prefix, if last { " " } else { "│" });
+								let pk_prefix = format!(
+									"{}{}    ",
+									child_prefix,
+									if last {
+										" "
+									} else {
+										"│"
+									}
+								);
 								for (j, col) in columns.iter().enumerate() {
 									let col_last = j == columns.len() - 1;
-									let col_branch = if col_last { "└──" } else { "├──" };
+									let col_branch = if col_last {
+										"└──"
+									} else {
+										"├──"
+									};
 									output.push_str(&format!(
 										"{}{}Column: {}\n",
-										pk_prefix, col_branch, col.column.name.text()
+										pk_prefix,
+										col_branch,
+										col.column.name.text()
 									));
 								}
 							}
@@ -341,12 +292,8 @@ fn render_ast_tree_inner(
 					}
 				}
 				AstAlter::View(v) => {
-					for (i, op) in
-						v.operations.iter().enumerate()
-					{
-						let last = i == v
-							.operations
-							.len() - 1;
+					for (i, op) in v.operations.iter().enumerate() {
+						let last = i == v.operations.len() - 1;
 						let op_branch = if last {
 							"└──"
 						} else {
@@ -354,9 +301,13 @@ fn render_ast_tree_inner(
 						};
 
 						match op {
-							AstAlterViewOperation::CreatePrimaryKey { name, columns } => {
+							AstAlterViewOperation::CreatePrimaryKey {
+								name,
+								columns,
+							} => {
 								// Show the CREATE PRIMARY KEY operation
-								let pk_name = name.as_ref()
+								let pk_name = name
+									.as_ref()
 									.map(|n| format!(" {}", n.text()))
 									.unwrap_or_default();
 								output.push_str(&format!(
@@ -365,13 +316,27 @@ fn render_ast_tree_inner(
 								));
 
 								// Show columns as children of the primary key
-								let pk_prefix = format!("{}{}    ", child_prefix, if last { " " } else { "│" });
+								let pk_prefix = format!(
+									"{}{}    ",
+									child_prefix,
+									if last {
+										" "
+									} else {
+										"│"
+									}
+								);
 								for (j, col) in columns.iter().enumerate() {
 									let col_last = j == columns.len() - 1;
-									let col_branch = if col_last { "└──" } else { "├──" };
+									let col_branch = if col_last {
+										"└──"
+									} else {
+										"├──"
+									};
 									output.push_str(&format!(
 										"{}{}Column: {}\n",
-										pk_prefix, col_branch, col.column.name.text()
+										pk_prefix,
+										col_branch,
+										col.column.name.text()
 									));
 								}
 							}
@@ -397,11 +362,6 @@ fn render_ast_tree_inner(
 
 	for (i, child) in children.iter().enumerate() {
 		let last = i == children.len() - 1;
-		render_ast_tree_inner(
-			child.clone(),
-			&child_prefix,
-			last,
-			output,
-		);
+		render_ast_tree_inner(child.clone(), &child_prefix, last, output);
 	}
 }

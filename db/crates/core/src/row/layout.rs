@@ -82,20 +82,14 @@ impl EncodedRowLayoutInner {
 
 	pub fn allocate_row(&self) -> EncodedRow {
 		let total_size = self.total_static_size();
-		let layout = std::alloc::Layout::from_size_align(
-			total_size,
-			self.alignment,
-		)
-		.unwrap();
+		let layout = std::alloc::Layout::from_size_align(total_size, self.alignment).unwrap();
 		unsafe {
 			let ptr = std::alloc::alloc_zeroed(layout);
 			if ptr.is_null() {
 				std::alloc::handle_alloc_error(layout);
 			}
 			// Safe because alloc_zeroed + known size/capacity
-			let vec = Vec::from_raw_parts(
-				ptr, total_size, total_size,
-			);
+			let vec = Vec::from_raw_parts(ptr, total_size, total_size);
 			EncodedRow(CowVec::new(vec))
 		}
 	}
@@ -124,10 +118,7 @@ impl EncodedRowLayoutInner {
 		&row.0[self.data_offset()..]
 	}
 
-	pub fn data_slice_mut<'a>(
-		&'a mut self,
-		row: &'a mut EncodedRow,
-	) -> &'a mut [u8] {
+	pub fn data_slice_mut<'a>(&'a mut self, row: &'a mut EncodedRow) -> &'a mut [u8] {
 		&mut row.0.make_mut()[self.data_offset()..]
 	}
 
@@ -139,12 +130,11 @@ impl EncodedRowLayoutInner {
 
 		let bitvec_slice = &row[..self.bitvec_size];
 		for (i, &byte) in bitvec_slice.iter().enumerate() {
-			let bits_in_byte =
-				if i == self.bitvec_size - 1 && bits % 8 != 0 {
-					bits % 8
-				} else {
-					8
-				};
+			let bits_in_byte = if i == self.bitvec_size - 1 && bits % 8 != 0 {
+				bits % 8
+			} else {
+				8
+			};
 
 			let mask = if bits_in_byte == 8 {
 				0xFF
@@ -182,19 +172,12 @@ mod tests {
 			assert_eq!(layout.fields.len(), 1);
 			assert_eq!(layout.fields[0].offset, 1);
 			assert_eq!(layout.alignment, 1);
-			assert_eq!(
-				layout.static_section_size,
-				layout.fields[0].offset + layout.fields[0].size
-			);
+			assert_eq!(layout.static_section_size, layout.fields[0].offset + layout.fields[0].size);
 		}
 
 		#[test]
 		fn test_multiple_fields() {
-			let layout = EncodedRowLayout::new(&[
-				Type::Int1,
-				Type::Int2,
-				Type::Int4,
-			]);
+			let layout = EncodedRowLayout::new(&[Type::Int1, Type::Int2, Type::Int4]);
 			assert_eq!(layout.bitvec_size, 1); // 3 fields = 1 byte
 			assert_eq!(layout.fields.len(), 3);
 
@@ -263,10 +246,7 @@ mod tests {
 				assert_eq!(field.offset % field.align, 0);
 			}
 
-			assert_eq!(
-				layout.static_section_size % layout.alignment,
-				0
-			);
+			assert_eq!(layout.static_section_size % layout.alignment, 0);
 		}
 	}
 
@@ -277,11 +257,7 @@ mod tests {
 
 		#[test]
 		fn test_initial_state() {
-			let layout = EncodedRowLayout::new(&[
-				Type::Boolean,
-				Type::Int1,
-				Type::Uint2,
-			]);
+			let layout = EncodedRowLayout::new(&[Type::Boolean, Type::Int1, Type::Uint2]);
 
 			let row = layout.allocate_row();
 
@@ -294,11 +270,7 @@ mod tests {
 
 		#[test]
 		fn test_clone_on_write_semantics() {
-			let layout = EncodedRowLayout::new(&[
-				Type::Boolean,
-				Type::Boolean,
-				Type::Boolean,
-			]);
+			let layout = EncodedRowLayout::new(&[Type::Boolean, Type::Boolean, Type::Boolean]);
 
 			let row1 = layout.allocate_row();
 			let mut row2 = row1.clone();

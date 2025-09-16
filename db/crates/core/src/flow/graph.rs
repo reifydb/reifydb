@@ -25,11 +25,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		}
 	}
 
-	pub fn add_node(
-		&mut self,
-		node_id: FlowNodeId,
-		data: NodeData,
-	) -> FlowNodeId {
+	pub fn add_node(&mut self, node_id: FlowNodeId, data: NodeData) -> FlowNodeId {
 		self.nodes.insert(node_id.clone(), data);
 		self.outgoing.entry(node_id.clone()).or_insert_with(Vec::new);
 		self.incoming.entry(node_id.clone()).or_insert_with(Vec::new);
@@ -56,15 +52,9 @@ impl<NodeData> DirectedGraph<NodeData> {
 
 		self.edges.push(edge);
 
-		self.outgoing
-			.entry(source.clone())
-			.or_insert_with(Vec::new)
-			.push(target.clone());
+		self.outgoing.entry(source.clone()).or_insert_with(Vec::new).push(target.clone());
 
-		self.incoming
-			.entry(target)
-			.or_insert_with(Vec::new)
-			.push(source);
+		self.incoming.entry(target).or_insert_with(Vec::new).push(source);
 
 		result
 	}
@@ -73,10 +63,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		self.nodes.get(node_id)
 	}
 
-	pub fn get_node_mut(
-		&mut self,
-		node_id: &FlowNodeId,
-	) -> Option<&mut NodeData> {
+	pub fn get_node_mut(&mut self, node_id: &FlowNodeId) -> Option<&mut NodeData> {
 		self.nodes.get_mut(node_id)
 	}
 
@@ -124,14 +111,10 @@ impl<NodeData> DirectedGraph<NodeData> {
 			// Update in-degrees of neighbors
 			if let Some(neighbors) = self.outgoing.get(&node_id) {
 				for neighbor in neighbors {
-					let degree = in_degree
-						.get_mut(neighbor)
-						.unwrap();
+					let degree = in_degree.get_mut(neighbor).unwrap();
 					*degree -= 1;
 					if *degree == 0 {
-						queue.push_back(
-							neighbor.clone(),
-						);
+						queue.push_back(neighbor.clone());
 					}
 				}
 			}
@@ -153,13 +136,10 @@ impl<NodeData> DirectedGraph<NodeData> {
 			if visited.insert(node_id.clone()) {
 				result.push(node_id.clone());
 
-				if let Some(neighbors) =
-					self.outgoing.get(&node_id)
-				{
+				if let Some(neighbors) = self.outgoing.get(&node_id) {
 					for neighbor in neighbors.iter().rev() {
 						if !visited.contains(neighbor) {
-							stack.push(neighbor
-								.clone());
+							stack.push(neighbor.clone());
 						}
 					}
 				}
@@ -183,9 +163,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 			if let Some(neighbors) = self.outgoing.get(&node_id) {
 				for neighbor in neighbors {
 					if visited.insert(neighbor.clone()) {
-						queue.push_back(
-							neighbor.clone(),
-						);
+						queue.push_back(neighbor.clone());
 					}
 				}
 			}
@@ -194,11 +172,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 		result
 	}
 
-	fn creates_cycle(
-		&self,
-		source: &FlowNodeId,
-		target: &FlowNodeId,
-	) -> bool {
+	fn creates_cycle(&self, source: &FlowNodeId, target: &FlowNodeId) -> bool {
 		// Check if adding edge from source to target would create a
 		// cycle This happens if there's already a path from target to
 		// source
@@ -214,16 +188,10 @@ impl<NodeData> DirectedGraph<NodeData> {
 		self.edges.iter()
 	}
 
-	pub fn remove_node(
-		&mut self,
-		node_id: &FlowNodeId,
-	) -> Option<NodeData> {
+	pub fn remove_node(&mut self, node_id: &FlowNodeId) -> Option<NodeData> {
 		if let Some(data) = self.nodes.remove(node_id) {
 			// Remove all edges involving this node
-			self.edges.retain(|edge| {
-				edge.source != *node_id
-					&& edge.target != *node_id
-			});
+			self.edges.retain(|edge| edge.source != *node_id && edge.target != *node_id);
 
 			// Clean up adjacency lists
 			self.outgoing.remove(node_id);
@@ -254,22 +222,10 @@ impl<NodeData> DirectedGraph<NodeData> {
 		self.incoming.clear();
 	}
 
-	pub fn edges_directed(
-		&self,
-		node_id: &FlowNodeId,
-		direction: EdgeDirection,
-	) -> Vec<&FlowEdge> {
+	pub fn edges_directed(&self, node_id: &FlowNodeId, direction: EdgeDirection) -> Vec<&FlowEdge> {
 		match direction {
-			EdgeDirection::Incoming => self
-				.edges
-				.iter()
-				.filter(|edge| edge.target == *node_id)
-				.collect(),
-			EdgeDirection::Outgoing => self
-				.edges
-				.iter()
-				.filter(|edge| edge.source == *node_id)
-				.collect(),
+			EdgeDirection::Incoming => self.edges.iter().filter(|edge| edge.target == *node_id).collect(),
+			EdgeDirection::Outgoing => self.edges.iter().filter(|edge| edge.source == *node_id).collect(),
 		}
 	}
 
@@ -277,13 +233,8 @@ impl<NodeData> DirectedGraph<NodeData> {
 		0..self.edges.len()
 	}
 
-	pub fn edge_endpoints(
-		&self,
-		edge_index: usize,
-	) -> Option<(&FlowNodeId, &FlowNodeId)> {
-		self.edges
-			.get(edge_index)
-			.map(|edge| (&edge.source, &edge.target))
+	pub fn edge_endpoints(&self, edge_index: usize) -> Option<(&FlowNodeId, &FlowNodeId)> {
+		self.edges.get(edge_index).map(|edge| (&edge.source, &edge.target))
 	}
 }
 
@@ -351,10 +302,7 @@ mod tests {
 		graph.add_edge(FlowEdge::new(2, &node2, &node3));
 
 		let sorted = graph.topological_sort();
-		assert_eq!(
-			sorted,
-			vec![FlowNodeId(1), FlowNodeId(2), FlowNodeId(3)]
-		);
+		assert_eq!(sorted, vec![FlowNodeId(1), FlowNodeId(2), FlowNodeId(3)]);
 	}
 
 	#[test]

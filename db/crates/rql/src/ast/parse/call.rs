@@ -25,11 +25,8 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	pub(crate) fn parse_function_call(
-		&mut self,
-	) -> crate::Result<AstCallFunction<'a>> {
-		let first_ident_token = self
-			.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+	pub(crate) fn parse_function_call(&mut self) -> crate::Result<AstCallFunction<'a>> {
+		let first_ident_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 		let start_token = first_ident_token.clone();
 
 		// Check if this is a simple function call: identifier(
@@ -37,15 +34,12 @@ impl<'a> Parser<'a> {
 			// Simple function call like func()
 			let open_paren_token = self.advance()?; // Consume the opening parenthesis
 
-			let arguments =
-				self.parse_tuple_call(open_paren_token)?;
+			let arguments = self.parse_tuple_call(open_paren_token)?;
 
 			// Create MaybeQualifiedFunctionIdentifier without
 			// namespaces
 			use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
-			let function = MaybeQualifiedFunctionIdentifier::new(
-				first_ident_token.fragment.clone(),
-			);
+			let function = MaybeQualifiedFunctionIdentifier::new(first_ident_token.fragment.clone());
 
 			return Ok(AstCallFunction {
 				token: start_token,
@@ -64,13 +58,10 @@ impl<'a> Parser<'a> {
 		while self.current()?.is_operator(Operator::DoubleColon) {
 			// Add current identifier to namespace chain before
 			// parsing next
-			namespace_fragments
-				.push(current_ident_token.fragment.clone());
+			namespace_fragments.push(current_ident_token.fragment.clone());
 
 			self.advance()?; // consume ::
-			let next_ident_token = self.consume(
-				crate::ast::tokenize::TokenKind::Identifier,
-			)?;
+			let next_ident_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 			// Check if this is the function name (followed by
 			// opening paren)
@@ -78,18 +69,12 @@ impl<'a> Parser<'a> {
 				// This is the function name, parse arguments
 				let open_paren_token = self.advance()?; // Consume the opening parenthesis
 
-				let arguments = self
-					.parse_tuple_call(open_paren_token)?;
+				let arguments = self.parse_tuple_call(open_paren_token)?;
 
 				// Create MaybeQualifiedFunctionIdentifier with
 				// namespaces
 				use crate::ast::identifier::MaybeQualifiedFunctionIdentifier;
-				let function =
-					MaybeQualifiedFunctionIdentifier::new(
-						next_ident_token
-							.fragment
-							.clone(),
-					)
+				let function = MaybeQualifiedFunctionIdentifier::new(next_ident_token.fragment.clone())
 					.with_namespaces(namespace_fragments);
 
 				return Ok(AstCallFunction {
@@ -107,9 +92,7 @@ impl<'a> Parser<'a> {
 		// paren This means it's not a function call, so we should not
 		// have called this method This shouldn't happen if lookahead
 		// logic is correct
-		unreachable!(
-			"parse_function_call called on non-function call pattern"
-		)
+		unreachable!("parse_function_call called on non-function call pattern")
 	}
 
 	pub(crate) fn is_function_call_pattern(&self) -> bool {
@@ -118,40 +101,29 @@ impl<'a> Parser<'a> {
 			return false;
 		}
 
-		if !unsafe { self.tokens.get_unchecked(self.position) }
-			.is_identifier()
-		{
+		if !unsafe { self.tokens.get_unchecked(self.position) }.is_identifier() {
 			return false;
 		}
 
 		if self.position + 1 < tokens_len
-			&& unsafe {
-				self.tokens.get_unchecked(self.position + 1)
-			}
-			.is_operator(Operator::OpenParen)
+			&& unsafe { self.tokens.get_unchecked(self.position + 1) }.is_operator(Operator::OpenParen)
 		{
 			return true;
 		}
 
 		let mut pos = self.position + 1;
 		while pos + 2 < tokens_len {
-			if !unsafe { self.tokens.get_unchecked(pos) }
-				.is_operator(Operator::DoubleColon)
-			{
+			if !unsafe { self.tokens.get_unchecked(pos) }.is_operator(Operator::DoubleColon) {
 				return false;
 			}
 			pos += 1;
 
-			if !unsafe { self.tokens.get_unchecked(pos) }
-				.is_identifier()
-			{
+			if !unsafe { self.tokens.get_unchecked(pos) }.is_identifier() {
 				return false;
 			}
 			pos += 1;
 
-			if unsafe { self.tokens.get_unchecked(pos) }
-				.is_operator(Operator::OpenParen)
-			{
+			if unsafe { self.tokens.get_unchecked(pos) }.is_operator(Operator::OpenParen) {
 				return true;
 			}
 		}
@@ -203,8 +175,7 @@ mod tests {
 
 	#[test]
 	fn test_deeply_nested_function_call() {
-		let tokens =
-			tokenize("ext::crypto::hash::sha256('data')").unwrap();
+		let tokens = tokenize("ext::crypto::hash::sha256('data')").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
@@ -224,8 +195,7 @@ mod tests {
 		assert_eq!(result.len(), 1);
 
 		// Should be parsed as identifier, not function call
-		assert!(result[0].first_unchecked().as_identifier().text()
-			== "identifier");
+		assert!(result[0].first_unchecked().as_identifier().text() == "identifier");
 	}
 
 	#[test]

@@ -2,8 +2,7 @@
 // This file is licensed under the MIT, see license.md file
 
 use crate::{
-	Date, DateTime, Decimal, IdentityId, Interval, Time, Type, Uuid4,
-	Uuid7,
+	Date, DateTime, Decimal, IdentityId, Interval, Time, Type, Uuid4, Uuid7,
 	value::{Int, Uint},
 };
 

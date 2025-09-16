@@ -19,10 +19,5 @@ pub trait WithSubsystem<T: Transaction>: Sized {
 	where
 		F: FnOnce(FlowBuilder<T>) -> FlowBuilder<T> + Send + 'static;
 
-	fn with_subsystem(
-		self,
-		factory: Box<
-			dyn SubsystemFactory<StandardCommandTransaction<T>>,
-		>,
-	) -> Self;
+	fn with_subsystem(self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction<T>>>) -> Self;
 }

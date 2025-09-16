@@ -15,10 +15,7 @@ impl Push<Decimal> for ColumnData {
 				container.push(value);
 			}
 			ColumnData::Undefined(container) => {
-				let mut new_container =
-					ColumnData::decimal_with_capacity(
-						container.len(),
-					);
+				let mut new_container = ColumnData::decimal_with_capacity(container.len());
 
 				if let ColumnData::Decimal {
 					container: new_container,
@@ -32,9 +29,7 @@ impl Push<Decimal> for ColumnData {
 				}
 				*self = new_container;
 			}
-			_ => unreachable!(
-				"Push<Decimal> for ColumnData with incompatible type"
-			),
+			_ => unreachable!("Push<Decimal> for ColumnData with incompatible type"),
 		}
 	}
 }

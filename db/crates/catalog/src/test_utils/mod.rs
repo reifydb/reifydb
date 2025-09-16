@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ColumnPolicyKind, CommandTransaction, NamespaceDef, RingBufferDef,
-	RingBufferId, TableDef, TableId, ViewDef,
+	ColumnPolicyKind, CommandTransaction, NamespaceDef, RingBufferDef, RingBufferId, TableDef, TableId, ViewDef,
 };
 use reifydb_type::TypeConstraint;
 
@@ -18,10 +17,7 @@ use crate::{
 	view::ViewToCreate,
 };
 
-pub fn create_namespace(
-	txn: &mut impl CommandTransaction,
-	namespace: &str,
-) -> NamespaceDef {
+pub fn create_namespace(txn: &mut impl CommandTransaction, namespace: &str) -> NamespaceDef {
 	CatalogStore::create_namespace(
 		txn,
 		NamespaceToCreate {
@@ -32,13 +28,8 @@ pub fn create_namespace(
 	.unwrap()
 }
 
-pub fn ensure_test_namespace(
-	txn: &mut impl CommandTransaction,
-) -> NamespaceDef {
-	if let Some(result) =
-		CatalogStore::find_namespace_by_name(txn, "test_namespace")
-			.unwrap()
-	{
+pub fn ensure_test_namespace(txn: &mut impl CommandTransaction) -> NamespaceDef {
+	if let Some(result) = CatalogStore::find_namespace_by_name(txn, "test_namespace").unwrap() {
 		return result;
 	}
 	create_namespace(txn, "test_namespace")
@@ -47,13 +38,7 @@ pub fn ensure_test_namespace(
 pub fn ensure_test_table(txn: &mut impl CommandTransaction) -> TableDef {
 	let namespace = ensure_test_namespace(txn);
 
-	if let Some(result) = CatalogStore::find_table_by_name(
-		txn,
-		namespace.id,
-		"test_table",
-	)
-	.unwrap()
-	{
+	if let Some(result) = CatalogStore::find_table_by_name(txn, namespace.id, "test_table").unwrap() {
 		return result;
 	}
 	create_table(txn, "test_namespace", "test_table", &[])
@@ -66,10 +51,7 @@ pub fn create_table(
 	columns: &[table::TableColumnToCreate],
 ) -> TableDef {
 	// First look up the namespace to get its ID
-	let namespace_def =
-		CatalogStore::find_namespace_by_name(txn, namespace)
-			.unwrap()
-			.expect("Namespace not found");
+	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
 
 	CatalogStore::create_table(
 		txn,
@@ -119,10 +101,7 @@ pub fn create_view(
 	columns: &[view::ViewColumnToCreate],
 ) -> ViewDef {
 	// First look up the namespace to get its ID
-	let namespace_def =
-		CatalogStore::find_namespace_by_name(txn, namespace)
-			.unwrap()
-			.expect("Namespace not found");
+	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
 
 	CatalogStore::create_deferred_view(
 		txn,
@@ -136,18 +115,10 @@ pub fn create_view(
 	.unwrap()
 }
 
-pub fn ensure_test_ring_buffer(
-	txn: &mut impl CommandTransaction,
-) -> RingBufferDef {
+pub fn ensure_test_ring_buffer(txn: &mut impl CommandTransaction) -> RingBufferDef {
 	let namespace = ensure_test_namespace(txn);
 
-	if let Some(result) = CatalogStore::find_ring_buffer_by_name(
-		txn,
-		namespace.id,
-		"test_ring_buffer",
-	)
-	.unwrap()
-	{
+	if let Some(result) = CatalogStore::find_ring_buffer_by_name(txn, namespace.id, "test_ring_buffer").unwrap() {
 		return result;
 	}
 	create_ring_buffer(txn, "test_namespace", "test_ring_buffer", 100, &[])
@@ -161,10 +132,7 @@ pub fn create_ring_buffer(
 	columns: &[RingBufferColumnToCreate],
 ) -> RingBufferDef {
 	// First look up the namespace to get its ID
-	let namespace_def =
-		CatalogStore::find_namespace_by_name(txn, namespace)
-			.unwrap()
-			.expect("Namespace not found");
+	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
 
 	CatalogStore::create_ring_buffer(
 		txn,

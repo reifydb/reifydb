@@ -85,17 +85,12 @@ impl<'a> TableIdentifier<'a> {
 		TableIdentifier {
 			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
-			alias: self
-				.alias
-				.map(|a| Fragment::Owned(a.into_owned())),
+			alias: self.alias.map(|a| Fragment::Owned(a.into_owned())),
 		}
 	}
 
 	pub fn effective_name(&self) -> &str {
-		self.alias
-			.as_ref()
-			.map(|a| a.text())
-			.unwrap_or_else(|| self.name.text())
+		self.alias.as_ref().map(|a| a.text()).unwrap_or_else(|| self.name.text())
 	}
 }
 
@@ -117,17 +112,12 @@ impl<'a> TableVirtualIdentifier<'a> {
 		TableVirtualIdentifier {
 			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
-			alias: self
-				.alias
-				.map(|a| Fragment::Owned(a.into_owned())),
+			alias: self.alias.map(|a| Fragment::Owned(a.into_owned())),
 		}
 	}
 
 	pub fn effective_name(&self) -> &str {
-		self.alias
-			.as_ref()
-			.map(|a| a.text())
-			.unwrap_or_else(|| self.name.text())
+		self.alias.as_ref().map(|a| a.text()).unwrap_or_else(|| self.name.text())
 	}
 }
 
@@ -157,17 +147,12 @@ impl<'a> RingBufferIdentifier<'a> {
 		RingBufferIdentifier {
 			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
-			alias: self
-				.alias
-				.map(|a| Fragment::Owned(a.into_owned())),
+			alias: self.alias.map(|a| Fragment::Owned(a.into_owned())),
 		}
 	}
 
 	pub fn effective_name(&self) -> &str {
-		self.alias
-			.as_ref()
-			.map(|a| a.text())
-			.unwrap_or_else(|| self.name.text())
+		self.alias.as_ref().map(|a| a.text()).unwrap_or_else(|| self.name.text())
 	}
 }
 
@@ -189,17 +174,12 @@ impl<'a> DeferredViewIdentifier<'a> {
 		DeferredViewIdentifier {
 			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
-			alias: self
-				.alias
-				.map(|a| Fragment::Owned(a.into_owned())),
+			alias: self.alias.map(|a| Fragment::Owned(a.into_owned())),
 		}
 	}
 
 	pub fn effective_name(&self) -> &str {
-		self.alias
-			.as_ref()
-			.map(|a| a.text())
-			.unwrap_or_else(|| self.name.text())
+		self.alias.as_ref().map(|a| a.text()).unwrap_or_else(|| self.name.text())
 	}
 }
 
@@ -221,17 +201,12 @@ impl<'a> TransactionalViewIdentifier<'a> {
 		TransactionalViewIdentifier {
 			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
-			alias: self
-				.alias
-				.map(|a| Fragment::Owned(a.into_owned())),
+			alias: self.alias.map(|a| Fragment::Owned(a.into_owned())),
 		}
 	}
 
 	pub fn effective_name(&self) -> &str {
-		self.alias
-			.as_ref()
-			.map(|a| a.text())
-			.unwrap_or_else(|| self.name.text())
+		self.alias.as_ref().map(|a| a.text()).unwrap_or_else(|| self.name.text())
 	}
 }
 
@@ -245,10 +220,7 @@ pub struct UnresolvedSourceIdentifier<'a> {
 }
 
 impl<'a> UnresolvedSourceIdentifier<'a> {
-	pub fn new(
-		namespace: Option<Fragment<'a>>,
-		name: Fragment<'a>,
-	) -> Self {
+	pub fn new(namespace: Option<Fragment<'a>>, name: Fragment<'a>) -> Self {
 		Self {
 			namespace,
 			name,
@@ -263,44 +235,25 @@ impl<'a> UnresolvedSourceIdentifier<'a> {
 
 	pub fn into_owned(self) -> UnresolvedSourceIdentifier<'static> {
 		UnresolvedSourceIdentifier {
-			namespace: self
-				.namespace
-				.map(|ns| Fragment::Owned(ns.into_owned())),
+			namespace: self.namespace.map(|ns| Fragment::Owned(ns.into_owned())),
 			name: Fragment::Owned(self.name.into_owned()),
-			alias: self
-				.alias
-				.map(|a| Fragment::Owned(a.into_owned())),
+			alias: self.alias.map(|a| Fragment::Owned(a.into_owned())),
 		}
 	}
 
 	pub fn effective_name(&self) -> &str {
-		self.alias
-			.as_ref()
-			.map(|a| a.text())
-			.unwrap_or_else(|| self.name.text())
+		self.alias.as_ref().map(|a| a.text()).unwrap_or_else(|| self.name.text())
 	}
 }
 
 impl<'a> SourceIdentifier<'a> {
 	pub fn into_owned(self) -> SourceIdentifier<'static> {
 		match self {
-			Self::Table(t) => {
-				SourceIdentifier::Table(t.into_owned())
-			}
-			Self::TableVirtual(t) => {
-				SourceIdentifier::TableVirtual(t.into_owned())
-			}
-			Self::DeferredView(v) => {
-				SourceIdentifier::DeferredView(v.into_owned())
-			}
-			Self::TransactionalView(v) => {
-				SourceIdentifier::TransactionalView(
-					v.into_owned(),
-				)
-			}
-			Self::RingBuffer(r) => {
-				SourceIdentifier::RingBuffer(r.into_owned())
-			}
+			Self::Table(t) => SourceIdentifier::Table(t.into_owned()),
+			Self::TableVirtual(t) => SourceIdentifier::TableVirtual(t.into_owned()),
+			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.into_owned()),
+			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.into_owned()),
+			Self::RingBuffer(r) => SourceIdentifier::RingBuffer(r.into_owned()),
 		}
 	}
 
@@ -318,10 +271,7 @@ impl<'a> SourceIdentifier<'a> {
 
 	/// Check if this source is a view
 	pub fn is_view(&self) -> bool {
-		matches!(
-			self,
-			Self::DeferredView(_) | Self::TransactionalView(_)
-		)
+		matches!(self, Self::DeferredView(_) | Self::TransactionalView(_))
 	}
 
 	/// Get the namespace fragment
@@ -366,11 +316,7 @@ pub struct ColumnIdentifier<'a> {
 }
 
 impl<'a> ColumnIdentifier<'a> {
-	pub fn with_source(
-		namespace: Fragment<'a>,
-		source: Fragment<'a>,
-		name: Fragment<'a>,
-	) -> Self {
+	pub fn with_source(namespace: Fragment<'a>, source: Fragment<'a>, name: Fragment<'a>) -> Self {
 		Self {
 			source: ColumnSource::Source {
 				namespace,
@@ -414,14 +360,10 @@ impl<'a> ColumnSource<'a> {
 				namespace,
 				source,
 			} => ColumnSource::Source {
-				namespace: Fragment::Owned(
-					namespace.into_owned(),
-				),
+				namespace: Fragment::Owned(namespace.into_owned()),
 				source: Fragment::Owned(source.into_owned()),
 			},
-			ColumnSource::Alias(alias) => ColumnSource::Alias(
-				Fragment::Owned(alias.into_owned()),
-			),
+			ColumnSource::Alias(alias) => ColumnSource::Alias(Fragment::Owned(alias.into_owned())),
 		}
 	}
 
@@ -454,21 +396,14 @@ impl<'a> FunctionIdentifier<'a> {
 		}
 	}
 
-	pub fn with_namespaces(
-		mut self,
-		namespaces: Vec<Fragment<'a>>,
-	) -> Self {
+	pub fn with_namespaces(mut self, namespaces: Vec<Fragment<'a>>) -> Self {
 		self.namespaces = namespaces;
 		self
 	}
 
 	pub fn into_owned(self) -> FunctionIdentifier<'static> {
 		FunctionIdentifier {
-			namespaces: self
-				.namespaces
-				.into_iter()
-				.map(|n| Fragment::Owned(n.into_owned()))
-				.collect(),
+			namespaces: self.namespaces.into_iter().map(|n| Fragment::Owned(n.into_owned())).collect(),
 			name: Fragment::Owned(self.name.into_owned()),
 		}
 	}
@@ -478,11 +413,7 @@ impl<'a> FunctionIdentifier<'a> {
 		if self.namespaces.is_empty() {
 			self.name.text().to_string()
 		} else {
-			let mut parts: Vec<&str> = self
-				.namespaces
-				.iter()
-				.map(|n| n.text())
-				.collect();
+			let mut parts: Vec<&str> = self.namespaces.iter().map(|n| n.text()).collect();
 			parts.push(self.name.text());
 			parts.join("::")
 		}
@@ -521,11 +452,7 @@ pub struct IndexIdentifier<'a> {
 }
 
 impl<'a> IndexIdentifier<'a> {
-	pub fn new(
-		namespace: Fragment<'a>,
-		table: Fragment<'a>,
-		name: Fragment<'a>,
-	) -> Self {
+	pub fn new(namespace: Fragment<'a>, table: Fragment<'a>, name: Fragment<'a>) -> Self {
 		Self {
 			namespace,
 			table,
@@ -550,12 +477,9 @@ mod tests {
 
 	#[test]
 	fn test_source_identifier_creation() {
-		let namespace =
-			Fragment::Owned(OwnedFragment::testing("public"));
+		let namespace = Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
-		let source = SourceIdentifier::Table(TableIdentifier::new(
-			namespace, name,
-		));
+		let source = SourceIdentifier::Table(TableIdentifier::new(namespace, name));
 
 		if let SourceIdentifier::Table(t) = &source {
 			assert_eq!(t.namespace.text(), "public");
@@ -568,12 +492,9 @@ mod tests {
 
 	#[test]
 	fn test_source_identifier_with_different_namespace() {
-		let namespace =
-			Fragment::Owned(OwnedFragment::testing("mynamespace"));
+		let namespace = Fragment::Owned(OwnedFragment::testing("mynamespace"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
-		let source = SourceIdentifier::Table(TableIdentifier::new(
-			namespace, name,
-		));
+		let source = SourceIdentifier::Table(TableIdentifier::new(namespace, name));
 
 		if let SourceIdentifier::Table(t) = &source {
 			assert_eq!(t.namespace.text(), "mynamespace");
@@ -585,13 +506,10 @@ mod tests {
 
 	#[test]
 	fn test_source_identifier_with_alias() {
-		let namespace =
-			Fragment::Owned(OwnedFragment::testing("public"));
+		let namespace = Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
 		let alias = Fragment::Owned(OwnedFragment::testing("u"));
-		let source = SourceIdentifier::Table(
-			TableIdentifier::new(namespace, name).with_alias(alias),
-		);
+		let source = SourceIdentifier::Table(TableIdentifier::new(namespace, name).with_alias(alias));
 
 		assert_eq!(source.effective_name(), "u");
 		if let SourceIdentifier::Table(t) = &source {
@@ -618,10 +536,8 @@ mod tests {
 	fn test_column_identifier_with_source() {
 		let name = Fragment::Owned(OwnedFragment::testing("id"));
 		let source = Fragment::Owned(OwnedFragment::testing("users"));
-		let namespace =
-			Fragment::Owned(OwnedFragment::testing("public"));
-		let column =
-			ColumnIdentifier::with_source(namespace, source, name);
+		let namespace = Fragment::Owned(OwnedFragment::testing("public"));
+		let column = ColumnIdentifier::with_source(namespace, source, name);
 
 		match &column.source {
 			ColumnSource::Source {
@@ -641,48 +557,35 @@ mod tests {
 		let name = Fragment::Owned(OwnedFragment::testing("substr"));
 		let ns1 = Fragment::Owned(OwnedFragment::testing("pg_catalog"));
 		let ns2 = Fragment::Owned(OwnedFragment::testing("string"));
-		let func = FunctionIdentifier::new(name)
-			.with_namespaces(vec![ns1, ns2]);
+		let func = FunctionIdentifier::new(name).with_namespaces(vec![ns1, ns2]);
 
 		assert_eq!(func.qualified_name(), "pg_catalog::string::substr");
 	}
 
 	#[test]
 	fn test_source_identifier_is_view() {
-		let namespace =
-			Fragment::Owned(OwnedFragment::testing("public"));
+		let namespace = Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("my_view"));
 
-		let deferred = SourceIdentifier::DeferredView(
-			DeferredViewIdentifier::new(
-				namespace.clone(),
-				name.clone(),
-			),
-		);
+		let deferred =
+			SourceIdentifier::DeferredView(DeferredViewIdentifier::new(namespace.clone(), name.clone()));
 		assert!(deferred.is_view());
 
-		let transactional = SourceIdentifier::TransactionalView(
-			TransactionalViewIdentifier::new(
-				namespace.clone(),
-				name.clone(),
-			),
-		);
+		let transactional = SourceIdentifier::TransactionalView(TransactionalViewIdentifier::new(
+			namespace.clone(),
+			name.clone(),
+		));
 		assert!(transactional.is_view());
 
-		let table = SourceIdentifier::Table(TableIdentifier::new(
-			namespace, name,
-		));
+		let table = SourceIdentifier::Table(TableIdentifier::new(namespace, name));
 		assert!(!table.is_view());
 	}
 
 	#[test]
 	fn test_into_owned() {
-		let namespace =
-			Fragment::Owned(OwnedFragment::testing("public"));
+		let namespace = Fragment::Owned(OwnedFragment::testing("public"));
 		let name = Fragment::Owned(OwnedFragment::testing("users"));
-		let source = SourceIdentifier::Table(TableIdentifier::new(
-			namespace, name,
-		));
+		let source = SourceIdentifier::Table(TableIdentifier::new(namespace, name));
 
 		let owned = source.into_owned();
 		if let SourceIdentifier::Table(t) = &owned {

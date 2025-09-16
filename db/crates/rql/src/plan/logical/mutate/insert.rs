@@ -5,9 +5,7 @@ use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
 	ast::AstInsert,
-	plan::logical::{
-		Compiler, InsertNode, LogicalPlan, resolver::IdentifierResolver,
-	},
+	plan::logical::{Compiler, InsertNode, LogicalPlan, resolver::IdentifierResolver},
 };
 
 impl Compiler {
@@ -17,8 +15,7 @@ impl Compiler {
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve directly to TableIdentifier since INSERT only works
 		// on tables
-		let target = resolver
-			.resolve_maybe_qualified_table(&ast.target, true)?;
+		let target = resolver.resolve_maybe_qualified_table(&ast.target, true)?;
 
 		Ok(LogicalPlan::Insert(InsertNode {
 			target,

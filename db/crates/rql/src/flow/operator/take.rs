@@ -6,9 +6,7 @@ use reifydb_core::{
 	interface::{CommandTransaction, FlowNodeId},
 };
 
-use super::super::{
-	CompileOperator, FlowCompiler, conversion::to_owned_physical_plan,
-};
+use super::super::{CompileOperator, FlowCompiler, conversion::to_owned_physical_plan};
 use crate::{
 	Result,
 	plan::physical::{PhysicalPlan, TakeNode},

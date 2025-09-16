@@ -144,18 +144,8 @@ impl BoolContainer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<bool> = self
-			.data
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.collect();
-		let new_bitvec: Vec<bool> = self
-			.bitvec
-			.iter()
-			.skip(start)
-			.take(end - start)
-			.collect();
+		let new_data: Vec<bool> = self.data.iter().skip(start).take(end - start).collect();
+		let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
 		Self {
 			data: BitVec::from_slice(&new_data),
 			bitvec: BitVec::from_slice(&new_bitvec),
@@ -302,8 +292,7 @@ mod tests {
 
 	#[test]
 	fn test_slice() {
-		let container =
-			BoolContainer::from_vec(vec![true, false, true, false]);
+		let container = BoolContainer::from_vec(vec![true, false, true, false]);
 		let sliced = container.slice(1, 3);
 
 		assert_eq!(sliced.len(), 2);
@@ -313,8 +302,7 @@ mod tests {
 
 	#[test]
 	fn test_filter() {
-		let mut container =
-			BoolContainer::from_vec(vec![true, false, true, false]);
+		let mut container = BoolContainer::from_vec(vec![true, false, true, false]);
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 
 		container.filter(&mask);
@@ -326,8 +314,7 @@ mod tests {
 
 	#[test]
 	fn test_reorder() {
-		let mut container =
-			BoolContainer::from_vec(vec![true, false, true]);
+		let mut container = BoolContainer::from_vec(vec![true, false, true]);
 		let indices = [2, 0, 1];
 
 		container.reorder(&indices);

@@ -8,33 +8,19 @@ use reifydb_type::Type;
 use crate::row::{EncodedRow, EncodedRowLayout};
 
 impl EncodedRowLayout {
-	pub fn set_i8(
-		&self,
-		row: &mut EncodedRow,
-		index: usize,
-		value: impl Into<i8>,
-	) {
+	pub fn set_i8(&self, row: &mut EncodedRow, index: usize, value: impl Into<i8>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Int1);
 		row.set_valid(index, true);
-		unsafe {
-			ptr::write_unaligned(
-				row.make_mut().as_mut_ptr().add(field.offset)
-					as *mut i8,
-				value.into(),
-			)
-		}
+		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut i8, value.into()) }
 	}
 
 	pub fn get_i8(&self, row: &EncodedRow, index: usize) -> i8 {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 		debug_assert_eq!(field.value, Type::Int1);
-		unsafe {
-			(row.as_ptr().add(field.offset) as *const i8)
-				.read_unaligned()
-		}
+		unsafe { (row.as_ptr().add(field.offset) as *const i8).read_unaligned() }
 	}
 
 	pub fn try_get_i8(&self, row: &EncodedRow, index: usize) -> Option<i8> {
@@ -102,11 +88,7 @@ mod tests {
 
 	#[test]
 	fn test_mixed_with_other_types() {
-		let layout = EncodedRowLayout::new(&[
-			Type::Int1,
-			Type::Boolean,
-			Type::Int1,
-		]);
+		let layout = EncodedRowLayout::new(&[Type::Int1, Type::Boolean, Type::Int1]);
 		let mut row = layout.allocate_row();
 
 		layout.set_i8(&mut row, 0, -50i8);

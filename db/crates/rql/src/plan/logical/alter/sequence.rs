@@ -2,26 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::identifier::{
-	ColumnIdentifier, ColumnSource, SequenceIdentifier,
-};
+use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource, SequenceIdentifier};
 use reifydb_type::Fragment;
 
 use crate::{
 	ast::{Ast, AstAlterSequence},
 	expression::ExpressionCompiler,
-	plan::logical::{
-		AlterSequenceNode, Compiler, LogicalPlan,
-		resolver::IdentifierResolver,
-	},
+	plan::logical::{AlterSequenceNode, Compiler, LogicalPlan, resolver::IdentifierResolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence<
-		'a,
-		't,
-		T: CatalogQueryTransaction,
-	>(
+	pub(crate) fn compile_alter_sequence<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstAlterSequence<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
@@ -29,19 +20,14 @@ impl Compiler {
 			// Use the resolver's resolve_maybe_sequence method if
 			// we add one For now, just use default namespace
 			// through resolver
-			let namespace =
-				ast.sequence.namespace.unwrap_or_else(|| {
-					Fragment::borrowed_internal(
-						resolver.default_namespace(),
-					)
-				});
+			let namespace = ast
+				.sequence
+				.namespace
+				.unwrap_or_else(|| Fragment::borrowed_internal(resolver.default_namespace()));
 			(namespace, ast.sequence.name.clone())
 		};
 
-		let sequence = SequenceIdentifier::new(
-			namespace.clone(),
-			sequence_name.clone(),
-		);
+		let sequence = SequenceIdentifier::new(namespace.clone(), sequence_name.clone());
 
 		// Create a fully qualified column identifier
 		// The column belongs to the same table as the sequence
@@ -56,9 +42,7 @@ impl Compiler {
 		Ok(LogicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,
-			value: ExpressionCompiler::compile(Ast::Literal(
-				ast.value,
-			))?,
+			value: ExpressionCompiler::compile(Ast::Literal(ast.value))?,
 		}))
 	}
 }

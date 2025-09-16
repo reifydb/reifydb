@@ -18,71 +18,57 @@ impl<'a> Parser<'a> {
 		let operator_name = self.parse_identifier()?;
 
 		// Check if we have arguments
-		let expressions =
-			if self.current()?.is_operator(Operator::OpenCurly) {
-				// We have a block - could be empty {} or
-				// contain expressions
-				self.advance()?; // consume '{'
+		let expressions = if self.current()?.is_operator(Operator::OpenCurly) {
+			// We have a block - could be empty {} or
+			// contain expressions
+			self.advance()?; // consume '{'
 
-				let mut exprs = Vec::new();
+			let mut exprs = Vec::new();
 
-				// Check if it's empty braces
-				if !self.current()?
-					.is_operator(Operator::CloseCurly)
-				{
-					// Parse expressions until we hit the
-					// closing brace
-					loop {
-						exprs.push(self.parse_node(
-							Precedence::None,
-						)?);
+			// Check if it's empty braces
+			if !self.current()?.is_operator(Operator::CloseCurly) {
+				// Parse expressions until we hit the
+				// closing brace
+				loop {
+					exprs.push(self.parse_node(Precedence::None)?);
 
-						if self.current()?.is_separator(
-							Separator::Comma,
-						) {
-							self.advance()?; // consume comma
-							// Check for trailing
-							// comma
-							if self.current()?.is_operator(Operator::CloseCurly) {
-                            break;
-                        }
-						} else {
+					if self.current()?.is_separator(Separator::Comma) {
+						self.advance()?; // consume comma
+						// Check for trailing
+						// comma
+						if self.current()?.is_operator(Operator::CloseCurly) {
 							break;
 						}
+					} else {
+						break;
 					}
 				}
+			}
 
-				self.consume_operator(Operator::CloseCurly)?; // consume '}'
-				exprs
-			} else if !self.is_eof()
-				&& !self.current()?
-					.is_separator(Separator::NewLine)
-				&& !self.current()?.is_keyword(Keyword::Map)
-				&& !self.current()?.is_keyword(Keyword::Filter)
-				&& !self.current()?.is_keyword(Keyword::From)
-			{
-				// Try to parse a single expression
-				let first_expr =
-					self.parse_node(Precedence::None)?;
+			self.consume_operator(Operator::CloseCurly)?; // consume '}'
+			exprs
+		} else if !self.is_eof()
+			&& !self.current()?.is_separator(Separator::NewLine)
+			&& !self.current()?.is_keyword(Keyword::Map)
+			&& !self.current()?.is_keyword(Keyword::Filter)
+			&& !self.current()?.is_keyword(Keyword::From)
+		{
+			// Try to parse a single expression
+			let first_expr = self.parse_node(Precedence::None)?;
 
-				// Check if there's a comma following (which
-				// would indicate multiple arguments)
-				if !self.is_eof()
-					&& self.current()?
-						.is_separator(Separator::Comma)
-				{
-					// Multiple arguments without braces -
-					// this is an error
-					return_error!(apply_multiple_arguments_without_braces(
-						token.fragment
-					));
-				}
+			// Check if there's a comma following (which
+			// would indicate multiple arguments)
+			if !self.is_eof() && self.current()?.is_separator(Separator::Comma) {
+				// Multiple arguments without braces -
+				// this is an error
+				return_error!(apply_multiple_arguments_without_braces(token.fragment));
+			}
 
-				vec![first_expr]
-			} else {
-				// No arguments
-				Vec::new()
-			};
+			vec![first_expr]
+		} else {
+			// No arguments
+			Vec::new()
+		};
 
 		Ok(AstApply {
 			token,
@@ -121,18 +107,12 @@ mod tests {
 		let apply = result.first_unchecked().as_apply();
 		assert_eq!(apply.operator_name.text(), "running_sum");
 		assert_eq!(apply.expressions.len(), 1);
-		assert_eq!(
-			apply.expressions[0].as_identifier().text(),
-			"value"
-		);
+		assert_eq!(apply.expressions[0].as_identifier().text(), "value");
 	}
 
 	#[test]
 	fn test_apply_with_block() {
-		let tokens = tokenize(
-			"APPLY counter {row_number: row_number, id: id}",
-		)
-		.unwrap();
+		let tokens = tokenize("APPLY counter {row_number: row_number, id: id}").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
 		assert_eq!(result.len(), 1);

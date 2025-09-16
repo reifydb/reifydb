@@ -6,9 +6,7 @@ use std::{
 	sync::{Arc, Mutex},
 };
 
-use crate::value::columnar::pool::{
-	capacity::ContainerCapacity, stats::PoolStats,
-};
+use crate::value::columnar::pool::{capacity::ContainerCapacity, stats::PoolStats};
 
 /// Core trait for container pooling operations
 pub trait PoolAllocator<C> {
@@ -74,8 +72,7 @@ where
 					container.clear();
 
 					// Update stats
-					if let Ok(mut stats) = self.stats.lock()
-					{
+					if let Ok(mut stats) = self.stats.lock() {
 						stats.total_acquired += 1;
 					}
 
@@ -127,8 +124,7 @@ where
 
 	fn stats(&self) -> PoolStats {
 		if let Ok(pools) = self.pools.lock() {
-			let available =
-				pools.values().map(|pool| pool.len()).sum();
+			let available = pools.values().map(|pool| pool.len()).sum();
 
 			if let Ok(stats) = self.stats.lock() {
 				return PoolStats {
@@ -225,33 +221,12 @@ mod tests {
 
 	#[test]
 	fn test_capacity_bucket() {
-		assert_eq!(
-			StdPoolAllocator::<BoolContainer>::capacity_bucket(0),
-			8
-		);
-		assert_eq!(
-			StdPoolAllocator::<BoolContainer>::capacity_bucket(1),
-			8
-		);
-		assert_eq!(
-			StdPoolAllocator::<BoolContainer>::capacity_bucket(8),
-			8
-		);
-		assert_eq!(
-			StdPoolAllocator::<BoolContainer>::capacity_bucket(9),
-			16
-		);
-		assert_eq!(
-			StdPoolAllocator::<BoolContainer>::capacity_bucket(16),
-			16
-		);
-		assert_eq!(
-			StdPoolAllocator::<BoolContainer>::capacity_bucket(17),
-			32
-		);
-		assert_eq!(
-			StdPoolAllocator::<BoolContainer>::capacity_bucket(100),
-			128
-		);
+		assert_eq!(StdPoolAllocator::<BoolContainer>::capacity_bucket(0), 8);
+		assert_eq!(StdPoolAllocator::<BoolContainer>::capacity_bucket(1), 8);
+		assert_eq!(StdPoolAllocator::<BoolContainer>::capacity_bucket(8), 8);
+		assert_eq!(StdPoolAllocator::<BoolContainer>::capacity_bucket(9), 16);
+		assert_eq!(StdPoolAllocator::<BoolContainer>::capacity_bucket(16), 16);
+		assert_eq!(StdPoolAllocator::<BoolContainer>::capacity_bucket(17), 32);
+		assert_eq!(StdPoolAllocator::<BoolContainer>::capacity_bucket(100), 128);
 	}
 }

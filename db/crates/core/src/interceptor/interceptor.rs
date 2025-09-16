@@ -6,35 +6,24 @@ use reifydb_type::RowNumber;
 use crate::{
 	CommitVersion,
 	interceptor::{
-		InterceptorChain, NamespaceDefPostCreateContext,
-		NamespaceDefPostCreateInterceptor,
-		NamespaceDefPostUpdateContext,
-		NamespaceDefPostUpdateInterceptor,
-		NamespaceDefPreDeleteContext, NamespaceDefPreDeleteInterceptor,
-		NamespaceDefPreUpdateContext, NamespaceDefPreUpdateInterceptor,
-		PostCommitContext, PostCommitInterceptor, PreCommitContext,
-		PreCommitInterceptor, TableDefPostCreateContext,
-		TableDefPostCreateInterceptor, TableDefPostUpdateContext,
-		TableDefPostUpdateInterceptor, TableDefPreDeleteContext,
-		TableDefPreDeleteInterceptor, TableDefPreUpdateContext,
-		TableDefPreUpdateInterceptor, TablePostDeleteContext,
-		TablePostDeleteInterceptor, TablePostInsertContext,
-		TablePostInsertInterceptor, TablePostUpdateContext,
-		TablePostUpdateInterceptor, TablePreDeleteContext,
-		TablePreDeleteInterceptor, TablePreInsertContext,
-		TablePreInsertInterceptor, TablePreUpdateContext,
-		TablePreUpdateInterceptor, ViewDefPostCreateContext,
-		ViewDefPostCreateInterceptor, ViewDefPostUpdateContext,
-		ViewDefPostUpdateInterceptor, ViewDefPreDeleteContext,
-		ViewDefPreDeleteInterceptor, ViewDefPreUpdateContext,
+		InterceptorChain, NamespaceDefPostCreateContext, NamespaceDefPostCreateInterceptor,
+		NamespaceDefPostUpdateContext, NamespaceDefPostUpdateInterceptor, NamespaceDefPreDeleteContext,
+		NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateContext, NamespaceDefPreUpdateInterceptor,
+		PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor,
+		TableDefPostCreateContext, TableDefPostCreateInterceptor, TableDefPostUpdateContext,
+		TableDefPostUpdateInterceptor, TableDefPreDeleteContext, TableDefPreDeleteInterceptor,
+		TableDefPreUpdateContext, TableDefPreUpdateInterceptor, TablePostDeleteContext,
+		TablePostDeleteInterceptor, TablePostInsertContext, TablePostInsertInterceptor, TablePostUpdateContext,
+		TablePostUpdateInterceptor, TablePreDeleteContext, TablePreDeleteInterceptor, TablePreInsertContext,
+		TablePreInsertInterceptor, TablePreUpdateContext, TablePreUpdateInterceptor, ViewDefPostCreateContext,
+		ViewDefPostCreateInterceptor, ViewDefPostUpdateContext, ViewDefPostUpdateInterceptor,
+		ViewDefPreDeleteContext, ViewDefPreDeleteInterceptor, ViewDefPreUpdateContext,
 		ViewDefPreUpdateInterceptor,
 	},
 	interface::{
-		CommandTransaction, NamespaceDef, TableDef, TransactionId,
-		TransactionalDefChanges, ViewDef,
+		CommandTransaction, NamespaceDef, TableDef, TransactionId, TransactionalDefChanges, ViewDef,
 		interceptor::{
-			NamespaceDefInterceptor, TableDefInterceptor,
-			TableInterceptor, TransactionInterceptor,
+			NamespaceDefInterceptor, TableDefInterceptor, TableInterceptor, TransactionInterceptor,
 			ViewDefInterceptor, WithInterceptors,
 		},
 	},
@@ -76,9 +65,7 @@ macro_rules! impl_interceptor_method {
 	};
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT>
-	for CT
-{
+impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT {
 	impl_interceptor_method!(
 		pre_insert,
 		table_pre_insert_interceptors,
@@ -128,9 +115,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT>
 	);
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> NamespaceDefInterceptor<CT>
-	for CT
-{
+impl<CT: CommandTransaction + WithInterceptors<CT>> NamespaceDefInterceptor<CT> for CT {
 	impl_interceptor_method!(
 		post_create,
 		namespace_def_post_create_interceptors,
@@ -164,9 +149,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> NamespaceDefInterceptor<CT>
 	);
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> TableDefInterceptor<CT>
-	for CT
-{
+impl<CT: CommandTransaction + WithInterceptors<CT>> TableDefInterceptor<CT> for CT {
 	impl_interceptor_method!(
 		post_create,
 		table_def_post_create_interceptors,
@@ -200,9 +183,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableDefInterceptor<CT>
 	);
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> ViewDefInterceptor<CT>
-	for CT
-{
+impl<CT: CommandTransaction + WithInterceptors<CT>> ViewDefInterceptor<CT> for CT {
 	impl_interceptor_method!(
 		post_create,
 		view_def_post_create_interceptors,
@@ -236,16 +217,8 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> ViewDefInterceptor<CT>
 	);
 }
 
-impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT>
-	for CT
-{
-	impl_interceptor_method!(
-		pre_commit,
-		pre_commit_interceptors,
-		PreCommitInterceptor,
-		PreCommitContext,
-		()
-	);
+impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> for CT {
+	impl_interceptor_method!(pre_commit, pre_commit_interceptors, PreCommitInterceptor, PreCommitContext, ());
 
 	fn post_commit(
 		&mut self,
@@ -258,15 +231,12 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT>
 		}
 		// We need to use unsafe here to work around the borrow checker
 		// This is safe because:
-		// 1. We know the interceptor chain won't outlive this function
-		//    call
+		// 1. We know the interceptor chain won't outlive this function call
 		// 2. The execution is synchronous and single-threaded
 		// 3. We're only borrowing different parts of self
 		unsafe {
-			let chain_ptr: *mut InterceptorChain<
-				CT,
-				dyn PostCommitInterceptor<CT>,
-			> = self.post_commit_interceptors() as *mut _;
+			let chain_ptr: *mut InterceptorChain<CT, dyn PostCommitInterceptor<CT>> =
+				self.post_commit_interceptors() as *mut _;
 			let ctx = PostCommitContext::new(id, version, changes);
 			(*chain_ptr).execute(ctx)?
 		}

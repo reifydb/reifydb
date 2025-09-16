@@ -47,10 +47,7 @@ pub fn oracle_performance_benchmark() {
 
 		println!("  {} transactions in {:?}", num_txns, duration);
 		println!("  {:.0} TPS (transactions per second)", tps);
-		println!(
-			"  {:.2} μs per transaction\n",
-			duration.as_micros() as f64 / num_txns as f64
-		);
+		println!("  {:.2} μs per transaction\n", duration.as_micros() as f64 / num_txns as f64);
 	}
 }
 
@@ -81,9 +78,7 @@ pub fn concurrent_oracle_benchmark() {
 			let handle = thread::spawn(move || {
 				let base_key = thread_id * txns_per_thread;
 				for i in 0..txns_per_thread {
-					let mut tx = engine_clone
-						.begin_command()
-						.unwrap();
+					let mut tx = engine_clone.begin_command().unwrap();
 
 					let key = as_key!(base_key + i);
 					let value = as_row!(i);
@@ -102,15 +97,9 @@ pub fn concurrent_oracle_benchmark() {
 		let duration = start.elapsed();
 		let tps = total_txns as f64 / duration.as_secs_f64();
 
-		println!(
-			"  {} total transactions in {:?}",
-			total_txns, duration
-		);
+		println!("  {} total transactions in {:?}", total_txns, duration);
 		println!("  {:.0} TPS (transactions per second)", tps);
-		println!(
-			"  {:.2} μs per transaction\n",
-			duration.as_micros() as f64 / total_txns as f64
-		);
+		println!("  {:.2} μs per transaction\n", duration.as_micros() as f64 / total_txns as f64);
 	}
 }
 
@@ -157,20 +146,14 @@ pub fn conflict_detection_benchmark() {
 	let duration = start.elapsed();
 	let tps = num_conflict_txns as f64 / duration.as_secs_f64();
 
-	println!(
-		"  {} transactions with potential conflicts in {:?}",
-		num_conflict_txns, duration
-	);
+	println!("  {} transactions with potential conflicts in {:?}", num_conflict_txns, duration);
 	println!(
 		"  {} actual conflicts detected ({:.1}%)",
 		conflicts,
 		conflicts as f64 / num_conflict_txns as f64 * 100.0
 	);
 	println!("  {:.0} TPS (transactions per second)", tps);
-	println!(
-		"  {:.2} μs per transaction",
-		duration.as_micros() as f64 / num_conflict_txns as f64
-	);
+	println!("  {:.2} μs per transaction", duration.as_micros() as f64 / num_conflict_txns as f64);
 }
 
 fn main() {

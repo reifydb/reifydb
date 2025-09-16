@@ -9,9 +9,8 @@ use serde::{Deserialize, Serialize};
 use super::{
 	ColumnDef, NamespaceDef, TableDef, TableVirtualDef, ViewDef,
 	identifier::{
-		ColumnIdentifier, DeferredViewIdentifier, FunctionIdentifier,
-		IndexIdentifier, NamespaceIdentifier, SequenceIdentifier,
-		SourceIdentifier, TableIdentifier, TableVirtualIdentifier,
+		ColumnIdentifier, DeferredViewIdentifier, FunctionIdentifier, IndexIdentifier, NamespaceIdentifier,
+		SequenceIdentifier, SourceIdentifier, TableIdentifier, TableVirtualIdentifier,
 		TransactionalViewIdentifier,
 	},
 };
@@ -24,10 +23,7 @@ pub struct ResolvedNamespace<'a> {
 }
 
 impl<'a> ResolvedNamespace<'a> {
-	pub fn new(
-		identifier: NamespaceIdentifier<'a>,
-		def: NamespaceDef,
-	) -> Self {
+	pub fn new(identifier: NamespaceIdentifier<'a>, def: NamespaceDef) -> Self {
 		Self {
 			identifier,
 			def,
@@ -54,11 +50,7 @@ pub struct ResolvedTable<'a> {
 }
 
 impl<'a> ResolvedTable<'a> {
-	pub fn new(
-		identifier: TableIdentifier<'a>,
-		namespace: Rc<ResolvedNamespace<'a>>,
-		def: TableDef,
-	) -> Self {
+	pub fn new(identifier: TableIdentifier<'a>, namespace: Rc<ResolvedNamespace<'a>>, def: TableDef) -> Self {
 		Self {
 			identifier,
 			namespace,
@@ -135,11 +127,7 @@ pub struct ResolvedView<'a> {
 }
 
 impl<'a> ResolvedView<'a> {
-	pub fn new(
-		identifier: SourceIdentifier<'a>,
-		namespace: Rc<ResolvedNamespace<'a>>,
-		def: ViewDef,
-	) -> Self {
+	pub fn new(identifier: SourceIdentifier<'a>, namespace: Rc<ResolvedNamespace<'a>>, def: ViewDef) -> Self {
 		Self {
 			identifier,
 			namespace,
@@ -172,11 +160,7 @@ pub struct ResolvedDeferredView<'a> {
 }
 
 impl<'a> ResolvedDeferredView<'a> {
-	pub fn new(
-		identifier: DeferredViewIdentifier<'a>,
-		namespace: Rc<ResolvedNamespace<'a>>,
-		def: ViewDef,
-	) -> Self {
+	pub fn new(identifier: DeferredViewIdentifier<'a>, namespace: Rc<ResolvedNamespace<'a>>, def: ViewDef) -> Self {
 		Self {
 			identifier,
 			namespace,
@@ -264,28 +248,14 @@ impl<'a> ResolvedSource<'a> {
 	/// Get the identifier for any source type as a SourceIdentifier enum
 	pub fn identifier(&self) -> SourceIdentifier<'a> {
 		match self {
-			Self::Table(t) => {
-				SourceIdentifier::Table(t.identifier.clone())
-			}
-			Self::TableVirtual(t) => {
-				SourceIdentifier::TableVirtual(
-					t.identifier.clone(),
-				)
-			}
+			Self::Table(t) => SourceIdentifier::Table(t.identifier.clone()),
+			Self::TableVirtual(t) => SourceIdentifier::TableVirtual(t.identifier.clone()),
 			Self::View(v) => v.identifier.clone(), // Keep as is
 			// for now since
 			// ResolvedView
 			// will be removed
-			Self::DeferredView(v) => {
-				SourceIdentifier::DeferredView(
-					v.identifier.clone(),
-				)
-			}
-			Self::TransactionalView(v) => {
-				SourceIdentifier::TransactionalView(
-					v.identifier.clone(),
-				)
-			}
+			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.identifier.clone()),
+			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.identifier.clone()),
 		}
 	}
 
@@ -353,21 +323,9 @@ impl<'a> ResolvedSource<'a> {
 		match self {
 			Self::Table(t) => Some(t.fully_qualified_name()),
 			Self::View(v) => Some(v.fully_qualified_name()),
-			Self::DeferredView(v) => Some(format!(
-				"{}.{}",
-				v.namespace.name(),
-				v.name()
-			)),
-			Self::TransactionalView(v) => Some(format!(
-				"{}.{}",
-				v.namespace.name(),
-				v.name()
-			)),
-			Self::TableVirtual(t) => Some(format!(
-				"{}.{}",
-				t.namespace.name(),
-				t.name()
-			)),
+			Self::DeferredView(v) => Some(format!("{}.{}", v.namespace.name(), v.name())),
+			Self::TransactionalView(v) => Some(format!("{}.{}", v.namespace.name(), v.name())),
+			Self::TableVirtual(t) => Some(format!("{}.{}", t.namespace.name(), t.name())),
 		}
 	}
 
@@ -400,11 +358,7 @@ pub struct ResolvedColumn<'a> {
 }
 
 impl<'a> ResolvedColumn<'a> {
-	pub fn new(
-		identifier: ColumnIdentifier<'a>,
-		source: Rc<ResolvedSource<'a>>,
-		def: ColumnDef,
-	) -> Self {
+	pub fn new(identifier: ColumnIdentifier<'a>, source: Rc<ResolvedSource<'a>>, def: ColumnDef) -> Self {
 		Self {
 			identifier,
 			source,
@@ -438,11 +392,7 @@ impl<'a> ResolvedColumn<'a> {
 			Some(source_name) => {
 				format!("{}.{}", source_name, self.name())
 			}
-			None => format!(
-				"{}.{}",
-				self.source.effective_name(),
-				self.name()
-			),
+			None => format!("{}.{}", self.source.effective_name(), self.name()),
 		}
 	}
 
@@ -479,9 +429,7 @@ mod tests {
 	use reifydb_type::{OwnedFragment, Type};
 
 	use super::*;
-	use crate::interface::{
-		ColumnId, NamespaceId, TableId, catalog::ColumnIndex,
-	};
+	use crate::interface::{ColumnId, NamespaceId, TableId, catalog::ColumnIndex};
 
 	fn test_namespace_def() -> NamespaceDef {
 		NamespaceDef {
@@ -499,10 +447,7 @@ mod tests {
 				ColumnDef {
 					id: ColumnId(1),
 					name: "id".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Int8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Int8),
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
@@ -510,10 +455,7 @@ mod tests {
 				ColumnDef {
 					id: ColumnId(2),
 					name: "name".to_string(),
-					constraint:
-						TypeConstraint::unconstrained(
-							Type::Utf8,
-						),
+					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
@@ -540,20 +482,13 @@ mod tests {
 		let namespace_ident = NamespaceIdentifier {
 			name: Fragment::Owned(OwnedFragment::testing("public")),
 		};
-		let namespace = Rc::new(ResolvedNamespace::new(
-			namespace_ident,
-			test_namespace_def(),
-		));
+		let namespace = Rc::new(ResolvedNamespace::new(namespace_ident, test_namespace_def()));
 
 		let table_ident = TableIdentifier::new(
 			Fragment::Owned(OwnedFragment::testing("public")),
 			Fragment::Owned(OwnedFragment::testing("users")),
 		);
-		let table = ResolvedTable::new(
-			table_ident,
-			namespace.clone(),
-			test_table_def(),
-		);
+		let table = ResolvedTable::new(table_ident, namespace.clone(), test_table_def());
 
 		assert_eq!(table.name(), "users");
 		assert_eq!(table.fully_qualified_name(), "public.users");
@@ -566,21 +501,15 @@ mod tests {
 	fn test_resolved_source_enum() {
 		let namespace = Rc::new(ResolvedNamespace::new(
 			NamespaceIdentifier {
-				name: Fragment::Owned(OwnedFragment::testing(
-					"public",
-				)),
+				name: Fragment::Owned(OwnedFragment::testing("public")),
 			},
 			test_namespace_def(),
 		));
 
 		let table = ResolvedTable::new(
 			TableIdentifier::new(
-				Fragment::Owned(OwnedFragment::testing(
-					"public",
-				)),
-				Fragment::Owned(OwnedFragment::testing(
-					"users",
-				)),
+				Fragment::Owned(OwnedFragment::testing("public")),
+				Fragment::Owned(OwnedFragment::testing("users")),
 			),
 			namespace,
 			test_table_def(),
@@ -592,10 +521,7 @@ mod tests {
 		assert!(source.supports_mutations());
 		assert_eq!(source.kind_name(), "table");
 		assert_eq!(source.effective_name(), "users");
-		assert_eq!(
-			source.fully_qualified_name(),
-			Some("public.users".to_string())
-		);
+		assert_eq!(source.fully_qualified_name(), Some("public.users".to_string()));
 		assert!(source.as_table().is_some());
 		assert!(source.as_view().is_none());
 	}
@@ -604,21 +530,15 @@ mod tests {
 	fn test_resolved_column() {
 		let namespace = Rc::new(ResolvedNamespace::new(
 			NamespaceIdentifier {
-				name: Fragment::Owned(OwnedFragment::testing(
-					"public",
-				)),
+				name: Fragment::Owned(OwnedFragment::testing("public")),
 			},
 			test_namespace_def(),
 		));
 
 		let table = ResolvedTable::new(
 			TableIdentifier::new(
-				Fragment::Owned(OwnedFragment::testing(
-					"public",
-				)),
-				Fragment::Owned(OwnedFragment::testing(
-					"users",
-				)),
+				Fragment::Owned(OwnedFragment::testing("public")),
+				Fragment::Owned(OwnedFragment::testing("users")),
 			),
 			namespace,
 			test_table_def(),
@@ -641,14 +561,10 @@ mod tests {
 			auto_increment: false,
 		};
 
-		let column =
-			ResolvedColumn::new(column_ident, source, column_def);
+		let column = ResolvedColumn::new(column_ident, source, column_def);
 
 		assert_eq!(column.name(), "id");
-		assert_eq!(
-			column.type_constraint(),
-			&TypeConstraint::unconstrained(Type::Int8)
-		);
+		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(Type::Int8));
 		assert!(!column.is_auto_increment());
 		assert_eq!(column.fully_qualified_name(), "public.users.id");
 	}

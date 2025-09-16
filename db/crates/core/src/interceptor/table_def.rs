@@ -3,10 +3,7 @@
 
 use std::marker::PhantomData;
 
-use crate::{
-	define_api_function, define_closure_interceptor, define_interceptor,
-	interface::TableDef,
-};
+use crate::{define_api_function, define_closure_interceptor, define_interceptor, interface::TableDef};
 
 // TABLE POST CREATE
 define_interceptor!(
