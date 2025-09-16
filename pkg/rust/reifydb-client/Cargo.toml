@@ -33,3 +33,22 @@ serde_json = { version = "1.0.143" }
 reifydb = { path = "../reifydb", features = ["sub_server"] }
 reifydb-testing = { path = "../../../db/crates/testing" }
 test_each_file = { version = "0.3.5" }
+
+[profile.dev]
+opt-level = 0
+debug = true
+debug-assertions = true
+overflow-checks = true
+incremental = true
+lto = false
+codegen-units = 256
+panic = "unwind"
+
+[profile.test]
+opt-level = 0
+debug = true
+lto = false
+codegen-units = 256
+incremental = true
+debug-assertions = true
+overflow-checks = true

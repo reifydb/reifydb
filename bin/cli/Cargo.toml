@@ -12,3 +12,22 @@ path = "src/main.rs"
 
 [dependencies]
 reifydb = { path = "../../pkg/rust/reifydb", features = ["sub_logging", "sub_admin"] }
+
+[profile.dev]
+opt-level = 0
+debug = true
+debug-assertions = true
+overflow-checks = true
+incremental = true
+lto = false
+codegen-units = 256
+panic = "unwind"
+
+[profile.test]
+opt-level = 0
+debug = true
+lto = false
+codegen-units = 256
+incremental = true
+debug-assertions = true
+overflow-checks = true
