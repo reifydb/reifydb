@@ -22,7 +22,6 @@ pub use join::JoinOperator;
 pub use map::{MapOperator, MapTerminalOperator};
 pub use sort::SortOperator;
 pub use take::TakeOperator;
-pub use transform::extract;
 pub use union::UnionOperator;
 
 pub trait Operator<T: Transaction>: Send + Sync {

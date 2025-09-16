@@ -9,6 +9,7 @@ mod engine;
 #[allow(dead_code, unused_variables)]
 mod operator;
 pub mod subsystem;
+pub mod util;
 
 pub use builder::FlowBuilder;
 pub use engine::*;

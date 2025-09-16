@@ -30,6 +30,8 @@ mod r#type;
 pub mod uint;
 pub mod uuid;
 
+pub mod keycode;
+
 pub use blob::Blob;
 pub use constraint::{Constraint, TypeConstraint};
 pub use date::Date;

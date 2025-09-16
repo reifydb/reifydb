@@ -25,6 +25,277 @@ use crate::util::encoding::keycode::{
 	deserialize::Deserializer, serialize::Serializer,
 };
 
+/// Encode a bool value for keycode (true=0x00, false=0x01 for descending order)
+pub fn encode_bool(value: bool) -> u8 {
+	if value {
+		0x00
+	} else {
+		0x01
+	}
+}
+
+/// Encode an f32 value for keycode
+pub fn encode_f32(value: f32) -> [u8; 4] {
+	let mut bytes = value.to_be_bytes();
+	match value.is_sign_negative() {
+		false => bytes[0] ^= 1 << 7, // positive, flip sign bit
+		true => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
+	}
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode an f64 value for keycode
+pub fn encode_f64(value: f64) -> [u8; 8] {
+	let mut bytes = value.to_be_bytes();
+	match value.is_sign_negative() {
+		false => bytes[0] ^= 1 << 7, // positive, flip sign bit
+		true => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
+	}
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode an i8 value for keycode (flip sign bit, then NOT)
+pub fn encode_i8(value: i8) -> [u8; 1] {
+	let mut bytes = value.to_be_bytes();
+	bytes[0] ^= 1 << 7; // flip sign bit
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode an i16 value for keycode (flip sign bit, then NOT)
+pub fn encode_i16(value: i16) -> [u8; 2] {
+	let mut bytes = value.to_be_bytes();
+	bytes[0] ^= 1 << 7; // flip sign bit
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode an i32 value for keycode (flip sign bit, then NOT)
+pub fn encode_i32(value: i32) -> [u8; 4] {
+	let mut bytes = value.to_be_bytes();
+	bytes[0] ^= 1 << 7; // flip sign bit
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode an i64 value for keycode (flip sign bit, then NOT)
+pub fn encode_i64(value: i64) -> [u8; 8] {
+	let mut bytes = value.to_be_bytes();
+	bytes[0] ^= 1 << 7; // flip sign bit
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode an i128 value for keycode (flip sign bit, then NOT)
+pub fn encode_i128(value: i128) -> [u8; 16] {
+	let mut bytes = value.to_be_bytes();
+	bytes[0] ^= 1 << 7; // flip sign bit
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode a u8 value for keycode (bitwise NOT)
+pub fn encode_u8(value: u8) -> u8 {
+	!value
+}
+
+/// Encode a u16 value for keycode (bitwise NOT of big-endian)
+pub fn encode_u16(value: u16) -> [u8; 2] {
+	let mut bytes = value.to_be_bytes();
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode a u32 value for keycode (bitwise NOT of big-endian)
+pub fn encode_u32(value: u32) -> [u8; 4] {
+	let mut bytes = value.to_be_bytes();
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode a u64 value for keycode (bitwise NOT of big-endian)
+pub fn encode_u64(value: u64) -> [u8; 8] {
+	let mut bytes = value.to_be_bytes();
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode a u128 value for keycode (bitwise NOT of big-endian)
+pub fn encode_u128(value: u128) -> [u8; 16] {
+	let mut bytes = value.to_be_bytes();
+	for b in bytes.iter_mut() {
+		*b = !*b;
+	}
+	bytes
+}
+
+/// Encode bytes for keycode (escape 0xff, terminate with 0xffff)
+pub fn encode_bytes(bytes: &[u8], output: &mut Vec<u8>) {
+	for &byte in bytes {
+		if byte == 0xff {
+			output.push(0xff);
+			output.push(0x00);
+		} else {
+			output.push(byte);
+		}
+	}
+	output.push(0xff);
+	output.push(0xff);
+}
+
+/// A builder for constructing binary keys using keycode encoding
+pub struct KeySerializer {
+	buffer: Vec<u8>,
+}
+
+impl KeySerializer {
+	/// Create new serializer with default capacity
+	pub fn new() -> Self {
+		Self {
+			buffer: Vec::new(),
+		}
+	}
+
+	/// Create with pre-allocated capacity
+	pub fn with_capacity(capacity: usize) -> Self {
+		Self {
+			buffer: Vec::with_capacity(capacity),
+		}
+	}
+
+	/// Extend with bool value
+	pub fn extend_bool(&mut self, value: bool) -> &mut Self {
+		self.buffer.push(encode_bool(value));
+		self
+	}
+
+	/// Extend with f32 value
+	pub fn extend_f32(&mut self, value: f32) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_f32(value));
+		self
+	}
+
+	/// Extend with f64 value
+	pub fn extend_f64(&mut self, value: f64) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_f64(value));
+		self
+	}
+
+	/// Extend with i8 value
+	pub fn extend_i8<T: Into<i8>>(&mut self, value: T) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_i8(value.into()));
+		self
+	}
+
+	/// Extend with i16 value
+	pub fn extend_i16<T: Into<i16>>(&mut self, value: T) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_i16(value.into()));
+		self
+	}
+
+	/// Extend with i32 value
+	pub fn extend_i32<T: Into<i32>>(&mut self, value: T) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_i32(value.into()));
+		self
+	}
+
+	/// Extend with i64 value
+	pub fn extend_i64<T: Into<i64>>(&mut self, value: T) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_i64(value.into()));
+		self
+	}
+
+	/// Extend with i128 value
+	pub fn extend_i128<T: Into<i128>>(&mut self, value: T) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_i128(value.into()));
+		self
+	}
+
+	/// Extend with u8 value
+	pub fn extend_u8<T: Into<u8>>(&mut self, value: T) -> &mut Self {
+		self.buffer.push(encode_u8(value.into()));
+		self
+	}
+
+	/// Extend with u16 value
+	pub fn extend_u16<T: Into<u16>>(&mut self, value: T) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_u16(value.into()));
+		self
+	}
+
+	/// Extend with u32 value
+	pub fn extend_u32<T: Into<u32>>(&mut self, value: T) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_u32(value.into()));
+		self
+	}
+
+	/// Extend with u64 value
+	pub fn extend_u64<T: Into<u64>>(&mut self, value: T) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_u64(value.into()));
+		self
+	}
+
+	/// Extend with u128 value
+	pub fn extend_u128<T: Into<u128>>(&mut self, value: T) -> &mut Self {
+		self.buffer.extend_from_slice(&encode_u128(value.into()));
+		self
+	}
+
+	/// Extend with raw bytes
+	pub fn extend_bytes<T: AsRef<[u8]>>(&mut self, bytes: T) -> &mut Self {
+		encode_bytes(bytes.as_ref(), &mut self.buffer);
+		self
+	}
+
+	/// Extend with string (UTF-8 bytes)
+	pub fn extend_str<T: AsRef<str>>(&mut self, s: T) -> &mut Self {
+		self.extend_bytes(s.as_ref().as_bytes())
+	}
+
+	/// Consume serializer and return final buffer
+	pub fn finish(self) -> Vec<u8> {
+		self.buffer
+	}
+
+	/// Get current buffer length
+	pub fn len(&self) -> usize {
+		self.buffer.len()
+	}
+
+	/// Check if buffer is empty
+	pub fn is_empty(&self) -> bool {
+		self.buffer.is_empty()
+	}
+}
+
+impl Default for KeySerializer {
+	fn default() -> Self {
+		Self::new()
+	}
+}
+
 #[macro_export]
 macro_rules! key_prefix {
     ($($arg:tt)*) => {
@@ -216,4 +487,60 @@ mod tests {
 	value_uint4: Value::Uint4(4294967295) => "0c00000000",
 	value_uint8: Value::Uint8(18446744073709551615) => "0d0000000000000000",
 	value_uint16: Value::Uint16(340282366920938463463374607431768211455u128) => "0e00000000000000000000000000000000",}
+
+	#[test]
+	fn test_key_serializer() {
+		// Test bool
+		let mut s = KeySerializer::new();
+		s.extend_bool(true);
+		assert_eq!(s.finish(), vec![0x00]);
+
+		let mut s = KeySerializer::new();
+		s.extend_bool(false);
+		assert_eq!(s.finish(), vec![0x01]);
+
+		// Test u64
+		let mut s = KeySerializer::new();
+		s.extend_u64(0u64);
+		assert_eq!(
+			s.finish(),
+			vec![0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+		);
+
+		// Test i64
+		let mut s = KeySerializer::new();
+		s.extend_i64(0i64);
+		assert_eq!(
+			s.finish(),
+			vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+		);
+
+		// Test f32
+		let mut s = KeySerializer::new();
+		s.extend_f32(0.0f32);
+		assert_eq!(s.finish(), vec![0x7f, 0xff, 0xff, 0xff]);
+
+		// Test f64
+		let mut s = KeySerializer::new();
+		s.extend_f64(0.0f64);
+		assert_eq!(
+			s.finish(),
+			vec![0x7f, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff]
+		);
+
+		// Test bytes
+		let mut s = KeySerializer::new();
+		s.extend_bytes(b"foo");
+		assert_eq!(s.finish(), vec![0x66, 0x6f, 0x6f, 0xff, 0xff]);
+
+		// Test chaining
+		let mut s = KeySerializer::with_capacity(32);
+		s.extend_bool(true)
+			.extend_u32(1u32)
+			.extend_i16(-1i16)
+			.extend_bytes(b"test");
+		let result = s.finish();
+		assert!(!result.is_empty());
+		assert!(result.len() > 10); // Should have all the encoded values
+	}
 }

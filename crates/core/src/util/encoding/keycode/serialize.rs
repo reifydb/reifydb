@@ -8,6 +8,11 @@ use serde::{
 	},
 };
 
+use super::{
+	encode_bool, encode_bytes, encode_f32, encode_f64, encode_i8,
+	encode_i16, encode_i32, encode_i64, encode_i128, encode_u8, encode_u16,
+	encode_u32, encode_u64, encode_u128,
+};
 use crate::util::encoding::Error;
 
 pub(crate) struct Serializer {
@@ -27,128 +32,67 @@ impl serde::ser::Serializer for &mut Serializer {
 	type SerializeStructVariant = Impossible<(), Error>;
 
 	fn serialize_bool(self, v: bool) -> crate::Result<()> {
-		self.output.push(if v {
-			0x00
-		} else {
-			0x01
-		});
+		self.output.push(encode_bool(v));
 		Ok(())
 	}
 
 	fn serialize_i8(self, v: i8) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		bytes[0] ^= 1 << 7; // flip sign bit
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(&bytes);
+		self.output.extend_from_slice(&encode_i8(v));
 		Ok(())
 	}
 
 	fn serialize_i16(self, v: i16) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		bytes[0] ^= 1 << 7; // flip sign bit
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(&bytes);
+		self.output.extend_from_slice(&encode_i16(v));
 		Ok(())
 	}
 
 	fn serialize_i32(self, v: i32) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		bytes[0] ^= 1 << 7; // flip sign bit
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(&bytes);
+		self.output.extend_from_slice(&encode_i32(v));
 		Ok(())
 	}
 
 	fn serialize_i64(self, v: i64) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		bytes[0] ^= 1 << 7; // flip sign bit
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(bytes);
+		self.output.extend_from_slice(&encode_i64(v));
 		Ok(())
 	}
 
 	fn serialize_i128(self, v: i128) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		bytes[0] ^= 1 << 7; // flip sign bit
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(&bytes);
+		self.output.extend_from_slice(&encode_i128(v));
 		Ok(())
 	}
 
 	fn serialize_u8(self, v: u8) -> crate::Result<()> {
-		self.output.push(!v);
+		self.output.push(encode_u8(v));
 		Ok(())
 	}
 
 	fn serialize_u16(self, v: u16) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(&bytes);
+		self.output.extend_from_slice(&encode_u16(v));
 		Ok(())
 	}
 
 	fn serialize_u32(self, v: u32) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(&bytes);
+		self.output.extend_from_slice(&encode_u32(v));
 		Ok(())
 	}
 
 	fn serialize_u64(self, v: u64) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(&bytes);
+		self.output.extend_from_slice(&encode_u64(v));
 		Ok(())
 	}
 
 	fn serialize_u128(self, v: u128) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(&bytes);
+		self.output.extend_from_slice(&encode_u128(v));
 		Ok(())
 	}
 
 	fn serialize_f32(self, v: f32) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		match v.is_sign_negative() {
-			false => bytes[0] ^= 1 << 7, // positive, flip sign bit
-			true => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
-		}
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(bytes);
+		self.output.extend_from_slice(&encode_f32(v));
 		Ok(())
 	}
 
 	fn serialize_f64(self, v: f64) -> crate::Result<()> {
-		let mut bytes = v.to_be_bytes();
-		match v.is_sign_negative() {
-			false => bytes[0] ^= 1 << 7, // positive, flip sign bit
-			true => bytes.iter_mut().for_each(|b| *b = !*b), // negative, flip all bits
-		}
-		for b in bytes.iter_mut() {
-			*b = !*b;
-		}
-		self.output.extend(bytes);
+		self.output.extend_from_slice(&encode_f64(v));
 		Ok(())
 	}
 
@@ -161,17 +105,7 @@ impl serde::ser::Serializer for &mut Serializer {
 	}
 
 	fn serialize_bytes(self, v: &[u8]) -> crate::Result<()> {
-		for &byte in v {
-			if byte == 0xff {
-				self.output.push(0xff);
-				self.output.push(0x00);
-			} else {
-				self.output.push(byte);
-			}
-		}
-		self.output.push(0xff);
-		self.output.push(0xff);
-
+		encode_bytes(v, &mut self.output);
 		Ok(())
 	}
 
