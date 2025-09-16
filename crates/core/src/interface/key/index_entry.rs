@@ -8,7 +8,10 @@ use crate::{
 	EncodedKey, EncodedKeyRange,
 	index::{EncodedIndexKey, EncodedIndexKeyRange},
 	interface::catalog::{IndexId, SourceId},
-	util::{CowVec, encoding::keycode},
+	util::{
+		CowVec,
+		encoding::keycode::{self, KeySerializer},
+	},
 };
 
 const VERSION: u8 = 1;
@@ -80,21 +83,23 @@ impl EncodableKeyRange for IndexEntryKeyRange {
 	const KIND: KeyKind = KeyKind::IndexEntry;
 
 	fn start(&self) -> Option<EncodedKey> {
-		let mut out = Vec::with_capacity(20); // 1 + 1 + 9 + 9
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&self.source));
-		out.extend(&keycode::serialize_index_id(&self.index));
-		Some(EncodedKey::new(out))
+		let mut serializer = KeySerializer::with_capacity(20); // 1 + 1 + 9 + 9
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(self.source)
+			.extend_index_id(self.index);
+		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
-		let mut out = Vec::with_capacity(20);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&self.source));
-		out.extend(&keycode::serialize_index_id(&self.index.prev()));
-		Some(EncodedKey::new(out))
+		let mut serializer = KeySerializer::with_capacity(20);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(self.source)
+			.extend_index_id(self.index.prev());
+		Some(serializer.to_encoded_key())
 	}
 
 	fn decode(range: &EncodedKeyRange) -> (Option<Self>, Option<Self>)
@@ -123,15 +128,16 @@ impl EncodableKey for IndexEntryKey {
 	const KIND: KeyKind = KeyKind::IndexEntry;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(20 + self.key.len());
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&self.source));
-		out.extend(&keycode::serialize_index_id(&self.index));
-		// Append the raw index key bytes
-		out.extend_from_slice(self.key.as_slice());
-
-		EncodedKey::new(out)
+		let mut serializer =
+			KeySerializer::with_capacity(20 + self.key.len());
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(self.source)
+			.extend_index_id(self.index)
+			// Append the raw index key bytes
+			.extend_raw(self.key.as_slice());
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
@@ -196,20 +202,24 @@ impl IndexEntryKey {
 	/// Create a range for scanning all entries of a source (all indexes)
 	pub fn source_range(source: impl Into<SourceId>) -> EncodedKeyRange {
 		let source = source.into();
-		let mut start = Vec::with_capacity(11);
-		start.extend(&keycode::serialize(&VERSION));
-		start.extend(&keycode::serialize(&KeyKind::IndexEntry));
-		start.extend(&keycode::serialize_source_id(&source));
+		let mut start_serializer = KeySerializer::with_capacity(11);
+		start_serializer
+			.extend_u8(VERSION)
+			.extend_u8(KeyKind::IndexEntry as u8)
+			.extend_source_id(source);
 
-		let mut end = Vec::with_capacity(11);
-		end.extend(&keycode::serialize(&VERSION));
-		end.extend(&keycode::serialize(&KeyKind::IndexEntry));
 		let next_source = source.next();
-		end.extend(&keycode::serialize_source_id(&next_source));
+		let mut end_serializer = KeySerializer::with_capacity(11);
+		end_serializer
+			.extend_u8(VERSION)
+			.extend_u8(KeyKind::IndexEntry as u8)
+			.extend_source_id(next_source);
 
 		EncodedKeyRange {
-			start: Bound::Included(EncodedKey::new(start)),
-			end: Bound::Excluded(EncodedKey::new(end)),
+			start: Bound::Included(
+				start_serializer.to_encoded_key(),
+			),
+			end: Bound::Excluded(end_serializer.to_encoded_key()),
 		}
 	}
 
@@ -221,19 +231,22 @@ impl IndexEntryKey {
 		key_prefix: &[u8],
 	) -> EncodedKeyRange {
 		let source = source.into();
-		let mut start = Vec::with_capacity(20 + key_prefix.len());
-		start.extend(&keycode::serialize(&VERSION));
-		start.extend(&keycode::serialize(&KeyKind::IndexEntry));
-		start.extend(&keycode::serialize_source_id(&source));
-		start.extend(&keycode::serialize_index_id(&index));
-		start.extend_from_slice(key_prefix);
+		let mut serializer =
+			KeySerializer::with_capacity(20 + key_prefix.len());
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(KeyKind::IndexEntry as u8)
+			.extend_source_id(source)
+			.extend_index_id(index)
+			.extend_raw(key_prefix);
+		let start = serializer.to_encoded_key();
 
 		// For the end key, append 0xFF to get all keys with this prefix
-		let mut end = start.clone();
+		let mut end = start.as_slice().to_vec();
 		end.push(0xFF);
 
 		EncodedKeyRange {
-			start: Bound::Included(EncodedKey::new(start)),
+			start: Bound::Included(start),
 			end: Bound::Excluded(EncodedKey::new(end)),
 		}
 	}
@@ -248,11 +261,13 @@ impl IndexEntryKey {
 	) -> EncodedKeyRange {
 		let source = source.into();
 		// Build the prefix for this source and index
-		let mut prefix = Vec::with_capacity(20);
-		prefix.extend(&keycode::serialize(&VERSION));
-		prefix.extend(&keycode::serialize(&KeyKind::IndexEntry));
-		prefix.extend(&keycode::serialize_source_id(&source));
-		prefix.extend(&keycode::serialize_index_id(&index));
+		let mut prefix_serializer = KeySerializer::with_capacity(20);
+		prefix_serializer
+			.extend_u8(VERSION)
+			.extend_u8(KeyKind::IndexEntry as u8)
+			.extend_source_id(source)
+			.extend_index_id(index);
+		let prefix = prefix_serializer.to_encoded_key().to_vec();
 
 		// Convert bounds to include the prefix
 		let start = match index_range.start {
@@ -285,19 +300,15 @@ impl IndexEntryKey {
 			}
 			Bound::Unbounded => {
 				// End at the beginning of the next index
-				let mut bytes = Vec::with_capacity(20);
-				bytes.extend(&keycode::serialize(&VERSION));
-				bytes.extend(&keycode::serialize(
-					&KeyKind::IndexEntry,
-				));
-				bytes.extend(&keycode::serialize_source_id(
-					&source,
-				));
-				// Use prev() for end bound in descending order
-				bytes.extend(&keycode::serialize_index_id(
-					&index.prev(),
-				));
-				Bound::Excluded(EncodedKey::new(bytes))
+				let mut serializer =
+					KeySerializer::with_capacity(20);
+				serializer
+					.extend_u8(VERSION)
+					.extend_u8(KeyKind::IndexEntry as u8)
+					.extend_source_id(source)
+					// Use prev() for end bound in descending order
+					.extend_index_id(index.prev());
+				Bound::Excluded(serializer.to_encoded_key())
 			}
 		};
 

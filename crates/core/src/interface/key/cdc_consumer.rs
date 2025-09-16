@@ -1,10 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use keycode::{deserialize, serialize};
-
 use super::{EncodableKey, KeyKind};
-use crate::{EncodedKey, interface::cdc::ConsumerId, util::encoding::keycode};
+use crate::{
+	EncodedKey,
+	interface::cdc::ConsumerId,
+	util::encoding::keycode::{KeySerializer, deserialize},
+};
 
 /// Trait for types that can be converted to a consumer key
 pub trait ToConsumerKey {
@@ -37,11 +39,12 @@ impl EncodableKey for CdcConsumerKey {
 	const KIND: KeyKind = KeyKind::CdcConsumer;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::new();
-		out.extend(&serialize(&VERSION_BYTE));
-		out.extend(&serialize(&Self::KIND));
-		out.extend(&serialize(&self.consumer.0));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::new();
+		serializer
+			.extend_u8(VERSION_BYTE)
+			.extend_u8(Self::KIND as u8)
+			.extend_str(&self.consumer);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self>

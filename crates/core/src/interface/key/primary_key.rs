@@ -2,7 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::{EncodableKey, EncodedKeyRange, KeyKind};
-use crate::{EncodedKey, interface::PrimaryKeyId, util::encoding::keycode};
+use crate::{
+	EncodedKey,
+	interface::PrimaryKeyId,
+	util::encoding::keycode::{self, KeySerializer},
+};
 
 #[derive(Debug, Clone)]
 pub struct PrimaryKeyKey {
@@ -15,11 +19,12 @@ impl EncodableKey for PrimaryKeyKey {
 	const KIND: KeyKind = KeyKind::PrimaryKey;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.primary_key));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(self.primary_key);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
@@ -47,16 +52,14 @@ impl PrimaryKeyKey {
 	}
 
 	fn primary_key_start() -> EncodedKey {
-		let mut out = Vec::with_capacity(2);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		serializer.to_encoded_key()
 	}
 
 	fn primary_key_end() -> EncodedKey {
-		let mut out = Vec::with_capacity(2);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		serializer.to_encoded_key()
 	}
 }

@@ -9,7 +9,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::{EncodableKeyRange, catalog::SourceId},
-	util::encoding::keycode,
+	util::encoding::keycode::{self, KeySerializer},
 };
 
 const VERSION: u8 = 1;
@@ -24,13 +24,13 @@ impl EncodableKey for RowKey {
 	const KIND: KeyKind = KeyKind::Row;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(19); // 1 + 1 + 9 + 8
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&self.source));
-		out.extend(&keycode::serialize(&self.row));
-
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(19); // 1 + 1 + 9 + 8
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(self.source)
+			.extend_u64(self.row.0);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
@@ -104,19 +104,21 @@ impl EncodableKeyRange for RowKeyRange {
 	const KIND: KeyKind = KeyKind::Row;
 
 	fn start(&self) -> Option<EncodedKey> {
-		let mut out = Vec::with_capacity(11); // 1 + 1 + 9
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&self.source));
-		Some(EncodedKey::new(out))
+		let mut serializer = KeySerializer::with_capacity(11); // 1 + 1 + 9
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(self.source);
+		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
-		let mut out = Vec::with_capacity(11);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&self.source.prev()));
-		Some(EncodedKey::new(out))
+		let mut serializer = KeySerializer::with_capacity(11);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(self.source.prev());
+		Some(serializer.to_encoded_key())
 	}
 
 	fn decode(range: &EncodedKeyRange) -> (Option<Self>, Option<Self>)
@@ -152,20 +154,22 @@ impl RowKey {
 
 	pub fn source_start(source: impl Into<SourceId>) -> EncodedKey {
 		let source = source.into();
-		let mut out = Vec::with_capacity(11);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&source));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(11);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(source);
+		serializer.to_encoded_key()
 	}
 
 	pub fn source_end(source: impl Into<SourceId>) -> EncodedKey {
 		let source = source.into();
-		let mut out = Vec::with_capacity(11);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&source.prev()));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(11);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(source.prev());
+		serializer.to_encoded_key()
 	}
 }
 

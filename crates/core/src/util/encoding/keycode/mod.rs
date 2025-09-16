@@ -279,6 +279,51 @@ impl KeySerializer {
 		self.buffer
 	}
 
+	/// Consume serializer and return an EncodedKey directly
+	pub fn to_encoded_key(self) -> crate::EncodedKey {
+		crate::EncodedKey::new(self.buffer)
+	}
+
+	/// Extend with a Serde-serializable value
+	pub fn extend_serialize<T: Serialize>(
+		&mut self,
+		value: &T,
+	) -> &mut Self {
+		let serialized = serialize(value);
+		self.buffer.extend(serialized);
+		self
+	}
+
+	/// Extend with a SourceId value (includes type discriminator)
+	pub fn extend_source_id(
+		&mut self,
+		source: impl Into<crate::interface::SourceId>,
+	) -> &mut Self {
+		let source = source.into();
+		self.buffer.extend_from_slice(&catalog::serialize_source_id(
+			&source,
+		));
+		self
+	}
+
+	/// Extend with an IndexId value (includes type discriminator)  
+	pub fn extend_index_id(
+		&mut self,
+		index: impl Into<crate::interface::IndexId>,
+	) -> &mut Self {
+		let index = index.into();
+		self.buffer.extend_from_slice(&catalog::serialize_index_id(
+			&index,
+		));
+		self
+	}
+
+	/// Extend with raw bytes (no encoding)
+	pub fn extend_raw(&mut self, bytes: &[u8]) -> &mut Self {
+		self.buffer.extend_from_slice(bytes);
+		self
+	}
+
 	/// Get current buffer length
 	pub fn len(&self) -> usize {
 		self.buffer.len()

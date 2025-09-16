@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::catalog::{ColumnId, ColumnPolicyId},
-	util::encoding::keycode,
+	util::encoding::keycode::{self, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,12 +20,13 @@ impl EncodableKey for ColumnPolicyKey {
 	const KIND: KeyKind = KeyKind::ColumnPolicy;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(18);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.column));
-		out.extend(&keycode::serialize(&self.policy));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(18);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(self.column)
+			.extend_u64(self.policy);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
@@ -67,19 +68,21 @@ impl ColumnPolicyKey {
 	}
 
 	fn link_start(column: ColumnId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&column));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(column);
+		serializer.to_encoded_key()
 	}
 
 	fn link_end(column: ColumnId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*column - 1)));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(*column - 1);
+		serializer.to_encoded_key()
 	}
 }
 

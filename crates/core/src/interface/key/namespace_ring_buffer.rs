@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::{NamespaceId, RingBufferId},
-	util::encoding::keycode,
+	util::encoding::keycode::{self, KeySerializer},
 };
 
 const VERSION: u8 = 1;
@@ -32,19 +32,21 @@ impl NamespaceRingBufferKey {
 	}
 
 	fn link_start(namespace: NamespaceId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&namespace));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(namespace);
+		serializer.to_encoded_key()
 	}
 
 	fn link_end(namespace: NamespaceId) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*namespace - 1)));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(*namespace - 1);
+		serializer.to_encoded_key()
 	}
 }
 
@@ -52,12 +54,13 @@ impl EncodableKey for NamespaceRingBufferKey {
 	const KIND: KeyKind = KeyKind::NamespaceRingBuffer;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(18);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.namespace));
-		out.extend(&keycode::serialize(&self.ring_buffer));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(18);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(self.namespace)
+			.extend_u64(self.ring_buffer);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {

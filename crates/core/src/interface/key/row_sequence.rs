@@ -3,8 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, interface::catalog::SourceId,
-	util::encoding::keycode,
+	EncodedKey, EncodedKeyRange,
+	interface::catalog::SourceId,
+	util::encoding::keycode::{self, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -18,11 +19,12 @@ impl EncodableKey for RowSequenceKey {
 	const KIND: KeyKind = KeyKind::RowSequence;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(11); // 1 + 1 + 9
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&self.source));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(11); // 1 + 1 + 9
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(self.source);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
@@ -63,17 +65,15 @@ impl RowSequenceKey {
 	}
 
 	fn sequence_start() -> EncodedKey {
-		let mut out = Vec::with_capacity(2);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		serializer.to_encoded_key()
 	}
 
 	fn sequence_end() -> EncodedKey {
-		let mut out = Vec::with_capacity(2);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		serializer.to_encoded_key()
 	}
 }
 

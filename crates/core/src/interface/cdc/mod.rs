@@ -27,6 +27,12 @@ impl ConsumerId {
 	}
 }
 
+impl AsRef<str> for ConsumerId {
+	fn as_ref(&self) -> &str {
+		&self.0
+	}
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum CdcChange {
 	Insert {

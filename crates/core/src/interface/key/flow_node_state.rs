@@ -3,8 +3,9 @@
 
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, interface::FlowNodeId,
-	util::encoding::keycode,
+	EncodedKey, EncodedKeyRange,
+	interface::FlowNodeId,
+	util::encoding::keycode::{self, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,12 +20,14 @@ impl EncodableKey for FlowNodeStateKey {
 	const KIND: KeyKind = KeyKind::FlowNodeState;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(10 + self.key.len());
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.node.0));
-		out.extend(&self.key);
-		EncodedKey::new(out)
+		let mut serializer =
+			KeySerializer::with_capacity(10 + self.key.len());
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(self.node.0)
+			.extend_raw(&self.key);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
@@ -86,17 +89,15 @@ impl FlowNodeStateKey {
 	}
 
 	fn operator_state_start() -> EncodedKey {
-		let mut out = Vec::with_capacity(2);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		serializer.to_encoded_key()
 	}
 
 	fn operator_state_end() -> EncodedKey {
-		let mut out = Vec::with_capacity(2);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&(Self::KIND as u8 + 1)));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 + 1);
+		serializer.to_encoded_key()
 	}
 }
 
@@ -143,20 +144,22 @@ impl EncodableKeyRange for FlowNodeStateKeyRange {
 	const KIND: KeyKind = KeyKind::FlowNodeState;
 
 	fn start(&self) -> Option<EncodedKey> {
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.node.0));
-		Some(EncodedKey::new(out))
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(self.node.0);
+		Some(serializer.to_encoded_key())
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
 		let next_node = FlowNodeId(self.node.0 + 1);
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&next_node.0));
-		Some(EncodedKey::new(out))
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(next_node.0);
+		Some(serializer.to_encoded_key())
 	}
 
 	fn decode(range: &EncodedKeyRange) -> (Option<Self>, Option<Self>)

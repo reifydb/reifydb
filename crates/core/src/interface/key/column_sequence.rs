@@ -7,7 +7,7 @@ use crate::{
 		ColumnId, SourceId,
 		key::{EncodableKey, KeyKind},
 	},
-	util::encoding::keycode,
+	util::encoding::keycode::{self, KeySerializer},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -22,12 +22,13 @@ impl EncodableKey for ColumnSequenceKey {
 	const KIND: KeyKind = KeyKind::ColumnSequence;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(19); // 1 + 1 + 9 + 8
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&self.source));
-		out.extend(&keycode::serialize(&self.column));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(19); // 1 + 1 + 9 + 8
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(self.source)
+			.extend_u64(self.column);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {

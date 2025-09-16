@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::catalog::{NamespaceId, ViewId},
-	util::encoding::keycode,
+	util::encoding::keycode::{self, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -20,12 +20,13 @@ impl EncodableKey for NamespaceViewKey {
 	const KIND: KeyKind = KeyKind::NamespaceView;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(18);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.namespace));
-		out.extend(&keycode::serialize(&self.view));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(18);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(self.namespace)
+			.extend_u64(self.view);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
@@ -67,19 +68,21 @@ impl NamespaceViewKey {
 	}
 
 	fn link_start(namespace_id: NamespaceId) -> EncodedKey {
-		let mut out = Vec::with_capacity(6);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&namespace_id));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(namespace_id);
+		serializer.to_encoded_key()
 	}
 
 	fn link_end(namespace_id: NamespaceId) -> EncodedKey {
-		let mut out = Vec::with_capacity(6);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&(*namespace_id - 1)));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(*namespace_id - 1);
+		serializer.to_encoded_key()
 	}
 }
 

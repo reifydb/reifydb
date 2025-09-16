@@ -4,7 +4,10 @@
 use serde::{Deserialize, Serialize};
 
 use super::{EncodableKey, KeyKind};
-use crate::{EncodedKey, util::encoding::keycode};
+use crate::{
+	EncodedKey,
+	util::encoding::keycode::{self, KeySerializer},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct SystemVersionKey {
@@ -42,11 +45,12 @@ impl EncodableKey for SystemVersionKey {
 	const KIND: KeyKind = KeyKind::SystemVersion;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(3);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.version));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(3);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_serialize(&self.version);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self>

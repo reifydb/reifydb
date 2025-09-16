@@ -4,7 +4,7 @@
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::{ColumnId, EncodableKey, KeyKind, SourceId},
-	util::encoding::keycode,
+	util::encoding::keycode::{self, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -19,12 +19,13 @@ impl EncodableKey for ColumnKey {
 	const KIND: KeyKind = KeyKind::Column;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(19); // 1 + 1 + 9 + 8
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&self.source));
-		out.extend(&keycode::serialize(&self.column));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(19); // 1 + 1 + 9 + 8
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(self.source)
+			.extend_u64(self.column);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
@@ -70,19 +71,21 @@ impl ColumnKey {
 	}
 
 	fn start(source: SourceId) -> EncodedKey {
-		let mut out = Vec::with_capacity(11);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&source));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(11);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(source);
+		serializer.to_encoded_key()
 	}
 
 	fn end(source: SourceId) -> EncodedKey {
-		let mut out = Vec::with_capacity(11);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize_source_id(&source.prev()));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(11);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_source_id(source.prev());
+		serializer.to_encoded_key()
 	}
 }
 

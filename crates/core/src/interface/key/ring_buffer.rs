@@ -3,8 +3,9 @@
 
 use super::{EncodableKey, KeyKind};
 use crate::{
-	EncodedKey, EncodedKeyRange, interface::RingBufferId,
-	util::encoding::keycode,
+	EncodedKey, EncodedKeyRange,
+	interface::RingBufferId,
+	util::encoding::keycode::{self, KeySerializer},
 };
 
 const VERSION: u8 = 1;
@@ -29,17 +30,16 @@ impl RingBufferKey {
 	}
 
 	fn ring_buffer_start() -> EncodedKey {
-		let mut out = Vec::with_capacity(2);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION);
+		serializer.extend_u8(Self::KIND as u8);
+		serializer.to_encoded_key()
 	}
 
 	fn ring_buffer_end() -> EncodedKey {
-		let mut out = Vec::with_capacity(2);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&(Self::KIND as u8 - 1)));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 - 1);
+		serializer.to_encoded_key()
 	}
 }
 
@@ -47,11 +47,12 @@ impl EncodableKey for RingBufferKey {
 	const KIND: KeyKind = KeyKind::RingBuffer;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.ring_buffer));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(self.ring_buffer);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
@@ -100,11 +101,12 @@ impl EncodableKey for RingBufferMetadataKey {
 	const KIND: KeyKind = KeyKind::RingBufferMetadata;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(10);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		out.extend(&keycode::serialize(&self.ring_buffer));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(10);
+		serializer
+			.extend_u8(VERSION)
+			.extend_u8(Self::KIND as u8)
+			.extend_u64(self.ring_buffer);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {

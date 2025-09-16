@@ -2,7 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::{EncodableKey, KeyKind};
-use crate::{EncodedKey, util::encoding::keycode};
+use crate::{
+	EncodedKey,
+	util::encoding::keycode::{self, KeySerializer},
+};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransactionVersionKey {}
@@ -13,10 +16,9 @@ impl EncodableKey for TransactionVersionKey {
 	const KIND: KeyKind = KeyKind::TransactionVersion;
 
 	fn encode(&self) -> EncodedKey {
-		let mut out = Vec::with_capacity(2);
-		out.extend(&keycode::serialize(&VERSION));
-		out.extend(&keycode::serialize(&Self::KIND));
-		EncodedKey::new(out)
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
+		serializer.to_encoded_key()
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
