@@ -4,6 +4,7 @@
 mod deferred;
 mod index;
 mod namespace;
+mod ring_buffer;
 mod series;
 mod table;
 mod transactional;
@@ -37,13 +38,7 @@ impl Compiler {
 				Self::compile_create_table(node, resolver)
 			}
 			AstCreate::RingBuffer(node) => {
-				// TODO: Implement ring buffer creation
-				Err(reifydb_type::Error(
-					reifydb_type::diagnostic::ast::unsupported_ast_node(
-						node.token.fragment.clone(),
-						"CREATE RING BUFFER"
-					)
-				))
+				Self::compile_create_ring_buffer(node, resolver)
 			}
 			AstCreate::Index(node) => {
 				Self::compile_create_index(node, resolver)

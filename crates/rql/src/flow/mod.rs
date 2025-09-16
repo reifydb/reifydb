@@ -188,6 +188,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 
 			PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
+			| PhysicalPlan::CreateRingBuffer(_)
 			| PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
 			| PhysicalPlan::AlterView(_)

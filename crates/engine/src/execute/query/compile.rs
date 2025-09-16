@@ -254,6 +254,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 		| PhysicalPlan::CreateTransactionalView(_)
 		| PhysicalPlan::CreateNamespace(_)
 		| PhysicalPlan::CreateTable(_)
+		| PhysicalPlan::CreateRingBuffer(_)
 		| PhysicalPlan::Delete(_)
 		| PhysicalPlan::Insert(_)
 		| PhysicalPlan::Update(_)

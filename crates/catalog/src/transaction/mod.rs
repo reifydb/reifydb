@@ -7,6 +7,7 @@ use reifydb_core::interface::{
 };
 
 mod namespace;
+mod ring_buffer;
 mod source;
 mod table;
 mod view;
@@ -18,6 +19,7 @@ pub trait MaterializedCatalogTransaction {
 pub trait CatalogCommandTransaction:
 	CatalogQueryTransaction
 	+ CatalogNamespaceCommandOperations
+	+ CatalogRingBufferCommandOperations
 	+ CatalogTableCommandOperations
 	+ CatalogViewCommandOperations
 {
@@ -25,6 +27,7 @@ pub trait CatalogCommandTransaction:
 
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackNamespaceChangeOperations
+	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackTableChangeOperations
 	+ CatalogTrackViewChangeOperations
 {
@@ -32,6 +35,7 @@ pub trait CatalogTrackChangeOperations:
 
 pub trait CatalogQueryTransaction:
 	CatalogNamespaceQueryOperations
+	+ CatalogRingBufferQueryOperations
 	+ CatalogSourceQueryOperations
 	+ CatalogTableQueryOperations
 	+ CatalogViewQueryOperations
@@ -59,6 +63,10 @@ impl<
 pub use namespace::{
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations,
 	CatalogTrackNamespaceChangeOperations,
+};
+pub use ring_buffer::{
+	CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations,
+	CatalogTrackRingBufferChangeOperations,
 };
 pub use source::CatalogSourceQueryOperations;
 pub use table::{

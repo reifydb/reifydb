@@ -350,6 +350,7 @@ impl Executor {
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
+			| PhysicalPlan::CreateRingBuffer(_)
 			| PhysicalPlan::Distinct(_) => unreachable!(), /* FIXME return explanatory diagnostic */
 			PhysicalPlan::Apply(_) => {
 				// Apply operator requires flow engine for mod
@@ -382,6 +383,9 @@ impl Executor {
 			}
 			PhysicalPlan::CreateTable(plan) => {
 				self.create_table(txn, plan)
+			}
+			PhysicalPlan::CreateRingBuffer(plan) => {
+				self.create_ring_buffer(txn, plan)
 			}
 			PhysicalPlan::Delete(plan) => {
 				self.delete(txn, plan, params)

@@ -3,5 +3,6 @@
 
 mod deferred;
 mod namespace;
+mod ring_buffer;
 mod table;
 mod transactional;

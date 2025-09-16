@@ -11,6 +11,7 @@ use crate::{StandardCommandTransaction, execute::Executor};
 #[allow(dead_code)] // FIXME
 mod deferred;
 mod namespace;
+mod ring_buffer;
 mod table;
 #[allow(dead_code)] // FIXME
 mod transactional;

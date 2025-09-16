@@ -68,6 +68,7 @@ fn render_logical_plan_inner(
 		LogicalPlan::CreateNamespace(_) => unimplemented!(),
 		LogicalPlan::CreateSequence(_) => unimplemented!(),
 		LogicalPlan::CreateTable(_) => unimplemented!(),
+		LogicalPlan::CreateRingBuffer(_) => unimplemented!(),
 		LogicalPlan::AlterSequence(AlterSequenceNode {
 			sequence,
 			column,

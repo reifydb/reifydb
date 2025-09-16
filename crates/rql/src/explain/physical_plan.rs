@@ -87,6 +87,7 @@ fn render_physical_plan_inner(
 		PhysicalPlan::CreateTransactionalView(_) => unimplemented!(),
 		PhysicalPlan::CreateNamespace(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
+		PhysicalPlan::CreateRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::AlterSequence(physical::AlterSequencePlan {
 			sequence,
 			column,

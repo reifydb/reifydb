@@ -11,11 +11,12 @@ use std::rc::Rc;
 
 use identifier::{
 	ColumnIdentifier, DeferredViewIdentifier, NamespaceIdentifier,
-	SequenceIdentifier, TableIdentifier, TransactionalViewIdentifier,
+	RingBufferIdentifier, SequenceIdentifier, TableIdentifier,
+	TransactionalViewIdentifier,
 };
 use reifydb_catalog::{
-	CatalogQueryTransaction, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	CatalogQueryTransaction, ring_buffer::create::RingBufferColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
@@ -250,6 +251,7 @@ pub enum LogicalPlan<'a> {
 	CreateNamespace(CreateNamespaceNode<'a>),
 	CreateSequence(CreateSequenceNode<'a>),
 	CreateTable(CreateTableNode<'a>),
+	CreateRingBuffer(CreateRingBufferNode<'a>),
 	CreateIndex(CreateIndexNode<'a>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'a>),
@@ -315,6 +317,14 @@ pub struct CreateTableNode<'a> {
 	pub table: TableIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+}
+
+#[derive(Debug)]
+pub struct CreateRingBufferNode<'a> {
+	pub ring_buffer: RingBufferIdentifier<'a>,
+	pub if_not_exists: bool,
+	pub columns: Vec<RingBufferColumnToCreate>,
+	pub capacity: u64,
 }
 
 #[derive(Debug)]

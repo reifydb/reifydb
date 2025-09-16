@@ -7,7 +7,10 @@ mod create;
 use std::sync::Arc;
 
 pub use alter::{AlterTablePlan, AlterViewPlan};
-use reifydb_catalog::{table::TableColumnToCreate, view::ViewColumnToCreate};
+use reifydb_catalog::{
+	ring_buffer::create::RingBufferColumnToCreate,
+	table::TableColumnToCreate, view::ViewColumnToCreate,
+};
 use reifydb_core::{
 	JoinType, SortKey,
 	interface::{
@@ -16,8 +19,8 @@ use reifydb_core::{
 		evaluate::expression::{AliasExpression, Expression},
 		identifier::{
 			ColumnIdentifier, DeferredViewIdentifier,
-			SequenceIdentifier, TableIdentifier,
-			TransactionalViewIdentifier,
+			RingBufferIdentifier, SequenceIdentifier,
+			TableIdentifier, TransactionalViewIdentifier,
 		},
 	},
 };
@@ -70,6 +73,12 @@ impl Compiler {
 
 				LogicalPlan::CreateTable(create) => {
 					stack.push(Self::compile_create_table(
+						rx, create,
+					)?);
+				}
+
+				LogicalPlan::CreateRingBuffer(create) => {
+					stack.push(Self::compile_create_ring_buffer(
 						rx, create,
 					)?);
 				}
@@ -436,6 +445,7 @@ pub enum PhysicalPlan<'a> {
 	CreateTransactionalView(CreateTransactionalViewPlan<'a>),
 	CreateNamespace(CreateNamespacePlan<'a>),
 	CreateTable(CreateTablePlan<'a>),
+	CreateRingBuffer(CreateRingBufferPlan<'a>),
 	// Alter
 	AlterSequence(AlterSequencePlan<'a>),
 	AlterTable(AlterTablePlan<'a>),
@@ -494,6 +504,15 @@ pub struct CreateTablePlan<'a> {
 	pub table: TableIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateRingBufferPlan<'a> {
+	pub namespace: NamespaceDef,
+	pub ring_buffer: RingBufferIdentifier<'a>,
+	pub if_not_exists: bool,
+	pub columns: Vec<RingBufferColumnToCreate>,
+	pub capacity: u64,
 }
 
 #[derive(Debug, Clone)]
