@@ -2,14 +2,14 @@
 # Format Targets - Format all Rust code with rustfmt
 # =============================================================================
 
-.PHONY: format format-rust format-db format-bin format-pkg-rust
+.PHONY: format format-rust format-crates format-bin format-pkg-rust
 
 # Main format target - formats everything
 format: format-rust
 	@echo "✅ All code formatting complete!"
 
 # Format all Rust code
-format-rust: ensure-rustfmt format-db format-bin format-pkg-rust
+format-rust: ensure-rustfmt format-crates format-bin format-pkg-rust
 	@echo "✅ Rust formatting complete!"
 
 # Ensure rustfmt nightly is installed
@@ -24,10 +24,10 @@ ensure-rustfmt:
 		rustup component add rustfmt --toolchain nightly; \
 	fi
 
-# Format db/ workspace
-format-db:
-	@echo "🎨 Formatting db/ workspace..."
-	@cd db && cargo +nightly fmt --all
+# Format crates/ workspace
+format-crates:
+	@echo "🎨 Formatting crates/ workspace..."
+	@cd crates && cargo +nightly fmt --all
 
 # Format bin/ packages
 format-bin:

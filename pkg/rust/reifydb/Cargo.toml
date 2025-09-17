@@ -7,22 +7,22 @@ license = "AGPL-3"
 repository = "https://github.com/reifydb/reifydb"
 
 [dependencies]
-reifydb-auth = { path = "../../../db/crates/auth" }
-reifydb-catalog = { path = "../../../db/crates/catalog" }
-reifydb-cdc = { path = "../../../db/crates/cdc" }
-reifydb-core = { path = "../../../db/crates/core" }
-reifydb-engine = { path = "../../../db/crates/engine" }
-reifydb-network = { path = "../../../db/crates/network" }
-reifydb-storage = { path = "../../../db/crates/storage" }
-reifydb-rql = { path = "../../../db/crates/rql" }
-reifydb-transaction = { path = "../../../db/crates/transaction" }
-reifydb-type = { path = "../../../db/crates/type" }
+reifydb-auth = { path = "../../../crates/auth" }
+reifydb-catalog = { path = "../../../crates/catalog" }
+reifydb-cdc = { path = "../../../crates/cdc" }
+reifydb-core = { path = "../../../crates/core" }
+reifydb-engine = { path = "../../../crates/engine" }
+reifydb-network = { path = "../../../crates/network" }
+reifydb-storage = { path = "../../../crates/storage" }
+reifydb-rql = { path = "../../../crates/rql" }
+reifydb-transaction = { path = "../../../crates/transaction" }
+reifydb-type = { path = "../../../crates/type" }
 
-reifydb-sub-admin = { path = "../../../db/crates/sub-admin", optional = true }
-reifydb-sub-flow = { path = "../../../db/crates/sub-flow", optional = true }
-reifydb-sub-logging = { path = "../../../db/crates/sub-logging", optional = true }
-reifydb-sub-workerpool = { path = "../../../db/crates/sub-workerpool", optional = true }
-reifydb-sub-server = { path = "../../../db/crates/sub-server", optional = true }
+reifydb-sub-admin = { path = "../../../crates/sub-admin", optional = true }
+reifydb-sub-flow = { path = "../../../crates/sub-flow", optional = true }
+reifydb-sub-logging = { path = "../../../crates/sub-logging", optional = true }
+reifydb-sub-workerpool = { path = "../../../crates/sub-workerpool", optional = true }
+reifydb-sub-server = { path = "../../../crates/sub-server", optional = true }
 
 libc = { version = "0.2.175" }
 

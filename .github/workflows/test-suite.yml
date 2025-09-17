@@ -41,8 +41,8 @@ jobs:
       - name: 🔨 Build dependencies
         run: |
           export CARGO_TARGET_DIR=$(realpath reifydb/target)
-          # First build the db workspace (foundation libraries)
-          cd reifydb/db
+          # First build the crates workspace (foundation libraries)
+          cd reifydb/crates
           cargo build --workspace
           # Then build pkg/rust/reifydb which testsuite depends on
           cd ../pkg/rust/reifydb

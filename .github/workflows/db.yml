@@ -1,4 +1,4 @@
-name: db
+name: crates
 on:
   push:
     branches: [ main ]
@@ -21,7 +21,7 @@ jobs:
         with:
           path: reifydb
 
-      - name: 🧪 Run db test
+      - name: 🧪 Run crates test
         run: |
           cd reifydb/db
           ~/.cargo/bin/cargo test

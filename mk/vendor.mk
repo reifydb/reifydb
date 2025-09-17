@@ -11,10 +11,10 @@ vendor:
 	@echo ""
 	
 	# Clean previous vendor directory
-	@rm -rf db/vendor/
+	@rm -rf crates/vendor/
 	
 	# Vendor dependencies with filtering
-	@cd db && cargo vendor-filterer \
+	@cd crates && cargo vendor-filterer \
 		--platform x86_64-unknown-linux-gnu \
 		--platform aarch64-unknown-linux-gnu \
 		--platform armv7-unknown-linux-gnueabihf \
@@ -30,7 +30,7 @@ vendor:
 
 	@echo ""
 	@echo "✓ Vendor directory configured"
-	@echo "✓ Vendored dependencies: $$(ls -1 db/vendor/ 2>/dev/null | wc -l)"
+	@echo "✓ Vendored dependencies: $$(ls -1 crates/vendor/ 2>/dev/null | wc -l)"
 	@echo ""
 	@echo "Platform support (configured in Cargo.toml):"
 	@echo "  ✓ Linux (x86_64, ARM64, ARM32)"

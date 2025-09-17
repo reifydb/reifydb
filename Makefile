@@ -7,7 +7,7 @@ TEST_SUITE_DIR ?= ../testsuite
 TEST_PKG_DIR := ./pkg
 
 # Check if vendor directory exists and set offline flag
-ifneq (,$(wildcard ./db/vendor))
+ifneq (,$(wildcard ./crates/vendor))
     CARGO_OFFLINE := --offline
 else
     CARGO_OFFLINE :=
@@ -43,7 +43,7 @@ help:
 	@printf "  %-25s %s\n" "test-dev" "Fast development tests (db + embedded_blocking only)"
 	@printf "  %-25s %s\n" "test" "Full test suite (db + all test-suites + test clients)"
 	@printf "  %-25s %s\n" "test-full" "Same as 'make test'"
-	@printf "  %-25s %s\n" "test-db" "Run only database workspace tests"
+	@printf "  %-25s %s\n" "test-crates" "Run only crates workspace tests"
 	@echo ""
 	@echo "  🔧 Test Components"
 	@echo "  ───────────────────────────────────────────────────────────────"
@@ -125,14 +125,14 @@ push: check
 .PHONY: test test-full test-dev
 test: test-full
 
-test-full: test-db test-pkg-rust test-examples test-suite test-pkg-typescript
+test-full: test-crates test-pkg-rust test-examples test-suite test-pkg-typescript
 	@echo "✅ All tests completed successfully!"
 
-test-dev: test-db test-pkg-rust test-examples test-suite-dev
+test-dev: test-crates test-pkg-rust test-examples test-suite-dev
 	@echo "🚀 Development tests completed!"
 
 # Include testing sub-makefiles
-include mk/test-db.mk
+include mk/test-crates.mk
 include mk/test-suites.mk
 include mk/test-pkg-rust.mk
 include mk/test-pkg-typescript.mk

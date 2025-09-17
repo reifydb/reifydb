@@ -8,7 +8,7 @@ repository = "https://github.com/reifydb/reifydb"
 
 [dev-dependencies]
 reifydb = { path = "../../reifydb" }
-reifydb-testing = { path = "../../../../db/crates/testing" }
+reifydb-testing = { path = "../../../../crates/testing" }
 test_each_file = { version = "0.3.5" }
 [profile.dev]
 opt-level = 0

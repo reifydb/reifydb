@@ -13,7 +13,7 @@ use reifydb::{embedded, log_info, Params, Session, SqliteConfig};
 use reifydb_examples::log_query;
 
 fn main() {
-	let db_path = "/tmp/reifydb-example/db";
+	let db_path = "/tmp/reifydb-example/crates";
 
 	// Clean up any existing database
 	if Path::new(db_path).exists() {

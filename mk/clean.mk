@@ -2,16 +2,16 @@
 # Clean Targets - Remove build artifacts from all packages
 # =============================================================================
 
-.PHONY: clean clean-db clean-bin clean-pkg-rust clean-pkg-typescript
+.PHONY: clean clean-crates clean-bin clean-pkg-rust clean-pkg-typescript
 
 # Main clean target - cleans everything
-clean: clean-db clean-bin clean-pkg-rust clean-pkg-typescript
+clean: clean-crates clean-bin clean-pkg-rust clean-pkg-typescript
 	@echo "✅ All packages cleaned!"
 
-# Clean db/ workspace packages
-clean-db:
-	@echo "📦 Cleaning db/ workspace packages..."
-	@cd db && for pkg in $$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].name' | grep '^reifydb-'); do \
+# Clean crates/ workspace packages
+clean-crates:
+	@echo "📦 Cleaning crates/ workspace packages..."
+	@cd crates && for pkg in $$(cargo metadata --format-version 1 --no-deps | jq -r '.packages[].name' | grep '^reifydb-'); do \
 		echo "  Cleaning $$pkg"; \
 		cargo clean -p $$pkg; \
 	done

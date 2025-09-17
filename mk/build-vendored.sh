@@ -3,5 +3,5 @@
 
 set -e
 
-# Build with vendored dependencies in db/ workspace
-cd db && cargo build --release --offline "$@"
+# Build with vendored dependencies in crates/ workspace
+cd crates && cargo build --release --offline "$@"

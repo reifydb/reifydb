@@ -10,9 +10,6 @@ repository = "https://github.com/reifydb/reifydb"
 name = "reifydb"
 path = "src/main.rs"
 
-[dependencies]
-reifydb = { path = "../../pkg/rust/reifydb", features = ["sub_logging", "sub_admin"] }
-
 [profile.dev]
 opt-level = 0
 debug = true

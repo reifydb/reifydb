@@ -2,21 +2,21 @@
 # Build Targets - Build all packages
 # =============================================================================
 
-.PHONY: build build-db build-bin build-pkg-rust build-pkg-typescript
+.PHONY: build build-crates build-bin build-pkg-rust build-pkg-typescript
 
 # Main build target - builds everything
-build: build-db build-bin build-pkg-rust build-pkg-typescript
+build: build-crates build-bin build-pkg-rust build-pkg-typescript
 	@echo "✅ All packages built successfully!"
 
-# Build db/ workspace packages
-build-db:
-	@echo "🏗️ Building db/ workspace packages..."
-	@if [ -d "db/vendor" ]; then \
+# Build crates/ workspace packages
+build-crates:
+	@echo "🏗️ Building crates/ workspace packages..."
+	@if [ -d "crates/vendor" ]; then \
 		echo "Using vendored dependencies (offline mode)"; \
-		cd db && cargo build --release --workspace --offline; \
+		cd crates && cargo build --release --workspace --offline; \
 	else \
 		echo "Using network dependencies"; \
-		cd db && cargo build --release --workspace; \
+		cd crates && cargo build --release --workspace; \
 	fi
 
 # Build bin/ packages
