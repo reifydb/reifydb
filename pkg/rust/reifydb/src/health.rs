@@ -7,7 +7,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb_core::interface::subsystem::HealthStatus;
+use reifydb_sub_api::HealthStatus;
 
 #[derive(Debug, Clone)]
 pub struct ComponentHealth {

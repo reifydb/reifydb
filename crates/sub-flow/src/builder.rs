@@ -5,9 +5,8 @@
 
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
-use reifydb_core::interface::{
-	ConsumerId, FlowNodeId, Transaction, expression::Expression, subsystem::worker::Priority,
-};
+use reifydb_core::interface::{ConsumerId, FlowNodeId, Transaction, expression::Expression};
+use reifydb_sub_api::Priority;
 
 use crate::{operator::Operator, subsystem::FlowSubsystemConfig};
 

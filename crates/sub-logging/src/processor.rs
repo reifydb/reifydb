@@ -12,7 +12,7 @@ use std::{
 };
 
 use parking_lot::RwLock;
-use reifydb_core::interface::subsystem::logging::LogBackend;
+use reifydb_core::interface::logging::LogBackend;
 
 use crate::buffer::Buffer;
 

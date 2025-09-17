@@ -19,18 +19,13 @@ use std::{
 	time::Duration,
 };
 
-pub use reifydb_core::interface::subsystem::worker::Priority;
 use reifydb_core::{
 	Result,
-	interface::{
-		subsystem::{
-			HealthStatus, Subsystem,
-			worker::{BoxedTask, Scheduler, TaskHandle},
-		},
-		version::{ComponentType, HasVersion, SystemVersion},
-	},
+	interface::version::{ComponentType, HasVersion, SystemVersion},
 	log_debug, log_warn,
 };
+pub use reifydb_sub_api::Priority;
+use reifydb_sub_api::{BoxedTask, HealthStatus, Scheduler, Subsystem, TaskHandle};
 
 use crate::{
 	client::{SchedulerClient, SchedulerRequest, SchedulerResponse},

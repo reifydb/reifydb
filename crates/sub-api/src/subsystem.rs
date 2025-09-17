@@ -3,14 +3,11 @@
 
 use std::any::Any;
 
-use crate::{
+use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{CommandTransaction, version::HasVersion},
 	ioc::IocContainer,
 };
-
-pub mod logging;
-pub mod worker;
 
 /// Uniform interface that all subsystems must implement
 ///
@@ -24,7 +21,7 @@ pub trait Subsystem: Send + Sync + Any + HasVersion {
 	/// This method should initialize the subsystem and start any background
 	/// threads or processes. It should be idempotent - calling start() on
 	/// an already running subsystem should succeed without side effects.
-	fn start(&mut self) -> crate::Result<()>;
+	fn start(&mut self) -> reifydb_core::Result<()>;
 	/// Shutdown the subsystem
 	///
 	/// This method should gracefully shut down the subsystem and clean up
@@ -32,7 +29,7 @@ pub trait Subsystem: Send + Sync + Any + HasVersion {
 	/// subsystem cannot be restarted. It should be idempotent - calling
 	/// shutdown() on an already shutdown subsystem should succeed without
 	/// side effects.
-	fn shutdown(&mut self) -> crate::Result<()>;
+	fn shutdown(&mut self) -> reifydb_core::Result<()>;
 
 	/// Check if the subsystem is currently running
 	fn is_running(&self) -> bool;
@@ -60,7 +57,7 @@ pub trait SubsystemFactory<CT: CommandTransaction> {
 		builder
 	}
 
-	fn create(self: Box<Self>, ioc: &IocContainer) -> crate::Result<Box<dyn Subsystem>>;
+	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_core::Result<Box<dyn Subsystem>>;
 }
 
 #[derive(Debug, Clone, PartialEq)]

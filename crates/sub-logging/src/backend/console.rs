@@ -7,7 +7,7 @@ use std::io::{self, Write};
 
 use parking_lot::Mutex;
 use reifydb_core::{
-	interface::subsystem::logging::{LogBackend, LogLevel, Record},
+	interface::logging::{LogBackend, LogLevel, Record},
 	util::colored::*,
 };
 use reifydb_type::Result;

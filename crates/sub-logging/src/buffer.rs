@@ -6,7 +6,7 @@
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 
 use crossbeam_channel::{Receiver, Sender, TryRecvError, TrySendError, bounded};
-use reifydb_core::interface::subsystem::logging::Record;
+use reifydb_core::interface::logging::Record;
 
 /// Lock-free buffer for log records
 #[derive(Debug)]

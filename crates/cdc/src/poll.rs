@@ -17,11 +17,11 @@ use reifydb_core::{
 		CdcEvent, CdcQueryTransaction, CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
 		Transaction, VersionedCommandTransaction,
 		key::{CdcConsumerKey, EncodableKey},
-		subsystem::worker::Priority,
 	},
 	log_debug, log_error,
 };
 use reifydb_engine::StandardEngine;
+use reifydb_sub_api::Priority;
 
 use crate::{CdcCheckpoint, CdcConsume, CdcConsumer};
 

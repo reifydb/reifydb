@@ -13,10 +13,8 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{
-	Result,
-	interface::subsystem::worker::{BoxedTask, Scheduler, TaskHandle},
-};
+use reifydb_core::Result;
+use reifydb_sub_api::{BoxedTask, Scheduler, TaskHandle};
 
 /// Request types for scheduler operations
 pub enum SchedulerRequest {

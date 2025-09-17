@@ -98,7 +98,7 @@ mod tests {
 	use crossbeam_channel::unbounded;
 
 	use super::*;
-	use crate::interface::subsystem::logging::{LogLevel, Record};
+	use crate::interface::logging::{LogLevel, Record};
 
 	#[test]
 	fn test_mock_logger_basic() {

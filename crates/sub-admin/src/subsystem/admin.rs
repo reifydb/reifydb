@@ -5,10 +5,10 @@ use std::any::Any;
 
 use reifydb_core::interface::{
 	Transaction,
-	subsystem::{HealthStatus, Subsystem},
 	version::{ComponentType, HasVersion, SystemVersion},
 };
 use reifydb_engine::StandardEngine;
+use reifydb_sub_api::{HealthStatus, Subsystem};
 
 use crate::{config::AdminConfig, server::AdminServer};
 

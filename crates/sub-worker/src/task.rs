@@ -7,10 +7,8 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb_core::{
-	Result,
-	interface::subsystem::worker::{Priority, TaskHandle},
-};
+use reifydb_core::Result;
+use reifydb_sub_api::{Priority, TaskHandle};
 
 /// Internal context provided to tasks during execution
 pub struct InternalTaskContext {

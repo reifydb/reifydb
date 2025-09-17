@@ -13,12 +13,12 @@ use reifydb_core::{
 	Result,
 	interface::{
 		ConsumerId, Transaction,
-		subsystem::{HealthStatus, Subsystem, worker::Priority},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
+use reifydb_sub_api::{HealthStatus, Priority, Subsystem};
 
 use self::consumer::FlowConsumer;
 use crate::builder::OperatorFactory;

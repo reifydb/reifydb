@@ -11,10 +11,8 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb_core::{
-	Result,
-	interface::subsystem::worker::{BoxedTask, Priority, TaskContext as CoreTaskContext, TaskHandle},
-};
+use reifydb_core::Result;
+use reifydb_sub_api::{BoxedTask, Priority, TaskContext as CoreTaskContext, TaskHandle};
 
 use crate::task::{InternalTaskContext, PoolTask, ScheduledTask};
 

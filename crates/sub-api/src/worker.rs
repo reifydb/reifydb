@@ -56,8 +56,11 @@ impl From<u64> for TaskHandle {
 	}
 }
 
-#[derive(Debug, Clone, Default)]
-pub struct TaskContext {}
+#[derive(Clone, Default)]
+pub struct TaskContext {
+	// For now, keeping this simple without engine reference
+	// The engine can be passed through other means if needed
+}
 
 impl TaskContext {
 	pub fn new() -> Self {
@@ -66,7 +69,7 @@ impl TaskContext {
 }
 
 pub trait SchedulableTask: Send + Sync {
-	fn execute(&self, ctx: &TaskContext) -> crate::Result<()>;
+	fn execute(&self, ctx: &TaskContext) -> reifydb_core::Result<()>;
 	fn name(&self) -> &str;
 	fn priority(&self) -> Priority;
 }
@@ -76,7 +79,7 @@ pub type BoxedTask = Box<dyn SchedulableTask>;
 /// Adapter to convert a closure into a SchedulableTask
 pub struct ClosureTask<F>
 where
-	F: Fn(&TaskContext) -> crate::Result<()> + Send + Sync,
+	F: Fn(&TaskContext) -> reifydb_core::Result<()> + Send + Sync,
 {
 	name: String,
 	priority: Priority,
@@ -85,7 +88,7 @@ where
 
 impl<F> ClosureTask<F>
 where
-	F: Fn(&TaskContext) -> crate::Result<()> + Send + Sync,
+	F: Fn(&TaskContext) -> reifydb_core::Result<()> + Send + Sync,
 {
 	pub fn new(name: impl Into<String>, priority: Priority, task: F) -> Self {
 		Self {
@@ -98,9 +101,9 @@ where
 
 impl<F> SchedulableTask for ClosureTask<F>
 where
-	F: Fn(&TaskContext) -> crate::Result<()> + Send + Sync,
+	F: Fn(&TaskContext) -> reifydb_core::Result<()> + Send + Sync,
 {
-	fn execute(&self, ctx: &TaskContext) -> crate::Result<()> {
+	fn execute(&self, ctx: &TaskContext) -> reifydb_core::Result<()> {
 		(self.task)(ctx)
 	}
 
@@ -120,8 +123,8 @@ pub trait Scheduler: Send + Sync {
 	/// The next execution time is calculated when the task is picked up
 	/// for execution (not when it completes). This means if a task takes
 	/// longer than its interval, multiple instances may be queued.
-	fn schedule_every(&self, task: BoxedTask, interval: Duration) -> crate::Result<TaskHandle>;
+	fn schedule_every(&self, task: BoxedTask, interval: Duration) -> reifydb_core::Result<TaskHandle>;
 
 	/// Cancel a scheduled task
-	fn cancel(&self, handle: TaskHandle) -> crate::Result<()>;
+	fn cancel(&self, handle: TaskHandle) -> reifydb_core::Result<()>;
 }

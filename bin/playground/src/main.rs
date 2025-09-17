@@ -13,16 +13,10 @@ use std::{
 };
 
 use reifydb::{
-	MemoryDatabaseOptimistic, WithSubsystem,
+	ClosureTask, MemoryDatabaseOptimistic, Priority, TaskContext, WithSubsystem,
 	core::{
 		flow::FlowChange,
-		interface::{
-			FlowNodeId, Transaction,
-			subsystem::{
-				logging::LogLevel::Info,
-				worker::{ClosureTask, Priority, TaskContext},
-			},
-		},
+		interface::{FlowNodeId, Transaction, logging::LogLevel::Info},
 	},
 	embedded,
 	engine::{StandardCommandTransaction, StandardEvaluator},

@@ -11,25 +11,25 @@ macro_rules! log {
         // Check if it's a format string by trying to format it
         // This allows both literal strings and format strings with inline variables
         let message = format!($msg);
-        let record = $crate::interface::subsystem::logging::Record::new(
+        let record = $crate::interface::logging::Record::new(
             $level,
             module_path!(),
             message,
         )
         .with_location(file!(), line!());
-        $crate::interface::subsystem::logging::log(record);
+        $crate::interface::logging::log(record);
     }};
 
     // Format string with explicit arguments
     ($level:expr, $fmt:expr, $($arg:tt)*) => {{
         let message = format!($fmt, $($arg)*);
-        let record = $crate::interface::subsystem::logging::Record::new(
+        let record = $crate::interface::logging::Record::new(
             $level,
             module_path!(),
             message,
         )
         .with_location(file!(), line!());
-        $crate::interface::subsystem::logging::log(record);
+        $crate::interface::logging::log(record);
     }};
 }
 
@@ -38,13 +38,13 @@ macro_rules! log {
 macro_rules! log_trace {
     // Simple message
     ($msg:expr) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Trace, $msg)
+        $crate::log!($crate::interface::logging::LogLevel::Trace, $msg)
     };
 
     // Message with fields: log_trace!("message", { key: value, ... })
     ($msg:expr, { $($key:expr => $value:expr),+ $(,)? }) => {{
-        let mut record = $crate::interface::subsystem::logging::Record::new(
-            $crate::interface::subsystem::logging::LogLevel::Trace,
+        let mut record = $crate::interface::logging::Record::new(
+            $crate::interface::logging::LogLevel::Trace,
             module_path!(),
             $msg,
         )
@@ -52,12 +52,12 @@ macro_rules! log_trace {
         $(
             record = record.with_field($key, $value);
         )+
-        $crate::interface::subsystem::logging::log(record);
+        $crate::interface::logging::log(record);
     }};
 
     // Format string with arguments
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Trace, $fmt, $($arg)*)
+        $crate::log!($crate::interface::logging::LogLevel::Trace, $fmt, $($arg)*)
     };
 }
 
@@ -66,13 +66,13 @@ macro_rules! log_trace {
 macro_rules! log_debug {
     // Simple message
     ($msg:expr) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Debug, $msg)
+        $crate::log!($crate::interface::logging::LogLevel::Debug, $msg)
     };
 
     // Message with fields: log_debug!("message", { key: value, ... })
     ($msg:expr, { $($key:expr => $value:expr),+ $(,)? }) => {{
-        let mut record = $crate::interface::subsystem::logging::Record::new(
-            $crate::interface::subsystem::logging::LogLevel::Debug,
+        let mut record = $crate::interface::logging::Record::new(
+            $crate::interface::logging::LogLevel::Debug,
             module_path!(),
             $msg,
         )
@@ -80,12 +80,12 @@ macro_rules! log_debug {
         $(
             record = record.with_field($key, $value);
         )+
-        $crate::interface::subsystem::logging::log(record);
+        $crate::interface::logging::log(record);
     }};
 
     // Format string with arguments
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Debug, $fmt, $($arg)*)
+        $crate::log!($crate::interface::logging::LogLevel::Debug, $fmt, $($arg)*)
     };
 }
 
@@ -94,13 +94,13 @@ macro_rules! log_debug {
 macro_rules! log_info {
     // Simple message
     ($msg:expr) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Info, $msg)
+        $crate::log!($crate::interface::logging::LogLevel::Info, $msg)
     };
 
     // Message with fields: log_info!("message", { key: value, ... })
     ($msg:expr, { $($key:expr => $value:expr),+ $(,)? }) => {{
-        let mut record = $crate::interface::subsystem::logging::Record::new(
-            $crate::interface::subsystem::logging::LogLevel::Info,
+        let mut record = $crate::interface::logging::Record::new(
+            $crate::interface::logging::LogLevel::Info,
             module_path!(),
             $msg,
         )
@@ -108,12 +108,12 @@ macro_rules! log_info {
         $(
             record = record.with_field($key, $value);
         )+
-        $crate::interface::subsystem::logging::log(record);
+        $crate::interface::logging::log(record);
     }};
 
     // Format string with arguments
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Info, $fmt, $($arg)*)
+        $crate::log!($crate::interface::logging::LogLevel::Info, $fmt, $($arg)*)
     };
 }
 
@@ -122,13 +122,13 @@ macro_rules! log_info {
 macro_rules! log_warn {
     // Simple message
     ($msg:expr) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Warn, $msg)
+        $crate::log!($crate::interface::logging::LogLevel::Warn, $msg)
     };
 
     // Message with fields: log_warn!("message", { key: value, ... })
     ($msg:expr, { $($key:expr => $value:expr),+ $(,)? }) => {{
-        let mut record = $crate::interface::subsystem::logging::Record::new(
-            $crate::interface::subsystem::logging::LogLevel::Warn,
+        let mut record = $crate::interface::logging::Record::new(
+            $crate::interface::logging::LogLevel::Warn,
             module_path!(),
             $msg,
         )
@@ -136,12 +136,12 @@ macro_rules! log_warn {
         $(
             record = record.with_field($key, $value);
         )+
-        $crate::interface::subsystem::logging::log(record);
+        $crate::interface::logging::log(record);
     }};
 
     // Format string with arguments
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Warn, $fmt, $($arg)*)
+        $crate::log!($crate::interface::logging::LogLevel::Warn, $fmt, $($arg)*)
     };
 }
 
@@ -150,13 +150,13 @@ macro_rules! log_warn {
 macro_rules! log_error {
     // Simple message
     ($msg:expr) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Error, $msg)
+        $crate::log!($crate::interface::logging::LogLevel::Error, $msg)
     };
 
     // Message with fields: log_error!("message", { key: value, ... })
     ($msg:expr, { $($key:expr => $value:expr),+ $(,)? }) => {{
-        let mut record = $crate::interface::subsystem::logging::Record::new(
-            $crate::interface::subsystem::logging::LogLevel::Error,
+        let mut record = $crate::interface::logging::Record::new(
+            $crate::interface::logging::LogLevel::Error,
             module_path!(),
             $msg,
         )
@@ -164,12 +164,12 @@ macro_rules! log_error {
         $(
             record = record.with_field($key, $value);
         )+
-        $crate::interface::subsystem::logging::log(record);
+        $crate::interface::logging::log(record);
     }};
 
     // Format string with arguments
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Error, $fmt, $($arg)*)
+        $crate::log!($crate::interface::logging::LogLevel::Error, $fmt, $($arg)*)
     };
 }
 
@@ -178,13 +178,13 @@ macro_rules! log_error {
 macro_rules! log_critical {
     // Simple message
     ($msg:expr) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Critical, $msg)
+        $crate::log!($crate::interface::logging::LogLevel::Critical, $msg)
     };
 
     // Message with fields: log_critical!("message", { key: value, ... })
     ($msg:expr, { $($key:expr => $value:expr),+ $(,)? }) => {{
-        let mut record = $crate::interface::subsystem::logging::Record::new(
-            $crate::interface::subsystem::logging::LogLevel::Critical,
+        let mut record = $crate::interface::logging::Record::new(
+            $crate::interface::logging::LogLevel::Critical,
             module_path!(),
             $msg,
         )
@@ -192,12 +192,12 @@ macro_rules! log_critical {
         $(
             record = record.with_field($key, $value);
         )+
-        $crate::interface::subsystem::logging::log(record);
+        $crate::interface::logging::log(record);
     }};
 
     // Format string with arguments
     ($fmt:expr, $($arg:tt)*) => {
-        $crate::log!($crate::interface::subsystem::logging::LogLevel::Critical, $fmt, $($arg)*)
+        $crate::log!($crate::interface::logging::LogLevel::Critical, $fmt, $($arg)*)
     };
 }
 

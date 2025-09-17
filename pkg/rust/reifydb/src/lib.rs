@@ -27,8 +27,6 @@ pub use reifydb_auth as auth;
 pub use reifydb_cdc as cdc;
 // subsystems
 pub use reifydb_core as core;
-#[cfg(feature = "sub_worker")]
-pub use reifydb_core::interface::subsystem::worker::{Priority, Scheduler, TaskHandle};
 pub use reifydb_core::{
 	Error, Result,
 	event::EventBus,
@@ -45,6 +43,8 @@ pub use reifydb_storage::{
 };
 #[cfg(feature = "sub_admin")]
 pub use reifydb_sub_admin as sub_admin;
+#[cfg(feature = "sub_worker")]
+pub use reifydb_sub_api::{ClosureTask, Priority, Scheduler, TaskContext, TaskHandle};
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_logging")]

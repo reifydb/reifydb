@@ -18,6 +18,7 @@ reifydb-rql = { path = "../../../crates/rql" }
 reifydb-transaction = { path = "../../../crates/transaction" }
 reifydb-type = { path = "../../../crates/type" }
 
+reifydb-sub-api = { workspace = true }
 reifydb-sub-admin = { workspace = true, optional = true }
 reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-logging = { workspace = true, optional = true }

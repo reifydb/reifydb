@@ -12,7 +12,6 @@ use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{
 		CdcTransaction, UnversionedTransaction, VersionedTransaction,
-		subsystem::SubsystemFactory,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
@@ -24,6 +23,7 @@ use reifydb_engine::{
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
 use reifydb_storage::StorageVersion;
+use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_logging")]

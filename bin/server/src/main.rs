@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use reifydb::{
 	WithSubsystem,
-	core::interface::subsystem::logging::LogLevel,
+	core::interface::logging::LogLevel,
 	server,
 	sub_admin::AdminConfig,
 	sub_logging::{FormatStyle, LoggingBuilder},

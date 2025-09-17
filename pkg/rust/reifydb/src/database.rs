@@ -12,17 +12,16 @@ use std::{
 
 #[cfg(feature = "sub_flow")]
 use reifydb_core::interface::Transaction;
-#[cfg(feature = "sub_worker")]
-use reifydb_core::interface::subsystem::worker::Scheduler;
 use reifydb_core::{
 	Result,
 	event::lifecycle::OnStartEvent,
-	interface::{
-		CdcTransaction, UnversionedTransaction, VersionedTransaction, WithEventBus, subsystem::HealthStatus,
-	},
+	interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction, WithEventBus},
 	log_debug, log_error, log_timed_trace, log_warn,
 };
 use reifydb_engine::{EngineTransaction, StandardEngine};
+use reifydb_sub_api::HealthStatus;
+#[cfg(feature = "sub_worker")]
+use reifydb_sub_api::Scheduler;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystem;
 #[cfg(feature = "sub_server")]

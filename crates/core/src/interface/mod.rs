@@ -9,9 +9,9 @@ pub mod evaluate;
 mod execute;
 pub mod identifier;
 pub mod key;
+pub mod logging;
 pub mod resolved;
 mod storage;
-pub mod subsystem;
 mod transaction;
 pub mod version;
 

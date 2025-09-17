@@ -3,14 +3,9 @@
 
 use std::marker::PhantomData;
 
-use reifydb_core::{
-	interface::{
-		Transaction,
-		subsystem::{Subsystem, SubsystemFactory},
-	},
-	ioc::IocContainer,
-};
+use reifydb_core::{interface::Transaction, ioc::IocContainer};
 use reifydb_engine::StandardCommandTransaction;
+use reifydb_sub_api::{Subsystem, SubsystemFactory};
 
 use super::LoggingBuilder;
 

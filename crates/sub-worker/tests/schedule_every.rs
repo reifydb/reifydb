@@ -12,22 +12,17 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{
-	Result,
-	interface::subsystem::{
-		Subsystem, SubsystemFactory,
-		worker::{ClosureTask, Priority, Scheduler, TaskContext},
-	},
-};
+use reifydb_core::Result;
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction};
 use reifydb_storage::memory::Memory;
+use reifydb_sub_api::{ClosureTask, Priority, Scheduler, Subsystem, SubsystemFactory, TaskContext};
 use reifydb_sub_worker::{WorkerConfig, WorkerSubsystem, WorkerSubsystemFactory};
 use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
 
 #[test]
 fn test_schedule_every_basic_interval_execution() {
-	let mut pool = WorkerSubsystem::new();
-	assert!(pool.start().is_ok());
+	let mut instance = WorkerSubsystem::new();
+	assert!(instance.start().is_ok());
 
 	let counter = Arc::new(AtomicUsize::new(0));
 	let counter_clone = Arc::clone(&counter);
@@ -38,7 +33,7 @@ fn test_schedule_every_basic_interval_execution() {
 		Ok(())
 	}));
 
-	let handle = pool.schedule_every(task, Duration::from_millis(30)).unwrap();
+	let handle = instance.schedule_every(task, Duration::from_millis(30)).unwrap();
 
 	// Wait for executions with retry logic
 	let mut attempts = 0;
@@ -53,7 +48,7 @@ fn test_schedule_every_basic_interval_execution() {
 	assert!(count >= 3, "Expected at least 3 executions, got {} after {} attempts", count, attempts);
 
 	// Cancel the task
-	assert!(pool.cancel_task(handle).is_ok());
+	assert!(instance.cancel_task(handle).is_ok());
 
 	// Wait a bit and verify no more executions
 	let count_before = counter.load(Ordering::Relaxed);
@@ -66,21 +61,21 @@ fn test_schedule_every_basic_interval_execution() {
 		count_before, count_after
 	);
 
-	assert!(pool.shutdown().is_ok());
+	assert!(instance.shutdown().is_ok());
 }
 
 #[test]
 fn test_schedule_every_priority_ordering() {
 	// Test that scheduled tasks respect priority when multiple tasks are
 	// ready
-	let mut pool = WorkerSubsystem::with_config(WorkerConfig {
+	let mut instance = WorkerSubsystem::with_config(WorkerConfig {
 		num_workers: 1, // Single worker to ensure strict ordering
 		max_queue_size: 100,
 		scheduler_interval: Duration::from_millis(10),
 		task_timeout_warning: Duration::from_secs(1),
 	});
 
-	assert!(pool.start().is_ok());
+	assert!(instance.start().is_ok());
 
 	let execution_order = Arc::new(Mutex::new(Vec::new()));
 
@@ -99,16 +94,16 @@ fn test_schedule_every_priority_ordering() {
 	}));
 
 	// Schedule both at the same interval
-	let high_handle = pool.schedule_every(high_task, Duration::from_millis(30)).unwrap();
+	let high_handle = instance.schedule_every(high_task, Duration::from_millis(30)).unwrap();
 
-	let low_handle = pool.schedule_every(low_task, Duration::from_millis(30)).unwrap();
+	let low_handle = instance.schedule_every(low_task, Duration::from_millis(30)).unwrap();
 
 	// Wait for several executions
 	thread::sleep(Duration::from_millis(150));
 
 	// Cancel both tasks
-	assert!(pool.cancel_task(high_handle).is_ok());
-	assert!(pool.cancel_task(low_handle).is_ok());
+	assert!(instance.cancel_task(high_handle).is_ok());
+	assert!(instance.cancel_task(low_handle).is_ok());
 
 	let order = execution_order.lock().unwrap();
 
@@ -120,7 +115,7 @@ fn test_schedule_every_priority_ordering() {
 	// generally execute first (though timing may cause variations)
 	println!("Execution order: {:?}", *order);
 
-	assert!(pool.shutdown().is_ok());
+	assert!(instance.shutdown().is_ok());
 }
 
 #[test]
@@ -139,13 +134,13 @@ fn test_scheduler_client_api() -> Result<()> {
 
 	// Create the subsystem
 	let ioc = reifydb_core::ioc::IocContainer::new();
-	let mut subsystem = Box::new(factory).create(&ioc)?;
+	let mut instance = Box::new(factory).create(&ioc)?;
 
 	// Start the subsystem
-	subsystem.start()?;
+	instance.start()?;
 
 	// Get the scheduler from the subsystem
-	let worker_subsystem = subsystem.as_any().downcast_ref::<WorkerSubsystem>().expect("Should be WorkerSubsystem");
+	let worker_subsystem = instance.as_any().downcast_ref::<WorkerSubsystem>().expect("Should be WorkerSubsystem");
 
 	let scheduler = worker_subsystem.get_scheduler();
 
@@ -178,7 +173,7 @@ fn test_scheduler_client_api() -> Result<()> {
 	assert!(final_count <= 10, "Task should have been cancelled");
 
 	// Shutdown
-	subsystem.shutdown()?;
+	instance.shutdown()?;
 
 	Ok(())
 }
@@ -186,14 +181,14 @@ fn test_scheduler_client_api() -> Result<()> {
 #[test]
 fn test_schedule_every_multiple_intervals() {
 	// Test multiple tasks with different intervals
-	let mut pool = WorkerSubsystem::with_config(WorkerConfig {
+	let mut instance = WorkerSubsystem::with_config(WorkerConfig {
 		num_workers: 2,
 		max_queue_size: 100,
 		scheduler_interval: Duration::from_millis(10),
 		task_timeout_warning: Duration::from_secs(1),
 	});
 
-	assert!(pool.start().is_ok());
+	assert!(instance.start().is_ok());
 
 	let fast_counter = Arc::new(AtomicUsize::new(0));
 	let slow_counter = Arc::new(AtomicUsize::new(0));
@@ -213,16 +208,16 @@ fn test_schedule_every_multiple_intervals() {
 		Ok(())
 	}));
 
-	let fast_handle = pool.schedule_every(fast_task, Duration::from_millis(20)).unwrap();
+	let fast_handle = instance.schedule_every(fast_task, Duration::from_millis(20)).unwrap();
 
-	let slow_handle = pool.schedule_every(slow_task, Duration::from_millis(50)).unwrap();
+	let slow_handle = instance.schedule_every(slow_task, Duration::from_millis(50)).unwrap();
 
 	// Wait for executions
 	thread::sleep(Duration::from_millis(150));
 
 	// Cancel both tasks
-	assert!(pool.cancel_task(fast_handle).is_ok());
-	assert!(pool.cancel_task(slow_handle).is_ok());
+	assert!(instance.cancel_task(fast_handle).is_ok());
+	assert!(instance.cancel_task(slow_handle).is_ok());
 
 	let fast_count = fast_counter.load(Ordering::Relaxed);
 	let slow_count = slow_counter.load(Ordering::Relaxed);
@@ -239,5 +234,5 @@ fn test_schedule_every_multiple_intervals() {
 	assert!(fast_count >= 5, "Fast task should run at least 5 times");
 	assert!(slow_count >= 2, "Slow task should run at least 2 times");
 
-	assert!(pool.shutdown().is_ok());
+	assert!(instance.shutdown().is_ok());
 }

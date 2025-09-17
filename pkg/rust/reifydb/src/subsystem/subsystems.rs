@@ -11,11 +11,8 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{
-	Result,
-	interface::subsystem::{HealthStatus, Subsystem},
-	log_debug, log_error, log_warn,
-};
+use reifydb_core::{Result, log_debug, log_error, log_warn};
+use reifydb_sub_api::{HealthStatus, Subsystem};
 
 use crate::health::HealthMonitor;
 

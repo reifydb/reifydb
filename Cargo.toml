@@ -16,6 +16,7 @@ members = [
     "crates/transaction",
     "crates/type",
     # Subsystem crates
+    "crates/sub-api",
     "crates/sub-admin",
     "crates/sub-flow",
     "crates/sub-logging",
@@ -49,6 +50,7 @@ default-members = [
     "crates/transaction",
     "crates/type",
     # Subsystem crates
+    "crates/sub-api",
     "crates/sub-admin",
     "crates/sub-flow",
     "crates/sub-logging",
@@ -115,6 +117,7 @@ reifydb-transaction = { path = "crates/transaction" }
 reifydb-type = { path = "crates/type" }
 
 # Subsystems
+reifydb-sub-api = { path = "crates/sub-api" }
 reifydb-sub-admin = { path = "crates/sub-admin" }
 reifydb-sub-flow = { path = "crates/sub-flow" }
 reifydb-sub-logging = { path = "crates/sub-logging" }

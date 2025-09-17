@@ -9,21 +9,21 @@
 #[cfg(debug_assertions)]
 use crossbeam_channel::Sender;
 #[cfg(debug_assertions)]
-use reifydb_core::interface::subsystem::logging::Record;
+use reifydb_core::interface::logging::Record;
 
 /// Handle for test logging that automatically sets and clears the mock logger
 #[cfg(debug_assertions)]
 pub struct TestLoggerHandle {
 	sender: Sender<Record>,
 	#[allow(dead_code)]
-	guard: reifydb_core::interface::subsystem::logging::mock::MockLoggerGuard,
+	guard: reifydb_core::interface::logging::mock::MockLoggerGuard,
 }
 
 #[cfg(debug_assertions)]
 impl TestLoggerHandle {
 	/// Create a new test logger handle
 	pub fn new(sender: Sender<Record>) -> Self {
-		use reifydb_core::interface::subsystem::logging::mock::MockLoggerGuard;
+		use reifydb_core::interface::logging::mock::MockLoggerGuard;
 
 		let guard = MockLoggerGuard::new(sender.clone());
 		Self {

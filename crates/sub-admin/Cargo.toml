@@ -8,6 +8,7 @@ authors = ["Dominique Chuo <dominique@reifydb.com>"]
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-sub-api = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-network = { workspace = true }
 

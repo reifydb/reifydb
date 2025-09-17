@@ -16,13 +16,13 @@ use std::sync::Arc;
 
 pub use command::CommandSession;
 pub use query::QuerySession;
-#[cfg(feature = "sub_worker")]
-use reifydb_core::interface::subsystem::worker::Scheduler;
 use reifydb_core::{
 	Frame,
 	interface::{Engine as EngineInterface, Identity, Params, Transaction},
 };
 use reifydb_engine::StandardEngine;
+#[cfg(feature = "sub_worker")]
+use reifydb_sub_api::Scheduler;
 
 pub trait Session<T: Transaction> {
 	fn command_session(&self, session: impl IntoCommandSession<T>) -> crate::Result<CommandSession<T>>;
