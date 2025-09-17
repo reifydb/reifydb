@@ -8,12 +8,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /build
 
-COPY db ./db
+# Copy workspace root files
+COPY Cargo.toml Cargo.lock rust-toolchain ./
+
+# Copy all workspace members
+COPY crates ./crates
 COPY pkg ./pkg
 COPY bin ./bin
 
-WORKDIR /build/bin/testcontainer
-RUN cargo build --release
+WORKDIR /build
+RUN cargo build --release --package testcontainer
 
 FROM debian:bookworm-slim
 
@@ -29,8 +33,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Add unprivileged user with no login shell
 RUN useradd --system --uid 1001 --no-create-home --shell /usr/sbin/nologin reifydb
 
-# Copy from the correct target location for independent project
-COPY --from=builder /build/bin/testcontainer/target/release/testcontainer /usr/local/bin/
+# Copy from the workspace target location
+COPY --from=builder /build/target/release/testcontainer /usr/local/bin/
 
 RUN chown root:root /usr/local/bin/testcontainer && \
     chmod 0755 /usr/local/bin/testcontainer

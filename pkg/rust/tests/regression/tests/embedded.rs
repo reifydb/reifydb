@@ -96,7 +96,7 @@ where
     }
 }
 
-test_each_path! { in "tests/scripts" as embedded => test_embedded }
+test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as embedded => test_embedded }
 
 fn test_embedded(path: &Path) {
     testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")

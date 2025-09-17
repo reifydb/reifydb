@@ -1,10 +1,10 @@
 [package]
 name = "reifydb-client"
-version = "0.0.1"
-edition = "2021"
-authors = ["Dominique Chuo <dominique@reifydb.com>"]
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
 license = "MIT"
-repository = "https://github.com/reifydb/reifydb"
+repository.workspace = true
 
 [[example]]
 name = "blocking_session"
@@ -34,21 +34,3 @@ reifydb = { path = "../reifydb", features = ["sub_server"] }
 reifydb-testing = { path = "../../../crates/testing" }
 test_each_file = { version = "0.3.5" }
 
-[profile.dev]
-opt-level = 0
-debug = true
-debug-assertions = true
-overflow-checks = true
-incremental = true
-lto = false
-codegen-units = 256
-panic = "unwind"
-
-[profile.test]
-opt-level = 0
-debug = true
-lto = false
-codegen-units = 256
-incremental = true
-debug-assertions = true
-overflow-checks = true

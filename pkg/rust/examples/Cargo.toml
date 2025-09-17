@@ -1,10 +1,10 @@
 [package]
 name = "examples"
-version = "0.0.1"
-edition = "2021"
-authors = ["Dominique Chuo <dominique@reifydb.com>"]
-license = "AGPL-3"
-repository = "https://github.com/reifydb/reifydb"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 [lib]
 name = "reifydb_examples"
@@ -75,21 +75,3 @@ path = "examples/storage/01_memory_storage.rs"
 name = "storage-sqlite"
 path = "examples/storage/02_sqlite_storage.rs"
 
-[profile.dev]
-opt-level = 0
-debug = true
-debug-assertions = true
-overflow-checks = true
-incremental = true
-lto = false
-codegen-units = 256
-panic = "unwind"
-
-[profile.test]
-opt-level = 0
-debug = true
-lto = false
-codegen-units = 256
-incremental = true
-debug-assertions = true
-overflow-checks = true

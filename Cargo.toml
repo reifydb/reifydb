@@ -1,0 +1,157 @@
+[workspace]
+resolver = "2"
+
+members = [
+    # Core crates
+    "crates/auth",
+    "crates/catalog",
+    "crates/cdc",
+    "crates/core",
+    "crates/engine",
+    "crates/hash",
+    "crates/network",
+    "crates/rql",
+    "crates/storage",
+    "crates/testing",
+    "crates/transaction",
+    "crates/type",
+    
+    # Subsystem crates
+    "crates/sub-admin",
+    "crates/sub-flow",
+    "crates/sub-logging",
+    "crates/sub-server",
+    "crates/sub-workerpool",
+    
+    # Binary projects
+    "bin/cli",
+    "bin/server",
+    "bin/playground",
+    "bin/testcontainer",
+    
+    # Package/library projects
+    "pkg/rust/reifydb",
+    "pkg/rust/reifydb-client",
+    "pkg/rust/examples",
+    "pkg/rust/tests/limit",
+    "pkg/rust/tests/regression",
+]
+
+default-members = [
+    # Core crates
+    "crates/auth",
+    "crates/catalog",
+    "crates/cdc",
+    "crates/core",
+    "crates/engine",
+    "crates/hash",
+    "crates/network",
+    "crates/rql",
+    "crates/storage",
+    "crates/testing",
+    "crates/transaction",
+    "crates/type",
+    
+    # Subsystem crates
+    "crates/sub-admin",
+    "crates/sub-flow",
+    "crates/sub-logging",
+    "crates/sub-server",
+    "crates/sub-workerpool",
+    
+    # Binary projects
+    "bin/cli",
+    "bin/server",
+    "bin/playground",
+    "bin/testcontainer",
+    
+    # Package/library projects
+    "pkg/rust/reifydb",
+    "pkg/rust/reifydb-client",
+    "pkg/rust/examples",
+    "pkg/rust/tests/limit",
+    "pkg/rust/tests/regression",
+]
+
+[workspace.package]
+authors = ["Dominique Chuo <dominique@reifydb.com>"]
+homepage = "https://reifydb.com"
+repository = "https://github.com/reifydb/reifydb"
+readme = "readme.md"
+license = "AGPL-3"
+
+version = "0.0.1"
+rust-version = "1.85.1"
+edition = "2024"
+
+[profile.dev]
+opt-level = 0
+debug = true
+debug-assertions = true
+overflow-checks = true
+incremental = true
+lto = false
+codegen-units = 256
+panic = "unwind"
+
+[profile.test]
+opt-level = 0
+debug = true
+lto = false
+codegen-units = 256
+incremental = true
+debug-assertions = true
+overflow-checks = true
+
+[workspace.dependencies]
+# Internal crates
+reifydb-auth = { path = "crates/auth" }
+reifydb-catalog = { path = "crates/catalog" }
+reifydb-cdc = { path = "crates/cdc" }
+reifydb-core = { path = "crates/core" }
+reifydb-engine = { path = "crates/engine" }
+reifydb-hash = { path = "crates/hash" }
+reifydb-network = { path = "crates/network" }
+reifydb-rql = { path = "crates/rql" }
+reifydb-storage = { path = "crates/storage" }
+reifydb-testing = { path = "crates/testing" }
+reifydb-transaction = { path = "crates/transaction" }
+reifydb-type = { path = "crates/type" }
+
+# Subsystems
+reifydb-sub-admin = { path = "crates/sub-admin" }
+reifydb-sub-flow = { path = "crates/sub-flow" }
+reifydb-sub-logging = { path = "crates/sub-logging" }
+reifydb-sub-workerpool = { path = "crates/sub-workerpool" }
+reifydb-sub-server = { path = "crates/sub-server" }
+
+# External dependencies
+once_cell = { version = "1.21.3" }
+uuid = { version = "1.18.1", default-features = false, features = ["v4", "v7", "serde", "std"] }
+num-bigint = { version = "0.4.6", features = ["serde"] }
+bigdecimal = { version = "0.4.8", features = ["serde"] }
+num-traits = { version = "0.2.19" }
+
+crossbeam-skiplist = { version = "0.1.3" }
+crossbeam-channel = { version = "0.5.15" }
+parking_lot = { version = "0.12.4" }
+
+# Network and server
+mio = { version = "1.0.4", features = ["net", "os-poll"] }
+slab = { version = "0.4.11" }
+socket2 = { version = "0.6.0", features = ["all"] }
+num_cpus = { version = "1.17.0" }
+core_affinity = { version = "0.8.3" }
+httparse = { version = "1.10.1" }
+urlencoding = { version = "2.1.3" }
+
+# sqlite
+rusqlite = { version = "0.37.0", features = ["bundled"] }
+
+# serde
+serde = { version = "1.0.219", features = ["derive"] }
+serde_bytes = { version = "0.11.17" }
+serde_json = { version = "1.0.143" }
+
+# testing
+test_each_file = { version = "0.3.5" }

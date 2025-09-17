@@ -307,7 +307,7 @@ where
 	}
 }
 
-test_each_path! { in "tests/scripts" as callback_ws => test_callback }
+test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as callback_ws => test_callback }
 
 fn test_callback(path: &Path) {
 	retry(3, || testscript::run_path(&mut CallbackRunner::new(optimistic(memory())), path)).expect("test failed")

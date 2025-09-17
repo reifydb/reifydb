@@ -137,7 +137,7 @@ where
     }
 }
 
-test_each_path! { in "tests/scripts" as ws => test_ws }
+test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as ws => test_ws }
 
 fn test_ws(path: &Path) {
     retry(3, || {

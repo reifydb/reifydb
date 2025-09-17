@@ -25,8 +25,8 @@ use reifydb_storage::{
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "storage/tests/scripts/versioned" as versioned_memory => test_memory }
-test_each_path! { in "storage/tests/scripts/versioned" as versioned_sqlite => test_sqlite }
+test_each_path! { in "crates/storage/tests/scripts/versioned" as versioned_memory => test_memory }
+test_each_path! { in "crates/storage/tests/scripts/versioned" as versioned_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	testscript::run_path(&mut Runner::new(Memory::default()), path).expect("test failed")

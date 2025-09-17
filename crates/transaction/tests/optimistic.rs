@@ -29,8 +29,8 @@ use reifydb_transaction::{
 };
 use test_each_file::test_each_path;
 
-test_each_path! { in "transaction/tests/scripts/mvcc" as mvcc => test_optimistic }
-test_each_path! { in "transaction/tests/scripts/all" as all => test_optimistic }
+test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_optimistic }
+test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_optimistic }
 
 fn test_optimistic(path: &Path) {
 	let bus = EventBus::default();
