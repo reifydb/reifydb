@@ -2,34 +2,22 @@
 # Test Suites (smoke, compatibility, diagnostic, functional, integration, stress)
 # =============================================================================
 
-# List of available test suites
-TEST_SUITES := \
-	smoke \
-	compatibility \
-	diagnostic \
-	error \
-	functional \
-	flow \
-	integration \
-	stress
+# Dynamically discover test suites from directories in TEST_SUITE_DIR
+TEST_SUITES := $(shell find $(TEST_SUITE_DIR) -maxdepth 1 -type d -exec basename {} \; | grep -v testsuite | sort)
 
 .PHONY: test-suite test-suite-dev $(TEST_SUITES)
 
-# Run all test suites in parallel
+# Run all test suites - delegate to testsuite Makefile
 test-suite:
-	@echo "🔍 Running all test suites in parallel..."
-	$(MAKE) -j$(shell nproc) $(TEST_SUITES)
+	@echo "🔍 Running all test suites..."
+	cd $(TEST_SUITE_DIR) && $(MAKE) test
 
-# Run fast development tests for all test suites
+# Run fast development tests for all test suites - delegate to testsuite Makefile
 test-suite-dev:
 	@echo "🚀 Running fast development tests for all test suites..."
 	cd $(TEST_SUITE_DIR) && $(MAKE) test-dev
 
-# Individual test suite targets
+# Individual test suite targets - delegate to testsuite Makefile
 $(TEST_SUITES):
-	@if [ -d "$(TEST_SUITE_DIR)/$@" ]; then \
-		echo "🔍 Running $@ tests in $(TEST_SUITE_DIR)/$@ ..."; \
-		cd $(TEST_SUITE_DIR)/$@ && cargo nextest run --no-fail-fast $(CARGO_OFFLINE); \
-	else \
-		echo "⚠️ Skipping $@ – directory $(TEST_SUITE_DIR)/$@ not found"; \
-	fi
+	@echo "🔍 Running $@ tests..."
+	cd $(TEST_SUITE_DIR) && $(MAKE) $@

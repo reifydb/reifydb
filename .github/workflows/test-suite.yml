@@ -6,7 +6,26 @@ on:
   pull_request:
 
 jobs:
+  discover-suites:
+    runs-on: ubuntu-latest
+    outputs:
+      suites: ${{ steps.discover.outputs.suites }}
+    steps:
+      - name: ⬇️ Checkout private test suite repo
+        run: |
+          git clone https://x-access-token:${{ secrets.GH_REPO_PAT }}@github.com/reifydb/testsuite.git testsuite
+      
+      - name: 🔍 Discover test suites
+        id: discover
+        run: |
+          cd testsuite
+          # Find all directories that contain a Cargo.toml (test suites)
+          suites=$(find . -maxdepth 2 -type f -name "Cargo.toml" -exec dirname {} \; | sed 's|^\./||' | grep -v '^\.$' | sort | jq -R -s -c 'split("\n")[:-1]')
+          echo "Found test suites: $suites"
+          echo "suites=$suites" >> $GITHUB_OUTPUT
+
   test:
+    needs: discover-suites
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -14,7 +33,7 @@ jobs:
 
     strategy:
       matrix:
-        suite: [ smoke, catalog, diagnostic, error, flow, function, integration, stress, value ]
+        suite: ${{ fromJson(needs.discover-suites.outputs.suites) }}
 
     steps:
       - name: ⬇️ Checkout main repo
