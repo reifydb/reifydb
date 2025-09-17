@@ -131,7 +131,7 @@ where
 	}
 }
 
-test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as blocking_http => test_blocking }
+test_each_path! { in "tests/scripts" as blocking_http => test_blocking }
 
 fn test_blocking(path: &Path) {
 	retry(3, || testscript::run_path(&mut BlockingRunner::new(optimistic(memory())), path)).expect("test failed")

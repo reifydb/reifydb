@@ -42,3 +42,5 @@
 //
 //     println!("✅ Frames: {:?}", result);
 // }
+
+fn main() {}

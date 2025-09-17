@@ -291,7 +291,7 @@ where
 	}
 }
 
-test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as channel_http => test_channel }
+test_each_path! { in "tests/scripts" as channel_http => test_channel }
 
 fn test_channel(path: &Path) {
 	retry(3, || testscript::run_path(&mut ChannelRunner::new(optimistic(memory())), path)).expect("test failed")
