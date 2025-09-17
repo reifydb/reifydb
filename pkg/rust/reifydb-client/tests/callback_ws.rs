@@ -16,16 +16,17 @@ use common::{
 	start_server_and_get_port, write_frames,
 };
 use reifydb::{
+	Database,
 	core::{
 		event::EventBus,
 		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 		retry,
 	},
-	memory, optimistic, Database,
+	memory, optimistic,
 };
 use reifydb_client::{
-	session::{CommandResult, QueryResult},
 	WsCallbackSession, WsClient,
+	session::{CommandResult, QueryResult},
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;

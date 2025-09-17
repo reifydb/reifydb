@@ -10,14 +10,15 @@ use common::{
 	parse_rql, write_frames,
 };
 use reifydb::{
+	Database,
 	core::{
 		event::EventBus,
 		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 		retry,
 	},
-	memory, optimistic, Database,
+	memory, optimistic,
 };
-use reifydb_client::{http::HttpChannelResponse, HttpChannelSession, HttpClient, HttpResponseMessage};
+use reifydb_client::{HttpChannelSession, HttpClient, HttpResponseMessage, http::HttpChannelResponse};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 

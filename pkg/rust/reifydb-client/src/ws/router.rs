@@ -4,9 +4,9 @@
 use std::{collections::HashMap, time::Instant};
 
 use crate::{
-	session::{parse_command_response, parse_query_response},
-	ws::{message::ResponseRoute, ChannelResponse, ResponseMessage},
 	Response, ResponsePayload,
+	session::{parse_command_response, parse_query_response},
+	ws::{ChannelResponse, ResponseMessage, message::ResponseRoute},
 };
 
 /// Routes responses to the appropriate session

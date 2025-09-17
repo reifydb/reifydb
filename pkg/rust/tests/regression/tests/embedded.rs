@@ -4,100 +4,89 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb::{
-    core::{
-        event::EventBus,
-        interface::{CdcTransaction, Params, UnversionedTransaction, VersionedTransaction},
-    },
-    memory, optimistic, Database, EmbeddedBuilder, Session,
+	Database, EmbeddedBuilder, Session,
+	core::{
+		event::EventBus,
+		interface::{CdcTransaction, Params, UnversionedTransaction, VersionedTransaction},
+	},
+	memory, optimistic,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
 pub struct Runner<VT, UT, C>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-    C: CdcTransaction,
+	VT: VersionedTransaction,
+	UT: UnversionedTransaction,
+	C: CdcTransaction,
 {
-    instance: Database<VT, UT, C>,
+	instance: Database<VT, UT, C>,
 }
 
 impl<VT, UT, C> Runner<VT, UT, C>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-    C: CdcTransaction,
+	VT: VersionedTransaction,
+	UT: UnversionedTransaction,
+	C: CdcTransaction,
 {
-    pub fn new(input: (VT, UT, C, EventBus)) -> Self {
-        let (versioned, unversioned, cdc, eventbus) = input;
-        Self {
-            instance: EmbeddedBuilder::new(versioned, unversioned, cdc, eventbus)
-                .build()
-                .unwrap(),
-        }
-    }
+	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
+		let (versioned, unversioned, cdc, eventbus) = input;
+		Self {
+			instance: EmbeddedBuilder::new(versioned, unversioned, cdc, eventbus).build().unwrap(),
+		}
+	}
 }
 
 impl<VT, UT, C> testscript::Runner for Runner<VT, UT, C>
 where
-    VT: VersionedTransaction,
-    UT: UnversionedTransaction,
-    C: CdcTransaction,
+	VT: VersionedTransaction,
+	UT: UnversionedTransaction,
+	C: CdcTransaction,
 {
-    fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
-        let mut output = String::new();
-        match command.name.as_str() {
-            "command" => {
-                let rql = command
-                    .args
-                    .iter()
-                    .map(|a| a.value.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ");
+	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
+		let mut output = String::new();
+		match command.name.as_str() {
+			"command" => {
+				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("command: {rql}");
+				println!("command: {rql}");
 
-                let instance = &self.instance;
-                for frame in instance.command_as_root(rql.as_str(), Params::None)? {
-                    writeln!(output, "{}", frame).unwrap();
-                }
-            }
-            "query" => {
-                let rql = command
-                    .args
-                    .iter()
-                    .map(|a| a.value.as_str())
-                    .collect::<Vec<_>>()
-                    .join(" ");
+				let instance = &self.instance;
+				for frame in instance.command_as_root(rql.as_str(), Params::None)? {
+					writeln!(output, "{}", frame).unwrap();
+				}
+			}
+			"query" => {
+				let rql = command.args.iter().map(|a| a.value.as_str()).collect::<Vec<_>>().join(" ");
 
-                println!("query: {rql}");
+				println!("query: {rql}");
 
-                let instance = &self.instance;
-                for frame in instance.query_as_root(rql.as_str(), Params::None)? {
-                    writeln!(output, "{}", frame).unwrap();
-                }
-            }
-            name => {
-                return Err(format!("invalid command {name}").into());
-            }
-        }
+				let instance = &self.instance;
+				for frame in instance.query_as_root(rql.as_str(), Params::None)? {
+					writeln!(output, "{}", frame).unwrap();
+				}
+			}
+			name => {
+				return Err(format!("invalid command {name}").into());
+			}
+		}
 
-        Ok(output)
-    }
+		Ok(output)
+	}
 
-    fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
-        self.instance.start()?;
-        Ok(())
-    }
+	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
+		self.instance.start()?;
+		Ok(())
+	}
 
-    fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
-        self.instance.stop()?;
-        Ok(())
-    }
+	fn end_script(&mut self) -> Result<(), Box<dyn Error>> {
+		self.instance.stop()?;
+		Ok(())
+	}
 }
 
 test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as embedded => test_embedded }
 
 fn test_embedded(path: &Path) {
-    testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
+	testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
 }

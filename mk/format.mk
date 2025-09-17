@@ -2,14 +2,14 @@
 # Format Targets - Format all Rust code with rustfmt
 # =============================================================================
 
-.PHONY: format format-rust format-crates format-bin format-pkg-rust
+.PHONY: format format-rust format-workspace
 
 # Main format target - formats everything
 format: format-rust
 	@echo "✅ All code formatting complete!"
 
 # Format all Rust code
-format-rust: ensure-rustfmt format-crates format-bin format-pkg-rust
+format-rust: ensure-rustfmt format-workspace
 	@echo "✅ Rust formatting complete!"
 
 # Ensure rustfmt nightly is installed
@@ -24,27 +24,7 @@ ensure-rustfmt:
 		rustup component add rustfmt --toolchain nightly; \
 	fi
 
-# Format crates/ workspace
-format-crates:
-	@echo "🎨 Formatting crates/ workspace..."
-	@cd crates && cargo +nightly fmt --all
-
-# Format bin/ packages
-format-bin:
-	@echo "🎨 Formatting bin/ packages..."
-	@for dir in bin/cli bin/server bin/playground bin/testcontainer; do \
-		if [ -d "$$dir" ] && [ -f "$$dir/Cargo.toml" ]; then \
-			echo "  Formatting $$dir..."; \
-			cd $$dir && cargo +nightly fmt 2>/dev/null || true && cd - >/dev/null; \
-		fi; \
-	done
-
-# Format pkg/rust packages
-format-pkg-rust:
-	@echo "🎨 Formatting pkg/rust packages..."
-	@for dir in pkg/rust/reifydb pkg/rust/reifydb-client pkg/rust/examples pkg/rust/tests/limit pkg/rust/tests/regression; do \
-		if [ -d "$$dir" ] && [ -f "$$dir/Cargo.toml" ]; then \
-			echo "  Formatting $$dir..."; \
-			cd $$dir && cargo +nightly fmt 2>/dev/null || true && cd - >/dev/null; \
-		fi; \
-	done
+# Format entire workspace (includes crates/, bin/, and pkg/rust/)
+format-workspace:
+	@echo "🎨 Formatting entire workspace..."
+	cargo +nightly fmt --all

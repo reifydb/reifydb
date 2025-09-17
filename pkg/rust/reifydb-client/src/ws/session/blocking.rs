@@ -2,19 +2,19 @@
 // This file is licensed under the MIT
 
 use std::{
-	sync::{mpsc, Arc},
+	sync::{Arc, mpsc},
 	time::Duration,
 };
 
 use reifydb_type::Error;
 
 use crate::{
+	Params,
 	session::{CommandResult, QueryResult},
 	ws::{
 		client::ClientInner,
 		session::{ChannelResponse, ChannelSession, ResponseMessage},
 	},
-	Params,
 };
 
 /// A blocking session that waits for responses synchronously

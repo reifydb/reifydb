@@ -4,11 +4,12 @@
 use std::{
 	io::{Read, Write},
 	net::{SocketAddr, TcpStream, ToSocketAddrs},
-	sync::{mpsc, Arc, Mutex},
+	sync::{Arc, Mutex, mpsc},
 	thread::JoinHandle,
 };
 
 use crate::{
+	Request, Response, ResponseMessage, WsBlockingSession, WsCallbackSession, WsChannelSession,
 	ws::{
 		message::InternalMessage,
 		protocol::{
@@ -18,7 +19,6 @@ use crate::{
 		router::RequestRouter,
 		worker,
 	},
-	Request, Response, ResponseMessage, WsBlockingSession, WsCallbackSession, WsChannelSession,
 };
 
 /// WebSocket client implementation

@@ -8,7 +8,7 @@
 //!
 //! Run with: `make basic-tables` or `cargo run --bin basic-tables`
 
-use reifydb::{embedded, log_info, Params, Session};
+use reifydb::{Params, Session, embedded, log_info};
 use reifydb_examples::log_query;
 
 fn main() {

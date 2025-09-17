@@ -5,15 +5,16 @@ use std::{
 	any::TypeId,
 	collections::HashMap,
 	sync::{
-		atomic::{AtomicBool, Ordering},
 		Arc,
+		atomic::{AtomicBool, Ordering},
 	},
 	time::Duration,
 };
 
 use reifydb_core::{
+	Result,
 	interface::subsystem::{HealthStatus, Subsystem},
-	log_debug, log_error, log_warn, Result,
+	log_debug, log_error, log_warn,
 };
 
 use crate::health::HealthMonitor;

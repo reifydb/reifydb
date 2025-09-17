@@ -12,7 +12,7 @@ use crate::{
 		message::{HttpInternalMessage, HttpResponseRoute},
 		session::{HttpChannelResponse, HttpResponseMessage},
 	},
-	session::{convert_execute_response, convert_query_response, CommandResult, QueryResult},
+	session::{CommandResult, QueryResult, convert_execute_response, convert_query_response},
 };
 
 /// HTTP worker thread that handles all requests for a client

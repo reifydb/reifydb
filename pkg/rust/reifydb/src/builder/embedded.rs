@@ -4,7 +4,7 @@
 use reifydb_core::{
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::{subsystem::SubsystemFactory, CdcTransaction, UnversionedTransaction, VersionedTransaction},
+	interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction, subsystem::SubsystemFactory},
 };
 use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
 #[cfg(feature = "sub_flow")]
@@ -12,7 +12,7 @@ use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 
-use super::{traits::WithSubsystem, DatabaseBuilder};
+use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
 pub struct EmbeddedBuilder<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> {

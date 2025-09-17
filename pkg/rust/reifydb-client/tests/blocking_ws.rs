@@ -6,12 +6,13 @@ use std::{error::Error, path::Path};
 
 use common::{cleanup_server, cleanup_ws_client, create_server_instance};
 use reifydb::{
+	Database,
 	core::{
 		event::EventBus,
 		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 		retry,
 	},
-	memory, optimistic, Database,
+	memory, optimistic,
 };
 use reifydb_client::{WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};

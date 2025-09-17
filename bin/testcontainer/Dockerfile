@@ -3,7 +3,6 @@ FROM rust:1.85.1-slim AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config \
     libssl-dev \
-    protobuf-compiler \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /build
@@ -11,13 +10,17 @@ WORKDIR /build
 # Copy workspace root files
 COPY Cargo.toml Cargo.lock rust-toolchain ./
 
+# Copy vendor directory and cargo config for offline builds
+COPY vendor ./vendor
+COPY .cargo ./.cargo
+
 # Copy all workspace members
 COPY crates ./crates
 COPY pkg ./pkg
 COPY bin ./bin
 
 WORKDIR /build
-RUN cargo build --release --package testcontainer
+RUN cargo build --release --offline --package testcontainer
 
 FROM debian:bookworm-slim
 

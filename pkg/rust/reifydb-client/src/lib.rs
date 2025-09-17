@@ -17,7 +17,7 @@ pub use reifydb_type::{OrderedF32, OrderedF64, Params, Type, Value};
 use serde::{Deserialize, Serialize};
 pub use session::{CommandResult, QueryResult};
 pub use ws::{
-	client::WsClient, ChannelResponse, ResponseMessage, WsBlockingSession, WsCallbackSession, WsChannelSession,
+	ChannelResponse, ResponseMessage, WsBlockingSession, WsCallbackSession, WsChannelSession, client::WsClient,
 };
 
 // ============================================================================

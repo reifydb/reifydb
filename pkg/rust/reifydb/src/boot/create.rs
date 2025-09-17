@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	event::{lifecycle::OnCreateEvent, EventListener},
+	event::{EventListener, lifecycle::OnCreateEvent},
 	interface::{Engine as EngineInterface, Identity, Params, Transaction},
 	log_error,
 };

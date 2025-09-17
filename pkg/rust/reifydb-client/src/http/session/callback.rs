@@ -2,20 +2,20 @@
 // This file is licensed under the MIT
 
 use std::{
-	sync::{mpsc, Arc, Mutex},
+	sync::{Arc, Mutex, mpsc},
 	thread,
 	time::Duration,
 };
 
-use reifydb_type::{diagnostic::internal, Error};
+use reifydb_type::{Error, diagnostic::internal};
 
 use crate::{
+	Params,
 	http::{
 		client::HttpClient,
 		session::{HttpChannelResponse, HttpChannelSession, HttpResponseMessage},
 	},
 	session::{CommandResult, QueryResult},
-	Params,
 };
 
 /// A callback-based HTTP session for asynchronous operations

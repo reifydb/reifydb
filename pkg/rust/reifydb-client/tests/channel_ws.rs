@@ -10,12 +10,13 @@ use common::{
 	parse_rql, write_frames,
 };
 use reifydb::{
+	Database,
 	core::{
 		event::EventBus,
 		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 		retry,
 	},
-	memory, optimistic, Database,
+	memory, optimistic,
 };
 use reifydb_client::{ChannelResponse, ResponseMessage, WsChannelSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};

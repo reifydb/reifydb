@@ -3,7 +3,7 @@
 
 use std::net::ToSocketAddrs;
 
-use crate::{ws::client::WsClient, HttpClient};
+use crate::{HttpClient, ws::client::WsClient};
 
 /// Unified client that can be either WebSocket or HTTP
 #[derive(Clone)]

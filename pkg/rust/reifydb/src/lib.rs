@@ -28,10 +28,11 @@ pub use reifydb_cdc as cdc;
 // subsystems
 pub use reifydb_core as core;
 pub use reifydb_core::{
+	Error, Result,
 	event::EventBus,
 	interface::{Identity, Params, UnversionedTransaction, VersionedStorage, VersionedTransaction},
 	log, log_critical, log_debug, log_error, log_info, log_timed_critical, log_timed_debug, log_timed_error,
-	log_timed_info, log_timed_trace, log_timed_warn, log_trace, log_warn, Error, Result,
+	log_timed_info, log_timed_trace, log_timed_warn, log_trace, log_warn,
 };
 pub use reifydb_engine as engine;
 pub use reifydb_rql as rql;

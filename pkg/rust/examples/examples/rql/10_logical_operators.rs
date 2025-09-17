@@ -10,7 +10,7 @@
 //!
 //! Run with: `make rql-logical` or `cargo run --bin rql-logical`
 
-use reifydb::{embedded, log_info, Params, Session};
+use reifydb::{Params, Session, embedded, log_info};
 use reifydb_examples::log_query;
 
 fn main() {

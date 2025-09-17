@@ -7,7 +7,7 @@
 //!
 //! Run with: `make rql-from` or `cargo run --bin rql-from`
 
-use reifydb::{embedded, log_info, Params, Session};
+use reifydb::{Params, Session, embedded, log_info};
 use reifydb_examples::log_query;
 
 fn main() {

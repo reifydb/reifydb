@@ -3,13 +3,13 @@
 
 use num_bigint;
 use reifydb_type::{
-	err, parse_uuid4, parse_uuid7, util::hex, Blob, Date, DateTime, Decimal, Error, IdentityId, Int, RowNumber,
-	Time, Uint, Uuid7,
+	Blob, Date, DateTime, Decimal, Error, IdentityId, Int, RowNumber, Time, Uint, Uuid7, err, parse_uuid4,
+	parse_uuid7, util::hex,
 };
 
 use crate::{
-	domain::{Frame, FrameColumn},
 	OrderedF32, OrderedF64, Type, Value,
+	domain::{Frame, FrameColumn},
 };
 
 /// Result type for command operations

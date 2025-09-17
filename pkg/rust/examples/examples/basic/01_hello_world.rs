@@ -8,7 +8,7 @@
 //!
 //! Run with: `make hello-world` or `cargo run --bin hello-world`
 
-use reifydb::{embedded, log_info, Identity, MemoryDatabaseOptimistic, Params, Session};
+use reifydb::{Identity, MemoryDatabaseOptimistic, Params, Session, embedded, log_info};
 use reifydb_examples::log_query;
 
 // Type alias for our in-memory optimistic database

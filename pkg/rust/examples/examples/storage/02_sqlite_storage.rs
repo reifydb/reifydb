@@ -9,7 +9,7 @@
 
 use std::{fs, path::Path};
 
-use reifydb::{embedded, log_info, Params, Session, SqliteConfig};
+use reifydb::{Params, Session, SqliteConfig, embedded, log_info};
 use reifydb_examples::log_query;
 
 fn main() {

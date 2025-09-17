@@ -4,18 +4,19 @@
 use std::{
 	collections::HashMap,
 	sync::{
-		atomic::{AtomicBool, Ordering},
 		Arc,
+		atomic::{AtomicBool, Ordering},
 	},
 	time::Duration,
 };
 
 use reifydb_core::{
+	Result,
 	event::lifecycle::OnStartEvent,
 	interface::{
-		subsystem::HealthStatus, CdcTransaction, UnversionedTransaction, VersionedTransaction, WithEventBus,
+		CdcTransaction, UnversionedTransaction, VersionedTransaction, WithEventBus, subsystem::HealthStatus,
 	},
-	log_debug, log_error, log_timed_trace, log_warn, Result,
+	log_debug, log_error, log_timed_trace, log_warn,
 };
 use reifydb_engine::{EngineTransaction, StandardEngine};
 #[cfg(feature = "sub_server")]

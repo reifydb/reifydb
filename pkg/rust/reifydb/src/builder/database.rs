@@ -4,18 +4,19 @@
 use std::{sync::Arc, time::Duration};
 
 use reifydb_auth::AuthVersion;
-use reifydb_catalog::{system::SystemCatalog, CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader};
+use reifydb_catalog::{CatalogVersion, MaterializedCatalog, MaterializedCatalogLoader, system::SystemCatalog};
 use reifydb_cdc::CdcVersion;
 use reifydb_core::{
+	CoreVersion,
 	event::EventBus,
 	interceptor::StandardInterceptorBuilder,
 	interface::{
+		CdcTransaction, UnversionedTransaction, VersionedTransaction,
 		subsystem::SubsystemFactory,
 		version::{ComponentType, HasVersion, SystemVersion},
-		CdcTransaction, UnversionedTransaction, VersionedTransaction,
 	},
 	ioc::IocContainer,
-	log_timed_debug, CoreVersion,
+	log_timed_debug,
 };
 use reifydb_engine::{
 	EngineTransaction, EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction,

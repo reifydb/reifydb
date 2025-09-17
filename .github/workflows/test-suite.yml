@@ -42,14 +42,8 @@ jobs:
         run: |
           export CARGO_TARGET_DIR=$(realpath reifydb/target)
           # First build the crates workspace (foundation libraries)
-          cd reifydb/crates
+          cd reifydb
           cargo build --workspace
-          # Then build pkg/rust/reifydb which testsuite depends on
-          cd ../pkg/rust/reifydb
-          cargo build
-          # Finally build pkg/rust/reifydb-client
-          cd ../reifydb-client
-          cargo build
 
       - name: 💾 Upload workspace
         uses: actions/upload-artifact@v4

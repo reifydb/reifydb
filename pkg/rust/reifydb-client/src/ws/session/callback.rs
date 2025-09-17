@@ -2,18 +2,18 @@
 // This file is licensed under the MIT
 
 use std::{
-	sync::{mpsc, Arc, Mutex},
+	sync::{Arc, Mutex, mpsc},
 	thread,
 	time::Duration,
 };
 
 use crate::{
+	Params,
 	session::{CommandResult, QueryResult},
 	ws::{
 		client::ClientInner,
 		session::{ChannelResponse, ChannelSession, ResponseMessage},
 	},
-	Params,
 };
 
 /// A callback-based session for asynchronous operations

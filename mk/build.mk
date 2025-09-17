@@ -2,42 +2,22 @@
 # Build Targets - Build all packages
 # =============================================================================
 
-.PHONY: build build-crates build-bin build-pkg-rust build-pkg-typescript
+.PHONY: build build-workspace build-pkg-typescript
 
 # Main build target - builds everything
-build: build-crates build-bin build-pkg-rust build-pkg-typescript
+build: build-workspace build-pkg-typescript
 	@echo "✅ All packages built successfully!"
 
-# Build crates/ workspace packages
-build-crates:
-	@echo "🏗️ Building crates/ workspace packages..."
-	@if [ -d "crates/vendor" ]; then \
+# Build entire Rust workspace (includes crates/, bin/, and pkg/rust/)
+build-workspace:
+	@echo "🏗️ Building Rust workspace..."
+	@if [ -d "vendor" ]; then \
 		echo "Using vendored dependencies (offline mode)"; \
-		cd crates && cargo build --release --workspace --offline; \
+		cargo build --release --workspace --offline; \
 	else \
 		echo "Using network dependencies"; \
-		cd crates && cargo build --release --workspace; \
+		cargo build --release --workspace; \
 	fi
-
-# Build bin/ packages
-build-bin:
-	@echo "🏗️ Building bin/ packages..."
-	@for dir in bin/cli bin/server bin/playground bin/testcontainer; do \
-		if [ -d "$$dir" ]; then \
-			echo "  Building $$dir..."; \
-			cd $$dir && cargo build --release $(CARGO_OFFLINE) 2>/dev/null || true && cd - >/dev/null; \
-		fi; \
-	done
-
-# Build pkg/rust packages
-build-pkg-rust:
-	@echo "🏗️ Building pkg/rust packages..."
-	@for dir in pkg/rust/reifydb pkg/rust/reifydb-client pkg/rust/examples; do \
-		if [ -d "$$dir" ]; then \
-			echo "  Building $$dir..."; \
-			cd $$dir && cargo build --release $(CARGO_OFFLINE) 2>/dev/null || true && cd - >/dev/null; \
-		fi; \
-	done
 
 # Build pkg/typescript packages
 build-pkg-typescript:
@@ -49,7 +29,7 @@ build-pkg-typescript:
 		cd pkg/typescript && pnpm build 2>/dev/null || npm run build 2>/dev/null || true; \
 	fi
 
-# Build with vendored dependencies (helper script wrapper)
+# Build with vendored dependencies
 build-vendored:
 	@echo "🏗️ Building with vendored dependencies..."
-	@./mk/build-vendored.sh
+	@cargo build --release --workspace --offline

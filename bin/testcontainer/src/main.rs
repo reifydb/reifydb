@@ -4,11 +4,11 @@
 use std::time::Duration;
 
 use reifydb::{
+	WithSubsystem,
 	core::interface::subsystem::logging::LogLevel,
 	server,
 	sub_logging::{FormatStyle, LoggingBuilder},
 	sub_server::ServerConfig,
-	WithSubsystem,
 };
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {

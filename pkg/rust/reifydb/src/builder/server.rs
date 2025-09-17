@@ -4,7 +4,7 @@
 use reifydb_core::{
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::{subsystem::SubsystemFactory, CdcTransaction, UnversionedTransaction, VersionedTransaction},
+	interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction, subsystem::SubsystemFactory},
 };
 use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
 #[cfg(feature = "sub_admin")]
@@ -16,7 +16,7 @@ use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::{ServerConfig, ServerSubsystemFactory};
 
-use super::{traits::WithSubsystem, DatabaseBuilder};
+use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
 #[cfg(feature = "sub_server")]

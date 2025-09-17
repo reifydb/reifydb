@@ -15,16 +15,17 @@ use common::{
 	cleanup_server, parse_named_params, parse_positional_params, parse_rql, start_server_and_get_port, write_frames,
 };
 use reifydb::{
+	Database,
 	core::{
 		event::EventBus,
 		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 		retry,
 	},
-	memory, optimistic, Database,
+	memory, optimistic,
 };
 use reifydb_client::{
-	session::{CommandResult, QueryResult},
 	HttpCallbackSession, HttpClient,
+	session::{CommandResult, QueryResult},
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;

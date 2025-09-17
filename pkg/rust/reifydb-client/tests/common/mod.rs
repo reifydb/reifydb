@@ -4,12 +4,12 @@
 use std::{collections::HashMap, error::Error, fmt::Write, net::ToSocketAddrs};
 
 use reifydb::{
+	Database, ServerBuilder,
 	core::{
 		event::EventBus,
 		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 	},
 	sub_server::{NetworkConfig, ServerConfig},
-	Database, ServerBuilder,
 };
 use reifydb_client::{Client, Frame, HttpClient, Params, Value, WsClient};
 use reifydb_testing::testscript::Command;

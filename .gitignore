@@ -1,4 +1,9 @@
-**/target
+# Rust build directories
+/target/
+/crates/*/target/
+/bin/*/target/
+/pkg/rust/*/target/
+/pkg/rust/tests/*/target/
 .idea
 .run
 .venv
