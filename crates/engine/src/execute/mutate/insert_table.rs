@@ -14,7 +14,7 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 	value::columnar::Columns,
 };
-use reifydb_rql::plan::physical::InsertPlan;
+use reifydb_rql::plan::physical::InsertTablePlan;
 use reifydb_type::{IntoFragment, Type, Value, diagnostic::catalog::table_not_found};
 
 use super::primary_key;
@@ -28,10 +28,10 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn insert<T: Transaction>(
+	pub(crate) fn insert_table<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: InsertPlan,
+		plan: InsertTablePlan,
 		params: Params,
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.target.namespace.text();
@@ -191,60 +191,6 @@ impl Executor {
 						row_number_encoded,
 					)?;
 				}
-
-				// /////
-				//
-				// let frame = self
-				// 	.execute_command(
-				// 		txn,
-				// 		Command {
-				// 			rql: "FROM reifydb.flows filter { id == 1
-				// } map { cast(data, utf8) }", 			params:
-				// Params::None, 			identity:
-				// 				&Identity::root(
-				// 				),
-				// 		},
-				// 	)
-				// 	.unwrap()
-				// 	.pop()
-				// 	.unwrap();
-				//
-				// let value = frame[0].get_value(0);
-				// if matches!(value, Value::Undefined) {
-				// 	continue;
-				// }
-				//
-				// let flow: Flow = serde_json::from_str(
-				// 	value.to_string().as_str(),
-				// )
-				// .unwrap();
-				//
-				// let layout = table.get_layout();
-				//
-				// let mut columns =
-				// 	Columns::from_table_def(&table);
-				// columns.append_rows(&layout, [row]).unwrap();
-				//
-				// let mut engine = FlowEngine::new(
-				// 	StandardEvaluator::default(),
-				// );
-				// engine.register(flow).unwrap();
-				//
-				// engine.process(
-				// 	txn,
-				// 	Change {
-				// 		diffs: vec![Diff::Insert {
-				// 			source: SourceId::Table(
-				// 				table.id,
-				// 			),
-				// 			after: columns,
-				// 		}],
-				// 		metadata: Default::default(),
-				// 	},
-				// )
-				// .unwrap();
-				//
-				// ////
 
 				inserted_count += 1;
 			}

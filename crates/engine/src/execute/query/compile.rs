@@ -204,7 +204,8 @@ pub(crate) fn compile<'a, T: Transaction>(
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::CreateRingBuffer(_)
 		| PhysicalPlan::Delete(_)
-		| PhysicalPlan::Insert(_)
+		| PhysicalPlan::InsertTable(_)
+		| PhysicalPlan::InsertRingBuffer(_)
 		| PhysicalPlan::Update(_)
 		| PhysicalPlan::Distinct(_) => unreachable!(),
 		PhysicalPlan::Apply(_) => {

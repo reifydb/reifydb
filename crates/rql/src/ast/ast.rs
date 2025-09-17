@@ -9,7 +9,8 @@ use reifydb_type::Fragment;
 use crate::ast::{
 	identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier,
-		MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier, UnqualifiedIdentifier,
+		MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
+		UnqualifiedIdentifier,
 	},
 	tokenize::{Literal, ParameterKind, Token, TokenKind},
 };
@@ -611,7 +612,7 @@ pub struct AstAlterSequence<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstAlterTable<'a> {
 	pub token: Token<'a>,
-	pub table: crate::ast::identifier::MaybeQualifiedTableIdentifier<'a>,
+	pub table: MaybeQualifiedTableIdentifier<'a>,
 	pub operations: Vec<AstAlterTableOperation<'a>>,
 }
 
@@ -672,7 +673,7 @@ pub struct AstCreateSeries<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateTable<'a> {
 	pub token: Token<'a>,
-	pub table: crate::ast::identifier::MaybeQualifiedTableIdentifier<'a>,
+	pub table: MaybeQualifiedTableIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 }
 
@@ -903,19 +904,19 @@ pub struct AstInfix<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstDelete<'a> {
 	pub token: Token<'a>,
-	pub target: Option<crate::ast::identifier::MaybeQualifiedTableIdentifier<'a>>,
+	pub target: Option<UnresolvedSourceIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstInsert<'a> {
 	pub token: Token<'a>,
-	pub target: crate::ast::identifier::MaybeQualifiedTableIdentifier<'a>,
+	pub target: Option<UnresolvedSourceIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstUpdate<'a> {
 	pub token: Token<'a>,
-	pub target: Option<crate::ast::identifier::MaybeQualifiedTableIdentifier<'a>>,
+	pub target: Option<UnresolvedSourceIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

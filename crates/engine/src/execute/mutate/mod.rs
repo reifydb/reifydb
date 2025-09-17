@@ -3,6 +3,7 @@
 
 mod coerce;
 mod delete;
-mod insert;
+mod insert_ring_buffer;
+mod insert_table;
 mod primary_key;
 mod update;

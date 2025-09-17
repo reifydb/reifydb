@@ -247,7 +247,8 @@ impl Executor {
 			| PhysicalPlan::Extend(_)
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::Delete(_)
-			| PhysicalPlan::Insert(_)
+			| PhysicalPlan::InsertTable(_)
+			| PhysicalPlan::InsertRingBuffer(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
@@ -289,7 +290,8 @@ impl Executor {
 			PhysicalPlan::CreateTable(plan) => self.create_table(txn, plan),
 			PhysicalPlan::CreateRingBuffer(plan) => self.create_ring_buffer(txn, plan),
 			PhysicalPlan::Delete(plan) => self.delete(txn, plan, params),
-			PhysicalPlan::Insert(plan) => self.insert(txn, plan, params),
+			PhysicalPlan::InsertTable(plan) => self.insert_table(txn, plan, params),
+			PhysicalPlan::InsertRingBuffer(plan) => self.insert_ring_buffer(txn, plan, params),
 			PhysicalPlan::Update(plan) => self.update(txn, plan, params),
 
 			PhysicalPlan::Aggregate(_)

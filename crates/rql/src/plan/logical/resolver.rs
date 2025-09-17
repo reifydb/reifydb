@@ -1177,6 +1177,42 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		Ok(ring_buffer)
 	}
 
+	/// Helper method to resolve an unresolved source as a table
+	pub fn resolve_source_as_table<'a>(
+		&mut self,
+		namespace: Option<&Fragment<'a>>,
+		name: &Fragment<'a>,
+		validate_existence: bool,
+	) -> Result<TableIdentifier<'static>> {
+		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
+
+		let table_id = if let Some(ns) = namespace {
+			MaybeQualifiedTableIdentifier::new(name.clone()).with_namespace(ns.clone())
+		} else {
+			MaybeQualifiedTableIdentifier::new(name.clone())
+		};
+
+		self.resolve_maybe_qualified_table(&table_id, validate_existence)
+	}
+
+	/// Helper method to resolve an unresolved source as a ring buffer
+	pub fn resolve_source_as_ring_buffer<'a>(
+		&mut self,
+		namespace: Option<&Fragment<'a>>,
+		name: &Fragment<'a>,
+		validate_existence: bool,
+	) -> Result<RingBufferIdentifier<'static>> {
+		use crate::ast::identifier::MaybeQualifiedRingBufferIdentifier;
+
+		let ring_buffer_id = if let Some(ns) = namespace {
+			MaybeQualifiedRingBufferIdentifier::new(name.clone()).with_namespace(ns.clone())
+		} else {
+			MaybeQualifiedRingBufferIdentifier::new(name.clone())
+		};
+
+		self.resolve_maybe_qualified_ring_buffer(&ring_buffer_id, validate_existence)
+	}
+
 	/// Resolve a MaybeQualifiedDeferredViewIdentifier specifically
 	pub fn resolve_maybe_qualified_deferred_view<'a>(
 		&mut self,

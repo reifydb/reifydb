@@ -14,7 +14,7 @@ jobs:
 
     strategy:
       matrix:
-        suite: [ smoke, compatibility, diagnostic, functional, integration, stress ]
+        suite: [ smoke, catalog, diagnostic, error, flow, function, integration, stress, value ]
 
     steps:
       - name: ⬇️ Checkout main repo

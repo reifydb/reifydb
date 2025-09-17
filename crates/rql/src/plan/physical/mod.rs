@@ -124,11 +124,19 @@ impl Compiler {
 					}))
 				}
 
-				LogicalPlan::Insert(insert) => {
+				LogicalPlan::InsertTable(insert) => {
 					let input = stack.pop().unwrap();
-					stack.push(PhysicalPlan::Insert(InsertPlan {
+					stack.push(PhysicalPlan::InsertTable(InsertTablePlan {
 						input: Box::new(input),
 						target: insert.target.clone(),
+					}))
+				}
+
+				LogicalPlan::InsertRingBuffer(insert_rb) => {
+					let input = stack.pop().unwrap();
+					stack.push(PhysicalPlan::InsertRingBuffer(InsertRingBufferPlan {
+						input: Box::new(input),
+						target: insert_rb.target.clone(),
 					}))
 				}
 
@@ -355,7 +363,8 @@ pub enum PhysicalPlan<'a> {
 	AlterView(AlterViewPlan<'a>),
 	// Mutate
 	Delete(DeletePlan<'a>),
-	Insert(InsertPlan<'a>),
+	InsertTable(InsertTablePlan<'a>),
+	InsertRingBuffer(InsertRingBufferPlan<'a>),
 	Update(UpdatePlan<'a>),
 
 	// Query
@@ -451,9 +460,15 @@ pub struct DeletePlan<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct InsertPlan<'a> {
+pub struct InsertTablePlan<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
 	pub target: TableIdentifier<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct InsertRingBufferPlan<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub target: RingBufferIdentifier<'a>,
 }
 
 #[derive(Debug, Clone)]

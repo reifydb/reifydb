@@ -85,7 +85,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			write_node_header(output, prefix, is_last, &label);
 		}
 		PhysicalPlan::Delete(_) => unimplemented!(),
-		PhysicalPlan::Insert(_) => unimplemented!(),
+		PhysicalPlan::InsertTable(_) => unimplemented!(),
+		PhysicalPlan::InsertRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::Update(_) => unimplemented!(),
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,

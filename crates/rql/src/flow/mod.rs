@@ -137,7 +137,8 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			| PhysicalPlan::AlterView(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
-			| PhysicalPlan::Insert(_)
+			| PhysicalPlan::InsertTable(_)
+			| PhysicalPlan::InsertRingBuffer(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::Delete(_) => {
 				unreachable!()

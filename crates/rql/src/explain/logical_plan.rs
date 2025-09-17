@@ -153,7 +153,8 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				render_logical_plan_inner(input, &pipeline_prefix, true, output);
 			}
 		}
-		LogicalPlan::Insert(_) => unimplemented!(),
+		LogicalPlan::InsertTable(_) => unimplemented!(),
+		LogicalPlan::InsertRingBuffer(_) => unimplemented!(),
 		LogicalPlan::Update(update) => {
 			output.push_str(&format!("{}{} Update\n", prefix, branch));
 

@@ -88,8 +88,12 @@ impl Compiler {
 							// TableIdentifier since
 							// UPDATE only works on
 							// tables
-							let target = if let Some(t) = &update_ast.target {
-								Some(resolver.resolve_maybe_qualified_table(t, true)?)
+							let target = if let Some(unresolved) = &update_ast.target {
+								Some(resolver.resolve_source_as_table(
+									unresolved.namespace.as_ref(),
+									&unresolved.name,
+									true,
+								)?)
 							} else {
 								None
 							};
@@ -112,8 +116,12 @@ impl Compiler {
 							// TableIdentifier since
 							// DELETE only works on
 							// tables
-							let target = if let Some(t) = &delete_ast.target {
-								Some(resolver.resolve_maybe_qualified_table(t, true)?)
+							let target = if let Some(unresolved) = &delete_ast.target {
+								Some(resolver.resolve_source_as_table(
+									unresolved.namespace.as_ref(),
+									&unresolved.name,
+									true,
+								)?)
 							} else {
 								None
 							};
@@ -216,7 +224,8 @@ pub enum LogicalPlan<'a> {
 	AlterView(AlterViewNode<'a>),
 	// Mutate
 	Delete(DeleteNode<'a>),
-	Insert(InsertNode<'a>),
+	InsertTable(InsertTableNode<'a>),
+	InsertRingBuffer(InsertRingBufferNode<'a>),
 	Update(UpdateNode<'a>),
 	// Query
 	Aggregate(AggregateNode<'a>),
@@ -313,8 +322,13 @@ pub struct DeleteNode<'a> {
 }
 
 #[derive(Debug)]
-pub struct InsertNode<'a> {
+pub struct InsertTableNode<'a> {
 	pub target: TableIdentifier<'a>,
+}
+
+#[derive(Debug)]
+pub struct InsertRingBufferNode<'a> {
+	pub target: RingBufferIdentifier<'a>,
 }
 
 #[derive(Debug)]

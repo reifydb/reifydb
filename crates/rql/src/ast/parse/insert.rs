@@ -11,18 +11,20 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert<'a>> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
-		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
+		use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
 		let first_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 		let target = if self.current_expect_operator(Operator::Dot).is_ok() {
 			self.consume_operator(Operator::Dot)?;
 			let second_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
-			// namespace.table
-			MaybeQualifiedTableIdentifier::new(second_token.fragment.clone())
-				.with_namespace(first_token.fragment.clone())
+			// namespace.source
+			Some(UnresolvedSourceIdentifier::new(
+				Some(first_token.fragment.clone()),
+				second_token.fragment.clone(),
+			))
 		} else {
-			// table only
-			MaybeQualifiedTableIdentifier::new(first_token.fragment.clone())
+			// source only
+			Some(UnresolvedSourceIdentifier::new(None, first_token.fragment.clone()))
 		};
 
 		Ok(AstInsert {
@@ -56,6 +58,7 @@ mod tests {
 				target,
 				..
 			} => {
+				let target = target.as_ref().expect("Should have target");
 				assert_eq!(target.namespace.as_ref().unwrap().text(), "test");
 				assert_eq!(target.name.text(), "users");
 			}
@@ -82,6 +85,7 @@ mod tests {
 				target,
 				..
 			} => {
+				let target = target.as_ref().expect("Should have target");
 				assert!(target.namespace.is_none());
 				assert_eq!(target.name.text(), "users");
 			}

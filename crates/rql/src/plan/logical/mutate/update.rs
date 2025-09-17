@@ -13,10 +13,11 @@ impl Compiler {
 		ast: AstUpdate<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Resolve directly to TableIdentifier since UPDATE only works
-		// on tables
-		let target = if let Some(t) = &ast.target {
-			Some(resolver.resolve_maybe_qualified_table(t, true)?)
+		// Resolve the unresolved source to a table
+		// (UPDATE currently only supports tables, not ring buffers)
+		let target = if let Some(unresolved) = &ast.target {
+			// Try to resolve as table
+			Some(resolver.resolve_source_as_table(unresolved.namespace.as_ref(), &unresolved.name, true)?)
 		} else {
 			None
 		};
