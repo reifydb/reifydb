@@ -81,7 +81,7 @@ pub struct Database<VT: VersionedTransaction, UT: UnversionedTransaction, C: Cdc
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
 	#[cfg(feature = "sub_worker")]
-	scheduler: Arc<dyn Scheduler>,
+	scheduler: Arc<dyn Scheduler<EngineTransaction<VT, UT, C>>>,
 }
 
 impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Database<VT, UT, C> {
@@ -102,7 +102,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
-		#[cfg(feature = "sub_worker")] scheduler: Arc<dyn Scheduler>,
+		#[cfg(feature = "sub_worker")] scheduler: Arc<dyn Scheduler<EngineTransaction<VT, UT, C>>>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -242,7 +242,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 	}
 
 	#[cfg(feature = "sub_worker")]
-	pub fn scheduler(&self) -> Arc<dyn Scheduler> {
+	pub fn scheduler(&self) -> Arc<dyn Scheduler<EngineTransaction<VT, UT, C>>> {
 		self.scheduler.clone()
 	}
 
@@ -319,7 +319,7 @@ where
 	}
 
 	#[cfg(feature = "sub_worker")]
-	fn scheduler(&self) -> Arc<dyn Scheduler> {
+	fn scheduler(&self) -> Arc<dyn Scheduler<EngineTransaction<VT, UT, C>>> {
 		self.scheduler.clone()
 	}
 }

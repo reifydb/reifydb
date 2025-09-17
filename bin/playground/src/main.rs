@@ -13,10 +13,10 @@ use std::{
 };
 
 use reifydb::{
-	ClosureTask, MemoryDatabaseOptimistic, Priority, TaskContext, WithSubsystem,
+	ClosureTask, Identity, MemoryDatabaseOptimistic, Params, Priority, WithSubsystem,
 	core::{
 		flow::FlowChange,
-		interface::{FlowNodeId, Transaction, logging::LogLevel::Info},
+		interface::{Engine, FlowNodeId, Transaction, logging::LogLevel::Info},
 	},
 	embedded,
 	engine::{StandardCommandTransaction, StandardEvaluator},
@@ -72,7 +72,12 @@ fn main() {
 	let counter = Arc::new(AtomicUsize::new(0));
 	let counter_clone = counter.clone();
 
-	let task = Box::new(ClosureTask::new("periodic_printer", Priority::Low, move |_ctx: &TaskContext| {
+	let task = Box::new(ClosureTask::new("periodic_printer", Priority::Low, move |ctx| {
+		let frames = ctx.engine().query_as(&Identity::root(), "MAP 1", Params::None).unwrap();
+		for frame in frames {
+			println!("{}", frame);
+		}
+
 		let count = counter_clone.fetch_add(1, Ordering::Relaxed);
 		log_info!("Background task execution #{}", count + 1);
 		Ok(())

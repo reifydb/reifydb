@@ -30,7 +30,7 @@ pub trait Session<T: Transaction> {
 	fn query_session(&self, session: impl IntoQuerySession<T>) -> crate::Result<QuerySession<T>>;
 
 	#[cfg(feature = "sub_worker")]
-	fn scheduler(&self) -> Arc<dyn Scheduler>;
+	fn scheduler(&self) -> Arc<dyn Scheduler<T>>;
 
 	fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let session = self.command_session(Identity::root())?;
