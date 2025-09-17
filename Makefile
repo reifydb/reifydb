@@ -84,7 +84,7 @@ help:
 # =============================================================================
 
 .PHONY: all
-all: check clean build-testcontainer test-full build push-testcontainer push
+all: check clean build build-testcontainer test-full push-testcontainer push
 
 .PHONY: check
 check:

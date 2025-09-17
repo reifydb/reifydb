@@ -44,7 +44,7 @@ pub use reifydb_storage::{
 #[cfg(feature = "sub_admin")]
 pub use reifydb_sub_admin as sub_admin;
 #[cfg(feature = "sub_worker")]
-pub use reifydb_sub_api::{ClosureTask, Priority, Scheduler, TaskContext, TaskHandle};
+pub use reifydb_sub_api::{ClosureTask, Priority, Scheduler, TaskContext, TaskHandle, task};
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_logging")]
