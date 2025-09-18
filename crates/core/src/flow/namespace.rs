@@ -7,8 +7,8 @@ use crate::interface::ColumnDef;
 
 /// Namespace information for a flow node, including column definitions
 /// and source identification for fully qualified column references
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct FlowNodeSchema {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FlowNodeDef {
 	/// Column definitions for this node's output
 	pub columns: Vec<ColumnDef>,
 	/// Database namespace name (e.g., "test", "public")
@@ -17,7 +17,7 @@ pub struct FlowNodeSchema {
 	pub source_name: Option<String>,
 }
 
-impl FlowNodeSchema {
+impl FlowNodeDef {
 	/// Create a new FlowNodeSchema
 	pub fn new(columns: Vec<ColumnDef>, namespace_name: Option<String>, source_name: Option<String>) -> Self {
 		Self {

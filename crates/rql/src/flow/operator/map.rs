@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Map},
+	flow::{FlowNodeDef, FlowNodeType::Operator, OperatorType::Map},
 	interface::{
 		ColumnDef, ColumnId, ColumnIndex, CommandTransaction, FlowNodeId, evaluate::expression::Expression,
 	},
@@ -25,7 +25,7 @@ pub(crate) struct MapCompiler {
 
 impl MapCompiler {
 	/// Compute the output namespace from Map expressions
-	pub(crate) fn compute_output_schema(&self, input_schema: &FlowNodeSchema) -> FlowNodeSchema {
+	pub(crate) fn compute_output_schema(&self, input_schema: &FlowNodeDef) -> FlowNodeDef {
 		let mut columns = Vec::new();
 
 		for (idx, expr) in self.expressions.iter().enumerate() {
@@ -64,7 +64,7 @@ impl MapCompiler {
 		}
 
 		// Preserve namespace and source names from input if available
-		FlowNodeSchema {
+		FlowNodeDef {
 			columns,
 			namespace_name: input_schema.namespace_name.clone(),
 			source_name: None, /* Map output doesn't have a
@@ -89,7 +89,7 @@ impl<T: CommandTransaction> CompileOperator<T> for MapCompiler {
 			let (node_id, namespace) = compiler.compile_plan_with_schema(*input)?;
 			(Some(node_id), namespace)
 		} else {
-			(None, FlowNodeSchema::empty())
+			(None, FlowNodeDef::empty())
 		};
 
 		// Compute output namespace based on Map expressions

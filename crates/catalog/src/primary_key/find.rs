@@ -40,6 +40,10 @@ impl CatalogStore {
 					None => return Ok(None),
 				}
 			}
+			SourceId::FlowNode(_) => {
+				// Flow nodes don't have primary keys
+				return Ok(None);
+			}
 		};
 
 		// Fetch the primary key details

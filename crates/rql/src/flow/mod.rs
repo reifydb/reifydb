@@ -18,7 +18,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	flow,
-	flow::{Flow, FlowEdge, FlowNode, FlowNodeSchema, FlowNodeType},
+	flow::{Flow, FlowEdge, FlowNode, FlowNodeDef, FlowNodeType},
 	interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef},
 };
 
@@ -162,7 +162,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	pub(crate) fn compile_plan_with_schema(
 		&mut self,
 		plan: PhysicalPlan,
-	) -> crate::Result<(FlowNodeId, FlowNodeSchema)> {
+	) -> crate::Result<(FlowNodeId, FlowNodeDef)> {
 		match plan {
 			PhysicalPlan::TableScan(table_scan) => {
 				// The table_scan already has the table
@@ -171,7 +171,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				let namespace_def =
 					CatalogStore::get_namespace(unsafe { &mut *self.txn }, table.namespace)?;
 
-				let namespace = FlowNodeSchema::new(
+				let namespace = FlowNodeDef::new(
 					table.columns.clone(),
 					Some(namespace_def.name.clone()),
 					Some(table.name.clone()),
@@ -186,7 +186,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				let namespace_def =
 					CatalogStore::get_namespace(unsafe { &mut *self.txn }, view.namespace)?;
 
-				let namespace = FlowNodeSchema::new(
+				let namespace = FlowNodeDef::new(
 					view.columns.clone(),
 					Some(namespace_def.name.clone()),
 					Some(view.name.clone()),
@@ -201,7 +201,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				let node_id = JoinCompiler::from(join).compile(self)?;
 				// For now return empty namespace - we could
 				// extract it from the flow node if needed
-				Ok((node_id, FlowNodeSchema::empty()))
+				Ok((node_id, FlowNodeDef::empty()))
 			}
 			PhysicalPlan::JoinLeft(join) => {
 				// The JoinCompiler will handle compilation with
@@ -209,7 +209,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				let node_id = JoinCompiler::from(join).compile(self)?;
 				// For now return empty namespace - we could
 				// extract it from the flow node if needed
-				Ok((node_id, FlowNodeSchema::empty()))
+				Ok((node_id, FlowNodeDef::empty()))
 			}
 			PhysicalPlan::Map(map) => {
 				// Map needs special handling to compute output
@@ -225,7 +225,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 					let (_, namespace) = self.compile_plan_with_schema(input_plan)?;
 					namespace
 				} else {
-					FlowNodeSchema::empty()
+					FlowNodeDef::empty()
 				};
 
 				// Compute the output namespace
@@ -240,7 +240,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			// empty namespace for now
 			_ => {
 				let node_id = self.compile_plan(plan)?;
-				Ok((node_id, FlowNodeSchema::empty()))
+				Ok((node_id, FlowNodeDef::empty()))
 			}
 		}
 	}
@@ -265,8 +265,8 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				expressions: to_owned_expressions(map_node.map),
 				view_id: sink.id,
 			},
-			input_schemas: vec![FlowNodeSchema::empty()],
-			output_schema: FlowNodeSchema::empty(),
+			input_schemas: vec![FlowNodeDef::empty()],
+			output_schema: FlowNodeDef::empty(),
 		});
 
 		if let Some(input) = input_node {

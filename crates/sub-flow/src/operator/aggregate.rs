@@ -6,9 +6,7 @@ use std::{
 use reifydb_core::{
 	EncodedKey,
 	flow::{FlowChange, FlowDiff},
-	interface::{
-		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId, Transaction, ViewId, expression::Expression,
-	},
+	interface::{EvaluationContext, Evaluator, FlowNodeId, Params, SourceId, Transaction, expression::Expression},
 	row::EncodedRow,
 	util::{CowVec, encoding::keycode},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
@@ -361,7 +359,7 @@ impl AggregateOperator {
 					}
 
 					output_diffs.push(FlowDiff::Update {
-						source: SourceId::View(ViewId(1)),
+						source: SourceId::FlowNode(self.node),
 						row_ids: update_row_ids,
 						pre: previous.clone(),
 						post: columns.clone(),
@@ -382,7 +380,7 @@ impl AggregateOperator {
 					}
 
 					output_diffs.push(FlowDiff::Insert {
-						source: SourceId::View(ViewId(1)),
+						source: SourceId::FlowNode(self.node),
 						row_ids: insert_row_ids,
 						post: columns.clone(),
 					});
@@ -413,7 +411,7 @@ impl AggregateOperator {
 				}
 
 				output_diffs.push(FlowDiff::Remove {
-					source: SourceId::View(ViewId(1)),
+					source: SourceId::FlowNode(self.node),
 					row_ids: remove_row_ids,
 					pre: before_columns,
 				});

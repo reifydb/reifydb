@@ -5,7 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	EncodedKey, JoinType,
-	flow::{FlowChange, FlowDiff, FlowNodeSchema},
+	flow::{FlowChange, FlowDiff, FlowNodeDef},
 	interface::{
 		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId, Transaction,
 		evaluate::expression::{ColumnExpression, Expression},
@@ -53,8 +53,8 @@ pub struct JoinOperator {
 	join_type: JoinType,
 	left_keys: Vec<Expression<'static>>,
 	right_keys: Vec<Expression<'static>>,
-	left_schema: FlowNodeSchema,
-	right_schema: FlowNodeSchema,
+	left_schema: FlowNodeDef,
+	right_schema: FlowNodeDef,
 	join_instance_id: u64,
 	// Track which source corresponds to which side for repeated tables
 	// This should be populated when multiple joins use the same table
@@ -68,8 +68,8 @@ impl JoinOperator {
 		join_type: JoinType,
 		left_keys: Vec<Expression<'static>>,
 		right_keys: Vec<Expression<'static>>,
-		left_schema: FlowNodeSchema,
-		right_schema: FlowNodeSchema,
+		left_schema: FlowNodeDef,
+		right_schema: FlowNodeDef,
 	) -> Self {
 		Self {
 			node,
@@ -289,8 +289,8 @@ impl JoinOperator {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		columns: &Columns,
-		left_schema: &FlowNodeSchema,
-		right_schema: &FlowNodeSchema,
+		left_schema: &FlowNodeDef,
+		right_schema: &FlowNodeDef,
 		from_node_id: u64,
 	) -> Result<(JoinMetadata, bool)> {
 		// Use a special key for metadata (empty key)
@@ -428,8 +428,8 @@ impl JoinOperator {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		columns: &Columns,
-		left_schema: &FlowNodeSchema,
-		right_schema: &FlowNodeSchema,
+		left_schema: &FlowNodeDef,
+		right_schema: &FlowNodeDef,
 	) -> Result<(JoinMetadata, bool)> {
 		// Use a special key for metadata (empty key)
 		let metadata_key = EncodedKey::new(Vec::new());
@@ -531,7 +531,7 @@ impl JoinOperator {
 	}
 
 	// Combine left and right rows into output columns
-	fn combine_rows(&self, left_row: &StoredRow, right_row: Option<&StoredRow>, source_id: SourceId) -> FlowDiff {
+	fn combine_rows(&self, left_row: &StoredRow, right_row: Option<&StoredRow>, _source_id: SourceId) -> FlowDiff {
 		let mut column_vec = Vec::new();
 		let row_ids = vec![left_row.row_id];
 
@@ -655,7 +655,7 @@ impl JoinOperator {
 		let columns = Columns::new(column_vec);
 
 		FlowDiff::Insert {
-			source: source_id,
+			source: SourceId::FlowNode(self.node),
 			row_ids,
 			post: columns,
 		}
@@ -826,7 +826,7 @@ impl JoinOperator {
 				let columns = Columns::new(column_vec);
 
 				output_diffs.push(FlowDiff::Remove {
-					source,
+					source: SourceId::FlowNode(self.node),
 					row_ids: vec![row_id],
 					pre: columns,
 				});
@@ -854,7 +854,7 @@ impl JoinOperator {
 					let columns = Columns::new(column_vec);
 
 					output_diffs.push(FlowDiff::Remove {
-						source,
+						source: SourceId::FlowNode(self.node),
 						row_ids: vec![other_row.row_id],
 						pre: columns,
 					});

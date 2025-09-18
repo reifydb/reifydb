@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	SortKey,
-	flow::{FlowNodeSchema, FlowNodeType::Operator, OperatorType::Sort},
+	flow::{FlowNodeDef, FlowNodeType::Operator, OperatorType::Sort},
 	interface::{CommandTransaction, FlowNodeId},
 };
 
@@ -35,8 +35,8 @@ impl<T: CommandTransaction> CompileOperator<T> for SortCompiler {
 			operator: Sort {
 				by: self.by,
 			},
-			input_schemas: vec![FlowNodeSchema::empty()],
-			output_schema: FlowNodeSchema::empty(),
+			input_schemas: vec![FlowNodeDef::empty()],
+			output_schema: FlowNodeDef::empty(),
 		})
 		.with_input(input_node)
 		.build()

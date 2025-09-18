@@ -67,6 +67,12 @@ impl<T: Transaction> FlowConsumer<T> {
 				let columns = Columns::from_ring_buffer_def_fully_qualified(&namespace, &ring_buffer);
 				(columns, layout)
 			}
+			SourceId::FlowNode(_flow_node_id) => {
+				// Flow nodes don't have catalog entries; they're intermediate results
+				// Return empty columns - the actual schema will come from the flow operators
+				// TODO: Consider storing flow node schemas in the flow graph context
+				return Ok(Columns::empty());
+			}
 		};
 
 		// Convert row bytes to EncodedRow

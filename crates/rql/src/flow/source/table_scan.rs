@@ -5,7 +5,7 @@
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	flow::{FlowNodeSchema, FlowNodeType},
+	flow::{FlowNodeDef, FlowNodeType},
 	interface::{CommandTransaction, FlowNodeId},
 };
 
@@ -32,7 +32,7 @@ impl<T: CommandTransaction> CompileOperator<T> for TableScanCompiler {
 		// Get namespace information
 		let namespace_def = CatalogStore::get_namespace(unsafe { &mut *compiler.txn }, table.namespace)?;
 
-		let namespace = FlowNodeSchema::new(
+		let namespace = FlowNodeDef::new(
 			table.columns.clone(),
 			Some(namespace_def.name.clone()),
 			Some(table.name.clone()),

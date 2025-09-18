@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	JoinType, SortKey,
-	flow::FlowNodeSchema,
+	flow::FlowNodeDef,
 	interface::{FlowEdgeId, FlowNodeId, TableId, ViewId, evaluate::expression::Expression},
 };
 
@@ -12,17 +12,17 @@ pub enum FlowNodeType {
 	SourceTable {
 		name: String,
 		table: TableId,
-		namespace: FlowNodeSchema,
+		namespace: FlowNodeDef,
 	},
 	SourceView {
 		name: String,
 		view: ViewId,
-		namespace: FlowNodeSchema,
+		namespace: FlowNodeDef,
 	},
 	Operator {
 		operator: OperatorType,
-		input_schemas: Vec<FlowNodeSchema>,
-		output_schema: FlowNodeSchema,
+		input_schemas: Vec<FlowNodeDef>,
+		output_schema: FlowNodeDef,
 	},
 	SinkView {
 		name: String,

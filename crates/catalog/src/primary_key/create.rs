@@ -75,6 +75,12 @@ impl CatalogStore {
 			SourceId::RingBuffer(ring_buffer_id) => {
 				Self::set_ring_buffer_primary_key(txn, ring_buffer_id, id)?;
 			}
+			SourceId::FlowNode(_) => {
+				// Flow nodes don't support primary keys
+				return_internal_error!(
+					"Cannot create primary key for flow node. Flow nodes do not support primary keys."
+				);
+			}
 		}
 
 		Ok(id)

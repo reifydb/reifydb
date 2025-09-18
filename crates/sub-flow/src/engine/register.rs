@@ -97,8 +97,8 @@ impl<T: Transaction> FlowEngine<T> {
 		flow_id: FlowId,
 		node: FlowNodeId,
 		operator: &OperatorType,
-		input_schemas: &[reifydb_core::flow::FlowNodeSchema],
-		output_schema: &reifydb_core::flow::FlowNodeSchema,
+		input_schemas: &[reifydb_core::flow::FlowNodeDef],
+		output_schema: &reifydb_core::flow::FlowNodeDef,
 	) -> crate::Result<()> {
 		let operator =
 			self.create_operator(txn, flow_id, node, operator.clone(), input_schemas, output_schema)?;
@@ -114,8 +114,8 @@ impl<T: Transaction> FlowEngine<T> {
 		flow_id: FlowId,
 		node_id: FlowNodeId,
 		operator: OperatorType,
-		input_schemas: &[reifydb_core::flow::FlowNodeSchema],
-		_output_schema: &reifydb_core::flow::FlowNodeSchema,
+		input_schemas: &[reifydb_core::flow::FlowNodeDef],
+		_output_schema: &reifydb_core::flow::FlowNodeDef,
 	) -> crate::Result<Operators<T>> {
 		match operator {
 			Filter {
@@ -153,12 +153,12 @@ impl<T: Transaction> FlowEngine<T> {
 				let left_schema = if input_schemas.len() > 0 {
 					input_schemas[0].clone()
 				} else {
-					reifydb_core::flow::FlowNodeSchema::empty()
+					reifydb_core::flow::FlowNodeDef::empty()
 				};
 				let right_schema = if input_schemas.len() > 1 {
 					input_schemas[1].clone()
 				} else {
-					reifydb_core::flow::FlowNodeSchema::empty()
+					reifydb_core::flow::FlowNodeDef::empty()
 				};
 
 				Ok(Operators::Join(

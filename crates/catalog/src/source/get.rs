@@ -21,6 +21,7 @@ impl CatalogStore {
 				SourceId::View(_) => "View",
 				SourceId::TableVirtual(_) => "TableVirtual",
 				SourceId::RingBuffer(_) => "RingBuffer",
+				SourceId::FlowNode(_) => "FlowNode",
 			};
 
 			Error(internal_error!(

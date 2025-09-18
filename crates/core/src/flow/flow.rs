@@ -66,7 +66,7 @@ impl Flow {
 mod tests {
 	use super::*;
 	use crate::{
-		flow::{FlowNodeSchema, FlowNodeType, OperatorType},
+		flow::{FlowNodeDef, FlowNodeType, OperatorType},
 		interface::{TableId, ViewId},
 	};
 
@@ -80,7 +80,7 @@ mod tests {
 			FlowNodeType::SourceTable {
 				name: "test_table".to_string(),
 				table: TableId(1),
-				namespace: FlowNodeSchema::empty(),
+				namespace: FlowNodeDef::empty(),
 			},
 		));
 
@@ -91,7 +91,7 @@ mod tests {
 					expressions: vec![],
 				},
 				input_schemas: vec![],
-				output_schema: FlowNodeSchema::empty(),
+				output_schema: FlowNodeDef::empty(),
 			},
 		));
 
