@@ -20,26 +20,6 @@ impl StandardEvaluator {
 		let left = self.evaluate(ctx, &mul.left)?;
 		let right = self.evaluate(ctx, &mul.right)?;
 
-		// Debug row count mismatch
-		if left.data().len() != right.data().len() {
-			eprintln!(
-				"MUL DEBUG: Left has {} rows, right has {} rows",
-				left.data().len(),
-				right.data().len()
-			);
-		}
-
-		// Debug undefined operands
-		if left.get_type() == Type::Undefined || right.get_type() == Type::Undefined {
-			eprintln!(
-				"MUL DEBUG: Undefined operand - left: {} (len {}), right: {} (len {})",
-				left.get_type(),
-				left.data().len(),
-				right.get_type(),
-				right.data().len()
-			);
-		}
-
 		let target = Type::promote(left.get_type(), right.get_type());
 
 		match (&left.data(), &right.data()) {

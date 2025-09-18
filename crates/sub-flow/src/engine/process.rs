@@ -54,15 +54,8 @@ impl<T: Transaction> FlowEngine<T> {
 		node: &FlowNode,
 		change: FlowChange,
 	) -> crate::Result<FlowChange> {
-		println!("DEBUG: Getting operator for node {:?}", node.id);
 		let operator = self.operators.get(&node.id).unwrap();
-		println!("DEBUG: Calling operator.apply for node {:?}", node.id);
 		let result = operator.apply(txn, change, &self.evaluator)?;
-		println!(
-			"DEBUG: Operator.apply completed for node {:?}, result has {} diffs",
-			node.id,
-			result.diffs.len()
-		);
 		Ok(result)
 	}
 
@@ -73,7 +66,6 @@ impl<T: Transaction> FlowEngine<T> {
 		node: &FlowNode,
 		change: FlowChange,
 	) -> crate::Result<()> {
-		println!("DEBUG: Processing node {:?} with {} diffs", node.id, change.diffs.len());
 		let node_type = &node.ty;
 		let node_outputs = &node.outputs;
 
@@ -110,25 +102,19 @@ impl<T: Transaction> FlowEngine<T> {
 		};
 
 		// Propagate to downstream nodes
-		println!("DEBUG: Node has {} outputs", node_outputs.len());
 		if node_outputs.is_empty() {
 			// No outputs, nothing to do
-			println!("DEBUG: No outputs, done");
 		} else if node_outputs.len() == 1 {
 			// Single output - pass ownership directly
 			let output_id = node_outputs[0];
-			println!("DEBUG: Single output, propagating to {:?}", output_id);
 			self.process_node(txn, flow, flow.get_node(&output_id).unwrap(), output)?;
 		} else {
 			// Multiple outputs - clone for all but the last
 			let (last, rest) = node_outputs.split_last().unwrap();
-			println!("DEBUG: Multiple outputs, processing {} clones and 1 owned", rest.len());
 			for output_id in rest {
-				println!("DEBUG: Propagating (cloned) to {:?}", output_id);
 				self.process_node(txn, flow, flow.get_node(output_id).unwrap(), output.clone())?;
 			}
 			// Last output gets ownership
-			println!("DEBUG: Propagating (owned) to {:?}", last);
 			self.process_node(txn, flow, flow.get_node(last).unwrap(), output)?;
 		}
 
