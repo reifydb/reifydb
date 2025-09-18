@@ -10,18 +10,18 @@ pub enum FlowDiff {
 	Insert {
 		source: SourceId,
 		row_ids: Vec<RowNumber>,
-		after: Columns,
+		post: Columns,
 	},
 	Update {
 		source: SourceId,
 		row_ids: Vec<RowNumber>,
-		before: Columns,
-		after: Columns,
+		pre: Columns,
+		post: Columns,
 	},
 	Remove {
 		source: SourceId,
 		row_ids: Vec<RowNumber>,
-		before: Columns,
+		pre: Columns,
 	},
 }
 
@@ -48,20 +48,20 @@ impl FlowDiff {
 		match self {
 			FlowDiff::Insert {
 				row_ids,
-				after,
+				post,
 				..
-			} => row_ids.len() == after.row_count(),
+			} => row_ids.len() == post.row_count(),
 			FlowDiff::Update {
 				row_ids,
-				before,
-				after,
+				pre,
+				post,
 				..
-			} => row_ids.len() == before.row_count() && row_ids.len() == after.row_count(),
+			} => row_ids.len() == pre.row_count() && row_ids.len() == post.row_count(),
 			FlowDiff::Remove {
 				row_ids,
-				before,
+				pre,
 				..
-			} => row_ids.len() == before.row_count(),
+			} => row_ids.len() == pre.row_count(),
 		}
 	}
 

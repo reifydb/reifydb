@@ -34,7 +34,7 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 				FlowDiff::Insert {
 					source,
 					row_ids,
-					after,
+					post: after,
 				} => {
 					let (filtered_columns, filtered_indices) =
 						self.filter_with_indices(evaluator, &after)?;
@@ -48,15 +48,15 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 						output.push(FlowDiff::Insert {
 							source: *source,
 							row_ids: filtered_row_ids,
-							after: filtered_columns,
+							post: filtered_columns,
 						});
 					}
 				}
 				FlowDiff::Update {
 					source,
 					row_ids,
-					before,
-					after,
+					pre: before,
+					post: after,
 				} => {
 					let (filtered_new, filtered_indices) =
 						self.filter_with_indices(evaluator, &after)?;
@@ -70,8 +70,8 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 						output.push(FlowDiff::Update {
 							source: *source,
 							row_ids: filtered_row_ids,
-							before: before.clone(),
-							after: filtered_new,
+							pre: before.clone(),
+							post: filtered_new,
 						});
 					} else {
 						// If new doesn't pass filter,
@@ -79,20 +79,20 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 						output.push(FlowDiff::Remove {
 							source: *source,
 							row_ids: row_ids.clone(),
-							before: before.clone(),
+							pre: before.clone(),
 						});
 					}
 				}
 				FlowDiff::Remove {
 					source,
 					row_ids,
-					before,
+					pre: before,
 				} => {
 					// Always pass through removes
 					output.push(FlowDiff::Remove {
 						source: *source,
 						row_ids: row_ids.clone(),
-						before: before.clone(),
+						pre: before.clone(),
 					});
 				}
 			}

@@ -57,22 +57,22 @@ impl CdcTransaction {
 }
 
 /// Generate a CDC change from a Delta
-pub(crate) fn generate_cdc_change(delta: Delta, before_value: Option<EncodedRow>) -> CdcChange {
+pub(crate) fn generate_cdc_change(delta: Delta, pre: Option<EncodedRow>) -> CdcChange {
 	match delta {
 		Delta::Set {
 			key,
 			row,
 		} => {
-			if let Some(before) = before_value {
+			if let Some(pre) = pre {
 				CdcChange::Update {
 					key,
-					before,
-					after: row,
+					pre,
+					post: row,
 				}
 			} else {
 				CdcChange::Insert {
 					key,
-					after: row,
+					post: row,
 				}
 			}
 		}
@@ -81,7 +81,7 @@ pub(crate) fn generate_cdc_change(delta: Delta, before_value: Option<EncodedRow>
 			key,
 		} => CdcChange::Delete {
 			key,
-			before: before_value.unwrap_or_else(|| EncodedRow::deleted()),
+			pre: pre.unwrap_or_else(|| EncodedRow::deleted()),
 		},
 	}
 }

@@ -81,7 +81,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 				FlowDiff::Insert {
 					source,
 					row_ids,
-					after,
+					post: after,
 				} => {
 					// For DESC order (default), we need to
 					// keep the highest row IDs
@@ -118,8 +118,8 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 						output_diffs.push(FlowDiff::Remove {
 							source: *source,
 							row_ids: rows_to_remove,
-							before: after.clone(), /* Simplified - should track actual
-							                        * data */
+							pre: after.clone(), /* Simplified - should track actual
+							                     * data */
 						});
 					}
 
@@ -128,7 +128,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 						output_diffs.push(FlowDiff::Insert {
 							source: *source,
 							row_ids: rows_to_add,
-							after: after.clone(),
+							post: after.clone(),
 						});
 					}
 
@@ -139,7 +139,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 				FlowDiff::Remove {
 					source,
 					row_ids,
-					before,
+					pre: before,
 				} => {
 					// Remove these rows from our state
 					let mut new_state_rows = Vec::new();
@@ -162,7 +162,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 						output_diffs.push(FlowDiff::Remove {
 							source: *source,
 							row_ids: rows_to_remove,
-							before: before.clone(),
+							pre: before.clone(),
 						});
 					}
 
@@ -178,8 +178,8 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 				FlowDiff::Update {
 					source,
 					row_ids,
-					before,
-					after,
+					pre: before,
+					post: after,
 				} => {
 					// Only pass through updates for rows in
 					// our top N
@@ -194,8 +194,8 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 						output_diffs.push(FlowDiff::Update {
 							source: *source,
 							row_ids: rows_to_update,
-							before: before.clone(),
-							after: after.clone(),
+							pre: before.clone(),
+							post: after.clone(),
 						});
 					}
 				}

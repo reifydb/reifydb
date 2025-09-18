@@ -13,7 +13,7 @@ use reifydb_catalog::{
 use reifydb_core::{
 	JoinType, SortKey,
 	interface::{
-		NamespaceDef, QueryTransaction, TableDef, TableVirtualDef, ViewDef,
+		NamespaceDef, QueryTransaction, RingBufferDef, TableDef, TableVirtualDef, ViewDef,
 		evaluate::expression::{AliasExpression, Expression},
 		identifier::{
 			ColumnIdentifier, DeferredViewIdentifier, RingBufferIdentifier, SequenceIdentifier,
@@ -118,10 +118,29 @@ impl Compiler {
 						stack.pop().map(|i| Box::new(i))
 					};
 
-					stack.push(PhysicalPlan::Delete(DeletePlan {
-						input,
-						target: delete.target.clone(),
-					}))
+					// Check the target type and create appropriate physical plan
+					use crate::plan::logical::DeleteTarget;
+					match &delete.target {
+						Some(DeleteTarget::Table(table_id)) => {
+							stack.push(PhysicalPlan::Delete(DeletePlan {
+								input,
+								target: Some(table_id.clone()),
+							}))
+						}
+						Some(DeleteTarget::RingBuffer(ring_buffer_id)) => stack.push(
+							PhysicalPlan::DeleteRingBuffer(DeleteRingBufferPlan {
+								input,
+								target: ring_buffer_id.clone(),
+							}),
+						),
+						None => {
+							// Target will be inferred from input
+							stack.push(PhysicalPlan::Delete(DeletePlan {
+								input,
+								target: None,
+							}))
+						}
+					}
 				}
 
 				LogicalPlan::InsertTable(insert) => {
@@ -157,6 +176,26 @@ impl Compiler {
 					stack.push(PhysicalPlan::Update(UpdatePlan {
 						input,
 						target: update.target.clone(),
+					}))
+				}
+
+				LogicalPlan::UpdateRingBuffer(update_rb) => {
+					// If update has its own input, compile
+					// it first Otherwise, pop from
+					// stack (for pipeline operations)
+					let input = if let Some(update_input) = update_rb.input {
+						// Recursively compile
+						// the input pipeline
+						let sub_plan = Self::compile(rx, vec![*update_input])?
+							.expect("UpdateRingBuffer input must produce a plan");
+						Box::new(sub_plan)
+					} else {
+						Box::new(stack.pop().expect("UpdateRingBuffer requires input"))
+					};
+
+					stack.push(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferPlan {
+						input,
+						target: update_rb.target.clone(),
 					}))
 				}
 
@@ -314,6 +353,20 @@ impl Compiler {
 								},
 							));
 						}
+						ResolvedSource::RingBuffer(resolved_ring_buffer) => {
+							// Ring buffers cannot use index directives
+							if scan.index.is_some() {
+								unimplemented!(
+									"ring buffers do not support indexes yet"
+								);
+							}
+							let namespace = resolved_ring_buffer.namespace.def.clone();
+							let ring_buffer = resolved_ring_buffer.def.clone();
+							stack.push(PhysicalPlan::RingBufferScan(RingBufferScanNode {
+								namespace,
+								ring_buffer,
+							}));
+						}
 					}
 				}
 
@@ -363,9 +416,11 @@ pub enum PhysicalPlan<'a> {
 	AlterView(AlterViewPlan<'a>),
 	// Mutate
 	Delete(DeletePlan<'a>),
+	DeleteRingBuffer(DeleteRingBufferPlan<'a>),
 	InsertTable(InsertTablePlan<'a>),
 	InsertRingBuffer(InsertRingBufferPlan<'a>),
 	Update(UpdatePlan<'a>),
+	UpdateRingBuffer(UpdateRingBufferPlan<'a>),
 
 	// Query
 	Aggregate(AggregateNode<'a>),
@@ -384,6 +439,7 @@ pub enum PhysicalPlan<'a> {
 	TableScan(TableScanNode),
 	TableVirtualScan(TableVirtualScanNode<'a>),
 	ViewScan(ViewScanNode),
+	RingBufferScan(RingBufferScanNode),
 }
 
 #[derive(Debug, Clone)]
@@ -478,6 +534,18 @@ pub struct UpdatePlan<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct DeleteRingBufferPlan<'a> {
+	pub input: Option<Box<PhysicalPlan<'a>>>,
+	pub target: RingBufferIdentifier<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UpdateRingBufferPlan<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub target: RingBufferIdentifier<'a>,
+}
+
+#[derive(Debug, Clone)]
 pub struct JoinInnerNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
@@ -545,6 +613,12 @@ pub struct TableScanNode {
 pub struct ViewScanNode {
 	pub namespace: NamespaceDef,
 	pub view: ViewDef,
+}
+
+#[derive(Debug, Clone)]
+pub struct RingBufferScanNode {
+	pub namespace: NamespaceDef,
+	pub ring_buffer: RingBufferDef,
 }
 
 #[derive(Debug, Clone)]

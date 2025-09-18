@@ -6,7 +6,9 @@ use std::{cell::RefCell, rc::Rc};
 use reifydb_core::{
 	Result,
 	interceptor::{
-		Interceptors, PreCommitContext, PreCommitInterceptor, RegisterInterceptor, TablePostDeleteContext,
+		Interceptors, PreCommitContext, PreCommitInterceptor, RegisterInterceptor, RingBufferPostDeleteContext,
+		RingBufferPostDeleteInterceptor, RingBufferPostInsertContext, RingBufferPostInsertInterceptor,
+		RingBufferPostUpdateContext, RingBufferPostUpdateInterceptor, TablePostDeleteContext,
 		TablePostDeleteInterceptor, TablePostInsertContext, TablePostInsertInterceptor, TablePostUpdateContext,
 		TablePostUpdateInterceptor,
 	},
@@ -22,18 +24,18 @@ pub(crate) enum Change {
 	Insert {
 		source_id: SourceId,
 		row_number: RowNumber,
-		row: Vec<u8>,
+		post: Vec<u8>,
 	},
 	Update {
 		source_id: SourceId,
 		row_number: RowNumber,
-		before: Vec<u8>,
-		after: Vec<u8>,
+		pre: Vec<u8>,
+		post: Vec<u8>,
 	},
 	Delete {
 		source_id: SourceId,
 		row_number: RowNumber,
-		row: Vec<u8>,
+		pre: Vec<u8>,
 	},
 }
 
@@ -69,7 +71,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostInsertInterceptor<CT> for 
 		self.changes.borrow_mut().push(Change::Insert {
 			source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
-			row: ctx.row.to_vec(),
+			post: ctx.row.to_vec(),
 		});
 
 		Ok(())
@@ -81,8 +83,8 @@ impl<T: Transaction, CT: CommandTransaction> TablePostUpdateInterceptor<CT> for 
 		self.changes.borrow_mut().push(Change::Update {
 			source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
-			before: ctx.old_row.to_vec(),
-			after: ctx.row.to_vec(),
+			pre: ctx.old_row.to_vec(),
+			post: ctx.row.to_vec(),
 		});
 		Ok(())
 	}
@@ -93,7 +95,42 @@ impl<T: Transaction, CT: CommandTransaction> TablePostDeleteInterceptor<CT> for 
 		self.changes.borrow_mut().push(Change::Delete {
 			source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
-			row: ctx.deleted_row.to_vec(),
+			pre: ctx.deleted_row.to_vec(),
+		});
+		Ok(())
+	}
+}
+
+impl<T: Transaction, CT: CommandTransaction> RingBufferPostInsertInterceptor<CT> for TransactionalFlowInterceptor<T> {
+	fn intercept(&self, ctx: &mut RingBufferPostInsertContext<CT>) -> Result<()> {
+		self.changes.borrow_mut().push(Change::Insert {
+			source_id: SourceId::from(ctx.ring_buffer.id),
+			row_number: ctx.id,
+			post: ctx.row.to_vec(),
+		});
+
+		Ok(())
+	}
+}
+
+impl<T: Transaction, CT: CommandTransaction> RingBufferPostUpdateInterceptor<CT> for TransactionalFlowInterceptor<T> {
+	fn intercept(&self, ctx: &mut RingBufferPostUpdateContext<CT>) -> Result<()> {
+		self.changes.borrow_mut().push(Change::Update {
+			source_id: SourceId::from(ctx.ring_buffer.id),
+			row_number: ctx.id,
+			pre: ctx.old_row.to_vec(),
+			post: ctx.row.to_vec(),
+		});
+		Ok(())
+	}
+}
+
+impl<T: Transaction, CT: CommandTransaction> RingBufferPostDeleteInterceptor<CT> for TransactionalFlowInterceptor<T> {
+	fn intercept(&self, ctx: &mut RingBufferPostDeleteContext<CT>) -> Result<()> {
+		self.changes.borrow_mut().push(Change::Delete {
+			source_id: SourceId::from(ctx.ring_buffer.id),
+			row_number: ctx.id,
+			pre: ctx.deleted_row.to_vec(),
 		});
 		Ok(())
 	}
@@ -124,6 +161,9 @@ impl<T: Transaction, CT: CommandTransaction> RegisterInterceptor<CT> for Transac
 		interceptors.table_post_insert.add(self.clone());
 		interceptors.table_post_update.add(self.clone());
 		interceptors.table_post_delete.add(self.clone());
+		interceptors.ring_buffer_post_insert.add(self.clone());
+		interceptors.ring_buffer_post_update.add(self.clone());
+		interceptors.ring_buffer_post_delete.add(self.clone());
 		interceptors.pre_commit.add(self);
 	}
 }

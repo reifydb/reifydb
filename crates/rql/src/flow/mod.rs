@@ -140,13 +140,19 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			| PhysicalPlan::InsertTable(_)
 			| PhysicalPlan::InsertRingBuffer(_)
 			| PhysicalPlan::Update(_)
-			| PhysicalPlan::Delete(_) => {
+			| PhysicalPlan::UpdateRingBuffer(_)
+			| PhysicalPlan::Delete(_)
+			| PhysicalPlan::DeleteRingBuffer(_) => {
 				unreachable!()
 			}
 			PhysicalPlan::TableVirtualScan(_scan) => {
 				// TODO: Implement VirtualScanCompiler
 				// For now, return a placeholder
 				unimplemented!("VirtualScan compilation not yet implemented")
+			}
+			PhysicalPlan::RingBufferScan(_scan) => {
+				// TODO: Implement RingBufferScanCompiler for flow
+				unimplemented!("RingBufferScan compilation not yet implemented for flow")
 			}
 		}
 	}

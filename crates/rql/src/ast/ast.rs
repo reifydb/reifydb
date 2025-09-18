@@ -695,8 +695,8 @@ pub enum AstDescribe<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstDataType<'a> {
-	Simple(Fragment<'a>), // UTF8, BLOB, etc.
-	WithConstraints {
+	Unconstrained(Fragment<'a>), // UTF8, BLOB, etc.
+	Constrained {
 		name: Fragment<'a>,
 		params: Vec<AstLiteral<'a>>,
 	}, // UTF8(50), DECIMAL(10,2)

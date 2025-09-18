@@ -12,6 +12,7 @@ pub mod join_left;
 pub mod join_natural;
 mod layout;
 pub mod map;
+pub mod ring_buffer_scan;
 pub mod sort;
 pub mod table_scan;
 pub mod table_virtual_scan;

@@ -34,16 +34,16 @@ impl AsRef<str> for ConsumerId {
 pub enum CdcChange {
 	Insert {
 		key: EncodedKey,
-		after: EncodedRow,
+		post: EncodedRow,
 	},
 	Update {
 		key: EncodedKey,
-		before: EncodedRow,
-		after: EncodedRow,
+		pre: EncodedRow,
+		post: EncodedRow,
 	},
 	Delete {
 		key: EncodedKey,
-		before: EncodedRow,
+		pre: EncodedRow,
 	},
 }
 

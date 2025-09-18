@@ -333,7 +333,7 @@ mod tests {
 
 		assert_eq!(metadata.id, result.id);
 		assert_eq!(metadata.capacity, 500);
-		assert_eq!(metadata.current_size, 0);
+		assert_eq!(metadata.count, 0);
 		assert_eq!(metadata.head, 0);
 		assert_eq!(metadata.tail, 0);
 	}

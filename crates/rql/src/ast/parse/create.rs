@@ -208,7 +208,6 @@ impl<'a> Parser<'a> {
 
 		// Parse WITH clause for capacity
 		self.consume_keyword(Keyword::With)?;
-		self.consume_operator(Operator::OpenCurly)?;
 
 		// Parse capacity option
 		let capacity_ident = self.consume(TokenKind::Identifier)?;
@@ -219,7 +218,7 @@ impl<'a> Parser<'a> {
 			)));
 		}
 
-		self.consume_operator(Colon)?;
+		self.consume_operator(Operator::Equal)?;
 		let capacity_token = self.consume(TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
 
 		// Parse capacity value
@@ -234,8 +233,6 @@ impl<'a> Parser<'a> {
 				));
 			}
 		};
-
-		self.consume_operator(Operator::CloseCurly)?;
 
 		use crate::ast::identifier::MaybeQualifiedRingBufferIdentifier;
 
@@ -299,13 +296,13 @@ impl<'a> Parser<'a> {
 
 			self.consume_operator(Operator::CloseParen)?;
 
-			AstDataType::WithConstraints {
+			AstDataType::Constrained {
 				name: ty_token.fragment,
 				params,
 			}
 		} else {
 			// Simple type without parameters
-			AstDataType::Simple(ty_token.fragment)
+			AstDataType::Unconstrained(ty_token.fragment)
 		};
 
 		let auto_increment = if self.current()?.is_keyword(Keyword::Auto) {
@@ -387,7 +384,7 @@ mod tests {
 
 				assert_eq!(columns[0].name.text(), "value");
 				match &columns[0].ty {
-					AstDataType::Simple(ident) => {
+					AstDataType::Unconstrained(ident) => {
 						assert_eq!(ident.text(), "Int2")
 					}
 					_ => panic!("Expected simple type"),
@@ -427,7 +424,7 @@ mod tests {
 					let col = &columns[0];
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
-						AstDataType::Simple(ident) => {
+						AstDataType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "int2")
 						}
 						_ => panic!("Expected simple type"),
@@ -440,7 +437,7 @@ mod tests {
 					let col = &columns[1];
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
-						AstDataType::Simple(ident) => {
+						AstDataType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "text")
 						}
 						_ => panic!("Expected simple type"),
@@ -452,7 +449,7 @@ mod tests {
 					let col = &columns[2];
 					assert_eq!(col.name.text(), "is_premium");
 					match &col.ty {
-						AstDataType::Simple(ident) => {
+						AstDataType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "bool")
 						}
 						_ => panic!("Expected simple type"),
@@ -494,7 +491,7 @@ mod tests {
 				let col = &columns[0];
 				assert_eq!(col.name.text(), "field");
 				match &col.ty {
-					AstDataType::Simple(ident) => {
+					AstDataType::Unconstrained(ident) => {
 						assert_eq!(ident.text(), "int2")
 					}
 					_ => panic!("Expected simple type"),
@@ -540,7 +537,7 @@ mod tests {
 					let col = &columns[0];
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
-						AstDataType::Simple(ident) => {
+						AstDataType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "int4")
 						}
 						_ => panic!("Expected simple type"),
@@ -553,7 +550,7 @@ mod tests {
 					let col = &columns[1];
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
-						AstDataType::Simple(ident) => {
+						AstDataType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "utf8")
 						}
 						_ => panic!("Expected simple type"),
@@ -594,7 +591,7 @@ mod tests {
 				let col = &columns[0];
 				assert_eq!(col.name.text(), "field");
 				match &col.ty {
-					AstDataType::Simple(ident) => {
+					AstDataType::Unconstrained(ident) => {
 						assert_eq!(ident.text(), "int2")
 					}
 					_ => panic!("Expected simple type"),
@@ -640,7 +637,7 @@ mod tests {
 					let col = &columns[0];
 					assert_eq!(col.name.text(), "id");
 					match &col.ty {
-						AstDataType::Simple(ident) => {
+						AstDataType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "int4")
 						}
 						_ => panic!("Expected simple type"),
@@ -653,7 +650,7 @@ mod tests {
 					let col = &columns[1];
 					assert_eq!(col.name.text(), "name");
 					match &col.ty {
-						AstDataType::Simple(ident) => {
+						AstDataType::Unconstrained(ident) => {
 							assert_eq!(ident.text(), "utf8")
 						}
 						_ => panic!("Expected simple type"),
@@ -663,6 +660,61 @@ mod tests {
 				}
 			}
 			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_ring_buffer() {
+		let tokens = tokenize(
+			r#"
+        create ring buffer test.events { id: int4, data: utf8 } with capacity = 10
+    "#,
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		use crate::ast::AstCreateRingBuffer;
+
+		match create {
+			AstCreate::RingBuffer(AstCreateRingBuffer {
+				ring_buffer,
+				columns,
+				capacity,
+				..
+			}) => {
+				assert_eq!(ring_buffer.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(ring_buffer.name.text(), "events");
+				assert_eq!(*capacity, 10);
+				assert_eq!(columns.len(), 2);
+
+				{
+					let col = &columns[0];
+					assert_eq!(col.name.text(), "id");
+					match &col.ty {
+						AstDataType::Unconstrained(ident) => {
+							assert_eq!(ident.text(), "int4")
+						}
+						_ => panic!("Expected simple type"),
+					}
+				}
+
+				{
+					let col = &columns[1];
+					assert_eq!(col.name.text(), "data");
+					match &col.ty {
+						AstDataType::Unconstrained(ident) => {
+							assert_eq!(ident.text(), "utf8")
+						}
+						_ => panic!("Expected simple type"),
+					}
+				}
+			}
+			_ => unreachable!("Expected ring buffer create"),
 		}
 	}
 

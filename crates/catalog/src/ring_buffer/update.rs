@@ -15,7 +15,7 @@ impl CatalogStore {
 		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::CAPACITY, metadata.capacity);
 		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::HEAD, metadata.head);
 		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::TAIL, metadata.tail);
-		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::COUNT, metadata.current_size);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::COUNT, metadata.count);
 
 		let key = RingBufferMetadataKey::new(metadata.id);
 		txn.set(&key.encode(), row)?;
@@ -41,12 +41,12 @@ mod tests {
 			.unwrap()
 			.expect("Metadata should exist");
 
-		assert_eq!(metadata.current_size, 0);
+		assert_eq!(metadata.count, 0);
 		assert_eq!(metadata.head, 0);
 		assert_eq!(metadata.tail, 0);
 
 		// Update metadata
-		metadata.current_size = 5;
+		metadata.count = 5;
 		metadata.head = 2;
 		metadata.tail = 7;
 
@@ -57,7 +57,7 @@ mod tests {
 			.unwrap()
 			.expect("Metadata should exist");
 
-		assert_eq!(updated.current_size, 5);
+		assert_eq!(updated.count, 5);
 		assert_eq!(updated.head, 2);
 		assert_eq!(updated.tail, 7);
 		assert_eq!(updated.capacity, metadata.capacity);
@@ -73,7 +73,7 @@ mod tests {
 			.expect("Metadata should exist");
 
 		// Simulate wrap-around scenario
-		metadata.current_size = metadata.capacity;
+		metadata.count = metadata.capacity;
 		metadata.head = metadata.capacity - 1;
 		metadata.tail = 0;
 
@@ -83,7 +83,7 @@ mod tests {
 			.unwrap()
 			.expect("Metadata should exist");
 
-		assert_eq!(updated.current_size, metadata.capacity);
+		assert_eq!(updated.count, metadata.capacity);
 		assert_eq!(updated.head, metadata.capacity - 1);
 		assert_eq!(updated.tail, 0);
 	}

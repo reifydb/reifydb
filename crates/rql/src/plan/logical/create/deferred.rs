@@ -21,8 +21,8 @@ impl Compiler {
 			let constraint = convert_data_type_with_constraints(&col.ty)?;
 
 			let ty_fragment = match &col.ty {
-				AstDataType::Simple(fragment) => fragment.clone(),
-				AstDataType::WithConstraints {
+				AstDataType::Unconstrained(fragment) => fragment.clone(),
+				AstDataType::Constrained {
 					name,
 					..
 				} => name.clone(),

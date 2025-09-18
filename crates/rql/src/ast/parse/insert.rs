@@ -16,7 +16,7 @@ impl<'a> Parser<'a> {
 
 		let target = if self.current_expect_operator(Operator::Dot).is_ok() {
 			self.consume_operator(Operator::Dot)?;
-			let second_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+			let second_token = self.advance()?;
 			// namespace.source
 			Some(UnresolvedSourceIdentifier::new(
 				Some(first_token.fragment.clone()),

@@ -54,7 +54,7 @@ impl CatalogStore {
 		Ok(Some(RingBufferMetadata {
 			id: buffer_id,
 			capacity,
-			current_size,
+			count: current_size,
 			head,
 			tail,
 		}))
@@ -134,7 +134,7 @@ mod tests {
 
 		assert_eq!(metadata.id, ring_buffer.id);
 		assert_eq!(metadata.capacity, ring_buffer.capacity);
-		assert_eq!(metadata.current_size, 0);
+		assert_eq!(metadata.count, 0);
 		assert_eq!(metadata.head, 0);
 		assert_eq!(metadata.tail, 0);
 	}

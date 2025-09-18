@@ -137,7 +137,7 @@ impl<T: Transaction> FlowEngine<T> {
 			match diff {
 				FlowDiff::Insert {
 					row_ids,
-					after,
+					post: after,
 					..
 				} => {
 					let row_count = after.row_count();
@@ -254,8 +254,8 @@ impl<T: Transaction> FlowEngine<T> {
 				}
 				FlowDiff::Update {
 					row_ids,
-					before: _,
-					after,
+					pre: _,
+					post: after,
 					..
 				} => {
 					// Use row_ids to directly update the
@@ -382,7 +382,7 @@ impl<T: Transaction> FlowEngine<T> {
 				}
 				FlowDiff::Remove {
 					row_ids,
-					before,
+					pre: before,
 					..
 				} => {
 					// Use row_ids to directly remove the

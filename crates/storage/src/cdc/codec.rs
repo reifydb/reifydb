@@ -116,7 +116,7 @@ fn encode_cdc_change(change: &CdcChange) -> crate::Result<EncodedRow> {
 	match change {
 		CdcChange::Insert {
 			key,
-			after,
+			post: after,
 		} => {
 			CDC_CHANGE_LAYOUT.set_u8(&mut row, CDC_COMPACT_CHANGE_TYPE_FIELD, ChangeType::Insert as u8);
 			CDC_CHANGE_LAYOUT.set_blob(
@@ -133,8 +133,8 @@ fn encode_cdc_change(change: &CdcChange) -> crate::Result<EncodedRow> {
 		}
 		CdcChange::Update {
 			key,
-			before,
-			after,
+			pre: before,
+			post: after,
 		} => {
 			CDC_CHANGE_LAYOUT.set_u8(&mut row, CDC_COMPACT_CHANGE_TYPE_FIELD, ChangeType::Update as u8);
 			CDC_CHANGE_LAYOUT.set_blob(
@@ -155,7 +155,7 @@ fn encode_cdc_change(change: &CdcChange) -> crate::Result<EncodedRow> {
 		}
 		CdcChange::Delete {
 			key,
-			before,
+			pre: before,
 		} => {
 			CDC_CHANGE_LAYOUT.set_u8(&mut row, CDC_COMPACT_CHANGE_TYPE_FIELD, ChangeType::Delete as u8);
 			CDC_CHANGE_LAYOUT.set_blob(
@@ -187,7 +187,7 @@ fn decode_cdc_change(row: &EncodedRow) -> crate::Result<CdcChange> {
 			let after = EncodedRow(CowVec::new(after_blob.as_bytes().to_vec()));
 			CdcChange::Insert {
 				key,
-				after,
+				post: after,
 			}
 		}
 		ChangeType::Update => {
@@ -197,8 +197,8 @@ fn decode_cdc_change(row: &EncodedRow) -> crate::Result<CdcChange> {
 			let after = EncodedRow(CowVec::new(after_blob.as_bytes().to_vec()));
 			CdcChange::Update {
 				key,
-				before,
-				after,
+				pre: before,
+				post: after,
 			}
 		}
 		ChangeType::Delete => {
@@ -206,7 +206,7 @@ fn decode_cdc_change(row: &EncodedRow) -> crate::Result<CdcChange> {
 			let before = EncodedRow(CowVec::new(before_blob.as_bytes().to_vec()));
 			CdcChange::Delete {
 				key,
-				before,
+				pre: before,
 			}
 		}
 	};
@@ -226,7 +226,7 @@ mod tests {
 		let after = EncodedRow(CowVec::new(vec![4, 5, 6]));
 		let change = CdcChange::Insert {
 			key: key.clone(),
-			after: after.clone(),
+			post: after.clone(),
 		};
 
 		let changes = vec![CdcTransactionChange {
@@ -253,22 +253,22 @@ mod tests {
 				sequence: 1,
 				change: CdcChange::Insert {
 					key: EncodedKey::new(vec![1]),
-					after: EncodedRow(CowVec::new(vec![10])),
+					post: EncodedRow(CowVec::new(vec![10])),
 				},
 			},
 			CdcTransactionChange {
 				sequence: 2,
 				change: CdcChange::Update {
 					key: EncodedKey::new(vec![2]),
-					before: EncodedRow(CowVec::new(vec![20])),
-					after: EncodedRow(CowVec::new(vec![21])),
+					pre: EncodedRow(CowVec::new(vec![20])),
+					post: EncodedRow(CowVec::new(vec![21])),
 				},
 			},
 			CdcTransactionChange {
 				sequence: 3,
 				change: CdcChange::Delete {
 					key: EncodedKey::new(vec![3]),
-					before: EncodedRow(CowVec::new(vec![30])),
+					pre: EncodedRow(CowVec::new(vec![30])),
 				},
 			},
 		];
@@ -295,14 +295,14 @@ mod tests {
 				sequence: 1,
 				change: CdcChange::Insert {
 					key: EncodedKey::new(vec![1]),
-					after: EncodedRow(CowVec::new(vec![10])),
+					post: EncodedRow(CowVec::new(vec![10])),
 				},
 			},
 			CdcTransactionChange {
 				sequence: 2,
 				change: CdcChange::Delete {
 					key: EncodedKey::new(vec![2]),
-					before: EncodedRow(CowVec::new(vec![20])),
+					pre: EncodedRow(CowVec::new(vec![20])),
 				},
 			},
 		];

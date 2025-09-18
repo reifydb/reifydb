@@ -174,6 +174,8 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("SEQUENCE", Keyword::Sequence);
 	map.insert("SERIES", Keyword::Series);
 	map.insert("TABLE", Keyword::Table);
+	map.insert("RING", Keyword::Ring);
+	map.insert("BUFFER", Keyword::Buffer);
 	map.insert("POLICY", Keyword::Policy);
 	map.insert("VIEW", Keyword::View);
 	map.insert("DEFERRED", Keyword::Deferred);
@@ -324,6 +326,8 @@ mod tests {
 	test_keyword_namespace => (Namespace, "NAMESPACE"),
 	test_keyword_series => (Series, "SERIES"),
 	test_keyword_table => (Table, "TABLE"),
+	test_keyword_ringt => (Ring, "RING"),
+	test_keyword_buffer => (Buffer, "BUFFER"),
 	test_keyword_policy => (Policy, "POLICY"),
 	test_keyword_view => (View, "VIEW"),
 	test_keyword_deferred => (Deferred, "DEFERRED"),
@@ -440,6 +444,8 @@ mod tests {
 	test_not_keyword_namespace => ( "namespace"),
 	test_not_keyword_series => ( "series"),
 	test_not_keyword_table => ( "table"),
+	test_not_keyword_ring => ( "ring"),
+	test_not_keyword_buffer => ( "buffer"),
 	test_not_keyword_policy => ( "policy"),
 	test_not_keyword_view => ( "view"),
 	test_not_keyword_deferred => ( "deferred"),

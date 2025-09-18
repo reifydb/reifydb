@@ -54,7 +54,7 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 				FlowDiff::Insert {
 					source,
 					row_ids,
-					after,
+					post: after,
 				} => {
 					// Evaluate input expression
 					let empty_params = Params::None;
@@ -110,15 +110,15 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 					output.push(FlowDiff::Insert {
 						source: *source,
 						row_ids: row_ids.clone(),
-						after: output_columns,
+						post: output_columns,
 					});
 				}
 
 				FlowDiff::Update {
 					source,
 					row_ids,
-					before,
-					after,
+					pre: before,
+					post: after,
 				} => {
 					// Similar processing for updates
 					output.push(diff.clone());

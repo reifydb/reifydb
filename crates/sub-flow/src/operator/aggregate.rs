@@ -363,8 +363,8 @@ impl AggregateOperator {
 					output_diffs.push(FlowDiff::Update {
 						source: SourceId::View(ViewId(1)),
 						row_ids: update_row_ids,
-						before: previous.clone(),
-						after: columns.clone(),
+						pre: previous.clone(),
+						post: columns.clone(),
 					});
 				} else {
 					// First time seeing this group, emit
@@ -384,7 +384,7 @@ impl AggregateOperator {
 					output_diffs.push(FlowDiff::Insert {
 						source: SourceId::View(ViewId(1)),
 						row_ids: insert_row_ids,
-						after: columns.clone(),
+						post: columns.clone(),
 					});
 				}
 
@@ -415,7 +415,7 @@ impl AggregateOperator {
 				output_diffs.push(FlowDiff::Remove {
 					source: SourceId::View(ViewId(1)),
 					row_ids: remove_row_ids,
-					before: before_columns,
+					pre: before_columns,
 				});
 			}
 		}
@@ -436,7 +436,7 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 		for diff in &change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					after,
+					post: after,
 					..
 				} => {
 					// Compute all group keys at once
@@ -460,8 +460,8 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 					}
 				}
 				FlowDiff::Update {
-					before,
-					after,
+					pre: before,
+					post: after,
 					..
 				} => {
 					// Handle as delete + insert
@@ -494,7 +494,7 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 					}
 				}
 				FlowDiff::Remove {
-					before,
+					pre: before,
 					..
 				} => {
 					// Compute all group keys at once

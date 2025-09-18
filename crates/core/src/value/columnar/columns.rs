@@ -10,7 +10,7 @@ use reifydb_type::{Type, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{NamespaceDef, TableDef, ViewDef},
+	interface::{NamespaceDef, RingBufferDef, TableDef, ViewDef},
 	value::{
 		columnar::{Column, ColumnData, ColumnQualified, FullyQualified, SourceQualified},
 		container::UndefinedContainer,
@@ -257,6 +257,55 @@ impl Columns {
 				Column::FullyQualified(FullyQualified {
 					namespace: namespace.name.clone(),
 					source: table.name.clone(),
+					name,
+					data,
+				})
+			})
+			.collect();
+
+		Self::new(columns)
+	}
+
+	pub fn from_ring_buffer_def_fully_qualified(namespace: &NamespaceDef, ring_buffer: &RingBufferDef) -> Self {
+		let columns: Vec<Column> = ring_buffer
+			.columns
+			.iter()
+			.map(|col| {
+				let name = col.name.clone();
+				let data = match col.constraint.get_type() {
+					Type::Boolean => ColumnData::bool(vec![]),
+					Type::Float4 => ColumnData::float4(vec![]),
+					Type::Float8 => ColumnData::float8(vec![]),
+					Type::Int1 => ColumnData::int1(vec![]),
+					Type::Int2 => ColumnData::int2(vec![]),
+					Type::Int4 => ColumnData::int4(vec![]),
+					Type::Int8 => ColumnData::int8(vec![]),
+					Type::Int16 => ColumnData::int16(vec![]),
+					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
+					Type::Uint1 => ColumnData::uint1(vec![]),
+					Type::Uint2 => ColumnData::uint2(vec![]),
+					Type::Uint4 => ColumnData::uint4(vec![]),
+					Type::Uint8 => ColumnData::uint8(vec![]),
+					Type::Uint16 => ColumnData::uint16(vec![]),
+					Type::Date => ColumnData::date(vec![]),
+					Type::DateTime => ColumnData::datetime(vec![]),
+					Type::Time => ColumnData::time(vec![]),
+					Type::Interval => ColumnData::interval(vec![]),
+					Type::RowNumber => ColumnData::row_number(vec![]),
+					Type::IdentityId => ColumnData::identity_id(vec![]),
+					Type::Uuid4 => ColumnData::uuid4(vec![]),
+					Type::Uuid7 => ColumnData::uuid7(vec![]),
+					Type::Blob => ColumnData::blob(vec![]),
+					Type::Int => ColumnData::int(vec![]),
+					Type::Uint => ColumnData::uint(vec![]),
+					Type::Decimal {
+						..
+					} => ColumnData::decimal(vec![]),
+					Type::Undefined => ColumnData::undefined(0),
+				};
+				Column::FullyQualified(FullyQualified {
+					namespace: namespace.name.clone(),
+					source: ring_buffer.name.clone(),
 					name,
 					data,
 				})

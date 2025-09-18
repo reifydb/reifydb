@@ -10,6 +10,10 @@ use crate::{
 		NamespaceDefPostUpdateContext, NamespaceDefPostUpdateInterceptor, NamespaceDefPreDeleteContext,
 		NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateContext, NamespaceDefPreUpdateInterceptor,
 		PostCommitContext, PostCommitInterceptor, PreCommitContext, PreCommitInterceptor,
+		RingBufferPostDeleteContext, RingBufferPostDeleteInterceptor, RingBufferPostInsertContext,
+		RingBufferPostInsertInterceptor, RingBufferPostUpdateContext, RingBufferPostUpdateInterceptor,
+		RingBufferPreDeleteContext, RingBufferPreDeleteInterceptor, RingBufferPreInsertContext,
+		RingBufferPreInsertInterceptor, RingBufferPreUpdateContext, RingBufferPreUpdateInterceptor,
 		TableDefPostCreateContext, TableDefPostCreateInterceptor, TableDefPostUpdateContext,
 		TableDefPostUpdateInterceptor, TableDefPreDeleteContext, TableDefPreDeleteInterceptor,
 		TableDefPreUpdateContext, TableDefPreUpdateInterceptor, TablePostDeleteContext,
@@ -21,10 +25,11 @@ use crate::{
 		ViewDefPreUpdateInterceptor,
 	},
 	interface::{
-		CommandTransaction, NamespaceDef, TableDef, TransactionId, TransactionalDefChanges, ViewDef,
+		CommandTransaction, NamespaceDef, RingBufferDef, TableDef, TransactionId, TransactionalDefChanges,
+		ViewDef,
 		interceptor::{
-			NamespaceDefInterceptor, TableDefInterceptor, TableInterceptor, TransactionInterceptor,
-			ViewDefInterceptor, WithInterceptors,
+			NamespaceDefInterceptor, RingBufferInterceptor, TableDefInterceptor, TableInterceptor,
+			TransactionInterceptor, ViewDefInterceptor, WithInterceptors,
 		},
 	},
 	row::EncodedRow,
@@ -112,6 +117,56 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 		TablePostDeleteInterceptor,
 		TablePostDeleteContext,
 		(table: &TableDef, id: RowNumber, deleted_row: &EncodedRow)
+	);
+}
+
+impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferInterceptor<CT> for CT {
+	impl_interceptor_method!(
+		pre_insert,
+		ring_buffer_pre_insert_interceptors,
+		RingBufferPreInsertInterceptor,
+		RingBufferPreInsertContext,
+		(ring_buffer: &RingBufferDef, row: &EncodedRow)
+	);
+
+	impl_interceptor_method!(
+		post_insert,
+		ring_buffer_post_insert_interceptors,
+		RingBufferPostInsertInterceptor,
+		RingBufferPostInsertContext,
+		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedRow)
+	);
+
+	impl_interceptor_method!(
+		pre_update,
+		ring_buffer_pre_update_interceptors,
+		RingBufferPreUpdateInterceptor,
+		RingBufferPreUpdateContext,
+		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedRow)
+	);
+
+	impl_interceptor_method!(
+		post_update,
+		ring_buffer_post_update_interceptors,
+		RingBufferPostUpdateInterceptor,
+		RingBufferPostUpdateContext,
+		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedRow, old_row: &EncodedRow)
+	);
+
+	impl_interceptor_method!(
+		pre_delete,
+		ring_buffer_pre_delete_interceptors,
+		RingBufferPreDeleteInterceptor,
+		RingBufferPreDeleteContext,
+		(ring_buffer: &RingBufferDef, id: RowNumber)
+	);
+
+	impl_interceptor_method!(
+		post_delete,
+		ring_buffer_post_delete_interceptors,
+		RingBufferPostDeleteInterceptor,
+		RingBufferPostDeleteContext,
+		(ring_buffer: &RingBufferDef, id: RowNumber, deleted_row: &EncodedRow)
 	);
 }
 

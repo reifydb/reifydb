@@ -123,7 +123,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 				FlowDiff::Insert {
 					source,
 					row_ids,
-					after,
+					post: after,
 				} => {
 					let mut new_distinct_rows = Vec::new();
 
@@ -198,7 +198,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 						output_diffs.push(FlowDiff::Insert {
 							source: *source,
 							row_ids: new_distinct_rows,
-							after: after.clone(),
+							post: after.clone(),
 						});
 					}
 				}
@@ -206,7 +206,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 				FlowDiff::Remove {
 					source,
 					row_ids,
-					before,
+					pre: before,
 				} => {
 					let mut removed_distinct_rows = Vec::new();
 
@@ -272,7 +272,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 						output_diffs.push(FlowDiff::Remove {
 							source: *source,
 							row_ids: removed_distinct_rows,
-							before: before.clone(),
+							pre: before.clone(),
 						});
 					}
 				}
@@ -280,15 +280,15 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 				FlowDiff::Update {
 					source,
 					row_ids,
-					before,
-					after,
+					pre: before,
+					post: after,
 				} => {
 					// Handle update as remove + insert
 					// First process the remove
 					let remove_diff = FlowDiff::Remove {
 						source: *source,
 						row_ids: row_ids.clone(),
-						before: before.clone(),
+						pre: before.clone(),
 					};
 					let remove_change = FlowChange::new(vec![remove_diff]);
 					let remove_result = self.apply(txn, &remove_change, evaluator)?;
@@ -298,7 +298,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 					let insert_diff = FlowDiff::Insert {
 						source: *source,
 						row_ids: row_ids.clone(),
-						after: after.clone(),
+						post: after.clone(),
 					};
 					let insert_change = FlowChange::new(vec![insert_diff]);
 					let insert_result = self.apply(txn, &insert_change, evaluator)?;

@@ -29,8 +29,8 @@ impl Compiler {
 			};
 
 			let ty_fragment = match &col.ty {
-				crate::ast::AstDataType::Simple(fragment) => fragment.clone(),
-				crate::ast::AstDataType::WithConstraints {
+				crate::ast::AstDataType::Unconstrained(fragment) => fragment.clone(),
+				crate::ast::AstDataType::Constrained {
 					name,
 					..
 				} => name.clone(),

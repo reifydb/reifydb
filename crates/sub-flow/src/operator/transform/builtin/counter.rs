@@ -61,7 +61,7 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 				FlowDiff::Insert {
 					source,
 					row_ids,
-					after,
+					post: after,
 				} => {
 					// Get current counter value
 					let mut current = self.get_counter_value(txn);
@@ -88,15 +88,15 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 					output.push(FlowDiff::Insert {
 						source: *source,
 						row_ids: row_ids.clone(),
-						after: output_columns,
+						post: output_columns,
 					});
 				}
 
 				FlowDiff::Update {
 					source,
 					row_ids,
-					before,
-					after,
+					pre: before,
+					post: after,
 				} => {
 					// For updates, continue incrementing
 					// the counter
@@ -121,8 +121,8 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 					output.push(FlowDiff::Update {
 						source: *source,
 						row_ids: row_ids.clone(),
-						before: before.clone(),
-						after: output_columns,
+						pre: before.clone(),
+						post: output_columns,
 					});
 				}
 

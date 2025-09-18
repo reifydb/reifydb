@@ -50,11 +50,11 @@ pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {
 
 pub(crate) fn convert_data_type_with_constraints(ast: &AstDataType) -> Result<TypeConstraint> {
 	match ast {
-		AstDataType::Simple(name) => {
+		AstDataType::Unconstrained(name) => {
 			let base_type = convert_data_type(name)?;
 			Ok(TypeConstraint::unconstrained(base_type))
 		}
-		AstDataType::WithConstraints {
+		AstDataType::Constrained {
 			name,
 			params,
 		} => {

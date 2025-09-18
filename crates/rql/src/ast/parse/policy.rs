@@ -126,7 +126,7 @@ mod tests {
 				let col = &columns[0];
 				assert_eq!(col.name.text(), "field");
 				match &col.ty {
-					AstDataType::Simple(id) => {
+					AstDataType::Unconstrained(id) => {
 						assert_eq!(id.text(), "int2")
 					}
 					_ => panic!("Expected simple data type"),

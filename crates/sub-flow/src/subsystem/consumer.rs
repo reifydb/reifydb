@@ -57,18 +57,27 @@ impl<T: Transaction> FlowConsumer<T> {
 				(columns, layout)
 			}
 			SourceId::TableVirtual(_) => {
-				// Virtual tables not supported in flows
-				// yet
+				// Virtual tables not supported in flows yet
 				unimplemented!("Virtual table sources not supported in flows")
 			}
-			SourceId::RingBuffer(_) => {
-				// Ring buffers not supported in flows yet
-				unimplemented!("Ring buffer sources not supported in flows")
+			SourceId::RingBuffer(ring_buffer_id) => {
+				let ring_buffer = CatalogStore::get_ring_buffer(txn, ring_buffer_id)?;
+				let namespace = CatalogStore::get_namespace(txn, ring_buffer.namespace)?;
+				let layout = ring_buffer.get_layout();
+				let columns = Columns::from_ring_buffer_def_fully_qualified(&namespace, &ring_buffer);
+				(columns, layout)
 			}
 		};
 
 		// Convert row bytes to EncodedRow
 		let encoded_row = EncodedRow(CowVec::new(row_bytes.to_vec()));
+
+		// Check if this is a deleted placeholder row
+		if encoded_row.is_deleted() {
+			// Return empty columns for deleted placeholder rows
+			// The row was already deleted from storage, so we don't have the actual data
+			return Ok(columns);
+		}
 
 		// Append the row data to columns
 		let mut columns = columns;
@@ -134,10 +143,10 @@ impl<T: Transaction> FlowConsumer<T> {
 				Change::Insert {
 					source_id,
 					row_number,
-					row,
+					post,
 				} => {
 					// Convert row bytes to Columns format
-					let columns = match Self::to_columns(txn, source_id, &row) {
+					let columns = match Self::to_columns(txn, source_id, &post) {
 						Ok(cols) => cols,
 						Err(e) => {
 							return Err(e);
@@ -147,40 +156,40 @@ impl<T: Transaction> FlowConsumer<T> {
 					let diff = FlowDiff::Insert {
 						source: source_id,
 						row_ids: vec![row_number],
-						after: columns,
+						post: columns,
 					};
 					diffs.push(diff);
 				}
 				Change::Update {
 					source_id,
 					row_number,
-					before,
-					after,
+					pre,
+					post,
 				} => {
 					// Convert row bytes to Columns format
-					let before_columns = Self::to_columns(txn, source_id, &before)?;
-					let after_columns = Self::to_columns(txn, source_id, &after)?;
+					let before_columns = Self::to_columns(txn, source_id, &pre)?;
+					let after_columns = Self::to_columns(txn, source_id, &post)?;
 
 					let diff = FlowDiff::Update {
 						source: source_id,
 						row_ids: vec![row_number],
-						before: before_columns,
-						after: after_columns,
+						pre: before_columns,
+						post: after_columns,
 					};
 					diffs.push(diff);
 				}
 				Change::Delete {
 					source_id,
 					row_number,
-					row,
+					pre,
 				} => {
 					// Convert row bytes to Columns format
-					let columns = Self::to_columns(txn, source_id, &row)?;
+					let columns = Self::to_columns(txn, source_id, &pre)?;
 
 					let diff = FlowDiff::Remove {
 						source: source_id,
 						row_ids: vec![row_number],
-						before: columns,
+						pre: columns,
 					};
 					diffs.push(diff);
 				}
@@ -221,30 +230,30 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 					// events
 					let flowchange = match &event.change {
 						CdcChange::Insert {
-							after,
+							post: after,
 							..
 						} => Change::Insert {
 							source_id,
 							row_number: table_row.row,
-							row: after.to_vec(),
+							post: after.to_vec(),
 						},
 						CdcChange::Update {
-							before,
-							after,
+							pre: before,
+							post: after,
 							..
 						} => Change::Update {
 							source_id,
 							row_number: table_row.row,
-							before: before.to_vec(),
-							after: after.to_vec(),
+							pre: before.to_vec(),
+							post: after.to_vec(),
 						},
 						CdcChange::Delete {
-							before,
+							pre: before,
 							..
 						} => Change::Delete {
 							source_id,
 							row_number: table_row.row,
-							row: before.to_vec(),
+							pre: before.to_vec(),
 						},
 					};
 					changes.push(flowchange);

@@ -657,7 +657,7 @@ impl JoinOperator {
 		FlowDiff::Insert {
 			source: source_id,
 			row_ids,
-			after: columns,
+			post: columns,
 		}
 	}
 
@@ -828,7 +828,7 @@ impl JoinOperator {
 				output_diffs.push(FlowDiff::Remove {
 					source,
 					row_ids: vec![row_id],
-					before: columns,
+					pre: columns,
 				});
 			} else if matches!(self.join_type, JoinType::Left) {
 				// Right side delete for LEFT JOIN
@@ -856,7 +856,7 @@ impl JoinOperator {
 					output_diffs.push(FlowDiff::Remove {
 						source,
 						row_ids: vec![other_row.row_id],
-						before: columns,
+						pre: columns,
 					});
 				}
 			}
@@ -901,15 +901,15 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 			// Get columns from diff
 			let columns = match diff {
 				FlowDiff::Insert {
-					after,
+					post: after,
 					..
 				} => after,
 				FlowDiff::Update {
-					after,
+					post: after,
 					..
 				} => after,
 				FlowDiff::Remove {
-					before,
+					pre: before,
 					..
 				} => before,
 			};
@@ -938,7 +938,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 				FlowDiff::Insert {
 					source,
 					row_ids,
-					after,
+					post: after,
 				} => {
 					let diffs = self.process_insert(
 						txn, evaluator, *source, row_ids, after, is_left, &metadata,
@@ -948,8 +948,8 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 				FlowDiff::Update {
 					source,
 					row_ids,
-					before,
-					after,
+					pre: before,
+					post: after,
 				} => {
 					// Handle update as remove + insert
 					let remove_diffs =
@@ -963,7 +963,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 				FlowDiff::Remove {
 					source,
 					row_ids,
-					before,
+					pre: before,
 				} => {
 					let diffs =
 						self.process_remove(txn, evaluator, *source, row_ids, before, is_left)?;

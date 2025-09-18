@@ -71,14 +71,14 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<
 		let change_str = match &event.change {
 			CdcChange::Insert {
 				key,
-				after,
+				post: after,
 			} => {
 				format!("Insert {{ key: {}, after: {} }}", format::Raw::key(key), format_value(after))
 			}
 			CdcChange::Update {
 				key,
-				before,
-				after,
+				pre: before,
+				post: after,
 			} => {
 				format!(
 					"Update {{ key: {}, before: {}, after: {} }}",
@@ -89,7 +89,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<
 			}
 			CdcChange::Delete {
 				key,
-				before,
+				pre: before,
 			} => {
 				format!("Delete {{ key: {}, before: {} }}", format::Raw::key(key), format_value(before))
 			}
