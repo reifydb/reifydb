@@ -43,7 +43,7 @@ pub enum CdcChange {
 	},
 	Delete {
 		key: EncodedKey,
-		pre: EncodedRow,
+		pre: Option<EncodedRow>,
 	},
 }
 

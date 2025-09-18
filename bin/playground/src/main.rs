@@ -3,7 +3,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{sync::atomic::Ordering, thread::sleep, time::Duration};
+use std::{thread::sleep, time::Duration};
 
 use reifydb::{
 	MemoryDatabaseOptimistic, Session, WithSubsystem,

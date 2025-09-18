@@ -4,7 +4,7 @@
 use std::{collections::HashSet, path::Path, sync::mpsc, thread};
 
 use mpsc::Sender;
-use reifydb_core::{CommitVersion, CowVec, EncodedKey, TransactionId, delta::Delta, row::EncodedRow};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, TransactionId, delta::Delta};
 use reifydb_type::{Error, Result, return_error};
 use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
 
@@ -191,9 +191,9 @@ impl Writer {
 		let table = table_name(&encoded_key)?;
 		Self::ensure_table_if_needed(tx, table, ensured_tables)?;
 
-		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", table);
+		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, NULL)", table);
 
-		tx.execute(&query, rusqlite::params![key.to_vec(), version, EncodedRow::deleted().to_vec()])
+		tx.execute(&query, rusqlite::params![key.to_vec(), version])
 			.map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		Ok(())

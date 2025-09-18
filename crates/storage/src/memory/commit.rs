@@ -6,7 +6,6 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{TransactionId, UnversionedCommit, VersionedCommit},
 	return_error,
-	row::EncodedRow,
 	util::now_millis,
 };
 
@@ -30,7 +29,7 @@ impl VersionedCommit for Memory {
 
 			let before_value = self.versioned.get(delta.key()).and_then(|entry| {
 				let values = entry.value();
-				Some(values.get_latest().unwrap_or_else(|| EncodedRow::deleted()))
+				values.get_latest()
 			});
 
 			match &delta {

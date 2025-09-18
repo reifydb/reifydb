@@ -163,11 +163,18 @@ fn encode_cdc_change(change: &CdcChange) -> crate::Result<EncodedRow> {
 				CDC_COMPACT_CHANGE_KEY_FIELD,
 				&Blob::from_slice(key.as_slice()),
 			);
-			CDC_CHANGE_LAYOUT.set_blob(
-				&mut row,
-				CDC_COMPACT_CHANGE_BEFORE_FIELD,
-				&Blob::from_slice(before.as_slice()),
-			);
+			match before {
+				Some(before_row) => {
+					CDC_CHANGE_LAYOUT.set_blob(
+						&mut row,
+						CDC_COMPACT_CHANGE_BEFORE_FIELD,
+						&Blob::from_slice(before_row.as_slice()),
+					);
+				}
+				None => {
+					CDC_CHANGE_LAYOUT.set_undefined(&mut row, CDC_COMPACT_CHANGE_BEFORE_FIELD);
+				}
+			}
 			CDC_CHANGE_LAYOUT.set_undefined(&mut row, CDC_COMPACT_CHANGE_AFTER_FIELD);
 		}
 	}
@@ -202,8 +209,12 @@ fn decode_cdc_change(row: &EncodedRow) -> crate::Result<CdcChange> {
 			}
 		}
 		ChangeType::Delete => {
-			let before_blob = CDC_CHANGE_LAYOUT.get_blob(row, CDC_COMPACT_CHANGE_BEFORE_FIELD);
-			let before = EncodedRow(CowVec::new(before_blob.as_bytes().to_vec()));
+			let before = if row.is_defined(CDC_COMPACT_CHANGE_BEFORE_FIELD) {
+				let before_blob = CDC_CHANGE_LAYOUT.get_blob(row, CDC_COMPACT_CHANGE_BEFORE_FIELD);
+				Some(EncodedRow(CowVec::new(before_blob.as_bytes().to_vec())))
+			} else {
+				None
+			};
 			CdcChange::Delete {
 				key,
 				pre: before,
@@ -268,7 +279,7 @@ mod tests {
 				sequence: 3,
 				change: CdcChange::Delete {
 					key: EncodedKey::new(vec![3]),
-					pre: EncodedRow(CowVec::new(vec![30])),
+					pre: Some(EncodedRow(CowVec::new(vec![30]))),
 				},
 			},
 		];
@@ -302,7 +313,7 @@ mod tests {
 				sequence: 2,
 				change: CdcChange::Delete {
 					key: EncodedKey::new(vec![2]),
-					pre: EncodedRow(CowVec::new(vec![20])),
+					pre: Some(EncodedRow(CowVec::new(vec![20]))),
 				},
 			},
 		];

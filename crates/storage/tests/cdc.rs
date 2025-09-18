@@ -60,12 +60,10 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<
 	}
 
 	fn format_cdc_event(event: &CdcEvent) -> String {
-		let format_value = |row: &EncodedRow| {
-			if row.is_deleted() {
-				"\"<deleted>\"".to_string()
-			} else {
-				format::Raw::bytes(row.as_slice())
-			}
+		let format_value = |row: &EncodedRow| format::Raw::bytes(row.as_slice());
+		let format_option_value = |row_opt: &Option<EncodedRow>| match row_opt {
+			Some(row) => format::Raw::bytes(row.as_slice()),
+			None => "\"<deleted>\"".to_string(),
 		};
 
 		let change_str = match &event.change {
@@ -91,7 +89,11 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<
 				key,
 				pre: before,
 			} => {
-				format!("Delete {{ key: {}, before: {} }}", format::Raw::key(key), format_value(before))
+				format!(
+					"Delete {{ key: {}, before: {} }}",
+					format::Raw::key(key),
+					format_option_value(before)
+				)
 			}
 		};
 

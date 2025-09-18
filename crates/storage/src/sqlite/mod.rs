@@ -78,7 +78,7 @@ impl Sqlite {
                  CREATE TABLE IF NOT EXISTS versioned (
                      key     BLOB NOT NULL,
                      version INTEGER NOT NULL,
-                     value   BLOB NOT NULL,
+                     value   BLOB,
                      PRIMARY KEY (key, version)
                  );
 

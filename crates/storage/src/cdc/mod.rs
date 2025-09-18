@@ -81,7 +81,7 @@ pub(crate) fn generate_cdc_change(delta: Delta, pre: Option<EncodedRow>) -> CdcC
 			key,
 		} => CdcChange::Delete {
 			key,
-			pre: pre.unwrap_or_else(|| EncodedRow::deleted()),
+			pre,
 		},
 	}
 }

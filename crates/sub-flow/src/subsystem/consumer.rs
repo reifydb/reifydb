@@ -70,14 +70,13 @@ impl<T: Transaction> FlowConsumer<T> {
 		};
 
 		// Convert row bytes to EncodedRow
-		let encoded_row = EncodedRow(CowVec::new(row_bytes.to_vec()));
-
-		// Check if this is a deleted placeholder row
-		if encoded_row.is_deleted() {
-			// Return empty columns for deleted placeholder rows
+		if row_bytes.is_empty() {
+			// Return empty columns for deleted rows
 			// The row was already deleted from storage, so we don't have the actual data
 			return Ok(columns);
 		}
+
+		let encoded_row = EncodedRow(CowVec::new(row_bytes.to_vec()));
 
 		// Append the row data to columns
 		let mut columns = columns;
@@ -230,30 +229,32 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 					// events
 					let flowchange = match &event.change {
 						CdcChange::Insert {
-							post: after,
+							post,
 							..
 						} => Change::Insert {
 							source_id,
 							row_number: table_row.row,
-							post: after.to_vec(),
+							post: post.to_vec(),
 						},
 						CdcChange::Update {
-							pre: before,
-							post: after,
+							pre,
+							post,
 							..
 						} => Change::Update {
 							source_id,
 							row_number: table_row.row,
-							pre: before.to_vec(),
-							post: after.to_vec(),
+							pre: pre.to_vec(),
+							post: post.to_vec(),
 						},
 						CdcChange::Delete {
-							pre: before,
+							pre,
 							..
 						} => Change::Delete {
 							source_id,
 							row_number: table_row.row,
-							pre: before.to_vec(),
+							pre: pre.as_ref()
+								.map(|row| row.to_vec())
+								.unwrap_or_else(Vec::new),
 						},
 					};
 					changes.push(flowchange);
