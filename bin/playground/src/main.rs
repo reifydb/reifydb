@@ -6,7 +6,7 @@
 use std::{
 	sync::{
 		Arc,
-		atomic::{AtomicUsize, Ordering, Ordering::Relaxed},
+		atomic::{AtomicUsize, Ordering::Relaxed},
 	},
 	thread::sleep,
 	time::Duration,
@@ -21,9 +21,9 @@ use reifydb::{
 	embedded,
 	engine::{StandardCommandTransaction, StandardEvaluator},
 	log_info,
+	sub::task,
 	sub_flow::{FlowBuilder, Operator, TransformOperator},
 	sub_logging::{FormatStyle, LoggingBuilder},
-	task,
 	r#type::params,
 };
 
@@ -83,7 +83,7 @@ fn main() {
 			println!("{}", frame);
 		}
 
-		let count = counter_clone.fetch_add(1, Ordering::Relaxed);
+		let count = counter_clone.fetch_add(1, Relaxed);
 		log_info!("Background task execution #{}", count + 1);
 		Ok(())
 	});

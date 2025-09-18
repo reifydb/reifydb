@@ -324,6 +324,10 @@ impl<T: Transaction> WorkerSubsystem<T> {
 						if !running.load(Ordering::Relaxed) {
 							break;
 						}
+
+						// Drop the lock and continue to check for new requests
+						drop(sched);
+						continue;
 					}
 
 					// Check what tasks are ready
