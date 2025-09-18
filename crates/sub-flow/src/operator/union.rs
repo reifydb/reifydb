@@ -20,13 +20,13 @@ impl<T: Transaction> Operator<T> for UnionOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
 		// Union is a simple pass-through operator
 		// It combines inputs from multiple sources
 		// The FlowEngine handles routing multiple inputs to this
 		// operator
-		Ok(change.clone())
+		Ok(change)
 	}
 }

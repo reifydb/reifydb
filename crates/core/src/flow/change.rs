@@ -1,26 +1,24 @@
-use std::collections::HashMap;
-
-use reifydb_type::{RowNumber, Value};
+use reifydb_type::RowNumber;
 use serde::{Deserialize, Serialize};
 
-use crate::{interface::SourceId, value::columnar::Columns};
+use crate::{interface::SourceId, util::CowVec, value::columnar::Columns};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FlowDiff {
 	Insert {
 		source: SourceId,
-		row_ids: Vec<RowNumber>,
+		rows: CowVec<RowNumber>,
 		post: Columns,
 	},
 	Update {
 		source: SourceId,
-		row_ids: Vec<RowNumber>,
+		rows: CowVec<RowNumber>,
 		pre: Columns,
 		post: Columns,
 	},
 	Remove {
 		source: SourceId,
-		row_ids: Vec<RowNumber>,
+		rows: CowVec<RowNumber>,
 		pre: Columns,
 	},
 }
@@ -47,21 +45,21 @@ impl FlowDiff {
 	pub fn validate(&self) -> bool {
 		match self {
 			FlowDiff::Insert {
-				row_ids,
+				rows,
 				post,
 				..
-			} => row_ids.len() == post.row_count(),
+			} => rows.len() == post.row_count(),
 			FlowDiff::Update {
-				row_ids,
+				rows,
 				pre,
 				post,
 				..
-			} => row_ids.len() == pre.row_count() && row_ids.len() == post.row_count(),
+			} => rows.len() == pre.row_count() && rows.len() == post.row_count(),
 			FlowDiff::Remove {
-				row_ids,
+				rows,
 				pre,
 				..
-			} => row_ids.len() == pre.row_count(),
+			} => rows.len() == pre.row_count(),
 		}
 	}
 
@@ -74,19 +72,12 @@ impl FlowDiff {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowChange {
 	pub diffs: Vec<FlowDiff>,
-	pub metadata: HashMap<String, Value>,
 }
 
 impl FlowChange {
 	pub fn new(diffs: Vec<FlowDiff>) -> Self {
 		Self {
 			diffs,
-			metadata: HashMap::new(),
 		}
-	}
-
-	pub fn with_metadata(mut self, key: String, value: Value) -> Self {
-		self.metadata.insert(key, value);
-		self
 	}
 }

@@ -44,16 +44,16 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
-		for diff in &change.diffs {
+		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
 					source,
-					row_ids,
+					rows: row_ids,
 					post: after,
 				} => {
 					// Evaluate input expression
@@ -108,20 +108,76 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 					let output_columns = Columns::new(all_columns);
 
 					output.push(FlowDiff::Insert {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						post: output_columns,
 					});
 				}
 
 				FlowDiff::Update {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 					post: after,
 				} => {
-					// Similar processing for updates
-					output.push(diff.clone());
+					// For updates, process the new values
+					// Evaluate input expression
+					let empty_params = Params::None;
+					let eval_ctx = EvaluationContext {
+						target_column: None,
+						column_policies: Vec::new(),
+						columns: after.clone(),
+						row_count: after.row_count(),
+						take: None,
+						params: &empty_params,
+					};
+
+					let input_column = evaluator.evaluate(&eval_ctx, &self.input_expression)?;
+
+					// Get current sum
+					let empty_key = EncodedKey::new(Vec::new());
+					let state_row = self.get(txn, &empty_key)?;
+
+					let mut sum = self.parse_state(state_row.as_ref());
+
+					let row_count = after.row_count();
+					let mut sums = Vec::with_capacity(row_count);
+
+					// Process values
+					match input_column.data() {
+						ColumnData::Float8(container) => {
+							for val in container.data().iter() {
+								sum += val;
+								sums.push(sum);
+							}
+						}
+						ColumnData::Int8(container) => {
+							for val in container.data().iter() {
+								sum += *val as f64;
+								sums.push(sum);
+							}
+						}
+						_ => panic!("running_sum requires numeric input"),
+					}
+
+					// Save updated sum
+					let empty_key = EncodedKey::new(Vec::new());
+					self.set(txn, &empty_key, EncodedRow(CowVec::new(self.encode_state(sum))))?;
+
+					// Build output
+					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
+					all_columns.push(Column::ColumnQualified(ColumnQualified {
+						name: self.column_name.clone(),
+						data: ColumnData::Float8(NumberContainer::from_vec(sums)),
+					}));
+					let output_columns = Columns::new(all_columns);
+
+					output.push(FlowDiff::Update {
+						source,
+						rows: row_ids.clone(),
+						pre: before.clone(),
+						post: output_columns,
+					});
 				}
 
 				FlowDiff::Remove {

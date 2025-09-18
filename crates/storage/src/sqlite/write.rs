@@ -13,7 +13,7 @@ use crate::{
 	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
 	diagnostic::{connection_failed, sequence_exhausted},
 	sqlite::{
-		cdc::{fetch_before_value, store_cdc_transaction},
+		cdc::{fetch_pre_value, store_cdc_transaction},
 		versioned::{ensure_table_exists, table_name},
 	},
 };
@@ -132,13 +132,13 @@ impl Writer {
 			};
 
 			let table = table_name(delta.key())?;
-			let before_value = fetch_before_value(tx, delta.key(), table).ok().flatten();
+			let pre = fetch_pre_value(tx, delta.key(), table).ok().flatten();
 
 			Self::apply_single_delta(tx, delta, version, ensured_tables)?;
 
 			cdc_changes.push(CdcTransactionChange {
 				sequence,
-				change: generate_cdc_change(delta.clone(), before_value),
+				change: generate_cdc_change(delta.clone(), pre),
 			});
 		}
 

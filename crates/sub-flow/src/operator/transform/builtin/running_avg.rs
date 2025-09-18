@@ -49,16 +49,16 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
-		for diff in &change.diffs {
+		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
 					source,
-					row_ids,
+					rows: row_ids,
 					post: after,
 				} => {
 					// Evaluate input expression
@@ -118,15 +118,15 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 					let output_columns = Columns::new(all_columns);
 
 					output.push(FlowDiff::Insert {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						post: output_columns,
 					});
 				}
 
 				FlowDiff::Update {
 					source: _,
-					row_ids: _,
+					rows: _,
 					pre: _,
 					post: _,
 				} => {

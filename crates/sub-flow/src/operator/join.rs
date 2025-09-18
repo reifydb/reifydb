@@ -450,22 +450,58 @@ impl JoinOperator {
 		if let Ok(data) = self.get(txn, &metadata_key) {
 			if !data.as_ref().is_empty() {
 				if let Ok(metadata) = serde_json::from_slice::<JoinMetadata>(data.as_ref()) {
-					// Determine if this is the left or
-					// right source
-					let is_left = source_name == metadata.left_source;
+					// Determine if this is the left or right source using column names
+					let column_names: Vec<String> =
+						columns.iter().map(|c| c.name().to_string()).collect();
+
+					// Check which side has more matching columns
+					let left_matches = metadata
+						.left_columns
+						.iter()
+						.filter(|col| column_names.contains(col))
+						.count();
+					let right_matches = metadata
+						.right_columns
+						.iter()
+						.filter(|col| column_names.contains(col))
+						.count();
+
+					// Use column overlap to determine which side this is
+					let is_left = if left_matches > right_matches {
+						true
+					} else if right_matches > left_matches {
+						false
+					} else {
+						// Fall back to source name if column matching is ambiguous
+						source_name == metadata.left_source
+					};
+
 					return Ok((metadata, is_left));
 				}
 			}
 		}
 
-		// Initialize metadata - determine if this is left or right
-		// For the first pass, we'll still use source name matching
-		// but track instance IDs for disambiguation
-		// TODO: This should be passed through flow metadata
+		// Initialize metadata - determine if this is left or right using column matching
+		// Compare incoming columns with schema columns to determine which side
+		let column_names: Vec<String> = columns.iter().map(|c| c.name().to_string()).collect();
 
-		let is_left_by_schema = left_schema.source_name.as_ref().map(|s| s == &source_name).unwrap_or(false);
+		// Count matching columns with each schema
+		let left_schema_matches =
+			left_schema.columns.iter().filter(|col| column_names.contains(&col.name)).count();
+		let right_schema_matches =
+			right_schema.columns.iter().filter(|col| column_names.contains(&col.name)).count();
 
-		let metadata = if is_left_by_schema {
+		// Determine side based on which schema has more matching columns
+		let is_left = if left_schema_matches > right_schema_matches {
+			true
+		} else if right_schema_matches > left_schema_matches {
+			false
+		} else {
+			// If column matching is ambiguous, fall back to source name matching
+			left_schema.source_name.as_ref().map(|s| s == &source_name).unwrap_or(true)
+		};
+
+		let metadata = if is_left {
 			// This is the left source
 			JoinMetadata {
 				join_instance_id: self.join_instance_id,
@@ -496,7 +532,7 @@ impl JoinOperator {
 		let serialized = serde_json::to_vec(&metadata).unwrap_or_default();
 		self.set(txn, &metadata_key, EncodedRow(CowVec::new(serialized)))?;
 
-		Ok((metadata, is_left_by_schema))
+		Ok((metadata, is_left))
 	}
 
 	// Update metadata with right source
@@ -656,7 +692,7 @@ impl JoinOperator {
 
 		FlowDiff::Insert {
 			source: SourceId::FlowNode(self.node),
-			row_ids,
+			rows: CowVec::new(row_ids),
 			post: columns,
 		}
 	}
@@ -827,7 +863,7 @@ impl JoinOperator {
 
 				output_diffs.push(FlowDiff::Remove {
 					source: SourceId::FlowNode(self.node),
-					row_ids: vec![row_id],
+					rows: CowVec::new(vec![row_id]),
 					pre: columns,
 				});
 			} else if matches!(self.join_type, JoinType::Left) {
@@ -854,8 +890,8 @@ impl JoinOperator {
 					let columns = Columns::new(column_vec);
 
 					output_diffs.push(FlowDiff::Remove {
-						source: SourceId::FlowNode(self.node),
-						row_ids: vec![other_row.row_id],
+						source,
+						rows: CowVec::new(vec![other_row.row_id]),
 						pre: columns,
 					});
 				}
@@ -870,103 +906,79 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
-		// Check which node this data is coming from
-		let from_node = change.metadata.get("from_node").and_then(|v| match v {
-			reifydb_type::Value::Uint8(n) => Some(*n),
-			_ => None,
-		});
-
 		let mut output_diffs = Vec::new();
 
 		// Process each diff in the change
-		for diff in &change.diffs {
-			let source = match diff {
-				FlowDiff::Insert {
-					source,
-					..
-				}
-				| FlowDiff::Update {
-					source,
-					..
-				}
-				| FlowDiff::Remove {
-					source,
-					..
-				} => *source,
-			};
-
-			// Get columns from diff
-			let columns = match diff {
-				FlowDiff::Insert {
-					post: after,
-					..
-				} => after,
-				FlowDiff::Update {
-					post: after,
-					..
-				} => after,
-				FlowDiff::Remove {
-					pre: before,
-					..
-				} => before,
-			};
-
-			// Get or initialize metadata to determine left/right
-			// Use from_node if available to determine which input
-			// this is
-			let (metadata, is_left) = if let Some(from_node_id) = from_node {
-				self.get_or_init_metadata_with_node(
-					txn,
-					columns,
-					&self.left_schema,
-					&self.right_schema,
-					from_node_id,
-				)?
-			} else {
-				self.get_or_init_metadata(txn, columns, &self.left_schema, &self.right_schema)?
-			};
-
-			// Update metadata if this is the right source
-			if !is_left && metadata.right_source.is_empty() {
-				self.update_metadata(txn, metadata.clone(), columns)?;
-			}
-
+		for diff in change.diffs {
+			// Process the diff based on its type
 			match diff {
 				FlowDiff::Insert {
 					source,
-					row_ids,
+					rows: row_ids,
 					post: after,
 				} => {
+					let (metadata, is_left) = self.get_or_init_metadata(
+						txn,
+						&after,
+						&self.left_schema,
+						&self.right_schema,
+					)?;
+
+					// Update metadata if this is the right source
+					if !is_left && metadata.right_source.is_empty() {
+						self.update_metadata(txn, metadata.clone(), &after)?;
+					}
+
 					let diffs = self.process_insert(
-						txn, evaluator, *source, row_ids, after, is_left, &metadata,
+						txn, evaluator, source, &row_ids, &after, is_left, &metadata,
 					)?;
 					output_diffs.extend(diffs);
 				}
 				FlowDiff::Update {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 					post: after,
 				} => {
+					// Get metadata from after columns
+					let (metadata, is_left) = self.get_or_init_metadata(
+						txn,
+						&after,
+						&self.left_schema,
+						&self.right_schema,
+					)?;
+
+					// Update metadata if this is the right source
+					if !is_left && metadata.right_source.is_empty() {
+						self.update_metadata(txn, metadata.clone(), &after)?;
+					}
+
 					// Handle update as remove + insert
-					let remove_diffs =
-						self.process_remove(txn, evaluator, *source, row_ids, before, is_left)?;
+					let remove_diffs = self
+						.process_remove(txn, evaluator, source, &row_ids, &before, is_left)?;
 					let insert_diffs = self.process_insert(
-						txn, evaluator, *source, row_ids, after, is_left, &metadata,
+						txn, evaluator, source, &row_ids, &after, is_left, &metadata,
 					)?;
 					output_diffs.extend(remove_diffs);
 					output_diffs.extend(insert_diffs);
 				}
 				FlowDiff::Remove {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 				} => {
-					let diffs =
-						self.process_remove(txn, evaluator, *source, row_ids, before, is_left)?;
+					let (metadata, is_left) = self.get_or_init_metadata(
+						txn,
+						&before,
+						&self.left_schema,
+						&self.right_schema,
+					)?;
+
+					let diffs = self
+						.process_remove(txn, evaluator, source, &row_ids, &before, is_left)?;
 					output_diffs.extend(diffs);
 				}
 			}
@@ -974,7 +986,6 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 
 		Ok(FlowChange {
 			diffs: output_diffs,
-			metadata: change.metadata.clone(),
 		})
 	}
 }

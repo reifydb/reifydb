@@ -69,24 +69,26 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
 		// Load current state
 		let mut state = self.load_state(txn)?;
 		let mut output_diffs = Vec::new();
 
-		for diff in &change.diffs {
+		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
 					source,
-					row_ids,
+					rows: row_ids,
 					post: after,
 				} => {
 					// For DESC order (default), we need to
 					// keep the highest row IDs
 					let mut all_rows: Vec<_> = state.row_ids.clone();
-					all_rows.extend_from_slice(row_ids);
+					for &row_id in row_ids.iter() {
+						all_rows.push(row_id);
+					}
 
 					// Sort in descending order (highest IDs
 					// first)
@@ -116,8 +118,8 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 						// These rows are no longer in
 						// top N
 						output_diffs.push(FlowDiff::Remove {
-							source: *source,
-							row_ids: rows_to_remove,
+							source,
+							rows: CowVec::new(rows_to_remove),
 							pre: after.clone(), /* Simplified - should track actual
 							                     * data */
 						});
@@ -126,8 +128,8 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					if !rows_to_add.is_empty() {
 						// These are new top N rows
 						output_diffs.push(FlowDiff::Insert {
-							source: *source,
-							row_ids: rows_to_add,
+							source,
+							rows: CowVec::new(rows_to_add),
 							post: after.clone(),
 						});
 					}
@@ -138,7 +140,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 				}
 				FlowDiff::Remove {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 				} => {
 					// Remove these rows from our state
@@ -152,7 +154,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					// Pass through the removal if it was in
 					// our top N
 					let mut rows_to_remove = Vec::new();
-					for &row_id in row_ids {
+					for &row_id in row_ids.iter() {
 						if state.row_ids.contains(&row_id) {
 							rows_to_remove.push(row_id);
 						}
@@ -160,8 +162,8 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 
 					if !rows_to_remove.is_empty() {
 						output_diffs.push(FlowDiff::Remove {
-							source: *source,
-							row_ids: rows_to_remove,
+							source,
+							rows: CowVec::new(rows_to_remove),
 							pre: before.clone(),
 						});
 					}
@@ -177,14 +179,14 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 				}
 				FlowDiff::Update {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 					post: after,
 				} => {
 					// Only pass through updates for rows in
 					// our top N
 					let mut rows_to_update = Vec::new();
-					for &row_id in row_ids {
+					for &row_id in row_ids.iter() {
 						if state.row_ids.contains(&row_id) {
 							rows_to_update.push(row_id);
 						}
@@ -192,8 +194,8 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 
 					if !rows_to_update.is_empty() {
 						output_diffs.push(FlowDiff::Update {
-							source: *source,
-							row_ids: rows_to_update,
+							source,
+							rows: CowVec::new(rows_to_update),
 							pre: before.clone(),
 							post: after.clone(),
 						});
@@ -207,7 +209,6 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 
 		Ok(FlowChange {
 			diffs: output_diffs,
-			metadata: change.metadata.clone(),
 		})
 	}
 }

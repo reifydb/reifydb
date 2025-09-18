@@ -3,7 +3,7 @@
 
 use std::{
 	collections::HashMap,
-	ops::{Deref, DerefMut, Index, IndexMut},
+	ops::{Deref, Index, IndexMut},
 };
 
 use reifydb_type::{Type, Value};
@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	interface::{NamespaceDef, RingBufferDef, TableDef, ViewDef},
+	util::CowVec,
 	value::{
 		columnar::{Column, ColumnData, ColumnQualified, FullyQualified, SourceQualified},
 		container::UndefinedContainer,
@@ -18,19 +19,13 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Columns(pub Vec<Column>);
+pub struct Columns(pub CowVec<Column>);
 
 impl Deref for Columns {
 	type Target = [Column];
 
 	fn deref(&self) -> &Self::Target {
 		self.0.deref()
-	}
-}
-
-impl DerefMut for Columns {
-	fn deref_mut(&mut self) -> &mut Self::Target {
-		self.0.deref_mut()
 	}
 }
 
@@ -44,7 +39,7 @@ impl Index<usize> for Columns {
 
 impl IndexMut<usize> for Columns {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		self.0.index_mut(index)
+		&mut self.0.make_mut()[index]
 	}
 }
 
@@ -53,7 +48,7 @@ impl Columns {
 		let n = columns.first().map_or(0, |c| c.data().len());
 		assert!(columns.iter().all(|c| c.data().len() == n));
 
-		Self(columns)
+		Self(CowVec::new(columns))
 	}
 
 	pub fn single_row<'a>(rows: impl IntoIterator<Item = (&'a str, Value)>) -> Columns {
@@ -166,7 +161,7 @@ impl Columns {
 
 impl Columns {
 	pub fn empty() -> Self {
-		Self(vec![])
+		Self(CowVec::new(vec![]))
 	}
 
 	pub fn from_table_def(table: &TableDef) -> Self {

@@ -160,7 +160,7 @@ impl<T: Transaction> FlowConsumer<T> {
 
 					let diff = FlowDiff::Insert {
 						source: source_id,
-						row_ids: vec![row_number],
+						rows: CowVec::new(vec![row_number]),
 						post: columns,
 					};
 					diffs.push(diff);
@@ -177,7 +177,7 @@ impl<T: Transaction> FlowConsumer<T> {
 
 					let diff = FlowDiff::Update {
 						source: source_id,
-						row_ids: vec![row_number],
+						rows: CowVec::new(vec![row_number]),
 						pre: before_columns,
 						post: after_columns,
 					};
@@ -193,7 +193,7 @@ impl<T: Transaction> FlowConsumer<T> {
 
 					let diff = FlowDiff::Remove {
 						source: source_id,
-						row_ids: vec![row_number],
+						rows: CowVec::new(vec![row_number]),
 						pre: columns,
 					};
 					diffs.push(diff);

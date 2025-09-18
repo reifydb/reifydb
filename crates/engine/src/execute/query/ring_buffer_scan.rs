@@ -1,10 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
+	CowVec,
 	interface::{EncodableKey, RingBufferDef, RingBufferMetadata, RowKey, Transaction, VersionedQueryTransaction},
 	row::EncodedRowLayout,
 	value::columnar::{
@@ -28,7 +29,7 @@ pub struct RingBufferScan<T: Transaction> {
 	rows_returned: u64,
 	context: Option<Arc<ExecutionContext>>,
 	initialized: bool,
-	_phantom: std::marker::PhantomData<T>,
+	_phantom: PhantomData<T>,
 }
 
 impl<T: Transaction> RingBufferScan<T> {
@@ -59,7 +60,7 @@ impl<T: Transaction> RingBufferScan<T> {
 			rows_returned: 0,
 			context: Some(context),
 			initialized: false,
-			_phantom: std::marker::PhantomData,
+			_phantom: PhantomData,
 		})
 	}
 
@@ -106,7 +107,7 @@ impl<T: Transaction> RingBufferScan<T> {
 			})
 			.collect();
 
-		Columns(columns)
+		Columns(CowVec::new(columns))
 	}
 }
 

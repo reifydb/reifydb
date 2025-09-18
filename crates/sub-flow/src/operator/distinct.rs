@@ -113,16 +113,16 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output_diffs = Vec::new();
 
-		for diff in &change.diffs {
+		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
 					source,
-					row_ids,
+					rows: row_ids,
 					post: after,
 				} => {
 					let mut new_distinct_rows = Vec::new();
@@ -131,7 +131,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 						let row_hash = Self::hash_row_with_expressions(
 							evaluator,
 							&self.expressions,
-							after,
+							&after,
 							idx,
 						)?;
 						let key = Self::hash_to_key(row_hash);
@@ -149,7 +149,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 								row_data: Self::extract_row_values(
 									evaluator,
 									&self.expressions,
-									after,
+									&after,
 									idx,
 								)?,
 							};
@@ -196,8 +196,8 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 						// A real implementation would
 						// properly handle columnar data
 						output_diffs.push(FlowDiff::Insert {
-							source: *source,
-							row_ids: new_distinct_rows,
+							source,
+							rows: CowVec::new(new_distinct_rows),
 							post: after.clone(),
 						});
 					}
@@ -205,7 +205,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 
 				FlowDiff::Remove {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 				} => {
 					let mut removed_distinct_rows = Vec::new();
@@ -214,7 +214,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 						let row_hash = Self::hash_row_with_expressions(
 							evaluator,
 							&self.expressions,
-							before,
+							&before,
 							idx,
 						)?;
 						let key = Self::hash_to_key(row_hash);
@@ -270,8 +270,8 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 
 					if !removed_distinct_rows.is_empty() {
 						output_diffs.push(FlowDiff::Remove {
-							source: *source,
-							row_ids: removed_distinct_rows,
+							source,
+							rows: CowVec::new(removed_distinct_rows),
 							pre: before.clone(),
 						});
 					}
@@ -279,29 +279,29 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 
 				FlowDiff::Update {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 					post: after,
 				} => {
 					// Handle update as remove + insert
 					// First process the remove
 					let remove_diff = FlowDiff::Remove {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						pre: before.clone(),
 					};
 					let remove_change = FlowChange::new(vec![remove_diff]);
-					let remove_result = self.apply(txn, &remove_change, evaluator)?;
+					let remove_result = self.apply(txn, remove_change, evaluator)?;
 					output_diffs.extend(remove_result.diffs);
 
 					// Then process the insert
 					let insert_diff = FlowDiff::Insert {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						post: after.clone(),
 					};
 					let insert_change = FlowChange::new(vec![insert_diff]);
-					let insert_result = self.apply(txn, &insert_change, evaluator)?;
+					let insert_result = self.apply(txn, insert_change, evaluator)?;
 					output_diffs.extend(insert_result.diffs);
 				}
 			}
@@ -309,7 +309,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 
 		Ok(FlowChange {
 			diffs: output_diffs,
-			metadata: change.metadata.clone(),
 		})
 	}
 }

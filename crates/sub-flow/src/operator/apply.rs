@@ -23,7 +23,7 @@ impl<T: Transaction> Operator<T> for ApplyOperator<T> {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		self.operator.apply(txn, change, evaluator)

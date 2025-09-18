@@ -23,50 +23,50 @@ impl<T: Transaction> Operator<T> for MapOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
-		for diff in &change.diffs {
+		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
 					source,
-					row_ids,
+					rows: row_ids,
 					post: after,
 				} => {
 					let projected_columns = self.project(evaluator, &after)?;
 					output.push(FlowDiff::Insert {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						post: projected_columns,
 					});
 				}
 				FlowDiff::Update {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 					post: after,
 				} => {
 					let projected_columns = self.project(evaluator, &after)?;
 					output.push(FlowDiff::Update {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						pre: before.clone(),
 						post: projected_columns,
 					});
 				}
 				FlowDiff::Remove {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 				} => {
 					// For removes, we might need to project
 					// to maintain namespace consistency
 					let projected_columns = self.project(evaluator, &before)?;
 					output.push(FlowDiff::Remove {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						pre: projected_columns,
 					});
 				}

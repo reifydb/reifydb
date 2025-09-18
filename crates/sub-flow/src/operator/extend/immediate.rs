@@ -23,49 +23,49 @@ impl<T: Transaction> Operator<T> for ExtendOperator {
 	fn apply(
 		&self,
 		_txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
-		for diff in &change.diffs {
+		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
 					source,
-					row_ids,
+					rows: row_ids,
 					post: after,
 				} => {
 					let extended_columns = self.extend(evaluator, &after)?;
 					output.push(FlowDiff::Insert {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						post: extended_columns,
 					});
 				}
 				FlowDiff::Update {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 					post: after,
 				} => {
 					let extended_before = self.extend(evaluator, &before)?;
 					let extended_after = self.extend(evaluator, &after)?;
 					output.push(FlowDiff::Update {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						pre: extended_before,
 						post: extended_after,
 					});
 				}
 				FlowDiff::Remove {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 				} => {
 					let extended_before = self.extend(evaluator, &before)?;
 					output.push(FlowDiff::Remove {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						pre: extended_before,
 					});
 				}

@@ -31,17 +31,15 @@ impl<T: Transaction> FlowEngine<T> {
 			// Find all nodes triggered by this source
 			if let Some(node_registrations) = self.sources.get(&source) {
 				// Process the diffs for each registered node
-				let bulkchange = FlowChange {
-					diffs,
-					metadata: change.metadata.clone(),
-				};
-
 				for (flow_id, node_id) in node_registrations {
 					if let Some(flow) = self.flows.get(flow_id) {
 						if let Some(node) = flow.get_node(node_id) {
+							let bulkchange = FlowChange {
+								diffs: diffs.clone(),
+							};
 							// Process this specific
 							// node with the change
-							self.process_node(txn, flow, node, &bulkchange)?;
+							self.process_node(txn, flow, node, bulkchange)?;
 						}
 					}
 				}
@@ -54,10 +52,17 @@ impl<T: Transaction> FlowEngine<T> {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		node: &FlowNode,
-		change: &FlowChange,
+		change: FlowChange,
 	) -> crate::Result<FlowChange> {
+		println!("DEBUG: Getting operator for node {:?}", node.id);
 		let operator = self.operators.get(&node.id).unwrap();
+		println!("DEBUG: Calling operator.apply for node {:?}", node.id);
 		let result = operator.apply(txn, change, &self.evaluator)?;
+		println!(
+			"DEBUG: Operator.apply completed for node {:?}, result has {} diffs",
+			node.id,
+			result.diffs.len()
+		);
 		Ok(result)
 	}
 
@@ -66,13 +71,11 @@ impl<T: Transaction> FlowEngine<T> {
 		txn: &mut StandardCommandTransaction<T>,
 		flow: &Flow,
 		node: &FlowNode,
-		change: &FlowChange,
+		change: FlowChange,
 	) -> crate::Result<()> {
+		println!("DEBUG: Processing node {:?} with {} diffs", node.id, change.diffs.len());
 		let node_type = &node.ty;
 		let node_outputs = &node.outputs;
-
-		// Store operator result to handle lifetime
-		let operator_result;
 
 		let output = match &node_type {
 			SourceInlineData {} => {
@@ -93,10 +96,7 @@ impl<T: Transaction> FlowEngine<T> {
 			}
 			FlowNodeType::Operator {
 				..
-			} => {
-				operator_result = self.apply_operator(txn, node, &change)?;
-				&operator_result
-			}
+			} => self.apply_operator(txn, node, change)?,
 			FlowNodeType::SinkView {
 				view,
 				..
@@ -110,15 +110,26 @@ impl<T: Transaction> FlowEngine<T> {
 		};
 
 		// Propagate to downstream nodes
-		for output_id in node_outputs {
-			// Add metadata to track which node this data is coming
-			// from
-			let mut output_with_metadata = output.clone();
-			output_with_metadata
-				.metadata
-				.insert("from_node".to_string(), reifydb_type::Value::Uint8(node.id.0));
-
-			self.process_node(txn, flow, flow.get_node(output_id).unwrap(), &output_with_metadata)?;
+		println!("DEBUG: Node has {} outputs", node_outputs.len());
+		if node_outputs.is_empty() {
+			// No outputs, nothing to do
+			println!("DEBUG: No outputs, done");
+		} else if node_outputs.len() == 1 {
+			// Single output - pass ownership directly
+			let output_id = node_outputs[0];
+			println!("DEBUG: Single output, propagating to {:?}", output_id);
+			self.process_node(txn, flow, flow.get_node(&output_id).unwrap(), output)?;
+		} else {
+			// Multiple outputs - clone for all but the last
+			let (last, rest) = node_outputs.split_last().unwrap();
+			println!("DEBUG: Multiple outputs, processing {} clones and 1 owned", rest.len());
+			for output_id in rest {
+				println!("DEBUG: Propagating (cloned) to {:?}", output_id);
+				self.process_node(txn, flow, flow.get_node(output_id).unwrap(), output.clone())?;
+			}
+			// Last output gets ownership
+			println!("DEBUG: Propagating (owned) to {:?}", last);
+			self.process_node(txn, flow, flow.get_node(last).unwrap(), output)?;
 		}
 
 		Ok(())
@@ -136,7 +147,7 @@ impl<T: Transaction> FlowEngine<T> {
 		for diff in &change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					row_ids,
+					rows: row_ids,
 					post: after,
 					..
 				} => {
@@ -253,7 +264,7 @@ impl<T: Transaction> FlowEngine<T> {
 					}
 				}
 				FlowDiff::Update {
-					row_ids,
+					rows: row_ids,
 					pre: _,
 					post: after,
 					..
@@ -381,7 +392,7 @@ impl<T: Transaction> FlowEngine<T> {
 					}
 				}
 				FlowDiff::Remove {
-					row_ids,
+					rows: row_ids,
 					pre: before,
 					..
 				} => {
@@ -399,7 +410,7 @@ impl<T: Transaction> FlowEngine<T> {
 					}
 
 					// Remove each row by its row_id
-					for &row_id in row_ids {
+					for &row_id in row_ids.iter() {
 						let key = RowKey {
 							source: SourceId::view(view_id),
 							row: row_id,

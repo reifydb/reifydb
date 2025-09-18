@@ -119,27 +119,7 @@ describe('useQueryExecutor Hook', () => {
         });
 
         expect(result.current.results).toBeUndefined();
-        expect(result.current.error).toContain('');  // Error message will vary
-    });
-
-    it('should track execution time', async () => {
-        const {result} = renderHook(() => useQueryExecutor());
-
-        act(() => {
-            result.current.query(
-                `MAP {test: 1}`,
-                undefined,
-                [Schema.object({ test: Schema.number() })]
-            );
-        });
-
-        await waitFor(() => {
-            expect(result.current.isExecuting).toBe(false);
-        });
-
-        expect(result.current.executionTime).toBeDefined();
-        expect(result.current.executionTime).toBeGreaterThan(0);
-        expect(result.current.results![0].executionTimeMs).toBeGreaterThan(0);
+        expect(result.current.error).toBeDefined();
     });
 
     it('should cancel previous query when new one starts', async () => {

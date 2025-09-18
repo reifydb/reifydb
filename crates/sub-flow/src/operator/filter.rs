@@ -2,6 +2,7 @@ use reifydb_core::{
 	BitVec,
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, Params, Transaction, expression::Expression},
+	util::CowVec,
 	value::columnar::{ColumnData, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
@@ -24,16 +25,16 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
-		for diff in &change.diffs {
+		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
 					source,
-					row_ids,
+					rows: row_ids,
 					post: after,
 				} => {
 					let (filtered_columns, filtered_indices) =
@@ -46,15 +47,15 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 							filtered_row_ids.push(row_ids[*idx]);
 						}
 						output.push(FlowDiff::Insert {
-							source: *source,
-							row_ids: filtered_row_ids,
+							source,
+							rows: CowVec::new(filtered_row_ids),
 							post: filtered_columns,
 						});
 					}
 				}
 				FlowDiff::Update {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 					post: after,
 				} => {
@@ -68,8 +69,8 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 							filtered_row_ids.push(row_ids[*idx]);
 						}
 						output.push(FlowDiff::Update {
-							source: *source,
-							row_ids: filtered_row_ids,
+							source,
+							rows: CowVec::new(filtered_row_ids),
 							pre: before.clone(),
 							post: filtered_new,
 						});
@@ -77,21 +78,21 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 						// If new doesn't pass filter,
 						// emit remove of old
 						output.push(FlowDiff::Remove {
-							source: *source,
-							row_ids: row_ids.clone(),
+							source,
+							rows: row_ids.clone(),
 							pre: before.clone(),
 						});
 					}
 				}
 				FlowDiff::Remove {
 					source,
-					row_ids,
+					rows: row_ids,
 					pre: before,
 				} => {
 					// Always pass through removes
 					output.push(FlowDiff::Remove {
-						source: *source,
-						row_ids: row_ids.clone(),
+						source,
+						rows: row_ids.clone(),
 						pre: before.clone(),
 					});
 				}
