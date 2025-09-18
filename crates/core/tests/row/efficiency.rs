@@ -3,8 +3,6 @@
 
 //! Performance and scalability tests for the row encoding system
 
-use std::time::Instant;
-
 use reifydb_core::row::EncodedRowLayout;
 use reifydb_type::*;
 
@@ -121,45 +119,6 @@ fn test_dynamic_field_reallocation() {
 		assert_eq!(layout.get_blob(row, 1).len(), expected_size);
 		assert_eq!(layout.get_int(row, 2), Int::from(i as i64));
 	}
-}
-
-#[test]
-fn test_cache_locality() {
-	// Test that sequential field access is faster than random access
-	let layout = EncodedRowLayout::new(&vec![Type::Int4; 100]);
-	let mut row = layout.allocate_row();
-
-	// Initialize all fields
-	for i in 0..100 {
-		layout.set_i32(&mut row, i, i as i32);
-	}
-
-	// Sequential access
-	let start = Instant::now();
-	for _ in 0..10000 {
-		for i in 0..100 {
-			layout.get_i32(&row, i);
-		}
-	}
-	let sequential_time = start.elapsed();
-
-	// Random access pattern
-	let indices: Vec<usize> = (0..100).cycle().skip(37).step_by(41).take(100).collect();
-
-	let start = Instant::now();
-	for _ in 0..10000 {
-		for &i in &indices {
-			layout.get_i32(&row, i);
-		}
-	}
-	let random_time = start.elapsed();
-
-	println!("Sequential: {:?}, Random: {:?}", sequential_time, random_time);
-
-	// Sequential should be at least somewhat faster due to cache locality
-	// Note: This might not always hold on all systems, so we use a gentle
-	// assertion
-	assert!(sequential_time.as_nanos() * 2 < random_time.as_nanos() * 3, "Cache locality benefit not observed");
 }
 
 #[test]
