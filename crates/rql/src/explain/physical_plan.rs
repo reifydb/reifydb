@@ -85,9 +85,11 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			write_node_header(output, prefix, is_last, &label);
 		}
 		PhysicalPlan::Delete(_) => unimplemented!(),
+		PhysicalPlan::DeleteRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::InsertTable(_) => unimplemented!(),
 		PhysicalPlan::InsertRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::Update(_) => unimplemented!(),
+		PhysicalPlan::UpdateRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,
 			map,
@@ -286,6 +288,14 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			view,
 		}) => {
 			let label = format!("ViewScan {}.{}", namespace.name, view.name);
+			write_node_header(output, prefix, is_last, &label);
+		}
+
+		PhysicalPlan::RingBufferScan(physical::RingBufferScanNode {
+			namespace,
+			ring_buffer,
+		}) => {
+			let label = format!("RingBufferScan {}.{}", namespace.name, ring_buffer.name);
 			write_node_header(output, prefix, is_last, &label);
 		}
 

@@ -40,7 +40,7 @@ impl<T: Transaction> Operator<T> for MapTerminalOperator {
 				FlowDiff::Insert {
 					source,
 					rows: row_ids,
-					after,
+					post: after,
 				} => {
 					let projected_columns = self.project(evaluator, &after)?;
 					// Only include if we have valid data
@@ -48,15 +48,15 @@ impl<T: Transaction> Operator<T> for MapTerminalOperator {
 						output.push(FlowDiff::Insert {
 							source,
 							rows: row_ids.clone(),
-							after: projected_columns,
+							post: projected_columns,
 						});
 					}
 				}
 				FlowDiff::Update {
 					source,
 					rows: row_ids,
-					before,
-					after,
+					pre: before,
+					post: after,
 				} => {
 					let projected_columns = self.project(evaluator, &after)?;
 					// Only include if we have valid data
@@ -64,15 +64,15 @@ impl<T: Transaction> Operator<T> for MapTerminalOperator {
 						output.push(FlowDiff::Update {
 							source,
 							rows: row_ids.clone(),
-							before: before.clone(),
-							after: projected_columns,
+							pre: before.clone(),
+							post: projected_columns,
 						});
 					}
 				}
 				FlowDiff::Remove {
 					source,
 					rows: row_ids,
-					before,
+					pre: before,
 				} => {
 					// For removes, we might need to project
 					// to maintain namespace consistency
@@ -82,7 +82,7 @@ impl<T: Transaction> Operator<T> for MapTerminalOperator {
 						output.push(FlowDiff::Remove {
 							source,
 							rows: row_ids.clone(),
-							before: projected_columns,
+							pre: projected_columns,
 						});
 					}
 				}

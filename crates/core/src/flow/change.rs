@@ -8,18 +8,18 @@ pub enum FlowDiff {
 	Insert {
 		source: SourceId,
 		rows: CowVec<RowNumber>,
-		after: Columns,
+		post: Columns,
 	},
 	Update {
 		source: SourceId,
 		rows: CowVec<RowNumber>,
-		before: Columns,
-		after: Columns,
+		pre: Columns,
+		post: Columns,
 	},
 	Remove {
 		source: SourceId,
 		rows: CowVec<RowNumber>,
-		before: Columns,
+		pre: Columns,
 	},
 }
 
@@ -45,21 +45,21 @@ impl FlowDiff {
 	pub fn validate(&self) -> bool {
 		match self {
 			FlowDiff::Insert {
-				rows: row_ids,
-				after,
+				rows,
+				post,
 				..
-			} => row_ids.len() == after.row_count(),
+			} => rows.len() == post.row_count(),
 			FlowDiff::Update {
-				rows: row_ids,
-				before,
-				after,
+				rows,
+				pre,
+				post,
 				..
-			} => row_ids.len() == before.row_count() && row_ids.len() == after.row_count(),
+			} => rows.len() == pre.row_count() && rows.len() == post.row_count(),
 			FlowDiff::Remove {
-				rows: row_ids,
-				before,
+				rows,
+				pre,
 				..
-			} => row_ids.len() == before.row_count(),
+			} => rows.len() == pre.row_count(),
 		}
 	}
 

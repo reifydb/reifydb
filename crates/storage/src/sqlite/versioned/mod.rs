@@ -63,7 +63,7 @@ pub(crate) fn ensure_table_exists(conn: &Connection, table: &str) {
 		"CREATE TABLE IF NOT EXISTS {} (
             key     BLOB NOT NULL,
             version INTEGER NOT NULL,
-            value   BLOB NOT NULL,
+            value   BLOB,
             PRIMARY KEY (key, version)
         )",
 		table
@@ -200,22 +200,25 @@ pub(crate) fn execute_batched_range_query(
 		1 => {
 			let rows = stmt
 				.query_map(params![version, batch_size], |row| {
-					Ok(Versioned {
-						key: EncodedKey(CowVec::new(row.get(0)?)),
-						row: EncodedRow(CowVec::new(row.get(1)?)),
-						version: row.get(2)?,
-					})
+					let value: Option<Vec<u8>> = row.get(1)?;
+					match value {
+						Some(val) => Ok(Some(Versioned {
+							key: EncodedKey(CowVec::new(row.get(0)?)),
+							row: EncodedRow(CowVec::new(val)),
+							version: row.get(2)?,
+						})),
+						None => Ok(None), // NULL value means deleted
+					}
 				})
 				.unwrap();
 
 			for result in rows {
 				match result {
-					Ok(versioned) => {
-						if !versioned.row.is_deleted() {
-							buffer.push_back(versioned);
-							count += 1;
-						}
+					Ok(Some(versioned)) => {
+						buffer.push_back(versioned);
+						count += 1;
 					}
+					Ok(None) => {} // Skip deleted entries
 					Err(_) => break,
 				}
 			}
@@ -228,22 +231,25 @@ pub(crate) fn execute_batched_range_query(
 			};
 			let rows = stmt
 				.query_map(params![param, version, batch_size], |row| {
-					Ok(Versioned {
-						key: EncodedKey(CowVec::new(row.get(0)?)),
-						row: EncodedRow(CowVec::new(row.get(1)?)),
-						version: row.get(2)?,
-					})
+					let value: Option<Vec<u8>> = row.get(1)?;
+					match value {
+						Some(val) => Ok(Some(Versioned {
+							key: EncodedKey(CowVec::new(row.get(0)?)),
+							row: EncodedRow(CowVec::new(val)),
+							version: row.get(2)?,
+						})),
+						None => Ok(None), // NULL value means deleted
+					}
 				})
 				.unwrap();
 
 			for result in rows {
 				match result {
-					Ok(versioned) => {
-						if !versioned.row.is_deleted() {
-							buffer.push_back(versioned);
-							count += 1;
-						}
+					Ok(Some(versioned)) => {
+						buffer.push_back(versioned);
+						count += 1;
 					}
+					Ok(None) => {} // Skip deleted entries
 					Err(_) => break,
 				}
 			}
@@ -259,22 +265,25 @@ pub(crate) fn execute_batched_range_query(
 			};
 			let rows = stmt
 				.query_map(params![start_param, end_param, version, batch_size], |row| {
-					Ok(Versioned {
-						key: EncodedKey(CowVec::new(row.get(0)?)),
-						row: EncodedRow(CowVec::new(row.get(1)?)),
-						version: row.get(2)?,
-					})
+					let value: Option<Vec<u8>> = row.get(1)?;
+					match value {
+						Some(val) => Ok(Some(Versioned {
+							key: EncodedKey(CowVec::new(row.get(0)?)),
+							row: EncodedRow(CowVec::new(val)),
+							version: row.get(2)?,
+						})),
+						None => Ok(None), // NULL value means deleted
+					}
 				})
 				.unwrap();
 
 			for result in rows {
 				match result {
-					Ok(versioned) => {
-						if !versioned.row.is_deleted() {
-							buffer.push_back(versioned);
-							count += 1;
-						}
+					Ok(Some(versioned)) => {
+						buffer.push_back(versioned);
+						count += 1;
 					}
+					Ok(None) => {} // Skip deleted entries
 					Err(_) => break,
 				}
 			}
@@ -347,21 +356,22 @@ pub(crate) fn execute_scan_query(
 
 		let rows = stmt
 			.query_map(rusqlite::params_from_iter(params.iter()), |row| {
-				Ok(Versioned {
-					key: EncodedKey(CowVec::new(row.get(0)?)),
-					row: EncodedRow(CowVec::new(row.get(1)?)),
-					version: row.get(2)?,
-				})
+				let value: Option<Vec<u8>> = row.get(1)?;
+				match value {
+					Some(val) => Ok(Some(Versioned {
+						key: EncodedKey(CowVec::new(row.get(0)?)),
+						row: EncodedRow(CowVec::new(val)),
+						version: row.get(2)?,
+					})),
+					None => Ok(None), // NULL value means deleted
+				}
 			})
 			.unwrap();
 
 		for result in rows {
 			match result {
-				Ok(versioned) => {
-					if !versioned.row.is_deleted() {
-						all_rows.push(versioned)
-					}
-				}
+				Ok(Some(versioned)) => all_rows.push(versioned),
+				Ok(None) => {} // Skip deleted entries
 				Err(_) => break,
 			}
 		}

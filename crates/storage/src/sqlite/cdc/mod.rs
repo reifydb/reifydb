@@ -12,11 +12,7 @@ mod range;
 mod scan;
 
 /// Helper to fetch the current value of a key before it's modified
-pub(crate) fn fetch_before_value(
-	tx: &Transaction,
-	key: &EncodedKey,
-	table: &str,
-) -> rusqlite::Result<Option<EncodedRow>> {
+pub(crate) fn fetch_pre_value(tx: &Transaction, key: &EncodedKey, table: &str) -> rusqlite::Result<Option<EncodedRow>> {
 	let query = format!("SELECT value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1", table);
 
 	let mut stmt = tx.prepare_cached(&query)?;

@@ -223,7 +223,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 		// Get the scheduler - it must exist when feature is enabled
 		#[cfg(feature = "sub_worker")]
 		let scheduler = subsystems
-			.get::<WorkerSubsystem>()
+			.get::<WorkerSubsystem<EngineTransaction<VT, UT, C>>>()
 			.map(|w| w.get_scheduler())
 			.expect("Worker subsystem should always be created when feature is enabled");
 

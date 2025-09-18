@@ -7,10 +7,10 @@ use reifydb_type::{Fragment, TypeConstraint};
 use serde::{Deserialize, Serialize};
 
 use super::{
-	ColumnDef, NamespaceDef, TableDef, TableVirtualDef, ViewDef,
+	ColumnDef, NamespaceDef, RingBufferDef, TableDef, TableVirtualDef, ViewDef,
 	identifier::{
 		ColumnIdentifier, DeferredViewIdentifier, FunctionIdentifier, IndexIdentifier, NamespaceIdentifier,
-		SequenceIdentifier, SourceIdentifier, TableIdentifier, TableVirtualIdentifier,
+		RingBufferIdentifier, SequenceIdentifier, SourceIdentifier, TableIdentifier, TableVirtualIdentifier,
 		TransactionalViewIdentifier,
 	},
 };
@@ -215,6 +215,47 @@ impl<'a> ResolvedTransactionalView<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct ResolvedRingBuffer<'a> {
+	pub identifier: RingBufferIdentifier<'a>,
+	pub namespace: Rc<ResolvedNamespace<'a>>,
+	pub def: RingBufferDef,
+}
+
+impl<'a> ResolvedRingBuffer<'a> {
+	pub fn new(
+		identifier: RingBufferIdentifier<'a>,
+		namespace: Rc<ResolvedNamespace<'a>>,
+		def: RingBufferDef,
+	) -> Self {
+		Self {
+			identifier,
+			namespace,
+			def,
+		}
+	}
+
+	pub fn name(&self) -> &str {
+		&self.def.name
+	}
+
+	pub fn effective_name(&self) -> &str {
+		self.identifier.effective_name()
+	}
+
+	pub fn columns(&self) -> &[ColumnDef] {
+		&self.def.columns
+	}
+
+	pub fn fully_qualified_name(&self) -> String {
+		format!("{}.{}", self.namespace.name(), self.name())
+	}
+
+	pub fn capacity(&self) -> u64 {
+		self.def.capacity
+	}
+}
+
+#[derive(Debug, Clone)]
 pub struct ResolvedSequence<'a> {
 	pub identifier: SequenceIdentifier<'a>,
 	pub namespace: Rc<ResolvedNamespace<'a>>,
@@ -242,6 +283,7 @@ pub enum ResolvedSource<'a> {
 	View(ResolvedView<'a>),
 	DeferredView(ResolvedDeferredView<'a>),
 	TransactionalView(ResolvedTransactionalView<'a>),
+	RingBuffer(ResolvedRingBuffer<'a>),
 }
 
 impl<'a> ResolvedSource<'a> {
@@ -256,6 +298,7 @@ impl<'a> ResolvedSource<'a> {
 			// will be removed
 			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.identifier.clone()),
 			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.identifier.clone()),
+			Self::RingBuffer(r) => SourceIdentifier::RingBuffer(r.identifier.clone()),
 		}
 	}
 
@@ -267,6 +310,7 @@ impl<'a> ResolvedSource<'a> {
 			Self::View(v) => Some(&v.namespace),
 			Self::DeferredView(v) => Some(&v.namespace),
 			Self::TransactionalView(v) => Some(&v.namespace),
+			Self::RingBuffer(r) => Some(&r.namespace),
 		}
 	}
 
@@ -278,6 +322,7 @@ impl<'a> ResolvedSource<'a> {
 			Self::View(v) => v.effective_name(),
 			Self::DeferredView(v) => v.effective_name(),
 			Self::TransactionalView(v) => v.effective_name(),
+			Self::RingBuffer(r) => r.effective_name(),
 		}
 	}
 
@@ -288,7 +333,7 @@ impl<'a> ResolvedSource<'a> {
 
 	/// Check if this source supports mutations
 	pub fn supports_mutations(&self) -> bool {
-		matches!(self, Self::Table(_))
+		matches!(self, Self::Table(_) | Self::RingBuffer(_))
 	}
 
 	/// Get columns for this source
@@ -299,6 +344,7 @@ impl<'a> ResolvedSource<'a> {
 			Self::View(v) => v.columns(),
 			Self::DeferredView(v) => v.columns(),
 			Self::TransactionalView(v) => v.columns(),
+			Self::RingBuffer(r) => r.columns(),
 		}
 	}
 
@@ -315,6 +361,7 @@ impl<'a> ResolvedSource<'a> {
 			Self::View(_) => "view",
 			Self::DeferredView(_) => "deferred view",
 			Self::TransactionalView(_) => "transactional view",
+			Self::RingBuffer(_) => "ring buffer",
 		}
 	}
 
@@ -326,6 +373,7 @@ impl<'a> ResolvedSource<'a> {
 			Self::DeferredView(v) => Some(format!("{}.{}", v.namespace.name(), v.name())),
 			Self::TransactionalView(v) => Some(format!("{}.{}", v.namespace.name(), v.name())),
 			Self::TableVirtual(t) => Some(format!("{}.{}", t.namespace.name(), t.name())),
+			Self::RingBuffer(r) => Some(r.fully_qualified_name()),
 		}
 	}
 
@@ -341,6 +389,14 @@ impl<'a> ResolvedSource<'a> {
 	pub fn as_view(&self) -> Option<&ResolvedView<'a>> {
 		match self {
 			Self::View(v) => Some(v),
+			_ => None,
+		}
+	}
+
+	/// Convert to a ring buffer if this is a ring buffer source
+	pub fn as_ring_buffer(&self) -> Option<&ResolvedRingBuffer<'a>> {
+		match self {
+			Self::RingBuffer(r) => Some(r),
 			_ => None,
 		}
 	}

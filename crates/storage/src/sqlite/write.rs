@@ -4,7 +4,7 @@
 use std::{collections::HashSet, path::Path, sync::mpsc, thread};
 
 use mpsc::Sender;
-use reifydb_core::{CommitVersion, CowVec, EncodedKey, TransactionId, delta::Delta, row::EncodedRow};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, TransactionId, delta::Delta};
 use reifydb_type::{Error, Result, return_error};
 use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
 
@@ -13,7 +13,7 @@ use crate::{
 	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
 	diagnostic::{connection_failed, sequence_exhausted},
 	sqlite::{
-		cdc::{fetch_before_value, store_cdc_transaction},
+		cdc::{fetch_pre_value, store_cdc_transaction},
 		versioned::{ensure_table_exists, table_name},
 	},
 };
@@ -132,13 +132,13 @@ impl Writer {
 			};
 
 			let table = table_name(delta.key())?;
-			let before_value = fetch_before_value(tx, delta.key(), table).ok().flatten();
+			let pre = fetch_pre_value(tx, delta.key(), table).ok().flatten();
 
 			Self::apply_single_delta(tx, delta, version, ensured_tables)?;
 
 			cdc_changes.push(CdcTransactionChange {
 				sequence,
-				change: generate_cdc_change(delta.clone(), before_value),
+				change: generate_cdc_change(delta.clone(), pre),
 			});
 		}
 
@@ -191,9 +191,9 @@ impl Writer {
 		let table = table_name(&encoded_key)?;
 		Self::ensure_table_if_needed(tx, table, ensured_tables)?;
 
-		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", table);
+		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, NULL)", table);
 
-		tx.execute(&query, rusqlite::params![key.to_vec(), version, EncodedRow::deleted().to_vec()])
+		tx.execute(&query, rusqlite::params![key.to_vec(), version])
 			.map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		Ok(())

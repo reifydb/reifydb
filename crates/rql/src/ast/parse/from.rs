@@ -47,7 +47,7 @@ impl<'a> Parser<'a> {
 
 			let source = if has_dot {
 				self.consume_operator(Operator::Dot)?;
-				let second_token = self.consume(TokenKind::Identifier)?;
+				let second_token = self.advance()?;
 
 				// namespace.table - create
 				// UnresolvedSourceIdentifier with namespace

@@ -5,6 +5,7 @@
 
 use std::{
 	collections::VecDeque,
+	marker::PhantomData,
 	sync::{
 		Arc, Mutex,
 		atomic::{AtomicBool, AtomicU64, Ordering},
@@ -13,13 +14,13 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::Result;
+use reifydb_core::{Result, interface::Transaction};
 use reifydb_sub_api::{BoxedTask, Scheduler, TaskHandle};
 
 /// Request types for scheduler operations
-pub enum SchedulerRequest {
+pub enum SchedulerRequest<T: Transaction> {
 	ScheduleEvery {
-		task: BoxedTask,
+		task: BoxedTask<T>,
 		interval: Duration,
 	},
 	Cancel {
@@ -35,29 +36,31 @@ pub enum SchedulerResponse {
 }
 
 /// Client for communicating with the worker subsystem's scheduler
-pub struct SchedulerClient {
-	sender: Sender<(SchedulerRequest, Sender<SchedulerResponse>)>,
-	pending_requests: Arc<Mutex<VecDeque<(SchedulerRequest, Sender<SchedulerResponse>)>>>,
+pub struct SchedulerClient<T: Transaction> {
+	sender: Sender<(SchedulerRequest<T>, Sender<SchedulerResponse>)>,
+	pending_requests: Arc<Mutex<VecDeque<(SchedulerRequest<T>, Sender<SchedulerResponse>)>>>,
 	next_handle: Arc<AtomicU64>,
 	running: Arc<AtomicBool>,
+	_phantom: PhantomData<T>,
 }
 
-impl SchedulerClient {
+impl<T: Transaction> SchedulerClient<T> {
 	/// Create a new scheduler client
-	pub fn new(sender: Sender<(SchedulerRequest, Sender<SchedulerResponse>)>) -> Self {
+	pub fn new(sender: Sender<(SchedulerRequest<T>, Sender<SchedulerResponse>)>) -> Self {
 		Self {
 			sender,
 			pending_requests: Arc::new(Mutex::new(VecDeque::new())),
 			next_handle: Arc::new(AtomicU64::new(1)),
 			running: Arc::new(AtomicBool::new(false)),
+			_phantom: PhantomData,
 		}
 	}
 
 	/// Create a scheduler client with shared queue (for use by
 	/// WorkerSubsystem)
 	pub fn with_queue(
-		sender: Sender<(SchedulerRequest, Sender<SchedulerResponse>)>,
-		pending_requests: Arc<Mutex<VecDeque<(SchedulerRequest, Sender<SchedulerResponse>)>>>,
+		sender: Sender<(SchedulerRequest<T>, Sender<SchedulerResponse>)>,
+		pending_requests: Arc<Mutex<VecDeque<(SchedulerRequest<T>, Sender<SchedulerResponse>)>>>,
 		next_handle: Arc<AtomicU64>,
 		running: Arc<AtomicBool>,
 	) -> Self {
@@ -66,12 +69,13 @@ impl SchedulerClient {
 			pending_requests,
 			next_handle,
 			running,
+			_phantom: PhantomData,
 		}
 	}
 }
 
-impl Scheduler for SchedulerClient {
-	fn schedule_every(&self, task: BoxedTask, interval: Duration) -> Result<TaskHandle> {
+impl<T: Transaction> Scheduler<T> for SchedulerClient<T> {
+	fn schedule_every(&self, task: BoxedTask<T>, interval: Duration) -> Result<TaskHandle> {
 		// Check if the subsystem is running
 		if !self.running.load(Ordering::Relaxed) {
 			// Generate a handle for the task

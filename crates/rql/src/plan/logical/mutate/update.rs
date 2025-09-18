@@ -5,7 +5,7 @@ use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
 	ast::AstUpdate,
-	plan::logical::{Compiler, LogicalPlan, UpdateNode, resolver::IdentifierResolver},
+	plan::logical::{Compiler, LogicalPlan, UpdateNode, UpdateRingBufferNode, resolver::IdentifierResolver},
 };
 
 impl Compiler {
@@ -13,19 +13,36 @@ impl Compiler {
 		ast: AstUpdate<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Resolve the unresolved source to a table
-		// (UPDATE currently only supports tables, not ring buffers)
-		let target = if let Some(unresolved) = &ast.target {
-			// Try to resolve as table
-			Some(resolver.resolve_source_as_table(unresolved.namespace.as_ref(), &unresolved.name, true)?)
-		} else {
-			None
+		// Get the target, if None it means the target will come from a pipeline
+		let Some(unresolved) = &ast.target else {
+			// For pipeline case, we don't know if it's a table or ring buffer yet
+			return Ok(LogicalPlan::Update(UpdateNode {
+				target: None,
+				input: None,
+			}));
 		};
 
-		Ok(LogicalPlan::Update(UpdateNode {
-			target,
-			input: None, /* Input will be set by the pipeline
-			              * builder */
-		}))
+		// Try to resolve as table first (most common case)
+		match resolver.resolve_source_as_table(unresolved.namespace.as_ref(), &unresolved.name, true) {
+			Ok(target) => Ok(LogicalPlan::Update(UpdateNode {
+				target: Some(target),
+				input: None,
+			})),
+			Err(table_error) => {
+				// Table not found, try ring buffer
+				match resolver.resolve_source_as_ring_buffer(
+					unresolved.namespace.as_ref(),
+					&unresolved.name,
+					true,
+				) {
+					Ok(target) => Ok(LogicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
+						target,
+						input: None,
+					})),
+					// Ring buffer also not found, return the table error as it's more common
+					Err(_) => Err(table_error),
+				}
+			}
+		}
 	}
 }

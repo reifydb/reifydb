@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::{TableDef, ViewDef};
+use super::{RingBufferDef, TableDef, ViewDef};
 use crate::row::EncodedRowLayout;
 
 pub trait GetEncodedRowLayout {
@@ -16,6 +16,13 @@ impl GetEncodedRowLayout for TableDef {
 }
 
 impl GetEncodedRowLayout for ViewDef {
+	fn get_layout(&self) -> EncodedRowLayout {
+		let types: Vec<_> = self.columns.iter().map(|col| col.constraint.get_type()).collect();
+		EncodedRowLayout::new(&types)
+	}
+}
+
+impl GetEncodedRowLayout for RingBufferDef {
 	fn get_layout(&self) -> EncodedRowLayout {
 		let types: Vec<_> = self.columns.iter().map(|col| col.constraint.get_type()).collect();
 		EncodedRowLayout::new(&types)

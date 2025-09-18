@@ -10,7 +10,9 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor,
 	interceptor::{
-		Chain, Interceptors, PostCommitInterceptor, PreCommitInterceptor, TablePostDeleteInterceptor,
+		Chain, Interceptors, PostCommitInterceptor, PreCommitInterceptor, RingBufferPostDeleteInterceptor,
+		RingBufferPostInsertInterceptor, RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
+		RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor, TablePostDeleteInterceptor,
 		TablePostInsertInterceptor, TablePreDeleteInterceptor, TablePreInsertInterceptor,
 		TablePreUpdateInterceptor,
 	},
@@ -365,6 +367,48 @@ impl<T: Transaction> WithInterceptors<StandardCommandTransaction<T>> for Standar
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction<T>, dyn TablePostDeleteInterceptor<StandardCommandTransaction<T>>> {
 		&mut self.interceptors.table_post_delete
+	}
+
+	fn ring_buffer_pre_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<StandardCommandTransaction<T>, dyn RingBufferPreInsertInterceptor<StandardCommandTransaction<T>>>
+	{
+		&mut self.interceptors.ring_buffer_pre_insert
+	}
+
+	fn ring_buffer_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<StandardCommandTransaction<T>, dyn RingBufferPostInsertInterceptor<StandardCommandTransaction<T>>>
+	{
+		&mut self.interceptors.ring_buffer_post_insert
+	}
+
+	fn ring_buffer_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<StandardCommandTransaction<T>, dyn RingBufferPreUpdateInterceptor<StandardCommandTransaction<T>>>
+	{
+		&mut self.interceptors.ring_buffer_pre_update
+	}
+
+	fn ring_buffer_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<StandardCommandTransaction<T>, dyn RingBufferPostUpdateInterceptor<StandardCommandTransaction<T>>>
+	{
+		&mut self.interceptors.ring_buffer_post_update
+	}
+
+	fn ring_buffer_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<StandardCommandTransaction<T>, dyn RingBufferPreDeleteInterceptor<StandardCommandTransaction<T>>>
+	{
+		&mut self.interceptors.ring_buffer_pre_delete
+	}
+
+	fn ring_buffer_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<StandardCommandTransaction<T>, dyn RingBufferPostDeleteInterceptor<StandardCommandTransaction<T>>>
+	{
+		&mut self.interceptors.ring_buffer_post_delete
 	}
 
 	fn pre_commit_interceptors(

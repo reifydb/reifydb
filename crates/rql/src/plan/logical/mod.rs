@@ -20,7 +20,7 @@ use reifydb_catalog::{
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
 	interface::{
-		ColumnPolicyKind, ColumnSaturationPolicy, NamespaceDef, TableDef,
+		ColumnPolicyKind, ColumnSaturationPolicy, NamespaceDef, RingBufferDef, TableDef,
 		expression::{AliasExpression, Expression},
 		identifier,
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSource},
@@ -84,24 +84,47 @@ impl Compiler {
 								None
 							};
 
-							// Resolve directly to
-							// TableIdentifier since
-							// UPDATE only works on
-							// tables
-							let target = if let Some(unresolved) = &update_ast.target {
-								Some(resolver.resolve_source_as_table(
-									unresolved.namespace.as_ref(),
-									&unresolved.name,
-									true,
-								)?)
-							} else {
-								None
+							// If target is None, we can't determine table vs ring buffer
+							let Some(unresolved) = &update_ast.target else {
+								return Ok(vec![LogicalPlan::Update(UpdateNode {
+									target: None,
+									input,
+								})]);
 							};
 
-							return Ok(vec![LogicalPlan::Update(UpdateNode {
-								target,
-								input,
-							})]);
+							// Try to resolve as table first (most common case)
+							match resolver.resolve_source_as_table(
+								unresolved.namespace.as_ref(),
+								&unresolved.name,
+								true,
+							) {
+								Ok(target) => {
+									return Ok(vec![LogicalPlan::Update(
+										UpdateNode {
+											target: Some(target),
+											input,
+										},
+									)]);
+								}
+								Err(table_error) => {
+									// Table not found, try ring buffer
+									match resolver.resolve_source_as_ring_buffer(
+										unresolved.namespace.as_ref(),
+										&unresolved.name,
+										true,
+									) {
+										Ok(target) => {
+											return Ok(vec![LogicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
+												target,
+												input,
+											})]);
+										}
+										// Ring buffer also not found, return
+										// the table error
+										Err(_) => return Err(table_error),
+									}
+								}
+							}
 						}
 						Ast::AstDelete(delete_ast) => {
 							// Build the pipeline as
@@ -112,16 +135,30 @@ impl Compiler {
 								None
 							};
 
-							// Resolve directly to
-							// TableIdentifier since
-							// DELETE only works on
-							// tables
+							// Resolve to either TableIdentifier or RingBufferIdentifier
 							let target = if let Some(unresolved) = &delete_ast.target {
-								Some(resolver.resolve_source_as_table(
-									unresolved.namespace.as_ref(),
-									&unresolved.name,
-									true,
-								)?)
+								let source_id = resolver
+									.resolve_unresolved_source(&unresolved)?;
+
+								// Determine if it's a table or ring buffer
+								match source_id {
+									identifier::SourceIdentifier::Table(
+										table_id,
+									) => Some(DeleteTarget::Table(table_id)),
+									identifier::SourceIdentifier::RingBuffer(
+										ring_buffer_id,
+									) => Some(DeleteTarget::RingBuffer(
+										ring_buffer_id,
+									)),
+									_ => {
+										// Source is not a table or ring buffer
+										return Err(crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
+											namespace: unresolved.namespace.as_ref().map(|n| n.text()).unwrap_or(resolver.default_namespace()).to_string(),
+											name: unresolved.name.text().to_string(),
+											fragment: unresolved.name.clone().into_owned(),
+										}).into());
+									}
+								}
 							} else {
 								None
 							};
@@ -227,6 +264,7 @@ pub enum LogicalPlan<'a> {
 	InsertTable(InsertTableNode<'a>),
 	InsertRingBuffer(InsertRingBufferNode<'a>),
 	Update(UpdateNode<'a>),
+	UpdateRingBuffer(UpdateRingBufferNode<'a>),
 	// Query
 	Aggregate(AggregateNode<'a>),
 	Distinct(DistinctNode<'a>),
@@ -316,8 +354,14 @@ pub struct IndexColumn<'a> {
 }
 
 #[derive(Debug)]
+pub enum DeleteTarget<'a> {
+	Table(TableIdentifier<'a>),
+	RingBuffer(RingBufferIdentifier<'a>),
+}
+
+#[derive(Debug)]
 pub struct DeleteNode<'a> {
-	pub target: Option<TableIdentifier<'a>>,
+	pub target: Option<DeleteTarget<'a>>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
@@ -334,6 +378,12 @@ pub struct InsertRingBufferNode<'a> {
 #[derive(Debug)]
 pub struct UpdateNode<'a> {
 	pub target: Option<TableIdentifier<'a>>,
+	pub input: Option<Box<LogicalPlan<'a>>>,
+}
+
+#[derive(Debug)]
+pub struct UpdateRingBufferNode<'a> {
+	pub target: RingBufferIdentifier<'a>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
@@ -479,6 +529,57 @@ pub fn extract_table_from_plan(plan: &PhysicalPlan) -> Option<(NamespaceDef, Tab
 		PhysicalPlan::InlineData(_) => None,
 		PhysicalPlan::ViewScan(_) => None, // Views are not directly
 		// deleteable for now
+		_ => None,
+	}
+}
+
+/// Returns (namespace, ring_buffer) if a unique ring buffer can be identified
+pub fn extract_ring_buffer_from_plan(plan: &PhysicalPlan) -> Option<(NamespaceDef, RingBufferDef)> {
+	match plan {
+		PhysicalPlan::RingBufferScan(scan) => Some((scan.namespace.clone(), scan.ring_buffer.clone())),
+		PhysicalPlan::Filter(filter) => extract_ring_buffer_from_plan(&filter.input),
+		PhysicalPlan::Map(map) => map.input.as_ref().and_then(|input| extract_ring_buffer_from_plan(input)),
+		PhysicalPlan::Extend(extend) => {
+			extend.input.as_ref().and_then(|input| extract_ring_buffer_from_plan(input))
+		}
+		PhysicalPlan::Aggregate(agg) => extract_ring_buffer_from_plan(&agg.input),
+		PhysicalPlan::Sort(sort) => extract_ring_buffer_from_plan(&sort.input),
+		PhysicalPlan::Take(take) => extract_ring_buffer_from_plan(&take.input),
+		PhysicalPlan::JoinInner(join) => {
+			// Check both sides, prefer ring buffer over inline data
+			let left = extract_ring_buffer_from_plan(&join.left);
+			let right = extract_ring_buffer_from_plan(&join.right);
+
+			match (left, right) {
+				(Some(ring_buffer), None) | (None, Some(ring_buffer)) => Some(ring_buffer),
+				(Some(left_rb), Some(_right_rb)) => {
+					// Multiple ring buffers - ambiguous, return the left one
+					Some(left_rb)
+				}
+				(None, None) => None,
+			}
+		}
+		PhysicalPlan::JoinLeft(join) => {
+			// For left join, the left side is the primary ring buffer
+			extract_ring_buffer_from_plan(&join.left)
+		}
+		PhysicalPlan::JoinNatural(join) => {
+			// Check both sides, prefer ring buffer over inline data
+			let left = extract_ring_buffer_from_plan(&join.left);
+			let right = extract_ring_buffer_from_plan(&join.right);
+
+			match (left, right) {
+				(Some(ring_buffer), None) | (None, Some(ring_buffer)) => Some(ring_buffer),
+				(Some(left_rb), Some(_right_rb)) => {
+					// Multiple ring buffers - ambiguous
+					Some(left_rb)
+				}
+				(None, None) => None,
+			}
+		}
+		PhysicalPlan::InlineData(_) => None,
+		PhysicalPlan::TableScan(_) => None,
+		PhysicalPlan::ViewScan(_) => None,
 		_ => None,
 	}
 }

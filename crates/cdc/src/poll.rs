@@ -95,13 +95,13 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 
 		let latest_version = events.iter().map(|event| event.version).max().unwrap_or(checkpoint);
 
-		let table_events = events
+		let row_events = events
 			.into_iter()
 			.filter(|event| matches!(Key::decode(event.key()), Some(Key::Row(_))))
 			.collect::<Vec<_>>();
 
-		if !table_events.is_empty() {
-			consumer.consume(&mut transaction, table_events)?;
+		if !row_events.is_empty() {
+			consumer.consume(&mut transaction, row_events)?;
 		}
 
 		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;

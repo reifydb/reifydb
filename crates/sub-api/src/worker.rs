@@ -8,9 +8,13 @@
 
 use std::{
 	fmt::{self, Display, Formatter},
+	marker::PhantomData,
 	ops::Deref,
 	time::Duration,
 };
+
+use reifydb_core::interface::Transaction;
+use reifydb_engine::StandardEngine;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Priority {
@@ -56,54 +60,64 @@ impl From<u64> for TaskHandle {
 	}
 }
 
-#[derive(Clone, Default)]
-pub struct TaskContext {
-	// For now, keeping this simple without engine reference
-	// The engine can be passed through other means if needed
+#[derive(Clone)]
+pub struct TaskContext<T: Transaction> {
+	engine: StandardEngine<T>,
 }
 
-impl TaskContext {
-	pub fn new() -> Self {
-		Self::default()
+impl<T: Transaction> TaskContext<T> {
+	pub fn new(engine: StandardEngine<T>) -> Self {
+		Self {
+			engine,
+		}
+	}
+
+	pub fn engine(&self) -> &StandardEngine<T> {
+		&self.engine
 	}
 }
 
-pub trait SchedulableTask: Send + Sync {
-	fn execute(&self, ctx: &TaskContext) -> reifydb_core::Result<()>;
+pub trait SchedulableTask<T: Transaction>: Send + Sync {
+	fn execute(&self, ctx: &TaskContext<T>) -> reifydb_core::Result<()>;
 	fn name(&self) -> &str;
 	fn priority(&self) -> Priority;
 }
 
-pub type BoxedTask = Box<dyn SchedulableTask>;
+pub type BoxedTask<T> = Box<dyn SchedulableTask<T>>;
 
 /// Adapter to convert a closure into a SchedulableTask
-pub struct ClosureTask<F>
+pub struct ClosureTask<T, F>
 where
-	F: Fn(&TaskContext) -> reifydb_core::Result<()> + Send + Sync,
+	T: Transaction,
+	F: Fn(&TaskContext<T>) -> reifydb_core::Result<()> + Send + Sync,
 {
 	name: String,
 	priority: Priority,
 	task: F,
+	_phantom: PhantomData<T>,
 }
 
-impl<F> ClosureTask<F>
+impl<T, F> ClosureTask<T, F>
 where
-	F: Fn(&TaskContext) -> reifydb_core::Result<()> + Send + Sync,
+	T: Transaction,
+	F: Fn(&TaskContext<T>) -> reifydb_core::Result<()> + Send + Sync,
 {
 	pub fn new(name: impl Into<String>, priority: Priority, task: F) -> Self {
 		Self {
 			name: name.into(),
 			priority,
 			task,
+			_phantom: PhantomData,
 		}
 	}
 }
 
-impl<F> SchedulableTask for ClosureTask<F>
+impl<T, F> SchedulableTask<T> for ClosureTask<T, F>
 where
-	F: Fn(&TaskContext) -> reifydb_core::Result<()> + Send + Sync,
+	T: Transaction,
+	F: Fn(&TaskContext<T>) -> reifydb_core::Result<()> + Send + Sync,
 {
-	fn execute(&self, ctx: &TaskContext) -> reifydb_core::Result<()> {
+	fn execute(&self, ctx: &TaskContext<T>) -> reifydb_core::Result<()> {
 		(self.task)(ctx)
 	}
 
@@ -116,15 +130,194 @@ where
 	}
 }
 
-pub trait Scheduler: Send + Sync {
+/// Macro for creating tasks with less boilerplate
+///
+/// # Examples
+///
+/// ```ignore
+/// // Minimal - anonymous task with Normal priority
+/// let task = task!(|ctx| {
+///     // task body
+///     Ok(())
+/// });
+///
+/// // With name only (Normal priority)
+/// let task = task!("my_task", |ctx| {
+///     // task body
+///     Ok(())
+/// });
+///
+/// // With name and priority
+/// let task = task!("my_task", High, |ctx| {
+///     // task body
+///     Ok(())
+/// });
+///
+/// // With priority only (anonymous task)
+/// let task = task!(Low, |ctx| {
+///     // task body
+///     Ok(())
+/// });
+///
+/// // With move semantics (works with all patterns)
+/// let captured = 42;
+/// let task = task!("my_task", move |ctx| {
+///     println!("Captured: {}", captured);
+///     Ok(())
+/// });
+/// ```
+#[macro_export]
+macro_rules! task {
+	// Pattern: just closure (unnamed task with Normal priority)
+	($closure:expr) => {
+		Box::new($crate::ClosureTask::new("unnamed", $crate::Priority::Normal, $closure))
+	};
+
+	// Pattern: Priority literal (Low/Normal/High), closure - unnamed task
+	(Low, $closure:expr) => {
+		Box::new($crate::ClosureTask::new("unnamed", $crate::Priority::Low, $closure))
+	};
+	(Normal, $closure:expr) => {
+		Box::new($crate::ClosureTask::new("unnamed", $crate::Priority::Normal, $closure))
+	};
+	(High, $closure:expr) => {
+		Box::new($crate::ClosureTask::new("unnamed", $crate::Priority::High, $closure))
+	};
+
+	// Pattern: name (string literal), closure (Normal priority)
+	($name:literal, $closure:expr) => {
+		Box::new($crate::ClosureTask::new($name, $crate::Priority::Normal, $closure))
+	};
+
+	// Pattern: Priority literal, name (string literal), closure
+	(Low, $name:literal, $closure:expr) => {
+		Box::new($crate::ClosureTask::new($name, $crate::Priority::Low, $closure))
+	};
+	(Normal, $name:literal, $closure:expr) => {
+		Box::new($crate::ClosureTask::new($name, $crate::Priority::Normal, $closure))
+	};
+	(High, $name:literal, $closure:expr) => {
+		Box::new($crate::ClosureTask::new($name, $crate::Priority::High, $closure))
+	};
+
+	// Pattern: name (string literal), Priority literal, closure
+	($name:literal, Low, $closure:expr) => {
+		Box::new($crate::ClosureTask::new($name, $crate::Priority::Low, $closure))
+	};
+	($name:literal, Normal, $closure:expr) => {
+		Box::new($crate::ClosureTask::new($name, $crate::Priority::Normal, $closure))
+	};
+	($name:literal, High, $closure:expr) => {
+		Box::new($crate::ClosureTask::new($name, $crate::Priority::High, $closure))
+	};
+
+	// Pattern: Priority value (expr), closure - for when Priority is imported
+	($priority:expr, $closure:expr) => {
+		Box::new($crate::ClosureTask::new("unnamed", $priority, $closure))
+	};
+
+	// Pattern: name (expr), Priority value (expr), closure
+	($name:expr, $priority:expr, $closure:expr) => {
+		Box::new($crate::ClosureTask::new($name, $priority, $closure))
+	};
+}
+
+pub trait Scheduler<T: Transaction>: Send + Sync {
 	/// Schedule a task to run at fixed intervals
 	///
 	/// The task will be scheduled to run every `interval` duration.
 	/// The next execution time is calculated when the task is picked up
 	/// for execution (not when it completes). This means if a task takes
 	/// longer than its interval, multiple instances may be queued.
-	fn schedule_every(&self, task: BoxedTask, interval: Duration) -> reifydb_core::Result<TaskHandle>;
+	fn schedule_every(&self, task: BoxedTask<T>, interval: Duration) -> reifydb_core::Result<TaskHandle>;
 
 	/// Cancel a scheduled task
 	fn cancel(&self, handle: TaskHandle) -> reifydb_core::Result<()>;
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_engine::{EngineTransaction, StandardCdcTransaction};
+	use reifydb_storage::memory::Memory;
+	use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
+
+	use super::*;
+	use crate::Priority::{High, Low, Normal};
+
+	type TestTransaction = EngineTransaction<
+		Serializable<Memory, SingleVersionLock<Memory>>,
+		SingleVersionLock<Memory>,
+		StandardCdcTransaction<Memory>,
+	>;
+
+	#[test]
+	fn test_task_macro_minimal() {
+		// Test minimal syntax: just closure (unnamed task with Normal priority)
+		let task: BoxedTask<TestTransaction> = task!(|_ctx| { Ok(()) });
+
+		assert_eq!(task.name(), "unnamed");
+		assert_eq!(task.priority(), Normal);
+	}
+
+	#[test]
+	fn test_task_macro_with_name() {
+		// Test with name only (Normal priority)
+		let task: BoxedTask<TestTransaction> = task!("test_task", |_ctx| { Ok(()) });
+
+		assert_eq!(task.name(), "test_task");
+		assert_eq!(task.priority(), Normal);
+	}
+
+	#[test]
+	fn test_task_macro_with_priority() {
+		// Test with priority only (unnamed task)
+		let task: BoxedTask<TestTransaction> = task!(High, |_ctx| { Ok(()) });
+
+		assert_eq!(task.name(), "unnamed");
+		assert_eq!(task.priority(), High);
+	}
+
+	#[test]
+	fn test_task_macro_priority_name() {
+		// Test with priority first, then name
+		let task: BoxedTask<TestTransaction> = task!(Low, "priority_first", |_ctx| { Ok(()) });
+
+		assert_eq!(task.name(), "priority_first");
+		assert_eq!(task.priority(), Low);
+	}
+
+	#[test]
+	fn test_task_macro_name_priority() {
+		// Test with name first, then priority
+		let task: BoxedTask<TestTransaction> = task!("name_first", High, |_ctx| { Ok(()) });
+
+		assert_eq!(task.name(), "name_first");
+		assert_eq!(task.priority(), High);
+	}
+
+	#[test]
+	fn test_task_macro_with_move_closure() {
+		// Test with move closure and captured variables
+		let captured_value = 42;
+		let task: BoxedTask<TestTransaction> = task!("move_task", move |_ctx| {
+			// Use captured value to ensure move semantics work
+			let _val = captured_value;
+			Ok(())
+		});
+
+		assert_eq!(task.name(), "move_task");
+		assert_eq!(task.priority(), Normal);
+	}
+
+	#[test]
+	fn test_task_macro_all_priorities() {
+		// Test all priority levels
+		let low_task: BoxedTask<TestTransaction> = task!(Low, |_ctx| { Ok(()) });
+		let normal_task: BoxedTask<TestTransaction> = task!(Normal, |_ctx| { Ok(()) });
+		let high_task: BoxedTask<TestTransaction> = task!(High, |_ctx| { Ok(()) });
+
+		assert_eq!(low_task.priority(), Low);
+		assert_eq!(normal_task.priority(), Normal);
+		assert_eq!(high_task.priority(), High);
+	}
 }

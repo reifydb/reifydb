@@ -21,9 +21,13 @@ use std::{
 
 use reifydb_core::{
 	Result,
-	interface::version::{ComponentType, HasVersion, SystemVersion},
+	interface::{
+		Transaction,
+		version::{ComponentType, HasVersion, SystemVersion},
+	},
 	log_debug, log_warn,
 };
+use reifydb_engine::StandardEngine;
 pub use reifydb_sub_api::Priority;
 use reifydb_sub_api::{BoxedTask, HealthStatus, Scheduler, Subsystem, TaskHandle};
 
@@ -68,7 +72,7 @@ pub struct PoolStats {
 }
 
 /// Priority Worker Pool Subsystem
-pub struct WorkerSubsystem {
+pub struct WorkerSubsystem<T: Transaction> {
 	config: WorkerConfig,
 	running: Arc<AtomicBool>,
 	stats: Arc<PoolStats>,
@@ -87,21 +91,23 @@ pub struct WorkerSubsystem {
 
 	// Scheduler request receiver (set during factory creation) - wrapped
 	// in Mutex for Sync
-	scheduler_receiver: Arc<Mutex<Option<Receiver<(SchedulerRequest, Sender<SchedulerResponse>)>>>>,
+	scheduler_receiver: Arc<Mutex<Option<Receiver<(SchedulerRequest<T>, Sender<SchedulerResponse>)>>>>,
 
 	// Pending requests queue for requests made before start()
-	pending_requests: Arc<Mutex<VecDeque<(SchedulerRequest, Sender<SchedulerResponse>)>>>,
+	pending_requests: Arc<Mutex<VecDeque<(SchedulerRequest<T>, Sender<SchedulerResponse>)>>>,
 
 	// Next handle ID for generating handles when queuing
 	next_handle: Arc<AtomicU64>,
 
 	// Scheduler client for external access
-	scheduler_client: Arc<dyn Scheduler>,
+	scheduler_client: Arc<dyn Scheduler<T>>,
+
+	// Engine for task execution
+	engine: StandardEngine<T>,
 }
 
-impl WorkerSubsystem {
-	/// Create a new worker pool with config
-	pub fn with_config(config: WorkerConfig) -> Self {
+impl<T: Transaction> WorkerSubsystem<T> {
+	pub fn with_config_and_engine(config: WorkerConfig, engine: StandardEngine<T>) -> Self {
 		// Create shared state for pending requests and handle
 		// generation
 		let pending_requests = Arc::new(Mutex::new(VecDeque::new()));
@@ -134,16 +140,12 @@ impl WorkerSubsystem {
 			pending_requests,
 			next_handle,
 			scheduler_client,
+			engine,
 		}
 	}
 
-	/// Create a new worker pool with default config
-	pub fn new() -> Self {
-		Self::with_config(WorkerConfig::default())
-	}
-
 	/// Get the scheduler client
-	pub fn get_scheduler(&self) -> Arc<dyn Scheduler> {
+	pub fn get_scheduler(&self) -> Arc<dyn Scheduler<T>> {
 		self.scheduler_client.clone()
 	}
 
@@ -223,9 +225,10 @@ impl WorkerSubsystem {
 		let scheduler_receiver = Arc::clone(&self.scheduler_receiver);
 		let pending_requests = Arc::clone(&self.pending_requests);
 		let next_handle = Arc::clone(&self.next_handle);
+		let engine = self.engine.clone();
 
 		let handle = thread::Builder::new()
-			.name("worker-pool-scheduler".to_string())
+			.name("worker-scheduler".to_string())
 			.spawn(move || {
 				// Process any pending requests that were queued before start
 				{
@@ -241,8 +244,10 @@ impl WorkerSubsystem {
 								task,
 								interval,
 							} => {
-								let adapter =
-									Box::new(SchedulableTaskAdapter::new(task));
+								let adapter = Box::new(SchedulableTaskAdapter::new(
+									task,
+									engine.clone(),
+								));
 								let priority = adapter.priority();
 								let handle = sched.schedule_every_internal(
 									adapter, interval, priority,
@@ -280,6 +285,7 @@ impl WorkerSubsystem {
 										let adapter = Box::new(
 											SchedulableTaskAdapter::new(
 												task,
+												engine.clone(),
 											),
 										);
 										let priority = adapter.priority();
@@ -318,6 +324,10 @@ impl WorkerSubsystem {
 						if !running.load(Ordering::Relaxed) {
 							break;
 						}
+
+						// Drop the lock and continue to check for new requests
+						drop(sched);
+						continue;
 					}
 
 					// Check what tasks are ready
@@ -371,7 +381,7 @@ impl WorkerSubsystem {
 	}
 }
 
-impl Subsystem for WorkerSubsystem {
+impl<T: Transaction> Subsystem for WorkerSubsystem<T> {
 	fn name(&self) -> &'static str {
 		"Worker"
 	}
@@ -477,7 +487,7 @@ impl Subsystem for WorkerSubsystem {
 	}
 }
 
-impl HasVersion for WorkerSubsystem {
+impl<T: Transaction> HasVersion for WorkerSubsystem<T> {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
 			name: "sub-worker".to_string(),
@@ -488,15 +498,15 @@ impl HasVersion for WorkerSubsystem {
 	}
 }
 
-impl Drop for WorkerSubsystem {
+impl<T: Transaction> Drop for WorkerSubsystem<T> {
 	fn drop(&mut self) {
 		let _ = self.shutdown();
 	}
 }
 
-impl Scheduler for WorkerSubsystem {
-	fn schedule_every(&self, task: BoxedTask, interval: Duration) -> Result<TaskHandle> {
-		let adapter = Box::new(SchedulableTaskAdapter::new(task));
+impl<T: Transaction> Scheduler<T> for WorkerSubsystem<T> {
+	fn schedule_every(&self, task: BoxedTask<T>, interval: Duration) -> Result<TaskHandle> {
+		let adapter = Box::new(SchedulableTaskAdapter::new(task, self.engine.clone()));
 		let priority = adapter.priority();
 		self.schedule_every_internal(adapter, interval, priority)
 	}

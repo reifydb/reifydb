@@ -136,14 +136,21 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 
 			// Show target table if specified
 			if let Some(target) = &delete.target {
-				output.push_str(&format!(
-					"{}├── target table: {}.{}\n",
-					child_prefix,
-					target.namespace.text(),
-					target.name.text()
-				));
+				let target_str = match target {
+					crate::plan::logical::DeleteTarget::Table(table) => {
+						format!("table: {}.{}", table.namespace.text(), table.name.text())
+					}
+					crate::plan::logical::DeleteTarget::RingBuffer(ring_buffer) => {
+						format!(
+							"ring buffer: {}.{}",
+							ring_buffer.namespace.text(),
+							ring_buffer.name.text()
+						)
+					}
+				};
+				output.push_str(&format!("{}├── target {}\n", child_prefix, target_str));
 			} else {
-				output.push_str(&format!("{}├── target table: <inferred from input>\n", child_prefix));
+				output.push_str(&format!("{}├── target: <inferred from input>\n", child_prefix));
 			}
 
 			// Explain the input pipeline if present
@@ -172,6 +179,24 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 
 			// Explain the input pipeline if present
 			if let Some(input) = &update.input {
+				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
+				let pipeline_prefix = format!("{}    ", child_prefix);
+				render_logical_plan_inner(input, &pipeline_prefix, true, output);
+			}
+		}
+		LogicalPlan::UpdateRingBuffer(update_rb) => {
+			output.push_str(&format!("{}{} UpdateRingBuffer\n", prefix, branch));
+
+			// Show target ring buffer
+			output.push_str(&format!(
+				"{}├── target ring buffer: {}.{}\n",
+				child_prefix,
+				update_rb.target.namespace.text(),
+				update_rb.target.name.text()
+			));
+
+			// Explain the input pipeline if present
+			if let Some(input) = &update_rb.input {
 				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
 				let pipeline_prefix = format!("{}    ", child_prefix);
 				render_logical_plan_inner(input, &pipeline_prefix, true, output);

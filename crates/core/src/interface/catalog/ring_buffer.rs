@@ -19,7 +19,7 @@ pub struct RingBufferDef {
 pub struct RingBufferMetadata {
 	pub id: RingBufferId,
 	pub capacity: u64,
-	pub current_size: u64,
+	pub count: u64,
 	pub head: u64, // Position of oldest entry
 	pub tail: u64, // Position for next insert
 }
@@ -29,17 +29,17 @@ impl RingBufferMetadata {
 		Self {
 			id: buffer_id,
 			capacity,
-			current_size: 0,
+			count: 0,
 			head: 0,
 			tail: 0,
 		}
 	}
 
 	pub fn is_full(&self) -> bool {
-		self.current_size >= self.capacity
+		self.count >= self.capacity
 	}
 
 	pub fn is_empty(&self) -> bool {
-		self.current_size == 0
+		self.count == 0
 	}
 }

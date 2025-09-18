@@ -14,11 +14,11 @@
 </h3>
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/reifydb/reifydb)](https://github.com/reifydb/reifydb/stargazers)
-[![License](https://img.shields.io/github/license/reifydb/reifydb)](https://github.com/reifydb/reifydb/blob/main/license.md)
+[![License](https://img.shields.io/badge/license-AGPL--3.0-blue)](https://github.com/reifydb/reifydb/blob/main/license.md)
 
-[![CI](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/ci.yml?label=CI)](https://github.com/reifydb/reifydb/actions/workflows/ci.yml)
-[![TestSuite](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/testsuite.yml?label=TestSuite)](https://github.com/reifydb/reifydb/actions/workflows/testsuite.yml)
-[![Client TS](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/client-typescript.yml?label=Client%20Ts)](https://github.com/reifydb/reifydb/actions/workflows/client-typescript.yml)
+[![Workspace](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/workspace.yml?label=Workspace)](https://github.com/reifydb/reifydb/actions/workflows/workspace.yml)
+[![TestSuite](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/test-suite.yml?label=TestSuite)](https://github.com/reifydb/reifydb/actions/workflows/test-suite.yml)
+[![TypeScript](https://img.shields.io/github/actions/workflow/status/reifydb/reifydb/pkg-typescript.yml?label=TypeScript)](https://github.com/reifydb/reifydb/actions/workflows/pkg-typescript.yml)
 
 <p align="center">
   <strong>⚠️ IN DEVELOPMENT</strong><br>
@@ -34,22 +34,20 @@ ReifyDB takes stored procedures to the next level, allowing you to deploy your w
 
 ## 📚 Examples
 
-Learn ReifyDB through practical, working examples in [`bin/examples`](bin/examples):
+Learn ReifyDB through practical, working examples in [`pkg/rust/examples`](pkg/rust/examples):
 
 ### Quick Start
 
 ```bash
 # Run all examples
-make test-examples
-```
+cd pkg/rust/examples && make
 
-```bash
 # Run individual examples
-cd bin/examples && make hello-world
+cd pkg/rust/examples && make basic-hello-world
 ```
 
 
-📖 See the [examples README](bin/examples/readme.md) for the complete list and detailed instructions.
+📖 See the [examples README](pkg/rust/examples/readme.md) for the complete list and detailed instructions.
 
 ---
 
@@ -156,4 +154,4 @@ This supports the development of ReifyDB and ensures fair use.
 
 ---
 ## Commercial Support
-ReifyDB is available as a managed service for maped users, if you're interested or need support, [contact](mailto:founder@reifydb.com) me for more information and deployment options.
+ReifyDB is available as a managed service for enterprise users. If you're interested or need support, [contact](mailto:founder@reifydb.com) me for more information and deployment options.

@@ -6,23 +6,25 @@
 use std::{
 	sync::{
 		Arc,
-		atomic::{AtomicUsize, Ordering},
+		atomic::{AtomicUsize, Ordering::Relaxed},
 	},
 	thread::sleep,
 	time::Duration,
 };
 
 use reifydb::{
-	ClosureTask, MemoryDatabaseOptimistic, Priority, TaskContext, WithSubsystem,
+	Identity, MemoryDatabaseOptimistic, WithSubsystem,
 	core::{
 		flow::FlowChange,
-		interface::{FlowNodeId, Transaction, logging::LogLevel::Info},
+		interface::{Engine, FlowNodeId, Transaction, logging::LogLevel::Info},
 	},
 	embedded,
 	engine::{StandardCommandTransaction, StandardEvaluator},
 	log_info,
+	sub::task,
 	sub_flow::{FlowBuilder, Operator, TransformOperator},
 	sub_logging::{FormatStyle, LoggingBuilder},
+	r#type::params,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
@@ -72,11 +74,19 @@ fn main() {
 	let counter = Arc::new(AtomicUsize::new(0));
 	let counter_clone = counter.clone();
 
-	let task = Box::new(ClosureTask::new("periodic_printer", Priority::Low, move |_ctx: &TaskContext| {
-		let count = counter_clone.fetch_add(1, Ordering::Relaxed);
+	let task = task!(Low, "periodic_printer", move |ctx| {
+		let frames = ctx
+			.engine()
+			.query_as(&Identity::root(), "MAP $1", params![counter.load(Relaxed) as u8])
+			.unwrap();
+		for frame in frames {
+			println!("{}", frame);
+		}
+
+		let count = counter_clone.fetch_add(1, Relaxed);
 		log_info!("Background task execution #{}", count + 1);
 		Ok(())
-	}));
+	});
 
 	let _handle = db.scheduler().schedule_every(task, Duration::from_secs(2)).unwrap();
 

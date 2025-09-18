@@ -693,7 +693,7 @@ impl JoinOperator {
 		FlowDiff::Insert {
 			source: source_id,
 			rows: CowVec::new(row_ids),
-			after: columns,
+			post: columns,
 		}
 	}
 
@@ -864,7 +864,7 @@ impl JoinOperator {
 				output_diffs.push(FlowDiff::Remove {
 					source,
 					rows: CowVec::new(vec![row_id]),
-					before: columns,
+					pre: columns,
 				});
 			} else if matches!(self.join_type, JoinType::Left) {
 				// Right side delete for LEFT JOIN
@@ -892,7 +892,7 @@ impl JoinOperator {
 					output_diffs.push(FlowDiff::Remove {
 						source,
 						rows: CowVec::new(vec![other_row.row_id]),
-						before: columns,
+						pre: columns,
 					});
 				}
 			}
@@ -918,7 +918,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 				FlowDiff::Insert {
 					source,
 					rows: row_ids,
-					after,
+					post: after,
 				} => {
 					let (metadata, is_left) = self.get_or_init_metadata(
 						txn,
@@ -940,8 +940,8 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 				FlowDiff::Update {
 					source,
 					rows: row_ids,
-					before,
-					after,
+					pre: before,
+					post: after,
 				} => {
 					// Get metadata from after columns
 					let (metadata, is_left) = self.get_or_init_metadata(
@@ -968,7 +968,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 				FlowDiff::Remove {
 					source,
 					rows: row_ids,
-					before,
+					pre: before,
 				} => {
 					let (metadata, is_left) = self.get_or_init_metadata(
 						txn,

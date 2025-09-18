@@ -14,6 +14,7 @@ use query::{
 	join_left::LeftJoinNode,
 	join_natural::NaturalJoinNode,
 	map::{MapNode, MapWithoutInputNode},
+	ring_buffer_scan::RingBufferScan,
 	sort::SortNode,
 	table_scan::TableScanNode,
 	table_virtual_scan::VirtualScanNode,
@@ -85,6 +86,7 @@ pub(crate) enum ExecutionPlan<'a, T: Transaction> {
 	Take(TakeNode<'a, T>),
 	ViewScan(ViewScanNode<T>),
 	VirtualScan(VirtualScanNode<'a, T>),
+	RingBufferScan(RingBufferScan<T>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -121,6 +123,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 			ExecutionPlan::Take(node) => node.initialize(rx, ctx),
 			ExecutionPlan::ViewScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::VirtualScan(node) => node.initialize(rx, ctx),
+			ExecutionPlan::RingBufferScan(node) => node.initialize(rx, ctx),
 		}
 	}
 
@@ -142,6 +145,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 			ExecutionPlan::Take(node) => node.next(rx),
 			ExecutionPlan::ViewScan(node) => node.next(rx),
 			ExecutionPlan::VirtualScan(node) => node.next(rx),
+			ExecutionPlan::RingBufferScan(node) => node.next(rx),
 		}
 	}
 
@@ -163,6 +167,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 			ExecutionPlan::Take(node) => node.layout(),
 			ExecutionPlan::ViewScan(node) => node.layout(),
 			ExecutionPlan::VirtualScan(node) => node.layout(),
+			ExecutionPlan::RingBufferScan(node) => node.layout(),
 		}
 	}
 }
@@ -247,12 +252,15 @@ impl Executor {
 			| PhysicalPlan::Extend(_)
 			| PhysicalPlan::InlineData(_)
 			| PhysicalPlan::Delete(_)
+			| PhysicalPlan::DeleteRingBuffer(_)
 			| PhysicalPlan::InsertTable(_)
 			| PhysicalPlan::InsertRingBuffer(_)
 			| PhysicalPlan::Update(_)
+			| PhysicalPlan::UpdateRingBuffer(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
-			| PhysicalPlan::TableVirtualScan(_) => {
+			| PhysicalPlan::TableVirtualScan(_)
+			| PhysicalPlan::RingBufferScan(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params)
 			}
@@ -290,9 +298,11 @@ impl Executor {
 			PhysicalPlan::CreateTable(plan) => self.create_table(txn, plan),
 			PhysicalPlan::CreateRingBuffer(plan) => self.create_ring_buffer(txn, plan),
 			PhysicalPlan::Delete(plan) => self.delete(txn, plan, params),
+			PhysicalPlan::DeleteRingBuffer(plan) => self.delete_ring_buffer(txn, plan, params),
 			PhysicalPlan::InsertTable(plan) => self.insert_table(txn, plan, params),
 			PhysicalPlan::InsertRingBuffer(plan) => self.insert_ring_buffer(txn, plan, params),
 			PhysicalPlan::Update(plan) => self.update(txn, plan, params),
+			PhysicalPlan::UpdateRingBuffer(plan) => self.update_ring_buffer(txn, plan, params),
 
 			PhysicalPlan::Aggregate(_)
 			| PhysicalPlan::Filter(_)
@@ -308,6 +318,7 @@ impl Executor {
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
+			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Distinct(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params)

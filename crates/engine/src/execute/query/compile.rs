@@ -20,6 +20,7 @@ use crate::{
 			join_left::LeftJoinNode,
 			join_natural::NaturalJoinNode,
 			map::{MapNode, MapWithoutInputNode},
+			ring_buffer_scan::RingBufferScan,
 			sort::SortNode,
 			table_scan::TableScanNode,
 			table_virtual_scan::VirtualScanNode,
@@ -155,6 +156,11 @@ pub(crate) fn compile<'a, T: Transaction>(
 			view,
 		}) => ExecutionPlan::ViewScan(ViewScanNode::new(view, context).unwrap()),
 
+		PhysicalPlan::RingBufferScan(physical::RingBufferScanNode {
+			namespace: _,
+			ring_buffer,
+		}) => ExecutionPlan::RingBufferScan(RingBufferScan::new(ring_buffer, context).unwrap()),
+
 		PhysicalPlan::TableVirtualScan(physical::TableVirtualScanNode {
 			namespace,
 			table,
@@ -204,9 +210,11 @@ pub(crate) fn compile<'a, T: Transaction>(
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::CreateRingBuffer(_)
 		| PhysicalPlan::Delete(_)
+		| PhysicalPlan::DeleteRingBuffer(_)
 		| PhysicalPlan::InsertTable(_)
 		| PhysicalPlan::InsertRingBuffer(_)
 		| PhysicalPlan::Update(_)
+		| PhysicalPlan::UpdateRingBuffer(_)
 		| PhysicalPlan::Distinct(_) => unreachable!(),
 		PhysicalPlan::Apply(_) => {
 			unimplemented!(

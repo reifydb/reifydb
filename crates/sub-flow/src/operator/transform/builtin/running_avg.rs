@@ -59,7 +59,7 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 				FlowDiff::Insert {
 					source,
 					rows: row_ids,
-					after,
+					post: after,
 				} => {
 					// Evaluate input expression
 					let empty_params = Params::None;
@@ -120,15 +120,15 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 					output.push(FlowDiff::Insert {
 						source,
 						rows: row_ids.clone(),
-						after: output_columns,
+						post: output_columns,
 					});
 				}
 
 				FlowDiff::Update {
 					source: _,
 					rows: _,
-					before: _,
-					after: _,
+					pre: _,
+					post: _,
 				} => {
 					// Similar processing for updates
 					// ... (abbreviated for brevity)

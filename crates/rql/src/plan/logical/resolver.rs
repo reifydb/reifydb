@@ -15,8 +15,8 @@ use reifydb_core::{
 			UnresolvedSourceIdentifier,
 		},
 		resolved::{
-			ResolvedColumn, ResolvedDeferredView, ResolvedNamespace, ResolvedSource, ResolvedTable,
-			ResolvedTableVirtual, ResolvedTransactionalView, ResolvedView,
+			ResolvedColumn, ResolvedDeferredView, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource,
+			ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView, ResolvedView,
 		},
 	},
 };
@@ -540,6 +540,15 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 			return Ok(SourceIdentifier::Table(t));
 		}
 
+		// Check for ring buffer
+		if self.transaction.find_ring_buffer_by_name(ns.id, name_str)?.is_some() {
+			let mut rb = RingBufferIdentifier::new(namespace, name);
+			if let Some(a) = alias {
+				rb = rb.with_alias(a);
+			}
+			return Ok(SourceIdentifier::RingBuffer(rb));
+		}
+
 		// Check for view and determine its type
 		if let Some(view) = self.transaction.find_view_by_name(ns.id, name_str)? {
 			match view.kind {
@@ -583,8 +592,12 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		// Get the namespace ID
 		let ns = self.transaction.get_namespace_by_name(namespace_str)?;
 
-		// Check for table or view
+		// Check for table, ring buffer, or view
 		if self.transaction.find_table_by_name(ns.id, name.text())?.is_some() {
+			return Ok(true);
+		}
+
+		if self.transaction.find_ring_buffer_by_name(ns.id, name.text())?.is_some() {
 			return Ok(true);
 		}
 
@@ -767,6 +780,47 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		Ok(ResolvedTable::new(table_ident, namespace, def))
 	}
 
+	/// Build a resolved ring buffer
+	pub fn build_resolved_ring_buffer<'a>(
+		&mut self,
+		ident: SourceIdentifier<'a>,
+	) -> Result<ResolvedRingBuffer<'a>> {
+		// Extract the RingBufferIdentifier from the enum
+		let ring_buffer_ident = match ident {
+			SourceIdentifier::RingBuffer(rb) => rb,
+			_ => {
+				// Create a RingBufferIdentifier from other variants
+				RingBufferIdentifier {
+					namespace: ident.namespace().clone(),
+					name: ident.name().clone(),
+					alias: ident.alias().cloned(),
+				}
+			}
+		};
+
+		// Resolve namespace first
+		let namespace_ident = NamespaceIdentifier {
+			name: ring_buffer_ident.namespace.clone(),
+		};
+		let namespace = self.build_resolved_namespace(namespace_ident)?;
+
+		// Lookup ring buffer in catalog
+		let ring_buffer_name = ring_buffer_ident.name.text();
+		let def = self.transaction.find_ring_buffer_by_name(namespace.def.id, ring_buffer_name)?.ok_or_else(
+			|| -> reifydb_core::Error {
+				// Return an error instead of panicking
+				crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
+					namespace: namespace.def.name.clone(),
+					name: ring_buffer_name.to_string(),
+					fragment: ring_buffer_ident.name.clone().into_owned(),
+				})
+				.into()
+			},
+		)?;
+
+		Ok(ResolvedRingBuffer::new(ring_buffer_ident, namespace, def))
+	}
+
 	/// Build a resolved view
 	pub fn build_resolved_view<'a>(&mut self, ident: SourceIdentifier<'a>) -> Result<ResolvedView<'a>> {
 		// Resolve namespace first
@@ -841,6 +895,19 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				t = t.with_alias(alias);
 			}
 			let source = SourceIdentifier::Table(t);
+			return self.build_resolved_source(source);
+		}
+
+		// Try to find it as a ring buffer
+		if self.transaction.find_ring_buffer_by_name(ns.id, name_text)?.is_some() {
+			let mut rb = RingBufferIdentifier::new(
+				namespace_fragment.clone(),
+				Fragment::Owned(ident.name.into_owned()),
+			);
+			if let Some(alias) = ident.alias {
+				rb = rb.with_alias(alias);
+			}
+			let source = SourceIdentifier::RingBuffer(rb);
 			return self.build_resolved_source(source);
 		}
 
@@ -928,6 +995,12 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		// Try to resolve as table first
 		if let Ok(table) = self.build_resolved_table(ident.clone()) {
 			let resolved = Rc::new(ResolvedSource::Table(table));
+			return Ok(resolved);
+		}
+
+		// Try to resolve as ring buffer
+		if let Ok(ring_buffer) = self.build_resolved_ring_buffer(ident.clone()) {
+			let resolved = Rc::new(ResolvedSource::RingBuffer(ring_buffer));
 			return Ok(resolved);
 		}
 

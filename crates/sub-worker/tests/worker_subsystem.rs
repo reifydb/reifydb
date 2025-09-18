@@ -10,17 +10,49 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use reifydb_catalog::MaterializedCatalog;
+use reifydb_core::{event::EventBus, interceptor::StandardInterceptorFactory};
+use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardEngine};
+use reifydb_storage::memory::Memory;
 use reifydb_sub_api::{Priority, Subsystem};
 use reifydb_sub_worker::{InternalClosureTask, WorkerConfig, WorkerSubsystem};
+use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
+
+type TestTransaction = EngineTransaction<
+	Serializable<Memory, SingleVersionLock<Memory>>,
+	SingleVersionLock<Memory>,
+	StandardCdcTransaction<Memory>,
+>;
+
+fn create_test_engine() -> StandardEngine<TestTransaction> {
+	let memory = Memory::new();
+	let eventbus = EventBus::new();
+	let unversioned = SingleVersionLock::new(memory.clone(), eventbus.clone());
+	let cdc = StandardCdcTransaction::new(memory.clone());
+	let versioned = Serializable::new(memory, unversioned.clone(), eventbus.clone());
+
+	StandardEngine::new(
+		versioned,
+		unversioned,
+		cdc,
+		eventbus,
+		Box::new(StandardInterceptorFactory::default()),
+		MaterializedCatalog::new(),
+	)
+}
 
 #[test]
 fn test_worker_subsystem_basic_task_execution() {
-	let mut instance = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 2,
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 2,
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
 	// Start the instance
 	assert!(instance.start().is_ok());
@@ -72,12 +104,16 @@ fn test_worker_subsystem_basic_task_execution() {
 
 #[test]
 fn test_task_priority_ordering() {
-	let mut instance = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 1, // Single worker to ensure order
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 1, // Single worker to ensure order
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
 	assert!(instance.start().is_ok());
 
@@ -121,12 +157,16 @@ fn test_task_priority_ordering() {
 fn test_priority_ordering_with_concurrent_blocking_tasks() {
 	// This test ensures that when a worker is blocked, high priority tasks
 	// still get executed before low priority tasks by other workers
-	let mut instance = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 2, // Two workers
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 2, // Two workers
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
 	assert!(instance.start().is_ok());
 
@@ -262,12 +302,16 @@ fn test_priority_ordering_with_concurrent_blocking_tasks() {
 #[test]
 fn test_priority_with_all_levels() {
 	// Test that all priority levels are correctly ordered
-	let mut instance = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 1, // Single worker to ensure strict ordering
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 1, // Single worker to ensure strict ordering
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
 	assert!(instance.start().is_ok());
 
@@ -352,12 +396,16 @@ fn test_priority_with_all_levels() {
 fn test_priority_starvation_prevention() {
 	// Test that low priority tasks eventually get executed even with
 	// continuous high priority submissions
-	let mut instance = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 2,
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 2,
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
 	assert!(instance.start().is_ok());
 

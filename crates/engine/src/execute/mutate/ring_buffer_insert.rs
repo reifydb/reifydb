@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{ColumnPolicyKind, EncodableKey, Params, RowKey, Transaction, VersionedCommandTransaction},
+	interface::{ColumnPolicyKind, Params, Transaction},
 	return_error,
 	row::EncodedRowLayout,
 	value::columnar::Columns,
@@ -153,23 +153,21 @@ impl Executor {
 					RowNumber(metadata.head)
 				};
 
-				// Store the row
-				std_txn.command_mut().set(
-					&RowKey {
-						source: ring_buffer.id.into(),
-						row: row_number,
-					}
-					.encode(),
+				// Store the row using interceptors
+				use crate::transaction::operation::RingBufferOperations;
+				std_txn.command_mut().insert_into_ring_buffer_at(
+					ring_buffer.clone(),
+					row_number,
 					row,
 				)?;
 
 				// Update metadata
 				if metadata.is_empty() {
-					metadata.current_size = 1;
+					metadata.count = 1;
 					metadata.head = 0;
 					metadata.tail = 1;
 				} else if !metadata.is_full() {
-					metadata.current_size += 1;
+					metadata.count += 1;
 					metadata.tail = (metadata.tail + 1) % metadata.capacity;
 				} else {
 					// Buffer full, advance both head and tail

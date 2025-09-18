@@ -74,7 +74,7 @@ ok
 
 cdc_get 9 1
 ---
-CdcEvent { version: 9, seq: 1, ts: 1000, change: Update { key: "empty", before: "<deleted>", after: "reinserted" } }
+CdcEvent { version: 9, seq: 1, ts: 1000, change: Insert { key: "empty", after: "reinserted" } }
 
 # Test large version (within SQLite INTEGER range)
 insert 9223372036854775807 maxversion=test
