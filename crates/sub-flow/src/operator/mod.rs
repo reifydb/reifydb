@@ -28,7 +28,7 @@ pub trait Operator<T: Transaction>: Send + Sync {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange>;
 }
@@ -51,7 +51,7 @@ impl<T: Transaction> Operators<T> {
 	pub fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let result = match self {

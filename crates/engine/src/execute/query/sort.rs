@@ -97,7 +97,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 			Equal
 		});
 
-		for col in columns.iter_mut() {
+		let cols = columns.0.make_mut();
+		for col in cols.iter_mut() {
 			col.data_mut().reorder(&indices);
 		}
 

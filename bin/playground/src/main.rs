@@ -42,11 +42,11 @@ impl<T: Transaction> Operator<T> for MyOP {
 	fn apply(
 		&self,
 		_txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		_evaluator: &StandardEvaluator,
 	) -> reifydb::Result<FlowChange> {
 		println!("INVOKED");
-		Ok(change.clone())
+		Ok(change)
 	}
 }
 

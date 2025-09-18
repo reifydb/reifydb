@@ -5,7 +5,8 @@ use crate::{BitVec, value::columnar::Columns};
 
 impl Columns {
 	pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
-		for column in self.iter_mut() {
+		let columns = self.0.make_mut();
+		for column in columns.iter_mut() {
 			column.filter(mask)?;
 		}
 		Ok(())

@@ -362,7 +362,7 @@ impl AggregateOperator {
 
 					output_diffs.push(FlowDiff::Update {
 						source: SourceId::View(ViewId(1)),
-						row_ids: update_row_ids,
+						rows: CowVec::new(update_row_ids),
 						before: previous.clone(),
 						after: columns.clone(),
 					});
@@ -383,7 +383,7 @@ impl AggregateOperator {
 
 					output_diffs.push(FlowDiff::Insert {
 						source: SourceId::View(ViewId(1)),
-						row_ids: insert_row_ids,
+						rows: CowVec::new(insert_row_ids),
 						after: columns.clone(),
 					});
 				}
@@ -414,7 +414,7 @@ impl AggregateOperator {
 
 				output_diffs.push(FlowDiff::Remove {
 					source: SourceId::View(ViewId(1)),
-					row_ids: remove_row_ids,
+					rows: CowVec::new(remove_row_ids),
 					before: before_columns,
 				});
 			}
@@ -428,19 +428,19 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut changed_groups = Vec::new();
 
-		for diff in &change.diffs {
+		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
 					after,
 					..
 				} => {
 					// Compute all group keys at once
-					let group_map = self.compute_group_key(evaluator, after, None)?;
+					let group_map = self.compute_group_key(evaluator, &after, None)?;
 
 					// Process each group in batch
 					for (group_key, row_indices) in group_map {
@@ -449,7 +449,7 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 
 						// Update state with all rows
 						// for this group
-						state.update_insert(after, &row_indices, &self.agg_columns);
+						state.update_insert(&after, &row_indices, &self.agg_columns);
 
 						// Save state back to storage
 						self.save_state(txn, &group_key, &state)?;
@@ -466,12 +466,12 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 				} => {
 					// Handle as delete + insert
 					// Compute group keys for old values
-					let old_group_map = self.compute_group_key(evaluator, before, None)?;
+					let old_group_map = self.compute_group_key(evaluator, &before, None)?;
 
 					// Process deletions for each group
 					for (old_key, row_indices) in old_group_map {
 						let mut old_state = self.load_state(txn, &old_key)?;
-						old_state.update_delete(before, &row_indices, &self.agg_columns);
+						old_state.update_delete(&before, &row_indices, &self.agg_columns);
 						self.save_state(txn, &old_key, &old_state)?;
 
 						if !changed_groups.contains(&old_key) {
@@ -480,12 +480,12 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 					}
 
 					// Compute group keys for new values
-					let new_group_map = self.compute_group_key(evaluator, after, None)?;
+					let new_group_map = self.compute_group_key(evaluator, &after, None)?;
 
 					// Process insertions for each group
 					for (new_key, row_indices) in new_group_map {
 						let mut new_state = self.load_state(txn, &new_key)?;
-						new_state.update_insert(after, &row_indices, &self.agg_columns);
+						new_state.update_insert(&after, &row_indices, &self.agg_columns);
 						self.save_state(txn, &new_key, &new_state)?;
 
 						if !changed_groups.contains(&new_key) {
@@ -498,7 +498,7 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 					..
 				} => {
 					// Compute all group keys at once
-					let group_map = self.compute_group_key(evaluator, before, None)?;
+					let group_map = self.compute_group_key(evaluator, &before, None)?;
 
 					// Process each group in batch
 					for (group_key, row_indices) in group_map {
@@ -507,7 +507,7 @@ impl<T: Transaction> Operator<T> for AggregateOperator {
 
 						// Update state with all rows
 						// for this group
-						state.update_delete(before, &row_indices, &self.agg_columns);
+						state.update_delete(&before, &row_indices, &self.agg_columns);
 
 						// Save state back to storage
 						self.save_state(txn, &group_key, &state)?;

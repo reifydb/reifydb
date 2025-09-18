@@ -61,7 +61,7 @@ impl<T: Transaction> Operator<T> for SortOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		change: &FlowChange,
+		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> Result<FlowChange> {
 		// For incremental updates, we would:
@@ -69,6 +69,6 @@ impl<T: Transaction> Operator<T> for SortOperator {
 		// 2. Apply inserts/deletes to maintain sorted order
 		// 3. Emit changes at affected positions
 		// For now, simplified pass-through
-		Ok(change.clone())
+		Ok(change)
 	}
 }

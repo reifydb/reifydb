@@ -17,7 +17,8 @@ impl Columns {
 			return_error!(engine::frame_error("mismatched column count".to_string()));
 		}
 
-		for (i, (l, r)) in self.iter_mut().zip(other.into_iter()).enumerate() {
+		let columns = self.0.make_mut();
+		for (i, (l, r)) in columns.iter_mut().zip(other.into_iter()).enumerate() {
 			// Allow matching by original name if qualified names
 			// don't match
 			if l.qualified_name() != r.qualified_name() && l.name() != r.name() {
@@ -57,7 +58,8 @@ impl Columns {
 		// if there is an undefined column and the new data contains
 		// defined data convert this column into the new type and fill
 		// the undefined part
-		for (index, column) in self.iter_mut().enumerate() {
+		let columns = self.0.make_mut();
+		for (index, column) in columns.iter_mut().enumerate() {
 			if let ColumnData::Undefined(container) = column.data() {
 				let size = container.len();
 				let new_data = match layout.value(index) {
@@ -189,7 +191,8 @@ impl Columns {
 	}
 
 	fn append_all_defined(&mut self, layout: &EncodedRowLayout, row: &EncodedRow) -> crate::Result<()> {
-		for (index, column) in self.iter_mut().enumerate() {
+		let columns = self.0.make_mut();
+		for (index, column) in columns.iter_mut().enumerate() {
 			match (column.data_mut(), layout.value(index)) {
 				(ColumnData::Bool(container), Type::Boolean) => {
 					container.push(layout.get_bool(&row, index));
@@ -309,7 +312,8 @@ impl Columns {
 	}
 
 	fn append_fallback(&mut self, layout: &EncodedRowLayout, row: &EncodedRow) -> crate::Result<()> {
-		for (index, column) in self.iter_mut().enumerate() {
+		let columns = self.0.make_mut();
+		for (index, column) in columns.iter_mut().enumerate() {
 			match (column.data_mut(), layout.value(index)) {
 				(ColumnData::Bool(container), Type::Boolean) => match layout.try_get_bool(row, index) {
 					Some(v) => container.push(v),
