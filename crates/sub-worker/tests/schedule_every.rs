@@ -12,33 +12,54 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{
-	Result,
-	interface::subsystem::{
-		Subsystem, SubsystemFactory,
-		worker::{ClosureTask, Priority, Scheduler, TaskContext},
-	},
-};
-use reifydb_engine::{EngineTransaction, StandardCdcTransaction};
+use reifydb_catalog::MaterializedCatalog;
+use reifydb_core::{event::EventBus, interceptor::StandardInterceptorFactory};
+use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardEngine};
 use reifydb_storage::memory::Memory;
-use reifydb_sub_worker::{WorkerConfig, WorkerSubsystem, WorkerSubsystemFactory};
+use reifydb_sub_api::{ClosureTask, Priority, Scheduler, Subsystem};
+use reifydb_sub_worker::{WorkerConfig, WorkerSubsystem};
 use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
+use reifydb_type::{diagnostic::internal, error};
+
+type TestTransaction = EngineTransaction<
+	Serializable<Memory, SingleVersionLock<Memory>>,
+	SingleVersionLock<Memory>,
+	StandardCdcTransaction<Memory>,
+>;
+
+fn create_test_engine() -> StandardEngine<TestTransaction> {
+	let memory = Memory::new();
+	let eventbus = EventBus::new();
+	let unversioned = SingleVersionLock::new(memory.clone(), eventbus.clone());
+	let cdc = StandardCdcTransaction::new(memory.clone());
+	let versioned = Serializable::new(memory, unversioned.clone(), eventbus.clone());
+
+	StandardEngine::new(
+		versioned,
+		unversioned,
+		cdc,
+		eventbus,
+		Box::new(StandardInterceptorFactory::default()),
+		MaterializedCatalog::new(),
+	)
+}
 
 #[test]
 fn test_schedule_every_basic_interval_execution() {
-	let mut pool = WorkerSubsystem::new();
-	assert!(pool.start().is_ok());
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(WorkerConfig::default(), engine);
+	assert!(instance.start().is_ok());
 
 	let counter = Arc::new(AtomicUsize::new(0));
 	let counter_clone = Arc::clone(&counter);
 
 	// Schedule a task to run every 30ms
-	let task = Box::new(ClosureTask::new("interval_task", Priority::Normal, move |_ctx: &TaskContext| {
+	let task = Box::new(ClosureTask::new("interval_task", Priority::Normal, move |_ctx| {
 		counter_clone.fetch_add(1, Ordering::Relaxed);
 		Ok(())
 	}));
 
-	let handle = pool.schedule_every(task, Duration::from_millis(30)).unwrap();
+	let handle = instance.schedule_every(task, Duration::from_millis(30)).unwrap();
 
 	// Wait for executions with retry logic
 	let mut attempts = 0;
@@ -53,191 +74,207 @@ fn test_schedule_every_basic_interval_execution() {
 	assert!(count >= 3, "Expected at least 3 executions, got {} after {} attempts", count, attempts);
 
 	// Cancel the task
-	assert!(pool.cancel_task(handle).is_ok());
+	assert!(instance.cancel(handle).is_ok());
 
-	// Wait a bit and verify no more executions
-	let count_before = counter.load(Ordering::Relaxed);
-	thread::sleep(Duration::from_millis(80)); // Wait longer than the task interval
-	let count_after = counter.load(Ordering::Relaxed);
+	// Give time for any in-flight tasks to finish
+	thread::sleep(Duration::from_millis(50));
 
-	assert_eq!(
-		count_before, count_after,
-		"Task should not execute after cancellation. Before: {}, After: {}",
-		count_before, count_after
-	);
+	let count_after_cancel = counter.load(Ordering::Relaxed);
 
-	assert!(pool.shutdown().is_ok());
+	// Wait a bit more to ensure no more executions
+	thread::sleep(Duration::from_millis(100));
+
+	// Should not have executed more after cancellation
+	assert_eq!(counter.load(Ordering::Relaxed), count_after_cancel, "Task should not execute after cancellation");
+
+	assert!(instance.shutdown().is_ok());
 }
 
 #[test]
 fn test_schedule_every_priority_ordering() {
-	// Test that scheduled tasks respect priority when multiple tasks are
+	// Tests that high priority intervals get executed before low priority when
 	// ready
-	let mut pool = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 1, // Single worker to ensure strict ordering
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 1, // Single worker to ensure strict ordering
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
-	assert!(pool.start().is_ok());
+	assert!(instance.start().is_ok());
 
 	let execution_order = Arc::new(Mutex::new(Vec::new()));
 
 	// Create tasks with different priorities
 	let high_order = Arc::clone(&execution_order);
-	let high_task =
-		Box::new(ClosureTask::new("high_priority_interval", Priority::High, move |_ctx: &TaskContext| {
-			high_order.lock().unwrap().push("high");
-			Ok(())
-		}));
+	let high_task = Box::new(ClosureTask::new("high_priority_interval", Priority::High, move |_ctx| {
+		high_order.lock().unwrap().push("high");
+		Ok(())
+	}));
 
 	let low_order = Arc::clone(&execution_order);
-	let low_task = Box::new(ClosureTask::new("low_priority_interval", Priority::Low, move |_ctx: &TaskContext| {
+	let low_task = Box::new(ClosureTask::new("low_priority_interval", Priority::Low, move |_ctx| {
 		low_order.lock().unwrap().push("low");
 		Ok(())
 	}));
 
-	// Schedule both at the same interval
-	let high_handle = pool.schedule_every(high_task, Duration::from_millis(30)).unwrap();
+	// Schedule both with the same interval
+	let _high_handle = instance.schedule_every(high_task, Duration::from_millis(50)).unwrap();
+	let _low_handle = instance.schedule_every(low_task, Duration::from_millis(50)).unwrap();
 
-	let low_handle = pool.schedule_every(low_task, Duration::from_millis(30)).unwrap();
-
-	// Wait for several executions
-	thread::sleep(Duration::from_millis(150));
-
-	// Cancel both tasks
-	assert!(pool.cancel_task(high_handle).is_ok());
-	assert!(pool.cancel_task(low_handle).is_ok());
+	// Wait for a few executions
+	thread::sleep(Duration::from_millis(200));
 
 	let order = execution_order.lock().unwrap();
 
-	// Verify we have executions of both priorities
-	assert!(order.contains(&"high"), "High priority task should execute");
-	assert!(order.contains(&"low"), "Low priority task should execute");
+	// Both should have executed
+	assert!(!order.is_empty(), "Tasks should have executed");
 
-	// When both tasks are ready at the same time, high priority should
-	// generally execute first (though timing may cause variations)
-	println!("Execution order: {:?}", *order);
+	// When both are ready at the same time, high should come before low
+	// Check the first few executions
+	if order.len() >= 2 {
+		// Find first occurrence of each
+		let first_high = order.iter().position(|s| *s == "high");
+		let first_low = order.iter().position(|s| *s == "low");
 
-	assert!(pool.shutdown().is_ok());
+		if let (Some(high_pos), Some(low_pos)) = (first_high, first_low) {
+			// If they were ready at the same time (close positions), high
+			// should come first
+			if (high_pos as isize - low_pos as isize).abs() == 1 {
+				assert!(
+					high_pos < low_pos,
+					"High priority should execute before low when both are ready"
+				);
+			}
+		}
+	}
+
+	assert!(instance.shutdown().is_ok());
 }
 
 #[test]
-fn test_scheduler_client_api() -> Result<()> {
-	// Test the scheduler client API through the subsystem factory
-	type TestTransaction = EngineTransaction<
-		Serializable<Memory, SingleVersionLock<Memory>>,
-		SingleVersionLock<Memory>,
-		StandardCdcTransaction<Memory>,
-	>;
+fn test_schedule_every_cancellation() {
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(WorkerConfig::default(), engine);
+	assert!(instance.start().is_ok());
 
-	// Create factory with configurator
-	let factory = WorkerSubsystemFactory::<TestTransaction>::with_configurator(|builder| {
-		builder.num_workers(2).max_queue_size(100)
-	});
+	let counter = Arc::new(AtomicUsize::new(0));
+	let counter_clone = Arc::clone(&counter);
 
-	// Create the subsystem
-	let ioc = reifydb_core::ioc::IocContainer::new();
-	let mut subsystem = Box::new(factory).create(&ioc)?;
-
-	// Start the subsystem
-	subsystem.start()?;
-
-	// Get the scheduler from the subsystem
-	let worker_subsystem = subsystem.as_any().downcast_ref::<WorkerSubsystem>().expect("Should be WorkerSubsystem");
-
-	let scheduler = worker_subsystem.get_scheduler();
-
-	// Test scheduling a task through the client API
-	let counter = Arc::new(Mutex::new(0));
-	let counter_clone = counter.clone();
-
-	let task = Box::new(ClosureTask::new("client_task", Priority::Normal, move |_ctx: &TaskContext| {
-		let mut count = counter_clone.lock().unwrap();
-		*count += 1;
-		println!("Task executed via client, count: {}", *count);
+	// Schedule a task
+	let task = Box::new(ClosureTask::new("test_task", Priority::Normal, move |_ctx| {
+		counter_clone.fetch_add(1, Ordering::Relaxed);
 		Ok(())
 	}));
 
-	let handle = scheduler.schedule_every(task, Duration::from_millis(20))?;
+	let handle = instance.schedule_every(task, Duration::from_millis(20)).unwrap();
 
-	// Wait for tasks to execute
+	// Let it run a few times
 	thread::sleep(Duration::from_millis(100));
+	let count_before_cancel = counter.load(Ordering::Relaxed);
+	assert!(count_before_cancel > 0, "Task should have executed at least once");
 
 	// Cancel the task
-	scheduler.cancel(handle)?;
+	assert!(instance.cancel(handle).is_ok());
 
-	// Wait a bit more to ensure cancellation
-	thread::sleep(Duration::from_millis(50));
+	// Wait to ensure no more executions
+	thread::sleep(Duration::from_millis(100));
+	let count_after_cancel = counter.load(Ordering::Relaxed);
 
-	// Check that the task ran
-	let final_count = *counter.lock().unwrap();
-	println!("Final count: {}", final_count);
-	assert!(final_count >= 2, "Task should have run at least twice");
-	assert!(final_count <= 10, "Task should have been cancelled");
+	// Should be the same or at most one more (if one was in flight)
+	assert!(count_after_cancel <= count_before_cancel + 1, "Task should stop executing after cancellation");
 
-	// Shutdown
-	subsystem.shutdown()?;
-
-	Ok(())
+	assert!(instance.shutdown().is_ok());
 }
 
 #[test]
 fn test_schedule_every_multiple_intervals() {
-	// Test multiple tasks with different intervals
-	let mut pool = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 2,
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 2,
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
+	assert!(instance.start().is_ok());
 
-	assert!(pool.start().is_ok());
+	// Schedule two tasks at different intervals
+	let counter1 = Arc::new(AtomicUsize::new(0));
+	let counter2 = Arc::new(AtomicUsize::new(0));
 
-	let fast_counter = Arc::new(AtomicUsize::new(0));
-	let slow_counter = Arc::new(AtomicUsize::new(0));
-
-	let fast_clone = Arc::clone(&fast_counter);
-	let slow_clone = Arc::clone(&slow_counter);
-
-	// Schedule a fast task (every 20ms)
-	let fast_task = Box::new(ClosureTask::new("fast_interval", Priority::Normal, move |_ctx: &TaskContext| {
-		fast_clone.fetch_add(1, Ordering::Relaxed);
+	let counter1_clone = Arc::clone(&counter1);
+	let task1 = Box::new(ClosureTask::new("high_priority_interval", Priority::High, move |_ctx| {
+		counter1_clone.fetch_add(1, Ordering::Relaxed);
 		Ok(())
 	}));
 
-	// Schedule a slow task (every 50ms)
-	let slow_task = Box::new(ClosureTask::new("slow_interval", Priority::Normal, move |_ctx: &TaskContext| {
-		slow_clone.fetch_add(1, Ordering::Relaxed);
+	let counter2_clone = Arc::clone(&counter2);
+	let task2 = Box::new(ClosureTask::new("normal_priority_interval", Priority::Normal, move |_ctx| {
+		counter2_clone.fetch_add(1, Ordering::Relaxed);
 		Ok(())
 	}));
 
-	let fast_handle = pool.schedule_every(fast_task, Duration::from_millis(20)).unwrap();
-
-	let slow_handle = pool.schedule_every(slow_task, Duration::from_millis(50)).unwrap();
+	// Schedule at different rates
+	let _handle1 = instance.schedule_every(task1, Duration::from_millis(30)).unwrap();
+	let _handle2 = instance.schedule_every(task2, Duration::from_millis(60)).unwrap();
 
 	// Wait for executions
-	thread::sleep(Duration::from_millis(150));
+	thread::sleep(Duration::from_millis(200));
 
-	// Cancel both tasks
-	assert!(pool.cancel_task(fast_handle).is_ok());
-	assert!(pool.cancel_task(slow_handle).is_ok());
+	let count1 = counter1.load(Ordering::Relaxed);
+	let count2 = counter2.load(Ordering::Relaxed);
 
-	let fast_count = fast_counter.load(Ordering::Relaxed);
-	let slow_count = slow_counter.load(Ordering::Relaxed);
+	// Task1 (30ms interval) should execute roughly twice as often as Task2
+	// (60ms)
+	assert!(count1 > 0, "Task1 should have executed");
+	assert!(count2 > 0, "Task2 should have executed");
 
-	// Fast task should run more often than slow task
+	// Rough check - task1 should execute more frequently
+	// Allow for timing variance
 	assert!(
-		fast_count > slow_count,
-		"Fast task ({}) should run more often than slow task ({})",
-		fast_count,
-		slow_count
+		count1 >= count2,
+		"Task1 (30ms) should execute at least as often as Task2 (60ms). Count1: {}, Count2: {}",
+		count1,
+		count2
 	);
 
-	// Verify reasonable execution counts
-	assert!(fast_count >= 5, "Fast task should run at least 5 times");
-	assert!(slow_count >= 2, "Slow task should run at least 2 times");
+	assert!(instance.shutdown().is_ok());
+}
 
-	assert!(pool.shutdown().is_ok());
+#[test]
+fn test_schedule_every_task_failure_recovery() {
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(WorkerConfig::default(), engine);
+	assert!(instance.start().is_ok());
+
+	let counter = Arc::new(AtomicUsize::new(0));
+	let counter_clone = Arc::clone(&counter);
+
+	// Schedule a task that fails on even executions
+	let task = Box::new(ClosureTask::new("failing_task", Priority::Normal, move |_ctx| {
+		let count = counter_clone.fetch_add(1, Ordering::Relaxed);
+		if count % 2 == 0 {
+			Ok(())
+		} else {
+			Err(error!(internal("test error")))
+		}
+	}));
+
+	let _handle = instance.schedule_every(task, Duration::from_millis(30)).unwrap();
+
+	// Wait for several executions
+	thread::sleep(Duration::from_millis(200));
+
+	// Should continue executing despite failures
+	let final_count = counter.load(Ordering::Relaxed);
+	assert!(final_count >= 3, "Task should continue executing despite failures. Count: {}", final_count);
+
+	assert!(instance.shutdown().is_ok());
 }

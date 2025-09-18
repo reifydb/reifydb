@@ -3,15 +3,9 @@
 
 use std::marker::PhantomData;
 
-use reifydb_core::{
-	interceptor::StandardInterceptorBuilder,
-	interface::{
-		Transaction,
-		subsystem::{Subsystem, SubsystemFactory},
-	},
-	ioc::IocContainer,
-};
+use reifydb_core::{interceptor::StandardInterceptorBuilder, interface::Transaction, ioc::IocContainer};
 use reifydb_engine::StandardCommandTransaction;
+use reifydb_sub_api::{Subsystem, SubsystemFactory};
 
 use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
 use crate::builder::FlowBuilder;

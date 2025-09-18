@@ -373,6 +373,7 @@ dependencies = [
  "reifydb-rql",
  "reifydb-storage",
  "reifydb-sub-admin",
+ "reifydb-sub-api",
  "reifydb-sub-flow",
  "reifydb-sub-logging",
  "reifydb-sub-server",
@@ -411,6 +412,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-storage",
+ "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-type",
 ]
@@ -514,11 +516,23 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-network",
+ "reifydb-sub-api",
  "reifydb-type",
  "serde",
  "serde_json",
  "slab",
  "socket2",
+]
+
+[[package]]
+name = "reifydb-sub-api"
+version = "0.0.1"
+dependencies = [
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-storage",
+ "reifydb-transaction",
+ "reifydb-type",
 ]
 
 [[package]]
@@ -530,6 +544,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-hash",
+ "reifydb-sub-api",
  "reifydb-type",
  "serde",
  "serde_json",
@@ -543,6 +558,7 @@ dependencies = [
  "parking_lot",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-sub-api",
  "reifydb-testing",
  "reifydb-type",
 ]
@@ -560,6 +576,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-hash",
  "reifydb-network",
+ "reifydb-sub-api",
  "reifydb-testing",
  "reifydb-type",
  "serde",
@@ -573,10 +590,12 @@ dependencies = [
 name = "reifydb-sub-worker"
 version = "0.0.1"
 dependencies = [
+ "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-storage",
+ "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-type",
 ]

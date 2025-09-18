@@ -8,9 +8,11 @@ authors.workspace = true
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
+reifydb-sub-api = { workspace = true }
 reifydb-type = { workspace = true }
 
 [dev-dependencies]
+reifydb-catalog = { workspace = true }
 reifydb-storage = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-cdc = { workspace = true }

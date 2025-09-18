@@ -10,21 +10,53 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb_core::interface::subsystem::{Subsystem, worker::Priority};
+use reifydb_catalog::MaterializedCatalog;
+use reifydb_core::{event::EventBus, interceptor::StandardInterceptorFactory};
+use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardEngine};
+use reifydb_storage::memory::Memory;
+use reifydb_sub_api::{Priority, Subsystem};
 use reifydb_sub_worker::{InternalClosureTask, WorkerConfig, WorkerSubsystem};
+use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
+
+type TestTransaction = EngineTransaction<
+	Serializable<Memory, SingleVersionLock<Memory>>,
+	SingleVersionLock<Memory>,
+	StandardCdcTransaction<Memory>,
+>;
+
+fn create_test_engine() -> StandardEngine<TestTransaction> {
+	let memory = Memory::new();
+	let eventbus = EventBus::new();
+	let unversioned = SingleVersionLock::new(memory.clone(), eventbus.clone());
+	let cdc = StandardCdcTransaction::new(memory.clone());
+	let versioned = Serializable::new(memory, unversioned.clone(), eventbus.clone());
+
+	StandardEngine::new(
+		versioned,
+		unversioned,
+		cdc,
+		eventbus,
+		Box::new(StandardInterceptorFactory::default()),
+		MaterializedCatalog::new(),
+	)
+}
 
 #[test]
 fn test_worker_subsystem_basic_task_execution() {
-	let mut pool = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 2,
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 2,
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
-	// Start the pool
-	assert!(pool.start().is_ok());
-	assert!(pool.is_running());
+	// Start the instance
+	assert!(instance.start().is_ok());
+	assert!(instance.is_running());
 
 	// Submit some tasks
 	let counter = Arc::new(AtomicUsize::new(0));
@@ -43,7 +75,7 @@ fn test_worker_subsystem_basic_task_execution() {
 			Ok(())
 		}));
 
-		assert!(pool.submit(task).is_ok());
+		assert!(instance.submit(task).is_ok());
 	}
 
 	// Wait for all tasks to complete with timeout
@@ -65,21 +97,25 @@ fn test_worker_subsystem_basic_task_execution() {
 	// Check that all tasks were executed
 	assert_eq!(counter.load(Ordering::Relaxed), expected_count);
 
-	// shutdown the pool
-	assert!(pool.shutdown().is_ok());
-	assert!(!pool.is_running());
+	// shutdown the instance
+	assert!(instance.shutdown().is_ok());
+	assert!(!instance.is_running());
 }
 
 #[test]
 fn test_task_priority_ordering() {
-	let mut pool = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 1, // Single worker to ensure order
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 1, // Single worker to ensure order
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
-	assert!(pool.start().is_ok());
+	assert!(instance.start().is_ok());
 
 	let results = Arc::new(Mutex::new(Vec::new()));
 
@@ -101,7 +137,7 @@ fn test_task_priority_ordering() {
 			Ok(())
 		}));
 
-		assert!(pool.submit(task).is_ok());
+		assert!(instance.submit(task).is_ok());
 	}
 
 	// Wait for tasks to complete
@@ -114,21 +150,25 @@ fn test_task_priority_ordering() {
 	// should generally come before low priority
 	println!("Execution order: {:?}", *final_results);
 
-	assert!(pool.shutdown().is_ok());
+	assert!(instance.shutdown().is_ok());
 }
 
 #[test]
 fn test_priority_ordering_with_concurrent_blocking_tasks() {
 	// This test ensures that when a worker is blocked, high priority tasks
 	// still get executed before low priority tasks by other workers
-	let mut pool = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 2, // Two workers
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 2, // Two workers
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
-	assert!(pool.start().is_ok());
+	assert!(instance.start().is_ok());
 
 	let results = Arc::new(Mutex::new(Vec::new()));
 	let blocker = Arc::new(AtomicUsize::new(0));
@@ -149,7 +189,7 @@ fn test_priority_ordering_with_concurrent_blocking_tasks() {
 		thread::sleep(Duration::from_millis(50));
 		Ok(())
 	}));
-	assert!(pool.submit(blocking_task).is_ok());
+	assert!(instance.submit(blocking_task).is_ok());
 
 	// Wait for the blocker to start
 	while blocker.load(Ordering::Relaxed) == 0 {
@@ -169,7 +209,7 @@ fn test_priority_ordering_with_concurrent_blocking_tasks() {
 		}
 		Ok(())
 	}));
-	assert!(pool.submit(second_blocking_task).is_ok());
+	assert!(instance.submit(second_blocking_task).is_ok());
 
 	// Wait for the second blocker to start
 	while second_blocker.load(Ordering::Relaxed) == 0 {
@@ -198,7 +238,7 @@ fn test_priority_ordering_with_concurrent_blocking_tasks() {
 			Ok(())
 		}));
 
-		assert!(pool.submit(task).is_ok());
+		assert!(instance.submit(task).is_ok());
 	}
 
 	// Signal that all tasks are now queued
@@ -256,20 +296,24 @@ fn test_priority_ordering_with_concurrent_blocking_tasks() {
 		*final_results
 	);
 
-	assert!(pool.shutdown().is_ok());
+	assert!(instance.shutdown().is_ok());
 }
 
 #[test]
 fn test_priority_with_all_levels() {
 	// Test that all priority levels are correctly ordered
-	let mut pool = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 1, // Single worker to ensure strict ordering
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 1, // Single worker to ensure strict ordering
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
-	assert!(pool.start().is_ok());
+	assert!(instance.start().is_ok());
 
 	let results = Arc::new(Mutex::new(Vec::new()));
 	let start_flag = Arc::new(AtomicUsize::new(0));
@@ -284,7 +328,7 @@ fn test_priority_with_all_levels() {
 		}
 		Ok(())
 	}));
-	assert!(pool.submit(initial_task).is_ok());
+	assert!(instance.submit(initial_task).is_ok());
 
 	// Give the initial task time to start
 	thread::sleep(Duration::from_millis(20));
@@ -311,7 +355,7 @@ fn test_priority_with_all_levels() {
 			Ok(())
 		}));
 
-		assert!(pool.submit(task).is_ok());
+		assert!(instance.submit(task).is_ok());
 	}
 
 	// Signal that all tasks are queued
@@ -345,21 +389,25 @@ fn test_priority_with_all_levels() {
 	let min_low = low_positions.iter().min().unwrap_or(&usize::MAX);
 	assert!(max_normal < min_low, "All Normal tasks should execute before Low tasks");
 
-	assert!(pool.shutdown().is_ok());
+	assert!(instance.shutdown().is_ok());
 }
 
 #[test]
 fn test_priority_starvation_prevention() {
 	// Test that low priority tasks eventually get executed even with
 	// continuous high priority submissions
-	let mut pool = WorkerSubsystem::with_config(WorkerConfig {
-		num_workers: 2,
-		max_queue_size: 100,
-		scheduler_interval: Duration::from_millis(10),
-		task_timeout_warning: Duration::from_secs(1),
-	});
+	let engine = create_test_engine();
+	let mut instance = WorkerSubsystem::with_config_and_engine(
+		WorkerConfig {
+			num_workers: 2,
+			max_queue_size: 100,
+			scheduler_interval: Duration::from_millis(10),
+			task_timeout_warning: Duration::from_secs(1),
+		},
+		engine,
+	);
 
-	assert!(pool.start().is_ok());
+	assert!(instance.start().is_ok());
 
 	let low_priority_executed = Arc::new(AtomicUsize::new(0));
 	let high_priority_executed = Arc::new(AtomicUsize::new(0));
@@ -373,7 +421,7 @@ fn test_priority_starvation_prevention() {
 			thread::sleep(Duration::from_millis(10));
 			Ok(())
 		}));
-		assert!(pool.submit(task).is_ok());
+		assert!(instance.submit(task).is_ok());
 	}
 
 	// Continuously submit high priority tasks
@@ -385,7 +433,7 @@ fn test_priority_starvation_prevention() {
 			thread::sleep(Duration::from_millis(5));
 			Ok(())
 		}));
-		assert!(pool.submit(task).is_ok());
+		assert!(instance.submit(task).is_ok());
 	}
 
 	// Wait for tasks to execute
@@ -398,5 +446,5 @@ fn test_priority_starvation_prevention() {
 	assert_eq!(high_count, 10, "All high priority tasks should be executed");
 	assert_eq!(low_count, 5, "All low priority tasks should eventually be executed");
 
-	assert!(pool.shutdown().is_ok());
+	assert!(instance.shutdown().is_ok());
 }

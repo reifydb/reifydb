@@ -3,16 +3,9 @@
 
 use std::marker::PhantomData;
 
-use reifydb_core::{
-	Result,
-	interceptor::StandardInterceptorBuilder,
-	interface::{
-		Transaction,
-		subsystem::{Subsystem, SubsystemFactory},
-	},
-	ioc::IocContainer,
-};
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_core::{Result, interceptor::StandardInterceptorBuilder, interface::Transaction, ioc::IocContainer};
+use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_sub_api::{Subsystem, SubsystemFactory};
 
 use super::{WorkerBuilder, WorkerConfig, WorkerSubsystem};
 
@@ -73,7 +66,7 @@ impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for WorkerS
 		builder
 	}
 
-	fn create(self: Box<Self>, _ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
+	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {
 		// Build WorkerSubsystem configuration
 		let builder = if let Some(configurator) = self.configurator {
 			configurator(WorkerBuilder::new())
@@ -81,9 +74,12 @@ impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for WorkerS
 			WorkerBuilder::default()
 		};
 
+		// Get the StandardEngine from IoC
+		let engine = ioc.resolve::<StandardEngine<T>>()?;
+
 		// Create subsystem
 		let config = builder.build();
-		let subsystem = WorkerSubsystem::with_config(config);
+		let subsystem = WorkerSubsystem::with_config_and_engine(config, engine);
 
 		Ok(Box::new(subsystem))
 	}

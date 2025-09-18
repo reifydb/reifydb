@@ -3,19 +3,28 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{thread::sleep, time::Duration};
+use std::{
+	sync::{
+		Arc,
+		atomic::{AtomicUsize, Ordering::Relaxed},
+	},
+	thread::sleep,
+	time::Duration,
+};
 
 use reifydb::{
-	MemoryDatabaseOptimistic, Session, WithSubsystem,
+	Identity, MemoryDatabaseOptimistic, WithSubsystem,
 	core::{
 		flow::FlowChange,
-		interface::{FlowNodeId, Params, Transaction, subsystem::logging::LogLevel::Info},
+		interface::{Engine, FlowNodeId, Transaction, logging::LogLevel::Info},
 	},
 	embedded,
 	engine::{StandardCommandTransaction, StandardEvaluator},
 	log_info,
+	sub::task,
 	sub_flow::{FlowBuilder, Operator, TransformOperator},
 	sub_logging::{FormatStyle, LoggingBuilder},
+	r#type::params,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
@@ -61,80 +70,30 @@ fn main() {
 		.build()
 		.unwrap();
 
+	// Schedule a background task that prints every 2 seconds
+	let counter = Arc::new(AtomicUsize::new(0));
+	let counter_clone = counter.clone();
+
+	let task = task!(Low, "periodic_printer", move |ctx| {
+		let frames = ctx
+			.engine()
+			.query_as(&Identity::root(), "MAP $1", params![counter.load(Relaxed) as u8])
+			.unwrap();
+		for frame in frames {
+			println!("{}", frame);
+		}
+
+		let count = counter_clone.fetch_add(1, Relaxed);
+		log_info!("Background task execution #{}", count + 1);
+		Ok(())
+	});
+
+	let _handle = db.scheduler().schedule_every(task, Duration::from_secs(2)).unwrap();
+
 	db.start().unwrap();
 
-	// Test ring buffer delete and re-insert
-	log_info!("Testing ring buffer delete/insert issue...");
-
-	// Create namespace and ring buffer
-	log_info!("Creating namespace and ring buffer...");
-	for frame in db.command_as_root("create namespace test_rb_del", Params::None).unwrap() {
-		log_info!("Result: {}", frame);
-	}
-	for frame in db
-		.command_as_root(
-			"create ring buffer test_rb_del.buffer { id: int4, value: utf8 } with capacity = 10",
-			Params::None,
-		)
-		.unwrap()
-	{
-		log_info!("Result: {}", frame);
-	}
-
-	// Insert initial data
-	log_info!("Inserting initial data...");
-	for frame in db
-		.command_as_root(
-			r#"
-		from [
-		  { id: 1, value: "One" },
-		  { id: 2, value: "Two" },
-		  { id: 3, value: "Three" }
-		] insert test_rb_del.buffer
-	"#,
-			Params::None,
-		)
-		.unwrap()
-	{
-		log_info!("Insert result: {}", frame);
-	}
-
-	// Query to verify
-	log_info!("Querying initial data...");
-	for frame in db.query_as_root("from test_rb_del.buffer", Params::None).unwrap() {
-		log_info!("Initial data: {}", frame);
-	}
-
-	// Delete all
-	log_info!("Deleting all data...");
-	for frame in db.command_as_root("delete test_rb_del.buffer", Params::None).unwrap() {
-		log_info!("Delete result: {}", frame);
-	}
-
-	// Query to verify empty
-	log_info!("Querying after delete...");
-	for frame in db.query_as_root("from test_rb_del.buffer", Params::None).unwrap() {
-		log_info!("After delete: {}", frame);
-	}
-
-	// Insert new data
-	log_info!("Inserting new data...");
-	for frame in db
-		.command_as_root(r#"from [{ id: 10, value: "New" }] insert test_rb_del.buffer"#, Params::None)
-		.unwrap()
-	{
-		log_info!("Insert new result: {}", frame);
-	}
-
-	// Query to verify new data
-	log_info!("Querying new data...");
-	for frame in db.query_as_root("from test_rb_del.buffer", Params::None).unwrap() {
-		log_info!("New data: {}", frame);
-	}
-
-	log_info!("Test completed successfully!");
-
-	// Small delay before shutdown
-	sleep(Duration::from_secs(1));
+	// Let the background task run for a while
+	log_info!("Letting background task run for 7 seconds...");
+	sleep(Duration::from_secs(7));
 	log_info!("Shutting down...");
 }

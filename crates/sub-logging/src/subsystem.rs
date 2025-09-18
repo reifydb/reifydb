@@ -18,14 +18,12 @@ use parking_lot::RwLock;
 use reifydb_core::{
 	Result,
 	interface::{
-		subsystem::{
-			HealthStatus, Subsystem,
-			logging::{LogBackend, LogLevel, Record},
-		},
+		logging::{LogBackend, LogLevel, Record},
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	return_internal_error,
 };
+use reifydb_sub_api::{HealthStatus, Subsystem};
 
 use crate::{
 	LoggingMetrics,

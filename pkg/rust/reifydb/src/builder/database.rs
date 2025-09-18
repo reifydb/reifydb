@@ -12,7 +12,6 @@ use reifydb_core::{
 	interceptor::StandardInterceptorBuilder,
 	interface::{
 		CdcTransaction, UnversionedTransaction, VersionedTransaction,
-		subsystem::SubsystemFactory,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
@@ -24,6 +23,7 @@ use reifydb_engine::{
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
 use reifydb_storage::StorageVersion;
+use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_logging")]
@@ -223,7 +223,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Da
 		// Get the scheduler - it must exist when feature is enabled
 		#[cfg(feature = "sub_worker")]
 		let scheduler = subsystems
-			.get::<WorkerSubsystem>()
+			.get::<WorkerSubsystem<EngineTransaction<VT, UT, C>>>()
 			.map(|w| w.get_scheduler())
 			.expect("Worker subsystem should always be created when feature is enabled");
 

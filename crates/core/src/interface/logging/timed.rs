@@ -24,16 +24,16 @@ macro_rules! log_timed {
         let __start = std::time::Instant::now();
         let __result = $code;
         let __elapsed = __start.elapsed().as_nanos();
-        let __duration_str = $crate::interface::subsystem::logging::timed::format_duration_nanos(__elapsed);
+        let __duration_str = $crate::interface::logging::timed::format_duration_nanos(__elapsed);
         let __message = format!("{} (took {})", format!($msg), __duration_str);
 
-        let __record = $crate::interface::subsystem::logging::Record::new(
+        let __record = $crate::interface::logging::Record::new(
             $level,
             module_path!(),
             __message,
         )
         .with_location(file!(), line!());
-        $crate::interface::subsystem::logging::log(__record);
+        $crate::interface::logging::log(__record);
         __result
     }};
 
@@ -42,16 +42,16 @@ macro_rules! log_timed {
         let __start = std::time::Instant::now();
         let __result = $code;
         let __elapsed = __start.elapsed().as_nanos();
-        let __duration_str = $crate::interface::subsystem::logging::timed::format_duration_nanos(__elapsed);
+        let __duration_str = $crate::interface::logging::timed::format_duration_nanos(__elapsed);
         let __message = format!("{} (took {})", format!($fmt, $($arg)*), __duration_str);
 
-        let __record = $crate::interface::subsystem::logging::Record::new(
+        let __record = $crate::interface::logging::Record::new(
             $level,
             module_path!(),
             __message,
         )
         .with_location(file!(), line!());
-        $crate::interface::subsystem::logging::log(__record);
+        $crate::interface::logging::log(__record);
         __result
     }};
 }
@@ -61,12 +61,12 @@ macro_rules! log_timed {
 macro_rules! log_timed_trace {
     // Simple message
     ($msg:expr, $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Trace, $msg, $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Trace, $msg, $code)
     };
 
     // Format string with arguments - note the semicolon separator before the code block
     ($fmt:expr, $($arg:tt)*; $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Trace, $fmt, $($arg)*; $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Trace, $fmt, $($arg)*; $code)
     };
 }
 
@@ -75,12 +75,12 @@ macro_rules! log_timed_trace {
 macro_rules! log_timed_debug {
     // Simple message
     ($msg:expr, $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Debug, $msg, $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Debug, $msg, $code)
     };
 
     // Format string with arguments - note the semicolon separator before the code block
     ($fmt:expr, $($arg:tt)*; $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Debug, $fmt, $($arg)*; $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Debug, $fmt, $($arg)*; $code)
     };
 }
 
@@ -89,12 +89,12 @@ macro_rules! log_timed_debug {
 macro_rules! log_timed_info {
     // Simple message
     ($msg:expr, $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Info, $msg, $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Info, $msg, $code)
     };
 
     // Format string with arguments - note the semicolon separator before the code block
     ($fmt:expr, $($arg:tt)*; $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Info, $fmt, $($arg)*; $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Info, $fmt, $($arg)*; $code)
     };
 }
 
@@ -103,12 +103,12 @@ macro_rules! log_timed_info {
 macro_rules! log_timed_warn {
     // Simple message
     ($msg:expr, $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Warn, $msg, $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Warn, $msg, $code)
     };
 
     // Format string with arguments - note the semicolon separator before the code block
     ($fmt:expr, $($arg:tt)*; $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Warn, $fmt, $($arg)*; $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Warn, $fmt, $($arg)*; $code)
     };
 }
 
@@ -117,12 +117,12 @@ macro_rules! log_timed_warn {
 macro_rules! log_timed_error {
     // Simple message
     ($msg:expr, $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Error, $msg, $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Error, $msg, $code)
     };
 
     // Format string with arguments - note the semicolon separator before the code block
     ($fmt:expr, $($arg:tt)*; $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Error, $fmt, $($arg)*; $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Error, $fmt, $($arg)*; $code)
     };
 }
 
@@ -131,12 +131,12 @@ macro_rules! log_timed_error {
 macro_rules! log_timed_critical {
     // Simple message
     ($msg:expr, $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Critical, $msg, $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Critical, $msg, $code)
     };
 
     // Format string with arguments - note the semicolon separator before the code block
     ($fmt:expr, $($arg:tt)*; $code:block) => {
-        $crate::log_timed!($crate::interface::subsystem::logging::LogLevel::Critical, $fmt, $($arg)*; $code)
+        $crate::log_timed!($crate::interface::logging::LogLevel::Critical, $fmt, $($arg)*; $code)
     };
 }
 
@@ -146,7 +146,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		interface::subsystem::logging::{LogLevel, mock::with_mock_logger},
+		interface::logging::{LogLevel, mock::with_mock_logger},
 		log_timed_debug, log_timed_info, log_timed_trace,
 	};
 

@@ -43,15 +43,14 @@ pub(crate) const CDC_TX_CHANGES_FIELD: usize = 3;
 // Layout for individual changes (without metadata)
 pub(crate) static CDC_CHANGE_LAYOUT: LazyLock<EncodedRowLayout> = LazyLock::new(|| {
 	EncodedRowLayout::new(&[
-		Type::Uint1, /* change_type (1=Insert, 2=Update,
-		              * 3=Delete) */
-		Type::Blob, // key
-		Type::Blob, // before (optional, undefined for Insert)
-		Type::Blob, // after (optional, undefined for Delete)
+		Type::Uint1, // change_type (1=Insert, 2=Update, 3=Delete)
+		Type::Blob,  // key
+		Type::Blob,  // pre
+		Type::Blob,  // post
 	])
 });
 
 pub(crate) const CDC_COMPACT_CHANGE_TYPE_FIELD: usize = 0;
 pub(crate) const CDC_COMPACT_CHANGE_KEY_FIELD: usize = 1;
-pub(crate) const CDC_COMPACT_CHANGE_BEFORE_FIELD: usize = 2;
-pub(crate) const CDC_COMPACT_CHANGE_AFTER_FIELD: usize = 3;
+pub(crate) const CDC_COMPACT_CHANGE_PRE_FIELD: usize = 2;
+pub(crate) const CDC_COMPACT_CHANGE_POST_FIELD: usize = 3;

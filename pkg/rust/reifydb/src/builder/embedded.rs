@@ -4,9 +4,10 @@
 use reifydb_core::{
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction, subsystem::SubsystemFactory},
+	interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
 };
 use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
+use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
 #[cfg(feature = "sub_logging")]

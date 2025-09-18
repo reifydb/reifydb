@@ -5,7 +5,7 @@
 
 use std::time::Duration;
 
-use reifydb_core::interface::subsystem::logging::{LogBackend, LogLevel, init_logger};
+use reifydb_core::interface::logging::{LogBackend, LogLevel, init_logger};
 
 #[cfg(debug_assertions)]
 use crate::test_utils::TestLoggerHandle;

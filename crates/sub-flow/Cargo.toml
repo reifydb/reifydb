@@ -12,6 +12,7 @@ reifydb-core = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-hash = { workspace = true }
+reifydb-sub-api = { workspace = true }
 reifydb-type = { workspace = true }
 
 serde = { workspace = true }

@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-sub-logging"
+name = "reifydb-sub-api"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -8,12 +8,8 @@ authors.workspace = true
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
-reifydb-sub-api = { workspace = true }
 reifydb-type = { workspace = true }
 
-# Performance
-crossbeam-channel = { workspace = true }
-parking_lot = { workspace = true }
-
 [dev-dependencies]
-reifydb-testing = { workspace = true }
+reifydb-storage = { workspace = true}
+reifydb-transaction = { workspace = true}

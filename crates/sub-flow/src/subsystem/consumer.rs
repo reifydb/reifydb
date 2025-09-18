@@ -206,12 +206,6 @@ impl<T: Transaction> FlowConsumer<T> {
 
 impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 	fn consume(&self, txn: &mut StandardCommandTransaction<T>, events: Vec<CdcEvent>) -> Result<()> {
-		// We need to downcast to StandardCommandTransaction<T>
-		// In practice, this will always be
-		// StandardCommandTransaction<T> when called from PollConsumer
-		// Process all events
-		// Any flow inserts in this batch will be available when we load
-		// flows
 		let mut changes = Vec::new();
 
 		for event in events {
@@ -225,9 +219,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 						continue;
 					}
 
-					// Convert CDC events to FlowChange
-					// events
-					let flowchange = match &event.change {
+					let change = match &event.change {
 						CdcChange::Insert {
 							post,
 							..
@@ -257,7 +249,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 								.unwrap_or_else(Vec::new),
 						},
 					};
-					changes.push(flowchange);
+					changes.push(change);
 				}
 			}
 		}
