@@ -4,18 +4,18 @@
 use reifydb_core::interface::QueryTransaction;
 
 use crate::plan::{
-	logical::AlterSequenceNode,
-	physical::{AlterSequencePlan, Compiler, PhysicalPlan},
+	logical,
+	physical::{AlterSequenceNode, Compiler, PhysicalPlan},
 };
 
 impl Compiler {
 	pub(crate) fn compile_alter_sequence<'a>(
 		_rx: &mut impl QueryTransaction,
-		alter: AlterSequenceNode<'a>,
+		alter: logical::AlterSequenceNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
 		// For ALTER SEQUENCE, we just pass through the logical plan
 		// info The actual execution will happen in the engine
-		Ok(PhysicalPlan::AlterSequence(AlterSequencePlan {
+		Ok(PhysicalPlan::AlterSequence(AlterSequenceNode {
 			sequence: alter.sequence,
 			column: alter.column,
 			value: alter.value,

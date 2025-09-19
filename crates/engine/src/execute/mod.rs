@@ -82,9 +82,9 @@ pub(crate) enum ExecutionPlan<'a, T: Transaction> {
 	Extend(ExtendNode<'a, T>),
 	ExtendWithoutInput(ExtendWithoutInputNode<'a, T>),
 	Sort(SortNode<'a, T>),
-	TableScan(TableScanNode<T>),
+	TableScan(TableScanNode<'a, T>),
 	Take(TakeNode<'a, T>),
-	ViewScan(ViewScanNode<T>),
+	ViewScan(ViewScanNode<'a, T>),
 	VirtualScan(VirtualScanNode<'a, T>),
 	RingBufferScan(RingBufferScan<T>),
 }
@@ -277,7 +277,7 @@ impl Executor {
 			PhysicalPlan::Apply(_) => {
 				// Apply operator requires flow engine for mod
 				// execution
-				panic!(
+				unimplemented!(
 					"Apply operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 				)
 			}

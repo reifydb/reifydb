@@ -70,7 +70,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::CreateNamespace(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::CreateRingBuffer(_) => unimplemented!(),
-		PhysicalPlan::AlterSequence(physical::AlterSequencePlan {
+		PhysicalPlan::AlterSequence(physical::AlterSequenceNode {
 			sequence,
 			column,
 			value,
@@ -266,36 +266,28 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
-		PhysicalPlan::IndexScan(physical::IndexScanNode {
-			namespace,
-			table,
-			index_name,
-		}) => {
-			let label = format!("IndexScan {}.{}::{}", namespace.name, table.name, index_name);
+		PhysicalPlan::IndexScan(node) => {
+			let label = format!(
+				"IndexScan {}.{}::{}",
+				node.source.namespace().name(),
+				node.source.name(),
+				node.index_name
+			);
 			write_node_header(output, prefix, is_last, &label);
 		}
 
-		PhysicalPlan::TableScan(physical::TableScanNode {
-			namespace,
-			table,
-		}) => {
-			let label = format!("TableScan {}.{}", namespace.name, table.name);
+		PhysicalPlan::TableScan(node) => {
+			let label = format!("TableScan {}.{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 
-		PhysicalPlan::ViewScan(physical::ViewScanNode {
-			namespace,
-			view,
-		}) => {
-			let label = format!("ViewScan {}.{}", namespace.name, view.name);
+		PhysicalPlan::ViewScan(node) => {
+			let label = format!("ViewScan {}.{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 
-		PhysicalPlan::RingBufferScan(physical::RingBufferScanNode {
-			namespace,
-			ring_buffer,
-		}) => {
-			let label = format!("RingBufferScan {}.{}", namespace.name, ring_buffer.name);
+		PhysicalPlan::RingBufferScan(node) => {
+			let label = format!("RingBufferScan {}.{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 
@@ -349,12 +341,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::AlterView(_) => {
 			write_node_header(output, prefix, is_last, "AlterView");
 		}
-		PhysicalPlan::TableVirtualScan(physical::TableVirtualScanNode {
-			namespace,
-			table,
-			..
-		}) => {
-			let label = format!("VirtualScan: {}.{}", namespace.name, table.name);
+		PhysicalPlan::TableVirtualScan(node) => {
+			let label = format!("VirtualScan: {}.{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 	}

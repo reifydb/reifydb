@@ -3,7 +3,7 @@
 
 use reifydb_catalog::{CatalogViewCommandOperations, CatalogViewQueryOperations, view::ViewToCreate};
 use reifydb_core::{interface::Transaction, value::columnar::Columns};
-use reifydb_rql::plan::physical::CreateDeferredViewPlan;
+use reifydb_rql::plan::physical::CreateDeferredViewNode;
 use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
@@ -12,7 +12,7 @@ impl Executor {
 	pub(crate) fn create_deferred_view<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: CreateDeferredViewPlan,
+		plan: CreateDeferredViewNode,
 	) -> crate::Result<Columns> {
 		if let Some(_) = txn.find_view_by_name(plan.namespace.id, plan.view.name.text())? {
 			if plan.if_not_exists {
@@ -46,7 +46,7 @@ mod tests {
 	use PhysicalPlan::InlineData;
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
 	use reifydb_core::interface::{DeferredViewIdentifier, NamespaceDef, NamespaceId, Params};
-	use reifydb_rql::plan::physical::{CreateDeferredViewPlan, InlineDataNode, PhysicalPlan};
+	use reifydb_rql::plan::physical::{CreateDeferredViewNode, InlineDataNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Value};
 
 	use crate::{execute::Executor, test_utils::create_test_command_transaction_with_internal_schema};
@@ -57,7 +57,7 @@ mod tests {
 
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let mut plan = CreateDeferredViewPlan {
+		let mut plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {
 				id: namespace.id,
 				name: namespace.name.clone(),
@@ -117,7 +117,7 @@ mod tests {
 		let namespace = ensure_test_namespace(&mut txn);
 		let another_schema = create_namespace(&mut txn, "another_schema");
 
-		let plan = CreateDeferredViewPlan {
+		let plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {
 				id: namespace.id,
 				name: namespace.name.clone(),
@@ -143,7 +143,7 @@ mod tests {
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_view".to_string()));
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
-		let plan = CreateDeferredViewPlan {
+		let plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
@@ -175,7 +175,7 @@ mod tests {
 	fn test_create_view_missing_schema() {
 		let mut txn = create_test_command_transaction_with_internal_schema();
 
-		let plan = CreateDeferredViewPlan {
+		let plan = CreateDeferredViewNode {
 			namespace: NamespaceDef {
 				id: NamespaceId(999),
 				name: "missing_schema".to_string(),

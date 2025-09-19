@@ -3,7 +3,6 @@
 
 //! Compilation of view scan operations
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	flow::{FlowNodeDef, FlowNodeType},
 	interface::{CommandTransaction, FlowNodeId},
@@ -12,25 +11,25 @@ use reifydb_core::{
 use super::super::{CompileOperator, FlowCompiler};
 use crate::{Result, plan::physical::ViewScanNode};
 
-pub(crate) struct ViewScanCompiler {
-	pub view_scan: ViewScanNode,
+pub(crate) struct ViewScanCompiler<'a> {
+	pub view_scan: ViewScanNode<'a>,
 }
 
-impl From<ViewScanNode> for ViewScanCompiler {
-	fn from(view_scan: ViewScanNode) -> Self {
+impl<'a> From<ViewScanNode<'a>> for ViewScanCompiler<'a> {
+	fn from(view_scan: ViewScanNode<'a>) -> Self {
 		Self {
 			view_scan,
 		}
 	}
 }
 
-impl<T: CommandTransaction> CompileOperator<T> for ViewScanCompiler {
+impl<'a, T: CommandTransaction> CompileOperator<T> for ViewScanCompiler<'a> {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let view = self.view_scan.view;
+		let view = self.view_scan.source.def().clone();
 		let view_name = view.name.clone();
 
 		// Get namespace information
-		let namespace_def = CatalogStore::get_namespace(unsafe { &mut *compiler.txn }, view.namespace)?;
+		let namespace_def = self.view_scan.source.namespace().def().clone();
 
 		let namespace = FlowNodeDef::new(
 			view.columns.clone(),

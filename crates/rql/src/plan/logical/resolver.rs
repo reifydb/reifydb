@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc, sync::Arc};
+use std::{cell::RefCell, collections::HashMap, sync::Arc};
 
 use reifydb_catalog::{CatalogQueryTransaction, system::SystemCatalog};
 use reifydb_core::{
@@ -730,14 +730,14 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 	pub fn build_resolved_namespace<'a>(
 		&mut self,
 		ident: NamespaceIdentifier<'a>,
-	) -> Result<Rc<ResolvedNamespace<'a>>> {
+	) -> Result<ResolvedNamespace<'a>> {
 		let namespace_name = ident.name.text();
 
 		// Lookup in catalog - get_namespace_by_name returns
 		// Result<NamespaceDef>
 		let def = self.transaction.get_namespace_by_name(namespace_name)?;
 
-		let resolved = Rc::new(ResolvedNamespace::new(ident, def));
+		let resolved = ResolvedNamespace::new(ident, def);
 
 		Ok(resolved)
 	}
@@ -765,11 +765,11 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 
 		// Lookup table in catalog
 		let table_name = table_ident.name.text();
-		let def = self.transaction.find_table_by_name(namespace.def.id, table_name)?.ok_or_else(
+		let def = self.transaction.find_table_by_name(namespace.def().id, table_name)?.ok_or_else(
 			|| -> reifydb_core::Error {
 				// Return an error instead of panicking
 				crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
-					namespace: namespace.def.name.clone(),
+					namespace: namespace.def().name.clone(),
 					name: table_name.to_string(),
 					fragment: table_ident.name.clone().into_owned(),
 				})
@@ -806,11 +806,11 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 
 		// Lookup ring buffer in catalog
 		let ring_buffer_name = ring_buffer_ident.name.text();
-		let def = self.transaction.find_ring_buffer_by_name(namespace.def.id, ring_buffer_name)?.ok_or_else(
+		let def = self.transaction.find_ring_buffer_by_name(namespace.def().id, ring_buffer_name)?.ok_or_else(
 			|| -> reifydb_core::Error {
 				// Return an error instead of panicking
 				crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
-					namespace: namespace.def.name.clone(),
+					namespace: namespace.def().name.clone(),
 					name: ring_buffer_name.to_string(),
 					fragment: ring_buffer_ident.name.clone().into_owned(),
 				})
@@ -831,11 +831,11 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 
 		// Lookup view in catalog
 		let view_name = ident.name().text();
-		let def = self.transaction.find_view_by_name(namespace.def.id, view_name)?.ok_or_else(
+		let def = self.transaction.find_view_by_name(namespace.def().id, view_name)?.ok_or_else(
 			|| -> reifydb_core::Error {
 				// Return an error instead of panicking
 				crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
-					namespace: namespace.def.name.clone(),
+					namespace: namespace.def().name.clone(),
 					name: view_name.to_string(),
 					fragment: ident.name().clone().into_owned(),
 				})
@@ -850,7 +850,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 	pub fn build_resolved_source_from_unresolved<'a>(
 		&mut self,
 		ident: UnresolvedSourceIdentifier<'a>,
-	) -> Result<Rc<ResolvedSource<'a>>> {
+	) -> Result<ResolvedSource<'a>> {
 		// Try to determine the source type from the catalog
 		let name_text = ident.name.text();
 
@@ -950,7 +950,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 	}
 
 	/// Build a resolved source (any type)
-	pub fn build_resolved_source<'a>(&mut self, ident: SourceIdentifier<'a>) -> Result<Rc<ResolvedSource<'a>>> {
+	pub fn build_resolved_source<'a>(&mut self, ident: SourceIdentifier<'a>) -> Result<ResolvedSource<'a>> {
 		let namespace_name = ident.namespace().text();
 		let source_name = ident.name().text();
 
@@ -965,13 +965,13 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				// Build a resolved namespace for "system"
 				// Since system namespace might not exist in the
 				// catalog, we create a synthetic one
-				let namespace = Rc::new(ResolvedNamespace::new(
+				let namespace = ResolvedNamespace::new(
 					namespace_ident,
 					reifydb_core::interface::NamespaceDef {
 						id: reifydb_core::interface::NamespaceId(1), // System namespace ID
 						name: "system".to_string(),
 					},
-				));
+				);
 
 				// Extract or create TableVirtualIdentifier
 				let virtual_ident = match ident {
@@ -982,32 +982,28 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 						alias: ident.alias().cloned(),
 					},
 				};
-				let virtual_table = ResolvedTableVirtual::new(
-					virtual_ident,
-					namespace,
-					Arc::try_unwrap(def).unwrap_or_else(|arc| (*arc).clone()),
-				);
-				let resolved = Rc::new(ResolvedSource::TableVirtual(virtual_table));
+				let virtual_table = ResolvedTableVirtual::new(virtual_ident, namespace, (*def).clone());
+				let resolved = ResolvedSource::TableVirtual(virtual_table);
 				return Ok(resolved);
 			}
 		}
 
 		// Try to resolve as table first
 		if let Ok(table) = self.build_resolved_table(ident.clone()) {
-			let resolved = Rc::new(ResolvedSource::Table(table));
+			let resolved = ResolvedSource::Table(table);
 			return Ok(resolved);
 		}
 
 		// Try to resolve as ring buffer
 		if let Ok(ring_buffer) = self.build_resolved_ring_buffer(ident.clone()) {
-			let resolved = Rc::new(ResolvedSource::RingBuffer(ring_buffer));
+			let resolved = ResolvedSource::RingBuffer(ring_buffer);
 			return Ok(resolved);
 		}
 
 		// Try to resolve as view
 		if let Ok(view) = self.build_resolved_view(ident.clone()) {
 			// Check view kind and create appropriate resolved type
-			let resolved = match view.def.kind {
+			let resolved = match view.def().kind {
 				ViewKind::Deferred => {
 					// Extract or create
 					// DeferredViewIdentifier
@@ -1019,9 +1015,12 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 							alias: ident.alias().cloned(),
 						},
 					};
-					let deferred =
-						ResolvedDeferredView::new(deferred_ident, view.namespace, view.def);
-					Rc::new(ResolvedSource::DeferredView(deferred))
+					let deferred = ResolvedDeferredView::new(
+						deferred_ident,
+						view.namespace().clone(),
+						view.def().clone(),
+					);
+					ResolvedSource::DeferredView(deferred)
 				}
 				ViewKind::Transactional => {
 					// Extract or create
@@ -1034,9 +1033,12 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 							alias: ident.alias().cloned(),
 						},
 					};
-					let transactional =
-						ResolvedTransactionalView::new(trans_ident, view.namespace, view.def);
-					Rc::new(ResolvedSource::TransactionalView(transactional))
+					let transactional = ResolvedTransactionalView::new(
+						trans_ident,
+						view.namespace().clone(),
+						view.def().clone(),
+					);
+					ResolvedSource::TransactionalView(transactional)
 				}
 			};
 

@@ -3,7 +3,7 @@
 
 use reifydb_catalog::{CatalogStore, view::ViewToCreate};
 use reifydb_core::{interface::Transaction, return_error, value::columnar::Columns};
-use reifydb_rql::plan::physical::CreateTransactionalViewPlan;
+use reifydb_rql::plan::physical::CreateTransactionalViewNode;
 use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
 
 use crate::{StandardCommandTransaction, execute::Executor};
@@ -12,7 +12,7 @@ impl Executor {
 	pub(crate) fn create_transactional_view<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: CreateTransactionalViewPlan,
+		plan: CreateTransactionalViewNode,
 	) -> crate::Result<Columns> {
 		if let Some(view) = CatalogStore::find_view_by_name(txn, plan.namespace.id, plan.view.name.text())? {
 			if plan.if_not_exists {

@@ -4,17 +4,17 @@
 use reifydb_core::interface::QueryTransaction;
 
 use crate::plan::{
-	logical::CreateNamespaceNode,
-	physical::{Compiler, CreateNamespacePlan, PhysicalPlan},
+	logical,
+	physical::{Compiler, CreateNamespaceNode, PhysicalPlan},
 };
 
 impl Compiler {
 	pub(crate) fn compile_create_namespace<'a>(
 		_rx: &mut impl QueryTransaction,
-		create: CreateNamespaceNode<'a>,
+		create: logical::CreateNamespaceNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
 		// FIXME validate catalog
-		Ok(PhysicalPlan::CreateNamespace(CreateNamespacePlan {
+		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
 			namespace: create.namespace.name,
 			if_not_exists: create.if_not_exists,
 		}))

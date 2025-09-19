@@ -6,7 +6,7 @@ use reifydb_catalog::CatalogQueryTransaction;
 use crate::{
 	ast::AstDelete,
 	plan::logical::{
-		Compiler, DeleteNode, DeleteTarget, LogicalPlan, identifier::SourceIdentifier,
+		Compiler, DeleteRingBufferNode, DeleteTableNode, LogicalPlan, identifier::SourceIdentifier,
 		resolver::IdentifierResolver,
 	},
 };
@@ -17,19 +17,25 @@ impl Compiler {
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve the unresolved source to a table or ring buffer
-		let target = if let Some(unresolved) = &ast.target {
+		if let Some(unresolved) = &ast.target {
 			// Create a source identifier from the unresolved source
 			let source_id = resolver.resolve_unresolved_source(&unresolved)?;
 
 			// Determine if it's a table or ring buffer based on the source type
 			match source_id {
-				SourceIdentifier::Table(table_id) => Some(DeleteTarget::Table(table_id)),
+				SourceIdentifier::Table(table_id) => Ok(LogicalPlan::DeleteTable(DeleteTableNode {
+					target: Some(table_id),
+					input: None,
+				})),
 				SourceIdentifier::RingBuffer(ring_buffer_id) => {
-					Some(DeleteTarget::RingBuffer(ring_buffer_id))
+					Ok(LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
+						target: ring_buffer_id,
+						input: None,
+					}))
 				}
 				_ => {
 					// Source is not a table or ring buffer (might be view, etc.)
-					return Err(crate::error::IdentifierError::SourceNotFound(
+					Err(crate::error::IdentifierError::SourceNotFound(
 						crate::error::SourceNotFoundError {
 							namespace: unresolved
 								.namespace
@@ -41,16 +47,15 @@ impl Compiler {
 							fragment: unresolved.name.clone().into_owned(),
 						},
 					)
-					.into());
+					.into())
 				}
 			}
 		} else {
-			None
-		};
-
-		Ok(LogicalPlan::Delete(DeleteNode {
-			target,
-			input: None,
-		}))
+			// No target specified - use DeleteTable with None
+			Ok(LogicalPlan::DeleteTable(DeleteTableNode {
+				target: None,
+				input: None,
+			}))
+		}
 	}
 }

@@ -134,11 +134,8 @@ pub(crate) fn compile<'a, T: Transaction>(
 			rows,
 		}) => ExecutionPlan::InlineData(InlineDataNode::new(rows, context)),
 
-		PhysicalPlan::IndexScan(physical::IndexScanNode {
-			namespace: _,
-			table,
-			index_name: _,
-		}) => {
+		PhysicalPlan::IndexScan(node) => {
+			let table = node.source.def().clone();
 			let Some(pk) = table.primary_key.clone() else {
 				unimplemented!()
 			};
@@ -146,27 +143,23 @@ pub(crate) fn compile<'a, T: Transaction>(
 			ExecutionPlan::IndexScan(IndexScanNode::new(table, IndexId::primary(pk.id), context).unwrap())
 		}
 
-		PhysicalPlan::TableScan(physical::TableScanNode {
-			namespace: _,
-			table,
-		}) => ExecutionPlan::TableScan(TableScanNode::new(table, context).unwrap()),
+		PhysicalPlan::TableScan(node) => {
+			ExecutionPlan::TableScan(TableScanNode::new(node.source.clone(), context).unwrap())
+		}
 
-		PhysicalPlan::ViewScan(physical::ViewScanNode {
-			namespace: _,
-			view,
-		}) => ExecutionPlan::ViewScan(ViewScanNode::new(view, context).unwrap()),
+		PhysicalPlan::ViewScan(node) => {
+			ExecutionPlan::ViewScan(ViewScanNode::new(node.source.clone(), context).unwrap())
+		}
 
-		PhysicalPlan::RingBufferScan(physical::RingBufferScanNode {
-			namespace: _,
-			ring_buffer,
-		}) => ExecutionPlan::RingBufferScan(RingBufferScan::new(ring_buffer, context).unwrap()),
+		PhysicalPlan::RingBufferScan(node) => {
+			let ring_buffer = node.source.def().clone();
+			ExecutionPlan::RingBufferScan(RingBufferScan::new(ring_buffer, context).unwrap())
+		}
 
-		PhysicalPlan::TableVirtualScan(physical::TableVirtualScanNode {
-			namespace,
-			table,
-			pushdown_context,
-		}) => {
+		PhysicalPlan::TableVirtualScan(node) => {
 			// Create the appropriate virtual table implementation
+			let namespace = node.source.namespace().def();
+			let table = node.source.def();
 			let virtual_table_impl: Box<dyn TableVirtual<T>> = if namespace.id == NamespaceId(1) {
 				match table.name.as_str() {
 					"sequences" => Box::new(Sequences::new()),
@@ -184,7 +177,8 @@ pub(crate) fn compile<'a, T: Transaction>(
 				panic!("Unknown virtual table type: {}", table.name)
 			};
 
-			let virtual_context = pushdown_context
+			let virtual_context = node
+				.pushdown_context
 				.map(|ctx| TableVirtualContext::PushDown {
 					filters: ctx.filters,
 					projections: ctx.projections,

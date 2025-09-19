@@ -5,5 +5,5 @@ mod sequence;
 mod table;
 mod view;
 
-pub use table::AlterTablePlan;
-pub use view::AlterViewPlan;
+pub use table::AlterTableNode;
+pub use view::AlterViewNode;

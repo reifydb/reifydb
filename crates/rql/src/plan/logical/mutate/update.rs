@@ -5,7 +5,7 @@ use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
 	ast::AstUpdate,
-	plan::logical::{Compiler, LogicalPlan, UpdateNode, UpdateRingBufferNode, resolver::IdentifierResolver},
+	plan::logical::{Compiler, LogicalPlan, UpdateRingBufferNode, UpdateTableNode, resolver::IdentifierResolver},
 };
 
 impl Compiler {
@@ -16,7 +16,7 @@ impl Compiler {
 		// Get the target, if None it means the target will come from a pipeline
 		let Some(unresolved) = &ast.target else {
 			// For pipeline case, we don't know if it's a table or ring buffer yet
-			return Ok(LogicalPlan::Update(UpdateNode {
+			return Ok(LogicalPlan::Update(UpdateTableNode {
 				target: None,
 				input: None,
 			}));
@@ -24,7 +24,7 @@ impl Compiler {
 
 		// Try to resolve as table first (most common case)
 		match resolver.resolve_source_as_table(unresolved.namespace.as_ref(), &unresolved.name, true) {
-			Ok(target) => Ok(LogicalPlan::Update(UpdateNode {
+			Ok(target) => Ok(LogicalPlan::Update(UpdateTableNode {
 				target: Some(target),
 				input: None,
 			})),

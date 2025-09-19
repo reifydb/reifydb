@@ -5,7 +5,7 @@ use reifydb_catalog::{
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, namespace::NamespaceToCreate,
 };
 use reifydb_core::{interface::Transaction, value::columnar::Columns};
-use reifydb_rql::plan::physical::CreateNamespacePlan;
+use reifydb_rql::plan::physical::CreateNamespaceNode;
 use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
@@ -14,7 +14,7 @@ impl Executor {
 	pub(crate) fn create_namespace<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: CreateNamespacePlan,
+		plan: CreateNamespaceNode,
 	) -> crate::Result<Columns> {
 		// Check if namespace already exists using the transaction's
 		// catalog operations
@@ -41,7 +41,7 @@ impl Executor {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::Params;
-	use reifydb_rql::plan::physical::{CreateNamespacePlan, PhysicalPlan};
+	use reifydb_rql::plan::physical::{CreateNamespaceNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Value};
 
 	use crate::{execute::Executor, test_utils::create_test_command_transaction};
@@ -50,7 +50,7 @@ mod tests {
 	fn test_create_namespace() {
 		let mut txn = create_test_command_transaction();
 
-		let mut plan = CreateNamespacePlan {
+		let mut plan = CreateNamespaceNode {
 			namespace: Fragment::owned_internal("my_schema"),
 			if_not_exists: false,
 		};

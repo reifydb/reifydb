@@ -10,7 +10,7 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 	value::columnar::{ColumnData, Columns},
 };
-use reifydb_rql::plan::physical::UpdateRingBufferPlan;
+use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_type::{
 	IntoFragment, ROW_NUMBER_COLUMN_NAME, Type, Value,
 	diagnostic::{catalog::ring_buffer_not_found, engine},
@@ -27,22 +27,22 @@ impl Executor {
 	pub(crate) fn update_ring_buffer<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: UpdateRingBufferPlan,
+		plan: UpdateRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
-		let namespace_name = plan.target.namespace.text();
+		let namespace_name = plan.target.namespace().name();
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
-		let ring_buffer_name = plan.target.name.text();
+		let ring_buffer_name = plan.target.name();
 		let Some(ring_buffer) = CatalogStore::find_ring_buffer_by_name(txn, namespace.id, ring_buffer_name)?
 		else {
-			let fragment = plan.target.name.clone().into_fragment();
+			let fragment = plan.target.name().into_fragment();
 			return_error!(ring_buffer_not_found(fragment.clone(), namespace_name, ring_buffer_name));
 		};
 
 		// Get current metadata - we need it to validate that rows exist
 		let Some(metadata) = CatalogStore::find_ring_buffer_metadata(txn, ring_buffer.id)? else {
-			let fragment = plan.target.name.clone().into_fragment();
+			let fragment = plan.target.name().into_fragment();
 			return_error!(ring_buffer_not_found(fragment, namespace_name, ring_buffer_name));
 		};
 

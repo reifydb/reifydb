@@ -4,21 +4,21 @@
 mod alter;
 mod create;
 
-use std::sync::Arc;
-
-pub use alter::{AlterTablePlan, AlterViewPlan};
+pub use alter::{AlterTableNode, AlterViewNode};
 use reifydb_catalog::{
-	ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate,
+	CatalogStore, ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate,
+	view::ViewColumnToCreate,
 };
 use reifydb_core::{
 	JoinType, SortKey,
 	interface::{
-		NamespaceDef, QueryTransaction, RingBufferDef, TableDef, TableVirtualDef, ViewDef,
+		NamespaceDef, QueryTransaction,
 		evaluate::expression::{AliasExpression, Expression},
 		identifier::{
 			ColumnIdentifier, DeferredViewIdentifier, RingBufferIdentifier, SequenceIdentifier,
-			TableIdentifier, TransactionalViewIdentifier,
+			SourceIdentifier, TableIdentifier, TransactionalViewIdentifier,
 		},
+		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedView},
 	},
 };
 use reifydb_type::Fragment;
@@ -104,13 +104,11 @@ impl Compiler {
 					}));
 				}
 
-				LogicalPlan::Delete(delete) => {
-					// If delete has its own input, compile
-					// it first Otherwise, try to pop
-					// from stack (for pipeline operations)
+				LogicalPlan::DeleteTable(delete) => {
+					// If delete has its own input, compile it first
+					// Otherwise, try to pop from stack (for pipeline operations)
 					let input = if let Some(delete_input) = delete.input {
-						// Recursively compile
-						// the input pipeline
+						// Recursively compile the input pipeline
 						let sub_plan = Self::compile(rx, vec![*delete_input])?
 							.expect("Delete input must produce a plan");
 						Some(Box::new(sub_plan))
@@ -118,44 +116,148 @@ impl Compiler {
 						stack.pop().map(|i| Box::new(i))
 					};
 
-					// Check the target type and create appropriate physical plan
-					use crate::plan::logical::DeleteTarget;
-					match &delete.target {
-						Some(DeleteTarget::Table(table_id)) => {
-							stack.push(PhysicalPlan::Delete(DeletePlan {
-								input,
-								target: Some(table_id.clone()),
-							}))
-						}
-						Some(DeleteTarget::RingBuffer(ring_buffer_id)) => stack.push(
-							PhysicalPlan::DeleteRingBuffer(DeleteRingBufferPlan {
-								input,
-								target: ring_buffer_id.clone(),
-							}),
-						),
-						None => {
-							// Target will be inferred from input
-							stack.push(PhysicalPlan::Delete(DeletePlan {
-								input,
-								target: None,
-							}))
-						}
-					}
+					// Resolve the table if we have a target
+					let target = if let Some(table_id) = delete.target {
+						use reifydb_catalog::CatalogStore;
+						use reifydb_core::interface::{
+							identifier::NamespaceIdentifier,
+							resolved::{ResolvedNamespace, ResolvedTable},
+						};
+
+						let namespace_def = CatalogStore::find_namespace_by_name(
+							rx,
+							table_id.namespace.text(),
+						)?
+						.unwrap();
+						let table_def = CatalogStore::find_table_by_name(
+							rx,
+							namespace_def.id,
+							table_id.name.text(),
+						)?
+						.unwrap();
+
+						let namespace_id = NamespaceIdentifier::new(table_id.namespace.clone());
+						let resolved_namespace =
+							ResolvedNamespace::new(namespace_id, namespace_def);
+						Some(ResolvedTable::new(table_id, resolved_namespace, table_def))
+					} else {
+						None
+					};
+
+					stack.push(PhysicalPlan::Delete(DeleteNode {
+						input,
+						target,
+					}))
+				}
+
+				LogicalPlan::DeleteRingBuffer(delete) => {
+					// If delete has its own input, compile it first
+					// Otherwise, try to pop from stack (for pipeline operations)
+					let input = if let Some(delete_input) = delete.input {
+						// Recursively compile the input pipeline
+						let sub_plan = Self::compile(rx, vec![*delete_input])?
+							.expect("Delete input must produce a plan");
+						Some(Box::new(sub_plan))
+					} else {
+						stack.pop().map(|i| Box::new(i))
+					};
+
+					// Resolve the ring buffer
+					use reifydb_core::interface::{
+						identifier::NamespaceIdentifier,
+						resolved::{ResolvedNamespace, ResolvedRingBuffer},
+					};
+
+					let ring_buffer_id = delete.target.clone();
+					let namespace_def = CatalogStore::find_namespace_by_name(
+						rx,
+						ring_buffer_id.namespace.text(),
+					)?
+					.unwrap();
+					let ring_buffer_def = CatalogStore::find_ring_buffer_by_name(
+						rx,
+						namespace_def.id,
+						ring_buffer_id.name.text(),
+					)?
+					.unwrap();
+
+					let namespace_id = NamespaceIdentifier::new(ring_buffer_id.namespace.clone());
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let target = ResolvedRingBuffer::new(
+						ring_buffer_id,
+						resolved_namespace,
+						ring_buffer_def,
+					);
+
+					stack.push(PhysicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
+						input,
+						target,
+					}))
 				}
 
 				LogicalPlan::InsertTable(insert) => {
 					let input = stack.pop().unwrap();
-					stack.push(PhysicalPlan::InsertTable(InsertTablePlan {
+
+					// Resolve the table
+					use reifydb_core::interface::{
+						identifier::NamespaceIdentifier,
+						resolved::{ResolvedNamespace, ResolvedTable},
+					};
+
+					let table_id = insert.target.clone();
+					let namespace_def =
+						CatalogStore::find_namespace_by_name(rx, table_id.namespace.text())?
+							.unwrap();
+					let table_def = CatalogStore::find_table_by_name(
+						rx,
+						namespace_def.id,
+						table_id.name.text(),
+					)?
+					.unwrap();
+
+					let namespace_id = NamespaceIdentifier::new(table_id.namespace.clone());
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let target = ResolvedTable::new(table_id, resolved_namespace, table_def);
+
+					stack.push(PhysicalPlan::InsertTable(InsertTableNode {
 						input: Box::new(input),
-						target: insert.target.clone(),
+						target,
 					}))
 				}
 
 				LogicalPlan::InsertRingBuffer(insert_rb) => {
 					let input = stack.pop().unwrap();
-					stack.push(PhysicalPlan::InsertRingBuffer(InsertRingBufferPlan {
+
+					// Resolve the ring buffer
+					use reifydb_core::interface::{
+						identifier::NamespaceIdentifier,
+						resolved::{ResolvedNamespace, ResolvedRingBuffer},
+					};
+
+					let ring_buffer_id = insert_rb.target.clone();
+					let namespace_def = CatalogStore::find_namespace_by_name(
+						rx,
+						ring_buffer_id.namespace.text(),
+					)?
+					.unwrap();
+					let ring_buffer_def = CatalogStore::find_ring_buffer_by_name(
+						rx,
+						namespace_def.id,
+						ring_buffer_id.name.text(),
+					)?
+					.unwrap();
+
+					let namespace_id = NamespaceIdentifier::new(ring_buffer_id.namespace.clone());
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let target = ResolvedRingBuffer::new(
+						ring_buffer_id,
+						resolved_namespace,
+						ring_buffer_def,
+					);
+
+					stack.push(PhysicalPlan::InsertRingBuffer(InsertRingBufferNode {
 						input: Box::new(input),
-						target: insert_rb.target.clone(),
+						target,
 					}))
 				}
 
@@ -173,9 +275,36 @@ impl Compiler {
 						Box::new(stack.pop().expect("Update requires input"))
 					};
 
-					stack.push(PhysicalPlan::Update(UpdatePlan {
+					// Resolve the table if we have a target
+					let target = if let Some(table_id) = update.target {
+						use reifydb_core::interface::{
+							identifier::NamespaceIdentifier,
+							resolved::{ResolvedNamespace, ResolvedTable},
+						};
+
+						let namespace_def = CatalogStore::find_namespace_by_name(
+							rx,
+							table_id.namespace.text(),
+						)?
+						.unwrap();
+						let table_def = CatalogStore::find_table_by_name(
+							rx,
+							namespace_def.id,
+							table_id.name.text(),
+						)?
+						.unwrap();
+
+						let namespace_id = NamespaceIdentifier::new(table_id.namespace.clone());
+						let resolved_namespace =
+							ResolvedNamespace::new(namespace_id, namespace_def);
+						Some(ResolvedTable::new(table_id, resolved_namespace, table_def))
+					} else {
+						None
+					};
+
+					stack.push(PhysicalPlan::Update(UpdateTableNode {
 						input,
-						target: update.target.clone(),
+						target,
 					}))
 				}
 
@@ -193,9 +322,36 @@ impl Compiler {
 						Box::new(stack.pop().expect("UpdateRingBuffer requires input"))
 					};
 
-					stack.push(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferPlan {
+					// Resolve the ring buffer
+					use reifydb_core::interface::{
+						identifier::NamespaceIdentifier,
+						resolved::{ResolvedNamespace, ResolvedRingBuffer},
+					};
+
+					let ring_buffer_id = update_rb.target.clone();
+					let namespace_def = CatalogStore::find_namespace_by_name(
+						rx,
+						ring_buffer_id.namespace.text(),
+					)?
+					.unwrap();
+					let ring_buffer_def = CatalogStore::find_ring_buffer_by_name(
+						rx,
+						namespace_def.id,
+						ring_buffer_id.name.text(),
+					)?
+					.unwrap();
+
+					let namespace_id = NamespaceIdentifier::new(ring_buffer_id.namespace.clone());
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let target = ResolvedRingBuffer::new(
+						ring_buffer_id,
+						resolved_namespace,
+						ring_buffer_def,
+					);
+
+					stack.push(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
 						input,
-						target: update_rb.target.clone(),
+						target,
 					}))
 				}
 
@@ -275,26 +431,21 @@ impl Compiler {
 					// catalog lookup needed!
 					use reifydb_core::interface::resolved::ResolvedSource;
 
-					match scan.source.as_ref() {
+					match &scan.source {
 						ResolvedSource::Table(resolved_table) => {
-							let namespace = resolved_table.namespace.def.clone();
-							let table = resolved_table.def.clone();
-
 							// Check if an index was specified
 							if let Some(index) = &scan.index {
 								stack.push(IndexScan(IndexScanNode {
-									namespace,
-									table,
+									source: resolved_table.clone(),
 									index_name: index
-										.identifier
+										.identifier()
 										.name
 										.text()
 										.to_string(),
 								}));
 							} else {
 								stack.push(TableScan(TableScanNode {
-									namespace,
-									table,
+									source: resolved_table.clone(),
 								}));
 							}
 						}
@@ -303,11 +454,8 @@ impl Compiler {
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							let namespace = resolved_view.namespace.def.clone();
-							let view = resolved_view.def.clone();
 							stack.push(ViewScan(ViewScanNode {
-								namespace,
-								view,
+								source: resolved_view.clone(),
 							}));
 						}
 						ResolvedSource::DeferredView(resolved_view) => {
@@ -315,11 +463,17 @@ impl Compiler {
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							let namespace = resolved_view.namespace.def.clone();
-							let view = resolved_view.def.clone();
+							// Note: DeferredView shares the same physical node as View
+							// We need to convert it to ResolvedView
+							let view = ResolvedView::new(
+								SourceIdentifier::DeferredView(
+									resolved_view.identifier().clone(),
+								),
+								resolved_view.namespace().clone(),
+								resolved_view.def().clone(),
+							);
 							stack.push(ViewScan(ViewScanNode {
-								namespace,
-								view,
+								source: view,
 							}));
 						}
 						ResolvedSource::TransactionalView(resolved_view) => {
@@ -327,11 +481,17 @@ impl Compiler {
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							let namespace = resolved_view.namespace.def.clone();
-							let view = resolved_view.def.clone();
+							// Note: TransactionalView shares the same physical node as View
+							// We need to convert it to ResolvedView
+							let view = ResolvedView::new(
+								SourceIdentifier::TransactionalView(
+									resolved_view.identifier().clone(),
+								),
+								resolved_view.namespace().clone(),
+								resolved_view.def().clone(),
+							);
 							stack.push(ViewScan(ViewScanNode {
-								namespace,
-								view,
+								source: view,
 							}));
 						}
 
@@ -342,12 +502,9 @@ impl Compiler {
 									"virtual tables do not support indexes yet"
 								);
 							}
-							let namespace = resolved_virtual.namespace.def.clone();
-							let table = Arc::new(resolved_virtual.def.clone());
 							stack.push(PhysicalPlan::TableVirtualScan(
 								TableVirtualScanNode {
-									namespace,
-									table,
+									source: resolved_virtual.clone(),
 									pushdown_context: None, /* TODO: Detect
 									                         * pushdown opportunities */
 								},
@@ -360,11 +517,8 @@ impl Compiler {
 									"ring buffers do not support indexes yet"
 								);
 							}
-							let namespace = resolved_ring_buffer.namespace.def.clone();
-							let ring_buffer = resolved_ring_buffer.def.clone();
 							stack.push(PhysicalPlan::RingBufferScan(RingBufferScanNode {
-								namespace,
-								ring_buffer,
+								source: resolved_ring_buffer.clone(),
 							}));
 						}
 					}
@@ -405,28 +559,28 @@ impl Compiler {
 
 #[derive(Debug, Clone)]
 pub enum PhysicalPlan<'a> {
-	CreateDeferredView(CreateDeferredViewPlan<'a>),
-	CreateTransactionalView(CreateTransactionalViewPlan<'a>),
-	CreateNamespace(CreateNamespacePlan<'a>),
-	CreateTable(CreateTablePlan<'a>),
-	CreateRingBuffer(CreateRingBufferPlan<'a>),
+	CreateDeferredView(CreateDeferredViewNode<'a>),
+	CreateTransactionalView(CreateTransactionalViewNode<'a>),
+	CreateNamespace(CreateNamespaceNode<'a>),
+	CreateTable(CreateTableNode<'a>),
+	CreateRingBuffer(CreateRingBufferNode<'a>),
 	// Alter
-	AlterSequence(AlterSequencePlan<'a>),
-	AlterTable(AlterTablePlan<'a>),
-	AlterView(AlterViewPlan<'a>),
+	AlterSequence(AlterSequenceNode<'a>),
+	AlterTable(AlterTableNode<'a>),
+	AlterView(AlterViewNode<'a>),
 	// Mutate
-	Delete(DeletePlan<'a>),
-	DeleteRingBuffer(DeleteRingBufferPlan<'a>),
-	InsertTable(InsertTablePlan<'a>),
-	InsertRingBuffer(InsertRingBufferPlan<'a>),
-	Update(UpdatePlan<'a>),
-	UpdateRingBuffer(UpdateRingBufferPlan<'a>),
+	Delete(DeleteNode<'a>),
+	DeleteRingBuffer(DeleteRingBufferNode<'a>),
+	InsertTable(InsertTableNode<'a>),
+	InsertRingBuffer(InsertRingBufferNode<'a>),
+	Update(UpdateTableNode<'a>),
+	UpdateRingBuffer(UpdateRingBufferNode<'a>),
 
 	// Query
 	Aggregate(AggregateNode<'a>),
 	Distinct(DistinctNode<'a>),
 	Filter(FilterNode<'a>),
-	IndexScan(IndexScanNode),
+	IndexScan(IndexScanNode<'a>),
 	JoinInner(JoinInnerNode<'a>),
 	JoinLeft(JoinLeftNode<'a>),
 	JoinNatural(JoinNaturalNode<'a>),
@@ -436,14 +590,14 @@ pub enum PhysicalPlan<'a> {
 	Extend(ExtendNode<'a>),
 	Apply(ApplyNode<'a>),
 	InlineData(InlineDataNode<'a>),
-	TableScan(TableScanNode),
+	TableScan(TableScanNode<'a>),
 	TableVirtualScan(TableVirtualScanNode<'a>),
-	ViewScan(ViewScanNode),
-	RingBufferScan(RingBufferScanNode),
+	ViewScan(ViewScanNode<'a>),
+	RingBufferScan(RingBufferScanNode<'a>),
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateDeferredViewPlan<'a> {
+pub struct CreateDeferredViewNode<'a> {
 	pub namespace: NamespaceDef,
 	pub view: DeferredViewIdentifier<'a>,
 	pub if_not_exists: bool,
@@ -452,7 +606,7 @@ pub struct CreateDeferredViewPlan<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateTransactionalViewPlan<'a> {
+pub struct CreateTransactionalViewNode<'a> {
 	pub namespace: NamespaceDef,
 	pub view: TransactionalViewIdentifier<'a>,
 	pub if_not_exists: bool,
@@ -461,22 +615,22 @@ pub struct CreateTransactionalViewPlan<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateNamespacePlan<'a> {
+pub struct CreateNamespaceNode<'a> {
 	pub namespace: Fragment<'a>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateTablePlan<'a> {
-	pub namespace: NamespaceDef,
+pub struct CreateTableNode<'a> {
+	pub namespace: ResolvedNamespace<'a>,
 	pub table: TableIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug, Clone)]
-pub struct CreateRingBufferPlan<'a> {
-	pub namespace: NamespaceDef,
+pub struct CreateRingBufferNode<'a> {
+	pub namespace: ResolvedNamespace<'a>,
 	pub ring_buffer: RingBufferIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
@@ -484,7 +638,7 @@ pub struct CreateRingBufferPlan<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct AlterSequencePlan<'a> {
+pub struct AlterSequenceNode<'a> {
 	pub sequence: SequenceIdentifier<'a>,
 	pub column: ColumnIdentifier<'a>,
 	pub value: Expression<'a>,
@@ -510,39 +664,39 @@ pub struct FilterNode<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct DeletePlan<'a> {
+pub struct DeleteNode<'a> {
 	pub input: Option<Box<PhysicalPlan<'a>>>,
-	pub target: Option<TableIdentifier<'a>>,
+	pub target: Option<ResolvedTable<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct InsertTablePlan<'a> {
+pub struct InsertTableNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub target: TableIdentifier<'a>,
+	pub target: ResolvedTable<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub struct InsertRingBufferPlan<'a> {
+pub struct InsertRingBufferNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub target: RingBufferIdentifier<'a>,
+	pub target: ResolvedRingBuffer<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub struct UpdatePlan<'a> {
+pub struct UpdateTableNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub target: Option<TableIdentifier<'a>>,
+	pub target: Option<ResolvedTable<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct DeleteRingBufferPlan<'a> {
+pub struct DeleteRingBufferNode<'a> {
 	pub input: Option<Box<PhysicalPlan<'a>>>,
-	pub target: RingBufferIdentifier<'a>,
+	pub target: ResolvedRingBuffer<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub struct UpdateRingBufferPlan<'a> {
+pub struct UpdateRingBufferNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub target: RingBufferIdentifier<'a>,
+	pub target: ResolvedRingBuffer<'a>,
 }
 
 #[derive(Debug, Clone)]
@@ -597,39 +751,34 @@ pub struct InlineDataNode<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct IndexScanNode {
-	pub namespace: NamespaceDef,
-	pub table: TableDef,
+pub struct IndexScanNode<'a> {
+	pub source: ResolvedTable<'a>,
 	pub index_name: String,
 }
 
 #[derive(Debug, Clone)]
-pub struct TableScanNode {
-	pub namespace: NamespaceDef,
-	pub table: TableDef,
+pub struct TableScanNode<'a> {
+	pub source: ResolvedTable<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub struct ViewScanNode {
-	pub namespace: NamespaceDef,
-	pub view: ViewDef,
+pub struct ViewScanNode<'a> {
+	pub source: ResolvedView<'a>,
 }
 
 #[derive(Debug, Clone)]
-pub struct RingBufferScanNode {
-	pub namespace: NamespaceDef,
-	pub ring_buffer: RingBufferDef,
+pub struct RingBufferScanNode<'a> {
+	pub source: ResolvedRingBuffer<'a>,
 }
 
 #[derive(Debug, Clone)]
 pub struct TableVirtualScanNode<'a> {
-	pub namespace: NamespaceDef,
-	pub table: Arc<TableVirtualDef>,
-	pub pushdown_context: Option<VirtualPushdownContext<'a>>,
+	pub source: ResolvedTableVirtual<'a>,
+	pub pushdown_context: Option<TableVirtualPushdownContext<'a>>,
 }
 
 #[derive(Debug, Clone)]
-pub struct VirtualPushdownContext<'a> {
+pub struct TableVirtualPushdownContext<'a> {
 	pub filters: Vec<Expression<'a>>,
 	pub projections: Vec<Expression<'a>>,
 	pub order_by: Vec<SortKey>,

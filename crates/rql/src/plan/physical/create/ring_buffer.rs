@@ -3,20 +3,24 @@
 
 use PhysicalPlan::CreateRingBuffer;
 use reifydb_catalog::CatalogStore;
-use reifydb_core::{diagnostic::catalog::namespace_not_found, interface::QueryTransaction};
+use reifydb_core::{
+	diagnostic::catalog::namespace_not_found,
+	interface::{QueryTransaction, identifier::NamespaceIdentifier, resolved::ResolvedNamespace},
+};
 use reifydb_type::return_error;
 
 use crate::plan::{
-	logical::CreateRingBufferNode,
-	physical::{Compiler, CreateRingBufferPlan, PhysicalPlan},
+	logical,
+	physical::{Compiler, CreateRingBufferNode, PhysicalPlan},
 };
 
 impl Compiler {
 	pub(crate) fn compile_create_ring_buffer<'a>(
 		rx: &mut impl QueryTransaction,
-		create: CreateRingBufferNode<'a>,
+		create: logical::CreateRingBufferNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
-		let Some(namespace) = CatalogStore::find_namespace_by_name(rx, create.ring_buffer.namespace.text())?
+		let Some(namespace_def) =
+			CatalogStore::find_namespace_by_name(rx, create.ring_buffer.namespace.text())?
 		else {
 			return_error!(namespace_not_found(
 				create.ring_buffer.namespace.clone(),
@@ -24,8 +28,12 @@ impl Compiler {
 			));
 		};
 
-		Ok(CreateRingBuffer(CreateRingBufferPlan {
-			namespace,
+		// Create a ResolvedNamespace
+		let namespace_id = NamespaceIdentifier::new(create.ring_buffer.namespace.clone());
+		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+
+		Ok(CreateRingBuffer(CreateRingBufferNode {
+			namespace: resolved_namespace,
 			ring_buffer: create.ring_buffer.clone(),
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,

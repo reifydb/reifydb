@@ -8,7 +8,7 @@ use reifydb_core::{
 	interface::{EvaluationContext, Params, Transaction},
 	value::columnar::Columns,
 };
-use reifydb_rql::plan::physical::AlterSequencePlan;
+use reifydb_rql::plan::physical::AlterSequenceNode;
 use reifydb_type::{
 	Value,
 	diagnostic::{
@@ -23,7 +23,7 @@ impl Executor {
 	pub(crate) fn alter_table_sequence<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: AlterSequencePlan,
+		plan: AlterSequenceNode,
 	) -> crate::Result<Columns> {
 		let namespace_name = plan.sequence.namespace.text();
 
@@ -107,7 +107,7 @@ mod tests {
 		expression::{ConstantExpression::Number, Expression::Constant},
 		identifier::{ColumnIdentifier, ColumnSource, SequenceIdentifier},
 	};
-	use reifydb_rql::plan::physical::{AlterSequencePlan, PhysicalPlan};
+	use reifydb_rql::plan::physical::{AlterSequenceNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Type, TypeConstraint, Value};
 
 	use crate::{execute::Executor, test_utils::create_test_command_transaction};
@@ -144,7 +144,7 @@ mod tests {
 		.unwrap();
 
 		// Alter the sequence to start at 1000
-		let plan = AlterSequencePlan {
+		let plan = AlterSequenceNode {
 			sequence: SequenceIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("users_id_seq"),
@@ -193,7 +193,7 @@ mod tests {
 		.unwrap();
 
 		// Try to alter sequence on non-auto-increment column
-		let plan = AlterSequencePlan {
+		let plan = AlterSequenceNode {
 			sequence: SequenceIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("items_id_seq"),
@@ -222,7 +222,7 @@ mod tests {
 	fn test_schema_not_found() {
 		let mut txn = create_test_command_transaction();
 
-		let plan = AlterSequencePlan {
+		let plan = AlterSequenceNode {
 			sequence: SequenceIdentifier::new(
 				Fragment::owned_internal("non_existent_schema"),
 				Fragment::owned_internal("some_table_id_seq"),
@@ -251,7 +251,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_namespace(&mut txn);
 
-		let plan = AlterSequencePlan {
+		let plan = AlterSequenceNode {
 			sequence: SequenceIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("non_existent_table_id_seq"),
@@ -298,7 +298,7 @@ mod tests {
 		.unwrap();
 
 		// Try to alter sequence on non-existent column
-		let plan = AlterSequencePlan {
+		let plan = AlterSequenceNode {
 			sequence: SequenceIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("posts_non_existent_column_seq"),

@@ -13,7 +13,7 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 	value::columnar::{ColumnData, Columns},
 };
-use reifydb_rql::plan::{logical::extract_table_from_plan, physical::UpdatePlan};
+use reifydb_rql::plan::physical::UpdateTableNode;
 use reifydb_type::{
 	ROW_NUMBER_COLUMN_NAME, Type, Value,
 	diagnostic::{
@@ -36,32 +36,28 @@ impl Executor {
 	pub(crate) fn update<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: UpdatePlan,
+		plan: UpdateTableNode,
 		params: Params,
 	) -> crate::Result<Columns> {
 		// Get table from plan or infer from input pipeline
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
-			let namespace_name = target.namespace.text();
+			let namespace_name = target.namespace().name();
 			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 				return_error!(namespace_not_found(
-					Some(target.namespace.clone().into_owned()),
+					Some(target.identifier().namespace.clone().into_owned()),
 					namespace_name
 				));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name.text())?
-			else {
-				let fragment = target.name.clone();
-				return_error!(table_not_found(fragment.clone(), namespace_name, target.name.text(),));
+			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name())? else {
+				let fragment = target.identifier().name.clone();
+				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
 
 			(namespace, table)
 		} else {
-			// Both should be inferred from the pipeline
-			// Extract table info from the input plan
-			extract_table_from_plan(&plan.input)
-				.expect("Cannot infer target table from pipeline - no table found")
+			unimplemented!("Cannot infer target table from pipeline - no table found")
 		};
 
 		let table_types: Vec<Type> = table.columns.iter().map(|c| c.constraint.get_type()).collect();

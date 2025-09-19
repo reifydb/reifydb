@@ -4,22 +4,22 @@
 use reifydb_core::interface::QueryTransaction;
 
 use crate::plan::{
-	logical::alter::AlterViewNode,
+	logical,
 	physical::{Compiler, PhysicalPlan},
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AlterViewPlan<'a> {
-	pub node: AlterViewNode<'a>,
+pub struct AlterViewNode<'a> {
+	pub node: logical::alter::AlterViewNode<'a>,
 }
 
 impl Compiler {
 	pub(crate) fn compile_alter_view<'a>(
 		_rx: &mut impl QueryTransaction,
-		alter: AlterViewNode<'a>,
+		alter: logical::alter::AlterViewNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
 		// Convert logical plan to physical plan
-		let plan = AlterViewPlan {
+		let plan = AlterViewNode {
 			node: alter,
 		};
 		Ok(PhysicalPlan::AlterView(plan))

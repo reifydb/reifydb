@@ -12,10 +12,7 @@ mod conversion;
 mod operator;
 mod source;
 
-use reifydb_catalog::{
-	CatalogStore,
-	sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id},
-};
+use reifydb_catalog::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id};
 use reifydb_core::{
 	flow,
 	flow::{Flow, FlowEdge, FlowNode, FlowNodeDef, FlowNodeType},
@@ -167,9 +164,8 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::TableScan(table_scan) => {
 				// The table_scan already has the table
 				// definition
-				let table = &table_scan.table;
-				let namespace_def =
-					CatalogStore::get_namespace(unsafe { &mut *self.txn }, table.namespace)?;
+				let table = table_scan.source.def();
+				let namespace_def = table_scan.source.namespace().def();
 
 				let namespace = FlowNodeDef::new(
 					table.columns.clone(),
@@ -182,9 +178,8 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			}
 			PhysicalPlan::ViewScan(view_scan) => {
 				// The view_scan already has the view definition
-				let view = &view_scan.view;
-				let namespace_def =
-					CatalogStore::get_namespace(unsafe { &mut *self.txn }, view.namespace)?;
+				let view = view_scan.source.def();
+				let namespace_def = view_scan.source.namespace().def();
 
 				let namespace = FlowNodeDef::new(
 					view.columns.clone(),

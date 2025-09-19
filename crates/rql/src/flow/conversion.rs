@@ -253,10 +253,46 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			operator: to_owned_fragment(node.operator),
 			expressions: to_owned_expressions(node.expressions),
 		}),
-		PhysicalPlan::TableScan(node) => PhysicalPlan::TableScan(node), // TableScanNode doesn't contain
-		// fragments
-		PhysicalPlan::ViewScan(node) => PhysicalPlan::ViewScan(node), // ViewScanNode doesn't contain
-		// fragments either
+		PhysicalPlan::TableScan(node) => {
+			// For TableScan, we need to extract the namespace and table defs
+			// from the resolved source and convert them to owned versions
+			PhysicalPlan::TableScan(crate::plan::physical::TableScanNode {
+				source: node.source.to_owned_resolved_table(),
+			})
+		}
+		PhysicalPlan::ViewScan(node) => {
+			// For ViewScan, convert the resolved view to owned
+			PhysicalPlan::ViewScan(crate::plan::physical::ViewScanNode {
+				source: node.source.to_owned_resolved_view(),
+			})
+		}
+		PhysicalPlan::RingBufferScan(node) => {
+			// For RingBufferScan, convert the resolved ring buffer to owned
+			PhysicalPlan::RingBufferScan(crate::plan::physical::RingBufferScanNode {
+				source: node.source.to_owned_resolved_ring_buffer(),
+			})
+		}
+		PhysicalPlan::TableVirtualScan(node) => {
+			// For TableVirtualScan, convert resolved table virtual and context to owned
+			PhysicalPlan::TableVirtualScan(crate::plan::physical::TableVirtualScanNode {
+				source: node.source.to_owned_resolved_table_virtual(),
+				pushdown_context: node.pushdown_context.map(|ctx| {
+					crate::plan::physical::TableVirtualPushdownContext {
+						filters: to_owned_expressions(ctx.filters),
+						projections: to_owned_expressions(ctx.projections),
+						order_by: ctx.order_by.clone(),
+						limit: ctx.limit,
+					}
+				}),
+			})
+		}
+		PhysicalPlan::IndexScan(node) => {
+			// For IndexScan, convert the resolved table to owned
+			PhysicalPlan::IndexScan(crate::plan::physical::IndexScanNode {
+				source: node.source.to_owned_resolved_table(),
+				index_name: node.index_name.clone(),
+			})
+		}
 		PhysicalPlan::InlineData(node) => PhysicalPlan::InlineData(crate::plan::physical::InlineDataNode {
 			rows: node
 				.rows

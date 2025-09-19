@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
+	marker::PhantomData,
 	ops::Bound::{Excluded, Included},
 	sync::Arc,
 };
@@ -9,7 +10,8 @@ use std::{
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, RowKey, RowKeyRange, TableDef, Transaction, VersionedQueryTransaction,
+		EncodableKey, EncodableKeyRange, RowKey, RowKeyRange, Transaction, VersionedQueryTransaction,
+		resolved::ResolvedTable,
 	},
 	row::EncodedRowLayout,
 	value::columnar::{
@@ -21,24 +23,24 @@ use reifydb_type::ROW_NUMBER_COLUMN_NAME;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
-pub(crate) struct TableScanNode<T: Transaction> {
-	table: TableDef,
+pub(crate) struct TableScanNode<'a, T: Transaction> {
+	table: ResolvedTable<'a>,
 	context: Option<Arc<ExecutionContext>>,
 	layout: ColumnsLayout,
 	row_layout: EncodedRowLayout,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
-	_phantom: std::marker::PhantomData<T>,
+	_phantom: PhantomData<T>,
 }
 
-impl<T: Transaction> TableScanNode<T> {
-	pub fn new(table: TableDef, context: Arc<ExecutionContext>) -> crate::Result<Self> {
-		let data = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
+impl<'a, T: Transaction> TableScanNode<'a, T> {
+	pub fn new(table: ResolvedTable<'a>, context: Arc<ExecutionContext>) -> crate::Result<Self> {
+		let data = table.columns().iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedRowLayout::new(&data);
 
 		let layout = ColumnsLayout {
 			columns: table
-				.columns
+				.columns()
 				.iter()
 				.map(|col| ColumnLayout {
 					namespace: None,
@@ -55,12 +57,12 @@ impl<T: Transaction> TableScanNode<T> {
 			row_layout,
 			last_key: None,
 			exhausted: false,
-			_phantom: std::marker::PhantomData,
+			_phantom: PhantomData,
 		})
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<T> {
+impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<'a, T> {
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a, T>,
@@ -80,7 +82,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<T> {
 
 		let batch_size = ctx.batch_size;
 		let range = RowKeyRange {
-			source: self.table.id.into(),
+			source: self.table.def().id.into(),
 		};
 
 		let range = if let Some(_) = &self.last_key {
@@ -116,13 +118,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<T> {
 
 		self.last_key = new_last_key;
 
-		let mut columns = Columns::from_table_def(&self.table);
+		let mut columns = Columns::from_table_def(self.table.def());
 		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
 		// Add the RowNumber column to the columns if requested
 		if ctx.preserve_row_numbers {
 			let row_number_column = Column::SourceQualified(SourceQualified {
-				source: self.table.name.clone(),
+				source: self.table.name().to_string(),
 				name: ROW_NUMBER_COLUMN_NAME.to_string(),
 				data: ColumnData::row_number(row_numbers),
 			});

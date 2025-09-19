@@ -3,7 +3,6 @@
 
 //! Compilation of table scan operations
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	flow::{FlowNodeDef, FlowNodeType},
 	interface::{CommandTransaction, FlowNodeId},
@@ -12,25 +11,25 @@ use reifydb_core::{
 use super::super::{CompileOperator, FlowCompiler};
 use crate::{Result, plan::physical::TableScanNode};
 
-pub(crate) struct TableScanCompiler {
-	pub table_scan: TableScanNode,
+pub(crate) struct TableScanCompiler<'a> {
+	pub table_scan: TableScanNode<'a>,
 }
 
-impl From<TableScanNode> for TableScanCompiler {
-	fn from(table_scan: TableScanNode) -> Self {
+impl<'a> From<TableScanNode<'a>> for TableScanCompiler<'a> {
+	fn from(table_scan: TableScanNode<'a>) -> Self {
 		Self {
 			table_scan,
 		}
 	}
 }
 
-impl<T: CommandTransaction> CompileOperator<T> for TableScanCompiler {
+impl<'a, T: CommandTransaction> CompileOperator<T> for TableScanCompiler<'a> {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let table = self.table_scan.table;
+		let table = self.table_scan.source.def().clone();
 		let table_name = table.name.clone();
 
 		// Get namespace information
-		let namespace_def = CatalogStore::get_namespace(unsafe { &mut *compiler.txn }, table.namespace)?;
+		let namespace_def = self.table_scan.source.namespace().def().clone();
 
 		let namespace = FlowNodeDef::new(
 			table.columns.clone(),

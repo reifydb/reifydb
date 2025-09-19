@@ -14,7 +14,7 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 	value::columnar::Columns,
 };
-use reifydb_rql::plan::physical::InsertTablePlan;
+use reifydb_rql::plan::physical::InsertTableNode;
 use reifydb_type::{IntoFragment, Type, Value, diagnostic::catalog::table_not_found};
 
 use super::primary_key;
@@ -31,16 +31,16 @@ impl Executor {
 	pub(crate) fn insert_table<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: InsertTablePlan,
+		plan: InsertTableNode,
 		params: Params,
 	) -> crate::Result<Columns> {
-		let namespace_name = plan.target.namespace.text();
+		let namespace_name = plan.target.namespace().name();
 
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
-		let table_name = plan.target.name.text();
+		let table_name = plan.target.name();
 		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
-			let fragment = plan.target.name.clone().into_fragment();
+			let fragment = plan.target.identifier().name.clone().into_fragment();
 			return_error!(table_not_found(fragment.clone(), namespace_name, table_name,));
 		};
 

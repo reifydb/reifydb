@@ -131,27 +131,38 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				output.push_str(&format!("{}└── Map: {}\n", child_prefix, map_expr.to_string()));
 			}
 		}
-		LogicalPlan::Delete(delete) => {
-			output.push_str(&format!("{}{} Delete\n", prefix, branch));
+		LogicalPlan::DeleteTable(delete) => {
+			output.push_str(&format!("{}{} DeleteTable\n", prefix, branch));
 
 			// Show target table if specified
-			if let Some(target) = &delete.target {
-				let target_str = match target {
-					crate::plan::logical::DeleteTarget::Table(table) => {
-						format!("table: {}.{}", table.namespace.text(), table.name.text())
-					}
-					crate::plan::logical::DeleteTarget::RingBuffer(ring_buffer) => {
-						format!(
-							"ring buffer: {}.{}",
-							ring_buffer.namespace.text(),
-							ring_buffer.name.text()
-						)
-					}
-				};
-				output.push_str(&format!("{}├── target {}\n", child_prefix, target_str));
+			if let Some(table) = &delete.target {
+				output.push_str(&format!(
+					"{}├── target table: {}.{}\n",
+					child_prefix,
+					table.namespace.text(),
+					table.name.text()
+				));
 			} else {
-				output.push_str(&format!("{}├── target: <inferred from input>\n", child_prefix));
+				output.push_str(&format!("{}├── target table: <inferred from input>\n", child_prefix));
 			}
+
+			// Explain the input pipeline if present
+			if let Some(input) = &delete.input {
+				output.push_str(&format!("{}└── Input Pipeline:\n", child_prefix));
+				let pipeline_prefix = format!("{}    ", child_prefix);
+				render_logical_plan_inner(input, &pipeline_prefix, true, output);
+			}
+		}
+		LogicalPlan::DeleteRingBuffer(delete) => {
+			output.push_str(&format!("{}{} DeleteRingBuffer\n", prefix, branch));
+
+			// Show target ring buffer
+			output.push_str(&format!(
+				"{}├── target ring buffer: {}.{}\n",
+				child_prefix,
+				delete.target.namespace.text(),
+				delete.target.name.text()
+			));
 
 			// Explain the input pipeline if present
 			if let Some(input) = &delete.input {
@@ -367,7 +378,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 					"{}::{}",
 					source.fully_qualified_name()
 						.unwrap_or_else(|| source.effective_name().to_string()),
-					idx.identifier.name.text()
+					idx.identifier().name.text()
 				)
 			} else {
 				source.fully_qualified_name().unwrap_or_else(|| source.effective_name().to_string())

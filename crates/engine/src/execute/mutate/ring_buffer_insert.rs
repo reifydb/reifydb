@@ -11,7 +11,7 @@ use reifydb_core::{
 	row::EncodedRowLayout,
 	value::columnar::Columns,
 };
-use reifydb_rql::plan::physical::InsertRingBufferPlan;
+use reifydb_rql::plan::physical::InsertRingBufferNode;
 use reifydb_type::{IntoFragment, RowNumber, Type, Value, diagnostic::catalog::ring_buffer_not_found};
 
 use super::coerce::coerce_value_to_column_type;
@@ -24,22 +24,22 @@ impl Executor {
 	pub(crate) fn insert_ring_buffer<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: InsertRingBufferPlan,
+		plan: InsertRingBufferNode,
 		params: Params,
 	) -> crate::Result<Columns> {
-		let namespace_name = plan.target.namespace.text();
+		let namespace_name = plan.target.namespace().name();
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
-		let ring_buffer_name = plan.target.name.text();
+		let ring_buffer_name = plan.target.name();
 		let Some(ring_buffer) = CatalogStore::find_ring_buffer_by_name(txn, namespace.id, ring_buffer_name)?
 		else {
-			let fragment = plan.target.name.clone().into_fragment();
+			let fragment = plan.target.name().into_fragment();
 			return_error!(ring_buffer_not_found(fragment.clone(), namespace_name, ring_buffer_name));
 		};
 
 		// Get current metadata
 		let Some(mut metadata) = CatalogStore::find_ring_buffer_metadata(txn, ring_buffer.id)? else {
-			let fragment = plan.target.name.clone().into_fragment();
+			let fragment = plan.target.name().into_fragment();
 			return_error!(ring_buffer_not_found(fragment, namespace_name, ring_buffer_name));
 		};
 

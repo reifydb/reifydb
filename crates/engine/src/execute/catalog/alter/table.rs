@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{SourceId, Transaction},
 	value::columnar::Columns,
 };
-use reifydb_rql::plan::{logical::alter::AlterTableOperation, physical::AlterTablePlan};
+use reifydb_rql::plan::{logical::alter::AlterTableOperation, physical::AlterTableNode};
 use reifydb_type::{
 	Value,
 	diagnostic::{
@@ -22,7 +22,7 @@ impl Executor {
 	pub(crate) fn alter_table<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: AlterTablePlan,
+		plan: AlterTableNode,
 	) -> crate::Result<Columns> {
 		// Table is already fully qualified
 		let namespace_name = plan.node.table.namespace.text();

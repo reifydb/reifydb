@@ -17,6 +17,12 @@ impl<'a> NamespaceIdentifier<'a> {
 		}
 	}
 
+	pub fn to_owned_identifier(&self) -> NamespaceIdentifier<'static> {
+		NamespaceIdentifier {
+			name: Fragment::owned_internal(self.name.text()),
+		}
+	}
+
 	pub fn into_owned(self) -> NamespaceIdentifier<'static> {
 		NamespaceIdentifier {
 			name: Fragment::Owned(self.name.into_owned()),
@@ -76,6 +82,14 @@ impl<'a> TableIdentifier<'a> {
 		}
 	}
 
+	pub fn to_owned_identifier(&self) -> TableIdentifier<'static> {
+		TableIdentifier {
+			namespace: Fragment::owned_internal(self.namespace.text()),
+			name: Fragment::owned_internal(self.name.text()),
+			alias: self.alias.as_ref().map(|a| Fragment::owned_internal(a.text())),
+		}
+	}
+
 	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
 		self.alias = Some(alias);
 		self
@@ -100,6 +114,14 @@ impl<'a> TableVirtualIdentifier<'a> {
 			namespace,
 			name,
 			alias: None,
+		}
+	}
+
+	pub fn to_owned_identifier(&self) -> TableVirtualIdentifier<'static> {
+		TableVirtualIdentifier {
+			namespace: Fragment::owned_internal(self.namespace.text()),
+			name: Fragment::owned_internal(self.name.text()),
+			alias: self.alias.as_ref().map(|a| Fragment::owned_internal(a.text())),
 		}
 	}
 
@@ -138,6 +160,14 @@ impl<'a> RingBufferIdentifier<'a> {
 		}
 	}
 
+	pub fn to_owned_identifier(&self) -> RingBufferIdentifier<'static> {
+		RingBufferIdentifier {
+			namespace: Fragment::owned_internal(self.namespace.text()),
+			name: Fragment::owned_internal(self.name.text()),
+			alias: self.alias.as_ref().map(|a| Fragment::owned_internal(a.text())),
+		}
+	}
+
 	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
 		self.alias = Some(alias);
 		self
@@ -165,6 +195,14 @@ impl<'a> DeferredViewIdentifier<'a> {
 		}
 	}
 
+	pub fn to_owned_identifier(&self) -> DeferredViewIdentifier<'static> {
+		DeferredViewIdentifier {
+			namespace: Fragment::owned_internal(self.namespace.text()),
+			name: Fragment::owned_internal(self.name.text()),
+			alias: self.alias.as_ref().map(|a| Fragment::owned_internal(a.text())),
+		}
+	}
+
 	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
 		self.alias = Some(alias);
 		self
@@ -189,6 +227,14 @@ impl<'a> TransactionalViewIdentifier<'a> {
 			namespace,
 			name,
 			alias: None,
+		}
+	}
+
+	pub fn to_owned_identifier(&self) -> TransactionalViewIdentifier<'static> {
+		TransactionalViewIdentifier {
+			namespace: Fragment::owned_internal(self.namespace.text()),
+			name: Fragment::owned_internal(self.name.text()),
+			alias: self.alias.as_ref().map(|a| Fragment::owned_internal(a.text())),
 		}
 	}
 
@@ -254,6 +300,16 @@ impl<'a> SourceIdentifier<'a> {
 			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.into_owned()),
 			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.into_owned()),
 			Self::RingBuffer(r) => SourceIdentifier::RingBuffer(r.into_owned()),
+		}
+	}
+
+	pub fn to_owned_identifier(&self) -> SourceIdentifier<'static> {
+		match self {
+			Self::Table(t) => SourceIdentifier::Table(t.to_owned_identifier()),
+			Self::TableVirtual(t) => SourceIdentifier::TableVirtual(t.to_owned_identifier()),
+			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.to_owned_identifier()),
+			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.to_owned_identifier()),
+			Self::RingBuffer(r) => SourceIdentifier::RingBuffer(r.to_owned_identifier()),
 		}
 	}
 

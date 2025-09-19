@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	value::columnar::{ColumnData, Columns},
 };
-use reifydb_rql::plan::{logical::extract_table_from_plan, physical::DeletePlan};
+use reifydb_rql::plan::physical::DeleteNode;
 use reifydb_type::{
 	ROW_NUMBER_COLUMN_NAME, Value,
 	diagnostic::{
@@ -32,37 +32,28 @@ impl Executor {
 	pub(crate) fn delete<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: DeletePlan,
+		plan: DeleteNode,
 		params: Params,
 	) -> crate::Result<Columns> {
 		// Get table from plan or infer from input pipeline
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
-			let namespace_name = target.namespace.text();
+			let namespace_name = target.namespace().name();
 			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 				return_error!(namespace_not_found(
-					Some(target.namespace.clone().into_owned()),
+					Some(target.identifier().namespace.clone().into_owned()),
 					namespace_name
 				));
 			};
 
-			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name.text())?
-			else {
-				let fragment = target.name.clone();
-				return_error!(table_not_found(fragment.clone(), namespace_name, target.name.text(),));
+			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name())? else {
+				let fragment = target.identifier().name.clone();
+				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
 
 			(namespace, table)
 		} else {
-			// Both should be inferred from the pipeline
-			// Extract table info from the input plan if it
-			// exists
-			if let Some(input_plan) = &plan.input {
-				extract_table_from_plan(input_plan)
-					.expect("Cannot infer target table from pipeline - no table found")
-			} else {
-				panic!("DELETE without input requires explicit target table");
-			}
+			unimplemented!("DELETE without input requires explicit target table");
 		};
 
 		let mut deleted_count = 0;

@@ -7,7 +7,7 @@ use reifydb_core::{
 	return_error,
 	value::columnar::Columns,
 };
-use reifydb_rql::plan::{logical::alter::AlterViewOperation, physical::AlterViewPlan};
+use reifydb_rql::plan::{logical::alter::AlterViewOperation, physical::AlterViewNode};
 use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
@@ -16,7 +16,7 @@ impl Executor {
 	pub(crate) fn execute_alter_view<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: AlterViewPlan,
+		plan: AlterViewNode,
 	) -> crate::Result<Columns> {
 		// View is already fully qualified
 		let namespace_name = plan.node.view.namespace().text();
