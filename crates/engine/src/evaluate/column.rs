@@ -1,12 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::cmp::min;
+
 use reifydb_core::{
 	interface::{EvaluationContext, expression::ColumnExpression},
 	value::columnar::{Column, ColumnData},
 };
 use reifydb_type::{
-	Date, DateTime, Interval, RowNumber, Time, Value,
+	Date, DateTime, Decimal, Interval, RowNumber, Time, Type, Uint, Value,
 	diagnostic::query::column_not_found,
 	error,
 	value::{Blob, IdentityId, Uuid4, Uuid7},
@@ -120,8 +122,12 @@ impl StandardEvaluator {
 	fn extract_column_data(&self, col: &Column, ctx: &EvaluationContext) -> crate::Result<Column> {
 		let take = ctx.take.unwrap_or(usize::MAX);
 
-		match col.data().get_value(0) {
-			Value::Boolean(_) => {
+		// Use the column's actual data type instead of checking the first value
+		// This handles cases where the first value is Undefined
+		let col_type = col.data().get_type();
+
+		match col_type {
+			Type::Boolean => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -143,8 +149,7 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::bool_with_bitvec(data, bitvec)))
 			}
-
-			Value::Float4(_) => {
+			Type::Float4 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -167,7 +172,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::float4_with_bitvec(data, bitvec)))
 			}
 
-			Value::Float8(_) => {
+			Type::Float8 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -190,7 +195,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::float8_with_bitvec(data, bitvec)))
 			}
 
-			Value::Int1(_) => {
+			Type::Int1 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -213,7 +218,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::int1_with_bitvec(data, bitvec)))
 			}
 
-			Value::Int2(_) => {
+			Type::Int2 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -236,7 +241,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::int2_with_bitvec(data, bitvec)))
 			}
 
-			Value::Int4(_) => {
+			Type::Int4 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -259,7 +264,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::int4_with_bitvec(data, bitvec)))
 			}
 
-			Value::Int8(_) => {
+			Type::Int8 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -282,7 +287,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::int8_with_bitvec(data, bitvec)))
 			}
 
-			Value::Int16(_) => {
+			Type::Int16 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -305,7 +310,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::int16_with_bitvec(data, bitvec)))
 			}
 
-			Value::Utf8(_) => {
+			Type::Utf8 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -328,7 +333,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::utf8_with_bitvec(data, bitvec)))
 			}
 
-			Value::Uint1(_) => {
+			Type::Uint1 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -351,7 +356,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::uint1_with_bitvec(data, bitvec)))
 			}
 
-			Value::Uint2(_) => {
+			Type::Uint2 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -374,7 +379,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::uint2_with_bitvec(data, bitvec)))
 			}
 
-			Value::Uint4(_) => {
+			Type::Uint4 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -397,7 +402,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::uint4_with_bitvec(data, bitvec)))
 			}
 
-			Value::Uint8(_) => {
+			Type::Uint8 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -420,7 +425,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::uint8_with_bitvec(data, bitvec)))
 			}
 
-			Value::Uint16(_) => {
+			Type::Uint16 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -443,7 +448,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::uint16_with_bitvec(data, bitvec)))
 			}
 
-			Value::Date(_) => {
+			Type::Date => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -466,7 +471,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::date_with_bitvec(data, bitvec)))
 			}
 
-			Value::DateTime(_) => {
+			Type::DateTime => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -489,7 +494,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::datetime_with_bitvec(data, bitvec)))
 			}
 
-			Value::Time(_) => {
+			Type::Time => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -512,7 +517,7 @@ impl StandardEvaluator {
 				Ok(col.with_new_data(ColumnData::time_with_bitvec(data, bitvec)))
 			}
 
-			Value::Interval(_) => {
+			Type::Interval => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -534,7 +539,7 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::interval_with_bitvec(data, bitvec)))
 			}
-			Value::RowNumber(_) => {
+			Type::RowNumber => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -556,7 +561,7 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::row_number_with_bitvec(data, bitvec)))
 			}
-			Value::IdentityId(_) => {
+			Type::IdentityId => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -578,7 +583,7 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::identity_id_with_bitvec(data, bitvec)))
 			}
-			Value::Uuid4(_) => {
+			Type::Uuid4 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -600,7 +605,7 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::uuid4_with_bitvec(data, bitvec)))
 			}
-			Value::Uuid7(_) => {
+			Type::Uuid7 => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -622,7 +627,7 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::uuid7_with_bitvec(data, bitvec)))
 			}
-			Value::Blob(_) => {
+			Type::Blob => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -644,7 +649,7 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::blob_with_bitvec(data, bitvec)))
 			}
-			Value::Int(_) => {
+			Type::Int => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -666,7 +671,7 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::int_with_bitvec(data, bitvec)))
 			}
-			Value::Uint(_) => {
+			Type::Uint => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -680,7 +685,7 @@ impl StandardEvaluator {
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(reifydb_type::Uint::zero());
+							data.push(Uint::zero());
 							bitvec.push(false);
 						}
 					}
@@ -688,7 +693,7 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::uint_with_bitvec(data, bitvec)))
 			}
-			Value::Decimal(_) => {
+			Type::Decimal => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -702,7 +707,7 @@ impl StandardEvaluator {
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(reifydb_type::Decimal::from_i64(0));
+							data.push(Decimal::from_i64(0));
 							bitvec.push(false);
 						}
 					}
@@ -710,8 +715,8 @@ impl StandardEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::decimal_with_bitvec(data, bitvec)))
 			}
-			Value::Undefined => {
-				let count = std::cmp::min(ctx.row_count, take);
+			Type::Undefined => {
+				let count = min(ctx.row_count, take);
 				Ok(col.with_new_data(ColumnData::undefined(count)))
 			}
 		}

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	EncodedKey,
+	BitVec, EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, FlowNodeId, Params, Transaction, expression::Expression},
 	row::EncodedRow,
@@ -34,6 +34,17 @@ impl DistinctOperator {
 			node,
 			expressions,
 		}
+	}
+
+	/// Create a BitVec mask for the specified row indices
+	fn create_mask_for_indices(total_rows: usize, indices: &[usize]) -> BitVec {
+		let mut mask = vec![false; total_rows];
+		for &idx in indices {
+			if idx < total_rows {
+				mask[idx] = true;
+			}
+		}
+		BitVec::from(mask)
 	}
 
 	fn hash_to_key(hash: Hash128) -> EncodedKey {
@@ -126,6 +137,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 					post: after,
 				} => {
 					let mut new_distinct_rows = Vec::new();
+					let mut new_distinct_indices = Vec::new();
 
 					for (idx, &row_id) in row_ids.iter().enumerate() {
 						let row_hash = Self::hash_row_with_expressions(
@@ -159,16 +171,10 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 							})?;
 							self.set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
 
-							// Emit this row as new
-							// distinct value
+							// Track both row ID and index
+							// for filtering
 							new_distinct_rows.push(row_id);
-
-							// Add columns for this
-							// row - simplified,
-							// just clone the row
-							// In production, we'd
-							// properly handle
-							// column slicing
+							new_distinct_indices.push(idx);
 						} else {
 							// Update the count for
 							// existing distinct
@@ -191,14 +197,18 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 					}
 
 					if !new_distinct_rows.is_empty() {
-						// For simplicity, just pass
-						// through the unique rows
-						// A real implementation would
-						// properly handle columnar data
+						// Filter the columns to only include distinct rows
+						let mut filtered_columns = after.clone();
+						let mask = Self::create_mask_for_indices(
+							after.row_count(),
+							&new_distinct_indices,
+						);
+						filtered_columns.filter(&mask)?;
+
 						output_diffs.push(FlowDiff::Insert {
 							source,
 							rows: CowVec::new(new_distinct_rows),
-							post: after.clone(),
+							post: filtered_columns,
 						});
 					}
 				}

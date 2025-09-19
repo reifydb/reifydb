@@ -493,6 +493,7 @@ impl StandardEvaluator {
 			) => Ok(compare_utf8(l, r, ne.full_fragment_owned())),
 			(ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
 				let fragment = ne.full_fragment_owned();
+				// Comparing with undefined always returns false in this database
 				Ok(Column::ColumnQualified(ColumnQualified {
 					name: fragment.fragment().into(),
 					data: ColumnData::bool(vec![false; container.len()]),

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CowVec, EncodedKey,
+	BitVec, CowVec, EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{FlowNodeId, Transaction},
 	row::EncodedRow,
@@ -33,6 +33,17 @@ impl TakeOperator {
 			node,
 			limit,
 		}
+	}
+
+	/// Create a BitVec mask for the specified row indices
+	fn create_mask_for_indices(total_rows: usize, indices: &[usize]) -> BitVec {
+		let mut mask = vec![false; total_rows];
+		for &idx in indices {
+			if idx < total_rows {
+				mask[idx] = true;
+			}
+		}
+		BitVec::from(mask)
 	}
 
 	fn load_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> Result<TakeState> {
@@ -115,22 +126,57 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 
 					// Emit changes
 					if !rows_to_remove.is_empty() {
-						// These rows are no longer in
-						// top N
+						// These rows are no longer in top N
+						// We don't have the actual data for these rows since we only store row
+						// IDs Create columns with undefined values matching the row count
+						let remove_count = rows_to_remove.len();
+
+						// Create columns with the same structure but all undefined values
+						let mut undefined_columns = Vec::new();
+						for col in after.iter() {
+							use reifydb_core::value::columnar::{
+								Column, ColumnData, ColumnQualified,
+							};
+							let undefined_data = ColumnData::undefined(remove_count);
+							undefined_columns.push(Column::ColumnQualified(
+								ColumnQualified {
+									name: col.name().to_string(),
+									data: undefined_data,
+								},
+							));
+						}
+
 						output_diffs.push(FlowDiff::Remove {
 							source,
 							rows: CowVec::new(rows_to_remove),
-							pre: after.clone(), /* Simplified - should track actual
-							                     * data */
+							pre: reifydb_core::value::columnar::Columns::new(
+								undefined_columns,
+							),
 						});
 					}
 
 					if !rows_to_add.is_empty() {
-						// These are new top N rows
+						// Find indices of new rows in the input
+						let mut add_indices = Vec::new();
+						for &row_to_add in &rows_to_add {
+							for (idx, &row_id) in row_ids.iter().enumerate() {
+								if row_id == row_to_add {
+									add_indices.push(idx);
+									break;
+								}
+							}
+						}
+
+						// Filter columns to only include the new rows
+						let mut filtered_columns = after.clone();
+						let mask =
+							Self::create_mask_for_indices(after.row_count(), &add_indices);
+						filtered_columns.filter(&mask)?;
+
 						output_diffs.push(FlowDiff::Insert {
 							source,
 							rows: CowVec::new(rows_to_add),
-							post: after.clone(),
+							post: filtered_columns,
 						});
 					}
 
@@ -161,10 +207,29 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					}
 
 					if !rows_to_remove.is_empty() {
+						// Find indices of removed rows in the input
+						let mut remove_indices = Vec::new();
+						for &row_to_remove in &rows_to_remove {
+							for (idx, &row_id) in row_ids.iter().enumerate() {
+								if row_id == row_to_remove {
+									remove_indices.push(idx);
+									break;
+								}
+							}
+						}
+
+						// Filter columns to only include the removed rows
+						let mut filtered_columns = before.clone();
+						let mask = Self::create_mask_for_indices(
+							before.row_count(),
+							&remove_indices,
+						);
+						filtered_columns.filter(&mask)?;
+
 						output_diffs.push(FlowDiff::Remove {
 							source,
 							rows: CowVec::new(rows_to_remove),
-							pre: before.clone(),
+							pre: filtered_columns,
 						});
 					}
 
@@ -193,11 +258,32 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					}
 
 					if !rows_to_update.is_empty() {
+						// Find indices of updated rows in the input
+						let mut update_indices = Vec::new();
+						for &row_to_update in &rows_to_update {
+							for (idx, &row_id) in row_ids.iter().enumerate() {
+								if row_id == row_to_update {
+									update_indices.push(idx);
+									break;
+								}
+							}
+						}
+
+						// Filter columns to only include the updated rows
+						let mut filtered_pre = before.clone();
+						let mut filtered_post = after.clone();
+						let mask = Self::create_mask_for_indices(
+							before.row_count(),
+							&update_indices,
+						);
+						filtered_pre.filter(&mask)?;
+						filtered_post.filter(&mask)?;
+
 						output_diffs.push(FlowDiff::Update {
 							source,
 							rows: CowVec::new(rows_to_update),
-							pre: before.clone(),
-							post: after.clone(),
+							pre: filtered_pre,
+							post: filtered_post,
 						});
 					}
 				}

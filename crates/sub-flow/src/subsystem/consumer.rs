@@ -38,10 +38,14 @@ impl<T: Transaction> FlowConsumer<T> {
 		}
 	}
 
-	/// Helper method to convert row bytes to Columns format
-	fn to_columns<CT: CommandTransaction>(txn: &mut CT, source: SourceId, row_bytes: &[u8]) -> Result<Columns> {
+	/// Helper method to convert multiple row bytes to Columns format
+	fn to_columns<CT: CommandTransaction>(
+		txn: &mut CT,
+		source: SourceId,
+		rows_bytes: &[Vec<u8>],
+	) -> Result<Columns> {
 		// Get source metadata from catalog
-		let (columns, layout) = match source {
+		let (mut columns, layout) = match source {
 			SourceId::Table(table_id) => {
 				let table = CatalogStore::get_table(txn, table_id)?;
 				let namespace = CatalogStore::get_namespace(txn, table.namespace)?;
@@ -75,18 +79,18 @@ impl<T: Transaction> FlowConsumer<T> {
 			}
 		};
 
-		// Convert row bytes to EncodedRow
-		if row_bytes.is_empty() {
-			// Return empty columns for deleted rows
-			// The row was already deleted from storage, so we don't have the actual data
-			return Ok(columns);
+		// Convert all row bytes to EncodedRows and append in one go
+		if !rows_bytes.is_empty() {
+			let encoded_rows: Vec<EncodedRow> = rows_bytes
+				.iter()
+				.filter(|bytes| !bytes.is_empty())
+				.map(|bytes| EncodedRow(CowVec::new(bytes.clone())))
+				.collect();
+
+			if !encoded_rows.is_empty() {
+				columns.append_rows(&layout, encoded_rows)?;
+			}
 		}
-
-		let encoded_row = EncodedRow(CowVec::new(row_bytes.to_vec()));
-
-		// Append the row data to columns
-		let mut columns = columns;
-		columns.append_rows(&layout, [encoded_row])?;
 
 		Ok(columns)
 	}
@@ -140,61 +144,110 @@ impl<T: Transaction> FlowConsumer<T> {
 			flow_engine.register(txn, flow)?;
 		}
 
-		// Convert FlowChange events to flow engine Change format
-		let mut diffs = Vec::new();
+		// Group changes by source_id and operation type
+		use std::collections::HashMap;
+
+		#[derive(Hash, Eq, PartialEq)]
+		enum OpType {
+			Insert,
+			Update,
+			Delete,
+		}
+
+		let mut grouped_changes: HashMap<(SourceId, OpType), Vec<Change>> = HashMap::new();
 
 		for change in changes {
-			match change {
+			let key = match &change {
 				Change::Insert {
 					source_id,
-					row_number,
-					post,
-				} => {
-					// Convert row bytes to Columns format
-					let columns = match Self::to_columns(txn, source_id, &post) {
-						Ok(cols) => cols,
-						Err(e) => {
-							return Err(e);
+					..
+				} => (*source_id, OpType::Insert),
+				Change::Update {
+					source_id,
+					..
+				} => (*source_id, OpType::Update),
+				Change::Delete {
+					source_id,
+					..
+				} => (*source_id, OpType::Delete),
+			};
+			grouped_changes.entry(key).or_insert_with(Vec::new).push(change);
+		}
+
+		let mut diffs = Vec::new();
+
+		for ((source_id, op_type), changes) in grouped_changes {
+			match op_type {
+				OpType::Insert => {
+					let mut row_numbers = Vec::new();
+					let mut rows = Vec::new();
+
+					for change in changes {
+						if let Change::Insert {
+							row_number,
+							post,
+							..
+						} = change
+						{
+							row_numbers.push(row_number);
+							rows.push(post);
 						}
-					};
+					}
 
 					let diff = FlowDiff::Insert {
 						source: source_id,
-						rows: CowVec::new(vec![row_number]),
-						post: columns,
+						rows: CowVec::new(row_numbers),
+						post: Self::to_columns(txn, source_id, &rows)?,
 					};
 					diffs.push(diff);
 				}
-				Change::Update {
-					source_id,
-					row_number,
-					pre,
-					post,
-				} => {
-					// Convert row bytes to Columns format
-					let before_columns = Self::to_columns(txn, source_id, &pre)?;
-					let after_columns = Self::to_columns(txn, source_id, &post)?;
+				OpType::Update => {
+					let mut row_numbers = Vec::new();
+					let mut pre_rows = Vec::new();
+					let mut post_rows = Vec::new();
+
+					for change in changes {
+						if let Change::Update {
+							row_number,
+							pre,
+							post,
+							..
+						} = change
+						{
+							row_numbers.push(row_number);
+							pre_rows.push(pre);
+							post_rows.push(post);
+						}
+					}
 
 					let diff = FlowDiff::Update {
 						source: source_id,
-						rows: CowVec::new(vec![row_number]),
-						pre: before_columns,
-						post: after_columns,
+						rows: CowVec::new(row_numbers),
+						pre: Self::to_columns(txn, source_id, &pre_rows)?,
+						post: Self::to_columns(txn, source_id, &post_rows)?,
 					};
 					diffs.push(diff);
 				}
-				Change::Delete {
-					source_id,
-					row_number,
-					pre,
-				} => {
-					// Convert row bytes to Columns format
-					let columns = Self::to_columns(txn, source_id, &pre)?;
+				OpType::Delete => {
+					let mut row_numbers = Vec::new();
+					let mut rows = Vec::new();
+
+					for change in changes {
+						if let Change::Delete {
+							row_number,
+							pre,
+							..
+						} = change
+						{
+							row_numbers.push(row_number);
+							rows.push(pre);
+						}
+					}
 
 					let diff = FlowDiff::Remove {
 						source: source_id,
-						rows: CowVec::new(vec![row_number]),
-						pre: columns,
+						rows: CowVec::new(row_numbers),
+						pre: Self::to_columns(txn, source_id, &rows)?,
 					};
 					diffs.push(diff);
 				}

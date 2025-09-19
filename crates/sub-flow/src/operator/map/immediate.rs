@@ -98,14 +98,8 @@ impl MapOperator {
 		let mut projected_columns = Vec::new();
 
 		for expr in &self.expressions {
-			match evaluator.evaluate(&eval_ctx, expr) {
-				Ok(column) => {
-					projected_columns.push(column);
-				}
-				Err(e) => {
-					return Err(e);
-				}
-			}
+			let column = evaluator.evaluate(&eval_ctx, expr)?;
+			projected_columns.push(column);
 		}
 
 		Ok(Columns::new(projected_columns))
