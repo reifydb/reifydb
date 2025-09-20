@@ -32,14 +32,6 @@ impl StandardEvaluator {
 
 			// Check if source matches
 			match col {
-				Column::FullyQualified(fq) => {
-					// For fully qualified, the source might
-					// be "namespace.table" We need to
-					// match against either just table name
-					// or namespace.table
-					let full_source = format!("{}.{}", fq.namespace, fq.source);
-					fq.source == source || full_source == source
-				}
 				Column::SourceQualified(sq) => sq.source == source,
 				_ => false,
 			}

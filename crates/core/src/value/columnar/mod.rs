@@ -21,19 +21,19 @@ pub use view::group_by::{GroupByView, GroupKey};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Column {
-	FullyQualified(FullyQualified),
+// FullyQualified(FullyQualified),
 	SourceQualified(SourceQualified),
 	ColumnQualified(ColumnQualified),
 	Unqualified(Unqualified),
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct FullyQualified {
-	pub namespace: String,
-	pub source: String,
-	pub name: String,
-	pub data: ColumnData,
-}
+// #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+// pub struct FullyQualified {
+// 	pub namespace: String,
+// 	pub source: String,
+// 	pub name: String,
+// 	pub data: ColumnData,
+// }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SourceQualified {
@@ -57,7 +57,7 @@ pub struct Unqualified {
 impl Column {
 	pub fn get_type(&self) -> Type {
 		match self {
-			Self::FullyQualified(col) => col.data.get_type(),
+			// Self::FullyQualified(col) => col.data.get_type(),
 			Self::SourceQualified(col) => col.data.get_type(),
 			Self::ColumnQualified(col) => col.data.get_type(),
 			Self::Unqualified(col) => col.data.get_type(),
@@ -66,7 +66,7 @@ impl Column {
 
 	pub fn qualified_name(&self) -> String {
 		match self {
-			Self::FullyQualified(col) => format!("{}.{}.{}", col.namespace, col.source, col.name),
+			// Self::FullyQualified(col) => format!("{}.{}.{}", col.namespace, col.source, col.name),
 			Self::SourceQualified(col) => {
 				format!("{}.{}", col.source, col.name)
 			}
@@ -77,12 +77,12 @@ impl Column {
 
 	pub fn with_new_data(&self, data: ColumnData) -> Column {
 		match self {
-			Self::FullyQualified(col) => Self::FullyQualified(FullyQualified {
-				namespace: col.namespace.clone(),
-				source: col.source.clone(),
-				name: col.name.clone(),
-				data,
-			}),
+			// Self::FullyQualified(col) => Self::FullyQualified(FullyQualified {
+			// 	namespace: col.namespace.clone(),
+			// 	source: col.source.clone(),
+			// 	name: col.name.clone(),
+			// 	data,
+			// }),
 			Self::SourceQualified(col) => Self::SourceQualified(SourceQualified {
 				source: col.source.clone(),
 				name: col.name.clone(),
@@ -101,7 +101,7 @@ impl Column {
 
 	pub fn name(&self) -> &str {
 		match self {
-			Self::FullyQualified(col) => &col.name,
+			// Self::FullyQualified(col) => &col.name,
 			Self::SourceQualified(col) => &col.name,
 			Self::ColumnQualified(col) => &col.name,
 			Self::Unqualified(col) => &col.name,
@@ -110,7 +110,7 @@ impl Column {
 
 	pub fn source(&self) -> Option<&str> {
 		match self {
-			Self::FullyQualified(col) => Some(&col.source),
+			// Self::FullyQualified(col) => Some(&col.source),
 			Self::SourceQualified(col) => Some(&col.source),
 			Self::ColumnQualified(_) => None,
 			Self::Unqualified(_) => None,
@@ -124,7 +124,7 @@ impl Column {
 
 	pub fn namespace(&self) -> Option<&str> {
 		match self {
-			Self::FullyQualified(col) => Some(&col.namespace),
+			// Self::FullyQualified(col) => Some(&col.namespace),
 			Self::SourceQualified(_) => None,
 			Self::ColumnQualified(_) => None,
 			Self::Unqualified(_) => None,
@@ -133,7 +133,7 @@ impl Column {
 
 	pub fn data(&self) -> &ColumnData {
 		match self {
-			Self::FullyQualified(col) => &col.data,
+			// Self::FullyQualified(col) => &col.data,
 			Self::SourceQualified(col) => &col.data,
 			Self::ColumnQualified(col) => &col.data,
 			Self::Unqualified(col) => &col.data,
@@ -142,7 +142,7 @@ impl Column {
 
 	pub fn data_mut(&mut self) -> &mut ColumnData {
 		match self {
-			Self::FullyQualified(col) => &mut col.data,
+			// Self::FullyQualified(col) => &mut col.data,
 			Self::SourceQualified(col) => &mut col.data,
 			Self::ColumnQualified(col) => &mut col.data,
 			Self::Unqualified(col) => &mut col.data,
@@ -167,19 +167,6 @@ mod tests {
 		}
 	}
 
-	#[test]
-	fn test_fully_qualified_column() {
-		let column = FullyQualified::int4("public", "users", "id", [1, 2, 3]);
-		assert_eq!(column.qualified_name(), "public.users.id");
-		match column {
-			Column::FullyQualified(col) => {
-				assert_eq!(col.namespace, "public");
-				assert_eq!(col.source, "users");
-				assert_eq!(col.name, "id");
-			}
-			_ => panic!("Expected FullyQualified variant"),
-		}
-	}
 
 	#[test]
 	fn test_column_qualified() {

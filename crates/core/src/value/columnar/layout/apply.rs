@@ -5,7 +5,7 @@ use std::collections::{HashMap, HashSet};
 
 use super::{ColumnLayout, ColumnsLayout};
 use crate::value::columnar::{
-	Column, ColumnData, ColumnQualified, Columns, FullyQualified, SourceQualified, Unqualified,
+	Column, ColumnData, ColumnQualified, Columns, SourceQualified, Unqualified,
 };
 
 impl Columns {
@@ -20,8 +20,7 @@ impl Columns {
 				let data = std::mem::replace(column.data_mut(), ColumnData::undefined(0));
 
 				*column = match (&column_layout.namespace, &column_layout.source) {
-					(Some(namespace), Some(source)) => Column::FullyQualified(FullyQualified {
-						namespace: namespace.clone(),
+					(Some(namespace), Some(source)) => Column::SourceQualified(SourceQualified {
 						source: source.clone(),
 						name: column_layout.name.clone(),
 						data,

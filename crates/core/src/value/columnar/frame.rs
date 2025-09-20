@@ -58,12 +58,6 @@ impl From<ColumnData> for FrameColumnData {
 impl From<Column> for FrameColumn {
 	fn from(value: Column) -> Self {
 		match value {
-			Column::FullyQualified(col) => FrameColumn {
-				namespace: Some(col.namespace),
-				store: Some(col.source),
-				name: col.name,
-				data: col.data.into(),
-			},
 			Column::SourceQualified(col) => FrameColumn {
 				namespace: None,
 				store: Some(col.source),

@@ -35,8 +35,8 @@ impl StandardEvaluator {
 				let matching_col = ctx.columns.iter().find(|c| {
 					c.name() == col_name
 						&& match c {
-							Column::FullyQualified(fq) => {
-								fq.namespace == namespace && fq.source == table
+							Column::SourceQualified(fq) => {
+								fq.source == table
 							}
 							_ => false,
 						}
@@ -55,13 +55,6 @@ impl StandardEvaluator {
 				let matching_col = ctx.columns.iter().find(|c| {
 					c.name() == col_name
 						&& match c {
-							Column::FullyQualified(fq) => {
-								// Match if table name matches, or namespace.table
-								// matches
-								fq.source == source
-									|| format!("{}.{}", fq.namespace, fq.source)
-										== source
-							}
 							Column::SourceQualified(sq) => sq.source == source,
 							_ => false,
 						}

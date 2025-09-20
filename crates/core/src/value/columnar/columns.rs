@@ -13,7 +13,7 @@ use crate::{
 	interface::{NamespaceDef, RingBufferDef, TableDef, ViewDef},
 	util::CowVec,
 	value::{
-		columnar::{Column, ColumnData, ColumnQualified, FullyQualified, SourceQualified},
+		columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
 		container::UndefinedContainer,
 	},
 };
@@ -249,8 +249,7 @@ impl Columns {
 					} => ColumnData::decimal(vec![]),
 					Type::Undefined => ColumnData::undefined(0),
 				};
-				Column::FullyQualified(FullyQualified {
-					namespace: namespace.name.clone(),
+				Column::SourceQualified(SourceQualified {
 					source: table.name.clone(),
 					name,
 					data,
@@ -298,8 +297,7 @@ impl Columns {
 					} => ColumnData::decimal(vec![]),
 					Type::Undefined => ColumnData::undefined(0),
 				};
-				Column::FullyQualified(FullyQualified {
-					namespace: namespace.name.clone(),
+				Column::SourceQualified(SourceQualified {
 					source: ring_buffer.name.clone(),
 					name,
 					data,
@@ -395,8 +393,7 @@ impl Columns {
 					} => ColumnData::decimal(vec![]),
 					Type::Undefined => ColumnData::undefined(0),
 				};
-				Column::FullyQualified(FullyQualified {
-					namespace: namespace.name.clone(),
+				Column::SourceQualified(SourceQualified {
 					source: view.name.clone(),
 					name,
 					data,

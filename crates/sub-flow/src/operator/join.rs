@@ -4,26 +4,26 @@
 use std::collections::HashMap;
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, JoinType,
-	flow::{FlowChange, FlowDiff, FlowNodeDef},
-	interface::{
-		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId, Transaction,
-		evaluate::expression::{ColumnExpression, Expression},
-	},
-	row::EncodedRow,
-	util::CowVec,
-	value::columnar::{Column, ColumnData, Columns, FullyQualified, SourceQualified},
+    flow::{FlowChange, FlowDiff, FlowNodeDef}, interface::{
+        evaluate::expression::{ColumnExpression, Expression}, EvaluationContext, Evaluator, FlowNodeId, Params, SourceId,
+        Transaction,
+    }, row::EncodedRow,
+    util::CowVec,
+    value::columnar::{Column, ColumnData, Columns, SourceQualified},
+    EncodedKey,
+    EncodedKeyRange,
+    JoinType,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	Result,
-	operator::{
-		Operator,
-		transform::{TransformOperator, stateful::RawStatefulOperator},
-	},
+    operator::{
+        transform::{stateful::RawStatefulOperator, TransformOperator},
+        Operator,
+    },
+    Result,
 };
 
 // Stored row data for join state
@@ -178,9 +178,9 @@ impl JoinOperator {
 	// Hash join keys for efficient lookup
 	fn hash_join_keys(keys: &[Value]) -> u64 {
 		use std::{
-			collections::hash_map::DefaultHasher,
-			hash::{Hash, Hasher},
-		};
+            collections::hash_map::DefaultHasher,
+            hash::{Hash, Hasher},
+        };
 
 		let mut hasher = DefaultHasher::new();
 		for key in keys {
@@ -203,7 +203,6 @@ impl JoinOperator {
 		// have same source)
 		let source_name = if let Some(first_col) = columns.first() {
 			match first_col {
-				Column::FullyQualified(fq) => fq.source.clone(),
 				Column::SourceQualified(sq) => sq.source.clone(),
 				_ => "unknown".to_string(),
 			}
@@ -337,7 +336,6 @@ impl JoinOperator {
 						if is_left && metadata.left_source.is_empty() {
 							if let Some(first_col) = columns.first() {
 								metadata.left_source = match first_col {
-									Column::FullyQualified(fq) => fq.source.clone(),
 									Column::SourceQualified(sq) => {
 										sq.source.clone()
 									}
@@ -347,7 +345,6 @@ impl JoinOperator {
 						} else if !is_left && metadata.right_source.is_empty() {
 							if let Some(first_col) = columns.first() {
 								metadata.right_source = match first_col {
-									Column::FullyQualified(fq) => fq.source.clone(),
 									Column::SourceQualified(sq) => {
 										sq.source.clone()
 									}
@@ -371,7 +368,6 @@ impl JoinOperator {
 		// Initialize new metadata - this is the first node we're seeing
 		let source_name = if let Some(first_col) = columns.first() {
 			match first_col {
-				Column::FullyQualified(fq) => fq.source.clone(),
 				Column::SourceQualified(sq) => sq.source.clone(),
 				_ => "unknown".to_string(),
 			}
@@ -441,7 +437,6 @@ impl JoinOperator {
 		// Extract source name from columns
 		let source_name = if let Some(first_col) = columns.first() {
 			match first_col {
-				Column::FullyQualified(fq) => fq.source.clone(),
 				Column::SourceQualified(sq) => sq.source.clone(),
 				_ => "unknown".to_string(),
 			}
@@ -550,7 +545,6 @@ impl JoinOperator {
 			// Extract source name from columns
 			let source_name = if let Some(first_col) = columns.first() {
 				match first_col {
-					Column::FullyQualified(fq) => fq.source.clone(),
 					Column::SourceQualified(sq) => sq.source.clone(),
 					_ => "unknown".to_string(),
 				}
@@ -592,9 +586,7 @@ impl JoinOperator {
 			if let (Some(namespace), Some(source)) =
 				(&self.left_schema.namespace_name, &self.left_schema.source_name)
 			{
-				// Create fully qualified columns
-				column_vec.push(Column::FullyQualified(FullyQualified {
-					namespace: namespace.clone(),
+				column_vec.push(Column::SourceQualified(SourceQualified {
 					source: source.clone(),
 					name: column_def.name.clone(),
 					data,
@@ -634,9 +626,7 @@ impl JoinOperator {
 				if let (Some(namespace), Some(source)) =
 					(&self.right_schema.namespace_name, &self.right_schema.source_name)
 				{
-					// Create fully qualified columns
-					column_vec.push(Column::FullyQualified(FullyQualified {
-						namespace: namespace.clone(),
+					column_vec.push(Column::SourceQualified(SourceQualified {
 						source: source.clone(),
 						name: column_def.name.clone(),
 						data,
@@ -665,10 +655,7 @@ impl JoinOperator {
 				if let (Some(namespace), Some(source)) =
 					(&self.right_schema.namespace_name, &self.right_schema.source_name)
 				{
-					// Create fully qualified columns with
-					// undefined data
-					column_vec.push(Column::FullyQualified(FullyQualified {
-						namespace: namespace.clone(),
+					column_vec.push(Column::SourceQualified(SourceQualified {
 						source: source.clone(),
 						name: column_def.name.clone(),
 						data: ColumnData::undefined(1),
@@ -732,7 +719,6 @@ impl JoinOperator {
 		// Extract source name from columns for current row
 		let source_name = if let Some(first_col) = after.first() {
 			match first_col {
-				Column::FullyQualified(fq) => fq.source.clone(),
 				Column::SourceQualified(sq) => sq.source.clone(),
 				_ => {
 					if is_left {
