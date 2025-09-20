@@ -17,7 +17,7 @@ use reifydb_type::Params;
 
 use crate::operator::{
 	Operator,
-	transform::{TransformOperator, TransformOperatorFactory, extract},
+	transform::{TransformOperator, TransformOperatorFactory, extract, stateful::SimpleStatefulOperator},
 };
 
 pub struct RunningSumOperator {
@@ -71,9 +71,10 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 
 					// Get current sum
 					let empty_key = EncodedKey::new(Vec::new());
-					let state_row = self.get(txn, &empty_key)?;
-
-					let mut sum = self.parse_state(state_row.as_ref());
+					let mut sum = match self.state_get(txn, &empty_key)? {
+						Some(state_row) => self.parse_state(state_row.as_ref()),
+						None => 0.0,
+					};
 
 					let row_count = after.row_count();
 					let mut sums = Vec::with_capacity(row_count);
@@ -97,7 +98,11 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 
 					// Save updated sum
 					let empty_key = EncodedKey::new(Vec::new());
-					self.set(txn, &empty_key, EncodedRow(CowVec::new(self.encode_state(sum))))?;
+					self.state_set(
+						txn,
+						&empty_key,
+						EncodedRow(CowVec::new(self.encode_state(sum))),
+					)?;
 
 					// Build output
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
@@ -136,9 +141,10 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 
 					// Get current sum
 					let empty_key = EncodedKey::new(Vec::new());
-					let state_row = self.get(txn, &empty_key)?;
-
-					let mut sum = self.parse_state(state_row.as_ref());
+					let mut sum = match self.state_get(txn, &empty_key)? {
+						Some(state_row) => self.parse_state(state_row.as_ref()),
+						None => 0.0,
+					};
 
 					let row_count = after.row_count();
 					let mut sums = Vec::with_capacity(row_count);
@@ -162,7 +168,11 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 
 					// Save updated sum
 					let empty_key = EncodedKey::new(Vec::new());
-					self.set(txn, &empty_key, EncodedRow(CowVec::new(self.encode_state(sum))))?;
+					self.state_set(
+						txn,
+						&empty_key,
+						EncodedRow(CowVec::new(self.encode_state(sum))),
+					)?;
 
 					// Build output
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
@@ -197,6 +207,8 @@ impl<T: Transaction> TransformOperator<T> for RunningSumOperator {
 		self.node
 	}
 }
+
+impl<T: Transaction> SimpleStatefulOperator<T> for RunningSumOperator {}
 
 impl<T: Transaction> TransformOperatorFactory<T> for RunningSumOperator {
 	fn create_from_expressions(

@@ -17,7 +17,7 @@ use reifydb_type::Params;
 
 use crate::operator::{
 	Operator,
-	transform::{TransformOperator, TransformOperatorFactory, extract},
+	transform::{TransformOperator, TransformOperatorFactory, extract, stateful::SimpleStatefulOperator},
 };
 
 pub struct RunningAvgOperator {
@@ -76,8 +76,10 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 
 					// Get current state
 					let empty_key = EncodedKey::new(Vec::new());
-					let state_row = self.get(txn, &empty_key)?;
-					let (mut sum, mut count) = self.parse_state(state_row.as_ref());
+					let (mut sum, mut count) = match self.state_get(txn, &empty_key)? {
+						Some(state_row) => self.parse_state(state_row.as_ref()),
+						None => (0.0, 0),
+					};
 
 					let row_count = after.row_count();
 					let mut avgs = Vec::with_capacity(row_count);
@@ -103,7 +105,7 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 
 					// Save updated state
 					let empty_key = EncodedKey::new(Vec::new());
-					self.set(
+					self.state_set(
 						txn,
 						&empty_key,
 						EncodedRow(CowVec::new(self.encode_state(sum, count))),
@@ -152,6 +154,8 @@ impl<T: Transaction> TransformOperator<T> for RunningAvgOperator {
 		self.node
 	}
 }
+
+impl<T: Transaction> SimpleStatefulOperator<T> for RunningAvgOperator {}
 
 impl<T: Transaction> TransformOperatorFactory<T> for RunningAvgOperator {
 	fn create_from_expressions(

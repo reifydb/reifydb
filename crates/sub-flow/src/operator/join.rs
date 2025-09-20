@@ -4,7 +4,7 @@
 use std::collections::HashMap;
 
 use reifydb_core::{
-	EncodedKey, JoinType,
+	EncodedKey, EncodedKeyRange, JoinType,
 	flow::{FlowChange, FlowDiff, FlowNodeDef},
 	interface::{
 		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId, Transaction,
@@ -20,7 +20,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Result,
-	operator::{Operator, transform::TransformOperator},
+	operator::{
+		Operator,
+		transform::{TransformOperator, stateful::SimpleStatefulOperator},
+	},
 };
 
 // Stored row data for join state
@@ -212,20 +215,16 @@ impl JoinOperator {
 		let key = Self::make_join_key(side, join_key_hash, row_id);
 
 		// Get existing row data if it exists
-		let mut column_values = if let Ok(existing) = self.get(txn, &key) {
-			if !existing.as_ref().is_empty() {
-				// Deserialize existing row and start with its
-				// columns
+		let mut column_values = match self.state_get(txn, &key) {
+			Ok(Some(existing)) if !existing.as_ref().is_empty() => {
+				// Deserialize existing row and start with its columns
 				if let Ok(existing_row) = serde_json::from_slice::<StoredRow>(existing.as_ref()) {
 					existing_row.columns
 				} else {
 					HashMap::new()
 				}
-			} else {
-				HashMap::new()
 			}
-		} else {
-			HashMap::new()
+			_ => HashMap::new(),
 		};
 
 		// Add/update with new column values
@@ -242,7 +241,7 @@ impl JoinOperator {
 		};
 
 		let serialized = serde_json::to_vec(&stored_row).unwrap_or_default();
-		self.set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
+		self.state_set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
 		Ok(())
 	}
 
@@ -257,7 +256,12 @@ impl JoinOperator {
 		let (start, end) = Self::make_join_range(side, join_key_hash);
 
 		// Scan the range for matching rows
-		if let Ok(iter) = self.range(txn, start.as_ref(), end.as_ref()) {
+		use std::ops::Bound;
+		let range = EncodedKeyRange::new(
+			start.map_or(Bound::Unbounded, Bound::Included),
+			end.map_or(Bound::Unbounded, Bound::Excluded),
+		);
+		if let Ok(iter) = self.state_range(txn, range) {
 			for (_, row_data) in iter {
 				if !row_data.as_ref().is_empty() {
 					if let Ok(stored_row) = serde_json::from_slice::<StoredRow>(row_data.as_ref()) {
@@ -279,7 +283,7 @@ impl JoinOperator {
 		row_id: RowNumber,
 	) -> Result<()> {
 		let key = Self::make_join_key(side, join_key_hash, row_id);
-		self.remove(txn, &key)?;
+		self.state_remove(txn, &key)?;
 		Ok(())
 	}
 
@@ -297,7 +301,7 @@ impl JoinOperator {
 		let metadata_key = EncodedKey::new(Vec::new());
 
 		// Try to get existing metadata
-		if let Ok(data) = self.get(txn, &metadata_key) {
+		if let Ok(Some(data)) = self.state_get(txn, &metadata_key) {
 			if !data.as_ref().is_empty() {
 				if let Ok(mut metadata) = serde_json::from_slice::<JoinMetadata>(data.as_ref()) {
 					// Check if we need to track this node
@@ -354,7 +358,7 @@ impl JoinOperator {
 
 						// Save updated metadata
 						let data = serde_json::to_vec(&metadata).unwrap_or_default();
-						self.set(txn, &metadata_key, EncodedRow(CowVec::new(data)))?;
+						self.state_set(txn, &metadata_key, EncodedRow(CowVec::new(data)))?;
 
 						is_left
 					};
@@ -419,7 +423,7 @@ impl JoinOperator {
 
 		// Store the metadata
 		let data = serde_json::to_vec(&metadata).unwrap_or_default();
-		self.set(txn, &metadata_key, EncodedRow(CowVec::new(data)))?;
+		self.state_set(txn, &metadata_key, EncodedRow(CowVec::new(data)))?;
 
 		Ok((metadata, is_left))
 	}
@@ -447,7 +451,7 @@ impl JoinOperator {
 
 		// Try to get existing metadata
 		let metadata_key = EncodedKey::new(Vec::new());
-		if let Ok(data) = self.get(txn, &metadata_key) {
+		if let Ok(Some(data)) = self.state_get(txn, &metadata_key) {
 			if !data.as_ref().is_empty() {
 				if let Ok(metadata) = serde_json::from_slice::<JoinMetadata>(data.as_ref()) {
 					// Determine if this is the left or right source using column names
@@ -530,7 +534,7 @@ impl JoinOperator {
 		};
 
 		let serialized = serde_json::to_vec(&metadata).unwrap_or_default();
-		self.set(txn, &metadata_key, EncodedRow(CowVec::new(serialized)))?;
+		self.state_set(txn, &metadata_key, EncodedRow(CowVec::new(serialized)))?;
 
 		Ok((metadata, is_left))
 	}
@@ -561,7 +565,7 @@ impl JoinOperator {
 			// Use a special key for metadata (empty key)
 			let metadata_key = EncodedKey::new(Vec::new());
 			let serialized = serde_json::to_vec(&metadata).unwrap_or_default();
-			self.set(txn, &metadata_key, EncodedRow(CowVec::new(serialized)))?;
+			self.state_set(txn, &metadata_key, EncodedRow(CowVec::new(serialized)))?;
 		}
 		Ok(())
 	}
@@ -1017,3 +1021,5 @@ impl<T: Transaction> TransformOperator<T> for JoinOperator {
 		self.node
 	}
 }
+
+impl<T: Transaction> SimpleStatefulOperator<T> for JoinOperator {}

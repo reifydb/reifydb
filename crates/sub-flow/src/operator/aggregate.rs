@@ -17,7 +17,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Result,
-	operator::{Operator, transform::TransformOperator},
+	operator::{
+		Operator,
+		transform::{TransformOperator, stateful::SimpleStatefulOperator},
+	},
 };
 
 // ============================================================================
@@ -238,12 +241,13 @@ impl AggregateOperator {
 	) -> Result<GroupState> {
 		let key = Self::group_key_to_encoded_key(group_key);
 
-		let state_row = self.get(txn, &key)?;
-		if state_row.as_ref().is_empty() {
-			Ok(GroupState::new())
-		} else {
-			let state = GroupState::from_encoded_row(&state_row).unwrap_or_else(GroupState::new);
-			Ok(state)
+		match self.state_get(txn, &key)? {
+			None => Ok(GroupState::new()),
+			Some(state_row) if state_row.as_ref().is_empty() => Ok(GroupState::new()),
+			Some(state_row) => {
+				let state = GroupState::from_encoded_row(&state_row).unwrap_or_else(GroupState::new);
+				Ok(state)
+			}
 		}
 	}
 
@@ -257,10 +261,10 @@ impl AggregateOperator {
 
 		if state.ref_count == 0 {
 			// Remove state if no more references
-			self.remove(txn, &key)?;
+			self.state_remove(txn, &key)?;
 		} else {
 			// Save updated state
-			self.set(txn, &key, state.to_encoded_row())?;
+			self.state_set(txn, &key, state.to_encoded_row())?;
 		}
 
 		Ok(())
@@ -273,7 +277,7 @@ impl AggregateOperator {
 		let mut states = HashMap::new();
 
 		// Scan all entries for this node
-		let iter = self.scan(txn)?;
+		let iter = self.state_scan(txn)?;
 		for (key, row) in iter {
 			if let Ok(group_key) = serde_json::from_slice::<Vec<Value>>(key.as_ref()) {
 				if let Some(state) = GroupState::from_encoded_row(&row) {
@@ -528,6 +532,8 @@ impl<T: Transaction> TransformOperator<T> for AggregateOperator {
 		self.node
 	}
 }
+
+impl<T: Transaction> SimpleStatefulOperator<T> for AggregateOperator {}
 
 // ============================================================================
 // Helper Functions

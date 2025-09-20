@@ -14,9 +14,11 @@ use serde::{Deserialize, Serialize};
 mod catalog;
 mod deserialize;
 mod serialize;
+mod serializer;
 
 pub use catalog::{deserialize_index_id, deserialize_source_id, serialize_index_id, serialize_source_id};
 use reifydb_type::diagnostic::serialization;
+pub use serializer::KeySerializer;
 
 use crate::util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer};
 
@@ -158,169 +160,6 @@ pub fn encode_bytes(bytes: &[u8], output: &mut Vec<u8>) {
 	}
 	output.push(0xff);
 	output.push(0xff);
-}
-
-/// A builder for constructing binary keys using keycode encoding
-pub struct KeySerializer {
-	buffer: Vec<u8>,
-}
-
-impl KeySerializer {
-	/// Create new serializer with default capacity
-	pub fn new() -> Self {
-		Self {
-			buffer: Vec::new(),
-		}
-	}
-
-	/// Create with pre-allocated capacity
-	pub fn with_capacity(capacity: usize) -> Self {
-		Self {
-			buffer: Vec::with_capacity(capacity),
-		}
-	}
-
-	/// Extend with bool value
-	pub fn extend_bool(&mut self, value: bool) -> &mut Self {
-		self.buffer.push(encode_bool(value));
-		self
-	}
-
-	/// Extend with f32 value
-	pub fn extend_f32(&mut self, value: f32) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_f32(value));
-		self
-	}
-
-	/// Extend with f64 value
-	pub fn extend_f64(&mut self, value: f64) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_f64(value));
-		self
-	}
-
-	/// Extend with i8 value
-	pub fn extend_i8<T: Into<i8>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_i8(value.into()));
-		self
-	}
-
-	/// Extend with i16 value
-	pub fn extend_i16<T: Into<i16>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_i16(value.into()));
-		self
-	}
-
-	/// Extend with i32 value
-	pub fn extend_i32<T: Into<i32>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_i32(value.into()));
-		self
-	}
-
-	/// Extend with i64 value
-	pub fn extend_i64<T: Into<i64>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_i64(value.into()));
-		self
-	}
-
-	/// Extend with i128 value
-	pub fn extend_i128<T: Into<i128>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_i128(value.into()));
-		self
-	}
-
-	/// Extend with u8 value
-	pub fn extend_u8<T: Into<u8>>(&mut self, value: T) -> &mut Self {
-		self.buffer.push(encode_u8(value.into()));
-		self
-	}
-
-	/// Extend with u16 value
-	pub fn extend_u16<T: Into<u16>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_u16(value.into()));
-		self
-	}
-
-	/// Extend with u32 value
-	pub fn extend_u32<T: Into<u32>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_u32(value.into()));
-		self
-	}
-
-	/// Extend with u64 value
-	pub fn extend_u64<T: Into<u64>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_u64(value.into()));
-		self
-	}
-
-	/// Extend with u128 value
-	pub fn extend_u128<T: Into<u128>>(&mut self, value: T) -> &mut Self {
-		self.buffer.extend_from_slice(&encode_u128(value.into()));
-		self
-	}
-
-	/// Extend with raw bytes
-	pub fn extend_bytes<T: AsRef<[u8]>>(&mut self, bytes: T) -> &mut Self {
-		encode_bytes(bytes.as_ref(), &mut self.buffer);
-		self
-	}
-
-	/// Extend with string (UTF-8 bytes)
-	pub fn extend_str<T: AsRef<str>>(&mut self, s: T) -> &mut Self {
-		self.extend_bytes(s.as_ref().as_bytes())
-	}
-
-	/// Consume serializer and return final buffer
-	pub fn finish(self) -> Vec<u8> {
-		self.buffer
-	}
-
-	/// Consume serializer and return an EncodedKey directly
-	pub fn to_encoded_key(self) -> crate::EncodedKey {
-		crate::EncodedKey::new(self.buffer)
-	}
-
-	/// Extend with a Serde-serializable value
-	pub fn extend_serialize<T: Serialize>(&mut self, value: &T) -> &mut Self {
-		let serialized = serialize(value);
-		self.buffer.extend(serialized);
-		self
-	}
-
-	/// Extend with a SourceId value (includes type discriminator)
-	pub fn extend_source_id(&mut self, source: impl Into<crate::interface::SourceId>) -> &mut Self {
-		let source = source.into();
-		self.buffer.extend_from_slice(&catalog::serialize_source_id(&source));
-		self
-	}
-
-	/// Extend with an IndexId value (includes type discriminator)  
-	pub fn extend_index_id(&mut self, index: impl Into<crate::interface::IndexId>) -> &mut Self {
-		let index = index.into();
-		self.buffer.extend_from_slice(&catalog::serialize_index_id(&index));
-		self
-	}
-
-	/// Extend with raw bytes (no encoding)
-	pub fn extend_raw(&mut self, bytes: &[u8]) -> &mut Self {
-		self.buffer.extend_from_slice(bytes);
-		self
-	}
-
-	/// Get current buffer length
-	pub fn len(&self) -> usize {
-		self.buffer.len()
-	}
-
-	/// Check if buffer is empty
-	pub fn is_empty(&self) -> bool {
-		self.buffer.is_empty()
-	}
-}
-
-impl Default for KeySerializer {
-	fn default() -> Self {
-		Self::new()
-	}
 }
 
 #[macro_export]

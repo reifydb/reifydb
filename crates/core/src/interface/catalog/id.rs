@@ -91,14 +91,9 @@ impl IndexId {
 		}
 	}
 
-	/// Creates a previous index id for range operations (numerically
-	/// previous) In descending order encoding, this gives us the next
-	/// value in sort order Uses wrapping_sub to handle ID 0 correctly
-	/// (wraps to u64::MAX)
 	pub fn prev(&self) -> IndexId {
 		match self {
 			IndexId::Primary(primary) => IndexId::Primary(PrimaryKeyId(primary.0.wrapping_sub(1))),
-			// Future: handle other index types
 		}
 	}
 }

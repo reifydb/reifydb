@@ -14,7 +14,10 @@ use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_type::{Error, Value, internal_error};
 use serde::{Deserialize, Serialize};
 
-use crate::operator::{Operator, transform::TransformOperator};
+use crate::operator::{
+	Operator,
+	transform::{TransformOperator, stateful::SimpleStatefulOperator},
+};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctEntry {
@@ -150,9 +153,14 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 
 						// Check if we've seen this row
 						// before
-						let existing = self.get(txn, &key).ok();
+						let existing = self.state_get(txn, &key).ok().flatten();
 
-						if existing.as_ref().map(|r| r.as_ref().is_empty()).unwrap_or(true) {
+						if existing.is_none()
+							|| existing
+								.as_ref()
+								.map(|r| r.as_ref().is_empty())
+								.unwrap_or(false)
+						{
 							// First time seeing
 							// this distinct value
 							let entry = DistinctEntry {
@@ -169,7 +177,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 							let serialized = serde_json::to_vec(&entry).map_err(|e| {
 								Error(internal_error!("Failed to serialize: {}", e))
 							})?;
-							self.set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
+							self.state_set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
 
 							// Track both row ID and index
 							// for filtering
@@ -190,7 +198,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 							let serialized = serde_json::to_vec(&entry).map_err(|e| {
 								Error(internal_error!("Failed to serialize: {}", e))
 							})?;
-							self.set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
+							self.state_set(txn, &key, EncodedRow(CowVec::new(serialized)))?;
 							// Don't emit since it's
 							// not distinct
 						}
@@ -229,7 +237,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 						)?;
 						let key = Self::hash_to_key(row_hash);
 
-						let existing = self.get(txn, &key).ok();
+						let existing = self.state_get(txn, &key).ok().flatten();
 						if let Some(data) = existing {
 							if !data.as_ref().is_empty() {
 								let mut entry: DistinctEntry = serde_json::from_slice(
@@ -255,7 +263,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 												e
 											))
 										})?;
-									self.set(
+									self.state_set(
 										txn,
 										&key,
 										EncodedRow(CowVec::new(serialized)),
@@ -266,7 +274,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 									// state
 									// and emit
 									// retraction
-									self.remove(txn, &key)?;
+									self.state_remove(txn, &key)?;
 
 									removed_distinct_rows.push(
 										reifydb_type::RowNumber(
@@ -328,3 +336,5 @@ impl<T: Transaction> TransformOperator<T> for DistinctOperator {
 		self.node
 	}
 }
+
+impl<T: Transaction> SimpleStatefulOperator<T> for DistinctOperator {}

@@ -13,7 +13,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	Result,
-	operator::{Operator, transform::TransformOperator},
+	operator::{
+		Operator,
+		transform::{TransformOperator, stateful::SimpleStatefulOperator},
+	},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -48,20 +51,18 @@ impl TakeOperator {
 
 	fn load_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> Result<TakeState> {
 		let empty_key = EncodedKey::new(Vec::new());
-		let state_row = self.get(txn, &empty_key)?;
 
-		if state_row.as_ref().is_empty() {
-			Ok(TakeState {
+		match self.state_get(txn, &empty_key)? {
+			None => Ok(TakeState {
 				current_count: 0,
 				row_ids: Vec::new(),
-			})
-		} else {
-			serde_json::from_slice(state_row.as_ref()).map_err(|e| {
+			}),
+			Some(state_row) => serde_json::from_slice(state_row.as_ref()).map_err(|e| {
 				reifydb_type::Error(reifydb_type::internal_error!(
 					"Failed to deserialize TakeState: {}",
 					e
 				))
-			})
+			}),
 		}
 	}
 
@@ -71,7 +72,7 @@ impl TakeOperator {
 			reifydb_type::Error(reifydb_type::internal_error!("Failed to serialize TakeState: {}", e))
 		})?;
 
-		self.set(txn, &empty_key, EncodedRow(CowVec::new(serialized)))?;
+		self.state_set(txn, &empty_key, EncodedRow(CowVec::new(serialized)))?;
 		Ok(())
 	}
 }
@@ -304,3 +305,5 @@ impl<T: Transaction> TransformOperator<T> for TakeOperator {
 		self.node
 	}
 }
+
+impl<T: Transaction> SimpleStatefulOperator<T> for TakeOperator {}

@@ -2,21 +2,20 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{FlowNodeId, Transaction, expression::Expression},
-	row::EncodedRow,
-	util::CowVec,
+	row::EncodedRowLayout,
 	value::{
 		columnar::{Column, ColumnData, ColumnQualified, Columns},
 		container::NumberContainer,
 	},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
+use reifydb_type::Type;
 
 use crate::operator::{
 	Operator,
-	transform::{TransformOperator, TransformOperatorFactory, extract},
+	transform::{TransformOperator, TransformOperatorFactory, extract, stateful::SingleStateful},
 };
 
 pub struct CounterOperator {
@@ -25,34 +24,12 @@ pub struct CounterOperator {
 	column_name: String,
 }
 
-impl CounterOperator {
-	fn get_counter_value<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> i64 {
-		let empty_key = EncodedKey::new(Vec::new());
-		let state_row = self.get(txn, &empty_key).unwrap_or_else(|_| EncodedRow(CowVec::new(Vec::new())));
-		let state_bytes = state_row.as_ref();
-		if state_bytes.len() >= 8 {
-			i64::from_le_bytes(state_bytes[0..8].try_into().unwrap())
-		} else {
-			0
-		}
-	}
-
-	fn set_counter_value<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		value: i64,
-	) -> crate::Result<()> {
-		let empty_key = EncodedKey::new(Vec::new());
-		self.set(txn, &empty_key, EncodedRow(CowVec::new(value.to_le_bytes().to_vec())))
-	}
-}
-
 impl<T: Transaction> Operator<T> for CounterOperator {
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
+		_evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
 		let mut output = Vec::new();
 
@@ -63,19 +40,20 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 					rows: row_ids,
 					post: after,
 				} => {
-					// Get current counter value
-					let mut current = self.get_counter_value(txn);
-
-					// Generate counter values for each row
+					// Update counter using row-based state
 					let row_count = after.row_count();
 					let mut values = Vec::with_capacity(row_count);
-					for _ in 0..row_count {
-						current += self.increment;
-						values.push(current);
-					}
 
-					// Save updated counter
-					self.set_counter_value(txn, current)?;
+					// Update state and generate counter values
+					self.update_state(txn, |layout, row| {
+						let mut current = layout.get_i64(row, 0);
+						for _ in 0..row_count {
+							current += self.increment;
+							values.push(current);
+						}
+						layout.set_i64(row, 0, current);
+						Ok(())
+					})?;
 
 					// Build output with counter column
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
@@ -98,18 +76,20 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 					pre: before,
 					post: after,
 				} => {
-					// For updates, continue incrementing
-					// the counter
-					let mut current = self.get_counter_value(txn);
-
+					// For updates, continue incrementing the counter
 					let row_count = after.row_count();
 					let mut values = Vec::with_capacity(row_count);
-					for _ in 0..row_count {
-						current += self.increment;
-						values.push(current);
-					}
 
-					self.set_counter_value(txn, current)?;
+					// Update state and generate counter values
+					self.update_state(txn, |layout, row| {
+						let mut current = layout.get_i64(row, 0);
+						for _ in 0..row_count {
+							current += self.increment;
+							values.push(current);
+						}
+						layout.set_i64(row, 0, current);
+						Ok(())
+					})?;
 
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
 					all_columns.push(Column::ColumnQualified(ColumnQualified {
@@ -142,6 +122,14 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 impl<T: Transaction> TransformOperator<T> for CounterOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
+	}
+}
+
+impl<T: Transaction> SingleStateful<T> for CounterOperator {
+	fn layout(&self) -> EncodedRowLayout {
+		// Counter state: [count: Int8]
+		static SCHEMA: &[Type] = &[Type::Int8];
+		EncodedRowLayout::new(SCHEMA)
 	}
 }
 

@@ -17,3 +17,7 @@ reifydb-type = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+reifydb-storage = { workspace = true}
+reifydb-transaction = { workspace = true}

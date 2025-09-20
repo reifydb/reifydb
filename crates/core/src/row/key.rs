@@ -2,7 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	collections::Bound,
+	collections::{
+		Bound,
+		Bound::{Excluded, Included, Unbounded},
+	},
 	ops::{Deref, RangeBounds},
 };
 
@@ -64,6 +67,49 @@ impl EncodedKeyRange {
 			start,
 			end,
 		}
+	}
+
+	pub fn with_prefix(&self, prefix: EncodedKey) -> Self {
+		let start = match self.start_bound() {
+			Included(key) => {
+				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
+				prefixed.extend_from_slice(prefix.as_ref());
+				prefixed.extend_from_slice(key.as_ref());
+				Included(EncodedKey::new(prefixed))
+			}
+			Excluded(key) => {
+				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
+				prefixed.extend_from_slice(prefix.as_ref());
+				prefixed.extend_from_slice(key.as_ref());
+				Excluded(EncodedKey::new(prefixed))
+			}
+			Unbounded => Included(prefix.clone()),
+		};
+
+		let end = match self.end_bound() {
+			Included(key) => {
+				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
+				prefixed.extend_from_slice(prefix.as_ref());
+				prefixed.extend_from_slice(key.as_ref());
+				Included(EncodedKey::new(prefixed))
+			}
+			Excluded(key) => {
+				let mut prefixed = Vec::with_capacity(prefix.len() + key.len());
+				prefixed.extend_from_slice(prefix.as_ref());
+				prefixed.extend_from_slice(key.as_ref());
+				Excluded(EncodedKey::new(prefixed))
+			}
+			Unbounded => match prefix.as_ref().iter().rposition(|&b| b != 0xff) {
+				Some(i) => {
+					let mut next_prefix = prefix.as_ref()[..=i].to_vec();
+					next_prefix[i] += 1;
+					Excluded(EncodedKey::new(next_prefix))
+				}
+				None => Unbounded,
+			},
+		};
+
+		EncodedKeyRange::new(start, end)
 	}
 
 	/// Constructs a key range from an optional inclusive start key to an

@@ -70,26 +70,10 @@ impl FlowNodeStateKey {
 		}
 	}
 
-	pub fn full_scan() -> EncodedKeyRange {
-		EncodedKeyRange::start_end(Some(Self::operator_state_start()), Some(Self::operator_state_end()))
-	}
-
 	/// Create a range for scanning all entries of a specific node
 	pub fn node_range(node: FlowNodeId) -> EncodedKeyRange {
 		let range = FlowNodeStateKeyRange::new(node);
 		EncodedKeyRange::start_end(range.start(), range.end())
-	}
-
-	fn operator_state_start() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8);
-		serializer.to_encoded_key()
-	}
-
-	fn operator_state_end() -> EncodedKey {
-		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8 + 1);
-		serializer.to_encoded_key()
 	}
 }
 
@@ -142,9 +126,8 @@ impl EncodableKeyRange for FlowNodeStateKeyRange {
 	}
 
 	fn end(&self) -> Option<EncodedKey> {
-		let next_node = FlowNodeId(self.node.0 + 1);
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(next_node.0);
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(self.node.0.wrapping_sub(1));
 		Some(serializer.to_encoded_key())
 	}
 
@@ -272,7 +255,7 @@ mod tests {
 		// Test end key
 		let end = range.end().unwrap();
 		let decoded_end = FlowNodeStateKey::decode(&end).unwrap();
-		assert_eq!(decoded_end.node.0, 43); // Should be node + 1
+		assert_eq!(decoded_end.node.0, 41); // Should be node - 1
 		assert_eq!(decoded_end.key, Vec::<u8>::new());
 	}
 
@@ -291,7 +274,7 @@ mod tests {
 		assert_eq!(start_decoded.unwrap().node, node);
 
 		assert!(end_decoded.is_some());
-		assert_eq!(end_decoded.unwrap().node.0, 101);
+		assert_eq!(end_decoded.unwrap().node.0, 99);
 	}
 
 	#[test]
@@ -308,6 +291,6 @@ mod tests {
 		assert_eq!(start_range.unwrap().node, node);
 
 		assert!(end_range.is_some());
-		assert_eq!(end_range.unwrap().node.0, 556);
+		assert_eq!(end_range.unwrap().node.0, 554);
 	}
 }
