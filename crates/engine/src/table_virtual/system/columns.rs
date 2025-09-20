@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::{TableVirtualDef, Transaction},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
+use reifydb_type::Fragment;
 
 use crate::{
 	StandardTransaction,
@@ -39,7 +40,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnsTable<T> {
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch<'a>>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -69,31 +70,31 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnsTable<T> {
 
 		let columns = vec![
 			Column::ColumnQualified(ColumnQualified {
-				name: "id".to_string(),
+				name: Fragment::owned_internal("id"),
 				data: ColumnData::uint8(column_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "source_id".to_string(),
+				name: Fragment::owned_internal("source_id"),
 				data: ColumnData::uint8(source_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "source_type".to_string(),
+				name: Fragment::owned_internal("source_type"),
 				data: ColumnData::uint1(store_types),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "name".to_string(),
+				name: Fragment::owned_internal("name"),
 				data: ColumnData::utf8(column_names),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "type".to_string(),
+				name: Fragment::owned_internal("type"),
 				data: ColumnData::uint1(column_types),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "position".to_string(),
+				name: Fragment::owned_internal("position"),
 				data: ColumnData::uint2(positions),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "auto_increment".to_string(),
+				name: Fragment::owned_internal("auto_increment"),
 				data: ColumnData::bool(auto_increments),
 			}),
 		];

@@ -4,7 +4,7 @@
 use super::{OwnedFragment, StatementColumn, StatementLine};
 
 /// Borrowed fragment - zero-copy for parsing
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum BorrowedFragment<'a> {
 	/// No fragment information available
 	None,

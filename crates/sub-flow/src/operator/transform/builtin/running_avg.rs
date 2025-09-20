@@ -114,7 +114,7 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 					// Build output
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
 					all_columns.push(Column::ColumnQualified(ColumnQualified {
-						name: self.column_name.clone(),
+						name: reifydb_type::Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Float8(NumberContainer::from_vec(avgs)),
 					}));
 					let output_columns = Columns::new(all_columns);

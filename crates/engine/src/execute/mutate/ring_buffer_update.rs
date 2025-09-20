@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_type::{
-	IntoFragment, ROW_NUMBER_COLUMN_NAME, Type, Value,
+	Fragment, IntoFragment, ROW_NUMBER_COLUMN_NAME, Type, Value,
 	diagnostic::{catalog::ring_buffer_not_found, engine},
 	return_error,
 };
@@ -24,12 +24,12 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn update_ring_buffer<T: Transaction>(
+	pub(crate) fn update_ring_buffer<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: UpdateRingBufferNode,
+		plan: UpdateRingBufferNode<'a>,
 		params: Params,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		let namespace_name = plan.target.namespace().name();
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
@@ -53,7 +53,7 @@ impl Executor {
 		// Create execution context
 		let context = ExecutionContext {
 			functions: self.functions.clone(),
-			table: None, // Ring buffers don't have a table def
+			source: None, // Ring buffers don't have a table def
 			batch_size: 1024,
 			preserve_row_numbers: true,
 			params: params.clone(),
@@ -119,9 +119,15 @@ impl Executor {
 							value,
 							rb_column.constraint.get_type(),
 							ColumnDescriptor::new()
-								.with_namespace(&namespace.name)
-								.with_table(&ring_buffer.name) // Using ring buffer name as "table"
-								.with_column(&rb_column.name)
+								.with_namespace(Fragment::borrowed_internal(
+									&namespace.name,
+								))
+								.with_table(Fragment::borrowed_internal(
+									&ring_buffer.name,
+								))
+								.with_column(Fragment::borrowed_internal(
+									&rb_column.name,
+								))
 								.with_column_type(rb_column.constraint.get_type())
 								.with_policies(policies),
 							&context,

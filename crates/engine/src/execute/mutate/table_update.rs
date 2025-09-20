@@ -15,7 +15,7 @@ use reifydb_core::{
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
 use reifydb_type::{
-	ROW_NUMBER_COLUMN_NAME, Type, Value,
+	Fragment, ROW_NUMBER_COLUMN_NAME, Type, Value,
 	diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
@@ -33,12 +33,12 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn update<T: Transaction>(
+	pub(crate) fn update_table<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: UpdateTableNode,
+		plan: UpdateTableNode<'a>,
 		params: Params,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		// Get table from plan or infer from input pipeline
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
@@ -66,7 +66,7 @@ impl Executor {
 		// Create execution context
 		let context = ExecutionContext {
 			functions: self.functions.clone(),
-			table: Some(table.clone()),
+			source: Some(table.clone()),
 			batch_size: 1024,
 			preserve_row_numbers: true,
 			params: params.clone(),
@@ -141,9 +141,13 @@ impl Executor {
 							value,
 							table_column.constraint.get_type(),
 							ColumnDescriptor::new()
-								.with_namespace(&namespace.name)
-								.with_table(&table.name)
-								.with_column(&table_column.name)
+								.with_namespace(Fragment::borrowed_internal(
+									&namespace.name,
+								))
+								.with_table(Fragment::borrowed_internal(&table.name))
+								.with_column(Fragment::borrowed_internal(
+									&table_column.name,
+								))
 								.with_column_type(table_column.constraint.get_type())
 								.with_policies(policies),
 							&context,

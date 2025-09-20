@@ -40,7 +40,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 
 		let mut columns_opt: Option<Columns> = None;
@@ -107,7 +107,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		self.input.layout()
 	}
 }

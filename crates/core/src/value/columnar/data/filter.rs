@@ -6,7 +6,7 @@ use crate::{
 	value::columnar::{Column, ColumnData},
 };
 
-impl Column {
+impl<'a> Column<'a> {
 	pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
 		self.data_mut().filter(mask)
 	}

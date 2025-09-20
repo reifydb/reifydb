@@ -11,11 +11,11 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_namespace<T: Transaction>(
+	pub(crate) fn create_namespace<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateNamespaceNode,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		// Check if namespace already exists using the transaction's
 		// catalog operations
 		if let Some(_) = txn.find_namespace_by_name(plan.namespace.as_borrowed())? {
@@ -48,6 +48,7 @@ mod tests {
 
 	#[test]
 	fn test_create_namespace() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
 		let mut plan = CreateNamespaceNode {
@@ -56,7 +57,7 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateNamespace(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
@@ -65,7 +66,7 @@ mod tests {
 		// Creating the same namespace again with `if_not_exists = true`
 		// should not error
 		plan.if_not_exists = true;
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateNamespace(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
@@ -74,7 +75,7 @@ mod tests {
 		// Creating the same namespace again with `if_not_exists =
 		// false` should return error
 		plan.if_not_exists = false;
-		let err = Executor::testing()
+		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateNamespace(plan), Params::default())
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");

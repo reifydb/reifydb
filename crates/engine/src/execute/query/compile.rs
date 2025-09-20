@@ -152,8 +152,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 		}
 
 		PhysicalPlan::RingBufferScan(node) => {
-			let ring_buffer = node.source.def().clone();
-			ExecutionPlan::RingBufferScan(RingBufferScan::new(ring_buffer, context).unwrap())
+			ExecutionPlan::RingBufferScan(RingBufferScan::new(node.source.clone(), context).unwrap())
 		}
 
 		PhysicalPlan::TableVirtualScan(node) => {

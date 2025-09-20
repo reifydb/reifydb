@@ -1,11 +1,15 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
-	interface::{EvaluationContext, Evaluator, Params, Transaction, expression::Expression},
-	value::columnar::Columns,
+	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
+	value::columnar::{Column, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
+use reifydb_type::Params;
 
 use crate::operator::Operator;
+
+// Static empty params instance for use in EvaluationContext
+static EMPTY_PARAMS: Params = Params::None;
 
 pub struct MapOperator {
 	expressions: Vec<Expression<'static>>,
@@ -78,28 +82,44 @@ impl<T: Transaction> Operator<T> for MapOperator {
 }
 
 impl MapOperator {
-	fn project(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns> {
+	fn project(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns<'static>> {
 		if columns.is_empty() {
-			return Ok(columns.clone());
+			// Return empty static columns
+			return Ok(Columns::new(Vec::new()));
 		}
 
 		let row_count = columns.row_count();
 
-		let empty_params = Params::None;
 		let eval_ctx = EvaluationContext {
 			target_column: None,
 			column_policies: Vec::new(),
 			columns: columns.clone(),
 			row_count,
 			take: None,
-			params: &empty_params,
+			params: &EMPTY_PARAMS,
 		};
 
 		let mut projected_columns = Vec::new();
 
 		for expr in &self.expressions {
 			let column = evaluator.evaluate(&eval_ctx, expr)?;
-			projected_columns.push(column);
+			// Convert to owned/static column
+			let static_col = match column {
+				Column::SourceQualified(sq) => {
+					Column::SourceQualified(reifydb_core::value::columnar::SourceQualified {
+						source: sq.source.to_static(),
+						name: sq.name.to_static(),
+						data: sq.data,
+					})
+				}
+				Column::ColumnQualified(cq) => {
+					Column::ColumnQualified(reifydb_core::value::columnar::ColumnQualified {
+						name: cq.name.to_static(),
+						data: cq.data,
+					})
+				}
+			};
+			projected_columns.push(static_col);
 		}
 
 		Ok(Columns::new(projected_columns))

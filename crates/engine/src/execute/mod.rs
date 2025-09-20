@@ -49,30 +49,30 @@ pub(crate) trait QueryNode<'a, T: Transaction> {
 
 	/// Get the next batch of results (volcano iterator pattern)
 	/// Returns None when exhausted
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>>;
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>>;
 
 	/// Get the layout of columns this node produces
-	fn layout(&self) -> Option<ColumnsLayout>;
+	fn layout(&self) -> Option<ColumnsLayout<'a>>;
 }
 
 #[derive(Clone)]
 pub struct ExecutionContext {
 	pub functions: Functions,
-	pub table: Option<TableDef>, // FIXME should become store
+	pub source: Option<TableDef>, // FIXME should become resolved store
 	pub batch_size: usize,
 	pub preserve_row_numbers: bool,
 	pub params: Params,
 }
 
 #[derive(Debug)]
-pub struct Batch {
-	pub columns: Columns,
+pub struct Batch<'a> {
+	pub columns: Columns<'a>,
 }
 
 pub(crate) enum ExecutionPlan<'a, T: Transaction> {
 	Aggregate(AggregateNode<'a, T>),
 	Filter(FilterNode<'a, T>),
-	IndexScan(IndexScanNode<T>),
+	IndexScan(IndexScanNode<'a, T>),
 	InlineData(InlineDataNode<'a, T>),
 	InnerJoin(InnerJoinNode<'a, T>),
 	LeftJoin(LeftJoinNode<'a, T>),
@@ -86,7 +86,7 @@ pub(crate) enum ExecutionPlan<'a, T: Transaction> {
 	Take(TakeNode<'a, T>),
 	ViewScan(ViewScanNode<'a, T>),
 	VirtualScan(VirtualScanNode<'a, T>),
-	RingBufferScan(RingBufferScan<T>),
+	RingBufferScan(RingBufferScan<'a, T>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -95,11 +95,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
 		(**self).initialize(rx, ctx)
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		(**self).next(rx)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		(**self).layout()
 	}
 }
@@ -127,7 +127,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 		}
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(rx),
 			ExecutionPlan::Filter(node) => node.next(rx),
@@ -149,7 +149,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 		}
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.layout(),
 			ExecutionPlan::Filter(node) => node.layout(),
@@ -205,11 +205,11 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>> for Executor 
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement)? {
 				let er = self.execute_command_plan(txn, plan, cmd.params.clone())?;
-				result.push(er);
+				result.push(Frame::from(er));
 			}
 		}
 
-		Ok(result.into_iter().map(Frame::from).collect())
+		Ok(result)
 	}
 }
 
@@ -221,23 +221,23 @@ impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>> for Executor {
 		for statement in statements {
 			if let Some(plan) = plan(txn, statement)? {
 				let er = self.execute_query_plan(txn, plan, qry.params.clone())?;
-				result.push(er);
+				result.push(Frame::from(er));
 			}
 		}
 
-		Ok(result.into_iter().map(Frame::from).collect())
+		Ok(result)
 	}
 }
 
 impl<T: Transaction> Execute<StandardCommandTransaction<T>, StandardQueryTransaction<T>> for Executor {}
 
 impl Executor {
-	pub(crate) fn execute_query_plan<T: Transaction>(
+	pub(crate) fn execute_query_plan<'a, T: Transaction>(
 		&self,
-		rx: &mut StandardQueryTransaction<T>,
-		plan: PhysicalPlan,
+		rx: &'a mut StandardQueryTransaction<T>,
+		plan: PhysicalPlan<'a>,
 		params: Params,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		match plan {
 			// Query
 			PhysicalPlan::Aggregate(_)
@@ -284,12 +284,12 @@ impl Executor {
 		}
 	}
 
-	pub fn execute_command_plan<T: Transaction>(
+	pub fn execute_command_plan<'a, T: Transaction>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		plan: PhysicalPlan,
+		txn: &'a mut StandardCommandTransaction<T>,
+		plan: PhysicalPlan<'a>,
 		params: Params,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		match plan {
 			PhysicalPlan::AlterSequence(plan) => self.alter_table_sequence(txn, plan),
 			PhysicalPlan::CreateDeferredView(plan) => self.create_deferred_view(txn, plan),
@@ -301,7 +301,7 @@ impl Executor {
 			PhysicalPlan::DeleteRingBuffer(plan) => self.delete_ring_buffer(txn, plan, params),
 			PhysicalPlan::InsertTable(plan) => self.insert_table(txn, plan, params),
 			PhysicalPlan::InsertRingBuffer(plan) => self.insert_ring_buffer(txn, plan, params),
-			PhysicalPlan::Update(plan) => self.update(txn, plan, params),
+			PhysicalPlan::Update(plan) => self.update_table(txn, plan, params),
 			PhysicalPlan::UpdateRingBuffer(plan) => self.update_ring_buffer(txn, plan, params),
 
 			PhysicalPlan::Aggregate(_)
@@ -338,7 +338,7 @@ impl Executor {
 		rx: &mut StandardTransaction<'a, T>,
 		plan: PhysicalPlan<'a>,
 		params: Params,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		match plan {
 			// PhysicalPlan::Describe { plan } => {
 			//     // FIXME evaluating the entire columns is quite
@@ -351,7 +351,7 @@ impl Executor {
 			_ => {
 				let context = Arc::new(ExecutionContext {
 					functions: self.functions.clone(),
-					table: None,
+					source: None,
 					batch_size: 1024,
 					preserve_row_numbers: false,
 					params: params.clone(),
@@ -386,7 +386,7 @@ impl Executor {
 				} else {
 					// empty columns - reconstruct table,
 					// for better UX
-					let columns: Vec<Column> = node
+					let columns: Vec<Column<'a>> = node
 						.layout()
 						.unwrap_or(ColumnsLayout {
 							columns: vec![],

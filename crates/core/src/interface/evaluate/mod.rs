@@ -21,7 +21,7 @@ use crate::{
 pub struct EvaluationContext<'a> {
 	pub target_column: Option<ColumnDescriptor<'a>>,
 	pub column_policies: Vec<ColumnPolicyKind>,
-	pub columns: Columns,
+	pub columns: Columns<'a>,
 	pub row_count: usize,
 	pub take: Option<usize>,
 	pub params: &'a Params,
@@ -57,5 +57,5 @@ impl<'a> EvaluationContext<'a> {
 }
 
 pub trait Evaluator: Send + Sync + 'static {
-	fn evaluate(&self, ctx: &EvaluationContext, expr: &Expression) -> crate::Result<Column>;
+	fn evaluate<'a>(&self, ctx: &EvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Column<'a>>;
 }

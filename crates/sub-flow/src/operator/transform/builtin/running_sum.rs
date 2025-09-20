@@ -13,7 +13,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-use reifydb_type::Params;
+use reifydb_type::{Fragment, Params};
 
 use crate::operator::{
 	Operator,
@@ -107,7 +107,7 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 					// Build output
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
 					all_columns.push(Column::ColumnQualified(ColumnQualified {
-						name: self.column_name.clone(),
+						name: Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Float8(NumberContainer::from_vec(sums)),
 					}));
 					let output_columns = Columns::new(all_columns);
@@ -177,7 +177,7 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 					// Build output
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
 					all_columns.push(Column::ColumnQualified(ColumnQualified {
-						name: self.column_name.clone(),
+						name: Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Float8(NumberContainer::from_vec(sums)),
 					}));
 					let output_columns = Columns::new(all_columns);

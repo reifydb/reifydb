@@ -9,7 +9,7 @@ pub mod math;
 mod registry;
 
 pub struct ScalarFunctionContext<'a> {
-	pub columns: &'a Columns,
+	pub columns: &'a Columns<'a>,
 	pub row_count: usize,
 }
 
@@ -18,7 +18,7 @@ pub trait ScalarFunction: Send + Sync {
 }
 
 pub struct AggregateFunctionContext<'a> {
-	pub column: &'a Column,
+	pub column: &'a Column<'a>,
 	pub groups: &'a GroupByView,
 }
 

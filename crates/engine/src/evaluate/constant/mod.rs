@@ -24,20 +24,24 @@ use text::TextParser;
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
-	pub(crate) fn constant(&self, ctx: &EvaluationContext, expr: &ConstantExpression) -> crate::Result<Column> {
+	pub(crate) fn constant<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		expr: &ConstantExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: expr.full_fragment_owned().fragment().into(),
+			name: expr.full_fragment_owned(),
 			data: Self::constant_value(&expr, row_count)?,
 		}))
 	}
 
-	pub(crate) fn constant_of(
+	pub(crate) fn constant_of<'a>(
 		&self,
 		ctx: &EvaluationContext,
-		expr: &ConstantExpression,
+		expr: &ConstantExpression<'a>,
 		target: Type,
-	) -> crate::Result<Column> {
+	) -> crate::Result<Column<'a>> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
 		let data = Self::constant_value(&expr, row_count)?;
 		let casted = {
@@ -49,7 +53,7 @@ impl StandardEvaluator {
 			}
 		};
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: expr.full_fragment_owned().fragment().into(),
+			name: expr.full_fragment_owned(),
 			data: casted,
 		}))
 	}

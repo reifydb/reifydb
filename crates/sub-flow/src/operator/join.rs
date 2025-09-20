@@ -4,26 +4,26 @@
 use std::collections::HashMap;
 
 use reifydb_core::{
-    flow::{FlowChange, FlowDiff, FlowNodeDef}, interface::{
-        evaluate::expression::{ColumnExpression, Expression}, EvaluationContext, Evaluator, FlowNodeId, Params, SourceId,
-        Transaction,
-    }, row::EncodedRow,
-    util::CowVec,
-    value::columnar::{Column, ColumnData, Columns, SourceQualified},
-    EncodedKey,
-    EncodedKeyRange,
-    JoinType,
+	EncodedKey, EncodedKeyRange, JoinType,
+	flow::{FlowChange, FlowDiff, FlowNodeDef},
+	interface::{
+		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId, Transaction,
+		evaluate::expression::{ColumnExpression, Expression},
+	},
+	row::EncodedRow,
+	util::CowVec,
+	value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-use reifydb_type::{RowNumber, Value};
+use reifydb_type::{Fragment, RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    operator::{
-        transform::{stateful::RawStatefulOperator, TransformOperator},
-        Operator,
-    },
-    Result,
+	Result,
+	operator::{
+		Operator,
+		transform::{TransformOperator, stateful::RawStatefulOperator},
+	},
 };
 
 // Stored row data for join state
@@ -178,9 +178,9 @@ impl JoinOperator {
 	// Hash join keys for efficient lookup
 	fn hash_join_keys(keys: &[Value]) -> u64 {
 		use std::{
-            collections::hash_map::DefaultHasher,
-            hash::{Hash, Hasher},
-        };
+			collections::hash_map::DefaultHasher,
+			hash::{Hash, Hasher},
+		};
 
 		let mut hasher = DefaultHasher::new();
 		for key in keys {
@@ -204,10 +204,10 @@ impl JoinOperator {
 		let source_name = if let Some(first_col) = columns.first() {
 			match first_col {
 				Column::SourceQualified(sq) => sq.source.clone(),
-				_ => "unknown".to_string(),
+				_ => Fragment::owned_internal("unknown"),
 			}
 		} else {
-			"unknown".to_string()
+			Fragment::owned_internal("unknown")
 		};
 
 		// Check if we already have this row stored
@@ -228,14 +228,14 @@ impl JoinOperator {
 
 		// Add/update with new column values
 		for column in columns.iter() {
-			let name = column.name().to_string();
+			let name = column.name().text().to_string();
 			let value = column.data().get_value(row_idx);
 			column_values.insert(name, value);
 		}
 
 		let stored_row = StoredRow {
 			row_id,
-			source_name,
+			source_name: source_name.text().to_string(),
 			columns: column_values,
 		};
 
@@ -337,7 +337,7 @@ impl JoinOperator {
 							if let Some(first_col) = columns.first() {
 								metadata.left_source = match first_col {
 									Column::SourceQualified(sq) => {
-										sq.source.clone()
+										sq.source.text().to_string()
 									}
 									_ => "unknown".to_string(),
 								};
@@ -346,7 +346,7 @@ impl JoinOperator {
 							if let Some(first_col) = columns.first() {
 								metadata.right_source = match first_col {
 									Column::SourceQualified(sq) => {
-										sq.source.clone()
+										sq.source.text().to_string()
 									}
 									_ => "unknown".to_string(),
 								};
@@ -369,15 +369,16 @@ impl JoinOperator {
 		let source_name = if let Some(first_col) = columns.first() {
 			match first_col {
 				Column::SourceQualified(sq) => sq.source.clone(),
-				_ => "unknown".to_string(),
+				_ => Fragment::owned_internal("unknown"),
 			}
 		} else {
-			"unknown".to_string()
+			Fragment::owned_internal("unknown")
 		};
 
 		// Determine if this node should be left or right based on
 		// namespaces Check if the source matches the right namespace
-		let is_right_source = right_schema.source_name.as_ref().map(|s| s == &source_name).unwrap_or(false);
+		let is_right_source =
+			right_schema.source_name.as_ref().map(|s| s == source_name.text()).unwrap_or(false);
 
 		let is_left = !is_right_source;
 
@@ -394,10 +395,10 @@ impl JoinOperator {
 		let metadata = if is_left {
 			JoinMetadata {
 				join_instance_id: self.join_instance_id,
-				left_source: source_name.clone(),
+				left_source: source_name.text().to_string(),
 				right_source: right_schema.source_name.clone().unwrap_or_default(),
 				initialized: false,
-				left_columns: columns.iter().map(|c| c.name().to_string()).collect(),
+				left_columns: columns.iter().map(|c| c.name().text().to_string()).collect(),
 				right_columns: right_schema.columns.iter().map(|c| c.name.clone()).collect(),
 				left_instance_suffix: None,
 				right_instance_suffix: None,
@@ -407,10 +408,10 @@ impl JoinOperator {
 			JoinMetadata {
 				join_instance_id: self.join_instance_id,
 				left_source: left_schema.source_name.clone().unwrap_or_default(),
-				right_source: source_name.clone(),
+				right_source: source_name.text().to_string(),
 				initialized: false,
 				left_columns: left_schema.columns.iter().map(|c| c.name.clone()).collect(),
-				right_columns: columns.iter().map(|c| c.name().to_string()).collect(),
+				right_columns: columns.iter().map(|c| c.name().text().to_string()).collect(),
 				left_instance_suffix: None,
 				right_instance_suffix: None,
 				initialized_nodes,
@@ -438,10 +439,10 @@ impl JoinOperator {
 		let source_name = if let Some(first_col) = columns.first() {
 			match first_col {
 				Column::SourceQualified(sq) => sq.source.clone(),
-				_ => "unknown".to_string(),
+				_ => Fragment::owned_internal("unknown"),
 			}
 		} else {
-			"unknown".to_string()
+			Fragment::owned_internal("unknown")
 		};
 
 		// Try to get existing metadata
@@ -451,7 +452,7 @@ impl JoinOperator {
 				if let Ok(metadata) = serde_json::from_slice::<JoinMetadata>(data.as_ref()) {
 					// Determine if this is the left or right source using column names
 					let column_names: Vec<String> =
-						columns.iter().map(|c| c.name().to_string()).collect();
+						columns.iter().map(|c| c.name().text().to_string()).collect();
 
 					// Check which side has more matching columns
 					let left_matches = metadata
@@ -482,7 +483,7 @@ impl JoinOperator {
 
 		// Initialize metadata - determine if this is left or right using column matching
 		// Compare incoming columns with schema columns to determine which side
-		let column_names: Vec<String> = columns.iter().map(|c| c.name().to_string()).collect();
+		let column_names: Vec<String> = columns.iter().map(|c| c.name().text().to_string()).collect();
 
 		// Count matching columns with each schema
 		let left_schema_matches =
@@ -497,17 +498,17 @@ impl JoinOperator {
 			false
 		} else {
 			// If column matching is ambiguous, fall back to source name matching
-			left_schema.source_name.as_ref().map(|s| s == &source_name).unwrap_or(true)
+			left_schema.source_name.as_ref().map(|s| s == source_name.text()).unwrap_or(true)
 		};
 
 		let metadata = if is_left {
 			// This is the left source
 			JoinMetadata {
 				join_instance_id: self.join_instance_id,
-				left_source: source_name.clone(),
+				left_source: source_name.text().to_string(),
 				right_source: right_schema.source_name.clone().unwrap_or_default(),
 				initialized: false,
-				left_columns: columns.iter().map(|c| c.name().to_string()).collect(),
+				left_columns: columns.iter().map(|c| c.name().text().to_string()).collect(),
 				right_columns: right_schema.columns.iter().map(|c| c.name.clone()).collect(),
 				left_instance_suffix: None,
 				right_instance_suffix: None,
@@ -518,10 +519,10 @@ impl JoinOperator {
 			JoinMetadata {
 				join_instance_id: self.join_instance_id,
 				left_source: left_schema.source_name.clone().unwrap_or_default(),
-				right_source: source_name.clone(),
+				right_source: source_name.text().to_string(),
 				initialized: false,
 				left_columns: left_schema.columns.iter().map(|c| c.name.clone()).collect(),
-				right_columns: columns.iter().map(|c| c.name().to_string()).collect(),
+				right_columns: columns.iter().map(|c| c.name().text().to_string()).collect(),
 				left_instance_suffix: None,
 				right_instance_suffix: None,
 				initialized_nodes: std::collections::HashMap::new(),
@@ -545,7 +546,7 @@ impl JoinOperator {
 			// Extract source name from columns
 			let source_name = if let Some(first_col) = columns.first() {
 				match first_col {
-					Column::SourceQualified(sq) => sq.source.clone(),
+					Column::SourceQualified(sq) => sq.source.text().to_string(),
 					_ => "unknown".to_string(),
 				}
 			} else {
@@ -553,7 +554,7 @@ impl JoinOperator {
 			};
 
 			metadata.right_source = source_name;
-			metadata.right_columns = columns.iter().map(|c| c.name().to_string()).collect();
+			metadata.right_columns = columns.iter().map(|c| c.name().text().to_string()).collect();
 			metadata.initialized = true;
 
 			// Use a special key for metadata (empty key)
@@ -587,22 +588,22 @@ impl JoinOperator {
 				(&self.left_schema.namespace_name, &self.left_schema.source_name)
 			{
 				column_vec.push(Column::SourceQualified(SourceQualified {
-					source: source.clone(),
-					name: column_def.name.clone(),
+					source: Fragment::owned_internal(source.clone()),
+					name: Fragment::owned_internal(column_def.name.clone()),
 					data,
 				}));
 			} else if let Some(source) = &self.left_schema.source_name {
 				// Fallback to source qualified
 				column_vec.push(Column::SourceQualified(SourceQualified {
-					source: source.clone(),
-					name: column_def.name.clone(),
+					source: Fragment::owned_internal(source.clone()),
+					name: Fragment::owned_internal(column_def.name.clone()),
 					data,
 				}));
 			} else {
 				// Fallback to unqualified (shouldn't happen)
 				column_vec.push(Column::SourceQualified(SourceQualified {
-					source: "unknown".to_string(),
-					name: column_def.name.clone(),
+					source: Fragment::owned_internal("unknown".to_string()),
+					name: Fragment::owned_internal(column_def.name.clone()),
 					data,
 				}));
 			}
@@ -627,23 +628,23 @@ impl JoinOperator {
 					(&self.right_schema.namespace_name, &self.right_schema.source_name)
 				{
 					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: source.clone(),
-						name: column_def.name.clone(),
+						source: Fragment::owned_internal(source.clone()),
+						name: Fragment::owned_internal(column_def.name.clone()),
 						data,
 					}));
 				} else if let Some(source) = &self.right_schema.source_name {
 					// Fallback to source qualified
 					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: source.clone(),
-						name: column_def.name.clone(),
+						source: Fragment::owned_internal(source.clone()),
+						name: Fragment::owned_internal(column_def.name.clone()),
 						data,
 					}));
 				} else {
 					// Fallback to unqualified (shouldn't
 					// happen)
 					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: "unknown".to_string(),
-						name: column_def.name.clone(),
+						source: Fragment::owned_internal("unknown".to_string()),
+						name: Fragment::owned_internal(column_def.name.clone()),
 						data,
 					}));
 				}
@@ -656,23 +657,23 @@ impl JoinOperator {
 					(&self.right_schema.namespace_name, &self.right_schema.source_name)
 				{
 					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: source.clone(),
-						name: column_def.name.clone(),
+						source: Fragment::owned_internal(source.clone()),
+						name: Fragment::owned_internal(column_def.name.clone()),
 						data: ColumnData::undefined(1),
 					}));
 				} else if let Some(source) = &self.right_schema.source_name {
 					// Fallback to source qualified
 					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: source.clone(),
-						name: column_def.name.clone(),
+						source: Fragment::owned_internal(source.clone()),
+						name: Fragment::owned_internal(column_def.name.clone()),
 						data: ColumnData::undefined(1),
 					}));
 				} else {
 					// Fallback to unqualified (shouldn't
 					// happen)
 					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: "unknown".to_string(),
-						name: column_def.name.clone(),
+						source: Fragment::owned_internal("unknown".to_string()),
+						name: Fragment::owned_internal(column_def.name.clone()),
 						data: ColumnData::undefined(1),
 					}));
 				}
@@ -689,7 +690,7 @@ impl JoinOperator {
 	}
 
 	// Process an insert operation
-	fn process_insert<T: Transaction>(
+	fn process_insert<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		evaluator: &StandardEvaluator,
@@ -722,17 +723,17 @@ impl JoinOperator {
 				Column::SourceQualified(sq) => sq.source.clone(),
 				_ => {
 					if is_left {
-						metadata.left_source.clone()
+						Fragment::owned_internal(metadata.left_source.clone())
 					} else {
-						metadata.right_source.clone()
+						Fragment::owned_internal(metadata.right_source.clone())
 					}
 				}
 			}
 		} else {
 			if is_left {
-				metadata.left_source.clone()
+				Fragment::owned_internal(metadata.left_source.clone())
 			} else {
-				metadata.right_source.clone()
+				Fragment::owned_internal(metadata.right_source.clone())
 			}
 		};
 
@@ -750,13 +751,13 @@ impl JoinOperator {
 			// Create a StoredRow for the current row
 			let mut current_columns = HashMap::new();
 			for column in after.iter() {
-				let name = column.name().to_string();
+				let name = column.name().text().to_string();
 				let value = column.data().get_value(idx);
 				current_columns.insert(name, value);
 			}
 			let current_row = StoredRow {
 				row_id,
-				source_name: source_name.clone(),
+				source_name: source_name.text().to_string(),
 				columns: current_columns,
 			};
 
@@ -805,7 +806,7 @@ impl JoinOperator {
 	}
 
 	// Process a remove operation
-	fn process_remove<T: Transaction>(
+	fn process_remove<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		evaluator: &StandardEvaluator,
@@ -845,9 +846,25 @@ impl JoinOperator {
 			// Generate removal diffs
 			if is_left {
 				// Left side delete for LEFT JOIN
+				// Convert to owned/static columns
 				let mut column_vec = Vec::new();
 				for column in before.iter() {
-					column_vec.push(column.clone());
+					let static_col = match column {
+						Column::SourceQualified(sq) => {
+							Column::SourceQualified(SourceQualified {
+								source: sq.source.clone().to_static(),
+								name: sq.name.clone().to_static(),
+								data: sq.data.clone(),
+							})
+						}
+						Column::ColumnQualified(cq) => {
+							Column::ColumnQualified(ColumnQualified {
+								name: cq.name.clone().to_static(),
+								data: cq.data.clone(),
+							})
+						}
+					};
+					column_vec.push(static_col);
 				}
 				let columns = Columns::new(column_vec);
 
@@ -873,9 +890,25 @@ impl JoinOperator {
 				for other_row in &other_rows {
 					// We need to generate a removal for the
 					// joined result
+					// Convert to owned/static columns
 					let mut column_vec = Vec::new();
 					for column in before.iter() {
-						column_vec.push(column.clone());
+						let static_col = match column {
+							Column::SourceQualified(sq) => {
+								Column::SourceQualified(SourceQualified {
+									source: sq.source.clone().to_static(),
+									name: sq.name.clone().to_static(),
+									data: sq.data.clone(),
+								})
+							}
+							Column::ColumnQualified(cq) => {
+								Column::ColumnQualified(ColumnQualified {
+									name: cq.name.clone().to_static(),
+									data: cq.data.clone(),
+								})
+							}
+						};
+						column_vec.push(static_col);
 					}
 					let columns = Columns::new(column_vec);
 

@@ -32,7 +32,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
 
 		while let Some(Batch {
@@ -59,7 +59,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		self.input.layout()
 	}
 }

@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::{TableVirtualDef, Transaction},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
+use reifydb_type::Fragment;
 
 use crate::{
 	StandardTransaction,
@@ -39,7 +40,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Namespaces<T> {
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch<'a>>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -55,11 +56,11 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Namespaces<T> {
 
 		let columns = vec![
 			Column::ColumnQualified(ColumnQualified {
-				name: "id".to_string(),
+				name: Fragment::owned_internal("id"),
 				data: ColumnData::uint8(namespace_ids),
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "name".to_string(),
+				name: Fragment::owned_internal("name"),
 				data: ColumnData::utf8(namespace_names),
 			}),
 		];

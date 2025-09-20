@@ -50,7 +50,7 @@ mod tests {
 		columnar::{Column, ColumnQualified, Columns},
 		container::Utf8Container,
 	};
-	use reifydb_type::value::constraint::bytes::MaxBytes;
+	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};
 
 	use super::*;
 	use crate::function::ScalarFunctionContext;
@@ -63,7 +63,7 @@ mod tests {
 		let b64_data = vec!["SGVsbG8h".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -96,7 +96,7 @@ mod tests {
 		let b64_data = vec!["".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -130,7 +130,7 @@ mod tests {
 		let b64_data = vec!["SGVsbG8=".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -164,7 +164,7 @@ mod tests {
 		let b64_data = vec!["QQ==".to_string(), "QkM=".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -202,7 +202,7 @@ mod tests {
 		let b64_data = vec!["QQ==".to_string(), "".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -241,7 +241,7 @@ mod tests {
 		let b64_data = vec!["3q2+7w==".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -274,7 +274,7 @@ mod tests {
 		let b64_data = vec!["invalid@base64!".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -297,7 +297,7 @@ mod tests {
 		let b64_data = vec!["SGVsbG8===".to_string()]; // Too many padding characters
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,

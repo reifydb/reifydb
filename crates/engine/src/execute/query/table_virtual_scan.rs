@@ -4,6 +4,7 @@
 use std::sync::Arc;
 
 use reifydb_core::{interface::Transaction, value::columnar::layout::ColumnsLayout};
+use reifydb_type::Fragment;
 
 use crate::{
 	StandardTransaction,
@@ -14,7 +15,7 @@ use crate::{
 pub(crate) struct VirtualScanNode<'a, T: Transaction> {
 	virtual_table: Box<dyn TableVirtual<'a, T>>,
 	context: Option<Arc<ExecutionContext>>,
-	layout: ColumnsLayout,
+	layout: ColumnsLayout<'a>,
 	table_context: Option<TableVirtualContext<'a>>,
 }
 
@@ -33,7 +34,7 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 				.map(|col| reifydb_core::value::columnar::layout::ColumnLayout {
 					namespace: None,
 					source: None,
-					name: col.name.clone(),
+					name: Fragment::owned_internal(&col.name),
 				})
 				.collect(),
 		};
@@ -56,12 +57,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for VirtualScanNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
 		self.virtual_table.next(rx)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		Some(self.layout.clone())
 	}
 }

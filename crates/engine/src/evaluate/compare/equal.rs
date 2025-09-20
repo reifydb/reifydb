@@ -17,7 +17,11 @@ use reifydb_type::{
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
-	pub(crate) fn equal(&self, ctx: &EvaluationContext, eq: &EqExpression) -> crate::Result<Column> {
+	pub(crate) fn equal<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		eq: &EqExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		let left = self.evaluate(ctx, &eq.left)?;
 		let right = self.evaluate(ctx, &eq.right)?;
 
@@ -1090,9 +1094,8 @@ impl StandardEvaluator {
 				},
 			) => Ok(compare_utf8(l, r, eq.full_fragment_owned())),
 			(ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
-				let fragment = eq.full_fragment_owned();
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: fragment.fragment().into(),
+					name: eq.full_fragment_owned(),
 					data: ColumnData::bool(vec![false; container.len()]),
 				}))
 			}
@@ -1105,7 +1108,12 @@ impl StandardEvaluator {
 	}
 }
 
-fn compare_bool(ctx: &EvaluationContext, l: &BoolContainer, r: &BoolContainer, fragment: Fragment<'_>) -> Column {
+fn compare_bool<'a>(
+	ctx: &EvaluationContext<'a>,
+	l: &BoolContainer,
+	r: &BoolContainer,
+	fragment: Fragment<'_>,
+) -> Column<'a> {
 	debug_assert_eq!(l.len(), r.len());
 
 	if l.is_fully_defined() && r.is_fully_defined() {
@@ -1114,7 +1122,7 @@ fn compare_bool(ctx: &EvaluationContext, l: &BoolContainer, r: &BoolContainer, f
 			l.data().iter().zip(r.data().iter()).map(|(l_val, r_val)| l_val == r_val).collect();
 
 		Column::ColumnQualified(ColumnQualified {
-			name: fragment.fragment().into(),
+			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
 	} else {
@@ -1130,18 +1138,18 @@ fn compare_bool(ctx: &EvaluationContext, l: &BoolContainer, r: &BoolContainer, f
 		}
 
 		Column::ColumnQualified(ColumnQualified {
-			name: fragment.fragment().into(),
+			name: Fragment::owned_internal(fragment.text()),
 			data,
 		})
 	}
 }
 
-fn compare_number<L, R>(
-	ctx: &EvaluationContext,
+fn compare_number<'a, L, R>(
+	ctx: &EvaluationContext<'a>,
 	l: &NumberContainer<L>,
 	r: &NumberContainer<R>,
 	fragment: Fragment<'_>,
-) -> Column
+) -> Column<'a>
 where
 	L: Promote<R> + IsNumber,
 	R: IsNumber,
@@ -1158,7 +1166,7 @@ where
 				.collect();
 
 		Column::ColumnQualified(ColumnQualified {
-			name: fragment.fragment().into(),
+			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
 	} else {
@@ -1174,13 +1182,13 @@ where
 		}
 
 		Column::ColumnQualified(ColumnQualified {
-			name: fragment.fragment().into(),
+			name: Fragment::owned_internal(fragment.text()),
 			data,
 		})
 	}
 }
 
-fn compare_temporal<T>(l: &TemporalContainer<T>, r: &TemporalContainer<T>, fragment: Fragment<'_>) -> Column
+fn compare_temporal<'a, T>(l: &TemporalContainer<T>, r: &TemporalContainer<T>, fragment: Fragment<'_>) -> Column<'a>
 where
 	T: IsTemporal + Copy,
 {
@@ -1195,7 +1203,7 @@ where
 				.collect();
 
 		Column::ColumnQualified(ColumnQualified {
-			name: fragment.fragment().into(),
+			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
 	} else {
@@ -1217,13 +1225,13 @@ where
 		}
 
 		Column::ColumnQualified(ColumnQualified {
-			name: fragment.fragment().into(),
+			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
 		})
 	}
 }
 
-fn compare_utf8(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>) -> Column {
+fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>) -> Column<'a> {
 	debug_assert_eq!(l.len(), r.len());
 
 	if l.is_fully_defined() && r.is_fully_defined() {
@@ -1232,7 +1240,7 @@ fn compare_utf8(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>) ->
 			l.data().iter().zip(r.data().iter()).map(|(l_val, r_val)| l_val == r_val).collect();
 
 		Column::ColumnQualified(ColumnQualified {
-			name: fragment.fragment().into(),
+			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
 	} else {
@@ -1254,7 +1262,7 @@ fn compare_utf8(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>) ->
 		}
 
 		Column::ColumnQualified(ColumnQualified {
-			name: fragment.fragment().into(),
+			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
 		})
 	}

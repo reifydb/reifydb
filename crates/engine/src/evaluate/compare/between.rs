@@ -14,7 +14,11 @@ use reifydb_type::diagnostic::operator::between_cannot_be_applied_to_incompatibl
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
-	pub(crate) fn between(&self, ctx: &EvaluationContext, expr: &BetweenExpression) -> crate::Result<Column> {
+	pub(crate) fn between<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		expr: &BetweenExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		// Create temporary expressions for the comparisons
 		let greater_equal_expr = GreaterThanEqExpression {
 			left: expr.value.clone(),
@@ -68,7 +72,7 @@ impl StandardEvaluator {
 				}
 
 				Ok(Column::ColumnQualified(ColumnQualified {
-					name: expr.fragment.fragment().to_string(),
+					name: expr.fragment.clone(),
 					data: ColumnData::bool_with_bitvec(data, bitvec),
 				}))
 			}

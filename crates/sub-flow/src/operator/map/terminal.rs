@@ -1,16 +1,19 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{
-		EvaluationContext, Evaluator, Params, Transaction, ViewDef,
+		EvaluationContext, Evaluator, Transaction, ViewDef,
 		expression::{CastExpression, Expression, TypeExpression},
 	},
 	log_error,
-	value::columnar::{Column, ColumnQualified, Columns},
+	value::columnar::{Column, ColumnQualified, Columns, SourceQualified},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-use reifydb_type::{Fragment, Type};
+use reifydb_type::{Fragment, Params, Type};
 
 use crate::operator::Operator;
+
+// Static empty params instance for use in EvaluationContext
+static EMPTY_PARAMS: Params = Params::None;
 
 pub struct MapTerminalOperator {
 	expressions: Vec<Expression<'static>>,
@@ -94,21 +97,21 @@ impl<T: Transaction> Operator<T> for MapTerminalOperator {
 }
 
 impl MapTerminalOperator {
-	fn project(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns> {
+	fn project(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns<'static>> {
 		if columns.is_empty() {
-			return Ok(columns.clone());
+			// Return empty static columns
+			return Ok(Columns::new(Vec::new()));
 		}
 
 		let row_count = columns.row_count();
 
-		let empty_params = Params::None;
 		let eval_ctx = EvaluationContext {
 			target_column: None,
 			column_policies: Vec::new(),
 			columns: columns.clone(),
 			row_count,
 			take: None,
-			params: &empty_params,
+			params: &EMPTY_PARAMS,
 		};
 
 		let mut projected_columns = Vec::new();
@@ -144,7 +147,7 @@ impl MapTerminalOperator {
 						let undefined_data =
 							reifydb_core::value::columnar::ColumnData::undefined(row_count);
 						Column::ColumnQualified(ColumnQualified {
-							name: view_column.name.clone(),
+							name: Fragment::owned_internal(view_column.name.clone()),
 							data: undefined_data,
 						})
 					}
@@ -177,7 +180,7 @@ impl MapTerminalOperator {
 					// Create a properly named
 					// column
 					Column::ColumnQualified(ColumnQualified {
-						name: view_column.name.clone(),
+						name: Fragment::owned_internal(view_column.name.clone()),
 						data: casted.data().clone(),
 					})
 				} else {
@@ -185,7 +188,7 @@ impl MapTerminalOperator {
 					// undefined, just rename if
 					// needed
 					Column::ColumnQualified(ColumnQualified {
-						name: view_column.name.clone(),
+						name: Fragment::owned_internal(view_column.name.clone()),
 						data: result.data().clone(),
 					})
 				}
@@ -194,7 +197,21 @@ impl MapTerminalOperator {
 				// (shouldn't happen for terminal
 				// operator) but we handle it
 				// gracefully
-				evaluator.evaluate(&eval_ctx, expr)?
+				let result = evaluator.evaluate(&eval_ctx, expr)?;
+				// Convert to owned/static column
+				match result {
+					Column::SourceQualified(sq) => Column::SourceQualified(
+						reifydb_core::value::columnar::SourceQualified {
+							source: sq.source.to_static(),
+							name: sq.name.to_static(),
+							data: sq.data,
+						},
+					),
+					Column::ColumnQualified(cq) => Column::ColumnQualified(ColumnQualified {
+						name: cq.name.to_static(),
+						data: cq.data,
+					}),
+				}
 			};
 
 			projected_columns.push(column);

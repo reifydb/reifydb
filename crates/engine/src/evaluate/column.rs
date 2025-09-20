@@ -17,7 +17,11 @@ use reifydb_type::{
 use crate::StandardEvaluator;
 
 impl StandardEvaluator {
-	pub(crate) fn column(&self, ctx: &EvaluationContext, column: &ColumnExpression) -> crate::Result<Column> {
+	pub(crate) fn column<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		column: &ColumnExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		// Get the column name from the ColumnIdentifier
 		let name = column.0.name.text().to_string();
 
@@ -27,17 +31,15 @@ impl StandardEvaluator {
 		match parts.len() {
 			3 => {
 				// Fully qualified: namespace.table.column
-				let namespace = parts[0];
+				let _namespace = parts[0];
 				let table = parts[1];
 				let col_name = parts[2];
 
 				// Find column matching all three parts
 				let matching_col = ctx.columns.iter().find(|c| {
-					c.name() == col_name
+					c.name().text() == col_name
 						&& match c {
-							Column::SourceQualified(fq) => {
-								fq.source == table
-							}
+							Column::SourceQualified(fq) => fq.source.text() == table,
 							_ => false,
 						}
 				});
@@ -53,9 +55,9 @@ impl StandardEvaluator {
 
 				// Find column matching source and name
 				let matching_col = ctx.columns.iter().find(|c| {
-					c.name() == col_name
+					c.name().text() == col_name
 						&& match c {
-							Column::SourceQualified(sq) => sq.source == source,
+							Column::SourceQualified(sq) => sq.source.text() == source,
 							_ => false,
 						}
 				});
@@ -112,7 +114,7 @@ impl StandardEvaluator {
 		Err(error!(column_not_found(column.0.name.clone())))
 	}
 
-	fn extract_column_data(&self, col: &Column, ctx: &EvaluationContext) -> crate::Result<Column> {
+	fn extract_column_data<'a>(&self, col: &Column<'a>, ctx: &EvaluationContext<'a>) -> crate::Result<Column<'a>> {
 		let take = ctx.take.unwrap_or(usize::MAX);
 
 		// Use the column's actual data type instead of checking the first value

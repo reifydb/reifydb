@@ -12,7 +12,7 @@ use reifydb_core::{
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-use reifydb_type::{OrderedF64, RowNumber, Value};
+use reifydb_type::{Fragment, OrderedF64, RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -41,7 +41,7 @@ struct GroupState {
 	/// Reference count (for handling deletes)
 	ref_count: usize,
 	/// Previous emitted values (for generating retractions)
-	previous_output: Option<Columns>,
+	previous_output: Option<Columns<'static>>,
 }
 
 impl GroupState {
@@ -234,7 +234,7 @@ impl AggregateOperator {
 		Ok(group_map)
 	}
 
-	fn load_state<T: Transaction>(
+	fn load_state<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		group_key: &[Value],
@@ -251,7 +251,7 @@ impl AggregateOperator {
 		}
 	}
 
-	fn save_state<T: Transaction>(
+	fn save_state<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		group_key: &[Value],
@@ -270,7 +270,7 @@ impl AggregateOperator {
 		Ok(())
 	}
 
-	fn load_all_states<T: Transaction>(
+	fn load_all_states<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 	) -> Result<HashMap<Vec<Value>, GroupState>> {
@@ -289,7 +289,7 @@ impl AggregateOperator {
 		Ok(states)
 	}
 
-	fn emit_groupchanges<T: Transaction>(
+	fn emit_groupchanges<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		changed_groups: Vec<Vec<Value>>,
@@ -314,12 +314,12 @@ impl AggregateOperator {
 						_ => ColumnData::undefined(1),
 					};
 					column_vec.push(Column::ColumnQualified(ColumnQualified {
-						name: "value".to_string(),
+						name: Fragment::owned_internal("value"),
 						data,
 					}));
 				} else {
 					column_vec.push(Column::ColumnQualified(ColumnQualified {
-						name: "value".to_string(),
+						name: Fragment::owned_internal("value"),
 						data: ColumnData::undefined(1),
 					}));
 				}
@@ -333,7 +333,7 @@ impl AggregateOperator {
 						_ => ColumnData::undefined(1),
 					};
 					column_vec.push(Column::ColumnQualified(ColumnQualified {
-						name: "age".to_string(),
+						name: Fragment::owned_internal("age"),
 						data,
 					}));
 				}

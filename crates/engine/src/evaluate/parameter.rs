@@ -3,14 +3,18 @@
 
 use reifydb_core::{
 	interface::expression::ParameterExpression,
-	value::columnar::{Column, ColumnData, Unqualified},
+	value::columnar::{Column, ColumnData, ColumnQualified},
 };
-use reifydb_type::{Value, diagnostic::engine, error};
+use reifydb_type::{Fragment, Value, diagnostic::engine, error};
 
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
-	pub(crate) fn parameter(&self, ctx: &EvaluationContext, expr: &ParameterExpression) -> crate::Result<Column> {
+	pub(crate) fn parameter<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		expr: &ParameterExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		let value = match expr {
 			ParameterExpression::Positional {
 				fragment,
@@ -63,8 +67,8 @@ impl StandardEvaluator {
 			Value::Decimal(bd) => ColumnData::decimal(vec![bd.clone(); ctx.row_count]),
 			Value::Undefined => ColumnData::undefined(ctx.row_count),
 		};
-		Ok(Column::Unqualified(Unqualified {
-			name: "parameter".to_string(),
+		Ok(Column::ColumnQualified(ColumnQualified {
+			name: Fragment::owned_internal("parameter"),
 			data: column_data,
 		}))
 	}

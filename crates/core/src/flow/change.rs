@@ -8,18 +8,18 @@ pub enum FlowDiff {
 	Insert {
 		source: SourceId,
 		rows: CowVec<RowNumber>,
-		post: Columns,
+		post: Columns<'static>,
 	},
 	Update {
 		source: SourceId,
 		rows: CowVec<RowNumber>,
-		pre: Columns,
-		post: Columns,
+		pre: Columns<'static>,
+		post: Columns<'static>,
 	},
 	Remove {
 		source: SourceId,
 		rows: CowVec<RowNumber>,
-		pre: Columns,
+		pre: Columns<'static>,
 	},
 }
 

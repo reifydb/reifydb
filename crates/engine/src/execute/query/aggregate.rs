@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns, layout::ColumnsLayout},
 };
-use reifydb_type::{OwnedFragment, Value, diagnostic};
+use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
 
 use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
@@ -33,7 +33,7 @@ pub(crate) struct AggregateNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	by: Vec<Expression<'a>>,
 	map: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout>,
+	layout: Option<ColumnsLayout<'a>>,
 	context: Option<Arc<ExecutionContext>>,
 }
 
@@ -65,7 +65,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
@@ -119,7 +119,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
 					let mut c = Column::ColumnQualified(ColumnQualified {
-						name: alias.fragment().to_string(),
+						name: Fragment::owned_internal(alias.fragment()),
 						data: ColumnData::undefined(0),
 					});
 					for key in &group_key_order {
@@ -135,7 +135,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 					let (keys_out, mut data) = function.finalize().unwrap();
 					align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
 					result_columns.push(Column::ColumnQualified(ColumnQualified {
-						name: alias.fragment().to_string(),
+						name: Fragment::owned_internal(alias.fragment()),
 						data,
 					}));
 				}
@@ -150,7 +150,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		self.layout.clone().or(self.input.layout())
 	}
 }
@@ -169,7 +169,7 @@ fn parse_keys_and_aggregates<'a>(
 				keys.push(c.0.name.fragment());
 				projections.push(Projection::Group {
 					column: c.0.name.fragment().to_string(),
-					alias: c.0.name.clone().to_owned(),
+					alias: c.0.name.clone().into_owned(),
 				})
 			}
 			Expression::AccessSource(access) => {
@@ -178,7 +178,7 @@ fn parse_keys_and_aggregates<'a>(
 				keys.push(access.column.name.fragment());
 				projections.push(Projection::Group {
 					column: access.column.name.fragment().to_string(),
-					alias: access.column.name.clone().to_owned(),
+					alias: access.column.name.clone().into_owned(),
 				})
 			}
 			// _ => return
@@ -211,7 +211,7 @@ fn parse_keys_and_aggregates<'a>(
 						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
 							column: c.0.name.fragment().to_string(),
-							alias: alias.to_owned(),
+							alias: alias.into_owned(),
 							function,
 						});
 					}
@@ -222,7 +222,7 @@ fn parse_keys_and_aggregates<'a>(
 						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
 							column: access.column.name.fragment().to_string(),
-							alias: alias.to_owned(),
+							alias: alias.into_owned(),
 							function,
 						});
 					}

@@ -11,8 +11,8 @@ use crate::{
 	value::columnar::{ColumnData, Columns},
 };
 
-impl Columns {
-	pub fn append_columns(&mut self, other: Columns) -> crate::Result<()> {
+impl<'a> Columns<'a> {
+	pub fn append_columns(&mut self, other: Columns<'a>) -> crate::Result<()> {
 		if self.len() != other.len() {
 			return_error!(engine::frame_error("mismatched column count".to_string()));
 		}
@@ -27,8 +27,8 @@ impl Columns {
 					i,
 					l.qualified_name(),
 					r.qualified_name(),
-					l.name(),
-					r.name()
+					l.name().text(),
+					r.name().text()
 				)));
 			}
 			l.extend(r)?;
@@ -37,7 +37,7 @@ impl Columns {
 	}
 }
 
-impl Columns {
+impl<'a> Columns<'a> {
 	pub fn append_rows(
 		&mut self,
 		layout: &EncodedRowLayout,
@@ -829,7 +829,7 @@ mod tests {
 	}
 
 	mod row {
-		use reifydb_type::{OrderedF32, OrderedF64, Type, Value};
+		use reifydb_type::{Fragment, OrderedF32, OrderedF64, Type, Value};
 
 		use crate::{
 			BitVec,
@@ -1608,16 +1608,16 @@ mod tests {
 			assert_eq!(*test_instance[1].data(), ColumnData::uint16_with_bitvec([0], [false]));
 		}
 
-		fn test_instance_with_columns() -> Columns {
+		fn test_instance_with_columns<'a>() -> Columns<'a> {
 			Columns::new(vec![
 				Column::SourceQualified(SourceQualified {
-					source: "test".into(),
-					name: "int2".into(),
+					source: Fragment::owned_internal("test"),
+					name: Fragment::owned_internal("int2"),
 					data: ColumnData::int2(vec![1]),
 				}),
 				Column::SourceQualified(SourceQualified {
-					source: "test".into(),
-					name: "bool".into(),
+					source: Fragment::owned_internal("test"),
+					name: Fragment::owned_internal("bool"),
 					data: ColumnData::bool(vec![true]),
 				}),
 			])

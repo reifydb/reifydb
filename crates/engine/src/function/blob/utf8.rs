@@ -55,7 +55,7 @@ mod tests {
 		columnar::{Column, ColumnQualified, Columns},
 		container::Utf8Container,
 	};
-	use reifydb_type::value::constraint::bytes::MaxBytes;
+	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};
 
 	use super::*;
 
@@ -66,7 +66,7 @@ mod tests {
 		let utf8_data = vec!["Hello!".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -99,7 +99,7 @@ mod tests {
 		let utf8_data = vec!["".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -133,7 +133,7 @@ mod tests {
 		let utf8_data = vec!["Hello 🌍! Café naïve".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -167,7 +167,7 @@ mod tests {
 		let utf8_data = vec!["日本語 中文 한국어 العربية".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -201,7 +201,7 @@ mod tests {
 		let utf8_data = vec!["Line1\nLine2\tTabbed\r\nWindows".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -234,7 +234,7 @@ mod tests {
 		let utf8_data = vec!["First".to_string(), "Second 🚀".to_string(), "Third café".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -272,7 +272,7 @@ mod tests {
 		let utf8_data = vec!["First".to_string(), "".to_string(), "Third".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -311,7 +311,7 @@ mod tests {
 		let utf8_data = vec![r#"{"name": "John", "age": 30, "city": "New York"}"#.to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -346,7 +346,7 @@ mod tests {
 		let utf8_data = vec![long_string.clone()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,

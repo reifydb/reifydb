@@ -15,7 +15,11 @@ use reifydb_type::{
 use crate::evaluate::{EvaluationContext, StandardEvaluator, evaluate};
 
 impl StandardEvaluator {
-	pub(crate) fn prefix(&self, ctx: &EvaluationContext, prefix: &PrefixExpression) -> crate::Result<Column> {
+	pub(crate) fn prefix<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		prefix: &PrefixExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		let column = evaluate(ctx, &prefix.expression)?;
 
 		match column.data() {
@@ -31,12 +35,12 @@ impl StandardEvaluator {
 					}
 					Ok(match column.table() {
 						Some(table) => Column::SourceQualified(SourceQualified {
-							source: table.to_string(),
-							name: column.name().to_string(),
+							source: table.clone(),
+							name: column.name().clone(),
 							data: ColumnData::bool_with_bitvec(result, container.bitvec()),
 						}),
 						None => Column::ColumnQualified(ColumnQualified {
-							name: column.name().to_string(),
+							name: column.name().clone(),
 							data: ColumnData::bool_with_bitvec(result, container.bitvec()),
 						}),
 					})
@@ -65,12 +69,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::float4_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::float4_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -95,12 +99,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::float8_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::float8_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -125,12 +129,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int1_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int1_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -155,12 +159,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int2_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int2_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -185,12 +189,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int4_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int4_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -215,12 +219,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int8_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int8_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -245,12 +249,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int16_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int16_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -282,12 +286,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int1_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int1_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -309,12 +313,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int2_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int2_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -336,12 +340,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int4_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int4_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -363,12 +367,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int8_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int8_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -389,12 +393,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int16_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int16_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -485,12 +489,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::int_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::int_with_bitvec(result, container.bitvec()),
 					}),
 				})
@@ -511,12 +515,12 @@ impl StandardEvaluator {
 					}
 					Ok(match column.table() {
 						Some(table) => Column::SourceQualified(SourceQualified {
-							source: table.to_string(),
-							name: column.name().to_string(),
+							source: table.clone(),
+							name: column.name().clone(),
 							data: ColumnData::int_with_bitvec(result, container.bitvec()),
 						}),
 						None => Column::ColumnQualified(ColumnQualified {
-							name: column.name().to_string(),
+							name: column.name().clone(),
 							data: ColumnData::int_with_bitvec(result, container.bitvec()),
 						}),
 					})
@@ -532,12 +536,12 @@ impl StandardEvaluator {
 					}
 					Ok(match column.table() {
 						Some(table) => Column::SourceQualified(SourceQualified {
-							source: table.to_string(),
-							name: column.name().to_string(),
+							source: table.clone(),
+							name: column.name().clone(),
 							data: ColumnData::uint_with_bitvec(result, container.bitvec()),
 						}),
 						None => Column::ColumnQualified(ColumnQualified {
-							name: column.name().to_string(),
+							name: column.name().clone(),
 							data: ColumnData::uint_with_bitvec(result, container.bitvec()),
 						}),
 					})
@@ -568,12 +572,12 @@ impl StandardEvaluator {
 				}
 				Ok(match column.table() {
 					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.to_string(),
-						name: column.name().to_string(),
+						source: table.clone(),
+						name: column.name().clone(),
 						data: ColumnData::decimal_with_bitvec(result, container.bitvec()),
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name().clone(),
 						data: ColumnData::decimal_with_bitvec(result, container.bitvec()),
 					}),
 				})

@@ -38,7 +38,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
@@ -98,7 +98,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		self.input.layout()
 	}
 }

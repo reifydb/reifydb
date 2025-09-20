@@ -3,7 +3,7 @@
 
 use crate::value::columnar::{Column, ColumnQualified, Columns, SourceQualified};
 
-impl Columns {
+impl<'a> Columns<'a> {
 	pub fn take(&mut self, n: usize) -> crate::Result<()> {
 		let mut columns = Vec::with_capacity(self.len());
 
@@ -12,12 +12,12 @@ impl Columns {
 
 			columns.push(match col.source() {
 				Some(source) => Column::SourceQualified(SourceQualified {
-					source: source.to_string(),
-					name: col.name().to_string(),
+					source: source.clone(),
+					name: col.name().clone(),
 					data,
 				}),
 				None => Column::ColumnQualified(ColumnQualified {
-					name: col.name().to_string(),
+					name: col.name().clone(),
 					data,
 				}),
 			});

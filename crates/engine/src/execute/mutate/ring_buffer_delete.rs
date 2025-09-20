@@ -21,12 +21,12 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn delete_ring_buffer<T: Transaction>(
+	pub(crate) fn delete_ring_buffer<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: DeleteRingBufferNode,
+		plan: DeleteRingBufferNode<'a>,
 		params: Params,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		let namespace_name = plan.target.namespace().name();
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
@@ -56,7 +56,7 @@ impl Executor {
 					&mut std_txn,
 					Arc::new(ExecutionContext {
 						functions: self.functions.clone(),
-						table: None,
+						source: None,
 						batch_size: 1024,
 						preserve_row_numbers: true,
 						params: params.clone(),
@@ -65,7 +65,7 @@ impl Executor {
 
 				let context = ExecutionContext {
 					functions: self.functions.clone(),
-					table: None,
+					source: None,
 					batch_size: 1024,
 					preserve_row_numbers: true,
 					params: params.clone(),

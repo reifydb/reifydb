@@ -41,7 +41,7 @@ impl FlowSortStateKey {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SortedState {
-	rows: Vec<(Vec<Value>, Columns)>,
+	rows: Vec<(Vec<Value>, Columns<'static>)>,
 	total_rows: usize,
 }
 

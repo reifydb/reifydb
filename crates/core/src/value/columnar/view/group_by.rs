@@ -10,7 +10,7 @@ use crate::value::columnar::{ColumnData, Columns};
 pub type GroupKey = Vec<Value>;
 pub type GroupByView = HashMap<GroupKey, Vec<usize>>;
 
-impl Columns {
+impl<'a> Columns<'a> {
 	pub fn group_by_view(&self, keys: &[&str]) -> crate::Result<GroupByView> {
 		let row_count = self.first().map_or(0, |c| c.data().len());
 
@@ -19,7 +19,7 @@ impl Columns {
 		for &key in keys {
 			let column = self
 				.iter()
-				.find(|c| c.qualified_name() == key || c.name() == key)
+				.find(|c| c.qualified_name() == key || c.name().text() == key)
 				.ok_or_else(|| error!(engine::frame_error(format!("Column '{}' not found", key))))?;
 			key_columns.push(&column.data());
 		}

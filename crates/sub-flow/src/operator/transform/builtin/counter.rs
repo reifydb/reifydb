@@ -61,7 +61,7 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 					// Build output with counter column
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
 					all_columns.push(Column::ColumnQualified(ColumnQualified {
-						name: self.column_name.clone(),
+						name: reifydb_type::Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Int8(NumberContainer::from_vec(values)),
 					}));
 					let output_columns = Columns::new(all_columns);
@@ -96,7 +96,7 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
 					all_columns.push(Column::ColumnQualified(ColumnQualified {
-						name: self.column_name.clone(),
+						name: reifydb_type::Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Int8(NumberContainer::from_vec(values)),
 					}));
 					let output_columns = Columns::new(all_columns);

@@ -9,11 +9,11 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_deferred_view<T: Transaction>(
+	pub(crate) fn create_deferred_view<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateDeferredViewNode,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		if let Some(_) = txn.find_view_by_name(plan.namespace.id, plan.view.name.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -53,6 +53,7 @@ mod tests {
 
 	#[test]
 	fn test_create_view() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction_with_internal_schema();
 
 		let namespace = ensure_test_namespace(&mut txn);
@@ -74,7 +75,7 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
@@ -89,7 +90,7 @@ mod tests {
 		// Creating the same view again with `if_not_exists = true`
 		// should not error
 		plan.if_not_exists = true;
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
@@ -104,7 +105,7 @@ mod tests {
 		// Creating the same view again with `if_not_exists = false`
 		// should return error
 		plan.if_not_exists = false;
-		let err = Executor::testing()
+		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan), Params::default())
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
@@ -112,6 +113,7 @@ mod tests {
 
 	#[test]
 	fn test_create_same_view_in_different_schema() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction_with_internal_schema();
 
 		let namespace = ensure_test_namespace(&mut txn);
@@ -133,13 +135,14 @@ mod tests {
 			})),
 		};
 
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
 			)
 			.unwrap();
+
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_view".to_string()));
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
@@ -159,7 +162,7 @@ mod tests {
 			})),
 		};
 
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
@@ -173,6 +176,7 @@ mod tests {
 
 	#[test]
 	fn test_create_view_missing_schema() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction_with_internal_schema();
 
 		let plan = CreateDeferredViewNode {
@@ -191,8 +195,7 @@ mod tests {
 			})),
 		};
 
-		Executor::testing()
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan), Params::default())
+		instance.execute_command_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan), Params::default())
 			.unwrap_err();
 	}
 }

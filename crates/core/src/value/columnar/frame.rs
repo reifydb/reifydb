@@ -55,32 +55,26 @@ impl From<ColumnData> for FrameColumnData {
 	}
 }
 
-impl From<Column> for FrameColumn {
+impl From<Column<'_>> for FrameColumn {
 	fn from(value: Column) -> Self {
 		match value {
 			Column::SourceQualified(col) => FrameColumn {
 				namespace: None,
-				store: Some(col.source),
-				name: col.name,
+				store: Some(col.source.text().to_string()),
+				name: col.name.text().to_string(),
 				data: col.data.into(),
 			},
 			Column::ColumnQualified(col) => FrameColumn {
 				namespace: None,
 				store: None,
-				name: col.name,
-				data: col.data.into(),
-			},
-			Column::Unqualified(col) => FrameColumn {
-				namespace: None,
-				store: None,
-				name: col.name,
+				name: col.name.text().to_string(),
 				data: col.data.into(),
 			},
 		}
 	}
 }
 
-impl From<Columns> for Frame {
+impl From<Columns<'_>> for Frame {
 	fn from(columns: Columns) -> Self {
 		Self::new(columns.into_iter().map(|col| col.into()).collect())
 	}

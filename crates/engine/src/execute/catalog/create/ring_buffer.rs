@@ -12,11 +12,11 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_ring_buffer<T: Transaction>(
+	pub(crate) fn create_ring_buffer<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateRingBufferNode,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		// Check if ring buffer already exists using the transaction's
 		// catalog operations
 		if let Some(_) = txn.find_ring_buffer_by_name(plan.namespace.def().id, plan.ring_buffer.name.text())? {
@@ -64,6 +64,7 @@ mod tests {
 
 	#[test]
 	fn test_create_ring_buffer() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
 		let namespace = ensure_test_namespace(&mut txn);
@@ -82,7 +83,7 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateRingBuffer(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -92,7 +93,7 @@ mod tests {
 		// Creating the same ring buffer again with `if_not_exists =
 		// true` should not error
 		plan.if_not_exists = true;
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateRingBuffer(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -102,7 +103,7 @@ mod tests {
 		// Creating the same ring buffer again with `if_not_exists =
 		// false` should return error
 		plan.if_not_exists = false;
-		let err = Executor::testing()
+		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateRingBuffer(plan), Params::default())
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_005");
@@ -110,6 +111,7 @@ mod tests {
 
 	#[test]
 	fn test_create_same_ring_buffer_in_different_schema() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
 		let namespace = ensure_test_namespace(&mut txn);
@@ -128,7 +130,7 @@ mod tests {
 			capacity: 1000,
 		};
 
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateRingBuffer(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -147,7 +149,7 @@ mod tests {
 			capacity: 1000,
 		};
 
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateRingBuffer(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
@@ -157,6 +159,7 @@ mod tests {
 
 	#[test]
 	fn test_create_ring_buffer_missing_schema() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
 		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("missing_schema"));
@@ -179,7 +182,7 @@ mod tests {
 		// With defensive fallback, this now succeeds even with
 		// non-existent namespace The ring buffer is created with the
 		// provided namespace ID
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateRingBuffer(plan), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("missing_schema".to_string()));

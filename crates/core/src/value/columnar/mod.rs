@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::Type;
+use reifydb_type::{Fragment, Type};
 use serde::{Deserialize, Serialize};
 
 mod columns;
@@ -20,69 +20,44 @@ pub use data::ColumnData;
 pub use view::group_by::{GroupByView, GroupKey};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub enum Column {
-// FullyQualified(FullyQualified),
-	SourceQualified(SourceQualified),
-	ColumnQualified(ColumnQualified),
-	Unqualified(Unqualified),
+pub enum Column<'a> {
+	SourceQualified(SourceQualified<'a>),
+	ColumnQualified(ColumnQualified<'a>),
 }
 
-// #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-// pub struct FullyQualified {
-// 	pub namespace: String,
-// 	pub source: String,
-// 	pub name: String,
-// 	pub data: ColumnData,
-// }
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct SourceQualified {
-	pub source: String,
-	pub name: String,
+pub struct SourceQualified<'a> {
+	pub source: Fragment<'a>,
+	pub name: Fragment<'a>,
 	pub data: ColumnData,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct ColumnQualified {
-	pub name: String,
+pub struct ColumnQualified<'a> {
+	pub name: Fragment<'a>,
 	pub data: ColumnData,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct Unqualified {
-	pub name: String,
-	pub data: ColumnData,
-}
-
-impl Column {
+impl<'a> Column<'a> {
 	pub fn get_type(&self) -> Type {
 		match self {
 			// Self::FullyQualified(col) => col.data.get_type(),
 			Self::SourceQualified(col) => col.data.get_type(),
 			Self::ColumnQualified(col) => col.data.get_type(),
-			Self::Unqualified(col) => col.data.get_type(),
 		}
 	}
 
 	pub fn qualified_name(&self) -> String {
 		match self {
-			// Self::FullyQualified(col) => format!("{}.{}.{}", col.namespace, col.source, col.name),
 			Self::SourceQualified(col) => {
-				format!("{}.{}", col.source, col.name)
+				format!("{}.{}", col.source.text(), col.name.text())
 			}
-			Self::ColumnQualified(col) => col.name.clone(),
-			Self::Unqualified(col) => col.name.clone(),
+			Self::ColumnQualified(col) => col.name.text().to_string(),
 		}
 	}
 
-	pub fn with_new_data(&self, data: ColumnData) -> Column {
+	pub fn with_new_data(&self, data: ColumnData) -> Column<'a> {
 		match self {
-			// Self::FullyQualified(col) => Self::FullyQualified(FullyQualified {
-			// 	namespace: col.namespace.clone(),
-			// 	source: col.source.clone(),
-			// 	name: col.name.clone(),
-			// 	data,
-			// }),
 			Self::SourceQualified(col) => Self::SourceQualified(SourceQualified {
 				source: col.source.clone(),
 				name: col.name.clone(),
@@ -92,60 +67,50 @@ impl Column {
 				name: col.name.clone(),
 				data,
 			}),
-			Self::Unqualified(col) => Self::Unqualified(Unqualified {
-				name: col.name.clone(),
-				data,
-			}),
 		}
 	}
 
-	pub fn name(&self) -> &str {
+	pub fn name(&self) -> &Fragment<'a> {
 		match self {
-			// Self::FullyQualified(col) => &col.name,
 			Self::SourceQualified(col) => &col.name,
 			Self::ColumnQualified(col) => &col.name,
-			Self::Unqualified(col) => &col.name,
 		}
 	}
 
-	pub fn source(&self) -> Option<&str> {
+	pub fn name_owned(&self) -> Fragment<'a> {
+		self.name().clone()
+	}
+
+	pub fn source(&self) -> Option<&Fragment<'a>> {
 		match self {
-			// Self::FullyQualified(col) => Some(&col.source),
 			Self::SourceQualified(col) => Some(&col.source),
 			Self::ColumnQualified(_) => None,
-			Self::Unqualified(_) => None,
 		}
 	}
 
 	// Deprecated: Use source() instead
-	pub fn table(&self) -> Option<&str> {
+	pub fn table(&self) -> Option<&Fragment<'a>> {
 		self.source()
 	}
 
-	pub fn namespace(&self) -> Option<&str> {
+	pub fn namespace(&self) -> Option<&Fragment<'a>> {
 		match self {
-			// Self::FullyQualified(col) => Some(&col.namespace),
 			Self::SourceQualified(_) => None,
 			Self::ColumnQualified(_) => None,
-			Self::Unqualified(_) => None,
 		}
 	}
 
 	pub fn data(&self) -> &ColumnData {
 		match self {
-			// Self::FullyQualified(col) => &col.data,
 			Self::SourceQualified(col) => &col.data,
 			Self::ColumnQualified(col) => &col.data,
-			Self::Unqualified(col) => &col.data,
 		}
 	}
 
 	pub fn data_mut(&mut self) -> &mut ColumnData {
 		match self {
-			// Self::FullyQualified(col) => &mut col.data,
 			Self::SourceQualified(col) => &mut col.data,
 			Self::ColumnQualified(col) => &mut col.data,
-			Self::Unqualified(col) => &mut col.data,
 		}
 	}
 }
@@ -160,13 +125,12 @@ mod tests {
 		assert_eq!(column.qualified_name(), "test_columns.normal_column");
 		match column {
 			Column::SourceQualified(col) => {
-				assert_eq!(col.source, "test_columns");
-				assert_eq!(col.name, "normal_column");
+				assert_eq!(col.source.text(), "test_columns");
+				assert_eq!(col.name.text(), "normal_column");
 			}
 			_ => panic!("Expected SourceQualified variant"),
 		}
 	}
-
 
 	#[test]
 	fn test_column_qualified() {
@@ -174,21 +138,9 @@ mod tests {
 		assert_eq!(column.qualified_name(), "expr_result");
 		match column {
 			Column::ColumnQualified(col) => {
-				assert_eq!(col.name, "expr_result");
+				assert_eq!(col.name.text(), "expr_result");
 			}
 			_ => panic!("Expected ColumnQualified variant"),
-		}
-	}
-
-	#[test]
-	fn test_unqualified_expression() {
-		let column = Unqualified::int4("sum(a+b)", [1, 2, 3]);
-		assert_eq!(column.qualified_name(), "sum(a+b)");
-		match column {
-			Column::Unqualified(col) => {
-				assert_eq!(col.name, "sum(a+b)");
-			}
-			_ => panic!("Expected Unqualified variant"),
 		}
 	}
 }

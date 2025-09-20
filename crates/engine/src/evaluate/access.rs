@@ -10,7 +10,11 @@ use reifydb_type::{Fragment, OwnedFragment, diagnostic::query::column_not_found,
 use crate::evaluate::StandardEvaluator;
 
 impl StandardEvaluator {
-	pub(crate) fn access(&self, ctx: &EvaluationContext, expr: &AccessSourceExpression) -> crate::Result<Column> {
+	pub(crate) fn access<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		expr: &AccessSourceExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		use reifydb_core::interface::identifier::ColumnSource;
 
 		// Extract source name based on the ColumnSource type
@@ -18,21 +22,21 @@ impl StandardEvaluator {
 			ColumnSource::Source {
 				source,
 				..
-			} => source.text().to_string(),
-			ColumnSource::Alias(alias) => alias.text().to_string(),
+			} => source,
+			ColumnSource::Alias(alias) => alias,
 		};
 		let column = expr.column.name.text().to_string();
 
 		// Find columns where source matches and name matches
 		let matching_col = ctx.columns.iter().find(|col| {
 			// Check if column name matches
-			if col.name() != column {
+			if col.name().text() != column {
 				return false;
 			}
 
 			// Check if source matches
 			match col {
-				Column::SourceQualified(sq) => sq.source == source,
+				Column::SourceQualified(sq) => sq.source.text() == source.text(),
 				_ => false,
 			}
 		});
@@ -45,7 +49,7 @@ impl StandardEvaluator {
 			Err(error!(column_not_found(Fragment::Owned(OwnedFragment::Statement {
 				column: expr.column.name.column(),
 				line: expr.column.name.line(),
-				text: format!("{}.{}", source, column),
+				text: format!("{}.{}", source.text(), &column),
 			}))))
 		}
 	}

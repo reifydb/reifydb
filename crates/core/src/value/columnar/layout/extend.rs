@@ -5,8 +5,8 @@ use reifydb_type::{diagnostic::query, err};
 
 use super::ColumnsLayout;
 
-impl ColumnsLayout {
-	pub fn extend(&self, other: &ColumnsLayout) -> crate::Result<Self> {
+impl<'a> ColumnsLayout<'a> {
+	pub fn extend(&self, other: &ColumnsLayout<'a>) -> crate::Result<Self> {
 		let mut columns = Vec::with_capacity(self.columns.len() + other.columns.len());
 
 		// Add all columns from self (existing columns)
@@ -21,7 +21,7 @@ impl ColumnsLayout {
 			});
 
 			if column_exists {
-				return err!(query::extend_duplicate_column(&column.name));
+				return err!(query::extend_duplicate_column(column.name.text()));
 			}
 
 			columns.push(column.clone());
@@ -35,14 +35,16 @@ impl ColumnsLayout {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_type::Fragment;
+
 	use super::*;
 	use crate::value::columnar::layout::ColumnLayout;
 
-	fn create_column_layout(name: &str, namespace: Option<&str>, source: Option<&str>) -> ColumnLayout {
+	fn create_column_layout<'a>(name: &str, namespace: Option<&str>, source: Option<&str>) -> ColumnLayout<'a> {
 		ColumnLayout {
-			name: name.to_string(),
-			namespace: namespace.map(|s| s.to_string()),
-			source: source.map(|s| s.to_string()),
+			name: Fragment::owned_internal(name),
+			namespace: namespace.map(Fragment::owned_internal),
+			source: source.map(Fragment::owned_internal),
 		}
 	}
 
@@ -138,8 +140,8 @@ mod tests {
 		// Should succeed because namespace is different
 		let result = base.extend(&other).unwrap();
 		assert_eq!(result.columns.len(), 2);
-		assert_eq!(result.columns[0].namespace, Some("namespace1".to_string()));
-		assert_eq!(result.columns[1].namespace, Some("namespace2".to_string()));
+		assert_eq!(result.columns[0].namespace.as_ref().unwrap(), "namespace1");
+		assert_eq!(result.columns[1].namespace.as_ref().unwrap(), "namespace2");
 	}
 
 	#[test]
@@ -152,8 +154,8 @@ mod tests {
 		// Should succeed because source is different
 		let result = base.extend(&other).unwrap();
 		assert_eq!(result.columns.len(), 2);
-		assert_eq!(result.columns[0].source, Some("table1".to_string()));
-		assert_eq!(result.columns[1].source, Some("table2".to_string()));
+		assert_eq!(result.columns[0].source.as_ref().unwrap(), "table1");
+		assert_eq!(result.columns[1].source.as_ref().unwrap(), "table2");
 	}
 
 	#[test]
@@ -281,6 +283,6 @@ mod tests {
 		let result = base.extend(&other).unwrap();
 		assert_eq!(result.columns.len(), 2);
 		assert_eq!(result.columns[0].namespace, None);
-		assert_eq!(result.columns[1].namespace, Some("".to_string()));
+		assert_eq!(result.columns[1].namespace.as_ref().unwrap(), "");
 	}
 }

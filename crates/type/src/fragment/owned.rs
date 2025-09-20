@@ -11,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use super::{StatementColumn, StatementLine};
 
 /// Owned fragment - owns all its data
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Hash, Serialize, Deserialize)]
 pub enum OwnedFragment {
 	/// No fragment information available
 	None,

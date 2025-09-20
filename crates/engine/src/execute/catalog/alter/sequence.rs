@@ -20,11 +20,11 @@ use reifydb_type::{
 use crate::{StandardCommandTransaction, evaluate::evaluate, execute::Executor};
 
 impl Executor {
-	pub(crate) fn alter_table_sequence<T: Transaction>(
+	pub(crate) fn alter_table_sequence<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterSequenceNode,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		let namespace_name = plan.sequence.namespace.text();
 
 		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
@@ -114,6 +114,7 @@ mod tests {
 
 	#[test]
 	fn test_ok() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 		let test_schema = ensure_test_namespace(&mut txn);
 
@@ -161,7 +162,7 @@ mod tests {
 			}),
 		};
 
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap();
 
@@ -173,6 +174,7 @@ mod tests {
 
 	#[test]
 	fn test_non_auto_increment_column() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 		let test_schema = ensure_test_namespace(&mut txn);
 		CatalogStore::create_table(
@@ -210,7 +212,7 @@ mod tests {
 			}),
 		};
 
-		let err = Executor::testing()
+		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap_err();
 
@@ -220,6 +222,7 @@ mod tests {
 
 	#[test]
 	fn test_schema_not_found() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
 		let plan = AlterSequenceNode {
@@ -239,7 +242,7 @@ mod tests {
 			}),
 		};
 
-		let err = Executor::testing()
+		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap_err();
 
@@ -248,6 +251,7 @@ mod tests {
 
 	#[test]
 	fn test_table_not_found() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 		ensure_test_namespace(&mut txn);
 
@@ -268,7 +272,7 @@ mod tests {
 			}),
 		};
 
-		let err = Executor::testing()
+		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap_err();
 
@@ -277,6 +281,7 @@ mod tests {
 
 	#[test]
 	fn test_column_not_found() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 		let test_schema = ensure_test_namespace(&mut txn);
 
@@ -315,7 +320,7 @@ mod tests {
 			}),
 		};
 
-		let err = Executor::testing()
+		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::AlterSequence(plan), Params::default())
 			.unwrap_err();
 

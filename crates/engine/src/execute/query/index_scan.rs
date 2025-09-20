@@ -18,22 +18,22 @@ use reifydb_core::{
 		layout::{ColumnLayout, ColumnsLayout},
 	},
 };
-use reifydb_type::{ROW_NUMBER_COLUMN_NAME, RowNumber, Type::Uint8};
+use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, RowNumber, Type::Uint8};
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
-pub(crate) struct IndexScanNode<T: Transaction> {
+pub(crate) struct IndexScanNode<'a, T: Transaction> {
 	table: TableDef,
 	index_id: IndexId,
 	context: Option<Arc<ExecutionContext>>,
-	layout: ColumnsLayout,
+	layout: ColumnsLayout<'a>,
 	row_layout: EncodedRowLayout,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 	_phantom: std::marker::PhantomData<T>,
 }
 
-impl<T: Transaction> IndexScanNode<T> {
+impl<'a, T: Transaction> IndexScanNode<'a, T> {
 	pub fn new(table: TableDef, index_id: IndexId, context: Arc<ExecutionContext>) -> crate::Result<Self> {
 		let data = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedRowLayout::new(&data);
@@ -45,7 +45,7 @@ impl<T: Transaction> IndexScanNode<T> {
 				.map(|col| ColumnLayout {
 					namespace: None,
 					source: None,
-					name: col.name.clone(),
+					name: Fragment::owned_internal(&col.name),
 				})
 				.collect(),
 		};
@@ -63,7 +63,7 @@ impl<T: Transaction> IndexScanNode<T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<T> {
+impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<'a, T> {
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a, T>,
@@ -73,7 +73,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
@@ -145,8 +145,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<T> {
 		// Add the RowNumber column to the columns if requested
 		if ctx.preserve_row_numbers {
 			let row_number_column = Column::SourceQualified(SourceQualified {
-				source: self.table.name.clone(),
-				name: ROW_NUMBER_COLUMN_NAME.to_string(),
+				source: Fragment::owned_internal(&self.table.name),
+				name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
 				data: ColumnData::row_number(row_numbers),
 			});
 			columns.0.push(row_number_column);
@@ -157,7 +157,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<T> {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		Some(self.layout.clone())
 	}
 }

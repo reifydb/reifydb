@@ -22,7 +22,11 @@ use reifydb_type::{Type, diagnostic::cast, err, error};
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
-	pub(crate) fn cast(&self, ctx: &EvaluationContext, cast: &CastExpression) -> crate::Result<Column> {
+	pub(crate) fn cast<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		cast: &CastExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		let cast_fragment = cast.lazy_fragment();
 
 		// FIXME optimization does not apply for prefix expressions,
@@ -47,12 +51,12 @@ impl StandardEvaluator {
 
 				Ok(match column.table() {
 					Some(source) => Column::SourceQualified(SourceQualified {
-						source: source.to_string(),
-						name: column.name().to_string(),
+						source: source.clone(),
+						name: column.name_owned(),
 						data: casted,
 					}),
 					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().to_string(),
+						name: column.name_owned(),
 						data: casted,
 					}),
 				})

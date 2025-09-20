@@ -9,11 +9,11 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_table<T: Transaction>(
+	pub(crate) fn create_table<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateTableNode,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		// Check if table already exists using the transaction's catalog
 		// operations
 		if let Some(_) = txn.find_table_by_name(plan.namespace.def().id, plan.table.name.text())? {
@@ -60,6 +60,7 @@ mod tests {
 
 	#[test]
 	fn test_create_table() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
 		let namespace = ensure_test_namespace(&mut txn);
@@ -77,7 +78,7 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -87,7 +88,7 @@ mod tests {
 		// Creating the same table again with `if_not_exists = true`
 		// should not error
 		plan.if_not_exists = true;
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -97,7 +98,7 @@ mod tests {
 		// Creating the same table again with `if_not_exists = false`
 		// should return error
 		plan.if_not_exists = false;
-		let err = Executor::testing()
+		let err = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default())
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
@@ -105,6 +106,7 @@ mod tests {
 
 	#[test]
 	fn test_create_same_table_in_different_schema() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
 		let namespace = ensure_test_namespace(&mut txn);
@@ -122,7 +124,7 @@ mod tests {
 			columns: vec![],
 		};
 
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -140,7 +142,7 @@ mod tests {
 			columns: vec![],
 		};
 
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
@@ -150,6 +152,7 @@ mod tests {
 
 	#[test]
 	fn test_create_table_missing_schema() {
+		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
 		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("missing_schema"));
@@ -171,7 +174,7 @@ mod tests {
 		// With defensive fallback, this now succeeds even with
 		// non-existent namespace The table is created with the provided
 		// namespace ID
-		let result = Executor::testing()
+		let result = instance
 			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default())
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("missing_schema".to_string()));

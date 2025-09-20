@@ -3,13 +3,13 @@
 
 use std::collections::{HashMap, HashSet};
 
-use super::{ColumnLayout, ColumnsLayout};
-use crate::value::columnar::{
-	Column, ColumnData, ColumnQualified, Columns, SourceQualified, Unqualified,
-};
+use reifydb_type::Fragment;
 
-impl Columns {
-	pub fn apply_layout(&mut self, layout: &ColumnsLayout) {
+use super::{ColumnLayout, ColumnsLayout};
+use crate::value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified};
+
+impl<'a> Columns<'a> {
+	pub fn apply_layout(&mut self, layout: &ColumnsLayout<'a>) {
 		// Check for duplicate column names and qualify them only when
 		// needed
 		let layout_with_qualification = self.qualify_duplicates_only(layout);
@@ -31,10 +31,6 @@ impl Columns {
 						data,
 					}),
 					(None, None) => match column {
-						Column::Unqualified(_) => Column::Unqualified(Unqualified {
-							name: column_layout.name.clone(),
-							data,
-						}),
 						_ => Column::ColumnQualified(ColumnQualified {
 							name: column_layout.name.clone(),
 							data,
@@ -49,15 +45,15 @@ impl Columns {
 		}
 	}
 
-	fn qualify_duplicates_only(&self, layout: &ColumnsLayout) -> ColumnsLayout {
+	fn qualify_duplicates_only(&self, layout: &ColumnsLayout<'a>) -> ColumnsLayout<'a> {
 		// Group columns by name and check for ambiguity across
 		// different table/namespace contexts
 		let mut name_groups: HashMap<String, Vec<(Option<String>, Option<String>)>> = HashMap::new();
 		for column_layout in &layout.columns {
-			name_groups
-				.entry(column_layout.name.clone())
-				.or_insert_with(Vec::new)
-				.push((column_layout.namespace.clone(), column_layout.source.clone()));
+			name_groups.entry(column_layout.name.text().to_string()).or_insert_with(Vec::new).push((
+				column_layout.namespace.as_ref().map(|f| f.text().to_string()),
+				column_layout.source.as_ref().map(|f| f.text().to_string()),
+			));
 		}
 
 		// Only qualify columns that appear more than once across
@@ -66,7 +62,7 @@ impl Columns {
 			.columns
 			.iter()
 			.map(|column_layout| {
-				let contexts = name_groups.get(&column_layout.name).unwrap();
+				let contexts = name_groups.get(column_layout.name.text()).unwrap();
 
 				// Check if this column name appears in different source/namespace contexts
 				let mut unique_contexts = HashSet::new();
@@ -97,7 +93,7 @@ impl Columns {
 						_ => {
 							// No source info in layout, try to get it from existing columns
 							if let Some(existing_column) =
-								self.iter().find(|c| c.name() == column_layout.name)
+								self.iter().find(|c| c.name() == &column_layout.name)
 							{
 								match (
 									existing_column.namespace(),
@@ -106,9 +102,9 @@ impl Columns {
 									(Some(namespace), Some(source)) => {
 										ColumnLayout {
 											namespace: Some(
-												namespace.to_string()
+												Fragment::owned_internal(namespace.text())
 											),
-											source: Some(source.to_string()),
+											source: Some(Fragment::owned_internal(source.text())),
 											name: column_layout
 												.name
 												.clone(),
@@ -116,7 +112,7 @@ impl Columns {
 									}
 									(None, Some(source)) => ColumnLayout {
 										namespace: None,
-										source: Some(source.to_string()),
+										source: Some(Fragment::owned_internal(source.text())),
 										name: column_layout.name.clone(),
 									},
 									_ => {

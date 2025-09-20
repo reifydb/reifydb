@@ -12,7 +12,7 @@ use reifydb_core::{
 	value::columnar::Columns,
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
-use reifydb_type::{IntoFragment, RowNumber, Type, Value, diagnostic::catalog::ring_buffer_not_found};
+use reifydb_type::{Fragment, IntoFragment, RowNumber, Type, Value, diagnostic::catalog::ring_buffer_not_found};
 
 use super::coerce::coerce_value_to_column_type;
 use crate::{
@@ -21,12 +21,12 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn insert_ring_buffer<T: Transaction>(
+	pub(crate) fn insert_ring_buffer<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: InsertRingBufferNode,
+		plan: InsertRingBufferNode<'a>,
 		params: Params,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		let namespace_name = plan.target.namespace().name();
 		let namespace = CatalogStore::find_namespace_by_name(txn, namespace_name)?.unwrap();
 
@@ -49,7 +49,7 @@ impl Executor {
 
 		let execution_context = Arc::new(ExecutionContext {
 			functions: self.functions.clone(),
-			table: None, // FIXME Ring buffers don't have a table def
+			source: None, // FIXME Ring buffers don't have a table def
 			batch_size: 1024,
 			preserve_row_numbers: false,
 			params: params.clone(),
@@ -93,9 +93,9 @@ impl Executor {
 						value,
 						rb_column.constraint.get_type(),
 						ColumnDescriptor::new()
-							.with_namespace(&namespace.name)
-							.with_table(&ring_buffer.name) // Using ring buffer name as "table"
-							.with_column(&rb_column.name)
+							.with_namespace(Fragment::borrowed_internal(&namespace.name))
+							.with_table(Fragment::borrowed_internal(&ring_buffer.name)) // Using ring buffer name as "table"
+							.with_column(Fragment::borrowed_internal(&rb_column.name))
 							.with_column_type(rb_column.constraint.get_type())
 							.with_policies(policies),
 						&execution_context,

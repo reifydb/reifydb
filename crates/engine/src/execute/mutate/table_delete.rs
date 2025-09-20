@@ -29,12 +29,12 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn delete<T: Transaction>(
+	pub(crate) fn delete<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: DeleteNode,
+		plan: DeleteNode<'a>,
 		params: Params,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		// Get table from plan or infer from input pipeline
 		let (namespace, table) = if let Some(target) = &plan.target {
 			// Namespace and table explicitly specified
@@ -69,7 +69,7 @@ impl Executor {
 				&mut std_txn,
 				Arc::new(ExecutionContext {
 					functions: self.functions.clone(),
-					table: Some(table.clone()),
+					source: Some(table.clone()),
 					batch_size: 1024,
 					preserve_row_numbers: true,
 					params: params.clone(),
@@ -78,7 +78,7 @@ impl Executor {
 
 			let context = ExecutionContext {
 				functions: self.functions.clone(),
-				table: Some(table.clone()),
+				source: Some(table.clone()),
 				batch_size: 1024,
 				preserve_row_numbers: true,
 				params: params.clone(),

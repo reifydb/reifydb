@@ -9,6 +9,7 @@ use reifydb_core::{
 	interface::{TableVirtualDef, Transaction},
 	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
 };
+use reifydb_type::Fragment;
 
 use crate::{
 	StandardTransaction,
@@ -39,7 +40,7 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Versions<T> {
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch<'a>>> {
 		if self.exhausted {
 			return Ok(None);
 		}
@@ -64,19 +65,19 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Versions<T> {
 
 		let columns = vec![
 			Column::ColumnQualified(ColumnQualified {
-				name: "name".to_string(),
+				name: Fragment::owned_internal("name"),
 				data: names_to_insert,
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "version".to_string(),
+				name: Fragment::owned_internal("version"),
 				data: versions_to_insert,
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "description".to_string(),
+				name: Fragment::owned_internal("description"),
 				data: descriptions_to_insert,
 			}),
 			Column::ColumnQualified(ColumnQualified {
-				name: "type".to_string(),
+				name: Fragment::owned_internal("type"),
 				data: types_to_insert,
 			}),
 		];

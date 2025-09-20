@@ -19,7 +19,7 @@ pub(crate) struct NaturalJoinNode<'a, T: Transaction> {
 	left: Box<ExecutionPlan<'a, T>>,
 	right: Box<ExecutionPlan<'a, T>>,
 	join_type: JoinType,
-	layout: Option<ColumnsLayout>,
+	layout: Option<ColumnsLayout<'a>>,
 	initialized: Option<()>,
 }
 
@@ -34,10 +34,10 @@ impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
 		}
 	}
 
-	fn load_and_merge_all<'b>(
-		node: &mut Box<ExecutionPlan<'b, T>>,
-		rx: &mut StandardTransaction<'b, T>,
-	) -> crate::Result<Columns> {
+	fn load_and_merge_all(
+		node: &mut Box<ExecutionPlan<'a, T>>,
+		rx: &mut StandardTransaction<'a, T>,
+	) -> crate::Result<Columns<'a>> {
 		let mut result: Option<Columns> = None;
 
 		while let Some(Batch {
@@ -61,7 +61,7 @@ impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
 		for (left_idx, left_col) in left_columns.iter().enumerate() {
 			for (right_idx, right_col) in right_columns.iter().enumerate() {
 				if left_col.name() == right_col.name() {
-					common_columns.push((left_col.name().to_string(), left_idx, right_idx));
+					common_columns.push((left_col.name().text().to_string(), left_idx, right_idx));
 				}
 			}
 		}
@@ -78,7 +78,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "NaturalJoinNode::next() called before initialize()");
 
 		if self.layout.is_some() {
@@ -173,12 +173,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 			let old_column = &columns[i];
 			columns[i] = match col_meta.table() {
 				Some(source) => Column::SourceQualified(SourceQualified {
-					source: source.to_string(),
-					name: col_meta.name().to_string(),
+					source: source.clone(),
+					name: col_meta.name().clone(),
 					data: old_column.data().clone(),
 				}),
 				None => Column::ColumnQualified(ColumnQualified {
-					name: col_meta.name().to_string(),
+					name: col_meta.name().clone(),
 					data: old_column.data().clone(),
 				}),
 			};
@@ -190,7 +190,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		self.layout.clone()
 	}
 }

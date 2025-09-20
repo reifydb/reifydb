@@ -42,7 +42,7 @@ impl Default for StandardEvaluator {
 }
 
 impl Evaluator for StandardEvaluator {
-	fn evaluate(&self, ctx: &EvaluationContext, expr: &Expression) -> crate::Result<Column> {
+	fn evaluate<'a>(&self, ctx: &EvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Column<'a>> {
 		match expr {
 			Expression::AccessSource(expr) => self.access(ctx, expr),
 			Expression::Alias(expr) => self.alias(ctx, expr),
@@ -73,7 +73,7 @@ impl Evaluator for StandardEvaluator {
 	}
 }
 
-pub fn evaluate(ctx: &EvaluationContext, expr: &Expression) -> crate::Result<Column> {
+pub fn evaluate<'a>(ctx: &EvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Column<'a>> {
 	let evaluator = StandardEvaluator {
 		functions: Functions::builder()
 			.register_scalar("abs", math::scalar::Abs::new)
@@ -92,12 +92,12 @@ pub fn evaluate(ctx: &EvaluationContext, expr: &Expression) -> crate::Result<Col
 		let data = cast::cast_column_data(ctx, &column.data(), ty, &expr.lazy_fragment())?;
 		column = match column.table() {
 			Some(source) => Column::SourceQualified(SourceQualified {
-				source: source.to_string(),
-				name: column.name().to_string(),
+				source: source.clone(),
+				name: column.name_owned(),
 				data,
 			}),
 			None => Column::ColumnQualified(ColumnQualified {
-				name: column.name().to_string(),
+				name: column.name_owned(),
 				data,
 			}),
 		};

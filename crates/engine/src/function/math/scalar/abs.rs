@@ -106,7 +106,7 @@ impl ScalarFunction for Abs {
 mod tests {
 	use reifydb_core::{
 		BitVec,
-		value::columnar::{Columns, Unqualified},
+		value::columnar::{ColumnQualified, Columns},
 	};
 
 	use super::*;
@@ -117,7 +117,7 @@ mod tests {
 
 		// Create a column with all values defined
 		let data = vec![-5i8, 3, -2, 0, 7, -1];
-		let column = Unqualified::int1("test", data.clone());
+		let column = ColumnQualified::int1("test", data.clone());
 
 		let columns = Columns::new(vec![column]);
 		let ctx = ScalarFunctionContext {
@@ -152,7 +152,7 @@ mod tests {
 		bitvec.set(2, false); // Make index 2 undefined
 		bitvec.set(4, false); // Make index 4 undefined
 
-		let column = Unqualified::int1_with_bitvec("test", data.clone(), bitvec.clone());
+		let column = ColumnQualified::int1_with_bitvec("test", data.clone(), bitvec.clone());
 
 		let columns = Columns::new(vec![column]);
 		let ctx = ScalarFunctionContext {
@@ -185,7 +185,7 @@ mod tests {
 
 		// Create a column with all values defined
 		let data = vec![-500i16, 300, -200, 0, 700, -100];
-		let column = Unqualified::int2("test", data.clone());
+		let column = ColumnQualified::int2("test", data.clone());
 
 		let columns = Columns::new(vec![column]);
 		let ctx = ScalarFunctionContext {

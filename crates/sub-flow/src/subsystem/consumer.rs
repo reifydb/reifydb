@@ -39,11 +39,11 @@ impl<T: Transaction> FlowConsumer<T> {
 	}
 
 	/// Helper method to convert multiple row bytes to Columns format
-	fn to_columns<CT: CommandTransaction>(
+	fn to_columns<'a, CT: CommandTransaction>(
 		txn: &mut CT,
 		source: SourceId,
 		rows_bytes: &[Vec<u8>],
-	) -> Result<Columns> {
+	) -> Result<Columns<'static>> {
 		// Get source metadata from catalog
 		let (mut columns, layout) = match source {
 			SourceId::Table(table_id) => {

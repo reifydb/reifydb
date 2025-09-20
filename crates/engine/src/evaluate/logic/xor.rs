@@ -14,7 +14,11 @@ use reifydb_type::diagnostic::operator::{
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
-	pub(crate) fn xor(&self, ctx: &EvaluationContext, expr: &XorExpression) -> crate::Result<Column> {
+	pub(crate) fn xor<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		expr: &XorExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		let left = self.evaluate(ctx, &expr.left)?;
 		let right = self.evaluate(ctx, &expr.right)?;
 
@@ -31,7 +35,7 @@ impl StandardEvaluator {
 						.collect();
 
 					Ok(Column::ColumnQualified(ColumnQualified {
-						name: expr.full_fragment_owned().fragment().into(),
+						name: expr.full_fragment_owned(),
 						data: ColumnData::bool(data),
 					}))
 				} else {
@@ -53,7 +57,7 @@ impl StandardEvaluator {
 					}
 
 					Ok(Column::ColumnQualified(ColumnQualified {
-						name: expr.full_fragment_owned().fragment().into(),
+						name: expr.full_fragment_owned(),
 						data: ColumnData::bool_with_bitvec(data, bitvec),
 					}))
 				}

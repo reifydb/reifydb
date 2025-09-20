@@ -17,7 +17,11 @@ use crate::{
 };
 
 impl StandardEvaluator {
-	pub(crate) fn call(&self, ctx: &EvaluationContext, call: &CallExpression) -> crate::Result<Column> {
+	pub(crate) fn call<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		call: &CallExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		let arguments = self.evaluate_arguments(ctx, &call.args)?;
 		let function = call.func.0.fragment();
 
@@ -28,7 +32,7 @@ impl StandardEvaluator {
 
 		let row_count = ctx.row_count;
 		Ok(Column::ColumnQualified(ColumnQualified {
-			name: call.full_fragment_owned().fragment().into(),
+			name: call.full_fragment_owned(),
 			data: functor.scalar(ScalarFunctionContext {
 				columns: &arguments,
 				row_count,
@@ -38,10 +42,10 @@ impl StandardEvaluator {
 
 	fn evaluate_arguments<'a>(
 		&self,
-		ctx: &EvaluationContext,
-		expressions: &Vec<Expression>,
-	) -> crate::Result<Columns> {
-		let mut result: Vec<Column> = Vec::with_capacity(expressions.len());
+		ctx: &EvaluationContext<'a>,
+		expressions: &Vec<Expression<'a>>,
+	) -> crate::Result<Columns<'a>> {
+		let mut result: Vec<Column<'a>> = Vec::with_capacity(expressions.len());
 
 		for expression in expressions {
 			result.push(self.evaluate(ctx, expression)?)

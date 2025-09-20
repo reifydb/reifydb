@@ -9,19 +9,23 @@ use reifydb_core::{
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
 
 impl StandardEvaluator {
-	pub(crate) fn alias(&self, ctx: &EvaluationContext, expr: &AliasExpression) -> crate::Result<Column> {
+	pub(crate) fn alias<'a>(
+		&self,
+		ctx: &EvaluationContext<'a>,
+		expr: &AliasExpression<'a>,
+	) -> crate::Result<Column<'a>> {
 		let evaluated = self.evaluate(ctx, &expr.expression)?;
-		let alias_name = expr.alias.0.fragment().to_string();
+		let alias_name = expr.alias.0.clone();
 
-		let columns: Option<String> = ctx
-			.target_column
+		let source = ctx.target_column.as_ref().and_then(|c| c.table.as_ref()).or(ctx
+			.columns
+			.first()
 			.as_ref()
-			.and_then(|c| c.table.map(|c| c.to_string()))
-			.or(ctx.columns.first().as_ref().and_then(|c| c.table().map(|f| f.to_string())));
+			.and_then(|c| c.table()));
 
-		Ok(match columns {
-			Some(source) => Column::SourceQualified(SourceQualified {
-				source,
+		Ok(match source {
+			Some(src) => Column::SourceQualified(SourceQualified {
+				source: src.clone(),
 				name: alias_name.clone(),
 				data: evaluated.data().clone(),
 			}),

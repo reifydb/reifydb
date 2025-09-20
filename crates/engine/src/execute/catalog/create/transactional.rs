@@ -9,11 +9,11 @@ use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_transactional_view<T: Transaction>(
+	pub(crate) fn create_transactional_view<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateTransactionalViewNode,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		if let Some(view) = CatalogStore::find_view_by_name(txn, plan.namespace.id, plan.view.name.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([

@@ -42,7 +42,7 @@ pub trait TableVirtual<'a, T: Transaction>: Send + Sync {
 	) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
-	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>>;
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>>;
 
 	/// Get the table definition
 	fn definition(&self) -> &TableVirtualDef;

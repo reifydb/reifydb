@@ -6,7 +6,7 @@ use std::{
 	ops::{Deref, Index, IndexMut},
 };
 
-use reifydb_type::{Type, Value};
+use reifydb_type::{Fragment, Type, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -19,39 +19,39 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Columns(pub CowVec<Column>);
+pub struct Columns<'a>(pub CowVec<Column<'a>>);
 
-impl Deref for Columns {
-	type Target = [Column];
+impl<'a> Deref for Columns<'a> {
+	type Target = [Column<'a>];
 
 	fn deref(&self) -> &Self::Target {
 		self.0.deref()
 	}
 }
 
-impl Index<usize> for Columns {
-	type Output = Column;
+impl<'a> Index<usize> for Columns<'a> {
+	type Output = Column<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
 		self.0.index(index)
 	}
 }
 
-impl IndexMut<usize> for Columns {
+impl<'a> IndexMut<usize> for Columns<'a> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
 		&mut self.0.make_mut()[index]
 	}
 }
 
-impl Columns {
-	pub fn new(columns: Vec<Column>) -> Self {
+impl<'a> Columns<'a> {
+	pub fn new(columns: Vec<Column<'a>>) -> Self {
 		let n = columns.first().map_or(0, |c| c.data().len());
 		assert!(columns.iter().all(|c| c.data().len() == n));
 
 		Self(CowVec::new(columns))
 	}
 
-	pub fn single_row<'a>(rows: impl IntoIterator<Item = (&'a str, Value)>) -> Columns {
+	pub fn single_row<'b>(rows: impl IntoIterator<Item = (&'b str, Value)>) -> Columns<'a> {
 		let mut columns = Vec::new();
 		let mut index = HashMap::new();
 
@@ -87,7 +87,7 @@ impl Columns {
 			};
 
 			let column = Column::ColumnQualified(ColumnQualified {
-				name: name.to_string(),
+				name: Fragment::owned_internal(name.to_string()),
 				data,
 			});
 			index.insert(column.qualified_name(), idx);
@@ -98,12 +98,12 @@ impl Columns {
 	}
 }
 
-impl Columns {
+impl<'a> Columns<'a> {
 	pub fn shape(&self) -> (usize, usize) {
 		(self.get(0).map(|c| c.data().len()).unwrap_or(0), self.len())
 	}
 
-	pub fn into_iter(self) -> impl Iterator<Item = Column> {
+	pub fn into_iter(self) -> impl Iterator<Item = Column<'a>> {
 		self.0.into_iter()
 	}
 
@@ -116,7 +116,7 @@ impl Columns {
 	}
 
 	pub fn column(&self, name: &str) -> Option<&Column> {
-		self.iter().find(|col| col.name() == name)
+		self.iter().find(|col| col.name().text() == name)
 	}
 
 	pub fn row_count(&self) -> usize {
@@ -128,13 +128,13 @@ impl Columns {
 	}
 }
 
-impl Column {
-	pub fn extend(&mut self, other: Column) -> crate::Result<()> {
+impl<'a> Column<'a> {
+	pub fn extend(&mut self, other: Column<'a>) -> crate::Result<()> {
 		self.data_mut().extend(other.data().clone())
 	}
 }
 
-impl Columns {
+impl<'a> Columns<'a> {
 	pub fn from_rows(names: &[&str], result_rows: &[Vec<Value>]) -> Self {
 		let column_count = names.len();
 
@@ -142,7 +142,7 @@ impl Columns {
 			.iter()
 			.map(|name| {
 				Column::ColumnQualified(ColumnQualified {
-					name: name.to_string(),
+					name: Fragment::owned_internal(name.to_string()),
 					data: ColumnData::Undefined(UndefinedContainer::new(0)),
 				})
 			})
@@ -159,7 +159,7 @@ impl Columns {
 	}
 }
 
-impl Columns {
+impl<'a> Columns<'a> {
 	pub fn empty() -> Self {
 		Self(CowVec::new(vec![]))
 	}
@@ -202,8 +202,8 @@ impl Columns {
 					Type::Undefined => ColumnData::undefined(0),
 				};
 				Column::SourceQualified(SourceQualified {
-					source: table.name.clone(),
-					name,
+					source: Fragment::owned_internal(table.name.clone()),
+					name: Fragment::owned_internal(name.clone()),
 					data,
 				})
 			})
@@ -250,8 +250,8 @@ impl Columns {
 					Type::Undefined => ColumnData::undefined(0),
 				};
 				Column::SourceQualified(SourceQualified {
-					source: table.name.clone(),
-					name,
+					source: Fragment::owned_internal(table.name.clone()),
+					name: Fragment::owned_internal(name),
 					data,
 				})
 			})
@@ -298,8 +298,8 @@ impl Columns {
 					Type::Undefined => ColumnData::undefined(0),
 				};
 				Column::SourceQualified(SourceQualified {
-					source: ring_buffer.name.clone(),
-					name,
+					source: Fragment::owned_internal(ring_buffer.name.clone()),
+					name: Fragment::owned_internal(name),
 					data,
 				})
 			})
@@ -346,8 +346,8 @@ impl Columns {
 					Type::Undefined => ColumnData::undefined(0),
 				};
 				Column::SourceQualified(SourceQualified {
-					source: view.name.clone(),
-					name,
+					source: Fragment::owned_internal(view.name.clone()),
+					name: Fragment::owned_internal(name),
 					data,
 				})
 			})
@@ -394,8 +394,8 @@ impl Columns {
 					Type::Undefined => ColumnData::undefined(0),
 				};
 				Column::SourceQualified(SourceQualified {
-					source: view.name.clone(),
-					name,
+					source: Fragment::owned_internal(view.name.clone()),
+					name: Fragment::owned_internal(name),
 					data,
 				})
 			})

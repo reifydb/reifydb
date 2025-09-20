@@ -4,15 +4,17 @@
 mod apply;
 mod extend;
 
+use reifydb_type::Fragment;
+
 use crate::value::columnar::{Column, Columns};
 
 #[derive(Debug, Clone)]
-pub struct ColumnsLayout {
-	pub columns: Vec<ColumnLayout>,
+pub struct ColumnsLayout<'a> {
+	pub columns: Vec<ColumnLayout<'a>>,
 }
 
-impl ColumnsLayout {
-	pub fn from_columns(columns: &Columns) -> Self {
+impl<'a> ColumnsLayout<'a> {
+	pub fn from_columns(columns: &Columns<'a>) -> Self {
 		Self {
 			columns: columns.iter().map(|c| ColumnLayout::from_column(c)).collect(),
 		}
@@ -20,18 +22,18 @@ impl ColumnsLayout {
 }
 
 #[derive(Debug, Clone)]
-pub struct ColumnLayout {
-	pub namespace: Option<String>,
-	pub source: Option<String>,
-	pub name: String,
+pub struct ColumnLayout<'a> {
+	pub namespace: Option<Fragment<'a>>,
+	pub source: Option<Fragment<'a>>,
+	pub name: Fragment<'a>,
 }
 
-impl ColumnLayout {
-	pub fn from_column(column: &Column) -> Self {
+impl<'a> ColumnLayout<'a> {
+	pub fn from_column(column: &Column<'a>) -> Self {
 		Self {
-			namespace: column.namespace().map(|s| s.to_string()),
-			source: column.source().map(|s| s.to_string()),
-			name: column.name().to_string(),
+			namespace: column.namespace().map(|s| Fragment::owned_internal(s.text())),
+			source: column.source().map(|s| Fragment::owned_internal(s.text())),
+			name: column.name().clone(),
 		}
 	}
 }

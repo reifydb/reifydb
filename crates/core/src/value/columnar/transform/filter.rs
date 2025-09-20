@@ -3,7 +3,7 @@
 
 use crate::{BitVec, value::columnar::Columns};
 
-impl Columns {
+impl<'a> Columns<'a> {
 	pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
 		let columns = self.0.make_mut();
 		for column in columns.iter_mut() {

@@ -19,7 +19,7 @@ pub(crate) struct InnerJoinNode<'a, T: Transaction> {
 	left: Box<ExecutionPlan<'a, T>>,
 	right: Box<ExecutionPlan<'a, T>>,
 	on: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout>,
+	layout: Option<ColumnsLayout<'a>>,
 	context: Option<Arc<ExecutionContext>>,
 }
 
@@ -37,7 +37,7 @@ impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 	fn load_and_merge_all(
 		node: &mut Box<ExecutionPlan<'a, T>>,
 		rx: &mut StandardTransaction<'a, T>,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		let mut result: Option<Columns> = None;
 
 		while let Some(Batch {
@@ -64,7 +64,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "InnerJoinNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
@@ -103,13 +103,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 							.map(|(v, col)| match col.table() {
 								Some(source) => {
 									Column::SourceQualified(SourceQualified {
-										source: source.to_string(),
-										name: col.name().to_string(),
+										source: source.clone(),
+										name: col.name().clone(),
 										data: ColumnData::from(v),
 									})
 								}
 								None => Column::ColumnQualified(ColumnQualified {
-									name: col.name().to_string(),
+									name: col.name().clone(),
 									data: ColumnData::from(v),
 								}),
 							})
@@ -143,12 +143,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 			let old_column = &columns[i];
 			columns[i] = match col_meta.table() {
 				Some(source) => Column::SourceQualified(SourceQualified {
-					source: source.to_string(),
-					name: col_meta.name().to_string(),
+					source: source.clone(),
+					name: col_meta.name().clone(),
 					data: old_column.data().clone(),
 				}),
 				None => Column::ColumnQualified(ColumnQualified {
-					name: col_meta.name().to_string(),
+					name: col_meta.name().clone(),
 					data: old_column.data().clone(),
 				}),
 			};
@@ -160,7 +160,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		self.layout.clone()
 	}
 }

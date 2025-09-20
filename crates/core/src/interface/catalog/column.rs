@@ -3,7 +3,7 @@
 
 use std::ops::Deref;
 
-use reifydb_type::{Type, TypeConstraint, diagnostic::number::NumberOfRangeColumnDescriptor};
+use reifydb_type::{Fragment, Type, TypeConstraint, diagnostic::number::NumberOfRangeColumnDescriptor};
 use serde::{Deserialize, Serialize};
 
 use super::policy::{ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY};
@@ -22,9 +22,9 @@ pub struct ColumnDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnDescriptor<'a> {
 	// Location information
-	pub namespace: Option<&'a str>,
-	pub table: Option<&'a str>,
-	pub column: Option<&'a str>,
+	pub namespace: Option<Fragment<'a>>,
+	pub table: Option<Fragment<'a>>,
+	pub column: Option<Fragment<'a>>,
 
 	// Column metadata
 	pub column_type: Option<Type>,
@@ -42,17 +42,17 @@ impl<'a> ColumnDescriptor<'a> {
 		}
 	}
 
-	pub fn with_namespace(mut self, namespace: &'a str) -> Self {
+	pub fn with_namespace(mut self, namespace: Fragment<'a>) -> Self {
 		self.namespace = Some(namespace);
 		self
 	}
 
-	pub fn with_table(mut self, table: &'a str) -> Self {
+	pub fn with_table(mut self, table: Fragment<'a>) -> Self {
 		self.table = Some(table);
 		self
 	}
 
-	pub fn with_column(mut self, column: &'a str) -> Self {
+	pub fn with_column(mut self, column: Fragment<'a>) -> Self {
 		self.column = Some(column);
 		self
 	}
@@ -67,22 +67,6 @@ impl<'a> ColumnDescriptor<'a> {
 		self
 	}
 
-	// Location formatting
-	pub fn location_string(&self) -> String {
-		match (self.namespace, self.table, self.column) {
-			(Some(s), Some(t), Some(c)) => {
-				format!("{}.{}.{}", s, t, c)
-			}
-			(Some(s), Some(t), None) => format!("{}.{}", s, t),
-			(None, Some(t), Some(c)) => format!("{}.{}", t, c),
-			(Some(s), None, Some(c)) => format!("{}.{}", s, c),
-			(Some(s), None, None) => s.to_string(),
-			(None, Some(t), None) => t.to_string(),
-			(None, None, Some(c)) => c.to_string(),
-			(None, None, None) => "unknown location".to_string(),
-		}
-	}
-
 	// Policy methods
 	pub fn saturation_policy(&self) -> &ColumnSaturationPolicy {
 		self.policies
@@ -94,16 +78,18 @@ impl<'a> ColumnDescriptor<'a> {
 	}
 
 	// Convert to NumberOfRangeColumnDescriptor for error reporting
-	pub fn to_number_range_descriptor(&self) -> NumberOfRangeColumnDescriptor<'a> {
+	// Returns a descriptor with the same lifetime as self
+	pub fn to_number_range_descriptor(&self) -> NumberOfRangeColumnDescriptor<'_> {
 		let mut descriptor = NumberOfRangeColumnDescriptor::new();
-		if let Some(namespace) = self.namespace {
-			descriptor = descriptor.with_namespace(namespace);
+
+		if let Some(ref namespace) = self.namespace {
+			descriptor = descriptor.with_namespace(namespace.text());
 		}
-		if let Some(table) = self.table {
-			descriptor = descriptor.with_table(table);
+		if let Some(ref table) = self.table {
+			descriptor = descriptor.with_table(table.text());
 		}
-		if let Some(column) = self.column {
-			descriptor = descriptor.with_column(column);
+		if let Some(ref column) = self.column {
+			descriptor = descriptor.with_column(column.text());
 		}
 		if let Some(column_type) = self.column_type {
 			descriptor = descriptor.with_column_type(column_type);

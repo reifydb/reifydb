@@ -6,24 +6,27 @@ use std::{marker::PhantomData, sync::Arc};
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	CowVec,
-	interface::{EncodableKey, RingBufferDef, RingBufferMetadata, RowKey, Transaction, VersionedQueryTransaction},
+	interface::{
+		EncodableKey, RingBufferMetadata, RowKey, Transaction, VersionedQueryTransaction,
+		resolved::ResolvedRingBuffer,
+	},
 	row::EncodedRowLayout,
 	value::columnar::{
-		Column, ColumnData, Columns,
+		Column, ColumnData, Columns, SourceQualified,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
 };
-use reifydb_type::{ROW_NUMBER_COLUMN_NAME, RowNumber, Type};
+use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, RowNumber, Type};
 
 use crate::{
 	StandardTransaction,
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 
-pub struct RingBufferScan<T: Transaction> {
-	ring_buffer: RingBufferDef,
+pub struct RingBufferScan<'a, T: Transaction> {
+	ring_buffer: ResolvedRingBuffer<'a>,
 	metadata: Option<RingBufferMetadata>,
-	layout: ColumnsLayout,
+	layout: ColumnsLayout<'a>,
 	row_layout: EncodedRowLayout,
 	current_position: u64,
 	rows_returned: u64,
@@ -32,21 +35,21 @@ pub struct RingBufferScan<T: Transaction> {
 	_phantom: PhantomData<T>,
 }
 
-impl<T: Transaction> RingBufferScan<T> {
-	pub fn new(ring_buffer: RingBufferDef, context: Arc<ExecutionContext>) -> crate::Result<Self> {
+impl<'a, T: Transaction> RingBufferScan<'a, T> {
+	pub fn new(ring_buffer: ResolvedRingBuffer<'a>, context: Arc<ExecutionContext>) -> crate::Result<Self> {
 		// Create row layout based on column types
-		let types: Vec<Type> = ring_buffer.columns.iter().map(|c| c.constraint.get_type()).collect();
+		let types: Vec<Type> = ring_buffer.columns().iter().map(|c| c.constraint.get_type()).collect();
 		let row_layout = EncodedRowLayout::new(&types);
 
 		// Create columns layout
 		let layout = ColumnsLayout {
 			columns: ring_buffer
-				.columns
+				.columns()
 				.iter()
 				.map(|col| ColumnLayout {
 					namespace: None,
 					source: None,
-					name: col.name.clone(),
+					name: Fragment::owned_internal(&col.name),
 				})
 				.collect(),
 		};
@@ -64,9 +67,9 @@ impl<T: Transaction> RingBufferScan<T> {
 		})
 	}
 
-	fn from_ring_buffer_def(ring_buffer: &RingBufferDef) -> Columns {
+	fn from_ring_buffer_def<'b>(ring_buffer: &ResolvedRingBuffer<'b>) -> Columns<'b> {
 		let columns: Vec<Column> = ring_buffer
-			.columns
+			.columns()
 			.iter()
 			.map(|col| {
 				let name = col.name.clone();
@@ -99,9 +102,9 @@ impl<T: Transaction> RingBufferScan<T> {
 					Type::RowNumber => ColumnData::row_number(vec![]),
 					Type::Undefined => ColumnData::undefined(0),
 				};
-				Column::SourceQualified(reifydb_core::value::columnar::SourceQualified {
-					source: ring_buffer.name.clone(),
-					name,
+				Column::SourceQualified(SourceQualified {
+					source: Fragment::owned_internal(ring_buffer.name()),
+					name: Fragment::owned_internal(&name),
 					data,
 				})
 			})
@@ -111,16 +114,16 @@ impl<T: Transaction> RingBufferScan<T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<T> {
+impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 	fn initialize(&mut self, txn: &mut StandardTransaction<'a, T>, _ctx: &ExecutionContext) -> crate::Result<()> {
 		if !self.initialized {
 			// Get ring buffer metadata from the appropriate transaction type
 			let metadata = match txn {
 				crate::StandardTransaction::Command(cmd_txn) => {
-					CatalogStore::find_ring_buffer_metadata(*cmd_txn, self.ring_buffer.id)?
+					CatalogStore::find_ring_buffer_metadata(*cmd_txn, self.ring_buffer.def().id)?
 				}
 				crate::StandardTransaction::Query(query_txn) => {
-					CatalogStore::find_ring_buffer_metadata(*query_txn, self.ring_buffer.id)?
+					CatalogStore::find_ring_buffer_metadata(*query_txn, self.ring_buffer.def().id)?
 				}
 			};
 			self.metadata = metadata;
@@ -139,7 +142,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<T> {
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		let ctx = self.context.as_ref().expect("RingBufferScan context not set");
 
 		// Get metadata or return empty
@@ -167,7 +170,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<T> {
 
 			// Create the row key
 			let key = RowKey {
-				source: self.ring_buffer.id.into(),
+				source: self.ring_buffer.def().id.into(),
 				row: row_num,
 			};
 
@@ -193,12 +196,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<T> {
 
 			// Add row numbers if requested
 			if ctx.preserve_row_numbers {
-				let row_number_column =
-					Column::SourceQualified(reifydb_core::value::columnar::SourceQualified {
-						source: self.ring_buffer.name.clone(),
-						name: ROW_NUMBER_COLUMN_NAME.to_string(),
-						data: ColumnData::row_number(row_numbers),
-					});
+				let row_number_column = Column::SourceQualified(SourceQualified {
+					source: Fragment::owned_internal(self.ring_buffer.name()),
+					name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
+					data: ColumnData::row_number(row_numbers),
+				});
 				columns.0.push(row_number_column);
 			}
 
@@ -208,7 +210,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<T> {
 		}
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		Some(self.layout.clone())
 	}
 }

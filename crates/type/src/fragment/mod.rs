@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 
 // Position types for fragments
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct StatementColumn(pub u32);
 
 impl Deref for StatementColumn {
@@ -30,7 +30,7 @@ impl PartialEq<i32> for StatementColumn {
 }
 
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct StatementLine(pub u32);
 
 impl Deref for StatementLine {
@@ -53,6 +53,30 @@ pub enum Fragment<'a> {
 	Owned(OwnedFragment),
 	Borrowed(BorrowedFragment<'a>),
 	None,
+}
+
+impl PartialEq<str> for Fragment<'_> {
+	fn eq(&self, other: &str) -> bool {
+		self.text() == other
+	}
+}
+
+impl PartialEq<&str> for Fragment<'_> {
+	fn eq(&self, other: &&str) -> bool {
+		self.text() == *other
+	}
+}
+
+impl PartialEq<String> for Fragment<'_> {
+	fn eq(&self, other: &String) -> bool {
+		self.text() == other.as_str()
+	}
+}
+
+impl PartialEq<String> for &Fragment<'_> {
+	fn eq(&self, other: &String) -> bool {
+		self.text() == other.as_str()
+	}
 }
 
 impl Fragment<'_> {
@@ -125,9 +149,9 @@ impl<'a> Fragment<'a> {
 		}
 	}
 
-	/// Convert to owned variant (alias for compatibility)
-	pub fn to_owned(self) -> OwnedFragment {
-		self.into_owned()
+	/// Convert to owned Fragment with 'static lifetime while preserving location info
+	pub fn to_static(self) -> Fragment<'static> {
+		Fragment::Owned(self.into_owned())
 	}
 
 	/// Create a borrowed view of this fragment
@@ -150,7 +174,7 @@ impl<'a> Fragment<'a> {
 					text: text.as_str(),
 				}),
 			},
-			Fragment::Borrowed(b) => Fragment::Borrowed(*b), // Copy since BorrowedFragment is Copy
+			Fragment::Borrowed(b) => Fragment::Borrowed(*b),
 			Fragment::None => Fragment::None,
 		}
 	}
@@ -342,8 +366,17 @@ impl<'de, 'a> serde::Deserialize<'de> for Fragment<'a> {
 // PartialEq implementation for Fragment<'a>
 impl<'a> PartialEq for Fragment<'a> {
 	fn eq(&self, other: &Self) -> bool {
-		self.text() == other.text() && self.line() == other.line() && self.column() == other.column()
+		// Only compare text content, not source location
+		self.text() == other.text()
 	}
 }
 
 impl<'a> Eq for Fragment<'a> {}
+
+// Hash implementation for Fragment<'a> - only hashes the text content
+impl<'a> std::hash::Hash for Fragment<'a> {
+	fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+		// Only hash the text content to be consistent with PartialEq
+		self.text().hash(state);
+	}
+}

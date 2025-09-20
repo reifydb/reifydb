@@ -54,10 +54,10 @@ pub fn state_remove<T: Transaction>(
 }
 
 /// Scan all keys for this operator
-pub fn state_scan<'a, T: Transaction>(
+pub fn state_scan<T: Transaction>(
 	id: FlowNodeId,
-	txn: &'a mut StandardCommandTransaction<T>,
-) -> crate::Result<super::StateIterator<'a>> {
+	txn: &mut StandardCommandTransaction<T>,
+) -> crate::Result<super::StateIterator> {
 	let range = FlowNodeStateKey::node_range(id);
 	Ok(super::StateIterator {
 		inner: txn.range(range)?,
@@ -65,11 +65,11 @@ pub fn state_scan<'a, T: Transaction>(
 }
 
 /// Range query between keys  
-pub fn state_range<'a, T: Transaction>(
+pub fn state_range<T: Transaction>(
 	id: FlowNodeId,
-	txn: &'a mut StandardCommandTransaction<T>,
+	txn: &mut StandardCommandTransaction<T>,
 	range: EncodedKeyRange,
-) -> crate::Result<super::StateIterator<'a>> {
+) -> crate::Result<super::StateIterator> {
 	Ok(super::StateIterator {
 		inner: txn.range(range.with_prefix(FlowNodeStateKey::new(id, vec![]).encode()))?,
 	})

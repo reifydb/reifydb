@@ -185,6 +185,76 @@ impl<'a> ResolvedTableVirtual<'a> {
 	}
 }
 
+/// Resolved ring buffer
+#[derive(Debug, Clone)]
+pub struct ResolvedRingBuffer<'a>(Arc<ResolvedRingBufferInner<'a>>);
+
+#[derive(Debug)]
+struct ResolvedRingBufferInner<'a> {
+	pub identifier: RingBufferIdentifier<'a>,
+	pub namespace: ResolvedNamespace<'a>,
+	pub def: RingBufferDef,
+}
+
+impl<'a> ResolvedRingBuffer<'a> {
+	pub fn new(identifier: RingBufferIdentifier<'a>, namespace: ResolvedNamespace<'a>, def: RingBufferDef) -> Self {
+		Self(Arc::new(ResolvedRingBufferInner {
+			identifier,
+			namespace,
+			def,
+		}))
+	}
+
+	/// Get the ring buffer name
+	pub fn name(&self) -> &str {
+		&self.0.def.name
+	}
+
+	/// Get the ring buffer def
+	pub fn def(&self) -> &RingBufferDef {
+		&self.0.def
+	}
+
+	/// Get the namespace
+	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
+		&self.0.namespace
+	}
+
+	/// Get the identifier
+	pub fn identifier(&self) -> &RingBufferIdentifier<'a> {
+		&self.0.identifier
+	}
+
+	/// Get the effective name (considering aliases)
+	pub fn effective_name(&self) -> &str {
+		self.0.identifier.effective_name()
+	}
+
+	/// Get fully qualified name
+	pub fn fully_qualified_name(&self) -> String {
+		format!("{}.{}", self.0.namespace.name(), self.name())
+	}
+
+	/// Get columns
+	pub fn columns(&self) -> &[ColumnDef] {
+		&self.0.def.columns
+	}
+
+	/// Find a column by name
+	pub fn find_column(&self, name: &str) -> Option<&ColumnDef> {
+		self.0.def.columns.iter().find(|c| c.name == name)
+	}
+
+	/// Convert to owned version with 'static lifetime
+	pub fn to_owned_resolved_ring_buffer(&self) -> ResolvedRingBuffer<'static> {
+		ResolvedRingBuffer(Arc::new(ResolvedRingBufferInner {
+			identifier: self.0.identifier.to_owned_identifier(),
+			namespace: self.0.namespace.to_owned_resolved_namespace(),
+			def: self.0.def.clone(),
+		}))
+	}
+}
+
 /// Resolved standard view
 #[derive(Debug, Clone)]
 pub struct ResolvedView<'a>(Arc<ResolvedViewInner<'a>>);
@@ -332,67 +402,6 @@ impl<'a> ResolvedTransactionalView<'a> {
 
 	pub fn columns(&self) -> &[ColumnDef] {
 		&self.0.def.columns
-	}
-}
-
-#[derive(Debug, Clone)]
-pub struct ResolvedRingBuffer<'a>(Arc<ResolvedRingBufferInner<'a>>);
-
-#[derive(Debug)]
-struct ResolvedRingBufferInner<'a> {
-	pub identifier: RingBufferIdentifier<'a>,
-	pub namespace: ResolvedNamespace<'a>,
-	pub def: RingBufferDef,
-}
-
-impl<'a> ResolvedRingBuffer<'a> {
-	pub fn new(identifier: RingBufferIdentifier<'a>, namespace: ResolvedNamespace<'a>, def: RingBufferDef) -> Self {
-		Self(Arc::new(ResolvedRingBufferInner {
-			identifier,
-			namespace,
-			def,
-		}))
-	}
-
-	pub fn name(&self) -> &str {
-		&self.0.def.name
-	}
-
-	pub fn def(&self) -> &RingBufferDef {
-		&self.0.def
-	}
-
-	pub fn namespace(&self) -> &ResolvedNamespace<'a> {
-		&self.0.namespace
-	}
-
-	pub fn identifier(&self) -> &RingBufferIdentifier<'a> {
-		&self.0.identifier
-	}
-
-	pub fn effective_name(&self) -> &str {
-		self.0.identifier.effective_name()
-	}
-
-	pub fn columns(&self) -> &[ColumnDef] {
-		&self.0.def.columns
-	}
-
-	pub fn fully_qualified_name(&self) -> String {
-		format!("{}.{}", self.0.namespace.name(), self.name())
-	}
-
-	pub fn capacity(&self) -> u64 {
-		self.0.def.capacity
-	}
-
-	/// Convert to owned version with 'static lifetime
-	pub fn to_owned_resolved_ring_buffer(&self) -> ResolvedRingBuffer<'static> {
-		ResolvedRingBuffer(Arc::new(ResolvedRingBufferInner {
-			identifier: self.0.identifier.to_owned_identifier(),
-			namespace: self.0.namespace.to_owned_resolved_namespace(),
-			def: self.0.def.clone(),
-		}))
 	}
 }
 

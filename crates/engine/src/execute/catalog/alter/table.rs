@@ -19,11 +19,11 @@ use reifydb_type::{
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn alter_table<T: Transaction>(
+	pub(crate) fn alter_table<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterTableNode,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		// Table is already fully qualified
 		let namespace_name = plan.node.table.namespace.text();
 		let table_name = plan.node.table.name.text();

@@ -1,16 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
+use std::{marker::PhantomData, sync::Arc};
 
 use reifydb_core::{
 	ColumnDescriptor,
 	interface::{Transaction, evaluate::expression::Expression},
-	value::columnar::{Columns, layout::ColumnsLayout},
+	value::columnar::{Column, Columns, layout::ColumnsLayout},
 };
-use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+use reifydb_type::{Fragment, Params, ROW_NUMBER_COLUMN_NAME};
 
 use crate::{
+	StandardTransaction,
 	evaluate::{EvaluationContext, evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode, query::layout::derive_columns_column_layout},
 };
@@ -18,7 +19,7 @@ use crate::{
 pub(crate) struct MapNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout>,
+	layout: Option<ColumnsLayout<'a>>,
 	context: Option<Arc<ExecutionContext>>,
 }
 
@@ -31,64 +32,16 @@ impl<'a, T: Transaction> MapNode<'a, T> {
 			context: None,
 		}
 	}
-
-	/// Creates an EvaluationContext for a specific expression, injecting
-	/// target column information when the expression is an alias
-	/// expression that targets a table column during UPDATE/INSERT
-	/// operations.
-	fn create_evaluation_context(
-		&self,
-		expr: &Expression,
-		columns: Columns,
-		row_count: usize,
-	) -> EvaluationContext {
-		let mut result = EvaluationContext {
-			target_column: None,
-			column_policies: Vec::new(),
-			columns,
-			row_count,
-			take: None,
-			params: &self.context.as_ref().unwrap().params,
-		};
-
-		// Check if this is an alias expression and we have table
-		// information
-		if let (Expression::Alias(alias_expr), Some(table)) = (expr, &self.context.as_ref().unwrap().table) {
-			let alias_name = alias_expr.alias.name();
-
-			// Find the matching column in the table namespace
-			if let Some(table_column) = table.columns.iter().find(|col| col.name == alias_name) {
-				// Extract ColumnPolicyKind from ColumnPolicy
-				let policy_kinds: Vec<_> =
-					table_column.policies.iter().map(|policy| policy.policy.clone()).collect();
-
-				let target_column = ColumnDescriptor::new()
-					.with_table(&table.name)
-					.with_column(&table_column.name)
-					.with_column_type(table_column.constraint.get_type())
-					.with_policies(policy_kinds.clone());
-
-				result.target_column = Some(target_column);
-				result.column_policies = policy_kinds;
-			}
-		}
-
-		result
-	}
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
-	fn initialize(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "MapNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
@@ -110,16 +63,58 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 
 			let row_count = columns.row_count();
 
-			for expr in &self.expressions {
-				let column = evaluate(
-					&self.create_evaluation_context(expr, columns.clone(), row_count),
-					expr,
-				)?;
+			// Clone expressions to avoid lifetime issues
+			let expressions = self.expressions.clone();
+			for expr in &expressions {
+				// Create evaluation context inline to avoid lifetime issues
+				let mut eval_ctx = EvaluationContext {
+					target_column: None,
+					column_policies: Vec::new(),
+					columns: columns.clone(),
+					row_count,
+					take: None,
+					params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
+				};
+
+				// Check if this is an alias expression and we have table information
+				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &ctx.source) {
+					let alias_name = alias_expr.alias.name();
+
+					// Find the matching column in the table namespace
+					if let Some(table_column) =
+						source.columns.iter().find(|col| col.name == alias_name)
+					{
+						// Extract ColumnPolicyKind from ColumnPolicy
+						let policy_kinds: Vec<_> = table_column
+							.policies
+							.iter()
+							.map(|policy| policy.policy.clone())
+							.collect();
+
+						let target_column = ColumnDescriptor::new()
+							.with_table(Fragment::borrowed_internal(&source.name))
+							.with_column(Fragment::borrowed_internal(&table_column.name))
+							.with_column_type(table_column.constraint.get_type())
+							.with_policies(policy_kinds.clone());
+
+						eval_ctx.target_column = Some(target_column);
+						eval_ctx.column_policies = policy_kinds;
+					}
+				}
+
+				let column = evaluate(&eval_ctx, expr)?;
 
 				new_columns.push(column);
 			}
 
-			let layout = derive_columns_column_layout(&self.expressions, ctx.preserve_row_numbers);
+			// Transmute the vector to extend its lifetime
+			// SAFETY: The columns either come from the input (already transmuted to 'a)
+			// or from evaluate() which returns Column<'a>, so they all genuinely have
+			// lifetime 'a through the query execution
+			let new_columns =
+				unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(new_columns) };
+
+			let layout = derive_columns_column_layout(&expressions, ctx.preserve_row_numbers);
 
 			self.layout = Some(layout);
 
@@ -130,16 +125,16 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		self.layout.clone().or(self.input.layout())
 	}
 }
 
 pub(crate) struct MapWithoutInputNode<'a, T: Transaction> {
 	expressions: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout>,
+	layout: Option<ColumnsLayout<'a>>,
 	context: Option<Arc<ExecutionContext>>,
-	_phantom: std::marker::PhantomData<T>,
+	_phantom: PhantomData<T>,
 }
 
 impl<'a, T: Transaction> MapWithoutInputNode<'a, T> {
@@ -148,22 +143,18 @@ impl<'a, T: Transaction> MapWithoutInputNode<'a, T> {
 			expressions,
 			layout: None,
 			context: None,
-			_phantom: std::marker::PhantomData,
+			_phantom: PhantomData,
 		}
 	}
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
-	fn initialize(
-		&mut self,
-		_rx: &mut crate::StandardTransaction<'a, T>,
-		ctx: &ExecutionContext,
-	) -> crate::Result<()> {
+	fn initialize(&mut self, _rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next(&mut self, _rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
@@ -173,7 +164,9 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 
 		let mut columns = vec![];
 
-		for expr in self.expressions.iter() {
+		// Clone expressions to avoid lifetime issues
+		let expressions = self.expressions.clone();
+		for expr in expressions.iter() {
 			let column = evaluate(
 				&EvaluationContext {
 					target_column: None,
@@ -181,7 +174,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 					columns: Columns::empty(),
 					row_count: 1,
 					take: None,
-					params: &ctx.params,
+					params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
 				},
 				&expr,
 			)?;
@@ -196,7 +189,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		self.layout.clone()
 	}
 }

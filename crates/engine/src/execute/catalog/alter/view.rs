@@ -13,11 +13,11 @@ use reifydb_type::Value;
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn execute_alter_view<T: Transaction>(
+	pub(crate) fn execute_alter_view<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterViewNode,
-	) -> crate::Result<Columns> {
+	) -> crate::Result<Columns<'a>> {
 		// View is already fully qualified
 		let namespace_name = plan.node.view.namespace().text();
 		let view_name = plan.node.view.name().text();

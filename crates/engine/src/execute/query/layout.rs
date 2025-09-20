@@ -2,9 +2,12 @@ use reifydb_core::{
 	interface::evaluate::expression::{ConstantExpression, Expression},
 	value::columnar::layout::{ColumnLayout, ColumnsLayout},
 };
-use reifydb_type::ROW_NUMBER_COLUMN_NAME;
+use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME};
 
-pub fn derive_columns_column_layout(expressions: &[Expression], preserve_row_numbers: bool) -> ColumnsLayout {
+pub fn derive_columns_column_layout<'a>(
+	expressions: &[Expression<'a>],
+	preserve_row_numbers: bool,
+) -> ColumnsLayout<'a> {
 	let mut columns = Vec::new();
 
 	// Add RowNumber column if preserved
@@ -12,7 +15,7 @@ pub fn derive_columns_column_layout(expressions: &[Expression], preserve_row_num
 		columns.push(ColumnLayout {
 			namespace: None,
 			source: None,
-			name: ROW_NUMBER_COLUMN_NAME.to_string(),
+			name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
 		});
 	}
 
@@ -25,17 +28,17 @@ pub fn derive_columns_column_layout(expressions: &[Expression], preserve_row_num
 	}
 }
 
-fn columns_column_layout(expr: &Expression) -> ColumnLayout {
+fn columns_column_layout<'a>(expr: &Expression<'a>) -> ColumnLayout<'a> {
 	match expr {
 		Expression::Alias(alias_expr) => ColumnLayout {
 			namespace: None,
 			source: None,
-			name: alias_expr.alias.name().to_string(),
+			name: alias_expr.alias.0.clone(),
 		},
 		Expression::Column(col_expr) => ColumnLayout {
 			namespace: None,
 			source: None,
-			name: col_expr.0.name.text().to_string(),
+			name: col_expr.0.name.clone(),
 		},
 		Expression::AccessSource(access_expr) => {
 			use reifydb_core::interface::identifier::ColumnSource;
@@ -45,14 +48,14 @@ fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 				ColumnSource::Source {
 					source,
 					..
-				} => source.text().to_string(),
-				ColumnSource::Alias(alias) => alias.text().to_string(),
+				} => source,
+				ColumnSource::Alias(alias) => alias,
 			};
 
 			ColumnLayout {
 				namespace: None,
-				source: Some(source_name),
-				name: access_expr.column.name.text().to_string(),
+				source: Some(source_name.clone()),
+				name: access_expr.column.name.clone(),
 			}
 		}
 		_ => {
@@ -66,40 +69,50 @@ fn columns_column_layout(expr: &Expression) -> ColumnLayout {
 	}
 }
 
-fn simplified_name(expr: &Expression) -> String {
+fn simplified_name<'a>(expr: &Expression<'a>) -> Fragment<'a> {
 	match expr {
-		Expression::Add(expr) => {
-			format!("{}+{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Sub(expr) => {
-			format!("{}-{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Mul(expr) => {
-			format!("{}*{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Div(expr) => {
-			format!("{}/{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Rem(expr) => {
-			format!("{}%{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Column(col_expr) => col_expr.0.name.text().to_string(),
+		Expression::Add(expr) => Fragment::owned_internal(format!(
+			"{}+{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Sub(expr) => Fragment::owned_internal(format!(
+			"{}-{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Mul(expr) => Fragment::owned_internal(format!(
+			"{}*{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Div(expr) => Fragment::owned_internal(format!(
+			"{}/{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Rem(expr) => Fragment::owned_internal(format!(
+			"{}%{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Column(col_expr) => col_expr.0.name.clone(),
 		Expression::Constant(const_expr) => match const_expr {
 			ConstantExpression::Number {
 				fragment,
-			} => fragment.fragment().to_string(),
+			} => fragment.clone(),
 			ConstantExpression::Text {
 				fragment,
-			} => fragment.fragment().to_string(),
+			} => fragment.clone(),
 			ConstantExpression::Bool {
 				fragment,
-			} => fragment.fragment().to_string(),
+			} => fragment.clone(),
 			ConstantExpression::Temporal {
 				fragment,
-			} => fragment.fragment().to_string(),
+			} => fragment.clone(),
 			ConstantExpression::Undefined {
 				..
-			} => "undefined".to_string(),
+			} => Fragment::owned_internal("undefined"),
 		},
 		Expression::AccessSource(access_expr) => {
 			use reifydb_core::interface::identifier::ColumnSource;
@@ -113,58 +126,86 @@ fn simplified_name(expr: &Expression) -> String {
 				ColumnSource::Alias(alias) => alias.text(),
 			};
 
-			format!("{}.{}", source_name, access_expr.column.name.text())
+			Fragment::owned_internal(format!("{}.{}", source_name, access_expr.column.name.text()))
 		}
-		Expression::Call(call_expr) => format!(
+		Expression::Call(call_expr) => Fragment::owned_internal(format!(
 			"{}({})",
 			call_expr.func.name(),
-			call_expr.args.iter().map(|arg| simplified_name(arg)).collect::<Vec<_>>().join(",")
-		),
-		Expression::Prefix(prefix_expr) => {
-			format!("{}{}", prefix_expr.operator, simplified_name(&prefix_expr.expression))
-		}
+			call_expr
+				.args
+				.iter()
+				.map(|arg| simplified_name(arg).text().to_string())
+				.collect::<Vec<_>>()
+				.join(",")
+		)),
+		Expression::Prefix(prefix_expr) => Fragment::owned_internal(format!(
+			"{}{}",
+			prefix_expr.operator,
+			simplified_name(&prefix_expr.expression).text()
+		)),
 		Expression::Cast(cast_expr) => simplified_name(&cast_expr.expression),
-		Expression::Alias(alias_expr) => alias_expr.alias.name().to_string(),
-		Expression::Tuple(tuple_expr) => format!(
+		Expression::Alias(alias_expr) => Fragment::owned_internal(alias_expr.alias.name()),
+		Expression::Tuple(tuple_expr) => Fragment::owned_internal(format!(
 			"({})",
-			tuple_expr.expressions.iter().map(|e| simplified_name(e)).collect::<Vec<_>>().join(",")
-		),
-		Expression::GreaterThan(expr) => {
-			format!("{}>{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::GreaterThanEqual(expr) => {
-			format!("{}>={}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::LessThan(expr) => {
-			format!("{}<{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::LessThanEqual(expr) => {
-			format!("{}<={}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Equal(expr) => {
-			format!("{}=={}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::NotEqual(expr) => {
-			format!("{}!={}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Between(expr) => {
-			format!(
-				"{} BETWEEN {} AND {}",
-				simplified_name(&expr.value),
-				simplified_name(&expr.lower),
-				simplified_name(&expr.upper)
-			)
-		}
-		Expression::And(expr) => {
-			format!("{}and{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Or(expr) => {
-			format!("{}or{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Xor(expr) => {
-			format!("{}xor{}", simplified_name(&expr.left), simplified_name(&expr.right))
-		}
-		Expression::Type(type_expr) => type_expr.fragment.fragment().to_string(),
-		Expression::Parameter(_) => "parameter".to_string(),
+			tuple_expr
+				.expressions
+				.iter()
+				.map(|e| simplified_name(e).text().to_string())
+				.collect::<Vec<_>>()
+				.join(",")
+		)),
+		Expression::GreaterThan(expr) => Fragment::owned_internal(format!(
+			"{}>{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::GreaterThanEqual(expr) => Fragment::owned_internal(format!(
+			"{}>={}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::LessThan(expr) => Fragment::owned_internal(format!(
+			"{}<{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::LessThanEqual(expr) => Fragment::owned_internal(format!(
+			"{}<={}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Equal(expr) => Fragment::owned_internal(format!(
+			"{}=={}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::NotEqual(expr) => Fragment::owned_internal(format!(
+			"{}!={}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Between(expr) => Fragment::owned_internal(format!(
+			"{} BETWEEN {} AND {}",
+			simplified_name(&expr.value).text(),
+			simplified_name(&expr.lower).text(),
+			simplified_name(&expr.upper).text()
+		)),
+		Expression::And(expr) => Fragment::owned_internal(format!(
+			"{}and{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Or(expr) => Fragment::owned_internal(format!(
+			"{}or{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Xor(expr) => Fragment::owned_internal(format!(
+			"{}xor{}",
+			simplified_name(&expr.left).text(),
+			simplified_name(&expr.right).text()
+		)),
+		Expression::Type(type_expr) => type_expr.fragment.clone(),
+		Expression::Parameter(_) => Fragment::owned_internal("parameter"),
 	}
 }

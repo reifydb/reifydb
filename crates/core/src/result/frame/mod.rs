@@ -5,7 +5,6 @@ mod column;
 mod data;
 mod display;
 mod frame;
-mod websocket_test;
 
 pub use column::FrameColumn;
 pub use data::FrameColumnData;

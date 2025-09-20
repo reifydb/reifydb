@@ -3,6 +3,7 @@
 
 use std::{
 	collections::{BTreeSet, HashMap},
+	marker::PhantomData,
 	sync::Arc,
 };
 
@@ -14,7 +15,7 @@ use reifydb_core::{
 		layout::{ColumnLayout, ColumnsLayout},
 	},
 };
-use reifydb_type::{Fragment, Type, Value};
+use reifydb_type::{Fragment, Params, Type, Value};
 
 use crate::{
 	evaluate::{EvaluationContext, cast::cast_column_data, evaluate},
@@ -23,33 +24,35 @@ use crate::{
 
 pub(crate) struct InlineDataNode<'a, T: Transaction> {
 	rows: Vec<Vec<AliasExpression<'a>>>,
-	layout: Option<ColumnsLayout>,
+	layout: Option<ColumnsLayout<'a>>,
 	context: Option<Arc<ExecutionContext>>,
 	executed: bool,
-	_phantom: std::marker::PhantomData<T>,
+	_phantom: PhantomData<T>,
 }
 
 impl<'a, T: Transaction> InlineDataNode<'a, T> {
 	pub fn new(rows: Vec<Vec<AliasExpression<'a>>>, context: Arc<ExecutionContext>) -> Self {
-		let layout = context.table.as_ref().map(|table| Self::create_columns_layout_from_table(table));
+		// Clone the Arc to extract layout without borrowing issues
+		let cloned_context = context.clone();
+		let layout = cloned_context.source.as_ref().map(|table| Self::create_columns_layout_from_table(table));
 
 		Self {
 			rows,
 			layout,
 			context: Some(context),
 			executed: false,
-			_phantom: std::marker::PhantomData,
+			_phantom: PhantomData,
 		}
 	}
 
-	fn create_columns_layout_from_table(table: &TableDef) -> ColumnsLayout {
+	fn create_columns_layout_from_table(table: &TableDef) -> ColumnsLayout<'a> {
 		let columns = table
 			.columns
 			.iter()
 			.map(|col| ColumnLayout {
 				namespace: None,
 				source: None,
-				name: col.name.clone(),
+				name: Fragment::owned_internal(&col.name),
 			})
 			.collect();
 
@@ -69,7 +72,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, _rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch>> {
+	fn next(&mut self, _rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap().clone();
 
@@ -98,7 +101,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
 		}
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout> {
+	fn layout(&self) -> Option<ColumnsLayout<'a>> {
 		self.layout.clone()
 	}
 }
@@ -146,7 +149,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		}
 	}
 
-	fn next_infer_namespace(&mut self, ctx: &ExecutionContext) -> crate::Result<Option<Batch>> {
+	fn next_infer_namespace(&mut self, ctx: &ExecutionContext) -> crate::Result<Option<Batch<'a>>> {
 		// Collect all unique column names across all rows
 		let mut all_columns: BTreeSet<String> = BTreeSet::new();
 
@@ -185,7 +188,9 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 						columns: Columns::empty(),
 						row_count: 1,
 						take: None,
-						params: &ctx.params,
+						params: unsafe {
+							std::mem::transmute::<&Params, &'a Params>(&ctx.params)
+						},
 					};
 
 					let evaluated = evaluate(&ctx, &alias_expr.expression)?;
@@ -245,7 +250,9 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 							columns: Columns::empty(),
 							row_count: 1,
 							take: None,
-							params: &ctx.params,
+							params: unsafe {
+								std::mem::transmute::<&Params, &'a Params>(&ctx.params)
+							},
 						};
 
 						match cast_column_data(&ctx, &temp_data, wide_type, || Fragment::none())
@@ -279,7 +286,9 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 						columns: Columns::empty(),
 						row_count: column_data.len(),
 						take: None,
-						params: &ctx.params,
+						params: unsafe {
+							std::mem::transmute::<&Params, &'a Params>(&ctx.params)
+						},
 					};
 
 					if let Ok(demoted) =
@@ -293,7 +302,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			// if needed
 
 			columns.push(Column::ColumnQualified(ColumnQualified {
-				name: column_name,
+				name: Fragment::owned_internal(column_name),
 				data: column_data,
 			}));
 		}
@@ -306,8 +315,8 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		}))
 	}
 
-	fn next_with_table_namespace(&mut self, ctx: &ExecutionContext) -> crate::Result<Option<Batch>> {
-		let table = ctx.table.as_ref().unwrap(); // Safe because layout is Some
+	fn next_with_table_namespace(&mut self, ctx: &ExecutionContext) -> crate::Result<Option<Batch<'a>>> {
+		let table = ctx.source.as_ref().unwrap(); // Safe because layout is Some
 		let layout = self.layout.as_ref().unwrap(); // Safe because we're in this path
 
 		// Convert rows to HashMap for easier column lookup
@@ -329,15 +338,16 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			let mut column_data = ColumnData::undefined(0);
 
 			// Find the corresponding table column for policies
-			let table_column = table.columns.iter().find(|col| col.name == column_layout.name).unwrap(); // Safe because layout came from table
+			let table_column =
+				table.columns.iter().find(|col| col.name == column_layout.name.text()).unwrap(); // Safe because layout came from table
 
 			for row_data in &rows_data {
-				if let Some(alias_expr) = row_data.get(&column_layout.name) {
+				if let Some(alias_expr) = row_data.get(column_layout.name.text()) {
 					// Create ColumnDescriptor with table
 					// context
 					let column_descriptor = ColumnDescriptor::new()
-						.with_table(&table.name)
-						.with_column(&table_column.name)
+						.with_table(Fragment::borrowed_internal(&table.name))
+						.with_column(Fragment::borrowed_internal(&table_column.name))
 						.with_column_type(table_column.constraint.get_type())
 						.with_policies(
 							table_column
@@ -357,7 +367,9 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 						columns: Columns::empty(),
 						row_count: 1,
 						take: None,
-						params: &ctx.params,
+						params: unsafe {
+							std::mem::transmute::<&Params, &'a Params>(&ctx.params)
+						},
 					};
 
 					let evaluated = evaluate(&ctx, &alias_expr.expression)?;

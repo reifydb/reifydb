@@ -141,7 +141,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 							let undefined_data = ColumnData::undefined(remove_count);
 							undefined_columns.push(Column::ColumnQualified(
 								ColumnQualified {
-									name: col.name().to_string(),
+									name: col.name().clone(),
 									data: undefined_data,
 								},
 							));

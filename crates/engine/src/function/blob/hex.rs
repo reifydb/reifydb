@@ -50,7 +50,7 @@ mod tests {
 		columnar::{Column, ColumnQualified, Columns},
 		container::Utf8Container,
 	};
-	use reifydb_type::value::constraint::bytes::MaxBytes;
+	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};
 
 	use super::*;
 	use crate::function::ScalarFunctionContext;
@@ -62,7 +62,7 @@ mod tests {
 		let hex_data = vec!["deadbeef".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -95,7 +95,7 @@ mod tests {
 		let hex_data = vec!["".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -128,7 +128,7 @@ mod tests {
 		let hex_data = vec!["DEADBEEF".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -161,7 +161,7 @@ mod tests {
 		let hex_data = vec!["DeAdBeEf".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -194,7 +194,7 @@ mod tests {
 		let hex_data = vec!["ff".to_string(), "00".to_string(), "deadbeef".to_string()];
 		let bitvec = vec![true, true, true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -232,7 +232,7 @@ mod tests {
 		let hex_data = vec!["ff".to_string(), "".to_string(), "deadbeef".to_string()];
 		let bitvec = vec![true, false, true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -270,7 +270,7 @@ mod tests {
 		let hex_data = vec!["invalid_hex".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
@@ -293,7 +293,7 @@ mod tests {
 		let hex_data = vec!["abc".to_string()];
 		let bitvec = vec![true];
 		let input_column = ColumnQualified {
-			name: "input".to_string(),
+			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,

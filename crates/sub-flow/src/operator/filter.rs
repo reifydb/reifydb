@@ -1,13 +1,17 @@
 use reifydb_core::{
 	BitVec,
 	flow::{FlowChange, FlowDiff},
-	interface::{EvaluationContext, Evaluator, Params, Transaction, expression::Expression},
+	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
 	util::CowVec,
-	value::columnar::{ColumnData, Columns},
+	value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
+use reifydb_type::{Fragment, Params};
 
 use crate::operator::Operator;
+
+// Static empty params instance for use in EvaluationContext
+static EMPTY_PARAMS: Params = Params::None;
 
 pub struct FilterOperator {
 	conditions: Vec<Expression<'static>>,
@@ -104,7 +108,7 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 }
 
 impl FilterOperator {
-	fn filter(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns> {
+	fn filter(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns<'static>> {
 		let (filtered, _) = self.filter_with_indices(evaluator, columns)?;
 		Ok(filtered)
 	}
@@ -113,10 +117,8 @@ impl FilterOperator {
 		&self,
 		evaluator: &StandardEvaluator,
 		columns: &Columns,
-	) -> crate::Result<(Columns, Vec<usize>)> {
+	) -> crate::Result<(Columns<'static>, Vec<usize>)> {
 		let row_count = columns.row_count();
-
-		let empty_params = Params::None;
 
 		let eval_ctx = EvaluationContext {
 			target_column: None,
@@ -124,7 +126,7 @@ impl FilterOperator {
 			columns: columns.clone(),
 			row_count,
 			take: None,
-			params: &empty_params,
+			params: &EMPTY_PARAMS,
 		};
 
 		// Start with all bits set to true
@@ -157,9 +159,26 @@ impl FilterOperator {
 			}
 		}
 
-		let mut columns = columns.clone();
-		columns.filter(&final_bv)?;
+		let mut filtered_columns = columns.clone();
+		filtered_columns.filter(&final_bv)?;
 
-		Ok((columns, indices))
+		// Convert to owned/static columns
+		let mut static_columns = Vec::new();
+		for col in filtered_columns.into_iter() {
+			let static_col = match col {
+				Column::SourceQualified(sq) => Column::SourceQualified(SourceQualified {
+					source: sq.source.to_static(),
+					name: sq.name.to_static(),
+					data: sq.data,
+				}),
+				Column::ColumnQualified(cq) => Column::ColumnQualified(ColumnQualified {
+					name: cq.name.to_static(),
+					data: cq.data,
+				}),
+			};
+			static_columns.push(static_col);
+		}
+
+		Ok((Columns::new(static_columns), indices))
 	}
 }
