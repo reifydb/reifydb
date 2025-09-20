@@ -11,11 +11,11 @@ use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::{Type, Value};
 
 use super::utils;
-use crate::stateful::SimpleStatefulOperator;
+use crate::TransformOperator;
 
 /// Operator with multiple keyed state values (for aggregations, grouping, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
-pub trait KeyedStateful<T: Transaction>: SimpleStatefulOperator<T> {
+pub trait KeyedStateful<T: Transaction>: TransformOperator<T> {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedRowLayout;
 

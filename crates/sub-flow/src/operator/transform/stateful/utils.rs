@@ -8,7 +8,6 @@ use reifydb_core::{
 		key::{EncodableKey, FlowNodeStateKey},
 	},
 	row::{EncodedRow, EncodedRowLayout},
-	util::encoding::keycode::KeySerializer,
 };
 use reifydb_engine::StandardCommandTransaction;
 
@@ -113,14 +112,6 @@ pub fn save_row<T: Transaction>(
 /// Create an empty key for single-state operators
 pub fn empty_key() -> EncodedKey {
 	EncodedKey::new(Vec::new())
-}
-
-/// Create a window key
-pub fn window_key(window_id: u64) -> EncodedKey {
-	let mut serializer = KeySerializer::with_capacity(16);
-	serializer.extend_bytes(b"w:"); // prefix for windows
-	serializer.extend_u64(window_id);
-	EncodedKey::new(serializer.finish())
 }
 
 #[cfg(test)]
@@ -334,22 +325,6 @@ mod tests {
 		let key = empty_key();
 		assert_eq!(key.len(), 0);
 		assert!(key.as_ref().is_empty());
-	}
-
-	#[test]
-	fn test_window_key() {
-		let key1 = window_key(1);
-		let key2 = window_key(2);
-		let key100 = window_key(100);
-
-		// Keys should be different
-		assert_ne!(key1.as_ref(), key2.as_ref());
-		assert_ne!(key1.as_ref(), key100.as_ref());
-
-		// With the NOT encoding, smaller values produce larger encoded keys (reversed ordering)
-		// So key1 (for window 1) will be > key2 (for window 2)
-		assert!(key1 > key2);
-		assert!(key2 > key100);
 	}
 
 	#[test]
