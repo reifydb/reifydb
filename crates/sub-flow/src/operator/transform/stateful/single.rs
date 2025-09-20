@@ -8,11 +8,12 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardCommandTransaction;
 
-use super::{super::TransformOperator, utils};
+use super::utils;
+use crate::stateful::RawStatefulOperator;
 
 /// Operator with a single state value (like counters, running sums, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
-pub trait SingleStateful<T: Transaction>: TransformOperator<T> {
+pub trait SingleStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedRowLayout;
 

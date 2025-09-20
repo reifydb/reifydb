@@ -13,9 +13,12 @@ use reifydb_core::{
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::Type;
 
-use crate::operator::{
-	Operator,
-	transform::{TransformOperator, TransformOperatorFactory, extract, stateful::SingleStateful},
+use crate::{
+	operator::{
+		Operator,
+		transform::{TransformOperator, TransformOperatorFactory, extract, stateful::SingleStateful},
+	},
+	stateful::RawStatefulOperator,
 };
 
 pub struct CounterOperator {
@@ -124,6 +127,8 @@ impl<T: Transaction> TransformOperator<T> for CounterOperator {
 		self.node
 	}
 }
+
+impl<T: Transaction> RawStatefulOperator<T> for CounterOperator {}
 
 impl<T: Transaction> SingleStateful<T> for CounterOperator {
 	fn layout(&self) -> EncodedRowLayout {

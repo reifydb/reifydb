@@ -15,7 +15,7 @@ use crate::{
 	Result,
 	operator::{
 		Operator,
-		transform::{TransformOperator, stateful::SimpleStatefulOperator},
+		transform::{TransformOperator, stateful::RawStatefulOperator},
 	},
 };
 
@@ -306,4 +306,4 @@ impl<T: Transaction> TransformOperator<T> for TakeOperator {
 	}
 }
 
-impl<T: Transaction> SimpleStatefulOperator<T> for TakeOperator {}
+impl<T: Transaction> RawStatefulOperator<T> for TakeOperator {}

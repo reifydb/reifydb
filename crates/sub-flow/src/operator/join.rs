@@ -22,7 +22,7 @@ use crate::{
 	Result,
 	operator::{
 		Operator,
-		transform::{TransformOperator, stateful::SimpleStatefulOperator},
+		transform::{TransformOperator, stateful::RawStatefulOperator},
 	},
 };
 
@@ -1022,4 +1022,4 @@ impl<T: Transaction> TransformOperator<T> for JoinOperator {
 	}
 }
 
-impl<T: Transaction> SimpleStatefulOperator<T> for JoinOperator {}
+impl<T: Transaction> RawStatefulOperator<T> for JoinOperator {}

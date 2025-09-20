@@ -8,11 +8,12 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardCommandTransaction;
 
-use super::{super::TransformOperator, utils};
+use super::utils;
+use crate::stateful::RawStatefulOperator;
 
 /// Window-based state management for time or count-based windowing
 /// Extends TransformOperator directly and uses utility functions for state management
-pub trait WindowStateful<T: Transaction>: TransformOperator<T> {
+pub trait WindowStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedRowLayout;
 

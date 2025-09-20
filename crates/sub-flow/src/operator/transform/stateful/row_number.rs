@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::RowNumber;
 
-use crate::operator::transform::stateful::SimpleStatefulOperator;
+use crate::operator::transform::stateful::RawStatefulOperator;
 
 /// Provides stable row numbers for keys with automatic Insert/Update detection
 ///
@@ -36,7 +36,7 @@ impl RowNumberProvider {
 	/// Get or create a RowNumber for a given key
 	/// Returns (RowNumber, is_new) where is_new indicates if it was newly
 	/// created
-	pub fn get_or_create_row_number<T: Transaction, O: SimpleStatefulOperator<T>>(
+	pub fn get_or_create_row_number<T: Transaction, O: RawStatefulOperator<T>>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		operator: &O,
@@ -72,7 +72,7 @@ impl RowNumberProvider {
 	}
 
 	/// Load the current counter value
-	fn load_counter<T: Transaction, O: SimpleStatefulOperator<T>>(
+	fn load_counter<T: Transaction, O: RawStatefulOperator<T>>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		operator: &O,
@@ -97,7 +97,7 @@ impl RowNumberProvider {
 	}
 
 	/// Save the counter value
-	fn save_counter<T: Transaction, O: SimpleStatefulOperator<T>>(
+	fn save_counter<T: Transaction, O: RawStatefulOperator<T>>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		operator: &O,

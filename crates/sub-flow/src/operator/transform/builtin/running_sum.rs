@@ -17,7 +17,7 @@ use reifydb_type::Params;
 
 use crate::operator::{
 	Operator,
-	transform::{TransformOperator, TransformOperatorFactory, extract, stateful::SimpleStatefulOperator},
+	transform::{TransformOperator, TransformOperatorFactory, extract, stateful::RawStatefulOperator},
 };
 
 pub struct RunningSumOperator {
@@ -208,7 +208,7 @@ impl<T: Transaction> TransformOperator<T> for RunningSumOperator {
 	}
 }
 
-impl<T: Transaction> SimpleStatefulOperator<T> for RunningSumOperator {}
+impl<T: Transaction> RawStatefulOperator<T> for RunningSumOperator {}
 
 impl<T: Transaction> TransformOperatorFactory<T> for RunningSumOperator {
 	fn create_from_expressions(

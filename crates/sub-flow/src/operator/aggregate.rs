@@ -19,7 +19,7 @@ use crate::{
 	Result,
 	operator::{
 		Operator,
-		transform::{TransformOperator, stateful::SimpleStatefulOperator},
+		transform::{TransformOperator, stateful::RawStatefulOperator},
 	},
 };
 
@@ -533,7 +533,7 @@ impl<T: Transaction> TransformOperator<T> for AggregateOperator {
 	}
 }
 
-impl<T: Transaction> SimpleStatefulOperator<T> for AggregateOperator {}
+impl<T: Transaction> RawStatefulOperator<T> for AggregateOperator {}
 
 // ============================================================================
 // Helper Functions

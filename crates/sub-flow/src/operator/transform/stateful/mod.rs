@@ -11,8 +11,8 @@ use reifydb_core::{
 };
 
 mod keyed;
+mod raw;
 mod row_number;
-mod simple;
 mod single;
 mod utils;
 #[cfg(test)]
@@ -20,8 +20,8 @@ mod utils_test;
 mod window;
 
 pub use keyed::KeyedStateful;
+pub use raw::RawStatefulOperator;
 pub use row_number::RowNumberProvider;
-pub use simple::SimpleStatefulOperator;
 pub use single::SingleStateful;
 pub use window::WindowStateful;
 

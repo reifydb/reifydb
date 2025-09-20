@@ -17,7 +17,7 @@ use reifydb_type::Params;
 
 use crate::operator::{
 	Operator,
-	transform::{TransformOperator, TransformOperatorFactory, extract, stateful::SimpleStatefulOperator},
+	transform::{TransformOperator, TransformOperatorFactory, extract, stateful::RawStatefulOperator},
 };
 
 pub struct RunningAvgOperator {
@@ -155,7 +155,7 @@ impl<T: Transaction> TransformOperator<T> for RunningAvgOperator {
 	}
 }
 
-impl<T: Transaction> SimpleStatefulOperator<T> for RunningAvgOperator {}
+impl<T: Transaction> RawStatefulOperator<T> for RunningAvgOperator {}
 
 impl<T: Transaction> TransformOperatorFactory<T> for RunningAvgOperator {
 	fn create_from_expressions(

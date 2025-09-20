@@ -6,9 +6,9 @@ use reifydb_engine::StandardCommandTransaction;
 
 use super::{super::TransformOperator, utils};
 
-/// Simple Stateful operations - provides raw key-value access
+/// Raw Stateful operations - provides raw key-value access
 /// This is the foundation for operators that need state management
-pub trait SimpleStatefulOperator<T: Transaction>: TransformOperator<T> {
+pub trait RawStatefulOperator<T: Transaction>: TransformOperator<T> {
 	/// Get raw bytes for a key
 	fn state_get(
 		&self,
@@ -69,7 +69,7 @@ mod tests {
 	use crate::operator::transform::stateful::utils_test::test::*;
 
 	// Test implementation of SimpleStatefulOperator
-	impl SimpleStatefulOperator<TestTransaction> for TestOperator {}
+	impl RawStatefulOperator<TestTransaction> for TestOperator {}
 
 	#[test]
 	fn test_simple_state_get_set() {

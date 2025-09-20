@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::operator::{
 	Operator,
-	transform::{TransformOperator, stateful::SimpleStatefulOperator},
+	transform::{TransformOperator, stateful::RawStatefulOperator},
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -337,4 +337,4 @@ impl<T: Transaction> TransformOperator<T> for DistinctOperator {
 	}
 }
 
-impl<T: Transaction> SimpleStatefulOperator<T> for DistinctOperator {}
+impl<T: Transaction> RawStatefulOperator<T> for DistinctOperator {}
