@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	row::EncodedRow,
 	util::CowVec,
-	value::columnar::{Column, ColumnData, ColumnQualified, Columns, ResolvedColumn, SourceQualified},
+	value::columnar::{Column, ColumnComputed, ColumnData, ColumnResolved, Columns, SourceQualified},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{Fragment, RowNumber, Value};
@@ -146,8 +146,8 @@ impl JoinOperator {
 		let empty_params = Params::None;
 
 		let eval_ctx = EvaluationContext {
-			target_column: None,
-			column_policies: Vec::new(),
+			target: None,
+			policies: Vec::new(),
 			columns: columns.clone(),
 			row_count,
 			take: None,
@@ -850,7 +850,7 @@ impl JoinOperator {
 				let mut column_vec = Vec::new();
 				for column in before.iter() {
 					let static_col = match column {
-						Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
+						Column::Resolved(rc) => Column::Resolved(ColumnResolved {
 							column: rc.column.to_static(),
 							data: rc.data.clone(),
 						}),
@@ -861,12 +861,10 @@ impl JoinOperator {
 								data: sq.data.clone(),
 							})
 						}
-						Column::ColumnQualified(cq) => {
-							Column::ColumnQualified(ColumnQualified {
-								name: cq.name.clone().to_static(),
-								data: cq.data.clone(),
-							})
-						}
+						Column::Computed(cq) => Column::Computed(ColumnComputed {
+							name: cq.name.clone().to_static(),
+							data: cq.data.clone(),
+						}),
 					};
 					column_vec.push(static_col);
 				}
@@ -898,7 +896,7 @@ impl JoinOperator {
 					let mut column_vec = Vec::new();
 					for column in before.iter() {
 						let static_col = match column {
-							Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
+							Column::Resolved(rc) => Column::Resolved(ColumnResolved {
 								column: rc.column.to_static(),
 								data: rc.data.clone(),
 							}),
@@ -909,12 +907,10 @@ impl JoinOperator {
 									data: sq.data.clone(),
 								})
 							}
-							Column::ColumnQualified(cq) => {
-								Column::ColumnQualified(ColumnQualified {
-									name: cq.name.clone().to_static(),
-									data: cq.data.clone(),
-								})
-							}
+							Column::Computed(cq) => Column::Computed(ColumnComputed {
+								name: cq.name.clone().to_static(),
+								data: cq.data.clone(),
+							}),
 						};
 						column_vec.push(static_col);
 					}

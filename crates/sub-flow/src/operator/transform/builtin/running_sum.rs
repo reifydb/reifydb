@@ -8,7 +8,7 @@ use reifydb_core::{
 	row::EncodedRow,
 	util::CowVec,
 	value::{
-		columnar::{Column, ColumnData, ColumnQualified, Columns},
+		columnar::{Column, ColumnComputed, ColumnData, Columns},
 		container::NumberContainer,
 	},
 };
@@ -59,8 +59,8 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 					// Evaluate input expression
 					let empty_params = Params::None;
 					let eval_ctx = EvaluationContext {
-						target_column: None,
-						column_policies: Vec::new(),
+						target: None,
+						policies: Vec::new(),
 						columns: after.clone(),
 						row_count: after.row_count(),
 						take: None,
@@ -106,7 +106,7 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 
 					// Build output
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
-					all_columns.push(Column::ColumnQualified(ColumnQualified {
+					all_columns.push(Column::Computed(ColumnComputed {
 						name: Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Float8(NumberContainer::from_vec(sums)),
 					}));
@@ -129,8 +129,8 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 					// Evaluate input expression
 					let empty_params = Params::None;
 					let eval_ctx = EvaluationContext {
-						target_column: None,
-						column_policies: Vec::new(),
+						target: None,
+						policies: Vec::new(),
 						columns: after.clone(),
 						row_count: after.row_count(),
 						take: None,
@@ -176,7 +176,7 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 
 					// Build output
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
-					all_columns.push(Column::ColumnQualified(ColumnQualified {
+					all_columns.push(Column::Computed(ColumnComputed {
 						name: Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Float8(NumberContainer::from_vec(sums)),
 					}));

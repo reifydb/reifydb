@@ -47,7 +47,7 @@ impl ScalarFunction for BlobHex {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::{
-		columnar::{Column, ColumnQualified, Columns},
+		columnar::{Column, ColumnComputed, Columns},
 		container::Utf8Container,
 	};
 	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};
@@ -61,7 +61,7 @@ mod tests {
 
 		let hex_data = vec!["deadbeef".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnQualified {
+		let input_column = ColumnComputed {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
@@ -69,7 +69,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
+		let columns = Columns::new(vec![Column::Computed(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -94,7 +94,7 @@ mod tests {
 
 		let hex_data = vec!["".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnQualified {
+		let input_column = ColumnComputed {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
@@ -102,7 +102,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
+		let columns = Columns::new(vec![Column::Computed(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -127,7 +127,7 @@ mod tests {
 
 		let hex_data = vec!["DEADBEEF".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnQualified {
+		let input_column = ColumnComputed {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
@@ -135,7 +135,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
+		let columns = Columns::new(vec![Column::Computed(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -160,7 +160,7 @@ mod tests {
 
 		let hex_data = vec!["DeAdBeEf".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnQualified {
+		let input_column = ColumnComputed {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
@@ -168,7 +168,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
+		let columns = Columns::new(vec![Column::Computed(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -193,7 +193,7 @@ mod tests {
 
 		let hex_data = vec!["ff".to_string(), "00".to_string(), "deadbeef".to_string()];
 		let bitvec = vec![true, true, true];
-		let input_column = ColumnQualified {
+		let input_column = ColumnComputed {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
@@ -201,7 +201,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
+		let columns = Columns::new(vec![Column::Computed(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -231,7 +231,7 @@ mod tests {
 
 		let hex_data = vec!["ff".to_string(), "".to_string(), "deadbeef".to_string()];
 		let bitvec = vec![true, false, true];
-		let input_column = ColumnQualified {
+		let input_column = ColumnComputed {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
@@ -239,7 +239,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
+		let columns = Columns::new(vec![Column::Computed(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -269,7 +269,7 @@ mod tests {
 
 		let hex_data = vec!["invalid_hex".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnQualified {
+		let input_column = ColumnComputed {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
@@ -277,7 +277,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
+		let columns = Columns::new(vec![Column::Computed(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -292,7 +292,7 @@ mod tests {
 
 		let hex_data = vec!["abc".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnQualified {
+		let input_column = ColumnComputed {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(hex_data, bitvec.into()),
@@ -300,7 +300,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::ColumnQualified(input_column)]);
+		let columns = Columns::new(vec![Column::Computed(input_column)]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,

@@ -9,9 +9,9 @@ use std::{
 
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{TableDef, Transaction, evaluate::expression::AliasExpression},
+	interface::{ResolvedSource, Transaction, evaluate::expression::AliasExpression},
 	value::columnar::{
-		Column, ColumnData, ColumnQualified, Columns,
+		Column, ColumnComputed, ColumnData, Columns,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
 };
@@ -25,16 +25,17 @@ use crate::{
 pub(crate) struct InlineDataNode<'a, T: Transaction> {
 	rows: Vec<Vec<AliasExpression<'a>>>,
 	layout: Option<ColumnsLayout<'a>>,
-	context: Option<Arc<ExecutionContext>>,
+	context: Option<Arc<ExecutionContext<'a>>>,
 	executed: bool,
 	_phantom: PhantomData<T>,
 }
 
 impl<'a, T: Transaction> InlineDataNode<'a, T> {
-	pub fn new(rows: Vec<Vec<AliasExpression<'a>>>, context: Arc<ExecutionContext>) -> Self {
+	pub fn new(rows: Vec<Vec<AliasExpression<'a>>>, context: Arc<ExecutionContext<'a>>) -> Self {
 		// Clone the Arc to extract layout without borrowing issues
 		let cloned_context = context.clone();
-		let layout = cloned_context.source.as_ref().map(|table| Self::create_columns_layout_from_table(table));
+		let layout =
+			cloned_context.source.as_ref().map(|source| Self::create_columns_layout_from_source(source));
 
 		Self {
 			rows,
@@ -45,9 +46,9 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		}
 	}
 
-	fn create_columns_layout_from_table(table: &TableDef) -> ColumnsLayout<'a> {
-		let columns = table
-			.columns
+	fn create_columns_layout_from_source(source: &ResolvedSource) -> ColumnsLayout<'a> {
+		let columns = source
+			.columns()
 			.iter()
 			.map(|col| ColumnLayout {
 				namespace: None,
@@ -66,7 +67,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a, T>,
-		_ctx: &ExecutionContext,
+		_ctx: &ExecutionContext<'a>,
 	) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
@@ -149,13 +150,13 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		}
 	}
 
-	fn next_infer_namespace(&mut self, ctx: &ExecutionContext) -> crate::Result<Option<Batch<'a>>> {
+	fn next_infer_namespace(&mut self, ctx: &ExecutionContext<'a>) -> crate::Result<Option<Batch<'a>>> {
 		// Collect all unique column names across all rows
 		let mut all_columns: BTreeSet<String> = BTreeSet::new();
 
 		for row in &self.rows {
 			for keyed_expr in row {
-				let column_name = keyed_expr.alias.0.fragment().to_string();
+				let column_name = keyed_expr.alias.0.text().to_string();
 				all_columns.insert(column_name);
 			}
 		}
@@ -166,7 +167,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		for row in &self.rows {
 			let mut row_map: HashMap<String, &AliasExpression> = HashMap::new();
 			for alias_expr in row {
-				let column_name = alias_expr.alias.0.fragment().to_string();
+				let column_name = alias_expr.alias.0.text().to_string();
 				row_map.insert(column_name, alias_expr);
 			}
 			rows_data.push(row_map);
@@ -183,8 +184,8 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(&column_name) {
 					let ctx = EvaluationContext {
-						target_column: None,
-						column_policies: Vec::new(),
+						target: None,
+						policies: Vec::new(),
 						columns: Columns::empty(),
 						row_count: 1,
 						take: None,
@@ -245,8 +246,8 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 						// Cast to the wide type
 						let temp_data = ColumnData::from(value.clone());
 						let ctx = EvaluationContext {
-							target_column: None,
-							column_policies: Vec::new(),
+							target: None,
+							policies: Vec::new(),
 							columns: Columns::empty(),
 							row_count: 1,
 							take: None,
@@ -281,8 +282,8 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 				if optimal_type != Type::Int16 {
 					// Demote to the optimal type
 					let ctx = EvaluationContext {
-						target_column: None,
-						column_policies: Vec::new(),
+						target: None,
+						policies: Vec::new(),
 						columns: Columns::empty(),
 						row_count: column_data.len(),
 						take: None,
@@ -301,7 +302,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			// Could add similar optimization for Float8 -> Float4
 			// if needed
 
-			columns.push(Column::ColumnQualified(ColumnQualified {
+			columns.push(Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal(column_name),
 				data: column_data,
 			}));
@@ -315,8 +316,8 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		}))
 	}
 
-	fn next_with_table_namespace(&mut self, ctx: &ExecutionContext) -> crate::Result<Option<Batch<'a>>> {
-		let table = ctx.source.as_ref().unwrap(); // Safe because layout is Some
+	fn next_with_table_namespace(&mut self, ctx: &ExecutionContext<'a>) -> crate::Result<Option<Batch<'a>>> {
+		let source = ctx.source.as_ref().unwrap(); // Safe because layout is Some
 		let layout = self.layout.as_ref().unwrap(); // Safe because we're in this path
 
 		// Convert rows to HashMap for easier column lookup
@@ -325,7 +326,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		for row in &self.rows {
 			let mut row_map: HashMap<String, &AliasExpression> = HashMap::new();
 			for alias_expr in row {
-				let column_name = alias_expr.alias.0.fragment().to_string();
+				let column_name = alias_expr.alias.0.text().to_string();
 				row_map.insert(column_name, alias_expr);
 			}
 			rows_data.push(row_map);
@@ -337,16 +338,16 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		for column_layout in &layout.columns {
 			let mut column_data = ColumnData::undefined(0);
 
-			// Find the corresponding table column for policies
+			// Find the corresponding source column for policies
 			let table_column =
-				table.columns.iter().find(|col| col.name == column_layout.name.text()).unwrap(); // Safe because layout came from table
+				source.columns().iter().find(|col| col.name == column_layout.name.text()).unwrap(); // Safe because layout came from source
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(column_layout.name.text()) {
 					// Create ColumnDescriptor with table
 					// context
 					let column_descriptor = ColumnDescriptor::new()
-						.with_table(Fragment::borrowed_internal(&table.name))
+						.with_table(Fragment::borrowed_internal(source.effective_name()))
 						.with_column(Fragment::borrowed_internal(&table_column.name))
 						.with_column_type(table_column.constraint.get_type())
 						.with_policies(
@@ -358,8 +359,8 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 						);
 
 					let ctx = EvaluationContext {
-						target_column: Some(column_descriptor),
-						column_policies: table_column
+						target: Some(column_descriptor),
+						policies: table_column
 							.policies
 							.iter()
 							.map(|cp| cp.policy.clone())
@@ -397,7 +398,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 				}
 			}
 
-			columns.push(Column::ColumnQualified(ColumnQualified {
+			columns.push(Column::Computed(ColumnComputed {
 				name: column_layout.name.clone(),
 				data: column_data,
 			}));

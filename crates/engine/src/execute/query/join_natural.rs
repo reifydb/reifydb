@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use reifydb_core::{
 	JoinType,
 	interface::Transaction,
-	value::columnar::{Column, ColumnQualified, Columns, SourceQualified, layout::ColumnsLayout},
+	value::columnar::{Column, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::Value;
 
@@ -71,7 +71,7 @@ impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
 		self.initialized = Some(());
@@ -168,20 +168,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
 		let mut columns = Columns::from_rows(&names_refs, &result_rows);
 
-		// Update columns columns with proper metadata
+		// Update columns with proper metadata - preserve the original column structure
 		for (i, col_meta) in column_metadata.iter().enumerate() {
 			let old_column = &columns[i];
-			columns[i] = match col_meta.table() {
-				Some(source) => Column::SourceQualified(SourceQualified {
-					source: source.clone(),
-					name: col_meta.name().clone(),
-					data: old_column.data().clone(),
-				}),
-				None => Column::ColumnQualified(ColumnQualified {
-					name: col_meta.name().clone(),
-					data: old_column.data().clone(),
-				}),
-			};
+			// Just update the data while preserving the column's qualification structure
+			columns[i] = col_meta.with_new_data(old_column.data().clone());
 		}
 
 		self.layout = Some(ColumnsLayout::from_columns(&columns));

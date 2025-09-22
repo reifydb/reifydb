@@ -450,7 +450,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 					"│  "
 				}
 			);
-			output.push_str(&format!("{}├──Operator: {}\n", child_prefix, apply.operator_name.fragment()));
+			output.push_str(&format!("{}├──Operator: {}\n", child_prefix, apply.operator_name.text()));
 			if !apply.arguments.is_empty() {
 				output.push_str(&format!(
 					"{}└──Arguments: {} expressions\n",

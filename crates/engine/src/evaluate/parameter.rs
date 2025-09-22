@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::expression::ParameterExpression,
-	value::columnar::{Column, ColumnData, ColumnQualified},
+	value::columnar::{Column, ColumnComputed, ColumnData},
 };
 use reifydb_type::{Fragment, Value, diagnostic::engine, error};
 
@@ -19,7 +19,7 @@ impl StandardEvaluator {
 			ParameterExpression::Positional {
 				fragment,
 			} => {
-				let index = fragment.fragment()[1..]
+				let index = fragment.text()[1..]
 					.parse::<usize>()
 					.map_err(|_| error!(engine::invalid_parameter_reference(fragment.clone())))?;
 
@@ -30,7 +30,7 @@ impl StandardEvaluator {
 			ParameterExpression::Named {
 				fragment,
 			} => {
-				let name = &fragment.fragment()[1..];
+				let name = &fragment.text()[1..];
 
 				ctx.params
 					.get_named(name)
@@ -67,7 +67,7 @@ impl StandardEvaluator {
 			Value::Decimal(bd) => ColumnData::decimal(vec![bd.clone(); ctx.row_count]),
 			Value::Undefined => ColumnData::undefined(ctx.row_count),
 		};
-		Ok(Column::ColumnQualified(ColumnQualified {
+		Ok(Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal("parameter"),
 			data: column_data,
 		}))

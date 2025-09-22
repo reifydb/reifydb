@@ -19,8 +19,8 @@ use crate::{
 
 #[derive(Debug)]
 pub struct EvaluationContext<'a> {
-	pub target_column: Option<ColumnDescriptor<'a>>,
-	pub column_policies: Vec<ColumnPolicyKind>,
+	pub target: Option<ColumnDescriptor<'a>>,
+	pub policies: Vec<ColumnPolicyKind>,
 	pub columns: Columns<'a>,
 	pub row_count: usize,
 	pub take: Option<usize>,
@@ -32,8 +32,8 @@ impl<'a> EvaluationContext<'a> {
 		use std::sync::LazyLock;
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
 		Self {
-			target_column: None,
-			column_policies: Vec::new(),
+			target: None,
+			policies: Vec::new(),
 			columns: Columns::empty(),
 			row_count: 1,
 			take: None,
@@ -42,7 +42,7 @@ impl<'a> EvaluationContext<'a> {
 	}
 
 	pub(crate) fn saturation_policy(&self) -> &ColumnSaturationPolicy {
-		self.column_policies
+		self.policies
 			.iter()
 			.find_map(|p| match p {
 				ColumnPolicyKind::Saturation(policy) => Some(policy),

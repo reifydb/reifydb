@@ -1,7 +1,7 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
-	value::columnar::{Column, Columns, ResolvedColumn},
+	value::columnar::Columns,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::Params;
@@ -26,7 +26,7 @@ impl MapOperator {
 impl<T: Transaction> Operator<T> for MapOperator {
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		_txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
 		evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -91,8 +91,8 @@ impl MapOperator {
 		let row_count = columns.row_count();
 
 		let eval_ctx = EvaluationContext {
-			target_column: None,
-			column_policies: Vec::new(),
+			target: None,
+			policies: Vec::new(),
 			columns: columns.clone(),
 			row_count,
 			take: None,
@@ -103,27 +103,7 @@ impl MapOperator {
 
 		for expr in &self.expressions {
 			let column = evaluator.evaluate(&eval_ctx, expr)?;
-			// Convert to owned/static column
-			let static_col = match column {
-				Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
-					column: rc.column.to_static(),
-					data: rc.data,
-				}),
-				Column::SourceQualified(sq) => {
-					Column::SourceQualified(reifydb_core::value::columnar::SourceQualified {
-						source: sq.source.to_static(),
-						name: sq.name.to_static(),
-						data: sq.data,
-					})
-				}
-				Column::ColumnQualified(cq) => {
-					Column::ColumnQualified(reifydb_core::value::columnar::ColumnQualified {
-						name: cq.name.to_static(),
-						data: cq.data,
-					})
-				}
-			};
-			projected_columns.push(static_col);
+			projected_columns.push(column.to_static());
 		}
 
 		Ok(Columns::new(projected_columns))

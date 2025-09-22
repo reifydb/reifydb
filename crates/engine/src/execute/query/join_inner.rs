@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified, layout::ColumnsLayout},
+	value::columnar::{ColumnData, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::Value;
 
@@ -20,7 +20,7 @@ pub(crate) struct InnerJoinNode<'a, T: Transaction> {
 	right: Box<ExecutionPlan<'a, T>>,
 	on: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout<'a>>,
-	context: Option<Arc<ExecutionContext>>,
+	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
 impl<'a, T: Transaction> InnerJoinNode<'a, T> {
@@ -57,7 +57,7 @@ impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
@@ -94,25 +94,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 					left_row.iter().cloned().chain(right_row.iter().cloned()).collect::<Vec<_>>();
 
 				let eval_ctx = EvaluationContext {
-					target_column: None,
-					column_policies: Vec::new(),
+					target: None,
+					policies: Vec::new(),
 					columns: Columns::new(
 						all_data.iter()
 							.cloned()
 							.zip(left_columns.iter().chain(right_columns.iter()))
-							.map(|(v, col)| match col.table() {
-								Some(source) => {
-									Column::SourceQualified(SourceQualified {
-										source: source.clone(),
-										name: col.name().clone(),
-										data: ColumnData::from(v),
-									})
-								}
-								None => Column::ColumnQualified(ColumnQualified {
-									name: col.name().clone(),
-									data: ColumnData::from(v),
-								}),
-							})
+							.map(|(v, col)| col.with_new_data(ColumnData::from(v)))
 							.collect(),
 					),
 					row_count: 1,
@@ -138,20 +126,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
 		let mut columns = Columns::from_rows(&names_refs, &result_rows);
 
-		// Update columns with proper metadata
+		// Update columns with proper metadata - preserve the original column structure
 		for (i, col_meta) in column_metadata.iter().enumerate() {
 			let old_column = &columns[i];
-			columns[i] = match col_meta.table() {
-				Some(source) => Column::SourceQualified(SourceQualified {
-					source: source.clone(),
-					name: col_meta.name().clone(),
-					data: old_column.data().clone(),
-				}),
-				None => Column::ColumnQualified(ColumnQualified {
-					name: col_meta.name().clone(),
-					data: old_column.data().clone(),
-				}),
-			};
+			// Just update the data while preserving the column's qualification structure
+			columns[i] = col_meta.with_new_data(old_column.data().clone());
 		}
 
 		self.layout = Some(ColumnsLayout::from_columns(&columns));

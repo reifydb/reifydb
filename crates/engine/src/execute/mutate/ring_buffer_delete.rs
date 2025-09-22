@@ -5,12 +5,16 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{EncodableKey, Params, RowKey, Transaction, VersionedQueryTransaction},
+	interface::{
+		EncodableKey, Params, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, RowKey, Transaction,
+		VersionedQueryTransaction,
+		identifier::{NamespaceIdentifier, RingBufferIdentifier},
+	},
 	value::columnar::{ColumnData, Columns},
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
 use reifydb_type::{
-	IntoFragment, ROW_NUMBER_COLUMN_NAME, Value,
+	Fragment, IntoFragment, ROW_NUMBER_COLUMN_NAME, Value,
 	diagnostic::{catalog::ring_buffer_not_found, engine},
 	return_error,
 };
@@ -43,6 +47,17 @@ impl Executor {
 			return_error!(ring_buffer_not_found(fragment, namespace_name, ring_buffer_name));
 		};
 
+		// Create resolved source for the ring buffer
+		let namespace_ident = NamespaceIdentifier::new(Fragment::owned_internal(namespace.name.clone()));
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
+
+		let rb_ident = RingBufferIdentifier::new(
+			Fragment::owned_internal(namespace.name.clone()),
+			Fragment::owned_internal(ring_buffer.name.clone()),
+		);
+		let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ring_buffer.clone());
+		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
+
 		let mut deleted_count = 0;
 
 		if let Some(input_plan) = plan.input {
@@ -56,7 +71,7 @@ impl Executor {
 					&mut std_txn,
 					Arc::new(ExecutionContext {
 						functions: self.functions.clone(),
-						source: None,
+						source: resolved_source.clone(),
 						batch_size: 1024,
 						preserve_row_numbers: true,
 						params: params.clone(),

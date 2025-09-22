@@ -6,7 +6,7 @@ use std::collections::{HashMap, HashSet};
 use reifydb_type::Fragment;
 
 use super::{ColumnLayout, ColumnsLayout};
-use crate::value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified};
+use crate::value::columnar::{Column, ColumnComputed, ColumnData, Columns, SourceQualified};
 
 impl<'a> Columns<'a> {
 	pub fn apply_layout(&mut self, layout: &ColumnsLayout<'a>) {
@@ -31,12 +31,12 @@ impl<'a> Columns<'a> {
 						data,
 					}),
 					(None, None) => match column {
-						_ => Column::ColumnQualified(ColumnQualified {
+						_ => Column::Computed(ColumnComputed {
 							name: column_layout.name.clone(),
 							data,
 						}),
 					},
-					(Some(_), None) => Column::ColumnQualified(ColumnQualified {
+					(Some(_), None) => Column::Computed(ColumnComputed {
 						name: column_layout.name.clone(),
 						data,
 					}),

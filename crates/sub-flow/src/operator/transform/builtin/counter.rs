@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{FlowNodeId, Transaction, expression::Expression},
 	row::EncodedRowLayout,
 	value::{
-		columnar::{Column, ColumnData, ColumnQualified, Columns},
+		columnar::{Column, ColumnComputed, ColumnData, Columns},
 		container::NumberContainer,
 	},
 };
@@ -60,7 +60,7 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 
 					// Build output with counter column
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
-					all_columns.push(Column::ColumnQualified(ColumnQualified {
+					all_columns.push(Column::Computed(ColumnComputed {
 						name: reifydb_type::Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Int8(NumberContainer::from_vec(values)),
 					}));
@@ -95,7 +95,7 @@ impl<T: Transaction> Operator<T> for CounterOperator {
 					})?;
 
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
-					all_columns.push(Column::ColumnQualified(ColumnQualified {
+					all_columns.push(Column::Computed(ColumnComputed {
 						name: reifydb_type::Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Int8(NumberContainer::from_vec(values)),
 					}));

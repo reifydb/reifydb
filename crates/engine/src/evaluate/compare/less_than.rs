@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::LessThanExpression},
 	return_error,
 	value::{
-		columnar::{Column, ColumnData, ColumnQualified},
+		columnar::{Column, ColumnComputed, ColumnData},
 		container::{Utf8Container, number::NumberContainer, temporal::TemporalContainer},
 	},
 };
@@ -494,7 +494,7 @@ impl StandardEvaluator {
 			) => Ok(compare_utf8(l, r, lt.full_fragment_owned())),
 			(ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
 				let fragment = lt.full_fragment_owned();
-				Ok(Column::ColumnQualified(ColumnQualified {
+				Ok(Column::Computed(ColumnComputed {
 					name: Fragment::owned_internal(fragment.text()),
 					data: ColumnData::bool(vec![false; container.len()]),
 				}))
@@ -529,7 +529,7 @@ where
 				.map(|(l_val, r_val)| number::is_less_than(l_val, r_val))
 				.collect();
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
@@ -545,7 +545,7 @@ where
 			}
 		}
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data,
 		})
@@ -566,7 +566,7 @@ where
 				.map(|(l_val, r_val)| temporal::is_less_than(l_val, r_val))
 				.collect();
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
@@ -588,7 +588,7 @@ where
 			}
 		}
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
 		})
@@ -603,7 +603,7 @@ fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>
 		let data: Vec<bool> =
 			l.data().iter().zip(r.data().iter()).map(|(l_val, r_val)| l_val < r_val).collect();
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
@@ -625,7 +625,7 @@ fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>
 			}
 		}
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
 		})

@@ -23,8 +23,8 @@ use query::{
 };
 use reifydb_core::{
 	Frame,
-	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, TableDef, Transaction},
-	value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified, layout::ColumnsLayout},
+	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedSource, Transaction},
+	value::columnar::{Column, ColumnComputed, ColumnData, Columns, layout::ColumnsLayout},
 };
 use reifydb_rql::{
 	ast,
@@ -45,7 +45,7 @@ mod query;
 pub(crate) trait QueryNode<'a, T: Transaction> {
 	/// Initialize the node with execution context
 	/// Called once before iteration begins
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()>;
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
 	/// Returns None when exhausted
@@ -56,9 +56,9 @@ pub(crate) trait QueryNode<'a, T: Transaction> {
 }
 
 #[derive(Clone)]
-pub struct ExecutionContext {
+pub struct ExecutionContext<'a> {
 	pub functions: Functions,
-	pub source: Option<TableDef>, // FIXME should become resolved store
+	pub source: Option<ResolvedSource<'a>>,
 	pub batch_size: usize,
 	pub preserve_row_numbers: bool,
 	pub params: Params,
@@ -91,7 +91,7 @@ pub(crate) enum ExecutionPlan<'a, T: Transaction> {
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
 impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		(**self).initialize(rx, ctx)
 	}
 
@@ -105,7 +105,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Filter(node) => node.initialize(rx, ctx),
@@ -393,16 +393,13 @@ impl Executor {
 						})
 						.columns
 						.into_iter()
-						.map(|layout| match layout.source {
-							Some(source) => Column::SourceQualified(SourceQualified {
-								source,
+						.map(|layout| {
+							// For now, just create a ColumnQualified since we don't have
+							// the full resolved metadata here
+							Column::Computed(ColumnComputed {
 								name: layout.name,
 								data: ColumnData::undefined(0),
-							}),
-							None => Column::ColumnQualified(ColumnQualified {
-								name: layout.name,
-								data: ColumnData::undefined(0),
-							}),
+							})
 						})
 						.collect();
 

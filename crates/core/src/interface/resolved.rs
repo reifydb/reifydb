@@ -9,9 +9,8 @@ use serde::{Deserialize, Serialize};
 use super::{
 	ColumnDef, NamespaceDef, RingBufferDef, TableDef, TableVirtualDef, ViewDef,
 	identifier::{
-		ColumnIdentifier, DeferredViewIdentifier, FunctionIdentifier, IndexIdentifier, NamespaceIdentifier,
-		RingBufferIdentifier, SequenceIdentifier, SourceIdentifier, TableIdentifier, TableVirtualIdentifier,
-		TransactionalViewIdentifier,
+		ColumnIdentifier, FunctionIdentifier, IndexIdentifier, NamespaceIdentifier, RingBufferIdentifier,
+		SequenceIdentifier, SourceIdentifier, TableIdentifier, TableVirtualIdentifier, ViewIdentifier,
 	},
 };
 
@@ -261,13 +260,13 @@ pub struct ResolvedView<'a>(Arc<ResolvedViewInner<'a>>);
 
 #[derive(Debug)]
 struct ResolvedViewInner<'a> {
-	pub identifier: SourceIdentifier<'a>,
+	pub identifier: ViewIdentifier<'a>,
 	pub namespace: ResolvedNamespace<'a>,
 	pub def: ViewDef,
 }
 
 impl<'a> ResolvedView<'a> {
-	pub fn new(identifier: SourceIdentifier<'a>, namespace: ResolvedNamespace<'a>, def: ViewDef) -> Self {
+	pub fn new(identifier: ViewIdentifier<'a>, namespace: ResolvedNamespace<'a>, def: ViewDef) -> Self {
 		Self(Arc::new(ResolvedViewInner {
 			identifier,
 			namespace,
@@ -287,7 +286,7 @@ impl<'a> ResolvedView<'a> {
 		&self.0.namespace
 	}
 
-	pub fn identifier(&self) -> &SourceIdentifier<'a> {
+	pub fn identifier(&self) -> &ViewIdentifier<'a> {
 		&self.0.identifier
 	}
 
@@ -318,13 +317,13 @@ pub struct ResolvedDeferredView<'a>(Arc<ResolvedDeferredViewInner<'a>>);
 
 #[derive(Debug)]
 struct ResolvedDeferredViewInner<'a> {
-	pub identifier: DeferredViewIdentifier<'a>,
+	pub identifier: ViewIdentifier<'a>,
 	pub namespace: ResolvedNamespace<'a>,
 	pub def: ViewDef,
 }
 
 impl<'a> ResolvedDeferredView<'a> {
-	pub fn new(identifier: DeferredViewIdentifier<'a>, namespace: ResolvedNamespace<'a>, def: ViewDef) -> Self {
+	pub fn new(identifier: ViewIdentifier<'a>, namespace: ResolvedNamespace<'a>, def: ViewDef) -> Self {
 		Self(Arc::new(ResolvedDeferredViewInner {
 			identifier,
 			namespace,
@@ -344,7 +343,7 @@ impl<'a> ResolvedDeferredView<'a> {
 		&self.0.namespace
 	}
 
-	pub fn identifier(&self) -> &DeferredViewIdentifier<'a> {
+	pub fn identifier(&self) -> &ViewIdentifier<'a> {
 		&self.0.identifier
 	}
 
@@ -371,17 +370,13 @@ pub struct ResolvedTransactionalView<'a>(Arc<ResolvedTransactionalViewInner<'a>>
 
 #[derive(Debug)]
 struct ResolvedTransactionalViewInner<'a> {
-	pub identifier: TransactionalViewIdentifier<'a>,
+	pub identifier: ViewIdentifier<'a>,
 	pub namespace: ResolvedNamespace<'a>,
 	pub def: ViewDef,
 }
 
 impl<'a> ResolvedTransactionalView<'a> {
-	pub fn new(
-		identifier: TransactionalViewIdentifier<'a>,
-		namespace: ResolvedNamespace<'a>,
-		def: ViewDef,
-	) -> Self {
+	pub fn new(identifier: ViewIdentifier<'a>, namespace: ResolvedNamespace<'a>, def: ViewDef) -> Self {
 		Self(Arc::new(ResolvedTransactionalViewInner {
 			identifier,
 			namespace,
@@ -401,7 +396,7 @@ impl<'a> ResolvedTransactionalView<'a> {
 		&self.0.namespace
 	}
 
-	pub fn identifier(&self) -> &TransactionalViewIdentifier<'a> {
+	pub fn identifier(&self) -> &ViewIdentifier<'a> {
 		&self.0.identifier
 	}
 
@@ -539,9 +534,9 @@ impl<'a> ResolvedSource<'a> {
 		match self {
 			Self::Table(t) => SourceIdentifier::Table(t.identifier().clone()),
 			Self::TableVirtual(t) => SourceIdentifier::TableVirtual(t.identifier().clone()),
-			Self::View(v) => v.identifier().clone(),
-			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.identifier().clone()),
-			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.identifier().clone()),
+			Self::View(v) => SourceIdentifier::View(v.identifier().clone()),
+			Self::DeferredView(v) => SourceIdentifier::View(v.identifier().clone()),
+			Self::TransactionalView(v) => SourceIdentifier::View(v.identifier().clone()),
 			Self::RingBuffer(r) => SourceIdentifier::RingBuffer(r.identifier().clone()),
 		}
 	}
@@ -717,7 +712,7 @@ impl<'a> ResolvedColumn<'a> {
 	}
 
 	/// Get fully qualified name
-	pub fn fully_qualified_name(&self) -> String {
+	pub fn qualified_name(&self) -> String {
 		match self.0.source.fully_qualified_name() {
 			Some(source_name) => {
 				format!("{}.{}", source_name, self.name())
@@ -905,6 +900,6 @@ mod tests {
 		assert_eq!(column.name(), "id");
 		assert_eq!(column.type_constraint(), &TypeConstraint::unconstrained(Type::Int8));
 		assert!(!column.is_auto_increment());
-		assert_eq!(column.fully_qualified_name(), "public.users.id");
+		assert_eq!(column.qualified_name(), "public.users.id");
 	}
 }

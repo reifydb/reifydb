@@ -32,14 +32,14 @@ impl StandardEvaluator {
 			3 => {
 				// Fully qualified: namespace.table.column
 				let _namespace = parts[0];
-				let table = parts[1];
+				let source = parts[1];
 				let col_name = parts[2];
 
 				// Find column matching all three parts
 				let matching_col = ctx.columns.iter().find(|c| {
 					c.name().text() == col_name
 						&& match c {
-							Column::SourceQualified(fq) => fq.source.text() == table,
+							Column::SourceQualified(fq) => fq.source.text() == source,
 							_ => false,
 						}
 				});
@@ -84,7 +84,7 @@ impl StandardEvaluator {
 						.iter()
 						.enumerate()
 						.max_by_key(|(idx, c)| {
-							let qualification_level = match (c.namespace(), c.table()) {
+							let qualification_level = match (c.namespace(), c.source()) {
 								(Some(_), Some(_)) => 3, // Fully qualified
 								(None, Some(_)) => 2,    // Table qualified
 								(Some(_), None) => 1,    // Namespace qualified

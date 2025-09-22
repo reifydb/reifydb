@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::SubExpression},
 	value::{
-		columnar::{Column, ColumnData, ColumnQualified, push::Push},
+		columnar::{Column, ColumnComputed, ColumnData, push::Push},
 		container::{UndefinedContainer, number::NumberContainer},
 	},
 };
@@ -1095,11 +1095,11 @@ impl StandardEvaluator {
 
 			// Handle undefined values - any operation with
 			// undefined results in undefined
-			(ColumnData::Undefined(l), _) => Ok(Column::ColumnQualified(ColumnQualified {
+			(ColumnData::Undefined(l), _) => Ok(Column::Computed(ColumnComputed {
 				name: sub.full_fragment_owned(),
 				data: ColumnData::Undefined(UndefinedContainer::new(l.len())),
 			})),
-			(_, ColumnData::Undefined(r)) => Ok(Column::ColumnQualified(ColumnQualified {
+			(_, ColumnData::Undefined(r)) => Ok(Column::Computed(ColumnComputed {
 				name: sub.full_fragment_owned(),
 				data: ColumnData::Undefined(UndefinedContainer::new(r.len())),
 			})),
@@ -1143,7 +1143,7 @@ where
 			}
 		}
 
-		Ok(Column::ColumnQualified(ColumnQualified {
+		Ok(Column::Computed(ColumnComputed {
 			name: fragment.fragment(),
 			data,
 		}))
@@ -1163,7 +1163,7 @@ where
 			}
 		}
 
-		Ok(Column::ColumnQualified(ColumnQualified {
+		Ok(Column::Computed(ColumnComputed {
 			name: fragment.fragment(),
 			data,
 		}))
@@ -1202,7 +1202,7 @@ where
 			}
 		}
 
-		Ok(Column::ColumnQualified(ColumnQualified {
+		Ok(Column::Computed(ColumnComputed {
 			name: fragment.fragment(),
 			data,
 		}))
@@ -1224,7 +1224,7 @@ where
 			}
 		}
 
-		Ok(Column::ColumnQualified(ColumnQualified {
+		Ok(Column::Computed(ColumnComputed {
 			name: fragment.fragment(),
 			data,
 		}))

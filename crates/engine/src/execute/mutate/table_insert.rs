@@ -7,8 +7,9 @@ use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
 	ColumnDescriptor,
 	interface::{
-		ColumnPolicyKind, EncodableKey, IndexEntryKey, IndexId, Params, Transaction,
-		VersionedCommandTransaction,
+		ColumnPolicyKind, EncodableKey, IndexEntryKey, IndexId, Params, ResolvedNamespace, ResolvedSource,
+		ResolvedTable, Transaction, VersionedCommandTransaction,
+		identifier::{NamespaceIdentifier, TableIdentifier},
 	},
 	return_error,
 	row::EncodedRowLayout,
@@ -47,9 +48,20 @@ impl Executor {
 		let table_types: Vec<Type> = table.columns.iter().map(|c| c.constraint.get_type()).collect();
 		let layout = EncodedRowLayout::new(&table_types);
 
+		// Create resolved source for the table
+		let namespace_ident = NamespaceIdentifier::new(Fragment::owned_internal(namespace.name.clone()));
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
+
+		let table_ident = TableIdentifier::new(
+			Fragment::owned_internal(namespace.name.clone()),
+			Fragment::owned_internal(table.name.clone()),
+		);
+		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
+		let resolved_source = Some(ResolvedSource::Table(resolved_table));
+
 		let execution_context = Arc::new(ExecutionContext {
 			functions: self.functions.clone(),
-			source: Some(table.clone()),
+			source: resolved_source,
 			batch_size: 1024,
 			preserve_row_numbers: false,
 			params: params.clone(),

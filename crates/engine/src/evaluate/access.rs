@@ -35,9 +35,11 @@ impl StandardEvaluator {
 			}
 
 			// Check if source matches
-			match col {
-				Column::SourceQualified(sq) => sq.source.text() == source.text(),
-				_ => false,
+			// For resolved columns, check if the source name matches
+			if let Some(col_source) = col.source() {
+				col_source.text() == source.text()
+			} else {
+				false
 			}
 		});
 

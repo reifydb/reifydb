@@ -23,7 +23,7 @@ struct LazyResolveInner<T> {
 
 #[allow(dead_code)]
 impl<T: Clone> LazyResolveArc<T> {
-	/// Create a new lazy resolver
+	/// Create a new lazy resolve
 	pub fn new() -> Self {
 		Self {
 			inner: Arc::new(LazyResolveInner {
@@ -95,7 +95,7 @@ impl<T: Clone> Default for LazyResolveArc<T> {
 	}
 }
 
-/// Helper function to create a resolver closure for a specific type
+/// Helper function to create a resolve closure for a specific type
 #[allow(dead_code)]
 pub fn resolver<T>(ioc: &IocContainer) -> impl FnOnce() -> Result<T> + '_
 where

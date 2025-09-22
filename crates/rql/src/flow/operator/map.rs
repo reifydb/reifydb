@@ -33,7 +33,7 @@ impl MapCompiler {
 			let column_name = match expr {
 				Expression::Alias(alias) => {
 					// Use the alias name
-					alias.alias.0.fragment().to_string()
+					alias.alias.0.text().to_string()
 				}
 				Expression::Column(col) => {
 					// Use the column name
@@ -41,7 +41,7 @@ impl MapCompiler {
 				}
 				Expression::AccessSource(access) => {
 					// Use the column part
-					access.column.name.fragment().to_string()
+					access.column.name.text().to_string()
 				}
 				_ => {
 					// For other expressions, generate a

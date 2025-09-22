@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod auth;
-mod catalog;
+pub mod catalog;
 mod cdc;
 mod engine;
 pub mod evaluate;

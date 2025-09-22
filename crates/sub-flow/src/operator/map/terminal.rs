@@ -5,7 +5,7 @@ use reifydb_core::{
 		expression::{CastExpression, Expression, TypeExpression},
 	},
 	log_error,
-	value::columnar::{Column, ColumnQualified, Columns, ResolvedColumn, SourceQualified},
+	value::columnar::{Column, ColumnComputed, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{Fragment, Params, Type};
@@ -106,8 +106,8 @@ impl MapTerminalOperator {
 		let row_count = columns.row_count();
 
 		let eval_ctx = EvaluationContext {
-			target_column: None,
-			column_policies: Vec::new(),
+			target: None,
+			policies: Vec::new(),
 			columns: columns.clone(),
 			row_count,
 			take: None,
@@ -146,7 +146,7 @@ impl MapTerminalOperator {
 						// with the correct name
 						let undefined_data =
 							reifydb_core::value::columnar::ColumnData::undefined(row_count);
-						Column::ColumnQualified(ColumnQualified {
+						Column::Computed(ColumnComputed {
 							name: Fragment::owned_internal(view_column.name.clone()),
 							data: undefined_data,
 						})
@@ -179,7 +179,7 @@ impl MapTerminalOperator {
 
 					// Create a properly named
 					// column
-					Column::ColumnQualified(ColumnQualified {
+					Column::Computed(ColumnComputed {
 						name: Fragment::owned_internal(view_column.name.clone()),
 						data: casted.data().clone(),
 					})
@@ -187,28 +187,13 @@ impl MapTerminalOperator {
 					// Types match or it's
 					// undefined, just rename if
 					// needed
-					Column::ColumnQualified(ColumnQualified {
+					Column::Computed(ColumnComputed {
 						name: Fragment::owned_internal(view_column.name.clone()),
 						data: result.data().clone(),
 					})
 				}
 			} else {
-				let result = evaluator.evaluate(&eval_ctx, expr)?;
-				match result {
-					Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
-						column: rc.column.to_static(),
-						data: rc.data,
-					}),
-					Column::SourceQualified(sq) => Column::SourceQualified(SourceQualified {
-						source: sq.source.to_static(),
-						name: sq.name.to_static(),
-						data: sq.data,
-					}),
-					Column::ColumnQualified(cq) => Column::ColumnQualified(ColumnQualified {
-						name: cq.name.to_static(),
-						data: cq.data,
-					}),
-				}
+				evaluator.evaluate(&eval_ctx, expr)?.to_static()
 			};
 
 			projected_columns.push(column);

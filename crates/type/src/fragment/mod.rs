@@ -117,11 +117,6 @@ impl<'a> Fragment<'a> {
 		}
 	}
 
-	/// Alias for value() for compatibility
-	pub fn fragment(&self) -> &str {
-		self.text()
-	}
-
 	/// Get line position
 	pub fn line(&self) -> StatementLine {
 		match self {
@@ -225,18 +220,6 @@ pub trait LazyFragment<'a>: Copy {
 	fn fragment(&self) -> Fragment<'a>;
 }
 
-/// Wrapper to allow LazyFragment to be used as IntoFragment
-pub struct LazyFragmentWrapper<T>(pub T);
-
-impl<'a, T> IntoFragment<'a> for LazyFragmentWrapper<T>
-where
-	T: LazyFragment<'a>,
-{
-	fn into_fragment(self) -> Fragment<'a> {
-		self.0.fragment()
-	}
-}
-
 // Implementation for closures that return Fragment
 impl<'a, F> LazyFragment<'a> for F
 where
@@ -309,10 +292,7 @@ impl IntoFragment<'_> for Option<OwnedFragment> {
 // Also provide From implementations for convenience
 impl From<Option<OwnedFragment>> for OwnedFragment {
 	fn from(fragment_opt: Option<OwnedFragment>) -> Self {
-		match fragment_opt {
-			Some(fragment) => fragment,
-			None => OwnedFragment::None,
-		}
+		fragment_opt.unwrap_or_else(|| OwnedFragment::None)
 	}
 }
 

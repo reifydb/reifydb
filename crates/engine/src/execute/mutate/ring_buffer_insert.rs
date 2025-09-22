@@ -6,7 +6,10 @@ use std::sync::Arc;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	ColumnDescriptor,
-	interface::{ColumnPolicyKind, Params, Transaction},
+	interface::{
+		ColumnPolicyKind, Params, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, Transaction,
+		identifier::{NamespaceIdentifier, RingBufferIdentifier},
+	},
 	return_error,
 	row::EncodedRowLayout,
 	value::columnar::Columns,
@@ -47,9 +50,20 @@ impl Executor {
 			ring_buffer.columns.iter().map(|c| c.constraint.get_type()).collect();
 		let layout = EncodedRowLayout::new(&ring_buffer_types);
 
+		// Create resolved source for the ring buffer
+		let namespace_ident = NamespaceIdentifier::new(Fragment::owned_internal(namespace.name.clone()));
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
+
+		let rb_ident = RingBufferIdentifier::new(
+			Fragment::owned_internal(namespace.name.clone()),
+			Fragment::owned_internal(ring_buffer.name.clone()),
+		);
+		let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ring_buffer.clone());
+		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
+
 		let execution_context = Arc::new(ExecutionContext {
 			functions: self.functions.clone(),
-			source: None, // FIXME Ring buffers don't have a table def
+			source: resolved_source,
 			batch_size: 1024,
 			preserve_row_numbers: false,
 			params: params.clone(),

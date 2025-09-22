@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::columnar::{Column, ColumnData, ColumnQualified, Columns, layout::ColumnsLayout},
+	value::columnar::{Column, ColumnComputed, ColumnData, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
 
@@ -34,7 +34,7 @@ pub(crate) struct AggregateNode<'a, T: Transaction> {
 	by: Vec<Expression<'a>>,
 	map: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout<'a>>,
-	context: Option<Arc<ExecutionContext>>,
+	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
 impl<'a, T: Transaction> AggregateNode<'a, T> {
@@ -42,7 +42,7 @@ impl<'a, T: Transaction> AggregateNode<'a, T> {
 		input: Box<ExecutionPlan<'a, T>>,
 		by: Vec<Expression<'a>>,
 		map: Vec<Expression<'a>>,
-		context: Arc<ExecutionContext>,
+		context: Arc<ExecutionContext<'a>>,
 	) -> Self {
 		Self {
 			input,
@@ -58,7 +58,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 	fn initialize(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
-		ctx: &ExecutionContext,
+		ctx: &ExecutionContext<'a>,
 	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		// Already has context from constructor
@@ -118,7 +118,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 				} => {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-					let mut c = Column::ColumnQualified(ColumnQualified {
+					let mut c = Column::Computed(ColumnComputed {
 						name: Fragment::owned_internal(alias.fragment()),
 						data: ColumnData::undefined(0),
 					});
@@ -134,7 +134,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 				} => {
 					let (keys_out, mut data) = function.finalize().unwrap();
 					align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
-					result_columns.push(Column::ColumnQualified(ColumnQualified {
+					result_columns.push(Column::Computed(ColumnComputed {
 						name: Fragment::owned_internal(alias.fragment()),
 						data,
 					}));
@@ -166,18 +166,18 @@ fn parse_keys_and_aggregates<'a>(
 	for gb in by {
 		match gb {
 			Expression::Column(c) => {
-				keys.push(c.0.name.fragment());
+				keys.push(c.0.name.text());
 				projections.push(Projection::Group {
-					column: c.0.name.fragment().to_string(),
+					column: c.0.name.text().to_string(),
 					alias: c.0.name.clone().into_owned(),
 				})
 			}
 			Expression::AccessSource(access) => {
 				// Handle qualified column references like
 				// departments.dept_name
-				keys.push(access.column.name.fragment());
+				keys.push(access.column.name.text());
 				projections.push(Projection::Group {
-					column: access.column.name.fragment().to_string(),
+					column: access.column.name.text().to_string(),
 					alias: access.column.name.clone().into_owned(),
 				})
 			}
@@ -205,12 +205,12 @@ fn parse_keys_and_aggregates<'a>(
 
 		match actual_expr {
 			Expression::Call(call) => {
-				let func = call.func.0.fragment();
+				let func = call.func.0.text();
 				match call.args.first().map(|arg| arg) {
 					Some(Expression::Column(c)) => {
 						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
-							column: c.0.name.fragment().to_string(),
+							column: c.0.name.text().to_string(),
 							alias: alias.into_owned(),
 							function,
 						});
@@ -221,7 +221,7 @@ fn parse_keys_and_aggregates<'a>(
 						// functions
 						let function = functions.get_aggregate(func).unwrap();
 						projections.push(Projection::Aggregate {
-							column: access.column.name.fragment().to_string(),
+							column: access.column.name.text().to_string(),
 							alias: alias.into_owned(),
 							function,
 						});

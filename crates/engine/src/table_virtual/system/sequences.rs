@@ -7,7 +7,7 @@ use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
 	interface::{TableVirtualDef, Transaction},
-	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
+	value::columnar::{Column, ColumnComputed, ColumnData, Columns},
 };
 use reifydb_type::Fragment;
 
@@ -64,23 +64,23 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Sequences<T> {
 		}
 
 		let columns = vec![
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("id"),
 				data: ColumnData::uint8(sequence_ids),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("namespace_id"),
 				data: ColumnData::uint8(namespace_ids),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("namespace_name"),
 				data: ColumnData::utf8(namespace_names),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("name"),
 				data: ColumnData::utf8(sequence_names),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("value"),
 				data: ColumnData::uint8(current_values),
 			}),

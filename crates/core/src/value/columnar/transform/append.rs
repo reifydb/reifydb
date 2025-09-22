@@ -19,9 +19,7 @@ impl<'a> Columns<'a> {
 
 		let columns = self.0.make_mut();
 		for (i, (l, r)) in columns.iter_mut().zip(other.into_iter()).enumerate() {
-			// Allow matching by original name if qualified names
-			// don't match
-			if l.qualified_name() != r.qualified_name() && l.name() != r.name() {
+			if l.qualified_name() != r.qualified_name() {
 				return_error!(engine::frame_error(format!(
 					"column name mismatch at index {}: '{}' vs '{}' (original: '{}' vs '{}')",
 					i,
@@ -455,29 +453,29 @@ mod tests {
 		use reifydb_type::{RowNumber, Uuid4, Uuid7};
 		use uuid::{Timestamp, Uuid};
 
-		use crate::value::columnar::{ColumnQualified, Columns};
+		use crate::value::columnar::{ColumnComputed, Columns};
 
 		#[test]
 		fn test_boolean() {
 			let mut test_instance1 =
-				Columns::new(vec![ColumnQualified::bool_with_bitvec("id", [true], [false])]);
+				Columns::new(vec![ColumnComputed::bool_with_bitvec("id", [true], [false])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::bool_with_bitvec("id", [false], [true])]);
+				Columns::new(vec![ColumnComputed::bool_with_bitvec("id", [false], [true])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::bool_with_bitvec("id", [true, false], [false, true])
+				ColumnComputed::bool_with_bitvec("id", [true, false], [false, true])
 			);
 		}
 
 		#[test]
 		fn test_float4() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::float4("id", [1.0f32, 2.0])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::float4("id", [1.0f32, 2.0])]);
 
-			let test_instance2 = Columns::new(vec![ColumnQualified::float4_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnComputed::float4_with_bitvec(
 				"id",
 				[3.0f32, 4.0],
 				[true, false],
@@ -487,7 +485,7 @@ mod tests {
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::float4_with_bitvec(
+				ColumnComputed::float4_with_bitvec(
 					"id",
 					[1.0f32, 2.0, 3.0, 4.0],
 					[true, true, true, false]
@@ -497,9 +495,9 @@ mod tests {
 
 		#[test]
 		fn test_float8() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::float8("id", [1.0f64, 2.0])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::float8("id", [1.0f64, 2.0])]);
 
-			let test_instance2 = Columns::new(vec![ColumnQualified::float8_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnComputed::float8_with_bitvec(
 				"id",
 				[3.0f64, 4.0],
 				[true, false],
@@ -509,7 +507,7 @@ mod tests {
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::float8_with_bitvec(
+				ColumnComputed::float8_with_bitvec(
 					"id",
 					[1.0f64, 2.0, 3.0, 4.0],
 					[true, true, true, false]
@@ -519,171 +517,167 @@ mod tests {
 
 		#[test]
 		fn test_int1() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::int1("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::int1("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::int1_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::int1_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::int1_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::int1_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_int2() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::int2("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::int2("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::int2_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::int2_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::int2_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::int2_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_int4() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::int4("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::int4("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::int4_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::int4_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::int4_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::int4_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_int8() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::int8("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::int8("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::int8_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::int8_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::int8_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::int8_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_int16() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::int16("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::int16("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::int16_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::int16_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::int16_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::int16_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_string() {
 			let mut test_instance1 =
-				Columns::new(vec![ColumnQualified::utf8_with_bitvec("id", ["a", "b"], [true, true])]);
+				Columns::new(vec![ColumnComputed::utf8_with_bitvec("id", ["a", "b"], [true, true])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::utf8_with_bitvec("id", ["c", "d"], [true, false])]);
+				Columns::new(vec![ColumnComputed::utf8_with_bitvec("id", ["c", "d"], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::utf8_with_bitvec(
-					"id",
-					["a", "b", "c", "d"],
-					[true, true, true, false]
-				)
+				ColumnComputed::utf8_with_bitvec("id", ["a", "b", "c", "d"], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_uint1() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::uint1("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::uint1("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::uint1_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::uint1_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::uint1_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::uint1_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_uint2() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::uint2("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::uint2("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::uint2_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::uint2_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::uint2_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::uint2_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_uint4() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::uint4("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::uint4("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::uint4_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::uint4_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::uint4_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::uint4_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_uint8() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::uint8("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::uint8("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::uint8_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::uint8_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::uint8_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::uint8_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
 		#[test]
 		fn test_uint16() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::uint16("id", [1, 2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::uint16("id", [1, 2])]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::uint16_with_bitvec("id", [3, 4], [true, false])]);
+				Columns::new(vec![ColumnComputed::uint16_with_bitvec("id", [3, 4], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::uint16_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
+				ColumnComputed::uint16_with_bitvec("id", [1, 2, 3, 4], [true, true, true, false])
 			);
 		}
 
@@ -696,9 +690,9 @@ mod tests {
 			let uuid3 = Uuid4::from(Uuid::new_v4());
 			let uuid4 = Uuid4::from(Uuid::new_v4());
 
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::uuid4("id", [uuid1, uuid2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::uuid4("id", [uuid1, uuid2])]);
 
-			let test_instance2 = Columns::new(vec![ColumnQualified::uuid4_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnComputed::uuid4_with_bitvec(
 				"id",
 				[uuid3, uuid4],
 				[true, false],
@@ -708,7 +702,7 @@ mod tests {
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::uuid4_with_bitvec(
+				ColumnComputed::uuid4_with_bitvec(
 					"id",
 					[uuid1, uuid2, uuid3, uuid4],
 					[true, true, true, false]
@@ -723,9 +717,9 @@ mod tests {
 			let uuid3 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(2, 1)));
 			let uuid4 = Uuid7::from(Uuid::new_v7(Timestamp::from_gregorian(2, 2)));
 
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::uuid7("id", [uuid1, uuid2])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::uuid7("id", [uuid1, uuid2])]);
 
-			let test_instance2 = Columns::new(vec![ColumnQualified::uuid7_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnComputed::uuid7_with_bitvec(
 				"id",
 				[uuid3, uuid4],
 				[true, false],
@@ -735,7 +729,7 @@ mod tests {
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::uuid7_with_bitvec(
+				ColumnComputed::uuid7_with_bitvec(
 					"id",
 					[uuid1, uuid2, uuid3, uuid4],
 					[true, true, true, false]
@@ -746,9 +740,9 @@ mod tests {
 		#[test]
 		fn test_row_number() {
 			let mut test_instance1 =
-				Columns::new(vec![ColumnQualified::row_number([RowNumber(1), RowNumber(2)])]);
+				Columns::new(vec![ColumnComputed::row_number([RowNumber(1), RowNumber(2)])]);
 
-			let test_instance2 = Columns::new(vec![ColumnQualified::row_number_with_bitvec(
+			let test_instance2 = Columns::new(vec![ColumnComputed::row_number_with_bitvec(
 				[RowNumber(3), RowNumber(4)],
 				[true, false],
 			)]);
@@ -757,7 +751,7 @@ mod tests {
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::row_number_with_bitvec(
+				ColumnComputed::row_number_with_bitvec(
 					[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)],
 					[true, true, true, false]
 				)
@@ -767,40 +761,40 @@ mod tests {
 		#[test]
 		fn test_with_undefined_lr_promotes_correctly() {
 			let mut test_instance1 =
-				Columns::new(vec![ColumnQualified::int2_with_bitvec("id", [1, 2], [true, false])]);
+				Columns::new(vec![ColumnComputed::int2_with_bitvec("id", [1, 2], [true, false])]);
 
-			let test_instance2 = Columns::new(vec![ColumnQualified::undefined("id", 2)]);
+			let test_instance2 = Columns::new(vec![ColumnComputed::undefined("id", 2)]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::int2_with_bitvec("id", [1, 2, 0, 0], [true, false, false, false])
+				ColumnComputed::int2_with_bitvec("id", [1, 2, 0, 0], [true, false, false, false])
 			);
 		}
 
 		#[test]
 		fn test_with_undefined_l_promotes_correctly() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::undefined("score", 2)]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::undefined("score", 2)]);
 
 			let test_instance2 =
-				Columns::new(vec![ColumnQualified::int2_with_bitvec("score", [10, 20], [true, false])]);
+				Columns::new(vec![ColumnComputed::int2_with_bitvec("score", [10, 20], [true, false])]);
 
 			test_instance1.append_columns(test_instance2).unwrap();
 
 			assert_eq!(
 				test_instance1[0],
-				ColumnQualified::int2_with_bitvec("score", [0, 0, 10, 20], [false, false, true, false])
+				ColumnComputed::int2_with_bitvec("score", [0, 0, 10, 20], [false, false, true, false])
 			);
 		}
 
 		#[test]
 		fn test_fails_on_column_count_mismatch() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::int2("id", [1])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::int2("id", [1])]);
 
 			let test_instance2 = Columns::new(vec![
-				ColumnQualified::int2("id", [2]),
-				ColumnQualified::utf8("name", ["Bob"]),
+				ColumnComputed::int2("id", [2]),
+				ColumnComputed::utf8("name", ["Bob"]),
 			]);
 
 			let result = test_instance1.append_columns(test_instance2);
@@ -809,9 +803,9 @@ mod tests {
 
 		#[test]
 		fn test_fails_on_column_name_mismatch() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::int2("id", [1])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::int2("id", [1])]);
 
-			let test_instance2 = Columns::new(vec![ColumnQualified::int2("wrong", [2])]);
+			let test_instance2 = Columns::new(vec![ColumnComputed::int2("wrong", [2])]);
 
 			let result = test_instance1.append_columns(test_instance2);
 			assert!(result.is_err());
@@ -819,9 +813,9 @@ mod tests {
 
 		#[test]
 		fn test_fails_on_type_mismatch() {
-			let mut test_instance1 = Columns::new(vec![ColumnQualified::int2("id", [1])]);
+			let mut test_instance1 = Columns::new(vec![ColumnComputed::int2("id", [1])]);
 
-			let test_instance2 = Columns::new(vec![ColumnQualified::utf8("id", ["A"])]);
+			let test_instance2 = Columns::new(vec![ColumnComputed::utf8("id", ["A"])]);
 
 			let result = test_instance1.append_columns(test_instance2);
 			assert!(result.is_err());
@@ -834,12 +828,12 @@ mod tests {
 		use crate::{
 			BitVec,
 			row::EncodedRowLayout,
-			value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified},
+			value::columnar::{Column, ColumnComputed, ColumnData, Columns},
 		};
 
 		#[test]
 		fn test_before_undefined_bool() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 
 			let layout = EncodedRowLayout::new(&[Type::Boolean]);
 			let mut row = layout.allocate_row();
@@ -858,7 +852,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_float4() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Float4]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Float4(OrderedF32::try_from(1.5).unwrap())]);
@@ -875,7 +869,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_float8() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Float8]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Float8(OrderedF64::try_from(2.25).unwrap())]);
@@ -892,7 +886,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_int1() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Int1]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Int1(42)]);
@@ -906,7 +900,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_int2() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Int2]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Int2(-1234)]);
@@ -920,7 +914,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_int4() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Int4]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Int4(56789)]);
@@ -934,7 +928,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_int8() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Int8]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Int8(-987654321)]);
@@ -951,7 +945,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_int16() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Int16]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Int16(123456789012345678901234567890i128)]);
@@ -968,7 +962,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_string() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Utf8]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Utf8("reifydb".into())]);
@@ -985,7 +979,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_uint1() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Uint1]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Uint1(255)]);
@@ -999,7 +993,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_uint2() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Uint2]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Uint2(65535)]);
@@ -1013,7 +1007,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_uint4() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Uint4]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Uint4(4294967295)]);
@@ -1030,7 +1024,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_uint8() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Uint8]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Uint8(18446744073709551615)]);
@@ -1047,7 +1041,7 @@ mod tests {
 
 		#[test]
 		fn test_before_undefined_uint16() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::undefined("test_col", 2)]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::undefined("test_col", 2)]);
 			let layout = EncodedRowLayout::new(&[Type::Uint16]);
 			let mut row = layout.allocate_row();
 			layout.set_values(&mut row, &[Value::Uint16(340282366920938463463374607431768211455u128)]);
@@ -1092,7 +1086,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_bool() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::bool("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::bool("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Boolean]);
 			let mut row_one = layout.allocate_row();
@@ -1107,7 +1101,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_float4() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::float4("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::float4("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Float4]);
 			let mut row_one = layout.allocate_row();
@@ -1122,7 +1116,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_float8() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::float8("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::float8("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Float8]);
 			let mut row_one = layout.allocate_row();
@@ -1137,7 +1131,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_int1() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::int1("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::int1("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int1]);
 			let mut row_one = layout.allocate_row();
@@ -1152,7 +1146,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_int2() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::int2("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::int2("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int2]);
 			let mut row_one = layout.allocate_row();
@@ -1167,7 +1161,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_int4() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::int4("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::int4("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int4]);
 			let mut row_one = layout.allocate_row();
@@ -1182,7 +1176,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_int8() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::int8("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::int8("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int8]);
 			let mut row_one = layout.allocate_row();
@@ -1197,7 +1191,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_int16() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::int16("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::int16("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int16]);
 			let mut row_one = layout.allocate_row();
@@ -1212,7 +1206,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_string() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::utf8("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::utf8("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Utf8]);
 			let mut row_one = layout.allocate_row();
@@ -1227,7 +1221,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_uint1() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::uint1("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::uint1("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint1]);
 			let mut row_one = layout.allocate_row();
@@ -1242,7 +1236,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_uint2() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::uint2("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::uint2("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint2]);
 			let mut row_one = layout.allocate_row();
@@ -1257,7 +1251,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_uint4() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::uint4("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::uint4("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint4]);
 			let mut row_one = layout.allocate_row();
@@ -1272,7 +1266,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_uint8() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::uint8("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::uint8("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint8]);
 			let mut row_one = layout.allocate_row();
@@ -1287,7 +1281,7 @@ mod tests {
 
 		#[test]
 		fn test_all_defined_uint16() {
-			let mut test_instance = Columns::new(vec![ColumnQualified::uint16("test_col", [])]);
+			let mut test_instance = Columns::new(vec![ColumnComputed::uint16("test_col", [])]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint16]);
 			let mut row_one = layout.allocate_row();
@@ -1346,8 +1340,8 @@ mod tests {
 		#[test]
 		fn test_fallback_bool() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::bool("test_col", []),
-				ColumnQualified::bool("undefined", []),
+				ColumnComputed::bool("test_col", []),
+				ColumnComputed::bool("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Boolean, Type::Boolean]);
@@ -1365,8 +1359,8 @@ mod tests {
 		#[test]
 		fn test_fallback_float4() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::float4("test_col", []),
-				ColumnQualified::float4("undefined", []),
+				ColumnComputed::float4("test_col", []),
+				ColumnComputed::float4("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Float4, Type::Float4]);
@@ -1383,8 +1377,8 @@ mod tests {
 		#[test]
 		fn test_fallback_float8() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::float8("test_col", []),
-				ColumnQualified::float8("undefined", []),
+				ColumnComputed::float8("test_col", []),
+				ColumnComputed::float8("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Float8, Type::Float8]);
@@ -1401,8 +1395,8 @@ mod tests {
 		#[test]
 		fn test_fallback_int1() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::int1("test_col", []),
-				ColumnQualified::int1("undefined", []),
+				ColumnComputed::int1("test_col", []),
+				ColumnComputed::int1("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int1, Type::Int1]);
@@ -1419,8 +1413,8 @@ mod tests {
 		#[test]
 		fn test_fallback_int2() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::int2("test_col", []),
-				ColumnQualified::int2("undefined", []),
+				ColumnComputed::int2("test_col", []),
+				ColumnComputed::int2("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int2, Type::Int2]);
@@ -1437,8 +1431,8 @@ mod tests {
 		#[test]
 		fn test_fallback_int4() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::int4("test_col", []),
-				ColumnQualified::int4("undefined", []),
+				ColumnComputed::int4("test_col", []),
+				ColumnComputed::int4("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int4, Type::Int4]);
@@ -1455,8 +1449,8 @@ mod tests {
 		#[test]
 		fn test_fallback_int8() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::int8("test_col", []),
-				ColumnQualified::int8("undefined", []),
+				ColumnComputed::int8("test_col", []),
+				ColumnComputed::int8("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int8, Type::Int8]);
@@ -1473,8 +1467,8 @@ mod tests {
 		#[test]
 		fn test_fallback_int16() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::int16("test_col", []),
-				ColumnQualified::int16("undefined", []),
+				ColumnComputed::int16("test_col", []),
+				ColumnComputed::int16("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Int16, Type::Int16]);
@@ -1494,8 +1488,8 @@ mod tests {
 		#[test]
 		fn test_fallback_string() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::utf8("test_col", []),
-				ColumnQualified::utf8("undefined", []),
+				ColumnComputed::utf8("test_col", []),
+				ColumnComputed::utf8("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Utf8]);
@@ -1515,8 +1509,8 @@ mod tests {
 		#[test]
 		fn test_fallback_uint1() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::uint1("test_col", []),
-				ColumnQualified::uint1("undefined", []),
+				ColumnComputed::uint1("test_col", []),
+				ColumnComputed::uint1("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint1, Type::Uint1]);
@@ -1533,8 +1527,8 @@ mod tests {
 		#[test]
 		fn test_fallback_uint2() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::uint2("test_col", []),
-				ColumnQualified::uint2("undefined", []),
+				ColumnComputed::uint2("test_col", []),
+				ColumnComputed::uint2("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint2, Type::Uint2]);
@@ -1551,8 +1545,8 @@ mod tests {
 		#[test]
 		fn test_fallback_uint4() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::uint4("test_col", []),
-				ColumnQualified::uint4("undefined", []),
+				ColumnComputed::uint4("test_col", []),
+				ColumnComputed::uint4("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint4, Type::Uint4]);
@@ -1569,8 +1563,8 @@ mod tests {
 		#[test]
 		fn test_fallback_uint8() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::uint8("test_col", []),
-				ColumnQualified::uint8("undefined", []),
+				ColumnComputed::uint8("test_col", []),
+				ColumnComputed::uint8("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint8, Type::Uint8]);
@@ -1590,8 +1584,8 @@ mod tests {
 		#[test]
 		fn test_fallback_uint16() {
 			let mut test_instance = Columns::new(vec![
-				ColumnQualified::uint16("test_col", []),
-				ColumnQualified::uint16("undefined", []),
+				ColumnComputed::uint16("test_col", []),
+				ColumnComputed::uint16("undefined", []),
 			]);
 
 			let layout = EncodedRowLayout::new(&[Type::Uint16, Type::Uint16]);
@@ -1610,13 +1604,11 @@ mod tests {
 
 		fn test_instance_with_columns<'a>() -> Columns<'a> {
 			Columns::new(vec![
-				Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal("test"),
+				Column::Computed(ColumnComputed {
 					name: Fragment::owned_internal("int2"),
 					data: ColumnData::int2(vec![1]),
 				}),
-				Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal("test"),
+				Column::Computed(ColumnComputed {
 					name: Fragment::owned_internal("bool"),
 					data: ColumnData::bool(vec![true]),
 				}),

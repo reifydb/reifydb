@@ -4,7 +4,7 @@
 pub(crate) use reifydb_core::interface::EvaluationContext;
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::Expression},
-	value::columnar::{Column, ColumnQualified, SourceQualified},
+	value::columnar::{Column, ColumnComputed, SourceQualified},
 };
 
 use crate::function::{Functions, blob, math};
@@ -87,16 +87,16 @@ pub fn evaluate<'a>(ctx: &EvaluationContext<'a>, expr: &Expression<'a>) -> crate
 
 	// Ensures that result column data type matches the expected target
 	// column type
-	if let Some(ty) = ctx.target_column.as_ref().and_then(|c| c.column_type) {
+	if let Some(ty) = ctx.target.as_ref().and_then(|c| c.column_type) {
 		let mut column = evaluator.evaluate(ctx, expr)?;
 		let data = cast::cast_column_data(ctx, &column.data(), ty, &expr.lazy_fragment())?;
-		column = match column.table() {
+		column = match column.source() {
 			Some(source) => Column::SourceQualified(SourceQualified {
 				source: source.clone(),
 				name: column.name_owned(),
 				data,
 			}),
-			None => Column::ColumnQualified(ColumnQualified {
+			None => Column::Computed(ColumnComputed {
 				name: column.name_owned(),
 				data,
 			}),

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::AddExpression},
 	value::{
-		columnar::{Column, ColumnData, ColumnQualified, push::Push},
+		columnar::{Column, ColumnComputed, ColumnData, push::Push},
 		container::{NumberContainer, UndefinedContainer, Utf8Container},
 	},
 };
@@ -1140,11 +1140,11 @@ impl StandardEvaluator {
 
 			// Handle undefined values - any operation with
 			// undefined results in undefined
-			(ColumnData::Undefined(l), _) => Ok(Column::ColumnQualified(ColumnQualified {
+			(ColumnData::Undefined(l), _) => Ok(Column::Computed(ColumnComputed {
 				name: add.full_fragment_owned(),
 				data: ColumnData::Undefined(UndefinedContainer::new(l.len())),
 			})),
-			(_, ColumnData::Undefined(r)) => Ok(Column::ColumnQualified(ColumnQualified {
+			(_, ColumnData::Undefined(r)) => Ok(Column::Computed(ColumnComputed {
 				name: add.full_fragment_owned(),
 				data: ColumnData::Undefined(UndefinedContainer::new(r.len())),
 			})),
@@ -1199,7 +1199,7 @@ where
 
 		let binding = fragment.fragment();
 		let fragment_text = binding.text();
-		return Ok(Column::ColumnQualified(ColumnQualified {
+		return Ok(Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment_text),
 			data,
 		}));
@@ -1221,7 +1221,7 @@ where
 	}
 	let binding = fragment.fragment();
 	let fragment_text = binding.text();
-	Ok(Column::ColumnQualified(ColumnQualified {
+	Ok(Column::Computed(ColumnComputed {
 		name: Fragment::owned_internal(fragment_text),
 		data,
 	}))
@@ -1260,7 +1260,7 @@ where
 	}
 	let binding = fragment.fragment();
 	let fragment_text = binding.text();
-	Ok(Column::ColumnQualified(ColumnQualified {
+	Ok(Column::Computed(ColumnComputed {
 		name: Fragment::owned_internal(fragment_text),
 		data,
 	}))
@@ -1310,7 +1310,7 @@ fn concat_strings<'a>(
 			_ => data.push_undefined(),
 		}
 	}
-	Ok(Column::ColumnQualified(ColumnQualified {
+	Ok(Column::Computed(ColumnComputed {
 		name: Fragment::owned_internal(fragment.text()),
 		data,
 	}))
@@ -1341,7 +1341,7 @@ fn concat_string_with_other<'a>(
 			_ => data.push_undefined(),
 		}
 	}
-	Ok(Column::ColumnQualified(ColumnQualified {
+	Ok(Column::Computed(ColumnComputed {
 		name: fragment,
 		data,
 	}))

@@ -40,7 +40,7 @@ use crate::{
 pub(crate) fn compile<'a, T: Transaction>(
 	plan: PhysicalPlan<'a>,
 	rx: &mut StandardTransaction<'a, T>,
-	context: Arc<ExecutionContext>,
+	context: Arc<ExecutionContext<'a>>,
 ) -> ExecutionPlan<'a, T> {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {

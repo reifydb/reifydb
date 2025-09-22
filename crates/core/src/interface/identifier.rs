@@ -46,17 +46,9 @@ pub struct TableVirtualIdentifier<'a> {
 	pub alias: Option<Fragment<'a>>,
 }
 
-/// Fully qualified deferred view identifier
+/// Fully qualified view identifier
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DeferredViewIdentifier<'a> {
-	pub namespace: Fragment<'a>,
-	pub name: Fragment<'a>,
-	pub alias: Option<Fragment<'a>>,
-}
-
-/// Fully qualified transactional view identifier
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TransactionalViewIdentifier<'a> {
+pub struct ViewIdentifier<'a> {
 	pub namespace: Fragment<'a>,
 	pub name: Fragment<'a>,
 	pub alias: Option<Fragment<'a>>,
@@ -68,8 +60,7 @@ pub struct TransactionalViewIdentifier<'a> {
 pub enum SourceIdentifier<'a> {
 	Table(TableIdentifier<'a>),
 	TableVirtual(TableVirtualIdentifier<'a>),
-	DeferredView(DeferredViewIdentifier<'a>),
-	TransactionalView(TransactionalViewIdentifier<'a>),
+	View(ViewIdentifier<'a>),
 	RingBuffer(RingBufferIdentifier<'a>),
 }
 
@@ -186,7 +177,7 @@ impl<'a> RingBufferIdentifier<'a> {
 	}
 }
 
-impl<'a> DeferredViewIdentifier<'a> {
+impl<'a> ViewIdentifier<'a> {
 	pub fn new(namespace: Fragment<'a>, name: Fragment<'a>) -> Self {
 		Self {
 			namespace,
@@ -195,8 +186,8 @@ impl<'a> DeferredViewIdentifier<'a> {
 		}
 	}
 
-	pub fn to_static(&self) -> DeferredViewIdentifier<'static> {
-		DeferredViewIdentifier {
+	pub fn to_static(&self) -> ViewIdentifier<'static> {
+		ViewIdentifier {
 			namespace: Fragment::owned_internal(self.namespace.text()),
 			name: Fragment::owned_internal(self.name.text()),
 			alias: self.alias.as_ref().map(|a| Fragment::owned_internal(a.text())),
@@ -208,43 +199,8 @@ impl<'a> DeferredViewIdentifier<'a> {
 		self
 	}
 
-	pub fn into_owned(self) -> DeferredViewIdentifier<'static> {
-		DeferredViewIdentifier {
-			namespace: Fragment::Owned(self.namespace.into_owned()),
-			name: Fragment::Owned(self.name.into_owned()),
-			alias: self.alias.map(|a| Fragment::Owned(a.into_owned())),
-		}
-	}
-
-	pub fn effective_name(&self) -> &str {
-		self.alias.as_ref().map(|a| a.text()).unwrap_or_else(|| self.name.text())
-	}
-}
-
-impl<'a> TransactionalViewIdentifier<'a> {
-	pub fn new(namespace: Fragment<'a>, name: Fragment<'a>) -> Self {
-		Self {
-			namespace,
-			name,
-			alias: None,
-		}
-	}
-
-	pub fn to_static(&self) -> TransactionalViewIdentifier<'static> {
-		TransactionalViewIdentifier {
-			namespace: Fragment::owned_internal(self.namespace.text()),
-			name: Fragment::owned_internal(self.name.text()),
-			alias: self.alias.as_ref().map(|a| Fragment::owned_internal(a.text())),
-		}
-	}
-
-	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
-		self.alias = Some(alias);
-		self
-	}
-
-	pub fn into_owned(self) -> TransactionalViewIdentifier<'static> {
-		TransactionalViewIdentifier {
+	pub fn into_owned(self) -> ViewIdentifier<'static> {
+		ViewIdentifier {
 			namespace: Fragment::Owned(self.namespace.into_owned()),
 			name: Fragment::Owned(self.name.into_owned()),
 			alias: self.alias.map(|a| Fragment::Owned(a.into_owned())),
@@ -297,8 +253,7 @@ impl<'a> SourceIdentifier<'a> {
 		match self {
 			Self::Table(t) => SourceIdentifier::Table(t.into_owned()),
 			Self::TableVirtual(t) => SourceIdentifier::TableVirtual(t.into_owned()),
-			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.into_owned()),
-			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.into_owned()),
+			Self::View(v) => SourceIdentifier::View(v.into_owned()),
 			Self::RingBuffer(r) => SourceIdentifier::RingBuffer(r.into_owned()),
 		}
 	}
@@ -307,8 +262,7 @@ impl<'a> SourceIdentifier<'a> {
 		match self {
 			Self::Table(t) => SourceIdentifier::Table(t.to_static()),
 			Self::TableVirtual(t) => SourceIdentifier::TableVirtual(t.to_static()),
-			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.to_static()),
-			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.to_static()),
+			Self::View(v) => SourceIdentifier::View(v.to_static()),
 			Self::RingBuffer(r) => SourceIdentifier::RingBuffer(r.to_static()),
 		}
 	}
@@ -319,15 +273,9 @@ impl<'a> SourceIdentifier<'a> {
 		match self {
 			Self::Table(t) => t.effective_name(),
 			Self::TableVirtual(t) => t.effective_name(),
-			Self::DeferredView(v) => v.effective_name(),
-			Self::TransactionalView(v) => v.effective_name(),
+			Self::View(v) => v.effective_name(),
 			Self::RingBuffer(r) => r.effective_name(),
 		}
-	}
-
-	/// Check if this source is a view
-	pub fn is_view(&self) -> bool {
-		matches!(self, Self::DeferredView(_) | Self::TransactionalView(_))
 	}
 
 	/// Get the namespace fragment
@@ -335,8 +283,7 @@ impl<'a> SourceIdentifier<'a> {
 		match self {
 			Self::Table(t) => &t.namespace,
 			Self::TableVirtual(t) => &t.namespace,
-			Self::DeferredView(v) => &v.namespace,
-			Self::TransactionalView(v) => &v.namespace,
+			Self::View(v) => &v.namespace,
 			Self::RingBuffer(r) => &r.namespace,
 		}
 	}
@@ -346,8 +293,7 @@ impl<'a> SourceIdentifier<'a> {
 		match self {
 			Self::Table(t) => &t.name,
 			Self::TableVirtual(t) => &t.name,
-			Self::DeferredView(v) => &v.name,
-			Self::TransactionalView(v) => &v.name,
+			Self::View(v) => &v.name,
 			Self::RingBuffer(r) => &r.name,
 		}
 	}
@@ -357,8 +303,7 @@ impl<'a> SourceIdentifier<'a> {
 		match self {
 			Self::Table(t) => t.alias.as_ref(),
 			Self::TableVirtual(t) => t.alias.as_ref(),
-			Self::DeferredView(v) => v.alias.as_ref(),
-			Self::TransactionalView(v) => v.alias.as_ref(),
+			Self::View(v) => v.alias.as_ref(),
 			Self::RingBuffer(r) => r.alias.as_ref(),
 		}
 	}
@@ -636,25 +581,6 @@ mod tests {
 		let func = FunctionIdentifier::new(name).with_namespaces(vec![ns1, ns2]);
 
 		assert_eq!(func.qualified_name(), "pg_catalog::string::substr");
-	}
-
-	#[test]
-	fn test_source_identifier_is_view() {
-		let namespace = Fragment::Owned(OwnedFragment::testing("public"));
-		let name = Fragment::Owned(OwnedFragment::testing("my_view"));
-
-		let deferred =
-			SourceIdentifier::DeferredView(DeferredViewIdentifier::new(namespace.clone(), name.clone()));
-		assert!(deferred.is_view());
-
-		let transactional = SourceIdentifier::TransactionalView(TransactionalViewIdentifier::new(
-			namespace.clone(),
-			name.clone(),
-		));
-		assert!(transactional.is_view());
-
-		let table = SourceIdentifier::Table(TableIdentifier::new(namespace, name));
-		assert!(!table.is_view());
 	}
 
 	#[test]

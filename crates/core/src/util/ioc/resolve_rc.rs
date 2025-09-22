@@ -24,7 +24,7 @@ struct LazyResolveInner<T> {
 
 #[allow(dead_code)]
 impl<T: Clone> LazyResolveRc<T> {
-	/// Create a new lazy resolver
+	/// Create a new lazy resolve
 	pub fn new() -> Self {
 		Self {
 			inner: Rc::new(LazyResolveInner {

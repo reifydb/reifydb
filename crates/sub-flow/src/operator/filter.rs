@@ -3,7 +3,7 @@ use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
 	util::CowVec,
-	value::columnar::{Column, ColumnData, ColumnQualified, Columns, ResolvedColumn, SourceQualified},
+	value::columnar::{ColumnData, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::Params;
@@ -44,8 +44,7 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 					let (filtered_columns, filtered_indices) =
 						self.filter_with_indices(evaluator, &after)?;
 					if !filtered_columns.is_empty() {
-						// Extract row_ids for the
-						// filtered rows
+						// Extract row_ids for the filtered rows
 						let mut filtered_row_ids = Vec::new();
 						for idx in &filtered_indices {
 							filtered_row_ids.push(row_ids[*idx]);
@@ -121,8 +120,8 @@ impl FilterOperator {
 		let row_count = columns.row_count();
 
 		let eval_ctx = EvaluationContext {
-			target_column: None,
-			column_policies: Vec::new(),
+			target: None,
+			policies: Vec::new(),
 			columns: columns.clone(),
 			row_count,
 			take: None,
@@ -163,25 +162,7 @@ impl FilterOperator {
 		filtered_columns.filter(&final_bv)?;
 
 		// Convert to owned/static columns
-		let mut static_columns = Vec::new();
-		for col in filtered_columns.into_iter() {
-			let static_col = match col {
-				Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
-					column: rc.column.to_static(),
-					data: rc.data,
-				}),
-				Column::SourceQualified(sq) => Column::SourceQualified(SourceQualified {
-					source: sq.source.to_static(),
-					name: sq.name.to_static(),
-					data: sq.data,
-				}),
-				Column::ColumnQualified(cq) => Column::ColumnQualified(ColumnQualified {
-					name: cq.name.to_static(),
-					data: cq.data,
-				}),
-			};
-			static_columns.push(static_col);
-		}
+		let static_columns: Vec<_> = filtered_columns.into_iter().map(|col| col.to_static()).collect();
 
 		Ok((Columns::new(static_columns), indices))
 	}

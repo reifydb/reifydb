@@ -7,7 +7,7 @@ use reifydb_core::{
 		Evaluator,
 		evaluate::expression::{CallExpression, Expression},
 	},
-	value::columnar::{Column, ColumnQualified, Columns},
+	value::columnar::{Column, ColumnComputed, Columns},
 };
 use reifydb_type::diagnostic::function;
 
@@ -23,7 +23,7 @@ impl StandardEvaluator {
 		call: &CallExpression<'a>,
 	) -> crate::Result<Column<'a>> {
 		let arguments = self.evaluate_arguments(ctx, &call.args)?;
-		let function = call.func.0.fragment();
+		let function = call.func.0.text();
 
 		let functor = self
 			.functions
@@ -31,7 +31,7 @@ impl StandardEvaluator {
 			.ok_or(error!(function::unknown_function(function.to_string())))?;
 
 		let row_count = ctx.row_count;
-		Ok(Column::ColumnQualified(ColumnQualified {
+		Ok(Column::Computed(ColumnComputed {
 			name: call.full_fragment_owned(),
 			data: functor.scalar(ScalarFunctionContext {
 				columns: &arguments,

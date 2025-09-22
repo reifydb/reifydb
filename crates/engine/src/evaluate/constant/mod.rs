@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::evaluate::expression::ConstantExpression,
 	return_error,
 	value::{
-		columnar::{Column, ColumnData, ColumnQualified},
+		columnar::{Column, ColumnComputed, ColumnData},
 		container::undefined::UndefinedContainer,
 	},
 };
@@ -30,7 +30,7 @@ impl StandardEvaluator {
 		expr: &ConstantExpression<'a>,
 	) -> crate::Result<Column<'a>> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
-		Ok(Column::ColumnQualified(ColumnQualified {
+		Ok(Column::Computed(ColumnComputed {
 			name: expr.full_fragment_owned(),
 			data: Self::constant_value(&expr, row_count)?,
 		}))
@@ -52,7 +52,7 @@ impl StandardEvaluator {
 				Self::constant_value_of(&expr, target, row_count)?
 			}
 		};
-		Ok(Column::ColumnQualified(ColumnQualified {
+		Ok(Column::Computed(ColumnComputed {
 			name: expr.full_fragment_owned(),
 			data: casted,
 		}))
@@ -71,7 +71,7 @@ impl StandardEvaluator {
 			ConstantExpression::Number {
 				fragment,
 			} => {
-				if fragment.fragment().contains(".") || fragment.fragment().contains("e") {
+				if fragment.text().contains(".") || fragment.text().contains("e") {
 					return match parse_float(fragment.clone()) {
 						Ok(v) => Ok(ColumnData::float8(vec![v; row_count])),
 						Err(err) => return_error!(err.diagnostic()),
@@ -101,7 +101,7 @@ impl StandardEvaluator {
 						return Ok(ColumnData::int16(vec![v; row_count]));
 					}
 					Err(err) => {
-						if fragment.fragment().starts_with("-") {
+						if fragment.text().starts_with("-") {
 							return Err(err);
 						}
 					}
@@ -116,7 +116,7 @@ impl StandardEvaluator {
 			}
 			ConstantExpression::Text {
 				fragment,
-			} => ColumnData::utf8(std::iter::repeat(fragment.fragment()).take(row_count)),
+			} => ColumnData::utf8(std::iter::repeat(fragment.text()).take(row_count)),
 			ConstantExpression::Temporal {
 				fragment,
 			} => TemporalParser::parse_temporal(fragment.clone().into_fragment(), row_count)?,

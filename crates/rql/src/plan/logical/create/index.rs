@@ -16,7 +16,7 @@ impl Compiler {
 		ast: AstCreateIndex<'a>,
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Get the namespace with default from resolver
+		// Get the namespace with default from resolve
 		let namespace = ast
 			.index
 			.namespace

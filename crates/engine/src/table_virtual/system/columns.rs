@@ -7,7 +7,7 @@ use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
 	interface::{TableVirtualDef, Transaction},
-	value::columnar::{Column, ColumnData, ColumnQualified, Columns},
+	value::columnar::{Column, ColumnComputed, ColumnData, Columns},
 };
 use reifydb_type::Fragment;
 
@@ -69,31 +69,31 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for ColumnsTable<T> {
 		}
 
 		let columns = vec![
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("id"),
 				data: ColumnData::uint8(column_ids),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("source_id"),
 				data: ColumnData::uint8(source_ids),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("source_type"),
 				data: ColumnData::uint1(store_types),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("name"),
 				data: ColumnData::utf8(column_names),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("type"),
 				data: ColumnData::uint1(column_types),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("position"),
 				data: ColumnData::uint2(positions),
 			}),
-			Column::ColumnQualified(ColumnQualified {
+			Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal("auto_increment"),
 				data: ColumnData::bool(auto_increments),
 			}),

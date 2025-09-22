@@ -25,7 +25,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
 	fn initialize(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a, T>,
-		ctx: &ExecutionContext,
+		ctx: &ExecutionContext<'a>,
 	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());

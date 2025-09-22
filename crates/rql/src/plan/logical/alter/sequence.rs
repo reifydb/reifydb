@@ -17,9 +17,9 @@ impl Compiler {
 		resolver: &mut IdentifierResolver<'t, T>,
 	) -> crate::Result<LogicalPlan<'a>> {
 		let (namespace, sequence_name) = {
-			// Use the resolver's resolve_maybe_sequence method if
+			// Use the resolve's resolve_maybe_sequence method if
 			// we add one For now, just use default namespace
-			// through resolver
+			// through resolve
 			let namespace = ast
 				.sequence
 				.namespace

@@ -20,7 +20,7 @@ pub(crate) struct MapNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout<'a>>,
-	context: Option<Arc<ExecutionContext>>,
+	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
 impl<'a, T: Transaction> MapNode<'a, T> {
@@ -35,7 +35,7 @@ impl<'a, T: Transaction> MapNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
@@ -68,21 +68,21 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 			for expr in &expressions {
 				// Create evaluation context inline to avoid lifetime issues
 				let mut eval_ctx = EvaluationContext {
-					target_column: None,
-					column_policies: Vec::new(),
+					target: None,
+					policies: Vec::new(),
 					columns: columns.clone(),
 					row_count,
 					take: None,
 					params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
 				};
 
-				// Check if this is an alias expression and we have table information
+				// Check if this is an alias expression and we have source information
 				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &ctx.source) {
 					let alias_name = alias_expr.alias.name();
 
-					// Find the matching column in the table namespace
+					// Find the matching column in the source
 					if let Some(table_column) =
-						source.columns.iter().find(|col| col.name == alias_name)
+						source.columns().iter().find(|col| col.name == alias_name)
 					{
 						// Extract ColumnPolicyKind from ColumnPolicy
 						let policy_kinds: Vec<_> = table_column
@@ -92,13 +92,15 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 							.collect();
 
 						let target_column = ColumnDescriptor::new()
-							.with_table(Fragment::borrowed_internal(&source.name))
+							.with_table(Fragment::borrowed_internal(
+								source.effective_name(),
+							))
 							.with_column(Fragment::borrowed_internal(&table_column.name))
 							.with_column_type(table_column.constraint.get_type())
 							.with_policies(policy_kinds.clone());
 
-						eval_ctx.target_column = Some(target_column);
-						eval_ctx.column_policies = policy_kinds;
+						eval_ctx.target = Some(target_column);
+						eval_ctx.policies = policy_kinds;
 					}
 				}
 
@@ -133,7 +135,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 pub(crate) struct MapWithoutInputNode<'a, T: Transaction> {
 	expressions: Vec<Expression<'a>>,
 	layout: Option<ColumnsLayout<'a>>,
-	context: Option<Arc<ExecutionContext>>,
+	context: Option<Arc<ExecutionContext<'a>>>,
 	_phantom: PhantomData<T>,
 }
 
@@ -149,7 +151,11 @@ impl<'a, T: Transaction> MapWithoutInputNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
-	fn initialize(&mut self, _rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize(
+		&mut self,
+		_rx: &mut StandardTransaction<'a, T>,
+		ctx: &ExecutionContext<'a>,
+	) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
@@ -169,8 +175,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 		for expr in expressions.iter() {
 			let column = evaluate(
 				&EvaluationContext {
-					target_column: None,
-					column_policies: Vec::new(),
+					target: None,
+					policies: Vec::new(),
 					columns: Columns::empty(),
 					row_count: 1,
 					take: None,

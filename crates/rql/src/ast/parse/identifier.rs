@@ -45,7 +45,7 @@ impl<'a> Parser<'a> {
 			} else {
 				// table.column or alias.column
 				// At parse time, we don't know if first is a
-				// table or alias The resolver will
+				// table or alias The resolve will
 				// determine this
 				Ok(MaybeQualifiedColumnIdentifier::with_source(
 					None,

@@ -5,7 +5,7 @@ use operator::{not_can_not_applied_to_number, not_can_not_applied_to_temporal, n
 use reifydb_core::{
 	err,
 	interface::evaluate::expression::{PrefixExpression, PrefixOperator},
-	value::columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
+	value::columnar::{Column, ColumnData},
 };
 use reifydb_type::{
 	Decimal, Int, Uint, diagnostic,
@@ -33,17 +33,9 @@ impl StandardEvaluator {
 							result.push(false);
 						}
 					}
-					Ok(match column.table() {
-						Some(table) => Column::SourceQualified(SourceQualified {
-							source: table.clone(),
-							name: column.name().clone(),
-							data: ColumnData::bool_with_bitvec(result, container.bitvec()),
-						}),
-						None => Column::ColumnQualified(ColumnQualified {
-							name: column.name().clone(),
-							data: ColumnData::bool_with_bitvec(result, container.bitvec()),
-						}),
-					})
+
+					let new_data = ColumnData::bool_with_bitvec(result, container.bitvec());
+					Ok(column.with_new_data(new_data))
 				}
 				_ => err!(diagnostic::engine::frame_error(
 					"Cannot apply arithmetic prefix operator to bool".to_string()
@@ -67,17 +59,8 @@ impl StandardEvaluator {
 						result.push(0.0f32);
 					}
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::float4_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::float4_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::float4_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Float8(container) => {
@@ -97,17 +80,8 @@ impl StandardEvaluator {
 						result.push(0.0f64);
 					}
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::float8_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::float8_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::float8_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Int1(container) => {
@@ -127,17 +101,8 @@ impl StandardEvaluator {
 						result.push(0);
 					}
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int1_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int1_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int1_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Int2(container) => {
@@ -157,17 +122,8 @@ impl StandardEvaluator {
 						result.push(0);
 					}
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int2_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int2_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int2_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Int4(container) => {
@@ -187,17 +143,8 @@ impl StandardEvaluator {
 						result.push(0);
 					}
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int4_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int4_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int4_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Int8(container) => {
@@ -217,17 +164,8 @@ impl StandardEvaluator {
 						result.push(0);
 					}
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int8_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int8_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int8_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Int16(container) => {
@@ -247,17 +185,8 @@ impl StandardEvaluator {
 						result.push(0);
 					}
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int16_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int16_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int16_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Utf8 {
@@ -284,17 +213,8 @@ impl StandardEvaluator {
 						}
 					});
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int1_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int1_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int1_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Uint2(container) => {
@@ -311,17 +231,8 @@ impl StandardEvaluator {
 						}
 					});
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int2_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int2_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int2_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Uint4(container) => {
@@ -338,17 +249,8 @@ impl StandardEvaluator {
 						}
 					});
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int4_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int4_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int4_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 
 			ColumnData::Uint8(container) => {
@@ -365,17 +267,8 @@ impl StandardEvaluator {
 						}
 					});
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int8_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int8_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int8_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 			ColumnData::Uint16(container) => {
 				let mut result = Vec::with_capacity(container.data().len());
@@ -391,17 +284,8 @@ impl StandardEvaluator {
 						}
 					});
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int16_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int16_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int16_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 			// EngineColumnData::Undefined(_) => {
 			//     Err("Cannot apply prefix operator to undefined data".into())
@@ -487,17 +371,8 @@ impl StandardEvaluator {
 						result.push(Int::zero());
 					}
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::int_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::int_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::int_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 			ColumnData::Uint {
 				container,
@@ -513,17 +388,8 @@ impl StandardEvaluator {
 							result.push(Int::zero());
 						}
 					}
-					Ok(match column.table() {
-						Some(table) => Column::SourceQualified(SourceQualified {
-							source: table.clone(),
-							name: column.name().clone(),
-							data: ColumnData::int_with_bitvec(result, container.bitvec()),
-						}),
-						None => Column::ColumnQualified(ColumnQualified {
-							name: column.name().clone(),
-							data: ColumnData::int_with_bitvec(result, container.bitvec()),
-						}),
-					})
+					let new_data = ColumnData::int_with_bitvec(result, container.bitvec());
+					Ok(column.with_new_data(new_data))
 				}
 				PrefixOperator::Plus(_) => {
 					let mut result = Vec::with_capacity(container.data().len());
@@ -534,17 +400,8 @@ impl StandardEvaluator {
 							result.push(Uint::zero());
 						}
 					}
-					Ok(match column.table() {
-						Some(table) => Column::SourceQualified(SourceQualified {
-							source: table.clone(),
-							name: column.name().clone(),
-							data: ColumnData::uint_with_bitvec(result, container.bitvec()),
-						}),
-						None => Column::ColumnQualified(ColumnQualified {
-							name: column.name().clone(),
-							data: ColumnData::uint_with_bitvec(result, container.bitvec()),
-						}),
-					})
+					let new_data = ColumnData::uint_with_bitvec(result, container.bitvec());
+					Ok(column.with_new_data(new_data))
 				}
 				PrefixOperator::Not(_) => {
 					err!(not_can_not_applied_to_number(prefix.full_fragment_owned()))
@@ -570,17 +427,8 @@ impl StandardEvaluator {
 						result.push(Decimal::from(0));
 					}
 				}
-				Ok(match column.table() {
-					Some(table) => Column::SourceQualified(SourceQualified {
-						source: table.clone(),
-						name: column.name().clone(),
-						data: ColumnData::decimal_with_bitvec(result, container.bitvec()),
-					}),
-					None => Column::ColumnQualified(ColumnQualified {
-						name: column.name().clone(),
-						data: ColumnData::decimal_with_bitvec(result, container.bitvec()),
-					}),
-				})
+				let new_data = ColumnData::decimal_with_bitvec(result, container.bitvec());
+				Ok(column.with_new_data(new_data))
 			}
 		}
 	}

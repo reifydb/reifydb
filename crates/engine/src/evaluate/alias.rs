@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::AliasExpression},
-	value::columnar::{Column, ColumnQualified, SourceQualified},
+	value::columnar::{Column, ColumnComputed, SourceQualified},
 };
 
 use crate::evaluate::{EvaluationContext, StandardEvaluator};
@@ -17,20 +17,20 @@ impl StandardEvaluator {
 		let evaluated = self.evaluate(ctx, &expr.expression)?;
 		let alias_name = expr.alias.0.clone();
 
-		let source = ctx.target_column.as_ref().and_then(|c| c.table.as_ref()).or(ctx
-			.columns
-			.first()
+		let source = ctx
+			.target
 			.as_ref()
-			.and_then(|c| c.table()));
+			.and_then(|c| c.table.as_ref().cloned())
+			.or_else(|| ctx.columns.first().and_then(|c| c.source()));
 
 		Ok(match source {
 			Some(src) => Column::SourceQualified(SourceQualified {
-				source: src.clone(),
-				name: alias_name.clone(),
+				source: src,
+				name: alias_name,
 				data: evaluated.data().clone(),
 			}),
-			None => Column::ColumnQualified(ColumnQualified {
-				name: alias_name.clone(),
+			None => Column::Computed(ColumnComputed {
+				name: alias_name,
 				data: evaluated.data().clone(),
 			}),
 		})

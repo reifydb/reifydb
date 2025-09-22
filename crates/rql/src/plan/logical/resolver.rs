@@ -9,10 +9,9 @@ use reifydb_core::{
 	interface::{
 		TableVirtualDef, ViewKind,
 		identifier::{
-			ColumnIdentifier, ColumnSource, DeferredViewIdentifier, FunctionIdentifier, IndexIdentifier,
-			NamespaceIdentifier, RingBufferIdentifier, SequenceIdentifier, SourceIdentifier,
-			TableIdentifier, TableVirtualIdentifier, TransactionalViewIdentifier,
-			UnresolvedSourceIdentifier,
+			ColumnIdentifier, ColumnSource, FunctionIdentifier, IndexIdentifier, NamespaceIdentifier,
+			RingBufferIdentifier, SequenceIdentifier, SourceIdentifier, TableIdentifier,
+			TableVirtualIdentifier, UnresolvedSourceIdentifier, ViewIdentifier,
 		},
 		resolved::{
 			ResolvedColumn, ResolvedDeferredView, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource,
@@ -117,19 +116,12 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				}
 				SourceIdentifier::TableVirtual(t)
 			}
-			SourceIdentifier::DeferredView(_) => {
-				let mut v = DeferredViewIdentifier::new(resolved_schema, resolved_name);
+			SourceIdentifier::View(_) => {
+				let mut v = ViewIdentifier::new(resolved_schema, resolved_name);
 				if let Some(a) = resolved_alias {
 					v = v.with_alias(a);
 				}
-				SourceIdentifier::DeferredView(v)
-			}
-			SourceIdentifier::TransactionalView(_) => {
-				let mut v = TransactionalViewIdentifier::new(resolved_schema, resolved_name);
-				if let Some(a) = resolved_alias {
-					v = v.with_alias(a);
-				}
-				SourceIdentifier::TransactionalView(v)
+				SourceIdentifier::View(v)
 			}
 			SourceIdentifier::RingBuffer(_) => {
 				let mut r = RingBufferIdentifier::new(resolved_schema, resolved_name);
@@ -553,18 +545,18 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		if let Some(view) = self.transaction.find_view_by_name(ns.id, name_str)? {
 			match view.kind {
 				ViewKind::Deferred => {
-					let mut v = DeferredViewIdentifier::new(namespace, name);
+					let mut v = ViewIdentifier::new(namespace, name);
 					if let Some(a) = alias {
 						v = v.with_alias(a);
 					}
-					Ok(SourceIdentifier::DeferredView(v))
+					Ok(SourceIdentifier::View(v))
 				}
 				ViewKind::Transactional => {
-					let mut v = TransactionalViewIdentifier::new(namespace, name);
+					let mut v = ViewIdentifier::new(namespace, name);
 					if let Some(a) = alias {
 						v = v.with_alias(a);
 					}
-					Ok(SourceIdentifier::TransactionalView(v))
+					Ok(SourceIdentifier::View(v))
 				}
 			}
 		} else {
@@ -667,7 +659,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				// CatalogQueryTransaction supports it
 				true
 			}
-			SourceIdentifier::DeferredView(_) | SourceIdentifier::TransactionalView(_) => {
+			SourceIdentifier::View(_) => {
 				// TODO: Check view has column once
 				// CatalogQueryTransaction supports it
 				true
@@ -692,7 +684,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 				// CatalogQueryTransaction supports it
 				Vec::new()
 			}
-			SourceIdentifier::DeferredView(_) | SourceIdentifier::TransactionalView(_) => {
+			SourceIdentifier::View(_) => {
 				// TODO: Get view columns once
 				// CatalogQueryTransaction supports it
 				Vec::new()
@@ -823,27 +815,35 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 
 	/// Build a resolved view
 	pub fn build_resolved_view<'a>(&mut self, ident: SourceIdentifier<'a>) -> Result<ResolvedView<'a>> {
+		let view_ident = match ident {
+			SourceIdentifier::View(v) => v,
+			_ => {
+				unreachable!()
+			}
+		};
+
 		// Resolve namespace first
 		let namespace_ident = NamespaceIdentifier {
-			name: ident.namespace().clone(),
+			name: view_ident.namespace.clone(),
 		};
 		let namespace = self.build_resolved_namespace(namespace_ident)?;
 
 		// Lookup view in catalog
-		let view_name = ident.name().text();
+		let view_name = view_ident.name.text();
+		let view_name_fragment = view_ident.name.clone();
 		let def = self.transaction.find_view_by_name(namespace.def().id, view_name)?.ok_or_else(
 			|| -> reifydb_core::Error {
 				// Return an error instead of panicking
 				crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
 					namespace: namespace.def().name.clone(),
 					name: view_name.to_string(),
-					fragment: ident.name().clone().into_owned(),
+					fragment: view_name_fragment.clone().into_owned(),
 				})
 				.into()
 			},
 		)?;
 
-		Ok(ResolvedView::new(ident, namespace, def))
+		Ok(ResolvedView::new(view_ident, namespace, def))
 	}
 
 	/// Build a resolved source from an unresolved identifier
@@ -916,25 +916,25 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 			use reifydb_core::interface::ViewKind;
 			match view.kind {
 				ViewKind::Deferred => {
-					let mut v = DeferredViewIdentifier::new(
+					let mut v = ViewIdentifier::new(
 						namespace_fragment.clone(),
 						Fragment::Owned(ident.name.into_owned()),
 					);
 					if let Some(alias) = ident.alias {
 						v = v.with_alias(alias);
 					}
-					let source = SourceIdentifier::DeferredView(v);
+					let source = SourceIdentifier::View(v);
 					self.build_resolved_source(source)
 				}
 				ViewKind::Transactional => {
-					let mut v = TransactionalViewIdentifier::new(
+					let mut v = ViewIdentifier::new(
 						namespace_fragment,
 						Fragment::Owned(ident.name.into_owned()),
 					);
 					if let Some(alias) = ident.alias {
 						v = v.with_alias(alias);
 					}
-					let source = SourceIdentifier::TransactionalView(v);
+					let source = SourceIdentifier::View(v);
 					self.build_resolved_source(source)
 				}
 			}
@@ -1005,11 +1005,9 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 			// Check view kind and create appropriate resolved type
 			let resolved = match view.def().kind {
 				ViewKind::Deferred => {
-					// Extract or create
-					// DeferredViewIdentifier
 					let deferred_ident = match ident {
-						SourceIdentifier::DeferredView(d) => d,
-						_ => DeferredViewIdentifier {
+						SourceIdentifier::View(d) => d,
+						_ => ViewIdentifier {
 							namespace: ident.namespace().clone(),
 							name: ident.name().clone(),
 							alias: ident.alias().cloned(),
@@ -1023,11 +1021,9 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 					ResolvedSource::DeferredView(deferred)
 				}
 				ViewKind::Transactional => {
-					// Extract or create
-					// TransactionalViewIdentifier
 					let trans_ident = match ident {
-						SourceIdentifier::TransactionalView(t) => t,
-						_ => TransactionalViewIdentifier {
+						SourceIdentifier::View(t) => t,
+						_ => ViewIdentifier {
 							namespace: ident.namespace().clone(),
 							name: ident.name().clone(),
 							alias: ident.alias().cloned(),
@@ -1293,7 +1289,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		&mut self,
 		source: &MaybeQualifiedDeferredViewIdentifier<'a>,
 		validate_existence: bool,
-	) -> Result<DeferredViewIdentifier<'static>> {
+	) -> Result<ViewIdentifier<'static>> {
 		// Get the view name
 		let name_text = source.name.text();
 
@@ -1341,7 +1337,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		// reporting
 		let name_fragment = Fragment::Owned(source.name.clone().into_owned());
 
-		let mut view = DeferredViewIdentifier::new(namespace_fragment, name_fragment);
+		let mut view = ViewIdentifier::new(namespace_fragment, name_fragment);
 		if let Some(alias) = &source.alias {
 			view.alias = Some(Fragment::Owned(alias.clone().into_owned()));
 		}
@@ -1354,7 +1350,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		&mut self,
 		source: &MaybeQualifiedTransactionalViewIdentifier<'a>,
 		validate_existence: bool,
-	) -> Result<TransactionalViewIdentifier<'static>> {
+	) -> Result<ViewIdentifier<'static>> {
 		// Get the view name
 		let name_text = source.name.text();
 
@@ -1402,7 +1398,7 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 		// reporting
 		let name_fragment = Fragment::Owned(source.name.clone().into_owned());
 
-		let mut view = TransactionalViewIdentifier::new(namespace_fragment, name_fragment);
+		let mut view = ViewIdentifier::new(namespace_fragment, name_fragment);
 		if let Some(alias) = &source.alias {
 			view.alias = Some(Fragment::Owned(alias.clone().into_owned()));
 		}
@@ -1466,18 +1462,18 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 			// Create the appropriate view identifier based on type
 			match view.kind {
 				ViewKind::Deferred => {
-					let mut v = DeferredViewIdentifier::new(namespace_fragment, name_fragment);
+					let mut v = ViewIdentifier::new(namespace_fragment, name_fragment);
 					if let Some(alias) = &source.alias {
 						v.alias = Some(Fragment::Owned(alias.clone().into_owned()));
 					}
-					Ok(SourceIdentifier::DeferredView(v))
+					Ok(SourceIdentifier::View(v))
 				}
 				ViewKind::Transactional => {
-					let mut v = TransactionalViewIdentifier::new(namespace_fragment, name_fragment);
+					let mut v = ViewIdentifier::new(namespace_fragment, name_fragment);
 					if let Some(alias) = &source.alias {
 						v.alias = Some(Fragment::Owned(alias.clone().into_owned()));
 					}
-					Ok(SourceIdentifier::TransactionalView(v))
+					Ok(SourceIdentifier::View(v))
 				}
 			}
 		} else {
@@ -1496,11 +1492,11 @@ impl<'t, T: CatalogQueryTransaction> IdentifierResolver<'t, T> {
 
 			// For ALTER VIEW without validation, we can't determine
 			// the type Default to DeferredView for now
-			let mut v = DeferredViewIdentifier::new(namespace_fragment, name_fragment);
+			let mut v = ViewIdentifier::new(namespace_fragment, name_fragment);
 			if let Some(alias) = &source.alias {
 				v.alias = Some(Fragment::Owned(alias.clone().into_owned()));
 			}
-			Ok(SourceIdentifier::DeferredView(v))
+			Ok(SourceIdentifier::View(v))
 		}
 	}
 

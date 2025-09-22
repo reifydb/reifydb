@@ -6,13 +6,17 @@ use std::{
 	ops::{Deref, Index, IndexMut},
 };
 
-use reifydb_type::{Fragment, Type, Value};
+use reifydb_type::{Fragment, Value};
 
 use crate::{
-	interface::{RingBufferDef, TableDef, ViewDef},
+	interface::{
+		ResolvedColumn,
+		identifier::ColumnIdentifier,
+		resolved::{ResolvedRingBuffer, ResolvedSource, ResolvedTable, ResolvedView},
+	},
 	util::CowVec,
 	value::{
-		columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
+		columnar::{Column, ColumnComputed, ColumnData, ColumnResolved},
 		container::UndefinedContainer,
 	},
 };
@@ -85,7 +89,7 @@ impl<'a> Columns<'a> {
 				Value::Decimal(v) => ColumnData::decimal(vec![v]),
 			};
 
-			let column = Column::ColumnQualified(ColumnQualified {
+			let column = Column::Computed(ColumnComputed {
 				name: Fragment::owned_internal(name.to_string()),
 				data,
 			});
@@ -140,7 +144,7 @@ impl<'a> Columns<'a> {
 		let mut columns: Vec<Column> = names
 			.iter()
 			.map(|name| {
-				Column::ColumnQualified(ColumnQualified {
+				Column::Computed(ColumnComputed {
 					name: Fragment::owned_internal(name.to_string()),
 					data: ColumnData::Undefined(UndefinedContainer::new(0)),
 				})
@@ -163,144 +167,69 @@ impl<'a> Columns<'a> {
 		Self(CowVec::new(vec![]))
 	}
 
-	pub fn from_table_def(table: &TableDef) -> Self {
+	pub fn from_table(table: &ResolvedTable<'a>) -> Self {
+		let source = ResolvedSource::Table(table.clone());
+
 		let columns: Vec<Column> = table
-			.columns
+			.columns()
 			.iter()
 			.map(|col| {
-				let name = col.name.clone();
-				let data = match col.constraint.get_type() {
-					Type::Boolean => ColumnData::bool(vec![]),
-					Type::Float4 => ColumnData::float4(vec![]),
-					Type::Float8 => ColumnData::float8(vec![]),
-					Type::Int1 => ColumnData::int1(vec![]),
-					Type::Int2 => ColumnData::int2(vec![]),
-					Type::Int4 => ColumnData::int4(vec![]),
-					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => ColumnData::int16(vec![]),
-					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
-					Type::Uint1 => ColumnData::uint1(vec![]),
-					Type::Uint2 => ColumnData::uint2(vec![]),
-					Type::Uint4 => ColumnData::uint4(vec![]),
-					Type::Uint8 => ColumnData::uint8(vec![]),
-					Type::Uint16 => ColumnData::uint16(vec![]),
-					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => ColumnData::datetime(vec![]),
-					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => ColumnData::interval(vec![]),
-					Type::RowNumber => ColumnData::row_number(vec![]),
-					Type::IdentityId => ColumnData::identity_id(vec![]),
-					Type::Uuid4 => ColumnData::uuid4(vec![]),
-					Type::Uuid7 => ColumnData::uuid7(vec![]),
-					Type::Blob => ColumnData::blob(vec![]),
-					Type::Int => ColumnData::int(vec![]),
-					Type::Uint => ColumnData::uint(vec![]),
-					Type::Decimal {
-						..
-					} => ColumnData::decimal(vec![]),
-					Type::Undefined => ColumnData::undefined(0),
-				};
-				Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal(table.name.clone()),
-					name: Fragment::owned_internal(name.clone()),
-					data,
-				})
+				let column_ident = ColumnIdentifier::with_source(
+					Fragment::owned_internal(table.namespace().name()),
+					Fragment::owned_internal(table.name()),
+					Fragment::owned_internal(&col.name),
+				);
+				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
+				Column::Resolved(ColumnResolved::new(
+					resolved_col,
+					ColumnData::with_capacity(col.constraint.get_type(), 0),
+				))
 			})
 			.collect();
 
 		Self::new(columns)
 	}
 
-	pub fn from_ring_buffer_def(ring_buffer: &RingBufferDef) -> Self {
+	pub fn from_ring_buffer(ring_buffer: &ResolvedRingBuffer<'a>) -> Self {
+		let source = ResolvedSource::RingBuffer(ring_buffer.clone());
+
 		let columns: Vec<Column> = ring_buffer
-			.columns
+			.columns()
 			.iter()
 			.map(|col| {
-				let name = col.name.clone();
-				let data = match col.constraint.get_type() {
-					Type::Boolean => ColumnData::bool(vec![]),
-					Type::Float4 => ColumnData::float4(vec![]),
-					Type::Float8 => ColumnData::float8(vec![]),
-					Type::Int1 => ColumnData::int1(vec![]),
-					Type::Int2 => ColumnData::int2(vec![]),
-					Type::Int4 => ColumnData::int4(vec![]),
-					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => ColumnData::int16(vec![]),
-					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
-					Type::Uint1 => ColumnData::uint1(vec![]),
-					Type::Uint2 => ColumnData::uint2(vec![]),
-					Type::Uint4 => ColumnData::uint4(vec![]),
-					Type::Uint8 => ColumnData::uint8(vec![]),
-					Type::Uint16 => ColumnData::uint16(vec![]),
-					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => ColumnData::datetime(vec![]),
-					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => ColumnData::interval(vec![]),
-					Type::RowNumber => ColumnData::row_number(vec![]),
-					Type::IdentityId => ColumnData::identity_id(vec![]),
-					Type::Uuid4 => ColumnData::uuid4(vec![]),
-					Type::Uuid7 => ColumnData::uuid7(vec![]),
-					Type::Blob => ColumnData::blob(vec![]),
-					Type::Int => ColumnData::int(vec![]),
-					Type::Uint => ColumnData::uint(vec![]),
-					Type::Decimal {
-						..
-					} => ColumnData::decimal(vec![]),
-					Type::Undefined => ColumnData::undefined(0),
-				};
-				Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal(ring_buffer.name.clone()),
-					name: Fragment::owned_internal(name),
-					data,
-				})
+				let column_ident = ColumnIdentifier::with_source(
+					Fragment::owned_internal(ring_buffer.namespace().name()),
+					Fragment::owned_internal(ring_buffer.name()),
+					Fragment::owned_internal(&col.name),
+				);
+				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
+				Column::Resolved(ColumnResolved::new(
+					resolved_col,
+					ColumnData::with_capacity(col.constraint.get_type(), 0),
+				))
 			})
 			.collect();
 
 		Self::new(columns)
 	}
 
-	pub fn from_view_def(view: &ViewDef) -> Self {
+	pub fn from_view(view: &ResolvedView<'a>) -> Self {
+		let source = ResolvedSource::View(view.clone());
+
 		let columns: Vec<Column> = view
-			.columns
+			.columns()
 			.iter()
 			.map(|col| {
-				let name = col.name.clone();
-				let data = match col.constraint.get_type() {
-					Type::Boolean => ColumnData::bool(vec![]),
-					Type::Float4 => ColumnData::float4(vec![]),
-					Type::Float8 => ColumnData::float8(vec![]),
-					Type::Int1 => ColumnData::int1(vec![]),
-					Type::Int2 => ColumnData::int2(vec![]),
-					Type::Int4 => ColumnData::int4(vec![]),
-					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => ColumnData::int16(vec![]),
-					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
-					Type::Uint1 => ColumnData::uint1(vec![]),
-					Type::Uint2 => ColumnData::uint2(vec![]),
-					Type::Uint4 => ColumnData::uint4(vec![]),
-					Type::Uint8 => ColumnData::uint8(vec![]),
-					Type::Uint16 => ColumnData::uint16(vec![]),
-					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => ColumnData::datetime(vec![]),
-					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => ColumnData::interval(vec![]),
-					Type::RowNumber => ColumnData::row_number(vec![]),
-					Type::IdentityId => ColumnData::identity_id(vec![]),
-					Type::Uuid4 => ColumnData::uuid4(vec![]),
-					Type::Uuid7 => ColumnData::uuid7(vec![]),
-					Type::Blob => ColumnData::blob(vec![]),
-					Type::Int => ColumnData::int(vec![]),
-					Type::Uint => ColumnData::uint(vec![]),
-					Type::Decimal {
-						..
-					} => ColumnData::decimal(vec![]),
-					Type::Undefined => ColumnData::undefined(0),
-				};
-				Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal(view.name.clone()),
-					name: Fragment::owned_internal(name),
-					data,
-				})
+				let column_ident = ColumnIdentifier::with_source(
+					Fragment::owned_internal(view.namespace().name()),
+					Fragment::owned_internal(view.name()),
+					Fragment::owned_internal(&col.name),
+				);
+				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
+				Column::Resolved(ColumnResolved::new(
+					resolved_col,
+					ColumnData::with_capacity(col.constraint.get_type(), 0),
+				))
 			})
 			.collect();
 

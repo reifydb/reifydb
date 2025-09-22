@@ -64,14 +64,14 @@ impl Executor {
 		let empty_params = Params::None;
 		let value = evaluate(
 			&EvaluationContext {
-				target_column: Some(ColumnDescriptor {
+				target: Some(ColumnDescriptor {
 					namespace: None,
 					table: None,
 					column: None,
 					column_type: Some(column.constraint.get_type().clone()),
 					policies: vec![],
 				}),
-				column_policies: vec![],
+				policies: vec![],
 				columns: Columns::empty(),
 				row_count: 1,
 				take: None,

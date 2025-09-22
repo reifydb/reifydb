@@ -8,8 +8,8 @@ mod query;
 pub mod resolver;
 
 use identifier::{
-	ColumnIdentifier, DeferredViewIdentifier, IndexIdentifier, NamespaceIdentifier, RingBufferIdentifier,
-	SequenceIdentifier, TableIdentifier, TransactionalViewIdentifier,
+	ColumnIdentifier, IndexIdentifier, NamespaceIdentifier, RingBufferIdentifier, SequenceIdentifier,
+	TableIdentifier, ViewIdentifier,
 };
 use reifydb_catalog::{
 	CatalogQueryTransaction, ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate,
@@ -297,7 +297,7 @@ pub struct PipelineNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateDeferredViewNode<'a> {
-	pub view: DeferredViewIdentifier<'a>,
+	pub view: ViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan<'a>>,
@@ -305,7 +305,7 @@ pub struct CreateDeferredViewNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateTransactionalViewNode<'a> {
-	pub view: TransactionalViewIdentifier<'a>,
+	pub view: ViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan<'a>>,

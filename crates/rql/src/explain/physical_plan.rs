@@ -298,7 +298,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		}) => {
 			let label = format!(
 				"Apply {} [{}]",
-				operator_name.fragment(),
+				operator_name.text(),
 				if arguments.is_empty() {
 					"no args".to_string()
 				} else {

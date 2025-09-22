@@ -10,12 +10,13 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
 		EncodableKey, EncodableKeyRange, RowKey, RowKeyRange, Transaction, VersionedQueryTransaction,
-		resolved::ResolvedView,
+		identifier::ColumnIdentifier,
+		resolved::{ResolvedColumn as RColumn, ResolvedSource, ResolvedView},
 	},
 	log_debug,
 	row::EncodedRowLayout,
 	value::columnar::{
-		Column, ColumnData, Columns, SourceQualified,
+		Column, ColumnData, ColumnResolved, Columns,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
 };
@@ -25,7 +26,7 @@ use crate::execute::{Batch, ExecutionContext, QueryNode};
 
 pub(crate) struct ViewScanNode<'a, T: Transaction> {
 	view: ResolvedView<'a>,
-	context: Option<Arc<ExecutionContext>>,
+	context: Option<Arc<ExecutionContext<'a>>>,
 	layout: ColumnsLayout<'a>,
 	row_layout: EncodedRowLayout,
 	last_key: Option<EncodedKey>,
@@ -34,7 +35,7 @@ pub(crate) struct ViewScanNode<'a, T: Transaction> {
 }
 
 impl<'a, T: Transaction> ViewScanNode<'a, T> {
-	pub fn new(view: ResolvedView<'a>, context: Arc<ExecutionContext>) -> crate::Result<Self> {
+	pub fn new(view: ResolvedView<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
 		let data = view.columns().iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedRowLayout::new(&data);
 
@@ -66,7 +67,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<'a, T> {
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a, T>,
-		_ctx: &ExecutionContext,
+		_ctx: &ExecutionContext<'a>,
 	) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
@@ -127,16 +128,32 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<'a, T> {
 
 		self.last_key = new_last_key;
 
-		let mut columns = Columns::from_view_def(self.view.def());
+		let mut columns = Columns::from_view(&self.view);
 		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
 		// Add the RowNumber column to the columns if requested
 		if ctx.preserve_row_numbers {
-			let row_number_column = Column::SourceQualified(SourceQualified {
-				source: Fragment::owned_internal(self.view.name()),
-				name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
-				data: ColumnData::row_number(row_numbers),
-			});
+			// Create a resolved column for row numbers
+			let source = ResolvedSource::View(self.view.clone());
+			let column_ident = ColumnIdentifier::with_source(
+				Fragment::owned_internal(self.view.namespace().name()),
+				Fragment::owned_internal(self.view.name()),
+				Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
+			);
+			// Create a dummy ColumnDef for row number
+			let col_def = reifydb_core::interface::ColumnDef {
+				id: reifydb_core::interface::ColumnId(0),
+				name: ROW_NUMBER_COLUMN_NAME.to_string(),
+				constraint: reifydb_type::TypeConstraint::unconstrained(reifydb_type::Type::RowNumber),
+				policies: vec![],
+				index: reifydb_core::interface::catalog::ColumnIndex(0),
+				auto_increment: false,
+			};
+			let resolved_col = RColumn::new(column_ident, source, col_def);
+			let row_number_column = Column::Resolved(ColumnResolved::new(
+				resolved_col,
+				ColumnData::row_number(row_numbers),
+			));
 			columns.0.push(row_number_column);
 		}
 

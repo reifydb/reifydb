@@ -18,7 +18,7 @@ use crate::{
 pub(crate) struct FilterNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
-	context: Option<Arc<ExecutionContext>>,
+	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
 impl<'a, T: Transaction> FilterNode<'a, T> {
@@ -32,7 +32,7 @@ impl<'a, T: Transaction> FilterNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
@@ -58,8 +58,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
 				// Create evaluation context for all current
 				// rows
 				let eval_ctx = EvaluationContext {
-					target_column: None,
-					column_policies: Vec::new(),
+					target: None,
+					policies: Vec::new(),
 					columns: columns.clone(),
 					row_count,
 					take: None,

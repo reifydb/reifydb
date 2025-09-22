@@ -7,14 +7,16 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId, Params, RowKey,
-		RowKeyRange, Transaction, VersionedCommandTransaction, VersionedQueryTransaction,
+		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId, Params,
+		ResolvedNamespace, ResolvedSource, ResolvedTable, RowKey, RowKeyRange, Transaction,
+		VersionedCommandTransaction, VersionedQueryTransaction,
+		identifier::{NamespaceIdentifier, TableIdentifier},
 	},
 	value::columnar::{ColumnData, Columns},
 };
 use reifydb_rql::plan::physical::DeleteNode;
 use reifydb_type::{
-	ROW_NUMBER_COLUMN_NAME, Value,
+	Fragment, ROW_NUMBER_COLUMN_NAME, Value,
 	diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
@@ -56,6 +58,17 @@ impl Executor {
 			unimplemented!("DELETE without input requires explicit target table");
 		};
 
+		// Create resolved source for the table
+		let namespace_ident = NamespaceIdentifier::new(Fragment::owned_internal(namespace.name.clone()));
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
+
+		let table_ident = TableIdentifier::new(
+			Fragment::owned_internal(namespace.name.clone()),
+			Fragment::owned_internal(table.name.clone()),
+		);
+		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
+		let resolved_source = Some(ResolvedSource::Table(resolved_table));
+
 		let mut deleted_count = 0;
 
 		if let Some(input_plan) = plan.input {
@@ -69,7 +82,7 @@ impl Executor {
 				&mut std_txn,
 				Arc::new(ExecutionContext {
 					functions: self.functions.clone(),
-					source: Some(table.clone()),
+					source: resolved_source.clone(),
 					batch_size: 1024,
 					preserve_row_numbers: true,
 					params: params.clone(),
@@ -78,7 +91,7 @@ impl Executor {
 
 			let context = ExecutionContext {
 				functions: self.functions.clone(),
-				source: Some(table.clone()),
+				source: resolved_source.clone(),
 				batch_size: 1024,
 				preserve_row_numbers: true,
 				params: params.clone(),

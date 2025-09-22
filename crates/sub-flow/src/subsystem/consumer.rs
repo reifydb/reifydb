@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::CatalogStore;
+use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view};
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	Result,
 	flow::{Flow, FlowChange, FlowDiff},
 	interface::{
-		CdcChange, CdcEvent, CommandTransaction, Engine, GetEncodedRowLayout, Identity, Key, Params,
-		QueryTransaction, SourceId, Transaction,
+		CdcChange, CdcEvent, Engine, GetEncodedRowLayout, Identity, Key, Params, QueryTransaction, SourceId,
+		Transaction,
 	},
 	row::EncodedRow,
 	util::CowVec,
@@ -39,23 +39,23 @@ impl<T: Transaction> FlowConsumer<T> {
 	}
 
 	/// Helper method to convert multiple row bytes to Columns format
-	fn to_columns<'a, CT: CommandTransaction>(
-		txn: &mut CT,
+	fn to_columns<'a>(
+		txn: &mut StandardCommandTransaction<T>,
 		source: SourceId,
 		rows_bytes: &[Vec<u8>],
 	) -> Result<Columns<'static>> {
 		// Get source metadata from catalog
 		let (mut columns, layout) = match source {
 			SourceId::Table(table_id) => {
-				let table = CatalogStore::get_table(txn, table_id)?;
-				let layout = table.get_layout();
-				let columns = Columns::from_table_def(&table);
+				let resolved_table = resolve_table(txn, table_id)?;
+				let layout = resolved_table.def().get_layout();
+				let columns = Columns::from_table(&resolved_table);
 				(columns, layout)
 			}
 			SourceId::View(view_id) => {
-				let view = CatalogStore::get_view(txn, view_id)?;
-				let layout = view.get_layout();
-				let columns = Columns::from_view_def(&view);
+				let resolved_view = resolve_view(txn, view_id)?;
+				let layout = resolved_view.def().get_layout();
+				let columns = Columns::from_view(&resolved_view);
 				(columns, layout)
 			}
 			SourceId::TableVirtual(_) => {
@@ -63,9 +63,9 @@ impl<T: Transaction> FlowConsumer<T> {
 				unimplemented!("Virtual table sources not supported in flows")
 			}
 			SourceId::RingBuffer(ring_buffer_id) => {
-				let ring_buffer = CatalogStore::get_ring_buffer(txn, ring_buffer_id)?;
-				let layout = ring_buffer.get_layout();
-				let columns = Columns::from_ring_buffer_def(&ring_buffer);
+				let resolved_ring_buffer = resolve_ring_buffer(txn, ring_buffer_id)?;
+				let layout = resolved_ring_buffer.def().get_layout();
+				let columns = Columns::from_ring_buffer(&resolved_ring_buffer);
 				(columns, layout)
 			}
 			SourceId::FlowNode(_flow_node_id) => {

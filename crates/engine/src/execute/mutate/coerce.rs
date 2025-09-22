@@ -42,8 +42,8 @@ pub(crate) fn coerce_value_to_column_type(
 
 	let coerced_column = cast_column_data(
 		&EvaluationContext {
-			target_column: Some(column),
-			column_policies,
+			target: Some(column),
+			policies: column_policies,
 			columns: Columns::empty(),
 			row_count: 1,
 			take: None,

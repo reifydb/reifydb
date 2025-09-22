@@ -44,8 +44,7 @@ impl Convert for &EvaluationContext<'_> {
 						));
 					};
 
-					let descriptor =
-						self.target_column.as_ref().map(|c| c.to_number_range_descriptor());
+					let descriptor = self.target.as_ref().map(|c| c.to_number_range_descriptor());
 					return error!(number_out_of_range(
 						fragment,
 						To::get_type(),

@@ -60,7 +60,7 @@ impl From<Column<'_>> for FrameColumn {
 		match value {
 			Column::Resolved(col) => {
 				// Extract namespace and source from the resolved column if possible
-				let fully_qualified = col.column.fully_qualified_name();
+				let fully_qualified = col.column.qualified_name();
 				let parts: Vec<&str> = fully_qualified.split('.').collect();
 				let (namespace, store, name) = match parts.as_slice() {
 					[ns, src, n] => (Some(ns.to_string()), Some(src.to_string()), n.to_string()),
@@ -81,7 +81,7 @@ impl From<Column<'_>> for FrameColumn {
 				name: col.name.text().to_string(),
 				data: col.data.into(),
 			},
-			Column::ColumnQualified(col) => FrameColumn {
+			Column::Computed(col) => FrameColumn {
 				namespace: None,
 				store: None,
 				name: col.name.text().to_string(),

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::value::columnar::{Column, ColumnQualified, Columns, SourceQualified};
+use crate::value::columnar::Columns;
 
 impl<'a> Columns<'a> {
 	pub fn take(&mut self, n: usize) -> crate::Result<()> {
@@ -9,18 +9,7 @@ impl<'a> Columns<'a> {
 
 		for col in self.iter() {
 			let data = col.data().take(n);
-
-			columns.push(match col.source() {
-				Some(source) => Column::SourceQualified(SourceQualified {
-					source: source.clone(),
-					name: col.name().clone(),
-					data,
-				}),
-				None => Column::ColumnQualified(ColumnQualified {
-					name: col.name().clone(),
-					data,
-				}),
-			});
+			columns.push(col.with_new_data(data));
 		}
 
 		*self = Columns::new(columns);
@@ -32,12 +21,11 @@ impl<'a> Columns<'a> {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::value::columnar::ColumnData;
+	use crate::value::columnar::{ColumnComputed, ColumnData};
 
 	#[test]
 	fn test_bool_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::bool_with_bitvec(
-			"test",
+		let mut test_instance = Columns::new(vec![ColumnComputed::bool_with_bitvec(
 			"flag",
 			[true, true, false],
 			[false, true, true],
@@ -50,8 +38,7 @@ mod tests {
 
 	#[test]
 	fn test_float4_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::float4_with_bitvec(
-			"test",
+		let mut test_instance = Columns::new(vec![ColumnComputed::float4_with_bitvec(
 			"a",
 			[1.0, 2.0, 3.0],
 			[true, false, true],
@@ -64,8 +51,7 @@ mod tests {
 
 	#[test]
 	fn test_float8_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::float8_with_bitvec(
-			"test",
+		let mut test_instance = Columns::new(vec![ColumnComputed::float8_with_bitvec(
 			"a",
 			[1f64, 2.0, 3.0, 4.0],
 			[true, true, false, true],
@@ -78,12 +64,8 @@ mod tests {
 
 	#[test]
 	fn test_int1_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::int1_with_bitvec(
-			"test_columns",
-			"a",
-			[1, 2, 3],
-			[true, false, true],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::int1_with_bitvec("a", [1, 2, 3], [true, false, true])]);
 
 		test_instance.take(2).unwrap();
 
@@ -92,8 +74,7 @@ mod tests {
 
 	#[test]
 	fn test_int2_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::int2_with_bitvec(
-			"test",
+		let mut test_instance = Columns::new(vec![ColumnComputed::int2_with_bitvec(
 			"a",
 			[1, 2, 3, 4],
 			[true, true, false, true],
@@ -106,12 +87,8 @@ mod tests {
 
 	#[test]
 	fn test_int4_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::int4_with_bitvec(
-			"test_columns",
-			"a",
-			[1, 2],
-			[true, false],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::int4_with_bitvec("a", [1, 2], [true, false])]);
 
 		test_instance.take(1).unwrap();
 
@@ -120,12 +97,8 @@ mod tests {
 
 	#[test]
 	fn test_int8_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::int8_with_bitvec(
-			"test_columns",
-			"a",
-			[1, 2, 3],
-			[false, true, true],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::int8_with_bitvec("a", [1, 2, 3], [false, true, true])]);
 
 		test_instance.take(2).unwrap();
 
@@ -134,12 +107,8 @@ mod tests {
 
 	#[test]
 	fn test_int16_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::int16_with_bitvec(
-			"test_columns",
-			"a",
-			[1, 2],
-			[true, true],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::int16_with_bitvec("a", [1, 2], [true, true])]);
 
 		test_instance.take(1).unwrap();
 
@@ -148,12 +117,8 @@ mod tests {
 
 	#[test]
 	fn test_uint1_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::uint1_with_bitvec(
-			"test_columns",
-			"a",
-			[1, 2, 3],
-			[false, false, true],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::uint1_with_bitvec("a", [1, 2, 3], [false, false, true])]);
 
 		test_instance.take(2).unwrap();
 
@@ -162,12 +127,8 @@ mod tests {
 
 	#[test]
 	fn test_uint2_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::uint2_with_bitvec(
-			"test_columns",
-			"a",
-			[1, 2],
-			[true, false],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::uint2_with_bitvec("a", [1, 2], [true, false])]);
 
 		test_instance.take(1).unwrap();
 
@@ -176,12 +137,8 @@ mod tests {
 
 	#[test]
 	fn test_uint4_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::uint4_with_bitvec(
-			"test_columns",
-			"a",
-			[10, 20],
-			[false, true],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::uint4_with_bitvec("a", [10, 20], [false, true])]);
 
 		test_instance.take(1).unwrap();
 
@@ -190,12 +147,8 @@ mod tests {
 
 	#[test]
 	fn test_uint8_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::uint8_with_bitvec(
-			"test",
-			"a",
-			[10, 20, 30],
-			[true, true, false],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::uint8_with_bitvec("a", [10, 20, 30], [true, true, false])]);
 
 		test_instance.take(2).unwrap();
 
@@ -204,8 +157,7 @@ mod tests {
 
 	#[test]
 	fn test_uint16_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::uint16_with_bitvec(
-			"test",
+		let mut test_instance = Columns::new(vec![ColumnComputed::uint16_with_bitvec(
 			"a",
 			[100, 200, 300],
 			[true, false, true],
@@ -218,12 +170,8 @@ mod tests {
 
 	#[test]
 	fn test_text_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::utf8_with_bitvec(
-			"test",
-			"t",
-			["a", "b", "c"],
-			[true, false, true],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::utf8_with_bitvec("t", ["a", "b", "c"], [true, false, true])]);
 
 		test_instance.take(2).unwrap();
 
@@ -235,7 +183,7 @@ mod tests {
 
 	#[test]
 	fn test_undefined_column() {
-		let mut test_instance = Columns::new(vec![SourceQualified::undefined("test_columns", "u", 3)]);
+		let mut test_instance = Columns::new(vec![ColumnComputed::undefined("u", 3)]);
 
 		test_instance.take(2).unwrap();
 
@@ -249,7 +197,7 @@ mod tests {
 
 	#[test]
 	fn test_handles_undefined() {
-		let mut test_instance = Columns::new(vec![SourceQualified::undefined("test_columns", "u", 5)]);
+		let mut test_instance = Columns::new(vec![ColumnComputed::undefined("u", 5)]);
 
 		test_instance.take(3).unwrap();
 
@@ -263,12 +211,8 @@ mod tests {
 
 	#[test]
 	fn test_n_larger_than_len_is_safe() {
-		let mut test_instance = Columns::new(vec![SourceQualified::int2_with_bitvec(
-			"test_columns",
-			"a",
-			[10, 20],
-			[true, false],
-		)]);
+		let mut test_instance =
+			Columns::new(vec![ColumnComputed::int2_with_bitvec("a", [10, 20], [true, false])]);
 
 		test_instance.take(10).unwrap();
 

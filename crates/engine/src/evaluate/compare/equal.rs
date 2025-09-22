@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::EqExpression},
 	return_error,
 	value::{
-		columnar::{Column, ColumnData, ColumnQualified},
+		columnar::{Column, ColumnComputed, ColumnData},
 		container::{BoolContainer, NumberContainer, TemporalContainer, Utf8Container},
 	},
 };
@@ -1094,7 +1094,7 @@ impl StandardEvaluator {
 				},
 			) => Ok(compare_utf8(l, r, eq.full_fragment_owned())),
 			(ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
-				Ok(Column::ColumnQualified(ColumnQualified {
+				Ok(Column::Computed(ColumnComputed {
 					name: eq.full_fragment_owned(),
 					data: ColumnData::bool(vec![false; container.len()]),
 				}))
@@ -1121,7 +1121,7 @@ fn compare_bool<'a>(
 		let data: Vec<bool> =
 			l.data().iter().zip(r.data().iter()).map(|(l_val, r_val)| l_val == r_val).collect();
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
@@ -1137,7 +1137,7 @@ fn compare_bool<'a>(
 			}
 		}
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data,
 		})
@@ -1165,7 +1165,7 @@ where
 				.map(|(l_val, r_val)| number::is_equal(l_val, r_val))
 				.collect();
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
@@ -1181,7 +1181,7 @@ where
 			}
 		}
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data,
 		})
@@ -1202,7 +1202,7 @@ where
 				.map(|(l_val, r_val)| temporal::is_equal(l_val, r_val))
 				.collect();
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
@@ -1224,7 +1224,7 @@ where
 			}
 		}
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
 		})
@@ -1239,7 +1239,7 @@ fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>
 		let data: Vec<bool> =
 			l.data().iter().zip(r.data().iter()).map(|(l_val, r_val)| l_val == r_val).collect();
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
 		})
@@ -1261,7 +1261,7 @@ fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>
 			}
 		}
 
-		Column::ColumnQualified(ColumnQualified {
+		Column::Computed(ColumnComputed {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
 		})

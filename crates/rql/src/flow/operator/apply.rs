@@ -42,7 +42,7 @@ impl<T: CommandTransaction> CompileOperator<T> for ApplyCompiler {
 
 		let mut builder = compiler.build_node(Operator {
 			operator: Apply {
-				operator_name: self.operator_name.fragment().to_string(),
+				operator_name: self.operator_name.text().to_string(),
 				expressions: self.arguments,
 			},
 			input_schemas: vec![],

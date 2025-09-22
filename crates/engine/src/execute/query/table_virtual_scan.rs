@@ -14,7 +14,7 @@ use crate::{
 
 pub(crate) struct VirtualScanNode<'a, T: Transaction> {
 	virtual_table: Box<dyn TableVirtual<'a, T>>,
-	context: Option<Arc<ExecutionContext>>,
+	context: Option<Arc<ExecutionContext<'a>>>,
 	layout: ColumnsLayout<'a>,
 	table_context: Option<TableVirtualContext<'a>>,
 }
@@ -22,7 +22,7 @@ pub(crate) struct VirtualScanNode<'a, T: Transaction> {
 impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 	pub fn new(
 		virtual_table: Box<dyn TableVirtual<'a, T>>,
-		context: Arc<ExecutionContext>,
+		context: Arc<ExecutionContext<'a>>,
 		table_context: TableVirtualContext<'a>,
 	) -> crate::Result<Self> {
 		let def = virtual_table.definition();
@@ -49,7 +49,11 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for VirtualScanNode<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize(
+		&mut self,
+		rx: &mut StandardTransaction<'a, T>,
+		_ctx: &ExecutionContext<'a>,
+	) -> crate::Result<()> {
 		let ctx = self.table_context.take().unwrap_or_else(|| TableVirtualContext::Basic {
 			params: self.context.as_ref().unwrap().params.clone(),
 		});

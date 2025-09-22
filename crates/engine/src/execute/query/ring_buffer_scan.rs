@@ -5,18 +5,20 @@ use std::{marker::PhantomData, sync::Arc};
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	CowVec,
 	interface::{
-		EncodableKey, RingBufferMetadata, RowKey, Transaction, VersionedQueryTransaction,
-		resolved::ResolvedRingBuffer,
+		ColumnDef, ColumnId, EncodableKey, ResolvedColumn, RingBufferMetadata, RowKey, Transaction,
+		VersionedQueryTransaction,
+		catalog::ColumnIndex,
+		identifier::ColumnIdentifier,
+		resolved::{ResolvedRingBuffer, ResolvedSource},
 	},
 	row::EncodedRowLayout,
 	value::columnar::{
-		Column, ColumnData, Columns, SourceQualified,
+		Column, ColumnData, ColumnResolved, Columns,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
 };
-use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, RowNumber, Type};
+use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, RowNumber, Type, TypeConstraint};
 
 use crate::{
 	StandardTransaction,
@@ -30,13 +32,13 @@ pub struct RingBufferScan<'a, T: Transaction> {
 	row_layout: EncodedRowLayout,
 	current_position: u64,
 	rows_returned: u64,
-	context: Option<Arc<ExecutionContext>>,
+	context: Option<Arc<ExecutionContext<'a>>>,
 	initialized: bool,
 	_phantom: PhantomData<T>,
 }
 
 impl<'a, T: Transaction> RingBufferScan<'a, T> {
-	pub fn new(ring_buffer: ResolvedRingBuffer<'a>, context: Arc<ExecutionContext>) -> crate::Result<Self> {
+	pub fn new(ring_buffer: ResolvedRingBuffer<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
 		// Create row layout based on column types
 		let types: Vec<Type> = ring_buffer.columns().iter().map(|c| c.constraint.get_type()).collect();
 		let row_layout = EncodedRowLayout::new(&types);
@@ -66,56 +68,14 @@ impl<'a, T: Transaction> RingBufferScan<'a, T> {
 			_phantom: PhantomData,
 		})
 	}
-
-	fn from_ring_buffer_def<'b>(ring_buffer: &ResolvedRingBuffer<'b>) -> Columns<'b> {
-		let columns: Vec<Column> = ring_buffer
-			.columns()
-			.iter()
-			.map(|col| {
-				let name = col.name.clone();
-				let data = match col.constraint.get_type() {
-					Type::Boolean => ColumnData::bool(vec![]),
-					Type::Float4 => ColumnData::float4(vec![]),
-					Type::Float8 => ColumnData::float8(vec![]),
-					Type::Int1 => ColumnData::int1(vec![]),
-					Type::Int2 => ColumnData::int2(vec![]),
-					Type::Int4 => ColumnData::int4(vec![]),
-					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => ColumnData::int16(vec![]),
-					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
-					Type::Uint1 => ColumnData::uint1(vec![]),
-					Type::Uint2 => ColumnData::uint2(vec![]),
-					Type::Uint4 => ColumnData::uint4(vec![]),
-					Type::Uint8 => ColumnData::uint8(vec![]),
-					Type::Uint16 => ColumnData::uint16(vec![]),
-					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => ColumnData::datetime(vec![]),
-					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => ColumnData::interval(vec![]),
-					Type::Uuid4 => ColumnData::uuid4(vec![]),
-					Type::Uuid7 => ColumnData::uuid7(vec![]),
-					Type::Blob => ColumnData::blob(vec![]),
-					Type::Int => ColumnData::int(vec![]),
-					Type::Uint => ColumnData::uint(vec![]),
-					Type::Decimal => ColumnData::decimal(vec![]),
-					Type::IdentityId => ColumnData::identity_id(vec![]),
-					Type::RowNumber => ColumnData::row_number(vec![]),
-					Type::Undefined => ColumnData::undefined(0),
-				};
-				Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal(ring_buffer.name()),
-					name: Fragment::owned_internal(&name),
-					data,
-				})
-			})
-			.collect();
-
-		Columns(CowVec::new(columns))
-	}
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
-	fn initialize(&mut self, txn: &mut StandardTransaction<'a, T>, _ctx: &ExecutionContext) -> crate::Result<()> {
+	fn initialize(
+		&mut self,
+		txn: &mut StandardTransaction<'a, T>,
+		_ctx: &ExecutionContext<'a>,
+	) -> crate::Result<()> {
 		if !self.initialized {
 			// Get ring buffer metadata from the appropriate transaction type
 			let metadata = match txn {
@@ -191,16 +151,32 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 			Ok(None)
 		} else {
 			// Build columns from rows
-			let mut columns = Self::from_ring_buffer_def(&self.ring_buffer);
+			let mut columns = Columns::from_ring_buffer(&self.ring_buffer);
 			columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
 			// Add row numbers if requested
 			if ctx.preserve_row_numbers {
-				let row_number_column = Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal(self.ring_buffer.name()),
-					name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
-					data: ColumnData::row_number(row_numbers),
-				});
+				// Create a resolved column for row numbers
+				let source = ResolvedSource::RingBuffer(self.ring_buffer.clone());
+				let column_ident = ColumnIdentifier::with_source(
+					Fragment::owned_internal(self.ring_buffer.namespace().name()),
+					Fragment::owned_internal(self.ring_buffer.name()),
+					Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
+				);
+				// Create a dummy ColumnDef for row number
+				let col_def = ColumnDef {
+					id: ColumnId(0),
+					name: ROW_NUMBER_COLUMN_NAME.to_string(),
+					constraint: TypeConstraint::unconstrained(Type::RowNumber),
+					policies: vec![],
+					index: ColumnIndex(0),
+					auto_increment: false,
+				};
+				let resolved_col = ResolvedColumn::new(column_ident, source, col_def);
+				let row_number_column = Column::Resolved(ColumnResolved::new(
+					resolved_col,
+					ColumnData::row_number(row_numbers),
+				));
 				columns.0.push(row_number_column);
 			}
 

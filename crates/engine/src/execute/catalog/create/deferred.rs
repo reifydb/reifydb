@@ -45,7 +45,7 @@ impl Executor {
 mod tests {
 	use PhysicalPlan::InlineData;
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::{DeferredViewIdentifier, NamespaceDef, NamespaceId, Params};
+	use reifydb_core::interface::{NamespaceDef, NamespaceId, Params, ViewIdentifier};
 	use reifydb_rql::plan::physical::{CreateDeferredViewNode, InlineDataNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Value};
 
@@ -63,7 +63,7 @@ mod tests {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			view: DeferredViewIdentifier::new(
+			view: ViewIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_view"),
 			),
@@ -124,7 +124,7 @@ mod tests {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			view: DeferredViewIdentifier::new(
+			view: ViewIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_view"),
 			),
@@ -151,7 +151,7 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			view: DeferredViewIdentifier::new(
+			view: ViewIdentifier::new(
 				Fragment::owned_internal("test_namespace"),
 				Fragment::owned_internal("test_view"),
 			),
@@ -184,7 +184,7 @@ mod tests {
 				id: NamespaceId(999),
 				name: "missing_schema".to_string(),
 			},
-			view: DeferredViewIdentifier::new(
+			view: ViewIdentifier::new(
 				Fragment::owned_internal("another_schema"),
 				Fragment::owned_internal("my_view"),
 			),

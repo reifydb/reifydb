@@ -15,8 +15,7 @@ use reifydb_core::{
 		NamespaceDef, QueryTransaction,
 		evaluate::expression::{AliasExpression, Expression},
 		identifier::{
-			ColumnIdentifier, DeferredViewIdentifier, RingBufferIdentifier, SequenceIdentifier,
-			SourceIdentifier, TableIdentifier, TransactionalViewIdentifier,
+			ColumnIdentifier, RingBufferIdentifier, SequenceIdentifier, TableIdentifier, ViewIdentifier,
 		},
 		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedView},
 	},
@@ -466,9 +465,7 @@ impl Compiler {
 							// Note: DeferredView shares the same physical node as View
 							// We need to convert it to ResolvedView
 							let view = ResolvedView::new(
-								SourceIdentifier::DeferredView(
-									resolved_view.identifier().clone(),
-								),
+								resolved_view.identifier().clone(),
 								resolved_view.namespace().clone(),
 								resolved_view.def().clone(),
 							);
@@ -484,9 +481,7 @@ impl Compiler {
 							// Note: TransactionalView shares the same physical node as View
 							// We need to convert it to ResolvedView
 							let view = ResolvedView::new(
-								SourceIdentifier::TransactionalView(
-									resolved_view.identifier().clone(),
-								),
+								resolved_view.identifier().clone(),
 								resolved_view.namespace().clone(),
 								resolved_view.def().clone(),
 							);
@@ -599,7 +594,7 @@ pub enum PhysicalPlan<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateDeferredViewNode<'a> {
 	pub namespace: NamespaceDef,
-	pub view: DeferredViewIdentifier<'a>,
+	pub view: ViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
@@ -608,7 +603,7 @@ pub struct CreateDeferredViewNode<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateTransactionalViewNode<'a> {
 	pub namespace: NamespaceDef,
-	pub view: TransactionalViewIdentifier<'a>,
+	pub view: ViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
