@@ -7,7 +7,7 @@ use reifydb_core::{
 	diagnostic::sequence::sequence_exhausted,
 	interface::{CommandTransaction, UnversionedCommandTransaction, UnversionedQueryTransaction},
 	return_error,
-	row::EncodedRowLayout,
+	value::row::EncodedRowLayout,
 };
 use reifydb_type::Type;
 

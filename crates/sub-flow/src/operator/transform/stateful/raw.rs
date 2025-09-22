@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{EncodedKey, EncodedKeyRange, interface::Transaction, row::EncodedRow};
+use reifydb_core::{EncodedKey, EncodedKeyRange, interface::Transaction, value::row::EncodedRow};
 use reifydb_engine::StandardCommandTransaction;
 
 use super::{super::TransformOperator, utils};

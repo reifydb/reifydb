@@ -1,6 +1,6 @@
 use reifydb_core::{
 	interface::{ResolvedColumn, TargetColumn},
-	value::columnar::{ColumnData, Columns},
+	value::column::{ColumnData, Columns},
 };
 use reifydb_type::{Fragment, Type, Value};
 

@@ -9,8 +9,10 @@ use reifydb_core::{
 		Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, Transaction,
 		identifier::{ColumnIdentifier, NamespaceIdentifier, RingBufferIdentifier},
 	},
-	row::EncodedRowLayout,
-	value::columnar::{ColumnData, Columns},
+	value::{
+		column::{ColumnData, Columns},
+		row::EncodedRowLayout,
+	},
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_type::{

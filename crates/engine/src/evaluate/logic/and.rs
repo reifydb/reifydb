@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::AndExpression},
 	return_error,
-	value::columnar::{Column, ColumnComputed, ColumnData},
+	value::column::{Column, ColumnComputed, ColumnData},
 };
 use reifydb_type::diagnostic::operator::{
 	and_can_not_applied_to_number, and_can_not_applied_to_temporal, and_can_not_applied_to_text,

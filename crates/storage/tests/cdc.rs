@@ -12,8 +12,8 @@ use reifydb_core::{
 		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, TransactionId, VersionedCommit,
 		VersionedGet, VersionedStorage,
 	},
-	row::EncodedRow,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
+	value::row::EncodedRow,
 };
 use reifydb_storage::{
 	memory::Memory,

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	EncodedKey,
 	interface::Transaction,
-	row::{EncodedRow, EncodedRowLayout},
+	value::row::{EncodedRow, EncodedRowLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
 

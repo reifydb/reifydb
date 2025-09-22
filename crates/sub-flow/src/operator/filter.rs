@@ -3,7 +3,7 @@ use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
 	util::CowVec,
-	value::columnar::{ColumnData, Columns},
+	value::column::{ColumnData, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::Params;

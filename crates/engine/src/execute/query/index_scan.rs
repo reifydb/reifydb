@@ -6,8 +6,10 @@ use std::sync::Arc;
 use reifydb_core::{
 	EncodedKey,
 	interface::{IndexId, TableDef, Transaction},
-	row::EncodedRowLayout,
-	value::columnar::layout::{ColumnLayout, ColumnsLayout},
+	value::{
+		column::layout::{ColumnLayout, ColumnsLayout},
+		row::EncodedRowLayout,
+	},
 };
 use reifydb_type::Fragment;
 

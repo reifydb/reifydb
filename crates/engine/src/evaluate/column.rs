@@ -5,7 +5,7 @@ use std::cmp::min;
 
 use reifydb_core::{
 	interface::{EvaluationContext, expression::ColumnExpression},
-	value::columnar::{Column, ColumnData},
+	value::column::{Column, ColumnData},
 };
 use reifydb_type::{
 	Date, DateTime, Decimal, Interval, RowNumber, Time, Type, Uint, Value,

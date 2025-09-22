@@ -23,7 +23,7 @@ use reifydb_core::{
 		interceptor::{TransactionInterceptor, WithInterceptors},
 	},
 	return_error,
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 /// An active command transaction that holds a versioned command transaction

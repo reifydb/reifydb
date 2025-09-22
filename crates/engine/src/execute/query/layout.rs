@@ -1,6 +1,6 @@
 use reifydb_core::{
 	interface::evaluate::expression::{ConstantExpression, Expression},
-	value::columnar::layout::{ColumnLayout, ColumnsLayout},
+	value::column::layout::{ColumnLayout, ColumnsLayout},
 };
 use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME};
 

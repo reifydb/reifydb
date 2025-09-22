@@ -24,7 +24,7 @@ use query::{
 use reifydb_core::{
 	Frame,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedSource, Transaction},
-	value::columnar::{Column, ColumnComputed, ColumnData, Columns, layout::ColumnsLayout},
+	value::column::{Column, ColumnComputed, ColumnData, Columns, layout::ColumnsLayout},
 };
 use reifydb_rql::{
 	ast,

@@ -5,7 +5,7 @@ use operator::{not_can_not_applied_to_number, not_can_not_applied_to_temporal, n
 use reifydb_core::{
 	err,
 	interface::evaluate::expression::{PrefixExpression, PrefixOperator},
-	value::columnar::{Column, ColumnData},
+	value::column::{Column, ColumnData},
 };
 use reifydb_type::{
 	Decimal, Int, Uint, diagnostic,

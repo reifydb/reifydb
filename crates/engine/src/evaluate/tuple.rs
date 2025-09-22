@@ -1,6 +1,6 @@
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::TupleExpression},
-	value::columnar::Column,
+	value::column::Column,
 };
 
 use crate::evaluate::{EvaluationContext, StandardEvaluator};

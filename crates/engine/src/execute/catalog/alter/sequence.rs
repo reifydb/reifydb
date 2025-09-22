@@ -5,7 +5,7 @@ use catalog::namespace_not_found;
 use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
 	interface::{EvaluationContext, Params, TargetColumn, Transaction},
-	value::columnar::Columns,
+	value::column::Columns,
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
 use reifydb_type::{

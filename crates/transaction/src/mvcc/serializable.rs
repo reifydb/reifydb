@@ -8,7 +8,7 @@ use reifydb_core::{
 		BoxedVersionedIter, TransactionId, UnversionedTransaction, Versioned, VersionedCommandTransaction,
 		VersionedQueryTransaction, VersionedStorage, VersionedTransaction, WithEventBus,
 	},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 use crate::mvcc::transaction::serializable::{CommandTransaction, QueryTransaction, Serializable};

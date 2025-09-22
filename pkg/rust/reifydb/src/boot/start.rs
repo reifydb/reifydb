@@ -11,7 +11,7 @@ use reifydb_core::{
 		UnversionedQueryTransaction, UnversionedTransaction,
 	},
 	log_error,
-	row::EncodedRowLayout,
+	value::row::EncodedRowLayout,
 };
 use reifydb_type::Type;
 

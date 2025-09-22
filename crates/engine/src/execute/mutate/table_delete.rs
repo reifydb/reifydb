@@ -12,7 +12,7 @@ use reifydb_core::{
 		VersionedCommandTransaction, VersionedQueryTransaction,
 		identifier::{NamespaceIdentifier, TableIdentifier},
 	},
-	value::columnar::{ColumnData, Columns},
+	value::column::{ColumnData, Columns},
 };
 use reifydb_rql::plan::physical::DeleteNode;
 use reifydb_type::{

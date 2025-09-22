@@ -4,7 +4,7 @@
 use crate::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{TransactionId, Versioned, WithEventBus},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;

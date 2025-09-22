@@ -3,7 +3,7 @@
 
 use std::cmp;
 
-use crate::row::{EncodedKey, EncodedRow};
+use crate::value::row::{EncodedKey, EncodedRow};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Delta {

@@ -4,7 +4,7 @@
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::{Unversioned, WithEventBus},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 pub type BoxedUnversionedIter<'a> = Box<dyn Iterator<Item = Unversioned> + Send + 'a>;

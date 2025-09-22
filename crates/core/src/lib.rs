@@ -7,11 +7,9 @@ mod common;
 pub mod delta;
 pub mod event;
 pub mod flow;
-pub mod index;
 pub mod interceptor;
 pub mod interface;
 pub mod result;
-pub mod row;
 mod sort;
 pub mod util;
 pub mod value;
@@ -20,9 +18,9 @@ pub use common::*;
 pub use interface::TransactionId;
 use interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use result::*;
-pub use row::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};
 pub use util::{BitVec, CowVec, Either, WaitGroup, ioc, retry};
+pub use value::row::{EncodedKey, EncodedKeyRange};
 
 pub struct CoreVersion;
 

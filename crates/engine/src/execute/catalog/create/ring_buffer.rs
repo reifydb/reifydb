@@ -5,7 +5,7 @@ use reifydb_catalog::{
 	ring_buffer::create::RingBufferToCreate,
 	transaction::{CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations},
 };
-use reifydb_core::{interface::Transaction, value::columnar::Columns};
+use reifydb_core::{interface::Transaction, value::column::Columns};
 use reifydb_rql::plan::physical::CreateRingBufferNode;
 use reifydb_type::Value;
 

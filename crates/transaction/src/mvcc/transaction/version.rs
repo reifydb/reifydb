@@ -12,7 +12,7 @@ use reifydb_core::{
 		EncodableKey, TransactionVersionKey, UnversionedCommandTransaction, UnversionedQueryTransaction,
 		UnversionedTransaction,
 	},
-	row::EncodedRowLayout,
+	value::row::EncodedRowLayout,
 };
 use reifydb_type::Type;
 

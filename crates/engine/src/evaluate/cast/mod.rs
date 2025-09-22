@@ -15,7 +15,7 @@ use reifydb_core::{
 		Evaluator, LazyFragment,
 		expression::{CastExpression, Expression},
 	},
-	value::columnar::{Column, ColumnComputed, ColumnData, SourceQualified},
+	value::column::{Column, ColumnComputed, ColumnData, SourceQualified},
 };
 use reifydb_type::{Type, diagnostic::cast, err, error};
 
@@ -106,7 +106,7 @@ mod tests {
 				PrefixExpression, PrefixOperator, TypeExpression,
 			},
 		},
-		value::columnar::ColumnData,
+		value::column::ColumnData,
 	};
 	use reifydb_type::{Fragment, Type};
 

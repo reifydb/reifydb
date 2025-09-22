@@ -10,7 +10,7 @@ use std::{
 	ops::RangeBounds,
 };
 
-use reifydb_core::{EncodedKey, row::EncodedRow};
+use reifydb_core::{EncodedKey, value::row::EncodedRow};
 
 use crate::mvcc::types::Pending;
 
@@ -172,7 +172,7 @@ impl PendingWrites {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{CommitVersion, CowVec, EncodedKey, row::EncodedRow};
+	use reifydb_core::{CommitVersion, CowVec, EncodedKey, value::row::EncodedRow};
 
 	use super::*;
 

@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use reifydb_core::{
 	JoinType,
 	interface::Transaction,
-	value::columnar::{Column, Columns, layout::ColumnsLayout},
+	value::column::{Column, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::Value;
 

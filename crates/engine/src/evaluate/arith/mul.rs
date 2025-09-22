@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::MulExpression},
 	value::{
-		columnar::{Column, ColumnComputed, ColumnData, push::Push},
+		column::{Column, ColumnComputed, ColumnData, push::Push},
 		container::{UndefinedContainer, number::NumberContainer},
 	},
 };

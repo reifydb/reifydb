@@ -21,8 +21,8 @@ use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	CommitVersion, EncodedKey,
 	interface::{UnversionedInsert, UnversionedRemove, UnversionedStorage, VersionedStorage},
-	row::EncodedRow,
 	util::VersionedContainer,
+	value::row::EncodedRow,
 };
 
 use crate::cdc::CdcTransaction;

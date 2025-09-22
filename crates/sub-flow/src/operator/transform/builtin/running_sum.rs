@@ -5,11 +5,11 @@ use reifydb_core::{
 	EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, FlowNodeId, Transaction, expression::Expression},
-	row::EncodedRow,
 	util::CowVec,
 	value::{
-		columnar::{Column, ColumnComputed, ColumnData, Columns},
+		column::{Column, ColumnComputed, ColumnData, Columns},
 		container::NumberContainer,
+		row::EncodedRow,
 	},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};

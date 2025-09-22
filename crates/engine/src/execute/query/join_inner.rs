@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::columnar::{ColumnData, Columns, layout::ColumnsLayout},
+	value::column::{ColumnData, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::Value;
 

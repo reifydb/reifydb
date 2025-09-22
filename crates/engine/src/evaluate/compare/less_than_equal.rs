@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::LessThanEqExpression},
 	return_error,
 	value::{
-		columnar::{Column, ColumnComputed, ColumnData},
+		column::{Column, ColumnComputed, ColumnData},
 		container::{Utf8Container, number::NumberContainer, temporal::TemporalContainer},
 	},
 };

@@ -11,8 +11,7 @@ use reifydb_core::{
 		identifier::{ColumnIdentifier, NamespaceIdentifier, TableIdentifier},
 	},
 	return_error,
-	row::EncodedRowLayout,
-	value::columnar::Columns,
+	value::{column::Columns, row::EncodedRowLayout},
 };
 use reifydb_rql::plan::physical::InsertTableNode;
 use reifydb_type::{Fragment, IntoFragment, Type, Value, diagnostic::catalog::table_not_found};

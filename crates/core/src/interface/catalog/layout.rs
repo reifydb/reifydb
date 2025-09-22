@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use super::{RingBufferDef, TableDef, ViewDef};
-use crate::row::EncodedRowLayout;
+use crate::value::row::EncodedRowLayout;
 
 pub trait GetEncodedRowLayout {
 	fn get_layout(&self) -> EncodedRowLayout;

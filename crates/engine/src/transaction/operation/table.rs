@@ -8,7 +8,7 @@ use reifydb_core::{
 		EncodableKey, GetEncodedRowLayout, RowKey, TableDef, Transaction, VersionedCommandTransaction,
 		interceptor::TableInterceptor,
 	},
-	row::{EncodedRow, Row},
+	value::row::{EncodedRow, Row},
 };
 use reifydb_type::RowNumber;
 

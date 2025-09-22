@@ -10,8 +10,10 @@ use reifydb_core::{
 		ResolvedTable, RowKey, Transaction, VersionedCommandTransaction, VersionedQueryTransaction,
 		identifier::{ColumnIdentifier, NamespaceIdentifier, TableIdentifier},
 	},
-	row::EncodedRowLayout,
-	value::columnar::{ColumnData, Columns},
+	value::{
+		column::{ColumnData, Columns},
+		row::EncodedRowLayout,
+	},
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
 use reifydb_type::{

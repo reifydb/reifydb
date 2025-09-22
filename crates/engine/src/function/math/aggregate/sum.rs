@@ -3,7 +3,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::columnar::ColumnData;
+use reifydb_core::value::column::ColumnData;
 use reifydb_type::Value;
 
 use crate::function::{AggregateFunction, AggregateFunctionContext};

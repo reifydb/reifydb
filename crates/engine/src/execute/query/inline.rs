@@ -9,7 +9,7 @@ use std::{
 
 use reifydb_core::{
 	interface::{ResolvedSource, TargetColumn, Transaction, evaluate::expression::AliasExpression},
-	value::columnar::{
+	value::column::{
 		Column, ColumnComputed, ColumnData, Columns,
 		layout::{ColumnLayout, ColumnsLayout},
 	},

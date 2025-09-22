@@ -32,7 +32,7 @@ use crate::{
 			TransactionInterceptor, ViewDefInterceptor, WithInterceptors,
 		},
 	},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 /// Macro to generate interceptor execution methods

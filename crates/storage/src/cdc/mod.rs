@@ -8,7 +8,7 @@ use reifydb_core::{
 	CommitVersion,
 	delta::Delta,
 	interface::{CdcChange, CdcEvent, TransactionId},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 /// Internal structure for storing CDC data with shared metadata

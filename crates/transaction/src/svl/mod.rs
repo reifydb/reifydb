@@ -8,7 +8,7 @@ use reifydb_core::{
 	delta::Delta,
 	event::EventBus,
 	interface::{Unversioned, UnversionedStorage, UnversionedTransaction, WithEventBus},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 pub(crate) mod range;

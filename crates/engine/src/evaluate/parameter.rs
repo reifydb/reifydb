@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::expression::ParameterExpression,
-	value::columnar::{Column, ColumnComputed, ColumnData},
+	value::column::{Column, ColumnComputed, ColumnData},
 };
 use reifydb_type::{Fragment, Value, diagnostic::engine, error};
 

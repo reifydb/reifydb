@@ -7,7 +7,7 @@ use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
 	interface::Transaction,
-	value::columnar::{Columns, layout::ColumnsLayout},
+	value::column::{Columns, layout::ColumnsLayout},
 };
 use reifydb_type::diagnostic::query;
 

@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::columnar::{Column, ColumnComputed, ColumnData, Columns, layout::ColumnsLayout},
+	value::column::{Column, ColumnComputed, ColumnData, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
 

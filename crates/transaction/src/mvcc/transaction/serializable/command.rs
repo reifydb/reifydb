@@ -12,7 +12,7 @@
 use std::ops::RangeBounds;
 
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent, row::EncodedRow,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent, value::row::EncodedRow,
 };
 use reifydb_type::Error;
 

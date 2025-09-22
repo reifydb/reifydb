@@ -5,7 +5,7 @@ use std::{marker::PhantomData, sync::Arc};
 
 use reifydb_core::{
 	interface::{ColumnIdentifier, ResolvedColumn, TargetColumn, Transaction, evaluate::expression::Expression},
-	value::columnar::{Column, Columns, layout::ColumnsLayout},
+	value::column::{Column, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::{Fragment, Params, ROW_NUMBER_COLUMN_NAME};
 

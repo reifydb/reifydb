@@ -4,7 +4,7 @@ use reifydb_type::RowNumber;
 
 use crate::{
 	define_api_function, define_closure_interceptor, define_interceptor, impl_register_interceptor,
-	interface::TableDef, row::EncodedRow,
+	interface::TableDef, value::row::EncodedRow,
 };
 
 // PRE INSERT

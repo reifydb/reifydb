@@ -5,7 +5,7 @@ use reifydb_core::{
 	BitVec, CowVec, EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{FlowNodeId, Transaction},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::RowNumber;
@@ -135,7 +135,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 						// Create columns with the same structure but all undefined values
 						let mut undefined_columns = Vec::new();
 						for col in after.iter() {
-							use reifydb_core::value::columnar::{
+							use reifydb_core::value::column::{
 								Column, ColumnComputed, ColumnData,
 							};
 							let undefined_data = ColumnData::undefined(remove_count);
@@ -148,7 +148,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 						output_diffs.push(FlowDiff::Remove {
 							source,
 							rows: CowVec::new(rows_to_remove),
-							pre: reifydb_core::value::columnar::Columns::new(
+							pre: reifydb_core::value::column::Columns::new(
 								undefined_columns,
 							),
 						});

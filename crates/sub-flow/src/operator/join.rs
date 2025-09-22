@@ -10,9 +10,11 @@ use reifydb_core::{
 		EvaluationContext, Evaluator, FlowNodeId, Params, SourceId, Transaction,
 		evaluate::expression::{ColumnExpression, Expression},
 	},
-	row::EncodedRow,
 	util::CowVec,
-	value::columnar::{Column, ColumnComputed, ColumnData, ColumnResolved, Columns, SourceQualified},
+	value::{
+		column::{Column, ColumnComputed, ColumnData, ColumnResolved, Columns, SourceQualified},
+		row::EncodedRow,
+	},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{Fragment, RowNumber, Value};

@@ -15,8 +15,8 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
 	interface::{TransactionId, Versioned, VersionedStorage},
-	row::EncodedRow,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
+	value::row::EncodedRow,
 };
 use reifydb_storage::{
 	memory::Memory,

@@ -11,7 +11,7 @@ mod scan_rev;
 
 use std::{collections::VecDeque, ops::Bound};
 
-use reifydb_core::{CowVec, EncodedKey, interface::Unversioned, row::EncodedRow};
+use reifydb_core::{CowVec, EncodedKey, interface::Unversioned, value::row::EncodedRow};
 use rusqlite::Statement;
 
 use crate::sqlite::read::ReadConnection;

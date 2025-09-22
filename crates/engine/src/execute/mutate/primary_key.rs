@@ -4,9 +4,11 @@
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	SortDirection,
-	index::{EncodedIndexKey, EncodedIndexLayout},
 	interface::{PrimaryKeyDef, QueryTransaction, TableDef},
-	row::{EncodedRow, EncodedRowLayout},
+	value::{
+		index::{EncodedIndexKey, EncodedIndexLayout},
+		row::{EncodedRow, EncodedRowLayout},
+	},
 };
 use reifydb_type::Type;
 

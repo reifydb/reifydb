@@ -15,10 +15,12 @@ use reifydb_core::{
 		resolved::{ResolvedColumn as RColumn, ResolvedSource, ResolvedView},
 	},
 	log_debug,
-	row::EncodedRowLayout,
-	value::columnar::{
-		Column, ColumnData, ColumnResolved, Columns,
-		layout::{ColumnLayout, ColumnsLayout},
+	value::{
+		column::{
+			Column, ColumnData, ColumnResolved, Columns,
+			layout::{ColumnLayout, ColumnsLayout},
+		},
+		row::EncodedRowLayout,
 	},
 };
 use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME};

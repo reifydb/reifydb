@@ -7,7 +7,7 @@ use reifydb_core::{
 		Evaluator,
 		evaluate::expression::{CallExpression, Expression},
 	},
-	value::columnar::{Column, ColumnComputed, Columns},
+	value::column::{Column, ColumnComputed, Columns},
 };
 use reifydb_type::diagnostic::function;
 

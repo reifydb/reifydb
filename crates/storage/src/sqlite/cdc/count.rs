@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{CommitVersion, CowVec, Result, interface::CdcCount, row::EncodedRow};
+use reifydb_core::{CommitVersion, CowVec, Result, interface::CdcCount, value::row::EncodedRow};
 use rusqlite::{OptionalExtension, params};
 
 use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};

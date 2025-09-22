@@ -5,7 +5,7 @@ use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
 use reifydb_core::{
 	interface::{SourceId, Transaction},
 	return_error,
-	value::columnar::Columns,
+	value::column::Columns,
 };
 use reifydb_rql::plan::{logical::alter::AlterViewOperation, physical::AlterViewNode};
 use reifydb_type::Value;

@@ -5,7 +5,7 @@ use reifydb_core::{
 		expression::{CastExpression, Expression, TypeExpression},
 	},
 	log_error,
-	value::columnar::{Column, ColumnComputed, Columns},
+	value::column::{Column, ColumnComputed, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{Fragment, Params, Type};
@@ -144,7 +144,7 @@ impl MapTerminalOperator {
 						// Create an undefined column
 						// with the correct name
 						let undefined_data =
-							reifydb_core::value::columnar::ColumnData::undefined(row_count);
+							reifydb_core::value::column::ColumnData::undefined(row_count);
 						Column::Computed(ColumnComputed {
 							name: Fragment::owned_internal(view_column.name.clone()),
 							data: undefined_data,

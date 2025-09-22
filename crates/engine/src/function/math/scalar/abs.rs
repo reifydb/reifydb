@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::value::columnar::ColumnData;
+use reifydb_core::value::column::ColumnData;
 
 use crate::function::{ScalarFunction, ScalarFunctionContext};
 
@@ -106,7 +106,7 @@ impl ScalarFunction for Abs {
 mod tests {
 	use reifydb_core::{
 		BitVec,
-		value::columnar::{ColumnComputed, Columns},
+		value::column::{ColumnComputed, Columns},
 	};
 
 	use super::*;

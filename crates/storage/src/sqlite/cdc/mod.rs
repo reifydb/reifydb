@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{CowVec, EncodedKey, row::EncodedRow};
+use reifydb_core::{CowVec, EncodedKey, value::row::EncodedRow};
 use rusqlite::{Error::ToSqlConversionFailure, OptionalExtension, Transaction, params};
 
 use crate::cdc::{CdcTransaction, codec::encode_cdc_transaction};

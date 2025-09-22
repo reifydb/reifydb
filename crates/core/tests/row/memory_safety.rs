@@ -3,7 +3,7 @@
 
 //! Memory safety edge case tests for the row encoding system
 
-use reifydb_core::row::EncodedRowLayout;
+use reifydb_core::value::row::EncodedRowLayout;
 use reifydb_type::*;
 
 #[test]

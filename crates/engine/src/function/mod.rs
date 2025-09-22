@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub use registry::Functions;
-use reifydb_core::value::columnar::{Column, ColumnData, Columns, GroupByView, GroupKey};
+use reifydb_core::value::column::{Column, ColumnData, Columns, GroupByView, GroupKey};
 
 pub mod blob;
 pub mod math;

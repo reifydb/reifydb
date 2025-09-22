@@ -4,10 +4,10 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{FlowNodeId, Transaction, expression::Expression},
-	row::EncodedRowLayout,
 	value::{
-		columnar::{Column, ColumnComputed, ColumnData, Columns},
+		column::{Column, ColumnComputed, ColumnData, Columns},
 		container::NumberContainer,
+		row::EncodedRowLayout,
 	},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};

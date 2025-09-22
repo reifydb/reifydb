@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::evaluate::expression::ConstantExpression,
 	return_error,
 	value::{
-		columnar::{Column, ColumnComputed, ColumnData},
+		column::{Column, ColumnComputed, ColumnData},
 		container::undefined::UndefinedContainer,
 	},
 };

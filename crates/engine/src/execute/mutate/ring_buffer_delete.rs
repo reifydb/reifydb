@@ -10,7 +10,7 @@ use reifydb_core::{
 		VersionedQueryTransaction,
 		identifier::{NamespaceIdentifier, RingBufferIdentifier},
 	},
-	value::columnar::{ColumnData, Columns},
+	value::column::{ColumnData, Columns},
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
 use reifydb_type::{

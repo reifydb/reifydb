@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogStore, view::ViewToCreate};
-use reifydb_core::{interface::Transaction, return_error, value::columnar::Columns};
+use reifydb_core::{interface::Transaction, return_error, value::column::Columns};
 use reifydb_rql::plan::physical::CreateTransactionalViewNode;
 use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
 

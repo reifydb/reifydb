@@ -20,7 +20,7 @@ use crate::{
 		CommandTransaction, NamespaceDef, RingBufferDef, TableDef, TransactionId, ViewDef,
 		transaction::change::TransactionalDefChanges,
 	},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 pub trait TableInterceptor<CT: CommandTransaction> {

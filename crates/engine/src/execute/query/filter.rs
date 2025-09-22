@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	BitVec,
 	interface::{Transaction, evaluate::expression::Expression},
-	value::columnar::{ColumnData, layout::ColumnsLayout},
+	value::column::{ColumnData, layout::ColumnsLayout},
 };
 
 use crate::{

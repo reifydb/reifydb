@@ -6,12 +6,12 @@ use std::collections::Bound;
 use super::{EncodableKey, EncodableKeyRange, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	index::{EncodedIndexKey, EncodedIndexKeyRange},
 	interface::catalog::{IndexId, SourceId},
 	util::{
 		CowVec,
 		encoding::keycode::{self, KeySerializer},
 	},
+	value::index::{EncodedIndexKey, EncodedIndexKeyRange},
 };
 
 const VERSION: u8 = 1;
@@ -289,7 +289,7 @@ mod tests {
 	use reifydb_type::Type;
 
 	use super::*;
-	use crate::{SortDirection, index::EncodedIndexLayout};
+	use crate::{SortDirection, value::index::EncodedIndexLayout};
 
 	#[test]
 	fn test_encode_decode() {

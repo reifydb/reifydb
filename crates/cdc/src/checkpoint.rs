@@ -4,7 +4,7 @@
 use reifydb_core::{
 	CommitVersion, CowVec,
 	interface::{CommandTransaction, QueryTransaction, ToConsumerKey},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 pub struct CdcCheckpoint {}

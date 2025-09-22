@@ -4,7 +4,7 @@
 mod optimistic;
 mod serializable;
 
-use reifydb_core::{CowVec, row::EncodedRow};
+use reifydb_core::{CowVec, value::row::EncodedRow};
 pub use reifydb_core::{EncodedKey, util::encoding::keycode};
 
 pub trait IntoRow {

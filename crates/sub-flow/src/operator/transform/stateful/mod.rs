@@ -7,7 +7,7 @@ use reifydb_core::{
 		BoxedVersionedIter,
 		key::{EncodableKey, FlowNodeStateKey},
 	},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 mod keyed;

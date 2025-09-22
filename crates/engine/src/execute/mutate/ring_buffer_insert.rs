@@ -10,8 +10,7 @@ use reifydb_core::{
 		identifier::{ColumnIdentifier, NamespaceIdentifier, RingBufferIdentifier},
 	},
 	return_error,
-	row::EncodedRowLayout,
-	value::columnar::Columns,
+	value::{column::Columns, row::EncodedRowLayout},
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
 use reifydb_type::{Fragment, IntoFragment, RowNumber, Type, Value, diagnostic::catalog::ring_buffer_not_found};

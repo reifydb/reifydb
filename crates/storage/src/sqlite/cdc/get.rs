@@ -4,7 +4,7 @@
 use reifydb_core::{
 	CommitVersion, CowVec, Result,
 	interface::{CdcEvent, CdcGet},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 use rusqlite::{OptionalExtension, params};
 

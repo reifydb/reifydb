@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::value::columnar::ColumnData;
+use reifydb_core::value::column::ColumnData;
 use reifydb_type::{OwnedFragment, value::Blob};
 
 use crate::function::{ScalarFunction, ScalarFunctionContext};
@@ -47,7 +47,7 @@ impl ScalarFunction for BlobB64 {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::{
-		columnar::{Column, ColumnComputed, Columns},
+		column::{Column, ColumnComputed, Columns},
 		container::Utf8Container,
 	};
 	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};

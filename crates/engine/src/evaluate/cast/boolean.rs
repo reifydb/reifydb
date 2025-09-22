@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::LazyFragment,
 	return_error,
 	value::{
-		columnar::ColumnData,
+		column::ColumnData,
 		container::{NumberContainer, Utf8Container},
 	},
 };

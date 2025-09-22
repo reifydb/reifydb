@@ -4,7 +4,7 @@
 use std::fmt::Display;
 
 use reifydb_core::value::{
-	columnar::ColumnData,
+	column::ColumnData,
 	container::{BlobContainer, BoolContainer, NumberContainer, TemporalContainer, UuidContainer},
 };
 use reifydb_type::{Error, IsNumber, IsTemporal, IsUuid, LazyFragment, Type, diagnostic::cast, err};
@@ -127,7 +127,7 @@ where
 mod tests {
 	use reifydb_core::{
 		BitVec,
-		value::{columnar::ColumnData, container::BlobContainer},
+		value::{column::ColumnData, container::BlobContainer},
 	};
 	use reifydb_type::{Blob, Fragment, OwnedFragment};
 

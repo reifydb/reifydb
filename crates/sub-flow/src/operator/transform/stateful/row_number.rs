@@ -4,8 +4,8 @@
 use reifydb_core::{
 	EncodedKey,
 	interface::{FlowNodeId, Transaction},
-	row::EncodedRow,
 	util::{CowVec, encoding::keycode::KeySerializer},
+	value::row::EncodedRow,
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::RowNumber;

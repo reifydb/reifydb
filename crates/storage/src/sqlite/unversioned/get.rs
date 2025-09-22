@@ -4,7 +4,7 @@
 use reifydb_core::{
 	CowVec, EncodedKey, Result,
 	interface::{Unversioned, UnversionedGet},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 use rusqlite::{OptionalExtension, params};
 

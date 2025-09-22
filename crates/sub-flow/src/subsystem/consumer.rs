@@ -10,9 +10,8 @@ use reifydb_core::{
 		CdcChange, CdcEvent, Engine, GetEncodedRowLayout, Identity, Key, Params, QueryTransaction, SourceId,
 		Transaction,
 	},
-	row::EncodedRow,
 	util::CowVec,
-	value::columnar::Columns,
+	value::{column::Columns, row::EncodedRow},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardEvaluator};
 use reifydb_type::Value;

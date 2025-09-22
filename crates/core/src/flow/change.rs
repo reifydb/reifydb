@@ -1,6 +1,6 @@
 use reifydb_type::RowNumber;
 
-use crate::{interface::SourceId, util::CowVec, value::columnar::Columns};
+use crate::{interface::SourceId, util::CowVec, value::column::Columns};
 
 #[derive(Debug, Clone)]
 pub enum FlowDiff {

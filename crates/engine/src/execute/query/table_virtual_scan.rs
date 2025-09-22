@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{interface::Transaction, value::columnar::layout::ColumnsLayout};
+use reifydb_core::{interface::Transaction, value::column::layout::ColumnsLayout};
 use reifydb_type::Fragment;
 
 use crate::{
@@ -31,7 +31,7 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 			columns: def
 				.columns
 				.iter()
-				.map(|col| reifydb_core::value::columnar::layout::ColumnLayout {
+				.map(|col| reifydb_core::value::column::layout::ColumnLayout {
 					namespace: None,
 					source: None,
 					name: Fragment::owned_internal(&col.name),

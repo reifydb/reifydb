@@ -4,7 +4,7 @@
 //! Variable type edge case tests for the row encoding system
 
 use num_bigint::BigInt;
-use reifydb_core::row::EncodedRowLayout;
+use reifydb_core::value::row::EncodedRowLayout;
 use reifydb_type::*;
 
 #[test]

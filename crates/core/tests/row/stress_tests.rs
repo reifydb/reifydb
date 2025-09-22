@@ -5,7 +5,7 @@
 
 use std::str::FromStr;
 
-use reifydb_core::row::EncodedRowLayout;
+use reifydb_core::value::row::EncodedRowLayout;
 use reifydb_type::*;
 
 #[test]

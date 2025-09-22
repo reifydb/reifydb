@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::XorExpression},
 	return_error,
-	value::columnar::{Column, ColumnComputed, ColumnData},
+	value::column::{Column, ColumnComputed, ColumnData},
 };
 use reifydb_type::diagnostic::operator::{
 	xor_can_not_applied_to_number, xor_can_not_applied_to_temporal, xor_can_not_applied_to_text,

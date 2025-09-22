@@ -4,7 +4,7 @@
 use reifydb_catalog::{
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, namespace::NamespaceToCreate,
 };
-use reifydb_core::{interface::Transaction, value::columnar::Columns};
+use reifydb_core::{interface::Transaction, value::column::Columns};
 use reifydb_rql::plan::physical::CreateNamespaceNode;
 use reifydb_type::Value;
 

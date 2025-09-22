@@ -18,7 +18,7 @@ use std::{
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	interface::{EncodableKeyRange, Key, RowKey, RowKeyRange, TableId, Versioned},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 use rusqlite::{Connection, Statement, params};
 

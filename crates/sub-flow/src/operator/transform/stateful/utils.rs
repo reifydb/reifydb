@@ -7,7 +7,7 @@ use reifydb_core::{
 		FlowNodeId, Transaction, VersionedCommandTransaction, VersionedQueryTransaction,
 		key::{EncodableKey, FlowNodeStateKey},
 	},
-	row::{EncodedRow, EncodedRowLayout},
+	value::row::{EncodedRow, EncodedRowLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
 

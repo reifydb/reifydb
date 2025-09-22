@@ -4,7 +4,7 @@
 pub(crate) use reifydb_core::interface::EvaluationContext;
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::Expression},
-	value::columnar::{Column, ColumnComputed, SourceQualified},
+	value::column::{Column, ColumnComputed, SourceQualified},
 };
 
 use crate::function::{Functions, blob, math};

@@ -15,8 +15,8 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	event::EventBus,
 	interface::Versioned,
-	row::EncodedRow,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
+	value::row::EncodedRow,
 };
 use reifydb_storage::memory::Memory;
 use reifydb_testing::testscript;

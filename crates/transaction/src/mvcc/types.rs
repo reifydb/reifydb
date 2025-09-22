@@ -11,7 +11,7 @@
 
 use std::{cmp, cmp::Reverse};
 
-use reifydb_core::{CommitVersion, EncodedKey, delta::Delta, interface::Versioned, row::EncodedRow};
+use reifydb_core::{CommitVersion, EncodedKey, delta::Delta, interface::Versioned, value::row::EncodedRow};
 
 pub enum TransactionValue {
 	PendingIter {

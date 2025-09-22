@@ -3,7 +3,7 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::row::EncodedRowLayout;
+use reifydb_core::value::row::EncodedRowLayout;
 use reifydb_type::Type;
 
 #[repr(u8)]

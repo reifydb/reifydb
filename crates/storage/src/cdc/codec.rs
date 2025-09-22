@@ -5,7 +5,7 @@ use reifydb_core::{
 	CowVec, EncodedKey,
 	interface::{CdcChange, TransactionId},
 	return_internal_error,
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 use reifydb_type::Blob;
 

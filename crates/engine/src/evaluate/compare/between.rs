@@ -7,7 +7,7 @@ use reifydb_core::{
 		evaluate::expression::{BetweenExpression, GreaterThanEqExpression, LessThanEqExpression},
 	},
 	return_error,
-	value::columnar::{Column, ColumnComputed, ColumnData},
+	value::column::{Column, ColumnComputed, ColumnData},
 };
 use reifydb_type::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
 

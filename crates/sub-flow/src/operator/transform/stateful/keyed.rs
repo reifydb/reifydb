@@ -4,8 +4,8 @@
 use reifydb_core::{
 	EncodedKey,
 	interface::Transaction,
-	row::{EncodedRow, EncodedRowLayout},
 	util::encoding::keycode::KeySerializer,
+	value::row::{EncodedRow, EncodedRowLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::{Type, Value};

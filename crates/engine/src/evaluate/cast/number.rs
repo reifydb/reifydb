@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::Convert,
-	value::{columnar::ColumnData, container::NumberContainer},
+	value::{column::ColumnData, container::NumberContainer},
 };
 use reifydb_type::{
 	BorrowedFragment, Decimal, GetType, Int, IsNumber, LazyFragment, SafeConvert, Type, Uint,

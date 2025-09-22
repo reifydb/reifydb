@@ -13,7 +13,7 @@ use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{Unversioned, UnversionedScan, Versioned, VersionedScan},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 use crate::memory::{Memory, VersionedRow};

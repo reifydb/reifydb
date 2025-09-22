@@ -22,8 +22,8 @@ use reifydb_core::{
 		CdcConsumerKey, CdcEvent, ConsumerId, EncodableKey, Engine as EngineInterface, Key, SourceId, TableId,
 		VersionedCommandTransaction, VersionedQueryTransaction, key::RowKey,
 	},
-	row::EncodedRow,
 	util::{CowVec, mock_time_set},
+	value::row::EncodedRow,
 };
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine};
 use reifydb_storage::memory::Memory;

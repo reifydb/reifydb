@@ -4,7 +4,7 @@
 use std::{sync::Arc, thread, time::Instant};
 
 use encoding::keycode;
-use reifydb_core::{EncodedKey, row::EncodedRow, util::encoding};
+use reifydb_core::{EncodedKey, util::encoding, value::row::EncodedRow};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 macro_rules! as_key {

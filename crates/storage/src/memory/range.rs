@@ -13,7 +13,7 @@ use crossbeam_skiplist::map::Range as MapRange;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Result,
 	interface::{Unversioned, UnversionedRange as RangeInterface, Versioned, VersionedRange},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 use crate::memory::{Memory, VersionedRow};

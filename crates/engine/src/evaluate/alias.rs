@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{Evaluator, TargetColumn, evaluate::expression::AliasExpression},
-	value::columnar::{Column, ColumnComputed, SourceQualified},
+	value::column::{Column, ColumnComputed, SourceQualified},
 };
 use reifydb_type::Fragment;
 

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogTableCommandOperations, CatalogTableQueryOperations, table::TableToCreate};
-use reifydb_core::{interface::Transaction, value::columnar::Columns};
+use reifydb_core::{interface::Transaction, value::column::Columns};
 use reifydb_rql::plan::physical::CreateTableNode;
 use reifydb_type::Value;
 

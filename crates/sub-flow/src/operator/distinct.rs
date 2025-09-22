@@ -5,9 +5,8 @@ use reifydb_core::{
 	BitVec, EncodedKey,
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, FlowNodeId, Params, Transaction, expression::Expression},
-	row::EncodedRow,
 	util::CowVec,
-	value::columnar::Columns,
+	value::{column::Columns, row::EncodedRow},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};

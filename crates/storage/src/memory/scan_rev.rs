@@ -15,7 +15,7 @@ use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{Unversioned, UnversionedScanRev, Versioned, VersionedScanRev},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 use crate::memory::{Memory, VersionedRow};

@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::OrExpression},
 	return_error,
-	value::columnar::{Column, ColumnComputed, ColumnData},
+	value::column::{Column, ColumnComputed, ColumnData},
 };
 use reifydb_type::diagnostic::operator::{
 	or_can_not_applied_to_number, or_can_not_applied_to_temporal, or_can_not_applied_to_text,

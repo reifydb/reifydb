@@ -15,7 +15,7 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	event::transaction::PostCommitEvent,
 	interface::{UnversionedTransaction, VersionedStorage},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 use reifydb_type::Error;
 

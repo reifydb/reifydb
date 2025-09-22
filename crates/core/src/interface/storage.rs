@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::TransactionId, row::EncodedRow,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::TransactionId,
+	value::row::EncodedRow,
 };
 
 #[derive(Debug)]

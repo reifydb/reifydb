@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use reifydb_core::{
 	CommitVersion, CowVec, Result,
 	interface::{CdcEvent, CdcScan},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 use crate::{

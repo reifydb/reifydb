@@ -11,7 +11,7 @@
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, delta::Delta, diagnostic::transaction, error, interface::TransactionId,
-	return_error, row::EncodedRow,
+	return_error, value::row::EncodedRow,
 };
 
 use super::*;

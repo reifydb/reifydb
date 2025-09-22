@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{EncodableKey, NamespaceDef, NamespaceId, NamespaceKey, QueryTransaction},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 
 use crate::{

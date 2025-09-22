@@ -12,10 +12,12 @@ use reifydb_core::{
 		identifier::ColumnIdentifier,
 		resolved::{ResolvedRingBuffer, ResolvedSource},
 	},
-	row::EncodedRowLayout,
-	value::columnar::{
-		Column, ColumnData, ColumnResolved, Columns,
-		layout::{ColumnLayout, ColumnsLayout},
+	value::{
+		column::{
+			Column, ColumnData, ColumnResolved, Columns,
+			layout::{ColumnLayout, ColumnsLayout},
+		},
+		row::EncodedRowLayout,
 	},
 };
 use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, RowNumber, Type, TypeConstraint};

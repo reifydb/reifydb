@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::value::columnar::ColumnData;
+use reifydb_core::value::column::ColumnData;
 use reifydb_type::{
 	IntoFragment, Type, diagnostic::temporal, parse_date, parse_datetime, parse_interval, parse_time, return_error,
 };

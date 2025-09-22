@@ -6,7 +6,7 @@ use reifydb_core::{
 		EncodableKey, RingBufferDef, RowKey, Transaction, VersionedCommandTransaction,
 		VersionedQueryTransaction, interceptor::RingBufferInterceptor,
 	},
-	row::EncodedRow,
+	value::row::EncodedRow,
 };
 use reifydb_type::RowNumber;
 

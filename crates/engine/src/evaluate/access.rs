@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{EvaluationContext, evaluate::expression::AccessSourceExpression},
-	value::columnar::Column,
+	value::column::Column,
 };
 use reifydb_type::{Fragment, OwnedFragment, diagnostic::query::column_not_found, error};
 

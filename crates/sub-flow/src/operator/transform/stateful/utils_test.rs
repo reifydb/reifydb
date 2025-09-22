@@ -10,8 +10,8 @@ pub mod test {
 		flow::FlowChange,
 		interceptor::StandardInterceptorFactory,
 		interface::{Engine, FlowNodeId},
-		row::{EncodedRow, EncodedRowLayout},
 		util::CowVec,
+		value::row::{EncodedRow, EncodedRowLayout},
 	};
 	use reifydb_engine::{
 		EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine,
