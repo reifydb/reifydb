@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
+	marker::PhantomData,
 	ops::Bound::{Excluded, Included},
 	sync::Arc,
 };
@@ -31,7 +32,7 @@ pub(crate) struct ViewScanNode<'a, T: Transaction> {
 	row_layout: EncodedRowLayout,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
-	_phantom: std::marker::PhantomData<T>,
+	_phantom: PhantomData<T>,
 }
 
 impl<'a, T: Transaction> ViewScanNode<'a, T> {
@@ -58,7 +59,7 @@ impl<'a, T: Transaction> ViewScanNode<'a, T> {
 			row_layout,
 			last_key: None,
 			exhausted: false,
-			_phantom: std::marker::PhantomData,
+			_phantom: PhantomData,
 		})
 	}
 }
@@ -145,9 +146,9 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<'a, T> {
 				id: reifydb_core::interface::ColumnId(0),
 				name: ROW_NUMBER_COLUMN_NAME.to_string(),
 				constraint: reifydb_type::TypeConstraint::unconstrained(reifydb_type::Type::RowNumber),
-				policies: vec![],
 				index: reifydb_core::interface::catalog::ColumnIndex(0),
 				auto_increment: false,
+				policies: Vec::new(),
 			};
 			let resolved_col = RColumn::new(column_ident, source, col_def);
 			let row_number_column = Column::Resolved(ColumnResolved::new(

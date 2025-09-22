@@ -140,7 +140,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<'a, T> {
 				id: ColumnId(0),
 				name: ROW_NUMBER_COLUMN_NAME.to_string(),
 				constraint: TypeConstraint::unconstrained(Type::RowNumber),
-				policies: vec![],
+				policies: Vec::new(),
 				index: ColumnIndex(0),
 				auto_increment: false,
 			};

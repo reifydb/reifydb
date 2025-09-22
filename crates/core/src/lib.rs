@@ -17,8 +17,8 @@ pub mod util;
 pub mod value;
 
 pub use common::*;
+pub use interface::TransactionId;
 use interface::version::{ComponentType, HasVersion, SystemVersion};
-pub use interface::{ColumnDescriptor, TransactionId};
 pub use result::*;
 pub use row::{EncodedKey, EncodedKeyRange};
 pub use sort::{SortDirection, SortKey};

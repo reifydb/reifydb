@@ -147,7 +147,6 @@ impl JoinOperator {
 
 		let eval_ctx = EvaluationContext {
 			target: None,
-			policies: Vec::new(),
 			columns: columns.clone(),
 			row_count,
 			take: None,

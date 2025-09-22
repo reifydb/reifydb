@@ -21,10 +21,10 @@ impl EvaluationContext<'_> {
 		<L as Promote<R>>::Output: IsNumber,
 		<L as Promote<R>>::Output: SafeAdd,
 	{
-		match self.saturation_policy() {
+		match &self.saturation_policy() {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().map(|c| c.to_number_range_descriptor());
+					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
 					return_error!(number_out_of_range(
 						fragment.fragment(),
 						<L as Promote<R>>::Output::get_type(),
@@ -35,7 +35,7 @@ impl EvaluationContext<'_> {
 				lp.checked_add(&rp)
 					.ok_or_else(|| {
 						let descriptor =
-							self.target.as_ref().map(|c| c.to_number_range_descriptor());
+							self.target.as_ref().and_then(|c| c.to_number_descriptor());
 						Error(number_out_of_range(
 							fragment.fragment(),
 							<L as Promote<R>>::Output::get_type(),
@@ -71,10 +71,10 @@ impl EvaluationContext<'_> {
 		<L as Promote<R>>::Output: IsNumber,
 		<L as Promote<R>>::Output: SafeSub,
 	{
-		match self.saturation_policy() {
+		match &self.saturation_policy() {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().map(|c| c.to_number_range_descriptor());
+					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
 					return_error!(number_out_of_range(
 						fragment.fragment(),
 						<L as Promote<R>>::Output::get_type(),
@@ -85,7 +85,7 @@ impl EvaluationContext<'_> {
 				lp.checked_sub(&rp)
 					.ok_or_else(|| {
 						let descriptor =
-							self.target.as_ref().map(|c| c.to_number_range_descriptor());
+							self.target.as_ref().and_then(|c| c.to_number_descriptor());
 						Error(number_out_of_range(
 							fragment.fragment(),
 							<L as Promote<R>>::Output::get_type(),
@@ -121,10 +121,10 @@ impl EvaluationContext<'_> {
 		<L as Promote<R>>::Output: IsNumber,
 		<L as Promote<R>>::Output: SafeMul,
 	{
-		match self.saturation_policy() {
+		match &self.saturation_policy() {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().map(|c| c.to_number_range_descriptor());
+					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
 					return_error!(number_out_of_range(
 						fragment.fragment(),
 						<L as Promote<R>>::Output::get_type(),
@@ -135,7 +135,7 @@ impl EvaluationContext<'_> {
 				lp.checked_mul(&rp)
 					.ok_or_else(|| {
 						let descriptor =
-							self.target.as_ref().map(|c| c.to_number_range_descriptor());
+							self.target.as_ref().and_then(|c| c.to_number_descriptor());
 						Error(number_out_of_range(
 							fragment.fragment(),
 							<L as Promote<R>>::Output::get_type(),
@@ -171,10 +171,10 @@ impl EvaluationContext<'_> {
 		<L as Promote<R>>::Output: IsNumber,
 		<L as Promote<R>>::Output: SafeDiv,
 	{
-		match self.saturation_policy() {
+		match &self.saturation_policy() {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().map(|c| c.to_number_range_descriptor());
+					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
 					return_error!(number_out_of_range(
 						fragment.fragment(),
 						<L as Promote<R>>::Output::get_type(),
@@ -185,7 +185,7 @@ impl EvaluationContext<'_> {
 				lp.checked_div(&rp)
 					.ok_or_else(|| {
 						let descriptor =
-							self.target.as_ref().map(|c| c.to_number_range_descriptor());
+							self.target.as_ref().and_then(|c| c.to_number_descriptor());
 						Error(number_out_of_range(
 							fragment.fragment(),
 							<L as Promote<R>>::Output::get_type(),
@@ -221,10 +221,10 @@ impl EvaluationContext<'_> {
 		<L as Promote<R>>::Output: IsNumber,
 		<L as Promote<R>>::Output: SafeRemainder,
 	{
-		match self.saturation_policy() {
+		match &self.saturation_policy() {
 			ColumnSaturationPolicy::Error => {
 				let Some((lp, rp)) = l.checked_promote(r) else {
-					let descriptor = self.target.as_ref().map(|c| c.to_number_range_descriptor());
+					let descriptor = self.target.as_ref().and_then(|c| c.to_number_descriptor());
 					return_error!(number_out_of_range(
 						fragment.fragment(),
 						<L as Promote<R>>::Output::get_type(),
@@ -235,7 +235,7 @@ impl EvaluationContext<'_> {
 				lp.checked_rem(&rp)
 					.ok_or_else(|| {
 						let descriptor =
-							self.target.as_ref().map(|c| c.to_number_range_descriptor());
+							self.target.as_ref().and_then(|c| c.to_number_descriptor());
 						Error(number_out_of_range(
 							fragment.fragment(),
 							<L as Promote<R>>::Output::get_type(),

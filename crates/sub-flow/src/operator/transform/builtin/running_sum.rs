@@ -60,7 +60,6 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 					let empty_params = Params::None;
 					let eval_ctx = EvaluationContext {
 						target: None,
-						policies: Vec::new(),
 						columns: after.clone(),
 						row_count: after.row_count(),
 						take: None,
@@ -130,7 +129,6 @@ impl<T: Transaction> Operator<T> for RunningSumOperator {
 					let empty_params = Params::None;
 					let eval_ctx = EvaluationContext {
 						target: None,
-						policies: Vec::new(),
 						columns: after.clone(),
 						row_count: after.row_count(),
 						take: None,

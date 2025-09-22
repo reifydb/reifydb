@@ -59,7 +59,6 @@ impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
 				// rows
 				let eval_ctx = EvaluationContext {
 					target: None,
-					policies: Vec::new(),
 					columns: columns.clone(),
 					row_count,
 					take: None,

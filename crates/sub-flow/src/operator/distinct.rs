@@ -76,7 +76,6 @@ impl DistinctOperator {
 			let empty_params = Params::None;
 			let eval_ctx = EvaluationContext {
 				target: None,
-				policies: Vec::new(),
 				columns: columns.clone(),
 				row_count,
 				take: None,
@@ -107,7 +106,6 @@ impl DistinctOperator {
 			let empty_params = Params::None;
 			let eval_ctx = EvaluationContext {
 				target: None,
-				policies: Vec::new(),
 				columns: columns.clone(),
 				row_count,
 				take: None,

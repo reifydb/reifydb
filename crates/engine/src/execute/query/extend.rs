@@ -4,7 +4,7 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use reifydb_core::{
-	interface::{ColumnDescriptor, Transaction, evaluate::expression::Expression},
+	interface::{ColumnIdentifier, ResolvedColumn, TargetColumn, Transaction, evaluate::expression::Expression},
 	value::columnar::{Column, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::{Fragment, Params};
@@ -60,7 +60,6 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 				// Create evaluation context inline to avoid lifetime issues
 				let mut eval_ctx = EvaluationContext {
 					target: None,
-					policies: Vec::new(),
 					columns: Columns::new(new_columns.clone()),
 					row_count,
 					take: None,
@@ -75,23 +74,30 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 					if let Some(table_column) =
 						source.columns().iter().find(|col| col.name == alias_name)
 					{
-						// Extract ColumnPolicyKind from ColumnPolicy
-						let policy_kinds: Vec<_> = table_column
-							.policies
-							.iter()
-							.map(|policy| policy.policy.clone())
-							.collect();
+						// Create a resolved column with source information
+						let column_ident = match source {
+							reifydb_core::interface::ResolvedSource::Table(t) => {
+								ColumnIdentifier::with_source(
+									Fragment::borrowed_internal(
+										t.namespace().name().as_ref(),
+									),
+									Fragment::borrowed_internal(t.name().as_ref()),
+									Fragment::borrowed_internal(&table_column.name),
+								)
+							}
+							_ => ColumnIdentifier::with_source(
+								Fragment::borrowed_internal(""),
+								Fragment::borrowed_internal(source.effective_name()),
+								Fragment::borrowed_internal(&table_column.name),
+							),
+						};
+						let resolved_column = ResolvedColumn::new(
+							column_ident,
+							source.clone(),
+							table_column.clone(),
+						);
 
-						let target_column = ColumnDescriptor::new()
-							.with_table(Fragment::borrowed_internal(
-								source.effective_name(),
-							))
-							.with_column(Fragment::borrowed_internal(&table_column.name))
-							.with_column_type(table_column.constraint.get_type())
-							.with_policies(policy_kinds.clone());
-
-						eval_ctx.target = Some(target_column);
-						eval_ctx.policies = policy_kinds;
+						eval_ctx.target = Some(TargetColumn::Resolved(resolved_column));
 					}
 				}
 
@@ -182,7 +188,6 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 		for expr in expressions.iter() {
 			let evaluation_context = EvaluationContext {
 				target: None,
-				policies: Vec::new(),
 				columns: columns.clone(),
 				row_count: 1, // Generate single row
 				take: None,

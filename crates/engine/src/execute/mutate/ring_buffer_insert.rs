@@ -5,10 +5,9 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	ColumnDescriptor,
 	interface::{
-		ColumnPolicyKind, Params, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, Transaction,
-		identifier::{NamespaceIdentifier, RingBufferIdentifier},
+		Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, Transaction,
+		identifier::{ColumnIdentifier, NamespaceIdentifier, RingBufferIdentifier},
 	},
 	return_error,
 	row::EncodedRowLayout,
@@ -100,18 +99,22 @@ impl Executor {
 					// No auto-increment for ring buffers currently
 					// TODO: Add support if needed
 
-					let policies: Vec<ColumnPolicyKind> =
-						rb_column.policies.iter().map(|cp| cp.policy.clone()).collect();
+					// Create a ResolvedColumn for this ring buffer column
+					let column_ident = ColumnIdentifier::with_source(
+						Fragment::borrowed_internal(&namespace.name),
+						Fragment::borrowed_internal(&ring_buffer.name),
+						Fragment::borrowed_internal(&rb_column.name),
+					);
+					let resolved_column = ResolvedColumn::new(
+						column_ident,
+						execution_context.source.clone().unwrap(),
+						rb_column.clone(),
+					);
 
 					value = coerce_value_to_column_type(
 						value,
 						rb_column.constraint.get_type(),
-						ColumnDescriptor::new()
-							.with_namespace(Fragment::borrowed_internal(&namespace.name))
-							.with_table(Fragment::borrowed_internal(&ring_buffer.name)) // Using ring buffer name as "table"
-							.with_column(Fragment::borrowed_internal(&rb_column.name))
-							.with_column_type(rb_column.constraint.get_type())
-							.with_policies(policies),
+						resolved_column,
 						&execution_context,
 					)?;
 

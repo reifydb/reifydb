@@ -65,7 +65,6 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 					let empty_params = Params::None;
 					let eval_ctx = EvaluationContext {
 						target: None,
-						policies: Vec::new(),
 						columns: after.clone(),
 						row_count: after.row_count(),
 						take: None,

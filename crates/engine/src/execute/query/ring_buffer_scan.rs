@@ -168,9 +168,9 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 					id: ColumnId(0),
 					name: ROW_NUMBER_COLUMN_NAME.to_string(),
 					constraint: TypeConstraint::unconstrained(Type::RowNumber),
-					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
+					policies: Vec::new(),
 				};
 				let resolved_col = ResolvedColumn::new(column_ident, source, col_def);
 				let row_number_column = Column::Resolved(ColumnResolved::new(

@@ -8,8 +8,7 @@ use std::{
 };
 
 use reifydb_core::{
-	ColumnDescriptor,
-	interface::{ResolvedSource, Transaction, evaluate::expression::AliasExpression},
+	interface::{ResolvedSource, TargetColumn, Transaction, evaluate::expression::AliasExpression},
 	value::columnar::{
 		Column, ColumnComputed, ColumnData, Columns,
 		layout::{ColumnLayout, ColumnsLayout},
@@ -96,7 +95,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
 		// Choose execution path based on whether we have table
 		// namespace
 		if self.layout.is_some() {
-			self.next_with_table_namespace(&ctx)
+			self.next_with_source(&ctx)
 		} else {
 			self.next_infer_namespace(&ctx)
 		}
@@ -185,7 +184,6 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 				if let Some(alias_expr) = row_data.get(&column_name) {
 					let ctx = EvaluationContext {
 						target: None,
-						policies: Vec::new(),
 						columns: Columns::empty(),
 						row_count: 1,
 						take: None,
@@ -247,7 +245,6 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 						let temp_data = ColumnData::from(value.clone());
 						let ctx = EvaluationContext {
 							target: None,
-							policies: Vec::new(),
 							columns: Columns::empty(),
 							row_count: 1,
 							take: None,
@@ -283,7 +280,6 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 					// Demote to the optimal type
 					let ctx = EvaluationContext {
 						target: None,
-						policies: Vec::new(),
 						columns: Columns::empty(),
 						row_count: column_data.len(),
 						take: None,
@@ -316,7 +312,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		}))
 	}
 
-	fn next_with_table_namespace(&mut self, ctx: &ExecutionContext<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next_with_source(&mut self, ctx: &ExecutionContext<'a>) -> crate::Result<Option<Batch<'a>>> {
 		let source = ctx.source.as_ref().unwrap(); // Safe because layout is Some
 		let layout = self.layout.as_ref().unwrap(); // Safe because we're in this path
 
@@ -344,27 +340,17 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(column_layout.name.text()) {
-					// Create ColumnDescriptor with table
-					// context
-					let column_descriptor = ColumnDescriptor::new()
-						.with_table(Fragment::borrowed_internal(source.effective_name()))
-						.with_column(Fragment::borrowed_internal(&table_column.name))
-						.with_column_type(table_column.constraint.get_type())
-						.with_policies(
-							table_column
+					let ctx = EvaluationContext {
+						target: Some(TargetColumn::Partial {
+							source_name: Some(source.effective_name().to_string()),
+							column_name: Some(table_column.name.clone()),
+							column_type: table_column.constraint.get_type(),
+							policies: table_column
 								.policies
 								.iter()
 								.map(|cp| cp.policy.clone())
 								.collect(),
-						);
-
-					let ctx = EvaluationContext {
-						target: Some(column_descriptor),
-						policies: table_column
-							.policies
-							.iter()
-							.map(|cp| cp.policy.clone())
-							.collect(),
+						}),
 						columns: Columns::empty(),
 						row_count: 1,
 						take: None,

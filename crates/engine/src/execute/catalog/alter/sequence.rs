@@ -4,8 +4,7 @@
 use catalog::namespace_not_found;
 use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
-	ColumnDescriptor,
-	interface::{EvaluationContext, Params, Transaction},
+	interface::{EvaluationContext, Params, TargetColumn, Transaction},
 	value::columnar::Columns,
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
@@ -64,14 +63,12 @@ impl Executor {
 		let empty_params = Params::None;
 		let value = evaluate(
 			&EvaluationContext {
-				target: Some(ColumnDescriptor {
-					namespace: None,
-					table: None,
-					column: None,
-					column_type: Some(column.constraint.get_type().clone()),
-					policies: vec![],
+				target: Some(TargetColumn::Partial {
+					source_name: None,
+					column_name: None,
+					column_type: column.constraint.get_type(),
+					policies: column.policies.into_iter().map(|p| p.policy).collect(),
 				}),
-				policies: vec![],
 				columns: Columns::empty(),
 				row_count: 1,
 				take: None,

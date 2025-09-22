@@ -3,11 +3,11 @@
 
 use std::sync::Arc;
 
-use reifydb_type::{Fragment, TypeConstraint};
+use reifydb_type::{Fragment, Type, TypeConstraint, diagnostic::number::NumberOfRangeColumnDescriptor};
 use serde::{Deserialize, Serialize};
 
 use super::{
-	ColumnDef, NamespaceDef, RingBufferDef, TableDef, TableVirtualDef, ViewDef,
+	ColumnDef, ColumnPolicyKind, NamespaceDef, RingBufferDef, TableDef, TableVirtualDef, ViewDef,
 	identifier::{
 		ColumnIdentifier, FunctionIdentifier, IndexIdentifier, NamespaceIdentifier, RingBufferIdentifier,
 		SequenceIdentifier, SourceIdentifier, TableIdentifier, TableVirtualIdentifier, ViewIdentifier,
@@ -701,6 +701,16 @@ impl<'a> ResolvedColumn<'a> {
 		&self.0.def.constraint
 	}
 
+	/// Get the column type
+	pub fn column_type(&self) -> Type {
+		self.0.def.constraint.get_type()
+	}
+
+	/// Get the column policies
+	pub fn policies(&self) -> Vec<ColumnPolicyKind> {
+		self.0.def.policies.iter().map(|p| p.policy.clone()).collect()
+	}
+
 	/// Check if column has auto increment
 	pub fn is_auto_increment(&self) -> bool {
 		self.0.def.auto_increment
@@ -734,6 +744,34 @@ impl<'a> ResolvedColumn<'a> {
 			def: self.0.def.clone(),
 		}))
 	}
+}
+
+// Helper function to convert ResolvedColumn to NumberOfRangeColumnDescriptor
+// This is used in evaluation context for error reporting
+pub fn resolved_column_to_number_descriptor<'a>(column: &'a ResolvedColumn<'a>) -> NumberOfRangeColumnDescriptor<'a> {
+	let (namespace, table) = match column.source() {
+		ResolvedSource::Table(table) => (Some(table.namespace().name().as_ref()), Some(table.name().as_ref())),
+		ResolvedSource::TableVirtual(table) => {
+			(Some(table.namespace().name().as_ref()), Some(table.name().as_ref()))
+		}
+		ResolvedSource::RingBuffer(rb) => (Some(rb.namespace().name().as_ref()), Some(rb.name().as_ref())),
+		ResolvedSource::View(view) => (Some(view.namespace().name().as_ref()), Some(view.name().as_ref())),
+		ResolvedSource::DeferredView(view) => {
+			(Some(view.namespace().name().as_ref()), Some(view.name().as_ref()))
+		}
+		ResolvedSource::TransactionalView(view) => {
+			(Some(view.namespace().name().as_ref()), Some(view.name().as_ref()))
+		}
+	};
+
+	let mut descriptor = NumberOfRangeColumnDescriptor::new();
+	if let Some(ns) = namespace {
+		descriptor = descriptor.with_namespace(ns);
+	}
+	if let Some(tbl) = table {
+		descriptor = descriptor.with_table(tbl);
+	}
+	descriptor.with_column(column.name().as_ref()).with_column_type(column.column_type())
 }
 
 // Placeholder types - these will be defined properly in catalog

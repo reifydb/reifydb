@@ -5,11 +5,10 @@ use std::sync::Arc;
 
 use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
-	ColumnDescriptor,
 	interface::{
-		ColumnPolicyKind, EncodableKey, IndexEntryKey, IndexId, Params, ResolvedNamespace, ResolvedSource,
+		EncodableKey, IndexEntryKey, IndexId, Params, ResolvedColumn, ResolvedNamespace, ResolvedSource,
 		ResolvedTable, Transaction, VersionedCommandTransaction,
-		identifier::{NamespaceIdentifier, TableIdentifier},
+		identifier::{ColumnIdentifier, NamespaceIdentifier, TableIdentifier},
 	},
 	return_error,
 	row::EncodedRowLayout,
@@ -105,18 +104,22 @@ impl Executor {
 						)?;
 					}
 
-					let policies: Vec<ColumnPolicyKind> =
-						table_column.policies.iter().map(|cp| cp.policy.clone()).collect();
+					// Create ResolvedColumn for this column
+					let column_ident = ColumnIdentifier::with_source(
+						Fragment::owned_internal(namespace.name.clone()),
+						Fragment::owned_internal(table.name.clone()),
+						Fragment::owned_internal(table_column.name.clone()),
+					);
+					let resolved_column = ResolvedColumn::new(
+						column_ident,
+						execution_context.source.clone().unwrap(),
+						table_column.clone(),
+					);
 
 					value = coerce_value_to_column_type(
 						value,
 						table_column.constraint.get_type(),
-						ColumnDescriptor::new()
-							.with_namespace(Fragment::borrowed_internal(&namespace.name))
-							.with_table(Fragment::borrowed_internal(&table.name))
-							.with_column(Fragment::borrowed_internal(&table_column.name))
-							.with_column_type(table_column.constraint.get_type())
-							.with_policies(policies),
+						resolved_column,
 						&execution_context,
 					)?;
 

@@ -97,7 +97,6 @@ impl<'a, T: Transaction> QueryNode<'a, T> for LeftJoinNode<'a, T> {
 
 				let eval_ctx = EvaluationContext {
 					target: None,
-					policies: Vec::new(),
 					columns: Columns::new(
 						all_data.iter()
 							.cloned()

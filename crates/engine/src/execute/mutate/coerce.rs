@@ -1,5 +1,5 @@
 use reifydb_core::{
-	ColumnDescriptor,
+	interface::{ResolvedColumn, TargetColumn},
 	value::columnar::{ColumnData, Columns},
 };
 use reifydb_type::{Fragment, Type, Value};
@@ -15,17 +15,17 @@ use crate::{
 /// # Arguments
 /// * `value` - The value that needs coercing
 /// * `target` - The type of the target table column from namespace
-/// * `column` - Name of the column for error reporting
+/// * `column` - The resolved column for error reporting and policies
 /// * `ctx` - ExecutionContext for accessing params
 ///
 /// # Returns
 /// * `Ok(Value)` - Successfully coerced value matching target type
 /// * `Err(Error)` - Coercion failed with descriptive error
-pub(crate) fn coerce_value_to_column_type(
+pub(crate) fn coerce_value_to_column_type<'a>(
 	value: Value,
 	target: Type,
-	column: ColumnDescriptor,
-	ctx: &ExecutionContext,
+	column: ResolvedColumn<'a>,
+	ctx: &ExecutionContext<'a>,
 ) -> crate::Result<Value> {
 	if value.get_type() == target {
 		return Ok(value);
@@ -38,12 +38,9 @@ pub(crate) fn coerce_value_to_column_type(
 	let temp_column_data = ColumnData::from(value.clone());
 	let value_str = value.to_string();
 
-	let column_policies = column.policies.clone();
-
 	let coerced_column = cast_column_data(
 		&EvaluationContext {
-			target: Some(column),
-			policies: column_policies,
+			target: Some(TargetColumn::Resolved(column)),
 			columns: Columns::empty(),
 			row_count: 1,
 			take: None,
