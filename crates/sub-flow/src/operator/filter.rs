@@ -3,10 +3,10 @@ use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
 	util::CowVec,
-	value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified},
+	value::columnar::{Column, ColumnData, ColumnQualified, Columns, ResolvedColumn, SourceQualified},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-use reifydb_type::{Fragment, Params};
+use reifydb_type::Params;
 
 use crate::operator::Operator;
 
@@ -166,6 +166,10 @@ impl FilterOperator {
 		let mut static_columns = Vec::new();
 		for col in filtered_columns.into_iter() {
 			let static_col = match col {
+				Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
+					column: rc.column.to_static(),
+					data: rc.data,
+				}),
 				Column::SourceQualified(sq) => Column::SourceQualified(SourceQualified {
 					source: sq.source.to_static(),
 					name: sq.name.to_static(),

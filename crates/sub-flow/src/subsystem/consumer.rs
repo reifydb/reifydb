@@ -48,16 +48,14 @@ impl<T: Transaction> FlowConsumer<T> {
 		let (mut columns, layout) = match source {
 			SourceId::Table(table_id) => {
 				let table = CatalogStore::get_table(txn, table_id)?;
-				let namespace = CatalogStore::get_namespace(txn, table.namespace)?;
 				let layout = table.get_layout();
-				let columns = Columns::from_table_def_fully_qualified(&namespace, &table);
+				let columns = Columns::from_table_def(&table);
 				(columns, layout)
 			}
 			SourceId::View(view_id) => {
 				let view = CatalogStore::get_view(txn, view_id)?;
-				let namespace = CatalogStore::get_namespace(txn, view.namespace)?;
 				let layout = view.get_layout();
-				let columns = Columns::from_view_def_fully_qualified(&namespace, &view);
+				let columns = Columns::from_view_def(&view);
 				(columns, layout)
 			}
 			SourceId::TableVirtual(_) => {
@@ -66,9 +64,8 @@ impl<T: Transaction> FlowConsumer<T> {
 			}
 			SourceId::RingBuffer(ring_buffer_id) => {
 				let ring_buffer = CatalogStore::get_ring_buffer(txn, ring_buffer_id)?;
-				let namespace = CatalogStore::get_namespace(txn, ring_buffer.namespace)?;
 				let layout = ring_buffer.get_layout();
-				let columns = Columns::from_ring_buffer_def_fully_qualified(&namespace, &ring_buffer);
+				let columns = Columns::from_ring_buffer_def(&ring_buffer);
 				(columns, layout)
 			}
 			SourceId::FlowNode(_flow_node_id) => {

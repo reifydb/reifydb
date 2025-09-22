@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	row::EncodedRow,
 	util::CowVec,
-	value::columnar::{Column, ColumnData, ColumnQualified, Columns, SourceQualified},
+	value::columnar::{Column, ColumnData, ColumnQualified, Columns, ResolvedColumn, SourceQualified},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{Fragment, RowNumber, Value};
@@ -850,6 +850,10 @@ impl JoinOperator {
 				let mut column_vec = Vec::new();
 				for column in before.iter() {
 					let static_col = match column {
+						Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
+							column: rc.column.to_static(),
+							data: rc.data.clone(),
+						}),
 						Column::SourceQualified(sq) => {
 							Column::SourceQualified(SourceQualified {
 								source: sq.source.clone().to_static(),
@@ -894,6 +898,10 @@ impl JoinOperator {
 					let mut column_vec = Vec::new();
 					for column in before.iter() {
 						let static_col = match column {
+							Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
+								column: rc.column.to_static(),
+								data: rc.data.clone(),
+							}),
 							Column::SourceQualified(sq) => {
 								Column::SourceQualified(SourceQualified {
 									source: sq.source.clone().to_static(),

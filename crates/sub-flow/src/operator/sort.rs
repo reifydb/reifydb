@@ -1,12 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	SortKey, flow::FlowChange, interface::Transaction, row::EncodedKey, util::CowVec, value::columnar::Columns,
-};
+use reifydb_core::{SortKey, flow::FlowChange, interface::Transaction, row::EncodedKey, util::CowVec};
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-use reifydb_type::Value;
-use serde::{Deserialize, Serialize};
 
 use crate::{Result, operator::Operator};
 
@@ -37,12 +33,6 @@ impl FlowSortStateKey {
 		key.extend(&self.sort_index.to_be_bytes());
 		EncodedKey(CowVec::new(key))
 	}
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct SortedState {
-	rows: Vec<(Vec<Value>, Columns<'static>)>,
-	total_rows: usize,
 }
 
 pub struct SortOperator {

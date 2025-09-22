@@ -5,7 +5,7 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	flow::{
 		Flow, FlowNodeType, OperatorType,
-		OperatorType::{Aggregate, Apply, Distinct, Extend, Filter, Join, Map, MapTerminal, Sort, Take, Union},
+		OperatorType::{Apply, Distinct, Extend, Filter, Join, Map, MapTerminal, Sort, Take, Union},
 	},
 	interface::{FlowId, FlowNodeId, SourceId, Transaction},
 };
@@ -14,8 +14,8 @@ use reifydb_engine::StandardCommandTransaction;
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		AggregateOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator,
-		MapTerminalOperator, Operators, SortOperator, TakeOperator, UnionOperator,
+		DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, MapTerminalOperator,
+		Operators, SortOperator, TakeOperator, UnionOperator,
 	},
 };
 
@@ -134,10 +134,6 @@ impl<T: Transaction> FlowEngine<T> {
 				let view_def = CatalogStore::get_view(txn, view_id)?;
 				Ok(Operators::MapTerminal(MapTerminalOperator::new(expressions, view_def)))
 			}
-			Aggregate {
-				by,
-				map,
-			} => Ok(Operators::Aggregate(AggregateOperator::new(node_id, by, map))),
 			Sort {
 				by,
 			} => Ok(Operators::Sort(SortOperator::new(by))),
@@ -187,6 +183,9 @@ impl<T: Transaction> FlowEngine<T> {
 
 				Ok(Operators::Apply(ApplyOperator::new(operator)))
 			}
+			OperatorType::Aggregate {
+				..
+			} => unimplemented!(),
 		}
 	}
 }

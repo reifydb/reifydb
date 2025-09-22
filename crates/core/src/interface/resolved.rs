@@ -49,9 +49,9 @@ impl<'a> ResolvedNamespace<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_owned_resolved_namespace(&self) -> ResolvedNamespace<'static> {
+	pub fn to_static(&self) -> ResolvedNamespace<'static> {
 		ResolvedNamespace(Arc::new(ResolvedNamespaceInner {
-			identifier: self.0.identifier.to_owned_identifier(),
+			identifier: self.0.identifier.to_static(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -118,10 +118,10 @@ impl<'a> ResolvedTable<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_owned_resolved_table(&self) -> ResolvedTable<'static> {
+	pub fn to_static(&self) -> ResolvedTable<'static> {
 		ResolvedTable(Arc::new(ResolvedTableInner {
-			identifier: self.0.identifier.to_owned_identifier(),
-			namespace: self.0.namespace.to_owned_resolved_namespace(),
+			identifier: self.0.identifier.to_static(),
+			namespace: self.0.namespace.to_static(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -176,10 +176,10 @@ impl<'a> ResolvedTableVirtual<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_owned_resolved_table_virtual(&self) -> ResolvedTableVirtual<'static> {
+	pub fn to_static(&self) -> ResolvedTableVirtual<'static> {
 		ResolvedTableVirtual(Arc::new(ResolvedTableVirtualInner {
-			identifier: self.0.identifier.to_owned_identifier(),
-			namespace: self.0.namespace.to_owned_resolved_namespace(),
+			identifier: self.0.identifier.to_static(),
+			namespace: self.0.namespace.to_static(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -246,10 +246,10 @@ impl<'a> ResolvedRingBuffer<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_owned_resolved_ring_buffer(&self) -> ResolvedRingBuffer<'static> {
+	pub fn to_static(&self) -> ResolvedRingBuffer<'static> {
 		ResolvedRingBuffer(Arc::new(ResolvedRingBufferInner {
-			identifier: self.0.identifier.to_owned_identifier(),
-			namespace: self.0.namespace.to_owned_resolved_namespace(),
+			identifier: self.0.identifier.to_static(),
+			namespace: self.0.namespace.to_static(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -304,10 +304,10 @@ impl<'a> ResolvedView<'a> {
 	}
 
 	/// Convert to owned version with 'static lifetime
-	pub fn to_owned_resolved_view(&self) -> ResolvedView<'static> {
+	pub fn to_static(&self) -> ResolvedView<'static> {
 		ResolvedView(Arc::new(ResolvedViewInner {
-			identifier: self.0.identifier.to_owned_identifier(),
-			namespace: self.0.namespace.to_owned_resolved_namespace(),
+			identifier: self.0.identifier.to_static(),
+			namespace: self.0.namespace.to_static(),
 			def: self.0.def.clone(),
 		}))
 	}
@@ -354,6 +354,15 @@ impl<'a> ResolvedDeferredView<'a> {
 
 	pub fn columns(&self) -> &[ColumnDef] {
 		&self.0.def.columns
+	}
+
+	/// Convert to owned version with 'static lifetime
+	pub fn to_static(&self) -> ResolvedDeferredView<'static> {
+		ResolvedDeferredView(Arc::new(ResolvedDeferredViewInner {
+			identifier: self.0.identifier.to_static(),
+			namespace: self.0.namespace.to_static(),
+			def: self.0.def.clone(),
+		}))
 	}
 }
 
@@ -402,6 +411,15 @@ impl<'a> ResolvedTransactionalView<'a> {
 
 	pub fn columns(&self) -> &[ColumnDef] {
 		&self.0.def.columns
+	}
+
+	/// Convert to owned version with 'static lifetime
+	pub fn to_static(&self) -> ResolvedTransactionalView<'static> {
+		ResolvedTransactionalView(Arc::new(ResolvedTransactionalViewInner {
+			identifier: self.0.identifier.to_static(),
+			namespace: self.0.namespace.to_static(),
+			def: self.0.def.clone(),
+		}))
 	}
 }
 
@@ -626,6 +644,18 @@ impl<'a> ResolvedSource<'a> {
 			_ => None,
 		}
 	}
+
+	/// Convert to owned version with 'static lifetime
+	pub fn to_static(&self) -> ResolvedSource<'static> {
+		match self {
+			Self::Table(t) => ResolvedSource::Table(t.to_static()),
+			Self::TableVirtual(t) => ResolvedSource::TableVirtual(t.to_static()),
+			Self::View(v) => ResolvedSource::View(v.to_static()),
+			Self::DeferredView(v) => ResolvedSource::DeferredView(v.to_static()),
+			Self::TransactionalView(v) => ResolvedSource::TransactionalView(v.to_static()),
+			Self::RingBuffer(r) => ResolvedSource::RingBuffer(r.to_static()),
+		}
+	}
 }
 
 /// Column with its resolved source
@@ -699,6 +729,15 @@ impl<'a> ResolvedColumn<'a> {
 	/// Get the fragment for error reporting
 	pub fn fragment(&self) -> &Fragment<'a> {
 		&self.0.identifier.name
+	}
+
+	/// Convert to owned version with 'static lifetime
+	pub fn to_static(&self) -> ResolvedColumn<'static> {
+		ResolvedColumn(Arc::new(ResolvedColumnInner {
+			identifier: self.0.identifier.to_static(),
+			source: self.0.source.to_static(),
+			def: self.0.def.clone(),
+		}))
 	}
 }
 

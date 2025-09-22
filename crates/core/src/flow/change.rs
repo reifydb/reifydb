@@ -1,9 +1,8 @@
 use reifydb_type::RowNumber;
-use serde::{Deserialize, Serialize};
 
 use crate::{interface::SourceId, util::CowVec, value::columnar::Columns};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub enum FlowDiff {
 	Insert {
 		source: SourceId,
@@ -69,7 +68,7 @@ impl FlowDiff {
 	}
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct FlowChange {
 	pub diffs: Vec<FlowDiff>,
 }

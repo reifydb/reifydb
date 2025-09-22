@@ -1,7 +1,7 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
-	value::columnar::{Column, Columns},
+	value::columnar::{Column, Columns, ResolvedColumn},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::Params;
@@ -105,6 +105,10 @@ impl MapOperator {
 			let column = evaluator.evaluate(&eval_ctx, expr)?;
 			// Convert to owned/static column
 			let static_col = match column {
+				Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
+					column: rc.column.to_static(),
+					data: rc.data,
+				}),
 				Column::SourceQualified(sq) => {
 					Column::SourceQualified(reifydb_core::value::columnar::SourceQualified {
 						source: sq.source.to_static(),

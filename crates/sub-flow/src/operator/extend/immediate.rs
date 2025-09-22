@@ -1,7 +1,7 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
 	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
-	value::columnar::{Column, Columns},
+	value::columnar::{Column, ColumnQualified, Columns, ResolvedColumn, SourceQualified},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::Params;
@@ -88,19 +88,19 @@ impl ExtendOperator {
 		for col in columns.clone().into_iter() {
 			// Convert each column to 'static by making fragments owned while preserving location info
 			let static_col = match col {
-				Column::SourceQualified(sq) => {
-					Column::SourceQualified(reifydb_core::value::columnar::SourceQualified {
-						source: sq.source.to_static(),
-						name: sq.name.to_static(),
-						data: sq.data.clone(),
-					})
-				}
-				Column::ColumnQualified(cq) => {
-					Column::ColumnQualified(reifydb_core::value::columnar::ColumnQualified {
-						name: cq.name.to_static(),
-						data: cq.data.clone(),
-					})
-				}
+				Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
+					column: rc.column.to_static(),
+					data: rc.data.clone(),
+				}),
+				Column::SourceQualified(sq) => Column::SourceQualified(SourceQualified {
+					source: sq.source.to_static(),
+					name: sq.name.to_static(),
+					data: sq.data.clone(),
+				}),
+				Column::ColumnQualified(cq) => Column::ColumnQualified(ColumnQualified {
+					name: cq.name.to_static(),
+					data: cq.data.clone(),
+				}),
 			};
 			result_columns.push(static_col);
 		}
@@ -120,25 +120,19 @@ impl ExtendOperator {
 			let column = evaluator.evaluate(&eval_ctx, expr)?;
 			// Convert to owned/static column
 			let static_col = match column {
-				Column::SourceQualified(sq) => {
-					Column::SourceQualified(reifydb_core::value::columnar::SourceQualified {
-						source: reifydb_type::Fragment::owned_internal(
-							sq.source.text().to_string(),
-						),
-						name: reifydb_type::Fragment::owned_internal(
-							sq.name.text().to_string(),
-						),
-						data: sq.data,
-					})
-				}
-				Column::ColumnQualified(cq) => {
-					Column::ColumnQualified(reifydb_core::value::columnar::ColumnQualified {
-						name: reifydb_type::Fragment::owned_internal(
-							cq.name.text().to_string(),
-						),
-						data: cq.data,
-					})
-				}
+				Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
+					column: rc.column.to_static(),
+					data: rc.data.clone(),
+				}),
+				Column::SourceQualified(sq) => Column::SourceQualified(SourceQualified {
+					source: reifydb_type::Fragment::owned_internal(sq.source.text().to_string()),
+					name: reifydb_type::Fragment::owned_internal(sq.name.text().to_string()),
+					data: sq.data,
+				}),
+				Column::ColumnQualified(cq) => Column::ColumnQualified(ColumnQualified {
+					name: reifydb_type::Fragment::owned_internal(cq.name.text().to_string()),
+					data: cq.data,
+				}),
 			};
 			result_columns.push(static_col);
 		}

@@ -20,7 +20,7 @@ impl<'a> Columns<'a> {
 				let data = std::mem::replace(column.data_mut(), ColumnData::undefined(0));
 
 				*column = match (&column_layout.namespace, &column_layout.source) {
-					(Some(namespace), Some(source)) => Column::SourceQualified(SourceQualified {
+					(Some(_namespace), Some(source)) => Column::SourceQualified(SourceQualified {
 						source: source.clone(),
 						name: column_layout.name.clone(),
 						data,

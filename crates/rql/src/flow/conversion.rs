@@ -257,25 +257,25 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			// For TableScan, we need to extract the namespace and table defs
 			// from the resolved source and convert them to owned versions
 			PhysicalPlan::TableScan(crate::plan::physical::TableScanNode {
-				source: node.source.to_owned_resolved_table(),
+				source: node.source.to_static(),
 			})
 		}
 		PhysicalPlan::ViewScan(node) => {
 			// For ViewScan, convert the resolved view to owned
 			PhysicalPlan::ViewScan(crate::plan::physical::ViewScanNode {
-				source: node.source.to_owned_resolved_view(),
+				source: node.source.to_static(),
 			})
 		}
 		PhysicalPlan::RingBufferScan(node) => {
 			// For RingBufferScan, convert the resolved ring buffer to owned
 			PhysicalPlan::RingBufferScan(crate::plan::physical::RingBufferScanNode {
-				source: node.source.to_owned_resolved_ring_buffer(),
+				source: node.source.to_static(),
 			})
 		}
 		PhysicalPlan::TableVirtualScan(node) => {
 			// For TableVirtualScan, convert resolved table virtual and context to owned
 			PhysicalPlan::TableVirtualScan(crate::plan::physical::TableVirtualScanNode {
-				source: node.source.to_owned_resolved_table_virtual(),
+				source: node.source.to_static(),
 				pushdown_context: node.pushdown_context.map(|ctx| {
 					crate::plan::physical::TableVirtualPushdownContext {
 						filters: to_owned_expressions(ctx.filters),
@@ -289,7 +289,7 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 		PhysicalPlan::IndexScan(node) => {
 			// For IndexScan, convert the resolved table to owned
 			PhysicalPlan::IndexScan(crate::plan::physical::IndexScanNode {
-				source: node.source.to_owned_resolved_table(),
+				source: node.source.to_static(),
 				index_name: node.index_name.clone(),
 			})
 		}

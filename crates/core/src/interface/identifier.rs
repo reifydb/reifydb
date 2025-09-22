@@ -17,7 +17,7 @@ impl<'a> NamespaceIdentifier<'a> {
 		}
 	}
 
-	pub fn to_owned_identifier(&self) -> NamespaceIdentifier<'static> {
+	pub fn to_static(&self) -> NamespaceIdentifier<'static> {
 		NamespaceIdentifier {
 			name: Fragment::owned_internal(self.name.text()),
 		}
@@ -82,7 +82,7 @@ impl<'a> TableIdentifier<'a> {
 		}
 	}
 
-	pub fn to_owned_identifier(&self) -> TableIdentifier<'static> {
+	pub fn to_static(&self) -> TableIdentifier<'static> {
 		TableIdentifier {
 			namespace: Fragment::owned_internal(self.namespace.text()),
 			name: Fragment::owned_internal(self.name.text()),
@@ -117,7 +117,7 @@ impl<'a> TableVirtualIdentifier<'a> {
 		}
 	}
 
-	pub fn to_owned_identifier(&self) -> TableVirtualIdentifier<'static> {
+	pub fn to_static(&self) -> TableVirtualIdentifier<'static> {
 		TableVirtualIdentifier {
 			namespace: Fragment::owned_internal(self.namespace.text()),
 			name: Fragment::owned_internal(self.name.text()),
@@ -160,7 +160,7 @@ impl<'a> RingBufferIdentifier<'a> {
 		}
 	}
 
-	pub fn to_owned_identifier(&self) -> RingBufferIdentifier<'static> {
+	pub fn to_static(&self) -> RingBufferIdentifier<'static> {
 		RingBufferIdentifier {
 			namespace: Fragment::owned_internal(self.namespace.text()),
 			name: Fragment::owned_internal(self.name.text()),
@@ -195,7 +195,7 @@ impl<'a> DeferredViewIdentifier<'a> {
 		}
 	}
 
-	pub fn to_owned_identifier(&self) -> DeferredViewIdentifier<'static> {
+	pub fn to_static(&self) -> DeferredViewIdentifier<'static> {
 		DeferredViewIdentifier {
 			namespace: Fragment::owned_internal(self.namespace.text()),
 			name: Fragment::owned_internal(self.name.text()),
@@ -230,7 +230,7 @@ impl<'a> TransactionalViewIdentifier<'a> {
 		}
 	}
 
-	pub fn to_owned_identifier(&self) -> TransactionalViewIdentifier<'static> {
+	pub fn to_static(&self) -> TransactionalViewIdentifier<'static> {
 		TransactionalViewIdentifier {
 			namespace: Fragment::owned_internal(self.namespace.text()),
 			name: Fragment::owned_internal(self.name.text()),
@@ -303,13 +303,13 @@ impl<'a> SourceIdentifier<'a> {
 		}
 	}
 
-	pub fn to_owned_identifier(&self) -> SourceIdentifier<'static> {
+	pub fn to_static(&self) -> SourceIdentifier<'static> {
 		match self {
-			Self::Table(t) => SourceIdentifier::Table(t.to_owned_identifier()),
-			Self::TableVirtual(t) => SourceIdentifier::TableVirtual(t.to_owned_identifier()),
-			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.to_owned_identifier()),
-			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.to_owned_identifier()),
-			Self::RingBuffer(r) => SourceIdentifier::RingBuffer(r.to_owned_identifier()),
+			Self::Table(t) => SourceIdentifier::Table(t.to_static()),
+			Self::TableVirtual(t) => SourceIdentifier::TableVirtual(t.to_static()),
+			Self::DeferredView(v) => SourceIdentifier::DeferredView(v.to_static()),
+			Self::TransactionalView(v) => SourceIdentifier::TransactionalView(v.to_static()),
+			Self::RingBuffer(r) => SourceIdentifier::RingBuffer(r.to_static()),
 		}
 	}
 
@@ -395,6 +395,13 @@ impl<'a> ColumnIdentifier<'a> {
 			name: Fragment::Owned(self.name.into_owned()),
 		}
 	}
+
+	pub fn to_static(&self) -> ColumnIdentifier<'static> {
+		ColumnIdentifier {
+			source: self.source.to_static(),
+			name: Fragment::owned_internal(self.name.text()),
+		}
+	}
 }
 
 /// How a column is qualified in plans (always fully qualified)
@@ -420,6 +427,19 @@ impl<'a> ColumnSource<'a> {
 				source: Fragment::Owned(source.into_owned()),
 			},
 			ColumnSource::Alias(alias) => ColumnSource::Alias(Fragment::Owned(alias.into_owned())),
+		}
+	}
+
+	pub fn to_static(&self) -> ColumnSource<'static> {
+		match self {
+			ColumnSource::Source {
+				namespace,
+				source,
+			} => ColumnSource::Source {
+				namespace: Fragment::owned_internal(namespace.text()),
+				source: Fragment::owned_internal(source.text()),
+			},
+			ColumnSource::Alias(alias) => ColumnSource::Alias(Fragment::owned_internal(alias.text())),
 		}
 	}
 

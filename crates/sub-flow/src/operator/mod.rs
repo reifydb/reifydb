@@ -1,7 +1,6 @@
 use reifydb_core::{flow::FlowChange, interface::Transaction};
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 
-mod aggregate;
 mod apply;
 mod distinct;
 mod extend;
@@ -13,7 +12,6 @@ mod take;
 pub(crate) mod transform;
 mod union;
 
-pub use aggregate::AggregateOperator;
 pub use apply::ApplyOperator;
 pub use distinct::DistinctOperator;
 pub use extend::ExtendOperator;
@@ -38,7 +36,6 @@ pub enum Operators<T: Transaction> {
 	Map(MapOperator),
 	Extend(ExtendOperator),
 	MapTerminal(MapTerminalOperator),
-	Aggregate(AggregateOperator),
 	Join(JoinOperator),
 	Sort(SortOperator),
 	Take(TakeOperator),
@@ -59,7 +56,6 @@ impl<T: Transaction> Operators<T> {
 			Operators::Map(op) => op.apply(txn, change, evaluator),
 			Operators::Extend(op) => op.apply(txn, change, evaluator),
 			Operators::MapTerminal(op) => op.apply(txn, change, evaluator),
-			Operators::Aggregate(op) => op.apply(txn, change, evaluator),
 			Operators::Join(op) => op.apply(txn, change, evaluator),
 			Operators::Sort(op) => op.apply(txn, change, evaluator),
 			Operators::Take(op) => op.apply(txn, change, evaluator),

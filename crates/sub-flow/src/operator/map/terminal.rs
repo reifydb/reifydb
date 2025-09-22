@@ -5,7 +5,7 @@ use reifydb_core::{
 		expression::{CastExpression, Expression, TypeExpression},
 	},
 	log_error,
-	value::columnar::{Column, ColumnQualified, Columns, SourceQualified},
+	value::columnar::{Column, ColumnQualified, Columns, ResolvedColumn, SourceQualified},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{Fragment, Params, Type};
@@ -193,20 +193,17 @@ impl MapTerminalOperator {
 					})
 				}
 			} else {
-				// No namespace info for this column
-				// (shouldn't happen for terminal
-				// operator) but we handle it
-				// gracefully
 				let result = evaluator.evaluate(&eval_ctx, expr)?;
-				// Convert to owned/static column
 				match result {
-					Column::SourceQualified(sq) => Column::SourceQualified(
-						reifydb_core::value::columnar::SourceQualified {
-							source: sq.source.to_static(),
-							name: sq.name.to_static(),
-							data: sq.data,
-						},
-					),
+					Column::Resolved(rc) => Column::Resolved(ResolvedColumn {
+						column: rc.column.to_static(),
+						data: rc.data,
+					}),
+					Column::SourceQualified(sq) => Column::SourceQualified(SourceQualified {
+						source: sq.source.to_static(),
+						name: sq.name.to_static(),
+						data: sq.data,
+					}),
 					Column::ColumnQualified(cq) => Column::ColumnQualified(ColumnQualified {
 						name: cq.name.to_static(),
 						data: cq.data,

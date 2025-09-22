@@ -7,10 +7,9 @@ use std::{
 };
 
 use reifydb_type::{Fragment, Type, Value};
-use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{NamespaceDef, RingBufferDef, TableDef, ViewDef},
+	interface::{RingBufferDef, TableDef, ViewDef},
 	util::CowVec,
 	value::{
 		columnar::{Column, ColumnData, ColumnQualified, SourceQualified},
@@ -18,7 +17,7 @@ use crate::{
 	},
 };
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct Columns<'a>(pub CowVec<Column<'a>>);
 
 impl<'a> Deref for Columns<'a> {
@@ -212,55 +211,7 @@ impl<'a> Columns<'a> {
 		Self::new(columns)
 	}
 
-	pub fn from_table_def_fully_qualified(namespace: &NamespaceDef, table: &TableDef) -> Self {
-		let columns: Vec<Column> = table
-			.columns
-			.iter()
-			.map(|col| {
-				let name = col.name.clone();
-				let data = match col.constraint.get_type() {
-					Type::Boolean => ColumnData::bool(vec![]),
-					Type::Float4 => ColumnData::float4(vec![]),
-					Type::Float8 => ColumnData::float8(vec![]),
-					Type::Int1 => ColumnData::int1(vec![]),
-					Type::Int2 => ColumnData::int2(vec![]),
-					Type::Int4 => ColumnData::int4(vec![]),
-					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => ColumnData::int16(vec![]),
-					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
-					Type::Uint1 => ColumnData::uint1(vec![]),
-					Type::Uint2 => ColumnData::uint2(vec![]),
-					Type::Uint4 => ColumnData::uint4(vec![]),
-					Type::Uint8 => ColumnData::uint8(vec![]),
-					Type::Uint16 => ColumnData::uint16(vec![]),
-					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => ColumnData::datetime(vec![]),
-					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => ColumnData::interval(vec![]),
-					Type::RowNumber => ColumnData::row_number(vec![]),
-					Type::IdentityId => ColumnData::identity_id(vec![]),
-					Type::Uuid4 => ColumnData::uuid4(vec![]),
-					Type::Uuid7 => ColumnData::uuid7(vec![]),
-					Type::Blob => ColumnData::blob(vec![]),
-					Type::Int => ColumnData::int(vec![]),
-					Type::Uint => ColumnData::uint(vec![]),
-					Type::Decimal {
-						..
-					} => ColumnData::decimal(vec![]),
-					Type::Undefined => ColumnData::undefined(0),
-				};
-				Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal(table.name.clone()),
-					name: Fragment::owned_internal(name),
-					data,
-				})
-			})
-			.collect();
-
-		Self::new(columns)
-	}
-
-	pub fn from_ring_buffer_def_fully_qualified(namespace: &NamespaceDef, ring_buffer: &RingBufferDef) -> Self {
+	pub fn from_ring_buffer_def(ring_buffer: &RingBufferDef) -> Self {
 		let columns: Vec<Column> = ring_buffer
 			.columns
 			.iter()
@@ -309,54 +260,6 @@ impl<'a> Columns<'a> {
 	}
 
 	pub fn from_view_def(view: &ViewDef) -> Self {
-		let columns: Vec<Column> = view
-			.columns
-			.iter()
-			.map(|col| {
-				let name = col.name.clone();
-				let data = match col.constraint.get_type() {
-					Type::Boolean => ColumnData::bool(vec![]),
-					Type::Float4 => ColumnData::float4(vec![]),
-					Type::Float8 => ColumnData::float8(vec![]),
-					Type::Int1 => ColumnData::int1(vec![]),
-					Type::Int2 => ColumnData::int2(vec![]),
-					Type::Int4 => ColumnData::int4(vec![]),
-					Type::Int8 => ColumnData::int8(vec![]),
-					Type::Int16 => ColumnData::int16(vec![]),
-					Type::Utf8 => ColumnData::utf8(Vec::<String>::new()),
-					Type::Uint1 => ColumnData::uint1(vec![]),
-					Type::Uint2 => ColumnData::uint2(vec![]),
-					Type::Uint4 => ColumnData::uint4(vec![]),
-					Type::Uint8 => ColumnData::uint8(vec![]),
-					Type::Uint16 => ColumnData::uint16(vec![]),
-					Type::Date => ColumnData::date(vec![]),
-					Type::DateTime => ColumnData::datetime(vec![]),
-					Type::Time => ColumnData::time(vec![]),
-					Type::Interval => ColumnData::interval(vec![]),
-					Type::RowNumber => ColumnData::row_number(vec![]),
-					Type::IdentityId => ColumnData::identity_id(vec![]),
-					Type::Uuid4 => ColumnData::uuid4(vec![]),
-					Type::Uuid7 => ColumnData::uuid7(vec![]),
-					Type::Blob => ColumnData::blob(vec![]),
-					Type::Int => ColumnData::int(vec![]),
-					Type::Uint => ColumnData::uint(vec![]),
-					Type::Decimal {
-						..
-					} => ColumnData::decimal(vec![]),
-					Type::Undefined => ColumnData::undefined(0),
-				};
-				Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal(view.name.clone()),
-					name: Fragment::owned_internal(name),
-					data,
-				})
-			})
-			.collect();
-
-		Self::new(columns)
-	}
-
-	pub fn from_view_def_fully_qualified(namespace: &NamespaceDef, view: &ViewDef) -> Self {
 		let columns: Vec<Column> = view
 			.columns
 			.iter()
