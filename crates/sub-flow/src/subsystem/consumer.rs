@@ -7,8 +7,8 @@ use reifydb_core::{
 	Result,
 	flow::{Flow, FlowChange, FlowDiff},
 	interface::{
-		CdcChange, CdcEvent, Engine, GetEncodedRowLayout, Identity, Key, Params, QueryTransaction, SourceId,
-		Transaction,
+		CdcChange, CdcEvent, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, QueryTransaction,
+		SourceId, Transaction,
 	},
 	util::CowVec,
 	value::row::{EncodedRow, Row},
@@ -48,11 +48,11 @@ impl<T: Transaction> FlowConsumer<T> {
 		let layout = match source {
 			SourceId::Table(table_id) => {
 				let resolved_table = resolve_table(txn, table_id)?;
-				resolved_table.def().get_layout()
+				resolved_table.def().get_named_layout()
 			}
 			SourceId::View(view_id) => {
 				let resolved_view = resolve_view(txn, view_id)?;
-				resolved_view.def().get_layout()
+				resolved_view.def().get_named_layout()
 			}
 			SourceId::TableVirtual(_) => {
 				// Virtual tables not supported in flows yet
@@ -60,7 +60,7 @@ impl<T: Transaction> FlowConsumer<T> {
 			}
 			SourceId::RingBuffer(ring_buffer_id) => {
 				let resolved_ring_buffer = resolve_ring_buffer(txn, ring_buffer_id)?;
-				resolved_ring_buffer.def().get_layout()
+				resolved_ring_buffer.def().get_named_layout()
 			}
 			SourceId::FlowNode(_flow_node_id) => {
 				// Flow nodes don't have catalog entries; they're intermediate results
