@@ -8,13 +8,12 @@ use reifydb_core::{
 	interface::{
 		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, Params, ResolvedColumn,
 		ResolvedNamespace, ResolvedSource, ResolvedTable, Transaction,
-		identifier::{ColumnIdentifier, NamespaceIdentifier, TableIdentifier},
 	},
 	return_error,
 	value::{column::Columns, row::EncodedRowLayout},
 };
 use reifydb_rql::plan::physical::InsertTableNode;
-use reifydb_type::{Fragment, IntoFragment, Type, Value, diagnostic::catalog::table_not_found};
+use reifydb_type::{Fragment, Type, Value, diagnostic::catalog::table_not_found};
 
 use super::primary_key;
 use crate::{
@@ -39,7 +38,7 @@ impl Executor {
 
 		let table_name = plan.target.name();
 		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
-			let fragment = plan.target.identifier().name.clone().into_fragment();
+			let fragment = plan.target.identifier().clone();
 			return_error!(table_not_found(fragment.clone(), namespace_name, table_name,));
 		};
 
@@ -47,13 +46,10 @@ impl Executor {
 		let layout = EncodedRowLayout::new(&table_types);
 
 		// Create resolved source for the table
-		let namespace_ident = NamespaceIdentifier::new(Fragment::owned_internal(namespace.name.clone()));
+		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let table_ident = TableIdentifier::new(
-			Fragment::owned_internal(namespace.name.clone()),
-			Fragment::owned_internal(table.name.clone()),
-		);
+		let table_ident = Fragment::owned_internal(table.name.clone());
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
 		let resolved_source = Some(ResolvedSource::Table(resolved_table));
 
@@ -104,11 +100,7 @@ impl Executor {
 					}
 
 					// Create ResolvedColumn for this column
-					let column_ident = ColumnIdentifier::with_source(
-						Fragment::owned_internal(namespace.name.clone()),
-						Fragment::owned_internal(table.name.clone()),
-						Fragment::owned_internal(table_column.name.clone()),
-					);
+					let column_ident = Fragment::owned_internal(table_column.name.clone());
 					let resolved_column = ResolvedColumn::new(
 						column_ident,
 						execution_context.source.clone().unwrap(),

@@ -26,7 +26,7 @@ impl From<u8> for ChangeType {
 }
 
 // Layout for efficient transaction storage (shared metadata + packed changes)
-pub(crate) static CDC_TRANSACTION_LAYOSVT: LazyLock<EncodedRowLayout> = LazyLock::new(|| {
+pub(crate) static CDC_TRANSACTION_LAYOUT: LazyLock<EncodedRowLayout> = LazyLock::new(|| {
 	EncodedRowLayout::new(&[
 		Type::Uint8, // version
 		Type::Uint8, // timestamp
@@ -41,7 +41,7 @@ pub(crate) const CDC_TX_TRANSACTION_FIELD: usize = 2;
 pub(crate) const CDC_TX_CHANGES_FIELD: usize = 3;
 
 // Layout for individual changes (without metadata)
-pub(crate) static CDC_CHANGE_LAYOSVT: LazyLock<EncodedRowLayout> = LazyLock::new(|| {
+pub(crate) static CDC_CHANGE_LAYOUT: LazyLock<EncodedRowLayout> = LazyLock::new(|| {
 	EncodedRowLayout::new(&[
 		Type::Uint1, // change_type (1=Insert, 2=Update, 3=Delete)
 		Type::Blob,  // key

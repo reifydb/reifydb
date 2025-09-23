@@ -21,10 +21,10 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = RingBufferId(ring_buffer::LAYOSVT.get_u64(&row, ring_buffer::ID));
-		let namespace = NamespaceId(ring_buffer::LAYOSVT.get_u64(&row, ring_buffer::NAMESPACE));
-		let name = ring_buffer::LAYOSVT.get_utf8(&row, ring_buffer::NAME).to_string();
-		let capacity = ring_buffer::LAYOSVT.get_u64(&row, ring_buffer::CAPACITY);
+		let id = RingBufferId(ring_buffer::LAYOUT.get_u64(&row, ring_buffer::ID));
+		let namespace = NamespaceId(ring_buffer::LAYOUT.get_u64(&row, ring_buffer::NAMESPACE));
+		let name = ring_buffer::LAYOUT.get_utf8(&row, ring_buffer::NAME).to_string();
+		let capacity = ring_buffer::LAYOUT.get_u64(&row, ring_buffer::CAPACITY);
 
 		Ok(Some(RingBufferDef {
 			id,
@@ -45,11 +45,11 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let buffer_id = RingBufferId(ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::ID));
-		let capacity = ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::CAPACITY);
-		let head = ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::HEAD);
-		let tail = ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::TAIL);
-		let current_size = ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::COUNT);
+		let buffer_id = RingBufferId(ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::ID));
+		let capacity = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::CAPACITY);
+		let head = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::HEAD);
+		let tail = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::TAIL);
+		let current_size = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::COUNT);
 
 		Ok(Some(RingBufferMetadata {
 			id: buffer_id,
@@ -70,10 +70,10 @@ impl CatalogStore {
 			rx.range(NamespaceRingBufferKey::full_scan(namespace))?.find_map(|multi: MultiVersionRow| {
 				let row = &multi.row;
 				let ring_buffer_name =
-					ring_buffer_namespace::LAYOSVT.get_utf8(row, ring_buffer_namespace::NAME);
+					ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME);
 				if name == ring_buffer_name {
 					Some(RingBufferId(
-						ring_buffer_namespace::LAYOSVT.get_u64(row, ring_buffer_namespace::ID),
+						ring_buffer_namespace::LAYOUT.get_u64(row, ring_buffer_namespace::ID),
 					))
 				} else {
 					None

@@ -35,16 +35,8 @@ impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
 		let input_node = compiler.compile_plan(*self.input)?;
 
 		// Convert column identifiers to column expressions
-		// TODO: Should use fully qualified column references
-		let expressions: Vec<Expression<'static>> = self
-			.columns
-			.into_iter()
-			.map(|col| {
-				// Convert the ColumnIdentifier to an owned
-				// version
-				Expression::Column(ColumnExpression(col.into_owned()))
-			})
-			.collect();
+		let expressions: Vec<Expression<'static>> =
+			self.columns.into_iter().map(|col| Expression::Column(ColumnExpression(col))).collect();
 
 		compiler.build_node(Operator {
 			operator: Distinct {

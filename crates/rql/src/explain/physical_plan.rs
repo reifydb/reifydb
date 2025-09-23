@@ -76,8 +76,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			value,
 		}) => {
 			let label = format!(
-				"AlterSequence {}.{}.{} SET VALUE {}",
-				sequence.namespace.text(),
+				"AlterSequence {}.{} SET VALUE {}",
 				sequence.name.text(),
 				column.name.text(),
 				value

@@ -25,7 +25,7 @@ impl CatalogStore {
 
 		Ok(rx.range(NamespaceKey::full_scan())?.find_map(|multi| {
 			let row: &EncodedRow = &multi.row;
-			let namespace_name = namespace::LAYOSVT.get_utf8(row, namespace::NAME);
+			let namespace_name = namespace::LAYOUT.get_utf8(row, namespace::NAME);
 			if name == namespace_name {
 				Some(convert_namespace(multi))
 			} else {

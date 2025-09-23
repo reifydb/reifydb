@@ -21,9 +21,9 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = TableId(table::LAYOSVT.get_u64(&row, table::ID));
-		let namespace = NamespaceId(table::LAYOSVT.get_u64(&row, table::NAMESPACE));
-		let name = table::LAYOSVT.get_utf8(&row, table::NAME).to_string();
+		let id = TableId(table::LAYOUT.get_u64(&row, table::ID));
+		let namespace = NamespaceId(table::LAYOUT.get_u64(&row, table::NAMESPACE));
+		let name = table::LAYOUT.get_utf8(&row, table::NAME).to_string();
 
 		Ok(Some(TableDef {
 			id,
@@ -43,9 +43,9 @@ impl CatalogStore {
 		let Some(table) =
 			rx.range(NamespaceTableKey::full_scan(namespace))?.find_map(|multi: MultiVersionRow| {
 				let row = &multi.row;
-				let table_name = table_namespace::LAYOSVT.get_utf8(row, table_namespace::NAME);
+				let table_name = table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME);
 				if name == table_name {
-					Some(TableId(table_namespace::LAYOSVT.get_u64(row, table_namespace::ID)))
+					Some(TableId(table_namespace::LAYOUT.get_u64(row, table_namespace::ID)))
 				} else {
 					None
 				}

@@ -5,10 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{
-		Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, Transaction,
-		identifier::{ColumnIdentifier, NamespaceIdentifier, RingBufferIdentifier},
-	},
+	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, Transaction},
 	return_error,
 	value::{column::Columns, row::EncodedRowLayout},
 };
@@ -49,13 +46,10 @@ impl Executor {
 		let layout = EncodedRowLayout::new(&ring_buffer_types);
 
 		// Create resolved source for the ring buffer
-		let namespace_ident = NamespaceIdentifier::new(Fragment::owned_internal(namespace.name.clone()));
+		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let rb_ident = RingBufferIdentifier::new(
-			Fragment::owned_internal(namespace.name.clone()),
-			Fragment::owned_internal(ring_buffer.name.clone()),
-		);
+		let rb_ident = Fragment::owned_internal(ring_buffer.name.clone());
 		let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ring_buffer.clone());
 		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
 
@@ -99,11 +93,7 @@ impl Executor {
 					// TODO: Add support if needed
 
 					// Create a ResolvedColumn for this ring buffer column
-					let column_ident = ColumnIdentifier::with_source(
-						Fragment::borrowed_internal(&namespace.name),
-						Fragment::borrowed_internal(&ring_buffer.name),
-						Fragment::borrowed_internal(&rb_column.name),
-					);
+					let column_ident = Fragment::borrowed_internal(&rb_column.name);
 					let resolved_column = ResolvedColumn::new(
 						column_ident,
 						execution_context.source.clone().unwrap(),

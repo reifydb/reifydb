@@ -8,8 +8,14 @@ mod query;
 pub mod resolver;
 
 use identifier::{
-	ColumnIdentifier, IndexIdentifier, NamespaceIdentifier, RingBufferIdentifier, SequenceIdentifier,
-	TableIdentifier, ViewIdentifier,
+	ColumnIdentifier,
+	IndexIdentifier,
+	NamespaceIdentifier,
+	// Keeping these as type aliases for now to maintain compatibility
+	RingBufferIdentifier,
+	SequenceIdentifier,
+	TableIdentifier,
+	ViewIdentifier,
 };
 use reifydb_catalog::{
 	CatalogQueryTransaction, ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate,
@@ -357,7 +363,7 @@ pub struct CreateIndexNode<'a> {
 
 #[derive(Debug)]
 pub struct IndexColumn<'a> {
-	pub column: ColumnIdentifier<'a>,
+	pub column: Fragment<'a>,
 	pub order: Option<SortDirection>,
 }
 

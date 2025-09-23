@@ -342,7 +342,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 				if let Some(alias_expr) = row_data.get(column_layout.name.text()) {
 					let ctx = EvaluationContext {
 						target: Some(TargetColumn::Partial {
-							source_name: Some(source.effective_name().to_string()),
+							source_name: Some(source.identifier().text().to_string()),
 							column_name: Some(table_column.name.clone()),
 							column_type: table_column.constraint.get_type(),
 							policies: table_column

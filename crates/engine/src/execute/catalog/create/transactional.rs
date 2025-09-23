@@ -14,17 +14,17 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateTransactionalViewNode,
 	) -> crate::Result<Columns<'a>> {
-		if let Some(view) = CatalogStore::find_view_by_name(txn, plan.namespace.id, plan.view.name.text())? {
+		if let Some(view) = CatalogStore::find_view_by_name(txn, plan.namespace.id, plan.view.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
-					("view", Value::Utf8(plan.view.name.text().to_string())),
+					("view", Value::Utf8(plan.view.text().to_string())),
 					("created", Value::Boolean(false)),
 				]));
 			}
 
 			return_error!(view_already_exists(
-				Some(plan.view.name.clone().into_owned()),
+				Some(plan.view.clone().into_owned()),
 				&plan.namespace.name,
 				&view.name,
 			));
@@ -33,8 +33,8 @@ impl Executor {
 		let result = CatalogStore::create_transactional_view(
 			txn,
 			ViewToCreate {
-				fragment: Some(plan.view.name.clone().into_owned()),
-				name: plan.view.name.text().to_string(),
+				fragment: Some(plan.view.clone().into_owned()),
+				name: plan.view.text().to_string(),
 				namespace: plan.namespace.id,
 				columns: plan.columns,
 			},
@@ -44,7 +44,7 @@ impl Executor {
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),
-			("view", Value::Utf8(plan.view.name.text().to_string())),
+			("view", Value::Utf8(plan.view.text().to_string())),
 			("created", Value::Boolean(true)),
 		]))
 	}

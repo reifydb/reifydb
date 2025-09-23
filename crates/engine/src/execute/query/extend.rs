@@ -4,7 +4,7 @@
 use std::{marker::PhantomData, sync::Arc};
 
 use reifydb_core::{
-	interface::{ColumnIdentifier, ResolvedColumn, TargetColumn, Transaction, evaluate::expression::Expression},
+	interface::{ResolvedColumn, TargetColumn, Transaction, evaluate::expression::Expression},
 	value::column::{Column, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::{Fragment, Params};
@@ -75,22 +75,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 						source.columns().iter().find(|col| col.name == alias_name)
 					{
 						// Create a resolved column with source information
-						let column_ident = match source {
-							reifydb_core::interface::ResolvedSource::Table(t) => {
-								ColumnIdentifier::with_source(
-									Fragment::borrowed_internal(
-										t.namespace().name().as_ref(),
-									),
-									Fragment::borrowed_internal(t.name().as_ref()),
-									Fragment::borrowed_internal(&table_column.name),
-								)
-							}
-							_ => ColumnIdentifier::with_source(
-								Fragment::borrowed_internal(""),
-								Fragment::borrowed_internal(source.effective_name()),
-								Fragment::borrowed_internal(&table_column.name),
-							),
-						};
+						let column_ident = Fragment::borrowed_internal(&table_column.name);
 						let resolved_column = ResolvedColumn::new(
 							column_ident,
 							source.clone(),

@@ -59,13 +59,13 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &TableToCreate,
 	) -> crate::Result<()> {
-		let mut row = table::LAYOSVT.allocate_row();
-		table::LAYOSVT.set_u64(&mut row, table::ID, table);
-		table::LAYOSVT.set_u64(&mut row, table::NAMESPACE, namespace);
-		table::LAYOSVT.set_utf8(&mut row, table::NAME, &to_create.table);
+		let mut row = table::LAYOUT.allocate_row();
+		table::LAYOUT.set_u64(&mut row, table::ID, table);
+		table::LAYOUT.set_u64(&mut row, table::NAMESPACE, namespace);
+		table::LAYOUT.set_utf8(&mut row, table::NAME, &to_create.table);
 
 		// Initialize with no primary key
-		table::LAYOSVT.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
+		table::LAYOUT.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
 
 		txn.set(
 			&TableKey {
@@ -84,9 +84,9 @@ impl CatalogStore {
 		table: TableId,
 		name: &str,
 	) -> crate::Result<()> {
-		let mut row = table_namespace::LAYOSVT.allocate_row();
-		table_namespace::LAYOSVT.set_u64(&mut row, table_namespace::ID, table);
-		table_namespace::LAYOSVT.set_utf8(&mut row, table_namespace::NAME, name);
+		let mut row = table_namespace::LAYOUT.allocate_row();
+		table_namespace::LAYOUT.set_u64(&mut row, table_namespace::ID, table);
+		table_namespace::LAYOUT.set_utf8(&mut row, table_namespace::NAME, name);
 		txn.set(
 			&Key::NamespaceTable(NamespaceTableKey {
 				namespace,
@@ -192,12 +192,12 @@ mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(table_namespace::LAYOSVT.get_u64(row, table_namespace::ID), 1025);
-		assert_eq!(table_namespace::LAYOSVT.get_utf8(row, table_namespace::NAME), "test_table");
+		assert_eq!(table_namespace::LAYOUT.get_u64(row, table_namespace::ID), 1025);
+		assert_eq!(table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME), "test_table");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(table_namespace::LAYOSVT.get_u64(row, table_namespace::ID), 1026);
-		assert_eq!(table_namespace::LAYOSVT.get_utf8(row, table_namespace::NAME), "another_table");
+		assert_eq!(table_namespace::LAYOUT.get_u64(row, table_namespace::ID), 1026);
+		assert_eq!(table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME), "another_table");
 	}
 }

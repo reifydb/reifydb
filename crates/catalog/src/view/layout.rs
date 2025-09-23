@@ -12,7 +12,7 @@ pub(crate) mod view {
 	pub(crate) const KIND: usize = 3;
 	pub(crate) const PRIMARY_KEY: usize = 4;
 
-	pub(crate) static LAYOSVT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // id
 			Type::Uint8, // namespace id
@@ -31,7 +31,7 @@ pub(crate) mod view_namespace {
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
 
-	pub(crate) static LAYOSVT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // id
 			Type::Utf8,  // name

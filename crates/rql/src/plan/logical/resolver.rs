@@ -118,7 +118,7 @@ pub fn build_resolved_namespace<'a>(
 	// Result<NamespaceDef>
 	let def = tx.get_namespace_by_name(namespace_name)?;
 
-	let resolved = ResolvedNamespace::new(ident, def);
+	let resolved = ResolvedNamespace::new(ident.name.clone(), def);
 
 	Ok(resolved)
 }
@@ -159,7 +159,7 @@ pub fn build_resolved_table<'a>(
 		.into()
 	})?;
 
-	Ok(ResolvedTable::new(table_ident, namespace, def))
+	Ok(ResolvedTable::new(table_ident.name.clone(), namespace, def))
 }
 
 /// Build a resolved ring buffer
@@ -200,7 +200,7 @@ pub fn build_resolved_ring_buffer<'a>(
 		},
 	)?;
 
-	Ok(ResolvedRingBuffer::new(ring_buffer_ident, namespace, def))
+	Ok(ResolvedRingBuffer::new(ring_buffer_ident.name.clone(), namespace, def))
 }
 
 /// Build a resolved view
@@ -234,7 +234,7 @@ pub fn build_resolved_view<'a>(
 		.into()
 	})?;
 
-	Ok(ResolvedView::new(view_ident, namespace, def))
+	Ok(ResolvedView::new(view_ident.name.clone(), namespace, def))
 }
 
 /// Build a resolved source from an unresolved identifier
@@ -348,9 +348,7 @@ pub fn build_resolved_source<'a>(
 		if let Some(def) = get_system_table_def(source_name) {
 			// For system tables, we need to get the system
 			// namespace
-			let namespace_ident = NamespaceIdentifier {
-				name: ident.namespace().clone(),
-			};
+			let namespace_ident = ident.namespace().clone();
 			// Build a resolved namespace for "system"
 			// Since system namespace might not exist in the
 			// catalog, we create a synthetic one
@@ -362,15 +360,8 @@ pub fn build_resolved_source<'a>(
 				},
 			);
 
-			// Extract or create TableVirtualIdentifier
-			let virtual_ident = match ident {
-				SourceIdentifier::TableVirtual(t) => t,
-				_ => TableVirtualIdentifier {
-					namespace: ident.namespace().clone(),
-					name: ident.name().clone(),
-					alias: ident.alias().cloned(),
-				},
-			};
+			// Extract the name fragment for the virtual table identifier
+			let virtual_ident = ident.name().clone();
 			let virtual_table = ResolvedTableVirtual::new(virtual_ident, namespace, (*def).clone());
 			let resolved = ResolvedSource::TableVirtual(virtual_table);
 			return Ok(resolved);
@@ -394,14 +385,7 @@ pub fn build_resolved_source<'a>(
 		// Check view kind and create appropriate resolved type
 		let resolved = match view.def().kind {
 			ViewKind::Deferred => {
-				let deferred_ident = match ident {
-					SourceIdentifier::View(d) => d,
-					_ => ViewIdentifier {
-						namespace: ident.namespace().clone(),
-						name: ident.name().clone(),
-						alias: ident.alias().cloned(),
-					},
-				};
+				let deferred_ident = ident.name().clone();
 				let deferred = ResolvedDeferredView::new(
 					deferred_ident,
 					view.namespace().clone(),
@@ -410,14 +394,7 @@ pub fn build_resolved_source<'a>(
 				ResolvedSource::DeferredView(deferred)
 			}
 			ViewKind::Transactional => {
-				let trans_ident = match ident {
-					SourceIdentifier::View(t) => t,
-					_ => ViewIdentifier {
-						namespace: ident.namespace().clone(),
-						name: ident.name().clone(),
-						alias: ident.alias().cloned(),
-					},
-				};
+				let trans_ident = ident.name().clone();
 				let transactional = ResolvedTransactionalView::new(
 					trans_ident,
 					view.namespace().clone(),

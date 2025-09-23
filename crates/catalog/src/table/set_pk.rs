@@ -29,7 +29,7 @@ impl CatalogStore {
 		};
 
 		let mut updated_row = multi.row.clone();
-		table::LAYOSVT.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
+		table::LAYOUT.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(
 			&Key::Table(TableKey {

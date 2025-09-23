@@ -11,7 +11,7 @@ use reifydb_core::{
 };
 use reifydb_type::Type;
 
-static LAYOSVT: Lazy<EncodedRowLayout> = Lazy::new(|| EncodedRowLayout::new(&[Type::Int1]));
+static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| EncodedRowLayout::new(&[Type::Int1]));
 
 pub(crate) struct GeneratorI8 {}
 
@@ -24,21 +24,21 @@ impl GeneratorI8 {
 		txn.with_single_command(|tx| match tx.get(key)? {
 			Some(row) => {
 				let mut row = row.row;
-				let current_value = LAYOSVT.get_i8(&row, 0);
+				let current_value = LAYOUT.get_i8(&row, 0);
 				let next_value = current_value.saturating_add(1);
 
 				if current_value == next_value {
 					return_error!(sequence_exhausted(Type::Int1));
 				}
 
-				LAYOSVT.set_i8(&mut row, 0, next_value);
+				LAYOUT.set_i8(&mut row, 0, next_value);
 				tx.set(key, row)?;
 				Ok(next_value)
 			}
 			None => {
 				let result = default.unwrap_or(1i8);
-				let mut new_row = LAYOSVT.allocate_row();
-				LAYOSVT.set_i8(&mut new_row, 0, result);
+				let mut new_row = LAYOUT.allocate_row();
+				LAYOUT.set_i8(&mut new_row, 0, result);
 				tx.set(key, new_row)?;
 				Ok(result)
 			}
@@ -49,9 +49,9 @@ impl GeneratorI8 {
 		txn.with_single_command(|tx| {
 			let mut row = match tx.get(key)? {
 				Some(row) => row.row,
-				None => LAYOSVT.allocate_row(),
+				None => LAYOUT.allocate_row(),
 			};
-			LAYOSVT.set_i8(&mut row, 0, value);
+			LAYOUT.set_i8(&mut row, 0, value);
 			tx.set(key, row)?;
 			Ok(())
 		})
@@ -68,7 +68,7 @@ mod tests {
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
 
-	use crate::sequence::generator::i8::{GeneratorI8, LAYOSVT};
+	use crate::sequence::generator::i8::{GeneratorI8, LAYOUT};
 
 	#[test]
 	fn test_ok() {
@@ -85,7 +85,7 @@ mod tests {
 			single.pop().unwrap();
 			let single = single.pop().unwrap();
 			assert_eq!(single.key, EncodedKey::new("sequence"));
-			assert_eq!(LAYOSVT.get_i8(&single.row, 0), 99);
+			assert_eq!(LAYOUT.get_i8(&single.row, 0), 99);
 
 			Ok(())
 		})
@@ -96,8 +96,8 @@ mod tests {
 	fn test_exhaustion() {
 		let mut txn = create_test_command_transaction();
 
-		let mut row = LAYOSVT.allocate_row();
-		LAYOSVT.set_i8(&mut row, 0, i8::MAX);
+		let mut row = LAYOUT.allocate_row();
+		LAYOUT.set_i8(&mut row, 0, i8::MAX);
 
 		txn.with_single_command(|tx| tx.set(&EncodedKey::new("sequence"), row)).unwrap();
 

@@ -11,8 +11,7 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
 		EncodableKey, EncodableKeyRange, MultiVersionQueryTransaction, RowKey, RowKeyRange, Transaction,
-		identifier::ColumnIdentifier,
-		resolved::{ResolvedColumn as RColumn, ResolvedSource, ResolvedView},
+		resolved::{ResolvedColumn, ResolvedSource, ResolvedView},
 	},
 	log_debug,
 	value::{
@@ -138,11 +137,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<'a, T> {
 		if ctx.preserve_row_numbers {
 			// Create a resolved column for row numbers
 			let source = ResolvedSource::View(self.view.clone());
-			let column_ident = ColumnIdentifier::with_source(
-				Fragment::owned_internal(self.view.namespace().name()),
-				Fragment::owned_internal(self.view.name()),
-				Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
-			);
+			let column_ident = Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME);
 			// Create a dummy ColumnDef for row number
 			let col_def = reifydb_core::interface::ColumnDef {
 				id: reifydb_core::interface::ColumnId(0),
@@ -152,7 +147,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<'a, T> {
 				auto_increment: false,
 				policies: Vec::new(),
 			};
-			let resolved_col = RColumn::new(column_ident, source, col_def);
+			let resolved_col = ResolvedColumn::new(column_ident, source, col_def);
 			let row_number_column = Column::Resolved(ColumnResolved::new(
 				resolved_col,
 				ColumnData::row_number(row_numbers),

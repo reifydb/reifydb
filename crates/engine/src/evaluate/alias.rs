@@ -22,9 +22,9 @@ impl StandardEvaluator {
 			.target
 			.as_ref()
 			.and_then(|c| match c {
-				TargetColumn::Resolved(col) => match col.source().effective_name() {
-					name => Some(Fragment::owned_internal(name)),
-				},
+				TargetColumn::Resolved(col) => {
+					Some(Fragment::owned_internal(col.source().identifier().text()))
+				}
 				TargetColumn::Partial {
 					..
 				} => None,

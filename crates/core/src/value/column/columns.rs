@@ -11,7 +11,6 @@ use reifydb_type::{Fragment, Value};
 use crate::{
 	interface::{
 		ResolvedColumn,
-		identifier::ColumnIdentifier,
 		resolved::{ResolvedRingBuffer, ResolvedSource, ResolvedTable, ResolvedView},
 	},
 	util::CowVec,
@@ -174,11 +173,7 @@ impl<'a> Columns<'a> {
 			.columns()
 			.iter()
 			.map(|col| {
-				let column_ident = ColumnIdentifier::with_source(
-					Fragment::owned_internal(table.namespace().name()),
-					Fragment::owned_internal(table.name()),
-					Fragment::owned_internal(&col.name),
-				);
+				let column_ident = Fragment::owned_internal(&col.name);
 				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
 				Column::Resolved(ColumnResolved::new(
 					resolved_col,
@@ -197,11 +192,7 @@ impl<'a> Columns<'a> {
 			.columns()
 			.iter()
 			.map(|col| {
-				let column_ident = ColumnIdentifier::with_source(
-					Fragment::owned_internal(ring_buffer.namespace().name()),
-					Fragment::owned_internal(ring_buffer.name()),
-					Fragment::owned_internal(&col.name),
-				);
+				let column_ident = Fragment::owned_internal(&col.name);
 				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
 				Column::Resolved(ColumnResolved::new(
 					resolved_col,
@@ -220,11 +211,7 @@ impl<'a> Columns<'a> {
 			.columns()
 			.iter()
 			.map(|col| {
-				let column_ident = ColumnIdentifier::with_source(
-					Fragment::owned_internal(view.namespace().name()),
-					Fragment::owned_internal(view.name()),
-					Fragment::owned_internal(&col.name),
-				);
+				let column_ident = Fragment::owned_internal(&col.name);
 				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
 				Column::Resolved(ColumnResolved::new(
 					resolved_col,

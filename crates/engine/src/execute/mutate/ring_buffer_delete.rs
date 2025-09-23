@@ -8,7 +8,6 @@ use reifydb_core::{
 	interface::{
 		EncodableKey, MultiVersionQueryTransaction, Params, ResolvedNamespace, ResolvedRingBuffer,
 		ResolvedSource, RowKey, Transaction,
-		identifier::{NamespaceIdentifier, RingBufferIdentifier},
 	},
 	value::column::{ColumnData, Columns},
 };
@@ -48,13 +47,10 @@ impl Executor {
 		};
 
 		// Create resolved source for the ring buffer
-		let namespace_ident = NamespaceIdentifier::new(Fragment::owned_internal(namespace.name.clone()));
+		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let rb_ident = RingBufferIdentifier::new(
-			Fragment::owned_internal(namespace.name.clone()),
-			Fragment::owned_internal(ring_buffer.name.clone()),
-		);
+		let rb_ident = Fragment::owned_internal(ring_buffer.name.clone());
 		let resolved_rb = ResolvedRingBuffer::new(rb_ident, resolved_namespace, ring_buffer.clone());
 		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
 

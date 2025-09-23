@@ -35,11 +35,11 @@ pub(crate) fn load_views(
 
 fn convert_view(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>) -> ViewDef {
 	let row = multi.row;
-	let id = ViewId(view::LAYOSVT.get_u64(&row, view::ID));
-	let namespace = NamespaceId(view::LAYOSVT.get_u64(&row, view::NAMESPACE));
-	let name = view::LAYOSVT.get_utf8(&row, view::NAME).to_string();
+	let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
+	let namespace = NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
+	let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
 
-	let kind = match view::LAYOSVT.get_u8(&row, view::KIND) {
+	let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
 		0 => ViewKind::Deferred,
 		1 => ViewKind::Transactional,
 		_ => unimplemented!(),
@@ -56,7 +56,7 @@ fn convert_view(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>) -> V
 }
 
 fn get_view_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = view::LAYOSVT.get_u64(&multi.row, view::PRIMARY_KEY);
+	let pk_id_raw = view::LAYOUT.get_u64(&multi.row, view::PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

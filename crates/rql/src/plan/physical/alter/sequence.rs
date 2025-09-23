@@ -14,7 +14,7 @@ impl Compiler {
 		alter: logical::AlterSequenceNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
 		// For ALTER SEQUENCE, we just pass through the logical plan
-		// info The actual execution will happen in the engine
+		// The actual execution will happen in the engine
 		Ok(PhysicalPlan::AlterSequence(AlterSequenceNode {
 			sequence: alter.sequence,
 			column: alter.column,

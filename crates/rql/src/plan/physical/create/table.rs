@@ -5,7 +5,7 @@ use PhysicalPlan::CreateTable;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	diagnostic::catalog::namespace_not_found,
-	interface::{QueryTransaction, identifier::NamespaceIdentifier, resolved::ResolvedNamespace},
+	interface::{QueryTransaction, resolved::ResolvedNamespace},
 };
 use reifydb_type::return_error;
 
@@ -28,12 +28,12 @@ impl Compiler {
 		};
 
 		// Create a ResolvedNamespace
-		let namespace_id = NamespaceIdentifier::new(create.table.namespace.clone());
+		let namespace_id = create.table.namespace.clone();
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 
 		Ok(CreateTable(CreateTableNode {
 			namespace: resolved_namespace,
-			table: create.table.clone(),
+			table: create.table.name.clone(), // Extract just the name Fragment
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
 		}))

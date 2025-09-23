@@ -18,7 +18,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = view::LAYOSVT.get_u64(&multi.row, view::PRIMARY_KEY);
+		let pk_id = view::LAYOUT.get_u64(&multi.row, view::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

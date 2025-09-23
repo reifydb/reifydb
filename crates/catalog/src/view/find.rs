@@ -22,11 +22,11 @@ impl CatalogStore {
 		};
 
 		let row = multi.row;
-		let id = ViewId(view::LAYOSVT.get_u64(&row, view::ID));
-		let namespace = NamespaceId(view::LAYOSVT.get_u64(&row, view::NAMESPACE));
-		let name = view::LAYOSVT.get_utf8(&row, view::NAME).to_string();
+		let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
+		let namespace = NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
+		let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
 
-		let kind = match view::LAYOSVT.get_u8(&row, view::KIND) {
+		let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
 			0 => ViewKind::Deferred,
 			1 => ViewKind::Transactional,
 			_ => unimplemented!(),
@@ -51,9 +51,9 @@ impl CatalogStore {
 		let Some(view) =
 			rx.range(NamespaceViewKey::full_scan(namespace))?.find_map(|multi: MultiVersionRow| {
 				let row = &multi.row;
-				let view_name = view_namespace::LAYOSVT.get_utf8(row, view_namespace::NAME);
+				let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
 				if name == view_name {
-					Some(ViewId(view_namespace::LAYOSVT.get_u64(row, view_namespace::ID)))
+					Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)))
 				} else {
 					None
 				}

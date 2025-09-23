@@ -16,11 +16,11 @@ impl Executor {
 	) -> crate::Result<Columns<'a>> {
 		// Check if table already exists using the transaction's catalog
 		// operations
-		if let Some(_) = txn.find_table_by_name(plan.namespace.def().id, plan.table.name.text())? {
+		if let Some(_) = txn.find_table_by_name(plan.namespace.def().id, plan.table.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name().to_string())),
-					("table", Value::Utf8(plan.table.name.text().to_string())),
+					("table", Value::Utf8(plan.table.text().to_string())),
 					("created", Value::Boolean(false)),
 				]));
 			}
@@ -29,15 +29,15 @@ impl Executor {
 		}
 
 		txn.create_table(TableToCreate {
-			fragment: Some(plan.table.name.clone().into_owned()),
-			table: plan.table.name.text().to_string(),
+			fragment: Some(plan.table.clone().into_owned()),
+			table: plan.table.text().to_string(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
 		})?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
-			("table", Value::Utf8(plan.table.name.text().to_string())),
+			("table", Value::Utf8(plan.table.text().to_string())),
 			("created", Value::Boolean(true)),
 		]))
 	}
@@ -46,10 +46,7 @@ impl Executor {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::{
-		NamespaceDef, NamespaceId, Params, TableIdentifier, identifier::NamespaceIdentifier,
-		resolved::ResolvedNamespace,
-	};
+	use reifydb_core::interface::{NamespaceDef, NamespaceId, Params, resolved::ResolvedNamespace};
 	use reifydb_rql::plan::physical::PhysicalPlan;
 	use reifydb_type::{Fragment, Value};
 
@@ -65,14 +62,11 @@ mod tests {
 
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("test_namespace"));
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace.clone());
+		let namespace_ident = Fragment::owned_internal("test_namespace");
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 		let mut plan = CreateTableNode {
 			namespace: resolved_namespace.clone(),
-			table: TableIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("test_table"),
-			),
+			table: Fragment::owned_internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
@@ -112,14 +106,11 @@ mod tests {
 		let namespace = ensure_test_namespace(&mut txn);
 		let another_schema = create_namespace(&mut txn, "another_schema");
 
-		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("test_namespace"));
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace.clone());
+		let namespace_ident = Fragment::owned_internal("test_namespace");
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 		let plan = CreateTableNode {
 			namespace: resolved_namespace,
-			table: TableIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("test_table"),
-			),
+			table: Fragment::owned_internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
@@ -130,14 +121,11 @@ mod tests {
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
-		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("another_schema"));
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, another_schema.clone());
+		let namespace_ident = Fragment::owned_internal("another_schema");
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, another_schema.clone());
 		let plan = CreateTableNode {
 			namespace: resolved_namespace,
-			table: TableIdentifier::new(
-				Fragment::owned_internal("another_schema"),
-				Fragment::owned_internal("test_table"),
-			),
+			table: Fragment::owned_internal("test_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};
@@ -155,18 +143,15 @@ mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
-		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("missing_schema"));
+		let namespace_ident = Fragment::owned_internal("missing_schema");
 		let namespace_def = NamespaceDef {
 			id: NamespaceId(999),
 			name: "missing_schema".to_string(),
 		};
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace_def);
 		let plan = CreateTableNode {
 			namespace: resolved_namespace,
-			table: TableIdentifier::new(
-				Fragment::owned_internal("missing_schema"),
-				Fragment::owned_internal("my_table"),
-			),
+			table: Fragment::owned_internal("my_table"),
 			if_not_exists: false,
 			columns: vec![],
 		};

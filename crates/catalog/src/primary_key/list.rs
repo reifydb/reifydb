@@ -49,11 +49,11 @@ impl CatalogStore {
 				if let Key::PrimaryKey(pk_key) = key {
 					// Get the source ID from the primary
 					// key record
-					let source_id = primary_key::LAYOSVT.get_u64(&entry.row, primary_key::SOURCE);
+					let source_id = primary_key::LAYOUT.get_u64(&entry.row, primary_key::SOURCE);
 
 					// Deserialize column IDs
 					let column_ids_blob =
-						primary_key::LAYOSVT.get_blob(&entry.row, primary_key::COLUMN_IDS);
+						primary_key::LAYOUT.get_blob(&entry.row, primary_key::COLUMN_IDS);
 					let column_ids = deserialize_column_ids(&column_ids_blob);
 
 					// Fetch full ColumnDef for each column
@@ -122,7 +122,7 @@ impl CatalogStore {
 					// Deserialize column IDs from the
 					// primary key record
 					let column_ids_blob =
-						primary_key::LAYOSVT.get_blob(&entry.row, primary_key::COLUMN_IDS);
+						primary_key::LAYOUT.get_blob(&entry.row, primary_key::COLUMN_IDS);
 					let column_ids = deserialize_column_ids(&column_ids_blob);
 
 					// Add each column with its position

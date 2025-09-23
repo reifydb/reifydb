@@ -10,11 +10,10 @@ use reifydb_core::{
 		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId,
 		MultiVersionCommandTransaction, MultiVersionQueryTransaction, Params, ResolvedNamespace,
 		ResolvedSource, ResolvedTable, RowKey, RowKeyRange, Transaction,
-		identifier::{NamespaceIdentifier, TableIdentifier},
 	},
 	value::column::{ColumnData, Columns},
 };
-use reifydb_rql::plan::physical::DeleteNode;
+use reifydb_rql::plan::physical::DeleteTableNode;
 use reifydb_type::{
 	Fragment, ROW_NUMBER_COLUMN_NAME, Value,
 	diagnostic::{
@@ -34,7 +33,7 @@ impl Executor {
 	pub(crate) fn delete<'a, T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		plan: DeleteNode<'a>,
+		plan: DeleteTableNode<'a>,
 		params: Params,
 	) -> crate::Result<Columns<'a>> {
 		// Get table from plan or infer from input pipeline
@@ -43,13 +42,13 @@ impl Executor {
 			let namespace_name = target.namespace().name();
 			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 				return_error!(namespace_not_found(
-					Some(target.identifier().namespace.clone().into_owned()),
+					Fragment::owned_internal(namespace_name),
 					namespace_name
 				));
 			};
 
 			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name())? else {
-				let fragment = target.identifier().name.clone();
+				let fragment = target.identifier().clone();
 				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
 
@@ -59,13 +58,10 @@ impl Executor {
 		};
 
 		// Create resolved source for the table
-		let namespace_ident = NamespaceIdentifier::new(Fragment::owned_internal(namespace.name.clone()));
+		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let table_ident = TableIdentifier::new(
-			Fragment::owned_internal(namespace.name.clone()),
-			Fragment::owned_internal(table.name.clone()),
-		);
+		let table_ident = Fragment::owned_internal(table.name.clone());
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
 		let resolved_source = Some(ResolvedSource::Table(resolved_table));
 

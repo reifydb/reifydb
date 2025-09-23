@@ -111,9 +111,9 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				.iter()
 				.map(|col| {
 					if let Some(order) = &col.order {
-						format!("{} {:?}", col.column.name.text(), order)
+						format!("{} {:?}", col.column.text(), order)
 					} else {
-						col.column.name.text().to_string()
+						col.column.text().to_string()
 					}
 				})
 				.collect::<Vec<_>>()
@@ -377,19 +377,16 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				format!(
 					"{}::{}",
 					source.fully_qualified_name()
-						.unwrap_or_else(|| source.effective_name().to_string()),
-					idx.identifier().name.text()
+						.unwrap_or_else(|| source.identifier().text().to_string()),
+					idx.identifier().text()
 				)
 			} else {
-				source.fully_qualified_name().unwrap_or_else(|| source.effective_name().to_string())
+				source.fully_qualified_name().unwrap_or_else(|| source.identifier().text().to_string())
 			};
 
-			// Add alias to the display if present
-			let display_name = if source.identifier().alias().is_some() {
-				format!("{} as {}", name, source.identifier().effective_name())
-			} else {
-				name
-			};
+			// Since identifier is now just a Fragment, we can't check for alias
+			// Just use the name directly
+			let display_name = name;
 
 			let scan_type = if index.is_some() {
 				"IndexScan"

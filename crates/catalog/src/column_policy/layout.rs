@@ -11,7 +11,7 @@ pub(crate) mod column_policy {
 	pub(crate) const POLICY: usize = 2;
 	pub(crate) const VALUE: usize = 3;
 
-	pub(crate) static LAYOSVT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // id
 			Type::Uint8, // column

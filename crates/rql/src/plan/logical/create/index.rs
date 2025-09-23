@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource, IndexIdentifier};
+use reifydb_core::interface::identifier::{ColumnSource, IndexIdentifier};
 use reifydb_type::Fragment;
 
 use crate::{
@@ -24,7 +24,7 @@ impl Compiler {
 			.unwrap_or_else(|| Fragment::borrowed_internal(resolver::DEFAULT_NAMESPACE));
 
 		// Create the table source for column qualification
-		let table_source = ColumnSource::Source {
+		let _table_source = ColumnSource::Source {
 			namespace: namespace.clone(),
 			source: ast.index.table.clone(),
 		};
@@ -33,10 +33,7 @@ impl Compiler {
 			.columns
 			.into_iter()
 			.map(|col: AstIndexColumn| IndexColumn {
-				column: ColumnIdentifier {
-					source: table_source.clone(),
-					name: col.column.name,
-				},
+				column: col.column.name, // Use just the name Fragment
 				order: col.order,
 			})
 			.collect();

@@ -12,11 +12,8 @@ use reifydb_catalog::{
 use reifydb_core::{
 	JoinType, SortKey,
 	interface::{
-		NamespaceDef, QueryTransaction,
+		ColumnIdentifier, NamespaceDef, QueryTransaction, SequenceIdentifier,
 		evaluate::expression::{AliasExpression, Expression},
-		identifier::{
-			ColumnIdentifier, RingBufferIdentifier, SequenceIdentifier, TableIdentifier, ViewIdentifier,
-		},
 		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedView},
 	},
 };
@@ -118,9 +115,8 @@ impl Compiler {
 					// Resolve the table if we have a target
 					let target = if let Some(table_id) = delete.target {
 						use reifydb_catalog::CatalogStore;
-						use reifydb_core::interface::{
-							identifier::NamespaceIdentifier,
-							resolved::{ResolvedNamespace, ResolvedTable},
+						use reifydb_core::interface::resolved::{
+							ResolvedNamespace, ResolvedTable,
 						};
 
 						let namespace_def = CatalogStore::find_namespace_by_name(
@@ -135,15 +131,19 @@ impl Compiler {
 						)?
 						.unwrap();
 
-						let namespace_id = NamespaceIdentifier::new(table_id.namespace.clone());
+						let namespace_id = table_id.namespace.clone();
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
-						Some(ResolvedTable::new(table_id, resolved_namespace, table_def))
+						Some(ResolvedTable::new(
+							table_id.name.clone(),
+							resolved_namespace,
+							table_def,
+						))
 					} else {
 						None
 					};
 
-					stack.push(PhysicalPlan::Delete(DeleteNode {
+					stack.push(PhysicalPlan::Delete(DeleteTableNode {
 						input,
 						target,
 					}))
@@ -162,9 +162,8 @@ impl Compiler {
 					};
 
 					// Resolve the ring buffer
-					use reifydb_core::interface::{
-						identifier::NamespaceIdentifier,
-						resolved::{ResolvedNamespace, ResolvedRingBuffer},
+					use reifydb_core::interface::resolved::{
+						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
 					let ring_buffer_id = delete.target.clone();
@@ -180,10 +179,10 @@ impl Compiler {
 					)?
 					.unwrap();
 
-					let namespace_id = NamespaceIdentifier::new(ring_buffer_id.namespace.clone());
+					let namespace_id = ring_buffer_id.namespace.clone();
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ring_buffer_id,
+						ring_buffer_id.name.clone(),
 						resolved_namespace,
 						ring_buffer_def,
 					);
@@ -198,10 +197,7 @@ impl Compiler {
 					let input = stack.pop().unwrap();
 
 					// Resolve the table
-					use reifydb_core::interface::{
-						identifier::NamespaceIdentifier,
-						resolved::{ResolvedNamespace, ResolvedTable},
-					};
+					use reifydb_core::interface::resolved::{ResolvedNamespace, ResolvedTable};
 
 					let table_id = insert.target.clone();
 					let namespace_def =
@@ -214,9 +210,13 @@ impl Compiler {
 					)?
 					.unwrap();
 
-					let namespace_id = NamespaceIdentifier::new(table_id.namespace.clone());
+					let namespace_id = table_id.namespace.clone();
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
-					let target = ResolvedTable::new(table_id, resolved_namespace, table_def);
+					let target = ResolvedTable::new(
+						table_id.name.clone(),
+						resolved_namespace,
+						table_def,
+					);
 
 					stack.push(PhysicalPlan::InsertTable(InsertTableNode {
 						input: Box::new(input),
@@ -228,9 +228,8 @@ impl Compiler {
 					let input = stack.pop().unwrap();
 
 					// Resolve the ring buffer
-					use reifydb_core::interface::{
-						identifier::NamespaceIdentifier,
-						resolved::{ResolvedNamespace, ResolvedRingBuffer},
+					use reifydb_core::interface::resolved::{
+						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
 					let ring_buffer_id = insert_rb.target.clone();
@@ -246,10 +245,10 @@ impl Compiler {
 					)?
 					.unwrap();
 
-					let namespace_id = NamespaceIdentifier::new(ring_buffer_id.namespace.clone());
+					let namespace_id = ring_buffer_id.namespace.clone();
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ring_buffer_id,
+						ring_buffer_id.name.clone(),
 						resolved_namespace,
 						ring_buffer_def,
 					);
@@ -276,9 +275,8 @@ impl Compiler {
 
 					// Resolve the table if we have a target
 					let target = if let Some(table_id) = update.target {
-						use reifydb_core::interface::{
-							identifier::NamespaceIdentifier,
-							resolved::{ResolvedNamespace, ResolvedTable},
+						use reifydb_core::interface::resolved::{
+							ResolvedNamespace, ResolvedTable,
 						};
 
 						let namespace_def = CatalogStore::find_namespace_by_name(
@@ -293,10 +291,14 @@ impl Compiler {
 						)?
 						.unwrap();
 
-						let namespace_id = NamespaceIdentifier::new(table_id.namespace.clone());
+						let namespace_id = table_id.namespace.clone();
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
-						Some(ResolvedTable::new(table_id, resolved_namespace, table_def))
+						Some(ResolvedTable::new(
+							table_id.name.clone(),
+							resolved_namespace,
+							table_def,
+						))
 					} else {
 						None
 					};
@@ -322,9 +324,8 @@ impl Compiler {
 					};
 
 					// Resolve the ring buffer
-					use reifydb_core::interface::{
-						identifier::NamespaceIdentifier,
-						resolved::{ResolvedNamespace, ResolvedRingBuffer},
+					use reifydb_core::interface::resolved::{
+						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
 					let ring_buffer_id = update_rb.target.clone();
@@ -340,10 +341,10 @@ impl Compiler {
 					)?
 					.unwrap();
 
-					let namespace_id = NamespaceIdentifier::new(ring_buffer_id.namespace.clone());
+					let namespace_id = ring_buffer_id.namespace.clone();
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ring_buffer_id,
+						ring_buffer_id.name.clone(),
 						resolved_namespace,
 						ring_buffer_def,
 					);
@@ -394,6 +395,7 @@ impl Compiler {
 
 				LogicalPlan::Distinct(distinct) => {
 					let input = stack.pop().unwrap(); // FIXME
+
 					stack.push(PhysicalPlan::Distinct(DistinctNode {
 						columns: distinct.columns,
 						input: Box::new(input),
@@ -438,7 +440,6 @@ impl Compiler {
 									source: resolved_table.clone(),
 									index_name: index
 										.identifier()
-										.name
 										.text()
 										.to_string(),
 								}));
@@ -564,7 +565,7 @@ pub enum PhysicalPlan<'a> {
 	AlterTable(AlterTableNode<'a>),
 	AlterView(AlterViewNode<'a>),
 	// Mutate
-	Delete(DeleteNode<'a>),
+	Delete(DeleteTableNode<'a>),
 	DeleteRingBuffer(DeleteRingBufferNode<'a>),
 	InsertTable(InsertTableNode<'a>),
 	InsertRingBuffer(InsertRingBufferNode<'a>),
@@ -593,8 +594,8 @@ pub enum PhysicalPlan<'a> {
 
 #[derive(Debug, Clone)]
 pub struct CreateDeferredViewNode<'a> {
-	pub namespace: NamespaceDef,
-	pub view: ViewIdentifier<'a>,
+	pub namespace: NamespaceDef, // FIXME REsolvedNamespace
+	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
@@ -602,8 +603,8 @@ pub struct CreateDeferredViewNode<'a> {
 
 #[derive(Debug, Clone)]
 pub struct CreateTransactionalViewNode<'a> {
-	pub namespace: NamespaceDef,
-	pub view: ViewIdentifier<'a>,
+	pub namespace: NamespaceDef, // FIXME REsolvedNamespace
+	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
@@ -618,7 +619,7 @@ pub struct CreateNamespaceNode<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateTableNode<'a> {
 	pub namespace: ResolvedNamespace<'a>,
-	pub table: TableIdentifier<'a>,
+	pub table: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
@@ -626,7 +627,7 @@ pub struct CreateTableNode<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateRingBufferNode<'a> {
 	pub namespace: ResolvedNamespace<'a>,
-	pub ring_buffer: RingBufferIdentifier<'a>,
+	pub ring_buffer: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
@@ -659,7 +660,7 @@ pub struct FilterNode<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct DeleteNode<'a> {
+pub struct DeleteTableNode<'a> {
 	pub input: Option<Box<PhysicalPlan<'a>>>,
 	pub target: Option<ResolvedTable<'a>>,
 }

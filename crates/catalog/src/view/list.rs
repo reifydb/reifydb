@@ -17,11 +17,11 @@ impl CatalogStore {
 					let view_id = view_key.view;
 
 					let namespace_id =
-						NamespaceId(view::LAYOSVT.get_u64(&entry.row, view::NAMESPACE));
+						NamespaceId(view::LAYOUT.get_u64(&entry.row, view::NAMESPACE));
 
-					let name = view::LAYOSVT.get_utf8(&entry.row, view::NAME).to_string();
+					let name = view::LAYOUT.get_utf8(&entry.row, view::NAME).to_string();
 
-					let kind_value = view::LAYOSVT.get_u8(&entry.row, view::KIND);
+					let kind_value = view::LAYOUT.get_u8(&entry.row, view::KIND);
 					let kind = if kind_value == 0 {
 						ViewKind::Deferred
 					} else {

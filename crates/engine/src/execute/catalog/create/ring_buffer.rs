@@ -19,11 +19,11 @@ impl Executor {
 	) -> crate::Result<Columns<'a>> {
 		// Check if ring buffer already exists using the transaction's
 		// catalog operations
-		if let Some(_) = txn.find_ring_buffer_by_name(plan.namespace.def().id, plan.ring_buffer.name.text())? {
+		if let Some(_) = txn.find_ring_buffer_by_name(plan.namespace.def().id, plan.ring_buffer.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name().to_string())),
-					("ring_buffer", Value::Utf8(plan.ring_buffer.name.text().to_string())),
+					("ring_buffer", Value::Utf8(plan.ring_buffer.text().to_string())),
 					("created", Value::Boolean(false)),
 				]));
 			}
@@ -32,8 +32,8 @@ impl Executor {
 		}
 
 		txn.create_ring_buffer(RingBufferToCreate {
-			fragment: Some(plan.ring_buffer.name.clone().into_owned()),
-			ring_buffer: plan.ring_buffer.name.text().to_string(),
+			fragment: Some(plan.ring_buffer.clone().into_owned()),
+			ring_buffer: plan.ring_buffer.text().to_string(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
 			capacity: plan.capacity,
@@ -41,7 +41,7 @@ impl Executor {
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name().to_string())),
-			("ring_buffer", Value::Utf8(plan.ring_buffer.name.text().to_string())),
+			("ring_buffer", Value::Utf8(plan.ring_buffer.text().to_string())),
 			("created", Value::Boolean(true)),
 		]))
 	}
@@ -50,10 +50,7 @@ impl Executor {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::{
-		NamespaceDef, NamespaceId, Params, RingBufferIdentifier, identifier::NamespaceIdentifier,
-		resolved::ResolvedNamespace,
-	};
+	use reifydb_core::interface::{NamespaceDef, NamespaceId, Params, resolved::ResolvedNamespace};
 	use reifydb_rql::plan::physical::PhysicalPlan;
 	use reifydb_type::{Fragment, Value};
 
@@ -69,14 +66,12 @@ mod tests {
 
 		let namespace = ensure_test_namespace(&mut txn);
 
-		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("test_namespace"));
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace.clone());
+		let resolved_namespace =
+			ResolvedNamespace::new(Fragment::owned_internal("test_namespace"), namespace.clone());
+
 		let mut plan = CreateRingBufferNode {
 			namespace: resolved_namespace.clone(),
-			ring_buffer: RingBufferIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("test_ring_buffer"),
-			),
+			ring_buffer: Fragment::owned_internal("test_ring_buffer"),
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
@@ -117,14 +112,11 @@ mod tests {
 		let namespace = ensure_test_namespace(&mut txn);
 		let another_schema = create_namespace(&mut txn, "another_schema");
 
-		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("test_namespace"));
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace.clone());
+		let namespace_ident = Fragment::owned_internal("test_namespace");
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 		let plan = CreateRingBufferNode {
 			namespace: resolved_namespace,
-			ring_buffer: RingBufferIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("test_ring_buffer"),
-			),
+			ring_buffer: Fragment::owned_internal("test_ring_buffer"),
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
@@ -136,14 +128,11 @@ mod tests {
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_ring_buffer".to_string()));
 		assert_eq!(result.row(0)[2], Value::Boolean(true));
-		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("another_schema"));
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, another_schema.clone());
+		let namespace_ident = Fragment::owned_internal("another_schema");
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, another_schema.clone());
 		let plan = CreateRingBufferNode {
 			namespace: resolved_namespace,
-			ring_buffer: RingBufferIdentifier::new(
-				Fragment::owned_internal("another_schema"),
-				Fragment::owned_internal("test_ring_buffer"),
-			),
+			ring_buffer: Fragment::owned_internal("test_ring_buffer"),
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
@@ -162,18 +151,15 @@ mod tests {
 		let instance = Executor::testing();
 		let mut txn = create_test_command_transaction();
 
-		let namespace_id = NamespaceIdentifier::new(Fragment::owned_internal("missing_schema"));
+		let namespace_ident = Fragment::owned_internal("missing_schema");
 		let namespace_def = NamespaceDef {
 			id: NamespaceId(999),
 			name: "missing_schema".to_string(),
 		};
-		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace_def);
 		let plan = CreateRingBufferNode {
 			namespace: resolved_namespace,
-			ring_buffer: RingBufferIdentifier::new(
-				Fragment::owned_internal("missing_schema"),
-				Fragment::owned_internal("my_ring_buffer"),
-			),
+			ring_buffer: Fragment::owned_internal("my_ring_buffer"),
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,

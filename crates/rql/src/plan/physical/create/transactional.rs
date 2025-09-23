@@ -22,7 +22,7 @@ impl Compiler {
 
 		Ok(CreateTransactionalView(CreateTransactionalViewNode {
 			namespace,
-			view: create.view.clone(),
+			view: create.view.name.clone(), // Extract just the name Fragment
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
 			with: Self::compile(rx, create.with)?.map(Box::new).unwrap(), // FIXME

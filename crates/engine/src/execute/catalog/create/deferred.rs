@@ -14,19 +14,19 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: CreateDeferredViewNode,
 	) -> crate::Result<Columns<'a>> {
-		if let Some(_) = txn.find_view_by_name(plan.namespace.id, plan.view.name.text())? {
+		if let Some(_) = txn.find_view_by_name(plan.namespace.id, plan.view.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
 					("namespace", Value::Utf8(plan.namespace.name.to_string())),
-					("view", Value::Utf8(plan.view.name.text().to_string())),
+					("view", Value::Utf8(plan.view.text().to_string())),
 					("created", Value::Boolean(false)),
 				]));
 			}
 		}
 
 		let result = txn.create_view(ViewToCreate {
-			fragment: Some(plan.view.name.clone().into_owned()),
-			name: plan.view.name.text().to_string(),
+			fragment: Some(plan.view.clone().into_owned()),
+			name: plan.view.text().to_string(),
 			namespace: plan.namespace.id,
 			columns: plan.columns,
 		})?;
@@ -35,7 +35,7 @@ impl Executor {
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),
-			("view", Value::Utf8(plan.view.name.text().to_string())),
+			("view", Value::Utf8(plan.view.text().to_string())),
 			("created", Value::Boolean(true)),
 		]))
 	}
@@ -45,7 +45,7 @@ impl Executor {
 mod tests {
 	use PhysicalPlan::InlineData;
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::{NamespaceDef, NamespaceId, Params, ViewIdentifier};
+	use reifydb_core::interface::{NamespaceDef, NamespaceId, Params};
 	use reifydb_rql::plan::physical::{CreateDeferredViewNode, InlineDataNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Value};
 
@@ -63,10 +63,7 @@ mod tests {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			view: ViewIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("test_view"),
-			),
+			view: Fragment::owned_internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {
@@ -124,10 +121,7 @@ mod tests {
 				id: namespace.id,
 				name: namespace.name.clone(),
 			},
-			view: ViewIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("test_view"),
-			),
+			view: Fragment::owned_internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {
@@ -151,10 +145,7 @@ mod tests {
 				id: another_schema.id,
 				name: another_schema.name.clone(),
 			},
-			view: ViewIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("test_view"),
-			),
+			view: Fragment::owned_internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {
@@ -184,10 +175,7 @@ mod tests {
 				id: NamespaceId(999),
 				name: "missing_schema".to_string(),
 			},
-			view: ViewIdentifier::new(
-				Fragment::owned_internal("another_schema"),
-				Fragment::owned_internal("my_view"),
-			),
+			view: Fragment::owned_internal("my_view"),
 			if_not_exists: false,
 			columns: vec![],
 			with: Box::new(InlineData(InlineDataNode {

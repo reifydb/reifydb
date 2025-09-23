@@ -35,9 +35,9 @@ pub(crate) fn load_tables(
 
 fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>) -> TableDef {
 	let row = multi.row;
-	let id = TableId(table::LAYOSVT.get_u64(&row, table::ID));
-	let namespace = NamespaceId(table::LAYOSVT.get_u64(&row, table::NAMESPACE));
-	let name = table::LAYOSVT.get_utf8(&row, table::NAME).to_string();
+	let id = TableId(table::LAYOUT.get_u64(&row, table::ID));
+	let namespace = NamespaceId(table::LAYOUT.get_u64(&row, table::NAMESPACE));
+	let name = table::LAYOUT.get_utf8(&row, table::NAME).to_string();
 
 	TableDef {
 		id,
@@ -49,7 +49,7 @@ fn convert_table(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>) -> 
 }
 
 fn get_table_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = table::LAYOSVT.get_u64(&multi.row, table::PRIMARY_KEY);
+	let pk_id_raw = table::LAYOUT.get_u64(&multi.row, table::PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

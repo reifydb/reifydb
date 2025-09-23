@@ -80,13 +80,13 @@ impl CatalogStore {
 
 		use crate::ring_buffer::layout::ring_buffer;
 
-		let mut row = ring_buffer::LAYOSVT.allocate_row();
-		ring_buffer::LAYOSVT.set_u64(&mut row, ring_buffer::ID, ring_buffer);
-		ring_buffer::LAYOSVT.set_u64(&mut row, ring_buffer::NAMESPACE, namespace);
-		ring_buffer::LAYOSVT.set_utf8(&mut row, ring_buffer::NAME, &to_create.ring_buffer);
-		ring_buffer::LAYOSVT.set_u64(&mut row, ring_buffer::CAPACITY, to_create.capacity);
+		let mut row = ring_buffer::LAYOUT.allocate_row();
+		ring_buffer::LAYOUT.set_u64(&mut row, ring_buffer::ID, ring_buffer);
+		ring_buffer::LAYOUT.set_u64(&mut row, ring_buffer::NAMESPACE, namespace);
+		ring_buffer::LAYOUT.set_utf8(&mut row, ring_buffer::NAME, &to_create.ring_buffer);
+		ring_buffer::LAYOUT.set_u64(&mut row, ring_buffer::CAPACITY, to_create.capacity);
 		// Initialize with no primary key
-		ring_buffer::LAYOSVT.set_u64(&mut row, ring_buffer::PRIMARY_KEY, 0u64);
+		ring_buffer::LAYOUT.set_u64(&mut row, ring_buffer::PRIMARY_KEY, 0u64);
 
 		let key = RingBufferKey::new(ring_buffer);
 		txn.set(&key.encode(), row)?;
@@ -104,9 +104,9 @@ impl CatalogStore {
 
 		use crate::ring_buffer::layout::ring_buffer_namespace;
 
-		let mut row = ring_buffer_namespace::LAYOSVT.allocate_row();
-		ring_buffer_namespace::LAYOSVT.set_u64(&mut row, ring_buffer_namespace::ID, ring_buffer);
-		ring_buffer_namespace::LAYOSVT.set_utf8(&mut row, ring_buffer_namespace::NAME, name);
+		let mut row = ring_buffer_namespace::LAYOUT.allocate_row();
+		ring_buffer_namespace::LAYOUT.set_u64(&mut row, ring_buffer_namespace::ID, ring_buffer);
+		ring_buffer_namespace::LAYOUT.set_utf8(&mut row, ring_buffer_namespace::NAME, name);
 
 		let key = NamespaceRingBufferKey::new(namespace, ring_buffer);
 		txn.set(&key.encode(), row)?;
@@ -157,12 +157,12 @@ impl CatalogStore {
 
 		use crate::ring_buffer::layout::ring_buffer_metadata;
 
-		let mut row = ring_buffer_metadata::LAYOSVT.allocate_row();
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::ID, ring_buffer_id);
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::CAPACITY, capacity);
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::HEAD, 0u64);
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::TAIL, 0u64);
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::COUNT, 0u64);
+		let mut row = ring_buffer_metadata::LAYOUT.allocate_row();
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::ID, ring_buffer_id);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::CAPACITY, capacity);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::HEAD, 0u64);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::TAIL, 0u64);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::COUNT, 0u64);
 
 		let key = RingBufferMetadataKey::new(ring_buffer_id);
 		txn.set(&key.encode(), row)?;
@@ -299,16 +299,16 @@ mod tests {
 		// Check first link (descending order, so buffer2 comes first)
 		let link = &links[0];
 		let row = &link.row;
-		let id2 = ring_buffer_namespace::LAYOSVT.get_u64(row, ring_buffer_namespace::ID);
+		let id2 = ring_buffer_namespace::LAYOUT.get_u64(row, ring_buffer_namespace::ID);
 		assert!(id2 > 0);
-		assert_eq!(ring_buffer_namespace::LAYOSVT.get_utf8(row, ring_buffer_namespace::NAME), "buffer2");
+		assert_eq!(ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME), "buffer2");
 
 		// Check second link (buffer1 comes second)
 		let link = &links[1];
 		let row = &link.row;
-		let id1 = ring_buffer_namespace::LAYOSVT.get_u64(row, ring_buffer_namespace::ID);
+		let id1 = ring_buffer_namespace::LAYOUT.get_u64(row, ring_buffer_namespace::ID);
 		assert!(id2 > id1);
-		assert_eq!(ring_buffer_namespace::LAYOSVT.get_utf8(row, ring_buffer_namespace::NAME), "buffer1");
+		assert_eq!(ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME), "buffer1");
 	}
 
 	#[test]

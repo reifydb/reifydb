@@ -9,7 +9,6 @@ use reifydb_core::{
 		ColumnDef, ColumnId, EncodableKey, MultiVersionQueryTransaction, ResolvedColumn, RingBufferMetadata,
 		RowKey, Transaction,
 		catalog::ColumnIndex,
-		identifier::ColumnIdentifier,
 		resolved::{ResolvedRingBuffer, ResolvedSource},
 	},
 	value::{
@@ -160,11 +159,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 			if ctx.preserve_row_numbers {
 				// Create a resolved column for row numbers
 				let source = ResolvedSource::RingBuffer(self.ring_buffer.clone());
-				let column_ident = ColumnIdentifier::with_source(
-					Fragment::owned_internal(self.ring_buffer.namespace().name()),
-					Fragment::owned_internal(self.ring_buffer.name()),
-					Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
-				);
+				let column_ident = Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME);
 				// Create a dummy ColumnDef for row number
 				let col_def = ColumnDef {
 					id: ColumnId(0),

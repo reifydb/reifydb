@@ -136,7 +136,7 @@ impl<'a> Column<'a> {
 
 	pub fn source(&self) -> Option<Fragment<'a>> {
 		match self {
-			Self::Resolved(col) => Some(col.column.source().identifier().name().clone()),
+			Self::Resolved(col) => Some(col.column.source().identifier().clone()),
 			Self::SourceQualified(col) => Some(col.source.clone()),
 			Self::Computed(_) => None,
 		}

@@ -16,10 +16,10 @@ pub fn load_primary_keys(qt: &mut impl QueryTransaction, catalog: &MaterializedC
 		let row = multi.row;
 
 		// Extract primary key ID from the row
-		let pk_id = PrimaryKeyId(primary_key::LAYOSVT.get_u64(&row, primary_key::ID));
+		let pk_id = PrimaryKeyId(primary_key::LAYOUT.get_u64(&row, primary_key::ID));
 
 		// Deserialize column IDs
-		let column_ids_blob = primary_key::LAYOSVT.get_blob(&row, primary_key::COLUMN_IDS);
+		let column_ids_blob = primary_key::LAYOUT.get_blob(&row, primary_key::COLUMN_IDS);
 		let column_ids = primary_key::deserialize_column_ids(&column_ids_blob);
 
 		// Fetch the full ColumnDef objects for each column ID

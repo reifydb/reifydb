@@ -10,7 +10,7 @@ pub(crate) mod primary_key {
 	pub(crate) const SOURCE: usize = 1;
 	pub(crate) const COLUMN_IDS: usize = 2;
 
-	pub(crate) static LAYOSVT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // id - Primary key ID
 			Type::Uint8, // source

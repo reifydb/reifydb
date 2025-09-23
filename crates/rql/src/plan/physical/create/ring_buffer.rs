@@ -5,7 +5,7 @@ use PhysicalPlan::CreateRingBuffer;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	diagnostic::catalog::namespace_not_found,
-	interface::{QueryTransaction, identifier::NamespaceIdentifier, resolved::ResolvedNamespace},
+	interface::{QueryTransaction, resolved::ResolvedNamespace},
 };
 use reifydb_type::return_error;
 
@@ -29,12 +29,12 @@ impl Compiler {
 		};
 
 		// Create a ResolvedNamespace
-		let namespace_id = NamespaceIdentifier::new(create.ring_buffer.namespace.clone());
+		let namespace_id = create.ring_buffer.namespace.clone();
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 
 		Ok(CreateRingBuffer(CreateRingBufferNode {
 			namespace: resolved_namespace,
-			ring_buffer: create.ring_buffer.clone(),
+			ring_buffer: create.ring_buffer.name.clone(), // Extract just the name Fragment
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
 			capacity: create.capacity,

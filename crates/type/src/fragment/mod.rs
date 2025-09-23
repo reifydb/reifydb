@@ -360,3 +360,10 @@ impl<'a> std::hash::Hash for Fragment<'a> {
 		self.text().hash(state);
 	}
 }
+
+// AsRef<str> implementation for Fragment<'a>
+impl<'a> AsRef<str> for Fragment<'a> {
+	fn as_ref(&self) -> &str {
+		self.text()
+	}
+}

@@ -88,18 +88,18 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_column_id(txn)?;
 
-		let mut row = column::LAYOSVT.allocate_row();
-		column::LAYOSVT.set_u64(&mut row, column::ID, id);
-		column::LAYOSVT.set_u64(&mut row, column::TABLE, source);
-		column::LAYOSVT.set_utf8(&mut row, column::NAME, &column_to_create.column);
-		column::LAYOSVT.set_u8(&mut row, column::VALUE, column_to_create.constraint.get_type().to_u8());
-		column::LAYOSVT.set_u16(&mut row, column::INDEX, column_to_create.index);
-		column::LAYOSVT.set_bool(&mut row, column::ASVTO_INCREMENT, column_to_create.auto_increment);
+		let mut row = column::LAYOUT.allocate_row();
+		column::LAYOUT.set_u64(&mut row, column::ID, id);
+		column::LAYOUT.set_u64(&mut row, column::TABLE, source);
+		column::LAYOUT.set_utf8(&mut row, column::NAME, &column_to_create.column);
+		column::LAYOUT.set_u8(&mut row, column::VALUE, column_to_create.constraint.get_type().to_u8());
+		column::LAYOUT.set_u16(&mut row, column::INDEX, column_to_create.index);
+		column::LAYOUT.set_bool(&mut row, column::ASVTO_INCREMENT, column_to_create.auto_increment);
 
 		// Store constraint as encoded blob
 		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());
 		let blob = reifydb_type::Blob::from(constraint_bytes);
-		column::LAYOSVT.set_blob(&mut row, column::CONSTRAINT, &blob);
+		column::LAYOUT.set_blob(&mut row, column::CONSTRAINT, &blob);
 
 		txn.set(
 			&Key::Columns(ColumnsKey {
@@ -109,10 +109,10 @@ impl CatalogStore {
 			row,
 		)?;
 
-		let mut row = table_column::LAYOSVT.allocate_row();
-		table_column::LAYOSVT.set_u64(&mut row, table_column::ID, id);
-		table_column::LAYOSVT.set_utf8(&mut row, table_column::NAME, &column_to_create.column);
-		table_column::LAYOSVT.set_u16(&mut row, table_column::INDEX, column_to_create.index);
+		let mut row = table_column::LAYOUT.allocate_row();
+		table_column::LAYOUT.set_u64(&mut row, table_column::ID, id);
+		table_column::LAYOUT.set_utf8(&mut row, table_column::NAME, &column_to_create.column);
+		table_column::LAYOUT.set_u16(&mut row, table_column::INDEX, column_to_create.index);
 		txn.set(
 			&ColumnKey {
 				source,

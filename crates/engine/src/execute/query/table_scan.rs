@@ -13,7 +13,6 @@ use reifydb_core::{
 		ColumnDef, ColumnId, EncodableKey, EncodableKeyRange, MultiVersionQueryTransaction, RowKey,
 		RowKeyRange, Transaction,
 		catalog::ColumnIndex,
-		identifier::ColumnIdentifier,
 		resolved::{ResolvedColumn as RColumn, ResolvedSource, ResolvedTable},
 	},
 	value::{
@@ -131,11 +130,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<'a, T> {
 			// Create a resolved column for row numbers
 			let source = ResolvedSource::Table(self.table.clone());
 
-			let column_ident = ColumnIdentifier::with_source(
-				Fragment::owned_internal(self.table.namespace().name()),
-				Fragment::owned_internal(self.table.name()),
-				Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
-			);
+			let column_ident = Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME);
 
 			// Create a dummy ColumnDef for row number
 			let col_def = ColumnDef {

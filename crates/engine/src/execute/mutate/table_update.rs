@@ -8,7 +8,6 @@ use reifydb_core::{
 	interface::{
 		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
 		Params, ResolvedColumn, ResolvedNamespace, ResolvedSource, ResolvedTable, RowKey, Transaction,
-		identifier::{ColumnIdentifier, NamespaceIdentifier, TableIdentifier},
 	},
 	value::{
 		column::{ColumnData, Columns},
@@ -47,13 +46,13 @@ impl Executor {
 			let namespace_name = target.namespace().name();
 			let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 				return_error!(namespace_not_found(
-					Some(target.identifier().namespace.clone().into_owned()),
+					Fragment::owned_internal(namespace_name),
 					namespace_name
 				));
 			};
 
 			let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, target.name())? else {
-				let fragment = target.identifier().name.clone();
+				let fragment = target.identifier().clone();
 				return_error!(table_not_found(fragment.clone(), namespace_name, target.name(),));
 			};
 
@@ -66,13 +65,10 @@ impl Executor {
 		let layout = EncodedRowLayout::new(&table_types);
 
 		// Create resolved source for the table
-		let namespace_ident = NamespaceIdentifier::new(Fragment::owned_internal(namespace.name.clone()));
+		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
 		let resolved_namespace = ResolvedNamespace::new(namespace_ident, namespace.clone());
 
-		let table_ident = TableIdentifier::new(
-			Fragment::owned_internal(namespace.name.clone()),
-			Fragment::owned_internal(table.name.clone()),
-		);
+		let table_ident = Fragment::owned_internal(table.name.clone());
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
 		let resolved_source = Some(ResolvedSource::Table(resolved_table));
 
@@ -141,11 +137,7 @@ impl Executor {
 						};
 
 						// Create a ResolvedColumn for this table column
-						let column_ident = ColumnIdentifier::with_source(
-							Fragment::borrowed_internal(&namespace.name),
-							Fragment::borrowed_internal(&table.name),
-							Fragment::borrowed_internal(&table_column.name),
-						);
+						let column_ident = Fragment::borrowed_internal(&table_column.name);
 						let resolved_column = ResolvedColumn::new(
 							column_ident,
 							context.source.clone().unwrap(),

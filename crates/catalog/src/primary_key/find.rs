@@ -60,7 +60,7 @@ impl CatalogStore {
 		};
 
 		// Deserialize column IDs
-		let column_ids_blob = primary_key::LAYOSVT.get_blob(&primary_key_multi.row, primary_key::COLUMN_IDS);
+		let column_ids_blob = primary_key::LAYOUT.get_blob(&primary_key_multi.row, primary_key::COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		// Fetch full ColumnDef for each column ID

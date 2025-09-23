@@ -10,12 +10,12 @@ impl CatalogStore {
 		txn: &mut impl CommandTransaction,
 		metadata: RingBufferMetadata,
 	) -> crate::Result<()> {
-		let mut row = ring_buffer_metadata::LAYOSVT.allocate_row();
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::ID, metadata.id);
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::CAPACITY, metadata.capacity);
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::HEAD, metadata.head);
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::TAIL, metadata.tail);
-		ring_buffer_metadata::LAYOSVT.set_u64(&mut row, ring_buffer_metadata::COUNT, metadata.count);
+		let mut row = ring_buffer_metadata::LAYOUT.allocate_row();
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::ID, metadata.id);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::CAPACITY, metadata.capacity);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::HEAD, metadata.head);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::TAIL, metadata.tail);
+		ring_buffer_metadata::LAYOUT.set_u64(&mut row, ring_buffer_metadata::COUNT, metadata.count);
 
 		let key = RingBufferMetadataKey::new(metadata.id);
 		txn.set(&key.encode(), row)?;
