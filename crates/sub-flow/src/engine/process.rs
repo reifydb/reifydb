@@ -5,10 +5,10 @@ use std::collections::HashMap;
 
 use reifydb_core::{
 	flow::{
-		Flow, FlowChange, FlowDiff, FlowNode, FlowNodeType,
+		Flow, FlowChange, FlowNode,
 		FlowNodeType::{SourceInlineData, SourceTable, SourceView},
 	},
-	interface::{EncodableKey, MultiVersionCommandTransaction, RowKey, SourceId, Transaction, ViewId},
+	interface::Transaction,
 };
 use reifydb_engine::StandardCommandTransaction;
 
@@ -24,18 +24,18 @@ impl<T: Transaction> FlowEngine<T> {
 		}
 
 		for (source, diffs) in diffs_by_source {
-			// Find all nodes triggered by this source
 			if let Some(node_registrations) = self.sources.get(&source) {
-				// Process the diffs for each registered node
 				for (flow_id, node_id) in node_registrations {
 					if let Some(flow) = self.flows.get(flow_id) {
 						if let Some(node) = flow.get_node(node_id) {
-							let bulkchange = FlowChange {
-								diffs: diffs.clone(),
-							};
-							// Process this specific
-							// node with the change
-							self.process_node(txn, flow, node, bulkchange)?;
+							self.process_node(
+								txn,
+								flow,
+								node,
+								FlowChange {
+									diffs: diffs.clone(),
+								},
+							)?;
 						}
 					}
 				}
@@ -44,7 +44,7 @@ impl<T: Transaction> FlowEngine<T> {
 		Ok(())
 	}
 
-	fn apply_operator(
+	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		node: &FlowNode,
@@ -63,117 +63,30 @@ impl<T: Transaction> FlowEngine<T> {
 		change: FlowChange,
 	) -> crate::Result<()> {
 		let node_type = &node.ty;
-		let node_outputs = &node.outputs;
+		let changes = &node.outputs;
 
-		let output = match &node_type {
-			SourceInlineData {} => {
-				unimplemented!()
-			}
+		let change = match &node_type {
+			SourceInlineData {} => unimplemented!(),
 			SourceTable {
 				..
-			} => {
-				// Source nodes just propagate the change
-				change
-			}
+			} => change,
 			SourceView {
 				..
-			} => {
-				// Source view nodes also propagate the change
-				// This enables view-to-view dependencies
-				change
-			}
-			FlowNodeType::Operator {
-				..
-			} => self.apply_operator(txn, node, change)?,
-			FlowNodeType::SinkView {
-				view,
-				..
-			} => {
-				// Sinks persist the final results
-				// View writes will generate CDC events that
-				// trigger dependent flows
-				self.apply_to_view(txn, *view, &change)?;
-				change
-			}
+			} => change,
+			_ => self.apply(txn, node, change)?,
 		};
 
-		// Propagate to downstream nodes
-		if node_outputs.is_empty() {
-			// No outputs, nothing to do
-		} else if node_outputs.len() == 1 {
-			// Single output - pass ownership directly
-			let output_id = node_outputs[0];
-			self.process_node(txn, flow, flow.get_node(&output_id).unwrap(), output)?;
+		// Propagate to downstream
+		if changes.is_empty() {
+		} else if changes.len() == 1 {
+			let output_id = changes[0];
+			self.process_node(txn, flow, flow.get_node(&output_id).unwrap(), change)?;
 		} else {
-			// Multiple outputs - clone for all but the last
-			let (last, rest) = node_outputs.split_last().unwrap();
+			let (last, rest) = changes.split_last().unwrap();
 			for output_id in rest {
-				self.process_node(txn, flow, flow.get_node(output_id).unwrap(), output.clone())?;
+				self.process_node(txn, flow, flow.get_node(output_id).unwrap(), change.clone())?;
 			}
-			// Last output gets ownership
-			self.process_node(txn, flow, flow.get_node(last).unwrap(), output)?;
-		}
-
-		Ok(())
-	}
-
-	fn apply_to_view(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		view_id: ViewId,
-		change: &FlowChange,
-	) -> crate::Result<()> {
-		// For now, we just directly write the row to the view
-		// TODO: This assumes source and view layouts are compatible
-
-		for diff in &change.diffs {
-			match diff {
-				FlowDiff::Insert {
-					post: row_data,
-					..
-				} => {
-					let row_id = row_data.number;
-					let row = row_data.encoded.clone();
-
-					let key = RowKey {
-						source: SourceId::view(view_id),
-						row: row_id,
-					}
-					.encode();
-
-					txn.set(&key, row)?;
-				}
-				FlowDiff::Update {
-					pre: _,
-					post: row_data,
-					..
-				} => {
-					let row_id = row_data.number;
-					let new_row = row_data.encoded.clone();
-
-					let key = RowKey {
-						source: SourceId::view(view_id),
-						row: row_id,
-					}
-					.encode();
-
-					txn.set(&key, new_row)?;
-				}
-				FlowDiff::Remove {
-					pre: row_data,
-					..
-				} => {
-					let row_id = row_data.number;
-
-					let key = RowKey {
-						source: SourceId::view(view_id),
-						row: row_id,
-					}
-					.encode();
-
-					txn.remove(&key)?;
-				}
-			}
+			self.process_node(txn, flow, flow.get_node(last).unwrap(), change)?;
 		}
 
 		Ok(())

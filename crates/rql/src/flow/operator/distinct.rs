@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	flow::{FlowNodeDef, FlowNodeType::Operator, OperatorType::Distinct},
+	flow::FlowNodeType::Distinct,
 	interface::{
 		CommandTransaction, FlowNodeId,
 		evaluate::expression::{ColumnExpression, Expression},
@@ -38,12 +38,8 @@ impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
 		let expressions: Vec<Expression<'static>> =
 			self.columns.into_iter().map(|col| Expression::Column(ColumnExpression(col))).collect();
 
-		compiler.build_node(Operator {
-			operator: Distinct {
-				expressions,
-			},
-			input_schemas: vec![FlowNodeDef::empty()],
-			output_schema: FlowNodeDef::empty(),
+		compiler.build_node(Distinct {
+			expressions,
 		})
 		.with_input(input_node)
 		.build()

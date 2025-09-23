@@ -49,11 +49,6 @@ impl CatalogStore {
 				// buffers are not yet queryable
 				Ok(None)
 			}
-			SourceId::FlowNode(_flow_node_id) => {
-				// Flow nodes are intermediate computation results,
-				// not stored in the catalog
-				Ok(None)
-			}
 		}
 	}
 }

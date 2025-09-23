@@ -62,11 +62,6 @@ impl<T: Transaction> FlowConsumer<T> {
 				let resolved_ring_buffer = resolve_ring_buffer(txn, ring_buffer_id)?;
 				resolved_ring_buffer.def().get_named_layout()
 			}
-			SourceId::FlowNode(_flow_node_id) => {
-				// Flow nodes don't have catalog entries; they're intermediate results
-				// TODO: Consider storing flow node schemas in the flow graph context
-				unimplemented!("Flow node sources need schema context");
-			}
 		};
 
 		let encoded = EncodedRow(CowVec::new(row_bytes));

@@ -7,6 +7,7 @@ mod extend;
 mod filter;
 mod join;
 mod map;
+mod sink;
 mod sort;
 mod take;
 pub(crate) mod transform;
@@ -18,6 +19,7 @@ pub use extend::ExtendOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
 pub use map::MapOperator;
+pub use sink::SinkViewOperator;
 pub use sort::SortOperator;
 pub use take::TakeOperator;
 pub use union::UnionOperator;
@@ -41,6 +43,7 @@ pub enum Operators<T: Transaction> {
 	Distinct(DistinctOperator),
 	Union(UnionOperator),
 	Apply(ApplyOperator<T>),
+	SinkView(SinkViewOperator),
 }
 
 impl<T: Transaction> Operators<T> {
@@ -60,6 +63,7 @@ impl<T: Transaction> Operators<T> {
 			Operators::Distinct(op) => op.apply(txn, change, evaluator),
 			Operators::Union(op) => op.apply(txn, change, evaluator),
 			Operators::Apply(op) => op.apply(txn, change, evaluator),
+			Operators::SinkView(op) => op.apply(txn, change, evaluator),
 		};
 		result
 	}

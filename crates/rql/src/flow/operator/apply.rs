@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	flow::{FlowNodeDef, FlowNodeType::Operator, OperatorType::Apply},
+	flow::FlowNodeType::Apply,
 	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
 };
 use reifydb_type::Fragment;
@@ -40,13 +40,9 @@ impl<T: CommandTransaction> CompileOperator<T> for ApplyCompiler {
 			None
 		};
 
-		let mut builder = compiler.build_node(Operator {
-			operator: Apply {
-				operator_name: self.operator_name.text().to_string(),
-				expressions: self.arguments,
-			},
-			input_schemas: vec![],
-			output_schema: FlowNodeDef::empty(),
+		let mut builder = compiler.build_node(Apply {
+			operator_name: self.operator_name.text().to_string(),
+			expressions: self.arguments,
 		});
 
 		if let Some(input) = input_node {

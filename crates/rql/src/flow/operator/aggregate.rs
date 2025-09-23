@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	flow::{FlowNodeDef, FlowNodeType::Operator, OperatorType::Aggregate},
+	flow::FlowNodeType::Aggregate,
 	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
 };
 
@@ -35,13 +35,9 @@ impl<T: CommandTransaction> CompileOperator<T> for AggregateCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let input_node = compiler.compile_plan(*self.input)?;
 
-		compiler.build_node(Operator {
-			operator: Aggregate {
-				by: self.by,
-				map: self.map,
-			},
-			input_schemas: vec![FlowNodeDef::empty()],
-			output_schema: FlowNodeDef::empty(),
+		compiler.build_node(Aggregate {
+			by: self.by,
+			map: self.map,
 		})
 		.with_input(input_node)
 		.build()

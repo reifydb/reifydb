@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
 	JoinType, SortKey,
-	flow::FlowNodeDef,
 	interface::{FlowEdgeId, FlowNodeId, TableId, ViewId, evaluate::expression::Expression},
 };
 
@@ -10,28 +9,11 @@ use crate::{
 pub enum FlowNodeType {
 	SourceInlineData {},
 	SourceTable {
-		name: String,
 		table: TableId,
-		namespace: FlowNodeDef,
 	},
 	SourceView {
-		name: String,
-		view: ViewId,
-		namespace: FlowNodeDef,
-	},
-	Operator {
-		operator: OperatorType,
-		input_schemas: Vec<FlowNodeDef>,
-		output_schema: FlowNodeDef,
-	},
-	SinkView {
-		name: String,
 		view: ViewId,
 	},
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub enum OperatorType {
 	Filter {
 		conditions: Vec<Expression<'static>>,
 	},
@@ -64,45 +46,9 @@ pub enum OperatorType {
 		operator_name: String,
 		expressions: Vec<Expression<'static>>,
 	},
-}
-
-impl OperatorType {
-	/// Returns true if this operator maintains internal state that needs to
-	/// be persisted across incremental updates
-	pub fn is_stateful(&self) -> bool {
-		match self {
-			// Stateless operator - pure transformations
-			OperatorType::Filter {
-				..
-			} => false,
-			OperatorType::Map {
-				..
-			} => false,
-			OperatorType::Extend {
-				..
-			} => false,
-			OperatorType::Union => false,
-
-			OperatorType::Join {
-				..
-			} => true,
-			OperatorType::Aggregate {
-				..
-			} => true,
-			OperatorType::Take {
-				..
-			} => true,
-			OperatorType::Sort {
-				..
-			} => true,
-			OperatorType::Distinct {
-				..
-			} => true,
-			OperatorType::Apply {
-				..
-			} => true, // Apply operators are always mod
-		}
-	}
+	SinkView {
+		view: ViewId,
+	},
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

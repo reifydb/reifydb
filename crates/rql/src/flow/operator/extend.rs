@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	flow::{FlowNodeDef, FlowNodeType::Operator, OperatorType::Extend},
+	flow::FlowNodeType::Extend,
 	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
 };
 
@@ -37,12 +37,8 @@ impl<T: CommandTransaction> CompileOperator<T> for ExtendCompiler {
 			None
 		};
 
-		let mut builder = compiler.build_node(Operator {
-			operator: Extend {
-				expressions: self.expressions,
-			},
-			input_schemas: vec![FlowNodeDef::empty()],
-			output_schema: FlowNodeDef::empty(),
+		let mut builder = compiler.build_node(Extend {
+			expressions: self.expressions,
 		});
 
 		if let Some(input) = input_node {
