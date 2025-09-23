@@ -16,6 +16,10 @@ use crate::{
 	convert_data_type,
 };
 
+mod infer;
+
+pub use infer::infer_type;
+
 pub fn parse_expression(rql: &str) -> crate::Result<Vec<Expression>> {
 	let statements = parse_str(rql)?;
 	if statements.is_empty() {

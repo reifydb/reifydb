@@ -17,7 +17,7 @@ pub use distinct::DistinctOperator;
 pub use extend::ExtendOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
-pub use map::{MapOperator, MapTerminalOperator};
+pub use map::MapOperator;
 pub use sort::SortOperator;
 pub use take::TakeOperator;
 pub use union::UnionOperator;
@@ -35,7 +35,6 @@ pub enum Operators<T: Transaction> {
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
-	MapTerminal(MapTerminalOperator),
 	Join(JoinOperator),
 	Sort(SortOperator),
 	Take(TakeOperator),
@@ -55,7 +54,6 @@ impl<T: Transaction> Operators<T> {
 			Operators::Filter(op) => op.apply(txn, change, evaluator),
 			Operators::Map(op) => op.apply(txn, change, evaluator),
 			Operators::Extend(op) => op.apply(txn, change, evaluator),
-			Operators::MapTerminal(op) => op.apply(txn, change, evaluator),
 			Operators::Join(op) => op.apply(txn, change, evaluator),
 			Operators::Sort(op) => op.apply(txn, change, evaluator),
 			Operators::Take(op) => op.apply(txn, change, evaluator),

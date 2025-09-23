@@ -3,7 +3,7 @@
 
 use std::ops::Deref;
 
-use reifydb_type::{Type, Value};
+use reifydb_type::{NamedTypeConstraint, Type, Value};
 
 use super::{EncodedRow, EncodedRowLayout, EncodedRowLayoutInner};
 
@@ -15,9 +15,12 @@ pub struct EncodedRowNamedLayout {
 }
 
 impl EncodedRowNamedLayout {
-	/// Create a new named layout from field definitions
-	pub fn new(fields: impl IntoIterator<Item = (String, Type)>) -> Self {
-		let (names, types): (Vec<String>, Vec<Type>) = fields.into_iter().map(|(name, ty)| (name, ty)).unzip();
+	pub fn new(fields: impl IntoIterator<Item = impl NamedTypeConstraint>) -> Self {
+		let (names, types): (Vec<String>, Vec<Type>) = fields
+			.into_iter()
+			.map(|nt| (nt.get_name().to_string(), nt.get_constraint().get_type()))
+			.unzip();
+
 		let layout = EncodedRowLayout::new(&types);
 
 		Self {
@@ -40,6 +43,15 @@ impl EncodedRowNamedLayout {
 
 	pub fn layout(&self) -> &EncodedRowLayout {
 		&self.layout
+	}
+
+	pub fn allocate_row(&self) -> EncodedRow {
+		self.layout.allocate_row()
+	}
+
+	pub fn set_values(&self, row: &mut EncodedRow, values: &[Value]) {
+		debug_assert_eq!(self.layout.fields.len(), values.len());
+		self.layout.set_values(row, values)
 	}
 }
 
