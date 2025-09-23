@@ -41,10 +41,6 @@ pub enum OperatorType {
 	Extend {
 		expressions: Vec<Expression<'static>>,
 	},
-	MapTerminal {
-		expressions: Vec<Expression<'static>>,
-		view_id: ViewId,
-	},
 	Join {
 		join_type: JoinType,
 		left: Vec<Expression<'static>>,
@@ -83,9 +79,6 @@ impl OperatorType {
 				..
 			} => false,
 			OperatorType::Extend {
-				..
-			} => false,
-			OperatorType::MapTerminal {
 				..
 			} => false,
 			OperatorType::Union => false,

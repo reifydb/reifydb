@@ -44,9 +44,22 @@ impl RowEvaluator for StandardRowEvaluator {
 		for (idx, field) in ctx.row.layout.fields.iter().enumerate() {
 			let value = ctx.row.layout.get_value(&ctx.row.encoded, idx);
 			// FIXME maybe some auto conversion needs to happen here
-			debug_assert_eq!(field.value, value.get_type());
+			// Allow undefined values in any field type
+			debug_assert!(
+				field.value == value.get_type() || value.get_type() == reifydb_type::Type::Undefined,
+				"Type mismatch: field expects {:?}, got {:?}",
+				field.value,
+				value.get_type()
+			);
 
-			let mut data = ColumnData::with_capacity(value.get_type(), 1);
+			// Use the field type for the column data, not the value type
+			// This ensures undefined values are handled correctly
+			let column_type = if value.get_type() == reifydb_type::Type::Undefined {
+				field.value
+			} else {
+				value.get_type()
+			};
+			let mut data = ColumnData::with_capacity(column_type, 1);
 			data.push_value(value);
 
 			let name = ctx.row.layout.get_name(idx).ok_or_else(|| {

@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 
 use crate::interface::ColumnDef;
 
-/// Namespace information for a flow node, including column definitions
-/// and source identification for fully qualified column references
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FlowNodeDef {
 	/// Column definitions for this node's output
@@ -38,7 +36,7 @@ impl FlowNodeDef {
 		}
 	}
 
-	/// Create an empty namespace (for operators that don't have a direct
+	/// Create an empty definition (for operators that don't have a direct
 	/// source)
 	pub fn empty() -> Self {
 		Self {
@@ -48,14 +46,14 @@ impl FlowNodeDef {
 		}
 	}
 
-	/// Merge two namespaces (for JOIN outputs)
+	/// Merge two definitions (for JOIN outputs)
 	pub fn merge(left: &Self, right: &Self) -> Self {
 		let mut columns = left.columns.clone();
 		columns.extend(right.columns.clone());
 
 		Self {
 			columns,
-			// For merged namespaces, we don't have a single source
+			// For merged definitions, we don't have a single source
 			namespace_name: None,
 			source_name: None,
 		}

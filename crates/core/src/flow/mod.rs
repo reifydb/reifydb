@@ -4,10 +4,10 @@
 mod change;
 mod flow;
 mod graph;
-mod namespace;
 mod node;
+mod node_def;
 
 pub use change::*;
 pub use flow::*;
-pub use namespace::*;
 pub use node::*;
+pub use node_def::*;

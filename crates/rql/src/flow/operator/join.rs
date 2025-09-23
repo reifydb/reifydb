@@ -49,8 +49,8 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		// Compile with namespace tracking
-		let (left_node, left_schema) = compiler.compile_plan_with_schema(*self.left)?;
-		let (right_node, right_schema) = compiler.compile_plan_with_schema(*self.right)?;
+		let (left_node, left_schema) = compiler.compile_plan_with_definition(*self.left)?;
+		let (right_node, right_schema) = compiler.compile_plan_with_definition(*self.right)?;
 
 		// Extract left and right keys from the join conditions
 		let (left_keys, right_keys) = extract_join_keys(&self.on);

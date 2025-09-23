@@ -19,19 +19,16 @@ pub use fragment::{
 pub use params::Params;
 pub use value::{
 	Blob,
-	// Traits
 	Constraint,
-
-	// Number traits and operations
 	Date,
 	DateTime,
 	Decimal,
-	// Parse functions
 	GetType,
 	IdentityId,
 	Int,
 	Interval,
 	IntoValue,
+	NamedTypeConstraint,
 	OrderedF32,
 	OrderedF64,
 	RowNumber,
@@ -41,18 +38,22 @@ pub use value::{
 	Uint,
 	Uuid4,
 	Uuid7,
+
+	// Parse functions
 	Value,
 	boolean::parse_bool,
+	// Traits
 	decimal::parse_decimal,
+
+	// Number traits and operations
 	is::{IsDate, IsFloat, IsInt, IsNumber, IsTemporal, IsTime, IsUint, IsUuid},
 	number::{
 		Promote, SafeAdd, SafeConvert, SafeDiv, SafeMul, SafeRemainder, SafeSub, parse_float,
 		parse_primitive_int, parse_primitive_uint,
 	},
 	row_number::ROW_NUMBER_COLUMN_NAME,
-	temporal::parse::{parse_date, parse_datetime, parse_interval, parse_time},
-
 	// Parse functions
+	temporal::parse::{parse_date, parse_datetime, parse_interval, parse_time},
 	uuid::{parse_uuid4, parse_uuid7},
 };
 pub use value::{blob, boolean, temporal, uuid};

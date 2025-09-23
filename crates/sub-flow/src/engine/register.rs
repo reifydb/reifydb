@@ -1,11 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	flow::{
 		Flow, FlowNodeDef, FlowNodeType, OperatorType,
-		OperatorType::{Apply, Distinct, Extend, Filter, Join, Map, MapTerminal, Sort, Take, Union},
+		OperatorType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union},
 	},
 	interface::{FlowId, FlowNodeId, SourceId, Transaction},
 };
@@ -14,8 +13,7 @@ use reifydb_engine::StandardCommandTransaction;
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		DistinctOperator, ExtendOperator, FilterOperator, MapOperator, MapTerminalOperator, Operators,
-		SortOperator, TakeOperator,
+		DistinctOperator, ExtendOperator, FilterOperator, MapOperator, Operators, SortOperator, TakeOperator,
 	},
 };
 
@@ -115,7 +113,7 @@ impl<T: Transaction> FlowEngine<T> {
 		node_id: FlowNodeId,
 		operator: OperatorType,
 		input_schemas: &[FlowNodeDef],
-		_output_schema: &FlowNodeDef,
+		output_schema: &FlowNodeDef,
 	) -> crate::Result<Operators<T>> {
 		match operator {
 			Filter {
@@ -123,17 +121,19 @@ impl<T: Transaction> FlowEngine<T> {
 			} => Ok(Operators::Filter(FilterOperator::new(conditions))),
 			Map {
 				expressions,
-			} => Ok(Operators::Map(MapOperator::new(expressions))),
+			} => {
+				// Check if this is a terminal node by looking at output_schema
+				// Terminal nodes have specific view schemas
+				let schema = if output_schema.columns.is_empty() {
+					None
+				} else {
+					Some(output_schema.clone())
+				};
+				Ok(Operators::Map(MapOperator::new(expressions, schema)))
+			}
 			Extend {
 				expressions,
 			} => Ok(Operators::Extend(ExtendOperator::new(expressions))),
-			MapTerminal {
-				expressions,
-				view_id,
-			} => {
-				let view_def = CatalogStore::get_view(txn, view_id)?;
-				Ok(Operators::MapTerminal(MapTerminalOperator::new(expressions, view_def)))
-			}
 			Sort {
 				by: _,
 			} => Ok(Operators::Sort(SortOperator::new(Vec::new()))),
