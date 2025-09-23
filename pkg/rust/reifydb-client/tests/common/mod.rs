@@ -7,36 +7,36 @@ use reifydb::{
 	Database, ServerBuilder,
 	core::{
 		event::EventBus,
-		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
+		interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
 	},
 	sub_server::{NetworkConfig, ServerConfig},
 };
 use reifydb_client::{Client, Frame, HttpClient, Params, Value, WsClient};
 use reifydb_testing::testscript::Command;
 
-pub fn create_server_instance<VT, UT, C>(input: (VT, UT, C, EventBus)) -> Database<VT, UT, C>
+pub fn create_server_instance<MVT, SVT, C>(input: (MVT, SVT, C, EventBus)) -> Database<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	let (versioned, unversioned, cdc, eventbus) = input;
+	let (multi, single, cdc, eventbus) = input;
 	// Use only 1 worker for tests to avoid file descriptor exhaustion
 	let network_config = NetworkConfig {
 		workers: Some(1), // Limit to 1 worker for tests
 		..Default::default()
 	};
-	ServerBuilder::new(versioned, unversioned, cdc, eventbus)
+	ServerBuilder::new(multi, single, cdc, eventbus)
 		.with_config(ServerConfig::new().bind_addr("::1:0").network(network_config))
 		.build()
 		.unwrap()
 }
 
 /// Start server and return WebSocket port
-pub fn start_server_and_get_port<VT, UT, C>(server: &mut Database<VT, UT, C>) -> Result<u16, Box<dyn Error>>
+pub fn start_server_and_get_port<MVT, SVT, C>(server: &mut Database<MVT, SVT, C>) -> Result<u16, Box<dyn Error>>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
 	server.start()?;
@@ -153,10 +153,10 @@ pub fn cleanup_http_client(client: Option<HttpClient>) {
 }
 
 /// Clean up server instance
-pub fn cleanup_server<VT, UT, C>(mut server: Option<Database<VT, UT, C>>)
+pub fn cleanup_server<MVT, SVT, C>(mut server: Option<Database<MVT, SVT, C>>)
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
 	if let Some(mut srv) = server.take() {

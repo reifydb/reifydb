@@ -79,10 +79,10 @@ pub mod ids {
 			pub const NAME: ColumnId = ColumnId(4);
 			pub const TYPE: ColumnId = ColumnId(5);
 			pub const POSITION: ColumnId = ColumnId(6);
-			pub const AUTO_INCREMENT: ColumnId = ColumnId(7);
+			pub const ASVTO_INCREMENT: ColumnId = ColumnId(7);
 
 			pub const ALL: [ColumnId; 7] =
-				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT];
+				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, ASVTO_INCREMENT];
 		}
 
 		pub mod primary_keys {

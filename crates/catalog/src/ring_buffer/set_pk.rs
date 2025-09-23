@@ -16,7 +16,7 @@ impl CatalogStore {
 		ring_buffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let versioned = match txn.get(&Key::RingBuffer(RingBufferKey::new(ring_buffer_id)).encode())? {
+		let multi = match txn.get(&Key::RingBuffer(RingBufferKey::new(ring_buffer_id)).encode())? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"Ring buffer with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -24,8 +24,8 @@ impl CatalogStore {
 			)),
 		};
 
-		let mut updated_row = versioned.row.clone();
-		ring_buffer::LAYOUT.set_u64(&mut updated_row, ring_buffer::PRIMARY_KEY, primary_key_id.0);
+		let mut updated_row = multi.row.clone();
+		ring_buffer::LAYOSVT.set_u64(&mut updated_row, ring_buffer::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(&Key::RingBuffer(RingBufferKey::new(ring_buffer_id)).encode(), updated_row)?;
 

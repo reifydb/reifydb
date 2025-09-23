@@ -9,8 +9,8 @@ pub mod cowvec;
 pub mod either;
 pub mod encoding;
 pub mod ioc;
+mod multi;
 pub mod retry;
-mod versioned;
 pub mod wait_group;
 
 pub use bitvec::BitVec;
@@ -25,6 +25,6 @@ pub use clock::{
 pub use clock::{now, now_micros, now_millis, now_nanos};
 pub use cowvec::CowVec;
 pub use either::Either;
+pub use multi::MultiVersionContainer;
 pub use retry::retry;
-pub use versioned::VersionedContainer;
 pub use wait_group::WaitGroup;

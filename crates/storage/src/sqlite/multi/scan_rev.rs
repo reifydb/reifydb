@@ -5,31 +5,31 @@ use std::collections::VecDeque;
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	interface::{Versioned, VersionedScan},
+	interface::{MultiVersionRow, MultiVersionScanRev},
 };
 
 use super::{execute_scan_query, get_table_names};
 use crate::sqlite::{Sqlite, read::Reader};
 
-impl VersionedScan for Sqlite {
-	type ScanIter<'a> = Iter;
+impl MultiVersionScanRev for Sqlite {
+	type ScanIterRev<'a> = IterRev;
 
-	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
-		Ok(Iter::new(self.get_reader(), version, 1024))
+	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>> {
+		Ok(IterRev::new(self.get_reader(), version, 1024))
 	}
 }
 
-pub struct Iter {
+pub struct IterRev {
 	conn: Reader,
 	version: CommitVersion,
 	table_names: Vec<String>,
-	buffer: VecDeque<Versioned>,
+	buffer: VecDeque<MultiVersionRow>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
 }
 
-impl Iter {
+impl IterRev {
 	pub fn new(conn: Reader, version: CommitVersion, batch_size: usize) -> Self {
 		let table_names = get_table_names(&conn);
 
@@ -57,11 +57,12 @@ impl Iter {
 			self.version,
 			self.batch_size,
 			self.last_key.as_ref(),
-			"ASC",
+			"DESC",
 			&mut self.buffer,
 		);
 
-		// Update last_key to the last item we retrieved
+		// Update last_key to the last item we retrieved (which is the
+		// smallest key due to DESC order)
 		if let Some(last_item) = self.buffer.back() {
 			self.last_key = Some(last_item.key.clone());
 		}
@@ -73,8 +74,8 @@ impl Iter {
 	}
 }
 
-impl Iterator for Iter {
-	type Item = Versioned;
+impl Iterator for IterRev {
+	type Item = MultiVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

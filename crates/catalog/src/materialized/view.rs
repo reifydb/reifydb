@@ -6,14 +6,14 @@ use reifydb_core::{
 	interface::{NamespaceId, ViewDef, ViewId},
 };
 
-use crate::materialized::{MaterializedCatalog, VersionedViewDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionViewDef};
 
 impl MaterializedCatalog {
 	/// Find a view by ID at a specific version
 	pub fn find_view(&self, view: ViewId, version: CommitVersion) -> Option<ViewDef> {
 		self.views.get(&view).and_then(|entry| {
-			let versioned = entry.value();
-			versioned.get(version)
+			let multi = entry.value();
+			multi.get(version)
 		})
 	}
 
@@ -39,10 +39,10 @@ impl MaterializedCatalog {
 			self.views_by_name.insert((new.namespace, new.name.clone()), id);
 		}
 
-		// Update the versioned view
-		let versioned = self.views.get_or_insert_with(id, VersionedViewDef::new);
+		// Update the multi view
+		let multi = self.views.get_or_insert_with(id, MultiVersionViewDef::new);
 
-		versioned.value().insert(version, view);
+		multi.value().insert(version, view);
 	}
 }
 

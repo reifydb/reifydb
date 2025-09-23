@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, NamespaceId, NamespaceViewKey, QueryTransaction, Versioned, ViewDef, ViewId, ViewKey, ViewKind,
+	EncodableKey, MultiVersionRow, NamespaceId, NamespaceViewKey, QueryTransaction, ViewDef, ViewId, ViewKey,
+	ViewKind,
 };
 
 use crate::{
@@ -12,7 +13,7 @@ use crate::{
 
 impl CatalogStore {
 	pub fn find_view(rx: &mut impl QueryTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
-		let Some(versioned) = rx.get(&ViewKey {
+		let Some(multi) = rx.get(&ViewKey {
 			view: id,
 		}
 		.encode())?
@@ -20,12 +21,12 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = versioned.row;
-		let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
-		let namespace = NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
-		let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
+		let row = multi.row;
+		let id = ViewId(view::LAYOSVT.get_u64(&row, view::ID));
+		let namespace = NamespaceId(view::LAYOSVT.get_u64(&row, view::NAMESPACE));
+		let name = view::LAYOSVT.get_utf8(&row, view::NAME).to_string();
 
-		let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
+		let kind = match view::LAYOSVT.get_u8(&row, view::KIND) {
 			0 => ViewKind::Deferred,
 			1 => ViewKind::Transactional,
 			_ => unimplemented!(),
@@ -47,15 +48,17 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
-		let Some(view) = rx.range(NamespaceViewKey::full_scan(namespace))?.find_map(|versioned: Versioned| {
-			let row = &versioned.row;
-			let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
-			if name == view_name {
-				Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)))
-			} else {
-				None
-			}
-		}) else {
+		let Some(view) =
+			rx.range(NamespaceViewKey::full_scan(namespace))?.find_map(|multi: MultiVersionRow| {
+				let row = &multi.row;
+				let view_name = view_namespace::LAYOSVT.get_utf8(row, view_namespace::NAME);
+				if name == view_name {
+					Some(ViewId(view_namespace::LAYOSVT.get_u64(row, view_namespace::ID)))
+				} else {
+					None
+				}
+			})
+		else {
 			return Ok(None);
 		};
 

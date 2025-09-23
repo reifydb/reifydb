@@ -17,7 +17,7 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-	interface::{EncodableKeyRange, Key, RowKey, RowKeyRange, TableId, Versioned},
+	interface::{EncodableKeyRange, Key, MultiVersionRow, RowKey, RowKeyRange, TableId},
 	value::row::EncodedRow,
 };
 use rusqlite::{Connection, Statement, params};
@@ -53,7 +53,7 @@ pub(crate) fn table_name(key: &EncodedKey) -> crate::Result<&'static str> {
 		// reference remains valid for the lifetime of the program
 		unsafe { Ok(std::mem::transmute(table_name.as_str())) }
 	} else {
-		Ok("versioned")
+		Ok("multi")
 	}
 }
 
@@ -77,7 +77,7 @@ pub(crate) fn table_name_for_range(range: &EncodedKeyRange) -> String {
 	if let (Some(start), _) = RowKeyRange::decode(range) {
 		return format!("table_{}", start.source);
 	}
-	"versioned".to_string()
+	"multi".to_string()
 }
 
 /// Helper function to build query template and determine parameter count
@@ -193,7 +193,7 @@ pub(crate) fn execute_batched_range_query(
 	version: CommitVersion,
 	batch_size: usize,
 	param_count: u8,
-	buffer: &mut VecDeque<Versioned>,
+	buffer: &mut VecDeque<MultiVersionRow>,
 ) -> usize {
 	let mut count = 0;
 	match param_count {
@@ -202,7 +202,7 @@ pub(crate) fn execute_batched_range_query(
 				.query_map(params![version, batch_size], |row| {
 					let value: Option<Vec<u8>> = row.get(1)?;
 					match value {
-						Some(val) => Ok(Some(Versioned {
+						Some(val) => Ok(Some(MultiVersionRow {
 							key: EncodedKey(CowVec::new(row.get(0)?)),
 							row: EncodedRow(CowVec::new(val)),
 							version: row.get(2)?,
@@ -214,8 +214,8 @@ pub(crate) fn execute_batched_range_query(
 
 			for result in rows {
 				match result {
-					Ok(Some(versioned)) => {
-						buffer.push_back(versioned);
+					Ok(Some(multi)) => {
+						buffer.push_back(multi);
 						count += 1;
 					}
 					Ok(None) => {} // Skip deleted entries
@@ -233,7 +233,7 @@ pub(crate) fn execute_batched_range_query(
 				.query_map(params![param, version, batch_size], |row| {
 					let value: Option<Vec<u8>> = row.get(1)?;
 					match value {
-						Some(val) => Ok(Some(Versioned {
+						Some(val) => Ok(Some(MultiVersionRow {
 							key: EncodedKey(CowVec::new(row.get(0)?)),
 							row: EncodedRow(CowVec::new(val)),
 							version: row.get(2)?,
@@ -245,8 +245,8 @@ pub(crate) fn execute_batched_range_query(
 
 			for result in rows {
 				match result {
-					Ok(Some(versioned)) => {
-						buffer.push_back(versioned);
+					Ok(Some(multi)) => {
+						buffer.push_back(multi);
 						count += 1;
 					}
 					Ok(None) => {} // Skip deleted entries
@@ -267,7 +267,7 @@ pub(crate) fn execute_batched_range_query(
 				.query_map(params![start_param, end_param, version, batch_size], |row| {
 					let value: Option<Vec<u8>> = row.get(1)?;
 					match value {
-						Some(val) => Ok(Some(Versioned {
+						Some(val) => Ok(Some(MultiVersionRow {
 							key: EncodedKey(CowVec::new(row.get(0)?)),
 							row: EncodedRow(CowVec::new(val)),
 							version: row.get(2)?,
@@ -279,8 +279,8 @@ pub(crate) fn execute_batched_range_query(
 
 			for result in rows {
 				match result {
-					Ok(Some(versioned)) => {
-						buffer.push_back(versioned);
+					Ok(Some(multi)) => {
+						buffer.push_back(multi);
 						count += 1;
 					}
 					Ok(None) => {} // Skip deleted entries
@@ -297,9 +297,7 @@ pub(crate) fn execute_batched_range_query(
 pub(crate) fn get_table_names(conn: &ReadConnection) -> Vec<String> {
 	let conn_guard = conn.lock().unwrap();
 	let mut stmt = conn_guard
-		.prepare(
-			"SELECT name FROM sqlite_master WHERE type='table' AND (name='versioned' OR name LIKE 'table_%')",
-		)
+		.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='multi' OR name LIKE 'table_%')")
 		.unwrap();
 
 	stmt.query_map([], |row| Ok(row.get::<_, String>(0)?)).unwrap().map(Result::unwrap).collect()
@@ -313,7 +311,7 @@ pub(crate) fn execute_scan_query(
 	batch_size: usize,
 	last_key: Option<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"
-	buffer: &mut VecDeque<Versioned>,
+	buffer: &mut VecDeque<MultiVersionRow>,
 ) -> usize {
 	let mut all_rows = Vec::new();
 
@@ -358,7 +356,7 @@ pub(crate) fn execute_scan_query(
 			.query_map(rusqlite::params_from_iter(params.iter()), |row| {
 				let value: Option<Vec<u8>> = row.get(1)?;
 				match value {
-					Some(val) => Ok(Some(Versioned {
+					Some(val) => Ok(Some(MultiVersionRow {
 						key: EncodedKey(CowVec::new(row.get(0)?)),
 						row: EncodedRow(CowVec::new(val)),
 						version: row.get(2)?,
@@ -370,7 +368,7 @@ pub(crate) fn execute_scan_query(
 
 		for result in rows {
 			match result {
-				Ok(Some(versioned)) => all_rows.push(versioned),
+				Ok(Some(multi)) => all_rows.push(multi),
 				Ok(None) => {} // Skip deleted entries
 				Err(_) => break,
 			}
@@ -386,8 +384,8 @@ pub(crate) fn execute_scan_query(
 
 	// Take only the requested batch size from the sorted results
 	let count = all_rows.len().min(batch_size);
-	for versioned in all_rows.into_iter().take(batch_size) {
-		buffer.push_back(versioned);
+	for multi in all_rows.into_iter().take(batch_size) {
+		buffer.push_back(multi);
 	}
 
 	count

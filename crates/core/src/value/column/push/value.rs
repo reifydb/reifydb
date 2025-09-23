@@ -966,8 +966,8 @@ mod tests {
 
 	#[test]
 	fn test_datetime() {
-		let dt1 = DateTime::from_timestamp(1672531200).unwrap(); // 2023-01-01 00:00:00 UTC
-		let dt2 = DateTime::from_timestamp(1704067200).unwrap(); // 2024-01-01 00:00:00 UTC
+		let dt1 = DateTime::from_timestamp(1672531200).unwrap(); // 2023-01-01 00:00:00 SVTC
+		let dt2 = DateTime::from_timestamp(1704067200).unwrap(); // 2024-01-01 00:00:00 SVTC
 		let mut col = ColumnData::datetime(vec![dt1]);
 		col.push_value(Value::DateTime(dt2));
 		let ColumnData::DateTime(container) = col else {

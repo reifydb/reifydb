@@ -5,13 +5,13 @@ use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Result,
-	interface::{Versioned, VersionedRangeRev},
+	interface::{MultiVersionRangeRev, MultiVersionRow},
 };
 
 use super::{build_range_query, execute_batched_range_query, table_name_for_range};
 use crate::sqlite::{Sqlite, read::Reader};
 
-impl VersionedRangeRev for Sqlite {
+impl MultiVersionRangeRev for Sqlite {
 	type RangeIterRev<'a> = RangeRev;
 
 	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
@@ -24,7 +24,7 @@ pub struct RangeRev {
 	range: EncodedKeyRange,
 	version: CommitVersion,
 	table: String,
-	buffer: VecDeque<Versioned>,
+	buffer: VecDeque<MultiVersionRow>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -95,7 +95,7 @@ impl RangeRev {
 }
 
 impl Iterator for RangeRev {
-	type Item = Versioned;
+	type Item = MultiVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

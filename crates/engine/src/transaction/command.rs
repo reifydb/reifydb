@@ -17,22 +17,23 @@ use reifydb_core::{
 		TablePreUpdateInterceptor,
 	},
 	interface::{
-		BoxedVersionedIter, CdcTransaction, CommandTransaction, QueryTransaction, Transaction, TransactionId,
-		TransactionalChanges, TransactionalDefChanges, UnversionedTransaction, Versioned,
-		VersionedCommandTransaction, VersionedQueryTransaction, VersionedTransaction, WithEventBus,
+		BoxedMultiVersionIter, CdcTransaction, CommandTransaction, MultiVersionCommandTransaction,
+		MultiVersionQueryTransaction, MultiVersionRow, MultiVersionTransaction, QueryTransaction,
+		SingleVersionTransaction, Transaction, TransactionId, TransactionalChanges, TransactionalDefChanges,
+		WithEventBus,
 		interceptor::{TransactionInterceptor, WithInterceptors},
 	},
 	return_error,
 	value::row::EncodedRow,
 };
 
-/// An active command transaction that holds a versioned command transaction
-/// and provides query/command access to unversioned storage.
+/// An active command transaction that holds a multi command transaction
+/// and provides query/command access to single storage.
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct StandardCommandTransaction<T: Transaction> {
-	pub(crate) versioned: Option<<T::Versioned as VersionedTransaction>::Command>,
-	pub(crate) unversioned: T::Unversioned,
+	pub(crate) multi: Option<<T::MultiVersion as MultiVersionTransaction>::Command>,
+	pub(crate) single: T::SingleVersion,
 	pub(crate) cdc: T::Cdc,
 	state: TransactionState,
 	pub(crate) event_bus: EventBus,
@@ -54,17 +55,17 @@ enum TransactionState {
 impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Creates a new active command transaction with a pre-commit callback
 	pub fn new(
-		versioned: <T::Versioned as VersionedTransaction>::Command,
-		unversioned: T::Unversioned,
+		multi: <T::MultiVersion as MultiVersionTransaction>::Command,
+		single: T::SingleVersion,
 		cdc: T::Cdc,
 		event_bus: EventBus,
 		catalog: MaterializedCatalog,
 		interceptors: Interceptors<Self>,
 	) -> Self {
-		let txn_id = versioned.id();
+		let txn_id = multi.id();
 		Self {
-			versioned: Some(versioned),
-			unversioned,
+			multi: Some(multi),
+			single,
 			cdc,
 			state: TransactionState::Active,
 			event_bus,
@@ -93,65 +94,65 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 		}
 	}
 
-	/// Execute a function with query access to the unversioned transaction.
-	pub fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
+	/// Execute a function with query access to the single transaction.
+	pub fn with_single_query<F, R>(&self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(&mut <T::Unversioned as UnversionedTransaction>::Query<'_>) -> crate::Result<R>,
+		F: FnOnce(&mut <T::SingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
 	{
 		self.check_active()?;
-		self.unversioned.with_query(f)
+		self.single.with_query(f)
 	}
 
-	/// Execute a function with command access to the unversioned
+	/// Execute a function with command access to the single
 	/// transaction.
 	///
-	/// Note: If this operation fails, the versioned transaction is NOT
+	/// Note: If this operation fails, the multi transaction is NOT
 	/// automatically rolled back. The caller should handle transaction
 	/// rollback if needed.
-	pub fn with_unversioned_command<F, R>(&self, f: F) -> crate::Result<R>
+	pub fn with_single_command<F, R>(&self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(&mut <T::Unversioned as UnversionedTransaction>::Command<'_>) -> crate::Result<R>,
+		F: FnOnce(&mut <T::SingleVersion as SingleVersionTransaction>::Command<'_>) -> crate::Result<R>,
 	{
 		self.check_active()?;
-		self.unversioned.with_command(f)
+		self.single.with_command(f)
 	}
 
-	/// Execute a function with access to the versioned command transaction.
+	/// Execute a function with access to the multi command transaction.
 	/// This operates within the same transaction context.
-	pub fn with_versioned_command<F, R>(&mut self, f: F) -> crate::Result<R>
+	pub fn with_multi_command<F, R>(&mut self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(&mut <T::Versioned as VersionedTransaction>::Command) -> crate::Result<R>,
+		F: FnOnce(&mut <T::MultiVersion as MultiVersionTransaction>::Command) -> crate::Result<R>,
 	{
 		self.check_active()?;
-		let result = f(self.versioned.as_mut().unwrap());
+		let result = f(self.multi.as_mut().unwrap());
 
 		// If there was an error, we should roll back the transaction
 		if result.is_err() {
-			if let Some(versioned) = self.versioned.take() {
+			if let Some(multi) = self.multi.take() {
 				self.state = TransactionState::RolledBack;
-				let _ = versioned.rollback(); // Ignore rollback errors
+				let _ = multi.rollback(); // Ignore rollback errors
 			}
 		}
 
 		result
 	}
 
-	/// Execute a function with access to the versioned query capabilities.
+	/// Execute a function with access to the multi query capabilities.
 	/// This operates within the same transaction context and provides
 	/// read-only access.
-	pub fn with_versioned_query<F, R>(&mut self, f: F) -> crate::Result<R>
+	pub fn with_multi_query<F, R>(&mut self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(&mut <T::Versioned as VersionedTransaction>::Command) -> crate::Result<R>,
-		<T::Versioned as VersionedTransaction>::Command: VersionedQueryTransaction,
+		F: FnOnce(&mut <T::MultiVersion as MultiVersionTransaction>::Command) -> crate::Result<R>,
+		<T::MultiVersion as MultiVersionTransaction>::Command: MultiVersionQueryTransaction,
 	{
 		self.check_active()?;
-		let result = f(self.versioned.as_mut().unwrap());
+		let result = f(self.multi.as_mut().unwrap());
 
 		// If there was an error, we should roll back the transaction
 		if result.is_err() {
-			if let Some(versioned) = self.versioned.take() {
+			if let Some(multi) = self.multi.take() {
 				self.state = TransactionState::RolledBack;
-				let _ = versioned.rollback(); // Ignore rollback errors
+				let _ = multi.rollback(); // Ignore rollback errors
 			}
 		}
 
@@ -159,20 +160,20 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	}
 
 	/// Commit the transaction.
-	/// Since unversioned transactions are short-lived and auto-commit,
-	/// this only commits the versioned transaction.
+	/// Since single transactions are short-lived and auto-commit,
+	/// this only commits the multi transaction.
 	pub fn commit(&mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 
 		TransactionInterceptor::pre_commit(self)?;
 
-		if let Some(versioned) = self.versioned.take() {
-			let id = versioned.id();
+		if let Some(multi) = self.multi.take() {
+			let id = multi.id();
 			self.state = TransactionState::Committed;
 
 			let changes = std::mem::take(&mut self.changes);
 
-			let version = versioned.commit()?;
+			let version = multi.commit()?;
 			TransactionInterceptor::post_commit(self, id, version, changes)?;
 
 			Ok(version)
@@ -185,9 +186,9 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 	/// Rollback the transaction.
 	pub fn rollback(&mut self) -> crate::Result<()> {
 		self.check_active()?;
-		if let Some(versioned) = self.versioned.take() {
+		if let Some(multi) = self.multi.take() {
 			self.state = TransactionState::RolledBack;
-			versioned.rollback()
+			multi.rollback()
 		} else {
 			// This should never happen due to check_active
 			unreachable!("Transaction state inconsistency")
@@ -206,91 +207,91 @@ impl<T: Transaction> MaterializedCatalogTransaction for StandardCommandTransacti
 	}
 }
 
-impl<T: Transaction> VersionedQueryTransaction for StandardCommandTransaction<T> {
+impl<T: Transaction> MultiVersionQueryTransaction for StandardCommandTransaction<T> {
 	#[inline]
 	fn version(&self) -> CommitVersion {
-		self.versioned.as_ref().unwrap().version()
+		self.multi.as_ref().unwrap().version()
 	}
 
 	#[inline]
 	fn id(&self) -> TransactionId {
-		self.versioned.as_ref().unwrap().id()
+		self.multi.as_ref().unwrap().id()
 	}
 
 	#[inline]
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionRow>> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().get(key)
+		self.multi.as_mut().unwrap().get(key)
 	}
 
 	#[inline]
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().contains_key(key)
+		self.multi.as_mut().unwrap().contains_key(key)
 	}
 
 	#[inline]
-	fn scan(&mut self) -> crate::Result<BoxedVersionedIter> {
+	fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().scan()
+		self.multi.as_mut().unwrap().scan()
 	}
 
 	#[inline]
-	fn scan_rev(&mut self) -> crate::Result<BoxedVersionedIter> {
+	fn scan_rev(&mut self) -> crate::Result<BoxedMultiVersionIter> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().scan_rev()
+		self.multi.as_mut().unwrap().scan_rev()
 	}
 
 	#[inline]
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter> {
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().range(range)
+		self.multi.as_mut().unwrap().range(range)
 	}
 
 	#[inline]
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().range_rev(range)
+		self.multi.as_mut().unwrap().range_rev(range)
 	}
 
 	#[inline]
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().prefix(prefix)
+		self.multi.as_mut().unwrap().prefix(prefix)
 	}
 
 	#[inline]
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().prefix_rev(prefix)
+		self.multi.as_mut().unwrap().prefix_rev(prefix)
 	}
 }
 
-impl<T: Transaction> VersionedCommandTransaction for StandardCommandTransaction<T> {
+impl<T: Transaction> MultiVersionCommandTransaction for StandardCommandTransaction<T> {
 	#[inline]
 	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().set(key, row)
+		self.multi.as_mut().unwrap().set(key, row)
 	}
 
 	#[inline]
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		self.check_active()?;
-		self.versioned.as_mut().unwrap().remove(key)
+		self.multi.as_mut().unwrap().remove(key)
 	}
 
 	#[inline]
 	fn commit(mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 		self.state = TransactionState::Committed;
-		self.versioned.take().unwrap().commit()
+		self.multi.take().unwrap().commit()
 	}
 
 	#[inline]
 	fn rollback(mut self) -> crate::Result<()> {
 		self.check_active()?;
 		self.state = TransactionState::RolledBack;
-		self.versioned.take().unwrap().rollback()
+		self.multi.take().unwrap().rollback()
 	}
 }
 
@@ -301,13 +302,13 @@ impl<T: Transaction> WithEventBus for StandardCommandTransaction<T> {
 }
 
 impl<T: Transaction> QueryTransaction for StandardCommandTransaction<T> {
-	type UnversionedQuery<'a> = <T::Unversioned as UnversionedTransaction>::Query<'a>;
+	type SingleVersionQuery<'a> = <T::SingleVersion as SingleVersionTransaction>::Query<'a>;
 
 	type CdcQuery<'a> = <T::Cdc as CdcTransaction>::Query<'a>;
 
-	fn begin_unversioned_query(&self) -> crate::Result<Self::UnversionedQuery<'_>> {
+	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
 		self.check_active()?;
-		self.unversioned.begin_query()
+		self.single.begin_query()
 	}
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
@@ -317,11 +318,11 @@ impl<T: Transaction> QueryTransaction for StandardCommandTransaction<T> {
 }
 
 impl<T: Transaction> CommandTransaction for StandardCommandTransaction<T> {
-	type UnversionedCommand<'a> = <T::Unversioned as UnversionedTransaction>::Command<'a>;
+	type SingleVersionCommand<'a> = <T::SingleVersion as SingleVersionTransaction>::Command<'a>;
 
-	fn begin_unversioned_command(&self) -> crate::Result<Self::UnversionedCommand<'_>> {
+	fn begin_single_command(&self) -> crate::Result<Self::SingleVersionCommand<'_>> {
 		self.check_active()?;
-		self.unversioned.begin_command()
+		self.single.begin_command()
 	}
 
 	fn get_changes(&self) -> &TransactionalDefChanges {
@@ -539,11 +540,11 @@ impl<T: Transaction> TransactionalChanges for StandardCommandTransaction<T> {}
 
 impl<T: Transaction> Drop for StandardCommandTransaction<T> {
 	fn drop(&mut self) {
-		if let Some(versioned) = self.versioned.take() {
+		if let Some(multi) = self.multi.take() {
 			// Auto-rollback if still active (not committed or
 			// rolled back)
 			if self.state == TransactionState::Active {
-				let _ = versioned.rollback();
+				let _ = multi.rollback();
 			}
 		}
 	}

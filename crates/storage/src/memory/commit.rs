@@ -4,7 +4,7 @@
 use reifydb_core::{
 	CommitVersion, CowVec, Result,
 	delta::Delta,
-	interface::{TransactionId, UnversionedCommit, VersionedCommit},
+	interface::{MultiVersionCommit, SingleVersionCommit, TransactionId},
 	return_error,
 	util::now_millis,
 };
@@ -12,10 +12,10 @@ use reifydb_core::{
 use crate::{
 	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
 	diagnostic::sequence_exhausted,
-	memory::{Memory, VersionedRow},
+	memory::{Memory, MultiVersionRowContainer},
 };
 
-impl VersionedCommit for Memory {
+impl MultiVersionCommit for Memory {
 	fn commit(&self, delta: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
 		let timestamp = now_millis();
 
@@ -27,7 +27,7 @@ impl VersionedCommit for Memory {
 				Err(_) => return_error!(sequence_exhausted()),
 			};
 
-			let before_value = self.versioned.get(delta.key()).and_then(|entry| {
+			let before_value = self.multi.get(delta.key()).and_then(|entry| {
 				let values = entry.value();
 				values.get_latest()
 			});
@@ -37,14 +37,16 @@ impl VersionedCommit for Memory {
 					key,
 					row,
 				} => {
-					let item = self.versioned.get_or_insert_with(key.clone(), VersionedRow::new);
+					let item = self
+						.multi
+						.get_or_insert_with(key.clone(), MultiVersionRowContainer::new);
 					let val = item.value();
 					val.insert(version, Some(row.clone()));
 				}
 				Delta::Remove {
 					key,
 				} => {
-					if let Some(values) = self.versioned.get(key) {
+					if let Some(values) = self.multi.get(key) {
 						let values = values.value();
 						if !values.is_empty() {
 							values.insert(version, None);
@@ -68,7 +70,7 @@ impl VersionedCommit for Memory {
 	}
 }
 
-impl UnversionedCommit for Memory {
+impl SingleVersionCommit for Memory {
 	fn commit(&mut self, delta: CowVec<Delta>) -> Result<()> {
 		for delta in delta {
 			match delta {
@@ -76,12 +78,12 @@ impl UnversionedCommit for Memory {
 					key,
 					row,
 				} => {
-					self.unversioned.insert(key, row);
+					self.single.insert(key, row);
 				}
 				Delta::Remove {
 					key,
 				} => {
-					self.unversioned.remove(&key);
+					self.single.remove(&key);
 				}
 			}
 		}

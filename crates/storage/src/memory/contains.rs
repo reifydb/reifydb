@@ -3,14 +3,14 @@
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	interface::{UnversionedContains, VersionedContains},
+	interface::{MultiVersionContains, SingleVersionContains},
 };
 
 use crate::memory::Memory;
 
-impl VersionedContains for Memory {
+impl MultiVersionContains for Memory {
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
-		let result = match self.versioned.get(key) {
+		let result = match self.multi.get(key) {
 			None => false,
 			Some(values) => values.value().get(version).is_some(),
 		};
@@ -18,8 +18,8 @@ impl VersionedContains for Memory {
 	}
 }
 
-impl UnversionedContains for Memory {
+impl SingleVersionContains for Memory {
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		Ok(self.unversioned.get(key).is_some())
+		Ok(self.single.get(key).is_some())
 	}
 }

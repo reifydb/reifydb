@@ -7,7 +7,7 @@ use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
 	event::EventBus,
-	interface::{Unversioned, UnversionedStorage, UnversionedTransaction, WithEventBus},
+	interface::{SingleVersionRow, SingleVersionStorage, SingleVersionTransaction, WithEventBus},
 	value::row::EncodedRow,
 };
 
@@ -22,20 +22,20 @@ pub use read::SvlReadTransaction;
 pub use write::SvlWriteTransaction;
 
 #[derive(Clone)]
-pub struct SingleVersionLock<US> {
-	inner: Arc<SvlInner<US>>,
+pub struct SingleVersionLock<SVS> {
+	inner: Arc<SvlInner<SVS>>,
 }
 
-struct SvlInner<US> {
-	storage: RwLock<US>,
+struct SvlInner<SVS> {
+	storage: RwLock<SVS>,
 	event_bus: EventBus,
 }
 
-impl<US> SingleVersionLock<US>
+impl<SVS> SingleVersionLock<SVS>
 where
-	US: UnversionedStorage,
+	SVS: SingleVersionStorage,
 {
-	pub fn new(storage: US, event_bus: EventBus) -> Self {
+	pub fn new(storage: SVS, event_bus: EventBus) -> Self {
 		Self {
 			inner: Arc::new(SvlInner {
 				storage: RwLock::new(storage),
@@ -45,21 +45,21 @@ where
 	}
 }
 
-impl<US> WithEventBus for SingleVersionLock<US>
+impl<SVS> WithEventBus for SingleVersionLock<SVS>
 where
-	US: UnversionedStorage,
+	SVS: SingleVersionStorage,
 {
 	fn event_bus(&self) -> &EventBus {
 		&self.inner.event_bus
 	}
 }
 
-impl<US> UnversionedTransaction for SingleVersionLock<US>
+impl<SVS> SingleVersionTransaction for SingleVersionLock<SVS>
 where
-	US: UnversionedStorage,
+	SVS: SingleVersionStorage,
 {
-	type Query<'a> = SvlReadTransaction<'a, US>;
-	type Command<'a> = SvlWriteTransaction<'a, US>;
+	type Query<'a> = SvlReadTransaction<'a, SVS>;
+	type Command<'a> = SvlWriteTransaction<'a, SVS>;
 
 	fn begin_query(&self) -> crate::Result<Self::Query<'_>> {
 		let storage = self.inner.storage.read().unwrap();

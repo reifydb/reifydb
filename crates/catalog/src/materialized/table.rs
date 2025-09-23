@@ -6,14 +6,14 @@ use reifydb_core::{
 	interface::{NamespaceId, TableDef, TableId},
 };
 
-use crate::materialized::{MaterializedCatalog, VersionedTableDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionTableDef};
 
 impl MaterializedCatalog {
 	/// Find a table by ID at a specific version
 	pub fn find_table(&self, table: TableId, version: CommitVersion) -> Option<TableDef> {
 		self.tables.get(&table).and_then(|entry| {
-			let versioned = entry.value();
-			versioned.get(version)
+			let multi = entry.value();
+			multi.get(version)
 		})
 	}
 
@@ -44,9 +44,9 @@ impl MaterializedCatalog {
 			self.tables_by_name.insert((new.namespace, new.name.clone()), id);
 		}
 
-		// Update the versioned table
-		let versioned = self.tables.get_or_insert_with(id, VersionedTableDef::new);
-		versioned.value().insert(version, table);
+		// Update the multi table
+		let multi = self.tables.get_or_insert_with(id, MultiVersionTableDef::new);
+		multi.value().insert(version, table);
 	}
 }
 

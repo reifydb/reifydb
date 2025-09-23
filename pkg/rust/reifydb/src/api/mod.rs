@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	event::EventBus,
-	interface::{CdcTransaction, UnversionedTransaction, VersionedStorage},
+	interface::{CdcTransaction, MultiVersionStorage, SingleVersionTransaction},
 };
 use reifydb_engine::StandardCdcTransaction;
 use reifydb_storage::{
@@ -45,20 +45,20 @@ pub fn sqlite(config: SqliteConfig) -> (Sqlite, SingleVersionLock<Sqlite>, Stand
 }
 
 /// Convenience function to create an optimistic transaction layer
-pub fn optimistic<VS, UT, C>(input: (VS, UT, C, EventBus)) -> (Optimistic<VS, UT>, UT, C, EventBus)
+pub fn optimistic<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (Optimistic<MVS, SVT>, SVT, C, EventBus)
 where
-	VS: VersionedStorage,
-	UT: UnversionedTransaction,
+	MVS: MultiVersionStorage,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
 	(Optimistic::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
 }
 
 /// Convenience function to create a serializable transaction layer
-pub fn serializable<VS, UT, C>(input: (VS, UT, C, EventBus)) -> (Serializable<VS, UT>, UT, C, EventBus)
+pub fn serializable<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (Serializable<MVS, SVT>, SVT, C, EventBus)
 where
-	VS: VersionedStorage,
-	UT: UnversionedTransaction,
+	MVS: MultiVersionStorage,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
 	(Serializable::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)

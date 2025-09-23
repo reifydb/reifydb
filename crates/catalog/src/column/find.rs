@@ -14,10 +14,10 @@ impl CatalogStore {
 		source: impl Into<SourceId>,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
-		let maybe_id = rx.range(ColumnKey::full_scan(source))?.find_map(|versioned| {
-			let row = versioned.row;
-			let column = ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID));
-			let name = table_column::LAYOUT.get_utf8(&row, table_column::NAME);
+		let maybe_id = rx.range(ColumnKey::full_scan(source))?.find_map(|multi| {
+			let row = multi.row;
+			let column = ColumnId(table_column::LAYOSVT.get_u64(&row, table_column::ID));
+			let name = table_column::LAYOSVT.get_utf8(&row, table_column::NAME);
 
 			if name == column_name {
 				Some(column)

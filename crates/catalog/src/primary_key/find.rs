@@ -47,12 +47,12 @@ impl CatalogStore {
 		};
 
 		// Fetch the primary key details
-		let primary_key_versioned = match rx.get(&Key::PrimaryKey(PrimaryKeyKey {
+		let primary_key_multi = match rx.get(&Key::PrimaryKey(PrimaryKeyKey {
 			primary_key: primary_key_id,
 		})
 		.encode())?
 		{
-			Some(versioned) => versioned,
+			Some(multi) => multi,
 			None => return_internal_error!(format!(
 				"Primary key with ID {:?} referenced but not found",
 				primary_key_id
@@ -60,7 +60,7 @@ impl CatalogStore {
 		};
 
 		// Deserialize column IDs
-		let column_ids_blob = primary_key::LAYOUT.get_blob(&primary_key_versioned.row, primary_key::COLUMN_IDS);
+		let column_ids_blob = primary_key::LAYOSVT.get_blob(&primary_key_multi.row, primary_key::COLUMN_IDS);
 		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		// Fetch full ColumnDef for each column ID

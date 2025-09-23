@@ -4,9 +4,9 @@
 mod cdc;
 mod change;
 pub mod interceptor;
+mod multi;
+mod single;
 mod transaction;
-mod unversioned;
-mod versioned;
 
 use std::{
 	fmt::{Display, Formatter},
@@ -15,10 +15,10 @@ use std::{
 
 pub use cdc::{CdcQueryTransaction, CdcTransaction};
 pub use change::*;
+pub use multi::*;
 use reifydb_type::{Error, Uuid7, return_internal_error};
+pub use single::*;
 pub use transaction::{CommandTransaction, QueryTransaction};
-pub use unversioned::*;
-pub use versioned::*;
 
 /// A unique identifier for a transaction using UUIDv7 for time-ordered
 /// uniqueness
@@ -67,7 +67,7 @@ impl Display for TransactionId {
 }
 
 pub trait Transaction: Send + Sync + Clone + 'static {
-	type Versioned: VersionedTransaction;
-	type Unversioned: UnversionedTransaction;
+	type MultiVersion: MultiVersionTransaction;
+	type SingleVersion: SingleVersionTransaction;
 	type Cdc: CdcTransaction;
 }

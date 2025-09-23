@@ -3,22 +3,22 @@
 
 use super::change::TransactionalDefChanges;
 use crate::interface::{
-	CdcQueryTransaction, UnversionedCommandTransaction, UnversionedQueryTransaction, VersionedCommandTransaction,
-	VersionedQueryTransaction,
+	CdcQueryTransaction, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
+	SingleVersionCommandTransaction, SingleVersionQueryTransaction,
 };
 
-pub trait CommandTransaction: VersionedCommandTransaction + QueryTransaction {
-	type UnversionedCommand<'a>: UnversionedCommandTransaction
+pub trait CommandTransaction: MultiVersionCommandTransaction + QueryTransaction {
+	type SingleVersionCommand<'a>: SingleVersionCommandTransaction
 	where
 		Self: 'a;
 
-	fn begin_unversioned_command(&self) -> crate::Result<Self::UnversionedCommand<'_>>;
+	fn begin_single_command(&self) -> crate::Result<Self::SingleVersionCommand<'_>>;
 
-	fn with_unversioned_command<F, R>(&self, f: F) -> crate::Result<R>
+	fn with_single_command<F, R>(&self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(&mut Self::UnversionedCommand<'_>) -> crate::Result<R>,
+		F: FnOnce(&mut Self::SingleVersionCommand<'_>) -> crate::Result<R>,
 	{
-		let mut tx = self.begin_unversioned_command()?;
+		let mut tx = self.begin_single_command()?;
 		let result = f(&mut tx)?;
 		tx.commit()?;
 		Ok(result)
@@ -28,8 +28,8 @@ pub trait CommandTransaction: VersionedCommandTransaction + QueryTransaction {
 	fn get_changes(&self) -> &TransactionalDefChanges;
 }
 
-pub trait QueryTransaction: VersionedQueryTransaction {
-	type UnversionedQuery<'a>: UnversionedQueryTransaction
+pub trait QueryTransaction: MultiVersionQueryTransaction {
+	type SingleVersionQuery<'a>: SingleVersionQueryTransaction
 	where
 		Self: 'a;
 
@@ -37,15 +37,15 @@ pub trait QueryTransaction: VersionedQueryTransaction {
 	where
 		Self: 'a;
 
-	fn begin_unversioned_query(&self) -> crate::Result<Self::UnversionedQuery<'_>>;
+	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>>;
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>>;
 
-	fn with_unversioned_query<F, R>(&self, f: F) -> crate::Result<R>
+	fn with_single_query<F, R>(&self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(&mut Self::UnversionedQuery<'_>) -> crate::Result<R>,
+		F: FnOnce(&mut Self::SingleVersionQuery<'_>) -> crate::Result<R>,
 	{
-		let mut tx = self.begin_unversioned_query()?;
+		let mut tx = self.begin_single_query()?;
 		let result = f(&mut tx)?;
 		Ok(result)
 	}

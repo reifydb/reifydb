@@ -11,7 +11,7 @@
 
 use std::{cmp, cmp::Reverse};
 
-use reifydb_core::{CommitVersion, EncodedKey, delta::Delta, interface::Versioned, value::row::EncodedRow};
+use reifydb_core::{CommitVersion, EncodedKey, delta::Delta, interface::MultiVersionRow, value::row::EncodedRow};
 
 pub enum TransactionValue {
 	PendingIter {
@@ -23,8 +23,8 @@ pub enum TransactionValue {
 	Committed(Committed),
 }
 
-impl From<Versioned> for TransactionValue {
-	fn from(value: Versioned) -> Self {
+impl From<MultiVersionRow> for TransactionValue {
+	fn from(value: MultiVersionRow) -> Self {
 		Self::Committed(Committed {
 			key: value.key,
 			row: value.row,
@@ -139,8 +139,8 @@ pub struct Committed {
 	pub(crate) version: CommitVersion,
 }
 
-impl From<Versioned> for Committed {
-	fn from(value: Versioned) -> Self {
+impl From<MultiVersionRow> for Committed {
+	fn from(value: MultiVersionRow) -> Self {
 		Self {
 			key: value.key,
 			row: value.row,

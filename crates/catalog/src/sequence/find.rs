@@ -3,7 +3,8 @@
 
 use reifydb_core::{
 	interface::{
-		EncodableKey, NamespaceId, QueryTransaction, SequenceId, SystemSequenceKey, UnversionedQueryTransaction,
+		EncodableKey, NamespaceId, QueryTransaction, SequenceId, SingleVersionQueryTransaction,
+		SystemSequenceKey,
 	},
 	return_internal_error,
 };
@@ -12,7 +13,7 @@ use crate::{
 	CatalogStore,
 	sequence::{
 		Sequence,
-		layout::sequence::{LAYOUT, VALUE},
+		layout::sequence::{LAYOSVT, VALUE},
 	},
 };
 
@@ -36,14 +37,14 @@ impl CatalogStore {
 			),
 		};
 
-		// Read current value from unversioned storage
+		// Read current value from single storage
 		let sequence_key = SystemSequenceKey {
 			sequence: sequence_id,
 		}
 		.encode();
 
-		let value = rx.with_unversioned_query(|tx| match tx.get(&sequence_key)? {
-			Some(unversioned_row) => Ok(LAYOUT.get_u64(&unversioned_row.row, VALUE)),
+		let value = rx.with_single_query(|tx| match tx.get(&sequence_key)? {
+			Some(row) => Ok(LAYOSVT.get_u64(&row.row, VALUE)),
 			None => Ok(0),
 		})?;
 

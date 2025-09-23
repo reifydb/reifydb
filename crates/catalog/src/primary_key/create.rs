@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use primary_key::LAYOUT;
+use primary_key::LAYOSVT;
 use reifydb_core::{
 	diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
 	interface::{ColumnId, CommandTransaction, Key, PrimaryKeyId, PrimaryKeyKey, SourceId},
@@ -44,10 +44,10 @@ impl CatalogStore {
 		let id = SystemSequence::next_primary_key_id(txn)?;
 
 		// Create primary key row
-		let mut row = LAYOUT.allocate_row();
-		LAYOUT.set_u64(&mut row, primary_key::ID, id.0);
-		LAYOUT.set_u64(&mut row, primary_key::SOURCE, to_create.source.as_u64());
-		LAYOUT.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
+		let mut row = LAYOSVT.allocate_row();
+		LAYOSVT.set_u64(&mut row, primary_key::ID, id.0);
+		LAYOSVT.set_u64(&mut row, primary_key::SOURCE, to_create.source.as_u64());
+		LAYOSVT.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
 		// Store the primary key
 		txn.set(

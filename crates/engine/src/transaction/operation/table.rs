@@ -5,7 +5,7 @@ use reifydb_catalog::sequence::RowSequence;
 use reifydb_core::{
 	event::catalog::TableInsertedEvent,
 	interface::{
-		EncodableKey, GetEncodedRowLayout, RowKey, TableDef, Transaction, VersionedCommandTransaction,
+		EncodableKey, GetEncodedRowLayout, MultiVersionCommandTransaction, RowKey, TableDef, Transaction,
 		interceptor::TableInterceptor,
 	},
 	value::row::{EncodedRow, Row},

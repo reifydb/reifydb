@@ -5,7 +5,7 @@ use std::{ops::Deref, sync::Arc};
 
 pub use range::Range;
 pub use range_rev::RangeRev;
-pub use scan::VersionedIter;
+pub use scan::MultiVersionIter;
 pub use scan_rev::IterRev;
 
 mod cdc;
@@ -20,21 +20,21 @@ mod scan_rev;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	CommitVersion, EncodedKey,
-	interface::{UnversionedInsert, UnversionedRemove, UnversionedStorage, VersionedStorage},
-	util::VersionedContainer,
+	interface::{MultiVersionStorage, SingleVersionInsert, SingleVersionRemove, SingleVersionStorage},
+	util::MultiVersionContainer,
 	value::row::EncodedRow,
 };
 
 use crate::cdc::CdcTransaction;
 
-pub type VersionedRow = VersionedContainer<EncodedRow>;
+pub type MultiVersionRowContainer = MultiVersionContainer<EncodedRow>;
 
 #[derive(Clone)]
 pub struct Memory(Arc<MemoryInner>);
 
 pub struct MemoryInner {
-	versioned: SkipMap<EncodedKey, VersionedRow>,
-	unversioned: SkipMap<EncodedKey, EncodedRow>,
+	multi: SkipMap<EncodedKey, MultiVersionRowContainer>,
+	single: SkipMap<EncodedKey, EncodedRow>,
 	cdc_transactions: SkipMap<CommitVersion, CdcTransaction>,
 }
 
@@ -55,14 +55,14 @@ impl Default for Memory {
 impl Memory {
 	pub fn new() -> Self {
 		Self(Arc::new(MemoryInner {
-			versioned: SkipMap::new(),
-			unversioned: SkipMap::new(),
+			multi: SkipMap::new(),
+			single: SkipMap::new(),
 			cdc_transactions: SkipMap::new(),
 		}))
 	}
 }
 
-impl VersionedStorage for Memory {}
-impl UnversionedStorage for Memory {}
-impl UnversionedInsert for Memory {}
-impl UnversionedRemove for Memory {}
+impl MultiVersionStorage for Memory {}
+impl SingleVersionStorage for Memory {}
+impl SingleVersionInsert for Memory {}
+impl SingleVersionRemove for Memory {}

@@ -14,7 +14,7 @@ use serde::{
 use crate::{Date, Time};
 
 /// A date and time value with nanosecond precision.
-/// Always in UTC timezone.
+/// Always in SVTC timezone.
 ///
 /// Internally stored as seconds and nanoseconds since Unix epoch.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

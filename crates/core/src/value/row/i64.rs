@@ -102,8 +102,8 @@ mod tests {
 		// Test typical Unix timestamp values
 		let timestamps = [
 			0i64,           // Unix epoch
-			1640995200i64,  // 2022-01-01 00:00:00 UTC
-			1735689600i64,  // 2025-01-01 00:00:00 UTC
+			1640995200i64,  // 2022-01-01 00:00:00 SVTC
+			1735689600i64,  // 2025-01-01 00:00:00 SVTC
 			-2147483648i64, // Before Unix epoch
 		];
 

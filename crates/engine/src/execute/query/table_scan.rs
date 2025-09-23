@@ -10,8 +10,8 @@ use std::{
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		ColumnDef, ColumnId, EncodableKey, EncodableKeyRange, RowKey, RowKeyRange, Transaction,
-		VersionedQueryTransaction,
+		ColumnDef, ColumnId, EncodableKey, EncodableKeyRange, MultiVersionQueryTransaction, RowKey,
+		RowKeyRange, Transaction,
 		catalog::ColumnIndex,
 		identifier::ColumnIdentifier,
 		resolved::{ResolvedColumn as RColumn, ResolvedSource, ResolvedTable},
@@ -101,13 +101,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<'a, T> {
 		let mut rows_collected = 0;
 		let mut new_last_key = None;
 
-		let versioned_rows: Vec<_> = rx.range(range)?.into_iter().collect();
+		let multi_rows: Vec<_> = rx.range(range)?.into_iter().collect();
 
-		for versioned in versioned_rows.into_iter() {
-			if let Some(key) = RowKey::decode(&versioned.key) {
-				batch_rows.push(versioned.row);
+		for multi in multi_rows.into_iter() {
+			if let Some(key) = RowKey::decode(&multi.key) {
+				batch_rows.push(multi.row);
 				row_numbers.push(key.row);
-				new_last_key = Some(versioned.key);
+				new_last_key = Some(multi.key);
 				rows_collected += 1;
 
 				if rows_collected >= batch_size {

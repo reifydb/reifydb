@@ -30,8 +30,8 @@ impl Time {
 	/// Maximum valid nanoseconds in a day
 	const MAX_NANOS_IN_DAY: u64 = 86_399_999_999_999;
 	const NANOS_PER_SECOND: u64 = 1_000_000_000;
-	const NANOS_PER_MINUTE: u64 = 60 * Self::NANOS_PER_SECOND;
-	const NANOS_PER_HOUR: u64 = 60 * Self::NANOS_PER_MINUTE;
+	const NANOS_PER_MINSVTE: u64 = 60 * Self::NANOS_PER_SECOND;
+	const NANOS_PER_HOUR: u64 = 60 * Self::NANOS_PER_MINSVTE;
 
 	pub fn new(hour: u32, min: u32, sec: u32, nano: u32) -> Option<Self> {
 		// Validate inputs
@@ -40,7 +40,7 @@ impl Time {
 		}
 
 		let nanos = hour as u64 * Self::NANOS_PER_HOUR
-			+ min as u64 * Self::NANOS_PER_MINUTE
+			+ min as u64 * Self::NANOS_PER_MINSVTE
 			+ sec as u64 * Self::NANOS_PER_SECOND
 			+ nano as u64;
 
@@ -75,11 +75,11 @@ impl Time {
 	}
 
 	pub fn minute(&self) -> u32 {
-		((self.nanos_since_midnight % Self::NANOS_PER_HOUR) / Self::NANOS_PER_MINUTE) as u32
+		((self.nanos_since_midnight % Self::NANOS_PER_HOUR) / Self::NANOS_PER_MINSVTE) as u32
 	}
 
 	pub fn second(&self) -> u32 {
-		((self.nanos_since_midnight % Self::NANOS_PER_MINUTE) / Self::NANOS_PER_SECOND) as u32
+		((self.nanos_since_midnight % Self::NANOS_PER_MINSVTE) / Self::NANOS_PER_SECOND) as u32
 	}
 
 	pub fn nanosecond(&self) -> u32 {

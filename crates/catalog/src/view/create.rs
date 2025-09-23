@@ -76,11 +76,11 @@ impl CatalogStore {
 		to_create: &ViewToCreate,
 		kind: ViewKind,
 	) -> crate::Result<()> {
-		let mut row = view::LAYOUT.allocate_row();
-		view::LAYOUT.set_u64(&mut row, view::ID, view);
-		view::LAYOUT.set_u64(&mut row, view::NAMESPACE, namespace);
-		view::LAYOUT.set_utf8(&mut row, view::NAME, &to_create.name);
-		view::LAYOUT.set_u8(
+		let mut row = view::LAYOSVT.allocate_row();
+		view::LAYOSVT.set_u64(&mut row, view::ID, view);
+		view::LAYOSVT.set_u64(&mut row, view::NAMESPACE, namespace);
+		view::LAYOSVT.set_utf8(&mut row, view::NAME, &to_create.name);
+		view::LAYOSVT.set_u8(
 			&mut row,
 			view::KIND,
 			match kind {
@@ -88,7 +88,7 @@ impl CatalogStore {
 				Transactional => 1,
 			},
 		);
-		view::LAYOUT.set_u64(&mut row, view::PRIMARY_KEY, 0u64); // Initialize with no primary key
+		view::LAYOSVT.set_u64(&mut row, view::PRIMARY_KEY, 0u64); // Initialize with no primary key
 
 		txn.set(
 			&ViewKey {
@@ -107,9 +107,9 @@ impl CatalogStore {
 		view: ViewId,
 		name: &str,
 	) -> crate::Result<()> {
-		let mut row = view_namespace::LAYOUT.allocate_row();
-		view_namespace::LAYOUT.set_u64(&mut row, view_namespace::ID, view);
-		view_namespace::LAYOUT.set_utf8(&mut row, view_namespace::NAME, name);
+		let mut row = view_namespace::LAYOSVT.allocate_row();
+		view_namespace::LAYOSVT.set_u64(&mut row, view_namespace::ID, view);
+		view_namespace::LAYOSVT.set_utf8(&mut row, view_namespace::NAME, name);
 		txn.set(
 			&Key::NamespaceView(NamespaceViewKey {
 				namespace,
@@ -153,7 +153,7 @@ impl CatalogStore {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{NamespaceId, NamespaceViewKey, VersionedQueryTransaction, ViewId};
+	use reifydb_core::interface::{MultiVersionQueryTransaction, NamespaceId, NamespaceViewKey, ViewId};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 
 	use crate::{
@@ -213,13 +213,13 @@ mod tests {
 
 		let link = &links[1];
 		let row = &link.row;
-		assert_eq!(view_namespace::LAYOUT.get_u64(row, view_namespace::ID), 1025);
-		assert_eq!(view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME), "test_view");
+		assert_eq!(view_namespace::LAYOSVT.get_u64(row, view_namespace::ID), 1025);
+		assert_eq!(view_namespace::LAYOSVT.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
 		let row = &link.row;
-		assert_eq!(view_namespace::LAYOUT.get_u64(row, view_namespace::ID), 1026);
-		assert_eq!(view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME), "another_view");
+		assert_eq!(view_namespace::LAYOSVT.get_u64(row, view_namespace::ID), 1026);
+		assert_eq!(view_namespace::LAYOSVT.get_utf8(row, view_namespace::NAME), "another_view");
 	}
 
 	#[test]

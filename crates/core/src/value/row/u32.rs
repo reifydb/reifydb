@@ -104,8 +104,8 @@ mod tests {
 		// Test Unix timestamp values that fit in u32
 		let timestamps = [
 			0u32,          // Unix epoch
-			946684800u32,  // 2000-01-01 00:00:00 UTC
-			1640995200u32, // 2022-01-01 00:00:00 UTC
+			946684800u32,  // 2000-01-01 00:00:00 SVTC
+			1640995200u32, // 2022-01-01 00:00:00 SVTC
 			2147483647u32, // 2038-01-19 (Y2038 boundary)
 		];
 

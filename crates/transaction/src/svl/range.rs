@@ -1,30 +1,27 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::cmp;
+use std::{cmp, vec::IntoIter};
 
-use reifydb_core::{EncodedKey, delta::Delta, interface::Unversioned};
+use reifydb_core::{EncodedKey, delta::Delta, interface::SingleVersionRow};
 
 /// Iterator for scanning a range in an SVL WriteTransaction with owned values.
 /// This avoids lifetime issues with the storage lock.
 pub struct SvlRange {
 	/// Iterator over committed data
-	committed: std::vec::IntoIter<Unversioned>,
+	committed: IntoIter<SingleVersionRow>,
 	/// Iterator over pending changes
-	pending: std::vec::IntoIter<(EncodedKey, Delta)>,
+	pending: IntoIter<(EncodedKey, Delta)>,
 	/// Next item from pending buffer
 	next_pending: Option<(EncodedKey, Delta)>,
 	/// Next item from committed storage
-	next_committed: Option<Unversioned>,
+	next_committed: Option<SingleVersionRow>,
 	/// Track the last key we yielded to avoid duplicates
 	last_yielded_key: Option<EncodedKey>,
 }
 
 impl SvlRange {
-	pub fn new(
-		pending: std::vec::IntoIter<(EncodedKey, Delta)>,
-		committed: std::vec::IntoIter<Unversioned>,
-	) -> Self {
+	pub fn new(pending: IntoIter<(EncodedKey, Delta)>, committed: IntoIter<SingleVersionRow>) -> Self {
 		let mut iterator = SvlRange {
 			pending,
 			committed,
@@ -49,7 +46,7 @@ impl SvlRange {
 }
 
 impl Iterator for SvlRange {
-	type Item = Unversioned;
+	type Item = SingleVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -70,7 +67,7 @@ impl Iterator for SvlRange {
 									row,
 									..
 								} => {
-									return Some(Unversioned {
+									return Some(SingleVersionRow {
 										key,
 										row,
 									});
@@ -96,7 +93,7 @@ impl Iterator for SvlRange {
 									row,
 									..
 								} => {
-									return Some(Unversioned {
+									return Some(SingleVersionRow {
 										key,
 										row,
 									});
@@ -138,7 +135,7 @@ impl Iterator for SvlRange {
 							row,
 							..
 						} => {
-							return Some(Unversioned {
+							return Some(SingleVersionRow {
 								key,
 								row,
 							});

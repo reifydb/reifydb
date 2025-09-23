@@ -10,7 +10,8 @@ use reifydb_core::{
 		FlowNodeType::{SourceInlineData, SourceTable, SourceView},
 	},
 	interface::{
-		EncodableKey, GetEncodedRowLayout, RowKey, SourceId, Transaction, VersionedCommandTransaction, ViewId,
+		EncodableKey, GetEncodedRowLayout, MultiVersionCommandTransaction, RowKey, SourceId, Transaction,
+		ViewId,
 	},
 };
 use reifydb_engine::StandardCommandTransaction;

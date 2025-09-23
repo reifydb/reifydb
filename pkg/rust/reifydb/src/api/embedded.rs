@@ -8,34 +8,35 @@ use reifydb_storage::{
 use reifydb_transaction::mvcc::transaction::{optimistic::Optimistic, serializable::Serializable};
 
 use crate::{
-	EmbeddedBuilder, MemoryCdc, SqliteCdc, UnversionedMemory, UnversionedSqlite, memory, optimistic, serializable,
-	sqlite,
+	EmbeddedBuilder, MemoryCdc, SingleVersionMemory, SingleVersionSqlite, SqliteCdc, memory, optimistic,
+	serializable, sqlite,
 };
 
-pub fn memory_optimistic() -> EmbeddedBuilder<Optimistic<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc> {
-	let (storage, unversioned, cdc, eventbus) = memory();
-	let (versioned, _, _, _) = optimistic((storage.clone(), unversioned.clone(), cdc.clone(), eventbus.clone()));
-	EmbeddedBuilder::new(versioned, unversioned, cdc, eventbus)
+pub fn memory_optimistic() -> EmbeddedBuilder<Optimistic<Memory, SingleVersionMemory>, SingleVersionMemory, MemoryCdc> {
+	let (storage, single, cdc, eventbus) = memory();
+	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
+	EmbeddedBuilder::new(multi, single, cdc, eventbus)
 }
 
-pub fn memory_serializable() -> EmbeddedBuilder<Serializable<Memory, UnversionedMemory>, UnversionedMemory, MemoryCdc> {
-	let (storage, unversioned, cdc, eventbus) = memory();
-	let (versioned, _, _, _) = serializable((storage.clone(), unversioned.clone(), cdc.clone(), eventbus.clone()));
-	EmbeddedBuilder::new(versioned, unversioned, cdc, eventbus)
+pub fn memory_serializable()
+-> EmbeddedBuilder<Serializable<Memory, SingleVersionMemory>, SingleVersionMemory, MemoryCdc> {
+	let (storage, single, cdc, eventbus) = memory();
+	let (multi, _, _, _) = serializable((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
+	EmbeddedBuilder::new(multi, single, cdc, eventbus)
 }
 
 pub fn sqlite_optimistic(
 	config: SqliteConfig,
-) -> EmbeddedBuilder<Optimistic<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc> {
-	let (storage, unversioned, cdc, eventbus) = sqlite(config);
-	let (versioned, _, _, _) = optimistic((storage.clone(), unversioned.clone(), cdc.clone(), eventbus.clone()));
-	EmbeddedBuilder::new(versioned, unversioned, cdc, eventbus)
+) -> EmbeddedBuilder<Optimistic<Sqlite, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
+	let (storage, single, cdc, eventbus) = sqlite(config);
+	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
+	EmbeddedBuilder::new(multi, single, cdc, eventbus)
 }
 
 pub fn sqlite_serializable(
 	config: SqliteConfig,
-) -> EmbeddedBuilder<Serializable<Sqlite, UnversionedSqlite>, UnversionedSqlite, SqliteCdc> {
-	let (storage, unversioned, cdc, eventbus) = sqlite(config);
-	let (versioned, _, _, _) = serializable((storage.clone(), unversioned.clone(), cdc.clone(), eventbus.clone()));
-	EmbeddedBuilder::new(versioned, unversioned, cdc, eventbus)
+) -> EmbeddedBuilder<Serializable<Sqlite, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
+	let (storage, single, cdc, eventbus) = sqlite(config);
+	let (multi, _, _, _) = serializable((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
+	EmbeddedBuilder::new(multi, single, cdc, eventbus)
 }

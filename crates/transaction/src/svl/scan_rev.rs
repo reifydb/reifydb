@@ -3,18 +3,18 @@
 
 use std::cmp;
 
-use reifydb_core::{EncodedKey, delta::Delta, interface::Unversioned};
+use reifydb_core::{EncodedKey, delta::Delta, interface::SingleVersionRow};
 
 /// Iterator for reverse scan in an SVL WriteTransaction with owned values.
 pub struct SvlScanRev {
 	/// Iterator over committed data (owned, reversed)
-	committed: std::vec::IntoIter<Unversioned>,
+	committed: std::vec::IntoIter<SingleVersionRow>,
 	/// Iterator over pending changes (owned, reversed)
 	pending: std::vec::IntoIter<(EncodedKey, Delta)>,
 	/// Next item from pending buffer
 	next_pending: Option<(EncodedKey, Delta)>,
 	/// Next item from committed storage
-	next_committed: Option<Unversioned>,
+	next_committed: Option<SingleVersionRow>,
 	/// Track the last key we yielded to avoid duplicates
 	last_yielded_key: Option<EncodedKey>,
 }
@@ -22,7 +22,7 @@ pub struct SvlScanRev {
 impl SvlScanRev {
 	pub fn new(
 		pending: std::vec::IntoIter<(EncodedKey, Delta)>,
-		committed: std::vec::IntoIter<Unversioned>,
+		committed: std::vec::IntoIter<SingleVersionRow>,
 	) -> Self {
 		let mut iterator = SvlScanRev {
 			pending,
@@ -48,7 +48,7 @@ impl SvlScanRev {
 }
 
 impl Iterator for SvlScanRev {
-	type Item = Unversioned;
+	type Item = SingleVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -71,7 +71,7 @@ impl Iterator for SvlScanRev {
 									row,
 									..
 								} => {
-									return Some(Unversioned {
+									return Some(SingleVersionRow {
 										key,
 										row,
 									});
@@ -97,7 +97,7 @@ impl Iterator for SvlScanRev {
 									row,
 									..
 								} => {
-									return Some(Unversioned {
+									return Some(SingleVersionRow {
 										key,
 										row,
 									});
@@ -139,7 +139,7 @@ impl Iterator for SvlScanRev {
 							row,
 							..
 						} => {
-							return Some(Unversioned {
+							return Some(SingleVersionRow {
 								key,
 								row,
 							});

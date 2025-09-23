@@ -4,7 +4,7 @@
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		FlowNodeId, Transaction, VersionedCommandTransaction, VersionedQueryTransaction,
+		FlowNodeId, MultiVersionCommandTransaction, MultiVersionQueryTransaction, Transaction,
 		key::{EncodableKey, FlowNodeStateKey},
 	},
 	value::row::{EncodedRow, EncodedRowLayout},
@@ -23,7 +23,7 @@ pub fn state_get<T: Transaction>(
 	let encoded_key = state_key.encode();
 
 	match txn.get(&encoded_key)? {
-		Some(versioned) => Ok(Some(versioned.row)),
+		Some(multi) => Ok(Some(multi.row)),
 		None => Ok(None),
 	}
 }
@@ -78,7 +78,7 @@ pub fn state_range<T: Transaction>(
 /// Clear all state for this operator
 pub fn state_clear<T: Transaction>(id: FlowNodeId, txn: &mut StandardCommandTransaction<T>) -> crate::Result<()> {
 	let range = FlowNodeStateKey::node_range(id);
-	let keys_to_remove: Vec<_> = txn.range(range)?.map(|versioned| versioned.key).collect();
+	let keys_to_remove: Vec<_> = txn.range(range)?.map(|multi| multi.key).collect();
 
 	for key in keys_to_remove {
 		txn.remove(&key)?;

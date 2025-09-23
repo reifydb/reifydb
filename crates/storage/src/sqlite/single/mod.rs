@@ -11,106 +11,102 @@ mod scan_rev;
 
 use std::{collections::VecDeque, ops::Bound};
 
-use reifydb_core::{CowVec, EncodedKey, interface::Unversioned, value::row::EncodedRow};
+use reifydb_core::{CowVec, EncodedKey, interface::SingleVersionRow, value::row::EncodedRow};
 use rusqlite::Statement;
 
 use crate::sqlite::read::ReadConnection;
 
-/// Helper function to build unversioned query template and determine parameter
+/// Helper function to build single query template and determine parameter
 /// count
-pub(crate) fn build_unversioned_query(
+pub(crate) fn build_single_query(
 	start_bound: Bound<&EncodedKey>,
 	end_bound: Bound<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"
 ) -> (&'static str, u8) {
 	match (start_bound, end_bound) {
 		(Bound::Unbounded, Bound::Unbounded) => match order {
-			"ASC" => ("SELECT key, value FROM unversioned ORDER BY key ASC LIMIT ?", 0),
-			"DESC" => ("SELECT key, value FROM unversioned ORDER BY key DESC LIMIT ?", 0),
+			"ASC" => ("SELECT key, value FROM single ORDER BY key ASC LIMIT ?", 0),
+			"DESC" => ("SELECT key, value FROM single ORDER BY key DESC LIMIT ?", 0),
 			_ => unreachable!(),
 		},
 		(Bound::Included(_), Bound::Unbounded) => match order {
-			"ASC" => ("SELECT key, value FROM unversioned WHERE key >= ? ORDER BY key ASC LIMIT ?", 1),
-			"DESC" => ("SELECT key, value FROM unversioned WHERE key >= ? ORDER BY key DESC LIMIT ?", 1),
+			"ASC" => ("SELECT key, value FROM single WHERE key >= ? ORDER BY key ASC LIMIT ?", 1),
+			"DESC" => ("SELECT key, value FROM single WHERE key >= ? ORDER BY key DESC LIMIT ?", 1),
 			_ => unreachable!(),
 		},
 		(Bound::Excluded(_), Bound::Unbounded) => match order {
-			"ASC" => ("SELECT key, value FROM unversioned WHERE key > ? ORDER BY key ASC LIMIT ?", 1),
-			"DESC" => ("SELECT key, value FROM unversioned WHERE key > ? ORDER BY key DESC LIMIT ?", 1),
+			"ASC" => ("SELECT key, value FROM single WHERE key > ? ORDER BY key ASC LIMIT ?", 1),
+			"DESC" => ("SELECT key, value FROM single WHERE key > ? ORDER BY key DESC LIMIT ?", 1),
 			_ => unreachable!(),
 		},
 		(Bound::Unbounded, Bound::Included(_)) => match order {
-			"ASC" => ("SELECT key, value FROM unversioned WHERE key <= ? ORDER BY key ASC LIMIT ?", 1),
-			"DESC" => ("SELECT key, value FROM unversioned WHERE key <= ? ORDER BY key DESC LIMIT ?", 1),
+			"ASC" => ("SELECT key, value FROM single WHERE key <= ? ORDER BY key ASC LIMIT ?", 1),
+			"DESC" => ("SELECT key, value FROM single WHERE key <= ? ORDER BY key DESC LIMIT ?", 1),
 			_ => unreachable!(),
 		},
 		(Bound::Unbounded, Bound::Excluded(_)) => match order {
-			"ASC" => ("SELECT key, value FROM unversioned WHERE key < ? ORDER BY key ASC LIMIT ?", 1),
-			"DESC" => ("SELECT key, value FROM unversioned WHERE key < ? ORDER BY key DESC LIMIT ?", 1),
+			"ASC" => ("SELECT key, value FROM single WHERE key < ? ORDER BY key ASC LIMIT ?", 1),
+			"DESC" => ("SELECT key, value FROM single WHERE key < ? ORDER BY key DESC LIMIT ?", 1),
 			_ => unreachable!(),
 		},
 		(Bound::Included(_), Bound::Included(_)) => match order {
 			"ASC" => (
-				"SELECT key, value FROM unversioned WHERE key >= ? AND key <= ? ORDER BY key ASC LIMIT ?",
+				"SELECT key, value FROM single WHERE key >= ? AND key <= ? ORDER BY key ASC LIMIT ?",
 				2,
 			),
 			"DESC" => (
-				"SELECT key, value FROM unversioned WHERE key >= ? AND key <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT key, value FROM single WHERE key >= ? AND key <= ? ORDER BY key DESC LIMIT ?",
 				2,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Included(_), Bound::Excluded(_)) => match order {
-			"ASC" => (
-				"SELECT key, value FROM unversioned WHERE key >= ? AND key < ? ORDER BY key ASC LIMIT ?",
-				2,
-			),
+			"ASC" => {
+				("SELECT key, value FROM single WHERE key >= ? AND key < ? ORDER BY key ASC LIMIT ?", 2)
+			}
 			"DESC" => (
-				"SELECT key, value FROM unversioned WHERE key >= ? AND key < ? ORDER BY key DESC LIMIT ?",
+				"SELECT key, value FROM single WHERE key >= ? AND key < ? ORDER BY key DESC LIMIT ?",
 				2,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Excluded(_), Bound::Included(_)) => match order {
-			"ASC" => (
-				"SELECT key, value FROM unversioned WHERE key > ? AND key <= ? ORDER BY key ASC LIMIT ?",
-				2,
-			),
+			"ASC" => {
+				("SELECT key, value FROM single WHERE key > ? AND key <= ? ORDER BY key ASC LIMIT ?", 2)
+			}
 			"DESC" => (
-				"SELECT key, value FROM unversioned WHERE key > ? AND key <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT key, value FROM single WHERE key > ? AND key <= ? ORDER BY key DESC LIMIT ?",
 				2,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Excluded(_), Bound::Excluded(_)) => match order {
-			"ASC" => (
-				"SELECT key, value FROM unversioned WHERE key > ? AND key < ? ORDER BY key ASC LIMIT ?",
-				2,
-			),
-			"DESC" => (
-				"SELECT key, value FROM unversioned WHERE key > ? AND key < ? ORDER BY key DESC LIMIT ?",
-				2,
-			),
+			"ASC" => {
+				("SELECT key, value FROM single WHERE key > ? AND key < ? ORDER BY key ASC LIMIT ?", 2)
+			}
+			"DESC" => {
+				("SELECT key, value FROM single WHERE key > ? AND key < ? ORDER BY key DESC LIMIT ?", 2)
+			}
 			_ => unreachable!(),
 		},
 	}
 }
 
-/// Helper function to execute batched unversioned range queries
+/// Helper function to execute batched single range queries
 pub(crate) fn execute_range_query(
 	stmt: &mut Statement,
 	start_bound: Bound<&EncodedKey>,
 	end_bound: Bound<&EncodedKey>,
 	batch_size: usize,
 	param_count: u8,
-	buffer: &mut VecDeque<Unversioned>,
+	buffer: &mut VecDeque<SingleVersionRow>,
 ) -> usize {
 	let mut count = 0;
 	match param_count {
 		0 => {
 			let rows = stmt
 				.query_map(rusqlite::params![batch_size], |row| {
-					Ok(Unversioned {
+					Ok(SingleVersionRow {
 						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
 						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					})
@@ -119,8 +115,8 @@ pub(crate) fn execute_range_query(
 
 			for result in rows {
 				match result {
-					Ok(unversioned) => {
-						buffer.push_back(unversioned);
+					Ok(single) => {
+						buffer.push_back(single);
 						count += 1;
 					}
 					Err(_) => break,
@@ -135,7 +131,7 @@ pub(crate) fn execute_range_query(
 			};
 			let rows = stmt
 				.query_map(rusqlite::params![param, batch_size], |row| {
-					Ok(Unversioned {
+					Ok(SingleVersionRow {
 						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
 						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					})
@@ -144,8 +140,8 @@ pub(crate) fn execute_range_query(
 
 			for result in rows {
 				match result {
-					Ok(unversioned) => {
-						buffer.push_back(unversioned);
+					Ok(single) => {
+						buffer.push_back(single);
 						count += 1;
 					}
 					Err(_) => break,
@@ -163,7 +159,7 @@ pub(crate) fn execute_range_query(
 			};
 			let rows = stmt
 				.query_map(rusqlite::params![start_param, end_param, batch_size], |row| {
-					Ok(Unversioned {
+					Ok(SingleVersionRow {
 						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
 						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					})
@@ -172,8 +168,8 @@ pub(crate) fn execute_range_query(
 
 			for result in rows {
 				match result {
-					Ok(unversioned) => {
-						buffer.push_back(unversioned);
+					Ok(single) => {
+						buffer.push_back(single);
 						count += 1;
 					}
 					Err(_) => break,
@@ -185,29 +181,29 @@ pub(crate) fn execute_range_query(
 	count
 }
 
-/// Helper function to execute batched unversioned iteration queries
+/// Helper function to execute batched single iteration queries
 pub(crate) fn execute_scan_query(
 	conn: &ReadConnection,
 	batch_size: usize,
 	last_key: Option<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"
-	buffer: &mut VecDeque<Unversioned>,
+	buffer: &mut VecDeque<SingleVersionRow>,
 ) -> usize {
 	let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
 		(None, "ASC") => (
-			"SELECT key, value FROM unversioned ORDER BY key ASC LIMIT ?".to_string(),
+			"SELECT key, value FROM single ORDER BY key ASC LIMIT ?".to_string(),
 			vec![Box::new(batch_size)],
 		),
 		(None, "DESC") => (
-			"SELECT key, value FROM unversioned ORDER BY key DESC LIMIT ?".to_string(),
+			"SELECT key, value FROM single ORDER BY key DESC LIMIT ?".to_string(),
 			vec![Box::new(batch_size)],
 		),
 		(Some(key), "ASC") => (
-			"SELECT key, value FROM unversioned WHERE key > ? ORDER BY key ASC LIMIT ?".to_string(),
+			"SELECT key, value FROM single WHERE key > ? ORDER BY key ASC LIMIT ?".to_string(),
 			vec![Box::new(key.to_vec()), Box::new(batch_size)],
 		),
 		(Some(key), "DESC") => (
-			"SELECT key, value FROM unversioned WHERE key < ? ORDER BY key DESC LIMIT ?".to_string(),
+			"SELECT key, value FROM single WHERE key < ? ORDER BY key DESC LIMIT ?".to_string(),
 			vec![Box::new(key.to_vec()), Box::new(batch_size)],
 		),
 		_ => unreachable!(),
@@ -218,7 +214,7 @@ pub(crate) fn execute_scan_query(
 
 	let rows = stmt
 		.query_map(rusqlite::params_from_iter(params.iter()), |row| {
-			Ok(Unversioned {
+			Ok(SingleVersionRow {
 				key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
 				row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 			})
@@ -228,8 +224,8 @@ pub(crate) fn execute_scan_query(
 	let mut count = 0;
 	for result in rows {
 		match result {
-			Ok(unversioned) => {
-				buffer.push_back(unversioned);
+			Ok(single) => {
+				buffer.push_back(single);
 				count += 1;
 			}
 			Err(_) => break,

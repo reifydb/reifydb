@@ -6,7 +6,7 @@ use crate::{error::diagnostic::Diagnostic, fragment::OwnedFragment};
 /// Authentication failed due to invalid credentials or other reasons
 pub fn authentication_failed(reason: String) -> Diagnostic {
 	Diagnostic {
-		code: "AUTH_001".to_string(),
+		code: "ASVTH_001".to_string(),
 		statement: None,
 		message: format!("Authentication failed: {}", reason),
 		column: None,
@@ -21,7 +21,7 @@ pub fn authentication_failed(reason: String) -> Diagnostic {
 /// Authorization denied for accessing a resource
 pub fn authorization_denied(resource: String) -> Diagnostic {
 	Diagnostic {
-		code: "AUTH_002".to_string(),
+		code: "ASVTH_002".to_string(),
 		statement: None,
 		message: format!("Authorization denied for resource: {}", resource),
 		column: None,
@@ -36,7 +36,7 @@ pub fn authorization_denied(resource: String) -> Diagnostic {
 /// Token has expired and needs to be refreshed
 pub fn token_expired() -> Diagnostic {
 	Diagnostic {
-		code: "AUTH_003".to_string(),
+		code: "ASVTH_003".to_string(),
 		statement: None,
 		message: "Authentication token has expired".to_string(),
 		column: None,
@@ -51,7 +51,7 @@ pub fn token_expired() -> Diagnostic {
 /// Token is invalid or malformed
 pub fn invalid_token() -> Diagnostic {
 	Diagnostic {
-		code: "AUTH_004".to_string(),
+		code: "ASVTH_004".to_string(),
 		statement: None,
 		message: "Invalid or malformed authentication token".to_string(),
 		column: None,

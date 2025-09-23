@@ -9,7 +9,7 @@ use reifydb::{
 	Database,
 	core::{
 		event::EventBus,
-		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
+		interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
 		retry,
 	},
 	memory, optimistic,
@@ -20,24 +20,24 @@ use test_each_file::test_each_path;
 
 use crate::common::{parse_named_params, parse_positional_params, parse_rql, write_frames};
 
-pub struct BlockingRunner<VT, UT, C>
+pub struct BlockingRunner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	instance: Option<Database<VT, UT, C>>,
+	instance: Option<Database<MVT, SVT, C>>,
 	client: Option<HttpClient>,
 	session: Option<HttpBlockingSession>,
 }
 
-impl<VT, UT, C> BlockingRunner<VT, UT, C>
+impl<MVT, SVT, C> BlockingRunner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
+	pub fn new(input: (MVT, SVT, C, EventBus)) -> Self {
 		Self {
 			instance: Some(create_server_instance(input)),
 			client: None,
@@ -46,10 +46,10 @@ where
 	}
 }
 
-impl<VT, UT, C> testscript::Runner for BlockingRunner<VT, UT, C>
+impl<MVT, SVT, C> testscript::Runner for BlockingRunner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {

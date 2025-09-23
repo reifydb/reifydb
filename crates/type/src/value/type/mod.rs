@@ -48,7 +48,7 @@ pub enum Type {
 	Uint16,
 	/// A date value (year, month, day)
 	Date,
-	/// A date and time value with nanosecond precision in UTC
+	/// A date and time value with nanosecond precision in SVTC
 	DateTime,
 	/// A time value (hour, minute, second, nanosecond)
 	Time,

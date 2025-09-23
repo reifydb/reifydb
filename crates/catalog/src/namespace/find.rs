@@ -23,11 +23,11 @@ impl CatalogStore {
 			return Ok(Some(NamespaceDef::system()));
 		}
 
-		Ok(rx.range(NamespaceKey::full_scan())?.find_map(|versioned| {
-			let row: &EncodedRow = &versioned.row;
-			let namespace_name = namespace::LAYOUT.get_utf8(row, namespace::NAME);
+		Ok(rx.range(NamespaceKey::full_scan())?.find_map(|multi| {
+			let row: &EncodedRow = &multi.row;
+			let namespace_name = namespace::LAYOSVT.get_utf8(row, namespace::NAME);
 			if name == namespace_name {
-				Some(convert_namespace(versioned))
+				Some(convert_namespace(multi))
 			} else {
 				None
 			}

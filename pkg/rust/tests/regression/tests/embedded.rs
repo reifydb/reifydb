@@ -7,40 +7,40 @@ use reifydb::{
 	Database, EmbeddedBuilder, Session,
 	core::{
 		event::EventBus,
-		interface::{CdcTransaction, Params, UnversionedTransaction, VersionedTransaction},
+		interface::{CdcTransaction, MultiVersionTransaction, Params, SingleVersionTransaction},
 	},
 	memory, optimistic,
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-pub struct Runner<VT, UT, C>
+pub struct Runner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	instance: Database<VT, UT, C>,
+	instance: Database<MVT, SVT, C>,
 }
 
-impl<VT, UT, C> Runner<VT, UT, C>
+impl<MVT, SVT, C> Runner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
-		let (versioned, unversioned, cdc, eventbus) = input;
+	pub fn new(input: (MVT, SVT, C, EventBus)) -> Self {
+		let (multi, single, cdc, eventbus) = input;
 		Self {
-			instance: EmbeddedBuilder::new(versioned, unversioned, cdc, eventbus).build().unwrap(),
+			instance: EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap(),
 		}
 	}
 }
 
-impl<VT, UT, C> testscript::Runner for Runner<VT, UT, C>
+impl<MVT, SVT, C> testscript::Runner for Runner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {

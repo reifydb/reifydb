@@ -6,8 +6,8 @@ use std::sync::Arc;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
-		EncodableKey, Params, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, RowKey, Transaction,
-		VersionedQueryTransaction,
+		EncodableKey, MultiVersionQueryTransaction, Params, ResolvedNamespace, ResolvedRingBuffer,
+		ResolvedSource, RowKey, Transaction,
 		identifier::{NamespaceIdentifier, RingBufferIdentifier},
 	},
 	value::column::{ColumnData, Columns},

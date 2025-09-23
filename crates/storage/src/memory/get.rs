@@ -3,14 +3,14 @@
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	interface::{Unversioned, UnversionedGet, Versioned, VersionedGet},
+	interface::{MultiVersionGet, MultiVersionRow, SingleVersionGet, SingleVersionRow},
 };
 
 use crate::memory::Memory;
 
-impl VersionedGet for Memory {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Versioned>> {
-		let item = match self.versioned.get(key) {
+impl MultiVersionGet for Memory {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
+		let item = match self.multi.get(key) {
 			Some(item) => item,
 			None => return Ok(None),
 		};
@@ -21,7 +21,7 @@ impl VersionedGet for Memory {
 			None => return Ok(None),
 		};
 
-		Ok(Some(Versioned {
+		Ok(Some(MultiVersionRow {
 			key: key.clone(),
 			row,
 			version,
@@ -29,9 +29,9 @@ impl VersionedGet for Memory {
 	}
 }
 
-impl UnversionedGet for Memory {
-	fn get(&self, key: &EncodedKey) -> Result<Option<Unversioned>> {
-		Ok(self.unversioned.get(key).map(|item| Unversioned {
+impl SingleVersionGet for Memory {
+	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
+		Ok(self.single.get(key).map(|item| SingleVersionRow {
 			key: key.clone(),
 			row: item.value().clone(),
 		}))

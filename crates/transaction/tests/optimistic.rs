@@ -14,7 +14,7 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path:
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	event::EventBus,
-	interface::Versioned,
+	interface::MultiVersionRow,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::row::EncodedRow,
 };
@@ -233,8 +233,8 @@ impl<'a> testscript::Runner for MvccRunner {
 				match t {
 					Transaction::Query(rx) => {
 						let iter = rx.scan().unwrap();
-						for versioned in iter {
-							kvs.push((versioned.key.clone(), versioned.row.to_vec()));
+						for multi in iter {
+							kvs.push((multi.key.clone(), multi.row.to_vec()));
 						}
 					}
 					Transaction::Command(tx) => {
@@ -344,7 +344,7 @@ not given")?
 
 fn print_rx<I>(output: &mut String, mut iter: I)
 where
-	I: Iterator<Item = Versioned>,
+	I: Iterator<Item = MultiVersionRow>,
 {
 	while let Some(sv) = iter.next() {
 		let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());

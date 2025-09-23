@@ -68,7 +68,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 					auto_increment: false,
 				},
 				ColumnDef {
-					id: AUTO_INCREMENT,
+					id: ASVTO_INCREMENT,
 					name: "auto_increment".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Boolean),
 					policies: vec![],

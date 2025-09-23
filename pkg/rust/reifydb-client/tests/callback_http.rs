@@ -18,7 +18,7 @@ use reifydb::{
 	Database,
 	core::{
 		event::EventBus,
-		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
+		interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
 		retry,
 	},
 	memory, optimistic,
@@ -33,26 +33,26 @@ use thread::sleep;
 
 use crate::common::{cleanup_http_client, connect_http, create_server_instance};
 
-pub struct CallbackRunner<VT, UT, C>
+pub struct CallbackRunner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	instance: Option<Database<VT, UT, C>>,
+	instance: Option<Database<MVT, SVT, C>>,
 	client: Option<HttpClient>,
 	session: Option<HttpCallbackSession>,
 	last_command_result: Arc<Mutex<Option<Result<CommandResult, String>>>>,
 	last_query_result: Arc<Mutex<Option<Result<QueryResult, String>>>>,
 }
 
-impl<VT, UT, C> CallbackRunner<VT, UT, C>
+impl<MVT, SVT, C> CallbackRunner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
+	pub fn new(input: (MVT, SVT, C, EventBus)) -> Self {
 		Self {
 			instance: Some(create_server_instance(input)),
 			client: None,
@@ -63,10 +63,10 @@ where
 	}
 }
 
-impl<VT, UT, C> testscript::Runner for CallbackRunner<VT, UT, C>
+impl<MVT, SVT, C> testscript::Runner for CallbackRunner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {

@@ -30,7 +30,7 @@ pub use reifydb_core as core;
 pub use reifydb_core::{
 	Error, Result,
 	event::EventBus,
-	interface::{Identity, Params, UnversionedTransaction, VersionedStorage, VersionedTransaction},
+	interface::{Identity, MultiVersionStorage, MultiVersionTransaction, Params, SingleVersionTransaction},
 	log, log_critical, log_debug, log_error, log_info, log_timed_critical, log_timed_debug, log_timed_error,
 	log_timed_info, log_timed_trace, log_timed_warn, log_trace, log_warn,
 };
@@ -66,7 +66,7 @@ pub mod defaults {
 	use super::Duration;
 
 	/// Default graceful shutdown timeout (30 seconds)
-	pub const GRACEFUL_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(30);
+	pub const GRACEFUL_SHSVTDOWN_TIMEOSVT: Duration = Duration::from_secs(30);
 
 	/// Default health check interval (5 seconds)
 	pub const HEALTH_CHECK_INTERVAL: Duration = Duration::from_secs(5);

@@ -1,44 +1,41 @@
-// Copyright (c) reifydb.com 2025.
-// This file is licensed under the AGPL-3.0-or-later, see license.md file.
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange, Result,
-	interface::{Versioned, VersionedRange},
+	EncodedKey, EncodedKeyRange, Result,
+	interface::{SingleVersionRange, SingleVersionRow},
 };
 
-use super::{build_range_query, execute_batched_range_query, table_name_for_range};
+use super::{build_single_query, execute_range_query};
 use crate::sqlite::{Sqlite, read::Reader};
 
-impl VersionedRange for Sqlite {
-	type RangeIter<'a> = Range;
+impl SingleVersionRange for Sqlite {
+	type Range<'a>
+		= Range
+	where
+		Self: 'a;
 
-	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIter<'_>> {
-		Ok(Range::new(self.get_reader(), range, version, 1024))
+	fn range(&self, range: EncodedKeyRange) -> Result<Self::Range<'_>> {
+		Ok(Range::new(self.get_reader(), range, 1024))
 	}
 }
 
 pub struct Range {
 	conn: Reader,
 	range: EncodedKeyRange,
-	version: CommitVersion,
-	table: String,
-	buffer: VecDeque<Versioned>,
+	buffer: VecDeque<SingleVersionRow>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
 }
 
 impl Range {
-	pub fn new(conn: Reader, range: EncodedKeyRange, version: CommitVersion, batch_size: usize) -> Self {
-		let table = table_name_for_range(&range).to_string();
-
+	pub fn new(conn: Reader, range: EncodedKeyRange, batch_size: usize) -> Self {
 		Self {
 			conn,
 			range,
-			version,
-			table,
 			buffer: VecDeque::new(),
 			last_key: None,
 			batch_size,
@@ -63,17 +60,15 @@ impl Range {
 
 		// Build query and parameters based on bounds - note ASC order
 		// for forward iteration
-		let (query_template, param_count) = build_range_query(start_bound, end_bound, "ASC");
+		let (query_template, param_count) = build_single_query(start_bound, end_bound, "ASC");
 
-		let query = query_template.replace("{}", &self.table);
 		let conn_guard = self.conn.lock().unwrap();
-		let mut stmt = conn_guard.prepare(&query).unwrap();
+		let mut stmt = conn_guard.prepare(query_template).unwrap();
 
-		let count = execute_batched_range_query(
+		let count = execute_range_query(
 			&mut stmt,
 			start_bound,
 			end_bound,
-			self.version,
 			self.batch_size,
 			param_count,
 			&mut self.buffer,
@@ -92,7 +87,7 @@ impl Range {
 }
 
 impl Iterator for Range {
-	type Item = Versioned;
+	type Item = SingleVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

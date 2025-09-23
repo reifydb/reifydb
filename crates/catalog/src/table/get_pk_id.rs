@@ -12,7 +12,7 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let versioned = match rx.get(&Key::Table(TableKey {
+		let multi = match rx.get(&Key::Table(TableKey {
 			table: table_id,
 		})
 		.encode())?
@@ -21,7 +21,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = table::LAYOUT.get_u64(&versioned.row, table::PRIMARY_KEY);
+		let pk_id = table::LAYOSVT.get_u64(&multi.row, table::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

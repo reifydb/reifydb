@@ -3,15 +3,15 @@
 
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::{Unversioned, WithEventBus},
+	interface::{SingleVersionRow, WithEventBus},
 	value::row::EncodedRow,
 };
 
-pub type BoxedUnversionedIter<'a> = Box<dyn Iterator<Item = Unversioned> + Send + 'a>;
+pub type BoxedSingleVersionIter<'a> = Box<dyn Iterator<Item = SingleVersionRow> + Send + 'a>;
 
-pub trait UnversionedTransaction: WithEventBus + Send + Sync + Clone + 'static {
-	type Query<'a>: UnversionedQueryTransaction;
-	type Command<'a>: UnversionedCommandTransaction;
+pub trait SingleVersionTransaction: WithEventBus + Send + Sync + Clone + 'static {
+	type Query<'a>: SingleVersionQueryTransaction;
+	type Command<'a>: SingleVersionCommandTransaction;
 
 	fn begin_query(&self) -> crate::Result<Self::Query<'_>>;
 
@@ -36,29 +36,29 @@ pub trait UnversionedTransaction: WithEventBus + Send + Sync + Clone + 'static {
 	}
 }
 
-pub trait UnversionedQueryTransaction {
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>>;
+pub trait SingleVersionQueryTransaction {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>>;
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
-	fn scan(&mut self) -> crate::Result<BoxedUnversionedIter>;
+	fn scan(&mut self) -> crate::Result<BoxedSingleVersionIter>;
 
-	fn scan_rev(&mut self) -> crate::Result<BoxedUnversionedIter>;
+	fn scan_rev(&mut self) -> crate::Result<BoxedSingleVersionIter>;
 
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter>;
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter>;
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter>;
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter>;
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedSingleVersionIter> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedSingleVersionIter> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }
 
-pub trait UnversionedCommandTransaction: UnversionedQueryTransaction {
+pub trait SingleVersionCommandTransaction: SingleVersionQueryTransaction {
 	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;

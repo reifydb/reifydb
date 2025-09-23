@@ -5,29 +5,29 @@ use std::collections::VecDeque;
 
 use reifydb_core::{
 	EncodedKey, Result,
-	interface::{Unversioned, UnversionedScanRev},
+	interface::{SingleVersionRow, SingleVersionScan},
 };
 
 use super::execute_scan_query;
 use crate::sqlite::{Sqlite, read::Reader};
 
-impl UnversionedScanRev for Sqlite {
-	type ScanIterRev<'a> = IterRev;
+impl SingleVersionScan for Sqlite {
+	type ScanIter<'a> = Iter;
 
-	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
-		Ok(IterRev::new(self.get_reader(), 1024))
+	fn scan(&self) -> Result<Self::ScanIter<'_>> {
+		Ok(Iter::new(self.get_reader(), 1024))
 	}
 }
 
-pub struct IterRev {
+pub struct Iter {
 	conn: Reader,
-	buffer: VecDeque<Unversioned>,
+	buffer: VecDeque<SingleVersionRow>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
 }
 
-impl IterRev {
+impl Iter {
 	pub fn new(conn: Reader, batch_size: usize) -> Self {
 		Self {
 			conn,
@@ -49,12 +49,11 @@ impl IterRev {
 			&self.conn,
 			self.batch_size,
 			self.last_key.as_ref(),
-			"DESC",
+			"ASC",
 			&mut self.buffer,
 		);
 
-		// Update last_key to the last item we retrieved (which is the
-		// smallest key due to DESC order)
+		// Update last_key to the last item we retrieved
 		if let Some(last_item) = self.buffer.back() {
 			self.last_key = Some(last_item.key.clone());
 		}
@@ -66,8 +65,8 @@ impl IterRev {
 	}
 }
 
-impl Iterator for IterRev {
-	type Item = Unversioned;
+impl Iterator for Iter {
+	type Item = SingleVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

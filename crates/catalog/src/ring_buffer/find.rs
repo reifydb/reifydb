@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, NamespaceId, NamespaceRingBufferKey, QueryTransaction, RingBufferDef, RingBufferId,
-	RingBufferKey, RingBufferMetadata, RingBufferMetadataKey, Versioned,
+	EncodableKey, MultiVersionRow, NamespaceId, NamespaceRingBufferKey, QueryTransaction, RingBufferDef,
+	RingBufferId, RingBufferKey, RingBufferMetadata, RingBufferMetadataKey,
 };
 
 use crate::{
@@ -16,15 +16,15 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		ring_buffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let Some(versioned) = rx.get(&RingBufferKey::new(ring_buffer).encode())? else {
+		let Some(multi) = rx.get(&RingBufferKey::new(ring_buffer).encode())? else {
 			return Ok(None);
 		};
 
-		let row = versioned.row;
-		let id = RingBufferId(ring_buffer::LAYOUT.get_u64(&row, ring_buffer::ID));
-		let namespace = NamespaceId(ring_buffer::LAYOUT.get_u64(&row, ring_buffer::NAMESPACE));
-		let name = ring_buffer::LAYOUT.get_utf8(&row, ring_buffer::NAME).to_string();
-		let capacity = ring_buffer::LAYOUT.get_u64(&row, ring_buffer::CAPACITY);
+		let row = multi.row;
+		let id = RingBufferId(ring_buffer::LAYOSVT.get_u64(&row, ring_buffer::ID));
+		let namespace = NamespaceId(ring_buffer::LAYOSVT.get_u64(&row, ring_buffer::NAMESPACE));
+		let name = ring_buffer::LAYOSVT.get_utf8(&row, ring_buffer::NAME).to_string();
+		let capacity = ring_buffer::LAYOSVT.get_u64(&row, ring_buffer::CAPACITY);
 
 		Ok(Some(RingBufferDef {
 			id,
@@ -40,16 +40,16 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		ring_buffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferMetadata>> {
-		let Some(versioned) = rx.get(&RingBufferMetadataKey::new(ring_buffer).encode())? else {
+		let Some(multi) = rx.get(&RingBufferMetadataKey::new(ring_buffer).encode())? else {
 			return Ok(None);
 		};
 
-		let row = versioned.row;
-		let buffer_id = RingBufferId(ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::ID));
-		let capacity = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::CAPACITY);
-		let head = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::HEAD);
-		let tail = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::TAIL);
-		let current_size = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::COUNT);
+		let row = multi.row;
+		let buffer_id = RingBufferId(ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::ID));
+		let capacity = ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::CAPACITY);
+		let head = ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::HEAD);
+		let tail = ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::TAIL);
+		let current_size = ring_buffer_metadata::LAYOSVT.get_u64(&row, ring_buffer_metadata::COUNT);
 
 		Ok(Some(RingBufferMetadata {
 			id: buffer_id,
@@ -67,13 +67,13 @@ impl CatalogStore {
 	) -> crate::Result<Option<RingBufferDef>> {
 		let name = name.as_ref();
 		let Some(ring_buffer) =
-			rx.range(NamespaceRingBufferKey::full_scan(namespace))?.find_map(|versioned: Versioned| {
-				let row = &versioned.row;
+			rx.range(NamespaceRingBufferKey::full_scan(namespace))?.find_map(|multi: MultiVersionRow| {
+				let row = &multi.row;
 				let ring_buffer_name =
-					ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME);
+					ring_buffer_namespace::LAYOSVT.get_utf8(row, ring_buffer_namespace::NAME);
 				if name == ring_buffer_name {
 					Some(RingBufferId(
-						ring_buffer_namespace::LAYOUT.get_u64(row, ring_buffer_namespace::ID),
+						ring_buffer_namespace::LAYOSVT.get_u64(row, ring_buffer_namespace::ID),
 					))
 				} else {
 					None

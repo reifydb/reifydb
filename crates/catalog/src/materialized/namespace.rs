@@ -6,14 +6,14 @@ use reifydb_core::{
 	interface::{NamespaceDef, NamespaceId},
 };
 
-use crate::materialized::{MaterializedCatalog, VersionedNamespaceDef};
+use crate::materialized::{MaterializedCatalog, MultiVersionNamespaceDef};
 
 impl MaterializedCatalog {
 	/// Find a namespace by ID at a specific version
 	pub fn find_namespace(&self, namespace: NamespaceId, version: CommitVersion) -> Option<NamespaceDef> {
 		self.namespaces.get(&namespace).and_then(|entry| {
-			let versioned = entry.value();
-			versioned.get(version)
+			let multi = entry.value();
+			multi.get(version)
 		})
 	}
 
@@ -39,9 +39,9 @@ impl MaterializedCatalog {
 			self.namespaces_by_name.insert(new.name.clone(), id);
 		}
 
-		// Update the versioned namespace
-		let versioned = self.namespaces.get_or_insert_with(id, VersionedNamespaceDef::new);
-		versioned.value().insert(version, namespace);
+		// Update the multi namespace
+		let multi = self.namespaces.get_or_insert_with(id, MultiVersionNamespaceDef::new);
+		multi.value().insert(version, namespace);
 	}
 }
 

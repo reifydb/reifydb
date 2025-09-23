@@ -14,7 +14,7 @@ pub(crate) mod ring_buffer {
 	pub(crate) const CAPACITY: usize = 3;
 	pub(crate) const PRIMARY_KEY: usize = 4;
 
-	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+	pub(crate) static LAYOSVT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // id
 			Type::Uint8, // namespace id
@@ -31,7 +31,7 @@ pub(crate) mod ring_buffer_namespace {
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
 
-	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+	pub(crate) static LAYOSVT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // id
 			Type::Utf8,  // name
@@ -48,7 +48,7 @@ pub(crate) mod ring_buffer_metadata {
 	pub(crate) const TAIL: usize = 3;
 	pub(crate) const COUNT: usize = 4;
 
-	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+	pub(crate) static LAYOSVT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // ring_buffer_id
 			Type::Uint8, // capacity

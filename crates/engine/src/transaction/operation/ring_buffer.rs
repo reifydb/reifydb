@@ -3,8 +3,8 @@
 
 use reifydb_core::{
 	interface::{
-		EncodableKey, RingBufferDef, RowKey, Transaction, VersionedCommandTransaction,
-		VersionedQueryTransaction, interceptor::RingBufferInterceptor,
+		EncodableKey, MultiVersionCommandTransaction, MultiVersionQueryTransaction, RingBufferDef, RowKey,
+		Transaction, interceptor::RingBufferInterceptor,
 	},
 	value::row::EncodedRow,
 };

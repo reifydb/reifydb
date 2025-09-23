@@ -6,8 +6,8 @@ use std::marker::PhantomData;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
-		BoxedVersionedIter, CdcTransaction, QueryTransaction, Transaction, TransactionId,
-		UnversionedTransaction, Versioned, VersionedQueryTransaction, VersionedTransaction,
+		BoxedMultiVersionIter, CdcTransaction, MultiVersionQueryTransaction, MultiVersionRow,
+		MultiVersionTransaction, QueryTransaction, SingleVersionTransaction, Transaction, TransactionId,
 	},
 };
 
@@ -30,12 +30,12 @@ pub struct EngineTransaction<V, U, C> {
 
 impl<V, U, C> Transaction for EngineTransaction<V, U, C>
 where
-	V: VersionedTransaction,
-	U: UnversionedTransaction,
+	V: MultiVersionTransaction,
+	U: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	type Versioned = V;
-	type Unversioned = U;
+	type MultiVersion = V;
+	type SingleVersion = U;
 	type Cdc = C;
 }
 
@@ -47,8 +47,8 @@ pub enum StandardTransaction<'a, T: Transaction> {
 }
 
 impl<'a, T: Transaction> QueryTransaction for StandardTransaction<'a, T> {
-	type UnversionedQuery<'b>
-		= <T::Unversioned as UnversionedTransaction>::Query<'b>
+	type SingleVersionQuery<'b>
+		= <T::SingleVersion as SingleVersionTransaction>::Query<'b>
 	where
 		Self: 'b;
 
@@ -57,10 +57,10 @@ impl<'a, T: Transaction> QueryTransaction for StandardTransaction<'a, T> {
 	where
 		Self: 'b;
 
-	fn begin_unversioned_query(&self) -> crate::Result<Self::UnversionedQuery<'_>> {
+	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
 		match self {
-			Self::Command(txn) => txn.begin_unversioned_query(),
-			Self::Query(txn) => txn.begin_unversioned_query(),
+			Self::Command(txn) => txn.begin_single_query(),
+			Self::Query(txn) => txn.begin_single_query(),
 		}
 	}
 
@@ -72,11 +72,11 @@ impl<'a, T: Transaction> QueryTransaction for StandardTransaction<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> VersionedQueryTransaction for StandardTransaction<'a, T> {
+impl<'a, T: Transaction> MultiVersionQueryTransaction for StandardTransaction<'a, T> {
 	fn version(&self) -> CommitVersion {
 		match self {
-			Self::Command(txn) => VersionedQueryTransaction::version(*txn),
-			Self::Query(txn) => VersionedQueryTransaction::version(*txn),
+			Self::Command(txn) => MultiVersionQueryTransaction::version(*txn),
+			Self::Query(txn) => MultiVersionQueryTransaction::version(*txn),
 		}
 	}
 
@@ -87,7 +87,7 @@ impl<'a, T: Transaction> VersionedQueryTransaction for StandardTransaction<'a, T
 		}
 	}
 
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionRow>> {
 		match self {
 			Self::Command(txn) => txn.get(key),
 			Self::Query(txn) => txn.get(key),
@@ -101,42 +101,42 @@ impl<'a, T: Transaction> VersionedQueryTransaction for StandardTransaction<'a, T
 		}
 	}
 
-	fn scan(&mut self) -> crate::Result<BoxedVersionedIter> {
+	fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter> {
 		match self {
 			Self::Command(txn) => txn.scan(),
 			Self::Query(txn) => txn.scan(),
 		}
 	}
 
-	fn scan_rev(&mut self) -> crate::Result<BoxedVersionedIter> {
+	fn scan_rev(&mut self) -> crate::Result<BoxedMultiVersionIter> {
 		match self {
 			Self::Command(txn) => txn.scan_rev(),
 			Self::Query(txn) => txn.scan_rev(),
 		}
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter> {
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
 		match self {
 			Self::Command(txn) => txn.range(range),
 			Self::Query(txn) => txn.range(range),
 		}
 	}
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
 		match self {
 			Self::Command(txn) => txn.range_rev(range),
 			Self::Query(txn) => txn.range_rev(range),
 		}
 	}
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
 		match self {
 			Self::Command(txn) => txn.prefix(prefix),
 			Self::Query(txn) => txn.prefix(prefix),
 		}
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
 		match self {
 			Self::Command(txn) => txn.prefix_rev(prefix),
 			Self::Query(txn) => txn.prefix_rev(prefix),
@@ -202,8 +202,8 @@ impl<'a, T: Transaction> StandardTransaction<'a, T> {
 
 	pub fn version(&self) -> CommitVersion {
 		match self {
-			StandardTransaction::Command(txn) => VersionedQueryTransaction::version(*txn),
-			StandardTransaction::Query(txn) => VersionedQueryTransaction::version(*txn),
+			StandardTransaction::Command(txn) => MultiVersionQueryTransaction::version(*txn),
+			StandardTransaction::Query(txn) => MultiVersionQueryTransaction::version(*txn),
 		}
 	}
 }

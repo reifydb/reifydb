@@ -15,7 +15,7 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{
 		CdcEvent, CdcQueryTransaction, CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
-		Transaction, VersionedCommandTransaction,
+		MultiVersionCommandTransaction, Transaction,
 		key::{CdcConsumerKey, EncodableKey},
 	},
 	log_debug, log_error,

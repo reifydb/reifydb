@@ -7,7 +7,7 @@ use reifydb::{
 	Database, ServerBuilder,
 	core::{
 		event::EventBus,
-		interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
+		interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
 		retry,
 	},
 	memory, optimistic,
@@ -17,26 +17,26 @@ use reifydb_client::{Client, WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-pub struct WsRunner<VT, UT, C>
+pub struct WsRunner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	instance: Option<Database<VT, UT, C>>,
+	instance: Option<Database<MVT, SVT, C>>,
 	client: Option<WsClient>,
 	session: Option<WsBlockingSession>,
 }
 
-impl<VT, UT, C> WsRunner<VT, UT, C>
+impl<MVT, SVT, C> WsRunner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	pub fn new(input: (VT, UT, C, EventBus)) -> Self {
-		let (versioned, unversioned, cdc, eventbus) = input;
-		let instance = ServerBuilder::new(versioned, unversioned, cdc, eventbus)
+	pub fn new(input: (MVT, SVT, C, EventBus)) -> Self {
+		let (multi, single, cdc, eventbus) = input;
+		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
 			.with_config(ServerConfig::new().bind_addr("::1:0"))
 			.build()
 			.unwrap();
@@ -49,10 +49,10 @@ where
 	}
 }
 
-impl<VT, UT, C> testscript::Runner for WsRunner<VT, UT, C>
+impl<MVT, SVT, C> testscript::Runner for WsRunner<MVT, SVT, C>
 where
-	VT: VersionedTransaction,
-	UT: UnversionedTransaction,
+	MVT: MultiVersionTransaction,
+	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {

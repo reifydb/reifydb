@@ -11,14 +11,14 @@ impl CatalogStore {
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
 		Ok(rx.range(ColumnPolicyKey::full_scan(column))?
-			.map(|versioned| {
-				let row = versioned.row;
-				let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
-				let column = ColumnId(column_policy::LAYOUT.get_u64(&row, column_policy::COLUMN));
+			.map(|multi| {
+				let row = multi.row;
+				let id = ColumnPolicyId(column_policy::LAYOSVT.get_u64(&row, column_policy::ID));
+				let column = ColumnId(column_policy::LAYOSVT.get_u64(&row, column_policy::COLUMN));
 
 				let policy = ColumnPolicyKind::from_u8(
-					column_policy::LAYOUT.get_u8(&row, column_policy::POLICY),
-					column_policy::LAYOUT.get_u8(&row, column_policy::VALUE),
+					column_policy::LAYOSVT.get_u8(&row, column_policy::POLICY),
+					column_policy::LAYOSVT.get_u8(&row, column_policy::VALUE),
 				);
 
 				ColumnPolicy {

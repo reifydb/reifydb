@@ -4,9 +4,9 @@
 mod cdc;
 mod config;
 mod diagnostic;
+mod multi;
 mod read;
-mod unversioned;
-mod versioned;
+mod single;
 mod write;
 
 use std::{
@@ -20,7 +20,7 @@ use read::Readers;
 use reifydb_core::{
 	CowVec,
 	delta::Delta,
-	interface::{CdcStorage, UnversionedInsert, UnversionedRemove, UnversionedStorage, VersionedStorage},
+	interface::{CdcStorage, MultiVersionStorage, SingleVersionInsert, SingleVersionRemove, SingleVersionStorage},
 };
 use reifydb_type::Error;
 use rusqlite::Connection;
@@ -75,14 +75,14 @@ impl Sqlite {
 
 			conn.execute_batch(
 				"BEGIN;
-                 CREATE TABLE IF NOT EXISTS versioned (
+                 CREATE TABLE IF NOT EXISTS multi (
                      key     BLOB NOT NULL,
                      version INTEGER NOT NULL,
                      value   BLOB,
                      PRIMARY KEY (key, version)
                  );
 
-                 CREATE TABLE IF NOT EXISTS unversioned (
+                 CREATE TABLE IF NOT EXISTS single (
                      key     BLOB NOT NULL,
                      value   BLOB NOT NULL,
                      PRIMARY KEY (key)
@@ -143,7 +143,7 @@ impl Sqlite {
 		self.readers.get_reader()
 	}
 
-	/// Convert deltas to SQL operations for unversioned storage
+	/// Convert deltas to SQL operations for single storage
 	fn convert_deltas_to_operations(&self, deltas: CowVec<Delta>) -> Vec<(String, Vec<rusqlite::types::Value>)> {
 		let mut operations = Vec::new();
 		for delta in deltas.as_ref() {
@@ -153,8 +153,7 @@ impl Sqlite {
 					row: bytes,
 				} => {
 					operations.push((
-						"INSERT OR REPLACE INTO unversioned (key,value) VALUES (?1, ?2)"
-							.to_string(),
+						"INSERT OR REPLACE INTO single (key,value) VALUES (?1, ?2)".to_string(),
 						vec![
 							rusqlite::types::Value::Blob(key.to_vec()),
 							rusqlite::types::Value::Blob(bytes.to_vec()),
@@ -165,7 +164,7 @@ impl Sqlite {
 					key,
 				} => {
 					operations.push((
-						"DELETE FROM unversioned WHERE key = ?1".to_string(),
+						"DELETE FROM single WHERE key = ?1".to_string(),
 						vec![rusqlite::types::Value::Blob(key.to_vec())],
 					));
 				}
@@ -190,10 +189,10 @@ impl Sqlite {
 	}
 }
 
-impl VersionedStorage for Sqlite {}
-impl UnversionedStorage for Sqlite {}
-impl UnversionedInsert for Sqlite {}
-impl UnversionedRemove for Sqlite {}
+impl MultiVersionStorage for Sqlite {}
+impl SingleVersionStorage for Sqlite {}
+impl SingleVersionInsert for Sqlite {}
+impl SingleVersionRemove for Sqlite {}
 impl CdcStorage for Sqlite {}
 
 #[cfg(test)]
@@ -407,15 +406,15 @@ mod tests {
 			// Check that both tables exist
 			let mut stmt = conn_guard
 				.prepare(
-					"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('versioned', 'unversioned')",
+					"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('multi', 'single')",
 				)
 				.unwrap();
 			let table_names: Vec<String> =
 				stmt.query_map([], |row| Ok(row.get(0)?)).unwrap().map(Result::unwrap).collect();
 
 			assert_eq!(table_names.len(), 2);
-			assert!(table_names.contains(&"versioned".to_string()));
-			assert!(table_names.contains(&"unversioned".to_string()));
+			assert!(table_names.contains(&"multi".to_string()));
+			assert!(table_names.contains(&"single".to_string()));
 			Ok(())
 		})
 		.expect("test failed");

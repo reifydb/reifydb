@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, Result,
-	interface::{Versioned, VersionedGet},
+	interface::{MultiVersionGet, MultiVersionRow},
 	value::row::EncodedRow,
 };
 use rusqlite::{OptionalExtension, params};
@@ -11,8 +11,8 @@ use rusqlite::{OptionalExtension, params};
 use super::table_name;
 use crate::sqlite::Sqlite;
 
-impl VersionedGet for Sqlite {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Versioned>> {
+impl MultiVersionGet for Sqlite {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionRow>> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();
 
@@ -29,7 +29,7 @@ impl VersionedGet for Sqlite {
 				match value {
 					Some(val) => {
 						let encoded_row = EncodedRow(CowVec::new(val));
-						Ok(Some(Versioned {
+						Ok(Some(MultiVersionRow {
 							key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
 							row: encoded_row,
 							version: row.get(2)?,

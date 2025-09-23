@@ -14,16 +14,16 @@ use crate::{
 	diagnostic::{connection_failed, sequence_exhausted},
 	sqlite::{
 		cdc::{fetch_pre_value, store_cdc_transaction},
-		versioned::{ensure_table_exists, table_name},
+		multi::{ensure_table_exists, table_name},
 	},
 };
 
 pub enum WriteCommand {
-	UnversionedCommit {
+	SingleVersionCommit {
 		operations: Vec<(String, Vec<Value>)>,
 		response: Sender<Result<()>>,
 	},
-	VersionedCommit {
+	MultiVersionCommit {
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
 		transaction: TransactionId,
@@ -62,23 +62,22 @@ impl Writer {
 	fn run(&mut self) {
 		while let Ok(cmd) = self.receiver.recv() {
 			match cmd {
-				WriteCommand::UnversionedCommit {
+				WriteCommand::SingleVersionCommit {
 					operations,
 					response,
 				} => {
-					let result = self.handle_unversioned_commit(operations);
+					let result = self.handle_single_commit(operations);
 
 					let _ = response.send(result);
 				}
-				WriteCommand::VersionedCommit {
+				WriteCommand::MultiVersionCommit {
 					deltas,
 					version,
 					transaction,
 					timestamp,
 					respond_to: response,
 				} => {
-					let result =
-						self.handle_versioned_commit(deltas, version, transaction, timestamp);
+					let result = self.handle_multi_commit(deltas, version, transaction, timestamp);
 
 					let _ = response.send(result);
 				}
@@ -87,7 +86,7 @@ impl Writer {
 		}
 	}
 
-	fn handle_unversioned_commit(&mut self, operations: Vec<(String, Vec<Value>)>) -> Result<()> {
+	fn handle_single_commit(&mut self, operations: Vec<(String, Vec<Value>)>) -> Result<()> {
 		let tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		for (rql, params) in operations {
@@ -97,7 +96,7 @@ impl Writer {
 		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))
 	}
 
-	fn handle_versioned_commit(
+	fn handle_multi_commit(
 		&mut self,
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
@@ -200,7 +199,7 @@ impl Writer {
 	}
 
 	fn ensure_table_if_needed(tx: &Transaction, table: &str, ensured_tables: &mut HashSet<String>) -> Result<()> {
-		if table != "versioned" && !ensured_tables.contains(table) {
+		if table != "multi" && !ensured_tables.contains(table) {
 			ensure_table_exists(tx, table);
 			ensured_tables.insert(table.to_string());
 		}

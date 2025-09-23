@@ -4,7 +4,7 @@
 use reifydb_core::{
 	EncodedKey,
 	interface::{
-		BoxedVersionedIter,
+		BoxedMultiVersionIter,
 		key::{EncodableKey, FlowNodeStateKey},
 	},
 	value::row::EncodedRow,
@@ -27,18 +27,18 @@ pub use window::WindowStateful;
 
 // Iterator wrapper for state entries
 pub struct StateIterator<'a> {
-	pub(crate) inner: BoxedVersionedIter<'a>,
+	pub(crate) inner: BoxedMultiVersionIter<'a>,
 }
 
 impl<'a> Iterator for StateIterator<'a> {
 	type Item = (EncodedKey, EncodedRow);
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.inner.next().map(|versioned| {
-			if let Some(state_key) = FlowNodeStateKey::decode(&versioned.key) {
-				(EncodedKey::new(state_key.key), versioned.row)
+		self.inner.next().map(|multi| {
+			if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
+				(EncodedKey::new(state_key.key), multi.row)
 			} else {
-				(versioned.key, versioned.row)
+				(multi.key, multi.row)
 			}
 		})
 	}

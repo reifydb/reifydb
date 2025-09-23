@@ -26,7 +26,7 @@ impl<T: Transaction> Bootloader<T> {
 		let engine = self.engine.clone();
 		let eventbus = engine.event_bus();
 
-		eventbus.register(StartEventListener::new(engine.unversioned_owned()));
+		eventbus.register(StartEventListener::new(engine.single_owned()));
 		eventbus.register(CreateEventListener::new(engine.clone()));
 
 		Ok(())

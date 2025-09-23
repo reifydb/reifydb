@@ -16,7 +16,7 @@ impl CatalogStore {
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let versioned = match txn.get(&Key::Table(TableKey {
+		let multi = match txn.get(&Key::Table(TableKey {
 			table: table_id,
 		})
 		.encode())?
@@ -28,8 +28,8 @@ impl CatalogStore {
 			)),
 		};
 
-		let mut updated_row = versioned.row.clone();
-		table::LAYOUT.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
+		let mut updated_row = multi.row.clone();
+		table::LAYOSVT.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(
 			&Key::Table(TableKey {

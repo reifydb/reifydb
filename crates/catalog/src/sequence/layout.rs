@@ -8,7 +8,7 @@ pub(crate) mod sequence {
 
 	pub(crate) const VALUE: usize = 0;
 
-	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
+	pub(crate) static LAYOSVT: Lazy<EncodedRowLayout> = Lazy::new(|| {
 		EncodedRowLayout::new(&[
 			Type::Uint8, // VALUE
 		])

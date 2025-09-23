@@ -14,13 +14,15 @@ use core::iter::Rev;
 use crossbeam_skiplist::map::Range as MapRange;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Result,
-	interface::{Unversioned, UnversionedRangeRev as RangeRevInterface, Versioned, VersionedRangeRev},
+	interface::{
+		MultiVersionRangeRev, MultiVersionRow, SingleVersionRangeRev as RangeRevInterface, SingleVersionRow,
+	},
 	value::row::EncodedRow,
 };
 
-use crate::memory::{Memory, VersionedRow};
+use crate::memory::{Memory, MultiVersionRowContainer};
 
-impl VersionedRangeRev for Memory {
+impl MultiVersionRangeRev for Memory {
 	type RangeIterRev<'a>
 		= RangeRev<'a>
 	where
@@ -28,25 +30,25 @@ impl VersionedRangeRev for Memory {
 
 	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
 		Ok(RangeRev {
-			range: self.versioned.range(range).rev(),
+			range: self.multi.range(range).rev(),
 			version,
 		})
 	}
 }
 
 pub struct RangeRev<'a> {
-	pub(crate) range: Rev<MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, VersionedRow>>,
+	pub(crate) range: Rev<MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, MultiVersionRowContainer>>,
 	pub(crate) version: CommitVersion,
 }
 
 impl Iterator for RangeRev<'_> {
-	type Item = Versioned;
+	type Item = MultiVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let item = self.range.next()?;
 			if let Some(row) = item.value().get(self.version) {
-				return Some(Versioned {
+				return Some(MultiVersionRow {
 					key: item.key().clone(),
 					version: self.version,
 					row,
@@ -58,27 +60,27 @@ impl Iterator for RangeRev<'_> {
 
 impl RangeRevInterface for Memory {
 	type RangeRev<'a>
-		= UnversionedRangeRev<'a>
+		= SingleVersionRangeRev<'a>
 	where
 		Self: 'a;
 
 	fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::RangeRev<'_>> {
-		Ok(UnversionedRangeRev {
-			range: self.unversioned.range(range),
+		Ok(SingleVersionRangeRev {
+			range: self.single.range(range),
 		})
 	}
 }
 
-pub struct UnversionedRangeRev<'a> {
+pub struct SingleVersionRangeRev<'a> {
 	pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedRow>,
 }
 
-impl Iterator for UnversionedRangeRev<'_> {
-	type Item = Unversioned;
+impl Iterator for SingleVersionRangeRev<'_> {
+	type Item = SingleVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let item = self.range.next_back()?;
-		Some(Unversioned {
+		Some(SingleVersionRow {
 			key: item.key().clone(),
 			row: item.value().clone(),
 		})

@@ -12,18 +12,18 @@
 use core::{cmp, iter::Rev};
 use std::collections::btree_map::Range as BTreeMapRange;
 
-use reifydb_core::{Either, EncodedKey, interface::VersionedStorage};
+use reifydb_core::{Either, EncodedKey, interface::MultiVersionStorage};
 
 use crate::mvcc::{
 	marker::Marker,
 	types::{Pending, TransactionValue},
 };
 
-pub struct TransactionRangeRev<'a, VS>
+pub struct TransactionRangeRev<'a, MVS>
 where
-	VS: VersionedStorage + 'a,
+	MVS: MultiVersionStorage + 'a,
 {
-	pub(crate) committed: VS::RangeIterRev<'a>,
+	pub(crate) committed: MVS::RangeIterRev<'a>,
 	pub(crate) pending: Rev<BTreeMapRange<'a, EncodedKey, Pending>>,
 	next_pending: Option<(&'a EncodedKey, &'a Pending)>,
 	next_committed: Option<TransactionValue>,
@@ -31,9 +31,9 @@ where
 	marker: Option<Marker<'a>>,
 }
 
-impl<'a, VS> TransactionRangeRev<'a, VS>
+impl<'a, MVS> TransactionRangeRev<'a, MVS>
 where
-	VS: VersionedStorage + 'a,
+	MVS: MultiVersionStorage + 'a,
 {
 	fn advance_pending(&mut self) {
 		self.next_pending = self.pending.next();
@@ -48,7 +48,7 @@ where
 
 	pub fn new(
 		pending: Rev<BTreeMapRange<'a, EncodedKey, Pending>>,
-		committed: VS::RangeIterRev<'a>,
+		committed: MVS::RangeIterRev<'a>,
 		marker: Option<Marker<'a>>,
 	) -> Self {
 		let mut iterator = Self {
@@ -67,9 +67,9 @@ where
 	}
 }
 
-impl<'a, VS> Iterator for TransactionRangeRev<'a, VS>
+impl<'a, MVS> Iterator for TransactionRangeRev<'a, MVS>
 where
-	VS: VersionedStorage + 'a,
+	MVS: MultiVersionStorage + 'a,
 {
 	type Item = TransactionValue;
 

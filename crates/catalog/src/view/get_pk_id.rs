@@ -9,7 +9,7 @@ impl CatalogStore {
 	/// Get the primary key ID for a view
 	/// Returns None if the view doesn't exist or has no primary key
 	pub fn get_view_pk_id(rx: &mut impl QueryTransaction, view_id: ViewId) -> crate::Result<Option<PrimaryKeyId>> {
-		let versioned = match rx.get(&Key::View(ViewKey {
+		let multi = match rx.get(&Key::View(ViewKey {
 			view: view_id,
 		})
 		.encode())?
@@ -18,7 +18,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = view::LAYOUT.get_u64(&versioned.row, view::PRIMARY_KEY);
+		let pk_id = view::LAYOSVT.get_u64(&multi.row, view::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

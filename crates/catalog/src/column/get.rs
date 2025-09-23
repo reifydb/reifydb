@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use column::LAYOUT;
+use column::LAYOSVT;
 use reifydb_core::{
 	Error,
 	interface::{ColumnsKey, EncodableKey, QueryTransaction},
@@ -38,7 +38,7 @@ use crate::{
 
 impl CatalogStore {
 	pub fn get_column(rx: &mut impl QueryTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
-		let versioned = rx
+		let multi = rx
 			.get(&ColumnsKey {
 				column,
 			}
@@ -50,16 +50,16 @@ impl CatalogStore {
 				))
 			})?;
 
-		let row = versioned.row;
+		let row = multi.row;
 
-		let id = ColumnId(LAYOUT.get_u64(&row, column::ID));
-		let name = LAYOUT.get_utf8(&row, column::NAME).to_string();
-		let base_type = Type::from_u8(LAYOUT.get_u8(&row, column::VALUE));
-		let index = ColumnIndex(LAYOUT.get_u16(&row, column::INDEX));
-		let auto_increment = LAYOUT.get_bool(&row, column::AUTO_INCREMENT);
+		let id = ColumnId(LAYOSVT.get_u64(&row, column::ID));
+		let name = LAYOSVT.get_utf8(&row, column::NAME).to_string();
+		let base_type = Type::from_u8(LAYOSVT.get_u8(&row, column::VALUE));
+		let index = ColumnIndex(LAYOSVT.get_u16(&row, column::INDEX));
+		let auto_increment = LAYOSVT.get_bool(&row, column::ASVTO_INCREMENT);
 
 		// Reconstruct constraint from stored blob
-		let constraint_bytes = LAYOUT.get_blob(&row, column::CONSTRAINT);
+		let constraint_bytes = LAYOSVT.get_blob(&row, column::CONSTRAINT);
 		let constraint = match decode_constraint(constraint_bytes.as_bytes()) {
 			Some(c) => TypeConstraint::with_constraint(base_type, c),
 			None => TypeConstraint::unconstrained(base_type),

@@ -3,15 +3,15 @@
 
 use crate::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
-	interface::{TransactionId, Versioned, WithEventBus},
+	interface::{MultiVersionRow, TransactionId, WithEventBus},
 	value::row::EncodedRow,
 };
 
-pub type BoxedVersionedIter<'a> = Box<dyn Iterator<Item = Versioned> + Send + 'a>;
+pub type BoxedMultiVersionIter<'a> = Box<dyn Iterator<Item = MultiVersionRow> + Send + 'a>;
 
-pub trait VersionedTransaction: WithEventBus + Send + Sync + Clone + 'static {
-	type Query: VersionedQueryTransaction;
-	type Command: VersionedCommandTransaction;
+pub trait MultiVersionTransaction: WithEventBus + Send + Sync + Clone + 'static {
+	type Query: MultiVersionQueryTransaction;
+	type Command: MultiVersionCommandTransaction;
 
 	fn begin_query(&self) -> crate::Result<Self::Query>;
 
@@ -36,29 +36,29 @@ pub trait VersionedTransaction: WithEventBus + Send + Sync + Clone + 'static {
 	}
 }
 
-pub trait VersionedQueryTransaction {
+pub trait MultiVersionQueryTransaction {
 	fn version(&self) -> CommitVersion;
 
 	fn id(&self) -> TransactionId;
 
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Versioned>>;
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionRow>>;
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
-	fn scan(&mut self) -> crate::Result<BoxedVersionedIter>;
+	fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter>;
 
-	fn scan_rev(&mut self) -> crate::Result<BoxedVersionedIter>;
+	fn scan_rev(&mut self) -> crate::Result<BoxedMultiVersionIter>;
 
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter>;
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter>;
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedVersionedIter>;
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter>;
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter>;
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter>;
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedVersionedIter>;
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter>;
 }
 
-pub trait VersionedCommandTransaction: VersionedQueryTransaction {
+pub trait MultiVersionCommandTransaction: MultiVersionQueryTransaction {
 	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;

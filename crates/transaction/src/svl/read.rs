@@ -3,19 +3,19 @@
 
 use std::sync::RwLockReadGuard;
 
-use reifydb_core::interface::{BoxedUnversionedIter, UnversionedQueryTransaction};
+use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionQueryTransaction};
 
 use super::*;
 
-pub struct SvlReadTransaction<'a, US> {
-	pub(super) storage: RwLockReadGuard<'a, US>,
+pub struct SvlReadTransaction<'a, SVS> {
+	pub(super) storage: RwLockReadGuard<'a, SVS>,
 }
 
-impl<US> UnversionedQueryTransaction for SvlReadTransaction<'_, US>
+impl<SVS> SingleVersionQueryTransaction for SvlReadTransaction<'_, SVS>
 where
-	US: UnversionedStorage,
+	SVS: SingleVersionStorage,
 {
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>> {
 		self.storage.get(key)
 	}
 
@@ -23,32 +23,32 @@ where
 		self.storage.contains(key)
 	}
 
-	fn scan(&mut self) -> crate::Result<BoxedUnversionedIter> {
+	fn scan(&mut self) -> crate::Result<BoxedSingleVersionIter> {
 		let iter = self.storage.scan()?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn scan_rev(&mut self) -> crate::Result<BoxedUnversionedIter> {
+	fn scan_rev(&mut self) -> crate::Result<BoxedSingleVersionIter> {
 		let iter = self.storage.scan_rev()?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
 		let iter = self.storage.range(range)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
 		let iter = self.storage.range_rev(range)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedSingleVersionIter> {
 		let iter = self.storage.prefix(prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedUnversionedIter> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedSingleVersionIter> {
 		let iter = self.storage.prefix_rev(prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}

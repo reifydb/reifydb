@@ -12,17 +12,17 @@ use std::sync::Arc;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	interface::{NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId, TableDef, TableId, ViewDef, ViewId},
-	util::VersionedContainer,
+	util::MultiVersionContainer,
 };
 
 use crate::system::SystemCatalog;
 
-pub type VersionedNamespaceDef = VersionedContainer<NamespaceDef>;
-pub type VersionedTableDef = VersionedContainer<TableDef>;
-pub type VersionedViewDef = VersionedContainer<ViewDef>;
-pub type VersionedPrimaryKeyDef = VersionedContainer<PrimaryKeyDef>;
+pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
+pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
+pub type MultiVersionViewDef = MultiVersionContainer<ViewDef>;
+pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 
-/// A materialized catalog that stores versioned namespace, table, and view
+/// A materialized catalog that stores multi namespace, table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
 /// hitting storage.
 #[derive(Debug, Clone)]
@@ -30,25 +30,25 @@ pub struct MaterializedCatalog(Arc<MaterializedCatalogInner>);
 
 #[derive(Debug)]
 pub struct MaterializedCatalogInner {
-	/// Versioned namespace definitions indexed by namespace ID
-	pub(crate) namespaces: SkipMap<NamespaceId, VersionedNamespaceDef>,
+	/// MultiVersion namespace definitions indexed by namespace ID
+	pub(crate) namespaces: SkipMap<NamespaceId, MultiVersionNamespaceDef>,
 	/// Index from namespace name to namespace ID for fast name lookups
 	pub(crate) namespaces_by_name: SkipMap<String, NamespaceId>,
 
-	/// Versioned table definitions indexed by table ID
-	pub(crate) tables: SkipMap<TableId, VersionedTableDef>,
+	/// MultiVersion table definitions indexed by table ID
+	pub(crate) tables: SkipMap<TableId, MultiVersionTableDef>,
 	/// Index from (namespace_id, table_name) to table ID for fast name
 	/// lookups
 	pub(crate) tables_by_name: SkipMap<(NamespaceId, String), TableId>,
 
-	/// Versioned view definitions indexed by view ID
-	pub(crate) views: SkipMap<ViewId, VersionedViewDef>,
+	/// MultiVersion view definitions indexed by view ID
+	pub(crate) views: SkipMap<ViewId, MultiVersionViewDef>,
 	/// Index from (namespace_id, view_name) to view ID for fast name
 	/// lookups
 	pub(crate) views_by_name: SkipMap<(NamespaceId, String), ViewId>,
 
-	/// Versioned primary key definitions indexed by primary key ID
-	pub(crate) primary_keys: SkipMap<PrimaryKeyId, VersionedPrimaryKeyDef>,
+	/// MultiVersion primary key definitions indexed by primary key ID
+	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
 
 	/// System catalog with version information (None until initialized)
 	pub(crate) system_catalog: Option<SystemCatalog>,
@@ -74,7 +74,7 @@ impl MaterializedCatalog {
 		let system_namespace_id = system_namespace.id;
 
 		let namespaces = SkipMap::new();
-		let container = VersionedContainer::new();
+		let container = MultiVersionContainer::new();
 		container.insert(1, Some(system_namespace));
 		namespaces.insert(system_namespace_id, container);
 

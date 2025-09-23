@@ -12,7 +12,7 @@ use std::{
 };
 
 /// Default timeout for wait operations (5 seconds)
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(5);
+pub const DEFAULT_TIMEOSVT: Duration = Duration::from_secs(5);
 
 /// Default poll interval (1 millisecond)
 pub const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(1);
@@ -48,7 +48,7 @@ pub fn wait_for<F>(condition: F, message: &str)
 where
 	F: Fn() -> bool,
 {
-	wait_for_condition(condition, DEFAULT_TIMEOUT, DEFAULT_POLL_INTERVAL, message);
+	wait_for_condition(condition, DEFAULT_TIMEOSVT, DEFAULT_POLL_INTERVAL, message);
 }
 
 #[cfg(test)]

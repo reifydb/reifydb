@@ -4,7 +4,7 @@
 use reifydb_core::{
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
-	interface::{CdcTransaction, UnversionedTransaction, VersionedTransaction},
+	interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
 };
 use reifydb_engine::{EngineTransaction, StandardCommandTransaction};
 use reifydb_sub_api::SubsystemFactory;
@@ -18,13 +18,13 @@ use reifydb_sub_worker::WorkerBuilder;
 use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
 
-pub struct EmbeddedBuilder<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> {
-	versioned: VT,
-	unversioned: UT,
+pub struct EmbeddedBuilder<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction> {
+	multi: MVT,
+	single: SVT,
 	cdc: C,
 	eventbus: EventBus,
-	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>,
-	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>>,
+	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>,
+	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>>>,
 	#[cfg(feature = "sub_logging")]
 	logging_configurator: Option<Box<dyn FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_worker")]
@@ -33,19 +33,19 @@ pub struct EmbeddedBuilder<VT: VersionedTransaction, UT: UnversionedTransaction,
 	flow_configurator: Option<
 		Box<
 			dyn FnOnce(
-					FlowBuilder<EngineTransaction<VT, UT, C>>,
-				) -> FlowBuilder<EngineTransaction<VT, UT, C>>
+					FlowBuilder<EngineTransaction<MVT, SVT, C>>,
+				) -> FlowBuilder<EngineTransaction<MVT, SVT, C>>
 				+ Send
 				+ 'static,
 		>,
 	>,
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> EmbeddedBuilder<VT, UT, C> {
-	pub fn new(versioned: VT, unversioned: UT, cdc: C, eventbus: EventBus) -> Self {
+impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction> EmbeddedBuilder<MVT, SVT, C> {
+	pub fn new(multi: MVT, single: SVT, cdc: C, eventbus: EventBus) -> Self {
 		Self {
-			versioned,
-			unversioned,
+			multi,
+			single,
 			cdc,
 			eventbus,
 			interceptors: StandardInterceptorBuilder::new(),
@@ -61,7 +61,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Em
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
 	where
-		I: RegisterInterceptor<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>
+		I: RegisterInterceptor<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>
 			+ Send
 			+ Sync
 			+ Clone
@@ -73,8 +73,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Em
 		self
 	}
 
-	pub fn build(self) -> crate::Result<Database<VT, UT, C>> {
-		let mut builder = DatabaseBuilder::new(self.versioned, self.unversioned, self.cdc, self.eventbus)
+	pub fn build(self) -> crate::Result<Database<MVT, SVT, C>> {
+		let mut builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
 			.with_interceptor_builder(self.interceptors);
 
 		// Add configured subsystems using the proper methods
@@ -102,8 +102,8 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction> Em
 	}
 }
 
-impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
-	WithSubsystem<EngineTransaction<VT, UT, C>> for EmbeddedBuilder<VT, UT, C>
+impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction>
+	WithSubsystem<EngineTransaction<MVT, SVT, C>> for EmbeddedBuilder<MVT, SVT, C>
 {
 	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self
@@ -117,7 +117,9 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 	#[cfg(feature = "sub_flow")]
 	fn with_flow<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(FlowBuilder<EngineTransaction<VT, UT, C>>) -> FlowBuilder<EngineTransaction<VT, UT, C>>
+		F: FnOnce(
+				FlowBuilder<EngineTransaction<MVT, SVT, C>>,
+			) -> FlowBuilder<EngineTransaction<MVT, SVT, C>>
 			+ Send
 			+ 'static,
 	{
@@ -136,7 +138,7 @@ impl<VT: VersionedTransaction, UT: UnversionedTransaction, C: CdcTransaction>
 
 	fn with_subsystem(
 		mut self,
-		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<VT, UT, C>>>>,
+		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>>,
 	) -> Self {
 		self.subsystem_factories.push(factory);
 		self

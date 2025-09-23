@@ -12,7 +12,7 @@ use serde::{
 };
 
 /// A date value representing a calendar date (year, month, day) without time
-/// information. Always interpreted in UTC.
+/// information. Always interpreted in SVTC.
 ///
 /// Internally stored as days since Unix epoch (1970-01-01).
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]

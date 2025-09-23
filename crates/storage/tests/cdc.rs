@@ -9,8 +9,8 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, async_cow_vec,
 	delta::Delta,
 	interface::{
-		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, TransactionId, VersionedCommit,
-		VersionedGet, VersionedStorage,
+		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, MultiVersionCommit, MultiVersionGet,
+		MultiVersionStorage, TransactionId,
 	},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::row::EncodedRow,
@@ -43,15 +43,15 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs CDC tests for storage implementations
-pub struct Runner<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> {
-	storage: VS,
+pub struct Runner<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorage> {
+	storage: MVS,
 	next_version: CommitVersion,
 	/// Buffer of deltas to be committed
 	deltas: Vec<Delta>,
 }
 
-impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<VS> {
-	fn new(storage: VS) -> Self {
+impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorage> Runner<MVS> {
+	fn new(storage: MVS) -> Self {
 		Self {
 			storage,
 			next_version: 1,
@@ -104,7 +104,7 @@ impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> Runner<
 	}
 }
 
-impl<VS: VersionedStorage + VersionedCommit + VersionedGet + CdcStorage> testscript::Runner for Runner<VS> {
+impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorage> testscript::Runner for Runner<MVS> {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {

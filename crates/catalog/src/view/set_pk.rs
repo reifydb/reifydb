@@ -16,7 +16,7 @@ impl CatalogStore {
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let versioned = match txn.get(&Key::View(ViewKey {
+		let multi = match txn.get(&Key::View(ViewKey {
 			view: view_id,
 		})
 		.encode())?
@@ -28,8 +28,8 @@ impl CatalogStore {
 			)),
 		};
 
-		let mut updated_row = versioned.row.clone();
-		view::LAYOUT.set_u64(&mut updated_row, view::PRIMARY_KEY, primary_key_id.0);
+		let mut updated_row = multi.row.clone();
+		view::LAYOSVT.set_u64(&mut updated_row, view::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(
 			&Key::View(ViewKey {

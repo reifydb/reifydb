@@ -3,15 +3,15 @@
 
 use std::sync::mpsc;
 
-use reifydb_core::{CowVec, Result, delta::Delta, interface::UnversionedCommit};
+use reifydb_core::{CowVec, Result, delta::Delta, interface::SingleVersionCommit};
 
 use crate::sqlite::{Sqlite, write::WriteCommand};
 
-impl UnversionedCommit for Sqlite {
+impl SingleVersionCommit for Sqlite {
 	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
 		let (tx, rx) = mpsc::channel();
 		self.writer
-			.send(WriteCommand::UnversionedCommit {
+			.send(WriteCommand::SingleVersionCommit {
 				operations: self.convert_deltas_to_operations(deltas),
 				response: tx,
 			})

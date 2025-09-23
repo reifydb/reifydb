@@ -5,23 +5,23 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Error,
 	event::EventBus,
 	interface::{
-		BoxedVersionedIter, TransactionId, UnversionedTransaction, Versioned, VersionedCommandTransaction,
-		VersionedQueryTransaction, VersionedStorage, VersionedTransaction, WithEventBus,
+		BoxedMultiVersionIter, MultiVersionCommandTransaction, MultiVersionQueryTransaction, MultiVersionRow,
+		MultiVersionStorage, MultiVersionTransaction, SingleVersionTransaction, TransactionId, WithEventBus,
 	},
 	value::row::EncodedRow,
 };
 
 use crate::mvcc::transaction::optimistic::{CommandTransaction, Optimistic, QueryTransaction};
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> WithEventBus for Optimistic<VS, UT> {
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> WithEventBus for Optimistic<MVS, SMVT> {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction for Optimistic<VS, UT> {
-	type Query = QueryTransaction<VS, UT>;
-	type Command = CommandTransaction<VS, UT>;
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionTransaction for Optimistic<MVS, SMVT> {
+	type Query = QueryTransaction<MVS, SMVT>;
+	type Command = CommandTransaction<MVS, SMVT>;
 
 	fn begin_query(&self) -> Result<Self::Query, Error> {
 		self.begin_query()
@@ -32,7 +32,9 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedTransaction for 
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction for QueryTransaction<VS, UT> {
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQueryTransaction
+	for QueryTransaction<MVS, SMVT>
+{
 	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -41,8 +43,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		self.tm.id()
 	}
 
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
-		Ok(QueryTransaction::get(self, key)?.map(|tv| Versioned {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>, Error> {
+		Ok(QueryTransaction::get(self, key)?.map(|tv| MultiVersionRow {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
 			version: tv.version(),
@@ -53,38 +55,40 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		QueryTransaction::contains_key(self, key)
 	}
 
-	fn scan(&mut self) -> Result<BoxedVersionedIter, Error> {
+	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = QueryTransaction::scan(self)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error> {
+	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = QueryTransaction::scan_rev(self)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
+	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = QueryTransaction::range(self, range)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = QueryTransaction::range_rev(self, range)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = QueryTransaction::prefix(self, prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = QueryTransaction::prefix_rev(self, prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction for CommandTransaction<VS, UT> {
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQueryTransaction
+	for CommandTransaction<MVS, SMVT>
+{
 	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -93,8 +97,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		self.tm.id()
 	}
 
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<Versioned>, Error> {
-		Ok(CommandTransaction::get(self, key)?.map(|tv| Versioned {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>, Error> {
+		Ok(CommandTransaction::get(self, key)?.map(|tv| MultiVersionRow {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
 			version: tv.version(),
@@ -105,8 +109,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(CommandTransaction::contains_key(self, key)?)
 	}
 
-	fn scan(&mut self) -> Result<BoxedVersionedIter, Error> {
-		let iter = self.scan()?.map(|tv| Versioned {
+	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = self.scan()?.map(|tv| MultiVersionRow {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
 			version: tv.version(),
@@ -115,8 +119,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter))
 	}
 
-	fn scan_rev(&mut self) -> Result<BoxedVersionedIter, Error> {
-		let iter = self.scan_rev()?.map(|tv| Versioned {
+	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = self.scan_rev()?.map(|tv| MultiVersionRow {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
 			version: tv.version(),
@@ -125,8 +129,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter))
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
-		let iter = self.range(range)?.map(|tv| Versioned {
+	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = self.range(range)?.map(|tv| MultiVersionRow {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
 			version: tv.version(),
@@ -135,8 +139,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter))
 	}
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedVersionedIter, Error> {
-		let iter = self.range_rev(range)?.map(|tv| Versioned {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = self.range_rev(range)?.map(|tv| MultiVersionRow {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
 			version: tv.version(),
@@ -145,8 +149,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter))
 	}
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
-		let iter = self.prefix(prefix)?.map(|tv| Versioned {
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = self.prefix(prefix)?.map(|tv| MultiVersionRow {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
 			version: tv.version(),
@@ -155,8 +159,8 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 		Ok(Box::new(iter))
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedVersionedIter, Error> {
-		let iter = self.prefix_rev(prefix)?.map(|tv| Versioned {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = self.prefix_rev(prefix)?.map(|tv| MultiVersionRow {
 			key: tv.key().clone(),
 			row: tv.row().clone(),
 			version: tv.version(),
@@ -166,7 +170,9 @@ impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedQueryTransaction
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> VersionedCommandTransaction for CommandTransaction<VS, UT> {
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionCommandTransaction
+	for CommandTransaction<MVS, SMVT>
+{
 	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
 		CommandTransaction::set(self, key, row)?;
 		Ok(())

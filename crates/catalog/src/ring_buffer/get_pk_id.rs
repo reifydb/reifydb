@@ -12,12 +12,12 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		ring_buffer_id: RingBufferId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let versioned = match rx.get(&Key::RingBuffer(RingBufferKey::new(ring_buffer_id)).encode())? {
+		let multi = match rx.get(&Key::RingBuffer(RingBufferKey::new(ring_buffer_id)).encode())? {
 			Some(v) => v,
 			None => return Ok(None),
 		};
 
-		let pk_id = ring_buffer::LAYOUT.get_u64(&versioned.row, ring_buffer::PRIMARY_KEY);
+		let pk_id = ring_buffer::LAYOSVT.get_u64(&multi.row, ring_buffer::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

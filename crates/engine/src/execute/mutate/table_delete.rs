@@ -7,9 +7,9 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId, Params,
-		ResolvedNamespace, ResolvedSource, ResolvedTable, RowKey, RowKeyRange, Transaction,
-		VersionedCommandTransaction, VersionedQueryTransaction,
+		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId,
+		MultiVersionCommandTransaction, MultiVersionQueryTransaction, Params, ResolvedNamespace,
+		ResolvedSource, ResolvedTable, RowKey, RowKeyRange, Transaction,
 		identifier::{NamespaceIdentifier, TableIdentifier},
 	},
 	value::column::{ColumnData, Columns},
@@ -183,16 +183,13 @@ impl Executor {
 				))?
 				.collect::<Vec<_>>();
 
-			for versioned in rows {
+			for multi in rows {
 				// Remove primary key index entry if table has
 				// one
 				if let Some(ref pk_def) = pk_def {
 					let layout = table.get_layout();
 					let index_key = super::primary_key::encode_primary_key(
-						pk_def,
-						&versioned.row,
-						&table,
-						&layout,
+						pk_def, &multi.row, &table, &layout,
 					)?;
 
 					txn.remove(&IndexEntryKey::new(
@@ -204,7 +201,7 @@ impl Executor {
 				}
 
 				// Remove the row
-				txn.remove(&versioned.key)?;
+				txn.remove(&multi.key)?;
 				deleted_count += 1;
 			}
 		}

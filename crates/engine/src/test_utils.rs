@@ -22,11 +22,11 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 > {
 	let memory = Memory::new();
 	let event_bus = EventBus::new();
-	let unversioned = SingleVersionLock::new(memory.clone(), event_bus.clone());
+	let single = SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
 	StandardCommandTransaction::new(
-		Serializable::new(memory, unversioned.clone(), event_bus.clone()).begin_command().unwrap(),
-		unversioned,
+		Serializable::new(memory, single.clone(), event_bus.clone()).begin_command().unwrap(),
+		single,
 		cdc,
 		event_bus,
 		MaterializedCatalog::new(),
@@ -43,11 +43,11 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 > {
 	let memory = Memory::new();
 	let event_bus = EventBus::new();
-	let unversioned = SingleVersionLock::new(memory.clone(), event_bus.clone());
+	let single = SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
 	let mut result = StandardCommandTransaction::new(
-		Serializable::new(memory, unversioned.clone(), event_bus.clone()).begin_command().unwrap(),
-		unversioned,
+		Serializable::new(memory, single.clone(), event_bus.clone()).begin_command().unwrap(),
+		single,
 		cdc,
 		event_bus,
 		MaterializedCatalog::new(),

@@ -3,28 +3,28 @@
 
 use std::{collections::HashMap, mem::take, ops::RangeBounds, sync::RwLockWriteGuard};
 
-use reifydb_core::interface::{BoxedUnversionedIter, UnversionedCommandTransaction, UnversionedQueryTransaction};
+use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionCommandTransaction, SingleVersionQueryTransaction};
 
 use super::*;
 use crate::svl::{range::SvlRange, range_rev::SvlRangeRev, scan::SvlScan, scan_rev::SvlScanRev};
 
-pub struct SvlWriteTransaction<'a, US> {
+pub struct SvlWriteTransaction<'a, SVS> {
 	pending: HashMap<EncodedKey, Delta>,
 	completed: bool,
-	storage: RwLockWriteGuard<'a, US>,
+	storage: RwLockWriteGuard<'a, SVS>,
 }
 
-impl<US> UnversionedQueryTransaction for SvlWriteTransaction<'_, US>
+impl<SVS> SingleVersionQueryTransaction for SvlWriteTransaction<'_, SVS>
 where
-	US: UnversionedStorage,
+	SVS: SingleVersionStorage,
 {
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<Unversioned>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>> {
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {
 					row,
 					..
-				} => Ok(Some(Unversioned {
+				} => Ok(Some(SingleVersionRow {
 					key: key.clone(),
 					row: row.clone(),
 				})),
@@ -53,36 +53,36 @@ where
 		self.storage.contains(key)
 	}
 
-	fn scan(&mut self) -> crate::Result<BoxedUnversionedIter> {
+	fn scan(&mut self) -> crate::Result<BoxedSingleVersionIter> {
 		let (pending_items, committed_items) = self.prepare_scan_data(None, false)?;
 		let iter = SvlScan::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
-	fn scan_rev(&mut self) -> crate::Result<BoxedUnversionedIter> {
+	fn scan_rev(&mut self) -> crate::Result<BoxedSingleVersionIter> {
 		let (pending_items, committed_items) = self.prepare_scan_data(None, true)?;
 		let iter = SvlScanRev::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
 		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), false)?;
 		let iter = SvlRange::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedUnversionedIter> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
 		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), true)?;
 		let iter = SvlRangeRev::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 }
 
-impl<'a, US> SvlWriteTransaction<'a, US>
+impl<'a, SVS> SvlWriteTransaction<'a, SVS>
 where
-	US: UnversionedStorage,
+	SVS: SingleVersionStorage,
 {
-	pub(super) fn new(storage: RwLockWriteGuard<'a, US>) -> Self {
+	pub(super) fn new(storage: RwLockWriteGuard<'a, SVS>) -> Self {
 		Self {
 			pending: HashMap::new(),
 			completed: false,
@@ -96,7 +96,7 @@ where
 		&mut self,
 		range: Option<EncodedKeyRange>,
 		reverse: bool,
-	) -> crate::Result<(Vec<(EncodedKey, Delta)>, Vec<Unversioned>)> {
+	) -> crate::Result<(Vec<(EncodedKey, Delta)>, Vec<SingleVersionRow>)> {
 		// Clone and optionally filter pending items from the buffer
 		let mut pending_items: Vec<(EncodedKey, Delta)> = match &range {
 			Some(r) => self
@@ -116,7 +116,7 @@ where
 		}
 
 		// Get committed items from storage
-		let committed_items: Vec<Unversioned> = {
+		let committed_items: Vec<SingleVersionRow> = {
 			match (range, reverse) {
 				(Some(r), true) => self.storage.range_rev(r)?.collect(),
 				(Some(r), false) => self.storage.range(r)?.collect(),
@@ -129,9 +129,9 @@ where
 	}
 }
 
-impl<'a, US> UnversionedCommandTransaction for SvlWriteTransaction<'a, US>
+impl<'a, SVS> SingleVersionCommandTransaction for SvlWriteTransaction<'a, SVS>
 where
-	US: UnversionedStorage,
+	SVS: SingleVersionStorage,
 {
 	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
 		let delta = Delta::Set {

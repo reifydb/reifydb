@@ -7,34 +7,34 @@ use crate::{
 };
 
 #[derive(Debug)]
-pub struct Versioned {
+pub struct MultiVersionRow {
 	pub key: EncodedKey,
 	pub row: EncodedRow,
 	pub version: CommitVersion,
 }
 
 #[derive(Debug)]
-pub struct Unversioned {
+pub struct SingleVersionRow {
 	pub key: EncodedKey,
 	pub row: EncodedRow,
 }
 
-pub trait VersionedStorage:
+pub trait MultiVersionStorage:
 	Send
 	+ Sync
 	+ Clone
-	+ VersionedCommit
-	+ VersionedGet
-	+ VersionedContains
-	+ VersionedScan
-	+ VersionedScanRev
-	+ VersionedRange
-	+ VersionedRangeRev
+	+ MultiVersionCommit
+	+ MultiVersionGet
+	+ MultiVersionContains
+	+ MultiVersionScan
+	+ MultiVersionScanRev
+	+ MultiVersionRange
+	+ MultiVersionRangeRev
 	+ 'static
 {
 }
 
-pub trait VersionedCommit {
+pub trait MultiVersionCommit {
 	fn commit(
 		&self,
 		deltas: CowVec<Delta>,
@@ -43,35 +43,35 @@ pub trait VersionedCommit {
 	) -> crate::Result<()>;
 }
 
-pub trait VersionedGet {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<Versioned>>;
+pub trait MultiVersionGet {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionRow>>;
 }
 
-pub trait VersionedContains {
+pub trait MultiVersionContains {
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool>;
 }
 
-pub trait VersionedIter: Iterator<Item = Versioned> + Send {}
-impl<T: Send> VersionedIter for T where T: Iterator<Item = Versioned> {}
+pub trait MultiVersionIter: Iterator<Item = MultiVersionRow> + Send {}
+impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionRow> {}
 
-pub trait VersionedScan {
-	type ScanIter<'a>: VersionedIter
+pub trait MultiVersionScan {
+	type ScanIter<'a>: MultiVersionIter
 	where
 		Self: 'a;
 
 	fn scan(&self, version: CommitVersion) -> crate::Result<Self::ScanIter<'_>>;
 }
 
-pub trait VersionedScanRev {
-	type ScanIterRev<'a>: VersionedIter
+pub trait MultiVersionScanRev {
+	type ScanIterRev<'a>: MultiVersionIter
 	where
 		Self: 'a;
 
 	fn scan_rev(&self, version: CommitVersion) -> crate::Result<Self::ScanIterRev<'_>>;
 }
 
-pub trait VersionedRange {
-	type RangeIter<'a>: VersionedIter
+pub trait MultiVersionRange {
+	type RangeIter<'a>: MultiVersionIter
 	where
 		Self: 'a;
 
@@ -82,8 +82,8 @@ pub trait VersionedRange {
 	}
 }
 
-pub trait VersionedRangeRev {
-	type RangeIterRev<'a>: VersionedIter
+pub trait MultiVersionRangeRev {
+	type RangeIterRev<'a>: MultiVersionIter
 	where
 		Self: 'a;
 
@@ -94,36 +94,36 @@ pub trait VersionedRangeRev {
 	}
 }
 
-pub trait UnversionedStorage:
+pub trait SingleVersionStorage:
 	Send
 	+ Sync
 	+ Clone
-	+ UnversionedCommit
-	+ UnversionedGet
-	+ UnversionedContains
-	+ UnversionedInsert
-	+ UnversionedRemove
-	+ UnversionedScan
-	+ UnversionedScanRev
-	+ UnversionedRange
-	+ UnversionedRangeRev
+	+ SingleVersionCommit
+	+ SingleVersionGet
+	+ SingleVersionContains
+	+ SingleVersionInsert
+	+ SingleVersionRemove
+	+ SingleVersionScan
+	+ SingleVersionScanRev
+	+ SingleVersionRange
+	+ SingleVersionRangeRev
 	+ 'static
 {
 }
 
-pub trait UnversionedCommit {
+pub trait SingleVersionCommit {
 	fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()>;
 }
 
-pub trait UnversionedGet {
-	fn get(&self, key: &EncodedKey) -> crate::Result<Option<Unversioned>>;
+pub trait SingleVersionGet {
+	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>>;
 }
 
-pub trait UnversionedContains {
+pub trait SingleVersionContains {
 	fn contains(&self, key: &EncodedKey) -> crate::Result<bool>;
 }
 
-pub trait UnversionedInsert: UnversionedCommit {
+pub trait SingleVersionInsert: SingleVersionCommit {
 	fn insert(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
 		Self::commit(
 			self,
@@ -135,7 +135,7 @@ pub trait UnversionedInsert: UnversionedCommit {
 	}
 }
 
-pub trait UnversionedRemove: UnversionedCommit {
+pub trait SingleVersionRemove: SingleVersionCommit {
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		Self::commit(
 			self,
@@ -146,27 +146,27 @@ pub trait UnversionedRemove: UnversionedCommit {
 	}
 }
 
-pub trait UnversionedIter: Iterator<Item = Unversioned> + Send {}
-impl<T> UnversionedIter for T where T: Iterator<Item = Unversioned> + Send {}
+pub trait SingleVersionIter: Iterator<Item = SingleVersionRow> + Send {}
+impl<T> SingleVersionIter for T where T: Iterator<Item = SingleVersionRow> + Send {}
 
-pub trait UnversionedScan {
-	type ScanIter<'a>: UnversionedIter
+pub trait SingleVersionScan {
+	type ScanIter<'a>: SingleVersionIter
 	where
 		Self: 'a;
 
 	fn scan(&self) -> crate::Result<Self::ScanIter<'_>>;
 }
 
-pub trait UnversionedScanRev {
-	type ScanIterRev<'a>: UnversionedIter
+pub trait SingleVersionScanRev {
+	type ScanIterRev<'a>: SingleVersionIter
 	where
 		Self: 'a;
 
 	fn scan_rev(&self) -> crate::Result<Self::ScanIterRev<'_>>;
 }
 
-pub trait UnversionedRange {
-	type Range<'a>: UnversionedIter
+pub trait SingleVersionRange {
+	type Range<'a>: SingleVersionIter
 	where
 		Self: 'a;
 
@@ -177,8 +177,8 @@ pub trait UnversionedRange {
 	}
 }
 
-pub trait UnversionedRangeRev {
-	type RangeRev<'a>: UnversionedIter
+pub trait SingleVersionRangeRev {
+	type RangeRev<'a>: SingleVersionIter
 	where
 		Self: 'a;
 

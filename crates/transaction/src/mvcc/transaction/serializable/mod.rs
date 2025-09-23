@@ -16,7 +16,7 @@ pub use query::*;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	event::EventBus,
-	interface::{UnversionedTransaction, VersionedStorage},
+	interface::{MultiVersionStorage, SingleVersionTransaction},
 };
 use reifydb_storage::memory::Memory;
 
@@ -31,35 +31,35 @@ use crate::{
 	svl::SingleVersionLock,
 };
 
-pub struct Serializable<VS: VersionedStorage, UT: UnversionedTransaction>(Arc<Inner<VS, UT>>);
+pub struct Serializable<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction>(Arc<Inner<MVS, SMVT>>);
 
-pub struct Inner<VS: VersionedStorage, UT: UnversionedTransaction> {
-	pub(crate) tm: TransactionManager<StdVersionProvider<UT>>,
-	pub(crate) versioned: VS,
+pub struct Inner<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> {
+	pub(crate) tm: TransactionManager<StdVersionProvider<SMVT>>,
+	pub(crate) multi: MVS,
 	pub(crate) event_bus: EventBus,
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> Deref for Serializable<VS, UT> {
-	type Target = Inner<VS, UT>;
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Deref for Serializable<MVS, SMVT> {
+	type Target = Inner<MVS, SMVT>;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> Clone for Serializable<VS, UT> {
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Clone for Serializable<MVS, SMVT> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> Inner<VS, UT> {
-	fn new(versioned: VS, unversioned: UT, event_bus: EventBus) -> Self {
-		let tm = TransactionManager::new(StdVersionProvider::new(unversioned).unwrap()).unwrap();
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Inner<MVS, SMVT> {
+	fn new(multi: MVS, single: SMVT, event_bus: EventBus) -> Self {
+		let tm = TransactionManager::new(StdVersionProvider::new(single).unwrap()).unwrap();
 
 		Self {
 			tm,
-			versioned,
+			multi,
 			event_bus,
 		}
 	}
@@ -77,62 +77,62 @@ impl Serializable<Memory, SingleVersionLock<Memory>> {
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
-	pub fn new(versioned: VS, unversioned: UT, event_bus: EventBus) -> Self {
-		Self(Arc::new(Inner::new(versioned, unversioned, event_bus)))
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
+	pub fn new(multi: MVS, single: SMVT, event_bus: EventBus) -> Self {
+		Self(Arc::new(Inner::new(multi, single, event_bus)))
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.0.version()
 	}
-	pub fn begin_query(&self) -> crate::Result<QueryTransaction<VS, UT>> {
+	pub fn begin_query(&self) -> crate::Result<QueryTransaction<MVS, SMVT>> {
 		QueryTransaction::new(self.clone(), None)
 	}
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
-	pub fn begin_command(&self) -> crate::Result<CommandTransaction<VS, UT>> {
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
+	pub fn begin_command(&self) -> crate::Result<CommandTransaction<MVS, SMVT>> {
 		CommandTransaction::new(self.clone())
 	}
 }
 
-pub enum Transaction<VS: VersionedStorage, UT: UnversionedTransaction> {
-	Query(QueryTransaction<VS, UT>),
-	Command(CommandTransaction<VS, UT>),
+pub enum Transaction<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> {
+	Query(QueryTransaction<MVS, SMVT>),
+	Command(CommandTransaction<MVS, SMVT>),
 }
 
-impl<VS: VersionedStorage, UT: UnversionedTransaction> Serializable<VS, UT> {
+impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
-		Ok(self.versioned.get(key, version)?.map(|sv| sv.into()))
+		Ok(self.multi.get(key, version)?.map(|sv| sv.into()))
 	}
 
 	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
-		self.versioned.contains(key, version)
+		self.multi.contains(key, version)
 	}
 
-	pub fn scan(&self, version: CommitVersion) -> Result<VS::ScanIter<'_>, reifydb_type::Error> {
-		self.versioned.scan(version)
+	pub fn scan(&self, version: CommitVersion) -> Result<MVS::ScanIter<'_>, reifydb_type::Error> {
+		self.multi.scan(version)
 	}
 
-	pub fn scan_rev(&self, version: CommitVersion) -> Result<VS::ScanIterRev<'_>, reifydb_type::Error> {
-		self.versioned.scan_rev(version)
+	pub fn scan_rev(&self, version: CommitVersion) -> Result<MVS::ScanIterRev<'_>, reifydb_type::Error> {
+		self.multi.scan_rev(version)
 	}
 
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
-	) -> Result<VS::RangeIter<'_>, reifydb_type::Error> {
-		self.versioned.range(range, version)
+	) -> Result<MVS::RangeIter<'_>, reifydb_type::Error> {
+		self.multi.range(range, version)
 	}
 
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
-	) -> Result<VS::RangeIterRev<'_>, reifydb_type::Error> {
-		self.versioned.range_rev(range, version)
+	) -> Result<MVS::RangeIterRev<'_>, reifydb_type::Error> {
+		self.multi.range_rev(range, version)
 	}
 }

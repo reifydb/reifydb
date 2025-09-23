@@ -82,7 +82,7 @@ pub enum Value {
 	Uint16(u128),
 	/// A date value (year, month, day)
 	Date(Date),
-	/// A date and time value with nanosecond precision in UTC
+	/// A date and time value with nanosecond precision in SVTC
 	DateTime(DateTime),
 	/// A time value (hour, minute, second, nanosecond)
 	Time(Time),

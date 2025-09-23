@@ -34,13 +34,13 @@ pub mod test {
 	pub fn create_test_engine() -> StandardEngine<TestTransaction> {
 		let memory = Memory::new();
 		let eventbus = EventBus::new();
-		let unversioned = SingleVersionLock::new(memory.clone(), eventbus.clone());
+		let single = SingleVersionLock::new(memory.clone(), eventbus.clone());
 		let cdc = StandardCdcTransaction::new(memory.clone());
-		let versioned = Optimistic::new(memory, unversioned.clone(), eventbus.clone());
+		let multi = Optimistic::new(memory, single.clone(), eventbus.clone());
 
 		StandardEngine::new(
-			versioned,
-			unversioned,
+			multi,
+			single,
 			cdc,
 			eventbus,
 			Box::new(StandardInterceptorFactory::default()),

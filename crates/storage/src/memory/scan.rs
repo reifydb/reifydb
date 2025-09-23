@@ -12,37 +12,37 @@
 use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	interface::{Unversioned, UnversionedScan, Versioned, VersionedScan},
+	interface::{MultiVersionRow, MultiVersionScan, SingleVersionRow, SingleVersionScan},
 	value::row::EncodedRow,
 };
 
-use crate::memory::{Memory, VersionedRow};
+use crate::memory::{Memory, MultiVersionRowContainer};
 
-impl VersionedScan for Memory {
-	type ScanIter<'a> = VersionedIter<'a>;
+impl MultiVersionScan for Memory {
+	type ScanIter<'a> = MultiVersionIter<'a>;
 
 	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
-		let iter = self.versioned.iter();
-		Ok(VersionedIter {
+		let iter = self.multi.iter();
+		Ok(MultiVersionIter {
 			iter,
 			version,
 		})
 	}
 }
 
-pub struct VersionedIter<'a> {
-	pub(crate) iter: MapIter<'a, EncodedKey, VersionedRow>,
+pub struct MultiVersionIter<'a> {
+	pub(crate) iter: MapIter<'a, EncodedKey, MultiVersionRowContainer>,
 	pub(crate) version: CommitVersion,
 }
 
-impl Iterator for VersionedIter<'_> {
-	type Item = Versioned;
+impl Iterator for MultiVersionIter<'_> {
+	type Item = MultiVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let item = self.iter.next()?;
 			if let Some(row) = item.value().get(self.version) {
-				return Some(Versioned {
+				return Some(MultiVersionRow {
 					key: item.key().clone(),
 					row,
 					version: self.version,
@@ -52,27 +52,27 @@ impl Iterator for VersionedIter<'_> {
 	}
 }
 
-impl UnversionedScan for Memory {
-	type ScanIter<'a> = UnversionedIter<'a>;
+impl SingleVersionScan for Memory {
+	type ScanIter<'a> = SingleVersionIter<'a>;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
-		let iter = self.unversioned.iter();
-		Ok(UnversionedIter {
+		let iter = self.single.iter();
+		Ok(SingleVersionIter {
 			iter,
 		})
 	}
 }
 
-pub struct UnversionedIter<'a> {
+pub struct SingleVersionIter<'a> {
 	pub(crate) iter: MapIter<'a, EncodedKey, EncodedRow>,
 }
 
-impl Iterator for UnversionedIter<'_> {
-	type Item = Unversioned;
+impl Iterator for SingleVersionIter<'_> {
+	type Item = SingleVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let item = self.iter.next()?;
-		Some(Unversioned {
+		Some(SingleVersionRow {
 			key: item.key().clone(),
 			row: item.value().clone(),
 		})

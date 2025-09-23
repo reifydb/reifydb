@@ -5,33 +5,33 @@ use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Result,
-	interface::{Unversioned, UnversionedRange},
+	interface::{SingleVersionRangeRev, SingleVersionRow},
 };
 
-use super::{build_unversioned_query, execute_range_query};
+use super::{build_single_query, execute_range_query};
 use crate::sqlite::{Sqlite, read::Reader};
 
-impl UnversionedRange for Sqlite {
-	type Range<'a>
-		= Range
+impl SingleVersionRangeRev for Sqlite {
+	type RangeRev<'a>
+		= RangeRev
 	where
 		Self: 'a;
 
-	fn range(&self, range: EncodedKeyRange) -> Result<Self::Range<'_>> {
-		Ok(Range::new(self.get_reader(), range, 1024))
+	fn range_rev(&self, range: EncodedKeyRange) -> Result<Self::RangeRev<'_>> {
+		Ok(RangeRev::new(self.get_reader(), range, 1024))
 	}
 }
 
-pub struct Range {
+pub struct RangeRev {
 	conn: Reader,
 	range: EncodedKeyRange,
-	buffer: VecDeque<Unversioned>,
+	buffer: VecDeque<SingleVersionRow>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
 }
 
-impl Range {
+impl RangeRev {
 	pub fn new(conn: Reader, range: EncodedKeyRange, batch_size: usize) -> Self {
 		Self {
 			conn,
@@ -50,17 +50,19 @@ impl Range {
 
 		self.buffer.clear();
 
-		// Determine the effective start bound for this batch
-		let start_bound = match &self.last_key {
+		// For reverse iteration, we need to adjust the bounds
+		// differently If we have a last_key, we want everything
+		// before it (exclusive)
+		let end_bound = match &self.last_key {
 			Some(k) => Bound::Excluded(k),
-			None => self.range.start.as_ref(),
+			None => self.range.end.as_ref(),
 		};
 
-		let end_bound = self.range.end.as_ref();
+		let start_bound = self.range.start.as_ref();
 
-		// Build query and parameters based on bounds - note ASC order
-		// for forward iteration
-		let (query_template, param_count) = build_unversioned_query(start_bound, end_bound, "ASC");
+		// Build query and parameters based on bounds - note DESC order
+		// for reverse iteration
+		let (query_template, param_count) = build_single_query(start_bound, end_bound, "DESC");
 
 		let conn_guard = self.conn.lock().unwrap();
 		let mut stmt = conn_guard.prepare(query_template).unwrap();
@@ -74,7 +76,8 @@ impl Range {
 			&mut self.buffer,
 		);
 
-		// Update last_key to the last item we retrieved
+		// Update last_key to the last item we retrieved (which is the
+		// smallest key due to DESC order)
 		if let Some(last_item) = self.buffer.back() {
 			self.last_key = Some(last_item.key.clone());
 		}
@@ -86,8 +89,8 @@ impl Range {
 	}
 }
 
-impl Iterator for Range {
-	type Item = Unversioned;
+impl Iterator for RangeRev {
+	type Item = SingleVersionRow;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

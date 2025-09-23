@@ -6,8 +6,8 @@ use std::{marker::PhantomData, sync::Arc};
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
-		ColumnDef, ColumnId, EncodableKey, ResolvedColumn, RingBufferMetadata, RowKey, Transaction,
-		VersionedQueryTransaction,
+		ColumnDef, ColumnId, EncodableKey, MultiVersionQueryTransaction, ResolvedColumn, RingBufferMetadata,
+		RowKey, Transaction,
 		catalog::ColumnIndex,
 		identifier::ColumnIdentifier,
 		resolved::{ResolvedRingBuffer, ResolvedSource},
@@ -137,8 +137,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 			};
 
 			// Get the row from storage
-			if let Some(versioned) = txn.get(&key.encode())? {
-				let row_data = versioned.row;
+			if let Some(multi) = txn.get(&key.encode())? {
+				let row_data = multi.row;
 				batch_rows.push(row_data);
 				row_numbers.push(row_num);
 			}

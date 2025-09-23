@@ -9,8 +9,8 @@ use reifydb_core::{
 	event::{Event, EventBus},
 	interceptor::InterceptorFactory,
 	interface::{
-		Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery, Identity, Params, Query, Transaction,
-		VersionedTransaction, WithEventBus,
+		Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery, Identity, MultiVersionTransaction,
+		Params, Query, Transaction, WithEventBus,
 	},
 };
 
@@ -39,8 +39,8 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 		interceptors.post_commit.add(Rc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
 
 		Ok(StandardCommandTransaction::new(
-			self.versioned.begin_command()?,
-			self.unversioned.clone(),
+			self.multi.begin_command()?,
+			self.single.clone(),
 			self.cdc.clone(),
 			self.event_bus.clone(),
 			self.catalog.clone(),
@@ -50,8 +50,8 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 
 	fn begin_query(&self) -> crate::Result<Self::Query> {
 		Ok(StandardQueryTransaction::new(
-			self.versioned.begin_query()?,
-			self.unversioned.clone(),
+			self.multi.begin_query()?,
+			self.single.clone(),
 			self.cdc.clone(),
 			self.catalog.clone(),
 		))
@@ -118,8 +118,8 @@ impl<T: Transaction> Deref for StandardEngine<T> {
 }
 
 pub struct EngineInner<T: Transaction> {
-	versioned: T::Versioned,
-	unversioned: T::Unversioned,
+	multi: T::MultiVersion,
+	single: T::SingleVersion,
 	cdc: T::Cdc,
 	event_bus: EventBus,
 	executor: Executor,
@@ -129,16 +129,16 @@ pub struct EngineInner<T: Transaction> {
 
 impl<T: Transaction> StandardEngine<T> {
 	pub fn new(
-		versioned: T::Versioned,
-		unversioned: T::Unversioned,
+		multi: T::MultiVersion,
+		single: T::SingleVersion,
 		cdc: T::Cdc,
 		event_bus: EventBus,
 		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
 		catalog: MaterializedCatalog,
 	) -> Self {
 		Self(Arc::new(EngineInner {
-			versioned: versioned.clone(),
-			unversioned: unversioned.clone(),
+			multi,
+			single,
 			cdc: cdc.clone(),
 			event_bus,
 			executor: Executor {
@@ -158,23 +158,23 @@ impl<T: Transaction> StandardEngine<T> {
 	}
 
 	#[inline]
-	pub fn versioned(&self) -> &T::Versioned {
-		&self.versioned
+	pub fn multi(&self) -> &T::MultiVersion {
+		&self.multi
 	}
 
 	#[inline]
-	pub fn versioned_owned(&self) -> T::Versioned {
-		self.versioned.clone()
+	pub fn multi_owned(&self) -> T::MultiVersion {
+		self.multi.clone()
 	}
 
 	#[inline]
-	pub fn unversioned(&self) -> &T::Unversioned {
-		&self.unversioned
+	pub fn single(&self) -> &T::SingleVersion {
+		&self.single
 	}
 
 	#[inline]
-	pub fn unversioned_owned(&self) -> T::Unversioned {
-		self.unversioned.clone()
+	pub fn single_owned(&self) -> T::SingleVersion {
+		self.single.clone()
 	}
 
 	#[inline]

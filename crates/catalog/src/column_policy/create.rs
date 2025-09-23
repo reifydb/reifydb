@@ -27,14 +27,14 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_column_policy_id(txn)?;
 
-		let mut row = column_policy::LAYOUT.allocate_row();
-		column_policy::LAYOUT.set_u64(&mut row, column_policy::ID, id);
-		column_policy::LAYOUT.set_u64(&mut row, column_policy::COLUMN, column);
+		let mut row = column_policy::LAYOSVT.allocate_row();
+		column_policy::LAYOSVT.set_u64(&mut row, column_policy::ID, id);
+		column_policy::LAYOSVT.set_u64(&mut row, column_policy::COLUMN, column);
 
 		{
 			let (policy, value) = policy.to_u8();
-			column_policy::LAYOUT.set_u8(&mut row, column_policy::POLICY, policy);
-			column_policy::LAYOUT.set_u8(&mut row, column_policy::VALUE, value);
+			column_policy::LAYOSVT.set_u8(&mut row, column_policy::POLICY, policy);
+			column_policy::LAYOSVT.set_u8(&mut row, column_policy::VALUE, value);
 		}
 
 		txn.set(

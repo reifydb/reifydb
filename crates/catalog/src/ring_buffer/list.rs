@@ -17,13 +17,14 @@ impl CatalogStore {
 					let ring_buffer_id = ring_buffer_key.ring_buffer;
 
 					let namespace_id = NamespaceId(
-						ring_buffer::LAYOUT.get_u64(&entry.row, ring_buffer::NAMESPACE),
+						ring_buffer::LAYOSVT.get_u64(&entry.row, ring_buffer::NAMESPACE),
 					);
 
-					let name =
-						ring_buffer::LAYOUT.get_utf8(&entry.row, ring_buffer::NAME).to_string();
+					let name = ring_buffer::LAYOSVT
+						.get_utf8(&entry.row, ring_buffer::NAME)
+						.to_string();
 
-					let capacity = ring_buffer::LAYOUT.get_u64(&entry.row, ring_buffer::CAPACITY);
+					let capacity = ring_buffer::LAYOSVT.get_u64(&entry.row, ring_buffer::CAPACITY);
 
 					let primary_key = Self::find_primary_key(rx, ring_buffer_id)?;
 					let columns = Self::list_columns(rx, ring_buffer_id)?;
