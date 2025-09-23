@@ -116,10 +116,10 @@ macro_rules! internal_error {
 #[macro_export]
 macro_rules! internal_err {
     ($reason:expr) => {
-        Err($crate::error::Error($crate::internal_error!($reason)))
+        Err($crate::Error($crate::internal_error!($reason)))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        Err($crate::error::Error($crate::internal_error!($fmt, $($arg)*)))
+        Err($crate::Error($crate::internal_error!($fmt, $($arg)*)))
     };
 }
 
