@@ -11,7 +11,7 @@ use reifydb_core::{
 
 use crate::{
 	StandardTransaction,
-	evaluate::{EvaluationContext, evaluate},
+	evaluate::column::{ColumnEvaluationContext, evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
@@ -57,7 +57,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
 
 				// Create evaluation context for all current
 				// rows
-				let eval_ctx = EvaluationContext {
+				let eval_ctx = ColumnEvaluationContext {
 					target: None,
 					columns: columns.clone(),
 					row_count,
@@ -81,7 +81,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
 						}
 						mask
 					}
-					_ => panic!("filter expression must evaluate to a boolean column"),
+					_ => panic!("filter expression must column to a boolean column"),
 				};
 
 				columns.filter(&filter_mask)?;

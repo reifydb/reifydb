@@ -1,0 +1,46 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use reifydb_core::{
+	interface::{ColumnEvaluator, TargetColumn, evaluate::expression::AliasExpression},
+	value::column::{Column, ColumnComputed, SourceQualified},
+};
+use reifydb_type::Fragment;
+
+use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+
+impl StandardColumnEvaluator {
+	pub(crate) fn alias<'a>(
+		&self,
+		ctx: &ColumnEvaluationContext<'a>,
+		expr: &AliasExpression<'a>,
+	) -> crate::Result<Column<'a>> {
+		let evaluated = self.evaluate(ctx, &expr.expression)?;
+		let alias_name = expr.alias.0.clone();
+
+		let source = ctx
+			.target
+			.as_ref()
+			.and_then(|c| match c {
+				TargetColumn::Resolved(col) => {
+					Some(Fragment::owned_internal(col.source().identifier().text()))
+				}
+				TargetColumn::Partial {
+					..
+				} => None,
+			})
+			.or_else(|| ctx.columns.first().and_then(|c| c.source()));
+
+		Ok(match source {
+			Some(src) => Column::SourceQualified(SourceQualified {
+				source: src,
+				name: alias_name,
+				data: evaluated.data().clone(),
+			}),
+			None => Column::Computed(ColumnComputed {
+				name: alias_name,
+				data: evaluated.data().clone(),
+			}),
+		})
+	}
+}

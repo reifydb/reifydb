@@ -15,7 +15,7 @@ pub mod test {
 	};
 	use reifydb_engine::{
 		EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine,
-		StandardEvaluator,
+		StandardRowEvaluator,
 	};
 	use reifydb_storage::memory::Memory;
 	use reifydb_transaction::{mvcc::transaction::optimistic::Optimistic, svl::SingleVersionLock};
@@ -89,7 +89,7 @@ pub mod test {
 			&self,
 			txn: &mut StandardCommandTransaction<TestTransaction>,
 			change: FlowChange,
-			evaluator: &StandardEvaluator,
+			evaluator: &StandardRowEvaluator,
 		) -> reifydb_core::Result<FlowChange> {
 			todo!()
 		}

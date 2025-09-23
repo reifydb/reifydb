@@ -2,7 +2,7 @@ use reifydb_core::{
 	flow::FlowChange,
 	interface::{Transaction, expression::Expression},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
 use crate::operator::Operator;
 
@@ -23,7 +23,7 @@ impl<T: Transaction> Operator<T> for ExtendOperator {
 		&self,
 		_txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		_evaluator: &StandardEvaluator,
+		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		// TODO: Implement single-row extend processing
 		// For now, just pass through all changes

@@ -1,11 +1,8 @@
 use reifydb_core::{
-	BitVec,
-	flow::{FlowChange, FlowDiff},
-	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
-	util::CowVec,
-	value::column::{ColumnData, Columns},
+	flow::FlowChange,
+	interface::{Transaction, expression::Expression},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::Params;
 
 use crate::operator::Operator;
@@ -30,7 +27,7 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
+		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		// TODO: Implement single-row filtering
 		// For now, just pass through all changes
@@ -136,7 +133,7 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 //
 // 		// Evaluate each condition and AND them together
 // 		for condition in &self.conditions {
-// 			let result_column = evaluator.evaluate(&eval_ctx, condition)?;
+// 			let result_column = evaluator.column(&eval_ctx, condition)?;
 //
 // 			match result_column.data() {
 // 				ColumnData::Bool(container) => {

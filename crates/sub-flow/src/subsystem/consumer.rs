@@ -13,7 +13,7 @@ use reifydb_core::{
 	util::CowVec,
 	value::row::{EncodedRow, Row},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardEvaluator};
+use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 use reifydb_type::{RowNumber, Value};
 
 use super::intercept::Change;
@@ -107,9 +107,7 @@ impl<T: Transaction> FlowConsumer<T> {
 	}
 
 	fn process_changes(&self, txn: &mut StandardCommandTransaction<T>, changes: Vec<Change>) -> Result<()> {
-		// Create a new FlowEngine for this processing batch with custom
-		// operators
-		let mut registry = TransformOperatorRegistry::with_builtins();
+		let mut registry = TransformOperatorRegistry::new();
 
 		// Register custom operators
 		for (name, factory) in self.operators.iter() {
@@ -118,7 +116,7 @@ impl<T: Transaction> FlowConsumer<T> {
 			registry.register(name, move |node, exprs| factory(node, exprs));
 		}
 
-		let mut flow_engine = FlowEngine::with_registry(StandardEvaluator::default(), registry);
+		let mut flow_engine = FlowEngine::with_registry(StandardRowEvaluator::default(), registry);
 
 		let flows = self.load_flows(txn)?;
 

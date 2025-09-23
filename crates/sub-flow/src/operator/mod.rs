@@ -1,5 +1,5 @@
 use reifydb_core::{flow::FlowChange, interface::Transaction};
-use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
 mod apply;
 mod distinct;
@@ -27,7 +27,7 @@ pub trait Operator<T: Transaction>: Send + Sync {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
+		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange>;
 }
 
@@ -49,7 +49,7 @@ impl<T: Transaction> Operators<T> {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
+		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		let result = match self {
 			Operators::Filter(op) => op.apply(txn, change, evaluator),

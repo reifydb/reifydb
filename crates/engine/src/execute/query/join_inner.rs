@@ -11,7 +11,7 @@ use reifydb_type::Value;
 
 use crate::{
 	StandardTransaction,
-	evaluate::{EvaluationContext, evaluate},
+	evaluate::column::{ColumnEvaluationContext, evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
@@ -93,7 +93,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 				let all_data =
 					left_row.iter().cloned().chain(right_row.iter().cloned()).collect::<Vec<_>>();
 
-				let eval_ctx = EvaluationContext {
+				let eval_ctx = ColumnEvaluationContext {
 					target: None,
 					columns: Columns::new(
 						all_data.iter()

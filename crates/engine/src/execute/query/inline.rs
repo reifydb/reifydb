@@ -17,7 +17,7 @@ use reifydb_core::{
 use reifydb_type::{Fragment, Params, Type, Value};
 
 use crate::{
-	evaluate::{EvaluationContext, cast::cast_column_data, evaluate},
+	evaluate::column::{ColumnEvaluationContext, cast::cast_column_data, evaluate},
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 
@@ -182,7 +182,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(&column_name) {
-					let ctx = EvaluationContext {
+					let ctx = ColumnEvaluationContext {
 						target: None,
 						columns: Columns::empty(),
 						row_count: 1,
@@ -243,7 +243,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 					} else {
 						// Cast to the wide type
 						let temp_data = ColumnData::from(value.clone());
-						let ctx = EvaluationContext {
+						let ctx = ColumnEvaluationContext {
 							target: None,
 							columns: Columns::empty(),
 							row_count: 1,
@@ -278,7 +278,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 				let optimal_type = Self::find_optimal_integer_type(&column_data);
 				if optimal_type != Type::Int16 {
 					// Demote to the optimal type
-					let ctx = EvaluationContext {
+					let ctx = ColumnEvaluationContext {
 						target: None,
 						columns: Columns::empty(),
 						row_count: column_data.len(),
@@ -340,7 +340,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 
 			for row_data in &rows_data {
 				if let Some(alias_expr) = row_data.get(column_layout.name.text()) {
-					let ctx = EvaluationContext {
+					let ctx = ColumnEvaluationContext {
 						target: Some(TargetColumn::Partial {
 							source_name: Some(source.identifier().text().to_string()),
 							column_name: Some(table_column.name.clone()),
