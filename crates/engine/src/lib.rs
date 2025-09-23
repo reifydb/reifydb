@@ -14,7 +14,7 @@ pub mod test_utils;
 pub mod transaction;
 
 pub use engine::StandardEngine;
-pub use evaluate::StandardEvaluator;
+pub use evaluate::{column::StandardColumnEvaluator, row::StandardRowEvaluator};
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use reifydb_type::Result;
 pub use transaction::{

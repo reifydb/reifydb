@@ -10,12 +10,12 @@ use reifydb_core::{
 	flow::Flow,
 	interface::{FlowId, FlowNodeId, SourceId, Transaction},
 };
-use reifydb_engine::StandardEvaluator;
+use reifydb_engine::StandardRowEvaluator;
 
 use crate::operator::{Operators, transform::registry::TransformOperatorRegistry};
 
 pub struct FlowEngine<T: Transaction> {
-	evaluator: StandardEvaluator,
+	evaluator: StandardRowEvaluator,
 	operators: HashMap<FlowNodeId, Operators<T>>,
 	flows: HashMap<FlowId, Flow>,
 	// Maps sources to specific nodes that listen to them
@@ -27,18 +27,18 @@ pub struct FlowEngine<T: Transaction> {
 }
 
 impl<T: Transaction> FlowEngine<T> {
-	pub fn new(evaluator: StandardEvaluator) -> Self {
+	pub fn new(evaluator: StandardRowEvaluator) -> Self {
 		Self {
 			evaluator,
 			operators: HashMap::new(),
 			flows: HashMap::new(),
 			sources: HashMap::new(),
 			sinks: HashMap::new(),
-			registry: TransformOperatorRegistry::with_builtins(),
+			registry: TransformOperatorRegistry::new(),
 		}
 	}
 
-	pub fn with_registry(evaluator: StandardEvaluator, registry: TransformOperatorRegistry<T>) -> Self {
+	pub fn with_registry(evaluator: StandardRowEvaluator, registry: TransformOperatorRegistry<T>) -> Self {
 		Self {
 			evaluator,
 			operators: HashMap::new(),

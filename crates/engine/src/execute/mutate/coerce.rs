@@ -5,7 +5,7 @@ use reifydb_core::{
 use reifydb_type::{Fragment, Type, Value};
 
 use crate::{
-	evaluate::{EvaluationContext, cast::cast_column_data},
+	evaluate::column::{ColumnEvaluationContext, cast::cast_column_data},
 	execute::ExecutionContext,
 };
 
@@ -39,7 +39,7 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 	let value_str = value.to_string();
 
 	let coerced_column = cast_column_data(
-		&EvaluationContext {
+		&ColumnEvaluationContext {
 			target: Some(TargetColumn::Resolved(column)),
 			columns: Columns::empty(),
 			row_count: 1,

@@ -6,14 +6,17 @@ mod convert;
 pub mod expression;
 
 pub use convert::Convert;
-use reifydb_type::Type;
+use reifydb_type::{Type, Value};
 
 use crate::{
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY, Params, ResolvedColumn,
 		expression::Expression,
 	},
-	value::column::{Column, ColumnData, Columns},
+	value::{
+		column::{Column, ColumnData, Columns},
+		row::Row,
+	},
 };
 
 /// Represents target column information for evaluation
@@ -85,7 +88,7 @@ impl<'a> TargetColumn<'a> {
 }
 
 #[derive(Debug)]
-pub struct EvaluationContext<'a> {
+pub struct ColumnEvaluationContext<'a> {
 	pub target: Option<TargetColumn<'a>>,
 	pub columns: Columns<'a>,
 	pub row_count: usize,
@@ -93,7 +96,7 @@ pub struct EvaluationContext<'a> {
 	pub params: &'a Params,
 }
 
-impl<'a> EvaluationContext<'a> {
+impl<'a> ColumnEvaluationContext<'a> {
 	pub fn testing() -> Self {
 		use std::sync::LazyLock;
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
@@ -123,6 +126,16 @@ impl<'a> EvaluationContext<'a> {
 	}
 }
 
-pub trait Evaluator: Send + Sync + 'static {
-	fn evaluate<'a>(&self, ctx: &EvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Column<'a>>;
+pub trait ColumnEvaluator: Send + Sync + 'static {
+	fn evaluate<'a>(&self, ctx: &ColumnEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Column<'a>>;
+}
+
+pub struct RowEvaluationContext<'a> {
+	pub row: Row,
+	pub target: Option<TargetColumn<'a>>,
+	pub params: &'a Params,
+}
+
+pub trait RowEvaluator: Send + Sync {
+	fn evaluate<'a>(&self, ctx: &RowEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Value>;
 }

@@ -4,7 +4,7 @@
 use catalog::namespace_not_found;
 use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
 use reifydb_core::{
-	interface::{EvaluationContext, Params, TargetColumn, Transaction},
+	interface::{ColumnEvaluationContext, Params, TargetColumn, Transaction},
 	value::column::Columns,
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
@@ -16,7 +16,7 @@ use reifydb_type::{
 	return_error,
 };
 
-use crate::{StandardCommandTransaction, evaluate::evaluate, execute::Executor};
+use crate::{StandardCommandTransaction, evaluate::column::evaluate, execute::Executor};
 
 impl Executor {
 	pub(crate) fn alter_table_sequence<'a, T: Transaction>(
@@ -62,7 +62,7 @@ impl Executor {
 		// ExecutionContext is available
 		let empty_params = Params::None;
 		let value = evaluate(
-			&EvaluationContext {
+			&ColumnEvaluationContext {
 				target: Some(TargetColumn::Partial {
 					source_name: None,
 					column_name: None,

@@ -2,21 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	BitVec, EncodedKey,
-	flow::{FlowChange, FlowDiff},
-	interface::{EvaluationContext, Evaluator, FlowNodeId, Params, Transaction, expression::Expression},
-	util::CowVec,
-	value::{column::Columns, row::EncodedRow},
+	flow::FlowChange,
+	interface::{FlowNodeId, Transaction, expression::Expression},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-use reifydb_hash::{Hash128, xxh3_128};
-use reifydb_type::{Error, Value, internal_error};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_type::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::operator::{
-	Operator,
-	transform::{TransformOperator, stateful::RawStatefulOperator},
-};
+use crate::operator::Operator;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctEntry {
@@ -42,9 +35,9 @@ impl DistinctOperator {
 impl<T: Transaction> Operator<T> for DistinctOperator {
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		_txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
+		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		// TODO: Implement single-row distinct processing
 		// For now, just pass through all changes
@@ -82,7 +75,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 //
 // let mut hasher = xxh3_128::Hasher::default();
 // for expr in expressions {
-// let column = evaluator.evaluate(&eval_ctx, expr)?;
+// let column = evaluator.column(&eval_ctx, expr)?;
 // let value = column.get_value(0);
 // Hash the value using its bytes representation
 // let value_bytes = value.to_string();
@@ -109,7 +102,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 //
 // let mut values = Vec::new();
 // for expr in expressions {
-// let column = evaluator.evaluate(&eval_ctx, expr)?;
+// let column = evaluator.column(&eval_ctx, expr)?;
 // let value = column.get_value(0);
 // values.push(value);
 // }

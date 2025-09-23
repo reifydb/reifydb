@@ -14,8 +14,8 @@ use reifydb_engine::StandardCommandTransaction;
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, MapTerminalOperator,
-		Operators, SortOperator, TakeOperator, UnionOperator,
+		DistinctOperator, ExtendOperator, FilterOperator, MapOperator, MapTerminalOperator, Operators,
+		SortOperator, TakeOperator,
 	},
 };
 
@@ -173,10 +173,6 @@ impl<T: Transaction> FlowEngine<T> {
 				operator_name,
 				expressions,
 			} => {
-				// Apply uses the ApplyOperator from the apply
-				// module
-				use crate::operator::ApplyOperator;
-
 				let operator = self.registry.create_operator(
 					operator_name.as_str(),
 					node_id,

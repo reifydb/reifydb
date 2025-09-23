@@ -19,7 +19,7 @@ use reifydb::{
 		interface::{Engine, FlowNodeId, Transaction, logging::LogLevel::Info},
 	},
 	embedded,
-	engine::{StandardCommandTransaction, StandardEvaluator},
+	engine::{StandardColumnEvaluator, StandardCommandTransaction, StandardRowEvaluator},
 	log_info,
 	sub::task,
 	sub_flow::{FlowBuilder, Operator, TransformOperator},
@@ -45,7 +45,7 @@ impl<T: Transaction> Operator<T> for MyOP {
 		&self,
 		_txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		_evaluator: &StandardEvaluator,
+		_evaluator: &StandardRowEvaluator,
 	) -> reifydb::Result<FlowChange> {
 		println!("INVOKED");
 		Ok(change)

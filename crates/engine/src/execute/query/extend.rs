@@ -11,7 +11,7 @@ use reifydb_type::{Fragment, Params};
 
 use crate::{
 	StandardTransaction,
-	evaluate::{EvaluationContext, evaluate},
+	evaluate::column::{ColumnEvaluationContext, evaluate},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode, query::layout::derive_columns_column_layout},
 };
 
@@ -58,7 +58,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 			let expressions = self.expressions.clone();
 			for expr in expressions.iter() {
 				// Create evaluation context inline to avoid lifetime issues
-				let mut eval_ctx = EvaluationContext {
+				let mut eval_ctx = ColumnEvaluationContext {
 					target: None,
 					columns: Columns::new(new_columns.clone()),
 					row_count,
@@ -108,7 +108,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 
 			// Transmute the vector to extend its lifetime
 			// SAFETY: The columns come from either the input (already transmuted to 'a)
-			// via into_iter() or from evaluate() which returns Column<'a>, so all columns
+			// via into_iter() or from column() which returns Column<'a>, so all columns
 			// genuinely have lifetime 'a through the query execution
 			let new_columns =
 				unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(new_columns) };
@@ -186,7 +186,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 		// Clone expressions to avoid lifetime issues
 		let expressions = self.expressions.clone();
 		for expr in expressions.iter() {
-			let evaluation_context = EvaluationContext {
+			let evaluation_context = ColumnEvaluationContext {
 				target: None,
 				columns: columns.clone(),
 				row_count: 1, // Generate single row

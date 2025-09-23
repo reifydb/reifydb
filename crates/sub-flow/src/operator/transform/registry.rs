@@ -41,22 +41,4 @@ impl<T: Transaction> TransformOperatorRegistry<T> {
 
 		factory(node, expressions)
 	}
-
-	pub fn with_builtins() -> Self {
-		let mut registry = Self::new();
-
-		// registry.register("counter".to_string(), |node, exprs| {
-		// 	CounterOperator::create_from_expressions(node, exprs)
-		// });
-		//
-		// registry.register("running_sum".to_string(), |node, exprs| {
-		// 	RunningSumOperator::create_from_expressions(node, exprs)
-		// });
-		//
-		// registry.register("running_avg".to_string(), |node, exprs| {
-		// 	RunningAvgOperator::create_from_expressions(node, exprs)
-		// });
-
-		registry
-	}
 }
