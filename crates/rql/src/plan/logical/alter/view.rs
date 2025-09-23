@@ -10,7 +10,7 @@ use reifydb_type::Fragment;
 
 use crate::{
 	ast::{AstAlterView, AstAlterViewOperation},
-	plan::logical::{Compiler, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, LogicalPlan, resolver},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,13 +35,13 @@ pub struct AlterIndexColumn<'a> {
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_view<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_alter_view<'a, T: CatalogQueryTransaction>(
 		ast: AstAlterView<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve the view identifier (generic - could be deferred or
 		// transactional)
-		let view = resolver.resolve_maybe_qualified_view(&ast.view, true)?;
+		let view = resolver::resolve_maybe_qualified_view(tx, &ast.view, true)?;
 
 		// Convert operations
 		let operations = ast

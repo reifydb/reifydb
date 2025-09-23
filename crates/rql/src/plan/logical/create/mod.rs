@@ -13,22 +13,22 @@ use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
 	ast::AstCreate,
-	plan::logical::{Compiler, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, LogicalPlan},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_create<'a, T: CatalogQueryTransaction>(
 		ast: AstCreate<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
-			AstCreate::DeferredView(node) => Self::compile_deferred_view(node, resolver),
-			AstCreate::TransactionalView(node) => Self::compile_transactional_view(node, resolver),
-			AstCreate::Namespace(node) => Self::compile_create_namespace(node, resolver),
-			AstCreate::Series(node) => Self::compile_create_series(node, resolver),
-			AstCreate::Table(node) => Self::compile_create_table(node, resolver),
-			AstCreate::RingBuffer(node) => Self::compile_create_ring_buffer(node, resolver),
-			AstCreate::Index(node) => Self::compile_create_index(node, resolver),
+			AstCreate::DeferredView(node) => Self::compile_deferred_view(node, tx),
+			AstCreate::TransactionalView(node) => Self::compile_transactional_view(node, tx),
+			AstCreate::Namespace(node) => Self::compile_create_namespace(node, tx),
+			AstCreate::Series(node) => Self::compile_create_series(node, tx),
+			AstCreate::Table(node) => Self::compile_create_table(node, tx),
+			AstCreate::RingBuffer(node) => Self::compile_create_ring_buffer(node, tx),
+			AstCreate::Index(node) => Self::compile_create_index(node, tx),
 		}
 	}
 }

@@ -5,13 +5,13 @@ use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
 	ast::AstCreateNamespace,
-	plan::logical::{Compiler, CreateNamespaceNode, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, CreateNamespaceNode, LogicalPlan},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_namespace<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_create_namespace<'a, T: CatalogQueryTransaction>(
 		ast: AstCreateNamespace<'a>,
-		_resolver: &mut IdentifierResolver<'t, T>,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Convert MaybeQualified to fully qualified
 		use reifydb_core::interface::identifier::NamespaceIdentifier;

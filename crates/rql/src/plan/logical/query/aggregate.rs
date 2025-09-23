@@ -6,13 +6,13 @@ use reifydb_catalog::CatalogQueryTransaction;
 use crate::{
 	ast::AstAggregate,
 	expression::ExpressionCompiler,
-	plan::logical::{AggregateNode, Compiler, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{AggregateNode, Compiler, LogicalPlan},
 };
 
 impl Compiler {
-	pub(crate) fn compile_aggregate<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_aggregate<'a, T: CatalogQueryTransaction>(
 		ast: AstAggregate<'a>,
-		_resolver: &mut IdentifierResolver<'t, T>,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::Aggregate(AggregateNode {
 			by: ast.by.into_iter().map(ExpressionCompiler::compile).collect::<crate::Result<Vec<_>>>()?,

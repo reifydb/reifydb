@@ -7,6 +7,7 @@
 //! counterparts, including namespace resolution and identifier creation.
 
 mod ring_buffer;
+mod source;
 mod table;
 mod view;
 

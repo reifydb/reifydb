@@ -5,7 +5,7 @@ use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
 	ast::AstAlter,
-	plan::logical::{Compiler, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, LogicalPlan},
 };
 
 mod sequence;
@@ -16,14 +16,14 @@ pub use table::{AlterIndexColumn as AlterTableIndexColumn, AlterTableNode, Alter
 pub use view::{AlterIndexColumn as AlterViewIndexColumn, AlterViewNode, AlterViewOperation};
 
 impl Compiler {
-	pub(crate) fn compile_alter<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_alter<'a, T: CatalogQueryTransaction>(
 		ast: AstAlter<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
-			AstAlter::Sequence(node) => Self::compile_alter_sequence(node, resolver),
-			AstAlter::Table(node) => Self::compile_alter_table(node, resolver),
-			AstAlter::View(node) => Self::compile_alter_view(node, resolver),
+			AstAlter::Sequence(node) => Self::compile_alter_sequence(node, tx),
+			AstAlter::Table(node) => Self::compile_alter_table(node, tx),
+			AstAlter::View(node) => Self::compile_alter_view(node, tx),
 		}
 	}
 }

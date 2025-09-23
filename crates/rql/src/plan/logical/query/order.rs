@@ -6,13 +6,13 @@ use reifydb_core::{SortDirection, SortKey};
 
 use crate::{
 	ast::AstSort,
-	plan::logical::{Compiler, LogicalPlan, OrderNode, resolver::IdentifierResolver},
+	plan::logical::{Compiler, LogicalPlan, OrderNode},
 };
 
 impl Compiler {
-	pub(crate) fn compile_sort<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_sort<'a, T: CatalogQueryTransaction>(
 		ast: AstSort<'a>,
-		_resolver: &mut IdentifierResolver<'t, T>,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::Order(OrderNode {
 			by: ast.columns

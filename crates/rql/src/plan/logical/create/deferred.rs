@@ -7,13 +7,13 @@ use reifydb_type::Fragment;
 use crate::{
 	ast::{AstCreateDeferredView, AstDataType},
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan, resolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_deferred_view<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_deferred_view<'a, T: CatalogQueryTransaction>(
 		ast: AstCreateDeferredView<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast.columns.into_iter() {
@@ -39,10 +39,10 @@ impl Compiler {
 
 		// Resolve directly to DeferredViewIdentifier
 		// Don't validate existence since we're creating the view
-		let view = resolver.resolve_maybe_qualified_deferred_view(&ast.view, false)?;
+		let view = resolver::resolve_maybe_qualified_deferred_view(tx, &ast.view, false)?;
 
 		let with = if let Some(as_statement) = ast.as_clause {
-			Compiler::compile(as_statement, resolver)?
+			Compiler::compile(as_statement, tx)?
 		} else {
 			vec![]
 		};

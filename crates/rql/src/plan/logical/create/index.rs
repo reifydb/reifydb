@@ -8,20 +8,20 @@ use reifydb_type::Fragment;
 use crate::{
 	ast::{AstCreateIndex, AstIndexColumn},
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, CreateIndexNode, IndexColumn, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, CreateIndexNode, IndexColumn, LogicalPlan, resolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_index<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_create_index<'a, T: CatalogQueryTransaction>(
 		ast: AstCreateIndex<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Get the namespace with default from resolve
 		let namespace = ast
 			.index
 			.namespace
 			.clone()
-			.unwrap_or_else(|| Fragment::borrowed_internal(resolver.default_namespace()));
+			.unwrap_or_else(|| Fragment::borrowed_internal(resolver::DEFAULT_NAMESPACE));
 
 		// Create the table source for column qualification
 		let table_source = ColumnSource::Source {

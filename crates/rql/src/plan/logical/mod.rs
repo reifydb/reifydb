@@ -27,7 +27,6 @@ use reifydb_core::{
 };
 use reifydb_type::{Fragment, diagnostic::ast::unsupported_ast_node};
 
-use self::resolver::IdentifierResolver;
 use crate::{
 	ast::{Ast, AstPolicy, AstPolicyKind, AstStatement},
 	plan::logical::alter::{AlterTableNode, AlterViewNode},
@@ -38,16 +37,14 @@ struct Compiler {}
 pub fn compile_logical<'a, 't, T: CatalogQueryTransaction>(
 	tx: &'t mut T,
 	ast: AstStatement<'a>,
-	default_namespace: &'static str,
 ) -> crate::Result<Vec<LogicalPlan<'a>>> {
-	let mut resolver = IdentifierResolver::new(tx, default_namespace);
-	Compiler::compile(ast, &mut resolver)
+	Compiler::compile(ast, tx)
 }
 
 impl Compiler {
 	fn compile<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstStatement<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<Vec<LogicalPlan<'a>>> {
 		if ast.is_empty() {
 			return Ok(vec![]);
@@ -90,7 +87,8 @@ impl Compiler {
 							};
 
 							// Try to resolve as table first (most common case)
-							match resolver.resolve_source_as_table(
+							match resolver::resolve_source_as_table(
+								tx,
 								unresolved.namespace.as_ref(),
 								&unresolved.name,
 								true,
@@ -105,7 +103,8 @@ impl Compiler {
 								}
 								Err(table_error) => {
 									// Table not found, try ring buffer
-									match resolver.resolve_source_as_ring_buffer(
+									match resolver::resolve_source_as_ring_buffer(
+										tx,
 										unresolved.namespace.as_ref(),
 										&unresolved.name,
 										true,
@@ -134,8 +133,10 @@ impl Compiler {
 
 							// Resolve to either TableIdentifier or RingBufferIdentifier
 							if let Some(unresolved) = &delete_ast.target {
-								let source_id = resolver
-									.resolve_unresolved_source(&unresolved)?;
+								let source_id = resolver::resolve_unresolved_source(
+									tx,
+									&unresolved,
+								)?;
 
 								// Determine if it's a table or ring buffer
 								match source_id {
@@ -158,7 +159,7 @@ impl Compiler {
 									_ => {
 										// Source is not a table or ring buffer
 										return Err(crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
-											namespace: unresolved.namespace.as_ref().map(|n| n.text()).unwrap_or(resolver.default_namespace()).to_string(),
+											namespace: unresolved.namespace.as_ref().map(|n| n.text()).unwrap_or(resolver::DEFAULT_NAMESPACE).to_string(),
 											name: unresolved.name.text().to_string(),
 											fragment: unresolved.name.clone().into_owned(),
 										}).into());
@@ -178,7 +179,7 @@ impl Compiler {
 					}
 				} else {
 					// Add to pipeline
-					pipeline_nodes.push(Compiler::compile_single(node, resolver)?);
+					pipeline_nodes.push(Compiler::compile_single(node, tx)?);
 				}
 			}
 			unreachable!("Pipeline should have been handled above");
@@ -190,7 +191,7 @@ impl Compiler {
 			// This uses pipe operators - create a Pipeline node
 			let mut pipeline_nodes = Vec::new();
 			for node in ast_vec {
-				pipeline_nodes.push(Self::compile_single(node, resolver)?);
+				pipeline_nodes.push(Self::compile_single(node, tx)?);
 			}
 			return Ok(vec![LogicalPlan::Pipeline(PipelineNode {
 				steps: pipeline_nodes,
@@ -200,7 +201,7 @@ impl Compiler {
 		// Normal compilation (not piped)
 		let mut result = Vec::with_capacity(ast_len);
 		for node in ast_vec {
-			result.push(Self::compile_single(node, resolver)?);
+			result.push(Self::compile_single(node, tx)?);
 		}
 		Ok(result)
 	}
@@ -208,23 +209,23 @@ impl Compiler {
 	// Helper to compile a single AST node
 	fn compile_single<'a, 't, T: CatalogQueryTransaction>(
 		node: Ast<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match node {
-			Ast::Create(node) => Self::compile_create(node, resolver),
-			Ast::Alter(node) => Self::compile_alter(node, resolver),
-			Ast::AstDelete(node) => Self::compile_delete(node, resolver),
-			Ast::AstInsert(node) => Self::compile_insert(node, resolver),
-			Ast::AstUpdate(node) => Self::compile_update(node, resolver),
-			Ast::Aggregate(node) => Self::compile_aggregate(node, resolver),
-			Ast::Filter(node) => Self::compile_filter(node, resolver),
-			Ast::From(node) => Self::compile_from(node, resolver),
-			Ast::Join(node) => Self::compile_join(node, resolver),
-			Ast::Take(node) => Self::compile_take(node, resolver),
-			Ast::Sort(node) => Self::compile_sort(node, resolver),
-			Ast::Distinct(node) => Self::compile_distinct(node, resolver),
-			Ast::Map(node) => Self::compile_map(node, resolver),
-			Ast::Extend(node) => Self::compile_extend(node, resolver),
+			Ast::Create(node) => Self::compile_create(node, tx),
+			Ast::Alter(node) => Self::compile_alter(node, tx),
+			Ast::AstDelete(node) => Self::compile_delete(node, tx),
+			Ast::AstInsert(node) => Self::compile_insert(node, tx),
+			Ast::AstUpdate(node) => Self::compile_update(node, tx),
+			Ast::Aggregate(node) => Self::compile_aggregate(node, tx),
+			Ast::Filter(node) => Self::compile_filter(node, tx),
+			Ast::From(node) => Self::compile_from(node, tx),
+			Ast::Join(node) => Self::compile_join(node, tx),
+			Ast::Take(node) => Self::compile_take(node, tx),
+			Ast::Sort(node) => Self::compile_sort(node, tx),
+			Ast::Distinct(node) => Self::compile_distinct(node, tx),
+			Ast::Map(node) => Self::compile_map(node, tx),
+			Ast::Extend(node) => Self::compile_extend(node, tx),
 			Ast::Apply(node) => Self::compile_apply(node),
 			Ast::Identifier(ref id) => {
 				return_error!(unsupported_ast_node(id.clone(), "standalone identifier"))

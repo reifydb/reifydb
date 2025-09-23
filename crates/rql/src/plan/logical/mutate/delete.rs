@@ -6,20 +6,19 @@ use reifydb_catalog::CatalogQueryTransaction;
 use crate::{
 	ast::AstDelete,
 	plan::logical::{
-		Compiler, DeleteRingBufferNode, DeleteTableNode, LogicalPlan, identifier::SourceIdentifier,
-		resolver::IdentifierResolver,
+		Compiler, DeleteRingBufferNode, DeleteTableNode, LogicalPlan, identifier::SourceIdentifier, resolver,
 	},
 };
 
 impl Compiler {
-	pub(crate) fn compile_delete<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_delete<'a, T: CatalogQueryTransaction>(
 		ast: AstDelete<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve the unresolved source to a table or ring buffer
 		if let Some(unresolved) = &ast.target {
 			// Create a source identifier from the unresolved source
-			let source_id = resolver.resolve_unresolved_source(&unresolved)?;
+			let source_id = resolver::resolve_unresolved_source(tx, &unresolved)?;
 
 			// Determine if it's a table or ring buffer based on the source type
 			match source_id {
@@ -41,7 +40,7 @@ impl Compiler {
 								.namespace
 								.as_ref()
 								.map(|n| n.text())
-								.unwrap_or(resolver.default_namespace())
+								.unwrap_or(resolver::DEFAULT_NAMESPACE)
 								.to_string(),
 							name: unresolved.name.text().to_string(),
 							fragment: unresolved.name.clone().into_owned(),

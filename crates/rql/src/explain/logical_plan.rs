@@ -23,7 +23,7 @@ where
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		plans.extend(compile_logical(rx, statement, "default")?);
+		plans.extend(compile_logical(rx, statement)?);
 	}
 
 	explain_logical_plans(&plans)

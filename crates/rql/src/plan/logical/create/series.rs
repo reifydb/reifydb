@@ -5,13 +5,13 @@ use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
 	ast::AstCreateSeries,
-	plan::logical::{Compiler, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, LogicalPlan},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_series<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_create_series<'a, T: CatalogQueryTransaction>(
 		_ast: AstCreateSeries<'a>,
-		_resolver: &mut IdentifierResolver<'t, T>,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		unimplemented!()
 	}

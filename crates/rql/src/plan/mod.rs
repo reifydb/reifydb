@@ -21,7 +21,7 @@ pub fn plan<'a, T>(rx: &mut T, statement: AstStatement<'a>) -> crate::Result<Opt
 where
 	T: QueryTransaction + CatalogQueryTransaction,
 {
-	let logical = compile_logical(rx, statement, "default")?; // TODO: Get default namespace from session context
+	let logical = compile_logical(rx, statement)?;
 	let physical = compile_physical(rx, logical)?;
 	Ok(physical)
 }

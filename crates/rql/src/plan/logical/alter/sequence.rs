@@ -8,13 +8,13 @@ use reifydb_type::Fragment;
 use crate::{
 	ast::{Ast, AstAlterSequence},
 	expression::ExpressionCompiler,
-	plan::logical::{AlterSequenceNode, Compiler, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{AlterSequenceNode, Compiler, LogicalPlan, resolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_alter_sequence<'a, T: CatalogQueryTransaction>(
 		ast: AstAlterSequence<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		let (namespace, sequence_name) = {
 			// Use the resolve's resolve_maybe_sequence method if
@@ -23,7 +23,7 @@ impl Compiler {
 			let namespace = ast
 				.sequence
 				.namespace
-				.unwrap_or_else(|| Fragment::borrowed_internal(resolver.default_namespace()));
+				.unwrap_or_else(|| Fragment::borrowed_internal(resolver::DEFAULT_NAMESPACE));
 			(namespace, ast.sequence.name.clone())
 		};
 

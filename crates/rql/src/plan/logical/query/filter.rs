@@ -6,13 +6,13 @@ use reifydb_catalog::CatalogQueryTransaction;
 use crate::{
 	ast::AstFilter,
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, FilterNode, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, FilterNode, LogicalPlan},
 };
 
 impl Compiler {
-	pub(crate) fn compile_filter<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_filter<'a, T: CatalogQueryTransaction>(
 		ast: AstFilter<'a>,
-		_resolver: &mut IdentifierResolver<'t, T>,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::Filter(FilterNode {
 			condition: ExpressionCompiler::compile(*ast.node)?,

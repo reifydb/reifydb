@@ -8,13 +8,13 @@ use reifydb_type::Fragment;
 use crate::{
 	ast::AstCreateRingBuffer,
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateRingBufferNode, LogicalPlan, convert_policy, resolver::IdentifierResolver},
+	plan::logical::{Compiler, CreateRingBufferNode, LogicalPlan, convert_policy, resolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_ring_buffer<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_create_ring_buffer<'a, T: CatalogQueryTransaction>(
 		ast: AstCreateRingBuffer<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		let mut columns: Vec<RingBufferColumnToCreate> = vec![];
 
@@ -49,7 +49,7 @@ impl Compiler {
 
 		// Resolve directly to RingBufferIdentifier
 		// Don't validate existence since we're creating the ring buffer
-		let ring_buffer = resolver.resolve_maybe_qualified_ring_buffer(&ast.ring_buffer, false)?;
+		let ring_buffer = resolver::resolve_maybe_qualified_ring_buffer(tx, &ast.ring_buffer, false)?;
 
 		Ok(LogicalPlan::CreateRingBuffer(CreateRingBufferNode {
 			ring_buffer,

@@ -9,14 +9,14 @@ use crate::{
 	expression::ExpressionCompiler,
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::SourceScan,
-		SourceScanNode, resolver::IdentifierResolver,
+		SourceScanNode, resolver,
 	},
 };
 
 impl Compiler {
-	pub(crate) fn compile_join<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_join<'a, T: CatalogQueryTransaction>(
 		ast: AstJoin<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
 			AstJoin::InnerJoin {
@@ -41,8 +41,9 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						let resolved_source = resolver::build_resolved_source_from_unresolved(
+							tx, unresolved,
+						)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -76,8 +77,9 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						let resolved_source = resolver::build_resolved_source_from_unresolved(
+							tx, unresolved,
+						)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -115,8 +117,9 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						let resolved_source = resolver::build_resolved_source_from_unresolved(
+							tx, unresolved,
+						)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -150,8 +153,9 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						let resolved_source = resolver::build_resolved_source_from_unresolved(
+							tx, unresolved,
+						)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -189,8 +193,9 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						let resolved_source = resolver::build_resolved_source_from_unresolved(
+							tx, unresolved,
+						)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -224,8 +229,9 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source =
-							resolver.build_resolved_source_from_unresolved(unresolved)?;
+						let resolved_source = resolver::build_resolved_source_from_unresolved(
+							tx, unresolved,
+						)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,

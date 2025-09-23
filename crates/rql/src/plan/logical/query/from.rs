@@ -8,13 +8,13 @@ use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
 use crate::{
 	ast::{Ast, AstFrom},
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, InlineDataNode, LogicalPlan, SourceScanNode, resolver::IdentifierResolver},
+	plan::logical::{Compiler, InlineDataNode, LogicalPlan, SourceScanNode, resolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_from<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_from<'a, T: CatalogQueryTransaction>(
 		ast: AstFrom<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match ast {
 			AstFrom::Source {
@@ -23,7 +23,7 @@ impl Compiler {
 			} => {
 				// Use resolve to properly resolve
 				// UnresolvedSourceIdentifier
-				let resolved_source = resolver.build_resolved_source_from_unresolved(source)?;
+				let resolved_source = resolver::build_resolved_source_from_unresolved(tx, source)?;
 
 				// TODO: Resolve index if present
 				// For now, leave index as None

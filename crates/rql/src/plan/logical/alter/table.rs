@@ -10,7 +10,7 @@ use reifydb_type::Fragment;
 
 use crate::{
 	ast::{AstAlterTable, AstAlterTableOperation},
-	plan::logical::{Compiler, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, LogicalPlan, resolver},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,12 +35,12 @@ pub struct AlterIndexColumn<'a> {
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_table<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_alter_table<'a, T: CatalogQueryTransaction>(
 		ast: AstAlterTable<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Resolve the table identifier
-		let table = resolver.resolve_maybe_qualified_table(&ast.table, true)?;
+		let table = resolver::resolve_maybe_qualified_table(tx, &ast.table, true)?;
 
 		// Convert operations
 		let operations = ast

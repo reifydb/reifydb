@@ -7,13 +7,13 @@ use reifydb_type::Fragment;
 use crate::{
 	ast::{AstCreateTransactionalView, AstDataType},
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateTransactionalViewNode, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, CreateTransactionalViewNode, LogicalPlan, resolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_transactional_view<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_transactional_view<'a, T: CatalogQueryTransaction>(
 		ast: AstCreateTransactionalView<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		let mut columns: Vec<ViewColumnToCreate> = vec![];
 		for col in ast.columns.into_iter() {
@@ -39,10 +39,10 @@ impl Compiler {
 
 		// Resolve directly to TransactionalViewIdentifier
 		// Don't validate existence since we're creating the view
-		let view = resolver.resolve_maybe_qualified_transactional_view(&ast.view, false)?;
+		let view = resolver::resolve_maybe_qualified_transactional_view(tx, &ast.view, false)?;
 
 		let with = if let Some(as_statement) = ast.as_clause {
-			Compiler::compile(as_statement, resolver)?
+			Compiler::compile(as_statement, tx)?
 		} else {
 			vec![]
 		};

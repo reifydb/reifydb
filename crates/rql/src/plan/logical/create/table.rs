@@ -8,13 +8,13 @@ use reifydb_type::Fragment;
 use crate::{
 	ast::AstCreateTable,
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateTableNode, LogicalPlan, convert_policy, resolver::IdentifierResolver},
+	plan::logical::{Compiler, CreateTableNode, LogicalPlan, convert_policy, resolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_table<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_create_table<'a, T: CatalogQueryTransaction>(
 		ast: AstCreateTable<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		let mut columns: Vec<TableColumnToCreate> = vec![];
 
@@ -49,7 +49,7 @@ impl Compiler {
 
 		// Resolve directly to TableIdentifier
 		// Don't validate existence since we're creating the table
-		let table = resolver.resolve_maybe_qualified_table(&ast.table, false)?;
+		let table = resolver::resolve_maybe_qualified_table(tx, &ast.table, false)?;
 
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
 			table,

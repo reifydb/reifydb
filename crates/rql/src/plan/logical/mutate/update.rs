@@ -5,13 +5,13 @@ use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
 	ast::AstUpdate,
-	plan::logical::{Compiler, LogicalPlan, UpdateRingBufferNode, UpdateTableNode, resolver::IdentifierResolver},
+	plan::logical::{Compiler, LogicalPlan, UpdateRingBufferNode, UpdateTableNode, resolver},
 };
 
 impl Compiler {
-	pub(crate) fn compile_update<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_update<'a, T: CatalogQueryTransaction>(
 		ast: AstUpdate<'a>,
-		resolver: &mut IdentifierResolver<'t, T>,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Get the target, if None it means the target will come from a pipeline
 		let Some(unresolved) = &ast.target else {
@@ -23,14 +23,15 @@ impl Compiler {
 		};
 
 		// Try to resolve as table first (most common case)
-		match resolver.resolve_source_as_table(unresolved.namespace.as_ref(), &unresolved.name, true) {
+		match resolver::resolve_source_as_table(tx, unresolved.namespace.as_ref(), &unresolved.name, true) {
 			Ok(target) => Ok(LogicalPlan::Update(UpdateTableNode {
 				target: Some(target),
 				input: None,
 			})),
 			Err(table_error) => {
 				// Table not found, try ring buffer
-				match resolver.resolve_source_as_ring_buffer(
+				match resolver::resolve_source_as_ring_buffer(
+					tx,
 					unresolved.namespace.as_ref(),
 					&unresolved.name,
 					true,

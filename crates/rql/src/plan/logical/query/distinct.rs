@@ -7,13 +7,13 @@ use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast::AstDistinct,
-	plan::logical::{Compiler, DistinctNode, LogicalPlan, resolver::IdentifierResolver},
+	plan::logical::{Compiler, DistinctNode, LogicalPlan},
 };
 
 impl Compiler {
-	pub(crate) fn compile_distinct<'a, 't, T: CatalogQueryTransaction>(
+	pub(crate) fn compile_distinct<'a, T: CatalogQueryTransaction>(
 		ast: AstDistinct<'a>,
-		_resolver: &mut IdentifierResolver<'t, T>,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// DISTINCT operates on the output columns of the query
 		// In a proper implementation, we would need to resolve these
