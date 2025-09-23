@@ -13,10 +13,8 @@ impl Compiler {
 		ast: AstCreateNamespace<'a>,
 		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Convert MaybeQualified to fully qualified
-		use reifydb_core::interface::identifier::NamespaceIdentifier;
-
-		let namespace = NamespaceIdentifier::new(ast.namespace.name);
+		// Use Fragment directly instead of NamespaceIdentifier
+		let namespace = ast.namespace.name;
 
 		Ok(LogicalPlan::CreateNamespace(CreateNamespaceNode {
 			namespace,

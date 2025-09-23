@@ -9,8 +9,8 @@ use reifydb_core::{
 	interface::{
 		TableVirtualDef, ViewKind,
 		identifier::{
-			NamespaceIdentifier, RingBufferIdentifier, SourceIdentifier, TableIdentifier,
-			TableVirtualIdentifier, UnresolvedSourceIdentifier, ViewIdentifier,
+			RingBufferIdentifier, SourceIdentifier, TableIdentifier, TableVirtualIdentifier,
+			UnresolvedSourceIdentifier, ViewIdentifier,
 		},
 		resolved::{
 			ResolvedDeferredView, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, ResolvedTable,
@@ -110,15 +110,15 @@ fn create_source_identifier_from_catalog(
 /// Build a resolved namespace
 pub fn build_resolved_namespace<'a>(
 	tx: &mut impl CatalogQueryTransaction,
-	ident: NamespaceIdentifier<'a>,
+	ident: Fragment<'a>,
 ) -> Result<ResolvedNamespace<'a>> {
-	let namespace_name = ident.name.text();
+	let namespace_name = ident.text();
 
 	// Lookup in catalog - get_namespace_by_name returns
 	// Result<NamespaceDef>
 	let def = tx.get_namespace_by_name(namespace_name)?;
 
-	let resolved = ResolvedNamespace::new(ident.name.clone(), def);
+	let resolved = ResolvedNamespace::new(ident.clone(), def);
 
 	Ok(resolved)
 }
@@ -142,9 +142,7 @@ pub fn build_resolved_table<'a>(
 	};
 
 	// Resolve namespace first
-	let namespace_ident = NamespaceIdentifier {
-		name: table_ident.namespace.clone(),
-	};
+	let namespace_ident = table_ident.namespace.clone();
 	let namespace = build_resolved_namespace(tx, namespace_ident)?;
 
 	// Lookup table in catalog
@@ -181,9 +179,7 @@ pub fn build_resolved_ring_buffer<'a>(
 	};
 
 	// Resolve namespace first
-	let namespace_ident = NamespaceIdentifier {
-		name: ring_buffer_ident.namespace.clone(),
-	};
+	let namespace_ident = ring_buffer_ident.namespace.clone();
 	let namespace = build_resolved_namespace(tx, namespace_ident)?;
 
 	// Lookup ring buffer in catalog
@@ -216,9 +212,7 @@ pub fn build_resolved_view<'a>(
 	};
 
 	// Resolve namespace first
-	let namespace_ident = NamespaceIdentifier {
-		name: view_ident.namespace.clone(),
-	};
+	let namespace_ident = view_ident.namespace.clone();
 	let namespace = build_resolved_namespace(tx, namespace_ident)?;
 
 	// Lookup view in catalog

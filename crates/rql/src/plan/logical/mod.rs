@@ -10,7 +10,6 @@ pub mod resolver;
 use identifier::{
 	ColumnIdentifier,
 	IndexIdentifier,
-	NamespaceIdentifier,
 	// Keeping these as type aliases for now to maintain compatibility
 	RingBufferIdentifier,
 	SequenceIdentifier,
@@ -320,7 +319,7 @@ pub struct CreateTransactionalViewNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateNamespaceNode<'a> {
-	pub namespace: NamespaceIdentifier<'a>,
+	pub namespace: Fragment<'a>,
 	pub if_not_exists: bool,
 }
 

@@ -4,32 +4,6 @@
 use reifydb_type::Fragment;
 use serde::{Deserialize, Serialize};
 
-/// Namespace identifier - always unqualified
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct NamespaceIdentifier<'a> {
-	pub name: Fragment<'a>,
-}
-
-impl<'a> NamespaceIdentifier<'a> {
-	pub fn new(name: Fragment<'a>) -> Self {
-		Self {
-			name,
-		}
-	}
-
-	pub fn to_static(&self) -> NamespaceIdentifier<'static> {
-		NamespaceIdentifier {
-			name: Fragment::owned_internal(self.name.text()),
-		}
-	}
-
-	pub fn into_owned(self) -> NamespaceIdentifier<'static> {
-		NamespaceIdentifier {
-			name: Fragment::Owned(self.name.into_owned()),
-		}
-	}
-}
-
 /// Fully qualified table identifier
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TableIdentifier<'a> {
@@ -399,48 +373,6 @@ impl<'a> ColumnSource<'a> {
 	}
 }
 
-/// Function identifier with namespace support
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct FunctionIdentifier<'a> {
-	/// Namespace chain (e.g., ["pg_catalog", "string"] for
-	/// pg_catalog::string::substr)
-	pub namespaces: Vec<Fragment<'a>>,
-	/// Function name
-	pub name: Fragment<'a>,
-}
-
-impl<'a> FunctionIdentifier<'a> {
-	pub fn new(name: Fragment<'a>) -> Self {
-		Self {
-			namespaces: Vec::new(),
-			name,
-		}
-	}
-
-	pub fn with_namespaces(mut self, namespaces: Vec<Fragment<'a>>) -> Self {
-		self.namespaces = namespaces;
-		self
-	}
-
-	pub fn into_owned(self) -> FunctionIdentifier<'static> {
-		FunctionIdentifier {
-			namespaces: self.namespaces.into_iter().map(|n| Fragment::Owned(n.into_owned())).collect(),
-			name: Fragment::Owned(self.name.into_owned()),
-		}
-	}
-
-	/// Get the fully qualified function name as a string
-	pub fn qualified_name(&self) -> String {
-		if self.namespaces.is_empty() {
-			self.name.text().to_string()
-		} else {
-			let mut parts: Vec<&str> = self.namespaces.iter().map(|n| n.text()).collect();
-			parts.push(self.name.text());
-			parts.join("::")
-		}
-	}
-}
-
 /// Fully qualified sequence identifier
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct SequenceIdentifier<'a> {
@@ -571,16 +503,6 @@ mod tests {
 			_ => panic!("Expected Source variant"),
 		}
 		assert_eq!(column.name.text(), "id");
-	}
-
-	#[test]
-	fn test_function_identifier() {
-		let name = Fragment::Owned(OwnedFragment::testing("substr"));
-		let ns1 = Fragment::Owned(OwnedFragment::testing("pg_catalog"));
-		let ns2 = Fragment::Owned(OwnedFragment::testing("string"));
-		let func = FunctionIdentifier::new(name).with_namespaces(vec![ns1, ns2]);
-
-		assert_eq!(func.qualified_name(), "pg_catalog::string::substr");
 	}
 
 	#[test]

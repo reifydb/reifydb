@@ -15,7 +15,7 @@ impl Compiler {
 	) -> crate::Result<PhysicalPlan<'a>> {
 		// FIXME validate catalog
 		Ok(PhysicalPlan::CreateNamespace(CreateNamespaceNode {
-			namespace: create.namespace.name,
+			namespace: create.namespace,
 			if_not_exists: create.if_not_exists,
 		}))
 	}
