@@ -9,7 +9,7 @@ use reifydb_core::{
 		container::NumberContainer,
 	},
 };
-use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, Value};
+use reifydb_type::{Error, Fragment, ROW_NUMBER_COLUMN_NAME, Value, internal_error};
 
 use crate::evaluate::column::StandardColumnEvaluator;
 
@@ -41,13 +41,20 @@ impl RowEvaluator for StandardRowEvaluator {
 		});
 		columns.push(row_number_column);
 
-		for (idx, _field) in ctx.row.layout.fields.iter().enumerate() {
+		for (idx, field) in ctx.row.layout.fields.iter().enumerate() {
 			let value = ctx.row.layout.get_value(&ctx.row.encoded, idx);
+			// FIXME maybe some auto conversion needs to happen here
+			debug_assert_eq!(field.value, value.get_type());
+
 			let mut data = ColumnData::with_capacity(value.get_type(), 1);
 			data.push_value(value);
 
+			let name = ctx.row.layout.get_name(idx).ok_or_else(|| {
+				Error(internal_error!("EncodedRowNamedLayout missing name for field at index {}", idx))
+			})?;
+
 			columns.push(Column::Computed(ColumnComputed {
-				name: Fragment::owned_internal(format!("col_{idx}")), // FIXME no field name
+				name: Fragment::owned_internal(name),
 				data,
 			}))
 		}

@@ -19,7 +19,7 @@ use reifydb::{
 		interface::{Engine, FlowNodeId, Transaction, logging::LogLevel::Info},
 	},
 	embedded,
-	engine::{StandardColumnEvaluator, StandardCommandTransaction, StandardRowEvaluator},
+	engine::{StandardCommandTransaction, StandardRowEvaluator},
 	log_info,
 	sub::task,
 	sub_flow::{FlowBuilder, Operator, TransformOperator},
