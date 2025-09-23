@@ -1,14 +1,90 @@
+use std::collections::BTreeMap;
+
+use bincode::{
+	config::standard,
+	serde::{decode_from_slice, encode_to_vec},
+};
 use reifydb_core::{
-	flow::FlowChange,
+	Error,
+	flow::{FlowChange, FlowDiff},
 	interface::{FlowNodeId, Transaction},
+	value::row::{EncodedRowLayout, Row},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_type::{Blob, RowNumber, Type, internal_error};
+use serde::{Deserialize, Serialize};
 
-use crate::operator::Operator;
+use crate::operator::{
+	Operator,
+	transform::{
+		TransformOperator,
+		stateful::{RawStatefulOperator, SingleStateful},
+	},
+};
+
+/// Serializable version of Row data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SerializedRow {
+	number: RowNumber,
+	/// The raw encoded bytes of the row
+	#[serde(with = "serde_bytes")]
+	encoded_bytes: Vec<u8>,
+	/// The field names from the layout (for recreating EncodedRowNamedLayout)
+	field_names: Vec<String>,
+	/// The field types from the layout
+	field_types: Vec<Type>,
+}
+
+impl SerializedRow {
+	fn from_row(row: &Row) -> Self {
+		Self {
+			number: row.number,
+			encoded_bytes: row.encoded.as_slice().to_vec(),
+			field_names: row.layout.names().to_vec(),
+			field_types: row.layout.fields.iter().map(|f| f.value).collect(),
+		}
+	}
+
+	fn to_row(self) -> Row {
+		use reifydb_core::{
+			util::CowVec,
+			value::row::{EncodedRow, EncodedRowNamedLayout},
+		};
+
+		let fields: Vec<(String, Type)> =
+			self.field_names.into_iter().zip(self.field_types.into_iter()).collect();
+
+		let layout = EncodedRowNamedLayout::new(fields);
+		let encoded = EncodedRow(CowVec::new(self.encoded_bytes));
+
+		Row {
+			number: self.number,
+			encoded,
+			layout,
+		}
+	}
+}
+
+/// State for tracking the top N rows
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct TakeState {
+	/// Map of row numbers to their serialized row data
+	/// Using BTreeMap to keep rows sorted by RowNumber
+	rows: BTreeMap<RowNumber, SerializedRow>,
+}
+
+impl Default for TakeState {
+	fn default() -> Self {
+		Self {
+			rows: BTreeMap::new(),
+		}
+	}
+}
 
 pub struct TakeOperator {
 	node: FlowNodeId,
 	limit: usize,
+	layout: EncodedRowLayout,
 }
 
 impl TakeOperator {
@@ -16,19 +92,150 @@ impl TakeOperator {
 		Self {
 			node,
 			limit,
+			layout: EncodedRowLayout::new(&[Type::Blob]),
 		}
+	}
+
+	fn load_take_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<TakeState> {
+		let state_row = self.load_state(txn)?;
+
+		if state_row.is_empty() || !state_row.is_defined(0) {
+			return Ok(TakeState::default());
+		}
+
+		let blob = self.layout.get_blob(&state_row, 0);
+		if blob.is_empty() {
+			return Ok(TakeState::default());
+		}
+
+		let config = standard();
+		decode_from_slice(blob.as_ref(), config)
+			.map(|(state, _)| state)
+			.map_err(|e| Error(internal_error!("Failed to deserialize TakeState: {}", e)))
+	}
+
+	fn save_take_state<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		state: &TakeState,
+	) -> crate::Result<()> {
+		let config = standard();
+		let serialized = encode_to_vec(state, config)
+			.map_err(|e| Error(internal_error!("Failed to serialize TakeState: {}", e)))?;
+
+		let mut state_row = self.layout.allocate_row();
+		let blob = Blob::from(serialized);
+		self.layout.set_blob(&mut state_row, 0, &blob);
+
+		self.save_state(txn, state_row)
+	}
+}
+
+impl<T: Transaction> TransformOperator<T> for TakeOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+}
+
+impl<T: Transaction> RawStatefulOperator<T> for TakeOperator {}
+
+impl<T: Transaction> SingleStateful<T> for TakeOperator {
+	fn layout(&self) -> EncodedRowLayout {
+		self.layout.clone()
 	}
 }
 
 impl<T: Transaction> Operator<T> for TakeOperator {
 	fn apply(
 		&self,
-		_txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		// TODO: Implement single-row take processing
-		// For now, just pass through all changes
-		Ok(change)
+		// Load current state
+		let mut state = self.load_take_state(txn)?;
+		let mut output_diffs = Vec::new();
+
+		for diff in change.diffs {
+			match diff {
+				FlowDiff::Insert {
+					source,
+					post,
+				} => {
+					let row_number = post.number;
+
+					// Add to our tracking
+					state.rows.insert(row_number, SerializedRow::from_row(&post));
+
+					// Keep only the top N rows (highest row numbers)
+					// BTreeMap keeps keys sorted, so we can efficiently get the top N
+					while state.rows.len() > self.limit {
+						// Remove the smallest (oldest) row number
+						if let Some((&removed_row_num, removed_serialized)) =
+							state.rows.iter().next()
+						{
+							let removed_serialized = removed_serialized.clone();
+							state.rows.remove(&removed_row_num);
+
+							// Emit a remove for the row that fell out of the window
+							output_diffs.push(FlowDiff::Remove {
+								source,
+								pre: removed_serialized.to_row(),
+							});
+						}
+					}
+
+					// If this row is within the limit, emit the insert
+					if state.rows.contains_key(&row_number) {
+						output_diffs.push(FlowDiff::Insert {
+							source,
+							post,
+						});
+					}
+				}
+				FlowDiff::Update {
+					source,
+					pre,
+					post,
+				} => {
+					let row_number = post.number;
+
+					// Update our tracking if this row is in the window
+					if state.rows.contains_key(&row_number) {
+						state.rows.insert(row_number, SerializedRow::from_row(&post));
+						output_diffs.push(FlowDiff::Update {
+							source,
+							pre,
+							post,
+						});
+					}
+					// If not in window, ignore the update
+				}
+				FlowDiff::Remove {
+					source,
+					pre,
+				} => {
+					let row_number = pre.number;
+
+					// If this row was in our window, remove it
+					if state.rows.remove(&row_number).is_some() {
+						output_diffs.push(FlowDiff::Remove {
+							source,
+							pre,
+						});
+
+						// Note: When a row is removed from the window, we might want to
+						// pull in the next row that was previously outside the window.
+						// However, we don't have access to those rows here.
+						// This is a limitation of the current approach.
+					}
+				}
+			}
+		}
+
+		// Save the updated state
+		self.save_take_state(txn, &state)?;
+
+		Ok(FlowChange::new(output_diffs))
 	}
 }
