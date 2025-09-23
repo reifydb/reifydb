@@ -5,11 +5,8 @@ use reifydb_core::interface::{FlowNodeId, Transaction, expression::Expression};
 
 use crate::operator::Operator;
 
-pub mod builtin;
 pub mod registry;
 pub mod stateful;
-
-pub use builtin::*;
 
 pub trait TransformOperator<T: Transaction>: Operator<T> {
 	fn id(&self) -> FlowNodeId;

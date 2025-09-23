@@ -4,7 +4,7 @@
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	flow::{
-		Flow, FlowNodeType, OperatorType,
+		Flow, FlowNodeDef, FlowNodeType, OperatorType,
 		OperatorType::{Apply, Distinct, Extend, Filter, Join, Map, MapTerminal, Sort, Take, Union},
 	},
 	interface::{FlowId, FlowNodeId, SourceId, Transaction},
@@ -97,8 +97,8 @@ impl<T: Transaction> FlowEngine<T> {
 		flow_id: FlowId,
 		node: FlowNodeId,
 		operator: &OperatorType,
-		input_schemas: &[reifydb_core::flow::FlowNodeDef],
-		output_schema: &reifydb_core::flow::FlowNodeDef,
+		input_schemas: &[FlowNodeDef],
+		output_schema: &FlowNodeDef,
 	) -> crate::Result<()> {
 		let operator =
 			self.create_operator(txn, flow_id, node, operator.clone(), input_schemas, output_schema)?;
@@ -114,8 +114,8 @@ impl<T: Transaction> FlowEngine<T> {
 		flow_id: FlowId,
 		node_id: FlowNodeId,
 		operator: OperatorType,
-		input_schemas: &[reifydb_core::flow::FlowNodeDef],
-		_output_schema: &reifydb_core::flow::FlowNodeDef,
+		input_schemas: &[FlowNodeDef],
+		_output_schema: &FlowNodeDef,
 	) -> crate::Result<Operators<T>> {
 		match operator {
 			Filter {
@@ -135,8 +135,8 @@ impl<T: Transaction> FlowEngine<T> {
 				Ok(Operators::MapTerminal(MapTerminalOperator::new(expressions, view_def)))
 			}
 			Sort {
-				by,
-			} => Ok(Operators::Sort(SortOperator::new(by))),
+				by: _,
+			} => Ok(Operators::Sort(SortOperator::new(Vec::new()))),
 			Take {
 				limit,
 			} => Ok(Operators::Take(TakeOperator::new(node_id, limit))),
@@ -149,24 +149,26 @@ impl<T: Transaction> FlowEngine<T> {
 				let left_schema = if input_schemas.len() > 0 {
 					input_schemas[0].clone()
 				} else {
-					reifydb_core::flow::FlowNodeDef::empty()
+					FlowNodeDef::empty()
 				};
 				let right_schema = if input_schemas.len() > 1 {
 					input_schemas[1].clone()
 				} else {
-					reifydb_core::flow::FlowNodeDef::empty()
+					FlowNodeDef::empty()
 				};
 
-				Ok(Operators::Join(
-					JoinOperator::new(node_id, join_type, left, right, left_schema, right_schema)
-						.with_flow_id(flow_id.0)
-						.with_instance_id(node_id.0),
-				))
+				// Ok(Operators::Join(
+				// 	JoinOperator::new(node_id, join_type, left, right, left_schema, right_schema)
+				// 		.with_flow_id(flow_id.0)
+				// 		.with_instance_id(node_id.0),
+				// ))
+				unimplemented!()
 			}
 			Distinct {
 				expressions,
 			} => Ok(Operators::Distinct(DistinctOperator::new(node_id, expressions))),
-			Union {} => Ok(Operators::Union(UnionOperator::new())),
+			// Union {} => Ok(Operators::Union(UnionOperator::new())),
+			Union {} => unimplemented!(),
 			Apply {
 				operator_name,
 				expressions,
@@ -181,7 +183,8 @@ impl<T: Transaction> FlowEngine<T> {
 					expressions.as_slice(),
 				)?;
 
-				Ok(Operators::Apply(ApplyOperator::new(operator)))
+				// Ok(Operators::Apply(ApplyOperator::new(operator)))
+				unimplemented!()
 			}
 			OperatorType::Aggregate {
 				..

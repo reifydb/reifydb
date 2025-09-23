@@ -1,20 +1,18 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+use std::marker::PhantomData;
 
 use reifydb_core::{flow::FlowChange, interface::Transaction};
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 
 use crate::operator::Operator;
 
-/// Apply operator for dynamic invocation of user-defined functions
 pub struct ApplyOperator<T: Transaction> {
-	operator: Box<dyn Operator<T>>,
+	_marker: PhantomData<T>,
 }
 
 impl<T: Transaction> ApplyOperator<T> {
-	pub fn new(operator: Box<dyn Operator<T>>) -> Self {
+	pub fn new() -> Self {
 		Self {
-			operator,
+			_marker: PhantomData,
 		}
 	}
 }
@@ -22,10 +20,12 @@ impl<T: Transaction> ApplyOperator<T> {
 impl<T: Transaction> Operator<T> for ApplyOperator<T> {
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		_txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
+		_evaluator: &StandardEvaluator,
 	) -> crate::Result<FlowChange> {
-		self.operator.apply(txn, change, evaluator)
+		// TODO: Implement single-row apply processing
+		// For now, just pass through all changes
+		Ok(change)
 	}
 }
