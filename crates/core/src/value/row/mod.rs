@@ -37,6 +37,7 @@ mod uuid4;
 mod uuid7;
 mod value;
 
+#[derive(Debug, Clone)]
 pub struct Row {
 	pub number: RowNumber,
 	pub encoded: EncodedRow,

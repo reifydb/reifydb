@@ -11,10 +11,10 @@ use reifydb_core::{
 		Transaction,
 	},
 	util::CowVec,
-	value::{column::Columns, row::EncodedRow},
+	value::row::{EncodedRow, Row},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardEvaluator};
-use reifydb_type::Value;
+use reifydb_type::{RowNumber, Value};
 
 use super::intercept::Change;
 use crate::{builder::OperatorFactory, engine::FlowEngine, operator::transform::registry::TransformOperatorRegistry};
@@ -37,25 +37,22 @@ impl<T: Transaction> FlowConsumer<T> {
 		}
 	}
 
-	/// Helper method to convert multiple row bytes to Columns format
-	fn to_columns<'a>(
+	/// Helper method to convert row bytes to Row format
+	fn to_row(
 		txn: &mut StandardCommandTransaction<T>,
 		source: SourceId,
-		rows_bytes: &[Vec<u8>],
-	) -> Result<Columns<'static>> {
+		row_number: RowNumber,
+		row_bytes: Vec<u8>,
+	) -> Result<Row> {
 		// Get source metadata from catalog
-		let (mut columns, layout) = match source {
+		let layout = match source {
 			SourceId::Table(table_id) => {
 				let resolved_table = resolve_table(txn, table_id)?;
-				let layout = resolved_table.def().get_layout();
-				let columns = Columns::from_table(&resolved_table);
-				(columns, layout)
+				resolved_table.def().get_layout()
 			}
 			SourceId::View(view_id) => {
 				let resolved_view = resolve_view(txn, view_id)?;
-				let layout = resolved_view.def().get_layout();
-				let columns = Columns::from_view(&resolved_view);
-				(columns, layout)
+				resolved_view.def().get_layout()
 			}
 			SourceId::TableVirtual(_) => {
 				// Virtual tables not supported in flows yet
@@ -63,32 +60,21 @@ impl<T: Transaction> FlowConsumer<T> {
 			}
 			SourceId::RingBuffer(ring_buffer_id) => {
 				let resolved_ring_buffer = resolve_ring_buffer(txn, ring_buffer_id)?;
-				let layout = resolved_ring_buffer.def().get_layout();
-				let columns = Columns::from_ring_buffer(&resolved_ring_buffer);
-				(columns, layout)
+				resolved_ring_buffer.def().get_layout()
 			}
 			SourceId::FlowNode(_flow_node_id) => {
 				// Flow nodes don't have catalog entries; they're intermediate results
-				// Return empty columns - the actual schema will come from the flow operators
 				// TODO: Consider storing flow node schemas in the flow graph context
-				return Ok(Columns::empty());
+				unimplemented!("Flow node sources need schema context");
 			}
 		};
 
-		// Convert all row bytes to EncodedRows and append in one go
-		if !rows_bytes.is_empty() {
-			let encoded_rows: Vec<EncodedRow> = rows_bytes
-				.iter()
-				.filter(|bytes| !bytes.is_empty())
-				.map(|bytes| EncodedRow(CowVec::new(bytes.clone())))
-				.collect();
-
-			if !encoded_rows.is_empty() {
-				columns.append_rows(&layout, encoded_rows)?;
-			}
-		}
-
-		Ok(columns)
+		let encoded = EncodedRow(CowVec::new(row_bytes));
+		Ok(Row {
+			number: row_number,
+			encoded,
+			layout,
+		})
 	}
 
 	/// Load flows from the catalog
@@ -140,114 +126,49 @@ impl<T: Transaction> FlowConsumer<T> {
 			flow_engine.register(txn, flow)?;
 		}
 
-		// Group changes by source_id and operation type
-		use std::collections::HashMap;
-
-		#[derive(Hash, Eq, PartialEq)]
-		enum OpType {
-			Insert,
-			Update,
-			Delete,
-		}
-
-		let mut grouped_changes: HashMap<(SourceId, OpType), Vec<Change>> = HashMap::new();
-
-		for change in changes {
-			let key = match &change {
-				Change::Insert {
-					source_id,
-					..
-				} => (*source_id, OpType::Insert),
-				Change::Update {
-					source_id,
-					..
-				} => (*source_id, OpType::Update),
-				Change::Delete {
-					source_id,
-					..
-				} => (*source_id, OpType::Delete),
-			};
-			grouped_changes.entry(key).or_insert_with(Vec::new).push(change);
-		}
-
+		// Process changes in order, without grouping
 		let mut diffs = Vec::new();
 
-		for ((source_id, op_type), changes) in grouped_changes {
-			match op_type {
-				OpType::Insert => {
-					let mut row_numbers = Vec::new();
-					let mut rows = Vec::new();
-
-					for change in changes {
-						if let Change::Insert {
-							row_number,
-							post,
-							..
-						} = change
-						{
-							row_numbers.push(row_number);
-							rows.push(post);
-						}
-					}
-
-					let diff = FlowDiff::Insert {
+		for change in changes {
+			let diff = match change {
+				Change::Insert {
+					source_id,
+					row_number,
+					post,
+				} => {
+					let row = Self::to_row(txn, source_id, row_number, post)?;
+					FlowDiff::Insert {
 						source: source_id,
-						rows: CowVec::new(row_numbers),
-						post: Self::to_columns(txn, source_id, &rows)?,
-					};
-					diffs.push(diff);
-				}
-				OpType::Update => {
-					let mut row_numbers = Vec::new();
-					let mut pre_rows = Vec::new();
-					let mut post_rows = Vec::new();
-
-					for change in changes {
-						if let Change::Update {
-							row_number,
-							pre,
-							post,
-							..
-						} = change
-						{
-							row_numbers.push(row_number);
-							pre_rows.push(pre);
-							post_rows.push(post);
-						}
+						post: row,
 					}
-
-					let diff = FlowDiff::Update {
-						source: source_id,
-						rows: CowVec::new(row_numbers),
-						pre: Self::to_columns(txn, source_id, &pre_rows)?,
-						post: Self::to_columns(txn, source_id, &post_rows)?,
-					};
-					diffs.push(diff);
 				}
-				OpType::Delete => {
-					let mut row_numbers = Vec::new();
-					let mut rows = Vec::new();
-
-					for change in changes {
-						if let Change::Delete {
-							row_number,
-							pre,
-							..
-						} = change
-						{
-							row_numbers.push(row_number);
-							rows.push(pre);
-						}
+				Change::Update {
+					source_id,
+					row_number,
+					pre,
+					post,
+				} => {
+					let pre_row = Self::to_row(txn, source_id, row_number, pre)?;
+					let post_row = Self::to_row(txn, source_id, row_number, post)?;
+					FlowDiff::Update {
+						source: source_id,
+						pre: pre_row,
+						post: post_row,
 					}
-
-					let diff = FlowDiff::Remove {
-						source: source_id,
-						rows: CowVec::new(row_numbers),
-						pre: Self::to_columns(txn, source_id, &rows)?,
-					};
-					diffs.push(diff);
 				}
-			}
+				Change::Delete {
+					source_id,
+					row_number,
+					pre,
+				} => {
+					let row = Self::to_row(txn, source_id, row_number, pre)?;
+					FlowDiff::Remove {
+						source: source_id,
+						pre: row,
+					}
+				}
+			};
+			diffs.push(diff);
 		}
 
 		if !diffs.is_empty() {

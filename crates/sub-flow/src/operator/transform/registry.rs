@@ -5,10 +5,7 @@ use std::collections::HashMap;
 
 use reifydb_core::interface::{FlowNodeId, Transaction, expression::Expression};
 
-use crate::operator::{
-	Operator,
-	transform::{CounterOperator, RunningAvgOperator, RunningSumOperator, TransformOperatorFactory},
-};
+use crate::operator::Operator;
 
 type OperatorFactoryFn<T> =
 	Box<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator<T>>> + Send + Sync>;
@@ -48,17 +45,17 @@ impl<T: Transaction> TransformOperatorRegistry<T> {
 	pub fn with_builtins() -> Self {
 		let mut registry = Self::new();
 
-		registry.register("counter".to_string(), |node, exprs| {
-			CounterOperator::create_from_expressions(node, exprs)
-		});
-
-		registry.register("running_sum".to_string(), |node, exprs| {
-			RunningSumOperator::create_from_expressions(node, exprs)
-		});
-
-		registry.register("running_avg".to_string(), |node, exprs| {
-			RunningAvgOperator::create_from_expressions(node, exprs)
-		});
+		// registry.register("counter".to_string(), |node, exprs| {
+		// 	CounterOperator::create_from_expressions(node, exprs)
+		// });
+		//
+		// registry.register("running_sum".to_string(), |node, exprs| {
+		// 	RunningSumOperator::create_from_expressions(node, exprs)
+		// });
+		//
+		// registry.register("running_avg".to_string(), |node, exprs| {
+		// 	RunningAvgOperator::create_from_expressions(node, exprs)
+		// });
 
 		registry
 	}

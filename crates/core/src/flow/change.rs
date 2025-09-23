@@ -1,24 +1,19 @@
-use reifydb_type::RowNumber;
-
-use crate::{interface::SourceId, util::CowVec, value::column::Columns};
+use crate::{interface::SourceId, value::row::Row};
 
 #[derive(Debug, Clone)]
 pub enum FlowDiff {
 	Insert {
 		source: SourceId,
-		rows: CowVec<RowNumber>,
-		post: Columns<'static>,
+		post: Row,
 	},
 	Update {
 		source: SourceId,
-		rows: CowVec<RowNumber>,
-		pre: Columns<'static>,
-		post: Columns<'static>,
+		pre: Row,
+		post: Row,
 	},
 	Remove {
 		source: SourceId,
-		rows: CowVec<RowNumber>,
-		pre: Columns<'static>,
+		pre: Row,
 	},
 }
 
@@ -38,33 +33,6 @@ impl FlowDiff {
 				..
 			} => *source,
 		}
-	}
-
-	/// Validates that row_ids length matches the row count
-	pub fn validate(&self) -> bool {
-		match self {
-			FlowDiff::Insert {
-				rows,
-				post,
-				..
-			} => rows.len() == post.row_count(),
-			FlowDiff::Update {
-				rows,
-				pre,
-				post,
-				..
-			} => rows.len() == pre.row_count() && rows.len() == post.row_count(),
-			FlowDiff::Remove {
-				rows,
-				pre,
-				..
-			} => rows.len() == pre.row_count(),
-		}
-	}
-
-	#[cfg(debug_assertions)]
-	pub fn assert_valid(&self) {
-		assert!(self.validate(), "Diff invariant violated: row_ids length must match row count");
 	}
 }
 

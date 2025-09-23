@@ -14,7 +14,7 @@ pub use builder::FlowBuilder;
 pub use engine::*;
 pub use operator::{
 	Operator,
-	transform::{TransformOperator, TransformOperatorFactory, builtin, extract, stateful},
+	transform::{TransformOperator, TransformOperatorFactory, extract, stateful},
 };
 pub use reifydb_core::Result;
 pub use subsystem::{FlowSubsystem, FlowSubsystemFactory};
