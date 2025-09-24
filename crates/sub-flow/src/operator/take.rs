@@ -131,11 +131,7 @@ impl TakeOperator {
 	}
 }
 
-impl<T: Transaction> TransformOperator<T> for TakeOperator {
-	fn id(&self) -> FlowNodeId {
-		self.node
-	}
-}
+impl<T: Transaction> TransformOperator<T> for TakeOperator {}
 
 impl<T: Transaction> RawStatefulOperator<T> for TakeOperator {}
 
@@ -146,6 +142,10 @@ impl<T: Transaction> SingleStateful<T> for TakeOperator {
 }
 
 impl<T: Transaction> Operator<T> for TakeOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
@@ -159,7 +159,6 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					source,
 					post,
 				} => {
 					let row_number = post.number;
@@ -179,7 +178,6 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 
 							// Emit a remove for the row that fell out of the window
 							output_diffs.push(FlowDiff::Remove {
-								source,
 								pre: removed_serialized.to_row(),
 							});
 						}
@@ -188,13 +186,11 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					// If this row is within the limit, emit the insert
 					if state.rows.contains_key(&row_number) {
 						output_diffs.push(FlowDiff::Insert {
-							source,
 							post,
 						});
 					}
 				}
 				FlowDiff::Update {
-					source,
 					pre,
 					post,
 				} => {
@@ -204,7 +200,6 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					if state.rows.contains_key(&row_number) {
 						state.rows.insert(row_number, SerializedRow::from_row(&post));
 						output_diffs.push(FlowDiff::Update {
-							source,
 							pre,
 							post,
 						});
@@ -212,7 +207,6 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					// If not in window, ignore the update
 				}
 				FlowDiff::Remove {
-					source,
 					pre,
 				} => {
 					let row_number = pre.number;
@@ -220,7 +214,6 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					// If this row was in our window, remove it
 					if state.rows.remove(&row_number).is_some() {
 						output_diffs.push(FlowDiff::Remove {
-							source,
 							pre,
 						});
 
@@ -236,6 +229,6 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 		// Save the updated state
 		self.save_take_state(txn, &state)?;
 
-		Ok(FlowChange::new(output_diffs))
+		Ok(FlowChange::internal(self.node, output_diffs))
 	}
 }

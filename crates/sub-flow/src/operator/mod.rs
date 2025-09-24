@@ -1,4 +1,7 @@
-use reifydb_core::{flow::FlowChange, interface::Transaction};
+use reifydb_core::{
+	flow::FlowChange,
+	interface::{FlowNodeId, Transaction},
+};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
 mod apply;
@@ -25,6 +28,8 @@ pub use take::TakeOperator;
 pub use union::UnionOperator;
 
 pub trait Operator<T: Transaction>: Send + Sync {
+	fn id(&self) -> FlowNodeId;
+
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,

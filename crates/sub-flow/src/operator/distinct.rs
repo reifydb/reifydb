@@ -207,11 +207,7 @@ impl DistinctOperator {
 	}
 }
 
-impl<T: Transaction> TransformOperator<T> for DistinctOperator {
-	fn id(&self) -> FlowNodeId {
-		self.node
-	}
-}
+impl<T: Transaction> TransformOperator<T> for DistinctOperator {}
 
 impl<T: Transaction> RawStatefulOperator<T> for DistinctOperator {}
 
@@ -222,6 +218,10 @@ impl<T: Transaction> SingleStateful<T> for DistinctOperator {
 }
 
 impl<T: Transaction> Operator<T> for DistinctOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
@@ -234,7 +234,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					source,
 					post,
 				} => {
 					state.layout.update_from_row(&post);
@@ -256,14 +255,12 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 								},
 							);
 							result.push(FlowDiff::Insert {
-								source,
 								post,
 							});
 						}
 					}
 				}
 				FlowDiff::Update {
-					source,
 					pre,
 					post,
 				} => {
@@ -282,7 +279,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 								entry.first_row = SerializedRow::from_row(&post);
 							}
 							result.push(FlowDiff::Update {
-								source,
 								pre,
 								post,
 							});
@@ -295,7 +291,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 								// Last instance - remove from state
 								state.entries.remove(&pre_hash);
 								result.push(FlowDiff::Remove {
-									source,
 									pre,
 								});
 							}
@@ -316,7 +311,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 									},
 								);
 								result.push(FlowDiff::Insert {
-									source,
 									post,
 								});
 							}
@@ -324,7 +318,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 					}
 				}
 				FlowDiff::Remove {
-					source,
 					pre,
 				} => {
 					let hash = self.compute_hash(&pre, evaluator)?;
@@ -337,7 +330,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 							if let Some(entry) = removed_entry {
 								let stored_row = entry.first_row.to_row(&state.layout);
 								result.push(FlowDiff::Remove {
-									source,
 									pre: stored_row,
 								});
 							}
@@ -349,6 +341,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 
 		self.save_distinct_state(txn, &state)?;
 
-		Ok(FlowChange::new(result))
+		Ok(FlowChange::internal(self.node, result))
 	}
 }

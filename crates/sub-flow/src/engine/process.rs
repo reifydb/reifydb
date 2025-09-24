@@ -1,11 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
-
 use reifydb_core::{
 	flow::{
-		Flow, FlowChange, FlowNode,
+		Flow, FlowChange, FlowChangeOrigin, FlowNode,
 		FlowNodeType::{SourceInlineData, SourceTable, SourceView},
 	},
 	interface::Transaction,
@@ -16,30 +14,27 @@ use crate::engine::FlowEngine;
 
 impl<T: Transaction> FlowEngine<T> {
 	pub fn process(&self, txn: &mut StandardCommandTransaction<T>, change: FlowChange) -> crate::Result<()> {
-		let mut diffs_by_source = HashMap::new();
-
-		for diff in change.diffs {
-			let source = diff.source();
-			diffs_by_source.entry(source).or_insert_with(Vec::new).push(diff);
-		}
-
-		for (source, diffs) in diffs_by_source {
-			if let Some(node_registrations) = self.sources.get(&source) {
-				for (flow_id, node_id) in node_registrations {
-					if let Some(flow) = self.flows.get(flow_id) {
-						if let Some(node) = flow.get_node(node_id) {
-							self.process_node(
-								txn,
-								flow,
-								node,
-								FlowChange {
-									diffs: diffs.clone(),
-								},
-							)?;
+		match change.origin {
+			FlowChangeOrigin::External(source) => {
+				if let Some(node_registrations) = self.sources.get(&source) {
+					for (flow_id, node_id) in node_registrations {
+						if let Some(flow) = self.flows.get(flow_id) {
+							if let Some(node) = flow.get_node(node_id) {
+								self.process_node(
+									txn,
+									flow,
+									node,
+									FlowChange::internal(
+										*node_id,
+										change.diffs.clone(),
+									),
+								)?;
+							}
 						}
 					}
 				}
 			}
+			_ => unreachable!(),
 		}
 		Ok(())
 	}

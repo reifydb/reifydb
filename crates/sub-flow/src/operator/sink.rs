@@ -3,25 +3,33 @@
 
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
-	interface::{EncodableKey, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId, Transaction},
+	interface::{
+		EncodableKey, FlowNodeId, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId, Transaction,
+	},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
 use crate::Operator;
 
 pub struct SinkViewOperator {
+	node: FlowNodeId,
 	view: ResolvedView<'static>,
 }
 
 impl SinkViewOperator {
-	pub fn new(view: ResolvedView<'static>) -> Self {
+	pub fn new(node: FlowNodeId, view: ResolvedView<'static>) -> Self {
 		Self {
+			node,
 			view,
 		}
 	}
 }
 
 impl<T: Transaction> Operator<T> for SinkViewOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
@@ -87,6 +95,6 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 			}
 		}
 
-		Ok(change)
+		Ok(FlowChange::internal(self.node, change.diffs))
 	}
 }

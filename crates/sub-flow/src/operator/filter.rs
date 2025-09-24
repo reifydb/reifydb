@@ -1,6 +1,6 @@
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
-	interface::{RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
+	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
 	value::row::Row,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
@@ -12,18 +12,24 @@ use crate::operator::Operator;
 static EMPTY_PARAMS: Params = Params::None;
 
 pub struct FilterOperator {
+	node: FlowNodeId,
 	conditions: Vec<Expression<'static>>,
 }
 
 impl FilterOperator {
-	pub fn new(conditions: Vec<Expression<'static>>) -> Self {
+	pub fn new(node: FlowNodeId, conditions: Vec<Expression<'static>>) -> Self {
 		Self {
+			node,
 			conditions,
 		}
 	}
 }
 
 impl<T: Transaction> Operator<T> for FilterOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
 	fn apply(
 		&self,
 		_txn: &mut StandardCommandTransaction<T>,
@@ -35,18 +41,15 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					source,
 					post,
 				} => {
 					if self.evaluate_row(&post, evaluator)? {
 						result.push(FlowDiff::Insert {
-							source,
 							post,
 						});
 					}
 				}
 				FlowDiff::Update {
-					source,
 					pre,
 					post,
 				} => {
@@ -54,32 +57,28 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 					if self.evaluate_row(&post, evaluator)? {
 						// Row still matches filter after update
 						result.push(FlowDiff::Update {
-							source,
 							pre,
 							post,
 						});
 					} else {
 						// Row no longer matches filter - emit a remove
 						result.push(FlowDiff::Remove {
-							source,
 							pre,
 						});
 					}
 				}
 				FlowDiff::Remove {
-					source,
 					pre,
 				} => {
 					// Always pass through removes
 					result.push(FlowDiff::Remove {
-						source,
 						pre,
 					});
 				}
 			}
 		}
 
-		Ok(FlowChange::new(result))
+		Ok(FlowChange::internal(self.node, result))
 	}
 }
 

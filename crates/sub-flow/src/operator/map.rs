@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
-	interface::{RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
+	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
 	value::row::{EncodedRowNamedLayout, Row},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
@@ -15,18 +15,24 @@ use crate::Operator;
 static EMPTY_PARAMS: Params = Params::None;
 
 pub struct MapOperator {
+	node: FlowNodeId,
 	expressions: Vec<Expression<'static>>,
 }
 
 impl MapOperator {
-	pub fn new(expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
 		Self {
+			node,
 			expressions,
 		}
 	}
 }
 
 impl<T: Transaction> Operator<T> for MapOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
 	fn apply(
 		&self,
 		_txn: &mut StandardCommandTransaction<T>,
@@ -38,39 +44,33 @@ impl<T: Transaction> Operator<T> for MapOperator {
 		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					source,
 					post,
 				} => {
 					result.push(FlowDiff::Insert {
-						source,
 						post: self.project_row(&post, evaluator)?,
 					});
 				}
 				FlowDiff::Update {
-					source,
 					pre,
 					post,
 				} => {
 					result.push(FlowDiff::Update {
-						source,
 						pre,
 						post: self.project_row(&post, evaluator)?,
 					});
 				}
 				FlowDiff::Remove {
-					source,
 					pre,
 				} => {
 					// pass through
 					result.push(FlowDiff::Remove {
-						source,
 						pre,
 					});
 				}
 			}
 		}
 
-		Ok(FlowChange::new(result))
+		Ok(FlowChange::internal(self.node, result))
 	}
 }
 

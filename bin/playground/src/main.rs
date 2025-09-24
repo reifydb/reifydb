@@ -32,6 +32,10 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 struct MyOP;
 
 impl<T: Transaction> Operator<T> for MyOP {
+	fn id(&self) -> FlowNodeId {
+		FlowNodeId(12345)
+	}
+
 	fn apply(
 		&self,
 		_txn: &mut StandardCommandTransaction<T>,
@@ -39,15 +43,11 @@ impl<T: Transaction> Operator<T> for MyOP {
 		_evaluator: &StandardRowEvaluator,
 	) -> reifydb::Result<FlowChange> {
 		println!("INVOKED");
-		Ok(change)
+		Ok(FlowChange::internal(FlowNodeId(12345), change.diffs))
 	}
 }
 
-impl<T: Transaction> TransformOperator<T> for MyOP {
-	fn id(&self) -> FlowNodeId {
-		FlowNodeId(12345)
-	}
-}
+impl<T: Transaction> TransformOperator<T> for MyOP {}
 
 fn flow_configuration<T: Transaction>(flow: FlowBuilder<T>) -> FlowBuilder<T> {
 	flow.register_operator("test".to_string(), |_node, _exprs| Ok(Box::new(MyOP {})))

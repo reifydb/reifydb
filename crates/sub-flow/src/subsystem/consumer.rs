@@ -119,21 +119,24 @@ impl<T: Transaction> FlowConsumer<T> {
 			flow_engine.register(txn, flow)?;
 		}
 
-		// Process changes in order, without grouping
-		let mut diffs = Vec::new();
+		// Group changes by source
+		let mut diffs_by_source: std::collections::HashMap<SourceId, Vec<FlowDiff>> =
+			std::collections::HashMap::new();
 
 		for change in changes {
-			let diff = match change {
+			let (source_id, diff) = match change {
 				Change::Insert {
 					source_id,
 					row_number,
 					post,
 				} => {
 					let row = Self::to_row(txn, source_id, row_number, post)?;
-					FlowDiff::Insert {
-						source: source_id,
-						post: row,
-					}
+					(
+						source_id,
+						FlowDiff::Insert {
+							post: row,
+						},
+					)
 				}
 				Change::Update {
 					source_id,
@@ -143,11 +146,13 @@ impl<T: Transaction> FlowConsumer<T> {
 				} => {
 					let pre_row = Self::to_row(txn, source_id, row_number, pre)?;
 					let post_row = Self::to_row(txn, source_id, row_number, post)?;
-					FlowDiff::Update {
-						source: source_id,
-						pre: pre_row,
-						post: post_row,
-					}
+					(
+						source_id,
+						FlowDiff::Update {
+							pre: pre_row,
+							post: post_row,
+						},
+					)
 				}
 				Change::Delete {
 					source_id,
@@ -155,17 +160,20 @@ impl<T: Transaction> FlowConsumer<T> {
 					pre,
 				} => {
 					let row = Self::to_row(txn, source_id, row_number, pre)?;
-					FlowDiff::Remove {
-						source: source_id,
-						pre: row,
-					}
+					(
+						source_id,
+						FlowDiff::Remove {
+							pre: row,
+						},
+					)
 				}
 			};
-			diffs.push(diff);
+			diffs_by_source.entry(source_id).or_insert_with(Vec::new).push(diff);
 		}
 
-		if !diffs.is_empty() {
-			let change = FlowChange::new(diffs);
+		// Process each source group
+		for (source, diffs) in diffs_by_source {
+			let change = FlowChange::external(source, diffs);
 			flow_engine.process(txn, change)?;
 		}
 

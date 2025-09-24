@@ -3,25 +3,31 @@
 
 use reifydb_core::{
 	flow::FlowChange,
-	interface::{Transaction, expression::Expression},
+	interface::{FlowNodeId, Transaction, expression::Expression},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
 use crate::Operator;
 
 pub struct ExtendOperator {
+	node: FlowNodeId,
 	expressions: Vec<Expression<'static>>,
 }
 
 impl ExtendOperator {
-	pub fn new(expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
 		Self {
+			node,
 			expressions,
 		}
 	}
 }
 
 impl<T: Transaction> Operator<T> for ExtendOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
 	fn apply(
 		&self,
 		_txn: &mut StandardCommandTransaction<T>,
@@ -29,7 +35,7 @@ impl<T: Transaction> Operator<T> for ExtendOperator {
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		// TODO: Implement single-row extend processing
-		// For now, just pass through all changes
-		Ok(change)
+		// For now, just pass through all changes with updated from
+		Ok(FlowChange::internal(self.node, change.diffs))
 	}
 }

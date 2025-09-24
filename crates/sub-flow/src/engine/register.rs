@@ -60,28 +60,30 @@ impl<T: Transaction> FlowEngine<T> {
 				self.add_sink(flow.id, node.id, SourceId::view(*view));
 				self.operators.insert(
 					node.id,
-					Operators::SinkView(SinkViewOperator::new(resolve_view(txn, view)?)),
+					Operators::SinkView(SinkViewOperator::new(node.id, resolve_view(txn, view)?)),
 				);
 			}
 			Filter {
 				conditions,
 			} => {
-				self.operators.insert(node.id, Operators::Filter(FilterOperator::new(conditions)));
+				self.operators
+					.insert(node.id, Operators::Filter(FilterOperator::new(node.id, conditions)));
 			}
 			Map {
 				expressions,
 			} => {
-				self.operators.insert(node.id, Operators::Map(MapOperator::new(expressions)));
+				self.operators.insert(node.id, Operators::Map(MapOperator::new(node.id, expressions)));
 			}
 			Extend {
 				expressions,
 			} => {
-				self.operators.insert(node.id, Operators::Extend(ExtendOperator::new(expressions)));
+				self.operators
+					.insert(node.id, Operators::Extend(ExtendOperator::new(node.id, expressions)));
 			}
 			Sort {
 				by: _,
 			} => {
-				self.operators.insert(node.id, Operators::Sort(SortOperator::new(Vec::new())));
+				self.operators.insert(node.id, Operators::Sort(SortOperator::new(node.id, Vec::new())));
 			}
 			Take {
 				limit,

@@ -85,6 +85,10 @@ pub mod test {
 	}
 
 	impl Operator<TestTransaction> for TestOperator {
+		fn id(&self) -> FlowNodeId {
+			self.id
+		}
+
 		fn apply(
 			&self,
 			txn: &mut StandardCommandTransaction<TestTransaction>,
@@ -95,11 +99,7 @@ pub mod test {
 		}
 	}
 
-	impl TransformOperator<TestTransaction> for TestOperator {
-		fn id(&self) -> FlowNodeId {
-			self.id
-		}
-	}
+	impl TransformOperator<TestTransaction> for TestOperator {}
 
 	/// Helper to create test values
 	pub fn test_values() -> Vec<Value> {

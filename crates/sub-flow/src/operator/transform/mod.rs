@@ -8,9 +8,7 @@ use crate::operator::Operator;
 pub mod registry;
 pub mod stateful;
 
-pub trait TransformOperator<T: Transaction>: Operator<T> {
-	fn id(&self) -> FlowNodeId;
-}
+pub trait TransformOperator<T: Transaction>: Operator<T> {}
 
 pub trait TransformOperatorFactory<T: Transaction>: Send + Sync {
 	fn create_from_expressions(
