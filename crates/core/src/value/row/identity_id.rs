@@ -12,7 +12,7 @@ impl EncodedRowLayout {
 	pub fn set_identity_id(&self, row: &mut EncodedRow, index: usize, value: IdentityId) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::IdentityId);
+		debug_assert_eq!(field.r#type, Type::IdentityId);
 		row.set_valid(index, true);
 		unsafe {
 			// IdentityId wraps Uuid7 which is 16 bytes
@@ -26,7 +26,7 @@ impl EncodedRowLayout {
 	pub fn get_identity_id(&self, row: &EncodedRow, index: usize) -> IdentityId {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::IdentityId);
+		debug_assert_eq!(field.r#type, Type::IdentityId);
 		unsafe {
 			// IdentityId wraps Uuid7 which is 16 bytes
 			let bytes: [u8; 16] = ptr::read_unaligned(row.as_ptr().add(field.offset) as *const [u8; 16]);

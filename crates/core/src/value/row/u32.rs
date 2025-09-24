@@ -11,7 +11,7 @@ impl EncodedRowLayout {
 	pub fn set_u32(&self, row: &mut EncodedRow, index: usize, value: impl Into<u32>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Uint4);
+		debug_assert_eq!(field.r#type, Type::Uint4);
 		row.set_valid(index, true);
 		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut u32, value.into()) }
 	}
@@ -19,7 +19,7 @@ impl EncodedRowLayout {
 	pub fn get_u32(&self, row: &EncodedRow, index: usize) -> u32 {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Uint4);
+		debug_assert_eq!(field.r#type, Type::Uint4);
 		unsafe { (row.as_ptr().add(field.offset) as *const u32).read_unaligned() }
 	}
 

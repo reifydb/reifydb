@@ -8,7 +8,7 @@ use crate::value::row::{EncodedRow, EncodedRowLayout};
 impl EncodedRowLayout {
 	pub fn set_blob(&self, row: &mut EncodedRow, index: usize, value: &Blob) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Blob);
+		debug_assert_eq!(field.r#type, Type::Blob);
 		debug_assert!(!row.is_defined(index), "BLOB field {} already set", index);
 
 		let bytes = value.as_bytes();
@@ -31,7 +31,7 @@ impl EncodedRowLayout {
 
 	pub fn get_blob(&self, row: &EncodedRow, index: usize) -> Blob {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Blob);
+		debug_assert_eq!(field.r#type, Type::Blob);
 
 		// Read offset and length from static section
 		let ref_slice = &row.as_slice()[field.offset..field.offset + 8];

@@ -41,7 +41,7 @@ impl SerializedRow {
 			number: row.number,
 			encoded_bytes: row.encoded.as_slice().to_vec(),
 			field_names: row.layout.names().to_vec(),
-			field_types: row.layout.fields.iter().map(|f| f.value).collect(),
+			field_types: row.layout.fields.iter().map(|f| f.r#type).collect(),
 		}
 	}
 

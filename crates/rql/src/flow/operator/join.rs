@@ -4,7 +4,6 @@
 use JoinType::{Inner, Left};
 use reifydb_core::{
 	JoinType,
-	flow::FlowNodeType::Join,
 	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
 };
 

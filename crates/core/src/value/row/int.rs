@@ -29,7 +29,7 @@ impl EncodedRowLayout {
 	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_int(&self, row: &mut EncodedRow, index: usize, value: &Int) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Int);
+		debug_assert_eq!(field.r#type, Type::Int);
 
 		// Try i128 inline storage first (fits in 127 bits)
 		if let Some(i128_val) = value.0.to_i128() {
@@ -74,7 +74,7 @@ impl EncodedRowLayout {
 	/// Get a Int value, detecting storage mode from MSB
 	pub fn get_int(&self, row: &EncodedRow, index: usize) -> Int {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Int);
+		debug_assert_eq!(field.r#type, Type::Int);
 
 		let packed = unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);

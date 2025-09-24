@@ -39,7 +39,7 @@ pub struct Field {
 	pub offset: usize,
 	pub size: usize,
 	pub align: usize,
-	pub value: Type,
+	pub r#type: Type,
 }
 
 impl EncodedRowLayoutInner {
@@ -62,7 +62,7 @@ impl EncodedRowLayoutInner {
 				offset,
 				size,
 				align,
-				value,
+				r#type: value,
 			});
 
 			offset += size;
@@ -150,12 +150,12 @@ impl EncodedRowLayoutInner {
 	}
 
 	pub fn value(&self, index: usize) -> Type {
-		self.fields[index].value
+		self.fields[index].r#type
 	}
 }
 
 fn align_up(offset: usize, align: usize) -> usize {
-	(offset + align - 1) & !(align - 1)
+	(offset + align).saturating_sub(1) & !(align.saturating_sub(1))
 }
 
 #[cfg(test)]
@@ -181,9 +181,9 @@ mod tests {
 			assert_eq!(layout.bitvec_size, 1); // 3 fields = 1 byte
 			assert_eq!(layout.fields.len(), 3);
 
-			assert_eq!(layout.fields[0].value, Type::Int1);
-			assert_eq!(layout.fields[1].value, Type::Int2);
-			assert_eq!(layout.fields[2].value, Type::Int4);
+			assert_eq!(layout.fields[0].r#type, Type::Int1);
+			assert_eq!(layout.fields[1].r#type, Type::Int2);
+			assert_eq!(layout.fields[2].r#type, Type::Int4);
 
 			assert_eq!(layout.fields[0].offset, 1);
 			assert_eq!(layout.fields[1].offset, 2);

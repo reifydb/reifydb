@@ -3,7 +3,7 @@
 
 use reifydb_type::return_internal_error;
 
-use crate::interface::{FlowNodeId, IndexId, PrimaryKeyId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId};
+use crate::interface::{IndexId, PrimaryKeyId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId};
 
 /// Serialize a SourceId for use in database keys
 /// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for

@@ -52,7 +52,7 @@ impl<'a> Columns<'a> {
 		}
 
 		let rows: Vec<EncodedRow> = rows.into_iter().collect();
-		let values = layout.fields.iter().map(|f| f.value.clone()).collect::<Vec<_>>();
+		let values = layout.fields.iter().map(|f| f.r#type.clone()).collect::<Vec<_>>();
 		let layout = EncodedRowLayout::new(&values);
 
 		// if there is an undefined column and the new data contains

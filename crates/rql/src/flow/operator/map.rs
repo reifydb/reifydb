@@ -30,7 +30,7 @@ impl<'a> From<MapNode<'a>> for MapCompiler {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for MapCompiler {
-	fn compile(mut self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let input_node = if let Some(input) = self.input {
 			Some(compiler.compile_plan(*input)?)
 		} else {

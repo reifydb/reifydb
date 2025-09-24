@@ -26,37 +26,7 @@ impl<T: Transaction> FlowEngine<T> {
 
 		for node_id in flow.get_node_ids() {
 			let node = flow.get_node(&node_id).unwrap();
-
-			self.add(txn, &flow, node);
-
-			// match &node.ty {
-			// 	SourceInlineData {} => {
-			// 		unimplemented!()
-			// 	}
-			// 	SourceTable {
-			// 		table,
-			// 		..
-			// 	} => {
-			// 		self.add_source(flow.id, node_id, SourceId::from(*table));
-			// 	}
-			// 	SourceView {
-			// 		view,
-			// 		..
-			// 	} => {
-			// 		self.add_source(flow.id, node_id, SourceId::from(*view));
-			// 	}
-			// 	FlowNodeType::Operator {
-			// 		operator,
-			// 	} => {
-			// 		self.add(txn, flow.id, node_id, operator)?;
-			// 	}
-			// 	SinkView {
-			// 		view,
-			// 		..
-			// 	} => {
-			// 		self.add_sink(flow.id, node_id, SourceId::from(*view));
-			// 	}
-			// }
+			self.add(txn, &flow, node)?;
 		}
 
 		self.flows.insert(flow.id, flow);

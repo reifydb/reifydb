@@ -278,7 +278,7 @@ impl ColumnData {
 			Type::Uint => Self::uint_with_capacity(capacity),
 			Type::Decimal => Self::decimal_with_capacity(capacity),
 			Type::Undefined => panic!(
-				"it is not possible to create an undefined container with capacity without setting the values alread"
+				"it is not possible to create an undefined container with capacity without setting the type already"
 			),
 		}
 	}

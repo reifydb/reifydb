@@ -11,7 +11,7 @@ impl EncodedRowLayout {
 	pub fn set_f64(&self, row: &mut EncodedRow, index: usize, value: impl Into<f64>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Float8);
+		debug_assert_eq!(field.r#type, Type::Float8);
 		row.set_valid(index, true);
 		unsafe { ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut f64, value.into()) }
 	}
@@ -19,7 +19,7 @@ impl EncodedRowLayout {
 	pub fn get_f64(&self, row: &EncodedRow, index: usize) -> f64 {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Float8);
+		debug_assert_eq!(field.r#type, Type::Float8);
 		unsafe { (row.as_ptr().add(field.offset) as *const f64).read_unaligned() }
 	}
 

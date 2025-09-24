@@ -19,31 +19,6 @@ pub struct TypeConstraint {
 	constraint: Option<Constraint>,
 }
 
-pub trait NamedTypeConstraint {
-	fn get_name(&self) -> &str;
-	fn get_constraint(&self) -> TypeConstraint;
-}
-
-impl NamedTypeConstraint for (&str, Type) {
-	fn get_name(&self) -> &str {
-		self.0
-	}
-
-	fn get_constraint(&self) -> TypeConstraint {
-		TypeConstraint::unconstrained(self.1)
-	}
-}
-
-impl NamedTypeConstraint for (String, Type) {
-	fn get_name(&self) -> &str {
-		self.0.as_str()
-	}
-
-	fn get_constraint(&self) -> TypeConstraint {
-		TypeConstraint::unconstrained(self.1)
-	}
-}
-
 /// Constraint types for different data types
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Constraint {

@@ -11,7 +11,7 @@ impl EncodedRowLayout {
 	pub fn set_date(&self, row: &mut EncodedRow, index: usize, value: Date) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Date);
+		debug_assert_eq!(field.r#type, Type::Date);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,7 +24,7 @@ impl EncodedRowLayout {
 	pub fn get_date(&self, row: &EncodedRow, index: usize) -> Date {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Date);
+		debug_assert_eq!(field.r#type, Type::Date);
 		unsafe {
 			Date::from_days_since_epoch((row.as_ptr().add(field.offset) as *const i32).read_unaligned())
 				.unwrap()

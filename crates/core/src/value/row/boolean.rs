@@ -11,7 +11,7 @@ impl EncodedRowLayout {
 	pub fn set_bool(&self, row: &mut EncodedRow, index: usize, value: impl Into<bool>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Boolean);
+		debug_assert_eq!(field.r#type, Type::Boolean);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(row.make_mut().as_mut_ptr().add(field.offset) as *mut bool, value.into())
@@ -21,7 +21,7 @@ impl EncodedRowLayout {
 	pub fn get_bool(&self, row: &EncodedRow, index: usize) -> bool {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Boolean);
+		debug_assert_eq!(field.r#type, Type::Boolean);
 		unsafe { (row.as_ptr().add(field.offset) as *const bool).read_unaligned() }
 	}
 

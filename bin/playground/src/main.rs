@@ -3,28 +3,19 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{
-	sync::{
-		Arc,
-		atomic::{AtomicUsize, Ordering::Relaxed},
-	},
-	thread::sleep,
-	time::Duration,
-};
+use std::{thread::sleep, time::Duration};
 
 use reifydb::{
-	Identity, MemoryDatabaseOptimistic, WithSubsystem,
+	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
 	core::{
 		flow::FlowChange,
-		interface::{Engine, FlowNodeId, Transaction, logging::LogLevel::Info},
+		interface::{FlowNodeId, Transaction, logging::LogLevel::Info},
 	},
 	embedded,
 	engine::{StandardCommandTransaction, StandardRowEvaluator},
 	log_info,
-	sub::task,
 	sub_flow::{FlowBuilder, Operator, TransformOperator},
 	sub_logging::{FormatStyle, LoggingBuilder},
-	r#type::params,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
@@ -70,30 +61,81 @@ fn main() {
 		.build()
 		.unwrap();
 
-	// Schedule a background task that prints every 2 seconds
-	let counter = Arc::new(AtomicUsize::new(0));
-	let counter_clone = counter.clone();
-
-	let task = task!(Low, "periodic_printer", move |ctx| {
-		let frames = ctx
-			.engine()
-			.query_as(&Identity::root(), "MAP $1", params![counter.load(Relaxed) as u8])
-			.unwrap();
-		for frame in frames {
-			println!("{}", frame);
-		}
-
-		let count = counter_clone.fetch_add(1, Relaxed);
-		log_info!("Background task execution #{}", count + 1);
-		Ok(())
-	});
-
-	let _handle = db.scheduler().schedule_every(task, Duration::from_secs(2)).unwrap();
-
 	db.start().unwrap();
 
+	// Create namespace
+	log_info!("Creating namespace test...");
+	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
+
+	// Create source table
+	log_info!("Creating table test.source...");
+	db.command_as_root(
+		r#"
+		create table test.source { 
+			id: int4,
+			value: int4,
+			multiplier: int4,
+			name: utf8
+		}
+	"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Create deferred view
+	log_info!("Creating deferred view test.with_undefined...");
+	db.command_as_root(
+		r#"
+		create deferred view test.with_undefined { 
+			id: int4,
+			result: int4,
+			name: utf8,
+			has_value: bool
+		} as {
+			from test.source
+			map { 
+				id,
+				value * multiplier as result,
+				name,
+				value != undefined as has_value
+			}
+		}
+	"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Insert data with undefined values
+	log_info!("Inserting data with undefined values...");
+	db.command_as_root(
+		r#"
+		from [
+			{id: 1, value: 10, multiplier: 2, name: "First"},
+			{id: 2, value: undefined, multiplier: 3, name: "Second"},
+			{id: 3, value: 5, multiplier: undefined, name: "Third"},
+			{id: 4, value: 8, multiplier: 4, name: undefined}
+		] insert test.source
+	"#,
+		Params::None,
+	)
+	.unwrap();
+
 	// Let the background task run for a while
-	log_info!("Letting background task run for 7 seconds...");
-	sleep(Duration::from_secs(7));
+	sleep(Duration::from_secs(1));
+
+	// Query the source table
+	log_info!("Querying test.source...");
+	let result = db.query_as_root("from test.source", Params::None).unwrap();
+	for frame in result {
+		println!("Source data:\n{}", frame);
+	}
+
+	// Query the view
+	log_info!("Querying test.with_undefined...");
+	let result = db.query_as_root("from test.with_undefined", Params::None).unwrap();
+	for frame in result {
+		println!("View data:\n{}", frame);
+	}
+
 	log_info!("Shutting down...");
 }

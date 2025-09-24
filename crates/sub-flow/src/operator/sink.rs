@@ -3,9 +3,7 @@
 
 use reifydb_core::{
 	flow::{FlowChange, FlowDiff},
-	interface::{
-		EncodableKey, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId, Transaction, ViewId,
-	},
+	interface::{EncodableKey, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId, Transaction},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
@@ -28,10 +26,10 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		_evaluator: &StandardRowEvaluator,
+		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		// For now, we just directly write the row to the view
-		// TODO: This assumes source and view layouts are compatible - Maybe needs to be transformed
+		// Transform rows to match the view's schema before writing
+		let target_columns = self.view.columns();
 
 		for diff in &change.diffs {
 			match diff {
@@ -39,8 +37,11 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 					post: row_data,
 					..
 				} => {
-					let row_id = row_data.number;
-					let row = row_data.encoded.clone();
+					// Transform the row to match the view schema
+					let transformed_row = evaluator.coerce(row_data, target_columns)?;
+
+					let row_id = transformed_row.number;
+					let row = transformed_row.encoded;
 
 					let key = RowKey {
 						source: SourceId::view(self.view.def().id),
@@ -55,8 +56,11 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 					post: row_data,
 					..
 				} => {
-					let row_id = row_data.number;
-					let new_row = row_data.encoded.clone();
+					// Transform the row to match the view schema
+					let transformed_row = evaluator.coerce(row_data, target_columns)?;
+
+					let row_id = transformed_row.number;
+					let new_row = transformed_row.encoded;
 
 					let key = RowKey {
 						source: SourceId::view(self.view.def().id),

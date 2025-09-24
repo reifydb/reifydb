@@ -3,15 +3,16 @@
 
 pub(crate) use reifydb_core::interface::{RowEvaluationContext, RowEvaluator};
 use reifydb_core::{
-	interface::{ColumnEvaluationContext, ColumnEvaluator, expression::Expression},
+	interface::{ColumnDef, ColumnEvaluationContext, ColumnEvaluator, expression::Expression},
 	value::{
 		column::{Column, ColumnComputed, ColumnData, Columns},
 		container::NumberContainer,
+		row::{EncodedRowNamedLayout, Row},
 	},
 };
-use reifydb_type::{Error, Fragment, ROW_NUMBER_COLUMN_NAME, Value, internal_error};
+use reifydb_type::{Error, Fragment, Params, ROW_NUMBER_COLUMN_NAME, Type, Value, internal_error};
 
-use crate::evaluate::column::StandardColumnEvaluator;
+use crate::evaluate::column::{StandardColumnEvaluator, cast};
 
 pub struct StandardRowEvaluator {
 	evaluator: StandardColumnEvaluator,
@@ -46,16 +47,16 @@ impl RowEvaluator for StandardRowEvaluator {
 			// FIXME maybe some auto conversion needs to happen here
 			// Allow undefined values in any field type
 			debug_assert!(
-				field.value == value.get_type() || value.get_type() == reifydb_type::Type::Undefined,
+				field.r#type == value.get_type() || value.get_type() == reifydb_type::Type::Undefined,
 				"Type mismatch: field expects {:?}, got {:?}",
-				field.value,
+				field.r#type,
 				value.get_type()
 			);
 
 			// Use the field type for the column data, not the value type
 			// This ensures undefined values are handled correctly
 			let column_type = if value.get_type() == reifydb_type::Type::Undefined {
-				field.value
+				field.r#type
 			} else {
 				value.get_type()
 			};
@@ -83,5 +84,72 @@ impl RowEvaluator for StandardRowEvaluator {
 		let result = self.evaluator.evaluate(&ctx, &expr)?;
 
 		Ok(result.data().get_value(0))
+	}
+}
+
+impl StandardRowEvaluator {
+	pub fn coerce(&self, row: &Row, target_columns: &[ColumnDef]) -> crate::Result<Row> {
+		let mut source_columns = Vec::new();
+
+		for (idx, field) in row.layout.fields.iter().enumerate() {
+			let value = row.layout.get_value(&row.encoded, idx);
+
+			let mut data = if field.r#type == Type::Undefined {
+				ColumnData::undefined(0)
+			} else {
+				ColumnData::with_capacity(field.r#type, 1)
+			};
+			data.push_value(value);
+
+			let name = row.layout.get_name(idx).ok_or_else(|| {
+				Error(internal_error!("EncodedRowNamedLayout missing name for field at index {}", idx))
+			})?;
+
+			source_columns.push(Column::Computed(ColumnComputed {
+				name: Fragment::owned_internal(name),
+				data,
+			}));
+		}
+
+		let ctx = ColumnEvaluationContext {
+			target: None,
+			columns: Columns::new(source_columns),
+			row_count: 1,
+			take: None,
+			params: &Params::None,
+		};
+
+		let mut values = Vec::with_capacity(target_columns.len());
+		let mut names = Vec::with_capacity(target_columns.len());
+		let mut types = Vec::with_capacity(target_columns.len());
+
+		for (idx, target_col) in target_columns.iter().enumerate() {
+			let source_column = ctx.columns.iter().nth(idx).ok_or_else(|| {
+				Error(internal_error!(
+					"Not enough source columns: expected {} but got {}",
+					idx + 1,
+					ctx.columns.len()
+				))
+			})?;
+
+			let r#type = target_col.constraint.get_type();
+
+			let lazy_frag = Fragment::owned_internal(&target_col.name);
+
+			let coerced = cast::cast_column_data(&ctx, source_column.data(), r#type, &lazy_frag)?;
+			values.push(coerced.get_value(0));
+			names.push(target_col.name.clone());
+			types.push(r#type);
+		}
+
+		let layout = EncodedRowNamedLayout::new(names.into_iter().zip(types.into_iter()));
+		let mut encoded = layout.allocate_row();
+		layout.set_values(&mut encoded, &values);
+
+		Ok(Row {
+			number: row.number,
+			encoded,
+			layout,
+		})
 	}
 }

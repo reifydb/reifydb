@@ -11,7 +11,7 @@ impl EncodedRowLayout {
 	pub fn set_datetime(&self, row: &mut EncodedRow, index: usize, value: DateTime) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::DateTime);
+		debug_assert_eq!(field.r#type, Type::DateTime);
 		row.set_valid(index, true);
 
 		let (seconds, nanos) = value.to_parts();
@@ -26,7 +26,7 @@ impl EncodedRowLayout {
 	pub fn get_datetime(&self, row: &EncodedRow, index: usize) -> DateTime {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::DateTime);
+		debug_assert_eq!(field.r#type, Type::DateTime);
 		unsafe {
 			// Read i64 seconds at offset
 			let seconds = (row.as_ptr().add(field.offset) as *const i64).read_unaligned();
