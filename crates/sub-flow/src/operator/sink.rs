@@ -36,8 +36,16 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
+		println!(
+			"SINK[{:?}]: Applying change with {} diffs from {:?}",
+			self.node,
+			change.diffs.len(),
+			change.origin
+		);
+
 		// Transform rows to match the view's schema before writing
 		let target_columns = self.view.columns();
+		println!("SINK[{:?}]: Target view has {} columns", self.node, target_columns.len());
 
 		for (i, diff) in change.diffs.iter().enumerate() {
 			match diff {
@@ -45,8 +53,19 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 					post: row_data,
 					..
 				} => {
+					println!(
+						"SINK[{:?}]: Processing INSERT[{}] with {} input columns",
+						self.node,
+						i,
+						row_data.layout.fields.len()
+					);
 					// Transform the row to match the view schema
 					let transformed_row = evaluator.coerce(row_data, target_columns)?;
+					println!(
+						"SINK[{:?}]: Coerced to {} output columns",
+						self.node,
+						transformed_row.layout.fields.len()
+					);
 
 					let row_id = transformed_row.number;
 					let row = transformed_row.encoded;
@@ -95,6 +114,7 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 			}
 		}
 
+		println!("SINK[{:?}]: Completed processing, sink is terminal", self.node);
 		// Sink is a terminal node - don't propagate changes further
 		Ok(FlowChange::internal(self.node, Vec::new()))
 	}

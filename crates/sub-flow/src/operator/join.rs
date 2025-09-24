@@ -287,50 +287,6 @@ impl JoinOperator {
 		Ok(hash)
 	}
 
-	fn create_null_right_row(&self, layout: &JoinLayout) -> Row {
-		// Create a row with undefined/null values for all right columns
-		let mut combined_types = Vec::new();
-		let mut combined_names = Vec::new();
-
-		// If we don't have right schema yet, we need to use placeholder types
-		// We'll use Type::Utf8 as a safe default that can hold undefined values
-		if layout.right_names.is_empty() {
-			// Use placeholder columns that will all be undefined
-			// We need at least some columns for the join result
-			combined_names.push("customer_id".to_string());
-			combined_types.push(Type::Int4);
-			combined_names.push("name".to_string());
-			combined_types.push(Type::Utf8);
-			combined_names.push("city".to_string());
-			combined_types.push(Type::Utf8);
-		} else {
-			// Use the actual types from the right schema
-			for (name, ty) in layout.right_names.iter().zip(layout.right_types.iter()) {
-				combined_names.push(name.clone());
-				// Use the actual type, or a safe default if it's Undefined
-				let safe_type = if *ty == Type::Undefined {
-					Type::Utf8 // Safe type that can hold undefined
-				} else {
-					*ty
-				};
-				combined_types.push(safe_type);
-			}
-		}
-
-		let fields: Vec<(String, Type)> = combined_names.into_iter().zip(combined_types.into_iter()).collect();
-		let row_layout = EncodedRowNamedLayout::new(fields);
-		let encoded_row = row_layout.allocate_row();
-
-		// All fields are left as undefined (not set) - this is different from Type::Undefined
-		// The fields exist with proper types but their values are not defined
-
-		Row {
-			number: RowNumber::default(),
-			encoded: encoded_row,
-			layout: row_layout,
-		}
-	}
-
 	fn join_rows(&self, left: &Row, right: &Row) -> Row {
 		// Combine the two rows into a single row
 		// Prefix column names with source to handle naming conflicts
@@ -473,9 +429,17 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
+		println!(
+			"JOIN[{:?}]: Applying change with {} diffs from {:?}",
+			self.node,
+			change.diffs.len(),
+			change.origin
+		);
+
 		// Check for self-referential calls (should never happen)
 		if let FlowChangeOrigin::Internal(from_node) = &change.origin {
 			if *from_node == self.node {
+				println!("JOIN[{:?}]: Self-referential call, returning empty", self.node);
 				return Ok(FlowChange::internal(self.node, Vec::new()));
 			}
 		}
@@ -483,10 +447,19 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		let mut state = self.load_join_state(txn)?;
 		let mut result = Vec::new();
 
+		println!(
+			"JOIN[{:?}]: Loaded state - left_entries: {}, right_entries: {}",
+			self.node,
+			state.left_entries.len(),
+			state.right_entries.len()
+		);
+
 		// Determine which side this change is from
 		let side = self
 			.determine_side(&change)
 			.ok_or_else(|| Error(internal_error!("Join operator received change from unknown node")))?;
+
+		println!("JOIN[{:?}]: Change from {:?} side", self.node, side);
 
 		let num_diffs = change.diffs.len();
 		for (i, diff) in change.diffs.into_iter().enumerate() {
@@ -524,14 +497,19 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 									});
 								}
 							} else if matches!(self.join_type, JoinType::Left) {
-								// For left join, emit row with null right side
-								let null_right =
-									self.create_null_right_row(&state.layout);
-								let joined_row = self.join_rows(&post, &null_right);
+								// For left join, emit the left row directly
+								println!(
+									"JOIN[{:?}]: LEFT JOIN - No right match, emitting left row directly",
+									self.node
+								);
 								result.push(FlowDiff::Insert {
-									post: joined_row,
+									post: post.clone(),
 								});
 							} else {
+								println!(
+									"JOIN[{:?}]: INNER JOIN - No right match, no output",
+									self.node
+								);
 							}
 						}
 						JoinSide::Right => {
@@ -568,16 +546,10 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 									for left_row_ser in &left_entry.rows {
 										let left_row = left_row_ser
 											.to_left_row(&state.layout);
-										let null_right = self
-											.create_null_right_row(
-												&state.layout,
-											);
-										let null_joined_row = self.join_rows(
-											&left_row,
-											&null_right,
-										);
+										// Remove the left row that was
+										// previously emitted
 										result.push(FlowDiff::Remove {
-											pre: null_joined_row,
+											pre: left_row,
 										});
 									}
 								}
@@ -679,17 +651,10 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 												.to_left_row(
 													&state.layout,
 												);
-											let null_right = self
-												.create_null_right_row(
-													&state.layout,
-												);
-											let joined_row = self
-												.join_rows(
-													&left_row,
-													&null_right,
-												);
+											// Re-add the left row for left
+											// join
 											result.push(FlowDiff::Insert {
-												post: joined_row,
+												post: left_row,
 											});
 										}
 									}
@@ -955,6 +920,44 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		}
 
 		self.save_join_state(txn, &state)?;
+
+		println!("JOIN[{:?}]: Returning {} diffs", self.node, result.len());
+		for (i, diff) in result.iter().enumerate() {
+			match diff {
+				FlowDiff::Insert {
+					post,
+				} => {
+					println!(
+						"JOIN[{:?}]:   Result[{}]: INSERT with {} columns",
+						self.node,
+						i,
+						post.layout.fields.len()
+					);
+				}
+				FlowDiff::Remove {
+					pre,
+				} => {
+					println!(
+						"JOIN[{:?}]:   Result[{}]: REMOVE with {} columns",
+						self.node,
+						i,
+						pre.layout.fields.len()
+					);
+				}
+				FlowDiff::Update {
+					pre,
+					post,
+				} => {
+					println!(
+						"JOIN[{:?}]:   Result[{}]: UPDATE from {} to {} columns",
+						self.node,
+						i,
+						pre.layout.fields.len(),
+						post.layout.fields.len()
+					);
+				}
+			}
+		}
 
 		Ok(FlowChange::internal(self.node, result))
 	}

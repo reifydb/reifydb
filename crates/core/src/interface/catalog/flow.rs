@@ -1,7 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{fmt, ops::Deref};
+use std::{
+	fmt,
+	fmt::{Display, Formatter},
+	ops::Deref,
+};
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
@@ -70,6 +74,12 @@ impl<'de> Deserialize<'de> for FlowId {
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct FlowNodeId(pub u64);
+
+impl Display for FlowNodeId {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		Display::fmt(&self.0, f)
+	}
+}
 
 impl Deref for FlowNodeId {
 	type Target = u64;
