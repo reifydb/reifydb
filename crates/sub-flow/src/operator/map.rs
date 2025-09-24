@@ -41,22 +41,25 @@ impl<T: Transaction> Operator<T> for MapOperator {
 	) -> crate::Result<FlowChange> {
 		let mut result = Vec::new();
 
-		for diff in change.diffs {
+		let num_diffs = change.diffs.len();
+		for (i, diff) in change.diffs.into_iter().enumerate() {
 			match diff {
 				FlowDiff::Insert {
 					post,
 				} => {
+					let projected = self.project_row(&post, evaluator)?;
 					result.push(FlowDiff::Insert {
-						post: self.project_row(&post, evaluator)?,
+						post: projected,
 					});
 				}
 				FlowDiff::Update {
 					pre,
 					post,
 				} => {
+					let projected = self.project_row(&post, evaluator)?;
 					result.push(FlowDiff::Update {
 						pre,
-						post: self.project_row(&post, evaluator)?,
+						post: projected,
 					});
 				}
 				FlowDiff::Remove {
@@ -87,7 +90,43 @@ impl MapOperator {
 		let mut field_types = Vec::with_capacity(self.expressions.len());
 
 		for (i, expr) in self.expressions.iter().enumerate() {
-			let value = evaluator.evaluate(&ctx, expr)?;
+			// Try to evaluate the expression normally first
+			let value = match evaluator.evaluate(&ctx, expr) {
+				Ok(v) => v,
+				Err(e) => {
+					// If it's an AccessSource expression and evaluation failed,
+					// try to evaluate just the column name without the source
+					if let Expression::AccessSource(access_expr) = expr {
+						let col_name = access_expr.column.name.text();
+
+						// Find the column by name in the row
+						let names = row.layout.names();
+						if let Some(col_idx) = names.iter().position(|n| n == col_name) {
+							row.layout.get_value(&row.encoded, col_idx)
+						} else {
+							return Err(e);
+						}
+					} else if let Expression::Alias(alias_expr) = expr {
+						// For alias expressions, try to handle the inner expression
+						if let Expression::AccessSource(access_expr) = &*alias_expr.expression {
+							let col_name = access_expr.column.name.text();
+
+							// Find the column by name in the row
+							let names = row.layout.names();
+							if let Some(col_idx) = names.iter().position(|n| n == col_name)
+							{
+								row.layout.get_value(&row.encoded, col_idx)
+							} else {
+								return Err(e);
+							}
+						} else {
+							return Err(e);
+						}
+					} else {
+						return Err(e);
+					}
+				}
+			};
 
 			values.push(value.clone());
 

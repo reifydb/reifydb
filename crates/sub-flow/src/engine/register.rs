@@ -15,8 +15,8 @@ use reifydb_engine::StandardCommandTransaction;
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		DistinctOperator, ExtendOperator, FilterOperator, MapOperator, Operators, SinkViewOperator,
-		SortOperator, TakeOperator,
+		DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, Operators,
+		SinkViewOperator, SortOperator, TakeOperator,
 	},
 };
 
@@ -95,12 +95,23 @@ impl<T: Transaction> FlowEngine<T> {
 				left,
 				right,
 			} => {
-				// Ok(Operators::Join(
-				// 	JoinOperator::new(node_id, join_type, left, right, left_schema, right_schema)
-				// 		.with_flow_id(flow_id.0)
-				// 		.with_instance_id(node_id.0),
-				// ))
-				unimplemented!()
+				// Find the left and right node IDs from the flow inputs
+				// The join node should have exactly 2 inputs
+				if node.inputs.len() != 2 {
+					return Err(reifydb_core::Error(reifydb_type::internal_error!(
+						"Join node must have exactly 2 inputs"
+					)));
+				}
+
+				let left_node = node.inputs[0];
+				let right_node = node.inputs[1];
+
+				self.operators.insert(
+					node.id,
+					Operators::Join(JoinOperator::new(
+						node.id, join_type, left_node, right_node, left, right,
+					)),
+				);
 			}
 			Distinct {
 				expressions,

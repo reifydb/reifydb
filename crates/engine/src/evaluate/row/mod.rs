@@ -60,7 +60,11 @@ impl RowEvaluator for StandardRowEvaluator {
 			} else {
 				value.get_type()
 			};
-			let mut data = ColumnData::with_capacity(column_type, 1);
+			let mut data = if column_type == Type::Undefined {
+				ColumnData::undefined(0)
+			} else {
+				ColumnData::with_capacity(column_type, 1)
+			};
 			data.push_value(value);
 
 			let name = ctx.row.layout.get_name(idx).ok_or_else(|| {

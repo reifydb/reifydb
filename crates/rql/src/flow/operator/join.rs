@@ -47,28 +47,25 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		// Compile with namespace tracking
-		// let (left_node, left_schema) = compiler.compile_plan_with_definition(*self.left)?;
-		// let (right_node, right_schema) = compiler.compile_plan_with_definition(*self.right)?;
-		//
-		// // Extract left and right keys from the join conditions
-		// let (left_keys, right_keys) = extract_join_keys(&self.on);
-		//
-		// // Merge namespaces for output
-		// let output_schema = FlowNodeDef::merge(&left_schema, &right_schema);
-		//
-		// compiler.build_node(Operator {
-		// 	operator: Join {
-		// 		join_type: self.join_type,
-		// 		left: left_keys,
-		// 		right: right_keys,
-		// 	},
-		// 	input_schemas: vec![left_schema, right_schema],
-		// 	output_schema,
-		// })
-		// .with_inputs([left_node, right_node])
-		// .build()
-		unimplemented!()
+		// Compile left and right plans
+		let left_node = compiler.compile_plan(*self.left)?;
+		let right_node = compiler.compile_plan(*self.right)?;
+
+		// Extract left and right keys from the join conditions
+		let (left_keys, right_keys) = extract_join_keys(&self.on);
+
+		// Build the join node with the appropriate join type
+		use reifydb_core::flow::FlowNodeType::Join;
+		let node = compiler
+			.build_node(Join {
+				join_type: self.join_type,
+				left: left_keys,
+				right: right_keys,
+			})
+			.with_inputs([left_node, right_node])
+			.build()?;
+
+		Ok(node)
 	}
 }
 

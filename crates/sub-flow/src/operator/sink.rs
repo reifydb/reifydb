@@ -39,7 +39,7 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 		// Transform rows to match the view's schema before writing
 		let target_columns = self.view.columns();
 
-		for diff in &change.diffs {
+		for (i, diff) in change.diffs.iter().enumerate() {
 			match diff {
 				FlowDiff::Insert {
 					post: row_data,
@@ -95,6 +95,7 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, change.diffs))
+		// Sink is a terminal node - don't propagate changes further
+		Ok(FlowChange::internal(self.node, Vec::new()))
 	}
 }
