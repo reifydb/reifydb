@@ -97,7 +97,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 		// Add right columns with conflict resolution
 		for col in right_columns.iter() {
 			let col_name = col.name().text();
-			let final_name = if left_names.contains(&col_name.to_string()) {
+			let mut final_name = if left_names.contains(&col_name.to_string()) {
 				// Conflict detected - apply prefixing
 				match &self.alias {
 					Some(alias) => format!("{}_{}", alias.text(), col_name),
@@ -107,6 +107,20 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 				// No conflict - keep original name
 				col_name.to_string()
 			};
+
+			// Check for secondary conflict and add numeric suffix if needed
+			if qualified_names.contains(&final_name) {
+				let mut counter = 2;
+				loop {
+					let candidate = format!("{}_{}", final_name, counter);
+					if !qualified_names.contains(&candidate) {
+						final_name = candidate;
+						break;
+					}
+					counter += 1;
+				}
+			}
+
 			qualified_names.push(final_name);
 		}
 
