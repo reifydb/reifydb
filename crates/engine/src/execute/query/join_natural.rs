@@ -6,9 +6,9 @@ use std::collections::HashSet;
 use reifydb_core::{
 	JoinType,
 	interface::Transaction,
-	value::column::{Column, Columns, layout::ColumnsLayout},
+	value::column::{Columns, layout::ColumnsLayout},
 };
-use reifydb_type::Value;
+use reifydb_type::{Fragment, Value};
 
 use crate::{
 	StandardTransaction,
@@ -19,16 +19,23 @@ pub(crate) struct NaturalJoinNode<'a, T: Transaction> {
 	left: Box<ExecutionPlan<'a, T>>,
 	right: Box<ExecutionPlan<'a, T>>,
 	join_type: JoinType,
+	alias: Option<Fragment<'a>>,
 	layout: Option<ColumnsLayout<'a>>,
 	initialized: Option<()>,
 }
 
 impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
-	pub fn new(left: Box<ExecutionPlan<'a, T>>, right: Box<ExecutionPlan<'a, T>>, join_type: JoinType) -> Self {
+	pub fn new(
+		left: Box<ExecutionPlan<'a, T>>,
+		right: Box<ExecutionPlan<'a, T>>,
+		join_type: JoinType,
+		alias: Option<Fragment<'a>>,
+	) -> Self {
 		Self {
 			left,
 			right,
 			join_type,
+			alias,
 			layout: None,
 			initialized: None,
 		}
@@ -105,17 +112,34 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 		let excluded_right_cols: HashSet<usize> =
 			common_columns.iter().map(|(_, _, right_idx)| *right_idx).collect();
 
-		// Build qualified column names for the result (excluding
-		// duplicates from right)
-		let qualified_names: Vec<String> = left_columns
-			.iter()
-			.map(|col| col.qualified_name())
-			.chain(right_columns
-				.iter()
-				.enumerate()
-				.filter(|(idx, _)| !excluded_right_cols.contains(idx))
-				.map(|(_, col)| col.qualified_name()))
-			.collect();
+		// Build column names with conflict resolution for non-common columns
+		let left_names: Vec<String> = left_columns.iter().map(|col| col.name().text().to_string()).collect();
+		let mut qualified_names = Vec::new();
+
+		// Add all left columns (never prefixed)
+		for col in left_columns.iter() {
+			qualified_names.push(col.name().text().to_string());
+		}
+
+		// Add non-common right columns with conflict resolution
+		for (idx, col) in right_columns.iter().enumerate() {
+			if !excluded_right_cols.contains(&idx) {
+				let col_name = col.name().text();
+				// Even though natural join excludes common columns,
+				// there might still be name conflicts with non-common columns
+				let final_name = if left_names.contains(&col_name.to_string()) {
+					// Conflict detected - apply prefixing
+					match &self.alias {
+						Some(alias) => format!("{}_{}", alias.text(), col_name),
+						None => format!("joined_{}", col_name),
+					}
+				} else {
+					// No conflict - keep original name
+					col_name.to_string()
+				};
+				qualified_names.push(final_name);
+			}
+		}
 
 		let mut result_rows = Vec::new();
 
@@ -157,23 +181,9 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 			}
 		}
 
-		// Create columns with proper qualified column structure
-		let mut column_metadata: Vec<&Column> = left_columns.iter().collect();
-		for (idx, col) in right_columns.iter().enumerate() {
-			if !excluded_right_cols.contains(&idx) {
-				column_metadata.push(col);
-			}
-		}
-
+		// Create columns with conflict-resolved names
 		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
-		let mut columns = Columns::from_rows(&names_refs, &result_rows);
-
-		// Update columns with proper metadata - preserve the original column structure
-		for (i, col_meta) in column_metadata.iter().enumerate() {
-			let old_column = &columns[i];
-			// Just update the data while preserving the column's qualification structure
-			columns[i] = col_meta.with_new_data(old_column.data().clone());
-		}
+		let columns = Columns::from_rows(&names_refs, &result_rows);
 
 		self.layout = Some(ColumnsLayout::from_columns(&columns));
 		Ok(Some(Batch {

@@ -220,6 +220,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			left,
 			right,
 			on,
+			alias: _,
 		}) => {
 			let label = format!(
 				"Join(Inner) on: [{}]",
@@ -236,6 +237,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			left,
 			right,
 			on,
+			alias: _,
 		}) => {
 			let label = format!(
 				"Join(Left) on: [{}]",
@@ -252,6 +254,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			left,
 			right,
 			join_type,
+			alias: _,
 		}) => {
 			let join_type_str = match join_type {
 				JoinType::Inner => "Inner",

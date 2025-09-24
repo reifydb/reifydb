@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::column::{ColumnData, Columns, layout::ColumnsLayout},
+	value::column::{Column, ColumnData, Columns, SourceQualified, layout::ColumnsLayout},
 };
-use reifydb_type::Value;
+use reifydb_type::{Fragment, Value};
 
 use crate::{
 	StandardTransaction,
@@ -19,16 +19,23 @@ pub(crate) struct InnerJoinNode<'a, T: Transaction> {
 	left: Box<ExecutionPlan<'a, T>>,
 	right: Box<ExecutionPlan<'a, T>>,
 	on: Vec<Expression<'a>>,
+	alias: Option<Fragment<'a>>,
 	layout: Option<ColumnsLayout<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
 impl<'a, T: Transaction> InnerJoinNode<'a, T> {
-	pub fn new(left: Box<ExecutionPlan<'a, T>>, right: Box<ExecutionPlan<'a, T>>, on: Vec<Expression<'a>>) -> Self {
+	pub fn new(
+		left: Box<ExecutionPlan<'a, T>>,
+		right: Box<ExecutionPlan<'a, T>>,
+		on: Vec<Expression<'a>>,
+		alias: Option<Fragment<'a>>,
+	) -> Self {
 		Self {
 			left,
 			right,
 			on,
+			alias,
 			layout: None,
 			context: None,
 		}
@@ -78,9 +85,30 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
 
-		// Build qualified column names for the join result
-		let qualified_names: Vec<String> =
-			left_columns.iter().chain(right_columns.iter()).map(|col| col.qualified_name()).collect();
+		// Detect column name conflicts
+		let left_names: Vec<String> = left_columns.iter().map(|col| col.name().text().to_string()).collect();
+		let mut qualified_names = Vec::new();
+
+		// Add left columns (never prefixed)
+		for col in left_columns.iter() {
+			qualified_names.push(col.name().text().to_string());
+		}
+
+		// Add right columns with conflict resolution
+		for col in right_columns.iter() {
+			let col_name = col.name().text();
+			let final_name = if left_names.contains(&col_name.to_string()) {
+				// Conflict detected - apply prefixing
+				match &self.alias {
+					Some(alias) => format!("{}_{}", alias.text(), col_name),
+					None => format!("joined_{}", col_name),
+				}
+			} else {
+				// No conflict - keep original name
+				col_name.to_string()
+			};
+			qualified_names.push(final_name);
+		}
 
 		let mut result_rows = Vec::new();
 
@@ -90,18 +118,34 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 			for j in 0..right_rows {
 				let right_row = right_columns.get_row(j);
 
-				let all_data =
-					left_row.iter().cloned().chain(right_row.iter().cloned()).collect::<Vec<_>>();
+				// Build columns for evaluation context
+				// For the right side columns, we need to handle aliasing
+				let mut eval_columns = Vec::new();
+
+				// Add left columns as-is
+				for (idx, col) in left_columns.iter().enumerate() {
+					eval_columns.push(col.with_new_data(ColumnData::from(left_row[idx].clone())));
+				}
+
+				// Add right columns - if there's an alias, create SourceQualified columns
+				for (idx, col) in right_columns.iter().enumerate() {
+					if let Some(ref alias) = self.alias {
+						// Create a SourceQualified column with the alias
+						eval_columns.push(Column::SourceQualified(SourceQualified {
+							source: alias.clone(),
+							name: col.name().clone(),
+							data: ColumnData::from(right_row[idx].clone()),
+						}));
+					} else {
+						eval_columns.push(
+							col.with_new_data(ColumnData::from(right_row[idx].clone()))
+						);
+					}
+				}
 
 				let eval_ctx = EvaluationContext {
 					target: None,
-					columns: Columns::new(
-						all_data.iter()
-							.cloned()
-							.zip(left_columns.iter().chain(right_columns.iter()))
-							.map(|(v, col)| col.with_new_data(ColumnData::from(v)))
-							.collect(),
-					),
+					columns: Columns::new(eval_columns),
 					row_count: 1,
 					take: Some(1),
 					params: &ctx.params,
@@ -120,17 +164,9 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 			}
 		}
 
-		// Create columns with proper qualified column structure
-		let column_metadata: Vec<_> = left_columns.iter().chain(right_columns.iter()).collect();
+		// Create columns with conflict-resolved names
 		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
-		let mut columns = Columns::from_rows(&names_refs, &result_rows);
-
-		// Update columns with proper metadata - preserve the original column structure
-		for (i, col_meta) in column_metadata.iter().enumerate() {
-			let old_column = &columns[i];
-			// Just update the data while preserving the column's qualification structure
-			columns[i] = col_meta.with_new_data(old_column.data().clone());
-		}
+		let columns = Columns::from_rows(&names_refs, &result_rows);
 
 		self.layout = Some(ColumnsLayout::from_columns(&columns));
 		Ok(Some(Batch {

@@ -436,6 +436,7 @@ impl Compiler {
 						left: Box::new(left),
 						right: Box::new(right),
 						on: join.on,
+						alias: join.alias,
 					}));
 				}
 
@@ -446,6 +447,7 @@ impl Compiler {
 						left: Box::new(left),
 						right: Box::new(right),
 						on: join.on,
+						alias: join.alias,
 					}));
 				}
 
@@ -456,6 +458,7 @@ impl Compiler {
 						left: Box::new(left),
 						right: Box::new(right),
 						join_type: join.join_type,
+						alias: join.alias,
 					}));
 				}
 
@@ -774,6 +777,7 @@ pub struct JoinInnerNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
 	pub on: Vec<Expression<'a>>,
+	pub alias: Option<Fragment<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -781,6 +785,7 @@ pub struct JoinLeftNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
 	pub on: Vec<Expression<'a>>,
+	pub alias: Option<Fragment<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -788,6 +793,7 @@ pub struct JoinNaturalNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
 	pub join_type: JoinType,
+	pub alias: Option<Fragment<'a>>,
 }
 
 #[derive(Debug, Clone)]

@@ -104,30 +104,33 @@ pub(crate) fn compile<'a, T: Transaction>(
 			left,
 			right,
 			on,
+			alias,
 		}) => {
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on))
+			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on, alias))
 		}
 
 		PhysicalPlan::JoinLeft(physical::JoinLeftNode {
 			left,
 			right,
 			on,
+			alias,
 		}) => {
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on))
+			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on, alias))
 		}
 
 		PhysicalPlan::JoinNatural(physical::JoinNaturalNode {
 			left,
 			right,
 			join_type,
+			alias,
 		}) => {
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type))
+			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type, alias))
 		}
 
 		PhysicalPlan::InlineData(physical::InlineDataNode {

@@ -35,3 +35,24 @@ pub fn extend_duplicate_column(column_name: &str) -> Diagnostic {
 		cause: None,
 	}
 }
+
+pub fn unsupported_source_qualification<'a>(fragment: impl IntoFragment<'a>, name: &str) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "QUERY_002".to_string(),
+		statement: None,
+		message: format!("Source qualification '{}' is not supported in RQL expressions", name),
+		fragment,
+		label: Some("source qualification is only allowed for join aliases in ON clauses".to_string()),
+		help: Some("Remove the qualification or use it only with a join alias in the ON clause".to_string()),
+		column: None,
+		notes: vec![
+			"RQL uses a dataframe-centered approach where each operation produces a new dataframe"
+				.to_string(),
+			"Source qualifications are not needed as columns are unambiguous in the dataframe".to_string(),
+			"Only join aliases can be used for qualification within ON clauses to disambiguate columns"
+				.to_string(),
+		],
+		cause: None,
+	}
+}
