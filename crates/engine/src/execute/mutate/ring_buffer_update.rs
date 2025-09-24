@@ -76,7 +76,7 @@ impl Executor {
 			let mut wrapped_txn = StandardTransaction::from(&mut *txn);
 			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
 
-			// Initialize the node before execution
+			// Initialize the operator before execution
 			input_node.initialize(&mut wrapped_txn, &context)?;
 
 			while let Some(Batch {

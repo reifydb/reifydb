@@ -39,7 +39,7 @@ where
 	Ok(result)
 }
 
-/// Write the current node line
+/// Write the current operator line
 fn write_node_header(output: &mut String, prefix: &str, is_last: bool, label: &str) {
 	let branch = if is_last {
 		"└──"

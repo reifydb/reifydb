@@ -132,7 +132,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 					index_name,
 					..
 				} => {
-					// Create an Identifier AST node for the
+					// Create an Identifier AST operator for the
 					// source name This matches what
 					// the test expects
 					let source_token = Token {
@@ -167,7 +167,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Aggregate(a) => {
 			// Show Map and By as labeled branches
 			if !a.map.is_empty() {
-				// Create a synthetic node for "Aggregate Map"
+				// Create a synthetic operator for "Aggregate Map"
 				// label
 				output.push_str(&format!("{}├── Aggregate Map\n", child_prefix));
 				let map_prefix = format!("{}│   ", child_prefix);
@@ -177,7 +177,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 				}
 			}
 			if !a.by.is_empty() {
-				// Create a synthetic node for "Aggregate By"
+				// Create a synthetic operator for "Aggregate By"
 				// label
 				output.push_str(&format!("{}└── Aggregate By\n", child_prefix));
 				let by_prefix = format!("{}    ", child_prefix);
@@ -218,7 +218,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 			// Add each field as a child - they will be displayed as
 			// key: value pairs
 			for field in &r.keyed_values {
-				// Create an infix node to represent "key:
+				// Create an infix operator to represent "key:
 				// value"
 				let key_ast = Ast::Identifier(field.key.clone());
 				let value_ast = *field.value.clone();

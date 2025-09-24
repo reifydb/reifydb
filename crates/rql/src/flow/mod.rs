@@ -56,7 +56,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		})
 	}
 
-	/// Gets the next available node ID
+	/// Gets the next available operator ID
 	fn next_node_id(&mut self) -> crate::Result<FlowNodeId> {
 		unsafe { next_flow_node_id(&mut *self.txn) }
 	}
@@ -72,7 +72,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		self.flow.add_edge(FlowEdge::new(edge_id, from, to))
 	}
 
-	/// Adds a node to the flow graph
+	/// Adds a operator to the flow graph
 	fn add_node(&mut self, node_type: FlowNodeType) -> crate::Result<FlowNodeId> {
 		let node_id = self.next_node_id()?;
 		let flow_node_id = self.flow.add_node(FlowNode::new(node_id, node_type));
@@ -94,7 +94,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		Ok(self.flow)
 	}
 
-	/// Compiles a physical plan node into the FlowGraph
+	/// Compiles a physical plan operator into the FlowGraph
 	pub(crate) fn compile_plan(&mut self, plan: PhysicalPlan) -> crate::Result<FlowNodeId> {
 		match plan {
 			PhysicalPlan::IndexScan(_index_scan) => {
@@ -147,7 +147,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	}
 }
 
-/// Compiles a physical plan and returns both the node ID and its output
+/// Compiles a physical plan and returns both the operator ID and its output
 // /// namespace
 // pub(crate) fn compile_plan_with_definition(
 // 	&mut self,
@@ -188,7 +188,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 // 			// namespace tracking
 // 			let node_id = JoinCompiler::from(join).compile(self)?;
 // 			// For now return empty namespace - we could
-// 			// extract it from the flow node if needed
+// 			// extract it from the flow operator if needed
 // 			Ok((node_id, FlowNodeDef::empty()))
 // 		}
 // 		PhysicalPlan::JoinLeft(join) => {
@@ -196,7 +196,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 // 			// namespace tracking
 // 			let node_id = JoinCompiler::from(join).compile(self)?;
 // 			// For now return empty namespace - we could
-// 			// extract it from the flow node if needed
+// 			// extract it from the flow operator if needed
 // 			Ok((node_id, FlowNodeDef::empty()))
 // 		}
 // 		PhysicalPlan::Map(map) => {
@@ -221,7 +221,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 // 			let output_schema =
 // 				map_compiler.compute_output_schema(&input_schema, self.sink.as_ref());
 //
-// 			// Now compile the Map node
+// 			// Now compile the Map operator
 // 			let node_id = map_compiler.compile(self)?;
 //
 // 			Ok((node_id, output_schema))
@@ -237,6 +237,6 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 
 /// Trait for compiling operator from physical plans to flow nodes
 pub(crate) trait CompileOperator<T: CommandTransaction> {
-	/// Compiles this operator into a flow node
+	/// Compiles this operator into a flow operator
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> crate::Result<FlowNodeId>;
 }

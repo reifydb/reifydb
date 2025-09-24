@@ -34,24 +34,24 @@ where
 		}
 	}
 
-	/// Adds an input node to connect to this node
+	/// Adds an input operator to connect to this operator
 	pub fn with_input(mut self, input: FlowNodeId) -> Self {
 		self.input_nodes.push(input);
 		self
 	}
 
-	/// Adds multiple input nodes to connect to this node
+	/// Adds multiple input nodes to connect to this operator
 	pub fn with_inputs(mut self, inputs: impl IntoIterator<Item = FlowNodeId>) -> Self {
 		self.input_nodes.extend(inputs);
 		self
 	}
 
-	/// Builds the node and creates all edges
+	/// Builds the operator and creates all edges
 	pub fn build(self) -> Result<FlowNodeId> {
-		// Create the node
+		// Create the operator
 		let node_id = self.compiler.add_node(self.node_type)?;
 
-		// Add edges from all input nodes to this node
+		// Add edges from all input nodes to this operator
 		for input in self.input_nodes {
 			self.compiler.add_edge(&input, &node_id)?;
 		}

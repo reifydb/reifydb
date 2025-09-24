@@ -340,14 +340,14 @@ mod tests {
 		state_set(node1, &mut txn, &key, value1.clone()).unwrap();
 		state_set(node2, &mut txn, &key, value2.clone()).unwrap();
 
-		// Each node should have its own value
+		// Each operator should have its own value
 		let result1 = state_get(node1, &mut txn, &key).unwrap().unwrap();
 		let result2 = state_get(node2, &mut txn, &key).unwrap().unwrap();
 
 		assert_row_eq(&result1, &value1);
 		assert_row_eq(&result2, &value2);
 
-		// Clearing one node shouldn't affect the other
+		// Clearing one operator shouldn't affect the other
 		state_clear(node1, &mut txn).unwrap();
 		assert!(state_get(node1, &mut txn, &key).unwrap().is_none());
 		assert!(state_get(node2, &mut txn, &key).unwrap().is_some());

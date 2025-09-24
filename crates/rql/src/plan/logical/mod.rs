@@ -69,7 +69,7 @@ impl Compiler {
 
 			for (i, node) in ast_vec.into_iter().enumerate() {
 				if i == ast_len - 1 {
-					// Last node is UPDATE or DELETE
+					// Last operator is UPDATE or DELETE
 					match node {
 						Ast::AstUpdate(update_ast) => {
 							// Build the pipeline as
@@ -238,7 +238,7 @@ impl Compiler {
 		// Check if this is a piped query that should be wrapped in
 		// Pipeline
 		if has_pipes && ast_len > 1 {
-			// This uses pipe operators - create a Pipeline node
+			// This uses pipe operators - create a Pipeline operator
 			let mut pipeline_nodes = Vec::new();
 			for node in ast_vec {
 				pipeline_nodes.push(Self::compile_single(node, tx)?);
@@ -256,7 +256,7 @@ impl Compiler {
 		Ok(result)
 	}
 
-	// Helper to compile a single AST node
+	// Helper to compile a single AST operator
 	fn compile_single<'a, 't, T: CatalogQueryTransaction>(
 		node: Ast<'a>,
 		tx: &mut T,

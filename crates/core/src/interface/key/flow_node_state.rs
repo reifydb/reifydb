@@ -70,7 +70,7 @@ impl FlowNodeStateKey {
 		}
 	}
 
-	/// Create a range for scanning all entries of a specific node
+	/// Create a range for scanning all entries of a specific operator
 	pub fn node_range(node: FlowNodeId) -> EncodedKeyRange {
 		let range = FlowNodeStateKeyRange::new(node);
 		EncodedKeyRange::start_end(range.start(), range.end())
@@ -236,7 +236,7 @@ mod tests {
 		let mut encoded = Vec::new();
 		encoded.push(0xFE); // correct version
 		encoded.push(0xEC); // correct kind
-		encoded.extend(&999u32.to_be_bytes()); // only 4 bytes instead of 8 for node id
+		encoded.extend(&999u32.to_be_bytes()); // only 4 bytes instead of 8 for operator id
 		let key = EncodedKey::new(encoded);
 		assert!(FlowNodeStateKey::decode(&key).is_none());
 	}
@@ -255,7 +255,7 @@ mod tests {
 		// Test end key
 		let end = range.end().unwrap();
 		let decoded_end = FlowNodeStateKey::decode(&end).unwrap();
-		assert_eq!(decoded_end.node.0, 41); // Should be node - 1
+		assert_eq!(decoded_end.node.0, 41); // Should be operator - 1
 		assert_eq!(decoded_end.key, Vec::<u8>::new());
 	}
 
@@ -282,9 +282,9 @@ mod tests {
 		let node = crate::interface::FlowNodeId(555);
 		let range = FlowNodeStateKey::node_range(node);
 
-		// The range should include all keys for this node
-		// Start should be the node with empty key
-		// End should be the next node with empty key
+		// The range should include all keys for this operator
+		// Start should be the operator with empty key
+		// End should be the next operator with empty key
 		let (start_range, end_range) = FlowNodeStateKeyRange::decode(&range);
 
 		assert!(start_range.is_some());

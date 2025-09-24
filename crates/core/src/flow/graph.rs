@@ -39,10 +39,10 @@ impl<NodeData> DirectedGraph<NodeData> {
 		let result = edge.id.clone();
 
 		if !self.nodes.contains_key(&source) {
-			panic!("Source node {:?} does not exist", source);
+			panic!("Source operator {:?} does not exist", source);
 		}
 		if !self.nodes.contains_key(&target) {
-			panic!("Target node {:?} does not exist", target);
+			panic!("Target operator {:?} does not exist", target);
 		}
 
 		// Check for cycles before adding edge
@@ -190,7 +190,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 
 	pub fn remove_node(&mut self, node_id: &FlowNodeId) -> Option<NodeData> {
 		if let Some(data) = self.nodes.remove(node_id) {
-			// Remove all edges involving this node
+			// Remove all edges involving this operator
 			self.edges.retain(|edge| edge.source != *node_id && edge.target != *node_id);
 
 			// Clean up adjacency lists

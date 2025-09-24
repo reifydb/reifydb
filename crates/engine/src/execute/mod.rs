@@ -43,7 +43,7 @@ mod query;
 /// Unified trait for query execution nodes following the volcano iterator
 /// pattern
 pub(crate) trait QueryNode<'a, T: Transaction> {
-	/// Initialize the node with execution context
+	/// Initialize the operator with execution context
 	/// Called once before iteration begins
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()>;
 
@@ -51,7 +51,7 @@ pub(crate) trait QueryNode<'a, T: Transaction> {
 	/// Returns None when exhausted
 	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>>;
 
-	/// Get the layout of columns this node produces
+	/// Get the layout of columns this operator produces
 	fn layout(&self) -> Option<ColumnsLayout<'a>>;
 }
 
@@ -358,7 +358,7 @@ impl Executor {
 				});
 				let mut node = compile(plan, rx, context.clone());
 
-				// Initialize the node before execution
+				// Initialize the operator before execution
 				node.initialize(rx, &context)?;
 
 				let mut result: Option<Columns> = None;

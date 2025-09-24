@@ -537,7 +537,7 @@ impl Compiler {
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							// Note: DeferredView shares the same physical node as View
+							// Note: DeferredView shares the same physical operator as View
 							// We need to convert it to ResolvedView
 							let view = ResolvedView::new(
 								resolved_view.identifier().clone(),
@@ -553,8 +553,8 @@ impl Compiler {
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							// Note: TransactionalView shares the same physical node as View
-							// We need to convert it to ResolvedView
+							// Note: TransactionalView shares the same physical operator as
+							// View We need to convert it to ResolvedView
 							let view = ResolvedView::new(
 								resolved_view.identifier().clone(),
 								resolved_view.namespace().clone(),

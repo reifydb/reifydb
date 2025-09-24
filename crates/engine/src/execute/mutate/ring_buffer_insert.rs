@@ -66,7 +66,7 @@ impl Executor {
 
 		let mut inserted_count = 0;
 
-		// Initialize the node before execution
+		// Initialize the operator before execution
 		input_node.initialize(&mut std_txn, &execution_context)?;
 
 		// Process all input batches

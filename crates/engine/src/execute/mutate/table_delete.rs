@@ -93,7 +93,7 @@ impl Executor {
 				params: params.clone(),
 			};
 
-			// Initialize the node before execution
+			// Initialize the operator before execution
 			input_node.initialize(&mut std_txn, &context)?;
 
 			while let Some(Batch {

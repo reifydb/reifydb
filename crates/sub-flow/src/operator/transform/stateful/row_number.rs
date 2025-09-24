@@ -26,7 +26,7 @@ pub struct RowNumberProvider {
 }
 
 impl RowNumberProvider {
-	/// Create a new RowNumberProvider for the given node
+	/// Create a new RowNumberProvider for the given operator
 	pub fn new(node: FlowNodeId) -> Self {
 		Self {
 			node,
