@@ -12,12 +12,19 @@ use reifydb_catalog::{
 use reifydb_core::{
 	JoinType, SortKey,
 	interface::{
-		ColumnIdentifier, NamespaceDef, QueryTransaction, SequenceIdentifier,
+		ColumnIdentifier, NamespaceDef, QueryTransaction,
 		evaluate::expression::{AliasExpression, Expression},
-		resolved::{ResolvedNamespace, ResolvedRingBuffer, ResolvedTable, ResolvedTableVirtual, ResolvedView},
+		resolved::{
+			ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence, ResolvedTable, ResolvedTableVirtual,
+			ResolvedView,
+		},
 	},
 };
-use reifydb_type::Fragment;
+use reifydb_type::{
+	Fragment,
+	diagnostic::catalog::{ring_buffer_not_found, table_not_found},
+	return_error,
+};
 
 use crate::plan::{
 	logical::LogicalPlan,
@@ -119,19 +126,31 @@ impl Compiler {
 							ResolvedNamespace, ResolvedTable,
 						};
 
-						let namespace_def = CatalogStore::find_namespace_by_name(
-							rx,
-							table_id.namespace.text(),
-						)?
-						.unwrap();
-						let table_def = CatalogStore::find_table_by_name(
+						let namespace_name = table_id
+							.namespace
+							.as_ref()
+							.map(|n| n.text())
+							.unwrap_or("default");
+						let namespace_def =
+							CatalogStore::find_namespace_by_name(rx, namespace_name)?
+								.unwrap();
+						let Some(table_def) = CatalogStore::find_table_by_name(
 							rx,
 							namespace_def.id,
 							table_id.name.text(),
 						)?
-						.unwrap();
+						else {
+							return_error!(table_not_found(
+								table_id.name.clone().into_owned(),
+								&namespace_def.name,
+								table_id.name.text()
+							));
+						};
 
-						let namespace_id = table_id.namespace.clone();
+						let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
+							use reifydb_type::Fragment;
+							Fragment::owned_internal(namespace_def.name.clone())
+						});
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
 						Some(ResolvedTable::new(
@@ -167,19 +186,30 @@ impl Compiler {
 					};
 
 					let ring_buffer_id = delete.target.clone();
-					let namespace_def = CatalogStore::find_namespace_by_name(
-						rx,
-						ring_buffer_id.namespace.text(),
-					)?
-					.unwrap();
-					let ring_buffer_def = CatalogStore::find_ring_buffer_by_name(
+					let namespace_name = ring_buffer_id
+						.namespace
+						.as_ref()
+						.map(|n| n.text())
+						.unwrap_or("default");
+					let namespace_def =
+						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let Some(ring_buffer_def) = CatalogStore::find_ring_buffer_by_name(
 						rx,
 						namespace_def.id,
 						ring_buffer_id.name.text(),
 					)?
-					.unwrap();
+					else {
+						return_error!(ring_buffer_not_found(
+							ring_buffer_id.name.clone().into_owned(),
+							&namespace_def.name,
+							ring_buffer_id.name.text()
+						));
+					};
 
-					let namespace_id = ring_buffer_id.namespace.clone();
+					let namespace_id = ring_buffer_id.namespace.clone().unwrap_or_else(|| {
+						use reifydb_type::Fragment;
+						Fragment::owned_internal(namespace_def.name.clone())
+					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
 						ring_buffer_id.name.clone(),
@@ -200,17 +230,27 @@ impl Compiler {
 					use reifydb_core::interface::resolved::{ResolvedNamespace, ResolvedTable};
 
 					let table_id = insert.target.clone();
+					let namespace_name =
+						table_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
-						CatalogStore::find_namespace_by_name(rx, table_id.namespace.text())?
-							.unwrap();
-					let table_def = CatalogStore::find_table_by_name(
+						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let Some(table_def) = CatalogStore::find_table_by_name(
 						rx,
 						namespace_def.id,
 						table_id.name.text(),
 					)?
-					.unwrap();
+					else {
+						return_error!(table_not_found(
+							table_id.name.clone().into_owned(),
+							&namespace_def.name,
+							table_id.name.text()
+						));
+					};
 
-					let namespace_id = table_id.namespace.clone();
+					let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
+						use reifydb_type::Fragment;
+						Fragment::owned_internal(namespace_def.name.clone())
+					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedTable::new(
 						table_id.name.clone(),
@@ -233,19 +273,30 @@ impl Compiler {
 					};
 
 					let ring_buffer_id = insert_rb.target.clone();
-					let namespace_def = CatalogStore::find_namespace_by_name(
-						rx,
-						ring_buffer_id.namespace.text(),
-					)?
-					.unwrap();
-					let ring_buffer_def = CatalogStore::find_ring_buffer_by_name(
+					let namespace_name = ring_buffer_id
+						.namespace
+						.as_ref()
+						.map(|n| n.text())
+						.unwrap_or("default");
+					let namespace_def =
+						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let Some(ring_buffer_def) = CatalogStore::find_ring_buffer_by_name(
 						rx,
 						namespace_def.id,
 						ring_buffer_id.name.text(),
 					)?
-					.unwrap();
+					else {
+						return_error!(ring_buffer_not_found(
+							ring_buffer_id.name.clone().into_owned(),
+							&namespace_def.name,
+							ring_buffer_id.name.text()
+						));
+					};
 
-					let namespace_id = ring_buffer_id.namespace.clone();
+					let namespace_id = ring_buffer_id.namespace.clone().unwrap_or_else(|| {
+						use reifydb_type::Fragment;
+						Fragment::owned_internal(namespace_def.name.clone())
+					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
 						ring_buffer_id.name.clone(),
@@ -279,19 +330,31 @@ impl Compiler {
 							ResolvedNamespace, ResolvedTable,
 						};
 
-						let namespace_def = CatalogStore::find_namespace_by_name(
-							rx,
-							table_id.namespace.text(),
-						)?
-						.unwrap();
-						let table_def = CatalogStore::find_table_by_name(
+						let namespace_name = table_id
+							.namespace
+							.as_ref()
+							.map(|n| n.text())
+							.unwrap_or("default");
+						let namespace_def =
+							CatalogStore::find_namespace_by_name(rx, namespace_name)?
+								.unwrap();
+						let Some(table_def) = CatalogStore::find_table_by_name(
 							rx,
 							namespace_def.id,
 							table_id.name.text(),
 						)?
-						.unwrap();
+						else {
+							return_error!(table_not_found(
+								table_id.name.clone().into_owned(),
+								&namespace_def.name,
+								table_id.name.text()
+							));
+						};
 
-						let namespace_id = table_id.namespace.clone();
+						let namespace_id = table_id.namespace.clone().unwrap_or_else(|| {
+							use reifydb_type::Fragment;
+							Fragment::owned_internal(namespace_def.name.clone())
+						});
 						let resolved_namespace =
 							ResolvedNamespace::new(namespace_id, namespace_def);
 						Some(ResolvedTable::new(
@@ -329,19 +392,30 @@ impl Compiler {
 					};
 
 					let ring_buffer_id = update_rb.target.clone();
-					let namespace_def = CatalogStore::find_namespace_by_name(
-						rx,
-						ring_buffer_id.namespace.text(),
-					)?
-					.unwrap();
-					let ring_buffer_def = CatalogStore::find_ring_buffer_by_name(
+					let namespace_name = ring_buffer_id
+						.namespace
+						.as_ref()
+						.map(|n| n.text())
+						.unwrap_or("default");
+					let namespace_def =
+						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let Some(ring_buffer_def) = CatalogStore::find_ring_buffer_by_name(
 						rx,
 						namespace_def.id,
 						ring_buffer_id.name.text(),
 					)?
-					.unwrap();
+					else {
+						return_error!(ring_buffer_not_found(
+							ring_buffer_id.name.clone().into_owned(),
+							&namespace_def.name,
+							ring_buffer_id.name.text()
+						));
+					};
 
-					let namespace_id = ring_buffer_id.namespace.clone();
+					let namespace_id = ring_buffer_id.namespace.clone().unwrap_or_else(|| {
+						use reifydb_type::Fragment;
+						Fragment::owned_internal(namespace_def.name.clone())
+					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
 						ring_buffer_id.name.clone(),
@@ -635,7 +709,7 @@ pub struct CreateRingBufferNode<'a> {
 
 #[derive(Debug, Clone)]
 pub struct AlterSequenceNode<'a> {
-	pub sequence: SequenceIdentifier<'a>,
+	pub sequence: ResolvedSequence<'a>,
 	pub column: ColumnIdentifier<'a>,
 	pub value: Expression<'a>,
 }

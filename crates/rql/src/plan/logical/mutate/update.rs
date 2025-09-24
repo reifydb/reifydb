@@ -4,8 +4,11 @@
 use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
-	ast::AstUpdate,
-	plan::logical::{Compiler, LogicalPlan, UpdateRingBufferNode, UpdateTableNode, resolver},
+	ast::{
+		AstUpdate,
+		identifier::{MaybeQualifiedRingBufferIdentifier, MaybeQualifiedTableIdentifier},
+	},
+	plan::logical::{Compiler, LogicalPlan, UpdateRingBufferNode, UpdateTableNode},
 };
 
 impl Compiler {
@@ -22,28 +25,45 @@ impl Compiler {
 			}));
 		};
 
-		// Try to resolve as table first (most common case)
-		match resolver::resolve_source_as_table(tx, unresolved.namespace.as_ref(), &unresolved.name, true) {
-			Ok(target) => Ok(LogicalPlan::Update(UpdateTableNode {
+		// Check in the catalog whether the target is a table or ring buffer
+		let namespace_name = unresolved.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+		let target_name = unresolved.name.text();
+
+		// Try to find namespace
+		let namespace_id = if let Some(ns) = tx.find_namespace_by_name(namespace_name)? {
+			ns.id
+		} else {
+			// If namespace doesn't exist, default to table (will error during physical plan)
+			let mut target = MaybeQualifiedTableIdentifier::new(unresolved.name.clone());
+			if let Some(ns) = unresolved.namespace.clone() {
+				target = target.with_namespace(ns);
+			}
+			return Ok(LogicalPlan::Update(UpdateTableNode {
 				target: Some(target),
 				input: None,
-			})),
-			Err(table_error) => {
-				// Table not found, try ring buffer
-				match resolver::resolve_source_as_ring_buffer(
-					tx,
-					unresolved.namespace.as_ref(),
-					&unresolved.name,
-					true,
-				) {
-					Ok(target) => Ok(LogicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
-						target,
-						input: None,
-					})),
-					// Ring buffer also not found, return the table error as it's more common
-					Err(_) => Err(table_error),
-				}
+			}));
+		};
+
+		// Check if it's a ring buffer first
+		if tx.find_ring_buffer_by_name(namespace_id, target_name)?.is_some() {
+			let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved.name.clone());
+			if let Some(ns) = unresolved.namespace.clone() {
+				target = target.with_namespace(ns);
 			}
+			Ok(LogicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
+				target,
+				input: None,
+			}))
+		} else {
+			// Assume it's a table (will error during physical plan if not found)
+			let mut target = MaybeQualifiedTableIdentifier::new(unresolved.name.clone());
+			if let Some(ns) = unresolved.namespace.clone() {
+				target = target.with_namespace(ns);
+			}
+			Ok(LogicalPlan::Update(UpdateTableNode {
+				target: Some(target),
+				input: None,
+			}))
 		}
 	}
 }

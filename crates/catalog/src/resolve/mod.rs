@@ -8,6 +8,7 @@
 
 mod namespace;
 mod ring_buffer;
+mod sequence;
 mod source;
 mod table;
 mod view;

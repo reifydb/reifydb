@@ -11,7 +11,7 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_insert(&mut self) -> crate::Result<AstInsert<'a>> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
-		use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
+		use crate::ast::identifier::UnresolvedSourceIdentifier;
 		let first_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 		let target = if self.current_expect_operator(Operator::Dot).is_ok() {

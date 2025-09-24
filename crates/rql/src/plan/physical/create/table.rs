@@ -19,16 +19,21 @@ impl Compiler {
 		rx: &mut impl QueryTransaction,
 		create: logical::CreateTableNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
-		let Some(namespace_def) = CatalogStore::find_namespace_by_name(rx, create.table.namespace.text())?
-		else {
-			return_error!(namespace_not_found(
-				create.table.namespace.clone(),
-				create.table.namespace.text()
-			));
+		// Get namespace name from the MaybeQualified type
+		let namespace_name = create.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+		let Some(namespace_def) = CatalogStore::find_namespace_by_name(rx, namespace_name)? else {
+			let ns_fragment = create.table.namespace.clone().unwrap_or_else(|| {
+				use reifydb_type::Fragment;
+				Fragment::owned_internal("default".to_string())
+			});
+			return_error!(namespace_not_found(ns_fragment, namespace_name));
 		};
 
 		// Create a ResolvedNamespace
-		let namespace_id = create.table.namespace.clone();
+		let namespace_id = create.table.namespace.clone().unwrap_or_else(|| {
+			use reifydb_type::Fragment;
+			Fragment::owned_internal(namespace_def.name.clone())
+		});
 		let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 
 		Ok(CreateTable(CreateTableNode {

@@ -2,20 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::{
-	SortDirection,
-	interface::identifier::{ColumnIdentifier, TableIdentifier},
-};
+use reifydb_core::{SortDirection, interface::identifier::ColumnIdentifier};
 use reifydb_type::Fragment;
 
 use crate::{
-	ast::{AstAlterTable, AstAlterTableOperation},
-	plan::logical::{Compiler, LogicalPlan, resolver},
+	ast::{AstAlterTable, AstAlterTableOperation, identifier::MaybeQualifiedTableIdentifier},
+	plan::logical::{Compiler, LogicalPlan},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AlterTableNode<'a> {
-	pub table: TableIdentifier<'a>,
+	pub table: MaybeQualifiedTableIdentifier<'a>,
 	pub operations: Vec<AlterTableOperation<'a>>,
 }
 
@@ -37,10 +34,10 @@ pub struct AlterIndexColumn<'a> {
 impl Compiler {
 	pub(crate) fn compile_alter_table<'a, T: CatalogQueryTransaction>(
 		ast: AstAlterTable<'a>,
-		tx: &mut T,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Resolve the table identifier
-		let table = resolver::resolve_maybe_qualified_table(tx, &ast.table, true)?;
+		// Use the table identifier directly from AST
+		let table = ast.table.clone();
 
 		// Convert operations
 		let operations = ast
@@ -52,18 +49,27 @@ impl Compiler {
 						name,
 						columns,
 					} => {
-						// Convert columns to use qualified identifiers
+						// Convert columns to AlterIndexColumn
 						let qualified_columns = columns
 							.into_iter()
 							.map(|col| {
 								use reifydb_core::interface::identifier::ColumnSource;
+
+								use crate::ast::identifier::MaybeQualifiedColumnSource;
 								AlterIndexColumn {
 									column: ColumnIdentifier {
-										source: ColumnSource::Source {
-											namespace: table
-												.namespace
-												.clone(),
-											source: table.name.clone(),
+										// We'll need to qualify these properly during physical plan compilation
+										source: match &col.column.source {
+											MaybeQualifiedColumnSource::Source { source, .. } => {
+												ColumnSource::Alias(source.clone())
+											}
+											MaybeQualifiedColumnSource::Alias(alias) => {
+												ColumnSource::Alias(alias.clone())
+											}
+											MaybeQualifiedColumnSource::Unqualified => {
+												// Use table name as the source for now
+												ColumnSource::Alias(table.name.clone())
+											}
 										},
 										name: col.column.name,
 									},

@@ -13,7 +13,7 @@ impl<'a> Parser<'a> {
 
 		// Check if there's a target specified (optional)
 		let target = if !self.is_eof() && self.current()?.is_identifier() {
-			use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
+			use crate::ast::identifier::UnresolvedSourceIdentifier;
 			let first_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
 
 			if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {

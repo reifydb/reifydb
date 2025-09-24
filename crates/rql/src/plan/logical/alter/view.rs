@@ -2,20 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::{
-	SortDirection,
-	interface::identifier::{ColumnIdentifier, SourceIdentifier},
-};
+use reifydb_core::{SortDirection, interface::identifier::ColumnIdentifier};
 use reifydb_type::Fragment;
 
 use crate::{
-	ast::{AstAlterView, AstAlterViewOperation},
-	plan::logical::{Compiler, LogicalPlan, resolver},
+	ast::{AstAlterView, AstAlterViewOperation, identifier::MaybeQualifiedViewIdentifier},
+	plan::logical::{Compiler, LogicalPlan},
 };
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AlterViewNode<'a> {
-	pub view: SourceIdentifier<'a>,
+	pub view: MaybeQualifiedViewIdentifier<'a>,
 	pub operations: Vec<AlterViewOperation<'a>>,
 }
 
@@ -37,11 +34,10 @@ pub struct AlterIndexColumn<'a> {
 impl Compiler {
 	pub(crate) fn compile_alter_view<'a, T: CatalogQueryTransaction>(
 		ast: AstAlterView<'a>,
-		tx: &mut T,
+		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Resolve the view identifier (generic - could be deferred or
-		// transactional)
-		let view = resolver::resolve_maybe_qualified_view(tx, &ast.view, true)?;
+		// Use the view identifier directly from AST
+		let view = ast.view.clone();
 
 		// Convert operations
 		let operations = ast
@@ -53,19 +49,27 @@ impl Compiler {
 						name,
 						columns,
 					} => {
-						// Convert columns to use qualified identifiers
+						// Convert columns to AlterIndexColumn
 						let qualified_columns = columns
 							.into_iter()
 							.map(|col| {
 								use reifydb_core::interface::identifier::ColumnSource;
 
+								use crate::ast::identifier::MaybeQualifiedColumnSource;
+
 								AlterIndexColumn {
 									column: ColumnIdentifier {
-										source: ColumnSource::Source {
-											namespace: view
-												.namespace()
-												.clone(),
-											source: view.name().clone(),
+										source: match &col.column.source {
+											MaybeQualifiedColumnSource::Source { source, .. } => {
+												ColumnSource::Alias(source.clone())
+											}
+											MaybeQualifiedColumnSource::Alias(alias) => {
+												ColumnSource::Alias(alias.clone())
+											}
+											MaybeQualifiedColumnSource::Unqualified => {
+												// Use view name as the source for now
+												ColumnSource::Alias(view.name.clone())
+											}
 										},
 										name: col.column.name,
 									},

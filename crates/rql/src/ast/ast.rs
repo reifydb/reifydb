@@ -3,14 +3,14 @@
 
 use std::ops::Index;
 
-use reifydb_core::{IndexType, JoinType, SortDirection, interface::identifier::UnresolvedSourceIdentifier};
+use reifydb_core::{IndexType, JoinType, SortDirection};
 use reifydb_type::Fragment;
 
 use crate::ast::{
 	identifier::{
 		MaybeQualifiedColumnIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier,
 		MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
-		UnqualifiedIdentifier,
+		UnqualifiedIdentifier, UnresolvedSourceIdentifier,
 	},
 	tokenize::{Literal, ParameterKind, Token, TokenKind},
 };

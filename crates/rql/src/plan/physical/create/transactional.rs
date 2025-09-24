@@ -16,8 +16,14 @@ impl Compiler {
 		rx: &mut impl QueryTransaction,
 		create: logical::CreateTransactionalViewNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
-		let Some(namespace) = CatalogStore::find_namespace_by_name(rx, create.view.namespace.text())? else {
-			return_error!(namespace_not_found(create.view.namespace.clone(), create.view.namespace.text()));
+		// Get namespace name from the MaybeQualified type
+		let namespace_name = create.view.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+		let Some(namespace) = CatalogStore::find_namespace_by_name(rx, namespace_name)? else {
+			let ns_fragment = create.view.namespace.clone().unwrap_or_else(|| {
+				use reifydb_type::Fragment;
+				Fragment::owned_internal("default".to_string())
+			});
+			return_error!(namespace_not_found(ns_fragment, namespace_name));
 		};
 
 		Ok(CreateTransactionalView(CreateTransactionalViewNode {

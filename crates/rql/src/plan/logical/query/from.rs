@@ -23,7 +23,7 @@ impl Compiler {
 			} => {
 				// Use resolve to properly resolve
 				// UnresolvedSourceIdentifier
-				let resolved_source = resolver::build_resolved_source_from_unresolved(tx, source)?;
+				let resolved_source = resolver::resolve_unresolved_source(tx, &source)?;
 
 				// TODO: Resolve index if present
 				// For now, leave index as None

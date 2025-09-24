@@ -9,6 +9,42 @@ use reifydb_type::Fragment;
 
 use crate::ast::tokenize::Token;
 
+/// Represents a source identifier that hasn't been resolved to a specific type yet
+/// Used in AST parsing before we know whether it's a table, view, or ring buffer
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnresolvedSourceIdentifier<'a> {
+	pub namespace: Option<Fragment<'a>>,
+	pub name: Fragment<'a>,
+	pub alias: Option<Fragment<'a>>,
+}
+
+impl<'a> UnresolvedSourceIdentifier<'a> {
+	pub fn new(namespace: Option<Fragment<'a>>, name: Fragment<'a>) -> Self {
+		Self {
+			namespace,
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+
+	pub fn into_owned(self) -> UnresolvedSourceIdentifier<'static> {
+		UnresolvedSourceIdentifier {
+			namespace: self.namespace.map(|ns| Fragment::Owned(ns.into_owned())),
+			name: Fragment::Owned(self.name.into_owned()),
+			alias: self.alias.map(|a| Fragment::Owned(a.into_owned())),
+		}
+	}
+
+	pub fn effective_name(&self) -> &str {
+		self.alias.as_ref().map(|a| a.text()).unwrap_or_else(|| self.name.text())
+	}
+}
+
 /// An unqualified identifier that hasn't been parsed for qualification yet.
 /// This is used in the AST for simple identifiers before they're resolved
 /// to specific types (column, table, namespace, etc.)

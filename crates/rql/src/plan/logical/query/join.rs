@@ -29,7 +29,7 @@ impl Compiler {
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
 						// identifier
-						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedSourceIdentifier;
 
 						let mut unresolved = UnresolvedSourceIdentifier::new(
 							None,
@@ -41,9 +41,8 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver::build_resolved_source_from_unresolved(
-							tx, unresolved,
-						)?;
+						let resolved_source =
+							resolver::resolve_unresolved_source(tx, &unresolved)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -65,7 +64,7 @@ impl Compiler {
 						};
 						// Create fully qualified
 						// SourceIdentifier
-						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedSourceIdentifier;
 
 						let mut unresolved = UnresolvedSourceIdentifier::new(
 							Some(namespace.token.fragment),
@@ -77,9 +76,8 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver::build_resolved_source_from_unresolved(
-							tx, unresolved,
-						)?;
+						let resolved_source =
+							resolver::resolve_unresolved_source(tx, &unresolved)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -105,7 +103,7 @@ impl Compiler {
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
 						// identifier
-						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedSourceIdentifier;
 
 						let mut unresolved = UnresolvedSourceIdentifier::new(
 							None,
@@ -117,9 +115,8 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver::build_resolved_source_from_unresolved(
-							tx, unresolved,
-						)?;
+						let resolved_source =
+							resolver::resolve_unresolved_source(tx, &unresolved)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -141,7 +138,7 @@ impl Compiler {
 						};
 						// Create fully qualified
 						// SourceIdentifier
-						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedSourceIdentifier;
 
 						let mut unresolved = UnresolvedSourceIdentifier::new(
 							Some(namespace.token.fragment),
@@ -153,9 +150,8 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver::build_resolved_source_from_unresolved(
-							tx, unresolved,
-						)?;
+						let resolved_source =
+							resolver::resolve_unresolved_source(tx, &unresolved)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -181,7 +177,7 @@ impl Compiler {
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
 						// identifier
-						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedSourceIdentifier;
 
 						let mut unresolved = UnresolvedSourceIdentifier::new(
 							None,
@@ -193,9 +189,8 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver::build_resolved_source_from_unresolved(
-							tx, unresolved,
-						)?;
+						let resolved_source =
+							resolver::resolve_unresolved_source(tx, &unresolved)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -217,7 +212,7 @@ impl Compiler {
 						};
 						// Create fully qualified
 						// SourceIdentifier
-						use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
+						use crate::ast::identifier::UnresolvedSourceIdentifier;
 
 						let mut unresolved = UnresolvedSourceIdentifier::new(
 							Some(namespace.token.fragment),
@@ -229,9 +224,8 @@ impl Compiler {
 
 						// Build resolved source from
 						// unresolved identifier
-						let resolved_source = resolver::build_resolved_source_from_unresolved(
-							tx, unresolved,
-						)?;
+						let resolved_source =
+							resolver::resolve_unresolved_source(tx, &unresolved)?;
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,

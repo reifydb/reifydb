@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::identifier::{ColumnSource, IndexIdentifier};
+use reifydb_core::interface::identifier::ColumnSource;
 use reifydb_type::Fragment;
 
 use crate::{
@@ -50,11 +50,9 @@ impl Compiler {
 			None
 		};
 
-		let index = IndexIdentifier::new(namespace, ast.index.table, ast.index.name);
-
 		Ok(LogicalPlan::CreateIndex(CreateIndexNode {
 			index_type: ast.index_type,
-			index,
+			index: ast.index,
 			columns,
 			filter,
 			map,

@@ -104,7 +104,11 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 
 			output.push_str(&format!("{}├── Type: {:?}\n", child_prefix, index_type));
 			output.push_str(&format!("{}├── Name: {}\n", child_prefix, index.name.text()));
-			output.push_str(&format!("{}├── Namespace: {}\n", child_prefix, index.namespace.text()));
+			output.push_str(&format!(
+				"{}├── Namespace: {}\n",
+				child_prefix,
+				index.namespace.as_ref().map(|ns| ns.text()).unwrap_or("default")
+			));
 			output.push_str(&format!("{}├── Table: {}\n", child_prefix, index.table.text()));
 
 			let columns_str = columns
@@ -136,10 +140,11 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 
 			// Show target table if specified
 			if let Some(table) = &delete.target {
+				let namespace = table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 				output.push_str(&format!(
 					"{}├── target table: {}.{}\n",
 					child_prefix,
-					table.namespace.text(),
+					namespace,
 					table.name.text()
 				));
 			} else {
@@ -157,10 +162,11 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			output.push_str(&format!("{}{} DeleteRingBuffer\n", prefix, branch));
 
 			// Show target ring buffer
+			let namespace = delete.target.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!(
 				"{}├── target ring buffer: {}.{}\n",
 				child_prefix,
-				delete.target.namespace.text(),
+				namespace,
 				delete.target.name.text()
 			));
 
@@ -178,10 +184,11 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 
 			// Show target table if specified
 			if let Some(target) = &update.target {
+				let namespace = target.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 				output.push_str(&format!(
 					"{}├── target table: {}.{}\n",
 					child_prefix,
-					target.namespace.text(),
+					namespace,
 					target.name.text()
 				));
 			} else {
@@ -199,10 +206,11 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			output.push_str(&format!("{}{} UpdateRingBuffer\n", prefix, branch));
 
 			// Show target ring buffer
+			let namespace = update_rb.target.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!(
 				"{}├── target ring buffer: {}.{}\n",
 				child_prefix,
-				update_rb.target.namespace.text(),
+				namespace,
 				update_rb.target.name.text()
 			));
 
@@ -470,7 +478,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			output.push_str(&format!("{}{} AlterTable\n", prefix, branch));
 
 			// Show namespace and table
-			let schema_str = table.namespace.text();
+			let schema_str = table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!("{}├── Namespace: {}\n", child_prefix, schema_str));
 			output.push_str(&format!("{}├── Table: {}\n", child_prefix, table.name.text()));
 
@@ -540,9 +548,9 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			output.push_str(&format!("{}{} AlterView\n", prefix, branch));
 
 			// Show namespace and view
-			let schema_str = view.namespace().text();
+			let schema_str = view.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 			output.push_str(&format!("{}├── Namespace: {}\n", child_prefix, schema_str));
-			output.push_str(&format!("{}├── View: {}\n", child_prefix, view.name().text()));
+			output.push_str(&format!("{}├── View: {}\n", child_prefix, view.name.text()));
 
 			// Show operations
 			let ops_count = operations.len();

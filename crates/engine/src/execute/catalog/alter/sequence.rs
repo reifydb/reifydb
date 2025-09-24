@@ -24,11 +24,11 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterSequenceNode,
 	) -> crate::Result<Columns<'a>> {
-		let namespace_name = plan.sequence.namespace.text();
+		let namespace_name = plan.sequence.namespace().name();
 
 		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
 			return_error!(namespace_not_found(
-				plan.sequence.namespace.clone().into_owned(),
+				plan.sequence.identifier().clone().into_owned(),
 				namespace_name,
 			));
 		};
@@ -100,14 +100,31 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 	use reifydb_core::interface::{
-		Params,
+		NamespaceDef, NamespaceId, Params,
 		expression::{ConstantExpression::Number, Expression::Constant},
-		identifier::{ColumnIdentifier, ColumnSource, SequenceIdentifier},
+		identifier::{ColumnIdentifier, ColumnSource},
+		resolved::{ResolvedNamespace, ResolvedSequence, SequenceDef},
 	};
 	use reifydb_rql::plan::physical::{AlterSequenceNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Type, TypeConstraint, Value};
 
 	use crate::{execute::Executor, test_utils::create_test_command_transaction};
+
+	fn create_test_resolved_sequence(namespace_name: &str, sequence_name: &str) -> ResolvedSequence<'static> {
+		let namespace = ResolvedNamespace::new(
+			Fragment::owned_internal(namespace_name),
+			NamespaceDef {
+				id: NamespaceId(1),
+				name: namespace_name.to_string(),
+			},
+		);
+		let sequence_def = SequenceDef {
+			name: sequence_name.to_string(),
+			current_value: 1,
+			increment: 1,
+		};
+		ResolvedSequence::new(Fragment::owned_internal(sequence_name), namespace, sequence_def)
+	}
 
 	#[test]
 	fn test_ok() {
@@ -143,10 +160,7 @@ mod tests {
 
 		// Alter the sequence to start at 1000
 		let plan = AlterSequenceNode {
-			sequence: SequenceIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("users_id_seq"),
-			),
+			sequence: create_test_resolved_sequence("test_namespace", "users_id_seq"),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
 					namespace: Fragment::owned_internal("test_namespace"),
@@ -193,10 +207,7 @@ mod tests {
 
 		// Try to alter sequence on non-auto-increment column
 		let plan = AlterSequenceNode {
-			sequence: SequenceIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("items_id_seq"),
-			),
+			sequence: create_test_resolved_sequence("test_namespace", "items_id_seq"),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
 					namespace: Fragment::owned_internal("test_namespace"),
@@ -223,10 +234,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 
 		let plan = AlterSequenceNode {
-			sequence: SequenceIdentifier::new(
-				Fragment::owned_internal("non_existent_schema"),
-				Fragment::owned_internal("some_table_id_seq"),
-			),
+			sequence: create_test_resolved_sequence("non_existent_schema", "some_table_id_seq"),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
 					namespace: Fragment::owned_internal("non_existent_schema"),
@@ -253,10 +261,7 @@ mod tests {
 		ensure_test_namespace(&mut txn);
 
 		let plan = AlterSequenceNode {
-			sequence: SequenceIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("non_existent_table_id_seq"),
-			),
+			sequence: create_test_resolved_sequence("test_namespace", "non_existent_table_id_seq"),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
 					namespace: Fragment::owned_internal("test_namespace"),
@@ -301,10 +306,7 @@ mod tests {
 
 		// Try to alter sequence on non-existent column
 		let plan = AlterSequenceNode {
-			sequence: SequenceIdentifier::new(
-				Fragment::owned_internal("test_namespace"),
-				Fragment::owned_internal("posts_non_existent_column_seq"),
-			),
+			sequence: create_test_resolved_sequence("test_namespace", "posts_non_existent_column_seq"),
 			column: ColumnIdentifier {
 				source: ColumnSource::Source {
 					namespace: Fragment::owned_internal("test_namespace"),

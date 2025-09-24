@@ -7,15 +7,7 @@ mod mutate;
 mod query;
 pub mod resolver;
 
-use identifier::{
-	ColumnIdentifier,
-	IndexIdentifier,
-	// Keeping these as type aliases for now to maintain compatibility
-	RingBufferIdentifier,
-	SequenceIdentifier,
-	TableIdentifier,
-	ViewIdentifier,
-};
+use identifier::ColumnIdentifier;
 use reifydb_catalog::{
 	CatalogQueryTransaction, ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate,
 	view::ViewColumnToCreate,
@@ -33,7 +25,14 @@ use reifydb_core::{
 use reifydb_type::{Fragment, diagnostic::ast::unsupported_ast_node};
 
 use crate::{
-	ast::{Ast, AstPolicy, AstPolicyKind, AstStatement},
+	ast::{
+		Ast, AstPolicy, AstPolicyKind, AstStatement,
+		identifier::{
+			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedIndexIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+		},
+	},
 	plan::logical::alter::{AlterTableNode, AlterViewNode},
 };
 
@@ -91,41 +90,61 @@ impl Compiler {
 								)]);
 							};
 
-							// Try to resolve as table first (most common case)
-							match resolver::resolve_source_as_table(
-								tx,
-								unresolved.namespace.as_ref(),
-								&unresolved.name,
-								true,
-							) {
-								Ok(target) => {
-									return Ok(vec![LogicalPlan::Update(
-										UpdateTableNode {
-											target: Some(target),
-											input,
-										},
-									)]);
-								}
-								Err(table_error) => {
-									// Table not found, try ring buffer
-									match resolver::resolve_source_as_ring_buffer(
-										tx,
-										unresolved.namespace.as_ref(),
-										&unresolved.name,
-										true,
-									) {
-										Ok(target) => {
-											return Ok(vec![LogicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
+							// Check if target is a table or ring buffer
+							use crate::ast::identifier::{
+								MaybeQualifiedRingBufferIdentifier,
+								MaybeQualifiedTableIdentifier,
+							};
+
+							// Check in the catalog whether the target is a table or ring
+							// buffer
+							let namespace_name = unresolved
+								.namespace
+								.as_ref()
+								.map(|n| n.text())
+								.unwrap_or("default");
+							let target_name = unresolved.name.text();
+
+							// Try to find namespace
+							if let Some(ns) = tx.find_namespace_by_name(namespace_name)? {
+								let namespace_id = ns.id;
+
+								// Check if it's a ring buffer first
+								if tx.find_ring_buffer_by_name(
+									namespace_id,
+									target_name,
+								)?
+								.is_some()
+								{
+									let mut target =
+										MaybeQualifiedRingBufferIdentifier::new(
+											unresolved.name.clone(),
+										);
+									if let Some(ns) = unresolved.namespace.clone() {
+										target = target.with_namespace(ns);
+									}
+									return Ok(vec![
+										LogicalPlan::UpdateRingBuffer(
+											UpdateRingBufferNode {
 												target,
 												input,
-											})]);
-										}
-										// Ring buffer also not found, return
-										// the table error
-										Err(_) => return Err(table_error),
-									}
+											},
+										),
+									]);
 								}
 							}
+
+							// Default to table update
+							let mut target = MaybeQualifiedTableIdentifier::new(
+								unresolved.name.clone(),
+							);
+							if let Some(ns) = unresolved.namespace.clone() {
+								target = target.with_namespace(ns);
+							}
+							return Ok(vec![LogicalPlan::Update(UpdateTableNode {
+								target: Some(target),
+								input,
+							})]);
 						}
 						Ast::AstDelete(delete_ast) => {
 							// Build the pipeline as
@@ -136,40 +155,66 @@ impl Compiler {
 								None
 							};
 
-							// Resolve to either TableIdentifier or RingBufferIdentifier
+							// Check if target is a table or ring buffer
 							if let Some(unresolved) = &delete_ast.target {
-								let source_id = resolver::resolve_unresolved_source(
-									tx,
-									&unresolved,
-								)?;
+								use crate::ast::identifier::{
+									MaybeQualifiedRingBufferIdentifier,
+									MaybeQualifiedTableIdentifier,
+								};
 
-								// Determine if it's a table or ring buffer
-								match source_id {
-									identifier::SourceIdentifier::Table(
-										table_id,
-									) => {
-										return Ok(vec![LogicalPlan::DeleteTable(DeleteTableNode {
-											target: Some(table_id),
-											input,
-										})]);
-									}
-									identifier::SourceIdentifier::RingBuffer(
-										ring_buffer_id,
-									) => {
-										return Ok(vec![LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
-											target: ring_buffer_id,
-											input,
-										})]);
-									}
-									_ => {
-										// Source is not a table or ring buffer
-										return Err(crate::error::IdentifierError::SourceNotFound(crate::error::SourceNotFoundError {
-											namespace: unresolved.namespace.as_ref().map(|n| n.text()).unwrap_or(resolver::DEFAULT_NAMESPACE).to_string(),
-											name: unresolved.name.text().to_string(),
-											fragment: unresolved.name.clone().into_owned(),
-										}).into());
+								// Check in the catalog whether the target is a table or
+								// ring buffer
+								let namespace_name = unresolved
+									.namespace
+									.as_ref()
+									.map(|n| n.text())
+									.unwrap_or("default");
+								let target_name = unresolved.name.text();
+
+								// Try to find namespace
+								if let Some(ns) =
+									tx.find_namespace_by_name(namespace_name)?
+								{
+									let namespace_id = ns.id;
+
+									// Check if it's a ring buffer first
+									if tx.find_ring_buffer_by_name(
+										namespace_id,
+										target_name,
+									)?
+									.is_some()
+									{
+										let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved.name.clone());
+										if let Some(ns) =
+											unresolved.namespace.clone()
+										{
+											target = target
+												.with_namespace(ns);
+										}
+										return Ok(vec![
+											LogicalPlan::DeleteRingBuffer(
+												DeleteRingBufferNode {
+													target,
+													input,
+												},
+											),
+										]);
 									}
 								}
+
+								// Default to table delete
+								let mut target = MaybeQualifiedTableIdentifier::new(
+									unresolved.name.clone(),
+								);
+								if let Some(ns) = unresolved.namespace.clone() {
+									target = target.with_namespace(ns);
+								}
+								return Ok(vec![LogicalPlan::DeleteTable(
+									DeleteTableNode {
+										target: Some(target),
+										input,
+									},
+								)]);
 							} else {
 								// No target specified - use DeleteTable with None
 								return Ok(vec![LogicalPlan::DeleteTable(
@@ -303,7 +348,7 @@ pub struct PipelineNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateDeferredViewNode<'a> {
-	pub view: ViewIdentifier<'a>,
+	pub view: MaybeQualifiedDeferredViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan<'a>>,
@@ -311,7 +356,7 @@ pub struct CreateDeferredViewNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateTransactionalViewNode<'a> {
-	pub view: ViewIdentifier<'a>,
+	pub view: MaybeQualifiedTransactionalViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan<'a>>,
@@ -325,20 +370,20 @@ pub struct CreateNamespaceNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateSequenceNode<'a> {
-	pub sequence: SequenceIdentifier<'a>,
+	pub sequence: MaybeQualifiedSequenceIdentifier<'a>,
 	pub if_not_exists: bool,
 }
 
 #[derive(Debug)]
 pub struct CreateTableNode<'a> {
-	pub table: TableIdentifier<'a>,
+	pub table: MaybeQualifiedTableIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
 }
 
 #[derive(Debug)]
 pub struct CreateRingBufferNode<'a> {
-	pub ring_buffer: RingBufferIdentifier<'a>,
+	pub ring_buffer: MaybeQualifiedRingBufferIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
@@ -346,7 +391,7 @@ pub struct CreateRingBufferNode<'a> {
 
 #[derive(Debug)]
 pub struct AlterSequenceNode<'a> {
-	pub sequence: SequenceIdentifier<'a>,
+	pub sequence: MaybeQualifiedSequenceIdentifier<'a>,
 	pub column: ColumnIdentifier<'a>,
 	pub value: Expression<'a>,
 }
@@ -354,7 +399,7 @@ pub struct AlterSequenceNode<'a> {
 #[derive(Debug)]
 pub struct CreateIndexNode<'a> {
 	pub index_type: IndexType,
-	pub index: IndexIdentifier<'a>,
+	pub index: MaybeQualifiedIndexIdentifier<'a>,
 	pub columns: Vec<IndexColumn<'a>>,
 	pub filter: Vec<Expression<'a>>,
 	pub map: Option<Expression<'a>>,
@@ -368,35 +413,35 @@ pub struct IndexColumn<'a> {
 
 #[derive(Debug)]
 pub struct DeleteTableNode<'a> {
-	pub target: Option<TableIdentifier<'a>>,
+	pub target: Option<MaybeQualifiedTableIdentifier<'a>>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
 #[derive(Debug)]
 pub struct DeleteRingBufferNode<'a> {
-	pub target: RingBufferIdentifier<'a>,
+	pub target: MaybeQualifiedRingBufferIdentifier<'a>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
 #[derive(Debug)]
 pub struct InsertTableNode<'a> {
-	pub target: TableIdentifier<'a>,
+	pub target: MaybeQualifiedTableIdentifier<'a>,
 }
 
 #[derive(Debug)]
 pub struct InsertRingBufferNode<'a> {
-	pub target: RingBufferIdentifier<'a>,
+	pub target: MaybeQualifiedRingBufferIdentifier<'a>,
 }
 
 #[derive(Debug)]
 pub struct UpdateTableNode<'a> {
-	pub target: Option<TableIdentifier<'a>>,
+	pub target: Option<MaybeQualifiedTableIdentifier<'a>>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 
 #[derive(Debug)]
 pub struct UpdateRingBufferNode<'a> {
-	pub target: RingBufferIdentifier<'a>,
+	pub target: MaybeQualifiedRingBufferIdentifier<'a>,
 	pub input: Option<Box<LogicalPlan<'a>>>,
 }
 

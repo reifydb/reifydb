@@ -4,10 +4,11 @@
 use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
-	ast::AstDelete,
-	plan::logical::{
-		Compiler, DeleteRingBufferNode, DeleteTableNode, LogicalPlan, identifier::SourceIdentifier, resolver,
+	ast::{
+		AstDelete,
+		identifier::{MaybeQualifiedRingBufferIdentifier, MaybeQualifiedTableIdentifier},
 	},
+	plan::logical::{Compiler, DeleteRingBufferNode, DeleteTableNode, LogicalPlan},
 };
 
 impl Compiler {
@@ -15,39 +16,46 @@ impl Compiler {
 		ast: AstDelete<'a>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
-		// Resolve the unresolved source to a table or ring buffer
 		if let Some(unresolved) = &ast.target {
-			// Create a source identifier from the unresolved source
-			let source_id = resolver::resolve_unresolved_source(tx, &unresolved)?;
+			// Check in the catalog whether the target is a table or ring buffer
+			let namespace_name = unresolved.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+			let target_name = unresolved.name.text();
 
-			// Determine if it's a table or ring buffer based on the source type
-			match source_id {
-				SourceIdentifier::Table(table_id) => Ok(LogicalPlan::DeleteTable(DeleteTableNode {
-					target: Some(table_id),
+			// Try to find namespace
+			let namespace_id = if let Some(ns) = tx.find_namespace_by_name(namespace_name)? {
+				ns.id
+			} else {
+				// If namespace doesn't exist, default to table (will error during physical plan)
+				let mut target = MaybeQualifiedTableIdentifier::new(unresolved.name.clone());
+				if let Some(ns) = unresolved.namespace.clone() {
+					target = target.with_namespace(ns);
+				}
+				return Ok(LogicalPlan::DeleteTable(DeleteTableNode {
+					target: Some(target),
 					input: None,
-				})),
-				SourceIdentifier::RingBuffer(ring_buffer_id) => {
-					Ok(LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
-						target: ring_buffer_id,
-						input: None,
-					}))
+				}));
+			};
+
+			// Check if it's a ring buffer first
+			if tx.find_ring_buffer_by_name(namespace_id, target_name)?.is_some() {
+				let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved.name.clone());
+				if let Some(ns) = unresolved.namespace.clone() {
+					target = target.with_namespace(ns);
 				}
-				_ => {
-					// Source is not a table or ring buffer (might be view, etc.)
-					Err(crate::error::IdentifierError::SourceNotFound(
-						crate::error::SourceNotFoundError {
-							namespace: unresolved
-								.namespace
-								.as_ref()
-								.map(|n| n.text())
-								.unwrap_or(resolver::DEFAULT_NAMESPACE)
-								.to_string(),
-							name: unresolved.name.text().to_string(),
-							fragment: unresolved.name.clone().into_owned(),
-						},
-					)
-					.into())
+				Ok(LogicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
+					target,
+					input: None,
+				}))
+			} else {
+				// Assume it's a table (will error during physical plan if not found)
+				let mut target = MaybeQualifiedTableIdentifier::new(unresolved.name.clone());
+				if let Some(ns) = unresolved.namespace.clone() {
+					target = target.with_namespace(ns);
 				}
+				Ok(LogicalPlan::DeleteTable(DeleteTableNode {
+					target: Some(target),
+					input: None,
+				}))
 			}
 		} else {
 			// No target specified - use DeleteTable with None

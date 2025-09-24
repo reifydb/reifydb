@@ -24,16 +24,17 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterTableNode,
 	) -> crate::Result<Columns<'a>> {
-		// Table is already fully qualified
-		let namespace_name = plan.node.table.namespace.text();
+		// Get namespace and table names from MaybeQualified type
+		let namespace_name = plan.node.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 		let table_name = plan.node.table.name.text();
 
 		// Find the namespace
 		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
-			return_error!(namespace_not_found(
-				Some(plan.node.table.namespace.clone().into_owned()),
-				namespace_name,
-			));
+			let ns_fragment = plan.node.table.namespace.clone().unwrap_or_else(|| {
+				use reifydb_type::Fragment;
+				Fragment::owned_internal("default".to_string())
+			});
+			return_error!(namespace_not_found(Some(ns_fragment.into_owned()), namespace_name,));
 		};
 
 		// Find the table

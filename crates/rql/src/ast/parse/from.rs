@@ -29,7 +29,7 @@ impl<'a> Parser<'a> {
 				list: self.parse_static()?,
 			})
 		} else {
-			use reifydb_core::interface::identifier::UnresolvedSourceIdentifier;
+			use crate::ast::identifier::UnresolvedSourceIdentifier;
 
 			// Get the first identifier token
 			let first_token = self.consume(TokenKind::Identifier)?;

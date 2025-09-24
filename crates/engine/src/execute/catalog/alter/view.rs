@@ -18,14 +18,18 @@ impl Executor {
 		txn: &mut StandardCommandTransaction<T>,
 		plan: AlterViewNode,
 	) -> crate::Result<Columns<'a>> {
-		// View is already fully qualified
-		let namespace_name = plan.node.view.namespace().text();
-		let view_name = plan.node.view.name().text();
+		// Get namespace and view names from MaybeQualified type
+		let namespace_name = plan.node.view.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+		let view_name = plan.node.view.name.text();
 
 		// Find the namespace
 		let Some(namespace) = CatalogStore::find_namespace_by_name(txn, namespace_name)? else {
+			let ns_fragment = plan.node.view.namespace.clone().unwrap_or_else(|| {
+				use reifydb_type::Fragment;
+				Fragment::owned_internal("default".to_string())
+			});
 			return_error!(reifydb_core::diagnostic::catalog::namespace_not_found(
-				Some(plan.node.view.namespace().clone().into_owned()),
+				Some(ns_fragment.into_owned()),
 				namespace_name,
 			));
 		};
@@ -33,7 +37,7 @@ impl Executor {
 		// Find the view
 		let Some(view) = CatalogStore::find_view_by_name(txn, namespace.id, view_name)? else {
 			return_error!(reifydb_core::diagnostic::catalog::view_not_found(
-				plan.node.view.name().clone().into_owned(),
+				plan.node.view.name.clone().into_owned(),
 				&namespace.name,
 				view_name,
 			));

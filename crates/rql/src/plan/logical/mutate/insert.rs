@@ -4,8 +4,11 @@
 use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
-	ast::AstInsert,
-	plan::logical::{Compiler, InsertRingBufferNode, InsertTableNode, LogicalPlan, resolver},
+	ast::{
+		AstInsert,
+		identifier::{MaybeQualifiedRingBufferIdentifier, MaybeQualifiedTableIdentifier},
+	},
+	plan::logical::{Compiler, InsertRingBufferNode, InsertTableNode, LogicalPlan},
 };
 
 impl Compiler {
@@ -19,31 +22,42 @@ impl Compiler {
 			unimplemented!("Pipeline insert target not yet implemented");
 		};
 
-		// Try to resolve as table first (most common case)
-		match resolver::resolve_source_as_table(
-			tx,
-			unresolved_target.namespace.as_ref(),
-			&unresolved_target.name,
-			true,
-		) {
-			Ok(target) => Ok(LogicalPlan::InsertTable(InsertTableNode {
-				target,
-			})),
-			Err(table_error) => {
-				// Table not found, try ring buffer
-				match resolver::resolve_source_as_ring_buffer(
-					tx,
-					unresolved_target.namespace.as_ref(),
-					&unresolved_target.name,
-					true,
-				) {
-					Ok(target) => Ok(LogicalPlan::InsertRingBuffer(InsertRingBufferNode {
-						target,
-					})),
-					// Ring buffer also not found, return the table error as it's more common
-					Err(_) => Err(table_error),
-				}
+		// Check in the catalog whether the target is a table or ring buffer
+		let namespace_name = unresolved_target.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+		let target_name = unresolved_target.name.text();
+
+		// Try to find namespace
+		let namespace_id = if let Some(ns) = tx.find_namespace_by_name(namespace_name)? {
+			ns.id
+		} else {
+			// If namespace doesn't exist, default to table (will error during physical plan)
+			let mut target = MaybeQualifiedTableIdentifier::new(unresolved_target.name.clone());
+			if let Some(ns) = unresolved_target.namespace.clone() {
+				target = target.with_namespace(ns);
 			}
+			return Ok(LogicalPlan::InsertTable(InsertTableNode {
+				target,
+			}));
+		};
+
+		// Check if it's a ring buffer first
+		if tx.find_ring_buffer_by_name(namespace_id, target_name)?.is_some() {
+			let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved_target.name.clone());
+			if let Some(ns) = unresolved_target.namespace.clone() {
+				target = target.with_namespace(ns);
+			}
+			Ok(LogicalPlan::InsertRingBuffer(InsertRingBufferNode {
+				target,
+			}))
+		} else {
+			// Assume it's a table (will error during physical plan if not found)
+			let mut target = MaybeQualifiedTableIdentifier::new(unresolved_target.name.clone());
+			if let Some(ns) = unresolved_target.namespace.clone() {
+				target = target.with_namespace(ns);
+			}
+			Ok(LogicalPlan::InsertTable(InsertTableNode {
+				target,
+			}))
 		}
 	}
 }

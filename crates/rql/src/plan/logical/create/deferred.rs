@@ -7,7 +7,7 @@ use reifydb_type::Fragment;
 use crate::{
 	ast::{AstCreateDeferredView, AstDataType},
 	convert_data_type_with_constraints,
-	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan, resolver},
+	plan::logical::{Compiler, CreateDeferredViewNode, LogicalPlan},
 };
 
 impl Compiler {
@@ -37,9 +37,8 @@ impl Compiler {
 			});
 		}
 
-		// Resolve directly to DeferredViewIdentifier
-		// Don't validate existence since we're creating the view
-		let view = resolver::resolve_maybe_qualified_deferred_view(tx, &ast.view, false)?;
+		// Use the view identifier directly from AST
+		let view = ast.view;
 
 		let with = if let Some(as_statement) = ast.as_clause {
 			Compiler::compile(as_statement, tx)?
