@@ -7,7 +7,7 @@ use reifydb_core::{
 		evaluate::expression::{BetweenExpression, GreaterThanEqExpression, LessThanEqExpression},
 	},
 	return_error,
-	value::column::{Column, ColumnComputed, ColumnData},
+	value::column::{Column, ColumnData},
 };
 use reifydb_type::diagnostic::operator::between_cannot_be_applied_to_incompatible_types;
 
@@ -71,10 +71,10 @@ impl StandardEvaluator {
 					}
 				}
 
-				Ok(Column::Computed(ColumnComputed {
+				Ok(Column {
 					name: expr.fragment.clone(),
 					data: ColumnData::bool_with_bitvec(data, bitvec),
-				}))
+				})
 			}
 			_ => {
 				// This should never be reached due to the check

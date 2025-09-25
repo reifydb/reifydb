@@ -10,20 +10,18 @@ use std::{
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		ColumnDef, ColumnId, EncodableKey, EncodableKeyRange, MultiVersionQueryTransaction, RowKey,
-		RowKeyRange, Transaction,
-		catalog::ColumnIndex,
-		resolved::{ResolvedColumn as RColumn, ResolvedSource, ResolvedTable},
+		EncodableKey, EncodableKeyRange, MultiVersionQueryTransaction, RowKey, RowKeyRange, Transaction,
+		resolved::ResolvedTable,
 	},
 	value::{
 		column::{
-			Column, ColumnData, ColumnResolved, Columns,
+			Column, ColumnData, Columns,
 			layout::{ColumnLayout, ColumnsLayout},
 		},
 		row::EncodedRowLayout,
 	},
 };
-use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, Type, TypeConstraint};
+use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME};
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
@@ -125,30 +123,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<'a, T> {
 		let mut columns = Columns::from_table(&self.table);
 		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
-		// Add the RowNumber column to the columns if requested
 		if ctx.preserve_row_numbers {
-			// Create a resolved column for row numbers
-			let source = ResolvedSource::Table(self.table.clone());
-
-			let column_ident = Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME);
-
-			// Create a dummy ColumnDef for row number
-			let col_def = ColumnDef {
-				id: ColumnId(0),
-				name: ROW_NUMBER_COLUMN_NAME.to_string(),
-				constraint: TypeConstraint::unconstrained(Type::RowNumber),
-				policies: Vec::new(),
-				index: ColumnIndex(0),
-				auto_increment: false,
-			};
-
-			let resolved_col = RColumn::new(column_ident, source, col_def);
-
-			let row_number_column = Column::Resolved(ColumnResolved::new(
-				resolved_col,
-				ColumnData::row_number(row_numbers),
-			));
-			columns.0.push(row_number_column);
+			columns.0.push(Column {
+				name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
+				data: ColumnData::row_number(row_numbers),
+			});
 		}
 
 		Ok(Some(Batch {

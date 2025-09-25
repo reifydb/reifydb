@@ -36,12 +36,11 @@ impl StandardEvaluator {
 				let col_name = parts[2];
 
 				// Find column matching all three parts
+				// Since Column is now just name + data, check if the name contains the full
+				// qualification
 				let matching_col = ctx.columns.iter().find(|c| {
 					c.name().text() == col_name
-						&& match c {
-							Column::SourceQualified(fq) => fq.source.text() == source,
-							_ => false,
-						}
+						|| c.name().text() == &format!("{}.{}", source, col_name)
 				});
 
 				if let Some(col) = matching_col {
@@ -54,12 +53,11 @@ impl StandardEvaluator {
 				let col_name = parts[1];
 
 				// Find column matching source and name
+				// Since Column is now just name + data, check if the name matches or contains the
+				// qualification
 				let matching_col = ctx.columns.iter().find(|c| {
 					c.name().text() == col_name
-						&& match c {
-							Column::SourceQualified(sq) => sq.source.text() == source,
-							_ => false,
-						}
+						|| c.name().text() == &format!("{}.{}", source, col_name)
 				});
 
 				if let Some(col) = matching_col {
@@ -78,28 +76,9 @@ impl StandardEvaluator {
 				let all_matches: Vec<_> = ctx.columns.iter().filter(|c| c.name() == name).collect();
 
 				if !all_matches.is_empty() {
-					// Always prefer the most qualified
-					// column available
-					let best_match = all_matches
-						.iter()
-						.enumerate()
-						.max_by_key(|(idx, c)| {
-							let qualification_level = match (c.namespace(), c.source()) {
-								(Some(_), Some(_)) => 3, // Fully qualified
-								(None, Some(_)) => 2,    // Table qualified
-								(Some(_), None) => 1,    // Namespace qualified
-								// (unusual)
-								_ => 0, // Unqualified
-							};
-							// Use index as
-							// secondary sort key to
-							// prefer
-							// later columns in case
-							// of tie
-							(qualification_level, *idx)
-						})
-						.map(|(_, c)| *c)
-						.unwrap(); // Safe because we know the list is not empty
+					// Since columns no longer track namespace/source separately,
+					// just use the first match found
+					let best_match = all_matches[0];
 
 					return self.extract_column_data(best_match, ctx);
 				}

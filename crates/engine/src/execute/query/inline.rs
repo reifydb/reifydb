@@ -10,7 +10,7 @@ use std::{
 use reifydb_core::{
 	interface::{ResolvedSource, TargetColumn, Transaction, evaluate::expression::AliasExpression},
 	value::column::{
-		Column, ColumnComputed, ColumnData, Columns,
+		Column, ColumnData, Columns,
 		layout::{ColumnLayout, ColumnsLayout},
 	},
 };
@@ -298,10 +298,10 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			// Could add similar optimization for Float8 -> Float4
 			// if needed
 
-			columns.push(Column::Computed(ColumnComputed {
+			columns.push(Column {
 				name: Fragment::owned_internal(column_name),
 				data: column_data,
-			}));
+			});
 		}
 
 		let columns = Columns::new(columns);
@@ -384,10 +384,10 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 				}
 			}
 
-			columns.push(Column::Computed(ColumnComputed {
+			columns.push(Column {
 				name: column_layout.name.clone(),
 				data: column_data,
-			}));
+			});
 		}
 
 		let columns = Columns::new(columns);

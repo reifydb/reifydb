@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{Evaluator, evaluate::expression::RemExpression},
 	value::{
-		column::{Column, ColumnComputed, ColumnData, push::Push},
+		column::{Column, ColumnData, push::Push},
 		container::{NumberContainer, UndefinedContainer},
 	},
 };
@@ -1096,14 +1096,14 @@ impl StandardEvaluator {
 
 			// Handle undefined values - any operation with
 			// undefined results in undefined
-			(ColumnData::Undefined(l), _) => Ok(Column::Computed(ColumnComputed {
+			(ColumnData::Undefined(l), _) => Ok(Column {
 				name: rem.full_fragment_owned(),
 				data: ColumnData::Undefined(UndefinedContainer::new(l.len())),
-			})),
-			(_, ColumnData::Undefined(r)) => Ok(Column::Computed(ColumnComputed {
+			}),
+			(_, ColumnData::Undefined(r)) => Ok(Column {
 				name: rem.full_fragment_owned(),
 				data: ColumnData::Undefined(UndefinedContainer::new(r.len())),
-			})),
+			}),
 
 			_ => return_error!(rem_cannot_be_applied_to_incompatible_types(
 				rem.full_fragment_owned(),
@@ -1144,10 +1144,10 @@ where
 			}
 		}
 
-		Ok(Column::Computed(ColumnComputed {
+		Ok(Column {
 			name: fragment.fragment(),
 			data,
-		}))
+		})
 	} else {
 		// Slow path: some values may be undefined
 		let mut data = ctx.pooled(target, l.len());
@@ -1164,10 +1164,10 @@ where
 			}
 		}
 
-		Ok(Column::Computed(ColumnComputed {
+		Ok(Column {
 			name: fragment.fragment(),
 			data,
-		}))
+		})
 	}
 }
 
@@ -1203,10 +1203,10 @@ where
 			}
 		}
 
-		Ok(Column::Computed(ColumnComputed {
+		Ok(Column {
 			name: fragment.fragment(),
 			data,
-		}))
+		})
 	} else {
 		// Slow path: some values may be undefined
 		let mut data = ctx.pooled(target, l.len());
@@ -1225,9 +1225,9 @@ where
 			}
 		}
 
-		Ok(Column::Computed(ColumnComputed {
+		Ok(Column {
 			name: fragment.fragment(),
 			data,
-		}))
+		})
 	}
 }

@@ -11,12 +11,12 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
 		EncodableKey, EncodableKeyRange, MultiVersionQueryTransaction, RowKey, RowKeyRange, Transaction,
-		resolved::{ResolvedColumn, ResolvedSource, ResolvedView},
+		resolved::ResolvedView,
 	},
 	log_debug,
 	value::{
 		column::{
-			Column, ColumnData, ColumnResolved, Columns,
+			Column, ColumnData, Columns,
 			layout::{ColumnLayout, ColumnsLayout},
 		},
 		row::EncodedRowLayout,
@@ -133,26 +133,11 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<'a, T> {
 		let mut columns = Columns::from_view(&self.view);
 		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
-		// Add the RowNumber column to the columns if requested
 		if ctx.preserve_row_numbers {
-			// Create a resolved column for row numbers
-			let source = ResolvedSource::View(self.view.clone());
-			let column_ident = Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME);
-			// Create a dummy ColumnDef for row number
-			let col_def = reifydb_core::interface::ColumnDef {
-				id: reifydb_core::interface::ColumnId(0),
-				name: ROW_NUMBER_COLUMN_NAME.to_string(),
-				constraint: reifydb_type::TypeConstraint::unconstrained(reifydb_type::Type::RowNumber),
-				index: reifydb_core::interface::catalog::ColumnIndex(0),
-				auto_increment: false,
-				policies: Vec::new(),
-			};
-			let resolved_col = ResolvedColumn::new(column_ident, source, col_def);
-			let row_number_column = Column::Resolved(ColumnResolved::new(
-				resolved_col,
-				ColumnData::row_number(row_numbers),
-			));
-			columns.0.push(row_number_column);
+			columns.0.push(Column {
+				name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
+				data: ColumnData::row_number(row_numbers),
+			});
 		}
 
 		Ok(Some(Batch {

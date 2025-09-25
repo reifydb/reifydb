@@ -27,20 +27,27 @@ impl StandardEvaluator {
 		};
 		let column = expr.column.name.text().to_string();
 
-		// Find columns where source matches and name matches
+		// Build the full qualified name for aliased columns
+		let qualified_name = format!("{}.{}", source.text(), &column);
+
+		// Find columns - try both qualified name and unqualified name
 		let matching_col = ctx.columns.iter().find(|col| {
-			// Check if column name matches
-			if col.name().text() != column {
-				return false;
+			// First try to match the fully qualified name (for aliased columns)
+			if col.name().text() == qualified_name {
+				return true;
 			}
 
-			// Check if source matches
-			// For resolved columns, check if the source name matches
-			if let Some(col_source) = col.source() {
-				col_source.text() == source.text()
-			} else {
-				false
+			// For non-aliased columns, just match on the column name
+			// (but only if this isn't an aliased access)
+			if matches!(&expr.column.source, ColumnSource::Source { .. }) {
+				if col.name().text() == column {
+					// Make sure this column doesn't belong to a different source
+					// by checking if it has a dot in the name (qualified)
+					return !col.name().text().contains('.');
+				}
 			}
+
+			false
 		});
 
 		if let Some(col) = matching_col {

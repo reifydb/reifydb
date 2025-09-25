@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::Transaction,
-	value::column::{Column, ColumnData, Columns, SourceQualified},
+	value::column::{Column, ColumnData, Columns},
 };
 use reifydb_type::{Fragment, Value};
 
@@ -67,13 +67,11 @@ pub fn resolve_column_names(
 
 		let col_name = col.name().text();
 		let mut final_name = if left_names.contains(&col_name.to_string()) {
-			// Conflict detected - apply prefixing
 			match alias {
 				Some(alias) => format!("{}_{}", alias.text(), col_name),
-				None => format!("joined_{}", col_name),
+				None => format!("__{}__", col_name),
 			}
 		} else {
-			// No conflict - keep original name
 			col_name.to_string()
 		};
 
@@ -108,20 +106,19 @@ pub fn build_eval_columns<'a>(
 ) -> Vec<Column<'a>> {
 	let mut eval_columns = Vec::new();
 
-	// Add left columns as-is
 	for (idx, col) in left_columns.iter().enumerate() {
 		eval_columns.push(col.with_new_data(ColumnData::from(left_row[idx].clone())));
 	}
 
-	// Add right columns - if there's an alias, create SourceQualified columns
 	for (idx, col) in right_columns.iter().enumerate() {
 		if let Some(alias) = alias {
-			// Create a SourceQualified column with the alias
-			eval_columns.push(Column::SourceQualified(SourceQualified {
-				source: alias.clone(),
-				name: col.name().clone(),
+			// For aliased columns, create a name that includes the alias prefix
+			// This matches how the AccessSource expression expects to find the column
+			let aliased_name = Fragment::owned_internal(format!("{}.{}", alias.text(), col.name().text()));
+			eval_columns.push(Column {
+				name: aliased_name,
 				data: ColumnData::from(right_row[idx].clone()),
-			}));
+			});
 		} else {
 			eval_columns.push(col.with_new_data(ColumnData::from(right_row[idx].clone())));
 		}

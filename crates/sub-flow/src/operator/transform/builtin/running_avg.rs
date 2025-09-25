@@ -7,7 +7,7 @@ use reifydb_core::{
 	interface::{EvaluationContext, Evaluator, FlowNodeId, Transaction, expression::Expression},
 	util::CowVec,
 	value::{
-		column::{Column, ColumnComputed, ColumnData, Columns},
+		column::{Column, ColumnData, Columns},
 		container::NumberContainer,
 		row::EncodedRow,
 	},
@@ -112,10 +112,10 @@ impl<T: Transaction> Operator<T> for RunningAvgOperator {
 
 					// Build output
 					let mut all_columns: Vec<Column> = after.clone().into_iter().collect();
-					all_columns.push(Column::Computed(ColumnComputed {
+					all_columns.push(Column {
 						name: reifydb_type::Fragment::owned_internal(self.column_name.clone()),
 						data: ColumnData::Float8(NumberContainer::from_vec(avgs)),
-					}));
+					});
 					let output_columns = Columns::new(all_columns);
 
 					output.push(FlowDiff::Insert {

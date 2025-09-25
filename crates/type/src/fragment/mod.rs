@@ -296,6 +296,24 @@ impl From<Option<OwnedFragment>> for OwnedFragment {
 	}
 }
 
+// From<&str> implementation - creates borrowed internal fragment
+impl<'a> From<&'a str> for Fragment<'a> {
+	fn from(s: &'a str) -> Self {
+		Fragment::Borrowed(BorrowedFragment::Internal {
+			text: s,
+		})
+	}
+}
+
+// From<String> implementation - creates owned internal fragment
+impl From<String> for Fragment<'static> {
+	fn from(s: String) -> Self {
+		Fragment::Owned(OwnedFragment::Internal {
+			text: s,
+		})
+	}
+}
+
 // String reference implementations - return borrowed fragments to avoid
 // allocation
 impl<'a> IntoFragment<'a> for &'a str {

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{Evaluator, TargetColumn, evaluate::expression::AliasExpression},
-	value::column::{Column, ColumnComputed, SourceQualified},
+	value::column::Column,
 };
 use reifydb_type::Fragment;
 
@@ -18,29 +18,19 @@ impl StandardEvaluator {
 		let evaluated = self.evaluate(ctx, &expr.expression)?;
 		let alias_name = expr.alias.0.clone();
 
-		let source = ctx
-			.target
-			.as_ref()
-			.and_then(|c| match c {
-				TargetColumn::Resolved(col) => {
-					Some(Fragment::owned_internal(col.source().identifier().text()))
-				}
-				TargetColumn::Partial {
-					..
-				} => None,
-			})
-			.or_else(|| ctx.columns.first().and_then(|c| c.source()));
+		let source = ctx.target.as_ref().and_then(|c| match c {
+			TargetColumn::Resolved(col) => Some(Fragment::owned_internal(col.source().identifier().text())),
+			TargetColumn::Partial {
+				..
+			} => None,
+		});
 
-		Ok(match source {
-			Some(src) => Column::SourceQualified(SourceQualified {
-				source: src,
-				name: alias_name,
-				data: evaluated.data().clone(),
-			}),
-			None => Column::Computed(ColumnComputed {
-				name: alias_name,
-				data: evaluated.data().clone(),
-			}),
+		// Source qualification is no longer needed in the Column struct
+		// The alias_name can include the source if needed
+		let _source = source; // Unused now
+		Ok(Column {
+			name: alias_name,
+			data: evaluated.data().clone(),
 		})
 	}
 }

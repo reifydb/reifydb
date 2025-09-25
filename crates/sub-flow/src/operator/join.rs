@@ -12,7 +12,7 @@ use reifydb_core::{
 	},
 	util::CowVec,
 	value::{
-		column::{Column, ColumnComputed, ColumnData, ColumnResolved, Columns, SourceQualified},
+		column::{Column, ColumnData, Columns},
 		row::EncodedRow,
 	},
 };
@@ -202,14 +202,7 @@ impl JoinOperator {
 	) -> Result<()> {
 		// Extract source name from the first column (all columns should
 		// have same source)
-		let source_name = if let Some(first_col) = columns.first() {
-			match first_col {
-				Column::SourceQualified(sq) => sq.source.clone(),
-				_ => Fragment::owned_internal("unknown"),
-			}
-		} else {
-			Fragment::owned_internal("unknown")
-		};
+		let source_name = Fragment::owned_internal("unknown");
 
 		// Check if we already have this row stored
 		let key = Self::make_join_key(side, join_key_hash, row_id);
@@ -331,27 +324,10 @@ impl JoinOperator {
 							},
 						);
 
-						// Update metadata with source
-						// information from columns if
-						// needed
 						if is_left && metadata.left_source.is_empty() {
-							if let Some(first_col) = columns.first() {
-								metadata.left_source = match first_col {
-									Column::SourceQualified(sq) => {
-										sq.source.text().to_string()
-									}
-									_ => "unknown".to_string(),
-								};
-							}
+							metadata.left_source = "unknown".to_string();
 						} else if !is_left && metadata.right_source.is_empty() {
-							if let Some(first_col) = columns.first() {
-								metadata.right_source = match first_col {
-									Column::SourceQualified(sq) => {
-										sq.source.text().to_string()
-									}
-									_ => "unknown".to_string(),
-								};
-							}
+							metadata.right_source = "unknown".to_string();
 						}
 
 						// Save updated metadata
@@ -367,14 +343,7 @@ impl JoinOperator {
 		}
 
 		// Initialize new metadata - this is the first node we're seeing
-		let source_name = if let Some(first_col) = columns.first() {
-			match first_col {
-				Column::SourceQualified(sq) => sq.source.clone(),
-				_ => Fragment::owned_internal("unknown"),
-			}
-		} else {
-			Fragment::owned_internal("unknown")
-		};
+		let source_name = Fragment::owned_internal("unknown");
 
 		// Determine if this node should be left or right based on
 		// namespaces Check if the source matches the right namespace
@@ -437,14 +406,7 @@ impl JoinOperator {
 		let metadata_key = EncodedKey::new(Vec::new());
 
 		// Extract source name from columns
-		let source_name = if let Some(first_col) = columns.first() {
-			match first_col {
-				Column::SourceQualified(sq) => sq.source.clone(),
-				_ => Fragment::owned_internal("unknown"),
-			}
-		} else {
-			Fragment::owned_internal("unknown")
-		};
+		let source_name = Fragment::owned_internal("unknown");
 
 		// Try to get existing metadata
 		let metadata_key = EncodedKey::new(Vec::new());
@@ -544,17 +506,7 @@ impl JoinOperator {
 		columns: &Columns,
 	) -> Result<()> {
 		if metadata.right_source.is_empty() {
-			// Extract source name from columns
-			let source_name = if let Some(first_col) = columns.first() {
-				match first_col {
-					Column::SourceQualified(sq) => sq.source.text().to_string(),
-					_ => "unknown".to_string(),
-				}
-			} else {
-				"unknown".to_string()
-			};
-
-			metadata.right_source = source_name;
+			metadata.right_source = "unknown".to_string();
 			metadata.right_columns = columns.iter().map(|c| c.name().text().to_string()).collect();
 			metadata.initialized = true;
 
@@ -585,29 +537,10 @@ impl JoinOperator {
 				ColumnData::undefined(1)
 			};
 
-			if let (Some(namespace), Some(source)) =
-				(&self.left_schema.namespace_name, &self.left_schema.source_name)
-			{
-				column_vec.push(Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal(source.clone()),
-					name: Fragment::owned_internal(column_def.name.clone()),
-					data,
-				}));
-			} else if let Some(source) = &self.left_schema.source_name {
-				// Fallback to source qualified
-				column_vec.push(Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal(source.clone()),
-					name: Fragment::owned_internal(column_def.name.clone()),
-					data,
-				}));
-			} else {
-				// Fallback to unqualified (shouldn't happen)
-				column_vec.push(Column::SourceQualified(SourceQualified {
-					source: Fragment::owned_internal("unknown".to_string()),
-					name: Fragment::owned_internal(column_def.name.clone()),
-					data,
-				}));
-			}
+			column_vec.push(Column {
+				name: Fragment::owned_internal(column_def.name.clone()),
+				data,
+			});
 		}
 
 		// Add right columns or NULLs for LEFT JOIN
@@ -628,26 +561,20 @@ impl JoinOperator {
 				if let (Some(namespace), Some(source)) =
 					(&self.right_schema.namespace_name, &self.right_schema.source_name)
 				{
-					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: Fragment::owned_internal(source.clone()),
+					column_vec.push(Column {
 						name: Fragment::owned_internal(column_def.name.clone()),
 						data,
-					}));
+					});
 				} else if let Some(source) = &self.right_schema.source_name {
-					// Fallback to source qualified
-					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: Fragment::owned_internal(source.clone()),
+					column_vec.push(Column {
 						name: Fragment::owned_internal(column_def.name.clone()),
 						data,
-					}));
+					});
 				} else {
-					// Fallback to unqualified (shouldn't
-					// happen)
-					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: Fragment::owned_internal("unknown".to_string()),
+					column_vec.push(Column {
 						name: Fragment::owned_internal(column_def.name.clone()),
 						data,
-					}));
+					});
 				}
 			}
 		} else {
@@ -657,26 +584,23 @@ impl JoinOperator {
 				if let (Some(namespace), Some(source)) =
 					(&self.right_schema.namespace_name, &self.right_schema.source_name)
 				{
-					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: Fragment::owned_internal(source.clone()),
+					column_vec.push(Column {
 						name: Fragment::owned_internal(column_def.name.clone()),
 						data: ColumnData::undefined(1),
-					}));
+					});
 				} else if let Some(source) = &self.right_schema.source_name {
 					// Fallback to source qualified
-					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: Fragment::owned_internal(source.clone()),
+					column_vec.push(Column {
 						name: Fragment::owned_internal(column_def.name.clone()),
 						data: ColumnData::undefined(1),
-					}));
+					});
 				} else {
 					// Fallback to unqualified (shouldn't
 					// happen)
-					column_vec.push(Column::SourceQualified(SourceQualified {
-						source: Fragment::owned_internal("unknown".to_string()),
+					column_vec.push(Column {
 						name: Fragment::owned_internal(column_def.name.clone()),
 						data: ColumnData::undefined(1),
-					}));
+					});
 				}
 			}
 		}
@@ -718,24 +642,10 @@ impl JoinOperator {
 			0u8
 		};
 
-		// Extract source name from columns for current row
-		let source_name = if let Some(first_col) = after.first() {
-			match first_col {
-				Column::SourceQualified(sq) => sq.source.clone(),
-				_ => {
-					if is_left {
-						Fragment::owned_internal(metadata.left_source.clone())
-					} else {
-						Fragment::owned_internal(metadata.right_source.clone())
-					}
-				}
-			}
+		let source_name = if is_left {
+			Fragment::owned_internal(metadata.left_source.clone())
 		} else {
-			if is_left {
-				Fragment::owned_internal(metadata.left_source.clone())
-			} else {
-				Fragment::owned_internal(metadata.right_source.clone())
-			}
+			Fragment::owned_internal(metadata.right_source.clone())
 		};
 
 		for (idx, &row_id) in row_ids.iter().enumerate() {
@@ -850,22 +760,9 @@ impl JoinOperator {
 				// Convert to owned/static columns
 				let mut column_vec = Vec::new();
 				for column in before.iter() {
-					let static_col = match column {
-						Column::Resolved(rc) => Column::Resolved(ColumnResolved {
-							column: rc.column.to_static(),
-							data: rc.data.clone(),
-						}),
-						Column::SourceQualified(sq) => {
-							Column::SourceQualified(SourceQualified {
-								source: sq.source.clone().to_static(),
-								name: sq.name.clone().to_static(),
-								data: sq.data.clone(),
-							})
-						}
-						Column::Computed(cq) => Column::Computed(ColumnComputed {
-							name: cq.name.clone().to_static(),
-							data: cq.data.clone(),
-						}),
+					let static_col = Column {
+						name: column.name.clone().to_static(),
+						data: column.data.clone(),
 					};
 					column_vec.push(static_col);
 				}
@@ -896,22 +793,9 @@ impl JoinOperator {
 					// Convert to owned/static columns
 					let mut column_vec = Vec::new();
 					for column in before.iter() {
-						let static_col = match column {
-							Column::Resolved(rc) => Column::Resolved(ColumnResolved {
-								column: rc.column.to_static(),
-								data: rc.data.clone(),
-							}),
-							Column::SourceQualified(sq) => {
-								Column::SourceQualified(SourceQualified {
-									source: sq.source.clone().to_static(),
-									name: sq.name.clone().to_static(),
-									data: sq.data.clone(),
-								})
-							}
-							Column::Computed(cq) => Column::Computed(ColumnComputed {
-								name: cq.name.clone().to_static(),
-								data: cq.data.clone(),
-							}),
+						let static_col = Column {
+							name: column.name.clone().to_static(),
+							data: column.data.clone(),
 						};
 						column_vec.push(static_col);
 					}

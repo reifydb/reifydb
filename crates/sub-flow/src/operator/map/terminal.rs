@@ -5,7 +5,7 @@ use reifydb_core::{
 		expression::{CastExpression, Expression, TypeExpression},
 	},
 	log_error,
-	value::column::{Column, ColumnComputed, Columns},
+	value::column::{Column, Columns},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
 use reifydb_type::{Fragment, Params, Type};
@@ -145,10 +145,10 @@ impl MapTerminalOperator {
 						// with the correct name
 						let undefined_data =
 							reifydb_core::value::column::ColumnData::undefined(row_count);
-						Column::Computed(ColumnComputed {
+						Column {
 							name: Fragment::owned_internal(view_column.name.clone()),
 							data: undefined_data,
-						})
+						}
 					}
 					Err(e) => {
 						log_error!("MapTerminal: Error evaluating expression {}: {}", i, e);
@@ -178,18 +178,18 @@ impl MapTerminalOperator {
 
 					// Create a properly named
 					// column
-					Column::Computed(ColumnComputed {
+					Column {
 						name: Fragment::owned_internal(view_column.name.clone()),
 						data: casted.data().clone(),
-					})
+					}
 				} else {
 					// Types match or it's
 					// undefined, just rename if
 					// needed
-					Column::Computed(ColumnComputed {
+					Column {
 						name: Fragment::owned_internal(view_column.name.clone()),
 						data: result.data().clone(),
-					})
+					}
 				}
 			} else {
 				evaluator.evaluate(&eval_ctx, expr)?.to_static()

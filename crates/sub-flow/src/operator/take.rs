@@ -135,14 +135,12 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 						// Create columns with the same structure but all undefined values
 						let mut undefined_columns = Vec::new();
 						for col in after.iter() {
-							use reifydb_core::value::column::{
-								Column, ColumnComputed, ColumnData,
-							};
+							use reifydb_core::value::column::{Column, ColumnData};
 							let undefined_data = ColumnData::undefined(remove_count);
-							undefined_columns.push(Column::Computed(ColumnComputed {
+							undefined_columns.push(Column {
 								name: col.name().clone(),
 								data: undefined_data,
-							}));
+							});
 						}
 
 						output_diffs.push(FlowDiff::Remove {

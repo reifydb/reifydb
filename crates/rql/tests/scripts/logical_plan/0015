@@ -7,7 +7,7 @@ logical 'from users aggregate { count(id) }'
 > └── TableScan default.users
 > └── Aggregate
 >     ├── Map
->     │   └── count(Column(id))
+>     │   └── count(id)
 >     └── By
 > 
 
@@ -17,8 +17,8 @@ logical 'from users aggregate { total: count(id), sum: sum(amount) } by {}'
 > └── TableScan default.users
 > └── Aggregate
 >     ├── Map
->     │   ├── count(Column(id)) as total
->     │   └── sum(Column(amount)) as sum
+>     │   ├── count(id) as total
+>     │   └── sum(amount) as sum
 >     └── By
 > 
 
@@ -28,10 +28,10 @@ logical 'from users aggregate { count(id), sum(amount), avg(price), min(age), ma
 > └── TableScan default.users
 > └── Aggregate
 >     ├── Map
->     │   ├── count(Column(id))
->     │   ├── sum(Column(amount))
->     │   ├── avg(Column(price))
->     │   ├── min(Column(age))
->     │   └── max(Column(age))
+>     │   ├── count(id)
+>     │   ├── sum(amount)
+>     │   ├── avg(price)
+>     │   ├── min(age)
+>     │   └── max(age)
 >     └── By
 > 

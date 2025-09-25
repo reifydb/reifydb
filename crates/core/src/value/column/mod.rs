@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Fragment, Type};
+use reifydb_type::{Fragment, IntoFragment, Type};
 
 mod columns;
-mod computed;
 mod data;
 pub mod frame;
 pub mod layout;
@@ -18,170 +17,369 @@ pub use columns::Columns;
 pub use data::ColumnData;
 pub use view::group_by::{GroupByView, GroupKey};
 
-use crate::interface::ResolvedColumn;
-
-#[derive(Clone, Debug)]
-pub enum Column<'a> {
-	Resolved(ColumnResolved<'a>),
-	SourceQualified(SourceQualified<'a>),
-	Computed(ColumnComputed<'a>),
-}
-
-#[derive(Clone, Debug)]
-pub struct SourceQualified<'a> {
-	pub source: Fragment<'a>,
+#[derive(Clone, Debug, PartialEq)]
+pub struct Column<'a> {
 	pub name: Fragment<'a>,
 	pub data: ColumnData,
-}
-
-#[derive(Clone, Debug)]
-pub struct ColumnComputed<'a> {
-	pub name: Fragment<'a>,
-	pub data: ColumnData,
-}
-
-#[derive(Clone, Debug)]
-pub struct ColumnResolved<'a> {
-	pub column: ResolvedColumn<'a>,
-	pub data: ColumnData,
-}
-
-impl<'a> ColumnResolved<'a> {
-	/// Create a new ResolvedColumn from a resolved column and data
-	pub fn new(column: ResolvedColumn<'a>, data: ColumnData) -> Self {
-		Self {
-			column,
-			data,
-		}
-	}
-}
-
-impl<'a> PartialEq for ColumnResolved<'a> {
-	fn eq(&self, other: &Self) -> bool {
-		self.column.qualified_name() == other.column.qualified_name() && self.data == other.data
-	}
-}
-
-impl<'a> PartialEq for SourceQualified<'a> {
-	fn eq(&self, other: &Self) -> bool {
-		self.source == other.source && self.name == other.name && self.data == other.data
-	}
-}
-
-impl<'a> PartialEq for ColumnComputed<'a> {
-	fn eq(&self, other: &Self) -> bool {
-		self.name == other.name && self.data == other.data
-	}
-}
-
-impl<'a> PartialEq for Column<'a> {
-	fn eq(&self, other: &Self) -> bool {
-		match (self, other) {
-			(Self::Resolved(a), Self::Resolved(b)) => a == b,
-			(Self::SourceQualified(a), Self::SourceQualified(b)) => a == b,
-			(Self::Computed(a), Self::Computed(b)) => a == b,
-			_ => false,
-		}
-	}
 }
 
 impl<'a> Column<'a> {
-	pub fn get_type(&self) -> Type {
-		match self {
-			Self::Resolved(col) => col.data.get_type(),
-			Self::SourceQualified(col) => col.data.get_type(),
-			Self::Computed(col) => col.data.get_type(),
+	/// Create a new Column
+	pub fn new(name: impl IntoFragment<'a>, data: ColumnData) -> Self {
+		Self {
+			name: name.into_fragment(),
+			data,
 		}
+	}
+
+	pub fn get_type(&self) -> Type {
+		self.data.get_type()
 	}
 
 	pub fn qualified_name(&self) -> String {
-		match self {
-			Self::Resolved(col) => col.column.qualified_name(),
-			Self::SourceQualified(col) => {
-				format!("{}.{}", col.source.text(), col.name.text())
-			}
-			Self::Computed(col) => col.name.text().to_string(),
-		}
+		self.name.text().to_string()
 	}
 
 	pub fn with_new_data(&self, data: ColumnData) -> Column<'a> {
-		match self {
-			Self::Resolved(col) => Self::Resolved(ColumnResolved {
-				column: col.column.clone(),
-				data,
-			}),
-			Self::SourceQualified(col) => Self::SourceQualified(SourceQualified {
-				source: col.source.clone(),
-				name: col.name.clone(),
-				data,
-			}),
-			Self::Computed(col) => Self::Computed(ColumnComputed {
-				name: col.name.clone(),
-				data,
-			}),
+		Column {
+			name: self.name.clone(),
+			data,
 		}
 	}
 
 	pub fn name(&self) -> &Fragment<'a> {
-		match self {
-			Self::Resolved(col) => col.column.fragment(),
-			Self::SourceQualified(col) => &col.name,
-			Self::Computed(col) => &col.name,
-		}
+		&self.name
 	}
 
 	pub fn name_owned(&self) -> Fragment<'a> {
-		self.name().clone()
-	}
-
-	pub fn source(&self) -> Option<Fragment<'a>> {
-		match self {
-			Self::Resolved(col) => Some(col.column.source().identifier().clone()),
-			Self::SourceQualified(col) => Some(col.source.clone()),
-			Self::Computed(_) => None,
-		}
-	}
-
-	pub fn namespace(&self) -> Option<&Fragment<'a>> {
-		match self {
-			Self::Resolved(col) => col.column.namespace().map(|ns| ns.fragment()),
-			Self::SourceQualified(_) => None,
-			Self::Computed(_) => None,
-		}
+		self.name.clone()
 	}
 
 	pub fn data(&self) -> &ColumnData {
-		match self {
-			Self::Resolved(col) => &col.data,
-			Self::SourceQualified(col) => &col.data,
-			Self::Computed(col) => &col.data,
-		}
+		&self.data
 	}
 
 	pub fn data_mut(&mut self) -> &mut ColumnData {
-		match self {
-			Self::Resolved(col) => &mut col.data,
-			Self::SourceQualified(col) => &mut col.data,
-			Self::Computed(col) => &mut col.data,
-		}
+		&mut self.data
 	}
 
 	/// Convert to a 'static lifetime version
 	pub fn to_static(&self) -> Column<'static> {
-		match self {
-			Self::Resolved(col) => Column::Resolved(ColumnResolved {
-				column: col.column.to_static(),
-				data: col.data.clone(),
-			}),
-			Self::SourceQualified(col) => Column::SourceQualified(SourceQualified {
-				source: col.source.clone().to_static(),
-				name: col.name.clone().to_static(),
-				data: col.data.clone(),
-			}),
-			Self::Computed(col) => Column::Computed(ColumnComputed {
-				name: col.name.clone().to_static(),
-				data: col.data.clone(),
-			}),
+		Column {
+			name: self.name.clone().to_static(),
+			data: self.data.clone(),
+		}
+	}
+
+	pub fn int1(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i8>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int1(data),
+		}
+	}
+
+	pub fn int1_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = i8>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int1_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn int2(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i16>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int2(data),
+		}
+	}
+
+	pub fn int2_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = i16>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int2_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn int4(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i32>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int4(data),
+		}
+	}
+
+	pub fn int4_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = i32>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int4_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn int8(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i64>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int8(data),
+		}
+	}
+
+	pub fn int8_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = i64>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int8_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn int16(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = i128>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int16(data),
+		}
+	}
+
+	pub fn int16_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = i128>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::int16_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn uint1(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u8>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint1(data),
+		}
+	}
+
+	pub fn uint1_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = u8>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint1_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn uint2(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u16>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint2(data),
+		}
+	}
+
+	pub fn uint2_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = u16>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint2_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn uint4(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u32>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint4(data),
+		}
+	}
+
+	pub fn uint4_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = u32>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint4_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn uint8(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u64>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint8(data),
+		}
+	}
+
+	pub fn uint8_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = u64>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint8_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn uint16(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = u128>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint16(data),
+		}
+	}
+
+	pub fn uint16_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = u128>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uint16_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn float4(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = f32>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::float4(data),
+		}
+	}
+
+	pub fn float4_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = f32>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::float4_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn float8(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = f64>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::float8(data),
+		}
+	}
+
+	pub fn float8_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = f64>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::float8_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn bool(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = bool>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::bool(data),
+		}
+	}
+
+	pub fn bool_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = bool>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::bool_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn utf8(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = String>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::utf8(data),
+		}
+	}
+
+	pub fn utf8_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = String>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::utf8_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn undefined(name: impl Into<Fragment<'a>>, row_count: usize) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::undefined(row_count),
+		}
+	}
+
+	pub fn uuid4(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = reifydb_type::Uuid4>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uuid4(data),
+		}
+	}
+
+	pub fn uuid4_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = reifydb_type::Uuid4>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uuid4_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn uuid7(name: impl Into<Fragment<'a>>, data: impl IntoIterator<Item = reifydb_type::Uuid7>) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uuid7(data),
+		}
+	}
+
+	pub fn uuid7_with_bitvec(
+		name: impl Into<Fragment<'a>>,
+		data: impl IntoIterator<Item = reifydb_type::Uuid7>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: name.into(),
+			data: ColumnData::uuid7_with_bitvec(data, bitvec),
+		}
+	}
+
+	pub fn row_number(data: impl IntoIterator<Item = reifydb_type::RowNumber>) -> Self {
+		Column {
+			name: Fragment::borrowed_internal("__row_number"),
+			data: ColumnData::row_number(data),
+		}
+	}
+
+	pub fn row_number_with_bitvec(
+		data: impl IntoIterator<Item = reifydb_type::RowNumber>,
+		bitvec: impl Into<crate::BitVec>,
+	) -> Self {
+		Column {
+			name: Fragment::borrowed_internal("__row_number"),
+			data: ColumnData::row_number_with_bitvec(data, bitvec),
 		}
 	}
 }

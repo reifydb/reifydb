@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::column::{Column, ColumnComputed, ColumnData, Columns, layout::ColumnsLayout},
+	value::column::{Column, ColumnData, Columns, layout::ColumnsLayout},
 };
 use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
 
@@ -118,10 +118,10 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 				} => {
 					let col_idx = keys.iter().position(|k| k == &column).unwrap();
 
-					let mut c = Column::Computed(ColumnComputed {
+					let mut c = Column {
 						name: Fragment::owned_internal(alias.fragment()),
 						data: ColumnData::undefined(0),
-					});
+					};
 					for key in &group_key_order {
 						c.data_mut().push_value(key[col_idx].clone());
 					}
@@ -134,10 +134,10 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 				} => {
 					let (keys_out, mut data) = function.finalize().unwrap();
 					align_column_data(&group_key_order, &keys_out, &mut data).unwrap();
-					result_columns.push(Column::Computed(ColumnComputed {
+					result_columns.push(Column {
 						name: Fragment::owned_internal(alias.fragment()),
 						data,
-					}));
+					});
 				}
 			}
 		}
