@@ -344,9 +344,12 @@ impl ColumnData {
 		}
 	}
 
-	pub fn utf8_with_bitvec<'a>(data: impl IntoIterator<Item = String>, bitvec: impl Into<BitVec>) -> Self {
+	pub fn utf8_with_bitvec<'a>(
+		data: impl IntoIterator<Item = impl Into<String>>,
+		bitvec: impl Into<BitVec>,
+	) -> Self {
 		use reifydb_type::value::constraint::bytes::MaxBytes;
-		let data = data.into_iter().collect::<Vec<_>>();
+		let data = data.into_iter().map(Into::into).collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
 		ColumnData::Utf8 {

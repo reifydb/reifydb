@@ -47,7 +47,7 @@ impl ScalarFunction for BlobB64 {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::{
-		column::{Column, ColumnComputed, Columns},
+		column::{Column, Columns},
 		container::Utf8Container,
 	};
 	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};
@@ -62,7 +62,7 @@ mod tests {
 		// "Hello!" in base64 is "SGVsbG8h"
 		let b64_data = vec!["SGVsbG8h".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
@@ -70,7 +70,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -95,7 +95,7 @@ mod tests {
 
 		let b64_data = vec!["".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
@@ -103,7 +103,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -129,7 +129,7 @@ mod tests {
 		// "Hello" in base64 is "SGVsbG8="
 		let b64_data = vec!["SGVsbG8=".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
@@ -137,7 +137,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -163,7 +163,7 @@ mod tests {
 		// "A" = "QQ==", "BC" = "QkM=", "DEF" = "REVG"
 		let b64_data = vec!["QQ==".to_string(), "QkM=".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, true, true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
@@ -171,7 +171,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -201,7 +201,7 @@ mod tests {
 
 		let b64_data = vec!["QQ==".to_string(), "".to_string(), "REVG".to_string()];
 		let bitvec = vec![true, false, true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
@@ -209,7 +209,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -240,7 +240,7 @@ mod tests {
 		// Binary data: [0xde, 0xad, 0xbe, 0xef] in base64 is "3q2+7w=="
 		let b64_data = vec!["3q2+7w==".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
@@ -248,7 +248,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -273,7 +273,7 @@ mod tests {
 
 		let b64_data = vec!["invalid@base64!".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
@@ -281,7 +281,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -296,7 +296,7 @@ mod tests {
 
 		let b64_data = vec!["SGVsbG8===".to_string()]; // Too many padding characters
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(b64_data, bitvec.into()),
@@ -304,7 +304,7 @@ mod tests {
 			},
 		};
 
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,

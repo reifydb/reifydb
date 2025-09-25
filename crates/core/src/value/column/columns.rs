@@ -9,13 +9,10 @@ use std::{
 use reifydb_type::{Fragment, Value};
 
 use crate::{
-	interface::{
-		ResolvedColumn,
-		resolved::{ResolvedRingBuffer, ResolvedSource, ResolvedTable, ResolvedView},
-	},
+	interface::resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
 	util::CowVec,
 	value::{
-		column::{Column, ColumnComputed, ColumnData, ColumnResolved},
+		column::{Column, ColumnData},
 		container::UndefinedContainer,
 	},
 };
@@ -88,10 +85,10 @@ impl<'a> Columns<'a> {
 				Value::Decimal(v) => ColumnData::decimal(vec![v]),
 			};
 
-			let column = Column::Computed(ColumnComputed {
+			let column = Column {
 				name: Fragment::owned_internal(name.to_string()),
 				data,
-			});
+			};
 			index.insert(column.qualified_name(), idx);
 			columns.push(column);
 		}
@@ -142,11 +139,9 @@ impl<'a> Columns<'a> {
 
 		let mut columns: Vec<Column> = names
 			.iter()
-			.map(|name| {
-				Column::Computed(ColumnComputed {
-					name: Fragment::owned_internal(name.to_string()),
-					data: ColumnData::Undefined(UndefinedContainer::new(0)),
-				})
+			.map(|name| Column {
+				name: Fragment::owned_internal(name.to_string()),
+				data: ColumnData::Undefined(UndefinedContainer::new(0)),
 			})
 			.collect();
 
@@ -167,18 +162,17 @@ impl<'a> Columns<'a> {
 	}
 
 	pub fn from_table(table: &ResolvedTable<'a>) -> Self {
-		let source = ResolvedSource::Table(table.clone());
+		let _source = table.clone();
 
 		let columns: Vec<Column> = table
 			.columns()
 			.iter()
 			.map(|col| {
 				let column_ident = Fragment::owned_internal(&col.name);
-				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
-				Column::Resolved(ColumnResolved::new(
-					resolved_col,
-					ColumnData::with_capacity(col.constraint.get_type(), 0),
-				))
+				Column {
+					name: column_ident,
+					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				}
 			})
 			.collect();
 
@@ -186,18 +180,17 @@ impl<'a> Columns<'a> {
 	}
 
 	pub fn from_ring_buffer(ring_buffer: &ResolvedRingBuffer<'a>) -> Self {
-		let source = ResolvedSource::RingBuffer(ring_buffer.clone());
+		let _source = ring_buffer.clone();
 
 		let columns: Vec<Column> = ring_buffer
 			.columns()
 			.iter()
 			.map(|col| {
 				let column_ident = Fragment::owned_internal(&col.name);
-				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
-				Column::Resolved(ColumnResolved::new(
-					resolved_col,
-					ColumnData::with_capacity(col.constraint.get_type(), 0),
-				))
+				Column {
+					name: column_ident,
+					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				}
 			})
 			.collect();
 
@@ -205,18 +198,17 @@ impl<'a> Columns<'a> {
 	}
 
 	pub fn from_view(view: &ResolvedView<'a>) -> Self {
-		let source = ResolvedSource::View(view.clone());
+		let _source = view.clone();
 
 		let columns: Vec<Column> = view
 			.columns()
 			.iter()
 			.map(|col| {
 				let column_ident = Fragment::owned_internal(&col.name);
-				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
-				Column::Resolved(ColumnResolved::new(
-					resolved_col,
-					ColumnData::with_capacity(col.constraint.get_type(), 0),
-				))
+				Column {
+					name: column_ident,
+					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				}
 			})
 			.collect();
 

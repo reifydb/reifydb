@@ -7,7 +7,7 @@ use reifydb_catalog::system::SystemCatalog;
 use reifydb_core::{
 	Result,
 	interface::{TableVirtualDef, Transaction},
-	value::column::{Column, ColumnComputed, ColumnData, Columns},
+	value::column::{Column, ColumnData, Columns},
 };
 use reifydb_type::Fragment;
 
@@ -64,22 +64,22 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for Versions<T> {
 		}
 
 		let columns = vec![
-			Column::Computed(ColumnComputed {
+			Column {
 				name: Fragment::owned_internal("name"),
 				data: names_to_insert,
-			}),
-			Column::Computed(ColumnComputed {
+			},
+			Column {
 				name: Fragment::owned_internal("version"),
 				data: versions_to_insert,
-			}),
-			Column::Computed(ColumnComputed {
+			},
+			Column {
 				name: Fragment::owned_internal("description"),
 				data: descriptions_to_insert,
-			}),
-			Column::Computed(ColumnComputed {
+			},
+			Column {
 				name: Fragment::owned_internal("type"),
 				data: types_to_insert,
-			}),
+			},
 		];
 
 		self.exhausted = true;

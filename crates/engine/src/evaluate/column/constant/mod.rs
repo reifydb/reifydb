@@ -11,7 +11,7 @@ use reifydb_core::{
 	interface::evaluate::expression::ConstantExpression,
 	return_error,
 	value::{
-		column::{Column, ColumnComputed, ColumnData},
+		column::{Column, ColumnData},
 		container::undefined::UndefinedContainer,
 	},
 };
@@ -30,10 +30,10 @@ impl StandardColumnEvaluator {
 		expr: &ConstantExpression<'a>,
 	) -> crate::Result<Column<'a>> {
 		let row_count = ctx.take.unwrap_or(ctx.row_count);
-		Ok(Column::Computed(ColumnComputed {
+		Ok(Column {
 			name: expr.full_fragment_owned(),
 			data: Self::constant_value(&expr, row_count)?,
-		}))
+		})
 	}
 
 	pub(crate) fn constant_of<'a>(
@@ -52,10 +52,10 @@ impl StandardColumnEvaluator {
 				Self::constant_value_of(&expr, target, row_count)?
 			}
 		};
-		Ok(Column::Computed(ColumnComputed {
+		Ok(Column {
 			name: expr.full_fragment_owned(),
 			data: casted,
-		}))
+		})
 	}
 
 	fn constant_value(expr: &ConstantExpression, row_count: usize) -> crate::Result<ColumnData> {

@@ -9,5 +9,5 @@ logical 'create index idx_filtered on test.users {email} filter active == true f
 >     ├── Namespace: test
 >     ├── Table: users
 >     ├── Columns: email
->     ├── Filters: (Column(active) == Constant(true)), (Column(age) > Constant(18))
+>     ├── Filters: (active == Constant(true)), (age > Constant(18))
 > 

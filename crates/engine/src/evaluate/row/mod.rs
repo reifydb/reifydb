@@ -5,7 +5,7 @@ pub(crate) use reifydb_core::interface::{RowEvaluationContext, RowEvaluator};
 use reifydb_core::{
 	interface::{ColumnDef, ColumnEvaluationContext, ColumnEvaluator, expression::Expression},
 	value::{
-		column::{Column, ColumnComputed, ColumnData, Columns},
+		column::{Column, ColumnData, Columns},
 		container::NumberContainer,
 		row::{EncodedRowNamedLayout, Row},
 	},
@@ -36,10 +36,10 @@ impl RowEvaluator for StandardRowEvaluator {
 	fn evaluate<'a>(&self, ctx: &RowEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Value> {
 		let mut columns = Vec::new();
 
-		let row_number_column = Column::Computed(ColumnComputed {
+		let row_number_column = Column {
 			name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
 			data: ColumnData::Uint8(NumberContainer::from_vec(vec![ctx.row.number.0])),
-		});
+		};
 		columns.push(row_number_column);
 
 		for (idx, field) in ctx.row.layout.fields.iter().enumerate() {
@@ -71,10 +71,10 @@ impl RowEvaluator for StandardRowEvaluator {
 				Error(internal_error!("EncodedRowNamedLayout missing name for field at index {}", idx))
 			})?;
 
-			columns.push(Column::Computed(ColumnComputed {
+			columns.push(Column {
 				name: Fragment::owned_internal(name),
 				data,
-			}))
+			})
 		}
 
 		let ctx = ColumnEvaluationContext {
@@ -109,10 +109,10 @@ impl StandardRowEvaluator {
 				Error(internal_error!("EncodedRowNamedLayout missing name for field at index {}", idx))
 			})?;
 
-			source_columns.push(Column::Computed(ColumnComputed {
+			source_columns.push(Column {
 				name: Fragment::owned_internal(name),
 				data,
-			}));
+			});
 		}
 
 		let ctx = ColumnEvaluationContext {

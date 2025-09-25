@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{ColumnEvaluator, evaluate::expression::AddExpression},
 	value::{
-		column::{Column, ColumnComputed, ColumnData, push::Push},
+		column::{Column, ColumnData, push::Push},
 		container::{NumberContainer, UndefinedContainer, Utf8Container},
 	},
 };
@@ -1140,14 +1140,14 @@ impl StandardColumnEvaluator {
 
 			// Handle undefined values - any operation with
 			// undefined results in undefined
-			(ColumnData::Undefined(l), _) => Ok(Column::Computed(ColumnComputed {
+			(ColumnData::Undefined(l), _) => Ok(Column {
 				name: add.full_fragment_owned(),
 				data: ColumnData::Undefined(UndefinedContainer::new(l.len())),
-			})),
-			(_, ColumnData::Undefined(r)) => Ok(Column::Computed(ColumnComputed {
+			}),
+			(_, ColumnData::Undefined(r)) => Ok(Column {
 				name: add.full_fragment_owned(),
 				data: ColumnData::Undefined(UndefinedContainer::new(r.len())),
-			})),
+			}),
 
 			_ => return_error!(add_cannot_be_applied_to_incompatible_types(
 				&add.full_fragment_owned(),
@@ -1199,10 +1199,10 @@ where
 
 		let binding = fragment.fragment();
 		let fragment_text = binding.text();
-		return Ok(Column::Computed(ColumnComputed {
+		return Ok(Column {
 			name: Fragment::owned_internal(fragment_text),
 			data,
-		}));
+		});
 	}
 
 	// Slow path: some input values may be undefined
@@ -1221,10 +1221,10 @@ where
 	}
 	let binding = fragment.fragment();
 	let fragment_text = binding.text();
-	Ok(Column::Computed(ColumnComputed {
+	Ok(Column {
 		name: Fragment::owned_internal(fragment_text),
 		data,
-	}))
+	})
 }
 
 fn add_numeric_clone<'a, L, R>(
@@ -1260,10 +1260,10 @@ where
 	}
 	let binding = fragment.fragment();
 	let fragment_text = binding.text();
-	Ok(Column::Computed(ColumnComputed {
+	Ok(Column {
 		name: Fragment::owned_internal(fragment_text),
 		data,
-	}))
+	})
 }
 
 fn can_promote_to_string(data: &ColumnData) -> bool {
@@ -1310,10 +1310,10 @@ fn concat_strings<'a>(
 			_ => data.push_undefined(),
 		}
 	}
-	Ok(Column::Computed(ColumnComputed {
+	Ok(Column {
 		name: Fragment::owned_internal(fragment.text()),
 		data,
-	}))
+	})
 }
 
 fn concat_string_with_other<'a>(
@@ -1341,8 +1341,8 @@ fn concat_string_with_other<'a>(
 			_ => data.push_undefined(),
 		}
 	}
-	Ok(Column::Computed(ColumnComputed {
+	Ok(Column {
 		name: fragment,
 		data,
-	}))
+	})
 }

@@ -5,7 +5,7 @@ use reifydb_core::{
 	interface::{ColumnEvaluator, evaluate::expression::EqExpression},
 	return_error,
 	value::{
-		column::{Column, ColumnComputed, ColumnData},
+		column::{Column, ColumnData},
 		container::{BoolContainer, NumberContainer, TemporalContainer, Utf8Container},
 	},
 };
@@ -1093,12 +1093,10 @@ impl StandardColumnEvaluator {
 					..
 				},
 			) => Ok(compare_utf8(l, r, eq.full_fragment_owned())),
-			(ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => {
-				Ok(Column::Computed(ColumnComputed {
-					name: eq.full_fragment_owned(),
-					data: ColumnData::bool(vec![false; container.len()]),
-				}))
-			}
+			(ColumnData::Undefined(container), _) | (_, ColumnData::Undefined(container)) => Ok(Column {
+				name: eq.full_fragment_owned(),
+				data: ColumnData::bool(vec![false; container.len()]),
+			}),
 			_ => return_error!(equal_cannot_be_applied_to_incompatible_types(
 				eq.full_fragment_owned(),
 				left.get_type(),
@@ -1121,10 +1119,10 @@ fn compare_bool<'a>(
 		let data: Vec<bool> =
 			l.data().iter().zip(r.data().iter()).map(|(l_val, r_val)| l_val == r_val).collect();
 
-		Column::Computed(ColumnComputed {
+		Column {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
-		})
+		}
 	} else {
 		// Slow path: some values may be undefined
 		let mut data = ctx.pooled(Boolean, l.len());
@@ -1137,10 +1135,10 @@ fn compare_bool<'a>(
 			}
 		}
 
-		Column::Computed(ColumnComputed {
+		Column {
 			name: Fragment::owned_internal(fragment.text()),
 			data,
-		})
+		}
 	}
 }
 
@@ -1165,10 +1163,10 @@ where
 				.map(|(l_val, r_val)| number::is_equal(l_val, r_val))
 				.collect();
 
-		Column::Computed(ColumnComputed {
+		Column {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
-		})
+		}
 	} else {
 		// Slow path: some values may be undefined
 		let mut data = ctx.pooled(Boolean, l.len());
@@ -1181,10 +1179,10 @@ where
 			}
 		}
 
-		Column::Computed(ColumnComputed {
+		Column {
 			name: Fragment::owned_internal(fragment.text()),
 			data,
-		})
+		}
 	}
 }
 
@@ -1202,10 +1200,10 @@ where
 				.map(|(l_val, r_val)| temporal::is_equal(l_val, r_val))
 				.collect();
 
-		Column::Computed(ColumnComputed {
+		Column {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
-		})
+		}
 	} else {
 		// Slow path: some values may be undefined
 		let mut data = Vec::with_capacity(l.len());
@@ -1224,10 +1222,10 @@ where
 			}
 		}
 
-		Column::Computed(ColumnComputed {
+		Column {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
-		})
+		}
 	}
 }
 
@@ -1239,10 +1237,10 @@ fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>
 		let data: Vec<bool> =
 			l.data().iter().zip(r.data().iter()).map(|(l_val, r_val)| l_val == r_val).collect();
 
-		Column::Computed(ColumnComputed {
+		Column {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool(data),
-		})
+		}
 	} else {
 		// Slow path: some values may be undefined
 		let mut data = Vec::with_capacity(l.len());
@@ -1261,9 +1259,9 @@ fn compare_utf8<'a>(l: &Utf8Container, r: &Utf8Container, fragment: Fragment<'_>
 			}
 		}
 
-		Column::Computed(ColumnComputed {
+		Column {
 			name: Fragment::owned_internal(fragment.text()),
 			data: ColumnData::bool_with_bitvec(data, bitvec),
-		})
+		}
 	}
 }

@@ -19,20 +19,6 @@ use crate::ast::identifier::UnresolvedSourceIdentifier;
 /// Default namespace for unqualified identifiers
 pub const DEFAULT_NAMESPACE: &str = "default";
 
-// Helper function to check if a name is a system table
-fn is_system_table(name: &str) -> bool {
-	matches!(
-		name,
-		"namespaces"
-			| "tables" | "columns"
-			| "views" | "view_columns"
-			| "sequences" | "indexes"
-			| "ring_buffers" | "ring_buffer_columns"
-			| "authorities" | "authority_permissions"
-			| "column_policies"
-	)
-}
-
 /// Resolve an unresolved source identifier to a ResolvedSource
 /// This is used when processing From clauses and joins
 pub fn resolve_unresolved_source(
@@ -59,7 +45,8 @@ pub fn resolve_unresolved_source(
 	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::owned_internal(a.text()));
 
 	// Check if it's a system table
-	if namespace_str == "system" && is_system_table(name_str) {
+	// FIXME this is broken
+	if namespace_str == "system" {
 		// For system tables, we use a placeholder TableVirtualDef
 		// In a real implementation, this would come from the system catalog
 		use reifydb_core::interface::{NamespaceId, TableVirtualId};

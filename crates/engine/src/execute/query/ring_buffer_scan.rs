@@ -6,20 +6,18 @@ use std::{marker::PhantomData, sync::Arc};
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
-		ColumnDef, ColumnId, EncodableKey, MultiVersionQueryTransaction, ResolvedColumn, RingBufferMetadata,
-		RowKey, Transaction,
-		catalog::ColumnIndex,
-		resolved::{ResolvedRingBuffer, ResolvedSource},
+		EncodableKey, MultiVersionQueryTransaction, RingBufferMetadata, RowKey, Transaction,
+		resolved::ResolvedRingBuffer,
 	},
 	value::{
 		column::{
-			Column, ColumnData, ColumnResolved, Columns,
+			Column, ColumnData, Columns,
 			layout::{ColumnLayout, ColumnsLayout},
 		},
 		row::EncodedRowLayout,
 	},
 };
-use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, RowNumber, Type, TypeConstraint};
+use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, RowNumber, Type};
 
 use crate::{
 	StandardTransaction,
@@ -151,30 +149,14 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 		if batch_rows.is_empty() {
 			Ok(None)
 		} else {
-			// Build columns from rows
 			let mut columns = Columns::from_ring_buffer(&self.ring_buffer);
 			columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
 
-			// Add row numbers if requested
 			if ctx.preserve_row_numbers {
-				// Create a resolved column for row numbers
-				let source = ResolvedSource::RingBuffer(self.ring_buffer.clone());
-				let column_ident = Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME);
-				// Create a dummy ColumnDef for row number
-				let col_def = ColumnDef {
-					id: ColumnId(0),
-					name: ROW_NUMBER_COLUMN_NAME.to_string(),
-					constraint: TypeConstraint::unconstrained(Type::RowNumber),
-					index: ColumnIndex(0),
-					auto_increment: false,
-					policies: Vec::new(),
-				};
-				let resolved_col = ResolvedColumn::new(column_ident, source, col_def);
-				let row_number_column = Column::Resolved(ColumnResolved::new(
-					resolved_col,
-					ColumnData::row_number(row_numbers),
-				));
-				columns.0.push(row_number_column);
+				columns.0.push(Column {
+					name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
+					data: ColumnData::row_number(row_numbers),
+				});
 			}
 
 			Ok(Some(Batch {

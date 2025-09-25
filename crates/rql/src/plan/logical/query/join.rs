@@ -5,8 +5,8 @@ use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::JoinType;
 
 use crate::{
-	ast::{Ast, AstInfix, AstJoin, InfixOperator},
-	expression::ExpressionCompiler,
+	ast::{Ast, AstInfix, AstJoin, InfixOperator, identifier::UnresolvedSourceIdentifier},
+	expression::JoinConditionCompiler,
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::SourceScan,
 		SourceScanNode, resolver,
@@ -35,8 +35,8 @@ impl Compiler {
 							None,
 							identifier.token.fragment.clone(),
 						);
-						if let Some(a) = alias {
-							unresolved = unresolved.with_alias(a);
+						if let Some(a) = &alias {
+							unresolved = unresolved.with_alias(a.clone());
 						}
 
 						// Build resolved source from
@@ -70,8 +70,8 @@ impl Compiler {
 							Some(namespace.token.fragment),
 							table.token.fragment,
 						);
-						if let Some(a) = alias {
-							unresolved = unresolved.with_alias(a);
+						if let Some(a) = &alias {
+							unresolved = unresolved.with_alias(a.clone());
 						}
 
 						// Build resolved source from
@@ -86,11 +86,14 @@ impl Compiler {
 					}
 					_ => unimplemented!(),
 				};
+				// Use JoinConditionCompiler for ON clause expressions
+				let join_compiler = JoinConditionCompiler::new(alias.clone());
 				Ok(LogicalPlan::JoinInner(JoinInnerNode {
 					with,
 					on: on.into_iter()
-						.map(ExpressionCompiler::compile)
+						.map(|expr| join_compiler.compile(expr))
 						.collect::<crate::Result<Vec<_>>>()?,
+					alias,
 				}))
 			}
 			AstJoin::LeftJoin {
@@ -109,8 +112,8 @@ impl Compiler {
 							None,
 							identifier.token.fragment.clone(),
 						);
-						if let Some(a) = alias {
-							unresolved = unresolved.with_alias(a);
+						if let Some(a) = &alias {
+							unresolved = unresolved.with_alias(a.clone());
 						}
 
 						// Build resolved source from
@@ -144,8 +147,8 @@ impl Compiler {
 							Some(namespace.token.fragment),
 							table.token.fragment,
 						);
-						if let Some(a) = alias {
-							unresolved = unresolved.with_alias(a);
+						if let Some(a) = &alias {
+							unresolved = unresolved.with_alias(a.clone());
 						}
 
 						// Build resolved source from
@@ -160,11 +163,14 @@ impl Compiler {
 					}
 					_ => unimplemented!(),
 				};
+				// Use JoinConditionCompiler for ON clause expressions
+				let join_compiler = JoinConditionCompiler::new(alias.clone());
 				Ok(LogicalPlan::JoinLeft(JoinLeftNode {
 					with,
 					on: on.into_iter()
-						.map(ExpressionCompiler::compile)
+						.map(|expr| join_compiler.compile(expr))
 						.collect::<crate::Result<Vec<_>>>()?,
+					alias,
 				}))
 			}
 			AstJoin::NaturalJoin {
@@ -183,8 +189,8 @@ impl Compiler {
 							None,
 							identifier.token.fragment.clone(),
 						);
-						if let Some(a) = alias {
-							unresolved = unresolved.with_alias(a);
+						if let Some(a) = &alias {
+							unresolved = unresolved.with_alias(a.clone());
 						}
 
 						// Build resolved source from
@@ -210,22 +216,15 @@ impl Compiler {
 						let Ast::Identifier(table) = *right else {
 							unreachable!()
 						};
-						// Create fully qualified
-						// SourceIdentifier
-						use crate::ast::identifier::UnresolvedSourceIdentifier;
 
-						let mut unresolved = UnresolvedSourceIdentifier::new(
+						let unresolved = UnresolvedSourceIdentifier::new(
 							Some(namespace.token.fragment),
 							table.token.fragment,
 						);
-						if let Some(a) = alias {
-							unresolved = unresolved.with_alias(a);
-						}
 
-						// Build resolved source from
-						// unresolved identifier
 						let resolved_source =
 							resolver::resolve_unresolved_source(tx, &unresolved)?;
+
 						vec![SourceScan(SourceScanNode {
 							source: resolved_source,
 							columns: None,
@@ -238,6 +237,7 @@ impl Compiler {
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
 					join_type: join_type.unwrap_or(JoinType::Inner),
+					alias,
 				}))
 			}
 		}

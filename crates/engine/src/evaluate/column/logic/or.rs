@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{ColumnEvaluator, evaluate::expression::OrExpression},
 	return_error,
-	value::column::{Column, ColumnComputed, ColumnData},
+	value::column::{Column, ColumnData},
 };
 use reifydb_type::diagnostic::operator::{
 	or_can_not_applied_to_number, or_can_not_applied_to_temporal, or_can_not_applied_to_text,
@@ -34,10 +34,10 @@ impl StandardColumnEvaluator {
 						.map(|(l_val, r_val)| l_val || r_val)
 						.collect();
 
-					Ok(Column::Computed(ColumnComputed {
+					Ok(Column {
 						name: expr.full_fragment_owned(),
 						data: ColumnData::bool(data),
-					}))
+					})
 				} else {
 					// Slow path: some values may be
 					// undefined
@@ -56,10 +56,10 @@ impl StandardColumnEvaluator {
 						}
 					}
 
-					Ok(Column::Computed(ColumnComputed {
+					Ok(Column {
 						name: expr.full_fragment_owned(),
 						data: ColumnData::bool_with_bitvec(data, bitvec),
-					}))
+					})
 				}
 			}
 			(l, r) => {

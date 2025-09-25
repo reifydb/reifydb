@@ -7,7 +7,7 @@ use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
 	interface::{TableVirtualDef, Transaction},
-	value::column::{Column, ColumnComputed, ColumnData, Columns},
+	value::column::{Column, ColumnData, Columns},
 };
 use reifydb_type::Fragment;
 
@@ -56,14 +56,14 @@ impl<'a, T: Transaction> TableVirtual<'a, T> for PrimaryKeys<T> {
 		}
 
 		let columns = vec![
-			Column::Computed(ColumnComputed {
+			Column {
 				name: Fragment::owned_internal("id"),
 				data: ColumnData::uint8(pk_ids),
-			}),
-			Column::Computed(ColumnComputed {
+			},
+			Column {
 				name: Fragment::owned_internal("source_id"),
 				data: ColumnData::uint8(source_ids),
-			}),
+			},
 		];
 
 		self.exhausted = true;

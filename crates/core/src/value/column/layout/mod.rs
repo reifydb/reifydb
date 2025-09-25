@@ -31,8 +31,8 @@ pub struct ColumnLayout<'a> {
 impl<'a> ColumnLayout<'a> {
 	pub fn from_column(column: &Column<'a>) -> Self {
 		Self {
-			namespace: column.namespace().map(|s| Fragment::owned_internal(s.text())),
-			source: column.source().map(|s| Fragment::owned_internal(s.text())),
+			namespace: None,
+			source: None,
 			name: column.name().clone(),
 		}
 	}

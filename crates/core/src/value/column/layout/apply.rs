@@ -3,10 +3,8 @@
 
 use std::collections::{HashMap, HashSet};
 
-use reifydb_type::Fragment;
-
 use super::{ColumnLayout, ColumnsLayout};
-use crate::value::column::{Column, ColumnComputed, ColumnData, Columns, SourceQualified};
+use crate::value::column::{Column, ColumnData, Columns};
 
 impl<'a> Columns<'a> {
 	pub fn apply_layout(&mut self, layout: &ColumnsLayout<'a>) {
@@ -19,27 +17,9 @@ impl<'a> Columns<'a> {
 				let column = &mut self[i];
 				let data = std::mem::replace(column.data_mut(), ColumnData::undefined(0));
 
-				*column = match (&column_layout.namespace, &column_layout.source) {
-					(Some(_namespace), Some(source)) => Column::SourceQualified(SourceQualified {
-						source: source.clone(),
-						name: column_layout.name.clone(),
-						data,
-					}),
-					(None, Some(source)) => Column::SourceQualified(SourceQualified {
-						source: source.clone(),
-						name: column_layout.name.clone(),
-						data,
-					}),
-					(None, None) => match column {
-						_ => Column::Computed(ColumnComputed {
-							name: column_layout.name.clone(),
-							data,
-						}),
-					},
-					(Some(_), None) => Column::Computed(ColumnComputed {
-						name: column_layout.name.clone(),
-						data,
-					}),
+				*column = Column {
+					name: column_layout.name.clone(),
+					data,
 				};
 			}
 		}
@@ -92,40 +72,15 @@ impl<'a> Columns<'a> {
 						},
 						_ => {
 							// No source info in layout, try to get it from existing columns
-							if let Some(existing_column) =
+							if let Some(_existing_column) =
 								self.iter().find(|c| c.name() == &column_layout.name)
 							{
-								match (
-									existing_column.namespace(),
-									existing_column.source(),
-								) {
-									(Some(namespace), Some(source)) => {
-										ColumnLayout {
-											namespace: Some(
-												Fragment::owned_internal(namespace.text())
-											),
-											source: Some(Fragment::owned_internal(source.text())),
-											name: column_layout
-												.name
-												.clone(),
-										}
-									}
-									(None, Some(source)) => ColumnLayout {
-										namespace: None,
-										source: Some(Fragment::owned_internal(source.text())),
-										name: column_layout.name.clone(),
-									},
-									_ => {
-										// Use columns name as fallback source
-										// qualification
-										ColumnLayout {
-											namespace: None,
-											source: None,
-											name: column_layout
-												.name
-												.clone(),
-										}
-									}
+								// Columns no longer track namespace and source
+								// separately
+								ColumnLayout {
+									namespace: None,
+									source: None,
+									name: column_layout.name.clone(),
 								}
 							} else {
 								// Use columns name as fallback source qualification

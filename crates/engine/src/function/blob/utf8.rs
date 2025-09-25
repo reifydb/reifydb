@@ -52,7 +52,7 @@ impl ScalarFunction for BlobUtf8 {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::value::{
-		column::{Column, ColumnComputed, Columns},
+		column::{Column, Columns},
 		container::Utf8Container,
 	};
 	use reifydb_type::{Fragment, value::constraint::bytes::MaxBytes};
@@ -65,14 +65,14 @@ mod tests {
 
 		let utf8_data = vec!["Hello!".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -98,14 +98,14 @@ mod tests {
 
 		let utf8_data = vec!["".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -132,14 +132,14 @@ mod tests {
 		// Test Unicode characters: emoji, accented chars, etc.
 		let utf8_data = vec!["Hello 🌍! Café naïve".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -166,14 +166,14 @@ mod tests {
 		// Test various multibyte UTF-8 characters
 		let utf8_data = vec!["日本語 中文 한국어 العربية".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -200,14 +200,14 @@ mod tests {
 		// Test special characters including newlines, tabs, etc.
 		let utf8_data = vec!["Line1\nLine2\tTabbed\r\nWindows".to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -233,14 +233,14 @@ mod tests {
 
 		let utf8_data = vec!["First".to_string(), "Second 🚀".to_string(), "Third café".to_string()];
 		let bitvec = vec![true, true, true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -271,14 +271,14 @@ mod tests {
 
 		let utf8_data = vec!["First".to_string(), "".to_string(), "Third".to_string()];
 		let bitvec = vec![true, false, true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 3,
@@ -310,14 +310,14 @@ mod tests {
 		// Test JSON-like data which is common to store as UTF-8
 		let utf8_data = vec![r#"{"name": "John", "age": 30, "city": "New York"}"#.to_string()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,
@@ -345,14 +345,14 @@ mod tests {
 		let long_string = "A".repeat(1000);
 		let utf8_data = vec![long_string.clone()];
 		let bitvec = vec![true];
-		let input_column = ColumnComputed {
+		let input_column = Column {
 			name: Fragment::borrowed_internal("input"),
 			data: ColumnData::Utf8 {
 				container: Utf8Container::new(utf8_data, bitvec.into()),
 				max_bytes: MaxBytes::MAX,
 			},
 		};
-		let columns = Columns::new(vec![Column::Computed(input_column)]);
+		let columns = Columns::new(vec![input_column]);
 		let ctx = ScalarFunctionContext {
 			columns: &columns,
 			row_count: 1,

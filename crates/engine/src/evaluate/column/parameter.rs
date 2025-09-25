@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::expression::ParameterExpression,
-	value::column::{Column, ColumnComputed, ColumnData},
+	value::column::{Column, ColumnData},
 };
 use reifydb_type::{Fragment, Value, diagnostic::engine, error};
 
@@ -67,9 +67,9 @@ impl StandardColumnEvaluator {
 			Value::Decimal(bd) => ColumnData::decimal(vec![bd.clone(); ctx.row_count]),
 			Value::Undefined => ColumnData::undefined(ctx.row_count),
 		};
-		Ok(Column::Computed(ColumnComputed {
+		Ok(Column {
 			name: Fragment::owned_internal("parameter"),
 			data: column_data,
-		}))
+		})
 	}
 }

@@ -465,18 +465,21 @@ pub struct FilterNode<'a> {
 pub struct JoinInnerNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
 	pub on: Vec<Expression<'a>>,
+	pub alias: Option<Fragment<'a>>,
 }
 
 #[derive(Debug)]
 pub struct JoinLeftNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
 	pub on: Vec<Expression<'a>>,
+	pub alias: Option<Fragment<'a>>,
 }
 
 #[derive(Debug)]
 pub struct JoinNaturalNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
 	pub join_type: JoinType,
+	pub alias: Option<Fragment<'a>>,
 }
 
 #[derive(Debug)]

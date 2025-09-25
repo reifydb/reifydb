@@ -432,7 +432,7 @@ impl<'a> Display for Expression<'a> {
 				write!(f, "Constant({})", fragment)
 			}
 			Expression::Column(ColumnExpression(column)) => {
-				write!(f, "Column({})", column.name.text())
+				write!(f, "{}", column.name.text())
 			}
 			Expression::Add(AddExpression {
 				left,

@@ -15,7 +15,7 @@ use reifydb_core::{
 		ColumnEvaluator, LazyFragment,
 		expression::{CastExpression, Expression},
 	},
-	value::column::{Column, ColumnComputed, ColumnData, SourceQualified},
+	value::column::{Column, ColumnData},
 };
 use reifydb_type::{Type, diagnostic::cast, err, error};
 
@@ -49,16 +49,9 @@ impl StandardColumnEvaluator {
 						))
 					})?;
 
-				Ok(match column.source() {
-					Some(source) => Column::SourceQualified(SourceQualified {
-						source: source.clone(),
-						name: column.name_owned(),
-						data: casted,
-					}),
-					None => Column::Computed(ColumnComputed {
-						name: column.name_owned(),
-						data: casted,
-					}),
+				Ok(Column {
+					name: column.name_owned(),
+					data: casted,
 				})
 			}
 		}

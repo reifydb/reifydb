@@ -4,7 +4,7 @@
 physical 'from users map {id, name} filter id == 10 sort id asc'
 ---
 > └── Sort: [id ASC]
->     └── Filter [(Column(id) == Constant(10))]
->         └── Map [Column(id), Column(name)]
+>     └── Filter [(id == Constant(10))]
+>         └── Map [id, name]
 >             └── TableScan default.users
 > 

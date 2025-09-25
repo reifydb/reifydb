@@ -10,9 +10,7 @@ use query::{
 	filter::FilterNode,
 	index_scan::IndexScanNode,
 	inline::InlineDataNode,
-	join_inner::InnerJoinNode,
-	join_left::LeftJoinNode,
-	join_natural::NaturalJoinNode,
+	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
 	ring_buffer_scan::RingBufferScan,
 	sort::SortNode,
@@ -24,7 +22,7 @@ use query::{
 use reifydb_core::{
 	Frame,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedSource, Transaction},
-	value::column::{Column, ColumnComputed, ColumnData, Columns, layout::ColumnsLayout},
+	value::column::{Column, ColumnData, Columns, layout::ColumnsLayout},
 };
 use reifydb_rql::{
 	ast,
@@ -396,10 +394,10 @@ impl Executor {
 						.map(|layout| {
 							// For now, just create a ColumnQualified since we don't have
 							// the full resolved metadata here
-							Column::Computed(ColumnComputed {
+							Column {
 								name: layout.name,
 								data: ColumnData::undefined(0),
-							})
+							}
 						})
 						.collect();
 

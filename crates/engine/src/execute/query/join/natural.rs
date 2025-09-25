@@ -6,53 +6,40 @@ use std::collections::HashSet;
 use reifydb_core::{
 	JoinType,
 	interface::Transaction,
-	value::column::{Column, Columns, layout::ColumnsLayout},
+	value::column::{Columns, layout::ColumnsLayout},
 };
-use reifydb_type::Value;
+use reifydb_type::{Fragment, Value};
 
+use super::common::{JoinContext, load_and_merge_all, resolve_column_names};
 use crate::{
 	StandardTransaction,
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct NaturalJoinNode<'a, T: Transaction> {
+pub struct NaturalJoinNode<'a, T: Transaction> {
 	left: Box<ExecutionPlan<'a, T>>,
 	right: Box<ExecutionPlan<'a, T>>,
 	join_type: JoinType,
+	alias: Option<Fragment<'a>>,
 	layout: Option<ColumnsLayout<'a>>,
-	initialized: Option<()>,
+	context: JoinContext<'a>,
 }
 
 impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
-	pub fn new(left: Box<ExecutionPlan<'a, T>>, right: Box<ExecutionPlan<'a, T>>, join_type: JoinType) -> Self {
+	pub fn new(
+		left: Box<ExecutionPlan<'a, T>>,
+		right: Box<ExecutionPlan<'a, T>>,
+		join_type: JoinType,
+		alias: Option<Fragment<'a>>,
+	) -> Self {
 		Self {
 			left,
 			right,
 			join_type,
+			alias,
 			layout: None,
-			initialized: None,
+			context: JoinContext::new(),
 		}
-	}
-
-	fn load_and_merge_all(
-		node: &mut Box<ExecutionPlan<'a, T>>,
-		rx: &mut StandardTransaction<'a, T>,
-	) -> crate::Result<Columns<'a>> {
-		let mut result: Option<Columns> = None;
-
-		while let Some(Batch {
-			columns,
-		}) = node.next(rx)?
-		{
-			if let Some(mut acc) = result.take() {
-				acc.append_columns(columns)?;
-				result = Some(acc);
-			} else {
-				result = Some(columns);
-			}
-		}
-		let result = result.unwrap_or_else(Columns::empty);
-		Ok(result)
 	}
 
 	fn find_common_columns(left_columns: &Columns, right_columns: &Columns) -> Vec<(String, usize, usize)> {
@@ -72,50 +59,42 @@ impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
 
 impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
-		self.initialized = Some(());
 		Ok(())
 	}
 
 	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
-		debug_assert!(self.initialized.is_some(), "NaturalJoinNode::next() called before initialize()");
+		debug_assert!(self.context.is_initialized(), "NaturalJoinNode::next() called before initialize()");
 
 		if self.layout.is_some() {
 			return Ok(None);
 		}
 
-		let left_columns = Self::load_and_merge_all(&mut self.left, rx)?;
-		let right_columns = Self::load_and_merge_all(&mut self.right, rx)?;
+		let left_columns = load_and_merge_all(&mut self.left, rx)?;
+		let right_columns = load_and_merge_all(&mut self.right, rx)?;
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();
 
-		// Find common columns between left and right columnss
+		// Find common columns between left and right columns
 		let common_columns = Self::find_common_columns(&left_columns, &right_columns);
 
 		if common_columns.is_empty() {
-			// If no common columns, natural join behaves like a
-			// cross join For now, return an error as this is
-			// unusual
-			panic!("Natural join requires at least one common column");
+			return Ok(None);
 		}
 
 		// Build set of right column indices to exclude (common columns)
 		let excluded_right_cols: HashSet<usize> =
 			common_columns.iter().map(|(_, _, right_idx)| *right_idx).collect();
 
-		// Build qualified column names for the result (excluding
-		// duplicates from right)
-		let qualified_names: Vec<String> = left_columns
-			.iter()
-			.map(|col| col.qualified_name())
-			.chain(right_columns
-				.iter()
-				.enumerate()
-				.filter(|(idx, _)| !excluded_right_cols.contains(idx))
-				.map(|(_, col)| col.qualified_name()))
-			.collect();
+		// Convert to Vec for resolve_column_names
+		let excluded_indices: Vec<usize> = excluded_right_cols.iter().copied().collect();
+
+		// Resolve column names, excluding common columns from right
+		let resolved =
+			resolve_column_names(&left_columns, &right_columns, &self.alias, Some(&excluded_indices));
 
 		let mut result_rows = Vec::new();
 
@@ -132,8 +111,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 					.all(|(_, left_idx, right_idx)| left_row[*left_idx] == right_row[*right_idx]);
 
 				if all_match {
-					// Combine rows, excluding duplicate
-					// columns from right
+					// Combine rows, excluding duplicate columns from right
 					let mut combined = left_row.clone();
 					for (idx, value) in right_row.iter().enumerate() {
 						if !excluded_right_cols.contains(&idx) {
@@ -145,35 +123,19 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 				}
 			}
 
-			// Handle LEFT natural join - include unmatched left
-			// rows
+			// Handle LEFT natural join - include unmatched left rows
 			if !matched && matches!(self.join_type, JoinType::Left) {
 				let mut combined = left_row.clone();
-				// Add undefined data for non-common right
-				// columns
+				// Add undefined data for non-common right columns
 				let undefined_count = right_columns.len() - excluded_right_cols.len();
 				combined.extend(vec![Value::Undefined; undefined_count]);
 				result_rows.push(combined);
 			}
 		}
 
-		// Create columns with proper qualified column structure
-		let mut column_metadata: Vec<&Column> = left_columns.iter().collect();
-		for (idx, col) in right_columns.iter().enumerate() {
-			if !excluded_right_cols.contains(&idx) {
-				column_metadata.push(col);
-			}
-		}
-
-		let names_refs: Vec<&str> = qualified_names.iter().map(|s| s.as_str()).collect();
-		let mut columns = Columns::from_rows(&names_refs, &result_rows);
-
-		// Update columns with proper metadata - preserve the original column structure
-		for (i, col_meta) in column_metadata.iter().enumerate() {
-			let old_column = &columns[i];
-			// Just update the data while preserving the column's qualification structure
-			columns[i] = col_meta.with_new_data(old_column.data().clone());
-		}
+		// Create columns with conflict-resolved names
+		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
+		let columns = Columns::from_rows(&names_refs, &result_rows);
 
 		self.layout = Some(ColumnsLayout::from_columns(&columns));
 		Ok(Some(Batch {

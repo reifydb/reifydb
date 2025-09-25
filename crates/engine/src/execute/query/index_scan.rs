@@ -142,7 +142,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<'a, T> {
 		// // Add the RowNumber column to the columns if requested
 		// if ctx.preserve_row_numbers {
 		// 	// TODO: Update IndexScanNode to use ResolvedTable instead of TableDef
-		// 	let row_number_column = Column::SourceQualified(SourceQualified {
+		// 	let row_number_column = Column::( {
 		// 		source: Fragment::owned_internal(&self.table.name),
 		// 		name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
 		// 		data: ColumnData::row_number(row_numbers),
