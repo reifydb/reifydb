@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use reifydb_core::{
 	JoinType,
 	interface::Transaction,
-	value::column::{Columns, layout::ColumnsLayout},
+	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_type::{Fragment, Value};
 
@@ -21,7 +21,7 @@ pub struct NaturalJoinNode<'a, T: Transaction> {
 	right: Box<ExecutionPlan<'a, T>>,
 	join_type: JoinType,
 	alias: Option<Fragment<'a>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: JoinContext<'a>,
 }
 
@@ -37,7 +37,7 @@ impl<'a, T: Transaction> NaturalJoinNode<'a, T> {
 			right,
 			join_type,
 			alias,
-			layout: None,
+			headers: None,
 			context: JoinContext::new(),
 		}
 	}
@@ -68,7 +68,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_initialized(), "NaturalJoinNode::next() called before initialize()");
 
-		if self.layout.is_some() {
+		if self.headers.is_some() {
 			return Ok(None);
 		}
 
@@ -137,13 +137,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for NaturalJoinNode<'a, T> {
 		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
 		let columns = Columns::from_rows(&names_refs, &result_rows);
 
-		self.layout = Some(ColumnsLayout::from_columns(&columns));
+		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(Batch {
 			columns,
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone()
 	}
 }

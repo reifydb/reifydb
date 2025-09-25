@@ -12,7 +12,7 @@ use crate::{
 	interface::resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
 	util::CowVec,
 	value::{
-		column::{Column, ColumnData},
+		column::{Column, ColumnData, headers::ColumnHeaders},
 		container::UndefinedContainer,
 	},
 };
@@ -94,6 +94,21 @@ impl<'a> Columns<'a> {
 		}
 
 		Self::new(columns)
+	}
+
+	pub fn apply_headers(&mut self, headers: &ColumnHeaders<'a>) {
+		// Apply the column names from headers to this Columns instance
+		for (i, name) in headers.columns.iter().enumerate() {
+			if i < self.len() {
+				let column = &mut self[i];
+				let data = std::mem::replace(column.data_mut(), ColumnData::undefined(0));
+
+				*column = Column {
+					name: name.clone(),
+					data,
+				};
+			}
+		}
 	}
 }
 

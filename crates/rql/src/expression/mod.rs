@@ -2,8 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod join;
+mod name;
 
 pub use join::JoinConditionCompiler;
+pub use name::*;
 use reifydb_core::interface::evaluate::expression::{
 	AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
 	ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression, GreaterThanEqExpression,

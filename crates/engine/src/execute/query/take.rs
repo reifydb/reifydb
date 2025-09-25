@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{interface::Transaction, value::column::layout::ColumnsLayout};
+use reifydb_core::{interface::Transaction, value::column::headers::ColumnHeaders};
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
@@ -59,7 +59,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.input.layout()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.input.headers()
 	}
 }

@@ -8,7 +8,7 @@ use std::{
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::column::{Column, ColumnData, Columns, layout::ColumnsLayout},
+	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
 
@@ -33,7 +33,7 @@ pub(crate) struct AggregateNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	by: Vec<Expression<'a>>,
 	map: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
@@ -48,7 +48,7 @@ impl<'a, T: Transaction> AggregateNode<'a, T> {
 			input,
 			by,
 			map,
-			layout: None,
+			headers: None,
 			context: Some(context),
 		}
 	}
@@ -69,7 +69,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
-		if self.layout.is_some() {
+		if self.headers.is_some() {
 			return Ok(None);
 		}
 
@@ -143,15 +143,15 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 		}
 
 		let columns = Columns::new(result_columns);
-		self.layout = Some(ColumnsLayout::from_columns(&columns));
+		self.headers = Some(ColumnHeaders::from_columns(&columns));
 
 		Ok(Some(Batch {
 			columns,
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone().or(self.input.layout())
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone().or(self.input.headers())
 	}
 }
 

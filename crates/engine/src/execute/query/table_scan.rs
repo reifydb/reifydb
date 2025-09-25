@@ -14,10 +14,7 @@ use reifydb_core::{
 		resolved::ResolvedTable,
 	},
 	value::{
-		column::{
-			Column, ColumnData, Columns,
-			layout::{ColumnLayout, ColumnsLayout},
-		},
+		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 		row::EncodedRowLayout,
 	},
 };
@@ -28,7 +25,7 @@ use crate::execute::{Batch, ExecutionContext, QueryNode};
 pub(crate) struct TableScanNode<'a, T: Transaction> {
 	table: ResolvedTable<'a>,
 	context: Option<Arc<ExecutionContext<'a>>>,
-	layout: ColumnsLayout<'a>,
+	headers: ColumnHeaders<'a>,
 	row_layout: EncodedRowLayout,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
@@ -40,22 +37,14 @@ impl<'a, T: Transaction> TableScanNode<'a, T> {
 		let data = table.columns().iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedRowLayout::new(&data);
 
-		let layout = ColumnsLayout {
-			columns: table
-				.columns()
-				.iter()
-				.map(|col| ColumnLayout {
-					namespace: None,
-					source: None,
-					name: Fragment::owned_internal(&col.name),
-				})
-				.collect(),
+		let headers = ColumnHeaders {
+			columns: table.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
 			table,
 			context: Some(context),
-			layout,
+			headers,
 			row_layout,
 			last_key: None,
 			exhausted: false,
@@ -135,7 +124,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<'a, T> {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		Some(self.layout.clone())
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		Some(self.headers.clone())
 	}
 }

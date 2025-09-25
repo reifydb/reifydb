@@ -6,7 +6,7 @@ use reifydb_type::{Fragment, IntoFragment, Type};
 mod columns;
 mod data;
 pub mod frame;
-pub mod layout;
+pub mod headers;
 #[allow(dead_code, unused_variables)]
 pub mod pool;
 pub mod push;

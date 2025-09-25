@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{Transaction, evaluate::expression::Expression},
-	value::column::{Columns, layout::ColumnsLayout},
+	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_type::{Fragment, Value};
 
@@ -19,7 +19,7 @@ pub struct InnerJoinNode<'a, T: Transaction> {
 	right: Box<ExecutionPlan<'a, T>>,
 	on: Vec<Expression<'a>>,
 	alias: Option<Fragment<'a>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: JoinContext<'a>,
 }
 
@@ -35,7 +35,7 @@ impl<'a, T: Transaction> InnerJoinNode<'a, T> {
 			right,
 			on,
 			alias,
-			layout: None,
+			headers: None,
 			context: JoinContext::new(),
 		}
 	}
@@ -53,7 +53,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 		debug_assert!(self.context.is_initialized(), "InnerJoinNode::next() called before initialize()");
 		let ctx = self.context.get();
 
-		if self.layout.is_some() {
+		if self.headers.is_some() {
 			return Ok(None);
 		}
 
@@ -108,13 +108,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InnerJoinNode<'a, T> {
 		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
 		let columns = Columns::from_rows(&names_refs, &result_rows);
 
-		self.layout = Some(ColumnsLayout::from_columns(&columns));
+		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(Batch {
 			columns,
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone()
 	}
 }

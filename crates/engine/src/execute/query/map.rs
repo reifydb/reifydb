@@ -5,20 +5,21 @@ use std::{marker::PhantomData, sync::Arc};
 
 use reifydb_core::{
 	interface::{ResolvedColumn, TargetColumn, Transaction, evaluate::expression::Expression},
-	value::column::{Column, Columns, layout::ColumnsLayout},
+	value::column::{Column, Columns, headers::ColumnHeaders},
 };
+use reifydb_rql::expression::column_name_from_expression;
 use reifydb_type::{Fragment, Params, ROW_NUMBER_COLUMN_NAME};
 
 use crate::{
 	StandardTransaction,
 	evaluate::{EvaluationContext, evaluate},
-	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode, query::layout::derive_columns_column_layout},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
 pub(crate) struct MapNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
@@ -27,7 +28,7 @@ impl<'a, T: Transaction> MapNode<'a, T> {
 		Self {
 			input,
 			expressions,
-			layout: None,
+			headers: None,
 			context: None,
 		}
 	}
@@ -106,9 +107,10 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 			let new_columns =
 				unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(new_columns) };
 
-			let layout = derive_columns_column_layout(&expressions, ctx.preserve_row_numbers);
-
-			self.layout = Some(layout);
+			let column_names = expressions.iter().map(column_name_from_expression).collect();
+			self.headers = Some(ColumnHeaders {
+				columns: column_names,
+			});
 
 			return Ok(Some(Batch {
 				columns: Columns::new(new_columns),
@@ -117,14 +119,14 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone().or(self.input.layout())
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone().or(self.input.headers())
 	}
 }
 
 pub(crate) struct MapWithoutInputNode<'a, T: Transaction> {
 	expressions: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	_phantom: PhantomData<T>,
 }
@@ -133,7 +135,7 @@ impl<'a, T: Transaction> MapWithoutInputNode<'a, T> {
 	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			expressions,
-			layout: None,
+			headers: None,
 			context: None,
 			_phantom: PhantomData,
 		}
@@ -154,7 +156,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 		debug_assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
-		if self.layout.is_some() {
+		if self.headers.is_some() {
 			return Ok(None);
 		}
 
@@ -178,13 +180,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 		}
 
 		let columns = Columns::new(columns);
-		self.layout = Some(ColumnsLayout::from_columns(&columns));
+		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(Batch {
 			columns,
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone()
 	}
 }

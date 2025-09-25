@@ -9,10 +9,7 @@ use std::{
 
 use reifydb_core::{
 	interface::{ResolvedSource, TargetColumn, Transaction, evaluate::expression::AliasExpression},
-	value::column::{
-		Column, ColumnData, Columns,
-		layout::{ColumnLayout, ColumnsLayout},
-	},
+	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_type::{Fragment, Params, Type, Value};
 
@@ -23,7 +20,7 @@ use crate::{
 
 pub(crate) struct InlineDataNode<'a, T: Transaction> {
 	rows: Vec<Vec<AliasExpression<'a>>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	executed: bool,
 	_phantom: PhantomData<T>,
@@ -31,33 +28,23 @@ pub(crate) struct InlineDataNode<'a, T: Transaction> {
 
 impl<'a, T: Transaction> InlineDataNode<'a, T> {
 	pub fn new(rows: Vec<Vec<AliasExpression<'a>>>, context: Arc<ExecutionContext<'a>>) -> Self {
-		// Clone the Arc to extract layout without borrowing issues
+		// Clone the Arc to extract headers without borrowing issues
 		let cloned_context = context.clone();
-		let layout =
+		let headers =
 			cloned_context.source.as_ref().map(|source| Self::create_columns_layout_from_source(source));
 
 		Self {
 			rows,
-			layout,
+			headers,
 			context: Some(context),
 			executed: false,
 			_phantom: PhantomData,
 		}
 	}
 
-	fn create_columns_layout_from_source(source: &ResolvedSource) -> ColumnsLayout<'a> {
-		let columns = source
-			.columns()
-			.iter()
-			.map(|col| ColumnLayout {
-				namespace: None,
-				source: None,
-				name: Fragment::owned_internal(&col.name),
-			})
-			.collect();
-
-		ColumnsLayout {
-			columns,
+	fn create_columns_layout_from_source(source: &ResolvedSource) -> ColumnHeaders<'a> {
+		ColumnHeaders {
+			columns: source.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
 		}
 	}
 }
@@ -84,8 +71,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
 
 		if self.rows.is_empty() {
 			let columns = Columns::empty();
-			if self.layout.is_none() {
-				self.layout = Some(ColumnsLayout::from_columns(&columns));
+			if self.headers.is_none() {
+				self.headers = Some(ColumnHeaders::from_columns(&columns));
 			}
 			return Ok(Some(Batch {
 				columns,
@@ -94,15 +81,15 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
 
 		// Choose execution path based on whether we have table
 		// namespace
-		if self.layout.is_some() {
+		if self.headers.is_some() {
 			self.next_with_source(&ctx)
 		} else {
 			self.next_infer_namespace(&ctx)
 		}
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone()
 	}
 }
 
@@ -305,7 +292,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		}
 
 		let columns = Columns::new(columns);
-		self.layout = Some(ColumnsLayout::from_columns(&columns));
+		self.headers = Some(ColumnHeaders::from_columns(&columns));
 
 		Ok(Some(Batch {
 			columns,
@@ -313,8 +300,8 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 	}
 
 	fn next_with_source(&mut self, ctx: &ExecutionContext<'a>) -> crate::Result<Option<Batch<'a>>> {
-		let source = ctx.source.as_ref().unwrap(); // Safe because layout is Some
-		let layout = self.layout.as_ref().unwrap(); // Safe because we're in this path
+		let source = ctx.source.as_ref().unwrap(); // Safe because headers is Some
+		let headers = self.headers.as_ref().unwrap(); // Safe because we're in this path
 
 		// Convert rows to HashMap for easier column lookup
 		let mut rows_data: Vec<HashMap<String, &AliasExpression>> = Vec::new();
@@ -331,15 +318,14 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 		// Create columns based on table namespace
 		let mut columns = Vec::new();
 
-		for column_layout in &layout.columns {
+		for column_name in &headers.columns {
 			let mut column_data = ColumnData::undefined(0);
 
 			// Find the corresponding source column for policies
-			let table_column =
-				source.columns().iter().find(|col| col.name == column_layout.name.text()).unwrap(); // Safe because layout came from source
+			let table_column = source.columns().iter().find(|col| col.name == column_name.text()).unwrap(); // Safe because headers came from source
 
 			for row_data in &rows_data {
-				if let Some(alias_expr) = row_data.get(column_layout.name.text()) {
+				if let Some(alias_expr) = row_data.get(column_name.text()) {
 					let ctx = EvaluationContext {
 						target: Some(TargetColumn::Partial {
 							source_name: Some(source.identifier().text().to_string()),
@@ -385,7 +371,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			}
 
 			columns.push(Column {
-				name: column_layout.name.clone(),
+				name: column_name.clone(),
 				data: column_data,
 			});
 		}

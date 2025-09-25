@@ -1,71 +1,16 @@
-use reifydb_core::{
-	interface::evaluate::expression::{ConstantExpression, Expression},
-	value::column::layout::{ColumnLayout, ColumnsLayout},
-};
-use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME};
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub fn derive_columns_column_layout<'a>(
-	expressions: &[Expression<'a>],
-	preserve_row_numbers: bool,
-) -> ColumnsLayout<'a> {
-	let mut columns = Vec::new();
+use reifydb_core::interface::evaluate::expression::{ConstantExpression, Expression};
+use reifydb_type::Fragment;
 
-	// Add RowNumber column if preserved
-	if preserve_row_numbers {
-		columns.push(ColumnLayout {
-			namespace: None,
-			source: None,
-			name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
-		});
-	}
-
-	for expr in expressions {
-		columns.push(columns_column_layout(expr));
-	}
-
-	ColumnsLayout {
-		columns,
-	}
-}
-
-fn columns_column_layout<'a>(expr: &Expression<'a>) -> ColumnLayout<'a> {
+/// Get the column name for an expression
+pub fn column_name_from_expression<'a>(expr: &Expression<'a>) -> Fragment<'a> {
 	match expr {
-		Expression::Alias(alias_expr) => ColumnLayout {
-			namespace: None,
-			source: None,
-			name: alias_expr.alias.0.clone(),
-		},
-		Expression::Column(col_expr) => ColumnLayout {
-			namespace: None,
-			source: None,
-			name: col_expr.0.name.clone(),
-		},
-		Expression::AccessSource(access_expr) => {
-			use reifydb_core::interface::identifier::ColumnSource;
-
-			// Extract source name based on the ColumnSource type
-			let source_name = match &access_expr.column.source {
-				ColumnSource::Source {
-					source,
-					..
-				} => source,
-				ColumnSource::Alias(alias) => alias,
-			};
-
-			ColumnLayout {
-				namespace: None,
-				source: Some(source_name.clone()),
-				name: access_expr.column.name.clone(),
-			}
-		}
-		_ => {
-			// For other expressions, generate a simplified name
-			ColumnLayout {
-				namespace: None,
-				source: None,
-				name: simplified_name(expr),
-			}
-		}
+		Expression::Alias(alias_expr) => alias_expr.alias.0.clone(),
+		Expression::Column(col_expr) => col_expr.0.name.clone(),
+		Expression::AccessSource(access_expr) => access_expr.column.name.clone(),
+		_ => simplified_name(expr),
 	}
 }
 

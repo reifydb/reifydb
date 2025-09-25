@@ -10,10 +10,7 @@ use reifydb_core::{
 		resolved::ResolvedRingBuffer,
 	},
 	value::{
-		column::{
-			Column, ColumnData, Columns,
-			layout::{ColumnLayout, ColumnsLayout},
-		},
+		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 		row::EncodedRowLayout,
 	},
 };
@@ -27,7 +24,7 @@ use crate::{
 pub struct RingBufferScan<'a, T: Transaction> {
 	ring_buffer: ResolvedRingBuffer<'a>,
 	metadata: Option<RingBufferMetadata>,
-	layout: ColumnsLayout<'a>,
+	headers: ColumnHeaders<'a>,
 	row_layout: EncodedRowLayout,
 	current_position: u64,
 	rows_returned: u64,
@@ -38,27 +35,19 @@ pub struct RingBufferScan<'a, T: Transaction> {
 
 impl<'a, T: Transaction> RingBufferScan<'a, T> {
 	pub fn new(ring_buffer: ResolvedRingBuffer<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
-		// Create row layout based on column types
+		// Create row headers based on column types
 		let types: Vec<Type> = ring_buffer.columns().iter().map(|c| c.constraint.get_type()).collect();
 		let row_layout = EncodedRowLayout::new(&types);
 
-		// Create columns layout
-		let layout = ColumnsLayout {
-			columns: ring_buffer
-				.columns()
-				.iter()
-				.map(|col| ColumnLayout {
-					namespace: None,
-					source: None,
-					name: Fragment::owned_internal(&col.name),
-				})
-				.collect(),
+		// Create columns headers
+		let headers = ColumnHeaders {
+			columns: ring_buffer.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
 			ring_buffer,
 			metadata: None,
-			layout,
+			headers,
 			row_layout,
 			current_position: 0,
 			rows_returned: 0,
@@ -165,7 +154,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 		}
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		Some(self.layout.clone())
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		Some(self.headers.clone())
 	}
 }
