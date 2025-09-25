@@ -13,7 +13,7 @@ use std::{
 };
 
 use reifydb::{
-	Identity, MemoryDatabaseOptimistic, WithSubsystem,
+	Identity, MemoryDatabaseOptimistic, Session, WithSubsystem,
 	core::{
 		flow::FlowChange,
 		interface::{Engine, FlowNodeId, Transaction, logging::LogLevel::Info},
@@ -70,30 +70,106 @@ fn main() {
 		.build()
 		.unwrap();
 
-	// Schedule a background task that prints every 2 seconds
-	let counter = Arc::new(AtomicUsize::new(0));
-	let counter_clone = counter.clone();
-
-	let task = task!(Low, "periodic_printer", move |ctx| {
-		let frames = ctx
-			.engine()
-			.query_as(&Identity::root(), "MAP $1", params![counter.load(Relaxed) as u8])
-			.unwrap();
-		for frame in frames {
-			println!("{}", frame);
-		}
-
-		let count = counter_clone.fetch_add(1, Relaxed);
-		log_info!("Background task execution #{}", count + 1);
-		Ok(())
-	});
-
-	let _handle = db.scheduler().schedule_every(task, Duration::from_secs(2)).unwrap();
-
 	db.start().unwrap();
 
-	// Let the background task run for a while
-	log_info!("Letting background task run for 7 seconds...");
-	sleep(Duration::from_secs(7));
-	log_info!("Shutting down...");
+	// Create namespace and tables
+	println!("Creating namespace and tables...");
+	db.command_as_root("create namespace test", params![]).unwrap();
+	db.command_as_root("create table test.left_table { id: int1, value: int1, extra: int1 }", params![]).unwrap();
+	db.command_as_root("create table test.right_table { id: int1, value: int1, extra: int1 }", params![]).unwrap();
+
+	// Insert data
+	println!("Inserting data...");
+	db.command_as_root(
+		"from [{id: 1, value: 10, extra: 5}, {id: 2, value: 20, extra: 10}] insert test.left_table",
+		params![],
+	)
+	.unwrap();
+	db.command_as_root("from [{id: 1, value: 10, extra: 5}, {id: 1, value: 99, extra: 5}, {id: 3, value: 20, extra: 99}] insert test.right_table", params![]).unwrap();
+
+	// Verify data
+	println!("\nData in left_table:");
+	let left_data = db.query_as_root("from test.left_table", params![]).unwrap();
+	for frame in left_data {
+		println!("  {}", frame);
+	}
+
+	println!("\nData in right_table:");
+	let right_data = db.query_as_root("from test.right_table", params![]).unwrap();
+	for frame in right_data {
+		println!("  {}", frame);
+	}
+
+	// Try the failing join query with OR condition
+	println!("\n=== Testing JOIN with OR condition ===");
+	let query = "from test.left_table inner join { from test.right_table } r on (id == r.id and value == r.value) or extra == r.extra";
+	println!("Query: {}", query);
+	match db.query_as_root(query, params![]) {
+		Ok(frames) => {
+			println!("Query succeeded! Results:");
+			for frame in frames {
+				println!("  {}", frame);
+			}
+		}
+		Err(e) => {
+			println!("Query failed with error: {:?}", e);
+
+			// Try to isolate the issue
+			println!("\n--- Testing simpler variations ---");
+
+			// Test just AND condition
+			let test1 = "from test.left_table inner join { from test.right_table } r on id == r.id and value == r.value";
+			println!("\nTest 1 (AND only): {}", test1);
+			match db.query_as_root(test1, params![]) {
+				Ok(frames) => {
+					println!("  Success! Results:");
+					for frame in frames {
+						println!("    {}", frame);
+					}
+				}
+				Err(e) => println!("  Failed: {:?}", e),
+			}
+
+			// Test just single equality
+			let test2 = "from test.left_table inner join { from test.right_table } r on extra == r.extra";
+			println!("\nTest 2 (single equality): {}", test2);
+			match db.query_as_root(test2, params![]) {
+				Ok(frames) => {
+					println!("  Success! Results:");
+					for frame in frames {
+						println!("    {}", frame);
+					}
+				}
+				Err(e) => println!("  Failed: {:?}", e),
+			}
+
+			// Test OR with simpler conditions
+			let test3 = "from test.left_table inner join { from test.right_table } r on id == r.id or value == r.value";
+			println!("\nTest 3 (simple OR): {}", test3);
+			match db.query_as_root(test3, params![]) {
+				Ok(frames) => {
+					println!("  Success! Results:");
+					for frame in frames {
+						println!("    {}", frame);
+					}
+				}
+				Err(e) => println!("  Failed: {:?}", e),
+			}
+
+			// Test with parentheses in different places
+			let test4 = "from test.left_table inner join { from test.right_table } r on ((id == r.id) and (value == r.value)) or (extra == r.extra)";
+			println!("\nTest 4 (fully parenthesized): {}", test4);
+			match db.query_as_root(test4, params![]) {
+				Ok(frames) => {
+					println!("  Success! Results:");
+					for frame in frames {
+						println!("    {}", frame);
+					}
+				}
+				Err(e) => println!("  Failed: {:?}", e),
+			}
+		}
+	}
+
+	log_info!("Test complete.");
 }

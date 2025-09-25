@@ -5,7 +5,8 @@ use reifydb_core::{
 	interface::evaluate::expression::{
 		AccessSourceExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
 		GreaterThanEqExpression, GreaterThanExpression, LessThanEqExpression, LessThanExpression,
-		MulExpression, NotEqExpression, OrExpression, RemExpression, SubExpression, XorExpression,
+		MulExpression, NotEqExpression, OrExpression, RemExpression, SubExpression, TupleExpression,
+		XorExpression,
 	},
 	return_error,
 };
@@ -41,6 +42,49 @@ impl<'a> JoinConditionCompiler<'a> {
 			// For all other expressions, delegate to the standard compiler
 			// but recursively handle any infix operations that might contain qualified columns
 			Ast::Infix(ast_infix) => self.compile_infix(ast_infix),
+			// Handle tuples (parenthesized expressions) - need to recursively compile with
+			// JoinConditionCompiler
+			Ast::Tuple(tuple) => {
+				let mut expressions = Vec::with_capacity(tuple.len());
+				for ast in tuple.nodes {
+					expressions.push(self.compile(ast)?);
+				}
+				// If it's a single expression in parentheses, just return that expression
+				if expressions.len() == 1 {
+					Ok(expressions.into_iter().next().unwrap())
+				} else {
+					// Multiple expressions in a tuple
+					Ok(Expression::Tuple(TupleExpression {
+						expressions,
+						fragment: tuple.token.fragment,
+					}))
+				}
+			}
+			// Handle prefix operators (!, -, +) - need to recursively compile the inner expression
+			Ast::Prefix(prefix) => {
+				use reifydb_core::interface::evaluate::expression::{PrefixExpression, PrefixOperator};
+
+				use crate::ast::AstPrefixOperator;
+
+				let inner = self.compile(*prefix.node)?;
+				let (fragment, operator) = match prefix.operator {
+					AstPrefixOperator::Plus(token) => {
+						(token.fragment.clone(), PrefixOperator::Plus(token.fragment))
+					}
+					AstPrefixOperator::Negate(token) => {
+						(token.fragment.clone(), PrefixOperator::Minus(token.fragment))
+					}
+					AstPrefixOperator::Not(token) => {
+						(token.fragment.clone(), PrefixOperator::Not(token.fragment))
+					}
+				};
+
+				Ok(Expression::Prefix(PrefixExpression {
+					expression: Box::new(inner),
+					operator,
+					fragment,
+				}))
+			}
 			// All other AST nodes compile normally
 			_ => ExpressionCompiler::compile(ast),
 		}
