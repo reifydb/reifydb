@@ -90,6 +90,8 @@ impl InnerJoin {
 					if let Some(mut left_entry) = state.left_store.get(txn, &key_hash)? {
 						left_entry.rows.retain(|r| r.number != pre.number);
 
+						operator.cleanup_left_row_joins(txn, pre.number.0)?;
+
 						// Remove all joins involving this row
 						if let Some(right_entry) = state.right_store.get(txn, &key_hash)? {
 							for right_row_ser in &right_entry.rows {

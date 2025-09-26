@@ -5,7 +5,7 @@ use reifydb_core::{
 	EncodedKey,
 	interface::{FlowNodeId, Transaction},
 	util::{CowVec, encoding::keycode::KeySerializer},
-	value::row::EncodedRow,
+	value::row::{EncodedKeyRange, EncodedRow},
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::RowNumber;
@@ -114,7 +114,7 @@ impl RowNumberProvider {
 	fn make_counter_key(&self) -> Vec<u8> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(self.node.0);
-		serializer.extend_bytes(b"__COUNTER");
+		serializer.extend_u8(b'C'); // 'C' for counter
 		serializer.finish()
 	}
 
@@ -122,9 +122,38 @@ impl RowNumberProvider {
 	fn make_map_key(&self, key: &EncodedKey) -> Vec<u8> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u64(self.node.0);
-		serializer.extend_bytes(b"__MAP");
+		serializer.extend_u8(b'M'); // 'M' for mapping
 		serializer.extend_bytes(key.as_ref());
 		serializer.finish()
+	}
+
+	/// Remove all row number mappings with the given prefix
+	/// This is useful for cleaning up all join results from a specific left row
+	pub fn remove_by_prefix<T: Transaction, O: RawStatefulOperator<T>>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		operator: &O,
+		key_prefix: &[u8],
+	) -> crate::Result<()> {
+		// Create the prefix for scanning
+		let mut prefix = Vec::new();
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u64(self.node.0);
+		serializer.extend_u8(b'M'); // 'M' for mapping
+		prefix.extend_from_slice(&serializer.finish());
+		prefix.extend_from_slice(key_prefix);
+
+		// Create range for prefix scan
+		let range = EncodedKeyRange::prefix(&prefix);
+
+		// Scan and collect keys to remove
+		let keys_to_remove: Vec<_> = operator.state_range(txn, range)?.map(|(key, _row)| key).collect();
+
+		for key in keys_to_remove {
+			operator.state_remove(txn, &key)?;
+		}
+
+		Ok(())
 	}
 }
 

@@ -123,10 +123,8 @@ impl JoinOperator {
 		txn: &mut StandardCommandTransaction<T>,
 		left: &Row,
 	) -> crate::Result<Row> {
-		// Create a unique key for unmatched left rows
-		// Use a different prefix to distinguish from matched joins
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'U'); // 'U' for unmatched
+		serializer.extend_u8(b'L'); // 'L' prefix for left row
 		serializer.extend_u64(left.number.0);
 		let composite_key = EncodedKey::new(serializer.finish());
 
@@ -139,6 +137,22 @@ impl JoinOperator {
 			encoded: left.encoded.clone(),
 			layout: left.layout.clone(),
 		})
+	}
+
+	/// Clean up all join results for a given left row
+	/// This removes both matched and unmatched join results
+	pub(crate) fn cleanup_left_row_joins<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		left_number: u64,
+	) -> crate::Result<()> {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u8(b'L');
+		serializer.extend_u64(left_number);
+		let prefix = serializer.finish();
+
+		// Remove all mappings with this prefix
+		self.row_number_provider.remove_by_prefix(txn, self, &prefix)
 	}
 
 	pub(crate) fn join_rows<T: Transaction>(
@@ -203,8 +217,9 @@ impl JoinOperator {
 
 		// Use RowNumberProvider to get a stable row number for this join result
 		// Create a composite key from left and right row numbers
+		// Structure: 'L' + left_number + 'R' + right_number for efficient prefix scans
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'J'); // Single byte prefix for join rows
+		serializer.extend_u8(b'L'); // 'L' prefix for left row
 		serializer.extend_u64(left.number.0);
 		serializer.extend_u64(right.number.0);
 
