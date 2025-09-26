@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
@@ -73,7 +75,8 @@ impl JoinOperator {
 		exprs: &[Expression<'static>],
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<Option<Hash128>> {
-		let mut hasher = Vec::new();
+		// Pre-allocate with reasonable capacity
+		let mut hasher = Vec::with_capacity(256);
 		for expr in exprs.iter() {
 			// For AccessSource expressions, extract just the column name and evaluate that
 			let value = match expr {
@@ -93,6 +96,7 @@ impl JoinOperator {
 				}
 				_ => {
 					// For other expressions, use the evaluator
+					// TODO: Investigate if we can avoid cloning the row here
 					let ctx = RowEvaluationContext {
 						row: row.clone(),
 						target: None,
@@ -163,9 +167,12 @@ impl JoinOperator {
 	) -> crate::Result<Row> {
 		// Combine the two rows into a single row
 		// Prefix column names with alias to handle naming conflicts
-		let mut combined_values = Vec::new();
-		let mut combined_names = Vec::new();
-		let mut combined_types = Vec::new();
+
+		// Pre-calculate total capacity to avoid reallocations
+		let total_fields = left.layout.fields.len() + right.layout.fields.len();
+		let mut combined_values = Vec::with_capacity(total_fields);
+		let mut combined_names = Vec::with_capacity(total_fields);
+		let mut combined_types = Vec::with_capacity(total_fields);
 
 		// Add left side columns - never prefixed
 		let left_names = left.layout.names();
@@ -179,7 +186,8 @@ impl JoinOperator {
 		}
 
 		// Collect left names into a set for conflict detection
-		let left_name_set: std::collections::HashSet<String> = left_names.iter().cloned().collect();
+		// Use HashSet<&str> to avoid cloning strings
+		let left_name_set: HashSet<&str> = left_names.iter().map(|s| s.as_str()).collect();
 
 		// Add right side columns - prefix with alias when there's a conflict
 		let right_names = right.layout.names();
@@ -189,7 +197,7 @@ impl JoinOperator {
 			if i < right_names.len() {
 				let col_name = &right_names[i];
 				// Check if there's a naming conflict with left side
-				let final_name = if left_name_set.contains(col_name) {
+				let final_name = if left_name_set.contains(col_name.as_str()) {
 					// There's a conflict - apply alias prefix if available
 					if let Some(ref alias) = self.alias {
 						format!("{}_{}", alias, col_name)
@@ -322,7 +330,9 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		// Load the schema and create the state
 		let schema = self.load_schema(txn)?;
 		let mut state = JoinState::new(self.node, schema);
-		let mut result = Vec::new();
+		// Pre-allocate result vector with estimated capacity
+		let estimated_capacity = change.diffs.len() * 2; // Rough estimate
+		let mut result = Vec::with_capacity(estimated_capacity);
 
 		// Determine which side this change is from
 		let side = self
