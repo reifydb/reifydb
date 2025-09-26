@@ -1,18 +1,22 @@
-use bincode::{config::standard, serde::encode_to_vec};
+use bincode::{
+	config::standard,
+	serde::{decode_from_slice, encode_to_vec},
+};
 use reifydb_core::{
-	Error, JoinType,
+	EncodedKey, Error, JoinType,
 	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
 	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
+	util::encoding::keycode::KeySerializer,
 	value::row::{EncodedRowLayout, EncodedRowNamedLayout, Row},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
-use reifydb_type::{Blob, Params, RowNumber, Type, Value, internal_error};
+use reifydb_type::{Blob, Params, Type, Value, internal_error};
 
 use super::{JoinSide, JoinState, JoinStrategy, Schema};
 use crate::operator::{
 	Operator,
-	stateful::{RawStatefulOperator, SingleStateful, state_get, state_set},
+	stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful, state_get, state_set},
 	transform::TransformOperator,
 };
 
@@ -28,6 +32,7 @@ pub struct JoinOperator {
 	right_exprs: Vec<Expression<'static>>,
 	alias: Option<String>,
 	layout: EncodedRowLayout,
+	row_number_provider: RowNumberProvider,
 }
 
 impl JoinOperator {
@@ -42,6 +47,7 @@ impl JoinOperator {
 	) -> Self {
 		let strategy = JoinStrategy::from_join_type(join_type);
 		let layout = Self::state_layout();
+		let row_number_provider = RowNumberProvider::new(node);
 
 		Self {
 			node,
@@ -53,6 +59,7 @@ impl JoinOperator {
 			right_exprs,
 			alias,
 			layout,
+			row_number_provider,
 		}
 	}
 
@@ -110,7 +117,36 @@ impl JoinOperator {
 		Ok(Some(hash))
 	}
 
-	pub(crate) fn join_rows(&self, left: &Row, right: &Row) -> Row {
+	/// Generate a row number for an unmatched left join row
+	pub(crate) fn unmatched_left_row<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		left: &Row,
+	) -> crate::Result<Row> {
+		// Create a unique key for unmatched left rows
+		// Use a different prefix to distinguish from matched joins
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u8(b'U'); // 'U' for unmatched
+		serializer.extend_u64(left.number.0);
+		let composite_key = EncodedKey::new(serializer.finish());
+
+		// Get or create a unique row number for this unmatched row
+		let (result_row_number, _is_new) =
+			self.row_number_provider.get_or_create_row_number(txn, self, &composite_key)?;
+
+		Ok(Row {
+			number: result_row_number,
+			encoded: left.encoded.clone(),
+			layout: left.layout.clone(),
+		})
+	}
+
+	pub(crate) fn join_rows<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		left: &Row,
+		right: &Row,
+	) -> crate::Result<Row> {
 		// Combine the two rows into a single row
 		// Prefix column names with alias to handle naming conflicts
 		let mut combined_values = Vec::new();
@@ -165,22 +201,28 @@ impl JoinOperator {
 		let mut encoded_row = layout.allocate_row();
 		layout.set_values(&mut encoded_row, &combined_values);
 
-		// Generate a deterministic unique row number by combining left and right row numbers
-		// Use XOR and bit shifting to ensure uniqueness even when row numbers are small
-		let combined = (left.number.0.wrapping_mul(0x9e3779b97f4a7c15))
-			^ (right.number.0.wrapping_mul(0x517cc1b727220a95));
-		let combined_number = RowNumber(combined);
+		// Use RowNumberProvider to get a stable row number for this join result
+		// Create a composite key from left and right row numbers
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u8(b'J'); // Single byte prefix for join rows
+		serializer.extend_u64(left.number.0);
+		serializer.extend_u64(right.number.0);
 
-		Row {
-			number: combined_number,
+		// Get or create a unique row number for this join result
+		let composite_key = EncodedKey::new(serializer.finish());
+		let (result_row_number, _is_new) =
+			self.row_number_provider.get_or_create_row_number(txn, self, &composite_key)?;
+
+		Ok(Row {
+			number: result_row_number,
 			encoded: encoded_row,
 			layout,
-		}
+		})
 	}
 
 	fn load_schema<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<Schema> {
 		// Load schema from a special key (empty key)
-		let schema_key = reifydb_core::EncodedKey::new(vec![0x00]); // Special key for schema
+		let schema_key = EncodedKey::new(vec![0x00]); // Special key for schema
 		match state_get(self.node, txn, &schema_key)? {
 			Some(row) => {
 				// Deserialize Schema from the row
@@ -189,10 +231,8 @@ impl JoinOperator {
 					return Ok(Schema::new());
 				}
 				let config = standard();
-				let (schema, _): (Schema, usize) =
-					bincode::serde::decode_from_slice(blob.as_ref(), config).map_err(|e| {
-						Error(internal_error!("Failed to deserialize Schema: {}", e))
-					})?;
+				let (schema, _): (Schema, usize) = decode_from_slice(blob.as_ref(), config)
+					.map_err(|e| Error(internal_error!("Failed to deserialize Schema: {}", e)))?;
 				Ok(schema)
 			}
 			None => Ok(Schema::new()),
@@ -205,7 +245,7 @@ impl JoinOperator {
 		schema: &Schema,
 	) -> crate::Result<()> {
 		// Save schema to a special key (empty key)
-		let schema_key = reifydb_core::EncodedKey::new(vec![0x00]); // Special key for schema
+		let schema_key = EncodedKey::new(vec![0x00]); // Special key for schema
 
 		let config = standard();
 		let serialized = encode_to_vec(schema, config)

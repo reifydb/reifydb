@@ -38,7 +38,7 @@ impl InnerJoin {
 							let right_row = right_row_ser.to_right_row(&state.schema);
 
 							result.push(FlowDiff::Insert {
-								post: operator.join_rows(post, &right_row),
+								post: operator.join_rows(txn, post, &right_row)?,
 							});
 						}
 					}
@@ -61,7 +61,7 @@ impl InnerJoin {
 							let left_row = left_row_ser.to_left_row(&state.schema);
 
 							result.push(FlowDiff::Insert {
-								post: operator.join_rows(&left_row, post),
+								post: operator.join_rows(txn, &left_row, post)?,
 							});
 						}
 					}
@@ -97,7 +97,8 @@ impl InnerJoin {
 									right_row_ser.to_right_row(&state.schema);
 
 								result.push(FlowDiff::Remove {
-									pre: operator.join_rows(pre, &right_row),
+									pre: operator
+										.join_rows(txn, pre, &right_row)?,
 								});
 							}
 						}
@@ -120,7 +121,7 @@ impl InnerJoin {
 								let left_row = left_row_ser.to_left_row(&state.schema);
 
 								result.push(FlowDiff::Remove {
-									pre: operator.join_rows(&left_row, pre),
+									pre: operator.join_rows(txn, &left_row, pre)?,
 								});
 							}
 						}
@@ -174,10 +175,12 @@ impl InnerJoin {
 										.to_right_row(&state.schema);
 
 									result.push(FlowDiff::Update {
-										pre: operator
-											.join_rows(pre, &right_row),
-										post: operator
-											.join_rows(post, &right_row),
+										pre: operator.join_rows(
+											txn, pre, &right_row,
+										)?,
+										post: operator.join_rows(
+											txn, post, &right_row,
+										)?,
 									});
 								}
 							}
@@ -201,9 +204,12 @@ impl InnerJoin {
 										left_row_ser.to_left_row(&state.schema);
 
 									result.push(FlowDiff::Update {
-										pre: operator.join_rows(&left_row, pre),
-										post: operator
-											.join_rows(&left_row, post),
+										pre: operator.join_rows(
+											txn, &left_row, pre,
+										)?,
+										post: operator.join_rows(
+											txn, &left_row, post,
+										)?,
 									});
 								}
 							}

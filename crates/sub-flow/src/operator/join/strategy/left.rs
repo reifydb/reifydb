@@ -38,19 +38,23 @@ impl LeftJoin {
 							let right_row = right_row_ser.to_right_row(&state.schema);
 
 							result.push(FlowDiff::Insert {
-								post: operator.join_rows(post, &right_row),
+								post: operator.join_rows(txn, post, &right_row)?,
 							});
 						}
 					} else {
 						// Left join: emit left row even without match
+						// Use row number provider for consistency
+						let unmatched_row = operator.unmatched_left_row(txn, post)?;
 						result.push(FlowDiff::Insert {
-							post: post.clone(),
+							post: unmatched_row,
 						});
 					}
 				} else {
 					// Undefined key in left join still emits the row
+					// Use row number provider for consistency
+					let unmatched_row = operator.unmatched_left_row(txn, post)?;
 					result.push(FlowDiff::Insert {
-						post: post.clone(),
+						post: unmatched_row,
 					});
 				}
 			}
@@ -73,8 +77,11 @@ impl LeftJoin {
 						// If first right row, remove previously emitted unmatched left rows
 						if is_first_right_row {
 							for left_row_ser in &left_entry.rows {
+								let left_row = left_row_ser.to_left_row(&state.schema);
+								let unmatched_row =
+									operator.unmatched_left_row(txn, &left_row)?;
 								result.push(FlowDiff::Remove {
-									pre: left_row_ser.to_left_row(&state.schema),
+									pre: unmatched_row,
 								});
 							}
 						}
@@ -84,7 +91,7 @@ impl LeftJoin {
 							let left_row = left_row_ser.to_left_row(&state.schema);
 
 							result.push(FlowDiff::Insert {
-								post: operator.join_rows(&left_row, post),
+								post: operator.join_rows(txn, &left_row, post)?,
 							});
 						}
 					}
@@ -121,13 +128,16 @@ impl LeftJoin {
 									right_row_ser.to_right_row(&state.schema);
 
 								result.push(FlowDiff::Remove {
-									pre: operator.join_rows(pre, &right_row),
+									pre: operator
+										.join_rows(txn, pre, &right_row)?,
 								});
 							}
 						} else {
 							// Remove the unmatched left join row
+							// Use row number provider for consistency
+							let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 							result.push(FlowDiff::Remove {
-								pre: pre.clone(),
+								pre: unmatched_row,
 							});
 						}
 
@@ -140,8 +150,10 @@ impl LeftJoin {
 					}
 				} else {
 					// Undefined key - remove the unmatched row
+					// Use row number provider for consistency
+					let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 					result.push(FlowDiff::Remove {
-						pre: pre.clone(),
+						pre: unmatched_row,
 					});
 				}
 			}
@@ -157,16 +169,20 @@ impl LeftJoin {
 								let left_row = left_row_ser.to_left_row(&state.schema);
 
 								result.push(FlowDiff::Remove {
-									pre: operator.join_rows(&left_row, pre),
+									pre: operator.join_rows(txn, &left_row, pre)?,
 								});
 							}
 
-							// If this was the last right row, re-emit left rows
+							// If this was the last right row, re-emit left rows as
+							// unmatched
 							if right_entry.rows.is_empty() {
 								for left_row_ser in &left_entry.rows {
+									let left_row =
+										left_row_ser.to_left_row(&state.schema);
+									let unmatched_row = operator
+										.unmatched_left_row(txn, &left_row)?;
 									result.push(FlowDiff::Insert {
-										post: left_row_ser
-											.to_left_row(&state.schema),
+										post: unmatched_row,
 									});
 								}
 							}
@@ -221,25 +237,33 @@ impl LeftJoin {
 										.to_right_row(&state.schema);
 
 									result.push(FlowDiff::Update {
-										pre: operator
-											.join_rows(pre, &right_row),
-										post: operator
-											.join_rows(post, &right_row),
+										pre: operator.join_rows(
+											txn, pre, &right_row,
+										)?,
+										post: operator.join_rows(
+											txn, post, &right_row,
+										)?,
 									});
 								}
 							} else {
 								// No matching right rows - update unmatched left row
+								let unmatched_pre =
+									operator.unmatched_left_row(txn, pre)?;
+								let unmatched_post =
+									operator.unmatched_left_row(txn, post)?;
 								result.push(FlowDiff::Update {
-									pre: pre.clone(),
-									post: post.clone(),
+									pre: unmatched_pre,
+									post: unmatched_post,
 								});
 							}
 						}
 					} else {
 						// Both keys are undefined - update the row
+						let unmatched_pre = operator.unmatched_left_row(txn, pre)?;
+						let unmatched_post = operator.unmatched_left_row(txn, post)?;
 						result.push(FlowDiff::Update {
-							pre: pre.clone(),
-							post: post.clone(),
+							pre: unmatched_pre,
+							post: unmatched_post,
 						});
 					}
 				}
@@ -262,9 +286,12 @@ impl LeftJoin {
 										left_row_ser.to_left_row(&state.schema);
 
 									result.push(FlowDiff::Update {
-										pre: operator.join_rows(&left_row, pre),
-										post: operator
-											.join_rows(&left_row, post),
+										pre: operator.join_rows(
+											txn, &left_row, pre,
+										)?,
+										post: operator.join_rows(
+											txn, &left_row, post,
+										)?,
 									});
 								}
 							}
