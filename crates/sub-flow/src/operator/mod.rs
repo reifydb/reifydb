@@ -8,7 +8,7 @@ mod apply;
 mod distinct;
 mod extend;
 mod filter;
-mod join;
+pub mod join;
 mod map;
 mod sink;
 mod sort;
