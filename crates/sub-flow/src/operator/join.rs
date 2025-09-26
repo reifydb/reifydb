@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
@@ -19,11 +17,138 @@ use crate::operator::{
 	Operator,
 	transform::{
 		TransformOperator,
-		stateful::{RawStatefulOperator, SingleStateful},
+		stateful::{RawStatefulOperator, SingleStateful, state_get, state_remove, state_set},
 	},
 };
 
 static EMPTY_PARAMS: Params = Params::None;
+
+/// A key-value store backed by the stateful storage system
+/// Provides HashMap-like interface while storing data persistently
+struct Store<T> {
+	node_id: FlowNodeId,
+	prefix: Vec<u8>,
+	_phantom: std::marker::PhantomData<T>,
+}
+
+impl Store<JoinSideEntry> {
+	fn new(node_id: FlowNodeId, side: JoinSide) -> Self {
+		// Use different prefixes for left and right stores
+		let prefix = match side {
+			JoinSide::Left => vec![0x01],
+			JoinSide::Right => vec![0x02],
+		};
+		Self {
+			node_id,
+			prefix,
+			_phantom: std::marker::PhantomData,
+		}
+	}
+
+	fn make_key(&self, hash: &Hash128) -> reifydb_core::EncodedKey {
+		let mut key_bytes = self.prefix.clone();
+		// Hash128 is a tuple struct containing u128
+		key_bytes.extend_from_slice(&hash.0.to_le_bytes());
+		reifydb_core::EncodedKey::new(key_bytes)
+	}
+
+	fn get<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		hash: &Hash128,
+	) -> crate::Result<Option<JoinSideEntry>> {
+		let key = self.make_key(hash);
+		match state_get(self.node_id, txn, &key)? {
+			Some(row) => {
+				// Deserialize JoinSideEntry from the row
+				let layout = EncodedRowLayout::new(&[Type::Blob]);
+				let blob = layout.get_blob(&row, 0);
+				if blob.is_empty() {
+					return Ok(None);
+				}
+				let config = standard();
+				let (entry, _): (JoinSideEntry, usize) = decode_from_slice(blob.as_ref(), config)
+					.map_err(|e| {
+						Error(internal_error!("Failed to deserialize JoinSideEntry: {}", e))
+					})?;
+				Ok(Some(entry))
+			}
+			None => Ok(None),
+		}
+	}
+
+	fn set<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		hash: &Hash128,
+		entry: &JoinSideEntry,
+	) -> crate::Result<()> {
+		let key = self.make_key(hash);
+
+		// Serialize JoinSideEntry
+		let config = standard();
+		let serialized = encode_to_vec(entry, config)
+			.map_err(|e| Error(internal_error!("Failed to serialize JoinSideEntry: {}", e)))?;
+
+		// Store as a blob in an EncodedRow
+		let layout = EncodedRowLayout::new(&[Type::Blob]);
+		let mut row = layout.allocate_row();
+		let blob = Blob::from(serialized);
+		layout.set_blob(&mut row, 0, &blob);
+
+		state_set(self.node_id, txn, &key, row)?;
+		Ok(())
+	}
+
+	fn contains_key<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		hash: &Hash128,
+	) -> crate::Result<bool> {
+		let key = self.make_key(hash);
+		Ok(state_get(self.node_id, txn, &key)?.is_some())
+	}
+
+	fn remove<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>, hash: &Hash128) -> crate::Result<()> {
+		let key = self.make_key(hash);
+		state_remove(self.node_id, txn, &key)?;
+		Ok(())
+	}
+
+	fn get_or_insert_with<T: Transaction, F>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		hash: &Hash128,
+		f: F,
+	) -> crate::Result<JoinSideEntry>
+	where
+		F: FnOnce() -> JoinSideEntry,
+	{
+		if let Some(entry) = self.get(txn, hash)? {
+			Ok(entry)
+		} else {
+			let entry = f();
+			self.set(txn, hash, &entry)?;
+			Ok(entry)
+		}
+	}
+
+	fn update_entry<T: Transaction, F>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		hash: &Hash128,
+		f: F,
+	) -> crate::Result<()>
+	where
+		F: FnOnce(&mut JoinSideEntry),
+	{
+		if let Some(mut entry) = self.get(txn, hash)? {
+			f(&mut entry);
+			self.set(txn, hash, &entry)?;
+		}
+		Ok(())
+	}
+}
 
 /// Layout information for both sides of the join
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -162,30 +287,26 @@ struct JoinSideEntry {
 	rows: Vec<SerializedRow>,
 }
 
-/// The complete join state - serialize both data and layout
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct JoinState {
-	// Serialize the layout so we can properly reconstruct rows
+/// The complete join state - now uses Stores instead of HashMaps
+struct JoinState<'a, T: Transaction> {
+	// Layout is stored separately and loaded once
 	layout: JoinLayout,
-	// Map from join key hash to rows on the left side
-	left_entries: HashMap<Hash128, JoinSideEntry>,
-	// Map from join key hash to rows on the right side
-	right_entries: HashMap<Hash128, JoinSideEntry>,
+	// Store for left side entries
+	left_store: Store<JoinSideEntry>,
+	// Store for right side entries
+	right_store: Store<JoinSideEntry>,
+	// Keep reference to transaction for operations
+	txn: &'a mut StandardCommandTransaction<T>,
 }
 
-impl JoinState {
-	fn new() -> Self {
+impl<'a, T: Transaction> JoinState<'a, T> {
+	fn new(node_id: FlowNodeId, layout: JoinLayout, txn: &'a mut StandardCommandTransaction<T>) -> Self {
 		Self {
-			layout: JoinLayout::new(),
-			left_entries: HashMap::new(),
-			right_entries: HashMap::new(),
+			layout,
+			left_store: Store::new(node_id, JoinSide::Left),
+			right_store: Store::new(node_id, JoinSide::Right),
+			txn,
 		}
-	}
-}
-
-impl Default for JoinState {
-	fn default() -> Self {
-		Self::new()
 	}
 }
 
@@ -347,57 +468,49 @@ impl JoinOperator {
 		}
 	}
 
-	fn load_join_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<JoinState> {
-		let state_row = self.load_state(txn)?;
-
-		if state_row.is_empty() {
-			return Ok(JoinState::default());
-		}
-
-		// Check if the blob field is defined using the encoded row's own method
-		// Debug: check the bitvec directly
-		if state_row.len() > 0 {
-			let first_byte = state_row.as_slice()[0];
-		}
-
-		if !state_row.is_defined(0) {
-			return Ok(JoinState::default());
-		}
-
-		// Use self.layout to get the blob
-		let blob = self.layout.get_blob(&state_row, 0);
-		if blob.is_empty() {
-			return Ok(JoinState::default());
-		}
-
-		let config = standard();
-		let decoded: Result<(JoinState, usize), _> = decode_from_slice(blob.as_ref(), config);
-
-		match decoded {
-			Ok((state, bytes_read)) => Ok(state),
-			Err(e) => Err(Error(internal_error!("Failed to deserialize JoinState: {}", e))),
+	fn load_join_layout<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+	) -> crate::Result<JoinLayout> {
+		// Load layout from a special key (empty key)
+		let layout_key = reifydb_core::EncodedKey::new(vec![0x00]); // Special key for layout
+		match state_get(self.node, txn, &layout_key)? {
+			Some(row) => {
+				// Deserialize JoinLayout from the row
+				let blob = self.layout.get_blob(&row, 0);
+				if blob.is_empty() {
+					return Ok(JoinLayout::new());
+				}
+				let config = standard();
+				let (layout, _): (JoinLayout, usize) = decode_from_slice(blob.as_ref(), config)
+					.map_err(|e| {
+						Error(internal_error!("Failed to deserialize JoinLayout: {}", e))
+					})?;
+				Ok(layout)
+			}
+			None => Ok(JoinLayout::new()),
 		}
 	}
 
-	fn save_join_state<T: Transaction>(
+	fn save_join_layout<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
-		state: &JoinState,
+		layout: &JoinLayout,
 	) -> crate::Result<()> {
+		// Save layout to a special key (empty key)
+		let layout_key = reifydb_core::EncodedKey::new(vec![0x00]); // Special key for layout
+
 		let config = standard();
-		let serialized = encode_to_vec(state, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize JoinState: {}", e)))?;
+		let serialized = encode_to_vec(layout, config)
+			.map_err(|e| Error(internal_error!("Failed to serialize JoinLayout: {}", e)))?;
 
-		// Use self.layout to match what load_state expects
-		let mut state_row = self.layout.allocate_row();
+		// Store as a blob in an EncodedRow
+		let mut row = self.layout.allocate_row();
 		let blob = Blob::from(serialized);
-		self.layout.set_blob(&mut state_row, 0, &blob);
+		self.layout.set_blob(&mut row, 0, &blob);
 
-		let result = self.save_state(txn, state_row);
-		if result.is_ok() {
-		} else {
-		}
-		result
+		state_set(self.node, txn, &layout_key, row)?;
+		Ok(())
 	}
 
 	fn determine_side(&self, change: &FlowChange) -> Option<JoinSide> {
@@ -450,7 +563,8 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 			}
 		}
 
-		let mut state = self.load_join_state(txn)?;
+		// Load the layout and create the state with stores
+		let mut layout = self.load_join_layout(txn)?;
 		let mut result = Vec::new();
 
 		// Determine which side this change is from
@@ -466,7 +580,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 				} => {
 					match side {
 						JoinSide::Left => {
-							state.layout.update_left_from_row(&post);
+							layout.update_left_from_row(&post);
 							// Debug: extract class_id value
 							let class_id_idx = post
 								.layout
@@ -489,15 +603,18 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 							if let Some(key_hash) = key_hash_opt {
 								// Add to left entries
 								let serialized = SerializedRow::from_row(&post);
+								let left_store = Store::new(self.node, JoinSide::Left);
 								let is_new_key =
-									!state.left_entries.contains_key(&key_hash);
-								let entry = state
-									.left_entries
-									.entry(key_hash)
-									.or_insert_with(|| JoinSideEntry {
+									!left_store.contains_key(txn, &key_hash)?;
+								let mut entry = left_store.get_or_insert_with(
+									txn,
+									&key_hash,
+									|| JoinSideEntry {
 										rows: Vec::new(),
-									});
+									},
+								)?;
 								entry.rows.push(serialized.clone());
+								left_store.set(txn, &key_hash, &entry)?;
 								// Extract the name for debugging
 								let name_idx = post
 									.layout
@@ -514,12 +631,14 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 								};
 
 								// Join with all matching right rows
+								let right_store =
+									Store::new(self.node, JoinSide::Right);
 								if let Some(right_entry) =
-									state.right_entries.get(&key_hash)
+									right_store.get(txn, &key_hash)?
 								{
 									for right_row_ser in &right_entry.rows {
 										let right_row = right_row_ser
-											.to_right_row(&state.layout);
+											.to_right_row(&layout);
 										let joined_row = self
 											.join_rows(&post, &right_row);
 										result.push(FlowDiff::Insert {
@@ -544,7 +663,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 							}
 						}
 						JoinSide::Right => {
-							state.layout.update_right_from_row(&post);
+							layout.update_right_from_row(&post);
 							let key_hash_opt = self.compute_join_key(
 								&post,
 								&self.right_exprs,
@@ -582,22 +701,27 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 								};
 								// Check if this is the first right row for this key
 								// (for LEFT JOIN handling)
+								let right_store =
+									Store::new(self.node, JoinSide::Right);
 								let is_first_right_row =
-									!state.right_entries.contains_key(&key_hash);
+									!right_store.contains_key(txn, &key_hash)?;
 
 								// Add to right entries
 								let serialized = SerializedRow::from_row(&post);
-								state.right_entries
-									.entry(key_hash)
-									.or_insert_with(|| JoinSideEntry {
+								let mut right_entry = right_store.get_or_insert_with(
+									txn,
+									&key_hash,
+									|| JoinSideEntry {
 										rows: Vec::new(),
-									})
-									.rows
-									.push(serialized);
+									},
+								)?;
+								right_entry.rows.push(serialized);
+								right_store.set(txn, &key_hash, &right_entry)?;
 
 								// Join with all matching left rows
+								let left_store = Store::new(self.node, JoinSide::Left);
 								if let Some(left_entry) =
-									state.left_entries.get(&key_hash)
+									left_store.get(txn, &key_hash)?
 								{
 									// For LEFT JOIN: if this is the first right row
 									// for this key, we need to remove the
@@ -607,9 +731,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 									{
 										for left_row_ser in &left_entry.rows {
 											let left_row = left_row_ser
-												.to_left_row(
-													&state.layout,
-												);
+												.to_left_row(&layout);
 											// Remove the left row that was
 											// previously emitted
 											result.push(FlowDiff::Remove {
@@ -621,7 +743,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 									// Now add the properly joined rows
 									for left_row_ser in &left_entry.rows {
 										let left_row = left_row_ser
-											.to_left_row(&state.layout);
+											.to_left_row(&layout);
 										let joined_row = self
 											.join_rows(&left_row, &post);
 										result.push(FlowDiff::Insert {
@@ -629,6 +751,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 										});
 									}
 								} else {
+									// Layout remains unchanged
 								}
 							}
 							// Right side inserts with undefined keys don't produce output
@@ -648,22 +771,23 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 
 							if let Some(key_hash) = key_hash_opt {
 								// Remove from left entries
-								if let Some(left_entry) =
-									state.left_entries.get_mut(&key_hash)
+								let left_store = Store::new(self.node, JoinSide::Left);
+								if let Some(mut left_entry) =
+									left_store.get(txn, &key_hash)?
 								{
 									left_entry
 										.rows
 										.retain(|r| r.number != pre.number);
 
 									// Remove all joins involving this row
+									let right_store =
+										Store::new(self.node, JoinSide::Right);
 									if let Some(right_entry) =
-										state.right_entries.get(&key_hash)
+										right_store.get(txn, &key_hash)?
 									{
 										for right_row_ser in &right_entry.rows {
 											let right_row = right_row_ser
-												.to_right_row(
-													&state.layout,
-												);
+												.to_right_row(&layout);
 											let joined_row = self
 												.join_rows(
 													&pre,
@@ -685,7 +809,14 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 
 									// Clean up empty entries
 									if left_entry.rows.is_empty() {
-										state.left_entries.remove(&key_hash);
+										left_store.remove(txn, &key_hash)?;
+									} else {
+										// Save the updated entry
+										left_store.set(
+											txn,
+											&key_hash,
+											&left_entry,
+										)?;
 									}
 								}
 							} else {
@@ -707,22 +838,24 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 
 							if let Some(key_hash) = key_hash_opt {
 								// Remove from right entries
-								if let Some(right_entry) =
-									state.right_entries.get_mut(&key_hash)
+								let right_store =
+									Store::new(self.node, JoinSide::Right);
+								if let Some(mut right_entry) =
+									right_store.get(txn, &key_hash)?
 								{
 									right_entry
 										.rows
 										.retain(|r| r.number != pre.number);
 
 									// Remove all joins involving this row
+									let left_store =
+										Store::new(self.node, JoinSide::Left);
 									if let Some(left_entry) =
-										state.left_entries.get(&key_hash)
+										left_store.get(txn, &key_hash)?
 									{
 										for left_row_ser in &left_entry.rows {
 											let left_row = left_row_ser
-												.to_left_row(
-													&state.layout,
-												);
+												.to_left_row(&layout);
 											let joined_row = self
 												.join_rows(
 													&left_row, &pre,
@@ -744,10 +877,11 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 											for left_row_ser in
 												&left_entry.rows
 											{
-												let left_row = left_row_ser
-												.to_left_row(
-													&state.layout,
-												);
+												let left_row =
+													left_row_ser
+														.to_left_row(
+														&layout,
+													);
 												// Re-add the left row
 												// for left
 												// join
@@ -760,7 +894,14 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 
 									// Clean up empty entries
 									if right_entry.rows.is_empty() {
-										state.right_entries.remove(&key_hash);
+										right_store.remove(txn, &key_hash)?;
+									} else {
+										// Save the updated entry
+										right_store.set(
+											txn,
+											&key_hash,
+											&right_entry,
+										)?;
 									}
 								}
 							}
@@ -790,8 +931,10 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 							if old_key_opt == new_key_opt {
 								// Key didn't change, update in place
 								if let Some(old_key) = old_key_opt {
-									if let Some(left_entry) =
-										state.left_entries.get_mut(&old_key)
+									let left_store =
+										Store::new(self.node, JoinSide::Left);
+									if let Some(mut left_entry) =
+										left_store.get(txn, &old_key)?
 									{
 										// Update the row
 										for row in &mut left_entry.rows {
@@ -803,17 +946,28 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 											}
 										}
 
+										left_store.set(
+											txn,
+											&old_key,
+											&left_entry,
+										)?;
+
 										// Emit updates for all joined rows
-										if let Some(right_entry) = state
-											.right_entries
-											.get(&old_key)
+										let right_store = Store::new(
+											self.node,
+											JoinSide::Right,
+										);
+										if let Some(right_entry) =
+											right_store
+												.get(txn, &old_key)?
 										{
 											for right_row_ser in
 												&right_entry.rows
 											{
-												let right_row = right_row_ser
-													.to_right_row(
-														&state.layout,
+												let right_row =
+													right_row_ser
+														.to_right_row(
+														&layout,
 													);
 												let old_joined = self
 													.join_rows(
@@ -854,31 +1008,39 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 								// Key changed - treat as remove + insert
 								// Process remove...
 								if let Some(old_key) = old_key_opt {
-									if let Some(left_entry) =
-										state.left_entries.get_mut(&old_key)
+									let left_store =
+										Store::new(self.node, JoinSide::Left);
+									if let Some(mut left_entry) =
+										left_store.get(txn, &old_key)?
 									{
 										left_entry.rows.retain(|r| {
 											r.number != pre.number
 										});
-										if let Some(right_entry) = state
-											.right_entries
-											.get(&old_key)
+
+										let right_store = Store::new(
+											self.node,
+											JoinSide::Right,
+										);
+										if let Some(right_entry) =
+											right_store
+												.get(txn, &old_key)?
 										{
 											for right_row_ser in
 												&right_entry.rows
 											{
-												let right_row = right_row_ser
-												.to_right_row(
-													&state.layout,
-												);
+												let right_row =
+													right_row_ser
+														.to_right_row(
+														&layout,
+													);
 												let joined_row = self
 													.join_rows(
 													&pre,
 													&right_row,
 												);
 												result.push(FlowDiff::Remove {
-												pre: joined_row,
-											});
+													pre: joined_row,
+												});
 											}
 										} else if matches!(
 											self.join_type,
@@ -889,8 +1051,15 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 											});
 										}
 										if left_entry.rows.is_empty() {
-											state.left_entries
-												.remove(&old_key);
+											left_store.remove(
+												txn, &old_key,
+											)?;
+										} else {
+											left_store.set(
+												txn,
+												&old_key,
+												&left_entry,
+											)?;
 										}
 									}
 								} else if matches!(self.join_type, JoinType::Left) {
@@ -904,22 +1073,27 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 								// Process insert...
 								if let Some(new_key) = new_key_opt {
 									let serialized = SerializedRow::from_row(&post);
-									state.left_entries
-										.entry(new_key)
-										.or_insert_with(|| JoinSideEntry {
-											rows: Vec::new(),
-										})
-										.rows
-										.push(serialized);
+									let left_store =
+										Store::new(self.node, JoinSide::Left);
+									let mut left_entry = left_store
+										.get_or_insert_with(
+											txn,
+											&new_key,
+											|| JoinSideEntry {
+												rows: Vec::new(),
+											},
+										)?;
+									left_entry.rows.push(serialized);
+									left_store.set(txn, &new_key, &left_entry)?;
 
+									let right_store =
+										Store::new(self.node, JoinSide::Right);
 									if let Some(right_entry) =
-										state.right_entries.get(&new_key)
+										right_store.get(txn, &new_key)?
 									{
 										for right_row_ser in &right_entry.rows {
 											let right_row = right_row_ser
-												.to_right_row(
-													&state.layout,
-												);
+												.to_right_row(&layout);
 											let joined_row = self
 												.join_rows(
 													&post,
@@ -961,30 +1135,40 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 							if old_key_opt == new_key_opt {
 								// Key didn't change, update in place
 								if let Some(old_key) = old_key_opt {
-									if let Some(right_entry) =
-										state.right_entries.get_mut(&old_key)
+									let right_store =
+										Store::new(self.node, JoinSide::Right);
+									if let Some(mut right_entry) =
+										right_store.get(txn, &old_key)?
 									{
 										// Update the row
 										for row in &mut right_entry.rows {
 											if row.number == pre.number {
-												*row = SerializedRow::from_row(
-												&post,
-											);
+												*row = SerializedRow::from_row(&post);
 												break;
 											}
 										}
+										right_store.set(
+											txn,
+											&old_key,
+											&right_entry,
+										)?;
 
 										// Emit updates for all joined rows
+										let left_store = Store::new(
+											self.node,
+											JoinSide::Left,
+										);
 										if let Some(left_entry) =
-											state.left_entries.get(&old_key)
+											left_store.get(txn, &old_key)?
 										{
 											for left_row_ser in
 												&left_entry.rows
 											{
-												let left_row = left_row_ser
-												.to_left_row(
-													&state.layout,
-												);
+												let left_row =
+													left_row_ser
+														.to_left_row(
+														&layout,
+													);
 												let old_joined = self
 													.join_rows(
 													&left_row, &pre,
@@ -995,9 +1179,9 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 													&post,
 												);
 												result.push(FlowDiff::Update {
-												pre: old_joined,
-												post: new_joined,
-											});
+													pre: old_joined,
+													post: new_joined,
+												});
 											}
 										}
 									}
@@ -1006,34 +1190,49 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 								// Key changed - treat as remove + insert
 								// Process remove...
 								if let Some(old_key) = old_key_opt {
-									if let Some(right_entry) =
-										state.right_entries.get_mut(&old_key)
+									let right_store =
+										Store::new(self.node, JoinSide::Right);
+									if let Some(mut right_entry) =
+										right_store.get(txn, &old_key)?
 									{
 										right_entry.rows.retain(|r| {
 											r.number != pre.number
 										});
+
+										let left_store = Store::new(
+											self.node,
+											JoinSide::Left,
+										);
 										if let Some(left_entry) =
-											state.left_entries.get(&old_key)
+											left_store.get(txn, &old_key)?
 										{
 											for left_row_ser in
 												&left_entry.rows
 											{
-												let left_row = left_row_ser
-												.to_left_row(
-													&state.layout,
-												);
+												let left_row =
+													left_row_ser
+														.to_left_row(
+														&layout,
+													);
 												let joined_row = self
 													.join_rows(
 													&left_row, &pre,
 												);
 												result.push(FlowDiff::Remove {
-												pre: joined_row,
-											});
+													pre: joined_row,
+												});
 											}
 										}
 										if right_entry.rows.is_empty() {
-											state.right_entries
-												.remove(&old_key);
+											right_store.remove(
+												txn, &old_key,
+											)?;
+										} else {
+											right_store.set(
+												txn,
+												&old_key,
+												&right_entry,
+											)?;
 										}
 									}
 								}
@@ -1041,22 +1240,27 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 								// Process insert...
 								if let Some(new_key) = new_key_opt {
 									let serialized = SerializedRow::from_row(&post);
-									state.right_entries
-										.entry(new_key)
-										.or_insert_with(|| JoinSideEntry {
-											rows: Vec::new(),
-										})
-										.rows
-										.push(serialized);
+									let right_store =
+										Store::new(self.node, JoinSide::Right);
+									let mut right_entry = right_store
+										.get_or_insert_with(
+											txn,
+											&new_key,
+											|| JoinSideEntry {
+												rows: Vec::new(),
+											},
+										)?;
+									right_entry.rows.push(serialized);
+									right_store.set(txn, &new_key, &right_entry)?;
 
+									let left_store =
+										Store::new(self.node, JoinSide::Left);
 									if let Some(left_entry) =
-										state.left_entries.get(&new_key)
+										left_store.get(txn, &new_key)?
 									{
 										for left_row_ser in &left_entry.rows {
 											let left_row = left_row_ser
-												.to_left_row(
-													&state.layout,
-												);
+												.to_left_row(&layout);
 											let joined_row = self
 												.join_rows(
 													&left_row,
@@ -1075,7 +1279,8 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 			}
 		}
 
-		self.save_join_state(txn, &state)?;
+		// Save the updated layout
+		self.save_join_layout(txn, &layout)?;
 
 		Ok(FlowChange::internal(self.node, result))
 	}
