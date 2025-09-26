@@ -71,12 +71,8 @@ fn main() {
 	log_info!("Creating table test.source...");
 	db.command_as_root(
 		r#"
-		create table test.source { 
-			id: int4,
-			value: int4,
-			multiplier: int4,
-			name: utf8
-		}
+		create table test.products { id: int4, name: utf8 };
+		create table test.categories { id: int4, product_id: int4, category: utf8 };
 	"#,
 		Params::None,
 	)
@@ -86,20 +82,19 @@ fn main() {
 	log_info!("Creating deferred view test.with_undefined...");
 	db.command_as_root(
 		r#"
-		create deferred view test.with_undefined { 
-			id: int4,
-			result: int4,
-			name: utf8,
-			has_value: bool
-		} as {
-			from test.source
-			map { 
-				id,
-				value * multiplier as result,
-				name,
-				value != undefined as has_value
-			}
-		}
+create deferred view test.product_catalog {
+    id: int4,
+    name: utf8,
+    category: utf8
+} as {
+    from test.products
+    left join { from test.categories } categories on id == categories.product_id
+    map {
+        id: id,
+        name: name,
+        category: category
+    }
+}
 	"#,
 		Params::None,
 	)
@@ -109,12 +104,11 @@ fn main() {
 	log_info!("Inserting data with undefined values...");
 	db.command_as_root(
 		r#"
-		from [
-			{id: 1, value: 10, multiplier: 2, name: "First"},
-			{id: 2, value: undefined, multiplier: 3, name: "Second"},
-			{id: 3, value: 5, multiplier: undefined, name: "Third"},
-			{id: 4, value: 8, multiplier: 4, name: undefined}
-		] insert test.source
+from [
+    {id: 1, name: "Laptop"},
+    {id: 2, name: "Phone"},
+    {id: 3, name: "Tablet"}
+] insert test.products
 	"#,
 		Params::None,
 	)
@@ -123,16 +117,9 @@ fn main() {
 	// Let the background task run for a while
 	sleep(Duration::from_secs(1));
 
-	// Query the source table
-	log_info!("Querying test.source...");
-	let result = db.query_as_root("from test.source", Params::None).unwrap();
-	for frame in result {
-		println!("Source data:\n{}", frame);
-	}
-
 	// Query the view
 	log_info!("Querying test.with_undefined...");
-	let result = db.query_as_root("from test.with_undefined", Params::None).unwrap();
+	let result = db.query_as_root("from test.product_catalog sort id asc", Params::None).unwrap();
 	for frame in result {
 		println!("View data:\n{}", frame);
 	}

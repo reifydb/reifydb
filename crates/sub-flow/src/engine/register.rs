@@ -94,6 +94,7 @@ impl<T: Transaction> FlowEngine<T> {
 				join_type,
 				left,
 				right,
+				alias,
 			} => {
 				// Find the left and right node IDs from the flow inputs
 				// The join node should have exactly 2 inputs
@@ -109,7 +110,7 @@ impl<T: Transaction> FlowEngine<T> {
 				self.operators.insert(
 					node.id,
 					Operators::Join(JoinOperator::new(
-						node.id, join_type, left_node, right_node, left, right,
+						node.id, join_type, left_node, right_node, left, right, alias,
 					)),
 				);
 			}

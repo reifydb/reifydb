@@ -68,10 +68,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 				.map(|key| {
 					let col = columns
 						.iter()
-						.find(|c| {
-							c.qualified_name() == key.column.fragment()
-								|| c.name() == key.column.fragment()
-						})
+						.find(|c| c.name() == key.column.fragment())
 						.ok_or_else(|| error!(query::column_not_found(key.column.clone())))?;
 					Ok::<_, reifydb_type::Error>((col.data().clone(), key.direction.clone()))
 				})

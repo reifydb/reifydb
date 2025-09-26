@@ -24,7 +24,6 @@ pub struct Column<'a> {
 }
 
 impl<'a> Column<'a> {
-	/// Create a new Column
 	pub fn new(name: impl IntoFragment<'a>, data: ColumnData) -> Self {
 		Self {
 			name: name.into_fragment(),
@@ -34,10 +33,6 @@ impl<'a> Column<'a> {
 
 	pub fn get_type(&self) -> Type {
 		self.data.get_type()
-	}
-
-	pub fn qualified_name(&self) -> String {
-		self.name.text().to_string()
 	}
 
 	pub fn with_new_data(&self, data: ColumnData) -> Column<'a> {

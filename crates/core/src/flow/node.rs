@@ -27,6 +27,7 @@ pub enum FlowNodeType {
 		join_type: JoinType,
 		left: Vec<Expression<'static>>,
 		right: Vec<Expression<'static>>,
+		alias: Option<String>,
 	},
 	Aggregate {
 		by: Vec<Expression<'static>>,

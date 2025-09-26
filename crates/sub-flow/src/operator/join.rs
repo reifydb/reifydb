@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
-use reifydb_type::{Blob, Params, RowNumber, Type, internal_error};
+use reifydb_type::{Blob, Params, RowNumber, Type, Value, internal_error};
 use serde::{Deserialize, Serialize};
 
 use crate::operator::{
@@ -121,12 +121,7 @@ impl SerializedRow {
 		// If layout is empty, we shouldn't be deserializing this row
 		// This indicates a state consistency issue
 		let fields: Vec<(String, Type)> = if layout.left_names.is_empty() {
-			// Use placeholder schema as a fallback - this shouldn't happen in normal operation
-			vec![
-				("order_id".to_string(), Type::Int4),
-				("customer_id".to_string(), Type::Int4),
-				("amount".to_string(), Type::Float8),
-			]
+			vec![]
 		} else {
 			layout.left_names.iter().cloned().zip(layout.left_types.iter().cloned()).collect()
 		};
@@ -145,12 +140,7 @@ impl SerializedRow {
 		// If layout is empty, we shouldn't be deserializing this row
 		// This indicates a state consistency issue
 		let fields: Vec<(String, Type)> = if layout.right_names.is_empty() {
-			// Use placeholder schema as a fallback - this shouldn't happen in normal operation
-			vec![
-				("customer_id".to_string(), Type::Int4),
-				("name".to_string(), Type::Utf8),
-				("city".to_string(), Type::Utf8),
-			]
+			vec![]
 		} else {
 			layout.right_names.iter().cloned().zip(layout.right_types.iter().cloned()).collect()
 		};
@@ -206,6 +196,7 @@ pub struct JoinOperator {
 	right_node: FlowNodeId,
 	left_exprs: Vec<Expression<'static>>,
 	right_exprs: Vec<Expression<'static>>,
+	alias: Option<String>,
 	layout: EncodedRowLayout,
 }
 
@@ -217,9 +208,8 @@ impl JoinOperator {
 		right_node: FlowNodeId,
 		left_exprs: Vec<Expression<'static>>,
 		right_exprs: Vec<Expression<'static>>,
+		alias: Option<String>,
 	) -> Self {
-		// IMPORTANT: Always use the same layout for state storage
-		// This ensures different operator instances can read each other's state
 		let layout = Self::state_layout();
 
 		Self {
@@ -229,14 +219,12 @@ impl JoinOperator {
 			right_node,
 			left_exprs,
 			right_exprs,
+			alias,
 			layout,
 		}
 	}
 
-	// Define a consistent layout for state storage
-	// IMPORTANT: This must return the exact same layout structure every time
 	fn state_layout() -> EncodedRowLayout {
-		// Always use Blob type at index 0 for state storage
 		EncodedRowLayout::new(&[Type::Blob])
 	}
 
@@ -245,7 +233,7 @@ impl JoinOperator {
 		row: &Row,
 		exprs: &[Expression<'static>],
 		evaluator: &StandardRowEvaluator,
-	) -> crate::Result<Hash128> {
+	) -> crate::Result<Option<Hash128>> {
 		let mut hasher = Vec::new();
 		for (i, expr) in exprs.iter().enumerate() {
 			// For AccessSource expressions, extract just the column name and evaluate that
@@ -262,7 +250,7 @@ impl JoinOperator {
 						let val = row.layout.get_value(&row.encoded, idx);
 						val
 					} else {
-						reifydb_type::Value::Undefined
+						Value::Undefined
 					}
 				}
 				_ => {
@@ -277,43 +265,64 @@ impl JoinOperator {
 				}
 			};
 
-			// Serialize the value for hashing
+			// Check if the value is undefined - undefined values should never match in joins
+			if matches!(value, reifydb_type::Value::Undefined) {
+				return Ok(None);
+			}
+
 			let bytes = encode_to_vec(&value, standard())
 				.map_err(|e| Error(internal_error!("Failed to encode value for hash: {}", e)))?;
+
 			hasher.extend_from_slice(&bytes);
 		}
 
 		let hash = xxh3_128(&hasher);
-		Ok(hash)
+		Ok(Some(hash))
 	}
 
 	fn join_rows(&self, left: &Row, right: &Row) -> Row {
 		// Combine the two rows into a single row
-		// Prefix column names with source to handle naming conflicts
+		// Prefix column names with alias to handle naming conflicts
 		let mut combined_values = Vec::new();
 		let mut combined_names = Vec::new();
 		let mut combined_types = Vec::new();
 
-		// Add left side columns - prefix with "orders" since left_node typically represents orders
+		// Add left side columns - never prefixed
 		let left_names = left.layout.names();
 		for i in 0..left.layout.fields.len() {
 			let value = left.layout.get_value(&left.encoded, i);
 			combined_values.push(value);
 			if i < left_names.len() {
-				// Keep original name without prefix for now to match test expectations
 				combined_names.push(left_names[i].clone());
 			}
 			combined_types.push(left.layout.fields[i].r#type);
 		}
 
-		// Add right side columns - prefix with "customers" since right_node typically represents customers
+		// Collect left names into a set for conflict detection
+		let left_name_set: std::collections::HashSet<String> = left_names.iter().cloned().collect();
+
+		// Add right side columns - prefix with alias when there's a conflict
 		let right_names = right.layout.names();
 		for i in 0..right.layout.fields.len() {
 			let value = right.layout.get_value(&right.encoded, i);
 			combined_values.push(value);
 			if i < right_names.len() {
-				// Keep original name without prefix for now to match test expectations
-				combined_names.push(right_names[i].clone());
+				let col_name = &right_names[i];
+				// Check if there's a naming conflict with left side
+				let final_name = if left_name_set.contains(col_name) {
+					// There's a conflict - apply alias prefix if available
+					if let Some(ref alias) = self.alias {
+						format!("{}_{}", alias, col_name)
+					} else {
+						// No alias provided but there's a conflict - use double underscore
+						// prefix
+						format!("__{}__", col_name)
+					}
+				} else {
+					// No conflict - use original name
+					col_name.clone()
+				};
+				combined_names.push(final_name);
 			}
 			combined_types.push(right.layout.fields[i].r#type);
 		}
@@ -326,8 +335,13 @@ impl JoinOperator {
 		let mut encoded_row = layout.allocate_row();
 		layout.set_values(&mut encoded_row, &combined_values);
 
+		// Generate a deterministic unique row number by combining left and right row numbers
+		// Use XOR and bit shifting to ensure uniqueness even when row numbers are small
+		let combined = (left.number.0.wrapping_mul(0x9e3779b97f4a7c15))
+			^ (right.number.0.wrapping_mul(0x517cc1b727220a95));
+		let combined_number = RowNumber(combined);
 		Row {
-			number: left.number, // Use left row number (could also generate new)
+			number: combined_number,
 			encoded: encoded_row,
 			layout,
 		}
@@ -429,17 +443,9 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		println!(
-			"JOIN[{:?}]: Applying change with {} diffs from {:?}",
-			self.node,
-			change.diffs.len(),
-			change.origin
-		);
-
 		// Check for self-referential calls (should never happen)
 		if let FlowChangeOrigin::Internal(from_node) = &change.origin {
 			if *from_node == self.node {
-				println!("JOIN[{:?}]: Self-referential call, returning empty", self.node);
 				return Ok(FlowChange::internal(self.node, Vec::new()));
 			}
 		}
@@ -447,19 +453,10 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		let mut state = self.load_join_state(txn)?;
 		let mut result = Vec::new();
 
-		println!(
-			"JOIN[{:?}]: Loaded state - left_entries: {}, right_entries: {}",
-			self.node,
-			state.left_entries.len(),
-			state.right_entries.len()
-		);
-
 		// Determine which side this change is from
 		let side = self
 			.determine_side(&change)
 			.ok_or_else(|| Error(internal_error!("Join operator received change from unknown node")))?;
-
-		println!("JOIN[{:?}]: Change from {:?} side", self.node, side);
 
 		let num_diffs = change.diffs.len();
 		for (i, diff) in change.diffs.into_iter().enumerate() {
@@ -470,104 +467,171 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 					match side {
 						JoinSide::Left => {
 							state.layout.update_left_from_row(&post);
-							let key_hash = self.compute_join_key(
+							// Debug: extract class_id value
+							let class_id_idx = post
+								.layout
+								.names()
+								.iter()
+								.position(|n| n == "class_id");
+							let class_id = if let Some(idx) = class_id_idx {
+								let val = post.layout.get_value(&post.encoded, idx);
+								format!("{:?}", val)
+							} else {
+								"unknown".to_string()
+							};
+							let key_hash_opt = self.compute_join_key(
 								&post,
 								&self.left_exprs,
 								evaluator,
 							)?;
 
-							// Add to left entries
-							let serialized = SerializedRow::from_row(&post);
-							let entry = state.left_entries.entry(key_hash).or_insert_with(
-								|| JoinSideEntry {
-									rows: Vec::new(),
-								},
-							);
-							entry.rows.push(serialized);
+							// Handle undefined join keys - they never match
+							if let Some(key_hash) = key_hash_opt {
+								// Add to left entries
+								let serialized = SerializedRow::from_row(&post);
+								let is_new_key =
+									!state.left_entries.contains_key(&key_hash);
+								let entry = state
+									.left_entries
+									.entry(key_hash)
+									.or_insert_with(|| JoinSideEntry {
+										rows: Vec::new(),
+									});
+								entry.rows.push(serialized.clone());
+								// Extract the name for debugging
+								let name_idx = post
+									.layout
+									.names()
+									.iter()
+									.position(|n| n == "name");
+								let name = if let Some(idx) = name_idx {
+									let val = post
+										.layout
+										.get_value(&post.encoded, idx);
+									format!("{:?}", val)
+								} else {
+									"unknown".to_string()
+								};
 
-							// Join with all matching right rows
-							if let Some(right_entry) = state.right_entries.get(&key_hash) {
-								for right_row_ser in &right_entry.rows {
-									let right_row = right_row_ser
-										.to_right_row(&state.layout);
-									let joined_row =
-										self.join_rows(&post, &right_row);
+								// Join with all matching right rows
+								if let Some(right_entry) =
+									state.right_entries.get(&key_hash)
+								{
+									for right_row_ser in &right_entry.rows {
+										let right_row = right_row_ser
+											.to_right_row(&state.layout);
+										let joined_row = self
+											.join_rows(&post, &right_row);
+										result.push(FlowDiff::Insert {
+											post: joined_row,
+										});
+									}
+								} else if matches!(self.join_type, JoinType::Left) {
+									// For left join, emit the left row directly
 									result.push(FlowDiff::Insert {
-										post: joined_row,
+										post: post.clone(),
 									});
 								}
-							} else if matches!(self.join_type, JoinType::Left) {
-								// For left join, emit the left row directly
-								println!(
-									"JOIN[{:?}]: LEFT JOIN - No right match, emitting left row directly",
-									self.node
-								);
-								result.push(FlowDiff::Insert {
-									post: post.clone(),
-								});
 							} else {
-								println!(
-									"JOIN[{:?}]: INNER JOIN - No right match, no output",
-									self.node
-								);
+								// Undefined join key - never matches anything
+								if matches!(self.join_type, JoinType::Left) {
+									// For left join, emit the left row with nulls
+									// for right side
+									result.push(FlowDiff::Insert {
+										post: post.clone(),
+									});
+								}
 							}
 						}
 						JoinSide::Right => {
 							state.layout.update_right_from_row(&post);
-							let key_hash = self.compute_join_key(
+							let key_hash_opt = self.compute_join_key(
 								&post,
 								&self.right_exprs,
 								evaluator,
 							)?;
 
-							// Check if this is the first right row for this key (for LEFT
-							// JOIN handling)
-							let is_first_right_row =
-								!state.right_entries.contains_key(&key_hash);
+							// Handle undefined join keys - they never match
+							if let Some(key_hash) = key_hash_opt {
+								// Debug: extract class_id and subject
+								let class_id_idx = post
+									.layout
+									.names()
+									.iter()
+									.position(|n| n == "class_id");
+								let class_id = if let Some(idx) = class_id_idx {
+									let val = post
+										.layout
+										.get_value(&post.encoded, idx);
+									format!("{:?}", val)
+								} else {
+									"unknown".to_string()
+								};
+								let subject_idx = post
+									.layout
+									.names()
+									.iter()
+									.position(|n| n == "subject");
+								let subject = if let Some(idx) = subject_idx {
+									let val = post
+										.layout
+										.get_value(&post.encoded, idx);
+									format!("{:?}", val)
+								} else {
+									"unknown".to_string()
+								};
+								// Check if this is the first right row for this key
+								// (for LEFT JOIN handling)
+								let is_first_right_row =
+									!state.right_entries.contains_key(&key_hash);
 
-							// Add to right entries
-							let serialized = SerializedRow::from_row(&post);
-							state.right_entries
-								.entry(key_hash)
-								.or_insert_with(|| JoinSideEntry {
-									rows: Vec::new(),
-								})
-								.rows
-								.push(serialized);
+								// Add to right entries
+								let serialized = SerializedRow::from_row(&post);
+								state.right_entries
+									.entry(key_hash)
+									.or_insert_with(|| JoinSideEntry {
+										rows: Vec::new(),
+									})
+									.rows
+									.push(serialized);
 
-							// Join with all matching left rows
-							if let Some(left_entry) = state.left_entries.get(&key_hash) {
-								// For LEFT JOIN: if this is the first right row for
-								// this key, we need to remove the NULL-joined
-								// rows first
-								if matches!(self.join_type, JoinType::Left)
-									&& is_first_right_row
+								// Join with all matching left rows
+								if let Some(left_entry) =
+									state.left_entries.get(&key_hash)
 								{
+									// For LEFT JOIN: if this is the first right row
+									// for this key, we need to remove the
+									// NULL-joined rows first
+									if matches!(self.join_type, JoinType::Left)
+										&& is_first_right_row
+									{
+										for left_row_ser in &left_entry.rows {
+											let left_row = left_row_ser
+												.to_left_row(
+													&state.layout,
+												);
+											// Remove the left row that was
+											// previously emitted
+											result.push(FlowDiff::Remove {
+												pre: left_row,
+											});
+										}
+									}
+
+									// Now add the properly joined rows
 									for left_row_ser in &left_entry.rows {
 										let left_row = left_row_ser
 											.to_left_row(&state.layout);
-										// Remove the left row that was
-										// previously emitted
-										result.push(FlowDiff::Remove {
-											pre: left_row,
+										let joined_row = self
+											.join_rows(&left_row, &post);
+										result.push(FlowDiff::Insert {
+											post: joined_row,
 										});
 									}
+								} else {
 								}
-
-								// Now add the properly joined rows
-								for left_row_ser in &left_entry.rows {
-									let left_row =
-										left_row_ser.to_left_row(&state.layout);
-									let joined_row =
-										self.join_rows(&left_row, &post);
-									result.push(FlowDiff::Insert {
-										post: joined_row,
-									});
-								}
-							} else {
 							}
-							// Right side inserts don't produce output for left joins if no
-							// match
+							// Right side inserts with undefined keys don't produce output
 						}
 					}
 				}
@@ -576,93 +640,128 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 				} => {
 					match side {
 						JoinSide::Left => {
-							let key_hash = self.compute_join_key(
+							let key_hash_opt = self.compute_join_key(
 								&pre,
 								&self.left_exprs,
 								evaluator,
 							)?;
 
-							// Remove from left entries
-							if let Some(left_entry) = state.left_entries.get_mut(&key_hash)
-							{
-								left_entry.rows.retain(|r| r.number != pre.number);
-
-								// Remove all joins involving this row
-								if let Some(right_entry) =
-									state.right_entries.get(&key_hash)
+							if let Some(key_hash) = key_hash_opt {
+								// Remove from left entries
+								if let Some(left_entry) =
+									state.left_entries.get_mut(&key_hash)
 								{
-									for right_row_ser in &right_entry.rows {
-										let right_row = right_row_ser
-											.to_right_row(&state.layout);
-										let joined_row = self
-											.join_rows(&pre, &right_row);
+									left_entry
+										.rows
+										.retain(|r| r.number != pre.number);
+
+									// Remove all joins involving this row
+									if let Some(right_entry) =
+										state.right_entries.get(&key_hash)
+									{
+										for right_row_ser in &right_entry.rows {
+											let right_row = right_row_ser
+												.to_right_row(
+													&state.layout,
+												);
+											let joined_row = self
+												.join_rows(
+													&pre,
+													&right_row,
+												);
+											result.push(FlowDiff::Remove {
+												pre: joined_row,
+											});
+										}
+									} else if matches!(
+										self.join_type,
+										JoinType::Left
+									) {
+										// Remove the unmatched left join row
 										result.push(FlowDiff::Remove {
-											pre: joined_row,
+											pre: pre.clone(),
 										});
 									}
-								} else if matches!(self.join_type, JoinType::Left) {
-									// Remove the unmatched left join row
+
+									// Clean up empty entries
+									if left_entry.rows.is_empty() {
+										state.left_entries.remove(&key_hash);
+									}
+								}
+							} else {
+								// Undefined key - if it's a left join, remove the
+								// unmatched row
+								if matches!(self.join_type, JoinType::Left) {
 									result.push(FlowDiff::Remove {
 										pre: pre.clone(),
 									});
 								}
-
-								// Clean up empty entries
-								if left_entry.rows.is_empty() {
-									state.left_entries.remove(&key_hash);
-								}
 							}
 						}
 						JoinSide::Right => {
-							let key_hash = self.compute_join_key(
+							let key_hash_opt = self.compute_join_key(
 								&pre,
 								&self.right_exprs,
 								evaluator,
 							)?;
 
-							// Remove from right entries
-							if let Some(right_entry) =
-								state.right_entries.get_mut(&key_hash)
-							{
-								right_entry.rows.retain(|r| r.number != pre.number);
-
-								// Remove all joins involving this row
-								if let Some(left_entry) =
-									state.left_entries.get(&key_hash)
+							if let Some(key_hash) = key_hash_opt {
+								// Remove from right entries
+								if let Some(right_entry) =
+									state.right_entries.get_mut(&key_hash)
 								{
-									for left_row_ser in &left_entry.rows {
-										let left_row = left_row_ser
-											.to_left_row(&state.layout);
-										let joined_row =
-											self.join_rows(&left_row, &pre);
-										result.push(FlowDiff::Remove {
-											pre: joined_row,
-										});
-									}
+									right_entry
+										.rows
+										.retain(|r| r.number != pre.number);
 
-									// For LEFT JOIN: if this was the last right row
-									// for this key, emit new rows with
-									// NULL right side for all left rows
-									if matches!(self.join_type, JoinType::Left)
-										&& right_entry.rows.is_empty()
+									// Remove all joins involving this row
+									if let Some(left_entry) =
+										state.left_entries.get(&key_hash)
 									{
 										for left_row_ser in &left_entry.rows {
 											let left_row = left_row_ser
 												.to_left_row(
 													&state.layout,
 												);
-											// Re-add the left row for left
-											// join
-											result.push(FlowDiff::Insert {
-												post: left_row,
+											let joined_row = self
+												.join_rows(
+													&left_row, &pre,
+												);
+											result.push(FlowDiff::Remove {
+												pre: joined_row,
 											});
 										}
-									}
-								}
 
-								// Clean up empty entries
-								if right_entry.rows.is_empty() {
-									state.right_entries.remove(&key_hash);
+										// For LEFT JOIN: if this was the last
+										// right row for this key,
+										// emit new rows with
+										// NULL right side for all left rows
+										if matches!(
+											self.join_type,
+											JoinType::Left
+										) && right_entry.rows.is_empty()
+										{
+											for left_row_ser in
+												&left_entry.rows
+											{
+												let left_row = left_row_ser
+												.to_left_row(
+													&state.layout,
+												);
+												// Re-add the left row
+												// for left
+												// join
+												result.push(FlowDiff::Insert {
+												post: left_row,
+											});
+											}
+										}
+									}
+
+									// Clean up empty entries
+									if right_entry.rows.is_empty() {
+										state.right_entries.remove(&key_hash);
+									}
 								}
 							}
 						}
@@ -677,60 +776,74 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 					// specially
 					match side {
 						JoinSide::Left => {
-							let old_key = self.compute_join_key(
+							let old_key_opt = self.compute_join_key(
 								&pre,
 								&self.left_exprs,
 								evaluator,
 							)?;
-							let new_key = self.compute_join_key(
+							let new_key_opt = self.compute_join_key(
 								&post,
 								&self.left_exprs,
 								evaluator,
 							)?;
 
-							if old_key == new_key {
+							if old_key_opt == new_key_opt {
 								// Key didn't change, update in place
-								if let Some(left_entry) =
-									state.left_entries.get_mut(&old_key)
-								{
-									// Update the row
-									for row in &mut left_entry.rows {
-										if row.number == pre.number {
-											*row = SerializedRow::from_row(
-												&post,
-											);
-											break;
-										}
-									}
-
-									// Emit updates for all joined rows
-									if let Some(right_entry) =
-										state.right_entries.get(&old_key)
+								if let Some(old_key) = old_key_opt {
+									if let Some(left_entry) =
+										state.left_entries.get_mut(&old_key)
 									{
-										for right_row_ser in &right_entry.rows {
-											let right_row = right_row_ser
-												.to_right_row(
-													&state.layout,
+										// Update the row
+										for row in &mut left_entry.rows {
+											if row.number == pre.number {
+												*row = SerializedRow::from_row(
+													&post,
 												);
-											let old_joined = self
-												.join_rows(
+												break;
+											}
+										}
+
+										// Emit updates for all joined rows
+										if let Some(right_entry) = state
+											.right_entries
+											.get(&old_key)
+										{
+											for right_row_ser in
+												&right_entry.rows
+											{
+												let right_row = right_row_ser
+													.to_right_row(
+														&state.layout,
+													);
+												let old_joined = self
+													.join_rows(
 													&pre,
 													&right_row,
 												);
-											let new_joined = self
-												.join_rows(
+												let new_joined = self
+													.join_rows(
 													&post,
 													&right_row,
 												);
+												result.push(FlowDiff::Update {
+													pre: old_joined,
+													post: new_joined,
+												});
+											}
+										} else if matches!(
+											self.join_type,
+											JoinType::Left
+										) {
 											result.push(FlowDiff::Update {
-												pre: old_joined,
-												post: new_joined,
+												pre: pre.clone(),
+												post: post.clone(),
 											});
 										}
-									} else if matches!(
-										self.join_type,
-										JoinType::Left
-									) {
+									}
+								} else {
+									// Both keys are undefined - for left join, just
+									// update the row
+									if matches!(self.join_type, JoinType::Left) {
 										result.push(FlowDiff::Update {
 											pre: pre.clone(),
 											post: post.clone(),
@@ -740,14 +853,67 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 							} else {
 								// Key changed - treat as remove + insert
 								// Process remove...
-								if let Some(left_entry) =
-									state.left_entries.get_mut(&old_key)
-								{
-									left_entry
+								if let Some(old_key) = old_key_opt {
+									if let Some(left_entry) =
+										state.left_entries.get_mut(&old_key)
+									{
+										left_entry.rows.retain(|r| {
+											r.number != pre.number
+										});
+										if let Some(right_entry) = state
+											.right_entries
+											.get(&old_key)
+										{
+											for right_row_ser in
+												&right_entry.rows
+											{
+												let right_row = right_row_ser
+												.to_right_row(
+													&state.layout,
+												);
+												let joined_row = self
+													.join_rows(
+													&pre,
+													&right_row,
+												);
+												result.push(FlowDiff::Remove {
+												pre: joined_row,
+											});
+											}
+										} else if matches!(
+											self.join_type,
+											JoinType::Left
+										) {
+											result.push(FlowDiff::Remove {
+												pre: pre.clone(),
+											});
+										}
+										if left_entry.rows.is_empty() {
+											state.left_entries
+												.remove(&old_key);
+										}
+									}
+								} else if matches!(self.join_type, JoinType::Left) {
+									// Old key was undefined - remove the unmatched
+									// row
+									result.push(FlowDiff::Remove {
+										pre: pre.clone(),
+									});
+								}
+
+								// Process insert...
+								if let Some(new_key) = new_key_opt {
+									let serialized = SerializedRow::from_row(&post);
+									state.left_entries
+										.entry(new_key)
+										.or_insert_with(|| JoinSideEntry {
+											rows: Vec::new(),
+										})
 										.rows
-										.retain(|r| r.number != pre.number);
+										.push(serialized);
+
 									if let Some(right_entry) =
-										state.right_entries.get(&old_key)
+										state.right_entries.get(&new_key)
 									{
 										for right_row_ser in &right_entry.rows {
 											let right_row = right_row_ser
@@ -756,49 +922,23 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 												);
 											let joined_row = self
 												.join_rows(
-													&pre,
+													&post,
 													&right_row,
 												);
-											result.push(FlowDiff::Remove {
-												pre: joined_row,
+											result.push(FlowDiff::Insert {
+												post: joined_row,
 											});
 										}
 									} else if matches!(
 										self.join_type,
 										JoinType::Left
 									) {
-										result.push(FlowDiff::Remove {
-											pre: pre.clone(),
-										});
-									}
-									if left_entry.rows.is_empty() {
-										state.left_entries.remove(&old_key);
-									}
-								}
-
-								// Process insert...
-								let serialized = SerializedRow::from_row(&post);
-								state.left_entries
-									.entry(new_key)
-									.or_insert_with(|| JoinSideEntry {
-										rows: Vec::new(),
-									})
-									.rows
-									.push(serialized);
-
-								if let Some(right_entry) =
-									state.right_entries.get(&new_key)
-								{
-									for right_row_ser in &right_entry.rows {
-										let right_row = right_row_ser
-											.to_right_row(&state.layout);
-										let joined_row = self
-											.join_rows(&post, &right_row);
 										result.push(FlowDiff::Insert {
-											post: joined_row,
+											post: post.clone(),
 										});
 									}
 								} else if matches!(self.join_type, JoinType::Left) {
+									// New key is undefined - insert unmatched row
 									result.push(FlowDiff::Insert {
 										post: post.clone(),
 									});
@@ -807,68 +947,110 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 						}
 						JoinSide::Right => {
 							// Similar logic for right side updates
-							let old_key = self.compute_join_key(
+							let old_key_opt = self.compute_join_key(
 								&pre,
 								&self.right_exprs,
 								evaluator,
 							)?;
-							let new_key = self.compute_join_key(
+							let new_key_opt = self.compute_join_key(
 								&post,
 								&self.right_exprs,
 								evaluator,
 							)?;
 
-							if old_key == new_key {
+							if old_key_opt == new_key_opt {
 								// Key didn't change, update in place
-								if let Some(right_entry) =
-									state.right_entries.get_mut(&old_key)
-								{
-									// Update the row
-									for row in &mut right_entry.rows {
-										if row.number == pre.number {
-											*row = SerializedRow::from_row(
+								if let Some(old_key) = old_key_opt {
+									if let Some(right_entry) =
+										state.right_entries.get_mut(&old_key)
+									{
+										// Update the row
+										for row in &mut right_entry.rows {
+											if row.number == pre.number {
+												*row = SerializedRow::from_row(
 												&post,
 											);
-											break;
+												break;
+											}
 										}
-									}
 
-									// Emit updates for all joined rows
-									if let Some(left_entry) =
-										state.left_entries.get(&old_key)
-									{
-										for left_row_ser in &left_entry.rows {
-											let left_row = left_row_ser
+										// Emit updates for all joined rows
+										if let Some(left_entry) =
+											state.left_entries.get(&old_key)
+										{
+											for left_row_ser in
+												&left_entry.rows
+											{
+												let left_row = left_row_ser
 												.to_left_row(
 													&state.layout,
 												);
-											let old_joined = self
-												.join_rows(
+												let old_joined = self
+													.join_rows(
 													&left_row, &pre,
 												);
-											let new_joined = self
-												.join_rows(
+												let new_joined = self
+													.join_rows(
 													&left_row,
 													&post,
 												);
-											result.push(FlowDiff::Update {
+												result.push(FlowDiff::Update {
 												pre: old_joined,
 												post: new_joined,
 											});
+											}
 										}
 									}
 								}
 							} else {
 								// Key changed - treat as remove + insert
 								// Process remove...
-								if let Some(right_entry) =
-									state.right_entries.get_mut(&old_key)
-								{
-									right_entry
+								if let Some(old_key) = old_key_opt {
+									if let Some(right_entry) =
+										state.right_entries.get_mut(&old_key)
+									{
+										right_entry.rows.retain(|r| {
+											r.number != pre.number
+										});
+										if let Some(left_entry) =
+											state.left_entries.get(&old_key)
+										{
+											for left_row_ser in
+												&left_entry.rows
+											{
+												let left_row = left_row_ser
+												.to_left_row(
+													&state.layout,
+												);
+												let joined_row = self
+													.join_rows(
+													&left_row, &pre,
+												);
+												result.push(FlowDiff::Remove {
+												pre: joined_row,
+											});
+											}
+										}
+										if right_entry.rows.is_empty() {
+											state.right_entries
+												.remove(&old_key);
+										}
+									}
+								}
+
+								// Process insert...
+								if let Some(new_key) = new_key_opt {
+									let serialized = SerializedRow::from_row(&post);
+									state.right_entries
+										.entry(new_key)
+										.or_insert_with(|| JoinSideEntry {
+											rows: Vec::new(),
+										})
 										.rows
-										.retain(|r| r.number != pre.number);
+										.push(serialized);
+
 									if let Some(left_entry) =
-										state.left_entries.get(&old_key)
+										state.left_entries.get(&new_key)
 									{
 										for left_row_ser in &left_entry.rows {
 											let left_row = left_row_ser
@@ -877,39 +1059,13 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 												);
 											let joined_row = self
 												.join_rows(
-													&left_row, &pre,
+													&left_row,
+													&post,
 												);
-											result.push(FlowDiff::Remove {
-												pre: joined_row,
+											result.push(FlowDiff::Insert {
+												post: joined_row,
 											});
 										}
-									}
-									if right_entry.rows.is_empty() {
-										state.right_entries.remove(&old_key);
-									}
-								}
-
-								// Process insert...
-								let serialized = SerializedRow::from_row(&post);
-								state.right_entries
-									.entry(new_key)
-									.or_insert_with(|| JoinSideEntry {
-										rows: Vec::new(),
-									})
-									.rows
-									.push(serialized);
-
-								if let Some(left_entry) =
-									state.left_entries.get(&new_key)
-								{
-									for left_row_ser in &left_entry.rows {
-										let left_row = left_row_ser
-											.to_left_row(&state.layout);
-										let joined_row = self
-											.join_rows(&left_row, &post);
-										result.push(FlowDiff::Insert {
-											post: joined_row,
-										});
 									}
 								}
 							}
@@ -920,44 +1076,6 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		}
 
 		self.save_join_state(txn, &state)?;
-
-		println!("JOIN[{:?}]: Returning {} diffs", self.node, result.len());
-		for (i, diff) in result.iter().enumerate() {
-			match diff {
-				FlowDiff::Insert {
-					post,
-				} => {
-					println!(
-						"JOIN[{:?}]:   Result[{}]: INSERT with {} columns",
-						self.node,
-						i,
-						post.layout.fields.len()
-					);
-				}
-				FlowDiff::Remove {
-					pre,
-				} => {
-					println!(
-						"JOIN[{:?}]:   Result[{}]: REMOVE with {} columns",
-						self.node,
-						i,
-						pre.layout.fields.len()
-					);
-				}
-				FlowDiff::Update {
-					pre,
-					post,
-				} => {
-					println!(
-						"JOIN[{:?}]:   Result[{}]: UPDATE from {} to {} columns",
-						self.node,
-						i,
-						pre.layout.fields.len(),
-						post.layout.fields.len()
-					);
-				}
-			}
-		}
 
 		Ok(FlowChange::internal(self.node, result))
 	}

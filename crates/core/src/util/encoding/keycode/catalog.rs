@@ -99,11 +99,6 @@ mod tests {
 		let bytes100 = serialize_source_id(&source100);
 		let bytes200 = serialize_source_id(&source200);
 
-		println!("source(1) = {:02x?}", bytes1);
-		println!("source(2) = {:02x?}", bytes2);
-		println!("source(100) = {:02x?}", bytes100);
-		println!("source(200) = {:02x?}", bytes200);
-
 		// In descending order, larger values should have smaller byte
 		// representations
 		assert!(bytes2 < bytes1, "source(2) should be < source(1) in bytes");
@@ -120,10 +115,8 @@ mod tests {
 		let bytes10 = serialize_source_id(&source10);
 		let bytes9 = serialize_source_id(&source9);
 
-		println!("Table test:");
-		println!("source(10) = {:02x?}", bytes10);
-		println!("source(9) = {:02x?}", bytes9);
-		println!("In descending order, source(9) > source(10): {}", bytes9 > bytes10);
+		// In descending order, source(9) > source(10)
+		assert!(bytes9 > bytes10, "source(9) should be > source(10) in bytes");
 
 		// Test with views
 		let view10 = SourceId::view(10);
@@ -132,10 +125,8 @@ mod tests {
 		let vbytes10 = serialize_source_id(&view10);
 		let vbytes9 = serialize_source_id(&view9);
 
-		println!("\nView test:");
-		println!("view(10) = {:02x?}", vbytes10);
-		println!("view(9) = {:02x?}", vbytes9);
-		println!("In descending order, view(9) > view(10): {}", vbytes9 > vbytes10);
+		// In descending order, view(9) > view(10)
+		assert!(vbytes9 > vbytes10, "view(9) should be > view(10) in bytes");
 
 		// Test with virtual tables
 		let virtual10 = SourceId::table_virtual(10);
@@ -144,18 +135,17 @@ mod tests {
 		let tvbytes10 = serialize_source_id(&virtual10);
 		let tvbytes9 = serialize_source_id(&virtual9);
 
-		println!("\nTableVirtual test:");
-		println!("table_virtual(10) = {:02x?}", tvbytes10);
-		println!("table_virtual(9) = {:02x?}", tvbytes9);
-		println!("In descending order, table_virtual(9) > table_virtual(10): {}", vbytes9 > tvbytes10);
+		// In descending order, table_virtual(9) > table_virtual(10)
+		assert!(tvbytes9 > tvbytes10, "table_virtual(9) should be > table_virtual(10) in bytes");
 
 		// Check that view, table, and table_virtual with same ID encode
 		// differently
-		println!("\nTable vs View vs TableVirtual:");
-		println!("table(10) != view(10): {}", bytes10 != vbytes10);
-		println!("table(10) != table_virtual(10): {}", bytes10 != tvbytes10);
-		println!("view(10) != table_virtual(10): {}", vbytes10 != tvbytes10);
-		println!("table type byte: 0x01, view type byte: 0x02, table_virtual type byte: 0x03");
+		assert_ne!(bytes10, vbytes10, "table(10) should != view(10)");
+		assert_ne!(bytes10, tvbytes10, "table(10) should != table_virtual(10)");
+		assert_ne!(vbytes10, tvbytes10, "view(10) should != table_virtual(10)");
+		assert_eq!(bytes10[0], 0x01, "table type byte should be 0x01");
+		assert_eq!(vbytes10[0], 0x02, "view type byte should be 0x02");
+		assert_eq!(tvbytes10[0], 0x03, "table_virtual type byte should be 0x03");
 
 		// Simulate what happens with row keys
 		let row_key_10_100 = vec![0xFE, 0xFC]; // version, kind
@@ -170,16 +160,11 @@ mod tests {
 		let mut end_key = vec![0xFE, 0xFC];
 		end_key.extend(&bytes9);
 
-		println!("\nTable row keys:");
-		println!("key(source10, row100) = {:02x?}", key1);
-		println!("key(source10, row200) = {:02x?}", key2);
-		println!("end_key(source9) = {:02x?}", end_key);
-
-		println!("\nRange check:");
-		println!("  key1 >= start(source10): {}", key1 >= bytes10);
-		println!("  key1 < end(source9): {}", key1 < end_key);
-		println!("  key2 >= start(source10): {}", key2 >= bytes10);
-		println!("  key2 < end(source9): {}", key2 < end_key);
+		// Range check assertions
+		assert!(key1 >= bytes10, "key1 should be >= start(source10)");
+		assert!(key1 < end_key, "key1 should be < end(source9)");
+		assert!(key2 >= bytes10, "key2 should be >= start(source10)");
+		assert!(key2 < end_key, "key2 should be < end(source9)");
 	}
 
 	#[test]
@@ -245,11 +230,6 @@ mod tests {
 		let bytes100 = serialize_index_id(&index100);
 		let bytes200 = serialize_index_id(&index200);
 
-		println!("index(1) = {:02x?}", bytes1);
-		println!("index(2) = {:02x?}", bytes2);
-		println!("index(100) = {:02x?}", bytes100);
-		println!("index(200) = {:02x?}", bytes200);
-
 		// In descending order, larger values should have smaller byte
 		// representations
 		assert!(bytes2 < bytes1, "index(2) should be < index(1) in bytes");
@@ -266,10 +246,8 @@ mod tests {
 		let bytes10 = serialize_index_id(&index10);
 		let bytes11 = serialize_index_id(&index11);
 
-		println!("Index test:");
-		println!("index(10) = {:02x?}", bytes10);
-		println!("index(11) = {:02x?}", bytes11);
-		println!("In descending order, index(11) < index(10): {}", bytes11 < bytes10);
+		// In descending order, index(11) < index(10)
+		assert!(bytes11 < bytes10, "index(11) should be < index(10) in bytes");
 
 		// Verify the structure: [type_byte, ...id_bytes]
 		assert_eq!(bytes10.len(), 9, "IndexId should be 9 bytes");

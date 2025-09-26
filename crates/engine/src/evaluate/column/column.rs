@@ -9,8 +9,6 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	Date, DateTime, Decimal, Interval, RowNumber, Time, Type, Uint, Value,
-	diagnostic::query::column_not_found,
-	error,
 	value::{Blob, IdentityId, Uuid4, Uuid7},
 };
 
@@ -22,75 +20,13 @@ impl StandardColumnEvaluator {
 		ctx: &ColumnEvaluationContext<'a>,
 		column: &ColumnExpression<'a>,
 	) -> crate::Result<Column<'a>> {
-		// Get the column name from the ColumnIdentifier
-		let name = column.0.name.text().to_string();
+		let name = column.0.name.text();
 
-		// Check if the name contains dots (qualified reference)
-		let parts: Vec<&str> = name.split('.').collect();
-
-		match parts.len() {
-			3 => {
-				// Fully qualified: namespace.table.column
-				let _namespace = parts[0];
-				let source = parts[1];
-				let col_name = parts[2];
-
-				// Find column matching all three parts
-				// Since Column is now just name + data, check if the name contains the full
-				// qualification
-				let matching_col = ctx.columns.iter().find(|c| {
-					c.name().text() == col_name
-						|| c.name().text() == &format!("{}.{}", source, col_name)
-				});
-
-				if let Some(col) = matching_col {
-					return self.extract_column_data(col, ctx);
-				}
-			}
-			2 => {
-				// Source qualified: table.column
-				let source = parts[0];
-				let col_name = parts[1];
-
-				// Find column matching source and name
-				// Since Column is now just name + data, check if the name matches or contains the
-				// qualification
-				let matching_col = ctx.columns.iter().find(|c| {
-					c.name().text() == col_name
-						|| c.name().text() == &format!("{}.{}", source, col_name)
-				});
-
-				if let Some(col) = matching_col {
-					return self.extract_column_data(col, ctx);
-				}
-			}
-			1 => {
-				// Unqualified column name - use existing logic
-				// First try exact qualified name match
-				if let Some(col) = ctx.columns.iter().find(|c| c.qualified_name() == name) {
-					return self.extract_column_data(col, ctx);
-				}
-
-				// Then find all matches by unqualified name and
-				// select the most qualified one
-				let all_matches: Vec<_> = ctx.columns.iter().filter(|c| c.name() == name).collect();
-
-				if !all_matches.is_empty() {
-					// Since columns no longer track namespace/source separately,
-					// just use the first match found
-					let best_match = all_matches[0];
-
-					return self.extract_column_data(best_match, ctx);
-				}
-			}
-			_ => {
-				// Invalid format with too many dots
-				return Err(error!(column_not_found(column.0.name.clone())));
-			}
+		if let Some(col) = ctx.columns.iter().find(|c| c.name() == name) {
+			return self.extract_column_data(col, ctx);
 		}
 
-		// If we get here, column was not found
-		Err(error!(column_not_found(column.0.name.clone())))
+		Ok(Column::new(name.to_string(), ColumnData::undefined(0)))
 	}
 
 	fn extract_column_data<'a>(

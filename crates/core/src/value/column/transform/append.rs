@@ -21,14 +21,12 @@ impl<'a> Columns<'a> {
 
 		let columns = self.0.make_mut();
 		for (i, (l, r)) in columns.iter_mut().zip(other.into_iter()).enumerate() {
-			if l.qualified_name() != r.qualified_name() {
+			if l.name() != r.name() {
 				return_error!(engine::frame_error(format!(
-					"column name mismatch at index {}: '{}' vs '{}' (original: '{}' vs '{}')",
+					"column name mismatch at index {}: '{}' vs '{}'",
 					i,
-					l.qualified_name(),
-					r.qualified_name(),
 					l.name().text(),
-					r.name().text()
+					r.name().text(),
 				)));
 			}
 			l.extend(r)?;
@@ -301,7 +299,7 @@ impl<'a> Columns<'a> {
 				(_, v) => {
 					return_error!(engine::frame_error(format!(
 						"type mismatch for column '{}'({}): incompatible with value {}",
-						column.qualified_name(),
+						column.name().text(),
 						column.data().get_type(),
 						v
 					)));

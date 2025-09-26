@@ -89,7 +89,7 @@ impl<'a> Columns<'a> {
 				name: Fragment::owned_internal(name.to_string()),
 				data,
 			};
-			index.insert(column.qualified_name(), idx);
+			index.insert(name, idx);
 			columns.push(column);
 		}
 

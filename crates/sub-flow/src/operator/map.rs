@@ -39,13 +39,6 @@ impl<T: Transaction> Operator<T> for MapOperator {
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		println!(
-			"MAP[{:?}]: Applying change with {} diffs from {:?}",
-			self.node,
-			change.diffs.len(),
-			change.origin
-		);
-
 		let mut result = Vec::new();
 
 		for (i, diff) in change.diffs.into_iter().enumerate() {
@@ -53,27 +46,15 @@ impl<T: Transaction> Operator<T> for MapOperator {
 				FlowDiff::Insert {
 					post,
 				} => {
-					println!(
-						"MAP[{:?}]: Processing INSERT with {} input columns",
-						self.node,
-						post.layout.fields.len()
-					);
-
 					// let projected = self.project_row(&post, evaluator)?;
 
 					let projected = match self.project_row(&post, evaluator) {
 						Ok(projected) => projected,
 						Err(err) => {
-							println!("MAP[{:?}]: {}", self.node, err);
 							panic!("{:#?}", err)
 						}
 					};
 
-					println!(
-						"MAP[{:?}]: Projected to {} output columns",
-						self.node,
-						projected.layout.fields.len()
-					);
 					result.push(FlowDiff::Insert {
 						post: projected,
 					});
@@ -82,17 +63,7 @@ impl<T: Transaction> Operator<T> for MapOperator {
 					pre,
 					post,
 				} => {
-					println!(
-						"MAP[{:?}]: Processing UPDATE with {} input columns",
-						self.node,
-						post.layout.fields.len()
-					);
 					let projected = self.project_row(&post, evaluator)?;
-					println!(
-						"MAP[{:?}]: Projected to {} output columns",
-						self.node,
-						projected.layout.fields.len()
-					);
 					result.push(FlowDiff::Update {
 						pre,
 						post: projected,
@@ -109,7 +80,6 @@ impl<T: Transaction> Operator<T> for MapOperator {
 			}
 		}
 
-		println!("MAP[{:?}]: Returning {} diffs", self.node, result.len());
 		Ok(FlowChange::internal(self.node, result))
 	}
 }

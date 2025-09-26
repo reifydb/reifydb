@@ -21,6 +21,7 @@ pub(crate) struct JoinCompiler {
 	pub left: Box<PhysicalPlan<'static>>,
 	pub right: Box<PhysicalPlan<'static>>,
 	pub on: Vec<Expression<'static>>,
+	pub alias: Option<String>,
 }
 
 impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
@@ -30,6 +31,7 @@ impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
+			alias: node.alias.map(|f| f.text().to_string()),
 		}
 	}
 }
@@ -41,6 +43,7 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
+			alias: node.alias.map(|f| f.text().to_string()),
 		}
 	}
 }
@@ -61,6 +64,7 @@ impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 				join_type: self.join_type,
 				left: left_keys,
 				right: right_keys,
+				alias: self.alias,
 			})
 			.with_inputs([left_node, right_node])
 			.build()?;

@@ -128,20 +128,16 @@ impl StandardRowEvaluator {
 		let mut types = Vec::with_capacity(target_columns.len());
 
 		for (idx, target_col) in target_columns.iter().enumerate() {
-			let source_column = ctx.columns.iter().nth(idx).ok_or_else(|| {
-				Error(internal_error!(
-					"Not enough source columns: expected {} but got {}",
-					idx + 1,
-					ctx.columns.len()
-				))
-			})?;
-
 			let r#type = target_col.constraint.get_type();
 
-			let lazy_frag = Fragment::owned_internal(&target_col.name);
-
-			let coerced = cast::cast_column_data(&ctx, source_column.data(), r#type, &lazy_frag)?;
-			values.push(coerced.get_value(0));
+			let value = if let Some(source_column) = ctx.columns.iter().nth(idx) {
+				let lazy_frag = Fragment::owned_internal(&target_col.name);
+				let coerced = cast::cast_column_data(&ctx, source_column.data(), r#type, &lazy_frag)?;
+				coerced.get_value(0)
+			} else {
+				Value::Undefined
+			};
+			values.push(value);
 			names.push(target_col.name.clone());
 			types.push(r#type);
 		}
