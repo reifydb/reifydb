@@ -7,7 +7,7 @@ use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
 	interface::Transaction,
-	value::column::{Columns, layout::ColumnsLayout},
+	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_type::diagnostic::query;
 
@@ -104,7 +104,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.input.layout()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.input.headers()
 	}
 }

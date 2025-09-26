@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	BitVec,
 	interface::{Transaction, evaluate::expression::Expression},
-	value::column::{ColumnData, layout::ColumnsLayout},
+	value::column::{ColumnData, headers::ColumnHeaders},
 };
 
 use crate::{
@@ -97,7 +97,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.input.layout()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.input.headers()
 	}
 }

@@ -22,7 +22,7 @@ use query::{
 use reifydb_core::{
 	Frame,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedSource, Transaction},
-	value::column::{Column, ColumnData, Columns, layout::ColumnsLayout},
+	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::{
 	ast,
@@ -49,8 +49,8 @@ pub(crate) trait QueryNode<'a, T: Transaction> {
 	/// Returns None when exhausted
 	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>>;
 
-	/// Get the layout of columns this operator produces
-	fn layout(&self) -> Option<ColumnsLayout<'a>>;
+	/// Get the headers of columns this node produces
+	fn headers(&self) -> Option<ColumnHeaders<'a>>;
 }
 
 #[derive(Clone)]
@@ -97,8 +97,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
 		(**self).next(rx)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		(**self).layout()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		(**self).headers()
 	}
 }
 
@@ -147,25 +147,25 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 		}
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
 		match self {
-			ExecutionPlan::Aggregate(node) => node.layout(),
-			ExecutionPlan::Filter(node) => node.layout(),
-			ExecutionPlan::IndexScan(node) => node.layout(),
-			ExecutionPlan::InlineData(node) => node.layout(),
-			ExecutionPlan::InnerJoin(node) => node.layout(),
-			ExecutionPlan::LeftJoin(node) => node.layout(),
-			ExecutionPlan::NaturalJoin(node) => node.layout(),
-			ExecutionPlan::Map(node) => node.layout(),
-			ExecutionPlan::MapWithoutInput(node) => node.layout(),
-			ExecutionPlan::Extend(node) => node.layout(),
-			ExecutionPlan::ExtendWithoutInput(node) => node.layout(),
-			ExecutionPlan::Sort(node) => node.layout(),
-			ExecutionPlan::TableScan(node) => node.layout(),
-			ExecutionPlan::Take(node) => node.layout(),
-			ExecutionPlan::ViewScan(node) => node.layout(),
-			ExecutionPlan::VirtualScan(node) => node.layout(),
-			ExecutionPlan::RingBufferScan(node) => node.layout(),
+			ExecutionPlan::Aggregate(node) => node.headers(),
+			ExecutionPlan::Filter(node) => node.headers(),
+			ExecutionPlan::IndexScan(node) => node.headers(),
+			ExecutionPlan::InlineData(node) => node.headers(),
+			ExecutionPlan::InnerJoin(node) => node.headers(),
+			ExecutionPlan::LeftJoin(node) => node.headers(),
+			ExecutionPlan::NaturalJoin(node) => node.headers(),
+			ExecutionPlan::Map(node) => node.headers(),
+			ExecutionPlan::MapWithoutInput(node) => node.headers(),
+			ExecutionPlan::Extend(node) => node.headers(),
+			ExecutionPlan::ExtendWithoutInput(node) => node.headers(),
+			ExecutionPlan::Sort(node) => node.headers(),
+			ExecutionPlan::TableScan(node) => node.headers(),
+			ExecutionPlan::Take(node) => node.headers(),
+			ExecutionPlan::ViewScan(node) => node.headers(),
+			ExecutionPlan::VirtualScan(node) => node.headers(),
+			ExecutionPlan::RingBufferScan(node) => node.headers(),
 		}
 	}
 }
@@ -373,11 +373,11 @@ impl Executor {
 					}
 				}
 
-				let layout = node.layout();
+				let headers = node.headers();
 
 				if let Some(mut columns) = result {
-					if let Some(layout) = layout {
-						columns.apply_layout(&layout);
+					if let Some(headers) = headers {
+						columns.apply_headers(&headers);
 					}
 
 					Ok(columns.into())
@@ -385,19 +385,15 @@ impl Executor {
 					// empty columns - reconstruct table,
 					// for better UX
 					let columns: Vec<Column<'a>> = node
-						.layout()
-						.unwrap_or(ColumnsLayout {
+						.headers()
+						.unwrap_or(ColumnHeaders {
 							columns: vec![],
 						})
 						.columns
 						.into_iter()
-						.map(|layout| {
-							// For now, just create a ColumnQualified since we don't have
-							// the full resolved metadata here
-							Column {
-								name: layout.name,
-								data: ColumnData::undefined(0),
-							}
+						.map(|name| Column {
+							name,
+							data: ColumnData::undefined(0),
 						})
 						.collect();
 

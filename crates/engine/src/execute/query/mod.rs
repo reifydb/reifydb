@@ -8,7 +8,6 @@ pub mod filter;
 pub mod index_scan;
 pub mod inline;
 pub mod join;
-mod layout;
 pub mod map;
 pub mod ring_buffer_scan;
 pub mod sort;
