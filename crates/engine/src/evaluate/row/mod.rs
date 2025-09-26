@@ -127,10 +127,10 @@ impl StandardRowEvaluator {
 		let mut names = Vec::with_capacity(target_columns.len());
 		let mut types = Vec::with_capacity(target_columns.len());
 
-		for (idx, target_col) in target_columns.iter().enumerate() {
+		for target_col in target_columns.iter() {
 			let r#type = target_col.constraint.get_type();
 
-			let value = if let Some(source_column) = ctx.columns.iter().nth(idx) {
+			let value = if let Some(source_column) = ctx.columns.column(&target_col.name) {
 				let lazy_frag = Fragment::owned_internal(&target_col.name);
 				let coerced = cast::cast_column_data(&ctx, source_column.data(), r#type, &lazy_frag)?;
 				coerced.get_value(0)
