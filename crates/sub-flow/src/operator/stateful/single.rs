@@ -64,7 +64,7 @@ mod tests {
 	use reifydb_core::interface::FlowNodeId;
 
 	use super::*;
-	use crate::operator::transform::stateful::utils_test::test::*;
+	use crate::operator::stateful::utils_test::test::*;
 
 	// Extend TestOperator to implement SingleStateful
 	impl SingleStateful<TestTransaction> for TestOperator {

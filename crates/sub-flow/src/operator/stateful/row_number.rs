@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::RowNumber;
 
-use crate::operator::transform::stateful::RawStatefulOperator;
+use crate::operator::stateful::RawStatefulOperator;
 
 /// Provides stable row numbers for keys with automatic Insert/Update detection
 ///
@@ -131,7 +131,7 @@ impl RowNumberProvider {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use crate::operator::transform::stateful::utils_test::test::*;
+	use crate::operator::stateful::utils_test::test::*;
 
 	// TestOperator already implements SimpleStatefulOperator
 

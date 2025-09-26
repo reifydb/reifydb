@@ -6,7 +6,6 @@ use reifydb_core::interface::{FlowNodeId, Transaction, expression::Expression};
 use crate::operator::Operator;
 
 pub mod registry;
-pub mod stateful;
 
 pub trait TransformOperator<T: Transaction>: Operator<T> {}
 

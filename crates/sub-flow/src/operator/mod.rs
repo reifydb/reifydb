@@ -12,8 +12,9 @@ mod join;
 mod map;
 mod sink;
 mod sort;
+pub mod stateful;
 mod take;
-pub(crate) mod transform;
+pub mod transform;
 mod union;
 
 pub use apply::ApplyOperator;
@@ -25,6 +26,7 @@ pub use map::MapOperator;
 pub use sink::SinkViewOperator;
 pub use sort::SortOperator;
 pub use take::TakeOperator;
+pub use transform::registry::TransformOperatorRegistry;
 pub use union::UnionOperator;
 
 pub trait Operator<T: Transaction>: Send + Sync {

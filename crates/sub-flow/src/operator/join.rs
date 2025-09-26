@@ -15,10 +15,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::operator::{
 	Operator,
-	transform::{
-		TransformOperator,
-		stateful::{RawStatefulOperator, SingleStateful, state_get, state_remove, state_set},
-	},
+	stateful::{RawStatefulOperator, SingleStateful, state_get, state_remove, state_set},
+	transform::TransformOperator,
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -163,17 +161,6 @@ impl JoinLayout {
 	fn new() -> Self {
 		// Initialize with empty vectors - they will be populated as we see data
 		Default::default()
-	}
-
-	// Create a default layout with placeholder values to ensure consistent serialization
-	fn default_with_placeholders() -> Self {
-		Self {
-			// Use placeholder values that will be replaced when actual data arrives
-			left_names: vec!["__placeholder__".to_string()],
-			left_types: vec![Type::Undefined],
-			right_names: vec!["__placeholder__".to_string()],
-			right_types: vec![Type::Undefined],
-		}
 	}
 
 	fn update_left_from_row(&mut self, row: &Row) {

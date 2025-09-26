@@ -4,7 +4,8 @@
 use reifydb_core::{EncodedKey, EncodedKeyRange, interface::Transaction, value::row::EncodedRow};
 use reifydb_engine::StandardCommandTransaction;
 
-use super::{super::TransformOperator, utils};
+use super::utils;
+use crate::operator::transform::TransformOperator;
 
 /// Raw Stateful operations - provides raw key-value access
 /// This is the foundation for operators that need state management
@@ -66,7 +67,7 @@ mod tests {
 	};
 
 	use super::*;
-	use crate::operator::transform::stateful::utils_test::test::*;
+	use crate::operator::stateful::utils_test::test::*;
 
 	// Test implementation of SimpleStatefulOperator
 	impl RawStatefulOperator<TestTransaction> for TestOperator {}

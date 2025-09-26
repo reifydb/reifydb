@@ -64,7 +64,7 @@ mod tests {
 	use reifydb_core::{interface::FlowNodeId, util::encoding::keycode::KeySerializer};
 
 	use super::*;
-	use crate::operator::transform::stateful::utils_test::test::*;
+	use crate::operator::stateful::utils_test::test::*;
 
 	/// Helper to create window keys from u64 for testing
 	/// Uses inverted encoding for proper ordering (smaller IDs produce larger keys)

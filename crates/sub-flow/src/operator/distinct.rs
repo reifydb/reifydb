@@ -20,10 +20,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::operator::{
 	Operator,
-	transform::{
-		TransformOperator,
-		stateful::{RawStatefulOperator, SingleStateful},
-	},
+	stateful::{RawStatefulOperator, SingleStateful},
+	transform::TransformOperator,
 };
 
 static EMPTY_PARAMS: Params = Params::None;

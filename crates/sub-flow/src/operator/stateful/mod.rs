@@ -23,8 +23,7 @@ pub use keyed::KeyedStateful;
 pub use raw::RawStatefulOperator;
 pub use row_number::RowNumberProvider;
 pub use single::SingleStateful;
-// Expose specific utils functions for join operator
-pub use utils::{state_get, state_remove, state_set};
+pub use utils::*;
 pub use window::WindowStateful;
 
 // Iterator wrapper for state entries

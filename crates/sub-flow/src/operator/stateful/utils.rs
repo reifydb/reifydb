@@ -123,7 +123,7 @@ mod tests {
 	use reifydb_type::Type;
 
 	use super::*;
-	use crate::operator::transform::stateful::utils_test::test::*;
+	use crate::operator::stateful::utils_test::test::*;
 
 	#[test]
 	fn test_state_get_existing() {

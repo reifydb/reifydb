@@ -17,7 +17,7 @@ use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEval
 use reifydb_type::{RowNumber, Value};
 
 use super::intercept::Change;
-use crate::{builder::OperatorFactory, engine::FlowEngine, operator::transform::registry::TransformOperatorRegistry};
+use crate::{builder::OperatorFactory, engine::FlowEngine, operator::TransformOperatorRegistry};
 
 // The table ID for reifydb.flows table
 // This is where flow definitions are stored

@@ -91,7 +91,7 @@ mod tests {
 	use reifydb_type::{Type, Value};
 
 	use super::*;
-	use crate::operator::transform::stateful::utils_test::test::*;
+	use crate::operator::stateful::utils_test::test::*;
 
 	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful<TestTransaction> for TestOperator {

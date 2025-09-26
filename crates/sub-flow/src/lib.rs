@@ -13,8 +13,8 @@ pub mod subsystem;
 pub use builder::FlowBuilder;
 pub use engine::*;
 pub use operator::{
-	Operator,
-	transform::{TransformOperator, TransformOperatorFactory, extract, stateful},
+	Operator, stateful,
+	transform::{TransformOperator, TransformOperatorFactory, extract},
 };
 pub use reifydb_core::Result;
 pub use subsystem::{FlowSubsystem, FlowSubsystemFactory};

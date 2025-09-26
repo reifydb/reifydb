@@ -16,10 +16,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::operator::{
 	Operator,
-	transform::{
-		TransformOperator,
-		stateful::{RawStatefulOperator, SingleStateful},
-	},
+	stateful::{RawStatefulOperator, SingleStateful},
+	transform::TransformOperator,
 };
 
 /// Serializable version of Row data
