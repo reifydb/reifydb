@@ -104,6 +104,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 			on,
 			alias,
 			strategy: _,
+			right_query: _,
 		}) => {
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
@@ -116,6 +117,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 			on,
 			alias,
 			strategy: _,
+			right_query: _,
 		}) => {
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
@@ -128,6 +130,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 			join_type,
 			alias,
 			strategy: _,
+			right_query: _,
 		}) => {
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));

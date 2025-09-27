@@ -1,6 +1,7 @@
 use reifydb_core::{JoinType, interface::Transaction, value::row::Row};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
+use reifydb_rql::query::QueryString;
 
 use crate::{
 	flow::FlowDiff,
@@ -26,19 +27,23 @@ pub(crate) enum JoinStrategy {
 }
 
 impl JoinStrategy {
-	pub(crate) fn from(storage_strategy: reifydb_core::JoinStrategy, join_type: JoinType) -> Self {
+	pub(crate) fn from(
+		storage_strategy: reifydb_core::JoinStrategy,
+		join_type: JoinType,
+		right_query: QueryString,
+	) -> Self {
 		match (storage_strategy, join_type) {
 			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Left) => {
 				JoinStrategy::LeftEager(LeftJoin, EagerLoading::new())
 			}
 			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Left) => {
-				JoinStrategy::LeftLazy(LeftJoin, LazyLoading::new())
+				JoinStrategy::LeftLazy(LeftJoin, LazyLoading::new(right_query))
 			}
 			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Inner) => {
 				JoinStrategy::InnerEager(InnerJoin, EagerLoading::new())
 			}
 			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Inner) => {
-				JoinStrategy::InnerLazy(InnerJoin, LazyLoading::new())
+				JoinStrategy::InnerLazy(InnerJoin, LazyLoading::new(right_query))
 			}
 		}
 	}

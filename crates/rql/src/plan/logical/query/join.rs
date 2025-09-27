@@ -11,6 +11,7 @@ use crate::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::SourceScan,
 		SourceScanNode, resolver,
 	},
+	query::QueryString,
 };
 
 impl Compiler {
@@ -26,6 +27,7 @@ impl Compiler {
 				strategy,
 				..
 			} => {
+				let with_ast = with.clone();
 				let with = match *with {
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
@@ -87,10 +89,14 @@ impl Compiler {
 					}
 					_ => unimplemented!(),
 				};
+
+				let with_query = QueryString::from_ast(&*with_ast)?;
+
 				// Use JoinConditionCompiler for ON clause expressions
 				let join_compiler = JoinConditionCompiler::new(alias.clone());
 				Ok(LogicalPlan::JoinInner(JoinInnerNode {
 					with,
+					with_query,
 					on: on.into_iter()
 						.map(|expr| join_compiler.compile(expr))
 						.collect::<crate::Result<Vec<_>>>()?,
@@ -105,6 +111,7 @@ impl Compiler {
 				strategy,
 				..
 			} => {
+				let with_ast = with.clone();
 				let with = match *with {
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
@@ -166,10 +173,14 @@ impl Compiler {
 					}
 					_ => unimplemented!(),
 				};
+
+				let with_query = QueryString::from_ast(&*with_ast)?;
+
 				// Use JoinConditionCompiler for ON clause expressions
 				let join_compiler = JoinConditionCompiler::new(alias.clone());
 				Ok(LogicalPlan::JoinLeft(JoinLeftNode {
 					with,
+					with_query,
 					on: on.into_iter()
 						.map(|expr| join_compiler.compile(expr))
 						.collect::<crate::Result<Vec<_>>>()?,
@@ -184,6 +195,7 @@ impl Compiler {
 				strategy,
 				..
 			} => {
+				let with_ast = with.clone();
 				let with = match *with {
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
@@ -239,8 +251,11 @@ impl Compiler {
 					_ => unimplemented!(),
 				};
 
+				let with_query = QueryString::from_ast(&*with_ast)?;
+
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
+					with_query,
 					join_type: join_type.unwrap_or(JoinType::Inner),
 					alias,
 					strategy,

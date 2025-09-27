@@ -34,6 +34,7 @@ use crate::{
 		},
 	},
 	plan::logical::alter::{AlterTableNode, AlterViewNode},
+	query::QueryString,
 };
 
 struct Compiler {}
@@ -464,6 +465,7 @@ pub struct FilterNode<'a> {
 #[derive(Debug)]
 pub struct JoinInnerNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
+	pub with_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
 	pub strategy: Option<JoinStrategy>,
@@ -472,6 +474,7 @@ pub struct JoinInnerNode<'a> {
 #[derive(Debug)]
 pub struct JoinLeftNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
+	pub with_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
 	pub strategy: Option<JoinStrategy>,
@@ -480,6 +483,7 @@ pub struct JoinLeftNode<'a> {
 #[derive(Debug)]
 pub struct JoinNaturalNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
+	pub with_query: QueryString,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment<'a>>,
 	pub strategy: Option<JoinStrategy>,

@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
-use reifydb_rql::plan::physical::PhysicalPlan;
+use reifydb_rql::query::QueryString;
 use reifydb_type::{Blob, Params, Type, Value, internal_error};
 
 use super::{JoinSide, JoinState, JoinStrategy, Schema};
@@ -34,7 +34,7 @@ pub struct JoinOperator {
 	right_node: FlowNodeId,
 	left_exprs: Vec<Expression<'static>>,
 	right_exprs: Vec<Expression<'static>>,
-	right_plan: PhysicalPlan<'static>,
+	right_query: QueryString,
 	alias: Option<String>,
 	layout: EncodedRowLayout,
 	row_number_provider: RowNumberProvider,
@@ -48,11 +48,11 @@ impl JoinOperator {
 		right_node: FlowNodeId,
 		left_exprs: Vec<Expression<'static>>,
 		right_exprs: Vec<Expression<'static>>,
-		right_plan: PhysicalPlan<'static>,
+		right_query: QueryString,
 		alias: Option<String>,
 		storage_strategy: reifydb_core::JoinStrategy,
 	) -> Self {
-		let strategy = JoinStrategy::from(storage_strategy, join_type);
+		let strategy = JoinStrategy::from(storage_strategy, join_type, right_query.clone());
 		let layout = Self::state_layout();
 		let row_number_provider = RowNumberProvider::new(node);
 
@@ -63,7 +63,7 @@ impl JoinOperator {
 			right_node,
 			left_exprs,
 			right_exprs,
-			right_plan,
+			right_query,
 			alias,
 			layout,
 			row_number_provider,
@@ -146,11 +146,6 @@ impl JoinOperator {
 			encoded: left.encoded.clone(),
 			layout: left.layout.clone(),
 		})
-	}
-
-	/// Get the right-side physical plan (for lazy loading)
-	pub(crate) fn right_plan(&self) -> &PhysicalPlan<'static> {
-		&self.right_plan
 	}
 
 	/// Clean up all join results for a given left row

@@ -1,6 +1,7 @@
 use reifydb_core::{interface::Transaction, value::row::Row};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
+use reifydb_rql::query::QueryString;
 
 use crate::{
 	flow::FlowDiff,
@@ -10,16 +11,19 @@ use crate::{
 /// Lazy loading strategy - queries data on-demand
 /// TODO: Currently using same implementation as Eager, will be updated to query on-demand
 #[derive(Debug, Clone)]
-pub(crate) struct LazyLoading;
+pub(crate) struct LazyLoading {
+	query: QueryString,
+}
 
 impl LazyLoading {
-	pub(crate) fn new() -> Self {
-		Self
+	pub(crate) fn new(query: QueryString) -> Self {
+		Self {
+			query,
+		}
 	}
 
 	// For now, using same implementation as EagerLoading
 	// TODO: Implement actual lazy loading with on-demand queries
-
 	pub(crate) fn handle_left_insert<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
@@ -28,6 +32,8 @@ impl LazyLoading {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
+		dbg!(&self.query);
+
 		let mut result = Vec::new();
 
 		if let Some(key_hash) = key_hash {

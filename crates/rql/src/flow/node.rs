@@ -4,7 +4,7 @@ use reifydb_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::plan::physical::PhysicalPlan;
+use crate::query::QueryString;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FlowNodeType {
@@ -30,8 +30,7 @@ pub enum FlowNodeType {
 		right: Vec<Expression<'static>>,
 		alias: Option<String>,
 		strategy: JoinStrategy,
-		#[serde(skip)]
-		right_plan: Option<PhysicalPlan<'static>>,
+		right_query: QueryString,
 	},
 	Aggregate {
 		by: Vec<Expression<'static>>,

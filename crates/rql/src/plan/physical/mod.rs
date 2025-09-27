@@ -26,9 +26,12 @@ use reifydb_type::{
 	return_error,
 };
 
-use crate::plan::{
-	logical::LogicalPlan,
-	physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
+use crate::{
+	plan::{
+		logical::LogicalPlan,
+		physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
+	},
+	query::QueryString,
 };
 
 struct Compiler {}
@@ -435,6 +438,7 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
 						left: Box::new(left),
 						right: Box::new(right),
+						right_query: join.with_query,
 						on: join.on,
 						alias: join.alias,
 						strategy: join.strategy.unwrap_or_default(),
@@ -447,6 +451,7 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
 						left: Box::new(left),
 						right: Box::new(right),
+						right_query: join.with_query,
 						on: join.on,
 						alias: join.alias,
 						strategy: join.strategy.unwrap_or_default(),
@@ -459,6 +464,7 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
 						left: Box::new(left),
 						right: Box::new(right),
+						right_query: join.with_query,
 						join_type: join.join_type,
 						alias: join.alias,
 						strategy: join.strategy.unwrap_or_default(),
@@ -779,6 +785,7 @@ pub struct UpdateRingBufferNode<'a> {
 pub struct JoinInnerNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
+	pub right_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
 	pub strategy: JoinStrategy,
@@ -788,6 +795,7 @@ pub struct JoinInnerNode<'a> {
 pub struct JoinLeftNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
+	pub right_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
 	pub strategy: JoinStrategy,
@@ -797,6 +805,7 @@ pub struct JoinLeftNode<'a> {
 pub struct JoinNaturalNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
+	pub right_query: QueryString,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment<'a>>,
 	pub strategy: JoinStrategy,

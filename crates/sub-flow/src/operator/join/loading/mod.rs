@@ -20,14 +20,6 @@ pub(crate) enum LoadingStrategy {
 }
 
 impl LoadingStrategy {
-	pub(crate) fn new_eager() -> Self {
-		LoadingStrategy::Eager(EagerLoading::new())
-	}
-
-	pub(crate) fn new_lazy() -> Self {
-		LoadingStrategy::Lazy(LazyLoading::new())
-	}
-
 	pub(crate) fn handle_left_insert<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,

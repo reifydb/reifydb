@@ -8,12 +8,9 @@ use reifydb_core::{
 	interface::{FlowId, FlowNodeId, SourceId, Transaction},
 };
 use reifydb_engine::StandardCommandTransaction;
-use reifydb_rql::{
-	flow::{
-		Flow, FlowNode, FlowNodeType,
-		FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union},
-	},
-	plan::physical::{InlineDataNode, PhysicalPlan},
+use reifydb_rql::flow::{
+	Flow, FlowNode, FlowNodeType,
+	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union},
 };
 use reifydb_type::internal_error;
 
@@ -101,7 +98,7 @@ impl<T: Transaction> FlowEngine<T> {
 				right,
 				alias,
 				strategy,
-				right_plan,
+				right_query,
 			} => {
 				// Find the left and right node IDs from the flow inputs
 				// The join node should have exactly 2 inputs
@@ -112,17 +109,17 @@ impl<T: Transaction> FlowEngine<T> {
 				let left_node = node.inputs[0];
 				let right_node = node.inputs[1];
 
-				// Extract the right_plan if it exists, otherwise create a default empty plan
-				let plan = right_plan.unwrap_or_else(|| {
-					PhysicalPlan::InlineData(InlineDataNode {
-						rows: vec![],
-					})
-				});
-
 				self.operators.insert(
 					node.id,
 					Operators::Join(JoinOperator::new(
-						node.id, join_type, left_node, right_node, left, right, plan, alias,
+						node.id,
+						join_type,
+						left_node,
+						right_node,
+						left,
+						right,
+						right_query,
+						alias,
 						strategy,
 					)),
 				);

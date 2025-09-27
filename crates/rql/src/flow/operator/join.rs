@@ -14,12 +14,14 @@ use super::super::{
 use crate::{
 	Result,
 	plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
+	query::QueryString,
 };
 
 pub(crate) struct JoinCompiler {
 	pub join_type: JoinType,
 	pub left: Box<PhysicalPlan<'static>>,
 	pub right: Box<PhysicalPlan<'static>>,
+	pub right_query: QueryString,
 	pub on: Vec<Expression<'static>>,
 	pub alias: Option<String>,
 	pub strategy: JoinStrategy,
@@ -31,6 +33,7 @@ impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
 			join_type: Inner,
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
+			right_query: node.right_query,
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|f| f.text().to_string()),
 			strategy: node.strategy,
@@ -44,6 +47,7 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 			join_type: Left,
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
+			right_query: node.right_query,
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|f| f.text().to_string()),
 			strategy: node.strategy,
@@ -54,7 +58,6 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let left_node = compiler.compile_plan(*self.left)?;
-		let right_plan = *self.right.clone();
 		let right_node = compiler.compile_plan(*self.right)?;
 
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
@@ -66,7 +69,7 @@ impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 				right: right_keys,
 				alias: self.alias,
 				strategy: self.strategy,
-				right_plan: Some(right_plan),
+				right_query: self.right_query,
 			})
 			.with_inputs([left_node, right_node])
 			.build()?;

@@ -85,7 +85,7 @@ create deferred view test.product_catalog {
     category: utf8
 } as {
     from test.products
-    left join { from test.categories } categories on id == categories.product_id
+    left join { from test.categories } categories on id == categories.product_id with { strategy: lazy_loading }
     map {
         id: id,
         name: name,
