@@ -1,5 +1,5 @@
-use reifydb_core::value::row::Row;
-use reifydb_type::Type;
+use reifydb_core::value::row::{EncodedRow, EncodedRowNamedLayout, Row};
+use reifydb_type::{Type, Value};
 use serde::{Deserialize, Serialize};
 
 /// Schema information for both sides of the join
@@ -65,5 +65,34 @@ impl Schema {
 				}
 			}
 		}
+	}
+
+	/// Create an EncodedRowNamedLayout from the left schema
+	pub(crate) fn left_named_layout(&self) -> EncodedRowNamedLayout {
+		let fields: Vec<(String, Type)> = self
+			.left_names
+			.iter()
+			.zip(self.left_types.iter())
+			.map(|(name, ty)| (name.clone(), *ty))
+			.collect();
+		EncodedRowNamedLayout::new(fields)
+	}
+
+	/// Convert a Row to EncodedRow using its values
+	pub(crate) fn row_to_encoded(row: &Row) -> (EncodedRowNamedLayout, EncodedRow) {
+		let names = row.layout.names();
+		let types: Vec<Type> = row.layout.fields.iter().map(|f| f.r#type).collect();
+
+		// Build the named layout
+		let fields: Vec<(String, Type)> =
+			names.iter().zip(types.iter()).map(|(name, ty)| (name.clone(), *ty)).collect();
+		let layout = EncodedRowNamedLayout::new(fields);
+
+		// Create encoded row and copy values
+		let mut encoded = layout.allocate_row();
+		let values: Vec<Value> = (0..names.len()).map(|i| row.layout.get_value(&row.encoded, i)).collect();
+		layout.set_values(&mut encoded, &values);
+
+		(layout, encoded)
 	}
 }

@@ -5,7 +5,7 @@ use reifydb_rql::query::QueryString;
 
 use crate::{
 	flow::FlowDiff,
-	operator::join::{JoinSideEntry, JoinState, SerializedRow, operator::JoinOperator},
+	operator::join::{JoinSideEntry, JoinState, RowParams, Schema, SerializedRow, operator::JoinOperator},
 };
 
 /// Lazy loading strategy - queries data on-demand
@@ -22,8 +22,6 @@ impl LazyLoading {
 		}
 	}
 
-	// For now, using same implementation as EagerLoading
-	// TODO: Implement actual lazy loading with on-demand queries
 	pub(crate) fn handle_left_insert<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
@@ -32,7 +30,27 @@ impl LazyLoading {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
+		// Convert the left row to encoded format with named layout
+		let (layout, encoded_row) = Schema::row_to_encoded(post);
+
+		// Create parameters from the left row
+		let row_params = RowParams::from_encoded_row(layout, encoded_row);
+
+		// TODO: Execute the query with row parameters
+		// This requires passing an executor reference to LazyLoading
+		// For now, we'll prepare the query and parameters but not execute
+		//
+		// The query execution would look like:
+		// let query = Query {
+		//     rql: self.query.as_str(),
+		//     params: row_params.to_params(),
+		//     identity: /* need identity */,
+		// };
+		// let results = executor.execute_query(txn, query)?;
+
+		// Debug output to verify parameter preparation
 		dbg!(&self.query);
+		dbg!(&row_params.to_params());
 
 		let mut result = Vec::new();
 
@@ -45,7 +63,8 @@ impl LazyLoading {
 			entry.rows.push(serialized);
 			state.left.set(txn, &key_hash, &entry)?;
 
-			// Return matching right rows for join operation
+			// For now, still use cached right rows if available
+			// Once query execution is implemented, we'll execute the query here
 			if let Some(right_entry) = state.right.get(txn, &key_hash)? {
 				for right_row_ser in &right_entry.rows {
 					let right_row = right_row_ser.to_right_row(&state.schema);
