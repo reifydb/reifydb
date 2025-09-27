@@ -121,6 +121,7 @@ impl<T: Transaction> FlowEngine<T> {
 						right_query,
 						alias,
 						strategy,
+						self.executor.clone(),
 					)),
 				);
 			}

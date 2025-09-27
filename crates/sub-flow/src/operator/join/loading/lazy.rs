@@ -1,7 +1,14 @@
-use reifydb_core::{interface::Transaction, value::row::Row};
-use reifydb_engine::StandardCommandTransaction;
+use std::{sync::Arc, time::Instant};
+
+use reifydb_core::{
+	frame::FrameColumnData,
+	interface::{Command, ExecuteCommand, ExecuteQuery, Identity, Query, Transaction},
+	value::row::{EncodedRowLayout, EncodedRowNamedLayout, Row},
+};
+use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;
+use reifydb_type::Type;
 
 use crate::{
 	flow::FlowDiff,
@@ -10,16 +17,123 @@ use crate::{
 
 /// Lazy loading strategy - queries data on-demand
 /// TODO: Currently using same implementation as Eager, will be updated to query on-demand
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) struct LazyLoading {
 	query: QueryString,
+	executor: Executor,
 }
 
 impl LazyLoading {
-	pub(crate) fn new(query: QueryString) -> Self {
+	pub(crate) fn new(query: QueryString, executor: Executor) -> Self {
 		Self {
 			query,
+			executor,
 		}
+	}
+
+	/// Query the right side using the left row's values as parameters
+	/// Returns the matching right-side rows
+	fn query_right_side<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		left_row: &Row,
+		key_hash: Hash128,
+		state: &mut JoinState,
+	) -> crate::Result<Vec<Row>> {
+		// Convert the left row to encoded format with named layout
+		let (layout, encoded_row) = Schema::row_to_encoded(left_row);
+
+		// Create parameters from the left row
+		let row_params = RowParams::from_encoded_row(layout, encoded_row);
+
+		// Debug: print the query string being executed
+		eprintln!("DEBUG: Executing lazy loading query: '{}'", self.query.as_str());
+		eprintln!("DEBUG: With params: {:?}", row_params.to_params());
+
+		let query = Command {
+			rql: self.query.as_str(),
+			params: row_params.to_params(),
+			identity: &Identity::root(), // TODO: Should use proper identity from context
+		};
+
+		// Execute the query to get matching right-side rows
+		let results = self.executor.execute_command(txn, query)?;
+
+		// Debug output to verify execution
+		dbg!(&self.query);
+		dbg!(&row_params.to_params());
+
+		let mut right_rows = Vec::new();
+
+		// Process query results - each frame contains rows to join with
+		for frame in results {
+			// Frame is columnar, need to iterate through row indices
+			if let Some(first_column) = frame.first() {
+				let row_count = first_column.data.len();
+
+				// If we don't have schema info yet, extract it from the frame columns
+				if state.schema.right_types.is_empty() && !frame.is_empty() {
+					// Extract types and names from frame columns
+					for column in frame.iter() {
+						state.schema.right_names.push(column.name.clone());
+						// Infer type from the column data
+						let column_type = match &column.data {
+							FrameColumnData::Bool(_) => Type::Boolean,
+							FrameColumnData::Int1(_) => Type::Int1,
+							FrameColumnData::Int2(_) => Type::Int2,
+							FrameColumnData::Int4(_) => Type::Int4,
+							FrameColumnData::Int8(_) => Type::Int8,
+							FrameColumnData::Uint1(_) => Type::Uint1,
+							FrameColumnData::Uint2(_) => Type::Uint2,
+							FrameColumnData::Uint4(_) => Type::Uint4,
+							FrameColumnData::Uint8(_) => Type::Uint8,
+							FrameColumnData::Uint16(_) => Type::Uint16,
+							FrameColumnData::Utf8(_) => Type::Utf8,
+							_ => Type::Undefined,
+						};
+						state.schema.right_types.push(column_type);
+					}
+					// Schema will be persisted when state is saved
+				}
+
+				for row_idx in 0..row_count {
+					// Extract values for this row from all columns
+					let mut values = Vec::new();
+					for column in frame.iter() {
+						values.push(column.data.get_value(row_idx));
+					}
+
+					// Create a Row with the proper structure
+					// We need to encode these values into the right side's layout
+					let fields: Vec<(String, Type)> = state
+						.schema
+						.right_names
+						.iter()
+						.zip(state.schema.right_types.iter())
+						.map(|(name, typ)| (name.clone(), typ.clone()))
+						.collect();
+
+					// Skip if we don't have fields (shouldn't happen after the check above)
+					if fields.is_empty() {
+						continue;
+					}
+
+					let right_layout = EncodedRowNamedLayout::new(fields);
+					let mut encoded_row = right_layout.allocate_row();
+					right_layout.set_values(&mut encoded_row, &values);
+
+					let right_row = Row {
+						number: reifydb_type::RowNumber(0), // Will be assigned by join
+						encoded: encoded_row,
+						layout: right_layout,
+					};
+
+					right_rows.push(right_row);
+				}
+			}
+		}
+
+		Ok(right_rows)
 	}
 
 	pub(crate) fn handle_left_insert<T: Transaction>(
@@ -30,28 +144,7 @@ impl LazyLoading {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
-		// Convert the left row to encoded format with named layout
-		let (layout, encoded_row) = Schema::row_to_encoded(post);
-
-		// Create parameters from the left row
-		let row_params = RowParams::from_encoded_row(layout, encoded_row);
-
-		// TODO: Execute the query with row parameters
-		// This requires passing an executor reference to LazyLoading
-		// For now, we'll prepare the query and parameters but not execute
-		//
-		// The query execution would look like:
-		// let query = Query {
-		//     rql: self.query.as_str(),
-		//     params: row_params.to_params(),
-		//     identity: /* need identity */,
-		// };
-		// let results = executor.execute_query(txn, query)?;
-
-		// Debug output to verify parameter preparation
-		dbg!(&self.query);
-		dbg!(&row_params.to_params());
-
+		let start = Instant::now();
 		let mut result = Vec::new();
 
 		if let Some(key_hash) = key_hash {
@@ -63,18 +156,18 @@ impl LazyLoading {
 			entry.rows.push(serialized);
 			state.left.set(txn, &key_hash, &entry)?;
 
-			// For now, still use cached right rows if available
-			// Once query execution is implemented, we'll execute the query here
-			if let Some(right_entry) = state.right.get(txn, &key_hash)? {
-				for right_row_ser in &right_entry.rows {
-					let right_row = right_row_ser.to_right_row(&state.schema);
-					result.push(FlowDiff::Insert {
-						post: operator.join_rows(txn, post, &right_row)?,
-					});
-				}
+			// Query the right side using the left row
+			let right_rows = self.query_right_side(txn, post, key_hash, state)?;
+
+			// Create joined rows for each matching right row
+			for right_row in right_rows {
+				result.push(FlowDiff::Insert {
+					post: operator.join_rows(txn, post, &right_row)?,
+				});
 			}
 		}
 
+		println!("DEBUG: TOOK: {}", start.elapsed().as_micros());
 		Ok(result)
 	}
 
@@ -89,15 +182,8 @@ impl LazyLoading {
 		let mut result = Vec::new();
 
 		if let Some(key_hash) = key_hash {
-			// Add to right entries in state
-			let serialized = SerializedRow::from_row(post);
-			let mut entry = state.right.get_or_insert_with(txn, &key_hash, || JoinSideEntry {
-				rows: Vec::new(),
-			})?;
-			entry.rows.push(serialized);
-			state.right.set(txn, &key_hash, &entry)?;
-
-			// Return matching left rows for join operation
+			// Don't cache the right row in lazy loading
+			// But still join with any existing left rows
 			if let Some(left_entry) = state.left.get(txn, &key_hash)? {
 				for left_row_ser in &left_entry.rows {
 					let left_row = left_row_ser.to_left_row(&state.schema);
@@ -122,14 +208,14 @@ impl LazyLoading {
 		let mut result = Vec::new();
 
 		if let Some(key_hash) = key_hash {
-			// Get matching right rows before removing
-			if let Some(right_entry) = state.right.get(txn, &key_hash)? {
-				for right_row_ser in &right_entry.rows {
-					let right_row = right_row_ser.to_right_row(&state.schema);
-					result.push(FlowDiff::Remove {
-						pre: operator.join_rows(txn, pre, &right_row)?,
-					});
-				}
+			// Query fresh right-side rows to ensure we remove the correct joins
+			let right_rows = self.query_right_side(txn, pre, key_hash, state)?;
+
+			// Generate remove diffs for all matching right rows
+			for right_row in right_rows {
+				result.push(FlowDiff::Remove {
+					pre: operator.join_rows(txn, pre, &right_row)?,
+				});
 			}
 
 			// Remove from left entries
@@ -160,26 +246,14 @@ impl LazyLoading {
 		let mut result = Vec::new();
 
 		if let Some(key_hash) = key_hash {
-			// Get matching left rows before removing
+			// Don't maintain right-side cache in lazy loading
+			// But still generate remove diffs for any existing left rows
 			if let Some(left_entry) = state.left.get(txn, &key_hash)? {
 				for left_row_ser in &left_entry.rows {
 					let left_row = left_row_ser.to_left_row(&state.schema);
 					result.push(FlowDiff::Remove {
 						pre: operator.join_rows(txn, &left_row, pre)?,
 					});
-				}
-			}
-
-			// Remove from right entries
-			if let Some(mut right_entry) = state.right.get(txn, &key_hash)? {
-				let serialized = SerializedRow::from_row(pre);
-				if let Some(pos) = right_entry.rows.iter().position(|r| r == &serialized) {
-					right_entry.rows.remove(pos);
-					if right_entry.rows.is_empty() {
-						state.right.remove(txn, &key_hash)?;
-					} else {
-						state.right.set(txn, &key_hash, &right_entry)?;
-					}
 				}
 			}
 		}
@@ -211,15 +285,17 @@ impl LazyLoading {
 					left_entry.rows[pos] = SerializedRow::from_row(post);
 					state.left.set(txn, &key_hash, &left_entry)?;
 
+					// Query the right side for fresh data using the updated left row
+					let right_rows = self.query_right_side(txn, post, key_hash, state)?;
+
 					// Generate updates for matching right rows
-					if let Some(right_entry) = state.right.get(txn, &key_hash)? {
-						for right_row_ser in &right_entry.rows {
-							let right_row = right_row_ser.to_right_row(&state.schema);
-							result.push(FlowDiff::Update {
-								pre: operator.join_rows(txn, pre, &right_row)?,
-								post: operator.join_rows(txn, post, &right_row)?,
-							});
-						}
+					// First remove old joins, then add new ones
+					for right_row in &right_rows {
+						// For updates, we need to generate Update diffs
+						result.push(FlowDiff::Update {
+							pre: operator.join_rows(txn, pre, right_row)?,
+							post: operator.join_rows(txn, post, right_row)?,
+						});
 					}
 				}
 			}
@@ -245,23 +321,15 @@ impl LazyLoading {
 			result.extend(self.handle_right_remove(txn, pre, old_key, state, operator)?);
 			result.extend(self.handle_right_insert(txn, post, new_key, state, operator)?);
 		} else if let Some(key_hash) = old_key {
-			// Key unchanged, update in place
-			if let Some(mut right_entry) = state.right.get(txn, &key_hash)? {
-				let old_serialized = SerializedRow::from_row(pre);
-				if let Some(pos) = right_entry.rows.iter().position(|r| r == &old_serialized) {
-					right_entry.rows[pos] = SerializedRow::from_row(post);
-					state.right.set(txn, &key_hash, &right_entry)?;
-
-					// Generate updates for matching left rows
-					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
-						for left_row_ser in &left_entry.rows {
-							let left_row = left_row_ser.to_left_row(&state.schema);
-							result.push(FlowDiff::Update {
-								pre: operator.join_rows(txn, &left_row, pre)?,
-								post: operator.join_rows(txn, &left_row, post)?,
-							});
-						}
-					}
+			// Key unchanged, generate updates for matching left rows
+			// Don't maintain right-side cache in lazy loading
+			if let Some(left_entry) = state.left.get(txn, &key_hash)? {
+				for left_row_ser in &left_entry.rows {
+					let left_row = left_row_ser.to_left_row(&state.schema);
+					result.push(FlowDiff::Update {
+						pre: operator.join_rows(txn, &left_row, pre)?,
+						post: operator.join_rows(txn, &left_row, post)?,
+					});
 				}
 			}
 		}

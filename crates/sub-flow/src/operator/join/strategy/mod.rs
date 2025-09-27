@@ -1,5 +1,5 @@
 use reifydb_core::{JoinType, interface::Transaction, value::row::Row};
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;
 
@@ -18,7 +18,7 @@ mod left;
 pub(crate) use inner::InnerJoin;
 pub(crate) use left::LeftJoin;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub(crate) enum JoinStrategy {
 	LeftEager(LeftJoin, EagerLoading),
 	LeftLazy(LeftJoin, LazyLoading),
@@ -31,19 +31,20 @@ impl JoinStrategy {
 		storage_strategy: reifydb_core::JoinStrategy,
 		join_type: JoinType,
 		right_query: QueryString,
+		executor: Executor,
 	) -> Self {
 		match (storage_strategy, join_type) {
 			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Left) => {
 				JoinStrategy::LeftEager(LeftJoin, EagerLoading::new())
 			}
 			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Left) => {
-				JoinStrategy::LeftLazy(LeftJoin, LazyLoading::new(right_query))
+				JoinStrategy::LeftLazy(LeftJoin, LazyLoading::new(right_query, executor))
 			}
 			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Inner) => {
 				JoinStrategy::InnerEager(InnerJoin, EagerLoading::new())
 			}
 			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Inner) => {
-				JoinStrategy::InnerLazy(InnerJoin, LazyLoading::new(right_query))
+				JoinStrategy::InnerLazy(InnerJoin, LazyLoading::new(right_query, executor))
 			}
 		}
 	}

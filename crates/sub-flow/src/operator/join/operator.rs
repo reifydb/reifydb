@@ -10,7 +10,7 @@ use reifydb_core::{
 	util::encoding::keycode::KeySerializer,
 	value::row::{EncodedRowLayout, EncodedRowNamedLayout, Row},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::query::QueryString;
 use reifydb_type::{Blob, Params, Type, Value, internal_error};
@@ -38,6 +38,7 @@ pub struct JoinOperator {
 	alias: Option<String>,
 	layout: EncodedRowLayout,
 	row_number_provider: RowNumberProvider,
+	executor: Executor,
 }
 
 impl JoinOperator {
@@ -51,8 +52,9 @@ impl JoinOperator {
 		right_query: QueryString,
 		alias: Option<String>,
 		storage_strategy: reifydb_core::JoinStrategy,
+		executor: Executor,
 	) -> Self {
-		let strategy = JoinStrategy::from(storage_strategy, join_type, right_query.clone());
+		let strategy = JoinStrategy::from(storage_strategy, join_type, right_query.clone(), executor.clone());
 		let layout = Self::state_layout();
 		let row_number_provider = RowNumberProvider::new(node);
 
@@ -67,6 +69,7 @@ impl JoinOperator {
 			alias,
 			layout,
 			row_number_provider,
+			executor,
 		}
 	}
 

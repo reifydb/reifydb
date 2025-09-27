@@ -141,8 +141,8 @@ impl<T: Transaction> StandardEngine<T> {
 			single,
 			cdc: cdc.clone(),
 			event_bus,
-			executor: Executor {
-				functions: Functions::builder()
+			executor: Executor::new(
+				Functions::builder()
 					.register_aggregate("sum", math::aggregate::Sum::new)
 					.register_aggregate("min", math::aggregate::Min::new)
 					.register_aggregate("max", math::aggregate::Max::new)
@@ -151,7 +151,7 @@ impl<T: Transaction> StandardEngine<T> {
 					.register_scalar("abs", math::scalar::Abs::new)
 					.register_scalar("avg", math::scalar::Avg::new)
 					.build(),
-			},
+			),
 			interceptors,
 			catalog,
 		}))
@@ -195,5 +195,10 @@ impl<T: Transaction> StandardEngine<T> {
 	#[inline]
 	pub fn catalog(&self) -> &MaterializedCatalog {
 		&self.catalog
+	}
+
+	#[inline]
+	pub fn executor(&self) -> Executor {
+		self.executor.clone()
 	}
 }

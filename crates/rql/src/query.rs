@@ -23,6 +23,7 @@ impl QueryString {
 
 	pub fn from(subquery: &AstSubQuery) -> crate::Result<Self> {
 		let query_str = reconstruct_statement(&subquery.statement)?;
+		println!("reconstructed query: {}", query_str);
 		Ok(QueryString(query_str))
 	}
 
@@ -64,15 +65,54 @@ impl AsRef<str> for QueryString {
 	}
 }
 
+/// Reconstruct a filter expression from an AST node
+fn reconstruct_filter_expr(ast: &Ast) -> crate::Result<String> {
+	match ast {
+		Ast::Infix(infix) => {
+			let left = reconstruct_filter_expr(&*infix.left)?;
+			let right = reconstruct_filter_expr(&*infix.right)?;
+			let op = match &infix.operator {
+				InfixOperator::Equal(_) => "==",
+				InfixOperator::NotEqual(_) => "!=",
+				InfixOperator::LessThan(_) => "<",
+				InfixOperator::LessThanEqual(_) => "<=",
+				InfixOperator::GreaterThan(_) => ">",
+				InfixOperator::GreaterThanEqual(_) => ">=",
+				InfixOperator::And(_) => "AND",
+				InfixOperator::Or(_) => "OR",
+				_ => {
+					panic!("Unsupported filter operator: {:?}", infix.operator)
+				}
+			};
+			Ok(format!("{} {} {}", left, op, right))
+		}
+		Ast::Identifier(ident) => Ok(ident.token.fragment.text().to_string()),
+		Ast::ParameterRef(param) => {
+			// The parameter token already includes the $ prefix
+			Ok(param.token.fragment.text().to_string())
+		}
+		_ => {
+			// For now, panic on unsupported types
+			// In the future we could handle more AST node types
+			panic!("Unsupported filter expression type: {:?}", ast)
+		}
+	}
+}
+
 /// Reconstruct a query string from an AstStatement
 fn reconstruct_statement(statement: &AstStatement) -> crate::Result<String> {
-	// For now, we'll reconstruct from the first node in the statement
-	// This works for simple subqueries like "{ from test.categories }"
-	if let Some(first_node) = statement.nodes.first() {
-		reconstruct_query(first_node)
-	} else {
-		Ok(String::new()) // Return empty string for empty statements
+	// Handle multiple nodes in the statement (e.g., FROM + FILTER)
+	let mut parts = Vec::new();
+
+	for node in &statement.nodes {
+		let part = reconstruct_query(node)?;
+		if !part.is_empty() {
+			parts.push(part);
+		}
 	}
+
+	// Join parts with pipe operator for filter clauses
+	Ok(parts.join(" | "))
 }
 
 /// Reconstruct a query string from an AST node
@@ -97,6 +137,11 @@ fn reconstruct_query(ast: &Ast) -> crate::Result<String> {
 				unimplemented!()
 			}
 		},
+		Ast::Filter(filter_node) => {
+			// Reconstruct the filter expression
+			let expr = reconstruct_filter_expr(&*filter_node.node)?;
+			Ok(format!("filter {}", expr))
+		}
 		Ast::Infix(infix) => {
 			match &infix.operator {
 				InfixOperator::AccessTable(_) => {

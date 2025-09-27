@@ -116,7 +116,8 @@ impl<T: Transaction> FlowConsumer<T> {
 			registry.register(name, move |node, exprs| factory(node, exprs));
 		}
 
-		let mut flow_engine = FlowEngine::with_registry(StandardRowEvaluator::default(), registry);
+		let mut flow_engine =
+			FlowEngine::new(StandardRowEvaluator::default(), self.engine.executor(), registry);
 
 		let flows = self.load_flows(txn)?;
 
