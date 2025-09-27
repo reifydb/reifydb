@@ -13,7 +13,6 @@ mod lazy;
 pub(crate) use eager::EagerLoading;
 pub(crate) use lazy::LazyLoading;
 
-#[derive(Clone)]
 pub(crate) enum LoadingStrategy {
 	Eager(EagerLoading),
 	Lazy(LazyLoading),

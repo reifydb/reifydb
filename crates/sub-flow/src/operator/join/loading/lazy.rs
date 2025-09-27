@@ -1,22 +1,21 @@
-use std::{sync::Arc, time::Instant};
+use std::time::Instant;
 
 use reifydb_core::{
 	frame::FrameColumnData,
-	interface::{Command, ExecuteCommand, ExecuteQuery, Identity, Query, Transaction},
-	value::row::{EncodedRowLayout, EncodedRowNamedLayout, Row},
+	interface::{Command, ExecuteCommand, Identity, Transaction},
+	value::row::{EncodedRowNamedLayout, Row},
 };
-use reifydb_engine::{StandardCommandTransaction, execute::Executor};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;
-use reifydb_type::Type;
+use reifydb_type::{Params, ROW_NUMBER_COLUMN_NAME, RowNumber, Type};
 
 use crate::{
 	flow::FlowDiff,
-	operator::join::{JoinSideEntry, JoinState, RowParams, Schema, SerializedRow, operator::JoinOperator},
+	operator::join::{JoinSideEntry, JoinState, SerializedRow, operator::JoinOperator},
 };
 
 /// Lazy loading strategy - queries data on-demand
-/// TODO: Currently using same implementation as Eager, will be updated to query on-demand
 #[derive(Clone)]
 pub(crate) struct LazyLoading {
 	query: QueryString,
@@ -31,37 +30,34 @@ impl LazyLoading {
 		}
 	}
 
-	/// Query the right side using the left row's values as parameters
-	/// Returns the matching right-side rows
+	/// Query the right side and return rows that match the join condition
 	fn query_right_side<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		left_row: &Row,
-		key_hash: Hash128,
+		left_key_hash: Hash128,
 		state: &mut JoinState,
+		operator: &JoinOperator,
 	) -> crate::Result<Vec<Row>> {
-		// Convert the left row to encoded format with named layout
-		let (layout, encoded_row) = Schema::row_to_encoded(left_row);
-
-		// Create parameters from the left row
-		let row_params = RowParams::from_encoded_row(layout, encoded_row);
-
 		// Debug: print the query string being executed
 		eprintln!("DEBUG: Executing lazy loading query: '{}'", self.query.as_str());
-		eprintln!("DEBUG: With params: {:?}", row_params.to_params());
+		eprintln!("DEBUG: For left row with key_hash: {:?}", left_key_hash);
 
+		// Execute the query without parameters
+		// The query may have its own filter (e.g., "from table | filter condition")
+		// but we don't inject parameters from the left row
 		let query = Command {
 			rql: self.query.as_str(),
-			params: row_params.to_params(),
+			params: Params::None,
 			identity: &Identity::root(), // TODO: Should use proper identity from context
 		};
 
-		// Execute the query to get matching right-side rows
+		// Execute the query to get all right-side rows
 		let results = self.executor.execute_command(txn, query)?;
 
 		// Debug output to verify execution
+		eprintln!("DEBUG: Query executed, processing results...");
 		dbg!(&self.query);
-		dbg!(&row_params.to_params());
 
 		let mut right_rows = Vec::new();
 
@@ -71,10 +67,19 @@ impl LazyLoading {
 			if let Some(first_column) = frame.first() {
 				let row_count = first_column.data.len();
 
+				// Look for the special row number column
+				let row_numbers_column = frame.iter().find(|col| col.name == ROW_NUMBER_COLUMN_NAME);
+				eprintln!("DEBUG: Found row numbers column: {}", row_numbers_column.is_some());
+
 				// If we don't have schema info yet, extract it from the frame columns
 				if state.schema.right_types.is_empty() && !frame.is_empty() {
-					// Extract types and names from frame columns
+					// Extract types and names from frame columns, skipping the row number column
 					for column in frame.iter() {
+						// Skip the special row number column
+						if column.name == ROW_NUMBER_COLUMN_NAME {
+							continue;
+						}
+
 						state.schema.right_names.push(column.name.clone());
 						// Infer type from the column data
 						let column_type = match &column.data {
@@ -96,10 +101,31 @@ impl LazyLoading {
 					// Schema will be persisted when state is saved
 				}
 
+				// Process rows in order to ensure consistency
 				for row_idx in 0..row_count {
-					// Extract values for this row from all columns
+					// Extract the actual row number if available
+					let row_number = if let Some(row_num_col) = row_numbers_column {
+						// Extract row number from the special column
+						if let FrameColumnData::RowNumber(row_numbers) = &row_num_col.data {
+							row_numbers
+								.get(row_idx)
+								.copied()
+								.unwrap_or_else(|| RowNumber(row_idx as u64))
+						} else {
+							RowNumber(row_idx as u64)
+						}
+					} else {
+						// No row number column, use index
+						RowNumber(row_idx as u64)
+					};
+
+					// Extract values for this row from all columns, skipping the row number column
 					let mut values = Vec::new();
 					for column in frame.iter() {
+						// Skip the special row number column
+						if column.name == ROW_NUMBER_COLUMN_NAME {
+							continue;
+						}
 						values.push(column.data.get_value(row_idx));
 					}
 
@@ -123,16 +149,43 @@ impl LazyLoading {
 					right_layout.set_values(&mut encoded_row, &values);
 
 					let right_row = Row {
-						number: reifydb_type::RowNumber(0), // Will be assigned by join
+						number: row_number,
 						encoded: encoded_row,
 						layout: right_layout,
 					};
 
-					right_rows.push(right_row);
+					// Compute the join key hash for this right row
+					let evaluator = StandardRowEvaluator::new();
+					let right_key_hash = operator.compute_join_key(
+						&right_row,
+						&operator.right_exprs,
+						&evaluator,
+					)?;
+
+					// Debug: show what we're comparing
+					eprintln!("DEBUG: Computing join key for right row at index {}", row_idx);
+
+					// Only include this row if it matches the left row's key
+					if let Some(hash) = right_key_hash {
+						if hash == left_key_hash {
+							eprintln!(
+								"DEBUG: Right row matches join condition, including in results"
+							);
+							right_rows.push(right_row);
+						} else {
+							eprintln!(
+								"DEBUG: Right row key {:?} doesn't match left key {:?}",
+								hash, left_key_hash
+							);
+						}
+					} else {
+						eprintln!("DEBUG: Right row has undefined key, skipping");
+					}
 				}
 			}
 		}
 
+		eprintln!("DEBUG: Returning {} matching right rows", right_rows.len());
 		Ok(right_rows)
 	}
 
@@ -157,7 +210,7 @@ impl LazyLoading {
 			state.left.set(txn, &key_hash, &entry)?;
 
 			// Query the right side using the left row
-			let right_rows = self.query_right_side(txn, post, key_hash, state)?;
+			let right_rows = self.query_right_side(txn, post, key_hash, state, operator)?;
 
 			// Create joined rows for each matching right row
 			for right_row in right_rows {
@@ -167,6 +220,7 @@ impl LazyLoading {
 			}
 		}
 
+		eprintln!("DEBUG: handle_left_insert returning {} results", result.len());
 		println!("DEBUG: TOOK: {}", start.elapsed().as_micros());
 		Ok(result)
 	}
@@ -209,7 +263,7 @@ impl LazyLoading {
 
 		if let Some(key_hash) = key_hash {
 			// Query fresh right-side rows to ensure we remove the correct joins
-			let right_rows = self.query_right_side(txn, pre, key_hash, state)?;
+			let right_rows = self.query_right_side(txn, pre, key_hash, state, operator)?;
 
 			// Generate remove diffs for all matching right rows
 			for right_row in right_rows {
@@ -286,7 +340,7 @@ impl LazyLoading {
 					state.left.set(txn, &key_hash, &left_entry)?;
 
 					// Query the right side for fresh data using the updated left row
-					let right_rows = self.query_right_side(txn, post, key_hash, state)?;
+					let right_rows = self.query_right_side(txn, post, key_hash, state, operator)?;
 
 					// Generate updates for matching right rows
 					// First remove old joins, then add new ones

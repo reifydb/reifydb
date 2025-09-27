@@ -33,7 +33,7 @@ pub struct JoinOperator {
 	left_node: FlowNodeId,
 	right_node: FlowNodeId,
 	left_exprs: Vec<Expression<'static>>,
-	right_exprs: Vec<Expression<'static>>,
+	pub(crate) right_exprs: Vec<Expression<'static>>,
 	right_query: QueryString,
 	alias: Option<String>,
 	layout: EncodedRowLayout,
