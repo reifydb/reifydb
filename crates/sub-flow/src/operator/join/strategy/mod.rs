@@ -2,7 +2,11 @@ use reifydb_core::{JoinType, flow::FlowDiff, interface::Transaction, value::row:
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
-use crate::operator::join::{JoinSide, JoinState, operator::JoinOperator};
+use crate::operator::join::{
+	JoinSide, JoinState,
+	loading::{EagerLoading, LazyLoading},
+	operator::JoinOperator,
+};
 
 mod inner;
 mod left;
@@ -12,15 +16,27 @@ pub(crate) use left::LeftJoin;
 
 #[derive(Debug, Clone)]
 pub(crate) enum JoinStrategy {
-	Left(LeftJoin),
-	Inner(InnerJoin),
+	LeftEager(LeftJoin, EagerLoading),
+	LeftLazy(LeftJoin, LazyLoading),
+	InnerEager(InnerJoin, EagerLoading),
+	InnerLazy(InnerJoin, LazyLoading),
 }
 
 impl JoinStrategy {
-	pub(crate) fn from(strategy: reifydb_core::JoinStrategy, join_type: JoinType) -> Self {
-		match join_type {
-			JoinType::Left => JoinStrategy::Left(LeftJoin),
-			JoinType::Inner => JoinStrategy::Inner(InnerJoin),
+	pub(crate) fn from(storage_strategy: reifydb_core::JoinStrategy, join_type: JoinType) -> Self {
+		match (storage_strategy, join_type) {
+			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Left) => {
+				JoinStrategy::LeftEager(LeftJoin, EagerLoading::new())
+			}
+			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Left) => {
+				JoinStrategy::LeftLazy(LeftJoin, LazyLoading::new())
+			}
+			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Inner) => {
+				JoinStrategy::InnerEager(InnerJoin, EagerLoading::new())
+			}
+			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Inner) => {
+				JoinStrategy::InnerLazy(InnerJoin, LazyLoading::new())
+			}
 		}
 	}
 
@@ -35,8 +51,14 @@ impl JoinStrategy {
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_insert(txn, post, side, key_hash, state, operator),
-			JoinStrategy::Inner(s) => s.handle_insert(txn, post, side, key_hash, state, operator),
+			JoinStrategy::LeftEager(join_type, loading) => join_type
+				.handle_insert_with_loading(txn, post, side, key_hash, state, operator, loading),
+			JoinStrategy::LeftLazy(join_type, loading) => join_type
+				.handle_insert_with_loading(txn, post, side, key_hash, state, operator, loading),
+			JoinStrategy::InnerEager(join_type, loading) => join_type
+				.handle_insert_with_loading(txn, post, side, key_hash, state, operator, loading),
+			JoinStrategy::InnerLazy(join_type, loading) => join_type
+				.handle_insert_with_loading(txn, post, side, key_hash, state, operator, loading),
 		}
 	}
 
@@ -51,8 +73,18 @@ impl JoinStrategy {
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_remove(txn, pre, side, key_hash, state, operator),
-			JoinStrategy::Inner(s) => s.handle_remove(txn, pre, side, key_hash, state, operator),
+			JoinStrategy::LeftEager(join_type, loading) => {
+				join_type.handle_remove_with_loading(txn, pre, side, key_hash, state, operator, loading)
+			}
+			JoinStrategy::LeftLazy(join_type, loading) => {
+				join_type.handle_remove_with_loading(txn, pre, side, key_hash, state, operator, loading)
+			}
+			JoinStrategy::InnerEager(join_type, loading) => {
+				join_type.handle_remove_with_loading(txn, pre, side, key_hash, state, operator, loading)
+			}
+			JoinStrategy::InnerLazy(join_type, loading) => {
+				join_type.handle_remove_with_loading(txn, pre, side, key_hash, state, operator, loading)
+			}
 		}
 	}
 
@@ -69,12 +101,18 @@ impl JoinStrategy {
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::Left(s) => {
-				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
-			}
-			JoinStrategy::Inner(s) => {
-				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
-			}
+			JoinStrategy::LeftEager(join_type, loading) => join_type.handle_update_with_loading(
+				txn, pre, post, side, old_key, new_key, state, operator, loading,
+			),
+			JoinStrategy::LeftLazy(join_type, loading) => join_type.handle_update_with_loading(
+				txn, pre, post, side, old_key, new_key, state, operator, loading,
+			),
+			JoinStrategy::InnerEager(join_type, loading) => join_type.handle_update_with_loading(
+				txn, pre, post, side, old_key, new_key, state, operator, loading,
+			),
+			JoinStrategy::InnerLazy(join_type, loading) => join_type.handle_update_with_loading(
+				txn, pre, post, side, old_key, new_key, state, operator, loading,
+			),
 		}
 	}
 }

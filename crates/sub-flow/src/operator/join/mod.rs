@@ -1,4 +1,5 @@
 // Internal modules
+mod loading;
 mod operator;
 mod row;
 mod schema;

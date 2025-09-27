@@ -9,7 +9,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 
 use super::Schema;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub(crate) struct SerializedRow {
 	pub(crate) number: RowNumber,
 	pub(crate) bytes: Arc<[u8]>,
