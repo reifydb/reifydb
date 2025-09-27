@@ -6,7 +6,6 @@ use bincode::{
 };
 use reifydb_core::{
 	Error,
-	flow::{FlowChange, FlowDiff},
 	interface::{FlowNodeId, Transaction},
 	value::row::{EncodedRowLayout, Row},
 };
@@ -14,10 +13,13 @@ use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::{Blob, RowNumber, Type, internal_error};
 use serde::{Deserialize, Serialize};
 
-use crate::operator::{
-	Operator,
-	stateful::{RawStatefulOperator, SingleStateful},
-	transform::TransformOperator,
+use crate::{
+	flow::{FlowChange, FlowDiff},
+	operator::{
+		Operator,
+		stateful::{RawStatefulOperator, SingleStateful},
+		transform::TransformOperator,
+	},
 };
 
 /// Serializable version of Row data

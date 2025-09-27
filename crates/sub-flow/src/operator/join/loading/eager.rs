@@ -1,8 +1,11 @@
-use reifydb_core::{flow::FlowDiff, interface::Transaction, value::row::Row};
+use reifydb_core::{interface::Transaction, value::row::Row};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
-use crate::operator::join::{JoinSideEntry, JoinState, SerializedRow, operator::JoinOperator};
+use crate::{
+	flow::FlowDiff,
+	operator::join::{JoinSideEntry, JoinState, SerializedRow, operator::JoinOperator},
+};
 
 /// Eager loading strategy - stores all rows in memory
 #[derive(Debug, Clone)]

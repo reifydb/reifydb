@@ -6,7 +6,6 @@ use bincode::{
 };
 use reifydb_core::{
 	EncodedKey, Error, JoinType,
-	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
 	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
 	util::encoding::keycode::KeySerializer,
 	value::row::{EncodedRowLayout, EncodedRowNamedLayout, Row},
@@ -17,10 +16,13 @@ use reifydb_rql::plan::physical::PhysicalPlan;
 use reifydb_type::{Blob, Params, Type, Value, internal_error};
 
 use super::{JoinSide, JoinState, JoinStrategy, Schema};
-use crate::operator::{
-	Operator,
-	stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful, state_get, state_set},
-	transform::TransformOperator,
+use crate::{
+	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
+	operator::{
+		Operator,
+		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful, state_get, state_set},
+		transform::TransformOperator,
+	},
 };
 
 static EMPTY_PARAMS: Params = Params::None;

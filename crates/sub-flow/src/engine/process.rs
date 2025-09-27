@@ -1,16 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	flow::{
-		Flow, FlowChange, FlowChangeOrigin, FlowNode,
-		FlowNodeType::{SourceInlineData, SourceTable, SourceView},
-	},
-	interface::Transaction,
-};
+use reifydb_core::interface::Transaction;
 use reifydb_engine::StandardCommandTransaction;
+use reifydb_rql::flow::{
+	Flow, FlowNode,
+	FlowNodeType::{SourceInlineData, SourceTable, SourceView},
+};
 
-use crate::engine::FlowEngine;
+use crate::{
+	engine::FlowEngine,
+	flow::{FlowChange, FlowChangeOrigin},
+};
 
 impl<T: Transaction> FlowEngine<T> {
 	pub fn process(&self, txn: &mut StandardCommandTransaction<T>, change: FlowChange) -> crate::Result<()> {

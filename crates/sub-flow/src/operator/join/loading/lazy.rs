@@ -1,8 +1,11 @@
-use reifydb_core::{flow::FlowDiff, interface::Transaction, value::row::Row};
+use reifydb_core::{interface::Transaction, value::row::Row};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
-use crate::operator::join::{JoinSideEntry, JoinState, SerializedRow, operator::JoinOperator};
+use crate::{
+	flow::FlowDiff,
+	operator::join::{JoinSideEntry, JoinState, SerializedRow, operator::JoinOperator},
+};
 
 /// Lazy loading strategy - queries data on-demand
 /// TODO: Currently using same implementation as Eager, will be updated to query on-demand

@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	flow::{FlowChange, FlowDiff},
-	interface::{
-		EncodableKey, FlowNodeId, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId, Transaction,
-	},
+use reifydb_core::interface::{
+	EncodableKey, FlowNodeId, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId, Transaction,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
-use crate::Operator;
+use crate::{
+	Operator,
+	flow::{FlowChange, FlowDiff},
+};
 
 pub struct SinkViewOperator {
 	node: FlowNodeId,

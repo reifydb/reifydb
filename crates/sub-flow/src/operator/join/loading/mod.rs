@@ -1,8 +1,11 @@
-use reifydb_core::{flow::FlowDiff, interface::Transaction, value::row::Row};
+use reifydb_core::{interface::Transaction, value::row::Row};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
-use crate::operator::join::{JoinState, operator::JoinOperator};
+use crate::{
+	flow::FlowDiff,
+	operator::join::{JoinState, operator::JoinOperator},
+};
 
 mod eager;
 mod lazy;

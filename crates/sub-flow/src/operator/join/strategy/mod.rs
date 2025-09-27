@@ -1,11 +1,14 @@
-use reifydb_core::{JoinType, flow::FlowDiff, interface::Transaction, value::row::Row};
+use reifydb_core::{JoinType, interface::Transaction, value::row::Row};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
-use crate::operator::join::{
-	JoinSide, JoinState,
-	loading::{EagerLoading, LazyLoading},
-	operator::JoinOperator,
+use crate::{
+	flow::FlowDiff,
+	operator::join::{
+		JoinSide, JoinState,
+		loading::{EagerLoading, LazyLoading},
+		operator::JoinOperator,
+	},
 };
 
 mod inner;

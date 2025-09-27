@@ -7,14 +7,11 @@ use std::{thread::sleep, time::Duration};
 
 use reifydb::{
 	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
-	core::{
-		flow::FlowChange,
-		interface::{FlowNodeId, Transaction, logging::LogLevel::Info},
-	},
+	core::interface::{FlowNodeId, Transaction, logging::LogLevel::Info},
 	embedded,
 	engine::{StandardCommandTransaction, StandardRowEvaluator},
 	log_info,
-	sub_flow::{FlowBuilder, Operator, TransformOperator},
+	sub_flow::{FlowBuilder, Operator, TransformOperator, flow::FlowChange},
 	sub_logging::{FormatStyle, LoggingBuilder},
 };
 

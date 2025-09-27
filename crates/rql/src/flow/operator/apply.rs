@@ -1,14 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	flow::FlowNodeType::Apply,
-	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
-};
+use FlowNodeType::Apply;
+use reifydb_core::interface::{CommandTransaction, FlowNodeId, expression::Expression};
 use reifydb_type::Fragment;
 
 use super::super::{
-	CompileOperator, FlowCompiler,
+	CompileOperator, FlowCompiler, FlowNodeType,
 	conversion::{to_owned_expressions, to_owned_fragment, to_owned_physical_plan},
 };
 use crate::{

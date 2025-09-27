@@ -1,11 +1,14 @@
-use reifydb_core::{flow::FlowDiff, interface::Transaction, value::row::Row};
+use reifydb_core::{interface::Transaction, value::row::Row};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
-use crate::operator::join::{
-	JoinSide, JoinSideEntry, JoinState, SerializedRow,
-	loading::{EagerLoading, LazyLoading},
-	operator::JoinOperator,
+use crate::{
+	flow::FlowDiff,
+	operator::join::{
+		JoinSide, JoinSideEntry, JoinState, SerializedRow,
+		loading::{EagerLoading, LazyLoading},
+		operator::JoinOperator,
+	},
 };
 
 // Trait for loading strategy operations

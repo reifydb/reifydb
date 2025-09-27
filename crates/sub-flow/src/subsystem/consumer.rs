@@ -5,7 +5,6 @@ use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view}
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	Result,
-	flow::{Flow, FlowChange, FlowDiff},
 	interface::{
 		CdcChange, CdcEvent, Engine, GetEncodedRowNamedLayout, Identity, Key, MultiVersionCommandTransaction,
 		Params, QueryTransaction, SourceId, Transaction,
@@ -14,10 +13,16 @@ use reifydb_core::{
 	value::row::{EncodedRow, Row},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
+use reifydb_rql::flow::Flow;
 use reifydb_type::{RowNumber, Value};
 
 use super::intercept::Change;
-use crate::{builder::OperatorFactory, engine::FlowEngine, operator::TransformOperatorRegistry};
+use crate::{
+	builder::OperatorFactory,
+	engine::FlowEngine,
+	flow::{FlowChange, FlowDiff},
+	operator::TransformOperatorRegistry,
+};
 
 // The table ID for reifydb.flows table
 // This is where flow definitions are stored

@@ -1,4 +1,4 @@
-use crate::{
+use reifydb_core::{
 	interface::{FlowNodeId, SourceId},
 	value::row::Row,
 };

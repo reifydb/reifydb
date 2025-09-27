@@ -6,11 +6,9 @@ mod register;
 
 use std::collections::HashMap;
 
-use reifydb_core::{
-	flow::Flow,
-	interface::{FlowId, FlowNodeId, SourceId, Transaction},
-};
+use reifydb_core::interface::{FlowId, FlowNodeId, SourceId, Transaction};
 use reifydb_engine::StandardRowEvaluator;
+use reifydb_rql::flow::Flow;
 
 use crate::operator::{Operators, transform::registry::TransformOperatorRegistry};
 

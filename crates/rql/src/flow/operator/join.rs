@@ -4,12 +4,11 @@
 use JoinType::{Inner, Left};
 use reifydb_core::{
 	JoinStrategy, JoinType,
-	flow::FlowNodeType,
-	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
+	interface::{CommandTransaction, FlowNodeId, expression::Expression},
 };
 
 use super::super::{
-	CompileOperator, FlowCompiler,
+	CompileOperator, FlowCompiler, FlowNodeType,
 	conversion::{to_owned_expressions, to_owned_physical_plan},
 };
 use crate::{
@@ -55,6 +54,7 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let left_node = compiler.compile_plan(*self.left)?;
+		let right_plan = *self.right.clone();
 		let right_node = compiler.compile_plan(*self.right)?;
 
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
@@ -66,6 +66,7 @@ impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 				right: right_keys,
 				alias: self.alias,
 				strategy: self.strategy,
+				right_plan: Some(right_plan),
 			})
 			.with_inputs([left_node, right_node])
 			.build()?;

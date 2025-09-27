@@ -1,10 +1,7 @@
-use reifydb_core::{
-	flow::FlowChange,
-	interface::{FlowNodeId, Transaction},
-};
+use reifydb_core::interface::{FlowNodeId, Transaction};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
-use crate::operator::Operator;
+use crate::{flow::FlowChange, operator::Operator};
 
 pub struct ApplyOperator<T: Transaction> {
 	node: FlowNodeId,

@@ -6,7 +6,6 @@
 mod common;
 pub mod delta;
 pub mod event;
-pub mod flow;
 pub mod interceptor;
 pub mod interface;
 pub mod result;

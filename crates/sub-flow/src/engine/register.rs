@@ -4,13 +4,18 @@
 use FlowNodeType::{Aggregate, SinkView, SourceInlineData, SourceTable, SourceView};
 use reifydb_catalog::resolve::resolve_view;
 use reifydb_core::{
+	Error,
+	interface::{FlowId, FlowNodeId, SourceId, Transaction},
+};
+use reifydb_engine::StandardCommandTransaction;
+use reifydb_rql::{
 	flow::{
 		Flow, FlowNode, FlowNodeType,
 		FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union},
 	},
-	interface::{FlowId, FlowNodeId, SourceId, Transaction},
+	plan::physical::{InlineDataNode, PhysicalPlan},
 };
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_type::internal_error;
 
 use crate::{
 	engine::FlowEngine,
@@ -96,22 +101,29 @@ impl<T: Transaction> FlowEngine<T> {
 				right,
 				alias,
 				strategy,
+				right_plan,
 			} => {
 				// Find the left and right node IDs from the flow inputs
 				// The join node should have exactly 2 inputs
 				if node.inputs.len() != 2 {
-					return Err(reifydb_core::Error(reifydb_type::internal_error!(
-						"Join node must have exactly 2 inputs"
-					)));
+					return Err(Error(internal_error!("Join node must have exactly 2 inputs")));
 				}
 
 				let left_node = node.inputs[0];
 				let right_node = node.inputs[1];
 
+				// Extract the right_plan if it exists, otherwise create a default empty plan
+				let plan = right_plan.unwrap_or_else(|| {
+					PhysicalPlan::InlineData(InlineDataNode {
+						rows: vec![],
+					})
+				});
+
 				self.operators.insert(
 					node.id,
 					Operators::Join(JoinOperator::new(
-						node.id, join_type, left_node, right_node, left, right, alias, strategy,
+						node.id, join_type, left_node, right_node, left, right, plan, alias,
+						strategy,
 					)),
 				);
 			}

@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	flow::FlowNodeType::Take,
-	interface::{CommandTransaction, FlowNodeId},
-};
+use FlowNodeType::Take;
+use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 
-use super::super::{CompileOperator, FlowCompiler, conversion::to_owned_physical_plan};
+use super::super::{CompileOperator, FlowCompiler, FlowNodeType, conversion::to_owned_physical_plan};
 use crate::{
 	Result,
 	plan::physical::{PhysicalPlan, TakeNode},

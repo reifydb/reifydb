@@ -4,12 +4,9 @@
 //! Compilation of table scan operations
 
 use FlowNodeType::SourceTable;
-use reifydb_core::{
-	flow::FlowNodeType,
-	interface::{CommandTransaction, FlowNodeId},
-};
+use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{CompileOperator, FlowCompiler, FlowNodeType};
 use crate::{Result, plan::physical::TableScanNode};
 
 pub(crate) struct TableScanCompiler<'a> {

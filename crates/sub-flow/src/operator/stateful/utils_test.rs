@@ -7,7 +7,6 @@ pub mod test {
 	use reifydb_core::{
 		EncodedKey,
 		event::EventBus,
-		flow::FlowChange,
 		interceptor::StandardInterceptorFactory,
 		interface::{Engine, FlowNodeId},
 		util::CowVec,
@@ -21,7 +20,10 @@ pub mod test {
 	use reifydb_transaction::{mvcc::transaction::optimistic::Optimistic, svl::SingleVersionLock};
 	use reifydb_type::{Type, Value};
 
-	use crate::operator::{Operator, transform::TransformOperator};
+	use crate::{
+		flow::FlowChange,
+		operator::{Operator, transform::TransformOperator},
+	};
 
 	/// Test transaction type using optimistic concurrency control and memory storage
 	pub type TestTransaction = EngineTransaction<
