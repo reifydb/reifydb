@@ -3,7 +3,8 @@
 
 use JoinType::{Inner, Left};
 use reifydb_core::{
-	JoinType,
+	JoinStrategy, JoinType,
+	flow::FlowNodeType,
 	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
 };
 
@@ -22,6 +23,7 @@ pub(crate) struct JoinCompiler {
 	pub right: Box<PhysicalPlan<'static>>,
 	pub on: Vec<Expression<'static>>,
 	pub alias: Option<String>,
+	pub strategy: JoinStrategy,
 }
 
 impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
@@ -32,6 +34,7 @@ impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|f| f.text().to_string()),
+			strategy: node.strategy,
 		}
 	}
 }
@@ -44,27 +47,25 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|f| f.text().to_string()),
+			strategy: node.strategy,
 		}
 	}
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		// Compile left and right plans
 		let left_node = compiler.compile_plan(*self.left)?;
 		let right_node = compiler.compile_plan(*self.right)?;
 
-		// Extract left and right keys from the join conditions
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
 
-		// Build the join node with the appropriate join type
-		use reifydb_core::flow::FlowNodeType::Join;
 		let node = compiler
-			.build_node(Join {
+			.build_node(FlowNodeType::Join {
 				join_type: self.join_type,
 				left: left_keys,
 				right: right_keys,
 				alias: self.alias,
+				strategy: self.strategy,
 			})
 			.with_inputs([left_node, right_node])
 			.build()?;

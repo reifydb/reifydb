@@ -26,7 +26,6 @@ static EMPTY_PARAMS: Params = Params::None;
 
 pub struct JoinOperator {
 	node: FlowNodeId,
-	join_type: JoinType,
 	strategy: JoinStrategy,
 	left_node: FlowNodeId,
 	right_node: FlowNodeId,
@@ -46,14 +45,14 @@ impl JoinOperator {
 		left_exprs: Vec<Expression<'static>>,
 		right_exprs: Vec<Expression<'static>>,
 		alias: Option<String>,
+		storage_strategy: reifydb_core::JoinStrategy,
 	) -> Self {
-		let strategy = JoinStrategy::from_join_type(join_type);
+		let strategy = JoinStrategy::from(storage_strategy, join_type);
 		let layout = Self::state_layout();
 		let row_number_provider = RowNumberProvider::new(node);
 
 		Self {
 			node,
-			join_type,
 			strategy,
 			left_node,
 			right_node,

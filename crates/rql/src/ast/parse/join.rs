@@ -1,20 +1,69 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::JoinType;
-use reifydb_type::{diagnostic::ast::multiple_expressions_without_braces, return_error};
+use reifydb_core::{JoinStrategy, JoinType};
+use reifydb_type::{
+	diagnostic::ast::{multiple_expressions_without_braces, unexpected_token_error},
+	return_error,
+};
 
 use crate::ast::{
 	AstJoin,
 	parse::{Parser, Precedence},
 	tokenize::{
-		Keyword::{From, Inner, Join, Left, Natural, On},
-		Operator::{CloseCurly, OpenCurly},
+		Keyword::{From, Inner, Join, Left, Natural, On, With},
+		Operator::{CloseCurly, Colon, OpenCurly},
 		Separator::Comma,
 	},
 };
 
 impl<'a> Parser<'a> {
+	// Parse the WITH { strategy: ... } clause
+	pub(crate) fn parse_join_strategy(&mut self) -> crate::Result<Option<JoinStrategy>> {
+		if !self.is_eof() && self.current()?.is_keyword(With) {
+			self.advance()?; // consume 'with'
+			self.consume_operator(OpenCurly)?;
+
+			// Expect 'strategy' identifier
+			if !self.current()?.is_identifier() || self.current()?.fragment.text() != "strategy" {
+				return_error!(unexpected_token_error("strategy", self.current()?.fragment.clone()));
+			}
+			self.advance()?;
+
+			self.consume_operator(Colon)?;
+
+			// Parse the strategy value
+			let strategy = if self.current()?.is_identifier() {
+				match self.current()?.fragment.text() {
+					"lazy_loading" => {
+						self.advance()?;
+						JoinStrategy::LazyLoading
+					}
+					"eager_loading" => {
+						self.advance()?;
+						JoinStrategy::EagerLoading
+					}
+					_ => {
+						return_error!(unexpected_token_error(
+							"lazy_loading or eager_loading",
+							self.current()?.fragment.clone()
+						));
+					}
+				}
+			} else {
+				return_error!(unexpected_token_error(
+					"strategy value",
+					self.current()?.fragment.clone()
+				));
+			};
+
+			self.consume_operator(CloseCurly)?;
+			Ok(Some(strategy))
+		} else {
+			Ok(None)
+		}
+	}
+
 	pub(crate) fn parse_join(&mut self) -> crate::Result<AstJoin<'a>> {
 		let token = self.consume_keyword(Join)?;
 
@@ -63,11 +112,14 @@ impl<'a> Parser<'a> {
 			return_error!(multiple_expressions_without_braces(token.fragment));
 		}
 
+		let strategy = self.parse_join_strategy()?;
+
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			on,
 			alias,
+			strategy,
 		})
 	}
 
@@ -99,11 +151,14 @@ impl<'a> Parser<'a> {
 			None
 		};
 
+		let strategy = self.parse_join_strategy()?;
+
 		Ok(AstJoin::NaturalJoin {
 			token,
 			with,
 			join_type,
 			alias,
+			strategy,
 		})
 	}
 
@@ -156,11 +211,15 @@ impl<'a> Parser<'a> {
 			return_error!(multiple_expressions_without_braces(token.fragment));
 		}
 
+		// Parse optional WITH clause for strategy
+		let strategy = self.parse_join_strategy()?;
+
 		Ok(AstJoin::InnerJoin {
 			token,
 			with,
 			on,
 			alias,
+			strategy,
 		})
 	}
 
@@ -213,20 +272,84 @@ impl<'a> Parser<'a> {
 			return_error!(multiple_expressions_without_braces(token.fragment));
 		}
 
+		// Parse optional WITH clause for strategy
+		let strategy = self.parse_join_strategy()?;
+
 		Ok(AstJoin::LeftJoin {
 			token,
 			with,
 			on,
 			alias,
+			strategy,
 		})
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::JoinType;
+	use reifydb_core::{JoinStrategy, JoinType};
 
 	use crate::ast::{AstJoin, InfixOperator, parse::Parser, tokenize::tokenize};
+
+	#[test]
+	fn test_left_join_with_strategy() {
+		let tokens = tokenize(
+			"left join { from test.orders } on user_id == order_id with { strategy: lazy_loading }",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		let join = result[0].first_unchecked().as_join();
+		let AstJoin::LeftJoin {
+			strategy,
+			..
+		} = &join
+		else {
+			panic!("Expected LeftJoin");
+		};
+
+		assert_eq!(strategy, &Some(JoinStrategy::LazyLoading));
+	}
+
+	#[test]
+	fn test_left_join_with_eager_strategy() {
+		let tokens = tokenize(
+			"left join { from test.orders } on user_id == order_id with { strategy: eager_loading }",
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		let join = result[0].first_unchecked().as_join();
+		let AstJoin::LeftJoin {
+			strategy,
+			..
+		} = &join
+		else {
+			panic!("Expected LeftJoin");
+		};
+
+		assert_eq!(strategy, &Some(JoinStrategy::EagerLoading));
+	}
+
+	#[test]
+	fn test_left_join_without_strategy() {
+		let tokens = tokenize("left join { from test.orders } on user_id == order_id").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		let join = result[0].first_unchecked().as_join();
+		let AstJoin::LeftJoin {
+			strategy,
+			..
+		} = &join
+		else {
+			panic!("Expected LeftJoin");
+		};
+
+		assert_eq!(strategy, &None);
+	}
 
 	#[test]
 	fn test_left_join() {

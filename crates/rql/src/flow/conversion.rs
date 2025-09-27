@@ -239,12 +239,14 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
+			strategy: node.strategy.clone(),
 		}),
 		PhysicalPlan::JoinLeft(node) => PhysicalPlan::JoinLeft(crate::plan::physical::JoinLeftNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
+			strategy: node.strategy.clone(),
 		}),
 		PhysicalPlan::Extend(node) => PhysicalPlan::Extend(crate::plan::physical::ExtendNode {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),

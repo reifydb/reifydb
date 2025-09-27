@@ -17,8 +17,7 @@ pub(crate) enum JoinStrategy {
 }
 
 impl JoinStrategy {
-	/// Factory method to create strategy from JoinType
-	pub(crate) fn from_join_type(join_type: JoinType) -> Self {
+	pub(crate) fn from(strategy: reifydb_core::JoinStrategy, join_type: JoinType) -> Self {
 		match join_type {
 			JoinType::Left => JoinStrategy::Left(LeftJoin),
 			JoinType::Inner => JoinStrategy::Inner(InnerJoin),

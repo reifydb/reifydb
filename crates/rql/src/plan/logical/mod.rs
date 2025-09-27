@@ -13,7 +13,7 @@ use reifydb_catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	IndexType, JoinType, SortDirection, SortKey,
+	IndexType, JoinStrategy, JoinType, SortDirection, SortKey,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
 		expression::{AliasExpression, Expression},
@@ -466,6 +466,7 @@ pub struct JoinInnerNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
+	pub strategy: Option<JoinStrategy>,
 }
 
 #[derive(Debug)]
@@ -473,6 +474,7 @@ pub struct JoinLeftNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
+	pub strategy: Option<JoinStrategy>,
 }
 
 #[derive(Debug)]
@@ -480,6 +482,7 @@ pub struct JoinNaturalNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment<'a>>,
+	pub strategy: Option<JoinStrategy>,
 }
 
 #[derive(Debug)]

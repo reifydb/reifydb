@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	JoinType, SortKey,
+	JoinStrategy, JoinType, SortKey,
 	interface::{FlowEdgeId, FlowNodeId, TableId, ViewId, evaluate::expression::Expression},
 };
 
@@ -28,6 +28,7 @@ pub enum FlowNodeType {
 		left: Vec<Expression<'static>>,
 		right: Vec<Expression<'static>>,
 		alias: Option<String>,
+		strategy: JoinStrategy,
 	},
 	Aggregate {
 		by: Vec<Expression<'static>>,

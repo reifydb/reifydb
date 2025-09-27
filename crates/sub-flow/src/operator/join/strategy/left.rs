@@ -24,16 +24,15 @@ impl LeftJoin {
 				if let Some(key_hash) = key_hash {
 					// Add to left entries
 					let serialized = SerializedRow::from_row(post);
-					let mut entry = state.left_store.get_or_insert_with(txn, &key_hash, || {
-						JoinSideEntry {
+					let mut entry =
+						state.left.get_or_insert_with(txn, &key_hash, || JoinSideEntry {
 							rows: Vec::new(),
-						}
-					})?;
+						})?;
 					entry.rows.push(serialized);
-					state.left_store.set(txn, &key_hash, &entry)?;
+					state.left.set(txn, &key_hash, &entry)?;
 
 					// Join with matching right rows
-					if let Some(right_entry) = state.right_store.get(txn, &key_hash)? {
+					if let Some(right_entry) = state.right.get(txn, &key_hash)? {
 						for right_row_ser in &right_entry.rows {
 							let right_row = right_row_ser.to_right_row(&state.schema);
 
@@ -60,20 +59,19 @@ impl LeftJoin {
 			}
 			JoinSide::Right => {
 				if let Some(key_hash) = key_hash {
-					let is_first_right_row = !state.right_store.contains_key(txn, &key_hash)?;
+					let is_first_right_row = !state.right.contains_key(txn, &key_hash)?;
 
 					// Add to right entries
 					let serialized = SerializedRow::from_row(post);
-					let mut entry = state.right_store.get_or_insert_with(txn, &key_hash, || {
-						JoinSideEntry {
+					let mut entry =
+						state.right.get_or_insert_with(txn, &key_hash, || JoinSideEntry {
 							rows: Vec::new(),
-						}
-					})?;
+						})?;
 					entry.rows.push(serialized);
-					state.right_store.set(txn, &key_hash, &entry)?;
+					state.right.set(txn, &key_hash, &entry)?;
 
 					// Join with matching left rows
-					if let Some(left_entry) = state.left_store.get(txn, &key_hash)? {
+					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
 						// If first right row, remove previously emitted unmatched left rows
 						if is_first_right_row {
 							for left_row_ser in &left_entry.rows {
@@ -118,13 +116,13 @@ impl LeftJoin {
 			JoinSide::Left => {
 				if let Some(key_hash) = key_hash {
 					// Remove from left entries
-					if let Some(mut left_entry) = state.left_store.get(txn, &key_hash)? {
+					if let Some(mut left_entry) = state.left.get(txn, &key_hash)? {
 						left_entry.rows.retain(|r| r.number != pre.number);
 
 						operator.cleanup_left_row_joins(txn, pre.number.0)?;
 
 						// Remove all joins involving this row
-						if let Some(right_entry) = state.right_store.get(txn, &key_hash)? {
+						if let Some(right_entry) = state.right.get(txn, &key_hash)? {
 							for right_row_ser in &right_entry.rows {
 								let right_row =
 									right_row_ser.to_right_row(&state.schema);
@@ -145,9 +143,9 @@ impl LeftJoin {
 
 						// Clean up empty entries
 						if left_entry.rows.is_empty() {
-							state.left_store.remove(txn, &key_hash)?;
+							state.left.remove(txn, &key_hash)?;
 						} else {
-							state.left_store.set(txn, &key_hash, &left_entry)?;
+							state.left.set(txn, &key_hash, &left_entry)?;
 						}
 					}
 				} else {
@@ -164,11 +162,11 @@ impl LeftJoin {
 			JoinSide::Right => {
 				if let Some(key_hash) = key_hash {
 					// Remove from right entries
-					if let Some(mut right_entry) = state.right_store.get(txn, &key_hash)? {
+					if let Some(mut right_entry) = state.right.get(txn, &key_hash)? {
 						right_entry.rows.retain(|r| r.number != pre.number);
 
 						// Remove all joins involving this row
-						if let Some(left_entry) = state.left_store.get(txn, &key_hash)? {
+						if let Some(left_entry) = state.left.get(txn, &key_hash)? {
 							for left_row_ser in &left_entry.rows {
 								let left_row = left_row_ser.to_left_row(&state.schema);
 
@@ -194,9 +192,9 @@ impl LeftJoin {
 
 						// Clean up empty entries
 						if right_entry.rows.is_empty() {
-							state.right_store.remove(txn, &key_hash)?;
+							state.right.remove(txn, &key_hash)?;
 						} else {
-							state.right_store.set(txn, &key_hash, &right_entry)?;
+							state.right.set(txn, &key_hash, &right_entry)?;
 						}
 					}
 				}
@@ -224,7 +222,7 @@ impl LeftJoin {
 			match side {
 				JoinSide::Left => {
 					if let Some(key) = old_key {
-						if let Some(mut left_entry) = state.left_store.get(txn, &key)? {
+						if let Some(mut left_entry) = state.left.get(txn, &key)? {
 							// Update the row
 							for row in &mut left_entry.rows {
 								if row.number == pre.number {
@@ -232,10 +230,10 @@ impl LeftJoin {
 									break;
 								}
 							}
-							state.left_store.set(txn, &key, &left_entry)?;
+							state.left.set(txn, &key, &left_entry)?;
 
 							// Emit updates for all joined rows
-							if let Some(right_entry) = state.right_store.get(txn, &key)? {
+							if let Some(right_entry) = state.right.get(txn, &key)? {
 								for right_row_ser in &right_entry.rows {
 									let right_row = right_row_ser
 										.to_right_row(&state.schema);
@@ -273,7 +271,7 @@ impl LeftJoin {
 				}
 				JoinSide::Right => {
 					if let Some(key) = old_key {
-						if let Some(mut right_entry) = state.right_store.get(txn, &key)? {
+						if let Some(mut right_entry) = state.right.get(txn, &key)? {
 							// Update the row
 							for row in &mut right_entry.rows {
 								if row.number == pre.number {
@@ -281,10 +279,10 @@ impl LeftJoin {
 									break;
 								}
 							}
-							state.right_store.set(txn, &key, &right_entry)?;
+							state.right.set(txn, &key, &right_entry)?;
 
 							// Emit updates for all joined rows
-							if let Some(left_entry) = state.left_store.get(txn, &key)? {
+							if let Some(left_entry) = state.left.get(txn, &key)? {
 								for left_row_ser in &left_entry.rows {
 									let left_row =
 										left_row_ser.to_left_row(&state.schema);

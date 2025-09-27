@@ -23,6 +23,7 @@ impl Compiler {
 				with,
 				on,
 				alias,
+				strategy,
 				..
 			} => {
 				let with = match *with {
@@ -94,12 +95,14 @@ impl Compiler {
 						.map(|expr| join_compiler.compile(expr))
 						.collect::<crate::Result<Vec<_>>>()?,
 					alias,
+					strategy,
 				}))
 			}
 			AstJoin::LeftJoin {
 				with,
 				on,
 				alias,
+				strategy,
 				..
 			} => {
 				let with = match *with {
@@ -171,12 +174,14 @@ impl Compiler {
 						.map(|expr| join_compiler.compile(expr))
 						.collect::<crate::Result<Vec<_>>>()?,
 					alias,
+					strategy,
 				}))
 			}
 			AstJoin::NaturalJoin {
 				with,
 				join_type,
 				alias,
+				strategy,
 				..
 			} => {
 				let with = match *with {
@@ -238,6 +243,7 @@ impl Compiler {
 					with,
 					join_type: join_type.unwrap_or(JoinType::Inner),
 					alias,
+					strategy,
 				}))
 			}
 		}

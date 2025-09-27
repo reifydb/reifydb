@@ -10,7 +10,7 @@ use reifydb_catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	JoinType, SortKey,
+	JoinStrategy, JoinType, SortKey,
 	interface::{
 		ColumnIdentifier, NamespaceDef, QueryTransaction,
 		evaluate::expression::{AliasExpression, Expression},
@@ -437,6 +437,7 @@ impl Compiler {
 						right: Box::new(right),
 						on: join.on,
 						alias: join.alias,
+						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -448,6 +449,7 @@ impl Compiler {
 						right: Box::new(right),
 						on: join.on,
 						alias: join.alias,
+						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -459,6 +461,7 @@ impl Compiler {
 						right: Box::new(right),
 						join_type: join.join_type,
 						alias: join.alias,
+						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -778,6 +781,7 @@ pub struct JoinInnerNode<'a> {
 	pub right: Box<PhysicalPlan<'a>>,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
+	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]
@@ -786,6 +790,7 @@ pub struct JoinLeftNode<'a> {
 	pub right: Box<PhysicalPlan<'a>>,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
+	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]
@@ -794,6 +799,7 @@ pub struct JoinNaturalNode<'a> {
 	pub right: Box<PhysicalPlan<'a>>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment<'a>>,
+	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]
