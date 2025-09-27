@@ -8,7 +8,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::ast::{Ast, AstFrom, InfixOperator};
+use crate::ast::{Ast, AstFrom, AstStatement, AstSubQuery, InfixOperator};
 
 /// A transparent wrapper around String representing a query string
 /// that can be parsed and executed
@@ -21,8 +21,8 @@ impl QueryString {
 		QueryString(query)
 	}
 
-	pub fn from_ast(ast: &Ast) -> crate::Result<Self> {
-		let query_str = reconstruct_query(ast)?;
+	pub fn from(subquery: &AstSubQuery) -> crate::Result<Self> {
+		let query_str = reconstruct_statement(&subquery.statement)?;
 		Ok(QueryString(query_str))
 	}
 
@@ -61,6 +61,17 @@ impl From<QueryString> for String {
 impl AsRef<str> for QueryString {
 	fn as_ref(&self) -> &str {
 		&self.0
+	}
+}
+
+/// Reconstruct a query string from an AstStatement
+fn reconstruct_statement(statement: &AstStatement) -> crate::Result<String> {
+	// For now, we'll reconstruct from the first node in the statement
+	// This works for simple subqueries like "{ from test.categories }"
+	if let Some(first_node) = statement.nodes.first() {
+		reconstruct_query(first_node)
+	} else {
+		Ok(String::new()) // Return empty string for empty statements
 	}
 }
 

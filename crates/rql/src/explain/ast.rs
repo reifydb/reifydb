@@ -58,6 +58,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Distinct(_) => "Distinct",
 		Ast::Apply(_) => "Apply",
 		Ast::Call(_) => "Call",
+		Ast::SubQuery(_) => "SubQuery",
 	};
 
 	let branch = if is_last {
@@ -201,7 +202,8 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 			on,
 			..
 		}) => {
-			children.push(*with);
+			// Add the nodes from the subquery statement
+			children.extend(with.statement.nodes.clone());
 			children.extend(on);
 		}
 		Ast::Map(s) => children.extend(s.nodes),
@@ -356,6 +358,10 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 			}
 			// Return early since we handled the children
 			return;
+		}
+		Ast::SubQuery(sq) => {
+			// Add the nodes from the subquery statement as children
+			children.extend(sq.statement.nodes.clone());
 		}
 		_ => {}
 	}

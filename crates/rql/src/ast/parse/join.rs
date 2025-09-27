@@ -11,7 +11,7 @@ use crate::ast::{
 	AstJoin,
 	parse::{Parser, Precedence},
 	tokenize::{
-		Keyword::{From, Inner, Join, Left, Natural, On, With},
+		Keyword::{Inner, Join, Left, Natural, On, With},
 		Operator::{CloseCurly, Colon, OpenCurly},
 		Separator::Comma,
 	},
@@ -67,10 +67,7 @@ impl<'a> Parser<'a> {
 	pub(crate) fn parse_join(&mut self) -> crate::Result<AstJoin<'a>> {
 		let token = self.consume_keyword(Join)?;
 
-		self.consume_operator(OpenCurly)?;
-		self.consume_keyword(From)?;
-		let with = Box::new(self.parse_node(Precedence::None)?);
-		self.consume_operator(CloseCurly)?;
+		let with = self.parse_sub_query()?;
 
 		// Check for alias before 'on' keyword
 		let alias = if !self.is_eof() && self.current()?.is_identifier() {
@@ -138,10 +135,7 @@ impl<'a> Parser<'a> {
 
 		self.consume_keyword(Join)?;
 
-		self.consume_operator(OpenCurly)?;
-		self.consume_keyword(From)?;
-		let with = Box::new(self.parse_node(Precedence::None)?);
-		self.consume_operator(CloseCurly)?;
+		let with = self.parse_sub_query()?;
 
 		// Check for alias after the join clause
 		let alias = if !self.is_eof() && self.current().is_ok() && self.current()?.is_identifier() {
@@ -166,10 +160,7 @@ impl<'a> Parser<'a> {
 		let token = self.consume_keyword(Inner)?;
 		self.consume_keyword(Join)?;
 
-		self.consume_operator(OpenCurly)?;
-		self.consume_keyword(From)?;
-		let with = Box::new(self.parse_node(Precedence::None)?);
-		self.consume_operator(CloseCurly)?;
+		let with = self.parse_sub_query()?;
 
 		// Check for alias before 'on' keyword
 		let alias = if !self.is_eof() && self.current()?.is_identifier() {
@@ -227,10 +218,7 @@ impl<'a> Parser<'a> {
 		let token = self.consume_keyword(Left)?;
 		self.consume_keyword(Join)?;
 
-		self.consume_operator(OpenCurly)?;
-		self.consume_keyword(From)?;
-		let with = Box::new(self.parse_node(Precedence::None)?);
-		self.consume_operator(CloseCurly)?;
+		let with = self.parse_sub_query()?;
 
 		// Check for alias before 'on' keyword
 		let alias = if !self.is_eof() && self.current()?.is_identifier() {
@@ -289,7 +277,7 @@ impl<'a> Parser<'a> {
 mod tests {
 	use reifydb_core::{JoinStrategy, JoinType};
 
-	use crate::ast::{AstJoin, InfixOperator, parse::Parser, tokenize::tokenize};
+	use crate::ast::{Ast, AstFrom, AstJoin, InfixOperator, parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_left_join_with_strategy() {
@@ -369,10 +357,18 @@ mod tests {
 		else {
 			panic!("Expected LeftJoin");
 		};
-		let with = with.as_infix();
-		assert_eq!(with.left.as_identifier().text(), "namespace");
-		assert!(matches!(with.operator, InfixOperator::AccessTable(_)));
-		assert_eq!(with.right.as_identifier().text(), "orders");
+		// Check that the subquery contains "from namespace.orders"
+		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		if let Ast::From(AstFrom::Source {
+			source,
+			..
+		}) = first_node
+		{
+			assert_eq!(source.namespace.as_ref().unwrap().text(), "namespace");
+			assert_eq!(source.name.text(), "orders");
+		} else {
+			panic!("Expected From node in subquery");
+		}
 
 		assert_eq!(on.len(), 1);
 		let on = on[0].as_infix();
@@ -416,10 +412,18 @@ mod tests {
 		assert_eq!(alias.as_ref().unwrap().text(), "c");
 
 		// Check joined table
-		let with = with.as_infix();
-		assert_eq!(with.left.as_identifier().text(), "test");
-		assert!(matches!(with.operator, InfixOperator::AccessTable(_)));
-		assert_eq!(with.right.as_identifier().text(), "customers");
+		// Check that the subquery contains "from test.customers"
+		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		if let Ast::From(AstFrom::Source {
+			source,
+			..
+		}) = first_node
+		{
+			assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+			assert_eq!(source.name.text(), "customers");
+		} else {
+			panic!("Expected From node in subquery");
+		}
 
 		// Check ON condition
 		assert_eq!(on.len(), 1);
@@ -480,10 +484,18 @@ mod tests {
 		// Check alias
 		assert_eq!(alias.as_ref().unwrap().text(), "c");
 
-		// Check joined table (test.customers)
-		let with = with.as_infix();
-		assert_eq!(with.left.as_identifier().text(), "test");
-		assert_eq!(with.right.as_identifier().text(), "customers");
+		// Check that the subquery contains "from test.customers"
+		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		if let Ast::From(AstFrom::Source {
+			source,
+			..
+		}) = first_node
+		{
+			assert_eq!(source.namespace.as_ref().unwrap().text(), "test");
+			assert_eq!(source.name.text(), "customers");
+		} else {
+			panic!("Expected From node in subquery");
+		}
 
 		// Check ON condition uses aliases
 		assert_eq!(on.len(), 1);
@@ -521,7 +533,17 @@ mod tests {
 		else {
 			panic!("Expected LeftJoin");
 		};
-		assert_eq!(with.as_identifier().text(), "orders");
+		// Check that the subquery contains "from orders"
+		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		if let Ast::From(AstFrom::Source {
+			source,
+			..
+		}) = first_node
+		{
+			assert_eq!(source.name.text(), "orders");
+		} else {
+			panic!("Expected From node in subquery");
+		}
 
 		assert_eq!(on.len(), 2);
 
@@ -576,7 +598,17 @@ mod tests {
 		else {
 			panic!("Expected LeftJoin");
 		};
-		assert_eq!(with.as_identifier().text(), "orders");
+		// Check that the subquery contains "from orders"
+		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		if let Ast::From(AstFrom::Source {
+			source,
+			..
+		}) = first_node
+		{
+			assert_eq!(source.name.text(), "orders");
+		} else {
+			panic!("Expected From node in subquery");
+		}
 		assert_eq!(on.len(), 1);
 	}
 
@@ -608,7 +640,17 @@ mod tests {
 				join_type,
 				..
 			} => {
-				assert_eq!(with.as_identifier().text(), "orders");
+				// Check that the subquery contains "from orders"
+				let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+				if let Ast::From(AstFrom::Source {
+					source,
+					..
+				}) = first_node
+				{
+					assert_eq!(source.name.text(), "orders");
+				} else {
+					panic!("Expected From node in subquery");
+				}
 				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -631,10 +673,18 @@ mod tests {
 				join_type,
 				..
 			} => {
-				let with = with.as_infix();
-				assert_eq!(with.left.as_identifier().text(), "namespace");
-				assert!(matches!(with.operator, InfixOperator::AccessTable(_)));
-				assert_eq!(with.right.as_identifier().text(), "orders");
+				// Check that the subquery contains "from namespace.orders"
+				let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+				if let Ast::From(AstFrom::Source {
+					source,
+					..
+				}) = first_node
+				{
+					assert_eq!(source.namespace.as_ref().unwrap().text(), "namespace");
+					assert_eq!(source.name.text(), "orders");
+				} else {
+					panic!("Expected From node in subquery");
+				}
 				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -657,7 +707,17 @@ mod tests {
 				join_type,
 				..
 			} => {
-				assert_eq!(with.as_identifier().text(), "orders");
+				// Check that the subquery contains "from orders"
+				let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+				if let Ast::From(AstFrom::Source {
+					source,
+					..
+				}) = first_node
+				{
+					assert_eq!(source.name.text(), "orders");
+				} else {
+					panic!("Expected From node in subquery");
+				}
 				assert_eq!(join_type, &None);
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -680,7 +740,17 @@ mod tests {
 				join_type,
 				..
 			} => {
-				assert_eq!(with.as_identifier().text(), "orders");
+				// Check that the subquery contains "from orders"
+				let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+				if let Ast::From(AstFrom::Source {
+					source,
+					..
+				}) = first_node
+				{
+					assert_eq!(source.name.text(), "orders");
+				} else {
+					panic!("Expected From node in subquery");
+				}
 				assert_eq!(join_type, &Some(JoinType::Left));
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -703,7 +773,17 @@ mod tests {
 				join_type,
 				..
 			} => {
-				assert_eq!(with.as_identifier().text(), "orders");
+				// Check that the subquery contains "from orders"
+				let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+				if let Ast::From(AstFrom::Source {
+					source,
+					..
+				}) = first_node
+				{
+					assert_eq!(source.name.text(), "orders");
+				} else {
+					panic!("Expected From node in subquery");
+				}
 				assert_eq!(join_type, &Some(JoinType::Inner));
 			}
 			_ => panic!("Expected NaturalJoin"),
@@ -728,7 +808,17 @@ mod tests {
 		else {
 			panic!("Expected InnerJoin");
 		};
-		assert_eq!(with.as_identifier().text(), "orders");
+		// Check that the subquery contains "from orders"
+		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		if let Ast::From(AstFrom::Source {
+			source,
+			..
+		}) = first_node
+		{
+			assert_eq!(source.name.text(), "orders");
+		} else {
+			panic!("Expected From node in subquery");
+		}
 
 		assert_eq!(on.len(), 1);
 		let on = on[0].as_infix();
@@ -767,7 +857,17 @@ mod tests {
 		else {
 			panic!("Expected InnerJoin");
 		};
-		assert_eq!(with.as_identifier().text(), "orders");
+		// Check that the subquery contains "from orders"
+		let first_node = with.statement.nodes.first().expect("Expected node in subquery");
+		if let Ast::From(AstFrom::Source {
+			source,
+			..
+		}) = first_node
+		{
+			assert_eq!(source.name.text(), "orders");
+		} else {
+			panic!("Expected From node in subquery");
+		}
 
 		assert_eq!(on.len(), 1);
 		let on = on[0].as_infix();

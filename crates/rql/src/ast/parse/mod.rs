@@ -27,6 +27,7 @@ mod prefix;
 mod primary;
 mod select;
 mod sort;
+pub mod sub_query;
 mod take;
 mod tuple;
 mod update;
@@ -81,7 +82,7 @@ pub fn parse<'a>(tokens: Vec<Token<'a>>) -> crate::Result<Vec<AstStatement<'a>>>
 	parser.parse()
 }
 
-struct Parser<'a> {
+pub(crate) struct Parser<'a> {
 	tokens: Vec<Token<'a>>,
 	position: usize,
 }
@@ -250,7 +251,7 @@ impl<'a> Parser<'a> {
 		}
 	}
 
-	fn is_eof(&self) -> bool {
+	pub(crate) fn is_eof(&self) -> bool {
 		self.position >= self.tokens.len()
 	}
 

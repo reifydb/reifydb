@@ -8,9 +8,10 @@ use reifydb_type::Fragment;
 
 use crate::ast::{
 	identifier::{
-		MaybeQualifiedColumnIdentifier, MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier,
-		MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
-		UnqualifiedIdentifier, UnresolvedSourceIdentifier,
+		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedFunctionIdentifier,
+		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
+		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
+		UnresolvedSourceIdentifier,
 	},
 	tokenize::{Literal, ParameterKind, Token, TokenKind},
 };
@@ -79,6 +80,7 @@ pub enum Ast<'a> {
 	Nop,
 	ParameterRef(AstParameterRef<'a>),
 	Sort(AstSort<'a>),
+	SubQuery(AstSubQuery<'a>),
 	Policy(AstPolicy<'a>),
 	PolicyBlock(AstPolicyBlock<'a>),
 	Prefix(AstPrefix<'a>),
@@ -146,6 +148,7 @@ impl<'a> Ast<'a> {
 			Ast::Nop => unreachable!(),
 			Ast::ParameterRef(node) => &node.token,
 			Ast::Sort(node) => &node.token,
+			Ast::SubQuery(node) => &node.token,
 			Ast::Policy(node) => &node.token,
 			Ast::PolicyBlock(node) => &node.token,
 			Ast::Prefix(node) => node.node.token(),
@@ -616,6 +619,14 @@ pub struct AstAlterTable<'a> {
 	pub operations: Vec<AstAlterTableOperation<'a>>,
 }
 
+/// Represents a subquery - a complete query statement enclosed in braces
+/// Used in contexts like joins, CTEs, and derived tables
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstSubQuery<'a> {
+	pub token: Token<'a>,
+	pub statement: AstStatement<'a>,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstAlterTableOperation<'a> {
 	CreatePrimaryKey {
@@ -644,7 +655,7 @@ pub enum AstAlterViewOperation<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateDeferredView<'a> {
 	pub token: Token<'a>,
-	pub view: crate::ast::identifier::MaybeQualifiedDeferredViewIdentifier<'a>,
+	pub view: MaybeQualifiedDeferredViewIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
 }
@@ -652,7 +663,7 @@ pub struct AstCreateDeferredView<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateTransactionalView<'a> {
 	pub token: Token<'a>,
-	pub view: crate::ast::identifier::MaybeQualifiedTransactionalViewIdentifier<'a>,
+	pub view: MaybeQualifiedTransactionalViewIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
 }
@@ -923,21 +934,21 @@ pub struct AstUpdate<'a> {
 pub enum AstJoin<'a> {
 	InnerJoin {
 		token: Token<'a>,
-		with: Box<Ast<'a>>,
+		with: AstSubQuery<'a>,
 		on: Vec<Ast<'a>>,
 		alias: Option<Fragment<'a>>,
 		strategy: Option<JoinStrategy>,
 	},
 	LeftJoin {
 		token: Token<'a>,
-		with: Box<Ast<'a>>,
+		with: AstSubQuery<'a>,
 		on: Vec<Ast<'a>>,
 		alias: Option<Fragment<'a>>,
 		strategy: Option<JoinStrategy>,
 	},
 	NaturalJoin {
 		token: Token<'a>,
-		with: Box<Ast<'a>>,
+		with: AstSubQuery<'a>,
 		join_type: Option<JoinType>,
 		alias: Option<Fragment<'a>>,
 		strategy: Option<JoinStrategy>,

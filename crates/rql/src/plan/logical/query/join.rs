@@ -5,7 +5,7 @@ use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::JoinType;
 
 use crate::{
-	ast::{Ast, AstInfix, AstJoin, InfixOperator, identifier::UnresolvedSourceIdentifier},
+	ast::{Ast, AstFrom, AstInfix, AstJoin, InfixOperator, identifier::UnresolvedSourceIdentifier},
 	expression::JoinConditionCompiler,
 	plan::logical::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::SourceScan,
@@ -27,8 +27,35 @@ impl Compiler {
 				strategy,
 				..
 			} => {
-				let with_ast = with.clone();
-				let with = match *with {
+				let with_query = QueryString::from(&with)?;
+				// Subqueries should always have at least one node
+				let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
+				let with = match with_ast {
+					Ast::From(AstFrom::Source {
+						source,
+						..
+					}) => {
+						// Handle FROM clause directly
+						use crate::ast::identifier::UnresolvedSourceIdentifier;
+
+						let mut unresolved = UnresolvedSourceIdentifier::new(
+							source.namespace.clone(),
+							source.name.clone(),
+						);
+						if let Some(a) = &alias {
+							unresolved = unresolved.with_alias(a.clone());
+						}
+
+						// Build resolved source from
+						// unresolved identifier
+						let resolved_source =
+							resolver::resolve_unresolved_source(tx, &unresolved)?;
+						vec![SourceScan(SourceScanNode {
+							source: resolved_source,
+							columns: None,
+							index: None,
+						})]
+					}
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
 						// identifier
@@ -59,10 +86,10 @@ impl Compiler {
 						..
 					}) => {
 						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(namespace) = *left else {
+						let Ast::Identifier(namespace) = &**left else {
 							unreachable!()
 						};
-						let Ast::Identifier(table) = *right else {
+						let Ast::Identifier(table) = &**right else {
 							unreachable!()
 						};
 						// Create fully qualified
@@ -70,8 +97,8 @@ impl Compiler {
 						use crate::ast::identifier::UnresolvedSourceIdentifier;
 
 						let mut unresolved = UnresolvedSourceIdentifier::new(
-							Some(namespace.token.fragment),
-							table.token.fragment,
+							Some(namespace.token.fragment.clone()),
+							table.token.fragment.clone(),
 						);
 						if let Some(a) = &alias {
 							unresolved = unresolved.with_alias(a.clone());
@@ -89,8 +116,6 @@ impl Compiler {
 					}
 					_ => unimplemented!(),
 				};
-
-				let with_query = QueryString::from_ast(&*with_ast)?;
 
 				// Use JoinConditionCompiler for ON clause expressions
 				let join_compiler = JoinConditionCompiler::new(alias.clone());
@@ -111,8 +136,35 @@ impl Compiler {
 				strategy,
 				..
 			} => {
-				let with_ast = with.clone();
-				let with = match *with {
+				let with_query = QueryString::from(&with)?;
+				// Subqueries should always have at least one node
+				let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
+				let with = match with_ast {
+					Ast::From(AstFrom::Source {
+						source,
+						..
+					}) => {
+						// Handle FROM clause directly
+						use crate::ast::identifier::UnresolvedSourceIdentifier;
+
+						let mut unresolved = UnresolvedSourceIdentifier::new(
+							source.namespace.clone(),
+							source.name.clone(),
+						);
+						if let Some(a) = &alias {
+							unresolved = unresolved.with_alias(a.clone());
+						}
+
+						// Build resolved source from
+						// unresolved identifier
+						let resolved_source =
+							resolver::resolve_unresolved_source(tx, &unresolved)?;
+						vec![SourceScan(SourceScanNode {
+							source: resolved_source,
+							columns: None,
+							index: None,
+						})]
+					}
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
 						// identifier
@@ -143,10 +195,10 @@ impl Compiler {
 						..
 					}) => {
 						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(namespace) = *left else {
+						let Ast::Identifier(namespace) = &**left else {
 							unreachable!()
 						};
-						let Ast::Identifier(table) = *right else {
+						let Ast::Identifier(table) = &**right else {
 							unreachable!()
 						};
 						// Create fully qualified
@@ -154,8 +206,8 @@ impl Compiler {
 						use crate::ast::identifier::UnresolvedSourceIdentifier;
 
 						let mut unresolved = UnresolvedSourceIdentifier::new(
-							Some(namespace.token.fragment),
-							table.token.fragment,
+							Some(namespace.token.fragment.clone()),
+							table.token.fragment.clone(),
 						);
 						if let Some(a) = &alias {
 							unresolved = unresolved.with_alias(a.clone());
@@ -173,8 +225,6 @@ impl Compiler {
 					}
 					_ => unimplemented!(),
 				};
-
-				let with_query = QueryString::from_ast(&*with_ast)?;
 
 				// Use JoinConditionCompiler for ON clause expressions
 				let join_compiler = JoinConditionCompiler::new(alias.clone());
@@ -195,8 +245,35 @@ impl Compiler {
 				strategy,
 				..
 			} => {
-				let with_ast = with.clone();
-				let with = match *with {
+				let with_query = QueryString::from(&with)?;
+				// Subqueries should always have at least one node
+				let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
+				let with = match with_ast {
+					Ast::From(AstFrom::Source {
+						source,
+						..
+					}) => {
+						// Handle FROM clause directly
+						use crate::ast::identifier::UnresolvedSourceIdentifier;
+
+						let mut unresolved = UnresolvedSourceIdentifier::new(
+							source.namespace.clone(),
+							source.name.clone(),
+						);
+						if let Some(a) = &alias {
+							unresolved = unresolved.with_alias(a.clone());
+						}
+
+						// Build resolved source from
+						// unresolved identifier
+						let resolved_source =
+							resolver::resolve_unresolved_source(tx, &unresolved)?;
+						vec![SourceScan(SourceScanNode {
+							source: resolved_source,
+							columns: None,
+							index: None,
+						})]
+					}
 					Ast::Identifier(identifier) => {
 						// Create unresolved source
 						// identifier
@@ -227,16 +304,16 @@ impl Compiler {
 						..
 					}) => {
 						assert!(matches!(operator, InfixOperator::AccessTable(_)));
-						let Ast::Identifier(namespace) = *left else {
+						let Ast::Identifier(namespace) = &**left else {
 							unreachable!()
 						};
-						let Ast::Identifier(table) = *right else {
+						let Ast::Identifier(table) = &**right else {
 							unreachable!()
 						};
 
 						let unresolved = UnresolvedSourceIdentifier::new(
-							Some(namespace.token.fragment),
-							table.token.fragment,
+							Some(namespace.token.fragment.clone()),
+							table.token.fragment.clone(),
 						);
 
 						let resolved_source =
@@ -250,8 +327,6 @@ impl Compiler {
 					}
 					_ => unimplemented!(),
 				};
-
-				let with_query = QueryString::from_ast(&*with_ast)?;
 
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
