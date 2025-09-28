@@ -5,9 +5,7 @@ use reifydb_hash::Hash128;
 use crate::{
 	flow::FlowDiff,
 	operator::join::{
-		JoinSide, JoinSideEntry, JoinState, SerializedRow,
-		loading::{EagerLoading, LazyLoading},
-		operator::JoinOperator,
+		JoinSide, JoinSideEntry, JoinState, SerializedRow, loading::EagerLoading, operator::JoinOperator,
 	},
 };
 
@@ -144,77 +142,77 @@ impl LoadingOps for EagerLoading {
 	}
 }
 
-impl LoadingOps for LazyLoading {
-	fn handle_left_insert<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		post: &Row,
-		key_hash: Option<Hash128>,
-		state: &mut JoinState,
-		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
-		self.handle_left_insert(txn, post, key_hash, state, operator)
-	}
-
-	fn handle_right_insert<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		post: &Row,
-		key_hash: Option<Hash128>,
-		state: &mut JoinState,
-		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
-		self.handle_right_insert(txn, post, key_hash, state, operator)
-	}
-
-	fn handle_left_remove<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		pre: &Row,
-		key_hash: Option<Hash128>,
-		state: &mut JoinState,
-		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
-		self.handle_left_remove(txn, pre, key_hash, state, operator)
-	}
-
-	fn handle_right_remove<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		pre: &Row,
-		key_hash: Option<Hash128>,
-		state: &mut JoinState,
-		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
-		self.handle_right_remove(txn, pre, key_hash, state, operator)
-	}
-
-	fn handle_left_update<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		pre: &Row,
-		post: &Row,
-		old_key: Option<Hash128>,
-		new_key: Option<Hash128>,
-		state: &mut JoinState,
-		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
-		self.handle_left_update(txn, pre, post, old_key, new_key, state, operator)
-	}
-
-	fn handle_right_update<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		pre: &Row,
-		post: &Row,
-		old_key: Option<Hash128>,
-		new_key: Option<Hash128>,
-		state: &mut JoinState,
-		operator: &JoinOperator,
-	) -> crate::Result<Vec<FlowDiff>> {
-		self.handle_right_update(txn, pre, post, old_key, new_key, state, operator)
-	}
-}
+// impl LoadingOps for LazyLoading {
+// 	fn handle_left_insert<T: Transaction>(
+// 		&self,
+// 		txn: &mut StandardCommandTransaction<T>,
+// 		post: &Row,
+// 		key_hash: Option<Hash128>,
+// 		state: &mut JoinState,
+// 		operator: &JoinOperator,
+// 	) -> crate::Result<Vec<FlowDiff>> {
+// 		self.handle_left_insert(txn, post, key_hash, state, operator)
+// 	}
+//
+// 	fn handle_right_insert<T: Transaction>(
+// 		&self,
+// 		txn: &mut StandardCommandTransaction<T>,
+// 		post: &Row,
+// 		key_hash: Option<Hash128>,
+// 		state: &mut JoinState,
+// 		operator: &JoinOperator,
+// 	) -> crate::Result<Vec<FlowDiff>> {
+// 		self.handle_right_insert(txn, post, key_hash, state, operator)
+// 	}
+//
+// 	fn handle_left_remove<T: Transaction>(
+// 		&self,
+// 		txn: &mut StandardCommandTransaction<T>,
+// 		pre: &Row,
+// 		key_hash: Option<Hash128>,
+// 		state: &mut JoinState,
+// 		operator: &JoinOperator,
+// 	) -> crate::Result<Vec<FlowDiff>> {
+// 		self.handle_left_remove(txn, pre, key_hash, state, operator)
+// 	}
+//
+// 	fn handle_right_remove<T: Transaction>(
+// 		&self,
+// 		txn: &mut StandardCommandTransaction<T>,
+// 		pre: &Row,
+// 		key_hash: Option<Hash128>,
+// 		state: &mut JoinState,
+// 		operator: &JoinOperator,
+// 	) -> crate::Result<Vec<FlowDiff>> {
+// 		self.handle_right_remove(txn, pre, key_hash, state, operator)
+// 	}
+//
+// 	fn handle_left_update<T: Transaction>(
+// 		&self,
+// 		txn: &mut StandardCommandTransaction<T>,
+// 		pre: &Row,
+// 		post: &Row,
+// 		old_key: Option<Hash128>,
+// 		new_key: Option<Hash128>,
+// 		state: &mut JoinState,
+// 		operator: &JoinOperator,
+// 	) -> crate::Result<Vec<FlowDiff>> {
+// 		self.handle_left_update(txn, pre, post, old_key, new_key, state, operator)
+// 	}
+//
+// 	fn handle_right_update<T: Transaction>(
+// 		&self,
+// 		txn: &mut StandardCommandTransaction<T>,
+// 		pre: &Row,
+// 		post: &Row,
+// 		old_key: Option<Hash128>,
+// 		new_key: Option<Hash128>,
+// 		state: &mut JoinState,
+// 		operator: &JoinOperator,
+// 	) -> crate::Result<Vec<FlowDiff>> {
+// 		self.handle_right_update(txn, pre, post, old_key, new_key, state, operator)
+// 	}
+// }
 
 #[derive(Debug, Clone)]
 pub(crate) struct InnerJoin;

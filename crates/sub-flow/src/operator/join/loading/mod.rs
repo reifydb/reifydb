@@ -11,11 +11,11 @@ mod eager;
 mod lazy;
 
 pub(crate) use eager::EagerLoading;
-pub(crate) use lazy::LazyLoading;
+// pub(crate) use lazy::LazyLoading;
 
 pub(crate) enum LoadingStrategy {
 	Eager(EagerLoading),
-	Lazy(LazyLoading),
+	// Lazy(LazyLoading),
 }
 
 impl LoadingStrategy {
@@ -29,7 +29,7 @@ impl LoadingStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			LoadingStrategy::Eager(s) => s.handle_left_insert(txn, post, key_hash, state, operator),
-			LoadingStrategy::Lazy(s) => s.handle_left_insert(txn, post, key_hash, state, operator),
+			// LoadingStrategy::Lazy(s) => s.handle_left_insert(txn, post, key_hash, state, operator),
 		}
 	}
 
@@ -43,7 +43,7 @@ impl LoadingStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			LoadingStrategy::Eager(s) => s.handle_right_insert(txn, post, key_hash, state, operator),
-			LoadingStrategy::Lazy(s) => s.handle_right_insert(txn, post, key_hash, state, operator),
+			// LoadingStrategy::Lazy(s) => s.handle_right_insert(txn, post, key_hash, state, operator),
 		}
 	}
 
@@ -57,7 +57,7 @@ impl LoadingStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			LoadingStrategy::Eager(s) => s.handle_left_remove(txn, pre, key_hash, state, operator),
-			LoadingStrategy::Lazy(s) => s.handle_left_remove(txn, pre, key_hash, state, operator),
+			// LoadingStrategy::Lazy(s) => s.handle_left_remove(txn, pre, key_hash, state, operator),
 		}
 	}
 
@@ -71,7 +71,7 @@ impl LoadingStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			LoadingStrategy::Eager(s) => s.handle_right_remove(txn, pre, key_hash, state, operator),
-			LoadingStrategy::Lazy(s) => s.handle_right_remove(txn, pre, key_hash, state, operator),
+			// LoadingStrategy::Lazy(s) => s.handle_right_remove(txn, pre, key_hash, state, operator),
 		}
 	}
 
@@ -88,10 +88,9 @@ impl LoadingStrategy {
 		match self {
 			LoadingStrategy::Eager(s) => {
 				s.handle_left_update(txn, pre, post, old_key, new_key, state, operator)
-			}
-			LoadingStrategy::Lazy(s) => {
-				s.handle_left_update(txn, pre, post, old_key, new_key, state, operator)
-			}
+			} /* LoadingStrategy::Lazy(s) => {
+			   * 	s.handle_left_update(txn, pre, post, old_key, new_key, state, operator)
+			   * } */
 		}
 	}
 
@@ -108,10 +107,9 @@ impl LoadingStrategy {
 		match self {
 			LoadingStrategy::Eager(s) => {
 				s.handle_right_update(txn, pre, post, old_key, new_key, state, operator)
-			}
-			LoadingStrategy::Lazy(s) => {
-				s.handle_right_update(txn, pre, post, old_key, new_key, state, operator)
-			}
+			} /* LoadingStrategy::Lazy(s) => {
+			   * 	s.handle_right_update(txn, pre, post, old_key, new_key, state, operator)
+			   * } */
 		}
 	}
 }
