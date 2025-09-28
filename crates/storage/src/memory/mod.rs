@@ -1,8 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{ops::Deref, sync::Arc};
+use std::{
+	ops::Deref,
+	sync::{Arc, mpsc},
+};
 
+use mpsc::Sender;
 pub use range::Range;
 pub use range_rev::RangeRev;
 pub use scan::MultiVersionIter;
@@ -16,6 +20,7 @@ mod range;
 mod range_rev;
 mod scan;
 mod scan_rev;
+mod write;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
@@ -24,6 +29,7 @@ use reifydb_core::{
 	util::MultiVersionContainer,
 	value::row::EncodedRow,
 };
+use write::{WriteCommand, Writer};
 
 pub type MultiVersionRowContainer = MultiVersionContainer<EncodedRow>;
 
@@ -31,9 +37,10 @@ pub type MultiVersionRowContainer = MultiVersionContainer<EncodedRow>;
 pub struct Memory(Arc<MemoryInner>);
 
 pub struct MemoryInner {
-	multi: SkipMap<EncodedKey, MultiVersionRowContainer>,
-	single: SkipMap<EncodedKey, EncodedRow>,
-	cdcs: SkipMap<CommitVersion, Cdc>,
+	multi: Arc<SkipMap<EncodedKey, MultiVersionRowContainer>>,
+	single: Arc<SkipMap<EncodedKey, EncodedRow>>,
+	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
+	writer: Sender<WriteCommand>,
 }
 
 impl Deref for Memory {
@@ -41,6 +48,12 @@ impl Deref for Memory {
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
+	}
+}
+
+impl Drop for MemoryInner {
+	fn drop(&mut self) {
+		let _ = self.writer.send(WriteCommand::Shutdown);
 	}
 }
 
@@ -52,10 +65,18 @@ impl Default for Memory {
 
 impl Memory {
 	pub fn new() -> Self {
+		let multi = Arc::new(SkipMap::new());
+		let single = Arc::new(SkipMap::new());
+		let cdcs = Arc::new(SkipMap::new());
+
+		let writer = Writer::spawn(multi.clone(), single.clone(), cdcs.clone())
+			.expect("Failed to spawn memory writer thread");
+
 		Self(Arc::new(MemoryInner {
-			multi: SkipMap::new(),
-			single: SkipMap::new(),
-			cdcs: SkipMap::new(),
+			multi,
+			single,
+			cdcs,
+			writer,
 		}))
 	}
 }

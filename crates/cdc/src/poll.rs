@@ -95,7 +95,6 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 
 		let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
 
-		// Filter transactions to only those with Row changes
 		let row_transactions = transactions
 			.into_iter()
 			.filter(|tx| {
@@ -139,15 +138,15 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 			config.poll_interval
 		);
 
+		let mut iteration = 0u64;
 		while state.running.load(Ordering::Acquire) {
+			iteration += 1;
 			if let Err(error) = Self::consume_batch(&state, &engine, &consumer) {
 				log_error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
 			}
 
 			thread::sleep(config.poll_interval);
 		}
-
-		log_debug!("[Consumer {:?}] Stopped", config.consumer_id);
 	}
 }
 
@@ -191,8 +190,5 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer for PollConsumer<T,
 }
 
 fn fetch_cdcs_since(txn: &mut impl CommandTransaction, since_version: CommitVersion) -> Result<Vec<Cdc>> {
-	txn.with_cdc_query(|cdc| {
-		// Get all transactions since the checkpoint
-		Ok(cdc.range(Bound::Excluded(since_version), Bound::Unbounded)?.collect::<Vec<_>>())
-	})
+	txn.with_cdc_query(|cdc| Ok(cdc.range(Bound::Excluded(since_version), Bound::Unbounded)?.collect::<Vec<_>>()))
 }

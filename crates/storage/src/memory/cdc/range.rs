@@ -29,11 +29,6 @@ impl<'a> Iterator for Range<'a> {
 	type Item = Cdc;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		// Get the next transaction
-		if let Some(entry) = self.version_iter.next() {
-			Some(entry.value().clone())
-		} else {
-			None
-		}
+		self.version_iter.next().map(|entry| entry.value().clone())
 	}
 }

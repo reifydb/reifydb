@@ -10,7 +10,6 @@ use crate::memory::Memory;
 
 impl CdcGet for Memory {
 	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
-		// Get the transaction for this specific version
 		if let Some(entry) = self.cdcs.get(&version) {
 			Ok(Some(entry.value().clone()))
 		} else {
