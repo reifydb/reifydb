@@ -1,0 +1,41 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test rollback behavior with set_as_of_inclusive
+
+import a=1 b=2
+---
+ok
+
+# Create version 2
+t1: begin
+t1: set a=10
+t1: commit
+---
+ok
+
+# Start transaction at version 1, make changes, then rollback
+t2: begin
+t2: set_as_of_inclusive 1
+t2: get a
+---
+t2: "a" => "1"
+
+t2: set a=100 c=300
+t2: get a c
+---
+t2: "a" => "100"
+t2: "c" => "300"
+
+# Rollback the changes
+t2: rollback
+---
+ok
+
+# New transaction should not see rolled back changes
+t3: begin
+t3: get a b c
+---
+t3: "a" => "10"
+t3: "b" => "2"
+t3: "c" => None

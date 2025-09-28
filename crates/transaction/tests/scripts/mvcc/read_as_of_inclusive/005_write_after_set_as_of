@@ -1,0 +1,42 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test that writes work correctly after setting version
+
+import a=1 b=2
+---
+ok
+
+# Create version 2
+t1: begin
+t1: set a=10
+t1: commit
+---
+ok
+
+# Start new transaction, set to version 1, then write
+t2: begin
+t2: set_as_of_inclusive 1
+t2: get a
+---
+t2: "a" => "1"
+
+# Write should work
+t2: set a=100 c=300
+t2: get a c
+---
+t2: "a" => "100"
+t2: "c" => "300"
+
+# Commit should succeed
+t2: commit
+---
+ok
+
+# New transaction should see the changes
+t3: begin
+t3: get a b c
+---
+t3: "a" => "100"
+t3: "b" => "2"
+t3: "c" => "300"

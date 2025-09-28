@@ -62,6 +62,7 @@ where
 			id: TransactionId::generate(),
 			oracle: self.inner.clone(),
 			version: self.inner.version()?,
+			read_version: None,
 			size: 0,
 			count: 0,
 			conflicts: ConflictManager::new(),

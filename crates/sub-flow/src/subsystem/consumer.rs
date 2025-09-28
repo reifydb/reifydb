@@ -7,8 +7,8 @@ use reifydb_core::{
 	Result,
 	flow::{Flow, FlowChange, FlowDiff},
 	interface::{
-		CdcChange, CdcEvent, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, QueryTransaction,
-		SourceId, Transaction,
+		CdcChange, CdcEvent, Engine, GetEncodedRowNamedLayout, Identity, Key, MultiVersionCommandTransaction,
+		Params, QueryTransaction, SourceId, Transaction,
 	},
 	util::CowVec,
 	value::row::{EncodedRow, Row},
@@ -186,6 +186,8 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 		let mut changes = Vec::new();
 
 		for event in events {
+			txn.read_as_of_version_inclusive(event.version)?;
+
 			if let Some(decoded_key) = Key::decode(event.key()) {
 				if let Key::Row(table_row) = decoded_key {
 					let source_id = table_row.source;

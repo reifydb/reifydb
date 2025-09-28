@@ -293,6 +293,12 @@ impl<T: Transaction> MultiVersionCommandTransaction for StandardCommandTransacti
 		self.state = TransactionState::RolledBack;
 		self.multi.take().unwrap().rollback()
 	}
+
+	#[inline]
+	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
+		self.check_active()?;
+		self.multi.as_mut().unwrap().read_as_of_version_exclusive(version)
+	}
 }
 
 impl<T: Transaction> WithEventBus for StandardCommandTransaction<T> {

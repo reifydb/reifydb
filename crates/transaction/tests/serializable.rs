@@ -14,7 +14,7 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path:
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	event::EventBus,
-	interface::MultiVersionRow,
+	interface::{MultiVersionCommandTransaction, MultiVersionRow},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::row::EncodedRow,
 };
@@ -284,12 +284,8 @@ impl<'a> testscript::Runner for MvccRunner {
 
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let prefix = EncodedKey(decode_binary(
-					&args.next_pos()
-						.ok_or("prefix
-not given")?
-						.value,
-				));
+				let prefix =
+					EncodedKey(decode_binary(&args.next_pos().ok_or("prefixnot given")?.value));
 				args.reject_rest()?;
 
 				match t {
@@ -327,6 +323,50 @@ not given")?
 					}
 				}
 				args.reject_rest()?;
+			}
+
+			// tx: set_as_of_inclusive VERSION
+			"set_as_of_inclusive" => {
+				let t = self.get_transaction(&command.prefix)?;
+				let mut args = command.consume_args();
+				let version: u64 = args
+					.next_pos()
+					.ok_or("version not provided")?
+					.value
+					.parse()
+					.map_err(|_| "invalid version number")?;
+				args.reject_rest()?;
+
+				match t {
+					Transaction::Query(rx) => {
+						rx.read_as_of_version_inclusive(version);
+					}
+					Transaction::Command(tx) => {
+						tx.read_as_of_version_inclusive(version);
+					}
+				}
+			}
+
+			// tx: set_as_of_exclusive VERSION
+			"set_as_of_exclusive" => {
+				let t = self.get_transaction(&command.prefix)?;
+				let mut args = command.consume_args();
+				let version: u64 = args
+					.next_pos()
+					.ok_or("version not provided")?
+					.value
+					.parse()
+					.map_err(|_| "invalid version number")?;
+				args.reject_rest()?;
+
+				match t {
+					Transaction::Query(rx) => {
+						rx.read_as_of_version_exclusive(version);
+					}
+					Transaction::Command(tx) => {
+						tx.read_as_of_version_exclusive(version);
+					}
+				}
 			}
 
 			name => {

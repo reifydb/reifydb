@@ -51,7 +51,7 @@ fn test_versions() {
 
 	for idx in 1..10 {
 		let mut txn = engine.begin_command().unwrap();
-		txn.as_of_version(idx + 1); // Read version at idx.
+		txn.read_as_of_version_exclusive(idx + 1); // Read version at idx.
 
 		let v = idx;
 		{

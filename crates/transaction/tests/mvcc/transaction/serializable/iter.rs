@@ -205,19 +205,19 @@ fn test_iter_edge_case() {
 	check_rev_iter(itr, &[13, 32]);
 	check_rev_iter(itr5, &[13, 24]);
 
-	txn.as_of_version(4);
+	txn.read_as_of_version_exclusive(4);
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[32, 23, 13]);
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[13, 23, 32]);
 
-	txn.as_of_version(3);
+	txn.read_as_of_version_exclusive(3);
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[32, 12]);
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[12, 32]);
 
-	txn.as_of_version(2);
+	txn.read_as_of_version_exclusive(2);
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[31]);
 	let itr = txn.scan_rev().unwrap();
@@ -291,21 +291,21 @@ fn test_iter_edge_case2() {
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[13, 32]);
 
-	txn.as_of_version(4);
+	txn.read_as_of_version_exclusive(4);
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[32, 23, 13]);
 
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[13, 23, 32]);
 
-	txn.as_of_version(3);
+	txn.read_as_of_version_exclusive(3);
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[32, 12]);
 
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[12, 32]);
 
-	txn.as_of_version(2);
+	txn.read_as_of_version_exclusive(2);
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[31]);
 	let itr = txn.scan_rev().unwrap();

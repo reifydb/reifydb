@@ -1,0 +1,76 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test range queries at specific versions
+
+import a=1 b=2 c=3
+---
+ok
+
+t1: begin
+t1: set d=4 e=5
+t1: commit
+---
+ok
+
+t2: begin
+t2: set f=6 g=7
+t2: commit
+---
+ok
+
+t3: begin
+t3: remove c
+t3: set h=8
+t3: commit
+---
+ok
+
+# Range query at version 1
+t4: begin
+t4: set_as_of_inclusive 1
+t4: range a..d
+---
+t4: "a" => "1"
+t4: "b" => "2"
+t4: "c" => "3"
+
+# Range query at version 2
+t4: set_as_of_inclusive 2
+t4: range a..f
+---
+t4: "a" => "1"
+t4: "b" => "2"
+t4: "c" => "3"
+t4: "d" => "4"
+t4: "e" => "5"
+
+# Range query at version 3
+t4: set_as_of_inclusive 3
+t4: range c..h
+---
+t4: "c" => "3"
+t4: "d" => "4"
+t4: "e" => "5"
+t4: "f" => "6"
+t4: "g" => "7"
+
+# Range query at version 4 (c deleted)
+t4: set_as_of_inclusive 4
+t4: range c..h
+---
+t4: "d" => "4"
+t4: "e" => "5"
+t4: "f" => "6"
+t4: "g" => "7"
+
+# Prefix query at version 2
+t5: begin
+t5: set_as_of_inclusive 2
+t5: prefix ""
+---
+t5: "a" => "1"
+t5: "b" => "2"
+t5: "c" => "3"
+t5: "d" => "4"
+t5: "e" => "5"

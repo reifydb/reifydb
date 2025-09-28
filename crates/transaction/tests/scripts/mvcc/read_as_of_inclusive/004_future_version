@@ -1,0 +1,46 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test setting version to a future/non-existent version
+
+import a=1 b=2
+---
+ok
+
+# Current version is 1
+t1: begin
+t1: version
+---
+t1: 2
+
+# Set to a future version that doesn't exist yet
+t1: set_as_of_inclusive 100
+t1: get a b
+---
+t1: "a" => "1"
+t1: "b" => "2"
+
+# Should see all data up to current version
+t1: scan
+---
+t1: "a" => "1"
+t1: "b" => "2"
+
+# Make a change
+t2: begin
+t2: set c=3
+t2: commit
+---
+ok
+
+# Transaction at version 100 should still see up to version 2
+t1: get c
+---
+t1: "c" => "3"
+
+# New transaction at version 100 should see version 2
+t3: begin
+t3: set_as_of_inclusive 100
+t3: get c
+---
+t3: "c" => "3"

@@ -212,7 +212,7 @@ fn test_range_edge() {
 	let itr = txn.range_rev(ten_to_one.clone()).unwrap();
 	check_rev_iter(itr, &[13, 32]);
 
-	txn.as_of_version(6);
+	txn.read_as_of_version_exclusive(6);
 	let itr = txn.range(ten_to_one.clone()).unwrap();
 	let mut count = 2;
 	for v in itr {
@@ -239,21 +239,21 @@ fn test_range_edge() {
 	}
 	assert_eq!(0, count);
 
-	txn.as_of_version(4);
+	txn.read_as_of_version_exclusive(4);
 	let itr = txn.range(ten_to_one.clone()).unwrap();
 	check_iter(itr, &[32, 23, 13]);
 
 	let itr = txn.range_rev(ten_to_one.clone()).unwrap();
 	check_rev_iter(itr, &[13, 23, 32]);
 
-	txn.as_of_version(3);
+	txn.read_as_of_version_exclusive(3);
 	let itr = txn.range(ten_to_one.clone()).unwrap();
 	check_iter(itr, &[32, 12]);
 
 	let itr = txn.range_rev(ten_to_one.clone()).unwrap();
 	check_rev_iter(itr, &[12, 32]);
 
-	txn.as_of_version(2);
+	txn.read_as_of_version_exclusive(2);
 	let itr = txn.range(ten_to_one.clone()).unwrap();
 	check_iter(itr, &[31]);
 	let itr = txn.range_rev(ten_to_one.clone()).unwrap();

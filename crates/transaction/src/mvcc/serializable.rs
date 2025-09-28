@@ -192,4 +192,9 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionComma
 		CommandTransaction::rollback(&mut self)?;
 		Ok(())
 	}
+
+	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), Error> {
+		CommandTransaction::read_as_of_version_exclusive(self, version);
+		Ok(())
+	}
 }

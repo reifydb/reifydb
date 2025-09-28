@@ -58,6 +58,10 @@ where
 			TransactionKind::TimeTravel(version) => version,
 		}
 	}
+
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
+		self.transaction = TransactionKind::TimeTravel(version);
+	}
 }
 
 impl<L> Drop for TransactionManagerQuery<L>

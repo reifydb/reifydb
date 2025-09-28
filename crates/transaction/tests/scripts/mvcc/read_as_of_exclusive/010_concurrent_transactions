@@ -1,0 +1,69 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test multiple transactions with different as_of versions
+
+import a=1
+---
+ok
+
+t1: begin
+t1: set a=2
+t1: commit
+---
+ok
+
+t2: begin
+t2: set a=3
+t2: commit
+---
+ok
+
+# Three concurrent transactions at different versions
+t3: begin
+t3: set_as_of_exclusive 1
+---
+ok
+
+t4: begin
+t4: set_as_of_exclusive 2
+---
+ok
+
+t5: begin
+t5: set_as_of_exclusive 3
+---
+ok
+
+# Each should see different values
+t3: get a
+---
+t3: "a" => None
+
+t4: get a
+---
+t4: "a" => "1"
+
+t5: get a
+---
+t5: "a" => "2"
+
+# Make a new change
+t6: begin
+t6: set a=4
+t6: commit
+---
+ok
+
+# Original transactions should still see their versions
+t3: get a
+---
+t3: "a" => None
+
+t4: get a
+---
+t4: "a" => "1"
+
+t5: get a
+---
+t5: "a" => "2"

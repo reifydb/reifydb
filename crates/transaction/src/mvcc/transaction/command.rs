@@ -26,6 +26,7 @@ where
 {
 	pub(super) id: TransactionId,
 	pub(super) version: CommitVersion,
+	pub(super) read_version: Option<CommitVersion>, // Separate read version for as_of queries
 	pub(super) size: u64,
 	pub(super) count: u64,
 	pub(super) oracle: Arc<Oracle<L>>,
@@ -58,14 +59,19 @@ where
 		self.id
 	}
 
-	/// Returns the version of the transaction.
+	/// Returns the version for reading (uses read_version if set, otherwise base version).
 	pub fn version(&self) -> CommitVersion {
+		self.read_version.unwrap_or(self.version)
+	}
+
+	/// Returns the base version for writes and conflict detection.
+	pub fn base_version(&self) -> CommitVersion {
 		self.version
 	}
 
-	/// Sets the current version of the transaction manager.
-	pub fn as_of_version(&mut self, version: CommitVersion) {
-		self.version = version;
+	/// Sets the read version for as-of queries without affecting write/commit version.
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
+		self.read_version = Some(version);
 	}
 
 	/// Returns the pending writes
@@ -260,7 +266,7 @@ where
 				key: key.clone(),
 				row,
 			},
-			version: self.version,
+			version: self.base_version(), // Use base version for writes, not read version
 		})
 	}
 
@@ -328,8 +334,9 @@ where
 		// global lock here
 
 		let conflict_manager = mem::take(&mut self.conflicts);
+		let base_version = self.base_version();
 
-		match self.oracle.new_commit(&mut self.done_query, self.version, conflict_manager)? {
+		match self.oracle.new_commit(&mut self.done_query, base_version, conflict_manager)? {
 			CreateCommitResult::Conflict(conflicts) => {
 				// If there is a conflict, we should not send
 				// the updates to the write channel.

@@ -1,0 +1,56 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test setting version after some reads/writes
+
+import a=1 b=2
+---
+ok
+
+t1: begin
+t1: set a=10
+t1: commit
+---
+ok
+
+# Start transaction and do some operations
+t2: begin
+t2: get a b
+---
+t2: "a" => "10"
+t2: "b" => "2"
+
+# Write something
+t2: set c=100
+t2: get c
+---
+t2: "c" => "100"
+
+# Now set to earlier version
+t2: set_as_of_inclusive 1
+t2: get a b
+---
+t2: "a" => "1"
+t2: "b" => "2"
+
+# Previous write should still be visible
+t2: get c
+---
+t2: "c" => "100"
+
+# Can still write more
+t2: set d=200
+t2: get d
+---
+t2: "d" => "200"
+
+t2: commit
+---
+ok
+
+# Verify changes were committed
+t3: begin
+t3: get c d
+---
+t3: "c" => "100"
+t3: "d" => "200"

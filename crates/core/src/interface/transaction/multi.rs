@@ -66,4 +66,10 @@ pub trait MultiVersionCommandTransaction: MultiVersionQueryTransaction {
 	fn commit(self) -> crate::Result<crate::CommitVersion>;
 
 	fn rollback(self) -> crate::Result<()>;
+
+	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()>;
+
+	fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
+		self.read_as_of_version_exclusive(version + 1)
+	}
 }
