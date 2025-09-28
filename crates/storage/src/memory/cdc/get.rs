@@ -3,19 +3,18 @@
 
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{CdcEvent, CdcGet},
+	interface::{Cdc, CdcGet},
 };
 
 use crate::memory::Memory;
 
 impl CdcGet for Memory {
-	fn get(&self, version: CommitVersion) -> Result<Vec<CdcEvent>> {
-		// Get the transaction for this specific version and convert to
-		// events
-		if let Some(entry) = self.cdc_transactions.get(&version) {
-			Ok(entry.value().to_events().collect())
+	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
+		// Get the transaction for this specific version
+		if let Some(entry) = self.cdcs.get(&version) {
+			Ok(Some(entry.value().clone()))
 		} else {
-			Ok(vec![])
+			Ok(None)
 		}
 	}
 }

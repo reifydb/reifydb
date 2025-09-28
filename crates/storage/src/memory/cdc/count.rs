@@ -9,7 +9,7 @@ impl CdcCount for Memory {
 	fn count(&self, version: CommitVersion) -> Result<usize> {
 		// Get the transaction for this specific version and count
 		// changes
-		if let Some(entry) = self.cdc_transactions.get(&version) {
+		if let Some(entry) = self.cdcs.get(&version) {
 			Ok(entry.value().changes.len())
 		} else {
 			Ok(0)

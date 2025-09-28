@@ -6,7 +6,7 @@ use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	Result,
 	interface::{
-		CdcChange, CdcEvent, Engine, GetEncodedRowNamedLayout, Identity, Key, MultiVersionCommandTransaction,
+		Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, MultiVersionCommandTransaction,
 		Params, QueryTransaction, SourceId, Transaction,
 	},
 	util::CowVec,
@@ -182,59 +182,61 @@ impl<T: Transaction> FlowConsumer<T> {
 }
 
 impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
-	fn consume(&self, txn: &mut StandardCommandTransaction<T>, events: Vec<CdcEvent>) -> Result<()> {
-		let mut changes = Vec::new();
+	fn consume(&self, txn: &mut StandardCommandTransaction<T>, cdcs: Vec<Cdc>) -> Result<()> {
+		for cdc in cdcs {
+			txn.read_as_of_version_inclusive(cdc.version)?;
 
-		for event in events {
-			txn.read_as_of_version_inclusive(event.version)?;
+			for sequenced_change in cdc.changes {
+				let mut to_process = Vec::new();
 
-			if let Some(decoded_key) = Key::decode(event.key()) {
-				if let Key::Row(table_row) = decoded_key {
-					let source_id = table_row.source;
+				if let Some(decoded_key) = Key::decode(sequenced_change.key()) {
+					if let Key::Row(table_row) = decoded_key {
+						let source_id = table_row.source;
 
-					// Skip flow table changes - we don't
-					// need to process them as data changes
-					if source_id.as_u64() == FLOWS_TABLE_ID {
-						continue;
+						// Skip flow table changes - we don't
+						// need to process them as data changes
+						if source_id.as_u64() == FLOWS_TABLE_ID {
+							continue;
+						}
+
+						let change = match &sequenced_change.change {
+							CdcChange::Insert {
+								post,
+								..
+							} => Change::Insert {
+								source_id,
+								row_number: table_row.row,
+								post: post.to_vec(),
+							},
+							CdcChange::Update {
+								pre,
+								post,
+								..
+							} => Change::Update {
+								source_id,
+								row_number: table_row.row,
+								pre: pre.to_vec(),
+								post: post.to_vec(),
+							},
+							CdcChange::Delete {
+								pre,
+								..
+							} => Change::Delete {
+								source_id,
+								row_number: table_row.row,
+								pre: pre.as_ref()
+									.map(|row| row.to_vec())
+									.unwrap_or_else(Vec::new),
+							},
+						};
+						to_process.push(change);
 					}
+				}
 
-					let change = match &event.change {
-						CdcChange::Insert {
-							post,
-							..
-						} => Change::Insert {
-							source_id,
-							row_number: table_row.row,
-							post: post.to_vec(),
-						},
-						CdcChange::Update {
-							pre,
-							post,
-							..
-						} => Change::Update {
-							source_id,
-							row_number: table_row.row,
-							pre: pre.to_vec(),
-							post: post.to_vec(),
-						},
-						CdcChange::Delete {
-							pre,
-							..
-						} => Change::Delete {
-							source_id,
-							row_number: table_row.row,
-							pre: pre.as_ref()
-								.map(|row| row.to_vec())
-								.unwrap_or_else(Vec::new),
-						},
-					};
-					changes.push(change);
+				if !to_process.is_empty() {
+					self.process_changes(txn, to_process)?;
 				}
 			}
-		}
-
-		if !changes.is_empty() {
-			self.process_changes(txn, changes)?;
 		}
 
 		Ok(())

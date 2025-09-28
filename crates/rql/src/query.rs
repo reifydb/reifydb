@@ -23,7 +23,6 @@ impl QueryString {
 
 	pub fn from(subquery: &AstSubQuery) -> crate::Result<Self> {
 		let query_str = reconstruct_statement(&subquery.statement)?;
-		println!("reconstructed query: {}", query_str);
 		Ok(QueryString(query_str))
 	}
 

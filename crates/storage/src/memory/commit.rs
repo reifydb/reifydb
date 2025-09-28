@@ -4,13 +4,13 @@
 use reifydb_core::{
 	CommitVersion, CowVec, Result,
 	delta::Delta,
-	interface::{MultiVersionCommit, SingleVersionCommit, TransactionId},
+	interface::{Cdc, CdcSequencedChange, MultiVersionCommit, SingleVersionCommit, TransactionId},
 	return_error,
 	util::now_millis,
 };
 
 use crate::{
-	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
+	cdc::generate_cdc_change,
 	diagnostic::sequence_exhausted,
 	memory::{Memory, MultiVersionRowContainer},
 };
@@ -19,7 +19,7 @@ impl MultiVersionCommit for Memory {
 	fn commit(&self, delta: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
 		let timestamp = now_millis();
 
-		let mut cdc_changes = Vec::new();
+		let mut cdcs = Vec::new();
 
 		for (idx, delta) in delta.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {
@@ -55,15 +55,15 @@ impl MultiVersionCommit for Memory {
 				}
 			}
 
-			cdc_changes.push(CdcTransactionChange {
+			cdcs.push(CdcSequencedChange {
 				sequence,
 				change: generate_cdc_change(delta.clone(), before_value),
 			});
 		}
 
-		if !cdc_changes.is_empty() {
-			let cdc_transaction = CdcTransaction::new(version, timestamp, transaction, cdc_changes);
-			self.cdc_transactions.insert(version, cdc_transaction);
+		if !cdcs.is_empty() {
+			let cdc = Cdc::new(version, timestamp, transaction, cdcs);
+			self.cdcs.insert(version, cdc);
 		}
 
 		Ok(())

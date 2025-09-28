@@ -4,13 +4,17 @@
 use std::{collections::HashSet, path::Path, sync::mpsc, thread};
 
 use mpsc::Sender;
-use reifydb_core::{CommitVersion, CowVec, EncodedKey, TransactionId, delta::Delta};
+use reifydb_core::{
+	CommitVersion, CowVec, EncodedKey, TransactionId,
+	delta::Delta,
+	interface::{Cdc, CdcSequencedChange},
+};
 use reifydb_type::{Error, Result, return_error};
 use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
 
 use super::diagnostic::{from_rusqlite_error, transaction_failed};
 use crate::{
-	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
+	cdc::generate_cdc_change,
 	diagnostic::{connection_failed, sequence_exhausted},
 	sqlite::{
 		cdc::{fetch_pre_value, store_cdc_transaction},
@@ -121,8 +125,8 @@ impl Writer {
 		deltas: &[Delta],
 		version: CommitVersion,
 		ensured_tables: &mut HashSet<String>,
-	) -> Result<Vec<CdcTransactionChange>> {
-		let mut cdc_changes = Vec::with_capacity(deltas.len());
+	) -> Result<Vec<CdcSequencedChange>> {
+		let mut result = Vec::with_capacity(deltas.len());
 
 		for (idx, delta) in deltas.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {
@@ -135,13 +139,13 @@ impl Writer {
 
 			Self::apply_single_delta(tx, delta, version, ensured_tables)?;
 
-			cdc_changes.push(CdcTransactionChange {
+			result.push(CdcSequencedChange {
 				sequence,
 				change: generate_cdc_change(delta.clone(), pre),
 			});
 		}
 
-		Ok(cdc_changes)
+		Ok(result)
 	}
 
 	fn apply_single_delta(
@@ -211,9 +215,9 @@ impl Writer {
 		version: CommitVersion,
 		timestamp: u64,
 		transaction: TransactionId,
-		cdc_changes: Vec<CdcTransactionChange>,
+		cdc_changes: Vec<CdcSequencedChange>,
 	) -> Result<()> {
-		store_cdc_transaction(tx, CdcTransaction::new(version, timestamp, transaction, cdc_changes))
+		store_cdc_transaction(tx, Cdc::new(version, timestamp, transaction, cdc_changes))
 			.map_err(|e| Error(from_rusqlite_error(e)))
 	}
 }

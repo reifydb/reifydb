@@ -1,0 +1,80 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test scan with no data
+cdc_scan
+---
+ok
+
+# Create some CDC events
+insert 1 a=1
+commit
+---
+ok
+
+# Test scan with single event
+cdc_scan
+---
+v1 Change { seq: 1, change: Insert { key: "a", post: "1" } }
+
+# Add more events
+insert 2 b=2
+update 2 a=10
+commit
+---
+ok
+
+# Test scan with multiple versions
+cdc_scan
+---
+v1 Change { seq: 1, change: Insert { key: "a", post: "1" } }
+v2 Change { seq: 1, change: Insert { key: "b", post: "2" } }
+v2 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+
+# Add more complex transactions
+delete 3 b
+insert 3 c=3
+insert 3 d=4
+commit
+---
+ok
+
+update 4 c=30
+delete 4 d
+commit
+---
+ok
+
+# Test scan returns all events in order
+cdc_scan
+---
+v1 Change { seq: 1, change: Insert { key: "a", post: "1" } }
+v2 Change { seq: 1, change: Insert { key: "b", post: "2" } }
+v2 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+v3 Change { seq: 1, change: Delete { key: "b", pre: "2" } }
+v3 Change { seq: 2, change: Insert { key: "c", post: "3" } }
+v3 Change { seq: 3, change: Insert { key: "d", post: "4" } }
+v4 Change { seq: 1, change: Update { key: "c", pre: "3", post: "30" } }
+v4 Change { seq: 2, change: Delete { key: "d", pre: "4" } }
+
+# Test count operations
+cdc_count 1
+---
+count: 1
+
+cdc_count 2
+---
+count: 2
+
+cdc_count 3
+---
+count: 3
+
+cdc_count 4
+---
+count: 2
+
+# Test count for non-existent version
+cdc_count 5
+---
+count: 0

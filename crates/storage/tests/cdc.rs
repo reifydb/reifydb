@@ -9,8 +9,8 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, async_cow_vec,
 	delta::Delta,
 	interface::{
-		CdcChange, CdcEvent, CdcGet, CdcRange, CdcScan, CdcStorage, MultiVersionCommit, MultiVersionGet,
-		MultiVersionStorage, TransactionId,
+		Cdc, CdcChange, CdcGet, CdcRange, CdcScan, CdcSequencedChange, CdcStorage, MultiVersionCommit,
+		MultiVersionGet, MultiVersionStorage, TransactionId,
 	},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::row::EncodedRow,
@@ -59,48 +59,62 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 		}
 	}
 
-	fn format_cdc_event(event: &CdcEvent) -> String {
+	fn format_cdc_change(change: &CdcChange) -> String {
 		let format_value = |row: &EncodedRow| format::Raw::bytes(row.as_slice());
 		let format_option_value = |row_opt: &Option<EncodedRow>| match row_opt {
 			Some(row) => format::Raw::bytes(row.as_slice()),
 			None => "\"<deleted>\"".to_string(),
 		};
 
-		let change_str = match &event.change {
+		match change {
 			CdcChange::Insert {
 				key,
-				post: after,
+				post,
 			} => {
-				format!("Insert {{ key: {}, after: {} }}", format::Raw::key(key), format_value(after))
+				format!(
+					"Insert {{ key: {}, post: {} }}",
+					format::Raw::key(key.as_slice()),
+					format_value(post)
+				)
 			}
 			CdcChange::Update {
 				key,
-				pre: before,
-				post: after,
+				pre,
+				post,
 			} => {
 				format!(
-					"Update {{ key: {}, before: {}, after: {} }}",
-					format::Raw::key(key),
-					format_value(before),
-					format_value(after)
+					"Update {{ key: {}, pre: {}, post: {} }}",
+					format::Raw::key(key.as_slice()),
+					format_value(pre),
+					format_value(post)
 				)
 			}
 			CdcChange::Delete {
 				key,
-				pre: before,
+				pre,
 			} => {
 				format!(
-					"Delete {{ key: {}, before: {} }}",
-					format::Raw::key(key),
-					format_option_value(before)
+					"Delete {{ key: {}, pre: {} }}",
+					format::Raw::key(key.as_slice()),
+					format_option_value(pre)
 				)
 			}
-		};
+		}
+	}
 
-		format!(
-			"CdcEvent {{ version: {}, seq: {}, ts: {}, change: {} }}",
-			event.version, event.sequence, event.timestamp, change_str
-		)
+	fn format_cdc(cdc: &Cdc) -> String {
+		let changes_str = cdc
+			.changes
+			.iter()
+			.map(|c| format!("{{ seq: {}, change: {} }}", c.sequence, Self::format_cdc_change(&c.change)))
+			.collect::<Vec<_>>()
+			.join(", ");
+
+		format!("Cdc {{ version: {}, ts: {}, changes: [{}] }}", cdc.version, cdc.timestamp, changes_str)
+	}
+
+	fn format_sequenced_change(change: &CdcSequencedChange) -> String {
+		format!("Change {{ seq: {}, change: {} }}", change.sequence, Self::format_cdc_change(&change.change))
 	}
 }
 
@@ -219,7 +233,7 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 				writeln!(output, "ok")?;
 			}
 
-			// cdc_get VERSION SEQUENCE
+			// cdc_get VERSION [SEQUENCE] - get entire transaction or specific change
 			"cdc_get" => {
 				let mut args = command.consume_args();
 				let version = args
@@ -230,26 +244,33 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid version")?;
 				let sequence = args
 					.next_pos()
-					.ok_or("sequence not given")?
-					.value
-					.parse::<u16>()
+					.map(|arg| arg.value.parse::<u16>())
+					.transpose()
 					.map_err(|_| "invalid sequence")?;
 				args.reject_rest()?;
 
-				// Get all events for the version and find the
-				// one with matching sequence
-				let events = CdcGet::get(&self.storage, version)?;
-				let event = events.into_iter().find(|e| e.sequence == sequence);
+				let cdc = CdcGet::get(&self.storage, version)?;
 
-				if let Some(event) = event {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
-				} else {
-					writeln!(output, "None")?;
+				match (cdc, sequence) {
+					(Some(cdc), Some(seq)) => {
+						// Find specific change by sequence
+						if let Some(change) = cdc.changes.iter().find(|c| c.sequence == seq) {
+							writeln!(output, "{}", Self::format_sequenced_change(change))?;
+						} else {
+							writeln!(output, "None")?;
+						}
+					}
+					(Some(cdc), None) => {
+						// Return entire transaction
+						writeln!(output, "{}", Self::format_cdc(&cdc))?;
+					}
+					(None, _) => {
+						writeln!(output, "None")?;
+					}
 				}
 			}
 
-			// cdc_range VERSION_START VERSION_END (for backward
-			// compatibility)
+			// cdc_range VERSION_START VERSION_END
 			"cdc_range" => {
 				let mut args = command.consume_args();
 				let start_version = args
@@ -266,24 +287,38 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
+				let cdcs = CdcRange::range(
 					&self.storage,
 					Bound::Included(start_version),
 					Bound::Included(end_version),
 				)?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
-			// cdc_range_unbounded - get all CDC events
+			// cdc_range_unbounded - get all CDC transactions
 			"cdc_range_unbounded" => {
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				let events = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Unbounded)?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				let cdcs = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Unbounded)?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
@@ -304,13 +339,20 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
+				let cdcs = CdcRange::range(
 					&self.storage,
 					Bound::Included(start_version),
 					Bound::Included(end_version),
 				)?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
@@ -331,13 +373,20 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
+				let cdcs = CdcRange::range(
 					&self.storage,
 					Bound::Included(start_version),
 					Bound::Excluded(end_version),
 				)?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
@@ -358,13 +407,20 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
+				let cdcs = CdcRange::range(
 					&self.storage,
 					Bound::Excluded(start_version),
 					Bound::Included(end_version),
 				)?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
@@ -385,13 +441,20 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
+				let cdcs = CdcRange::range(
 					&self.storage,
 					Bound::Excluded(start_version),
 					Bound::Excluded(end_version),
 				)?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
@@ -406,10 +469,17 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let events =
+				let cdcs =
 					CdcRange::range(&self.storage, Bound::Unbounded, Bound::Included(end_version))?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
@@ -424,10 +494,17 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid end version")?;
 				args.reject_rest()?;
 
-				let events =
+				let cdcs =
 					CdcRange::range(&self.storage, Bound::Unbounded, Bound::Excluded(end_version))?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
@@ -442,13 +519,20 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid start version")?;
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
+				let cdcs = CdcRange::range(
 					&self.storage,
 					Bound::Included(start_version),
 					Bound::Unbounded,
 				)?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
@@ -463,13 +547,20 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid start version")?;
 				args.reject_rest()?;
 
-				let events = CdcRange::range(
+				let cdcs = CdcRange::range(
 					&self.storage,
 					Bound::Excluded(start_version),
 					Bound::Unbounded,
 				)?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 
@@ -478,9 +569,16 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				let events = CdcScan::scan(&self.storage)?;
-				for event in events {
-					writeln!(output, "{}", Self::format_cdc_event(&event))?;
+				let cdcs = CdcScan::scan(&self.storage)?;
+				for cdc in cdcs {
+					for change in &cdc.changes {
+						writeln!(
+							output,
+							"v{} {}",
+							cdc.version,
+							Self::format_sequenced_change(change)
+						)?;
+					}
 				}
 			}
 

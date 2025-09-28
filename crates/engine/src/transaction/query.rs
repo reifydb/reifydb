@@ -118,7 +118,10 @@ impl<T: Transaction> MultiVersionQueryTransaction for StandardQueryTransaction<T
 
 impl<T: Transaction> QueryTransaction for StandardQueryTransaction<T> {
 	type SingleVersionQuery<'a> = <T::SingleVersion as SingleVersionTransaction>::Query<'a>;
-	type CdcQuery<'a> = <T::Cdc as CdcTransaction>::Query<'a>;
+	type CdcQuery<'a>
+		= <T::Cdc as CdcTransaction>::Query<'a>
+	where
+		Self: 'a;
 
 	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
 		self.single.begin_query()

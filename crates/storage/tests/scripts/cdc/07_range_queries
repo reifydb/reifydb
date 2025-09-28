@@ -1,0 +1,107 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Setup: Create events across multiple versions
+insert 1 a=1
+commit
+---
+ok
+
+insert 2 b=2
+commit
+---
+ok
+
+insert 3 c=3
+update 3 a=10
+commit
+---
+ok
+
+insert 4 d=4
+commit
+---
+ok
+
+insert 5 e=5
+delete 5 b
+commit
+---
+ok
+
+# Test inclusive range [2, 4]
+cdc_range_included 2 4
+---
+v2 Change { seq: 1, change: Insert { key: "b", post: "2" } }
+v3 Change { seq: 1, change: Insert { key: "c", post: "3" } }
+v3 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+v4 Change { seq: 1, change: Insert { key: "d", post: "4" } }
+
+# Test inclusive-exclusive range [2, 4)
+cdc_range_included_excluded 2 4
+---
+v2 Change { seq: 1, change: Insert { key: "b", post: "2" } }
+v3 Change { seq: 1, change: Insert { key: "c", post: "3" } }
+v3 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+
+# Test exclusive-inclusive range (2, 4]
+cdc_range_excluded_included 2 4
+---
+v3 Change { seq: 1, change: Insert { key: "c", post: "3" } }
+v3 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+v4 Change { seq: 1, change: Insert { key: "d", post: "4" } }
+
+# Test exclusive-exclusive range (2, 4)
+cdc_range_excluded_excluded 2 4
+---
+v3 Change { seq: 1, change: Insert { key: "c", post: "3" } }
+v3 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+
+# Test range from start [1, 3]
+cdc_range_included 1 3
+---
+v1 Change { seq: 1, change: Insert { key: "a", post: "1" } }
+v2 Change { seq: 1, change: Insert { key: "b", post: "2" } }
+v3 Change { seq: 1, change: Insert { key: "c", post: "3" } }
+v3 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+
+# Test unbounded start ..=3
+cdc_range_to_included 3
+---
+v1 Change { seq: 1, change: Insert { key: "a", post: "1" } }
+v2 Change { seq: 1, change: Insert { key: "b", post: "2" } }
+v3 Change { seq: 1, change: Insert { key: "c", post: "3" } }
+v3 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+
+# Test unbounded start ..<3
+cdc_range_to_excluded 3
+---
+v1 Change { seq: 1, change: Insert { key: "a", post: "1" } }
+v2 Change { seq: 1, change: Insert { key: "b", post: "2" } }
+
+# Test unbounded end 3..
+cdc_range_from_included 3
+---
+v3 Change { seq: 1, change: Insert { key: "c", post: "3" } }
+v3 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+v4 Change { seq: 1, change: Insert { key: "d", post: "4" } }
+v5 Change { seq: 1, change: Insert { key: "e", post: "5" } }
+v5 Change { seq: 2, change: Delete { key: "b", pre: "2" } }
+
+# Test unbounded end 3>..
+cdc_range_from_excluded 3
+---
+v4 Change { seq: 1, change: Insert { key: "d", post: "4" } }
+v5 Change { seq: 1, change: Insert { key: "e", post: "5" } }
+v5 Change { seq: 2, change: Delete { key: "b", pre: "2" } }
+
+# Test fully unbounded range
+cdc_range_unbounded
+---
+v1 Change { seq: 1, change: Insert { key: "a", post: "1" } }
+v2 Change { seq: 1, change: Insert { key: "b", post: "2" } }
+v3 Change { seq: 1, change: Insert { key: "c", post: "3" } }
+v3 Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+v4 Change { seq: 1, change: Insert { key: "d", post: "4" } }
+v5 Change { seq: 1, change: Insert { key: "e", post: "5" } }
+v5 Change { seq: 2, change: Delete { key: "b", pre: "2" } }

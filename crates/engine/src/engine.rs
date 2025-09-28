@@ -139,7 +139,7 @@ impl<T: Transaction> StandardEngine<T> {
 		Self(Arc::new(EngineInner {
 			multi,
 			single,
-			cdc: cdc.clone(),
+			cdc,
 			event_bus,
 			executor: Executor::new(
 				Functions::builder()

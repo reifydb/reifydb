@@ -20,12 +20,10 @@ mod scan_rev;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	CommitVersion, EncodedKey,
-	interface::{MultiVersionStorage, SingleVersionInsert, SingleVersionRemove, SingleVersionStorage},
+	interface::{Cdc, MultiVersionStorage, SingleVersionInsert, SingleVersionRemove, SingleVersionStorage},
 	util::MultiVersionContainer,
 	value::row::EncodedRow,
 };
-
-use crate::cdc::CdcTransaction;
 
 pub type MultiVersionRowContainer = MultiVersionContainer<EncodedRow>;
 
@@ -35,7 +33,7 @@ pub struct Memory(Arc<MemoryInner>);
 pub struct MemoryInner {
 	multi: SkipMap<EncodedKey, MultiVersionRowContainer>,
 	single: SkipMap<EncodedKey, EncodedRow>,
-	cdc_transactions: SkipMap<CommitVersion, CdcTransaction>,
+	cdcs: SkipMap<CommitVersion, Cdc>,
 }
 
 impl Deref for Memory {
@@ -57,7 +55,7 @@ impl Memory {
 		Self(Arc::new(MemoryInner {
 			multi: SkipMap::new(),
 			single: SkipMap::new(),
-			cdc_transactions: SkipMap::new(),
+			cdcs: SkipMap::new(),
 		}))
 	}
 }

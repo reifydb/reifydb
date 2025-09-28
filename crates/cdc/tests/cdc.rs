@@ -19,7 +19,7 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::StandardInterceptorFactory,
 	interface::{
-		CdcConsumerKey, CdcEvent, ConsumerId, EncodableKey, Engine as EngineInterface, Key,
+		Cdc, CdcChange, CdcConsumerKey, ConsumerId, EncodableKey, Engine as EngineInterface, Key,
 		MultiVersionCommandTransaction, MultiVersionQueryTransaction, SourceId, TableId, key::RowKey,
 	},
 	util::{CowVec, mock_time_set},
@@ -71,15 +71,26 @@ fn test_event_processing() {
 
 	thread::sleep(Duration::from_millis(200));
 
-	let events = consumer_clone.get_events();
-	assert_eq!(events.len(), 5, "Should have processed 5 events");
+	let changes = consumer_clone.get_total_changes();
+	assert_eq!(changes, 5, "Should have processed 5 changes");
 
-	for (i, event) in events.iter().enumerate() {
-		if let Some(Row(table_row)) = Key::decode(event.key()) {
-			assert_eq!(table_row.source, TableId(1));
-			assert_eq!(table_row.row, RowNumber((i + 1) as u64));
-		} else {
-			panic!("Expected Row key");
+	let transactions = consumer_clone.get_transactions();
+	assert_eq!(transactions.len(), 5, "Should have 5 transactions");
+
+	// Each transaction should have one change
+	for (i, cdc) in transactions.iter().enumerate() {
+		assert_eq!(cdc.changes.len(), 1, "Each transaction should have 1 change");
+		if let CdcChange::Insert {
+			key,
+			..
+		} = &cdc.changes[0].change
+		{
+			if let Some(Row(table_row)) = Key::decode(key) {
+				assert_eq!(table_row.source, TableId(1));
+				assert_eq!(table_row.row, RowNumber((i + 1) as u64));
+			} else {
+				panic!("Expected Row key");
+			}
 		}
 	}
 
@@ -104,8 +115,8 @@ fn test_checkpoint_persistence() {
 	thread::sleep(Duration::from_millis(150));
 	test_instance.stop().expect("Failed to stop consumer");
 
-	let events_first_run = consumer_clone.get_events();
-	assert_eq!(events_first_run.len(), 3, "Should have processed 3 events in first run");
+	let changes_first_run = consumer_clone.get_total_changes();
+	assert_eq!(changes_first_run, 3, "Should have processed 3 changes in first run");
 
 	insert_test_events(&engine, 2).expect("Failed to insert more test events");
 
@@ -118,8 +129,8 @@ fn test_checkpoint_persistence() {
 	thread::sleep(Duration::from_millis(150));
 	test_instance2.stop().expect("Failed to stop consumer");
 
-	let events_second_run = consumer2_clone.get_events();
-	assert_eq!(events_second_run.len(), 2, "Should have processed only 2 new events");
+	let changes_second_run = consumer2_clone.get_total_changes();
+	assert_eq!(changes_second_run, 2, "Should have processed only 2 new changes");
 
 	let mut txn = engine.begin_query().expect("Failed to begin transaction");
 	let consumer_key = CdcConsumerKey {
@@ -151,22 +162,22 @@ fn test_error_handling() {
 	test_instance.start().expect("Failed to start consumer");
 	thread::sleep(Duration::from_millis(100));
 
-	let events_before_error = consumer_clone.get_events();
-	assert_eq!(events_before_error.len(), 3, "Should have processed 3 events before error");
+	let changes_before_error = consumer_clone.get_total_changes();
+	assert_eq!(changes_before_error, 3, "Should have processed 3 changes before error");
 
 	consumer_clone.set_should_fail(true);
 
 	insert_test_events(&engine, 2).expect("Failed to insert more test events");
 	thread::sleep(Duration::from_millis(150));
 
-	let events_during_error = consumer_clone.get_events();
-	assert_eq!(events_during_error.len(), 3, "Should not have processed new events during error");
+	let changes_during_error = consumer_clone.get_total_changes();
+	assert_eq!(changes_during_error, 3, "Should not have processed new changes during error");
 
 	consumer_clone.set_should_fail(false);
 	thread::sleep(Duration::from_millis(150));
 
-	let events_after_recovery = consumer_clone.get_events();
-	assert_eq!(events_after_recovery.len(), 5, "Should have processed new events after recovery");
+	let changes_after_recovery = consumer_clone.get_total_changes();
+	assert_eq!(changes_after_recovery, 5, "Should have processed new changes after recovery");
 
 	test_instance.stop().expect("Failed to stop consumer");
 }
@@ -185,15 +196,15 @@ fn test_empty_events_handling() {
 
 	thread::sleep(Duration::from_millis(150));
 
-	let events = consumer_clone.get_events();
-	assert_eq!(events.len(), 0, "Should have no events to process");
+	let changes = consumer_clone.get_total_changes();
+	assert_eq!(changes, 0, "Should have no changes to process");
 	assert_eq!(consumer_clone.get_process_count(), 0, "Should not have called consume");
 
 	insert_test_events(&engine, 1).expect("Failed to insert test event");
 	thread::sleep(Duration::from_millis(100));
 
-	let events_after_insert = consumer_clone.get_events();
-	assert_eq!(events_after_insert.len(), 1, "Should have processed 1 event");
+	let changes_after_insert = consumer_clone.get_total_changes();
+	assert_eq!(changes_after_insert, 1, "Should have processed 1 change");
 	assert!(consumer_clone.get_process_count() >= 1, "Should have called consume");
 
 	test_instance.stop().expect("Failed to stop consumer");
@@ -224,21 +235,21 @@ fn test_multiple_consumers() {
 
 	thread::sleep(Duration::from_millis(200));
 
-	let events1 = consumer1_clone.get_events();
-	let events2 = consumer2_clone.get_events();
+	let changes1 = consumer1_clone.get_total_changes();
+	let changes2 = consumer2_clone.get_total_changes();
 
-	assert_eq!(events1.len(), 3, "Consumer 1 should have processed 3 events");
-	assert_eq!(events2.len(), 3, "Consumer 2 should have processed 3 events");
+	assert_eq!(changes1, 3, "Consumer 1 should have processed 3 changes");
+	assert_eq!(changes2, 3, "Consumer 2 should have processed 3 changes");
 
 	insert_test_events(&engine, 2).expect("Failed to insert more test events");
 
 	thread::sleep(Duration::from_millis(200));
 
-	let events1_after = consumer1_clone.get_events();
-	let events2_after = consumer2_clone.get_events();
+	let changes1_after = consumer1_clone.get_total_changes();
+	let changes2_after = consumer2_clone.get_total_changes();
 
-	assert_eq!(events1_after.len(), 5, "Consumer 1 should have processed 5 events total");
-	assert_eq!(events2_after.len(), 5, "Consumer 2 should have processed 5 events total");
+	assert_eq!(changes1_after, 5, "Consumer 1 should have processed 5 changes total");
+	assert_eq!(changes2_after, 5, "Consumer 2 should have processed 5 changes total");
 
 	let mut txn = engine.begin_query().expect("Failed to begin transaction");
 
@@ -303,14 +314,32 @@ fn test_non_table_events_filtered() {
 	thread::sleep(Duration::from_millis(150));
 	test_instance.stop().expect("Failed to stop consumer");
 
-	let events = consumer_clone.get_events();
-	assert_eq!(events.len(), 1, "Should have processed only 1 table event");
+	// The transaction contains both changes, but it was included because it has at least one table row
+	let changes = consumer_clone.get_total_changes();
+	assert_eq!(changes, 2, "Should have processed 2 changes (both in same transaction)");
 
-	if let Some(Row(table_row)) = Key::decode(events[0].key()) {
-		assert_eq!(table_row.source, TableId(1));
-		assert_eq!(table_row.row, RowNumber(1));
-	} else {
-		panic!("Expected Row key");
+	let transactions = consumer_clone.get_transactions();
+	assert_eq!(transactions.len(), 1, "Should have 1 transaction");
+	assert_eq!(transactions[0].changes.len(), 2, "Transaction should have 2 changes");
+
+	// Find the table change (could be in any order)
+	let table_change = transactions[0]
+		.changes
+		.iter()
+		.find(|c| matches!(Key::decode(c.key()), Some(Key::Row(_))))
+		.expect("Should have at least one table change");
+
+	if let CdcChange::Insert {
+		key,
+		..
+	} = &table_change.change
+	{
+		if let Some(Row(table_row)) = Key::decode(key) {
+			assert_eq!(table_row.source, TableId(1));
+			assert_eq!(table_row.row, RowNumber(1));
+		} else {
+			panic!("Expected Row key");
+		}
 	}
 }
 
@@ -360,7 +389,7 @@ fn create_test_engine() -> StandardEngine<TestTransaction> {
 }
 
 struct TestConsumer {
-	events_received: Arc<Mutex<Vec<CdcEvent>>>,
+	cdc_received: Arc<Mutex<Vec<Cdc>>>,
 	process_count: Arc<AtomicUsize>,
 	should_fail: Arc<AtomicBool>,
 }
@@ -368,7 +397,7 @@ struct TestConsumer {
 impl TestConsumer {
 	fn new() -> Self {
 		Self {
-			events_received: Arc::new(Mutex::new(Vec::new())),
+			cdc_received: Arc::new(Mutex::new(Vec::new())),
 			process_count: Arc::new(AtomicUsize::new(0)),
 			should_fail: Arc::new(AtomicBool::new(false)),
 		}
@@ -378,8 +407,12 @@ impl TestConsumer {
 		self.should_fail.store(should_fail, Ordering::SeqCst);
 	}
 
-	fn get_events(&self) -> Vec<CdcEvent> {
-		self.events_received.lock().unwrap().clone()
+	fn get_transactions(&self) -> Vec<Cdc> {
+		self.cdc_received.lock().unwrap().clone()
+	}
+
+	fn get_total_changes(&self) -> usize {
+		self.cdc_received.lock().unwrap().iter().map(|cdc| cdc.changes.len()).sum()
 	}
 
 	fn get_process_count(&self) -> usize {
@@ -390,7 +423,7 @@ impl TestConsumer {
 impl Clone for TestConsumer {
 	fn clone(&self) -> Self {
 		Self {
-			events_received: Arc::clone(&self.events_received),
+			cdc_received: Arc::clone(&self.cdc_received),
 			process_count: Arc::clone(&self.process_count),
 			should_fail: Arc::clone(&self.should_fail),
 		}
@@ -398,7 +431,11 @@ impl Clone for TestConsumer {
 }
 
 impl CdcConsume<TestTransaction> for TestConsumer {
-	fn consume(&self, _txn: &mut StandardCommandTransaction<TestTransaction>, events: Vec<CdcEvent>) -> Result<()> {
+	fn consume(
+		&self,
+		_txn: &mut StandardCommandTransaction<TestTransaction>,
+		transactions: Vec<Cdc>,
+	) -> Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {
 			return Err(reifydb_type::Error(Diagnostic {
 				code: "TEST_ERROR".to_string(),
@@ -413,8 +450,8 @@ impl CdcConsume<TestTransaction> for TestConsumer {
 			}));
 		}
 
-		let mut received = self.events_received.lock().unwrap();
-		received.extend(events);
+		let mut received = self.cdc_received.lock().unwrap();
+		received.extend(transactions);
 		self.process_count.fetch_add(1, Ordering::SeqCst);
 		Ok(())
 	}

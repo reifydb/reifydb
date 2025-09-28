@@ -3,17 +3,17 @@
 
 use reifydb_core::{
 	CowVec, EncodedKey,
-	interface::{CdcChange, TransactionId},
+	interface::{Cdc, CdcChange, CdcSequencedChange, TransactionId},
 	return_internal_error,
 	value::row::EncodedRow,
 };
 use reifydb_type::Blob;
 
-use super::{CdcTransaction, CdcTransactionChange, layout::*};
+use super::layout::*;
 
 /// Encode a CdcTransaction to a more memory-efficient format
 /// This stores shared metadata once and then encodes all changes compactly
-pub(crate) fn encode_cdc_transaction(transaction: &CdcTransaction) -> crate::Result<EncodedRow> {
+pub(crate) fn encode_cdc_transaction(transaction: &Cdc) -> crate::Result<EncodedRow> {
 	let mut row = CDC_TRANSACTION_LAYOUT.allocate_row();
 
 	CDC_TRANSACTION_LAYOUT.set_u64(&mut row, CDC_TX_VERSION_FIELD, transaction.version);
@@ -30,10 +30,10 @@ pub(crate) fn encode_cdc_transaction(transaction: &CdcTransaction) -> crate::Res
 
 	changes_bytes.extend_from_slice(&(transaction.changes.len() as u32).to_le_bytes());
 
-	for change in &transaction.changes {
-		changes_bytes.extend_from_slice(&change.sequence.to_le_bytes());
+	for sequenced_change in &transaction.changes {
+		changes_bytes.extend_from_slice(&sequenced_change.sequence.to_le_bytes());
 
-		let encoded_change = encode_cdc_change(&change.change)?;
+		let encoded_change = encode_cdc_change(&sequenced_change.change)?;
 		let change_bytes = encoded_change.as_slice();
 		changes_bytes.extend_from_slice(&(change_bytes.len() as u32).to_le_bytes());
 		changes_bytes.extend_from_slice(change_bytes);
@@ -45,7 +45,7 @@ pub(crate) fn encode_cdc_transaction(transaction: &CdcTransaction) -> crate::Res
 }
 
 /// Decode a CdcTransaction from its encoded format
-pub(crate) fn decode_cdc_transaction(row: &EncodedRow) -> crate::Result<CdcTransaction> {
+pub(crate) fn decode_cdc_transaction(row: &EncodedRow) -> crate::Result<Cdc> {
 	let version = CDC_TRANSACTION_LAYOUT.get_u64(row, CDC_TX_VERSION_FIELD);
 	let timestamp = CDC_TRANSACTION_LAYOUT.get_u64(row, CDC_TX_TIMESTAMP_FIELD);
 	let transaction_blob = CDC_TRANSACTION_LAYOUT.get_blob(row, CDC_TX_TRANSACTION_FIELD);
@@ -91,13 +91,13 @@ pub(crate) fn decode_cdc_transaction(row: &EncodedRow) -> crate::Result<CdcTrans
 		let change = decode_cdc_change(&change_row)?;
 		offset += change_len;
 
-		changes.push(CdcTransactionChange {
+		changes.push(CdcSequencedChange {
 			sequence,
 			change,
 		});
 	}
 
-	Ok(CdcTransaction::new(version, timestamp, transaction, changes))
+	Ok(Cdc::new(version, timestamp, transaction, changes))
 }
 
 /// Encode just the CdcChange part (without metadata)
@@ -231,12 +231,12 @@ mod tests {
 			post: post.clone(),
 		};
 
-		let changes = vec![CdcTransactionChange {
+		let changes = vec![CdcSequencedChange {
 			sequence: 1,
 			change: change.clone(),
 		}];
 
-		let transaction = CdcTransaction::new(123456789, 1234567890, TransactionId::default(), changes);
+		let transaction = Cdc::new(123456789, 1234567890, TransactionId::default(), changes);
 
 		let encoded = encode_cdc_transaction(&transaction).unwrap();
 		let decoded = decode_cdc_transaction(&encoded).unwrap();
@@ -251,14 +251,14 @@ mod tests {
 	#[test]
 	fn test_encode_decode_transaction_multiple_changes() {
 		let changes = vec![
-			CdcTransactionChange {
+			CdcSequencedChange {
 				sequence: 1,
 				change: CdcChange::Insert {
 					key: EncodedKey::new(vec![1]),
 					post: EncodedRow(CowVec::new(vec![10])),
 				},
 			},
-			CdcTransactionChange {
+			CdcSequencedChange {
 				sequence: 2,
 				change: CdcChange::Update {
 					key: EncodedKey::new(vec![2]),
@@ -266,7 +266,7 @@ mod tests {
 					post: EncodedRow(CowVec::new(vec![21])),
 				},
 			},
-			CdcTransactionChange {
+			CdcSequencedChange {
 				sequence: 3,
 				change: CdcChange::Delete {
 					key: EncodedKey::new(vec![3]),
@@ -275,7 +275,7 @@ mod tests {
 			},
 		];
 
-		let transaction = CdcTransaction::new(987654321, 9876543210, TransactionId::default(), changes.clone());
+		let transaction = Cdc::new(987654321, 9876543210, TransactionId::default(), changes.clone());
 
 		let encoded = encode_cdc_transaction(&transaction).unwrap();
 		let decoded = decode_cdc_transaction(&encoded).unwrap();
@@ -288,40 +288,5 @@ mod tests {
 			assert_eq!(decoded_change.sequence, original.sequence, "Sequence mismatch at index {}", i);
 			assert_eq!(decoded_change.change, original.change, "Change mismatch at index {}", i);
 		}
-	}
-
-	#[test]
-	fn test_transaction_to_events() {
-		let changes = vec![
-			CdcTransactionChange {
-				sequence: 1,
-				change: CdcChange::Insert {
-					key: EncodedKey::new(vec![1]),
-					post: EncodedRow(CowVec::new(vec![10])),
-				},
-			},
-			CdcTransactionChange {
-				sequence: 2,
-				change: CdcChange::Delete {
-					key: EncodedKey::new(vec![2]),
-					pre: Some(EncodedRow(CowVec::new(vec![20]))),
-				},
-			},
-		];
-
-		let transaction = CdcTransaction::new(123, 456, TransactionId::default(), changes.clone());
-
-		let events: Vec<_> = transaction.to_events().collect();
-		assert_eq!(events.len(), 2);
-
-		assert_eq!(events[0].version, 123);
-		assert_eq!(events[0].sequence, 1);
-		assert_eq!(events[0].timestamp, 456);
-		assert_eq!(events[0].change, changes[0].change);
-
-		assert_eq!(events[1].version, 123);
-		assert_eq!(events[1].sequence, 2);
-		assert_eq!(events[1].timestamp, 456);
-		assert_eq!(events[1].change, changes[1].change);
 	}
 }

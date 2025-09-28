@@ -129,7 +129,7 @@ impl<'a> testscript::Runner for MvccRunner {
 					Transaction::Query(_) => {
 						unreachable!("can not call commit on rx")
 					}
-					Transaction::Command(mut tx) => {
+					Transaction::Command(tx) => {
 						tx.commit()?;
 					}
 				}
@@ -217,7 +217,7 @@ impl<'a> testscript::Runner for MvccRunner {
 					Transaction::Query(_) => {
 						unreachable!("can not call rollback on rx")
 					}
-					Transaction::Command(mut tx) => {
+					Transaction::Command(tx) => {
 						tx.rollback()?;
 					}
 				}
@@ -342,7 +342,7 @@ impl<'a> testscript::Runner for MvccRunner {
 						rx.read_as_of_version_inclusive(version);
 					}
 					Transaction::Command(tx) => {
-						tx.read_as_of_version_inclusive(version);
+						tx.read_as_of_version_inclusive(version)?;
 					}
 				}
 			}
