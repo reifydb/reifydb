@@ -77,7 +77,7 @@ fn test_event_processing() {
 	for (i, event) in events.iter().enumerate() {
 		if let Some(Row(table_row)) = Key::decode(event.key()) {
 			assert_eq!(table_row.source, TableId(1));
-			assert_eq!(table_row.row, RowNumber(i as u64));
+			assert_eq!(table_row.row, RowNumber((i + 1) as u64));
 		} else {
 			panic!("Expected Row key");
 		}
@@ -425,7 +425,7 @@ fn insert_test_events(engine: &StandardEngine<TestTransaction>, count: usize) ->
 		let mut txn = engine.begin_command()?;
 		let key = RowKey {
 			source: SourceId::table(1),
-			row: RowNumber(i as u64),
+			row: RowNumber((i + 1) as u64),
 		};
 		let value = format!("value_{}", i);
 		txn.set(&key.encode(), EncodedRow(CowVec::new(value.into_bytes())))?;

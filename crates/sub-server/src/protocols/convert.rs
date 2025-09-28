@@ -24,6 +24,8 @@ pub fn convert_result_to_frames(result: Vec<Frame>) -> ProtocolResult<Vec<Websoc
 	let mut ws_frames = Vec::new();
 
 	for frame in result {
+		let row_numbers: Vec<u64> = frame.row_numbers.iter().map(|rn| rn.value()).collect();
+
 		let mut ws_columns = Vec::new();
 
 		for column in frame.iter() {
@@ -47,6 +49,7 @@ pub fn convert_result_to_frames(result: Vec<Frame>) -> ProtocolResult<Vec<Websoc
 		}
 
 		ws_frames.push(WebsocketFrame {
+			row_numbers,
 			columns: ws_columns,
 		});
 	}

@@ -1,10 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crate::value::column::Columns;
+use crate::{util::CowVec, value::column::Columns};
 
 impl<'a> Columns<'a> {
 	pub fn take(&mut self, n: usize) -> crate::Result<()> {
+		// Take the first n row numbers
+		if !self.row_numbers.is_empty() {
+			let actual_n = n.min(self.row_numbers.len());
+			let new_row_numbers: Vec<_> = self.row_numbers.iter().take(actual_n).copied().collect();
+			self.row_numbers = CowVec::new(new_row_numbers);
+		}
+
+		// Take the first n rows from columns
 		let mut columns = Vec::with_capacity(self.len());
 
 		for col in self.iter() {
@@ -12,7 +20,7 @@ impl<'a> Columns<'a> {
 			columns.push(col.with_new_data(data));
 		}
 
-		*self = Columns::new(columns);
+		self.columns = CowVec::new(columns);
 
 		Ok(())
 	}

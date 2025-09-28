@@ -7,35 +7,35 @@
 (command 'from [{ col: 0 }] insert test.conversion')
 command 'from test.conversion map cast(col, float4)'
 ---
-> +-------+
-> |  col  |
-> +-------+
-> |   0   |
-> +-------+
+> +-------------------+-------+
+> |  __ROW__NUMBER__  |  col  |
+> +-------------------+-------+
+> |         1         |   0   |
+> +-------------------+-------+
 > 
 
 
 (command 'from [{ col: 16777216 }] insert test.conversion')
 command 'from test.conversion map cast(col, float4)'
 ---
-> +------------+
-> |    col     |
-> +------------+
-> |  16777216  |
-> |     0      |
-> +------------+
+> +-------------------+------------+
+> |  __ROW__NUMBER__  |    col     |
+> +-------------------+------------+
+> |         2         |  16777216  |
+> |         1         |     0      |
+> +-------------------+------------+
 > 
 
 (command 'from [{ col: -16777216 }] insert test.conversion')
 command 'from test.conversion map cast(col, float4)'
 ---
-> +-------------+
-> |     col     |
-> +-------------+
-> |  -16777216  |
-> |  16777216   |
-> |      0      |
-> +-------------+
+> +-------------------+-------------+
+> |  __ROW__NUMBER__  |     col     |
+> +-------------------+-------------+
+> |         3         |  -16777216  |
+> |         2         |  16777216   |
+> |         1         |      0      |
+> +-------------------+-------------+
 > 
 
 (command 'create table test.conversion_fail{col: int16}')

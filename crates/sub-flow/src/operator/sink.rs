@@ -39,23 +39,15 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 		// Transform rows to match the view's schema before writing
 		let target_columns = self.view.columns();
 
-		for (i, diff) in change.diffs.iter().enumerate() {
+		for diff in change.diffs.iter() {
 			match diff {
 				FlowDiff::Insert {
-					post: row_data,
+					post,
 					..
 				} => {
-					let transformed_row = match evaluator.coerce(row_data, target_columns) {
-						Ok(r) => r,
-						Err(err) => {
-							print!("{:#?}", err);
-							return Err(err);
-						}
-					};
+					let transformed_row = evaluator.coerce(post, target_columns)?;
 
-					// let transformed_row = evaluator.coerce(row_data, target_columns)?;
-
-					let row_id = transformed_row.number;
+					let row_id = post.number;
 					let row = transformed_row.encoded;
 
 					let key = RowKey {
@@ -67,33 +59,34 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 					txn.set(&key, row)?;
 				}
 				FlowDiff::Update {
-					pre: _,
-					post: row_data,
+					pre,
+					post,
 					..
 				} => {
 					// Transform the row to match the view schema
-					let transformed_row = evaluator.coerce(row_data, target_columns)?;
-
-					let row_id = transformed_row.number;
-					let new_row = transformed_row.encoded;
+					let transformed_row = evaluator.coerce(post, target_columns)?;
 
 					let key = RowKey {
 						source: SourceId::view(self.view.def().id),
-						row: row_id,
+						row: post.number,
 					}
 					.encode();
 
-					txn.set(&key, new_row)?;
+					txn.remove(&RowKey {
+						source: SourceId::view(self.view.def().id),
+						row: pre.number,
+					}
+					.encode())?;
+
+					txn.set(&key, transformed_row.encoded)?;
 				}
 				FlowDiff::Remove {
-					pre: row_data,
+					pre,
 					..
 				} => {
-					let row_id = row_data.number;
-
 					let key = RowKey {
 						source: SourceId::view(self.view.def().id),
-						row: row_id,
+						row: pre.number,
 					}
 					.encode();
 

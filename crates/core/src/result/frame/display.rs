@@ -3,7 +3,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use reifydb_type::{ROW_NUMBER_COLUMN_NAME, util::unicode::UnicodeWidthStr};
+use reifydb_type::util::unicode::UnicodeWidthStr;
 
 use crate::result::frame::{Frame, FrameColumn};
 
@@ -24,17 +24,9 @@ fn escape_control_chars(s: &str) -> String {
 	s.replace('\n', "\\n").replace('\t', "\\t")
 }
 
-/// Create a column display order that puts RowNumber column first if it exists
+/// Create a column display order (no special handling needed since row numbers are separate)
 fn get_column_display_order(frame: &Frame) -> Vec<usize> {
-	let mut indices: Vec<usize> = (0..frame.len()).collect();
-
-	// Find the RowNumber column and move it to the front
-	if let Some(row_number_pos) = frame.iter().position(|col| col.name == ROW_NUMBER_COLUMN_NAME) {
-		indices.remove(row_number_pos);
-		indices.insert(0, row_number_pos);
-	}
-
-	indices
+	(0..frame.len()).collect()
 }
 
 /// Extract string value from column at given row index, with proper escaping
@@ -46,24 +38,47 @@ fn extract_string_value(col: &FrameColumn, row_numberx: usize) -> String {
 impl Display for Frame {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
 		let row_count = self.first().map_or(0, |c| c.data.len());
-		let col_count = self.len();
+		let has_row_numbers = !self.row_numbers.is_empty();
+		let col_count = self.len()
+			+ if has_row_numbers {
+				1
+			} else {
+				0
+			};
 
-		// Get the display order with RowNumber column first
+		// Get the display order for regular columns
 		let column_order = get_column_display_order(self);
 
 		let mut col_widths = vec![0; col_count];
 
+		// If we have row numbers, calculate width for row number column
+		let row_num_col_idx = if has_row_numbers {
+			// Row number column is always first
+			let row_num_header = "__ROW__NUMBER__";
+			col_widths[0] = display_width(row_num_header);
+
+			// Calculate max width needed for row numbers
+			for row_num in &self.row_numbers {
+				let s = row_num.to_string();
+				col_widths[0] = col_widths[0].max(display_width(&s));
+			}
+			1 // Start regular columns at index 1
+		} else {
+			0 // Start regular columns at index 0
+		};
+
 		for (display_idx, &col_idx) in column_order.iter().enumerate() {
 			let col = &self[col_idx];
 			let display_name = escape_control_chars(&col.qualified_name());
-			col_widths[display_idx] = display_width(&display_name);
+			col_widths[row_num_col_idx + display_idx] = display_width(&display_name);
 		}
 
 		for row_numberx in 0..row_count {
 			for (display_idx, &col_idx) in column_order.iter().enumerate() {
 				let col = &self[col_idx];
 				let s = extract_string_value(col, row_numberx);
-				col_widths[display_idx] = col_widths[display_idx].max(display_width(&s));
+				col_widths[row_num_col_idx + display_idx] =
+					col_widths[row_num_col_idx + display_idx].max(display_width(&s));
 			}
 		}
 
@@ -75,37 +90,60 @@ impl Display for Frame {
 		let sep = format!("+{}+", col_widths.iter().map(|w| "-".repeat(*w + 2)).collect::<Vec<_>>().join("+"));
 		writeln!(f, "{}", sep)?;
 
-		let header = column_order
-			.iter()
-			.enumerate()
-			.map(|(display_idx, &col_idx)| {
-				let col = &self[col_idx];
-				let w = col_widths[display_idx];
-				let name = escape_control_chars(&col.qualified_name());
-				let pad = w - display_width(&name);
-				let l = pad / 2;
-				let r = pad - l;
-				format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r)
-			})
-			.collect::<Vec<_>>();
+		let mut header = Vec::new();
+
+		// Add row number header if present
+		if has_row_numbers {
+			let w = col_widths[0];
+			let name = "__ROW__NUMBER__";
+			let pad = w - display_width(name);
+			let l = pad / 2;
+			let r = pad - l;
+			header.push(format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r));
+		}
+
+		// Add regular column headers
+		for (display_idx, &col_idx) in column_order.iter().enumerate() {
+			let col = &self[col_idx];
+			let w = col_widths[row_num_col_idx + display_idx];
+			let name = escape_control_chars(&col.qualified_name());
+			let pad = w - display_width(&name);
+			let l = pad / 2;
+			let r = pad - l;
+			header.push(format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r));
+		}
+
 		writeln!(f, "|{}|", header.join("|"))?;
 
 		writeln!(f, "{}", sep)?;
 
 		for row_numberx in 0..row_count {
-			let row = column_order
-				.iter()
-				.enumerate()
-				.map(|(display_idx, &col_idx)| {
-					let col = &self[col_idx];
-					let w = col_widths[display_idx];
-					let s = extract_string_value(col, row_numberx);
-					let pad = w - display_width(&s);
-					let l = pad / 2;
-					let r = pad - l;
-					format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r)
-				})
-				.collect::<Vec<_>>();
+			let mut row = Vec::new();
+
+			// Add row number value if present
+			if has_row_numbers {
+				let w = col_widths[0];
+				let s = if row_numberx < self.row_numbers.len() {
+					self.row_numbers[row_numberx].to_string()
+				} else {
+					"Undefined".to_string()
+				};
+				let pad = w - display_width(&s);
+				let l = pad / 2;
+				let r = pad - l;
+				row.push(format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r));
+			}
+
+			// Add regular column values
+			for (display_idx, &col_idx) in column_order.iter().enumerate() {
+				let col = &self[col_idx];
+				let w = col_widths[row_num_col_idx + display_idx];
+				let s = extract_string_value(col, row_numberx);
+				let pad = w - display_width(&s);
+				let l = pad / 2;
+				let r = pad - l;
+				row.push(format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r));
+			}
 
 			writeln!(f, "|{}|", row.join("|"))?;
 		}
@@ -501,14 +539,14 @@ mod tests {
 				.into_iter()
 				.map(|opt| match opt {
 					Some(v) => (v, true),
-					None => (RowNumber(0), false), // dummy value
+					None => (RowNumber(1), false), // dummy value
 				})
 				.unzip();
 
 			FrameColumn {
 				namespace: None,
 				store: None,
-				name: ROW_NUMBER_COLUMN_NAME.to_string(),
+				name: "__ROW__NUMBER__".to_string(),
 				data: FrameColumnData::RowNumber(RowNumberContainer::new(
 					values,
 					BitVec::from_slice(&bitvec),
@@ -532,7 +570,7 @@ mod tests {
 		FrameColumn {
 			namespace: None,
 			store: None,
-			name: ROW_NUMBER_COLUMN_NAME.to_string(),
+			name: "__ROW__NUMBER__".to_string(),
 			data: FrameColumnData::RowNumber(RowNumberContainer::new(data_vec, bitvec)),
 		}
 	}

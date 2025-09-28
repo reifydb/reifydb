@@ -12,7 +12,7 @@ use crate::{
 		message::{HttpInternalMessage, HttpResponseRoute},
 		session::{HttpChannelResponse, HttpResponseMessage},
 	},
-	session::{CommandResult, QueryResult, convert_execute_response, convert_query_response},
+	session::{CommandResult, QueryResult, convert_command_response, convert_query_response},
 };
 
 /// HTTP worker thread that handles all requests for a client
@@ -35,7 +35,7 @@ pub(crate) fn http_worker_thread(client: HttpClientConfig, command_rx: mpsc::Rec
 							Ok(response) => Ok(HttpChannelResponse::Command {
 								request_id: id.clone(),
 								result: CommandResult {
-									frames: convert_execute_response(response),
+									frames: convert_command_response(response),
 								},
 							}),
 							Err(e) => Err(e),

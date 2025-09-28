@@ -57,7 +57,6 @@ impl Executor {
 			functions: self.functions.clone(),
 			source: resolved_source,
 			batch_size: 1024,
-			preserve_row_numbers: false,
 			params: params.clone(),
 		});
 

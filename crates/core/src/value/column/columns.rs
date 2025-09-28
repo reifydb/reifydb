@@ -18,13 +18,16 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct Columns<'a>(pub CowVec<Column<'a>>);
+pub struct Columns<'a> {
+	pub row_numbers: CowVec<reifydb_type::RowNumber>,
+	pub columns: CowVec<Column<'a>>,
+}
 
 impl<'a> Deref for Columns<'a> {
 	type Target = [Column<'a>];
 
 	fn deref(&self) -> &Self::Target {
-		self.0.deref()
+		self.columns.deref()
 	}
 }
 
@@ -32,13 +35,13 @@ impl<'a> Index<usize> for Columns<'a> {
 	type Output = Column<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
-		self.0.index(index)
+		self.columns.index(index)
 	}
 }
 
 impl<'a> IndexMut<usize> for Columns<'a> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		&mut self.0.make_mut()[index]
+		&mut self.columns.make_mut()[index]
 	}
 }
 
@@ -47,7 +50,21 @@ impl<'a> Columns<'a> {
 		let n = columns.first().map_or(0, |c| c.data().len());
 		assert!(columns.iter().all(|c| c.data().len() == n));
 
-		Self(CowVec::new(columns))
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
+	}
+
+	pub fn with_row_numbers(columns: Vec<Column<'a>>, row_numbers: Vec<reifydb_type::RowNumber>) -> Self {
+		let n = columns.first().map_or(0, |c| c.data().len());
+		assert!(columns.iter().all(|c| c.data().len() == n));
+		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");
+
+		Self {
+			row_numbers: CowVec::new(row_numbers),
+			columns: CowVec::new(columns),
+		}
 	}
 
 	pub fn single_row<'b>(rows: impl IntoIterator<Item = (&'b str, Value)>) -> Columns<'a> {
@@ -93,7 +110,10 @@ impl<'a> Columns<'a> {
 			columns.push(column);
 		}
 
-		Self::new(columns)
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
 	}
 
 	pub fn apply_headers(&mut self, headers: &ColumnHeaders<'a>) {
@@ -114,11 +134,16 @@ impl<'a> Columns<'a> {
 
 impl<'a> Columns<'a> {
 	pub fn shape(&self) -> (usize, usize) {
-		(self.get(0).map(|c| c.data().len()).unwrap_or(0), self.len())
+		let row_count = if !self.row_numbers.is_empty() {
+			self.row_numbers.len()
+		} else {
+			self.get(0).map(|c| c.data().len()).unwrap_or(0)
+		};
+		(row_count, self.len())
 	}
 
 	pub fn into_iter(self) -> impl Iterator<Item = Column<'a>> {
-		self.0.into_iter()
+		self.columns.into_iter()
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -134,7 +159,11 @@ impl<'a> Columns<'a> {
 	}
 
 	pub fn row_count(&self) -> usize {
-		self.first().map_or(0, |col| col.data().len())
+		if !self.row_numbers.is_empty() {
+			self.row_numbers.len()
+		} else {
+			self.first().map_or(0, |col| col.data().len())
+		}
 	}
 
 	pub fn get_row(&self, index: usize) -> Vec<Value> {
@@ -173,7 +202,10 @@ impl<'a> Columns<'a> {
 
 impl<'a> Columns<'a> {
 	pub fn empty() -> Self {
-		Self(CowVec::new(vec![]))
+		Self {
+			row_numbers: CowVec::new(vec![]),
+			columns: CowVec::new(vec![]),
+		}
 	}
 
 	pub fn from_table(table: &ResolvedTable<'a>) -> Self {
@@ -191,7 +223,10 @@ impl<'a> Columns<'a> {
 			})
 			.collect();
 
-		Self::new(columns)
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
 	}
 
 	pub fn from_ring_buffer(ring_buffer: &ResolvedRingBuffer<'a>) -> Self {
@@ -209,7 +244,10 @@ impl<'a> Columns<'a> {
 			})
 			.collect();
 
-		Self::new(columns)
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
 	}
 
 	pub fn from_view(view: &ResolvedView<'a>) -> Self {
@@ -227,7 +265,10 @@ impl<'a> Columns<'a> {
 			})
 			.collect();
 
-		Self::new(columns)
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
 	}
 }
 

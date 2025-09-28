@@ -10,11 +10,11 @@ use reifydb_core::{
 		resolved::ResolvedRingBuffer,
 	},
 	value::{
-		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
+		column::{Columns, headers::ColumnHeaders},
 		row::EncodedRowLayout,
 	},
 };
-use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, RowNumber, Type};
+use reifydb_type::{Fragment, RowNumber, Type};
 
 use crate::{
 	StandardTransaction,
@@ -79,7 +79,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 			if let Some(ref metadata) = self.metadata {
 				// Start scanning from head (oldest entry) if buffer has data
 				self.current_position = if metadata.is_empty() {
-					0
+					1 // Start at position 1 for 1-based indexing
 				} else {
 					metadata.head
 				};
@@ -129,8 +129,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 				row_numbers.push(row_num);
 			}
 
-			// Move to next position (circular)
-			self.current_position = (self.current_position + 1) % metadata.capacity;
+			// Move to next position (circular) with 1-based indexing
+			self.current_position = if self.current_position >= metadata.capacity {
+				1
+			} else {
+				self.current_position + 1
+			};
 			self.rows_returned += 1;
 			batch_count += 1;
 		}
@@ -139,14 +143,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 			Ok(None)
 		} else {
 			let mut columns = Columns::from_ring_buffer(&self.ring_buffer);
-			columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
-
-			if ctx.preserve_row_numbers {
-				columns.0.push(Column {
-					name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
-					data: ColumnData::row_number(row_numbers),
-				});
-			}
+			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers)?;
 
 			Ok(Some(Batch {
 				columns,

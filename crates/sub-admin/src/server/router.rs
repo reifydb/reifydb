@@ -30,7 +30,7 @@ impl Router {
 			// API endpoints under /v1/
 			("GET", "/v1/health") => Route::Health,
 			("GET", "/v1/config") => Route::GetConfig,
-			("PSVT", "/v1/config") => Route::UpdateConfig,
+			("PUT", "/v1/config") => Route::UpdateConfig,
 			("POST", "/v1/execute") => Route::Execute,
 			("GET", "/v1/metrics") => Route::Metrics,
 			("GET", "/v1/ws") => Route::WebSocket,

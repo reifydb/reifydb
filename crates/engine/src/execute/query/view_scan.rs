@@ -15,11 +15,11 @@ use reifydb_core::{
 	},
 	log_debug,
 	value::{
-		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
+		column::{Columns, headers::ColumnHeaders},
 		row::EncodedRowLayout,
 	},
 };
-use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME};
+use reifydb_type::Fragment;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
@@ -120,14 +120,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<'a, T> {
 		self.last_key = new_last_key;
 
 		let mut columns = Columns::from_view(&self.view);
-		columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
-
-		if ctx.preserve_row_numbers {
-			columns.0.push(Column {
-				name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
-				data: ColumnData::row_number(row_numbers),
-			});
-		}
+		columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers)?;
 
 		Ok(Some(Batch {
 			columns,

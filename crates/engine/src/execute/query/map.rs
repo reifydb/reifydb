@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{Column, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::column_name_from_expression;
-use reifydb_type::{Fragment, Params, ROW_NUMBER_COLUMN_NAME};
+use reifydb_type::{Fragment, Params};
 
 use crate::{
 	StandardTransaction,
@@ -50,16 +50,6 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 		}) = self.input.next(rx)?
 		{
 			let mut new_columns = Vec::with_capacity(self.expressions.len());
-
-			// Only preserve RowNumber column if the execution
-			// context requires it
-			if ctx.preserve_row_numbers {
-				if let Some(row_number_column) =
-					columns.iter().find(|col| col.name() == ROW_NUMBER_COLUMN_NAME)
-				{
-					new_columns.push(row_number_column.clone());
-				}
-			}
 
 			let row_count = columns.row_count();
 
@@ -112,8 +102,15 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 				columns: column_names,
 			});
 
+			// Create new Columns with the original row numbers preserved
+			let result_columns = if !columns.row_numbers.is_empty() {
+				Columns::with_row_numbers(new_columns, columns.row_numbers.to_vec())
+			} else {
+				Columns::new(new_columns)
+			};
+
 			return Ok(Some(Batch {
-				columns: Columns::new(new_columns),
+				columns: result_columns,
 			}));
 		}
 		Ok(None)

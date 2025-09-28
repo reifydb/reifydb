@@ -11,13 +11,18 @@ mod display;
 pub use column::FrameColumn;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Frame(pub Vec<FrameColumn>);
+pub struct Frame {
+	#[serde(default)]
+	pub row_numbers: Vec<u64>,
+	#[serde(default)]
+	pub columns: Vec<FrameColumn>,
+}
 
 impl Deref for Frame {
 	type Target = [FrameColumn];
 
 	fn deref(&self) -> &Self::Target {
-		&self.0
+		&self.columns
 	}
 }
 
@@ -25,12 +30,15 @@ impl Index<usize> for Frame {
 	type Output = FrameColumn;
 
 	fn index(&self, index: usize) -> &Self::Output {
-		self.0.index(index)
+		self.columns.index(index)
 	}
 }
 
 impl Frame {
-	pub fn new(columns: Vec<FrameColumn>) -> Self {
-		Self(columns)
+	pub fn new(row_numbers: Vec<u64>, columns: Vec<FrameColumn>) -> Self {
+		Self {
+			row_numbers,
+			columns,
+		}
 	}
 }

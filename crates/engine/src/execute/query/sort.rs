@@ -94,7 +94,14 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 			Equal
 		});
 
-		let cols = columns.0.make_mut();
+		// Reorder row numbers if present
+		if !columns.row_numbers.is_empty() {
+			let reordered_row_numbers: Vec<_> = indices.iter().map(|&i| columns.row_numbers[i]).collect();
+			columns.row_numbers = reifydb_core::util::CowVec::new(reordered_row_numbers);
+		}
+
+		// Reorder columns
+		let cols = columns.columns.make_mut();
 		for col in cols.iter_mut() {
 			col.data_mut().reorder(&indices);
 		}

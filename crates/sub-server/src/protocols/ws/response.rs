@@ -40,6 +40,7 @@ pub struct QueryResponse {
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct WebsocketFrame {
+	pub row_numbers: Vec<u64>,
 	pub columns: Vec<WebsocketColumn>,
 }
 

@@ -9,11 +9,11 @@ use reifydb_core::{
 		EncodableKey, MultiVersionQueryTransaction, Params, ResolvedNamespace, ResolvedRingBuffer,
 		ResolvedSource, RowKey, Transaction,
 	},
-	value::column::{ColumnData, Columns},
+	value::column::Columns,
 };
 use reifydb_rql::plan::physical::DeleteRingBufferNode;
 use reifydb_type::{
-	Fragment, IntoFragment, ROW_NUMBER_COLUMN_NAME, Value,
+	Fragment, IntoFragment, Value,
 	diagnostic::{catalog::ring_buffer_not_found, engine},
 	return_error,
 };
@@ -69,7 +69,6 @@ impl Executor {
 						functions: self.functions.clone(),
 						source: resolved_source.clone(),
 						batch_size: 1024,
-						preserve_row_numbers: true,
 						params: params.clone(),
 					}),
 				);
@@ -78,7 +77,6 @@ impl Executor {
 					functions: self.functions.clone(),
 					source: None,
 					batch_size: 1024,
-					preserve_row_numbers: true,
 					params: params.clone(),
 				};
 
@@ -89,29 +87,15 @@ impl Executor {
 					columns,
 				}) = input_node.next(&mut std_txn)?
 				{
-					// Find the RowNumber column
-					let Some(row_number_column) =
-						columns.iter().find(|col| col.name() == ROW_NUMBER_COLUMN_NAME)
-					else {
+					// Get row numbers from the Columns structure
+					if columns.row_numbers.is_empty() {
 						return_error!(engine::missing_row_number_column());
-					};
+					}
 
 					// Extract RowNumber data
-					let row_numbers =
-						match &row_number_column.data() {
-							ColumnData::RowNumber(container) => {
-								// Check that all row IDs are defined
-								for i in 0..container.data().len() {
-									if !container.is_defined(i) {
-										return_error!(engine::invalid_row_number_values());
-									}
-								}
-								container.data()
-							}
-							_ => return_error!(engine::invalid_row_number_values()),
-						};
+					let row_numbers = &columns.row_numbers;
 
-					row_numbers_to_delete.extend(row_numbers.iter().cloned());
+					row_numbers_to_delete.extend(row_numbers.iter().copied());
 				}
 			}
 

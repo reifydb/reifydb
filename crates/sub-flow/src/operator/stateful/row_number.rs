@@ -44,7 +44,7 @@ impl RowNumberProvider {
 	) -> crate::Result<(RowNumber, bool)> {
 		// Check if we already have a row number for this key
 		let map_key = self.make_map_key(key);
-		let encoded_map_key = EncodedKey::new(map_key);
+		let encoded_map_key = EncodedKey::new(map_key.clone());
 
 		if let Some(existing_row) = operator.state_get(txn, &encoded_map_key)? {
 			// Key exists, return existing row number

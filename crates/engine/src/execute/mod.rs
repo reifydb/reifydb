@@ -58,7 +58,6 @@ pub struct ExecutionContext<'a> {
 	pub functions: Functions,
 	pub source: Option<ResolvedSource<'a>>,
 	pub batch_size: usize,
-	pub preserve_row_numbers: bool,
 	pub params: Params,
 }
 
@@ -351,7 +350,6 @@ impl Executor {
 					functions: self.functions.clone(),
 					source: None,
 					batch_size: 1024,
-					preserve_row_numbers: false,
 					params: params.clone(),
 				});
 				let mut node = compile(plan, rx, context.clone());

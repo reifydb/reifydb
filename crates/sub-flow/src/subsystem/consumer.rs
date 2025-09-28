@@ -119,10 +119,7 @@ impl<T: Transaction> FlowConsumer<T> {
 			flow_engine.register(txn, flow)?;
 		}
 
-		// Group changes by source
-		let mut diffs_by_source: std::collections::HashMap<SourceId, Vec<FlowDiff>> =
-			std::collections::HashMap::new();
-
+		// Process each change immediately without grouping
 		for change in changes {
 			let (source_id, diff) = match change {
 				Change::Insert {
@@ -168,12 +165,9 @@ impl<T: Transaction> FlowConsumer<T> {
 					)
 				}
 			};
-			diffs_by_source.entry(source_id).or_insert_with(Vec::new).push(diff);
-		}
 
-		// Process each source group
-		for (source, diffs) in diffs_by_source {
-			let change = FlowChange::external(source, diffs);
+			// Process immediately
+			let change = FlowChange::external(source_id, vec![diff]);
 			flow_engine.process(txn, change)?;
 		}
 

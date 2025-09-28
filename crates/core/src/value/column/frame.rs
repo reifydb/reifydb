@@ -77,6 +77,11 @@ impl From<Column<'_>> for FrameColumn {
 
 impl From<Columns<'_>> for Frame {
 	fn from(columns: Columns) -> Self {
-		Self::new(columns.into_iter().map(|col| col.into()).collect())
+		let frame_columns: Vec<FrameColumn> = columns.columns.into_iter().map(|col| col.into()).collect();
+		if !columns.row_numbers.is_empty() {
+			Frame::with_row_numbers(frame_columns, columns.row_numbers.to_vec())
+		} else {
+			Frame::new(frame_columns)
+		}
 	}
 }
