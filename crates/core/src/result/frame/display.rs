@@ -3,152 +3,11 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use reifydb_type::util::unicode::UnicodeWidthStr;
-
-use crate::result::frame::{Frame, FrameColumn};
-
-/// Calculate the display width of a string, handling newlines properly.
-/// For strings with newlines, returns the width of the longest line.
-/// For strings without newlines, returns the unicode display width.
-fn display_width(s: &str) -> usize {
-	if s.contains('\n') {
-		s.lines().map(|line| line.width()).max().unwrap_or(0)
-	} else {
-		s.width()
-	}
-}
-
-/// Escape newlines and tabs in a string for single-line display.
-/// Replaces '\n' with "\\n" and '\t' with "\\t".
-fn escape_control_chars(s: &str) -> String {
-	s.replace('\n', "\\n").replace('\t', "\\t")
-}
-
-/// Create a column display order (no special handling needed since row numbers are separate)
-fn get_column_display_order(frame: &Frame) -> Vec<usize> {
-	(0..frame.len()).collect()
-}
-
-/// Extract string value from column at given row index, with proper escaping
-fn extract_string_value(col: &FrameColumn, row_numberx: usize) -> String {
-	let s = col.data.as_string(row_numberx);
-	escape_control_chars(&s)
-}
+use crate::result::frame::{Frame, FrameRenderer};
 
 impl Display for Frame {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-		let row_count = self.first().map_or(0, |c| c.data.len());
-		let has_row_numbers = !self.row_numbers.is_empty();
-		let col_count = self.len()
-			+ if has_row_numbers {
-				1
-			} else {
-				0
-			};
-
-		// Get the display order for regular columns
-		let column_order = get_column_display_order(self);
-
-		let mut col_widths = vec![0; col_count];
-
-		// If we have row numbers, calculate width for row number column
-		let row_num_col_idx = if has_row_numbers {
-			// Row number column is always first
-			let row_num_header = "__ROW__NUMBER__";
-			col_widths[0] = display_width(row_num_header);
-
-			// Calculate max width needed for row numbers
-			for row_num in &self.row_numbers {
-				let s = row_num.to_string();
-				col_widths[0] = col_widths[0].max(display_width(&s));
-			}
-			1 // Start regular columns at index 1
-		} else {
-			0 // Start regular columns at index 0
-		};
-
-		for (display_idx, &col_idx) in column_order.iter().enumerate() {
-			let col = &self[col_idx];
-			let display_name = escape_control_chars(&col.qualified_name());
-			col_widths[row_num_col_idx + display_idx] = display_width(&display_name);
-		}
-
-		for row_numberx in 0..row_count {
-			for (display_idx, &col_idx) in column_order.iter().enumerate() {
-				let col = &self[col_idx];
-				let s = extract_string_value(col, row_numberx);
-				col_widths[row_num_col_idx + display_idx] =
-					col_widths[row_num_col_idx + display_idx].max(display_width(&s));
-			}
-		}
-
-		// Add padding
-		for w in &mut col_widths {
-			*w += 2;
-		}
-
-		let sep = format!("+{}+", col_widths.iter().map(|w| "-".repeat(*w + 2)).collect::<Vec<_>>().join("+"));
-		writeln!(f, "{}", sep)?;
-
-		let mut header = Vec::new();
-
-		// Add row number header if present
-		if has_row_numbers {
-			let w = col_widths[0];
-			let name = "__ROW__NUMBER__";
-			let pad = w - display_width(name);
-			let l = pad / 2;
-			let r = pad - l;
-			header.push(format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r));
-		}
-
-		// Add regular column headers
-		for (display_idx, &col_idx) in column_order.iter().enumerate() {
-			let col = &self[col_idx];
-			let w = col_widths[row_num_col_idx + display_idx];
-			let name = escape_control_chars(&col.qualified_name());
-			let pad = w - display_width(&name);
-			let l = pad / 2;
-			let r = pad - l;
-			header.push(format!(" {:left$}{}{:right$} ", "", name, "", left = l, right = r));
-		}
-
-		writeln!(f, "|{}|", header.join("|"))?;
-
-		writeln!(f, "{}", sep)?;
-
-		for row_numberx in 0..row_count {
-			let mut row = Vec::new();
-
-			// Add row number value if present
-			if has_row_numbers {
-				let w = col_widths[0];
-				let s = if row_numberx < self.row_numbers.len() {
-					self.row_numbers[row_numberx].to_string()
-				} else {
-					"Undefined".to_string()
-				};
-				let pad = w - display_width(&s);
-				let l = pad / 2;
-				let r = pad - l;
-				row.push(format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r));
-			}
-
-			// Add regular column values
-			for (display_idx, &col_idx) in column_order.iter().enumerate() {
-				let col = &self[col_idx];
-				let w = col_widths[row_num_col_idx + display_idx];
-				let s = extract_string_value(col, row_numberx);
-				let pad = w - display_width(&s);
-				let l = pad / 2;
-				let r = pad - l;
-				row.push(format!(" {:left$}{}{:right$} ", "", s, "", left = l, right = r));
-			}
-
-			writeln!(f, "|{}|", row.join("|"))?;
-		}
-
-		writeln!(f, "{}", sep)
+		FrameRenderer::render_full_to(self, f)
 	}
 }
 
@@ -158,7 +17,7 @@ mod tests {
 
 	use super::*;
 	use crate::{
-		BitVec, FrameColumnData,
+		BitVec, FrameColumn, FrameColumnData,
 		value::container::{
 			BlobContainer, BoolContainer, NumberContainer, RowNumberContainer, TemporalContainer,
 			UndefinedContainer, Utf8Container, UuidContainer,
@@ -1002,5 +861,34 @@ mod tests {
 +----------------------------------------+
 ";
 		assert_eq!(output, expected);
+	}
+
+	#[test]
+	fn test_renderer_without_row_numbers() {
+		// Create a frame with row numbers
+		let regular_column = column_with_undefineds!("name", Utf8, [Some("Alice"), Some("Bob")]);
+		let age_column = column_with_undefineds!("age", Int4, [Some(25_i32), Some(30_i32)]);
+
+		let mut frame = Frame::new(vec![regular_column, age_column]);
+		frame.row_numbers = vec![RowNumber::new(1), RowNumber::new(2)];
+
+		// Render with row numbers (using Display trait which uses full renderer)
+		let output_with_row_numbers = format!("{}", frame);
+		assert!(output_with_row_numbers.contains("__ROW__NUMBER__"));
+
+		// Render without row numbers using the new renderer
+		let output_without_row_numbers = FrameRenderer::render_without_row_numbers(&frame).unwrap();
+		assert!(!output_without_row_numbers.contains("__ROW__NUMBER__"));
+
+		// Check that it only has the regular columns
+		let expected_without_row_numbers = "\
++---------+-------+
+|  name   |  age  |
++---------+-------+
+|  Alice  |  25   |
+|   Bob   |  30   |
++---------+-------+
+";
+		assert_eq!(output_without_row_numbers, expected_without_row_numbers);
 	}
 }

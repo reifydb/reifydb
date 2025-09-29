@@ -5,7 +5,9 @@ mod column;
 mod data;
 mod display;
 mod frame;
+mod render;
 
 pub use column::FrameColumn;
 pub use data::FrameColumnData;
 pub use frame::Frame;
+pub use render::FrameRenderer;
