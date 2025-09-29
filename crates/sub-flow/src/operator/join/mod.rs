@@ -1,5 +1,4 @@
 // Internal modules
-mod loading;
 mod operator;
 mod params;
 mod row;
@@ -8,9 +7,7 @@ mod state;
 mod store;
 mod strategy;
 
-// Internal re-exports for module use
 pub use operator::JoinOperator;
-pub(crate) use params::RowParams;
 pub(crate) use row::SerializedRow;
 pub(crate) use schema::Schema;
 pub(crate) use state::{JoinSide, JoinSideEntry, JoinState};

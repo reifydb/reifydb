@@ -5,19 +5,19 @@ use reifydb_rql::query::QueryString;
 
 use super::{
 	eager::{add_to_state_entry, remove_from_state_entry, update_row_in_entry},
-	lazy::{has_other_right_rows, is_only_matching_right_row, query_right_side},
+	lazy::query_right_side,
 };
 use crate::{
 	flow::FlowDiff,
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
 };
 
-pub(crate) struct LeftLazyJoin {
+pub(crate) struct InnerLazyJoin {
 	pub(crate) query: QueryString,
 	pub(crate) executor: Executor,
 }
 
-impl LeftLazyJoin {
+impl InnerLazyJoin {
 	pub(crate) fn handle_insert<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
@@ -29,9 +29,9 @@ impl LeftLazyJoin {
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
-		match side {
-			JoinSide::Left => {
-				if let Some(key_hash) = key_hash {
+		if let Some(key_hash) = key_hash {
+			match side {
+				JoinSide::Left => {
 					// Add to left entries
 					add_to_state_entry(txn, &mut state.left, &key_hash, post)?;
 
@@ -45,55 +45,19 @@ impl LeftLazyJoin {
 						operator,
 					)?;
 
+					// Only emit if there are matches (inner join)
 					if !right_rows.is_empty() {
 						for right_row in &right_rows {
 							result.push(FlowDiff::Insert {
 								post: operator.join_rows(txn, post, right_row)?,
 							});
 						}
-					} else {
-						// Left join: emit left row even without match
-						let unmatched_row = operator.unmatched_left_row(txn, post)?;
-						result.push(FlowDiff::Insert {
-							post: unmatched_row,
-						});
 					}
-				} else {
-					// Undefined key in left join still emits the row
-					let unmatched_row = operator.unmatched_left_row(txn, post)?;
-					result.push(FlowDiff::Insert {
-						post: unmatched_row,
-					});
+					// No else clause - inner join doesn't emit unmatched rows
 				}
-			}
-			JoinSide::Right => {
-				if let Some(key_hash) = key_hash {
-					// Check if this is the first/only right row for this key
-					let is_first_or_only = is_only_matching_right_row(
-						txn,
-						&self.query,
-						&self.executor,
-						key_hash,
-						state,
-						operator,
-						post,
-					)?;
-
+				JoinSide::Right => {
 					// Join with matching left rows
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
-						// If first right row, remove previously emitted unmatched left rows
-						if is_first_or_only {
-							for left_row_ser in &left_entry.rows {
-								let left_row = left_row_ser.to_left_row(&state.schema);
-								let unmatched_row =
-									operator.unmatched_left_row(txn, &left_row)?;
-								result.push(FlowDiff::Remove {
-									pre: unmatched_row,
-								});
-							}
-						}
-
-						// Add properly joined rows
 						for left_row_ser in &left_entry.rows {
 							let left_row = left_row_ser.to_left_row(&state.schema);
 							result.push(FlowDiff::Insert {
@@ -101,10 +65,11 @@ impl LeftLazyJoin {
 							});
 						}
 					}
+					// No else clause - inner join doesn't emit unmatched rows
 				}
-				// Right side inserts with undefined keys don't produce output
 			}
 		}
+		// Undefined keys produce no output in inner join
 
 		Ok(result)
 	}
@@ -120,9 +85,9 @@ impl LeftLazyJoin {
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
-		match side {
-			JoinSide::Left => {
-				if let Some(key_hash) = key_hash {
+		if let Some(key_hash) = key_hash {
+			match side {
+				JoinSide::Left => {
 					// Check if left entry exists
 					if state.left.contains_key(txn, &key_hash)? {
 						operator.cleanup_left_row_joins(txn, pre.number.0)?;
@@ -143,40 +108,14 @@ impl LeftLazyJoin {
 									pre: operator.join_rows(txn, pre, right_row)?,
 								});
 							}
-						} else {
-							// Remove the unmatched left join row
-							let unmatched_row = operator.unmatched_left_row(txn, pre)?;
-							result.push(FlowDiff::Remove {
-								pre: unmatched_row,
-							});
 						}
+						// No else clause - inner join has no unmatched rows to remove
 
 						// Remove from left entries and clean up if empty
 						remove_from_state_entry(txn, &mut state.left, &key_hash, pre)?;
 					}
-				} else {
-					// Undefined key - remove the unmatched row
-					let unmatched_row = operator.unmatched_left_row(txn, pre)?;
-					result.push(FlowDiff::Remove {
-						pre: unmatched_row,
-					});
-
-					operator.cleanup_left_row_joins(txn, pre.number.0)?;
 				}
-			}
-			JoinSide::Right => {
-				if let Some(key_hash) = key_hash {
-					// Check if there are other right rows besides this one
-					let has_other_rows = has_other_right_rows(
-						txn,
-						&self.query,
-						&self.executor,
-						key_hash,
-						state,
-						operator,
-						pre,
-					)?;
-
+				JoinSide::Right => {
 					// Remove all joins involving this row
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
 						for left_row_ser in &left_entry.rows {
@@ -185,19 +124,8 @@ impl LeftLazyJoin {
 								pre: operator.join_rows(txn, &left_row, pre)?,
 							});
 						}
-
-						// If this was the last right row, re-emit left rows as unmatched
-						if !has_other_rows {
-							for left_row_ser in &left_entry.rows {
-								let left_row = left_row_ser.to_left_row(&state.schema);
-								let unmatched_row =
-									operator.unmatched_left_row(txn, &left_row)?;
-								result.push(FlowDiff::Insert {
-									post: unmatched_row,
-								});
-							}
-						}
 					}
+					// No need to re-emit unmatched rows for inner join
 				}
 			}
 		}
@@ -220,9 +148,9 @@ impl LeftLazyJoin {
 
 		if old_key == new_key {
 			// Key didn't change, update in place
-			match side {
-				JoinSide::Left => {
-					if let Some(key) = old_key {
+			if let Some(key) = old_key {
+				match side {
+					JoinSide::Left => {
 						// Update the row in state
 						if update_row_in_entry(txn, &mut state.left, &key, pre, post)? {
 							// Emit updates for all joined rows
@@ -246,30 +174,11 @@ impl LeftLazyJoin {
 										)?,
 									});
 								}
-							} else {
-								// No matching right rows - update unmatched left row
-								let unmatched_pre =
-									operator.unmatched_left_row(txn, pre)?;
-								let unmatched_post =
-									operator.unmatched_left_row(txn, post)?;
-								result.push(FlowDiff::Update {
-									pre: unmatched_pre,
-									post: unmatched_post,
-								});
 							}
+							// No else clause - inner join has no unmatched rows to update
 						}
-					} else {
-						// Both keys are undefined - update the row
-						let unmatched_pre = operator.unmatched_left_row(txn, pre)?;
-						let unmatched_post = operator.unmatched_left_row(txn, post)?;
-						result.push(FlowDiff::Update {
-							pre: unmatched_pre,
-							post: unmatched_post,
-						});
 					}
-				}
-				JoinSide::Right => {
-					if let Some(key) = old_key {
+					JoinSide::Right => {
 						// In lazy mode, we don't track right-side state
 						// We just emit updates for all joined rows with left side
 						if let Some(left_entry) = state.left.get(txn, &key)? {

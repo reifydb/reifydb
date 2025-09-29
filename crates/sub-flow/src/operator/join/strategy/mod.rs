@@ -5,23 +5,25 @@ use reifydb_rql::query::QueryString;
 
 use crate::{
 	flow::FlowDiff,
-	operator::join::{JoinSide, JoinState, loading::EagerLoading, operator::JoinOperator},
+	operator::join::{JoinSide, JoinState, operator::JoinOperator},
 };
 
-mod inner;
-mod left;
+mod eager;
+mod inner_eager;
+mod inner_lazy;
+mod lazy;
 mod left_eager;
 mod left_lazy;
 
-pub(crate) use inner::InnerJoin;
-
-use crate::operator::join::strategy::{left_eager::LeftEagerJoin, left_lazy::LeftLazyJoin};
+use crate::operator::join::strategy::{
+	inner_eager::InnerEagerJoin, inner_lazy::InnerLazyJoin, left_eager::LeftEagerJoin, left_lazy::LeftLazyJoin,
+};
 
 pub(crate) enum JoinStrategy {
-	LeftEager(LeftEagerJoin, EagerLoading),
-	LeftLazy(LeftLazyJoin, EagerLoading),
-	InnerEager(InnerJoin, EagerLoading),
-	// InnerLazy(InnerJoin, LazyLoading),
+	LeftEager(LeftEagerJoin),
+	LeftLazy(LeftLazyJoin),
+	InnerEager(InnerEagerJoin),
+	InnerLazy(InnerLazyJoin),
 }
 
 impl JoinStrategy {
@@ -33,21 +35,22 @@ impl JoinStrategy {
 	) -> Self {
 		match (storage_strategy, join_type) {
 			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Left) => {
-				JoinStrategy::LeftEager(LeftEagerJoin, EagerLoading::new())
+				JoinStrategy::LeftEager(LeftEagerJoin)
 			}
-			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Left) => JoinStrategy::LeftLazy(
-				LeftLazyJoin {
+			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Left) => {
+				JoinStrategy::LeftLazy(LeftLazyJoin {
 					query: right_query,
 					executor,
-				},
-				EagerLoading::new(),
-			),
+				})
+			}
 			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Inner) => {
-				JoinStrategy::InnerEager(InnerJoin, EagerLoading::new())
+				JoinStrategy::InnerEager(InnerEagerJoin)
 			}
 			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Inner) => {
-				// JoinStrategy::InnerLazy(InnerJoin, LazyLoading::new(right_query, executor))
-				panic!()
+				JoinStrategy::InnerLazy(InnerLazyJoin {
+					query: right_query,
+					executor,
+				})
 			}
 		}
 	}
@@ -63,16 +66,18 @@ impl JoinStrategy {
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftEager(join_type, loading) => {
+			JoinStrategy::LeftEager(join_type) => {
 				join_type.handle_insert(txn, post, side, key_hash, state, operator)
 			}
-			JoinStrategy::LeftLazy(join_type, loading) => {
+			JoinStrategy::LeftLazy(join_type) => {
 				join_type.handle_insert(txn, post, side, key_hash, state, operator)
 			}
-			JoinStrategy::InnerEager(join_type, loading) => join_type
-				.handle_insert_with_loading(txn, post, side, key_hash, state, operator, loading),
-			// JoinStrategy::InnerLazy(join_type, loading) => join_type
-			// 	.handle_insert_with_loading(txn, post, side, key_hash, state, operator, loading),
+			JoinStrategy::InnerEager(join_type) => {
+				join_type.handle_insert(txn, post, side, key_hash, state, operator)
+			}
+			JoinStrategy::InnerLazy(join_type) => {
+				join_type.handle_insert(txn, post, side, key_hash, state, operator)
+			}
 		}
 	}
 
@@ -87,17 +92,18 @@ impl JoinStrategy {
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftEager(join_type, loading) => {
+			JoinStrategy::LeftEager(join_type) => {
 				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
 			}
-			JoinStrategy::LeftLazy(join_type, loading) => {
+			JoinStrategy::LeftLazy(join_type) => {
 				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
 			}
-			JoinStrategy::InnerEager(join_type, loading) => {
-				join_type.handle_remove_with_loading(txn, pre, side, key_hash, state, operator, loading)
-			} /* JoinStrategy::InnerLazy(join_type, loading) => {
-			   * 	join_type.handle_remove_with_loading(txn, pre, side, key_hash, state, operator,
-			   * loading) } */
+			JoinStrategy::InnerEager(join_type) => {
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
+			}
+			JoinStrategy::InnerLazy(join_type) => {
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
+			}
 		}
 	}
 
@@ -114,18 +120,18 @@ impl JoinStrategy {
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftEager(join_type, loading) => {
+			JoinStrategy::LeftEager(join_type) => {
 				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
 			}
-			JoinStrategy::LeftLazy(join_type, loading) => {
+			JoinStrategy::LeftLazy(join_type) => {
 				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
 			}
-			JoinStrategy::InnerEager(join_type, loading) => join_type.handle_update_with_loading(
-				txn, pre, post, side, old_key, new_key, state, operator, loading,
-			),
-			// JoinStrategy::InnerLazy(join_type, loading) => join_type.handle_update_with_loading(
-			// 	txn, pre, post, side, old_key, new_key, state, operator, loading,
-			// ),
+			JoinStrategy::InnerEager(join_type) => {
+				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
+			}
+			JoinStrategy::InnerLazy(join_type) => {
+				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
+			}
 		}
 	}
 }
