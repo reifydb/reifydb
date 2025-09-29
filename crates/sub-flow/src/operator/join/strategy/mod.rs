@@ -1,4 +1,4 @@
-use reifydb_core::{JoinType, interface::Transaction, value::row::Row};
+use reifydb_core::{CommitVersion, JoinType, interface::Transaction, value::row::Row};
 use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;
@@ -64,19 +64,20 @@ impl JoinStrategy {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftEager(join_type) => {
 				join_type.handle_insert(txn, post, side, key_hash, state, operator)
 			}
 			JoinStrategy::LeftLazy(join_type) => {
-				join_type.handle_insert(txn, post, side, key_hash, state, operator)
+				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
 			}
 			JoinStrategy::InnerEager(join_type) => {
 				join_type.handle_insert(txn, post, side, key_hash, state, operator)
 			}
 			JoinStrategy::InnerLazy(join_type) => {
-				join_type.handle_insert(txn, post, side, key_hash, state, operator)
+				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
 			}
 		}
 	}
@@ -90,19 +91,20 @@ impl JoinStrategy {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftEager(join_type) => {
 				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
 			}
 			JoinStrategy::LeftLazy(join_type) => {
-				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator, version)
 			}
 			JoinStrategy::InnerEager(join_type) => {
 				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
 			}
 			JoinStrategy::InnerLazy(join_type) => {
-				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator, version)
 			}
 		}
 	}
@@ -118,20 +120,19 @@ impl JoinStrategy {
 		new_key: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftEager(join_type) => {
 				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
 			}
-			JoinStrategy::LeftLazy(join_type) => {
-				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
-			}
+			JoinStrategy::LeftLazy(join_type) => join_type
+				.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
 			JoinStrategy::InnerEager(join_type) => {
 				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
 			}
-			JoinStrategy::InnerLazy(join_type) => {
-				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
-			}
+			JoinStrategy::InnerLazy(join_type) => join_type
+				.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
 		}
 	}
 }

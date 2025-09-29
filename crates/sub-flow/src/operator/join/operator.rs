@@ -331,7 +331,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		// Check for self-referential calls (should never happen)
 		if let FlowChangeOrigin::Internal(from_node) = &change.origin {
 			if *from_node == self.node {
-				return Ok(FlowChange::internal(self.node, Vec::new()));
+				return Ok(FlowChange::internal(self.node, change.version, Vec::new()));
 			}
 		}
 
@@ -368,8 +368,15 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 						}
 					};
 
-					let diffs =
-						self.strategy.handle_insert(txn, &post, side, key, &mut state, self)?;
+					let diffs = self.strategy.handle_insert(
+						txn,
+						&post,
+						side,
+						key,
+						&mut state,
+						self,
+						change.version,
+					)?;
 					result.extend(diffs);
 				}
 				FlowDiff::Remove {
@@ -383,8 +390,15 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 							self.compute_join_key(&pre, &self.right_exprs, evaluator)?
 						}
 					};
-					let diffs =
-						self.strategy.handle_remove(txn, &pre, side, key, &mut state, self)?;
+					let diffs = self.strategy.handle_remove(
+						txn,
+						&pre,
+						side,
+						key,
+						&mut state,
+						self,
+						change.version,
+					)?;
 					result.extend(diffs);
 				}
 				FlowDiff::Update {
@@ -408,7 +422,15 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 						),
 					};
 					let diffs = self.strategy.handle_update(
-						txn, &pre, &post, side, old_key, new_key, &mut state, self,
+						txn,
+						&pre,
+						&post,
+						side,
+						old_key,
+						new_key,
+						&mut state,
+						self,
+						change.version,
 					)?;
 					result.extend(diffs);
 				}
@@ -418,6 +440,6 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		// Save the updated schema
 		self.save_schema(txn, &state.schema)?;
 
-		Ok(FlowChange::internal(self.node, result))
+		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 }

@@ -1,4 +1,4 @@
-use reifydb_core::{interface::Transaction, value::row::Row};
+use reifydb_core::{CommitVersion, interface::Transaction, value::row::Row};
 use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;
@@ -26,6 +26,7 @@ impl LeftLazyJoin {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -43,6 +44,7 @@ impl LeftLazyJoin {
 						key_hash,
 						state,
 						operator,
+						version,
 					)?;
 
 					if !right_rows.is_empty() {
@@ -77,6 +79,7 @@ impl LeftLazyJoin {
 						state,
 						operator,
 						post,
+						version,
 					)?;
 
 					// Join with matching left rows
@@ -117,6 +120,7 @@ impl LeftLazyJoin {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -135,6 +139,7 @@ impl LeftLazyJoin {
 							key_hash,
 							state,
 							operator,
+							version,
 						)?;
 
 						if !right_rows.is_empty() {
@@ -175,6 +180,7 @@ impl LeftLazyJoin {
 						state,
 						operator,
 						pre,
+						version,
 					)?;
 
 					// Remove all joins involving this row
@@ -215,6 +221,7 @@ impl LeftLazyJoin {
 		new_key: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -233,6 +240,7 @@ impl LeftLazyJoin {
 								key,
 								state,
 								operator,
+								version,
 							)?;
 
 							if !right_rows.is_empty() {
@@ -288,10 +296,10 @@ impl LeftLazyJoin {
 			}
 		} else {
 			// Key changed - treat as remove + insert
-			let remove_diffs = self.handle_remove(txn, pre, side, old_key, state, operator)?;
+			let remove_diffs = self.handle_remove(txn, pre, side, old_key, state, operator, version)?;
 			result.extend(remove_diffs);
 
-			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator)?;
+			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator, version)?;
 			result.extend(insert_diffs);
 		}
 

@@ -27,6 +27,7 @@ impl<T: Transaction> FlowEngine<T> {
 									node,
 									FlowChange::internal(
 										*node_id,
+										change.version,
 										change.diffs.clone(),
 									),
 								)?;

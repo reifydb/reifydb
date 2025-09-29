@@ -80,7 +80,7 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, result))
+		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 }
 

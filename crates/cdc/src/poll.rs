@@ -144,8 +144,8 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 				log_error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
 			}
 
-			// thread::sleep(config.poll_interval);
-			thread::sleep(Duration::from_millis(100));
+			thread::sleep(config.poll_interval);
+			// thread::sleep(Duration::from_millis(100));
 		}
 
 		log_debug!("[Consumer {:?}] Stopped", config.consumer_id);

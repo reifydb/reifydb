@@ -18,7 +18,7 @@ pub use interface::TransactionId;
 use interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use result::*;
 pub use sort::{SortDirection, SortKey};
-pub use util::{BitVec, CowVec, Either, WaitGroup, ioc, retry};
+pub use util::{BitVec, CowVec, Either, RetryError, WaitGroup, ioc, retry};
 pub use value::row::{EncodedKey, EncodedKeyRange};
 
 pub struct CoreVersion;

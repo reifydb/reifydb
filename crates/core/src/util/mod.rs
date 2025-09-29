@@ -26,5 +26,5 @@ pub use clock::{now, now_micros, now_millis, now_nanos};
 pub use cowvec::CowVec;
 pub use either::Either;
 pub use multi::MultiVersionContainer;
-pub use retry::retry;
+pub use retry::{RetryError, retry};
 pub use wait_group::WaitGroup;

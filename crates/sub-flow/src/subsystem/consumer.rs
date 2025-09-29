@@ -4,10 +4,10 @@
 use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view};
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
-	Result,
+	CommitVersion, Result,
 	interface::{
-		Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, MultiVersionCommandTransaction,
-		Params, QueryTransaction, SourceId, Transaction,
+		Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, QueryTransaction, SourceId,
+		Transaction,
 	},
 	util::CowVec,
 	value::row::{EncodedRow, Row},
@@ -106,7 +106,12 @@ impl<T: Transaction> FlowConsumer<T> {
 		Ok(flows)
 	}
 
-	fn process_changes(&self, txn: &mut StandardCommandTransaction<T>, changes: Vec<Change>) -> Result<()> {
+	fn process_changes(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		version: CommitVersion,
+		changes: Vec<Change>,
+	) -> Result<()> {
 		let mut registry = TransformOperatorRegistry::new();
 
 		// Register custom operators
@@ -173,7 +178,7 @@ impl<T: Transaction> FlowConsumer<T> {
 			};
 
 			// Process immediately
-			let change = FlowChange::external(source_id, vec![diff]);
+			let change = FlowChange::external(source_id, version, vec![diff]);
 			flow_engine.process(txn, change)?;
 		}
 
@@ -184,8 +189,6 @@ impl<T: Transaction> FlowConsumer<T> {
 impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 	fn consume(&self, txn: &mut StandardCommandTransaction<T>, cdcs: Vec<Cdc>) -> Result<()> {
 		for cdc in cdcs {
-			txn.read_as_of_version_inclusive(cdc.version)?;
-
 			for sequenced_change in cdc.changes {
 				let mut to_process = Vec::new();
 
@@ -234,7 +237,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 				}
 
 				if !to_process.is_empty() {
-					self.process_changes(txn, to_process)?;
+					self.process_changes(txn, cdc.version, to_process)?;
 				}
 			}
 		}

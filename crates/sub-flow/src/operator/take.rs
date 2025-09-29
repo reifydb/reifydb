@@ -229,6 +229,6 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 		// Save the updated state
 		self.save_take_state(txn, &state)?;
 
-		Ok(FlowChange::internal(self.node, output_diffs))
+		Ok(FlowChange::internal(self.node, change.version, output_diffs))
 	}
 }

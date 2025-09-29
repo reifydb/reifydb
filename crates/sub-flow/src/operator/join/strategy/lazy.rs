@@ -1,6 +1,6 @@
 use reifydb_core::{
-	FrameColumnData,
-	interface::{Command, ExecuteCommand, Identity, Transaction},
+	CommitVersion, FrameColumnData,
+	interface::{ExecuteQuery, Identity, Query, Transaction},
 	value::row::{EncodedRowNamedLayout, Row},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
@@ -18,23 +18,27 @@ pub(crate) fn query_right_side<T: Transaction>(
 	key_hash: Hash128,
 	state: &mut JoinState,
 	operator: &JoinOperator,
+	version: CommitVersion,
 ) -> crate::Result<Vec<Row>> {
-	// Execute the query without parameters
-	// The query may have its own filter (e.g., "from table | filter condition")
-	// but we don't inject parameters from the left row
-	let query = Command {
-		rql: query_string.as_str(),
-		params: Params::None,
-		identity: &Identity::root(), // TODO: Should use proper identity from context
-	};
+	let result = txn.with_multi_query_as_of_inclusive(version, |query_txn| {
+		// Execute the query without parameters
+		// The query may have its own filter (e.g., "from table | filter condition")
+		// but we don't inject parameters from the left row
+		let query = Query {
+			rql: query_string.as_str(),
+			params: Params::None,
+			identity: &Identity::root(), // TODO: Should use proper identity from context
+		};
 
-	// Execute the query to get all right-side rows
-	let results = executor.execute_command(txn, query)?;
+		// Execute the query to get all right-side rows
+		executor.execute_query(query_txn, query)
+	})?;
 
 	let mut right_rows = Vec::new();
 
 	// Process query results - each frame contains rows to join with
-	for frame in results {
+	for frame in result {
+		dbg!(&frame);
 		let frame_rows = process_query_frame(&frame, state, key_hash, operator)?;
 		right_rows.extend(frame_rows);
 	}
@@ -164,8 +168,9 @@ pub(crate) fn has_matching_right_rows<T: Transaction>(
 	key_hash: Hash128,
 	state: &mut JoinState,
 	operator: &JoinOperator,
+	version: CommitVersion,
 ) -> crate::Result<bool> {
-	let rows = query_right_side(txn, query_string, executor, key_hash, state, operator)?;
+	let rows = query_right_side(txn, query_string, executor, key_hash, state, operator, version)?;
 	Ok(!rows.is_empty())
 }
 
@@ -178,8 +183,9 @@ pub(crate) fn is_only_matching_right_row<T: Transaction>(
 	state: &mut JoinState,
 	operator: &JoinOperator,
 	target_row: &Row,
+	version: CommitVersion,
 ) -> crate::Result<bool> {
-	let rows = query_right_side(txn, query_string, executor, key_hash, state, operator)?;
+	let rows = query_right_side(txn, query_string, executor, key_hash, state, operator, version)?;
 	Ok(rows.len() == 1 && rows[0].number == target_row.number)
 }
 
@@ -192,7 +198,8 @@ pub(crate) fn has_other_right_rows<T: Transaction>(
 	state: &mut JoinState,
 	operator: &JoinOperator,
 	excluding_row: &Row,
+	version: CommitVersion,
 ) -> crate::Result<bool> {
-	let rows = query_right_side(txn, query_string, executor, key_hash, state, operator)?;
+	let rows = query_right_side(txn, query_string, executor, key_hash, state, operator, version)?;
 	Ok(rows.iter().any(|r| r.number != excluding_row.number))
 }

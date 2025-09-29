@@ -38,14 +38,14 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 
 		interceptors.post_commit.add(Rc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
 
-		Ok(StandardCommandTransaction::new(
-			self.multi.begin_command()?,
+		StandardCommandTransaction::new(
+			self.multi.clone(),
 			self.single.clone(),
 			self.cdc.clone(),
 			self.event_bus.clone(),
 			self.catalog.clone(),
 			interceptors,
-		))
+		)
 	}
 
 	fn begin_query(&self) -> crate::Result<Self::Query> {

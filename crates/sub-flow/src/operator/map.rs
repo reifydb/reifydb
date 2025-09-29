@@ -82,7 +82,7 @@ impl<T: Transaction> Operator<T> for MapOperator {
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, result))
+		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 }
 

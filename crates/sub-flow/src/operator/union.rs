@@ -28,6 +28,6 @@ impl<T: Transaction> Operator<T> for UnionOperator {
 	) -> crate::Result<FlowChange> {
 		// TODO: Implement single-row union processing
 		// For now, just pass through all changes with updated from
-		Ok(FlowChange::internal(self.node, change.diffs))
+		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 }

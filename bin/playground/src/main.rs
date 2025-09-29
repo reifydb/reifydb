@@ -40,7 +40,7 @@ impl<T: Transaction> Operator<T> for MyOP {
 		_evaluator: &StandardRowEvaluator,
 	) -> reifydb::Result<FlowChange> {
 		println!("INVOKED");
-		Ok(FlowChange::internal(FlowNodeId(12345), change.diffs))
+		Ok(FlowChange::internal(FlowNodeId(12345), change.version, change.diffs))
 	}
 }
 

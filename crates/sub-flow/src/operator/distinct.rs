@@ -341,6 +341,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 
 		self.save_distinct_state(txn, &state)?;
 
-		Ok(FlowChange::internal(self.node, result))
+		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 }

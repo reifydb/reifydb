@@ -96,6 +96,6 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 		}
 
 		// Sink is a terminal node - don't propagate changes further
-		Ok(FlowChange::internal(self.node, Vec::new()))
+		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
 	}
 }

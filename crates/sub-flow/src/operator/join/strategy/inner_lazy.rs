@@ -1,4 +1,4 @@
-use reifydb_core::{interface::Transaction, value::row::Row};
+use reifydb_core::{CommitVersion, interface::Transaction, value::row::Row};
 use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;
@@ -26,6 +26,7 @@ impl InnerLazyJoin {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -43,6 +44,7 @@ impl InnerLazyJoin {
 						key_hash,
 						state,
 						operator,
+						version,
 					)?;
 
 					// Only emit if there are matches (inner join)
@@ -82,6 +84,7 @@ impl InnerLazyJoin {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -100,6 +103,7 @@ impl InnerLazyJoin {
 							key_hash,
 							state,
 							operator,
+							version,
 						)?;
 
 						if !right_rows.is_empty() {
@@ -143,6 +147,7 @@ impl InnerLazyJoin {
 		new_key: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -161,6 +166,7 @@ impl InnerLazyJoin {
 								key,
 								state,
 								operator,
+								version,
 							)?;
 
 							if !right_rows.is_empty() {
@@ -197,10 +203,10 @@ impl InnerLazyJoin {
 			}
 		} else {
 			// Key changed - treat as remove + insert
-			let remove_diffs = self.handle_remove(txn, pre, side, old_key, state, operator)?;
+			let remove_diffs = self.handle_remove(txn, pre, side, old_key, state, operator, version)?;
 			result.extend(remove_diffs);
 
-			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator)?;
+			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator, version)?;
 			result.extend(insert_diffs);
 		}
 
