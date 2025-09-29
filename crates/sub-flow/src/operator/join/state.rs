@@ -2,11 +2,14 @@ use reifydb_core::interface::FlowNodeId;
 use serde::{Deserialize, Serialize};
 
 use super::{Schema, SerializedRow, Store};
+use crate::operator::join::store::UndefinedTracker;
 
 pub(crate) struct JoinState {
 	pub(crate) schema: Schema,
 	pub(crate) left: Store<JoinSideEntry>,
 	pub(crate) right: Store<JoinSideEntry>,
+	/// Track which left rows have had undefined joins emitted
+	pub(crate) undefined_emitted: UndefinedTracker,
 }
 
 impl JoinState {
@@ -15,6 +18,7 @@ impl JoinState {
 			schema,
 			left: Store::new(node_id, JoinSide::Left),
 			right: Store::new(node_id, JoinSide::Right),
+			undefined_emitted: UndefinedTracker::new(node_id),
 		}
 	}
 }

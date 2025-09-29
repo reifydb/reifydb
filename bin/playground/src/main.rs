@@ -29,44 +29,40 @@ fn main() {
 
 	db.start().unwrap();
 
-	// Test left join where one left record matches multiple right records
-	// Should produce multiple output rows for one-to-many relationships
+	// Test left join with duplicate keys on both sides
+	// Should produce Cartesian product for matching keys
 
 	// Create namespace
 	log_info!("Creating namespace test...");
 	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
 
 	// Create tables
-	log_info!("Creating table test.customers...");
-	db.command_as_root(r#"create table test.customers { id: int4, name: utf8, city: utf8 }"#, Params::None)
+	log_info!("Creating table test.students...");
+	db.command_as_root(r#"create table test.students { id: int4, name: utf8, class_id: int4 }"#, Params::None)
 		.unwrap();
 
-	log_info!("Creating table test.orders...");
+	log_info!("Creating table test.courses...");
 	db.command_as_root(
-		r#"create table test.orders { id: int4, customer_id: int4, product: utf8, amount: float8 }"#,
+		r#"create table test.courses { id: int4, class_id: int4, subject: utf8, teacher: utf8 }"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Create LEFT JOIN view for customer orders
-	log_info!("Creating deferred view test.customer_orders...");
+	// Create LEFT JOIN view for student courses
+	log_info!("Creating deferred view test.student_courses...");
 	db.command_as_root(
 		r#"
-create deferred view test.customer_orders {
-    customer_name: utf8,
-    city: utf8,
-    order_id: int4,
-    product: utf8,
-    amount: float8
+create deferred view test.student_courses {
+    student_name: utf8,
+    subject: utf8,
+    teacher: utf8
 } as {
-    from test.customers
-    left join { from test.orders } orders on id == orders.customer_id with { strategy: lazy_loading }
+    from test.students
+    left join { from test.courses } courses on class_id == courses.class_id with { strategy: lazy_loading }
     map {
-        customer_name: name,
-        city: city,
-        order_id: orders_id,
-        product: product,
-        amount: amount
+        student_name: name,
+        subject: subject,
+        teacher: teacher
     }
 }
 	"#,
@@ -74,47 +70,46 @@ create deferred view test.customer_orders {
 	)
 	.unwrap();
 
-	// Insert customers
-	log_info!("Inserting customers...");
+	// Insert students with duplicate class_id
+	log_info!("Inserting students with duplicate class_id...");
 	db.command_as_root(
 		r#"
 from [
-    {id: 1, name: "Alice", city: "New York"},
-    {id: 2, name: "Bob", city: "Los Angeles"},
-    {id: 3, name: "Charlie", city: "Chicago"}
-] insert test.customers
+    {id: 1, name: "Alice", class_id: 10},
+    {id: 2, name: "Bob", class_id: 10},
+    {id: 3, name: "Charlie", class_id: 20},
+    {id: 4, name: "Diana", class_id: 30}
+] insert test.students
 	"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Insert multiple orders for customer 1, one order for customer 2, no orders for customer 3
-	log_info!("Inserting orders...");
+	// Insert courses with duplicate class_id
+	log_info!("Inserting courses with duplicate class_id...");
 	db.command_as_root(
 		r#"
 from [
-    {id: 101, customer_id: 1, product: "Laptop", amount: 12000},
-    {id: 102, customer_id: 1, product: "Mouse", amount: 250},
-    {id: 103, customer_id: 1, product: "Keyboard", amount: 750},
-    {id: 104, customer_id: 2, product: "Phone", amount: 8000}
-] insert test.orders
+    {id: 101, class_id: 10, subject: "Math", teacher: "P Smith"},
+    {id: 102, class_id: 10, subject: "Science", teacher: "P Jones"},
+    {id: 103, class_id: 20, subject: "English", teacher: "P Brown"}
+] insert test.courses
 	"#,
 		Params::None,
 	)
 	.unwrap();
 
 	// Let the background task process
-	// sleep(Duration::from_millis(500));
+	sleep(Duration::from_millis(100));
 
-	sleep(Duration::from_millis(10));
-
-	// Final query - Alice should now appear 5 times
-	log_info!("Final view query after adding more orders...");
+	// Should show Cartesian product: Alice and Bob each get 2 rows (Math and Science)
+	// Charlie gets 1 row (English), Diana gets 1 row with Undefined
+	log_info!("Querying LEFT JOIN view with sorting...");
 	let result = db
-		.query_as_root("from test.customer_orders sort { customer_name asc, order_id asc }", Params::None)
+		.query_as_root("from test.student_courses sort { student_name asc, subject asc }", Params::None)
 		.unwrap();
 	for frame in result {
-		println!("Final customer orders:\n{}", frame);
+		println!("Student courses (sorted):\n{}", frame);
 	}
 
 	log_info!("✅ Test completed successfully!");

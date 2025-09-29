@@ -5,12 +5,13 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	Error,
+	EncodedKey, Error,
 	interface::{FlowNodeId, Transaction},
+	value::row::EncodedRowLayout,
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
-use reifydb_type::{Blob, Type, internal_error};
+use reifydb_type::{Blob, RowNumber, Type, internal_error};
 
 use super::{JoinSide, JoinSideEntry};
 use crate::operator::stateful::{state_get, state_remove, state_set};
@@ -52,7 +53,7 @@ impl Store<JoinSideEntry> {
 		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
 				// Deserialize JoinSideEntry from the row
-				let layout = reifydb_core::value::row::EncodedRowLayout::new(&[Type::Blob]);
+				let layout = EncodedRowLayout::new(&[Type::Blob]);
 				let blob = layout.get_blob(&row, 0);
 				if blob.is_empty() {
 					return Ok(None);
@@ -82,7 +83,7 @@ impl Store<JoinSideEntry> {
 			.map_err(|e| Error(internal_error!("Failed to serialize JoinSideEntry: {}", e)))?;
 
 		// Store as a blob in an EncodedRow
-		let layout = reifydb_core::value::row::EncodedRowLayout::new(&[Type::Blob]);
+		let layout = EncodedRowLayout::new(&[Type::Blob]);
 		let mut row = layout.allocate_row();
 		let blob = Blob::from(serialized);
 		layout.set_blob(&mut row, 0, &blob);
@@ -142,5 +143,62 @@ impl Store<JoinSideEntry> {
 			self.set(txn, hash, &entry)?;
 		}
 		Ok(())
+	}
+}
+
+/// Tracks undefined joins for left rows persistently
+pub(crate) struct UndefinedTracker {
+	node_id: FlowNodeId,
+}
+
+impl UndefinedTracker {
+	pub(crate) fn new(node_id: FlowNodeId) -> Self {
+		Self {
+			node_id,
+		}
+	}
+
+	fn make_key(&self, row_number: RowNumber) -> EncodedKey {
+		// Use prefix 0x03 for undefined tracking
+		let mut key_bytes = vec![0x03];
+		key_bytes.extend_from_slice(&row_number.0.to_le_bytes());
+		EncodedKey::new(key_bytes)
+	}
+
+	pub(crate) fn insert<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		row_number: RowNumber,
+	) -> crate::Result<()> {
+		let key = self.make_key(row_number);
+		// Store a simple marker (boolean true)
+		let layout = EncodedRowLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate_row();
+		layout.set_bool(&mut row, 0, true);
+		state_set(self.node_id, txn, &key, row)?;
+		Ok(())
+	}
+
+	pub(crate) fn remove<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		row_number: RowNumber,
+	) -> crate::Result<bool> {
+		let key = self.make_key(row_number);
+		// Check if it exists before removing
+		let exists = state_get(self.node_id, txn, &key)?.is_some();
+		if exists {
+			state_remove(self.node_id, txn, &key)?;
+		}
+		Ok(exists)
+	}
+
+	pub(crate) fn contains<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		row_number: RowNumber,
+	) -> crate::Result<bool> {
+		let key = self.make_key(row_number);
+		Ok(state_get(self.node_id, txn, &key)?.is_some())
 	}
 }

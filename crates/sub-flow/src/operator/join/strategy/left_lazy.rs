@@ -5,7 +5,7 @@ use reifydb_rql::query::QueryString;
 
 use super::{
 	eager::{add_to_state_entry, remove_from_state_entry, update_row_in_entry},
-	lazy::{has_other_right_rows, is_only_matching_right_row, query_right_side},
+	lazy::{has_other_right_rows, query_right_side},
 };
 use crate::{
 	flow::FlowDiff,
@@ -59,6 +59,8 @@ impl LeftLazyJoin {
 						result.push(FlowDiff::Insert {
 							post: unmatched_row,
 						});
+						// Track that we emitted an undefined join for this left row
+						state.undefined_emitted.insert(txn, post.number)?;
 					}
 				} else {
 					// Undefined key in left join still emits the row
@@ -66,28 +68,20 @@ impl LeftLazyJoin {
 					result.push(FlowDiff::Insert {
 						post: unmatched_row,
 					});
+					// Track undefined emission for rows with undefined keys too
+					state.undefined_emitted.insert(txn, post.number)?;
 				}
 			}
 			JoinSide::Right => {
 				if let Some(key_hash) = key_hash {
-					// Check if this is the first/only right row for this key
-					let is_first_or_only = is_only_matching_right_row(
-						txn,
-						&self.query,
-						&self.executor,
-						key_hash,
-						state,
-						operator,
-						post,
-						version,
-					)?;
-
 					// Join with matching left rows
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
-						// If first right row, remove previously emitted unmatched left rows
-						if is_first_or_only {
-							for left_row_ser in &left_entry.rows {
-								let left_row = left_row_ser.to_left_row(&state.schema);
+						// Check each left row to see if it has an undefined join we need to
+						// remove
+						for left_row_ser in &left_entry.rows {
+							let left_row = left_row_ser.to_left_row(&state.schema);
+							// If this left row had an undefined join, remove it (only once)
+							if state.undefined_emitted.remove(txn, left_row.number)? {
 								let unmatched_row =
 									operator.unmatched_left_row(txn, &left_row)?;
 								result.push(FlowDiff::Remove {
@@ -158,6 +152,8 @@ impl LeftLazyJoin {
 
 						// Remove from left entries and clean up if empty
 						remove_from_state_entry(txn, &mut state.left, &key_hash, pre)?;
+						// Clean up tracking for this left row
+						state.undefined_emitted.remove(txn, pre.number)?;
 					}
 				} else {
 					// Undefined key - remove the unmatched row
@@ -167,6 +163,8 @@ impl LeftLazyJoin {
 					});
 
 					operator.cleanup_left_row_joins(txn, pre.number.0)?;
+					// Clean up tracking for this left row
+					state.undefined_emitted.remove(txn, pre.number)?;
 				}
 			}
 			JoinSide::Right => {
@@ -201,6 +199,8 @@ impl LeftLazyJoin {
 								result.push(FlowDiff::Insert {
 									post: unmatched_row,
 								});
+								// Track that we re-emitted undefined for this left row
+								state.undefined_emitted.insert(txn, left_row.number)?;
 							}
 						}
 					}
