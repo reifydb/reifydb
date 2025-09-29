@@ -189,7 +189,5 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer for PollConsumer<T,
 }
 
 fn fetch_cdcs_since(txn: &mut impl CommandTransaction, since_version: CommitVersion) -> Result<Vec<Cdc>> {
-	txn.with_cdc_query(|cdc| {
-		Ok(cdc.range(Bound::Excluded(since_version), Bound::Included(since_version + 10))?.collect::<Vec<_>>())
-	})
+	txn.with_cdc_query(|cdc| Ok(cdc.range(Bound::Excluded(since_version), Bound::Unbounded)?.collect::<Vec<_>>()))
 }

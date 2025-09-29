@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::collections::HashMap;
+
 use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view};
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
@@ -106,15 +108,15 @@ impl<T: Transaction> FlowConsumer<T> {
 		Ok(flows)
 	}
 
-	fn process_changes(
+	fn process_all_changes(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		version: CommitVersion,
-		changes: Vec<Change>,
+		changes: Vec<(SourceId, Change)>,
 	) -> Result<()> {
+		// Create flow engine ONCE
 		let mut registry = TransformOperatorRegistry::new();
 
-		// Register custom operators
 		for (name, factory) in self.operators.iter() {
 			let factory = factory.clone();
 			let name = name.clone();
@@ -124,61 +126,57 @@ impl<T: Transaction> FlowConsumer<T> {
 		let mut flow_engine =
 			FlowEngine::new(StandardRowEvaluator::default(), self.engine.executor(), registry);
 
+		// Load flows ONCE
 		let flows = self.load_flows(txn)?;
-
 		for flow in flows {
 			flow_engine.register(txn, flow)?;
 		}
 
-		// Process each change immediately without grouping
-		for change in changes {
-			let (source_id, diff) = match change {
+		// Group changes by source_id for better batching
+		let mut changes_by_source: HashMap<SourceId, Vec<FlowDiff>> = HashMap::new();
+
+		for (source_id, change) in changes {
+			let diff = match change {
 				Change::Insert {
-					source_id,
 					row_number,
 					post,
+					..
 				} => {
 					let row = Self::to_row(txn, source_id, row_number, post)?;
-					(
-						source_id,
-						FlowDiff::Insert {
-							post: row,
-						},
-					)
+					FlowDiff::Insert {
+						post: row,
+					}
 				}
 				Change::Update {
-					source_id,
 					row_number,
 					pre,
 					post,
+					..
 				} => {
 					let pre_row = Self::to_row(txn, source_id, row_number, pre)?;
 					let post_row = Self::to_row(txn, source_id, row_number, post)?;
-					(
-						source_id,
-						FlowDiff::Update {
-							pre: pre_row,
-							post: post_row,
-						},
-					)
+					FlowDiff::Update {
+						pre: pre_row,
+						post: post_row,
+					}
 				}
 				Change::Delete {
-					source_id,
 					row_number,
 					pre,
+					..
 				} => {
 					let row = Self::to_row(txn, source_id, row_number, pre)?;
-					(
-						source_id,
-						FlowDiff::Remove {
-							pre: row,
-						},
-					)
+					FlowDiff::Remove {
+						pre: row,
+					}
 				}
 			};
+			changes_by_source.entry(source_id).or_insert_with(Vec::new).push(diff);
+		}
 
-			// Process immediately
-			let change = FlowChange::external(source_id, version, vec![diff]);
+		// Process each source's changes as a batch
+		for (source_id, diffs) in changes_by_source {
+			let change = FlowChange::external(source_id, version, diffs);
 			flow_engine.process(txn, change)?;
 		}
 
@@ -188,16 +186,18 @@ impl<T: Transaction> FlowConsumer<T> {
 
 impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 	fn consume(&self, txn: &mut StandardCommandTransaction<T>, cdcs: Vec<Cdc>) -> Result<()> {
-		for cdc in cdcs {
-			for sequenced_change in cdc.changes {
-				let mut to_process = Vec::new();
+		// Collect ALL changes first
+		let mut all_changes = Vec::new();
+		let mut version = CommitVersion::default();
 
+		for cdc in cdcs {
+			version = version.max(cdc.version);
+			for sequenced_change in cdc.changes {
 				if let Some(decoded_key) = Key::decode(sequenced_change.key()) {
 					if let Key::Row(table_row) = decoded_key {
 						let source_id = table_row.source;
 
-						// Skip flow table changes - we don't
-						// need to process them as data changes
+						// Skip flow table changes
 						if source_id.as_u64() == FLOWS_TABLE_ID {
 							continue;
 						}
@@ -207,7 +207,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 								post,
 								..
 							} => Change::Insert {
-								source_id,
+								_source_id: source_id,
 								row_number: table_row.row,
 								post: post.to_vec(),
 							},
@@ -216,7 +216,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 								post,
 								..
 							} => Change::Update {
-								source_id,
+								_source_id: source_id,
 								row_number: table_row.row,
 								pre: pre.to_vec(),
 								post: post.to_vec(),
@@ -225,21 +225,21 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 								pre,
 								..
 							} => Change::Delete {
-								source_id,
+								_source_id: source_id,
 								row_number: table_row.row,
 								pre: pre.as_ref()
 									.map(|row| row.to_vec())
 									.unwrap_or_else(Vec::new),
 							},
 						};
-						to_process.push(change);
+						all_changes.push((source_id, change));
 					}
 				}
-
-				if !to_process.is_empty() {
-					self.process_changes(txn, cdc.version, to_process)?;
-				}
 			}
+		}
+
+		if !all_changes.is_empty() {
+			self.process_all_changes(txn, version, all_changes)?;
 		}
 
 		Ok(())
