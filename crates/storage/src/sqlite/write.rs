@@ -1,7 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashSet, path::Path, sync::mpsc, thread};
+use std::{
+	collections::{HashMap, HashSet},
+	path::Path,
+	sync::mpsc,
+	thread,
+};
 
 use mpsc::Sender;
 use reifydb_core::{
@@ -15,6 +20,7 @@ use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Valu
 use super::diagnostic::{from_rusqlite_error, transaction_failed};
 use crate::{
 	cdc::generate_cdc_change,
+	commit::CommitBuffer,
 	diagnostic::{connection_failed, sequence_exhausted},
 	sqlite::{
 		cdc::{fetch_pre_value, store_cdc_transaction},
@@ -41,6 +47,8 @@ pub struct Writer {
 	receiver: mpsc::Receiver<WriteCommand>,
 	conn: Connection,
 	ensured_tables: HashSet<String>,
+	commit_buffer: CommitBuffer,
+	pending_responses: HashMap<CommitVersion, Sender<Result<()>>>,
 }
 
 impl Writer {
@@ -55,6 +63,8 @@ impl Writer {
 				receiver,
 				conn,
 				ensured_tables: HashSet::new(),
+				commit_buffer: CommitBuffer::new(),
+				pending_responses: HashMap::new(),
 			};
 
 			actor.run();
@@ -79,11 +89,16 @@ impl Writer {
 					version,
 					transaction,
 					timestamp,
-					respond_to: response,
+					respond_to,
 				} => {
-					let result = self.handle_multi_commit(deltas, version, transaction, timestamp);
-
-					let _ = response.send(result);
+					// Buffer the commit and process any that are ready
+					self.buffer_and_apply_commit(
+						deltas,
+						version,
+						transaction,
+						timestamp,
+						respond_to,
+					);
 				}
 				WriteCommand::Shutdown => break,
 			}
@@ -100,7 +115,38 @@ impl Writer {
 		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))
 	}
 
-	fn handle_multi_commit(
+	fn buffer_and_apply_commit(
+		&mut self,
+		deltas: CowVec<Delta>,
+		version: CommitVersion,
+		transaction: TransactionId,
+		timestamp: u64,
+		respond_to: Sender<Result<()>>,
+	) {
+		// Store the response sender for later
+		self.pending_responses.insert(version, respond_to);
+
+		// Add to buffer
+		self.commit_buffer.add_commit(version, deltas, transaction, timestamp);
+
+		// Process all ready commits
+		let ready_commits = self.commit_buffer.drain_ready();
+		for commit in ready_commits {
+			let result = self.apply_multi_commit(
+				commit.deltas,
+				commit.version,
+				commit.transaction,
+				commit.timestamp,
+			);
+
+			// Send response for this commit if we have one pending
+			if let Some(sender) = self.pending_responses.remove(&commit.version) {
+				let _ = sender.send(result);
+			}
+		}
+	}
+
+	fn apply_multi_commit(
 		&mut self,
 		deltas: CowVec<Delta>,
 		version: CommitVersion,

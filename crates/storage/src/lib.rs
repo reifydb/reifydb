@@ -8,6 +8,8 @@ mod diagnostic;
 pub mod memory;
 pub mod sqlite;
 
+pub(crate) mod commit;
+
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use reifydb_type::Result;
 

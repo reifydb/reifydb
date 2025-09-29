@@ -132,6 +132,7 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.value
 					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
+
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
 				let row = EncodedRow(decode_binary(&kv.value));
@@ -624,18 +625,21 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 			// the same version
 			"bulk_insert" => {
 				let mut args = command.consume_args();
+
 				let version = args
 					.next_pos()
 					.ok_or("version not given")?
 					.value
 					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version")?;
+
 				let count = args
 					.next_pos()
 					.ok_or("count not given")?
 					.value
 					.parse::<usize>()
 					.map_err(|_| "invalid count")?;
+
 				args.reject_rest()?;
 
 				// Create all events in a single transaction to

@@ -329,7 +329,7 @@ fn test_non_table_events_filtered() {
 	let table_change = transactions[0]
 		.changes
 		.iter()
-		.find(|c| matches!(Key::decode(c.key()), Some(Key::Row(_))))
+		.find(|c| matches!(Key::decode(c.key()), Some(Row(_))))
 		.expect("Should have at least one table change");
 
 	if let CdcChange::Insert {

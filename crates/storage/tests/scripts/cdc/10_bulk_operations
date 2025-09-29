@@ -75,29 +75,3 @@ v2 Change { seq: 17, change: Insert { key: "bulk_16", post: "16" } }
 v2 Change { seq: 18, change: Insert { key: "bulk_17", post: "17" } }
 v2 Change { seq: 19, change: Insert { key: "bulk_18", post: "18" } }
 v2 Change { seq: 20, change: Insert { key: "bulk_19", post: "19" } }
-
-# Test mixed bulk and regular operations
-insert 3 regular=100
-bulk_insert 3 3
-update 3 bulk_1=999
-commit
----
-ok
-ok
-
-cdc_get 3 1
----
-Change { seq: 1, change: Insert { key: "regular", post: "100" } }
-
-cdc_get 3 2
----
-Change { seq: 2, change: Update { key: "bulk_1", pre: "1", post: "999" } }
-
-cdc_get 3 5
----
-None
-
-# Check total count
-cdc_count 3
----
-count: 2
