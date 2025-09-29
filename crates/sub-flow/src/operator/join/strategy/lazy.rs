@@ -21,24 +21,18 @@ pub(crate) fn query_right_side<T: Transaction>(
 	version: CommitVersion,
 ) -> crate::Result<Vec<Row>> {
 	let result = txn.with_multi_query_as_of_inclusive(version, |query_txn| {
-		// Execute the query without parameters
-		// The query may have its own filter (e.g., "from table | filter condition")
-		// but we don't inject parameters from the left row
 		let query = Query {
 			rql: query_string.as_str(),
 			params: Params::None,
 			identity: &Identity::root(), // TODO: Should use proper identity from context
 		};
 
-		// Execute the query to get all right-side rows
 		executor.execute_query(query_txn, query)
 	})?;
 
 	let mut right_rows = Vec::new();
 
-	// Process query results - each frame contains rows to join with
 	for frame in result {
-		dbg!(&frame);
 		let frame_rows = process_query_frame(&frame, state, key_hash, operator)?;
 		right_rows.extend(frame_rows);
 	}

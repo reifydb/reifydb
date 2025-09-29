@@ -7,11 +7,15 @@ use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
 	interface::Transaction,
+	util::CowVec,
 	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_type::diagnostic::query;
 
-use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
+use crate::{
+	StandardTransaction,
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
+};
 
 pub(crate) struct SortNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
@@ -30,17 +34,13 @@ impl<'a, T: Transaction> SortNode<'a, T> {
 }
 
 impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
-	fn initialize(
-		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
-		ctx: &ExecutionContext<'a>,
-	) -> crate::Result<()> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 
 		let mut columns_opt: Option<Columns> = None;
@@ -97,7 +97,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 		// Reorder row numbers if present
 		if !columns.row_numbers.is_empty() {
 			let reordered_row_numbers: Vec<_> = indices.iter().map(|&i| columns.row_numbers[i]).collect();
-			columns.row_numbers = reifydb_core::util::CowVec::new(reordered_row_numbers);
+			columns.row_numbers = CowVec::new(reordered_row_numbers);
 		}
 
 		// Reorder columns

@@ -178,6 +178,24 @@ impl<T: Transaction> StandardCommandTransaction<T> {
 		f(&mut query_txn)
 	}
 
+	pub fn with_multi_query_as_of_exclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
+	where
+		F: FnOnce(&mut StandardQueryTransaction<T>) -> crate::Result<R>,
+	{
+		self.check_active()?;
+
+		let mut query_txn = StandardQueryTransaction::new(
+			self.multi.begin_query()?,
+			self.single.clone(),
+			self.cdc.clone(),
+			self.catalog.clone(),
+		);
+
+		query_txn.read_as_of_version_exclusive(version)?;
+
+		f(&mut query_txn)
+	}
+
 	pub fn with_multi_query_as_of_inclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction<T>) -> crate::Result<R>,
