@@ -4,25 +4,31 @@
  * See license.md file for full license text
  */
 
-import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
+import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useQueryOne, useQueryMany, connection, Schema} from '../../../src';
+import {
+    useQueryOne,
+    useQueryMany,
+    ConnectionProvider,
+    getConnection,
+    clearAllConnections,
+    Schema,
+    useCommandOne, clearConnection
+} from '../../../src';
 import {waitForDatabase} from '../setup';
+// @ts-ignore
+import React from "react";
 
 describe('useQuery Hooks', () => {
     beforeAll(async () => {
         await waitForDatabase();
         // Ensure we're connected before tests
-        await connection.connect();
+        const conn = getConnection();
+        await conn.connect();
     }, 30000);
 
-    afterEach(() => {
-        // Don't disconnect between tests to maintain stable connection
-    });
-
     afterAll(() => {
-        // Disconnect after all tests
-        connection.disconnect();
+        clearAllConnections();
     });
 
     describe('useQueryOne', () => {
@@ -346,6 +352,50 @@ describe('useQuery Hooks', () => {
             expect(result1.current.result!.rows[0]).toEqual({value: 100});
             expect(result2.current.results![0].rows[0]).toEqual({x: 200});
             expect(result2.current.results![1].rows[0]).toEqual({y: 300});
+        });
+
+        it('should work with ConnectionProvider', async () => {
+            // @ts-ignore
+            const wrapper = ({children}: { children: React.ReactNode }) => (
+                <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
+            );
+
+            const schema = Schema.object({value: Schema.number()});
+            const {result} = renderHook(
+                () => useQueryOne(`MAP {value: 999}`, undefined, schema),
+                {wrapper}
+            );
+
+            await waitFor(() => {
+                expect(result.current.isExecuting).toBe(false);
+            });
+
+            expect(result.current.result!.rows[0]).toEqual({value: 999});
+        });
+
+        it('should support config override in hooks', async () => {
+            const schema = Schema.object({test: Schema.string()});
+            const overrideConfig = {url: 'ws://127.0.0.1:8090', options: {timeoutMs: 2000}};
+
+            // Use override config (different timeout to ensure it's treated as a separate connection)
+            const {result, unmount} = renderHook(() =>
+                useQueryOne(
+                    `MAP {test: 'override'}`,
+                    undefined,
+                    schema,
+                    {connectionConfig: overrideConfig}
+                )
+            );
+
+            await waitFor(() => {
+                expect(result.current.isExecuting).toBe(false);
+            });
+
+            expect(result.current.result!.rows[0]).toEqual({test: 'override'});
+
+            // Clean up the override connection
+            unmount();
+            await clearConnection(overrideConfig);
         });
     });
 });

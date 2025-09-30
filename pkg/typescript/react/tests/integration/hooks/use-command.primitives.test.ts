@@ -6,10 +6,10 @@
 
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useQueryOne, useQueryMany, getConnection, clearAllConnections, Schema} from '../../../src';
+import {useCommandOne, useCommandMany, getConnection, clearAllConnections, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
-describe('useQuery with TypeScript Primitive Types', () => {
+describe('useCommand with TypeScript Primitive Types', () => {
     beforeAll(async () => {
         await waitForDatabase();
         const conn = getConnection();
@@ -25,7 +25,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle string primitive type', async () => {
                 const schema = Schema.object({ name: Schema.string() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {name: 'John Doe'}`,
                         undefined,
                         schema
@@ -44,7 +44,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle string with special characters', async () => {
                 const schema = Schema.object({ text: Schema.string() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {text: 'Hello World'}`,
                         undefined,
                         schema
@@ -64,7 +64,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle empty string', async () => {
                 const schema = Schema.object({ empty: Schema.string() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {empty: ''}`,
                         undefined,
                         schema
@@ -84,7 +84,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle number primitive type', async () => {
                 const schema = Schema.object({ age: Schema.number() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {age: 25}`,
                         undefined,
                         schema
@@ -102,7 +102,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle float numbers', async () => {
                 const schema = Schema.object({ price: Schema.float() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {price: 19.99}`,
                         undefined,
                         schema
@@ -119,7 +119,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle double precision numbers', async () => {
                 const schema = Schema.object({ value: Schema.double() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {value: 3.141592653589793}`,
                         undefined,
                         schema
@@ -136,7 +136,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle integer type', async () => {
                 const schema = Schema.object({ count: Schema.int() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {count: 100}`,
                         undefined,
                         schema
@@ -154,7 +154,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle negative numbers', async () => {
                 const schema = Schema.object({ temperature: Schema.number() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {temperature: -40.5}`,
                         undefined,
                         schema
@@ -171,7 +171,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle zero', async () => {
                 const schema = Schema.object({ zero: Schema.number() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {zero: 0}`,
                         undefined,
                         schema
@@ -190,7 +190,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle boolean true', async () => {
                 const schema = Schema.object({ active: Schema.boolean() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {active: true}`,
                         undefined,
                         schema
@@ -208,7 +208,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle boolean false', async () => {
                 const schema = Schema.object({ enabled: Schema.bool() });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {enabled: false}`,
                         undefined,
                         schema
@@ -227,7 +227,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             it('should handle undefined type', async () => {
                 const schema = Schema.object({ missing: Schema.optional(Schema.string()) });
                 const { result } = renderHook(() => 
-                    useQueryOne(
+                    useCommandOne(
                         `MAP {missing: undefined}`,
                         undefined,
                         schema
@@ -251,7 +251,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             const { result } = renderHook(() => 
-                useQueryOne(
+                useCommandOne(
                     `MAP {name: 'Alice'}`,
                     undefined,
                     schema
@@ -273,7 +273,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             const { result } = renderHook(() => 
-                useQueryOne(
+                useCommandOne(
                     `MAP {age: 30}`,
                     undefined,
                     schema
@@ -295,7 +295,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             const { result } = renderHook(() => 
-                useQueryOne(
+                useCommandOne(
                     `MAP {active: true}`,
                     undefined,
                     schema
@@ -317,7 +317,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             const { result } = renderHook(() => 
-                useQueryOne(
+                useCommandOne(
                     `MAP {required: 'present', optional: undefined}`,
                     undefined,
                     schema
@@ -338,7 +338,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             const params = { name: 'Parameter Value' };
             const schema = Schema.object({ result: Schema.string() });
             const { result } = renderHook(() => 
-                useQueryOne(
+                useCommandOne(
                     `MAP {result: $name}`,
                     params,
                     schema
@@ -366,7 +366,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
                 flag: Schema.boolean()
             });
             const { result } = renderHook(() => 
-                useQueryOne(
+                useCommandOne(
                     `MAP {
                         sum: $a + $b,
                         concat: $prefix + $suffix,
@@ -388,7 +388,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
         });
     });
 
-    describe('useQueryMany with mixed schemas', () => {
+    describe('useCommandMany with mixed schemas', () => {
         it('should handle multiple queries without schemas', async () => {
             const queries = [
                 `MAP {str: 'test'}`,
@@ -397,7 +397,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             ];
 
             const { result } = renderHook(() =>
-                useQueryMany(queries)
+                useCommandMany(queries)
             );
 
             await waitFor(() => {
@@ -422,7 +422,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             ];
 
             const { result } = renderHook(() => 
-                useQueryMany(queries, undefined, schemas)
+                useCommandMany(queries, undefined, schemas)
             );
 
             await waitFor(() => {

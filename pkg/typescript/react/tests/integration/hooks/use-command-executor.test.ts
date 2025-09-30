@@ -6,10 +6,10 @@
 
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useQueryExecutor, getConnection, clearAllConnections, Schema} from '../../../src';
+import {useCommandExecutor, getConnection, clearAllConnections, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
-describe('useQueryExecutor Hook', () => {
+describe('useCommandExecutor Hook', () => {
     beforeAll(async () => {
         await waitForDatabase();
         // Ensure we're connected before tests
@@ -22,15 +22,15 @@ describe('useQueryExecutor Hook', () => {
         clearAllConnections();
     });
 
-    it('should execute a simple query', async () => {
-        const {result} = renderHook(() => useQueryExecutor());
+    it('should execute a simple command', async () => {
+        const {result} = renderHook(() => useCommandExecutor());
 
         expect(result.current.isExecuting).toBe(false);
         expect(result.current.results).toBeUndefined();
 
-        // Execute query with schema for primitive result
+        // Execute command with schema for primitive result
         act(() => {
-            result.current.query(
+            result.current.command(
                 `MAP {answer: 42}`,
                 undefined,
                 [Schema.object({ answer: Schema.number() })]
@@ -52,11 +52,11 @@ describe('useQueryExecutor Hook', () => {
     });
 
     it('should execute multiple statements', async () => {
-        const {result} = renderHook(() => useQueryExecutor());
+        const {result} = renderHook(() => useCommandExecutor());
 
         // Execute multiple statements with schemas
         act(() => {
-            result.current.query(
+            result.current.command(
                 [
                     `MAP {first: 1}`,
                     `MAP {second: 2}`,
@@ -82,12 +82,12 @@ describe('useQueryExecutor Hook', () => {
         expect(result.current.results![2].rows[0]).toEqual({third: 3});
     });
 
-    it('should handle query with parameters', async () => {
-        const {result} = renderHook(() => useQueryExecutor());
+    it('should handle command with parameters', async () => {
+        const {result} = renderHook(() => useCommandExecutor());
 
         // Execute with named parameters and schema
         act(() => {
-            result.current.query(
+            result.current.command(
                 `MAP {result: $value}`,
                 {value: 'test_string'},
                 [Schema.object({ result: Schema.string() })]
@@ -102,12 +102,12 @@ describe('useQueryExecutor Hook', () => {
         expect(result.current.results![0].rows[0]).toEqual({result: 'test_string'});
     });
 
-    it('should handle query errors', async () => {
-        const {result} = renderHook(() => useQueryExecutor());
+    it('should handle command errors', async () => {
+        const {result} = renderHook(() => useCommandExecutor());
 
-        // Execute invalid query
+        // Execute invalid command
         act(() => {
-            result.current.query('INVALID SYNTAX HERE');
+            result.current.command('INVALID SYNTAX HERE');
         });
 
         await waitFor(() => {
@@ -119,21 +119,21 @@ describe('useQueryExecutor Hook', () => {
         expect(result.current.error).toBeDefined();
     });
 
-    it('should cancel previous query when new one starts', async () => {
-        const {result} = renderHook(() => useQueryExecutor());
+    it('should cancel previous command when new one starts', async () => {
+        const {result} = renderHook(() => useCommandExecutor());
 
-        // Start first query
+        // Start first command
         act(() => {
-            result.current.query(
+            result.current.command(
                 `MAP {first: 1}`,
                 undefined,
                 [Schema.object({ first: Schema.number() })]
             );
         });
 
-        // Immediately start second query
+        // Immediately start second command
         act(() => {
-            result.current.query(
+            result.current.command(
                 `MAP {second: 2}`,
                 undefined,
                 [Schema.object({ second: Schema.number() })]
@@ -144,17 +144,17 @@ describe('useQueryExecutor Hook', () => {
             expect(result.current.isExecuting).toBe(false);
         });
 
-        // Should only have results from second query
+        // Should only have results from second command
         expect(result.current.results).toHaveLength(1);
         expect(result.current.results![0].rows[0]).toEqual({second: 2});
     });
 
     it('should handle empty results', async () => {
-        const {result} = renderHook(() => useQueryExecutor());
+        const {result} = renderHook(() => useCommandExecutor());
 
-        // Query that returns empty result
+        // Command that returns empty result
         act(() => {
-            result.current.query(`FROM [{x:1}] FILTER x > 10`);
+            result.current.command(`FROM [{x:1}] FILTER x > 10`);
         });
 
         await waitFor(() => {
@@ -168,17 +168,17 @@ describe('useQueryExecutor Hook', () => {
     });
 
     it('should handle concurrent hook instances', async () => {
-        const {result: result1} = renderHook(() => useQueryExecutor());
-        const {result: result2} = renderHook(() => useQueryExecutor());
+        const {result: result1} = renderHook(() => useCommandExecutor());
+        const {result: result2} = renderHook(() => useCommandExecutor());
 
         // Execute different queries in parallel
         act(() => {
-            result1.current.query(
+            result1.current.command(
                 `MAP {value: 100}`,
                 undefined,
                 [Schema.object({ value: Schema.number() })]
             );
-            result2.current.query(
+            result2.current.command(
                 `MAP {value: 200}`,
                 undefined,
                 [Schema.object({ value: Schema.number() })]
@@ -195,12 +195,12 @@ describe('useQueryExecutor Hook', () => {
         expect(result2.current.results![0].rows[0]).toEqual({value: 200});
     });
 
-    it('should support manual query cancellation', async () => {
-        const {result} = renderHook(() => useQueryExecutor());
+    it('should support manual command cancellation', async () => {
+        const {result} = renderHook(() => useCommandExecutor());
 
-        // Start a query
+        // Start a command
         act(() => {
-            result.current.query(
+            result.current.command(
                 `MAP {test: 1}`,
                 undefined,
                 [Schema.object({ test: Schema.number() })]
@@ -211,10 +211,10 @@ describe('useQueryExecutor Hook', () => {
 
         // Cancel it
         act(() => {
-            result.current.cancelQuery();
+            result.current.cancelCommand();
         });
 
         expect(result.current.isExecuting).toBe(false);
-        expect(result.current.error).toBe('Query cancelled');
+        expect(result.current.error).toBe('Command cancelled');
     });
 });

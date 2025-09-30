@@ -13,7 +13,7 @@ export interface ConnectionConfig {
     options?: Omit<WsClientOptions, 'url'>;
 }
 
-const DEFAULT_CONFIG: ConnectionConfig = {
+export const DEFAULT_CONFIG: ConnectionConfig = {
     url: 'ws://127.0.0.1:8090',
     options: {
         timeoutMs: 1000,
@@ -21,7 +21,6 @@ const DEFAULT_CONFIG: ConnectionConfig = {
 };
 
 export class Connection {
-    private static instance: Connection;
     private state: ConnectionState = {
         client: null,
         isConnected: false,
@@ -29,16 +28,10 @@ export class Connection {
         connectionError: null,
         listeners: new Set(),
     };
-    private config: ConnectionConfig = DEFAULT_CONFIG;
+    private config: ConnectionConfig;
 
-    private constructor() {
-    }
-
-    static getInstance(): Connection {
-        if (!Connection.instance) {
-            Connection.instance = new Connection();
-        }
-        return Connection.instance;
+    constructor(config?: ConnectionConfig) {
+        this.config = { ...DEFAULT_CONFIG, ...config };
     }
 
     setConfig(config: ConnectionConfig): void {
@@ -88,10 +81,12 @@ export class Connection {
         }
     }
 
-    disconnect(): void {
+    async disconnect(): Promise<void> {
         if (this.state.client) {
             try {
                 this.state.client.disconnect();
+                // Small delay to ensure WebSocket closes cleanly
+                await new Promise(resolve => setTimeout(resolve, 10));
             } catch (err) {
                 console.error('Error disconnecting:', err);
             }
@@ -106,7 +101,7 @@ export class Connection {
     }
 
     async reconnect(url?: string, options?: Omit<WsClientOptions, 'url'>): Promise<void> {
-        this.disconnect();
+        await this.disconnect();
         await this.connect(url, options);
     }
 
@@ -153,5 +148,3 @@ export class Connection {
     }
 }
 
-// Export singleton instance
-export const connection = Connection.getInstance();

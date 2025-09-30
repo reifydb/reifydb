@@ -4,12 +4,12 @@
  * See license.md file for full license text
  */
 
-import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
+import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useQueryOne, useQueryMany, getConnection, clearAllConnections, Schema} from '../../../src';
+import {useCommandOne, useCommandMany, getConnection, clearAllConnections, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
-describe('useQuery with Value Objects and Schemas', () => {
+describe('useCommand with Value Objects and Schemas', () => {
     beforeAll(async () => {
         await waitForDatabase();
         const conn = getConnection();
@@ -27,8 +27,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     value: Schema.int1Value()
                 });
 
-                const { result } = renderHook(() => 
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {value: cast(127, int1)}`,
                         undefined,
                         schema
@@ -49,8 +49,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     value: Schema.int1Value()
                 });
 
-                const { result } = renderHook(() => 
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {value: cast(129, int1)}`,
                         undefined,
                         schema
@@ -70,8 +70,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     num: Schema.int4Value()
                 });
 
-                const { result } = renderHook(() => 
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {num: cast(2147483647, int4)}`,
                         undefined,
                         schema
@@ -90,8 +90,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     bigNum: Schema.int8Value()
                 });
 
-                const { result } = renderHook(() => 
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {bigNum: cast(9223372036854775807, int8)}`,
                         undefined,
                         schema
@@ -112,8 +112,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     value: Schema.uint1Value()
                 });
 
-                const { result } = renderHook(() => 
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {value: cast(255, uint1)}`,
                         undefined,
                         schema
@@ -132,8 +132,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     value: Schema.uint4Value()
                 });
 
-                const { result } = renderHook(() => 
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {value: cast(4294967295, uint4)}`,
                         undefined,
                         schema
@@ -154,8 +154,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     value: Schema.float4Value()
                 });
 
-                const { result } = renderHook(() => 
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {value: cast(3.14159, float4)}`,
                         undefined,
                         schema
@@ -174,8 +174,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     value: Schema.float8Value()
                 });
 
-                const { result } = renderHook(() => 
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {value: cast(3.141592653589793, float8)}`,
                         undefined,
                         schema
@@ -196,8 +196,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     text: Schema.utf8Value()
                 });
 
-                const { result } = renderHook(() => 
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {text: cast('Hello, World!', utf8)}`,
                         undefined,
                         schema
@@ -216,8 +216,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     data: Schema.blobValue()
                 });
 
-                const { result } = renderHook(() =>
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {data: cast('binary data', blob)}`,
                         undefined,
                         schema
@@ -239,8 +239,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     date: Schema.dateValue()
                 });
 
-                const { result } = renderHook(() =>
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {date: cast('2025-01-09', date)}`,
                         undefined,
                         schema
@@ -259,8 +259,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     timestamp: Schema.dateTimeValue()
                 });
 
-                const { result } = renderHook(() =>
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {timestamp: cast('2025-01-09T12:00:00Z', datetime)}`,
                         undefined,
                         schema
@@ -279,8 +279,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     time: Schema.timeValue()
                 });
 
-                const { result } = renderHook(() =>
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {time: cast('12:30:45', time)}`,
                         undefined,
                         schema
@@ -299,8 +299,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     duration: Schema.intervalValue()
                 });
 
-                const { result } = renderHook(() =>
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {duration: cast('PT1H30M', interval)}`,
                         undefined,
                         schema
@@ -321,8 +321,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     id: Schema.uuid4Value()
                 });
 
-                const { result } = renderHook(() =>
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {id: cast('550e8400-e29b-41d4-a716-446655440000', uuid4)}`,
                         undefined,
                         schema
@@ -341,8 +341,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     id: Schema.uuid7Value()
                 });
 
-                const { result } = renderHook(() =>
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {id: cast('018a4d65-4307-7834-8336-a5c62b3c1234', uuid7)}`,
                         undefined,
                         schema
@@ -363,8 +363,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     flag: Schema.booleanValue()
                 });
 
-                const { result } = renderHook(() =>
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {flag: cast(true, boolean)}`,
                         undefined,
                         schema
@@ -383,8 +383,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                     nothing: Schema.undefinedValue()
                 });
 
-                const { result } = renderHook(() =>
-                    useQueryOne(
+                const {result} = renderHook(() =>
+                    useCommandOne(
                         `MAP {nothing: undefined}`,
                         undefined,
                         schema
@@ -406,8 +406,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                 value: Schema.int4Value()
             });
 
-            const { result } = renderHook(() =>
-                useQueryOne(
+            const {result} = renderHook(() =>
+                useCommandOne(
                     `MAP {value: cast('not a number', int4)}`,
                     undefined,
                     schema
@@ -427,8 +427,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                 value: Schema.int2Value()
             });
 
-            const { result } = renderHook(() =>
-                useQueryOne(
+            const {result} = renderHook(() =>
+                useCommandOne(
                     `MAP {value: cast(32768, int2)}`, // Max int2 is 32767
                     undefined,
                     schema
@@ -448,8 +448,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                 id: Schema.uuid4Value()
             });
 
-            const { result } = renderHook(() =>
-                useQueryOne(
+            const {result} = renderHook(() =>
+                useCommandOne(
                     `MAP {id: cast('invalid-uuid', uuid4)}`,
                     undefined,
                     schema
@@ -467,8 +467,8 @@ describe('useQuery with Value Objects and Schemas', () => {
                 date: Schema.dateValue()
             });
 
-            const { result } = renderHook(() => 
-                useQueryOne(
+            const {result} = renderHook(() =>
+                useCommandOne(
                     `MAP {date: cast('not-a-date', date)}`,
                     undefined,
                     schema
