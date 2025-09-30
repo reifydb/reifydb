@@ -59,7 +59,7 @@ fn test_schedule_every_basic_interval_execution() {
 		Ok(())
 	}));
 
-	let handle = instance.schedule_every(task, Duration::from_millis(30)).unwrap();
+	let handle = instance.schedule_every(Duration::from_millis(30), task).unwrap();
 
 	// Wait for executions with retry logic
 	let mut attempts = 0;
@@ -123,8 +123,8 @@ fn test_schedule_every_priority_ordering() {
 	}));
 
 	// Schedule both with the same interval
-	let _high_handle = instance.schedule_every(high_task, Duration::from_millis(50)).unwrap();
-	let _low_handle = instance.schedule_every(low_task, Duration::from_millis(50)).unwrap();
+	let _high_handle = instance.schedule_every(Duration::from_millis(50), high_task).unwrap();
+	let _low_handle = instance.schedule_every(Duration::from_millis(50), low_task).unwrap();
 
 	// Wait for a few executions
 	thread::sleep(Duration::from_millis(200));
@@ -171,7 +171,7 @@ fn test_schedule_every_cancellation() {
 		Ok(())
 	}));
 
-	let handle = instance.schedule_every(task, Duration::from_millis(20)).unwrap();
+	let handle = instance.schedule_every(Duration::from_millis(20), task).unwrap();
 
 	// Let it run a few times
 	thread::sleep(Duration::from_millis(100));
@@ -222,8 +222,8 @@ fn test_schedule_every_multiple_intervals() {
 	}));
 
 	// Schedule at different rates
-	let _handle1 = instance.schedule_every(task1, Duration::from_millis(30)).unwrap();
-	let _handle2 = instance.schedule_every(task2, Duration::from_millis(60)).unwrap();
+	let _handle1 = instance.schedule_every(Duration::from_millis(30), task1).unwrap();
+	let _handle2 = instance.schedule_every(Duration::from_millis(60), task2).unwrap();
 
 	// Wait for executions
 	thread::sleep(Duration::from_millis(200));
@@ -267,7 +267,7 @@ fn test_schedule_every_task_failure_recovery() {
 		}
 	}));
 
-	let _handle = instance.schedule_every(task, Duration::from_millis(30)).unwrap();
+	let _handle = instance.schedule_every(Duration::from_millis(30), task).unwrap();
 
 	// Wait for several executions
 	thread::sleep(Duration::from_millis(200));

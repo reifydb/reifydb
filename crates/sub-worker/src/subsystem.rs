@@ -505,7 +505,7 @@ impl<T: Transaction> Drop for WorkerSubsystem<T> {
 }
 
 impl<T: Transaction> Scheduler<T> for WorkerSubsystem<T> {
-	fn schedule_every(&self, task: BoxedTask<T>, interval: Duration) -> Result<TaskHandle> {
+	fn schedule_every(&self, interval: Duration, task: BoxedTask<T>) -> reifydb_core::Result<TaskHandle> {
 		let adapter = Box::new(SchedulableTaskAdapter::new(task, self.engine.clone()));
 		let priority = adapter.priority();
 		self.schedule_every_internal(adapter, interval, priority)
