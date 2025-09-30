@@ -3,12 +3,10 @@
 
 //! Compilation of table scan operations
 
-use reifydb_core::{
-	flow::{FlowNodeDef, FlowNodeType},
-	interface::{CommandTransaction, FlowNodeId},
-};
+use FlowNodeType::SourceTable;
+use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{CompileOperator, FlowCompiler, FlowNodeType};
 use crate::{Result, plan::physical::TableScanNode};
 
 pub(crate) struct TableScanCompiler<'a> {
@@ -25,22 +23,8 @@ impl<'a> From<TableScanNode<'a>> for TableScanCompiler<'a> {
 
 impl<'a, T: CommandTransaction> CompileOperator<T> for TableScanCompiler<'a> {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let table = self.table_scan.source.def().clone();
-		let table_name = table.name.clone();
-
-		// Get namespace information
-		let namespace_def = self.table_scan.source.namespace().def().clone();
-
-		let namespace = FlowNodeDef::new(
-			table.columns.clone(),
-			Some(namespace_def.name.clone()),
-			Some(table.name.clone()),
-		);
-
-		compiler.build_node(FlowNodeType::SourceTable {
-			name: table_name,
-			table: table.id,
-			namespace,
+		compiler.build_node(SourceTable {
+			table: self.table_scan.source.def().id,
 		})
 		.build()
 	}

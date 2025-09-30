@@ -15,8 +15,8 @@ pub mod scale;
 /// Represents a type with optional constraints
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TypeConstraint {
-	pub base_type: Type,
-	pub constraint: Option<Constraint>,
+	base_type: Type,
+	constraint: Option<Constraint>,
 }
 
 /// Constraint types for different data types

@@ -1,0 +1,65 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Setup: Insert data to delete
+insert 1 a=1
+insert 1 b=2
+insert 1 c=3
+commit
+---
+ok
+
+# Test delete with before value
+delete 2 a
+commit
+---
+ok
+
+cdc_get 2 1
+---
+Change { seq: 1, change: Delete { key: "a", pre: "1" } }
+
+# Test another delete
+delete 3 b
+commit
+---
+ok
+
+cdc_get 3 1
+---
+Change { seq: 1, change: Delete { key: "b", pre: "2" } }
+
+# Test delete of key that was updated before
+update 4 c=30
+commit
+---
+ok
+
+delete 5 c
+commit
+---
+ok
+
+cdc_get 5 1
+---
+Change { seq: 1, change: Delete { key: "c", pre: "30" } }
+
+# Test getting full transaction for delete
+cdc_get 5
+---
+Cdc { version: 5, ts: 1000, changes: [{ seq: 1, change: Delete { key: "c", pre: "30" } }] }
+
+# Test delete of already deleted key (should create insert first)
+insert 6 d=100
+commit
+---
+ok
+
+delete 7 d
+commit
+---
+ok
+
+cdc_get 7 1
+---
+Change { seq: 1, change: Delete { key: "d", pre: "100" } }

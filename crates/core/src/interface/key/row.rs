@@ -192,7 +192,7 @@ mod tests {
 		};
 		let key3 = RowKey {
 			source: SourceId::table(2),
-			row: RowNumber(0),
+			row: RowNumber(1),
 		};
 
 		let encoded1 = key1.encode();

@@ -57,7 +57,6 @@ impl Executor {
 			functions: self.functions.clone(),
 			source: resolved_source,
 			batch_size: 1024,
-			preserve_row_numbers: false,
 			params: params.clone(),
 		});
 
@@ -66,7 +65,7 @@ impl Executor {
 
 		let mut inserted_count = 0;
 
-		// Initialize the node before execution
+		// Initialize the operator before execution
 		input_node.initialize(&mut std_txn, &execution_context)?;
 
 		// Process all input batches
@@ -150,7 +149,7 @@ impl Executor {
 				// Determine insert position
 				let row_number = if metadata.is_empty() {
 					// First insert
-					RowNumber(0)
+					RowNumber(1)
 				} else if !metadata.is_full() {
 					// Buffer not full, append at tail
 					RowNumber(metadata.tail)
@@ -170,15 +169,28 @@ impl Executor {
 				// Update metadata
 				if metadata.is_empty() {
 					metadata.count = 1;
-					metadata.head = 0;
-					metadata.tail = 1;
+					metadata.head = 1;
+					metadata.tail = 2;
 				} else if !metadata.is_full() {
 					metadata.count += 1;
-					metadata.tail = (metadata.tail + 1) % metadata.capacity;
+					// For 1-based indexing: next position after capacity is 1
+					metadata.tail = if metadata.tail >= metadata.capacity {
+						1
+					} else {
+						metadata.tail + 1
+					};
 				} else {
 					// Buffer full, advance both head and tail
-					metadata.head = (metadata.head + 1) % metadata.capacity;
-					metadata.tail = (metadata.tail + 1) % metadata.capacity;
+					metadata.head = if metadata.head >= metadata.capacity {
+						1
+					} else {
+						metadata.head + 1
+					};
+					metadata.tail = if metadata.tail >= metadata.capacity {
+						1
+					} else {
+						metadata.tail + 1
+					};
 				}
 
 				inserted_count += 1;

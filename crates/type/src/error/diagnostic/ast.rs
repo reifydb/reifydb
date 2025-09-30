@@ -145,7 +145,7 @@ pub fn unrecognized_type<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
 	}
 }
 
-/// Unsupported AST node in logical plan compilation
+/// Unsupported AST operator in logical plan compilation
 pub fn unsupported_ast_node<'a>(fragment: impl IntoFragment<'a>, node_type: &str) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {

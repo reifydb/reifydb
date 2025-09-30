@@ -11,7 +11,7 @@ impl EncodedRowLayout {
 	pub fn set_time(&self, row: &mut EncodedRow, index: usize, value: Time) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Time);
+		debug_assert_eq!(field.r#type, Type::Time);
 		row.set_valid(index, true);
 		unsafe {
 			ptr::write_unaligned(
@@ -24,7 +24,7 @@ impl EncodedRowLayout {
 	pub fn get_time(&self, row: &EncodedRow, index: usize) -> Time {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Time);
+		debug_assert_eq!(field.r#type, Type::Time);
 		unsafe {
 			Time::from_nanos_since_midnight((row.as_ptr().add(field.offset) as *const u64).read_unaligned())
 				.unwrap()

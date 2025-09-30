@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{interface::Transaction, value::column::layout::ColumnsLayout};
+use reifydb_core::{interface::Transaction, value::column::headers::ColumnHeaders};
 use reifydb_type::Fragment;
 
 use crate::{
@@ -15,7 +15,7 @@ use crate::{
 pub(crate) struct VirtualScanNode<'a, T: Transaction> {
 	virtual_table: Box<dyn TableVirtual<'a, T>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
-	layout: ColumnsLayout<'a>,
+	headers: ColumnHeaders<'a>,
 	table_context: Option<TableVirtualContext<'a>>,
 }
 
@@ -27,22 +27,14 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 	) -> crate::Result<Self> {
 		let def = virtual_table.definition();
 
-		let layout = ColumnsLayout {
-			columns: def
-				.columns
-				.iter()
-				.map(|col| reifydb_core::value::column::layout::ColumnLayout {
-					namespace: None,
-					source: None,
-					name: Fragment::owned_internal(&col.name),
-				})
-				.collect(),
+		let headers = ColumnHeaders {
+			columns: def.columns.iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
 			virtual_table,
 			context: Some(context),
-			layout,
+			headers,
 			table_context: Some(table_context),
 		})
 	}
@@ -66,7 +58,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for VirtualScanNode<'a, T> {
 		self.virtual_table.next(rx)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		Some(self.layout.clone())
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		Some(self.headers.clone())
 	}
 }

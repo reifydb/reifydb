@@ -6,6 +6,7 @@
 pub mod builder;
 #[allow(dead_code, unused_variables)]
 mod engine;
+pub mod flow;
 #[allow(dead_code, unused_variables)]
 mod operator;
 pub mod subsystem;
@@ -13,8 +14,8 @@ pub mod subsystem;
 pub use builder::FlowBuilder;
 pub use engine::*;
 pub use operator::{
-	Operator,
-	transform::{TransformOperator, TransformOperatorFactory, builtin, extract, stateful},
+	Operator, stateful,
+	transform::{TransformOperator, TransformOperatorFactory, extract},
 };
 pub use reifydb_core::Result;
 pub use subsystem::{FlowSubsystem, FlowSubsystemFactory};

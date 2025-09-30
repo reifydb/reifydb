@@ -1,0 +1,61 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test phantom read prevention with set_as_of_inclusive
+
+import a=1 b=2
+---
+ok
+
+# Transaction at version 1
+t1: begin
+t1: set_as_of_inclusive 1
+t1: scan
+---
+t1: "a" => "1"
+t1: "b" => "2"
+
+# Add new rows in another transaction
+t2: begin
+t2: set c=3 d=4 e=5
+t2: commit
+---
+ok
+
+# t1 should not see phantom rows
+t1: scan
+---
+t1: "a" => "1"
+t1: "b" => "2"
+
+# Count should remain the same
+t1: get c d e
+---
+t1: "c" => None
+t1: "d" => None
+t1: "e" => None
+
+# More changes
+t3: begin
+t3: set f=6 g=7
+t3: commit
+---
+ok
+
+# Still no phantoms
+t1: scan
+---
+t1: "a" => "1"
+t1: "b" => "2"
+
+# New transaction at current version sees everything
+t4: begin
+t4: scan
+---
+t4: "a" => "1"
+t4: "b" => "2"
+t4: "c" => "3"
+t4: "d" => "4"
+t4: "e" => "5"
+t4: "f" => "6"
+t4: "g" => "7"

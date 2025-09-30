@@ -1,0 +1,64 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test calling set_as_of_inclusive multiple times on same transaction
+
+import a=1
+---
+ok
+
+t1: begin
+t1: set a=2
+t1: commit
+---
+ok
+
+t2: begin
+t2: set a=3
+t2: commit
+---
+ok
+
+t3: begin
+t3: set a=4
+t3: commit
+---
+ok
+
+# Start transaction and repeatedly change version
+t4: begin
+t4: get a
+---
+t4: "a" => "4"
+
+# First set_as_of_inclusive
+t4: set_as_of_inclusive 1
+t4: get a
+---
+t4: "a" => "1"
+
+# Change again
+t4: set_as_of_inclusive 3
+t4: get a
+---
+t4: "a" => "3"
+
+# And again
+t4: set_as_of_inclusive 2
+t4: get a
+---
+t4: "a" => "2"
+
+# Back to latest
+t4: set_as_of_inclusive 4
+t4: get a
+---
+t4: "a" => "4"
+
+# Multiple times to same version
+t4: set_as_of_inclusive 2
+t4: set_as_of_inclusive 2
+t4: set_as_of_inclusive 2
+t4: get a
+---
+t4: "a" => "2"

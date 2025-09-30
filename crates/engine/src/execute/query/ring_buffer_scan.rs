@@ -6,20 +6,15 @@ use std::{marker::PhantomData, sync::Arc};
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
-		ColumnDef, ColumnId, EncodableKey, MultiVersionQueryTransaction, ResolvedColumn, RingBufferMetadata,
-		RowKey, Transaction,
-		catalog::ColumnIndex,
-		resolved::{ResolvedRingBuffer, ResolvedSource},
+		EncodableKey, MultiVersionQueryTransaction, RingBufferMetadata, RowKey, Transaction,
+		resolved::ResolvedRingBuffer,
 	},
 	value::{
-		column::{
-			Column, ColumnData, ColumnResolved, Columns,
-			layout::{ColumnLayout, ColumnsLayout},
-		},
+		column::{Columns, headers::ColumnHeaders},
 		row::EncodedRowLayout,
 	},
 };
-use reifydb_type::{Fragment, ROW_NUMBER_COLUMN_NAME, RowNumber, Type, TypeConstraint};
+use reifydb_type::{Fragment, RowNumber, Type};
 
 use crate::{
 	StandardTransaction,
@@ -29,7 +24,7 @@ use crate::{
 pub struct RingBufferScan<'a, T: Transaction> {
 	ring_buffer: ResolvedRingBuffer<'a>,
 	metadata: Option<RingBufferMetadata>,
-	layout: ColumnsLayout<'a>,
+	headers: ColumnHeaders<'a>,
 	row_layout: EncodedRowLayout,
 	current_position: u64,
 	rows_returned: u64,
@@ -40,27 +35,19 @@ pub struct RingBufferScan<'a, T: Transaction> {
 
 impl<'a, T: Transaction> RingBufferScan<'a, T> {
 	pub fn new(ring_buffer: ResolvedRingBuffer<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
-		// Create row layout based on column types
+		// Create row headers based on column types
 		let types: Vec<Type> = ring_buffer.columns().iter().map(|c| c.constraint.get_type()).collect();
 		let row_layout = EncodedRowLayout::new(&types);
 
-		// Create columns layout
-		let layout = ColumnsLayout {
-			columns: ring_buffer
-				.columns()
-				.iter()
-				.map(|col| ColumnLayout {
-					namespace: None,
-					source: None,
-					name: Fragment::owned_internal(&col.name),
-				})
-				.collect(),
+		// Create columns headers
+		let headers = ColumnHeaders {
+			columns: ring_buffer.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
 			ring_buffer,
 			metadata: None,
-			layout,
+			headers,
 			row_layout,
 			current_position: 0,
 			rows_returned: 0,
@@ -92,7 +79,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 			if let Some(ref metadata) = self.metadata {
 				// Start scanning from head (oldest entry) if buffer has data
 				self.current_position = if metadata.is_empty() {
-					0
+					1 // Start at position 1 for 1-based indexing
 				} else {
 					metadata.head
 				};
@@ -142,8 +129,12 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 				row_numbers.push(row_num);
 			}
 
-			// Move to next position (circular)
-			self.current_position = (self.current_position + 1) % metadata.capacity;
+			// Move to next position (circular) with 1-based indexing
+			self.current_position = if self.current_position >= metadata.capacity {
+				1
+			} else {
+				self.current_position + 1
+			};
 			self.rows_returned += 1;
 			batch_count += 1;
 		}
@@ -151,31 +142,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 		if batch_rows.is_empty() {
 			Ok(None)
 		} else {
-			// Build columns from rows
 			let mut columns = Columns::from_ring_buffer(&self.ring_buffer);
-			columns.append_rows(&self.row_layout, batch_rows.into_iter())?;
-
-			// Add row numbers if requested
-			if ctx.preserve_row_numbers {
-				// Create a resolved column for row numbers
-				let source = ResolvedSource::RingBuffer(self.ring_buffer.clone());
-				let column_ident = Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME);
-				// Create a dummy ColumnDef for row number
-				let col_def = ColumnDef {
-					id: ColumnId(0),
-					name: ROW_NUMBER_COLUMN_NAME.to_string(),
-					constraint: TypeConstraint::unconstrained(Type::RowNumber),
-					index: ColumnIndex(0),
-					auto_increment: false,
-					policies: Vec::new(),
-				};
-				let resolved_col = ResolvedColumn::new(column_ident, source, col_def);
-				let row_number_column = Column::Resolved(ColumnResolved::new(
-					resolved_col,
-					ColumnData::row_number(row_numbers),
-				));
-				columns.0.push(row_number_column);
-			}
+			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers)?;
 
 			Ok(Some(Batch {
 				columns,
@@ -183,7 +151,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 		}
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		Some(self.layout.clone())
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		Some(self.headers.clone())
 	}
 }

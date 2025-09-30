@@ -106,7 +106,7 @@ mod tests {
 		if let crate::ast::Ast::Distinct(distinct) = result.first_unchecked() {
 			assert_eq!(distinct.columns.len(), 0);
 		} else {
-			panic!("Expected Distinct node");
+			panic!("Expected Distinct operator");
 		}
 	}
 
@@ -121,7 +121,7 @@ mod tests {
 			assert_eq!(distinct.columns.len(), 1);
 			assert_eq!(distinct.columns[0].name.text(), "name");
 		} else {
-			panic!("Expected Distinct node");
+			panic!("Expected Distinct operator");
 		}
 	}
 
@@ -137,7 +137,7 @@ mod tests {
 			assert_eq!(distinct.columns[0].name.text(), "name");
 			assert_eq!(distinct.columns[1].name.text(), "age");
 		} else {
-			panic!("Expected Distinct node");
+			panic!("Expected Distinct operator");
 		}
 	}
 

@@ -1,168 +1,110 @@
 use reifydb_core::{
-	BitVec,
-	flow::{FlowChange, FlowDiff},
-	interface::{EvaluationContext, Evaluator, Transaction, expression::Expression},
-	util::CowVec,
-	value::column::{ColumnData, Columns},
+	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
+	value::row::Row,
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-use reifydb_type::Params;
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_type::{Params, Value, return_internal_error};
 
-use crate::operator::Operator;
+use crate::{
+	flow::{FlowChange, FlowDiff},
+	operator::Operator,
+};
 
 // Static empty params instance for use in EvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
 
 pub struct FilterOperator {
+	node: FlowNodeId,
 	conditions: Vec<Expression<'static>>,
 }
 
 impl FilterOperator {
-	pub fn new(conditions: Vec<Expression<'static>>) -> Self {
+	pub fn new(node: FlowNodeId, conditions: Vec<Expression<'static>>) -> Self {
 		Self {
+			node,
 			conditions,
 		}
 	}
 }
 
 impl<T: Transaction> Operator<T> for FilterOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		_txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
+		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		let mut output = Vec::new();
+		let mut result = Vec::new();
 
 		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					source,
-					rows: row_ids,
-					post: after,
+					post,
 				} => {
-					let (filtered_columns, filtered_indices) =
-						self.filter_with_indices(evaluator, &after)?;
-					if !filtered_columns.is_empty() {
-						// Extract row_ids for the filtered rows
-						let mut filtered_row_ids = Vec::new();
-						for idx in &filtered_indices {
-							filtered_row_ids.push(row_ids[*idx]);
-						}
-						output.push(FlowDiff::Insert {
-							source,
-							rows: CowVec::new(filtered_row_ids),
-							post: filtered_columns,
+					if self.evaluate_row(&post, evaluator)? {
+						result.push(FlowDiff::Insert {
+							post,
 						});
 					}
 				}
 				FlowDiff::Update {
-					source,
-					rows: row_ids,
-					pre: before,
-					post: after,
+					pre,
+					post,
 				} => {
-					let (filtered_new, filtered_indices) =
-						self.filter_with_indices(evaluator, &after)?;
-					if !filtered_new.is_empty() {
-						// Extract row_ids for the
-						// filtered rows
-						let mut filtered_row_ids = Vec::new();
-						for idx in &filtered_indices {
-							filtered_row_ids.push(row_ids[*idx]);
-						}
-						output.push(FlowDiff::Update {
-							source,
-							rows: CowVec::new(filtered_row_ids),
-							pre: before.clone(),
-							post: filtered_new,
+					// Evaluate filter on the new version
+					if self.evaluate_row(&post, evaluator)? {
+						// Row still matches filter after update
+						result.push(FlowDiff::Update {
+							pre,
+							post,
 						});
 					} else {
-						// If new doesn't pass filter,
-						// emit remove of old
-						output.push(FlowDiff::Remove {
-							source,
-							rows: row_ids.clone(),
-							pre: before.clone(),
+						// Row no longer matches filter - emit a remove
+						result.push(FlowDiff::Remove {
+							pre,
 						});
 					}
 				}
 				FlowDiff::Remove {
-					source,
-					rows: row_ids,
-					pre: before,
+					pre,
 				} => {
 					// Always pass through removes
-					output.push(FlowDiff::Remove {
-						source,
-						rows: row_ids.clone(),
-						pre: before.clone(),
+					result.push(FlowDiff::Remove {
+						pre,
 					});
 				}
 			}
 		}
 
-		Ok(FlowChange::new(output))
+		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 }
 
 impl FilterOperator {
-	fn filter(&self, evaluator: &StandardEvaluator, columns: &Columns) -> crate::Result<Columns<'static>> {
-		let (filtered, _) = self.filter_with_indices(evaluator, columns)?;
-		Ok(filtered)
-	}
-
-	fn filter_with_indices(
-		&self,
-		evaluator: &StandardEvaluator,
-		columns: &Columns,
-	) -> crate::Result<(Columns<'static>, Vec<usize>)> {
-		let row_count = columns.row_count();
-
-		let eval_ctx = EvaluationContext {
+	fn evaluate_row(&self, row: &Row, evaluator: &StandardRowEvaluator) -> crate::Result<bool> {
+		let ctx = RowEvaluationContext {
+			row: row.clone(),
 			target: None,
-			columns: columns.clone(),
-			row_count,
-			take: None,
 			params: &EMPTY_PARAMS,
 		};
 
-		// Start with all bits set to true
-		let mut final_bv = BitVec::repeat(row_count, true);
-
-		// Evaluate each condition and AND them together
 		for condition in &self.conditions {
-			let result_column = evaluator.evaluate(&eval_ctx, condition)?;
-
-			match result_column.data() {
-				ColumnData::Bool(container) => {
-					for (idx, val) in container.data().iter().enumerate() {
-						debug_assert!(container.is_defined(idx));
-						// AND the current condition
-						// with the accumulated result
-						if !val {
-							final_bv.set(idx, false);
-						}
-					}
+			match evaluator.evaluate(&ctx, condition)? {
+				Value::Boolean(true) => continue,
+				Value::Boolean(false) => return Ok(false),
+				result => {
+					return_internal_error!(
+						"Filter condition did not evaluate to boolean, got: {:?}",
+						result
+					);
 				}
-				_ => unreachable!(),
 			}
 		}
 
-		// Collect indices of rows that pass the filter
-		let mut indices = Vec::new();
-		for (idx, bit) in final_bv.iter().enumerate() {
-			if bit {
-				indices.push(idx);
-			}
-		}
-
-		let mut filtered_columns = columns.clone();
-		filtered_columns.filter(&final_bv)?;
-
-		// Convert to owned/static columns
-		let static_columns: Vec<_> = filtered_columns.into_iter().map(|col| col.to_static()).collect();
-
-		Ok((Columns::new(static_columns), indices))
+		Ok(true)
 	}
 }

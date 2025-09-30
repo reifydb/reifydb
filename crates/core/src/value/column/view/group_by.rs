@@ -19,7 +19,7 @@ impl<'a> Columns<'a> {
 		for &key in keys {
 			let column = self
 				.iter()
-				.find(|c| c.qualified_name() == key || c.name().text() == key)
+				.find(|c| c.name() == key)
 				.ok_or_else(|| error!(engine::frame_error(format!("Column '{}' not found", key))))?;
 			key_columns.push(&column.data());
 		}

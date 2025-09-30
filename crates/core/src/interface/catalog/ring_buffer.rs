@@ -30,8 +30,8 @@ impl RingBufferMetadata {
 			id: buffer_id,
 			capacity,
 			count: 0,
-			head: 0,
-			tail: 0,
+			head: 1,
+			tail: 1,
 		}
 	}
 

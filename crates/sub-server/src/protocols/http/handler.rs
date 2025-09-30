@@ -131,7 +131,7 @@ impl<T: Transaction> ProtocolHandler<T> for HttpHandler {
 		let request = String::from_utf8_lossy(buffer);
 		request.starts_with("GET ")
 			|| request.starts_with("POST ")
-			|| request.starts_with("PSVT ")
+			|| request.starts_with("PUT ")
 			|| request.starts_with("DELETE ")
 			|| request.starts_with("HEAD ")
 			|| request.starts_with("OPTIONS ")

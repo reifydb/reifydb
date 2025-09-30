@@ -1,0 +1,36 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test behavior with version 0 (initial empty state)
+
+# Start with version 0 - should see nothing
+t1: begin
+t1: set_as_of_exclusive 0
+t1: get a b
+---
+t1: "a" => None
+t1: "b" => None
+
+t1: scan
+---
+ok
+
+# Add some data
+import a=1 b=2
+---
+ok
+
+# Version 0 should still see nothing
+t2: begin
+t2: set_as_of_exclusive 0
+t2: get a b
+---
+t2: "a" => None
+t2: "b" => None
+
+# Current version should see the data
+t3: begin
+t3: get a b
+---
+t3: "a" => "1"
+t3: "b" => "2"

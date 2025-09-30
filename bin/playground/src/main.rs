@@ -3,28 +3,13 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{
-	sync::{
-		Arc,
-		atomic::{AtomicUsize, Ordering::Relaxed},
-	},
-	thread::sleep,
-	time::Duration,
-};
+use std::{thread::sleep, time::Duration};
 
 use reifydb::{
-	Identity, MemoryDatabaseOptimistic, WithSubsystem,
-	core::{
-		flow::FlowChange,
-		interface::{Engine, FlowNodeId, Transaction, logging::LogLevel::Info},
-	},
-	embedded,
-	engine::{StandardCommandTransaction, StandardEvaluator},
-	log_info,
-	sub::task,
-	sub_flow::{FlowBuilder, Operator, TransformOperator},
+	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
+	core::interface::logging::LogLevel::Info,
+	embedded, log_info,
 	sub_logging::{FormatStyle, LoggingBuilder},
-	r#type::params,
 };
 
 pub type DB = MemoryDatabaseOptimistic;
@@ -38,62 +23,95 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 		.level(Info)
 }
 
-struct MyOP;
-
-impl<T: Transaction> Operator<T> for MyOP {
-	fn apply(
-		&self,
-		_txn: &mut StandardCommandTransaction<T>,
-		change: FlowChange,
-		_evaluator: &StandardEvaluator,
-	) -> reifydb::Result<FlowChange> {
-		println!("INVOKED");
-		Ok(change)
-	}
-}
-
-impl<T: Transaction> TransformOperator<T> for MyOP {
-	fn id(&self) -> FlowNodeId {
-		FlowNodeId(12345)
-	}
-}
-
-fn flow_configuration<T: Transaction>(flow: FlowBuilder<T>) -> FlowBuilder<T> {
-	flow.register_operator("test".to_string(), |_node, _exprs| Ok(Box::new(MyOP {})))
-}
-
 fn main() {
-	let mut db: DB = embedded::memory_optimistic()
-		.with_logging(logger_configuration)
-		.with_flow(flow_configuration)
-		.with_worker(|wp| wp)
-		.build()
-		.unwrap();
-
-	// Schedule a background task that prints every 2 seconds
-	let counter = Arc::new(AtomicUsize::new(0));
-	let counter_clone = counter.clone();
-
-	let task = task!(Low, "periodic_printer", move |ctx| {
-		let frames = ctx
-			.engine()
-			.query_as(&Identity::root(), "MAP $1", params![counter.load(Relaxed) as u8])
-			.unwrap();
-		for frame in frames {
-			println!("{}", frame);
-		}
-
-		let count = counter_clone.fetch_add(1, Relaxed);
-		log_info!("Background task execution #{}", count + 1);
-		Ok(())
-	});
-
-	let _handle = db.scheduler().schedule_every(task, Duration::from_secs(2)).unwrap();
+	let mut db: DB =
+		embedded::memory_optimistic().with_logging(logger_configuration).with_worker(|wp| wp).build().unwrap();
 
 	db.start().unwrap();
 
-	// Let the background task run for a while
-	log_info!("Letting background task run for 7 seconds...");
-	sleep(Duration::from_secs(7));
+	// Test left join with duplicate keys on both sides
+	// Should produce Cartesian product for matching keys
+
+	// Create namespace
+	log_info!("Creating namespace test...");
+	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
+
+	// Create tables
+	log_info!("Creating table test.students...");
+	db.command_as_root(r#"create table test.students { id: int4, name: utf8, class_id: int4 }"#, Params::None)
+		.unwrap();
+
+	log_info!("Creating table test.courses...");
+	db.command_as_root(
+		r#"create table test.courses { id: int4, class_id: int4, subject: utf8, teacher: utf8 }"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Create LEFT JOIN view for student courses
+	log_info!("Creating deferred view test.student_courses...");
+	db.command_as_root(
+		r#"
+create deferred view test.student_courses {
+    student_name: utf8,
+    subject: utf8,
+    teacher: utf8
+} as {
+    from test.students
+    left join { from test.courses } courses on class_id == courses.class_id with { strategy: lazy_loading }
+    map {
+        student_name: name,
+        subject: subject,
+        teacher: teacher
+    }
+}
+	"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Insert students with duplicate class_id
+	log_info!("Inserting students with duplicate class_id...");
+	db.command_as_root(
+		r#"
+from [
+    {id: 1, name: "Alice", class_id: 10},
+    {id: 2, name: "Bob", class_id: 10},
+    {id: 3, name: "Charlie", class_id: 20},
+    {id: 4, name: "Diana", class_id: 30}
+] insert test.students
+	"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Insert courses with duplicate class_id
+	log_info!("Inserting courses with duplicate class_id...");
+	db.command_as_root(
+		r#"
+from [
+    {id: 101, class_id: 10, subject: "Math", teacher: "P Smith"},
+    {id: 102, class_id: 10, subject: "Science", teacher: "P Jones"},
+    {id: 103, class_id: 20, subject: "English", teacher: "P Brown"}
+] insert test.courses
+	"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Let the background task process
+	sleep(Duration::from_millis(100));
+
+	// Should show Cartesian product: Alice and Bob each get 2 rows (Math and Science)
+	// Charlie gets 1 row (English), Diana gets 1 row with Undefined
+	log_info!("Querying LEFT JOIN view with sorting...");
+	let result = db
+		.query_as_root("from test.student_courses sort { student_name asc, subject asc }", Params::None)
+		.unwrap();
+	for frame in result {
+		println!("Student courses (sorted):\n{}", frame);
+	}
+
+	log_info!("✅ Test completed successfully!");
 	log_info!("Shutting down...");
 }

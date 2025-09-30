@@ -1,0 +1,48 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test that commits work and version advances correctly with set_as_of_inclusive
+
+import a=1
+---
+ok
+
+# Version is now 1
+t1: begin
+t1: set a=2
+t1: commit
+---
+ok
+
+# Version is now 2
+t2: begin
+t2: set a=3
+t2: commit
+---
+ok
+
+# Version is now 3
+# Start transaction at version 1
+t3: begin
+t3: set_as_of_inclusive 1
+t3: get a
+---
+t3: "a" => "1"
+
+# Make changes and commit
+t3: set b=100
+t3: commit
+---
+ok
+
+# Version should advance to 4
+t4: begin
+t4: version
+---
+t4: 5
+
+# Should see the new data
+t4: get a b
+---
+t4: "a" => "3"
+t4: "b" => "100"

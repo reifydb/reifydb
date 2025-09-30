@@ -1,0 +1,47 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify transaction doesn't see writes after its set version
+
+import a=1 b=2
+---
+ok
+
+# Start transaction at version 1
+t1: begin
+t1: set_as_of_exclusive 1
+t1: get a b
+---
+t1: "a" => None
+t1: "b" => None
+
+# Make changes in another transaction
+t2: begin
+t2: set a=10 b=20 c=30
+t2: commit
+---
+ok
+
+# t1 should still see version 1 data
+t1: get a b c
+---
+t1: "a" => None
+t1: "b" => None
+t1: "c" => None
+
+# Make more changes
+t3: begin
+t3: set a=100 d=40
+t3: commit
+---
+ok
+
+# t1 still at version 1
+t1: get a d
+---
+t1: "a" => None
+t1: "d" => None
+
+t1: scan
+---
+ok

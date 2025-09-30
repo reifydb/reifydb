@@ -233,7 +233,10 @@ impl PartialOrd for Value {
 			(Value::Int(l), Value::Int(r)) => l.partial_cmp(r),
 			(Value::Uint(l), Value::Uint(r)) => l.partial_cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.partial_cmp(r),
-			(Value::Undefined, Value::Undefined) => None,
+			(Value::Undefined, Value::Undefined) => Some(Ordering::Equal),
+			// Undefined sorts after all other values (similar to NULL in SQL)
+			(Value::Undefined, _) => Some(Ordering::Greater),
+			(_, Value::Undefined) => Some(Ordering::Less),
 			(left, right) => {
 				unimplemented!("partial cmp {left:?} {right:?}")
 			}

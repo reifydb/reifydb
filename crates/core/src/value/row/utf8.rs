@@ -8,7 +8,7 @@ use crate::value::row::{EncodedRow, EncodedRowLayout};
 impl EncodedRowLayout {
 	pub fn set_utf8(&self, row: &mut EncodedRow, index: usize, value: impl AsRef<str>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Utf8);
+		debug_assert_eq!(field.r#type, Type::Utf8);
 		debug_assert!(!row.is_defined(index), "UTF8 field {} already set", index);
 
 		let bytes = value.as_ref().as_bytes();
@@ -31,7 +31,7 @@ impl EncodedRowLayout {
 
 	pub fn get_utf8<'a>(&'a self, row: &'a EncodedRow, index: usize) -> &'a str {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Utf8);
+		debug_assert_eq!(field.r#type, Type::Utf8);
 
 		// Read offset and length from static section
 		let ref_slice = &row.as_slice()[field.offset..field.offset + 8];

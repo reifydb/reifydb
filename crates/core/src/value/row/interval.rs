@@ -11,7 +11,7 @@ impl EncodedRowLayout {
 	pub fn set_interval(&self, row: &mut EncodedRow, index: usize, value: Interval) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Interval);
+		debug_assert_eq!(field.r#type, Type::Interval);
 		row.set_valid(index, true);
 
 		let months = value.get_months();
@@ -30,7 +30,7 @@ impl EncodedRowLayout {
 	pub fn get_interval(&self, row: &EncodedRow, index: usize) -> Interval {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Interval);
+		debug_assert_eq!(field.r#type, Type::Interval);
 		unsafe {
 			// Read months (i32) from offset
 			let months = (row.as_ptr().add(field.offset) as *const i32).read_unaligned();

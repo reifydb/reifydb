@@ -5,6 +5,6 @@ logical 'from users map {id, name}'
 ---
 > └── TableScan default.users
 > └── Map
->     ├── Column(id)
->     └── Column(name)
+>     ├── id
+>     └── name
 > 

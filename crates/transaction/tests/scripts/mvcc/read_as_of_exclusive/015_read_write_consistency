@@ -1,0 +1,71 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Verify read-your-writes consistency with set_as_of_exclusive
+
+import a=1 b=2
+---
+ok
+
+t1: begin
+t1: set a=10
+t1: commit
+---
+ok
+
+# Start transaction at version 1
+t2: begin
+t2: set_as_of_exclusive 1
+t2: get a b
+---
+t2: "a" => None
+t2: "b" => None
+
+# Write new values
+t2: set a=100 c=300
+---
+ok
+
+# Should see own writes even though at version 1
+t2: get a c
+---
+t2: "a" => "100"
+t2: "c" => "300"
+
+# Original b unchanged
+t2: get b
+---
+t2: "b" => None
+
+# Set to version 2
+t2: set_as_of_exclusive 2
+---
+ok
+
+# Should still see own writes
+t2: get a c
+---
+t2: "a" => "100"
+t2: "c" => "300"
+
+# Should see version 2's b
+t2: get b
+---
+t2: "b" => "2"
+
+# More writes
+t2: set d=400
+---
+ok
+
+# Should see all own writes
+t2: scan
+---
+t2: "a" => "100"
+t2: "b" => "2"
+t2: "c" => "300"
+t2: "d" => "400"
+
+t2: commit
+---
+ok

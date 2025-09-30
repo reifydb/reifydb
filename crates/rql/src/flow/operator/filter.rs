@@ -1,13 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	flow::{FlowNodeDef, FlowNodeType::Operator, OperatorType::Filter},
-	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
-};
+use FlowNodeType::Filter;
+use reifydb_core::interface::{CommandTransaction, FlowNodeId, expression::Expression};
 
 use super::super::{
-	CompileOperator, FlowCompiler,
+	CompileOperator, FlowCompiler, FlowNodeType,
 	conversion::{to_owned_expressions, to_owned_physical_plan},
 };
 use crate::{
@@ -33,12 +31,8 @@ impl<T: CommandTransaction> CompileOperator<T> for FilterCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let input_node = compiler.compile_plan(*self.input)?;
 
-		compiler.build_node(Operator {
-			operator: Filter {
-				conditions: self.conditions,
-			},
-			input_schemas: vec![FlowNodeDef::empty()],
-			output_schema: FlowNodeDef::empty(),
+		compiler.build_node(Filter {
+			conditions: self.conditions,
 		})
 		.with_input(input_node)
 		.build()

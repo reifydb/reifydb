@@ -10,9 +10,7 @@ use query::{
 	filter::FilterNode,
 	index_scan::IndexScanNode,
 	inline::InlineDataNode,
-	join_inner::InnerJoinNode,
-	join_left::LeftJoinNode,
-	join_natural::NaturalJoinNode,
+	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
 	ring_buffer_scan::RingBufferScan,
 	sort::SortNode,
@@ -24,7 +22,7 @@ use query::{
 use reifydb_core::{
 	Frame,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedSource, Transaction},
-	value::column::{Column, ColumnComputed, ColumnData, Columns, layout::ColumnsLayout},
+	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::{
 	ast,
@@ -43,7 +41,7 @@ mod query;
 /// Unified trait for query execution nodes following the volcano iterator
 /// pattern
 pub(crate) trait QueryNode<'a, T: Transaction> {
-	/// Initialize the node with execution context
+	/// Initialize the operator with execution context
 	/// Called once before iteration begins
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()>;
 
@@ -51,8 +49,8 @@ pub(crate) trait QueryNode<'a, T: Transaction> {
 	/// Returns None when exhausted
 	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>>;
 
-	/// Get the layout of columns this node produces
-	fn layout(&self) -> Option<ColumnsLayout<'a>>;
+	/// Get the headers of columns this node produces
+	fn headers(&self) -> Option<ColumnHeaders<'a>>;
 }
 
 #[derive(Clone)]
@@ -60,7 +58,6 @@ pub struct ExecutionContext<'a> {
 	pub functions: Functions,
 	pub source: Option<ResolvedSource<'a>>,
 	pub batch_size: usize,
-	pub preserve_row_numbers: bool,
 	pub params: Params,
 }
 
@@ -99,8 +96,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
 		(**self).next(rx)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		(**self).layout()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		(**self).headers()
 	}
 }
 
@@ -149,38 +146,60 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 		}
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
 		match self {
-			ExecutionPlan::Aggregate(node) => node.layout(),
-			ExecutionPlan::Filter(node) => node.layout(),
-			ExecutionPlan::IndexScan(node) => node.layout(),
-			ExecutionPlan::InlineData(node) => node.layout(),
-			ExecutionPlan::InnerJoin(node) => node.layout(),
-			ExecutionPlan::LeftJoin(node) => node.layout(),
-			ExecutionPlan::NaturalJoin(node) => node.layout(),
-			ExecutionPlan::Map(node) => node.layout(),
-			ExecutionPlan::MapWithoutInput(node) => node.layout(),
-			ExecutionPlan::Extend(node) => node.layout(),
-			ExecutionPlan::ExtendWithoutInput(node) => node.layout(),
-			ExecutionPlan::Sort(node) => node.layout(),
-			ExecutionPlan::TableScan(node) => node.layout(),
-			ExecutionPlan::Take(node) => node.layout(),
-			ExecutionPlan::ViewScan(node) => node.layout(),
-			ExecutionPlan::VirtualScan(node) => node.layout(),
-			ExecutionPlan::RingBufferScan(node) => node.layout(),
+			ExecutionPlan::Aggregate(node) => node.headers(),
+			ExecutionPlan::Filter(node) => node.headers(),
+			ExecutionPlan::IndexScan(node) => node.headers(),
+			ExecutionPlan::InlineData(node) => node.headers(),
+			ExecutionPlan::InnerJoin(node) => node.headers(),
+			ExecutionPlan::LeftJoin(node) => node.headers(),
+			ExecutionPlan::NaturalJoin(node) => node.headers(),
+			ExecutionPlan::Map(node) => node.headers(),
+			ExecutionPlan::MapWithoutInput(node) => node.headers(),
+			ExecutionPlan::Extend(node) => node.headers(),
+			ExecutionPlan::ExtendWithoutInput(node) => node.headers(),
+			ExecutionPlan::Sort(node) => node.headers(),
+			ExecutionPlan::TableScan(node) => node.headers(),
+			ExecutionPlan::Take(node) => node.headers(),
+			ExecutionPlan::ViewScan(node) => node.headers(),
+			ExecutionPlan::VirtualScan(node) => node.headers(),
+			ExecutionPlan::RingBufferScan(node) => node.headers(),
 		}
 	}
 }
 
-pub struct Executor {
+pub struct Executor(Arc<ExecutorInner>);
+
+pub struct ExecutorInner {
 	pub functions: Functions,
 }
 
+impl Clone for Executor {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl std::ops::Deref for Executor {
+	type Target = ExecutorInner;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
 impl Executor {
+	pub fn new(functions: Functions) -> Self {
+		Self(Arc::new(ExecutorInner {
+			functions,
+		}))
+	}
+
 	#[allow(dead_code)]
 	pub fn testing() -> Self {
-		Self {
-			functions: Functions::builder()
+		Self::new(
+			Functions::builder()
 				.register_aggregate("sum", math::aggregate::Sum::new)
 				.register_aggregate("min", math::aggregate::Min::new)
 				.register_aggregate("max", math::aggregate::Max::new)
@@ -189,7 +208,7 @@ impl Executor {
 				.register_scalar("abs", math::scalar::Abs::new)
 				.register_scalar("avg", math::scalar::Avg::new)
 				.build(),
-		}
+		)
 	}
 }
 
@@ -353,12 +372,11 @@ impl Executor {
 					functions: self.functions.clone(),
 					source: None,
 					batch_size: 1024,
-					preserve_row_numbers: false,
 					params: params.clone(),
 				});
 				let mut node = compile(plan, rx, context.clone());
 
-				// Initialize the node before execution
+				// Initialize the operator before execution
 				node.initialize(rx, &context)?;
 
 				let mut result: Option<Columns> = None;
@@ -375,11 +393,11 @@ impl Executor {
 					}
 				}
 
-				let layout = node.layout();
+				let headers = node.headers();
 
 				if let Some(mut columns) = result {
-					if let Some(layout) = layout {
-						columns.apply_layout(&layout);
+					if let Some(headers) = headers {
+						columns.apply_headers(&headers);
 					}
 
 					Ok(columns.into())
@@ -387,19 +405,15 @@ impl Executor {
 					// empty columns - reconstruct table,
 					// for better UX
 					let columns: Vec<Column<'a>> = node
-						.layout()
-						.unwrap_or(ColumnsLayout {
+						.headers()
+						.unwrap_or(ColumnHeaders {
 							columns: vec![],
 						})
 						.columns
 						.into_iter()
-						.map(|layout| {
-							// For now, just create a ColumnQualified since we don't have
-							// the full resolved metadata here
-							Column::Computed(ColumnComputed {
-								name: layout.name,
-								data: ColumnData::undefined(0),
-							})
+						.map(|name| Column {
+							name,
+							data: ColumnData::undefined(0),
 						})
 						.collect();
 

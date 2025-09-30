@@ -5,7 +5,7 @@ use std::ops::Bound;
 
 use reifydb_type::Result;
 
-use crate::{CommitVersion, interface::CdcEvent};
+use crate::{CommitVersion, interface::Cdc};
 
 pub trait CdcTransaction: Send + Sync + Clone + 'static {
 	type Query<'a>: CdcQueryTransaction;
@@ -22,15 +22,15 @@ pub trait CdcTransaction: Send + Sync + Clone + 'static {
 }
 
 pub trait CdcQueryTransaction: Send + Sync + Clone + 'static {
-	fn get(&self, version: CommitVersion) -> Result<Vec<CdcEvent>>;
+	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>>;
 
 	fn range(
 		&self,
 		start: Bound<CommitVersion>,
 		end: Bound<CommitVersion>,
-	) -> Result<Box<dyn Iterator<Item = CdcEvent> + '_>>;
+	) -> Result<Box<dyn Iterator<Item = Cdc> + '_>>;
 
-	fn scan(&self) -> Result<Box<dyn Iterator<Item = CdcEvent> + '_>>;
+	fn scan(&self) -> Result<Box<dyn Iterator<Item = Cdc> + '_>>;
 
 	fn count(&self, version: CommitVersion) -> Result<usize>;
 }

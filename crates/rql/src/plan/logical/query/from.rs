@@ -21,19 +21,12 @@ impl Compiler {
 				source,
 				..
 			} => {
-				// Use resolve to properly resolve
-				// UnresolvedSourceIdentifier
 				let resolved_source = resolver::resolve_unresolved_source(tx, &source)?;
-
-				// TODO: Resolve index if present
-				// For now, leave index as None
-				let index = None;
 
 				Ok(LogicalPlan::SourceScan(SourceScanNode {
 					source: resolved_source,
-					columns: None, /* Will be populated
-					                * later when needed */
-					index,
+					columns: None,
+					index: None,
 				}))
 			}
 			AstFrom::Inline {

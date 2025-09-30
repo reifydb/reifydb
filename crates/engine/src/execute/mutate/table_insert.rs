@@ -57,7 +57,6 @@ impl Executor {
 			functions: self.functions.clone(),
 			source: resolved_source,
 			batch_size: 1024,
-			preserve_row_numbers: false,
 			params: params.clone(),
 		});
 
@@ -66,7 +65,7 @@ impl Executor {
 
 		let mut inserted_count = 0;
 
-		// Initialize the node before execution
+		// Initialize the operator before execution
 		input_node.initialize(&mut std_txn, &execution_context)?;
 
 		// Process all input batches using volcano iterator pattern

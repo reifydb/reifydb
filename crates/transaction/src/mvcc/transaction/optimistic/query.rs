@@ -39,6 +39,14 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> QueryTransaction<
 		self.tm.version()
 	}
 
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
+		self.tm.read_as_of_version_exclusive(version);
+	}
+
+	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) {
+		self.read_as_of_version_exclusive(version + 1)
+	}
+
 	pub fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {
 		let version = self.tm.version();
 		Ok(self.engine.get(key, version)?.map(Into::into))

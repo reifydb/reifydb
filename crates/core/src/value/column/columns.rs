@@ -9,25 +9,25 @@ use std::{
 use reifydb_type::{Fragment, Value};
 
 use crate::{
-	interface::{
-		ResolvedColumn,
-		resolved::{ResolvedRingBuffer, ResolvedSource, ResolvedTable, ResolvedView},
-	},
+	interface::resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
 	util::CowVec,
 	value::{
-		column::{Column, ColumnComputed, ColumnData, ColumnResolved},
+		column::{Column, ColumnData, headers::ColumnHeaders},
 		container::UndefinedContainer,
 	},
 };
 
 #[derive(Debug, Clone)]
-pub struct Columns<'a>(pub CowVec<Column<'a>>);
+pub struct Columns<'a> {
+	pub row_numbers: CowVec<reifydb_type::RowNumber>,
+	pub columns: CowVec<Column<'a>>,
+}
 
 impl<'a> Deref for Columns<'a> {
 	type Target = [Column<'a>];
 
 	fn deref(&self) -> &Self::Target {
-		self.0.deref()
+		self.columns.deref()
 	}
 }
 
@@ -35,13 +35,13 @@ impl<'a> Index<usize> for Columns<'a> {
 	type Output = Column<'a>;
 
 	fn index(&self, index: usize) -> &Self::Output {
-		self.0.index(index)
+		self.columns.index(index)
 	}
 }
 
 impl<'a> IndexMut<usize> for Columns<'a> {
 	fn index_mut(&mut self, index: usize) -> &mut Self::Output {
-		&mut self.0.make_mut()[index]
+		&mut self.columns.make_mut()[index]
 	}
 }
 
@@ -50,7 +50,21 @@ impl<'a> Columns<'a> {
 		let n = columns.first().map_or(0, |c| c.data().len());
 		assert!(columns.iter().all(|c| c.data().len() == n));
 
-		Self(CowVec::new(columns))
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
+	}
+
+	pub fn with_row_numbers(columns: Vec<Column<'a>>, row_numbers: Vec<reifydb_type::RowNumber>) -> Self {
+		let n = columns.first().map_or(0, |c| c.data().len());
+		assert!(columns.iter().all(|c| c.data().len() == n));
+		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");
+
+		Self {
+			row_numbers: CowVec::new(row_numbers),
+			columns: CowVec::new(columns),
+		}
 	}
 
 	pub fn single_row<'b>(rows: impl IntoIterator<Item = (&'b str, Value)>) -> Columns<'a> {
@@ -88,25 +102,48 @@ impl<'a> Columns<'a> {
 				Value::Decimal(v) => ColumnData::decimal(vec![v]),
 			};
 
-			let column = Column::Computed(ColumnComputed {
+			let column = Column {
 				name: Fragment::owned_internal(name.to_string()),
 				data,
-			});
-			index.insert(column.qualified_name(), idx);
+			};
+			index.insert(name, idx);
 			columns.push(column);
 		}
 
-		Self::new(columns)
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
+	}
+
+	pub fn apply_headers(&mut self, headers: &ColumnHeaders<'a>) {
+		// Apply the column names from headers to this Columns instance
+		for (i, name) in headers.columns.iter().enumerate() {
+			if i < self.len() {
+				let column = &mut self[i];
+				let data = std::mem::replace(column.data_mut(), ColumnData::undefined(0));
+
+				*column = Column {
+					name: name.clone(),
+					data,
+				};
+			}
+		}
 	}
 }
 
 impl<'a> Columns<'a> {
 	pub fn shape(&self) -> (usize, usize) {
-		(self.get(0).map(|c| c.data().len()).unwrap_or(0), self.len())
+		let row_count = if !self.row_numbers.is_empty() {
+			self.row_numbers.len()
+		} else {
+			self.get(0).map(|c| c.data().len()).unwrap_or(0)
+		};
+		(row_count, self.len())
 	}
 
 	pub fn into_iter(self) -> impl Iterator<Item = Column<'a>> {
-		self.0.into_iter()
+		self.columns.into_iter()
 	}
 
 	pub fn is_empty(&self) -> bool {
@@ -122,7 +159,11 @@ impl<'a> Columns<'a> {
 	}
 
 	pub fn row_count(&self) -> usize {
-		self.first().map_or(0, |col| col.data().len())
+		if !self.row_numbers.is_empty() {
+			self.row_numbers.len()
+		} else {
+			self.first().map_or(0, |col| col.data().len())
+		}
 	}
 
 	pub fn get_row(&self, index: usize) -> Vec<Value> {
@@ -142,11 +183,9 @@ impl<'a> Columns<'a> {
 
 		let mut columns: Vec<Column> = names
 			.iter()
-			.map(|name| {
-				Column::Computed(ColumnComputed {
-					name: Fragment::owned_internal(name.to_string()),
-					data: ColumnData::Undefined(UndefinedContainer::new(0)),
-				})
+			.map(|name| Column {
+				name: Fragment::owned_internal(name.to_string()),
+				data: ColumnData::Undefined(UndefinedContainer::new(0)),
 			})
 			.collect();
 
@@ -163,64 +202,73 @@ impl<'a> Columns<'a> {
 
 impl<'a> Columns<'a> {
 	pub fn empty() -> Self {
-		Self(CowVec::new(vec![]))
+		Self {
+			row_numbers: CowVec::new(vec![]),
+			columns: CowVec::new(vec![]),
+		}
 	}
 
 	pub fn from_table(table: &ResolvedTable<'a>) -> Self {
-		let source = ResolvedSource::Table(table.clone());
+		let _source = table.clone();
 
 		let columns: Vec<Column> = table
 			.columns()
 			.iter()
 			.map(|col| {
 				let column_ident = Fragment::owned_internal(&col.name);
-				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
-				Column::Resolved(ColumnResolved::new(
-					resolved_col,
-					ColumnData::with_capacity(col.constraint.get_type(), 0),
-				))
+				Column {
+					name: column_ident,
+					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				}
 			})
 			.collect();
 
-		Self::new(columns)
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
 	}
 
 	pub fn from_ring_buffer(ring_buffer: &ResolvedRingBuffer<'a>) -> Self {
-		let source = ResolvedSource::RingBuffer(ring_buffer.clone());
+		let _source = ring_buffer.clone();
 
 		let columns: Vec<Column> = ring_buffer
 			.columns()
 			.iter()
 			.map(|col| {
 				let column_ident = Fragment::owned_internal(&col.name);
-				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
-				Column::Resolved(ColumnResolved::new(
-					resolved_col,
-					ColumnData::with_capacity(col.constraint.get_type(), 0),
-				))
+				Column {
+					name: column_ident,
+					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				}
 			})
 			.collect();
 
-		Self::new(columns)
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
 	}
 
 	pub fn from_view(view: &ResolvedView<'a>) -> Self {
-		let source = ResolvedSource::View(view.clone());
+		let _source = view.clone();
 
 		let columns: Vec<Column> = view
 			.columns()
 			.iter()
 			.map(|col| {
 				let column_ident = Fragment::owned_internal(&col.name);
-				let resolved_col = ResolvedColumn::new(column_ident, source.clone(), col.clone());
-				Column::Resolved(ColumnResolved::new(
-					resolved_col,
-					ColumnData::with_capacity(col.constraint.get_type(), 0),
-				))
+				Column {
+					name: column_ident,
+					data: ColumnData::with_capacity(col.constraint.get_type(), 0),
+				}
 			})
 			.collect();
 
-		Self::new(columns)
+		Self {
+			row_numbers: CowVec::new(Vec::new()),
+			columns: CowVec::new(columns),
+		}
 	}
 }
 

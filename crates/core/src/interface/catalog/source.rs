@@ -4,10 +4,7 @@
 use reifydb_type::return_internal_error;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	flow::FlowNodeDef,
-	interface::{FlowNodeId, RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId},
-};
+use crate::interface::{RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId};
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum SourceId {
@@ -15,7 +12,6 @@ pub enum SourceId {
 	View(ViewId),
 	TableVirtual(TableVirtualId),
 	RingBuffer(RingBufferId),
-	FlowNode(FlowNodeId),
 }
 
 impl std::fmt::Display for SourceId {
@@ -25,7 +21,6 @@ impl std::fmt::Display for SourceId {
 			SourceId::View(id) => write!(f, "{}", id.0),
 			SourceId::TableVirtual(id) => write!(f, "{}", id.0),
 			SourceId::RingBuffer(id) => write!(f, "{}", id.0),
-			SourceId::FlowNode(id) => write!(f, "{}", id.0),
 		}
 	}
 }
@@ -45,10 +40,6 @@ impl SourceId {
 
 	pub fn ring_buffer(id: impl Into<RingBufferId>) -> Self {
 		Self::RingBuffer(id.into())
-	}
-
-	pub fn flow_node(id: impl Into<FlowNodeId>) -> Self {
-		Self::FlowNode(id.into())
 	}
 }
 
@@ -76,12 +67,6 @@ impl From<RingBufferId> for SourceId {
 	}
 }
 
-impl From<FlowNodeId> for SourceId {
-	fn from(id: FlowNodeId) -> Self {
-		SourceId::FlowNode(id)
-	}
-}
-
 impl PartialEq<u64> for SourceId {
 	fn eq(&self, other: &u64) -> bool {
 		match self {
@@ -89,7 +74,6 @@ impl PartialEq<u64> for SourceId {
 			SourceId::View(id) => id.0.eq(other),
 			SourceId::TableVirtual(id) => id.0.eq(other),
 			SourceId::RingBuffer(id) => id.0.eq(other),
-			SourceId::FlowNode(id) => id.0.eq(other),
 		}
 	}
 }
@@ -130,15 +114,6 @@ impl PartialEq<RingBufferId> for SourceId {
 	}
 }
 
-impl PartialEq<FlowNodeId> for SourceId {
-	fn eq(&self, other: &FlowNodeId) -> bool {
-		match self {
-			SourceId::FlowNode(id) => id.0 == other.0,
-			_ => false,
-		}
-	}
-}
-
 impl From<SourceId> for u64 {
 	fn from(source: SourceId) -> u64 {
 		source.as_u64()
@@ -153,7 +128,6 @@ impl SourceId {
 			SourceId::View(id) => id.0,
 			SourceId::TableVirtual(id) => id.0,
 			SourceId::RingBuffer(id) => id.0,
-			SourceId::FlowNode(id) => id.0,
 		}
 	}
 
@@ -164,7 +138,6 @@ impl SourceId {
 			SourceId::View(view) => SourceId::view(view.0 + 1),
 			SourceId::TableVirtual(table_virtual) => SourceId::table_virtual(table_virtual.0 + 1),
 			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0 + 1),
-			SourceId::FlowNode(flow_node) => SourceId::flow_node(flow_node.0 + 1),
 		}
 	}
 
@@ -180,7 +153,6 @@ impl SourceId {
 				SourceId::table_virtual(table_virtual.0.wrapping_sub(1))
 			}
 			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0.wrapping_sub(1)),
-			SourceId::FlowNode(flow_node) => SourceId::flow_node(flow_node.0.wrapping_sub(1)),
 		}
 	}
 
@@ -235,19 +207,6 @@ impl SourceId {
 			)
 		}
 	}
-
-	pub fn to_flow_node_id(self) -> crate::Result<FlowNodeId> {
-		if let SourceId::FlowNode(flow_node) = self {
-			Ok(flow_node)
-		} else {
-			return_internal_error!(
-				"Data inconsistency: Expected SourceId::FlowNode but found {:?}. \
-				This indicates a critical catalog inconsistency where a non-flow-node source ID \
-				was used in a context that requires a flow node ID.",
-				self
-			)
-		}
-	}
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -255,7 +214,6 @@ pub enum SourceDef {
 	Table(TableDef),
 	View(ViewDef),
 	TableVirtual(TableVirtualDef),
-	FlowNode(FlowNodeDef),
 }
 
 impl SourceDef {
@@ -264,11 +222,6 @@ impl SourceDef {
 			SourceDef::Table(table) => table.id.into(),
 			SourceDef::View(view) => view.id.into(),
 			SourceDef::TableVirtual(table_virtual) => table_virtual.id.into(),
-			SourceDef::FlowNode(_) => {
-				// FlowNodeDef doesn't have an ID field, return a placeholder
-				// This should be handled differently in actual flow contexts
-				SourceId::flow_node(0)
-			}
 		}
 	}
 
@@ -277,7 +230,6 @@ impl SourceDef {
 			SourceDef::Table(table) => SourceId::Table(table.id),
 			SourceDef::View(view) => SourceId::View(view.id),
 			SourceDef::TableVirtual(table_virtual) => SourceId::TableVirtual(table_virtual.id),
-			SourceDef::FlowNode(_) => SourceId::flow_node(0),
 		}
 	}
 }

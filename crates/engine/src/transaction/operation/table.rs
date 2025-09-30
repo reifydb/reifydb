@@ -5,7 +5,7 @@ use reifydb_catalog::sequence::RowSequence;
 use reifydb_core::{
 	event::catalog::TableInsertedEvent,
 	interface::{
-		EncodableKey, GetEncodedRowLayout, MultiVersionCommandTransaction, RowKey, TableDef, Transaction,
+		EncodableKey, GetEncodedRowNamedLayout, MultiVersionCommandTransaction, RowKey, TableDef, Transaction,
 		interceptor::TableInterceptor,
 	},
 	value::row::{EncodedRow, Row},
@@ -39,7 +39,7 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 
 		TableInterceptor::post_insert(self, &table, row_number, &row)?;
 
-		let layout = table.get_layout();
+		let layout = table.get_named_layout();
 
 		self.event_bus().emit(TableInsertedEvent {
 			table,

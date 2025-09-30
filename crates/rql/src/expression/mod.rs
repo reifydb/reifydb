@@ -1,12 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod join;
+mod name;
+
+pub use join::JoinConditionCompiler;
+pub use name::*;
 use reifydb_core::interface::evaluate::expression::{
-	AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
-	CastExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression,
-	GreaterThanEqExpression, GreaterThanExpression, IdentExpression, LessThanEqExpression, LessThanExpression,
-	MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator,
-	RemExpression, SubExpression, TupleExpression, TypeExpression, XorExpression,
+	AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
+	ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression, GreaterThanEqExpression,
+	GreaterThanExpression, IdentExpression, LessThanEqExpression, LessThanExpression, MulExpression,
+	NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RemExpression,
+	SubExpression, TupleExpression, TypeExpression, XorExpression,
 };
 use reifydb_type::{Fragment, OwnedFragment};
 
@@ -176,28 +181,6 @@ impl ExpressionCompiler {
 
 	fn infix<'a>(ast: AstInfix<'a>) -> crate::Result<Expression<'a>> {
 		match ast.operator {
-			InfixOperator::AccessTable(_) => {
-				let Ast::Identifier(left) = *ast.left else {
-					unimplemented!()
-				};
-				let Ast::Identifier(right) = *ast.right else {
-					unimplemented!()
-				};
-
-				use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
-
-				// Create a column identifier with alias source
-				// (the table/alias name)
-				let column = ColumnIdentifier {
-					source: ColumnSource::Alias(left.token.fragment),
-					name: right.token.fragment,
-				};
-
-				Ok(Expression::AccessSource(AccessSourceExpression {
-					column,
-				}))
-			}
-
 			InfixOperator::Add(token) => {
 				let left = Self::compile(*ast.left)?;
 				let right = Self::compile(*ast.right)?;

@@ -7,7 +7,7 @@ use reifydb_type::{
 	error,
 };
 
-use crate::interface::{ColumnSaturationPolicy, evaluate::EvaluationContext};
+use crate::interface::{ColumnSaturationPolicy, evaluate::ColumnEvaluationContext};
 
 pub trait Convert {
 	fn convert<From, To>(&self, from: From, fragment: impl IntoFragment<'static>) -> crate::Result<Option<To>>
@@ -16,7 +16,7 @@ pub trait Convert {
 		To: GetType;
 }
 
-impl Convert for EvaluationContext<'_> {
+impl Convert for ColumnEvaluationContext<'_> {
 	fn convert<From, To>(&self, from: From, fragment: impl IntoFragment<'static>) -> crate::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,
@@ -26,7 +26,7 @@ impl Convert for EvaluationContext<'_> {
 	}
 }
 
-impl Convert for &EvaluationContext<'_> {
+impl Convert for &ColumnEvaluationContext<'_> {
 	fn convert<From, To>(&self, from: From, fragment: impl IntoFragment<'static>) -> crate::Result<Option<To>>
 	where
 		From: SafeConvert<To> + GetType,

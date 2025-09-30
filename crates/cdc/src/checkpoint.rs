@@ -3,7 +3,10 @@
 
 use reifydb_core::{
 	CommitVersion, CowVec,
-	interface::{CommandTransaction, QueryTransaction, ToConsumerKey},
+	interface::{
+		CommandTransaction, QueryTransaction, SingleVersionCommandTransaction, SingleVersionQueryTransaction,
+		ToConsumerKey,
+	},
 	value::row::EncodedRow,
 };
 
@@ -15,7 +18,8 @@ impl CdcCheckpoint {
 		consumer: &K,
 	) -> reifydb_core::Result<CommitVersion> {
 		let key = consumer.to_consumer_key();
-		txn.get(&key)?
+
+		txn.with_single_query(|txn| txn.get(&key))?
 			.and_then(|record| {
 				if record.row.len() >= 8 {
 					let mut buffer = [0u8; 8];
@@ -36,6 +40,6 @@ impl CdcCheckpoint {
 	) -> reifydb_core::Result<()> {
 		let key = consumer.to_consumer_key();
 		let version_bytes = version.to_be_bytes().to_vec();
-		txn.set(&key, EncodedRow(CowVec::new(version_bytes)))
+		txn.with_single_command(|txn| txn.set(&key, EncodedRow(CowVec::new(version_bytes))))
 	}
 }

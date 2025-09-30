@@ -1,0 +1,54 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test set_as_of_inclusive on readonly transactions
+
+import a=1 b=2
+---
+ok
+
+t1: begin
+t1: set a=10
+t1: commit
+---
+ok
+
+t2: begin
+t2: set a=100 b=200
+t2: commit
+---
+ok
+
+# Readonly transaction with set_as_of_inclusive
+t3: begin readonly
+t3: get a b
+---
+t3: "a" => "100"
+t3: "b" => "200"
+
+# Set to version 1
+t3: set_as_of_inclusive 1
+t3: get a b
+---
+t3: "a" => "1"
+t3: "b" => "2"
+
+# Set to version 2
+t3: set_as_of_inclusive 2
+t3: get a b
+---
+t3: "a" => "10"
+t3: "b" => "2"
+
+# Scan at version 2
+t3: scan
+---
+t3: "a" => "10"
+t3: "b" => "2"
+
+# Back to latest
+t3: set_as_of_inclusive 3
+t3: scan
+---
+t3: "a" => "100"
+t3: "b" => "200"

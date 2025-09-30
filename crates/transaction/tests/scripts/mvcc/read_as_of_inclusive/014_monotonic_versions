@@ -1,0 +1,75 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test with monotonically increasing versions (CDC scenario)
+# Simulates processing CDC events with increasing versions
+
+import a=1 b=2
+---
+ok
+
+# Create multiple versions
+t1: begin
+t1: set a=10
+t1: commit
+---
+ok
+
+t2: begin
+t2: set b=20
+t2: commit
+---
+ok
+
+t3: begin
+t3: set c=30
+t3: commit
+---
+ok
+
+# Simulate CDC processing with monotonic version increases
+t4: begin
+
+# Process event at version 1
+t4: set_as_of_inclusive 1
+t4: get a b c
+---
+t4: "a" => "1"
+t4: "b" => "2"
+t4: "c" => None
+
+# Process next CDC event at version 2
+t4: set_as_of_inclusive 2
+t4: get a b c
+---
+t4: "a" => "10"
+t4: "b" => "2"
+t4: "c" => None
+
+# Process next CDC event at version 3
+t4: set_as_of_inclusive 3
+t4: get a b c
+---
+t4: "a" => "10"
+t4: "b" => "20"
+t4: "c" => None
+
+# Process final CDC event at version 4
+t4: set_as_of_inclusive 4
+t4: get a b c
+---
+t4: "a" => "10"
+t4: "b" => "20"
+t4: "c" => "30"
+
+# Write based on what we see at version 4
+t4: set d=40
+t4: commit
+---
+ok
+
+# Verify the write succeeded
+t5: begin
+t5: get d
+---
+t5: "d" => "40"

@@ -3,25 +3,28 @@
 
 use JoinType::{Inner, Left};
 use reifydb_core::{
-	JoinType,
-	flow::{FlowNodeDef, FlowNodeType::Operator, OperatorType::Join},
-	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
+	JoinStrategy, JoinType,
+	interface::{CommandTransaction, FlowNodeId, expression::Expression},
 };
 
 use super::super::{
-	CompileOperator, FlowCompiler,
+	CompileOperator, FlowCompiler, FlowNodeType,
 	conversion::{to_owned_expressions, to_owned_physical_plan},
 };
 use crate::{
 	Result,
 	plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
+	query::QueryString,
 };
 
 pub(crate) struct JoinCompiler {
 	pub join_type: JoinType,
 	pub left: Box<PhysicalPlan<'static>>,
 	pub right: Box<PhysicalPlan<'static>>,
+	pub right_query: QueryString,
 	pub on: Vec<Expression<'static>>,
+	pub alias: Option<String>,
+	pub strategy: JoinStrategy,
 }
 
 impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
@@ -30,7 +33,10 @@ impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
 			join_type: Inner,
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
+			right_query: node.right_query,
 			on: to_owned_expressions(node.on),
+			alias: node.alias.map(|f| f.text().to_string()),
+			strategy: node.strategy,
 		}
 	}
 }
@@ -41,34 +47,34 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 			join_type: Left,
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
+			right_query: node.right_query,
 			on: to_owned_expressions(node.on),
+			alias: node.alias.map(|f| f.text().to_string()),
+			strategy: node.strategy,
 		}
 	}
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		// Compile with namespace tracking
-		let (left_node, left_schema) = compiler.compile_plan_with_schema(*self.left)?;
-		let (right_node, right_schema) = compiler.compile_plan_with_schema(*self.right)?;
+		let left_node = compiler.compile_plan(*self.left)?;
+		let right_node = compiler.compile_plan(*self.right)?;
 
-		// Extract left and right keys from the join conditions
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
 
-		// Merge namespaces for output
-		let output_schema = FlowNodeDef::merge(&left_schema, &right_schema);
-
-		compiler.build_node(Operator {
-			operator: Join {
+		let node = compiler
+			.build_node(FlowNodeType::Join {
 				join_type: self.join_type,
 				left: left_keys,
 				right: right_keys,
-			},
-			input_schemas: vec![left_schema, right_schema],
-			output_schema,
-		})
-		.with_inputs([left_node, right_node])
-		.build()
+				alias: self.alias,
+				strategy: self.strategy,
+				right_query: self.right_query,
+			})
+			.with_inputs([left_node, right_node])
+			.build()?;
+
+		Ok(node)
 	}
 }
 

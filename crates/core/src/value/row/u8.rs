@@ -9,7 +9,7 @@ impl EncodedRowLayout {
 	pub fn set_u8(&self, row: &mut EncodedRow, index: usize, value: impl Into<u8>) {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Uint1);
+		debug_assert_eq!(field.r#type, Type::Uint1);
 		row.set_valid(index, true);
 		unsafe {
 			row.make_mut().as_mut_ptr().add(field.offset).write_unaligned(value.into());
@@ -19,7 +19,7 @@ impl EncodedRowLayout {
 	pub fn get_u8(&self, row: &EncodedRow, index: usize) -> u8 {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
-		debug_assert_eq!(field.value, Type::Uint1);
+		debug_assert_eq!(field.r#type, Type::Uint1);
 		unsafe { row.as_ptr().add(field.offset).read_unaligned() }
 	}
 

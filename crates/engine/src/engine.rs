@@ -38,14 +38,14 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 
 		interceptors.post_commit.add(Rc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
 
-		Ok(StandardCommandTransaction::new(
-			self.multi.begin_command()?,
+		StandardCommandTransaction::new(
+			self.multi.clone(),
 			self.single.clone(),
 			self.cdc.clone(),
 			self.event_bus.clone(),
 			self.catalog.clone(),
 			interceptors,
-		))
+		)
 	}
 
 	fn begin_query(&self) -> crate::Result<Self::Query> {
@@ -139,10 +139,10 @@ impl<T: Transaction> StandardEngine<T> {
 		Self(Arc::new(EngineInner {
 			multi,
 			single,
-			cdc: cdc.clone(),
+			cdc,
 			event_bus,
-			executor: Executor {
-				functions: Functions::builder()
+			executor: Executor::new(
+				Functions::builder()
 					.register_aggregate("sum", math::aggregate::Sum::new)
 					.register_aggregate("min", math::aggregate::Min::new)
 					.register_aggregate("max", math::aggregate::Max::new)
@@ -151,7 +151,7 @@ impl<T: Transaction> StandardEngine<T> {
 					.register_scalar("abs", math::scalar::Abs::new)
 					.register_scalar("avg", math::scalar::Avg::new)
 					.build(),
-			},
+			),
 			interceptors,
 			catalog,
 		}))
@@ -195,5 +195,10 @@ impl<T: Transaction> StandardEngine<T> {
 	#[inline]
 	pub fn catalog(&self) -> &MaterializedCatalog {
 		&self.catalog
+	}
+
+	#[inline]
+	pub fn executor(&self) -> Executor {
+		self.executor.clone()
 	}
 }

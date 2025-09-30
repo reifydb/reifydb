@@ -57,42 +57,31 @@ impl From<ColumnData> for FrameColumnData {
 
 impl From<Column<'_>> for FrameColumn {
 	fn from(value: Column) -> Self {
-		match value {
-			Column::Resolved(col) => {
-				// Extract namespace and source from the resolved column if possible
-				let fully_qualified = col.column.qualified_name();
-				let parts: Vec<&str> = fully_qualified.split('.').collect();
-				let (namespace, store, name) = match parts.as_slice() {
-					[ns, src, n] => (Some(ns.to_string()), Some(src.to_string()), n.to_string()),
-					[src, n] => (None, Some(src.to_string()), n.to_string()),
-					[n] => (None, None, n.to_string()),
-					_ => (None, None, col.column.name().to_string()),
-				};
-				FrameColumn {
-					namespace,
-					store,
-					name,
-					data: col.data.into(),
-				}
-			}
-			Column::SourceQualified(col) => FrameColumn {
-				namespace: None,
-				store: Some(col.source.text().to_string()),
-				name: col.name.text().to_string(),
-				data: col.data.into(),
-			},
-			Column::Computed(col) => FrameColumn {
-				namespace: None,
-				store: None,
-				name: col.name.text().to_string(),
-				data: col.data.into(),
-			},
+		// Since Column is now just name + data, we extract any qualification from the name
+		let name_str = value.name.text();
+		let parts: Vec<&str> = name_str.split('.').collect();
+		let (namespace, store, name) = match parts.as_slice() {
+			[ns, src, n] => (Some(ns.to_string()), Some(src.to_string()), n.to_string()),
+			[src, n] => (None, Some(src.to_string()), n.to_string()),
+			[n] => (None, None, n.to_string()),
+			_ => (None, None, name_str.to_string()),
+		};
+		FrameColumn {
+			namespace,
+			store,
+			name,
+			data: value.data.into(),
 		}
 	}
 }
 
 impl From<Columns<'_>> for Frame {
 	fn from(columns: Columns) -> Self {
-		Self::new(columns.into_iter().map(|col| col.into()).collect())
+		let frame_columns: Vec<FrameColumn> = columns.columns.into_iter().map(|col| col.into()).collect();
+		if !columns.row_numbers.is_empty() {
+			Frame::with_row_numbers(frame_columns, columns.row_numbers.to_vec())
+		} else {
+			Frame::new(frame_columns)
+		}
 	}
 }

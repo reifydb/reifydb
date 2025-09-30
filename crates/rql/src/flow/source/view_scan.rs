@@ -3,12 +3,10 @@
 
 //! Compilation of view scan operations
 
-use reifydb_core::{
-	flow::{FlowNodeDef, FlowNodeType},
-	interface::{CommandTransaction, FlowNodeId},
-};
+use FlowNodeType::SourceView;
+use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 
-use super::super::{CompileOperator, FlowCompiler};
+use super::super::{CompileOperator, FlowCompiler, FlowNodeType};
 use crate::{Result, plan::physical::ViewScanNode};
 
 pub(crate) struct ViewScanCompiler<'a> {
@@ -25,22 +23,8 @@ impl<'a> From<ViewScanNode<'a>> for ViewScanCompiler<'a> {
 
 impl<'a, T: CommandTransaction> CompileOperator<T> for ViewScanCompiler<'a> {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let view = self.view_scan.source.def().clone();
-		let view_name = view.name.clone();
-
-		// Get namespace information
-		let namespace_def = self.view_scan.source.namespace().def().clone();
-
-		let namespace = FlowNodeDef::new(
-			view.columns.clone(),
-			Some(namespace_def.name.clone()),
-			Some(view.name.clone()),
-		);
-
-		compiler.build_node(FlowNodeType::SourceView {
-			name: view_name,
-			view: view.id,
-			namespace,
+		compiler.build_node(SourceView {
+			view: self.view_scan.source.def().id,
 		})
 		.build()
 	}

@@ -37,7 +37,7 @@ mod tests {
 		let statement = result.pop().unwrap();
 		let ast_node = statement.first_unchecked();
 
-		// Debug print the actual AST node type
+		// Debug print the actual AST operator type
 		let extend = ast_node.as_extend();
 		assert_eq!(extend.nodes.len(), 1);
 

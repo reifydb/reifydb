@@ -24,14 +24,9 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 	let event_bus = EventBus::new();
 	let single = SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
-	StandardCommandTransaction::new(
-		Serializable::new(memory, single.clone(), event_bus.clone()).begin_command().unwrap(),
-		single,
-		cdc,
-		event_bus,
-		MaterializedCatalog::new(),
-		Interceptors::new(),
-	)
+	let multi = Serializable::new(memory, single.clone(), event_bus.clone());
+	StandardCommandTransaction::new(multi, single, cdc, event_bus, MaterializedCatalog::new(), Interceptors::new())
+		.unwrap()
 }
 
 pub fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction<
@@ -45,14 +40,16 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 	let event_bus = EventBus::new();
 	let single = SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
+	let multi = Serializable::new(memory, single.clone(), event_bus.clone());
 	let mut result = StandardCommandTransaction::new(
-		Serializable::new(memory, single.clone(), event_bus.clone()).begin_command().unwrap(),
+		multi,
 		single,
 		cdc,
 		event_bus,
 		MaterializedCatalog::new(),
 		Interceptors::new(),
-	);
+	)
+	.unwrap();
 
 	let namespace = CatalogStore::create_namespace(
 		&mut result,

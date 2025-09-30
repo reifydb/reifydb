@@ -1,0 +1,60 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test basic set_as_of_exclusive functionality - setting a transaction to a specific version
+# With exclusive semantics, reading at version N sees data from versions < N
+
+# Setup initial data at version 1
+import a=1 b=2
+---
+ok
+
+# Make a change at version 2
+t1: begin
+t1: set a=10 b=20
+t1: commit
+---
+ok
+
+# Make another change at version 3
+t2: begin
+t2: set a=100 b=200 c=300
+t2: commit
+---
+ok
+
+# Read at version 1 (sees no data - no versions < 1)
+t3: begin
+t3: set_as_of_exclusive 1
+t3: get a b c
+---
+t3: "a" => None
+t3: "b" => None
+t3: "c" => None
+
+# Read at version 2 (sees version 1 data - initial import)
+t4: begin
+t4: set_as_of_exclusive 2
+t4: get a b c
+---
+t4: "a" => "1"
+t4: "b" => "2"
+t4: "c" => None
+
+# Read at version 3 (sees version 2 data - first update)
+t5: begin
+t5: set_as_of_exclusive 3
+t5: get a b c
+---
+t5: "a" => "10"
+t5: "b" => "20"
+t5: "c" => None
+
+# Read at version 4 (sees version 3 data - second update)
+t6: begin
+t6: set_as_of_exclusive 4
+t6: get a b c
+---
+t6: "a" => "100"
+t6: "b" => "200"
+t6: "c" => "300"

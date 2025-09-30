@@ -142,6 +142,13 @@ impl<'a, T: Transaction> MultiVersionQueryTransaction for StandardTransaction<'a
 			Self::Query(txn) => txn.prefix_rev(prefix),
 		}
 	}
+
+	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> reifydb_core::Result<()> {
+		match self {
+			StandardTransaction::Command(txn) => txn.read_as_of_version_inclusive(version),
+			StandardTransaction::Query(txn) => txn.read_as_of_version_exclusive(version),
+		}
+	}
 }
 
 impl<'a, T: Transaction> From<&'a mut StandardCommandTransaction<T>> for StandardTransaction<'a, T> {

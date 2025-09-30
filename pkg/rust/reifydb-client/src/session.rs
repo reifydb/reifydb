@@ -28,7 +28,7 @@ pub struct QueryResult {
 pub fn parse_command_response(response: crate::Response) -> Result<CommandResult, Error> {
 	match response.payload {
 		crate::ResponsePayload::Command(cmd_response) => Ok(CommandResult {
-			frames: convert_execute_response(cmd_response),
+			frames: convert_command_response(cmd_response),
 		}),
 		crate::ResponsePayload::Err(err) => {
 			err!(err.diagnostic)
@@ -58,7 +58,7 @@ pub fn parse_query_response(response: crate::Response) -> Result<QueryResult, Er
 	}
 }
 
-pub fn convert_execute_response(payload: crate::CommandResponse) -> Vec<Frame> {
+pub fn convert_command_response(payload: crate::CommandResponse) -> Vec<Frame> {
 	let mut result = Vec::new();
 
 	for frame in payload.frames {
@@ -74,7 +74,7 @@ pub fn convert_execute_response(payload: crate::CommandResponse) -> Vec<Frame> {
 			})
 			.collect();
 
-		result.push(Frame::new(columns))
+		result.push(Frame::new(frame.row_numbers, columns))
 	}
 
 	result
@@ -96,7 +96,7 @@ pub fn convert_query_response(payload: crate::QueryResponse) -> Vec<Frame> {
 			})
 			.collect();
 
-		result.push(Frame::new(columns))
+		result.push(Frame::new(frame.row_numbers, columns))
 	}
 
 	result

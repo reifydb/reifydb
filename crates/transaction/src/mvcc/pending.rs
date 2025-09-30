@@ -18,6 +18,8 @@ use crate::mvcc::types::Pending;
 pub struct PendingWrites {
 	/// Primary storage - BTreeMap for sorted key access and range queries
 	writes: BTreeMap<EncodedKey, Pending>,
+	/// Track insertion order for preserving delta ordering
+	insertion_order: Vec<EncodedKey>,
 	/// Cached size estimation for batch size limits
 	estimated_size: u64,
 }
@@ -27,6 +29,7 @@ impl PendingWrites {
 	pub fn new() -> Self {
 		Self {
 			writes: BTreeMap::new(),
+			insertion_order: Vec::new(),
 			estimated_size: 0,
 		}
 	}
@@ -84,15 +87,17 @@ impl PendingWrites {
 	pub fn insert(&mut self, key: EncodedKey, value: Pending) {
 		let size_estimate = self.estimate_size(&value);
 
-		if let Some(old_value) = self.writes.insert(key, value) {
+		if let Some(old_value) = self.writes.insert(key.clone(), value) {
 			// Update existing - might change size
 			let old_size = self.estimate_size(&old_value);
 			if size_estimate != old_size {
 				self.estimated_size =
 					self.estimated_size.saturating_sub(old_size).saturating_add(size_estimate);
 			}
+			// Key already exists in insertion_order, don't add again
 		} else {
-			// New entry
+			// New entry - track insertion order
+			self.insertion_order.push(key);
 			self.estimated_size = self.estimated_size.saturating_add(size_estimate);
 		}
 	}
@@ -100,6 +105,10 @@ impl PendingWrites {
 	/// Remove an entry by key - O(log n) performance
 	pub fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
 		if let Some((removed_key, removed_value)) = self.writes.remove_entry(key) {
+			// Remove from insertion order tracking
+			if let Some(pos) = self.insertion_order.iter().position(|k| k == key) {
+				self.insertion_order.remove(pos);
+			}
 			let size_estimate = self.estimate_size(&removed_value);
 			self.estimated_size = self.estimated_size.saturating_sub(size_estimate);
 			Some((removed_key, removed_value))
@@ -119,9 +128,16 @@ impl PendingWrites {
 		self.writes.into_iter()
 	}
 
+	/// Consume and iterate over pending writes in insertion order
+	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (EncodedKey, Pending)> {
+		let mut writes = self.writes;
+		self.insertion_order.into_iter().filter_map(move |key| writes.remove_entry(&key))
+	}
+
 	/// Clear all pending writes
 	pub fn rollback(&mut self) {
 		self.writes.clear();
+		self.insertion_order.clear();
 		self.estimated_size = 0;
 	}
 

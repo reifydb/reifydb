@@ -25,7 +25,7 @@ impl EncodedRowLayout {
 	/// - Large values: stored in dynamic section with MSB=1
 	pub fn set_decimal(&self, row: &mut EncodedRow, index: usize, value: &Decimal) {
 		let field = &self.fields[index];
-		debug_assert!(matches!(field.value, Type::Decimal { .. }));
+		debug_assert!(matches!(field.r#type, Type::Decimal { .. }));
 
 		// Get the mantissa and original scale from the BigDecimal
 		let (mantissa, original_scale) = value.inner().as_bigint_and_exponent();
@@ -61,7 +61,7 @@ impl EncodedRowLayout {
 	/// Get a Decimal value, detecting storage mode from MSB
 	pub fn get_decimal(&self, row: &EncodedRow, index: usize) -> Decimal {
 		let field = &self.fields[index];
-		debug_assert!(matches!(field.value, Type::Decimal { .. }));
+		debug_assert!(matches!(field.r#type, Type::Decimal { .. }));
 
 		let packed = unsafe { (row.as_ptr().add(field.offset) as *const u128).read_unaligned() };
 		let packed = u128::from_le(packed);

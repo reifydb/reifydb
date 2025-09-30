@@ -10,18 +10,27 @@ pub static ROW_NUMBER_COLUMN_NAME: &str = "__ROW__NUMBER__";
 
 /// A row number - a unique 64-bit unsigned integer for a table row
 #[repr(transparent)]
-#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Default)]
+#[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct RowNumber(pub u64);
 
 impl RowNumber {
 	/// Create a new RowNumber from a u64
+	/// Panics if id is 0, as row numbers must start from 1
 	pub fn new(id: u64) -> Self {
+		assert!(id > 0, "Row numbers must be greater than 0, got {}", id);
 		RowNumber(id)
 	}
 
 	/// Get the inner u64 value
 	pub fn value(&self) -> u64 {
 		self.0
+	}
+}
+
+impl Default for RowNumber {
+	/// Default row number is 1 (not 0, as row numbers start from 1)
+	fn default() -> Self {
+		RowNumber(1)
 	}
 }
 
@@ -41,6 +50,7 @@ impl PartialEq<u64> for RowNumber {
 
 impl From<u64> for RowNumber {
 	fn from(id: u64) -> Self {
+		assert!(id > 0, "Row numbers must be greater than 0, got {}", id);
 		RowNumber(id)
 	}
 }
@@ -80,8 +90,15 @@ impl<'de> Deserialize<'de> for RowNumber {
 				formatter.write_str("an unsigned 64-bit number")
 			}
 
-			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E> {
-				Ok(RowNumber(value))
+			fn visit_u64<E>(self, value: u64) -> Result<Self::Value, E>
+			where
+				E: serde::de::Error,
+			{
+				if value == 0 {
+					Err(E::custom("Row numbers must be greater than 0"))
+				} else {
+					Ok(RowNumber(value))
+				}
 			}
 		}
 		deserializer.deserialize_u64(U64Visitor)

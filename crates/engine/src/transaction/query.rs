@@ -114,11 +114,19 @@ impl<T: Transaction> MultiVersionQueryTransaction for StandardQueryTransaction<T
 	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
 		self.multi.prefix_rev(prefix)
 	}
+
+	#[inline]
+	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
+		self.multi.read_as_of_version_exclusive(version)
+	}
 }
 
 impl<T: Transaction> QueryTransaction for StandardQueryTransaction<T> {
 	type SingleVersionQuery<'a> = <T::SingleVersion as SingleVersionTransaction>::Query<'a>;
-	type CdcQuery<'a> = <T::Cdc as CdcTransaction>::Query<'a>;
+	type CdcQuery<'a>
+		= <T::Cdc as CdcTransaction>::Query<'a>
+	where
+		Self: 'a;
 
 	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
 		self.single.begin_query()

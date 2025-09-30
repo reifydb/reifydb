@@ -337,6 +337,9 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 		LogicalPlan::JoinInner(JoinInnerNode {
 			with,
 			on,
+			alias: _,
+			strategy: _,
+			with_query: _,
 		}) => {
 			let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
 			output.push_str(&format!("{}{}Join(Inner) [{}]\n", prefix, branch, on));
@@ -349,6 +352,9 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 		LogicalPlan::JoinLeft(JoinLeftNode {
 			with,
 			on,
+			alias: _,
+			strategy: _,
+			with_query: _,
 		}) => {
 			let on = on.iter().map(|c| c.to_string()).collect::<Vec<_>>().join(", ");
 			output.push_str(&format!("{}{}Join(Left) [{}]\n", prefix, branch, on));
@@ -361,6 +367,9 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 		LogicalPlan::JoinNatural(JoinNaturalNode {
 			with,
 			join_type,
+			alias: _,
+			strategy: _,
+			with_query: _,
 		}) => {
 			let join_type_str = match join_type {
 				JoinType::Inner => "Inner",

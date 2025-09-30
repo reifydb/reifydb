@@ -5,20 +5,21 @@ use std::{marker::PhantomData, sync::Arc};
 
 use reifydb_core::{
 	interface::{ResolvedColumn, TargetColumn, Transaction, evaluate::expression::Expression},
-	value::column::{Column, Columns, layout::ColumnsLayout},
+	value::column::{Column, Columns, headers::ColumnHeaders},
 };
-use reifydb_type::{Fragment, Params};
+use reifydb_rql::expression::column_name_from_expression;
+use reifydb_type::{Fragment, Params, diagnostic::query::extend_duplicate_column, return_error};
 
 use crate::{
 	StandardTransaction,
-	evaluate::{EvaluationContext, evaluate},
-	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode, query::layout::derive_columns_column_layout},
+	evaluate::column::{ColumnEvaluationContext, evaluate},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
 pub(crate) struct ExtendNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
@@ -27,7 +28,7 @@ impl<'a, T: Transaction> ExtendNode<'a, T> {
 		Self {
 			input,
 			expressions,
-			layout: None,
+			headers: None,
 			context: None,
 		}
 	}
@@ -58,7 +59,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 			let expressions = self.expressions.clone();
 			for expr in expressions.iter() {
 				// Create evaluation context inline to avoid lifetime issues
-				let mut eval_ctx = EvaluationContext {
+				let mut eval_ctx = ColumnEvaluationContext {
 					target: None,
 					columns: Columns::new(new_columns.clone()),
 					row_count,
@@ -93,7 +94,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 
 			// Transmute the vector to extend its lifetime
 			// SAFETY: The columns come from either the input (already transmuted to 'a)
-			// via into_iter() or from evaluate() which returns Column<'a>, so all columns
+			// via into_iter() or from column() which returns Column<'a>, so all columns
 			// genuinely have lifetime 'a through the query execution
 			let new_columns =
 				unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(new_columns) };
@@ -101,18 +102,39 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 			// Create layout combining existing and new columns only
 			// once For extend, we preserve all input columns
 			// plus the new expressions
-			if self.layout.is_none() {
-				let layout = if let Some(input_layout) = self.input.layout() {
-					// Combine input layout with new
-					// expression layout
-					let new_expressions_layout =
-						derive_columns_column_layout(&expressions, ctx.preserve_row_numbers);
-					input_layout.extend(&new_expressions_layout)?
+			if self.headers.is_none() {
+				let mut all_headers = if let Some(input_headers) = self.input.headers() {
+					input_headers.columns.clone()
 				} else {
-					derive_columns_column_layout(&expressions, ctx.preserve_row_numbers)
+					vec![]
 				};
 
-				self.layout = Some(layout);
+				let new_names: Vec<Fragment> =
+					expressions.iter().map(column_name_from_expression).collect();
+
+				// Check for duplicate column names against existing columns
+				for new_name in &new_names {
+					for existing_name in &all_headers {
+						if new_name.text() == existing_name.text() {
+							return_error!(extend_duplicate_column(new_name.text()));
+						}
+					}
+				}
+
+				// Check for duplicates within the new column names themselves
+				for i in 0..new_names.len() {
+					for j in (i + 1)..new_names.len() {
+						if new_names[i].text() == new_names[j].text() {
+							return_error!(extend_duplicate_column(new_names[i].text()));
+						}
+					}
+				}
+
+				all_headers.extend(new_names);
+
+				self.headers = Some(ColumnHeaders {
+					columns: all_headers,
+				});
 			}
 
 			return Ok(Some(Batch {
@@ -122,14 +144,14 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendNode<'a, T> {
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone().or(self.input.layout())
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone().or(self.input.headers())
 	}
 }
 
 pub(crate) struct ExtendWithoutInputNode<'a, T: Transaction> {
 	expressions: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	_phantom: PhantomData<T>,
 }
@@ -138,7 +160,7 @@ impl<'a, T: Transaction> ExtendWithoutInputNode<'a, T> {
 	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			expressions,
-			layout: None,
+			headers: None,
 			context: None,
 			_phantom: PhantomData,
 		}
@@ -159,7 +181,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 		debug_assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
-		if self.layout.is_some() {
+		if self.headers.is_some() {
 			return Ok(None);
 		}
 
@@ -171,7 +193,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 		// Clone expressions to avoid lifetime issues
 		let expressions = self.expressions.clone();
 		for expr in expressions.iter() {
-			let evaluation_context = EvaluationContext {
+			let evaluation_context = ColumnEvaluationContext {
 				target: None,
 				columns: columns.clone(),
 				row_count: 1, // Generate single row
@@ -183,16 +205,27 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 			new_columns.push(column);
 		}
 
-		let layout = derive_columns_column_layout(&expressions, ctx.preserve_row_numbers);
+		let column_names: Vec<Fragment> = expressions.iter().map(column_name_from_expression).collect();
 
-		self.layout = Some(layout);
+		// Check for duplicate column names within the new columns
+		for i in 0..column_names.len() {
+			for j in (i + 1)..column_names.len() {
+				if column_names[i].text() == column_names[j].text() {
+					return_error!(extend_duplicate_column(column_names[i].text()));
+				}
+			}
+		}
+
+		self.headers = Some(ColumnHeaders {
+			columns: column_names,
+		});
 
 		Ok(Some(Batch {
 			columns: Columns::new(new_columns),
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone()
 	}
 }

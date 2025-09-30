@@ -19,8 +19,8 @@ impl Deref for EncodedRowLayout {
 }
 
 impl EncodedRowLayout {
-	pub fn new(kinds: &[Type]) -> Self {
-		Self(Arc::new(EncodedRowLayoutInner::new(kinds)))
+	pub fn new(types: &[Type]) -> Self {
+		Self(Arc::new(EncodedRowLayoutInner::new(types)))
 	}
 }
 
@@ -39,21 +39,21 @@ pub struct Field {
 	pub offset: usize,
 	pub size: usize,
 	pub align: usize,
-	pub value: Type,
+	pub r#type: Type,
 }
 
 impl EncodedRowLayoutInner {
-	fn new(kinds: &[Type]) -> Self {
-		assert!(!kinds.is_empty());
+	fn new(types: &[Type]) -> Self {
+		assert!(!types.is_empty());
 
-		let num_fields = kinds.len();
+		let num_fields = types.len();
 		let bitvec_bytes = (num_fields + 7) / 8;
 
 		let mut offset = bitvec_bytes;
 		let mut fields = Vec::with_capacity(num_fields);
 		let mut max_align = 1;
 
-		for &value in kinds {
+		for &value in types {
 			let size = value.size();
 			let align = value.alignment();
 
@@ -62,7 +62,7 @@ impl EncodedRowLayoutInner {
 				offset,
 				size,
 				align,
-				value,
+				r#type: value,
 			});
 
 			offset += size;
@@ -150,12 +150,12 @@ impl EncodedRowLayoutInner {
 	}
 
 	pub fn value(&self, index: usize) -> Type {
-		self.fields[index].value
+		self.fields[index].r#type
 	}
 }
 
 fn align_up(offset: usize, align: usize) -> usize {
-	(offset + align - 1) & !(align - 1)
+	(offset + align).saturating_sub(1) & !(align.saturating_sub(1))
 }
 
 #[cfg(test)]
@@ -181,9 +181,9 @@ mod tests {
 			assert_eq!(layout.bitvec_size, 1); // 3 fields = 1 byte
 			assert_eq!(layout.fields.len(), 3);
 
-			assert_eq!(layout.fields[0].value, Type::Int1);
-			assert_eq!(layout.fields[1].value, Type::Int2);
-			assert_eq!(layout.fields[2].value, Type::Int4);
+			assert_eq!(layout.fields[0].r#type, Type::Int1);
+			assert_eq!(layout.fields[1].r#type, Type::Int2);
+			assert_eq!(layout.fields[2].r#type, Type::Int4);
 
 			assert_eq!(layout.fields[0].offset, 1);
 			assert_eq!(layout.fields[1].offset, 2);
@@ -220,7 +220,7 @@ mod tests {
 
 		#[test]
 		fn test_nine_fields_bitvec_size_two() {
-			let kinds = vec![
+			let types = vec![
 				Type::Boolean,
 				Type::Int1,
 				Type::Int2,
@@ -232,7 +232,7 @@ mod tests {
 				Type::Uint8,
 			];
 
-			let layout = EncodedRowLayout::new(&kinds);
+			let layout = EncodedRowLayout::new(&types);
 
 			// 9 fields → ceil(9/8) = 2 bytes of bitvec bitmap
 			assert_eq!(layout.bitvec_size, 2);
@@ -314,8 +314,8 @@ mod tests {
 
 		#[test]
 		fn test_seven_fields_none_valid() {
-			let kinds = vec![Type::Boolean; 7];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 7];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..7 {
@@ -327,8 +327,8 @@ mod tests {
 
 		#[test]
 		fn test_seven_fields_allv() {
-			let kinds = vec![Type::Boolean; 7];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 7];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..7 {
@@ -340,8 +340,8 @@ mod tests {
 
 		#[test]
 		fn test_seven_fields_partial_valid() {
-			let kinds = vec![Type::Boolean; 7];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 7];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..7 {
@@ -357,8 +357,8 @@ mod tests {
 
 		#[test]
 		fn test_eight_fields_none_valid() {
-			let kinds = vec![Type::Boolean; 8];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 8];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..8 {
@@ -370,8 +370,8 @@ mod tests {
 
 		#[test]
 		fn test_eight_fields_allv() {
-			let kinds = vec![Type::Boolean; 8];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 8];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..8 {
@@ -383,8 +383,8 @@ mod tests {
 
 		#[test]
 		fn test_eight_fields_partial_valid() {
-			let kinds = vec![Type::Boolean; 8];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 8];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..8 {
@@ -400,8 +400,8 @@ mod tests {
 
 		#[test]
 		fn test_nine_fields_allv() {
-			let kinds = vec![Type::Boolean; 9];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 9];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..9 {
@@ -413,8 +413,8 @@ mod tests {
 
 		#[test]
 		fn test_nine_fields_none_valid() {
-			let kinds = vec![Type::Boolean; 9];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 9];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..9 {
@@ -426,8 +426,8 @@ mod tests {
 
 		#[test]
 		fn test_nine_fields_partial_valid() {
-			let kinds = vec![Type::Boolean; 9];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 9];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..9 {
@@ -443,8 +443,8 @@ mod tests {
 
 		#[test]
 		fn test_sixteen_fields_allv() {
-			let kinds = vec![Type::Boolean; 16];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 16];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..16 {
@@ -456,8 +456,8 @@ mod tests {
 
 		#[test]
 		fn test_sixteen_fields_none_valid() {
-			let kinds = vec![Type::Boolean; 16];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 16];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..16 {
@@ -469,8 +469,8 @@ mod tests {
 
 		#[test]
 		fn test_sixteen_fields_partial_valid() {
-			let kinds = vec![Type::Boolean; 16];
-			let layout = EncodedRowLayout::new(&kinds);
+			let types = vec![Type::Boolean; 16];
+			let layout = EncodedRowLayout::new(&types);
 			let mut row = layout.allocate_row();
 
 			for idx in 0..16 {

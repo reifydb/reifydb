@@ -9,18 +9,17 @@
 
 mod builder;
 mod conversion;
+pub mod flow;
+pub mod graph;
+pub mod node;
 mod operator;
 mod source;
 
 use reifydb_catalog::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id};
-use reifydb_core::{
-	flow,
-	flow::{Flow, FlowEdge, FlowNode, FlowNodeDef, FlowNodeType},
-	interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef},
-};
+use reifydb_core::interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef};
 
 use self::{
-	conversion::{to_owned_expressions, to_owned_physical_plan},
+	conversion::to_owned_physical_plan,
 	operator::{
 		aggregate::AggregateCompiler, apply::ApplyCompiler, distinct::DistinctCompiler, extend::ExtendCompiler,
 		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, sort::SortCompiler, take::TakeCompiler,
@@ -43,6 +42,8 @@ pub(crate) struct FlowCompiler<T: CommandTransaction> {
 	flow: Flow,
 	/// Reference to transaction for ID generation
 	pub(crate) txn: *mut T,
+	/// The sink view schema (for terminal nodes)
+	pub(crate) sink: Option<ViewDef>,
 }
 
 impl<T: CommandTransaction> FlowCompiler<T> {
@@ -51,10 +52,11 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		Ok(Self {
 			flow: Flow::new(next_flow_id(txn)?),
 			txn: txn as *mut T,
+			sink: None,
 		})
 	}
 
-	/// Gets the next available node ID
+	/// Gets the next available operator ID
 	fn next_node_id(&mut self) -> crate::Result<FlowNodeId> {
 		unsafe { next_flow_node_id(&mut *self.txn) }
 	}
@@ -70,7 +72,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		self.flow.add_edge(FlowEdge::new(edge_id, from, to))
 	}
 
-	/// Adds a node to the flow graph
+	/// Adds a operator to the flow graph
 	fn add_node(&mut self, node_type: FlowNodeType) -> crate::Result<FlowNodeId> {
 		let node_id = self.next_node_id()?;
 		let flow_node_id = self.flow.add_node(FlowNode::new(node_id, node_type));
@@ -79,21 +81,11 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 
 	/// Compiles a physical plan into a FlowGraph
 	pub(crate) fn compile(mut self, plan: PhysicalPlan, sink: &ViewDef) -> crate::Result<Flow> {
-		// Check if the root plan is a Map node that should be terminal
-		let root_node_id = match &plan {
-			PhysicalPlan::Map(map_node) => {
-				// This is a terminal map node - compile it with
-				// view info
-				self.compile_terminal_map(map_node.clone(), sink)?
-			}
-			_ => {
-				// Not a map or not terminal - compile normally
-				self.compile_plan(plan)?
-			}
-		};
+		// Store sink view for terminal nodes
+		self.sink = Some(sink.clone());
+		let root_node_id = self.compile_plan(plan)?;
 
 		let result_node = self.add_node(FlowNodeType::SinkView {
-			name: sink.name.clone(),
 			view: sink.id,
 		})?;
 
@@ -102,7 +94,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		Ok(self.flow)
 	}
 
-	/// Compiles a physical plan node into the FlowGraph
+	/// Compiles a physical plan operator into the FlowGraph
 	pub(crate) fn compile_plan(&mut self, plan: PhysicalPlan) -> crate::Result<FlowNodeId> {
 		match plan {
 			PhysicalPlan::IndexScan(_index_scan) => {
@@ -153,127 +145,104 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			}
 		}
 	}
-
-	/// Compiles a physical plan and returns both the node ID and its output
-	/// namespace
-	pub(crate) fn compile_plan_with_schema(
-		&mut self,
-		plan: PhysicalPlan,
-	) -> crate::Result<(FlowNodeId, FlowNodeDef)> {
-		match plan {
-			PhysicalPlan::TableScan(table_scan) => {
-				// The table_scan already has the table
-				// definition
-				let table = table_scan.source.def();
-				let namespace_def = table_scan.source.namespace().def();
-
-				let namespace = FlowNodeDef::new(
-					table.columns.clone(),
-					Some(namespace_def.name.clone()),
-					Some(table.name.clone()),
-				);
-
-				let node_id = TableScanCompiler::from(table_scan).compile(self)?;
-				Ok((node_id, namespace))
-			}
-			PhysicalPlan::ViewScan(view_scan) => {
-				// The view_scan already has the view definition
-				let view = view_scan.source.def();
-				let namespace_def = view_scan.source.namespace().def();
-
-				let namespace = FlowNodeDef::new(
-					view.columns.clone(),
-					Some(namespace_def.name.clone()),
-					Some(view.name.clone()),
-				);
-
-				let node_id = ViewScanCompiler::from(view_scan).compile(self)?;
-				Ok((node_id, namespace))
-			}
-			PhysicalPlan::JoinInner(join) => {
-				// The JoinCompiler will handle compilation with
-				// namespace tracking
-				let node_id = JoinCompiler::from(join).compile(self)?;
-				// For now return empty namespace - we could
-				// extract it from the flow node if needed
-				Ok((node_id, FlowNodeDef::empty()))
-			}
-			PhysicalPlan::JoinLeft(join) => {
-				// The JoinCompiler will handle compilation with
-				// namespace tracking
-				let node_id = JoinCompiler::from(join).compile(self)?;
-				// For now return empty namespace - we could
-				// extract it from the flow node if needed
-				Ok((node_id, FlowNodeDef::empty()))
-			}
-			PhysicalPlan::Map(map) => {
-				// Map needs special handling to compute output
-				// namespace
-				let map_compiler = MapCompiler::from(map);
-
-				// Get input namespace if there's an input
-				let input_schema = if let Some(ref input) = map_compiler.input {
-					// We need to compile the input first to
-					// get its namespace Clone the input
-					// since we need to use it twice
-					let input_plan = to_owned_physical_plan(*input.clone());
-					let (_, namespace) = self.compile_plan_with_schema(input_plan)?;
-					namespace
-				} else {
-					FlowNodeDef::empty()
-				};
-
-				// Compute the output namespace
-				let output_schema = map_compiler.compute_output_schema(&input_schema);
-
-				// Now compile the Map node
-				let node_id = map_compiler.compile(self)?;
-
-				Ok((node_id, output_schema))
-			}
-			// For other operators, compile normally and return
-			// empty namespace for now
-			_ => {
-				let node_id = self.compile_plan(plan)?;
-				Ok((node_id, FlowNodeDef::empty()))
-			}
-		}
-	}
-
-	/// Compiles a terminal Map node with view information
-	pub(crate) fn compile_terminal_map(
-		&mut self,
-		map_node: crate::plan::physical::MapNode,
-		sink: &ViewDef,
-	) -> crate::Result<FlowNodeId> {
-		// First compile the input if it exists
-		let input_node = if let Some(input) = map_node.input {
-			Some(self.compile_plan(*input)?)
-		} else {
-			None
-		};
-
-		// Create a MapTerminal operator with the view ID - convert
-		// expressions to static
-		let mut builder = self.build_node(FlowNodeType::Operator {
-			operator: flow::OperatorType::MapTerminal {
-				expressions: to_owned_expressions(map_node.map),
-				view_id: sink.id,
-			},
-			input_schemas: vec![FlowNodeDef::empty()],
-			output_schema: FlowNodeDef::empty(),
-		});
-
-		if let Some(input) = input_node {
-			builder = builder.with_input(input);
-		}
-
-		builder.build()
-	}
 }
+
+/// Compiles a physical plan and returns both the operator ID and its output
+// /// namespace
+// pub(crate) fn compile_plan_with_definition(
+// 	&mut self,
+// 	plan: PhysicalPlan,
+// ) -> crate::Result<(FlowNodeId, FlowNodeDef)> {
+// 	match plan {
+// 		PhysicalPlan::TableScan(table_scan) => {
+// 			// The table_scan already has the table
+// 			// definition
+// 			let table = table_scan.source.def();
+// 			let namespace_def = table_scan.source.namespace().def();
+//
+// 			let namespace = FlowNodeDef::new(
+// 				table.columns.clone(),
+// 				Some(namespace_def.name.clone()),
+// 				Some(table.name.clone()),
+// 			);
+//
+// 			let node_id = TableScanCompiler::from(table_scan).compile(self)?;
+// 			Ok((node_id, namespace))
+// 		}
+// 		PhysicalPlan::ViewScan(view_scan) => {
+// 			// The view_scan already has the view definition
+// 			let view = view_scan.source.def();
+// 			let namespace_def = view_scan.source.namespace().def();
+//
+// 			let namespace = FlowNodeDef::new(
+// 				view.columns.clone(),
+// 				Some(namespace_def.name.clone()),
+// 				Some(view.name.clone()),
+// 			);
+//
+// 			let node_id = ViewScanCompiler::from(view_scan).compile(self)?;
+// 			Ok((node_id, namespace))
+// 		}
+// 		PhysicalPlan::JoinInner(join) => {
+// 			// The JoinCompiler will handle compilation with
+// 			// namespace tracking
+// 			let node_id = JoinCompiler::from(join).compile(self)?;
+// 			// For now return empty namespace - we could
+// 			// extract it from the flow operator if needed
+// 			Ok((node_id, FlowNodeDef::empty()))
+// 		}
+// 		PhysicalPlan::JoinLeft(join) => {
+// 			// The JoinCompiler will handle compilation with
+// 			// namespace tracking
+// 			let node_id = JoinCompiler::from(join).compile(self)?;
+// 			// For now return empty namespace - we could
+// 			// extract it from the flow operator if needed
+// 			Ok((node_id, FlowNodeDef::empty()))
+// 		}
+// 		PhysicalPlan::Map(map) => {
+// 			// Map needs special handling to compute output
+// 			// namespace
+// 			let map_compiler = MapCompiler::from(map);
+//
+// 			// Get input namespace if there's an input
+// 			let input_schema = if let Some(ref input) = map_compiler.input {
+// 				// We need to compile the input first to
+// 				// get its namespace Clone the input
+// 				// since we need to use it twice
+// 				let input_plan = to_owned_physical_plan(*input.clone());
+// 				let (_, namespace) = self.compile_plan_with_definition(input_plan)?;
+// 				namespace
+// 			} else {
+// 				FlowNodeDef::empty()
+// 			};
+//
+// 			// Compute the output namespace
+// 			// Pass the sink view schema for type inference
+// 			let output_schema =
+// 				map_compiler.compute_output_schema(&input_schema, self.sink.as_ref());
+//
+// 			// Now compile the Map operator
+// 			let node_id = map_compiler.compile(self)?;
+//
+// 			Ok((node_id, output_schema))
+// 		}
+// 		// For other operators, compile normally and return
+// 		// empty namespace for now
+// 		_ => {
+// 			let node_id = self.compile_plan(plan)?;
+// 			Ok((node_id, FlowNodeDef::empty()))
+// 		}
+// 	}
+// }
 
 /// Trait for compiling operator from physical plans to flow nodes
 pub(crate) trait CompileOperator<T: CommandTransaction> {
-	/// Compiles this operator into a flow node
+	/// Compiles this operator into a flow operator
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> crate::Result<FlowNodeId>;
 }
+
+// Re-export the flow types for external use
+pub use self::{
+	flow::Flow,
+	node::{FlowEdge, FlowNode, FlowNodeType},
+};

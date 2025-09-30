@@ -1,21 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::CatalogStore;
+use FlowNodeType::{Aggregate, SinkView, SourceInlineData, SourceTable, SourceView};
+use reifydb_catalog::resolve::resolve_view;
 use reifydb_core::{
-	flow::{
-		Flow, FlowNodeType, OperatorType,
-		OperatorType::{Apply, Distinct, Extend, Filter, Join, Map, MapTerminal, Sort, Take, Union},
-	},
+	Error,
 	interface::{FlowId, FlowNodeId, SourceId, Transaction},
 };
 use reifydb_engine::StandardCommandTransaction;
+use reifydb_rql::flow::{
+	Flow, FlowNode, FlowNodeType,
+	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union},
+};
+use reifydb_type::internal_error;
 
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, MapTerminalOperator,
-		Operators, SortOperator, TakeOperator, UnionOperator,
+		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, Operators,
+		SinkViewOperator, SortOperator, TakeOperator,
 	},
 };
 
@@ -25,43 +28,7 @@ impl<T: Transaction> FlowEngine<T> {
 
 		for node_id in flow.get_node_ids() {
 			let node = flow.get_node(&node_id).unwrap();
-			match &node.ty {
-				FlowNodeType::SourceInlineData {} => {
-					unimplemented!()
-				}
-				FlowNodeType::SourceTable {
-					table,
-					..
-				} => {
-					self.add_source(flow.id, node_id, SourceId::from(*table));
-				}
-				FlowNodeType::SourceView {
-					view,
-					..
-				} => {
-					self.add_source(flow.id, node_id, SourceId::from(*view));
-				}
-				FlowNodeType::Operator {
-					operator,
-					input_schemas,
-					output_schema,
-				} => {
-					self.add_operator(
-						txn,
-						flow.id,
-						node_id,
-						operator,
-						input_schemas,
-						output_schema,
-					)?;
-				}
-				FlowNodeType::SinkView {
-					view,
-					..
-				} => {
-					self.add_sink(flow.id, node_id, SourceId::from(*view));
-				}
-			}
+			self.add(txn, &flow, node)?;
 		}
 
 		self.flows.insert(flow.id, flow);
@@ -69,12 +36,128 @@ impl<T: Transaction> FlowEngine<T> {
 		Ok(())
 	}
 
+	fn add(&mut self, txn: &mut StandardCommandTransaction<T>, flow: &Flow, node: &FlowNode) -> crate::Result<()> {
+		debug_assert!(!self.operators.contains_key(&node.id), "Operator already registered");
+		let node = node.clone();
+
+		match node.ty {
+			SourceInlineData {
+				..
+			} => {
+				unimplemented!()
+			}
+			SourceTable {
+				table,
+			} => {
+				self.add_source(flow.id, node.id, SourceId::table(*table));
+			}
+			SourceView {
+				view,
+			} => {
+				self.add_source(flow.id, node.id, SourceId::view(*view));
+			}
+			SinkView {
+				view,
+			} => {
+				self.add_sink(flow.id, node.id, SourceId::view(*view));
+				self.operators.insert(
+					node.id,
+					Operators::SinkView(SinkViewOperator::new(node.id, resolve_view(txn, view)?)),
+				);
+			}
+			Filter {
+				conditions,
+			} => {
+				self.operators
+					.insert(node.id, Operators::Filter(FilterOperator::new(node.id, conditions)));
+			}
+			Map {
+				expressions,
+			} => {
+				self.operators.insert(node.id, Operators::Map(MapOperator::new(node.id, expressions)));
+			}
+			Extend {
+				expressions,
+			} => {
+				self.operators
+					.insert(node.id, Operators::Extend(ExtendOperator::new(node.id, expressions)));
+			}
+			Sort {
+				by: _,
+			} => {
+				self.operators.insert(node.id, Operators::Sort(SortOperator::new(node.id, Vec::new())));
+			}
+			Take {
+				limit,
+			} => {
+				self.operators.insert(node.id, Operators::Take(TakeOperator::new(node.id, limit)));
+			}
+			Join {
+				join_type,
+				left,
+				right,
+				alias,
+				strategy,
+				right_query,
+			} => {
+				// Find the left and right node IDs from the flow inputs
+				// The join node should have exactly 2 inputs
+				if node.inputs.len() != 2 {
+					return Err(Error(internal_error!("Join node must have exactly 2 inputs")));
+				}
+
+				let left_node = node.inputs[0];
+				let right_node = node.inputs[1];
+
+				self.operators.insert(
+					node.id,
+					Operators::Join(JoinOperator::new(
+						node.id,
+						join_type,
+						left_node,
+						right_node,
+						left,
+						right,
+						right_query,
+						alias,
+						strategy,
+						self.executor.clone(),
+					)),
+				);
+			}
+			Distinct {
+				expressions,
+			} => {
+				self.operators.insert(
+					node.id,
+					Operators::Distinct(DistinctOperator::new(node.id, expressions)),
+				);
+			}
+			// Union {} => Ok(Operators::Union(UnionOperator::new())),
+			Union {} => unimplemented!(),
+			Apply {
+				operator_name,
+				expressions,
+			} => {
+				let operator = self.registry.create_operator(
+					operator_name.as_str(),
+					node.id,
+					expressions.as_slice(),
+				)?;
+
+				self.operators.insert(node.id, Operators::Apply(ApplyOperator::new(node.id, operator)));
+			}
+			Aggregate {
+				..
+			} => unimplemented!(),
+		}
+
+		Ok(())
+	}
+
 	fn add_source(&mut self, flow: FlowId, node: FlowNodeId, source: SourceId) {
 		let nodes = self.sources.entry(source).or_insert_with(Vec::new);
 
-		// Each node registration is unique
-		// This allows multiple nodes in the same flow to listen to the
-		// same source
 		let entry = (flow, node);
 		if !nodes.contains(&entry) {
 			nodes.push(entry);
@@ -84,108 +167,9 @@ impl<T: Transaction> FlowEngine<T> {
 	fn add_sink(&mut self, flow: FlowId, node: FlowNodeId, sink: SourceId) {
 		let nodes = self.sinks.entry(sink).or_insert_with(Vec::new);
 
-		// Each node registration is unique
 		let entry = (flow, node);
 		if !nodes.contains(&entry) {
 			nodes.push(entry);
-		}
-	}
-
-	fn add_operator(
-		&mut self,
-		txn: &mut StandardCommandTransaction<T>,
-		flow_id: FlowId,
-		node: FlowNodeId,
-		operator: &OperatorType,
-		input_schemas: &[reifydb_core::flow::FlowNodeDef],
-		output_schema: &reifydb_core::flow::FlowNodeDef,
-	) -> crate::Result<()> {
-		let operator =
-			self.create_operator(txn, flow_id, node, operator.clone(), input_schemas, output_schema)?;
-		debug_assert!(!self.operators.contains_key(&node), "Operator already registered");
-
-		self.operators.insert(node, operator);
-		Ok(())
-	}
-
-	fn create_operator(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		flow_id: FlowId,
-		node_id: FlowNodeId,
-		operator: OperatorType,
-		input_schemas: &[reifydb_core::flow::FlowNodeDef],
-		_output_schema: &reifydb_core::flow::FlowNodeDef,
-	) -> crate::Result<Operators<T>> {
-		match operator {
-			Filter {
-				conditions,
-			} => Ok(Operators::Filter(FilterOperator::new(conditions))),
-			Map {
-				expressions,
-			} => Ok(Operators::Map(MapOperator::new(expressions))),
-			Extend {
-				expressions,
-			} => Ok(Operators::Extend(ExtendOperator::new(expressions))),
-			MapTerminal {
-				expressions,
-				view_id,
-			} => {
-				let view_def = CatalogStore::get_view(txn, view_id)?;
-				Ok(Operators::MapTerminal(MapTerminalOperator::new(expressions, view_def)))
-			}
-			Sort {
-				by,
-			} => Ok(Operators::Sort(SortOperator::new(by))),
-			Take {
-				limit,
-			} => Ok(Operators::Take(TakeOperator::new(node_id, limit))),
-			Join {
-				join_type,
-				left,
-				right,
-			} => {
-				// Extract namespaces for left and right inputs
-				let left_schema = if input_schemas.len() > 0 {
-					input_schemas[0].clone()
-				} else {
-					reifydb_core::flow::FlowNodeDef::empty()
-				};
-				let right_schema = if input_schemas.len() > 1 {
-					input_schemas[1].clone()
-				} else {
-					reifydb_core::flow::FlowNodeDef::empty()
-				};
-
-				Ok(Operators::Join(
-					JoinOperator::new(node_id, join_type, left, right, left_schema, right_schema)
-						.with_flow_id(flow_id.0)
-						.with_instance_id(node_id.0),
-				))
-			}
-			Distinct {
-				expressions,
-			} => Ok(Operators::Distinct(DistinctOperator::new(node_id, expressions))),
-			Union {} => Ok(Operators::Union(UnionOperator::new())),
-			Apply {
-				operator_name,
-				expressions,
-			} => {
-				// Apply uses the ApplyOperator from the apply
-				// module
-				use crate::operator::ApplyOperator;
-
-				let operator = self.registry.create_operator(
-					operator_name.as_str(),
-					node_id,
-					expressions.as_slice(),
-				)?;
-
-				Ok(Operators::Apply(ApplyOperator::new(operator)))
-			}
-			OperatorType::Aggregate {
-				..
-			} => unimplemented!(),
 		}
 	}
 }

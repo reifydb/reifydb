@@ -1,15 +1,19 @@
-use reifydb_core::{flow::FlowChange, interface::Transaction};
-use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
+use reifydb_core::interface::{FlowNodeId, Transaction};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+
+use crate::flow::FlowChange;
 
 mod apply;
 mod distinct;
 mod extend;
 mod filter;
-mod join;
+pub mod join;
 mod map;
+mod sink;
 mod sort;
+pub mod stateful;
 mod take;
-pub(crate) mod transform;
+pub mod transform;
 mod union;
 
 pub use apply::ApplyOperator;
@@ -17,17 +21,21 @@ pub use distinct::DistinctOperator;
 pub use extend::ExtendOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
-pub use map::{MapOperator, MapTerminalOperator};
+pub use map::MapOperator;
+pub use sink::SinkViewOperator;
 pub use sort::SortOperator;
 pub use take::TakeOperator;
+pub use transform::registry::TransformOperatorRegistry;
 pub use union::UnionOperator;
 
 pub trait Operator<T: Transaction>: Send + Sync {
+	fn id(&self) -> FlowNodeId;
+
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
+		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange>;
 }
 
@@ -35,13 +43,13 @@ pub enum Operators<T: Transaction> {
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
-	MapTerminal(MapTerminalOperator),
 	Join(JoinOperator),
 	Sort(SortOperator),
 	Take(TakeOperator),
 	Distinct(DistinctOperator),
 	Union(UnionOperator),
 	Apply(ApplyOperator<T>),
+	SinkView(SinkViewOperator),
 }
 
 impl<T: Transaction> Operators<T> {
@@ -49,19 +57,19 @@ impl<T: Transaction> Operators<T> {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
+		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		let result = match self {
 			Operators::Filter(op) => op.apply(txn, change, evaluator),
 			Operators::Map(op) => op.apply(txn, change, evaluator),
 			Operators::Extend(op) => op.apply(txn, change, evaluator),
-			Operators::MapTerminal(op) => op.apply(txn, change, evaluator),
 			Operators::Join(op) => op.apply(txn, change, evaluator),
 			Operators::Sort(op) => op.apply(txn, change, evaluator),
 			Operators::Take(op) => op.apply(txn, change, evaluator),
 			Operators::Distinct(op) => op.apply(txn, change, evaluator),
 			Operators::Union(op) => op.apply(txn, change, evaluator),
 			Operators::Apply(op) => op.apply(txn, change, evaluator),
+			Operators::SinkView(op) => op.apply(txn, change, evaluator),
 		};
 		result
 	}

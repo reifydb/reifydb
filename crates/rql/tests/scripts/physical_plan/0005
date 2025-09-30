@@ -3,6 +3,6 @@
 
 physical 'from users map {id, name}'
 ---
-> └── Map [Column(id), Column(name)]
+> └── Map [id, name]
 >     └── TableScan default.users
 > 

@@ -5,20 +5,21 @@ use std::{marker::PhantomData, sync::Arc};
 
 use reifydb_core::{
 	interface::{ResolvedColumn, TargetColumn, Transaction, evaluate::expression::Expression},
-	value::column::{Column, Columns, layout::ColumnsLayout},
+	value::column::{Column, Columns, headers::ColumnHeaders},
 };
-use reifydb_type::{Fragment, Params, ROW_NUMBER_COLUMN_NAME};
+use reifydb_rql::expression::column_name_from_expression;
+use reifydb_type::{Fragment, Params};
 
 use crate::{
 	StandardTransaction,
-	evaluate::{EvaluationContext, evaluate},
-	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode, query::layout::derive_columns_column_layout},
+	evaluate::column::{ColumnEvaluationContext, evaluate},
+	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
 pub(crate) struct MapNode<'a, T: Transaction> {
 	input: Box<ExecutionPlan<'a, T>>,
 	expressions: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
@@ -27,7 +28,7 @@ impl<'a, T: Transaction> MapNode<'a, T> {
 		Self {
 			input,
 			expressions,
-			layout: None,
+			headers: None,
 			context: None,
 		}
 	}
@@ -50,23 +51,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 		{
 			let mut new_columns = Vec::with_capacity(self.expressions.len());
 
-			// Only preserve RowNumber column if the execution
-			// context requires it
-			if ctx.preserve_row_numbers {
-				if let Some(row_number_column) =
-					columns.iter().find(|col| col.name() == ROW_NUMBER_COLUMN_NAME)
-				{
-					new_columns.push(row_number_column.clone());
-				}
-			}
-
 			let row_count = columns.row_count();
 
 			// Clone expressions to avoid lifetime issues
 			let expressions = self.expressions.clone();
 			for expr in &expressions {
 				// Create evaluation context inline to avoid lifetime issues
-				let mut eval_ctx = EvaluationContext {
+				let mut eval_ctx = ColumnEvaluationContext {
 					target: None,
 					columns: columns.clone(),
 					row_count,
@@ -101,30 +92,38 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 
 			// Transmute the vector to extend its lifetime
 			// SAFETY: The columns either come from the input (already transmuted to 'a)
-			// or from evaluate() which returns Column<'a>, so they all genuinely have
+			// or from column() which returns Column<'a>, so they all genuinely have
 			// lifetime 'a through the query execution
 			let new_columns =
 				unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(new_columns) };
 
-			let layout = derive_columns_column_layout(&expressions, ctx.preserve_row_numbers);
+			let column_names = expressions.iter().map(column_name_from_expression).collect();
+			self.headers = Some(ColumnHeaders {
+				columns: column_names,
+			});
 
-			self.layout = Some(layout);
+			// Create new Columns with the original row numbers preserved
+			let result_columns = if !columns.row_numbers.is_empty() {
+				Columns::with_row_numbers(new_columns, columns.row_numbers.to_vec())
+			} else {
+				Columns::new(new_columns)
+			};
 
 			return Ok(Some(Batch {
-				columns: Columns::new(new_columns),
+				columns: result_columns,
 			}));
 		}
 		Ok(None)
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone().or(self.input.layout())
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone().or(self.input.headers())
 	}
 }
 
 pub(crate) struct MapWithoutInputNode<'a, T: Transaction> {
 	expressions: Vec<Expression<'a>>,
-	layout: Option<ColumnsLayout<'a>>,
+	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	_phantom: PhantomData<T>,
 }
@@ -133,7 +132,7 @@ impl<'a, T: Transaction> MapWithoutInputNode<'a, T> {
 	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			expressions,
-			layout: None,
+			headers: None,
 			context: None,
 			_phantom: PhantomData,
 		}
@@ -154,7 +153,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 		debug_assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
-		if self.layout.is_some() {
+		if self.headers.is_some() {
 			return Ok(None);
 		}
 
@@ -164,7 +163,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 		let expressions = self.expressions.clone();
 		for expr in expressions.iter() {
 			let column = evaluate(
-				&EvaluationContext {
+				&ColumnEvaluationContext {
 					target: None,
 					columns: Columns::empty(),
 					row_count: 1,
@@ -178,13 +177,13 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
 		}
 
 		let columns = Columns::new(columns);
-		self.layout = Some(ColumnsLayout::from_columns(&columns));
+		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(Batch {
 			columns,
 		}))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		self.layout.clone()
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		self.headers.clone()
 	}
 }

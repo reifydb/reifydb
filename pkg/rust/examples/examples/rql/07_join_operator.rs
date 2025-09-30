@@ -110,7 +110,7 @@ fn main() {
 		r#"from company.employees
 inner join {
   from company.departments
-} on employees.dept_id == departments.dept_id"#,
+} departments on dept_id == departments.dept_id"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -118,7 +118,7 @@ inner join {
 			from company.employees
 			inner join {
 				from company.departments
-			} on employees.dept_id == departments.dept_id
+			} departments on dept_id == departments.dept_id
 			"#,
 			Params::None,
 		)
@@ -134,7 +134,7 @@ inner join {
 		r#"from company.employees
 left join {
   from company.departments
-} on employees.dept_id == departments.dept_id"#,
+} departments on dept_id == departments.dept_id"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -142,7 +142,7 @@ left join {
 			from company.employees
 			left join {
 				from company.departments
-			} on employees.dept_id == departments.dept_id
+			} departments on dept_id == departments.dept_id
 			"#,
 			Params::None,
 		)
@@ -176,8 +176,8 @@ natural join { from company.departments }"#,
 		r#"from company.employees
 inner join {
   from company.departments
-} on employees.dept_id == departments.dept_id
-filter departments.location == "Building A""#,
+} departments on dept_id == departments.dept_id
+filter location == "Building A""#,
 	);
 	for frame in db
 		.query_as_root(
@@ -185,8 +185,8 @@ filter departments.location == "Building A""#,
 			from company.employees
 			inner join {
 				from company.departments
-			} on employees.dept_id == departments.dept_id
-			filter departments.location == "Building A"
+			} departments on dept_id == departments.dept_id
+			filter location == "Building A"
 			"#,
 			Params::None,
 		)
@@ -201,8 +201,8 @@ filter departments.location == "Building A""#,
 		r#"from company.employees
 inner join {
   from company.departments
-} on employees.dept_id == departments.dept_id
-map { employees.name, departments.dept_name, employees.salary }"#,
+} departments on dept_id == departments.dept_id
+map { name, dept_name, salary }"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -210,8 +210,8 @@ map { employees.name, departments.dept_name, employees.salary }"#,
 			from company.employees
 			inner join {
 				from company.departments
-			} on employees.dept_id == departments.dept_id
-			map { employees.name, departments.dept_name, employees.salary }
+			} departments on dept_id == departments.dept_id
+			map { name, dept_name, salary }
 			"#,
 			Params::None,
 		)
@@ -226,10 +226,10 @@ map { employees.name, departments.dept_name, employees.salary }"#,
 		r#"from company.employees
 inner join {
   from company.departments
-} on employees.dept_id == departments.dept_id
+} departments on dept_id == departments.dept_id
 inner join {
   from company.projects
-} on departments.dept_id == projects.dept_id"#,
+} projects on departments_dept_id == projects.dept_id"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -237,10 +237,10 @@ inner join {
 			from company.employees
 			inner join {
 				from company.departments
-			} on employees.dept_id == departments.dept_id
+			} departments on dept_id == departments.dept_id
 			inner join {
 				from company.projects
-			} on departments.dept_id == projects.dept_id
+			} projects on departments_dept_id == projects.dept_id
 			"#,
 			Params::None,
 		)
@@ -255,9 +255,9 @@ inner join {
 		r#"from company.employees
 inner join {
   from company.departments
-} on employees.dept_id == departments.dept_id
-aggregate { avg(employees.salary), count(employees.emp_id) }
-  by departments.dept_name"#,
+} departments on dept_id == departments.dept_id
+aggregate { avg(salary), count(emp_id) }
+  by dept_name"#,
 	);
 	for frame in db
 		.query_as_root(
@@ -265,9 +265,9 @@ aggregate { avg(employees.salary), count(employees.emp_id) }
 			from company.employees
 			inner join {
 				from company.departments
-			} on employees.dept_id == departments.dept_id
-			aggregate { avg(employees.salary), count(employees.emp_id) }
-				by departments.dept_name
+			} departments on dept_id == departments.dept_id
+			aggregate { avg(salary), count(emp_id) }
+				by dept_name
 			"#,
 			Params::None,
 		)

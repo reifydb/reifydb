@@ -9,14 +9,11 @@ use reifydb_core::{
 		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
 		Params, ResolvedColumn, ResolvedNamespace, ResolvedSource, ResolvedTable, RowKey, Transaction,
 	},
-	value::{
-		column::{ColumnData, Columns},
-		row::EncodedRowLayout,
-	},
+	value::{column::Columns, row::EncodedRowLayout},
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
 use reifydb_type::{
-	Fragment, ROW_NUMBER_COLUMN_NAME, Type, Value,
+	Fragment, Type, Value,
 	diagnostic::{
 		catalog::{namespace_not_found, table_not_found},
 		engine,
@@ -77,7 +74,6 @@ impl Executor {
 			functions: self.functions.clone(),
 			source: resolved_source,
 			batch_size: 1024,
-			preserve_row_numbers: true,
 			params: params.clone(),
 		};
 
@@ -89,36 +85,20 @@ impl Executor {
 			let mut wrapped_txn = StandardTransaction::from(txn);
 			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
 
-			// Initialize the node before execution
+			// Initialize the operator before execution
 			input_node.initialize(&mut wrapped_txn, &context)?;
 
 			while let Some(Batch {
 				columns,
 			}) = input_node.next(&mut wrapped_txn)?
 			{
-				// Find the RowNumber column - return error if
-				// not found
-				let Some(row_number_column) =
-					columns.iter().find(|col| col.name() == ROW_NUMBER_COLUMN_NAME)
-				else {
+				// Get row numbers from the Columns structure
+				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());
-				};
+				}
 
-				// Extract RowNumber data - panic if any are
-				// undefined
-				let row_numbers = match &row_number_column.data() {
-					ColumnData::RowNumber(container) => {
-						// Check that all row IDs are
-						// defined
-						for i in 0..container.data().len() {
-							if !container.is_defined(i) {
-								return_error!(engine::invalid_row_number_values());
-							}
-						}
-						container.data()
-					}
-					_ => return_error!(engine::invalid_row_number_values()),
-				};
+				// Extract RowNumber data
+				let row_numbers = &columns.row_numbers;
 
 				let row_count = columns.row_count();
 

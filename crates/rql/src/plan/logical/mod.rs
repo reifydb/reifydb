@@ -12,11 +12,10 @@ use reifydb_catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	IndexType, JoinType, SortDirection, SortKey,
+	IndexType, JoinStrategy, JoinType, SortDirection, SortKey,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
 		expression::{AliasExpression, Expression},
-		identifier,
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSource},
 	},
 	return_error,
@@ -34,6 +33,7 @@ use crate::{
 		},
 	},
 	plan::logical::alter::{AlterTableNode, AlterViewNode},
+	query::QueryString,
 };
 
 struct Compiler {}
@@ -69,7 +69,7 @@ impl Compiler {
 
 			for (i, node) in ast_vec.into_iter().enumerate() {
 				if i == ast_len - 1 {
-					// Last node is UPDATE or DELETE
+					// Last operator is UPDATE or DELETE
 					match node {
 						Ast::AstUpdate(update_ast) => {
 							// Build the pipeline as
@@ -238,7 +238,7 @@ impl Compiler {
 		// Check if this is a piped query that should be wrapped in
 		// Pipeline
 		if has_pipes && ast_len > 1 {
-			// This uses pipe operators - create a Pipeline node
+			// This uses pipe operators - create a Pipeline operator
 			let mut pipeline_nodes = Vec::new();
 			for node in ast_vec {
 				pipeline_nodes.push(Self::compile_single(node, tx)?);
@@ -256,7 +256,7 @@ impl Compiler {
 		Ok(result)
 	}
 
-	// Helper to compile a single AST node
+	// Helper to compile a single AST operator
 	fn compile_single<'a, 't, T: CatalogQueryTransaction>(
 		node: Ast<'a>,
 		tx: &mut T,
@@ -464,19 +464,28 @@ pub struct FilterNode<'a> {
 #[derive(Debug)]
 pub struct JoinInnerNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
+	pub with_query: QueryString,
 	pub on: Vec<Expression<'a>>,
+	pub alias: Option<Fragment<'a>>,
+	pub strategy: Option<JoinStrategy>,
 }
 
 #[derive(Debug)]
 pub struct JoinLeftNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
+	pub with_query: QueryString,
 	pub on: Vec<Expression<'a>>,
+	pub alias: Option<Fragment<'a>>,
+	pub strategy: Option<JoinStrategy>,
 }
 
 #[derive(Debug)]
 pub struct JoinNaturalNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
+	pub with_query: QueryString,
 	pub join_type: JoinType,
+	pub alias: Option<Fragment<'a>>,
+	pub strategy: Option<JoinStrategy>,
 }
 
 #[derive(Debug)]

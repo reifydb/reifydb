@@ -47,31 +47,39 @@ pub enum CdcChange {
 	},
 }
 
+/// Structure for storing CDC data with shared metadata
 #[derive(Debug, Clone, PartialEq)]
-pub struct CdcEvent {
+pub struct Cdc {
 	pub version: CommitVersion,
-	pub sequence: u16,
 	pub timestamp: u64,
 	pub transaction: TransactionId,
-	pub change: CdcChange,
+	pub changes: Vec<CdcSequencedChange>,
 }
 
-impl CdcEvent {
+impl Cdc {
 	pub fn new(
 		version: CommitVersion,
-		sequence: u16,
 		timestamp: u64,
 		transaction: TransactionId,
-		change: CdcChange,
+		changes: Vec<CdcSequencedChange>,
 	) -> Self {
 		Self {
 			version,
-			sequence,
 			timestamp,
 			transaction,
-			change,
+			changes,
 		}
 	}
+}
+
+/// Structure for individual changes within a transaction
+#[derive(Debug, Clone, PartialEq)]
+pub struct CdcSequencedChange {
+	pub sequence: u16,
+	pub change: CdcChange,
+}
+
+impl CdcSequencedChange {
 	pub fn key(&self) -> &EncodedKey {
 		match &self.change {
 			CdcChange::Insert {

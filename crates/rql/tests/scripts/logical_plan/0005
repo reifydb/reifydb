@@ -6,8 +6,8 @@ logical 'from users aggregate count(age) by { name, age }'
 > └── TableScan default.users
 > └── Aggregate
 >     ├── Map
->     │   └── count(Column(age))
+>     │   └── count(age)
 >     └── By
->         ├── Column(name)
->         └── Column(age)
+>         ├── name
+>         └── age
 > 

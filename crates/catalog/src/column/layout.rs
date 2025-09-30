@@ -11,7 +11,7 @@ pub(crate) mod column {
 	pub(crate) const NAME: usize = 2;
 	pub(crate) const VALUE: usize = 3;
 	pub(crate) const INDEX: usize = 4;
-	pub(crate) const ASVTO_INCREMENT: usize = 5;
+	pub(crate) const AUTO_INCREMENT: usize = 5;
 	pub(crate) const CONSTRAINT: usize = 6;
 
 	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {

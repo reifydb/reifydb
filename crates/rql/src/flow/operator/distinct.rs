@@ -1,18 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	flow::{FlowNodeDef, FlowNodeType::Operator, OperatorType::Distinct},
-	interface::{
-		CommandTransaction, FlowNodeId,
-		evaluate::expression::{ColumnExpression, Expression},
-		identifier::{ColumnIdentifier, ColumnSource},
-		resolved::{ResolvedColumn, ResolvedSource},
-	},
+use FlowNodeType::Distinct;
+use reifydb_core::interface::{
+	ColumnSource, CommandTransaction, FlowNodeId, ResolvedColumn, ResolvedSource,
+	expression::{ColumnExpression, Expression},
+	identifier::ColumnIdentifier,
 };
 use reifydb_type::Fragment;
 
-use super::super::{CompileOperator, FlowCompiler, conversion::to_owned_physical_plan};
+use super::super::{CompileOperator, FlowCompiler, FlowNodeType, conversion::to_owned_physical_plan};
 use crate::{
 	Result,
 	plan::physical::{DistinctNode, PhysicalPlan},
@@ -67,12 +64,8 @@ impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
 			.map(|col| Expression::Column(ColumnExpression(resolved_to_column_identifier(col))))
 			.collect();
 
-		compiler.build_node(Operator {
-			operator: Distinct {
-				expressions,
-			},
-			input_schemas: vec![FlowNodeDef::empty()],
-			output_schema: FlowNodeDef::empty(),
+		compiler.build_node(Distinct {
+			expressions,
 		})
 		.with_input(input_node)
 		.build()

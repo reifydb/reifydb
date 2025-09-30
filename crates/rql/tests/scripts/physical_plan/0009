@@ -6,7 +6,7 @@ physical 'from users aggregate { count(id) }'
 ---
 > └── Aggregate
 >     ├── Map
->     │   └── count(Column(id))
+>     │   └── count(id)
 >     ├── By
 >     └── Source
 >         └── TableScan default.users
@@ -17,8 +17,8 @@ physical 'from users aggregate { total: count(id), sum: sum(age) } by {}'
 ---
 > └── Aggregate
 >     ├── Map
->     │   ├── count(Column(id)) as total
->     │   └── sum(Column(age)) as sum
+>     │   ├── count(id) as total
+>     │   └── sum(age) as sum
 >     ├── By
 >     └── Source
 >         └── TableScan default.users
@@ -29,11 +29,11 @@ physical 'from users aggregate { cnt: count(id), total: sum(age), average: avg(a
 ---
 > └── Aggregate
 >     ├── Map
->     │   ├── count(Column(id)) as cnt
->     │   ├── sum(Column(age)) as total
->     │   ├── avg(Column(age)) as average
->     │   ├── min(Column(age)) as minimum
->     │   └── max(Column(age)) as maximum
+>     │   ├── count(id) as cnt
+>     │   ├── sum(age) as total
+>     │   ├── avg(age) as average
+>     │   ├── min(age) as minimum
+>     │   └── max(age) as maximum
 >     ├── By
 >     └── Source
 >         └── TableScan default.users

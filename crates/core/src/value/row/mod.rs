@@ -3,7 +3,8 @@
 
 pub use encoded::{EncodedRow, EncodedRowIter, EncodedRowIterator};
 pub use key::{EncodedKey, EncodedKeyRange};
-pub use layout::{EncodedRowLayout, Field};
+pub use layout::{EncodedRowLayout, EncodedRowLayoutInner, Field};
+pub use named::EncodedRowNamedLayout;
 use reifydb_type::RowNumber;
 
 mod blob;
@@ -24,6 +25,7 @@ mod int;
 mod interval;
 mod key;
 mod layout;
+mod named;
 mod time;
 mod u128;
 mod u16;
@@ -37,8 +39,9 @@ mod uuid4;
 mod uuid7;
 mod value;
 
+#[derive(Debug, Clone)]
 pub struct Row {
 	pub number: RowNumber,
 	pub encoded: EncodedRow,
-	pub layout: EncodedRowLayout,
+	pub layout: EncodedRowNamedLayout,
 }

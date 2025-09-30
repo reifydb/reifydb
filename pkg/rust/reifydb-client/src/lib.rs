@@ -12,7 +12,6 @@ pub use client::Client;
 pub use domain::{Frame, FrameColumn};
 pub use http::{HttpBlockingSession, HttpCallbackSession, HttpChannelSession, HttpClient, HttpResponseMessage};
 use reifydb_type::diagnostic::Diagnostic;
-// Re-export types from reifydb
 pub use reifydb_type::{OrderedF32, OrderedF64, Params, Type, Value};
 use serde::{Deserialize, Serialize};
 pub use session::{CommandResult, QueryResult};
@@ -96,6 +95,7 @@ pub struct QueryResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WebsocketFrame {
+	pub row_numbers: Vec<u64>,
 	pub columns: Vec<WebsocketColumn>,
 }
 

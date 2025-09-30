@@ -10,7 +10,7 @@ use reifydb_catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	JoinType, SortKey,
+	JoinStrategy, JoinType, SortKey,
 	interface::{
 		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
 		catalog::ColumnIndex,
@@ -27,9 +27,12 @@ use reifydb_type::{
 	return_error,
 };
 
-use crate::plan::{
-	logical::LogicalPlan,
-	physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
+use crate::{
+	plan::{
+		logical::LogicalPlan,
+		physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
+	},
+	query::QueryString,
 };
 
 struct Compiler {}
@@ -436,7 +439,10 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
 						left: Box::new(left),
 						right: Box::new(right),
+						right_query: join.with_query,
 						on: join.on,
+						alias: join.alias,
+						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -446,7 +452,10 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
 						left: Box::new(left),
 						right: Box::new(right),
+						right_query: join.with_query,
 						on: join.on,
+						alias: join.alias,
+						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -456,7 +465,10 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
 						left: Box::new(left),
 						right: Box::new(right),
+						right_query: join.with_query,
 						join_type: join.join_type,
+						alias: join.alias,
+						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -582,7 +594,7 @@ impl Compiler {
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							// Note: DeferredView shares the same physical node as View
+							// Note: DeferredView shares the same physical operator as View
 							// We need to convert it to ResolvedView
 							let view = ResolvedView::new(
 								resolved_view.identifier().clone(),
@@ -598,8 +610,8 @@ impl Compiler {
 							if scan.index.is_some() {
 								unimplemented!("views do not support indexes yet");
 							}
-							// Note: TransactionalView shares the same physical node as View
-							// We need to convert it to ResolvedView
+							// Note: TransactionalView shares the same physical operator as
+							// View We need to convert it to ResolvedView
 							let view = ResolvedView::new(
 								resolved_view.identifier().clone(),
 								resolved_view.namespace().clone(),
@@ -818,21 +830,30 @@ pub struct UpdateRingBufferNode<'a> {
 pub struct JoinInnerNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
+	pub right_query: QueryString,
 	pub on: Vec<Expression<'a>>,
+	pub alias: Option<Fragment<'a>>,
+	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]
 pub struct JoinLeftNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
+	pub right_query: QueryString,
 	pub on: Vec<Expression<'a>>,
+	pub alias: Option<Fragment<'a>>,
+	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]
 pub struct JoinNaturalNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
+	pub right_query: QueryString,
 	pub join_type: JoinType,
+	pub alias: Option<Fragment<'a>>,
+	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]

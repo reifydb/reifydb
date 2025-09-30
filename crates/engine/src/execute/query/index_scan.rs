@@ -6,10 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	EncodedKey,
 	interface::{IndexId, TableDef, Transaction},
-	value::{
-		column::layout::{ColumnLayout, ColumnsLayout},
-		row::EncodedRowLayout,
-	},
+	value::{column::headers::ColumnHeaders, row::EncodedRowLayout},
 };
 use reifydb_type::Fragment;
 
@@ -22,7 +19,7 @@ pub(crate) struct IndexScanNode<'a, T: Transaction> {
 	_table: TableDef, // FIXME needs to work with different sources
 	_index_id: IndexId,
 	context: Option<Arc<ExecutionContext<'a>>>,
-	layout: ColumnsLayout<'a>,
+	headers: ColumnHeaders<'a>,
 	_row_layout: EncodedRowLayout,
 	_last_key: Option<EncodedKey>,
 	_exhausted: bool,
@@ -34,23 +31,15 @@ impl<'a, T: Transaction> IndexScanNode<'a, T> {
 		let data = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedRowLayout::new(&data);
 
-		let layout = ColumnsLayout {
-			columns: table
-				.columns
-				.iter()
-				.map(|col| ColumnLayout {
-					namespace: None,
-					source: None,
-					name: Fragment::owned_internal(&col.name),
-				})
-				.collect(),
+		let headers = ColumnHeaders {
+			columns: table.columns.iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
 		};
 
 		Ok(Self {
 			_table: table,
 			_index_id: index_id,
 			context: Some(context),
-			layout,
+			headers,
 			_row_layout: row_layout,
 			_last_key: None,
 			_exhausted: false,
@@ -142,7 +131,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<'a, T> {
 		// // Add the RowNumber column to the columns if requested
 		// if ctx.preserve_row_numbers {
 		// 	// TODO: Update IndexScanNode to use ResolvedTable instead of TableDef
-		// 	let row_number_column = Column::SourceQualified(SourceQualified {
+		// 	let row_number_column = Column::( {
 		// 		source: Fragment::owned_internal(&self.table.name),
 		// 		name: Fragment::owned_internal(ROW_NUMBER_COLUMN_NAME),
 		// 		data: ColumnData::row_number(row_numbers),
@@ -155,7 +144,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<'a, T> {
 		// }))
 	}
 
-	fn layout(&self) -> Option<ColumnsLayout<'a>> {
-		Some(self.layout.clone())
+	fn headers(&self) -> Option<ColumnHeaders<'a>> {
+		Some(self.headers.clone())
 	}
 }

@@ -1,32 +1,33 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+use reifydb_core::interface::{FlowNodeId, Transaction};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
-use reifydb_core::{flow::FlowChange, interface::Transaction};
-use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-
-use crate::{Result, operator::Operator};
+use crate::{flow::FlowChange, operator::Operator};
 
 pub struct UnionOperator {
-	// Union doesn't need state - it just passes through all changes
+	node: FlowNodeId,
 }
 
 impl UnionOperator {
-	pub fn new() -> Self {
-		Self {}
+	pub fn new(node: FlowNodeId) -> Self {
+		Self {
+			node,
+		}
 	}
 }
 
 impl<T: Transaction> Operator<T> for UnionOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		_txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
-	) -> Result<FlowChange> {
-		// Union is a simple pass-through operator
-		// It combines inputs from multiple sources
-		// The FlowEngine handles routing multiple inputs to this
-		// operator
-		Ok(change)
+		_evaluator: &StandardRowEvaluator,
+	) -> crate::Result<FlowChange> {
+		// TODO: Implement single-row union processing
+		// For now, just pass through all changes with updated from
+		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 }

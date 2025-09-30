@@ -16,9 +16,7 @@ use crate::{
 			filter::FilterNode,
 			index_scan::IndexScanNode,
 			inline::InlineDataNode,
-			join_inner::InnerJoinNode,
-			join_left::LeftJoinNode,
-			join_natural::NaturalJoinNode,
+			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 			map::{MapNode, MapWithoutInputNode},
 			ring_buffer_scan::RingBufferScan,
 			sort::SortNode,
@@ -104,30 +102,39 @@ pub(crate) fn compile<'a, T: Transaction>(
 			left,
 			right,
 			on,
+			alias,
+			strategy: _,
+			right_query: _,
 		}) => {
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on))
+			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on, alias))
 		}
 
 		PhysicalPlan::JoinLeft(physical::JoinLeftNode {
 			left,
 			right,
 			on,
+			alias,
+			strategy: _,
+			right_query: _,
 		}) => {
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on))
+			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on, alias))
 		}
 
 		PhysicalPlan::JoinNatural(physical::JoinNaturalNode {
 			left,
 			right,
 			join_type,
+			alias,
+			strategy: _,
+			right_query: _,
 		}) => {
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type))
+			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type, alias))
 		}
 
 		PhysicalPlan::InlineData(physical::InlineDataNode {

@@ -1,16 +1,26 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashSet, path::Path, sync::mpsc, thread};
+use std::{
+	collections::{HashMap, HashSet},
+	path::Path,
+	sync::mpsc,
+	thread,
+};
 
 use mpsc::Sender;
-use reifydb_core::{CommitVersion, CowVec, EncodedKey, TransactionId, delta::Delta};
+use reifydb_core::{
+	CommitVersion, CowVec, EncodedKey, TransactionId,
+	delta::Delta,
+	interface::{Cdc, CdcSequencedChange},
+};
 use reifydb_type::{Error, Result, return_error};
 use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
 
 use super::diagnostic::{from_rusqlite_error, transaction_failed};
 use crate::{
-	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
+	cdc::generate_cdc_change,
+	commit::CommitBuffer,
 	diagnostic::{connection_failed, sequence_exhausted},
 	sqlite::{
 		cdc::{fetch_pre_value, store_cdc_transaction},
@@ -37,6 +47,8 @@ pub struct Writer {
 	receiver: mpsc::Receiver<WriteCommand>,
 	conn: Connection,
 	ensured_tables: HashSet<String>,
+	commit_buffer: CommitBuffer,
+	pending_responses: HashMap<CommitVersion, Sender<Result<()>>>,
 }
 
 impl Writer {
@@ -51,6 +63,8 @@ impl Writer {
 				receiver,
 				conn,
 				ensured_tables: HashSet::new(),
+				commit_buffer: CommitBuffer::new(),
+				pending_responses: HashMap::new(),
 			};
 
 			actor.run();
@@ -75,11 +89,16 @@ impl Writer {
 					version,
 					transaction,
 					timestamp,
-					respond_to: response,
+					respond_to,
 				} => {
-					let result = self.handle_multi_commit(deltas, version, transaction, timestamp);
-
-					let _ = response.send(result);
+					// Buffer the commit and process any that are ready
+					self.buffer_and_apply_commit(
+						deltas,
+						version,
+						transaction,
+						timestamp,
+						respond_to,
+					);
 				}
 				WriteCommand::Shutdown => break,
 			}
@@ -96,7 +115,38 @@ impl Writer {
 		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))
 	}
 
-	fn handle_multi_commit(
+	fn buffer_and_apply_commit(
+		&mut self,
+		deltas: CowVec<Delta>,
+		version: CommitVersion,
+		transaction: TransactionId,
+		timestamp: u64,
+		respond_to: Sender<Result<()>>,
+	) {
+		// Store the response sender for later
+		self.pending_responses.insert(version, respond_to);
+
+		// Add to buffer
+		self.commit_buffer.add_commit(version, deltas, transaction, timestamp);
+
+		// Process all ready commits
+		let ready_commits = self.commit_buffer.drain_ready();
+		for commit in ready_commits {
+			let result = self.apply_multi_commit(
+				commit.deltas,
+				commit.version,
+				commit.transaction,
+				commit.timestamp,
+			);
+
+			// Send response for this commit if we have one pending
+			if let Some(sender) = self.pending_responses.remove(&commit.version) {
+				let _ = sender.send(result);
+			}
+		}
+	}
+
+	fn apply_multi_commit(
 		&mut self,
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
@@ -121,8 +171,8 @@ impl Writer {
 		deltas: &[Delta],
 		version: CommitVersion,
 		ensured_tables: &mut HashSet<String>,
-	) -> Result<Vec<CdcTransactionChange>> {
-		let mut cdc_changes = Vec::with_capacity(deltas.len());
+	) -> Result<Vec<CdcSequencedChange>> {
+		let mut result = Vec::with_capacity(deltas.len());
 
 		for (idx, delta) in deltas.iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {
@@ -135,13 +185,13 @@ impl Writer {
 
 			Self::apply_single_delta(tx, delta, version, ensured_tables)?;
 
-			cdc_changes.push(CdcTransactionChange {
+			result.push(CdcSequencedChange {
 				sequence,
 				change: generate_cdc_change(delta.clone(), pre),
 			});
 		}
 
-		Ok(cdc_changes)
+		Ok(result)
 	}
 
 	fn apply_single_delta(
@@ -211,9 +261,9 @@ impl Writer {
 		version: CommitVersion,
 		timestamp: u64,
 		transaction: TransactionId,
-		cdc_changes: Vec<CdcTransactionChange>,
+		cdc_changes: Vec<CdcSequencedChange>,
 	) -> Result<()> {
-		store_cdc_transaction(tx, CdcTransaction::new(version, timestamp, transaction, cdc_changes))
+		store_cdc_transaction(tx, Cdc::new(version, timestamp, transaction, cdc_changes))
 			.map_err(|e| Error(from_rusqlite_error(e)))
 	}
 }

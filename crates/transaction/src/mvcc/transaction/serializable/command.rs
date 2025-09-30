@@ -78,8 +78,13 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> CommandTransactio
 		self.tm.version()
 	}
 
-	pub fn as_of_version(&mut self, version: CommitVersion) {
-		self.tm.as_of_version(version);
+	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
+		self.tm.read_as_of_version_exclusive(version);
+	}
+
+	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> Result<(), reifydb_type::Error> {
+		self.read_as_of_version_exclusive(version + 1);
+		Ok(())
 	}
 
 	pub fn rollback(&mut self) -> Result<(), reifydb_type::Error> {

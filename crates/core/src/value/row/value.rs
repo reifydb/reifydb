@@ -17,7 +17,7 @@ impl EncodedRowLayout {
 		let field = &self.fields[index];
 		debug_assert!(row.len() >= self.total_static_size());
 
-		match (field.value, val) {
+		match (field.r#type, val) {
 			(Type::Boolean, Value::Boolean(v)) => self.set_bool(row, index, *v),
 			(Type::Boolean, Value::Undefined) => self.set_undefined(row, index),
 
@@ -100,7 +100,7 @@ impl EncodedRowLayout {
 			) => self.set_undefined(row, index),
 
 			(Type::Undefined, Value::Undefined) => {}
-			(_, _) => unreachable!(),
+			(ty, val) => unreachable!("{ty:?}, {val:?}"),
 		}
 	}
 
@@ -109,7 +109,7 @@ impl EncodedRowLayout {
 		if !row.is_defined(index) {
 			return Value::Undefined;
 		}
-		match field.value {
+		match field.r#type {
 			Type::Boolean => Value::Boolean(self.get_bool(row, index)),
 			Type::Float4 => OrderedF32::try_from(self.get_f32(row, index))
 				.map(Value::Float4)

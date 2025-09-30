@@ -1,0 +1,63 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test basic insert CDC generation
+insert 1 a=1
+commit
+---
+ok
+
+cdc_get 1 1
+---
+Change { seq: 1, change: Insert { key: "a", post: "1" } }
+
+# Test insert of another key
+insert 2 b=2
+commit
+---
+ok
+
+cdc_get 2 1
+---
+Change { seq: 1, change: Insert { key: "b", post: "2" } }
+
+# Test insert with different value
+insert 3 c=100
+commit
+---
+ok
+
+cdc_get 3 1
+---
+Change { seq: 1, change: Insert { key: "c", post: "100" } }
+
+# Test getting the full transaction data  
+# Note: TransactionId will be a UUID, so we just check the structure
+cdc_get 3 1
+---
+Change { seq: 1, change: Insert { key: "c", post: "100" } }
+
+# Test insert with empty value
+insert 4 d=
+commit
+---
+ok
+
+cdc_get 4 1
+---
+Change { seq: 1, change: Insert { key: "d", post: "" } }
+
+# Test insert with special characters
+insert 5 e=hello_world
+commit
+---
+ok
+
+cdc_get 5 1
+---
+Change { seq: 1, change: Insert { key: "e", post: "hello_world" } }
+
+# Test non-existent sequence
+cdc_get 5 2
+---
+None

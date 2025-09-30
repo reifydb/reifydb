@@ -1,33 +1,90 @@
-// Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+use std::collections::BTreeMap;
 
-use reifydb_core::{
-	BitVec, CowVec, EncodedKey,
-	flow::{FlowChange, FlowDiff},
-	interface::{FlowNodeId, Transaction},
-	value::row::EncodedRow,
+use bincode::{
+	config::standard,
+	serde::{decode_from_slice, encode_to_vec},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEvaluator};
-use reifydb_type::RowNumber;
+use reifydb_core::{
+	Error,
+	interface::{FlowNodeId, Transaction},
+	value::row::{EncodedRowLayout, Row},
+};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_type::{Blob, RowNumber, Type, internal_error};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	Result,
+	flow::{FlowChange, FlowDiff},
 	operator::{
 		Operator,
-		transform::{TransformOperator, stateful::RawStatefulOperator},
+		stateful::{RawStatefulOperator, SingleStateful},
+		transform::TransformOperator,
 	},
 };
 
+/// Serializable version of Row data
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SerializedRow {
+	number: RowNumber,
+	/// The raw encoded bytes of the row
+	#[serde(with = "serde_bytes")]
+	encoded_bytes: Vec<u8>,
+	/// The field names from the layout (for recreating EncodedRowNamedLayout)
+	field_names: Vec<String>,
+	/// The field types from the layout
+	field_types: Vec<Type>,
+}
+
+impl SerializedRow {
+	fn from_row(row: &Row) -> Self {
+		Self {
+			number: row.number,
+			encoded_bytes: row.encoded.as_slice().to_vec(),
+			field_names: row.layout.names().to_vec(),
+			field_types: row.layout.fields.iter().map(|f| f.r#type).collect(),
+		}
+	}
+
+	fn to_row(self) -> Row {
+		use reifydb_core::{
+			util::CowVec,
+			value::row::{EncodedRow, EncodedRowNamedLayout},
+		};
+
+		let fields: Vec<(String, Type)> =
+			self.field_names.into_iter().zip(self.field_types.into_iter()).collect();
+
+		let layout = EncodedRowNamedLayout::new(fields);
+		let encoded = EncodedRow(CowVec::new(self.encoded_bytes));
+
+		Row {
+			number: self.number,
+			encoded,
+			layout,
+		}
+	}
+}
+
+/// State for tracking the top N rows
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TakeState {
-	current_count: usize,
-	row_ids: Vec<RowNumber>,
+	/// Map of row numbers to their serialized row data
+	/// Using BTreeMap to keep rows sorted by RowNumber
+	rows: BTreeMap<RowNumber, SerializedRow>,
+}
+
+impl Default for TakeState {
+	fn default() -> Self {
+		Self {
+			rows: BTreeMap::new(),
+		}
+	}
 }
 
 pub struct TakeOperator {
 	node: FlowNodeId,
 	limit: usize,
+	layout: EncodedRowLayout,
 }
 
 impl TakeOperator {
@@ -35,273 +92,143 @@ impl TakeOperator {
 		Self {
 			node,
 			limit,
+			layout: EncodedRowLayout::new(&[Type::Blob]),
 		}
 	}
 
-	/// Create a BitVec mask for the specified row indices
-	fn create_mask_for_indices(total_rows: usize, indices: &[usize]) -> BitVec {
-		let mut mask = vec![false; total_rows];
-		for &idx in indices {
-			if idx < total_rows {
-				mask[idx] = true;
-			}
+	fn load_take_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<TakeState> {
+		let state_row = self.load_state(txn)?;
+
+		if state_row.is_empty() || !state_row.is_defined(0) {
+			return Ok(TakeState::default());
 		}
-		BitVec::from(mask)
+
+		let blob = self.layout.get_blob(&state_row, 0);
+		if blob.is_empty() {
+			return Ok(TakeState::default());
+		}
+
+		let config = standard();
+		decode_from_slice(blob.as_ref(), config)
+			.map(|(state, _)| state)
+			.map_err(|e| Error(internal_error!("Failed to deserialize TakeState: {}", e)))
 	}
 
-	fn load_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> Result<TakeState> {
-		let empty_key = EncodedKey::new(Vec::new());
+	fn save_take_state<T: Transaction>(
+		&self,
+		txn: &mut StandardCommandTransaction<T>,
+		state: &TakeState,
+	) -> crate::Result<()> {
+		let config = standard();
+		let serialized = encode_to_vec(state, config)
+			.map_err(|e| Error(internal_error!("Failed to serialize TakeState: {}", e)))?;
 
-		match self.state_get(txn, &empty_key)? {
-			None => Ok(TakeState {
-				current_count: 0,
-				row_ids: Vec::new(),
-			}),
-			Some(state_row) => serde_json::from_slice(state_row.as_ref()).map_err(|e| {
-				reifydb_type::Error(reifydb_type::internal_error!(
-					"Failed to deserialize TakeState: {}",
-					e
-				))
-			}),
-		}
+		let mut state_row = self.layout.allocate_row();
+		let blob = Blob::from(serialized);
+		self.layout.set_blob(&mut state_row, 0, &blob);
+
+		self.save_state(txn, state_row)
 	}
+}
 
-	fn save_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>, state: &TakeState) -> Result<()> {
-		let empty_key = EncodedKey::new(Vec::new());
-		let serialized = serde_json::to_vec(state).map_err(|e| {
-			reifydb_type::Error(reifydb_type::internal_error!("Failed to serialize TakeState: {}", e))
-		})?;
+impl<T: Transaction> TransformOperator<T> for TakeOperator {}
 
-		self.state_set(txn, &empty_key, EncodedRow(CowVec::new(serialized)))?;
-		Ok(())
+impl<T: Transaction> RawStatefulOperator<T> for TakeOperator {}
+
+impl<T: Transaction> SingleStateful<T> for TakeOperator {
+	fn layout(&self) -> EncodedRowLayout {
+		self.layout.clone()
 	}
 }
 
 impl<T: Transaction> Operator<T> for TakeOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
 	fn apply(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		change: FlowChange,
-		evaluator: &StandardEvaluator,
-	) -> Result<FlowChange> {
+		_evaluator: &StandardRowEvaluator,
+	) -> crate::Result<FlowChange> {
 		// Load current state
-		let mut state = self.load_state(txn)?;
+		let mut state = self.load_take_state(txn)?;
 		let mut output_diffs = Vec::new();
 
 		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
-					source,
-					rows: row_ids,
-					post: after,
+					post,
 				} => {
-					// For DESC order (default), we need to
-					// keep the highest row IDs
-					let mut all_rows: Vec<_> = state.row_ids.clone();
-					for &row_id in row_ids.iter() {
-						all_rows.push(row_id);
-					}
+					let row_number = post.number;
 
-					// Sort in descending order (highest IDs
-					// first)
-					all_rows.sort_by(|a, b| b.0.cmp(&a.0));
+					// Add to our tracking
+					state.rows.insert(row_number, SerializedRow::from_row(&post));
 
-					// Take only the limit
-					let new_top_rows: Vec<_> = all_rows.into_iter().take(self.limit).collect();
+					// Keep only the top N rows (highest row numbers)
+					// BTreeMap keeps keys sorted, so we can efficiently get the top N
+					while state.rows.len() > self.limit {
+						// Remove the smallest (oldest) row number
+						if let Some((&removed_row_num, removed_serialized)) =
+							state.rows.iter().next()
+						{
+							let removed_serialized = removed_serialized.clone();
+							state.rows.remove(&removed_row_num);
 
-					// Find what changed
-					let mut rows_to_add = Vec::new();
-					let mut rows_to_remove = Vec::new();
-
-					for &row_id in &new_top_rows {
-						if !state.row_ids.contains(&row_id) {
-							rows_to_add.push(row_id);
+							// Emit a remove for the row that fell out of the window
+							output_diffs.push(FlowDiff::Remove {
+								pre: removed_serialized.to_row(),
+							});
 						}
 					}
 
-					for &row_id in &state.row_ids {
-						if !new_top_rows.contains(&row_id) {
-							rows_to_remove.push(row_id);
-						}
-					}
-
-					// Emit changes
-					if !rows_to_remove.is_empty() {
-						// These rows are no longer in top N
-						// We don't have the actual data for these rows since we only store row
-						// IDs Create columns with undefined values matching the row count
-						let remove_count = rows_to_remove.len();
-
-						// Create columns with the same structure but all undefined values
-						let mut undefined_columns = Vec::new();
-						for col in after.iter() {
-							use reifydb_core::value::column::{
-								Column, ColumnComputed, ColumnData,
-							};
-							let undefined_data = ColumnData::undefined(remove_count);
-							undefined_columns.push(Column::Computed(ColumnComputed {
-								name: col.name().clone(),
-								data: undefined_data,
-							}));
-						}
-
-						output_diffs.push(FlowDiff::Remove {
-							source,
-							rows: CowVec::new(rows_to_remove),
-							pre: reifydb_core::value::column::Columns::new(
-								undefined_columns,
-							),
-						});
-					}
-
-					if !rows_to_add.is_empty() {
-						// Find indices of new rows in the input
-						let mut add_indices = Vec::new();
-						for &row_to_add in &rows_to_add {
-							for (idx, &row_id) in row_ids.iter().enumerate() {
-								if row_id == row_to_add {
-									add_indices.push(idx);
-									break;
-								}
-							}
-						}
-
-						// Filter columns to only include the new rows
-						let mut filtered_columns = after.clone();
-						let mask =
-							Self::create_mask_for_indices(after.row_count(), &add_indices);
-						filtered_columns.filter(&mask)?;
-
+					// If this row is within the limit, emit the insert
+					if state.rows.contains_key(&row_number) {
 						output_diffs.push(FlowDiff::Insert {
-							source,
-							rows: CowVec::new(rows_to_add),
-							post: filtered_columns,
+							post,
 						});
 					}
-
-					// Update state
-					state.row_ids = new_top_rows;
-					state.current_count = state.row_ids.len();
-				}
-				FlowDiff::Remove {
-					source,
-					rows: row_ids,
-					pre: before,
-				} => {
-					// Remove these rows from our state
-					let mut new_state_rows = Vec::new();
-					for &row_id in &state.row_ids {
-						if !row_ids.contains(&row_id) {
-							new_state_rows.push(row_id);
-						}
-					}
-
-					// Pass through the removal if it was in
-					// our top N
-					let mut rows_to_remove = Vec::new();
-					for &row_id in row_ids.iter() {
-						if state.row_ids.contains(&row_id) {
-							rows_to_remove.push(row_id);
-						}
-					}
-
-					if !rows_to_remove.is_empty() {
-						// Find indices of removed rows in the input
-						let mut remove_indices = Vec::new();
-						for &row_to_remove in &rows_to_remove {
-							for (idx, &row_id) in row_ids.iter().enumerate() {
-								if row_id == row_to_remove {
-									remove_indices.push(idx);
-									break;
-								}
-							}
-						}
-
-						// Filter columns to only include the removed rows
-						let mut filtered_columns = before.clone();
-						let mask = Self::create_mask_for_indices(
-							before.row_count(),
-							&remove_indices,
-						);
-						filtered_columns.filter(&mask)?;
-
-						output_diffs.push(FlowDiff::Remove {
-							source,
-							rows: CowVec::new(rows_to_remove),
-							pre: filtered_columns,
-						});
-					}
-
-					// Update state
-					state.row_ids = new_state_rows;
-					state.current_count = state.row_ids.len();
-
-					// Note: In a full implementation, we'd
-					// need to check if there are
-					// additional rows to bring into the top
-					// N to replace removed ones
 				}
 				FlowDiff::Update {
-					source,
-					rows: row_ids,
-					pre: before,
-					post: after,
+					pre,
+					post,
 				} => {
-					// Only pass through updates for rows in
-					// our top N
-					let mut rows_to_update = Vec::new();
-					for &row_id in row_ids.iter() {
-						if state.row_ids.contains(&row_id) {
-							rows_to_update.push(row_id);
-						}
-					}
+					let row_number = post.number;
 
-					if !rows_to_update.is_empty() {
-						// Find indices of updated rows in the input
-						let mut update_indices = Vec::new();
-						for &row_to_update in &rows_to_update {
-							for (idx, &row_id) in row_ids.iter().enumerate() {
-								if row_id == row_to_update {
-									update_indices.push(idx);
-									break;
-								}
-							}
-						}
-
-						// Filter columns to only include the updated rows
-						let mut filtered_pre = before.clone();
-						let mut filtered_post = after.clone();
-						let mask = Self::create_mask_for_indices(
-							before.row_count(),
-							&update_indices,
-						);
-						filtered_pre.filter(&mask)?;
-						filtered_post.filter(&mask)?;
-
+					// Update our tracking if this row is in the window
+					if state.rows.contains_key(&row_number) {
+						state.rows.insert(row_number, SerializedRow::from_row(&post));
 						output_diffs.push(FlowDiff::Update {
-							source,
-							rows: CowVec::new(rows_to_update),
-							pre: filtered_pre,
-							post: filtered_post,
+							pre,
+							post,
 						});
+					}
+					// If not in window, ignore the update
+				}
+				FlowDiff::Remove {
+					pre,
+				} => {
+					let row_number = pre.number;
+
+					// If this row was in our window, remove it
+					if state.rows.remove(&row_number).is_some() {
+						output_diffs.push(FlowDiff::Remove {
+							pre,
+						});
+
+						// Note: When a row is removed from the window, we might want to
+						// pull in the next row that was previously outside the window.
+						// However, we don't have access to those rows here.
+						// This is a limitation of the current approach.
 					}
 				}
 			}
 		}
 
-		// Save updated state
-		self.save_state(txn, &state)?;
+		// Save the updated state
+		self.save_take_state(txn, &state)?;
 
-		Ok(FlowChange {
-			diffs: output_diffs,
-		})
+		Ok(FlowChange::internal(self.node, change.version, output_diffs))
 	}
 }
-
-impl<T: Transaction> TransformOperator<T> for TakeOperator {
-	fn id(&self) -> FlowNodeId {
-		self.node
-	}
-}
-
-impl<T: Transaction> RawStatefulOperator<T> for TakeOperator {}

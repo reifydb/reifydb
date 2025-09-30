@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 
 pub type CommitVersion = u64;
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub enum JoinType {
 	Inner,
 	Left,
@@ -11,6 +11,18 @@ pub enum JoinType {
 impl Default for JoinType {
 	fn default() -> Self {
 		JoinType::Left
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum JoinStrategy {
+	EagerLoading,
+	LazyLoading,
+}
+
+impl Default for JoinStrategy {
+	fn default() -> Self {
+		JoinStrategy::EagerLoading
 	}
 }
 
