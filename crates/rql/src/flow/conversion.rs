@@ -232,7 +232,7 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 		}),
 		PhysicalPlan::Distinct(node) => PhysicalPlan::Distinct(crate::plan::physical::DistinctNode {
 			input: Box::new(to_owned_physical_plan(*node.input)),
-			columns: node.columns.into_iter().map(|c| c.into_owned()).collect(),
+			columns: node.columns.into_iter().map(|c| c.to_static()).collect(),
 		}),
 		PhysicalPlan::JoinInner(node) => PhysicalPlan::JoinInner(crate::plan::physical::JoinInnerNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),

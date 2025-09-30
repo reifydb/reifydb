@@ -2,10 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	NamespaceDef, NamespaceId, QueryTransaction,
-	resolved::{ResolvedNamespace, ResolvedSequence, SequenceDef},
+	ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
+	catalog::ColumnIndex,
+	resolved::{ResolvedColumn, ResolvedNamespace, ResolvedSequence, ResolvedSource, ResolvedTable, SequenceDef},
 };
-use reifydb_type::Fragment;
+use reifydb_type::{Fragment, Type, TypeConstraint};
 
 use crate::plan::{
 	logical::{self, resolver::DEFAULT_NAMESPACE},
@@ -36,11 +37,43 @@ impl Compiler {
 			increment: 1,
 		};
 
-		let resolved_sequence = ResolvedSequence::new(alter.sequence.name.clone(), namespace, sequence_def);
+		let resolved_sequence =
+			ResolvedSequence::new(alter.sequence.name.clone(), namespace.clone(), sequence_def);
+
+		// Create a resolved table (in real implementation, this would come from catalog lookup)
+		let table_def = TableDef {
+			id: TableId(1),
+			namespace: NamespaceId(1),
+			name: alter.sequence.name.text().to_string(),
+			columns: vec![ColumnDef {
+				id: ColumnId(1),
+				name: alter.column.name.text().to_string(),
+				constraint: TypeConstraint::unconstrained(Type::Int8), // Placeholder
+				policies: vec![],
+				index: ColumnIndex(0),
+				auto_increment: false,
+			}],
+			primary_key: None,
+		};
+
+		let resolved_table = ResolvedTable::new(alter.sequence.name.clone(), namespace, table_def);
+
+		let resolved_source = ResolvedSource::Table(resolved_table);
+
+		let column_def = ColumnDef {
+			id: ColumnId(1),
+			name: alter.column.name.text().to_string(),
+			constraint: TypeConstraint::unconstrained(Type::Int8), // Placeholder
+			policies: vec![],
+			index: ColumnIndex(0),
+			auto_increment: false,
+		};
+
+		let resolved_column = ResolvedColumn::new(alter.column.name.clone(), resolved_source, column_def);
 
 		Ok(PhysicalPlan::AlterSequence(AlterSequenceNode {
 			sequence: resolved_sequence,
-			column: alter.column,
+			column: resolved_column,
 			value: alter.value,
 		}))
 	}

@@ -2,11 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::identifier::{ColumnIdentifier, ColumnSource};
 use reifydb_type::Fragment;
 
 use crate::{
-	ast::{Ast, AstAlterSequence},
+	ast::{
+		Ast, AstAlterSequence,
+		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedColumnSource},
+	},
 	expression::ExpressionCompiler,
 	plan::logical::{AlterSequenceNode, Compiler, LogicalPlan, resolver},
 };
@@ -28,11 +30,11 @@ impl Compiler {
 				(namespace, ast.sequence.name.clone())
 			};
 
-		// Create a fully qualified column identifier
+		// Create a maybe qualified column identifier
 		// The column belongs to the same table as the sequence
-		let column = ColumnIdentifier {
-			source: ColumnSource::Source {
-				namespace,
+		let column = MaybeQualifiedColumnIdentifier {
+			source: MaybeQualifiedColumnSource::Source {
+				namespace: Some(namespace),
 				source: sequence_name,
 			},
 			name: ast.column.clone(),

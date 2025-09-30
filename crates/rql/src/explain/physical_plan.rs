@@ -75,12 +75,8 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			column,
 			value,
 		}) => {
-			let label = format!(
-				"AlterSequence {}.{} SET VALUE {}",
-				sequence.def().name,
-				column.name.text(),
-				value
-			);
+			let label =
+				format!("AlterSequence {}.{} SET VALUE {}", sequence.def().name, column.name(), value);
 			write_node_header(output, prefix, is_last, &label);
 		}
 		PhysicalPlan::Delete(_) => unimplemented!(),
@@ -326,7 +322,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			let label = if columns.is_empty() {
 				"Distinct (primary key)".to_string()
 			} else {
-				let cols: Vec<String> = columns.iter().map(|c| c.name.text().to_string()).collect();
+				let cols: Vec<String> = columns.iter().map(|c| c.name().to_string()).collect();
 				format!("Distinct {{{}}}", cols.join(", "))
 			};
 			write_node_header(output, prefix, is_last, &label);

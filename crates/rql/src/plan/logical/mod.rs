@@ -7,7 +7,6 @@ mod mutate;
 mod query;
 pub mod resolver;
 
-use identifier::ColumnIdentifier;
 use reifydb_catalog::{
 	CatalogQueryTransaction, ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate,
 	view::ViewColumnToCreate,
@@ -28,9 +27,10 @@ use crate::{
 	ast::{
 		Ast, AstPolicy, AstPolicyKind, AstStatement,
 		identifier::{
-			MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedIndexIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
+			MaybeQualifiedIndexIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier,
 		},
 	},
 	plan::logical::alter::{AlterTableNode, AlterViewNode},
@@ -392,7 +392,7 @@ pub struct CreateRingBufferNode<'a> {
 #[derive(Debug)]
 pub struct AlterSequenceNode<'a> {
 	pub sequence: MaybeQualifiedSequenceIdentifier<'a>,
-	pub column: ColumnIdentifier<'a>,
+	pub column: MaybeQualifiedColumnIdentifier<'a>,
 	pub value: Expression<'a>,
 }
 
@@ -453,7 +453,7 @@ pub struct AggregateNode<'a> {
 
 #[derive(Debug)]
 pub struct DistinctNode<'a> {
-	pub columns: Vec<ColumnIdentifier<'a>>,
+	pub columns: Vec<MaybeQualifiedColumnIdentifier<'a>>,
 }
 
 #[derive(Debug)]

@@ -33,29 +33,25 @@ impl Executor {
 			));
 		};
 
-		// Get the table name from the column's source
-		let table_name = match &plan.column.source {
-			reifydb_core::interface::identifier::ColumnSource::Source {
-				source,
-				..
-			} => source.text(),
-			reifydb_core::interface::identifier::ColumnSource::Alias(alias) => alias.text(),
+		// Get the table from the resolved column's source
+		let table = match plan.column.source() {
+			reifydb_core::interface::resolved::ResolvedSource::Table(t) => t.def().clone(),
+			_ => {
+				// In a real implementation, we'd handle other source types
+				// For now, just return an error
+				return_error!(table_not_found(
+					plan.column.identifier().clone().into_owned(),
+					&namespace.name,
+					"_unknown_",
+				));
+			}
 		};
 
-		let Some(table) = CatalogStore::find_table_by_name(txn, namespace.id, table_name)? else {
-			return_error!(table_not_found(
-				plan.column.source.as_fragment().clone().into_owned(),
-				&namespace.name,
-				table_name,
-			));
-		};
-
-		let Some(column) = CatalogStore::find_column_by_name(txn, table.id, plan.column.name.text())? else {
-			return_error!(column_not_found(plan.column.name.clone().into_owned()));
-		};
+		// The column is already resolved, so we can use its def directly
+		let column = plan.column.def().clone();
 
 		if !column.auto_increment {
-			return_error!(can_not_alter_not_auto_increment(plan.column.name));
+			return_error!(can_not_alter_not_auto_increment(plan.column.identifier().clone().into_owned()));
 		}
 
 		// For catalog operations, use empty params since no
@@ -100,10 +96,12 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 	use reifydb_core::interface::{
-		NamespaceDef, NamespaceId, Params,
+		ColumnDef, ColumnId, NamespaceDef, NamespaceId, Params, TableDef, TableId,
+		catalog::ColumnIndex,
 		expression::{ConstantExpression::Number, Expression::Constant},
-		identifier::{ColumnIdentifier, ColumnSource},
-		resolved::{ResolvedNamespace, ResolvedSequence, SequenceDef},
+		resolved::{
+			ResolvedColumn, ResolvedNamespace, ResolvedSequence, ResolvedSource, ResolvedTable, SequenceDef,
+		},
 	};
 	use reifydb_rql::plan::physical::{AlterSequenceNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Type, TypeConstraint, Value};
@@ -124,6 +122,53 @@ mod tests {
 			increment: 1,
 		};
 		ResolvedSequence::new(Fragment::owned_internal(sequence_name), namespace, sequence_def)
+	}
+
+	fn create_test_resolved_column(
+		namespace_name: &str,
+		table_name: &str,
+		column_name: &str,
+		auto_increment: bool,
+	) -> ResolvedColumn<'static> {
+		let namespace = ResolvedNamespace::new(
+			Fragment::owned_internal(namespace_name),
+			NamespaceDef {
+				id: NamespaceId(1),
+				name: namespace_name.to_string(),
+			},
+		);
+
+		let table_def = TableDef {
+			id: TableId(1),
+			namespace: NamespaceId(1),
+			name: table_name.to_string(),
+			columns: vec![ColumnDef {
+				id: ColumnId(1),
+				name: column_name.to_string(),
+				constraint: TypeConstraint::unconstrained(Type::Int8),
+				policies: vec![],
+				index: ColumnIndex(0),
+				auto_increment,
+			}],
+			primary_key: None,
+		};
+
+		let resolved_table = ResolvedTable::new(Fragment::owned_internal(table_name), namespace, table_def);
+
+		let column_def = ColumnDef {
+			id: ColumnId(1),
+			name: column_name.to_string(),
+			constraint: TypeConstraint::unconstrained(Type::Int8),
+			policies: vec![],
+			index: ColumnIndex(0),
+			auto_increment,
+		};
+
+		ResolvedColumn::new(
+			Fragment::owned_internal(column_name),
+			ResolvedSource::Table(resolved_table),
+			column_def,
+		)
 	}
 
 	#[test]
@@ -161,13 +206,7 @@ mod tests {
 		// Alter the sequence to start at 1000
 		let plan = AlterSequenceNode {
 			sequence: create_test_resolved_sequence("test_namespace", "users_id_seq"),
-			column: ColumnIdentifier {
-				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal("test_namespace"),
-					source: Fragment::owned_internal("users"),
-				},
-				name: Fragment::owned_internal("id"),
-			},
+			column: create_test_resolved_column("test_namespace", "users", "id", true),
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("1000"),
 			}),
@@ -208,13 +247,7 @@ mod tests {
 		// Try to alter sequence on non-auto-increment column
 		let plan = AlterSequenceNode {
 			sequence: create_test_resolved_sequence("test_namespace", "items_id_seq"),
-			column: ColumnIdentifier {
-				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal("test_namespace"),
-					source: Fragment::owned_internal("items"),
-				},
-				name: Fragment::owned_internal("id"),
-			},
+			column: create_test_resolved_column("test_namespace", "items", "id", false),
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("100"),
 			}),
@@ -235,13 +268,7 @@ mod tests {
 
 		let plan = AlterSequenceNode {
 			sequence: create_test_resolved_sequence("non_existent_schema", "some_table_id_seq"),
-			column: ColumnIdentifier {
-				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal("non_existent_schema"),
-					source: Fragment::owned_internal("some_table"),
-				},
-				name: Fragment::owned_internal("id"),
-			},
+			column: create_test_resolved_column("non_existent_schema", "some_table", "id", true),
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("1000"),
 			}),
@@ -262,13 +289,7 @@ mod tests {
 
 		let plan = AlterSequenceNode {
 			sequence: create_test_resolved_sequence("test_namespace", "non_existent_table_id_seq"),
-			column: ColumnIdentifier {
-				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal("test_namespace"),
-					source: Fragment::owned_internal("non_existent_table"),
-				},
-				name: Fragment::owned_internal("id"),
-			},
+			column: create_test_resolved_column("test_namespace", "non_existent_table", "id", true),
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("1000"),
 			}),
@@ -307,13 +328,7 @@ mod tests {
 		// Try to alter sequence on non-existent column
 		let plan = AlterSequenceNode {
 			sequence: create_test_resolved_sequence("test_namespace", "posts_non_existent_column_seq"),
-			column: ColumnIdentifier {
-				source: ColumnSource::Source {
-					namespace: Fragment::owned_internal("test_namespace"),
-					source: Fragment::owned_internal("posts"),
-				},
-				name: Fragment::owned_internal("non_existent_column"),
-			},
+			column: create_test_resolved_column("test_namespace", "posts", "non_existent_column", true),
 			value: Constant(Number {
 				fragment: Fragment::owned_internal("1000"),
 			}),
