@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{CowVec, EncodedKey, value::row::EncodedRow};
+use reifydb_core::{CowVec, EncodedKey, interface::Cdc, value::row::EncodedRow};
 use rusqlite::{Error::ToSqlConversionFailure, OptionalExtension, Transaction, params};
 
-use crate::cdc::{CdcTransaction, codec::encode_cdc_transaction};
+use crate::cdc::codec::encode_cdc_transaction;
 
 mod count;
 mod get;
@@ -25,7 +25,7 @@ pub(crate) fn fetch_pre_value(tx: &Transaction, key: &EncodedKey, table: &str) -
 }
 
 /// Store a CDC transaction in the database
-pub(crate) fn store_cdc_transaction(tx: &Transaction, transaction: CdcTransaction) -> rusqlite::Result<()> {
+pub(crate) fn store_cdc_transaction(tx: &Transaction, transaction: Cdc) -> rusqlite::Result<()> {
 	let encoded_transaction =
 		encode_cdc_transaction(&transaction).map_err(|e| ToSqlConversionFailure(Box::new(e)))?;
 

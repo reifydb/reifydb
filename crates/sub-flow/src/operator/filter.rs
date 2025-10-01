@@ -1,12 +1,14 @@
 use reifydb_core::{
-	flow::{FlowChange, FlowDiff},
 	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
 	value::row::Row,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::{Params, Value, return_internal_error};
 
-use crate::operator::Operator;
+use crate::{
+	flow::{FlowChange, FlowDiff},
+	operator::Operator,
+};
 
 // Static empty params instance for use in EvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
@@ -78,7 +80,7 @@ impl<T: Transaction> Operator<T> for FilterOperator {
 			}
 		}
 
-		Ok(FlowChange::internal(self.node, result))
+		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 }
 

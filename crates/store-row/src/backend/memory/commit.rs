@@ -1,92 +1,53 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::mpsc;
+
 use reifydb_core::{
 	CommitVersion, CowVec, Result,
 	delta::Delta,
 	interface::{MultiVersionCommit, SingleVersionCommit, TransactionId},
-	return_error,
 	util::now_millis,
 };
+use reifydb_type::Error;
 
-use super::{Memory, MultiVersionRowContainer};
-use crate::{
-	backend::diagnostic::sequence_exhausted,
-	cdc::{CdcTransaction, CdcTransactionChange, generate_cdc_change},
-};
+use crate::{backend::memory::write::WriteCommand, memory::Memory, storage_internal_error};
 
 impl MultiVersionCommit for Memory {
 	fn commit(&self, delta: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
-		let timestamp = now_millis();
+		let (respond_to, response) = mpsc::channel();
 
-		let mut cdc_changes = Vec::new();
+		self.writer
+			.send(WriteCommand::MultiVersionCommit {
+				deltas: delta,
+				version,
+				transaction,
+				timestamp: now_millis(),
+				respond_to,
+			})
+			.map_err(|_| Error(storage_internal_error!("Memory writer disconnected")))?;
 
-		for (idx, delta) in delta.iter().enumerate() {
-			let sequence = match u16::try_from(idx + 1) {
-				Ok(seq) => seq,
-				Err(_) => return_error!(sequence_exhausted()),
-			};
-
-			let before_value = self.multi.get(delta.key()).and_then(|entry| {
-				let values = entry.value();
-				values.get_latest()
-			});
-
-			match &delta {
-				Delta::Set {
-					key,
-					row,
-				} => {
-					let item = self
-						.multi
-						.get_or_insert_with(key.clone(), MultiVersionRowContainer::new);
-					let val = item.value();
-					val.insert(version, Some(row.clone()));
-				}
-				Delta::Remove {
-					key,
-				} => {
-					if let Some(values) = self.multi.get(key) {
-						let values = values.value();
-						if !values.is_empty() {
-							values.insert(version, None);
-						}
-					}
-				}
-			}
-
-			cdc_changes.push(CdcTransactionChange {
-				sequence,
-				change: generate_cdc_change(delta.clone(), before_value),
-			});
+		match response.recv() {
+			Ok(result) => result,
+			Err(_) => Err(Error(storage_internal_error!("Memory writer failed to respond"))),
 		}
-
-		if !cdc_changes.is_empty() {
-			let cdc_transaction = CdcTransaction::new(version, timestamp, transaction, cdc_changes);
-			self.cdc_transactions.insert(version, cdc_transaction);
-		}
-
-		Ok(())
 	}
 }
 
 impl SingleVersionCommit for Memory {
 	fn commit(&mut self, delta: CowVec<Delta>) -> Result<()> {
-		for delta in delta {
-			match delta {
-				Delta::Set {
-					key,
-					row,
-				} => {
-					self.single.insert(key, row);
-				}
-				Delta::Remove {
-					key,
-				} => {
-					self.single.remove(&key);
-				}
-			}
+		let (respond_to, response) = mpsc::channel();
+
+		self.writer
+			.send(WriteCommand::SingleVersionCommit {
+				deltas: delta,
+				respond_to,
+			})
+			.map_err(|_| Error(storage_internal_error!("Memory writer disconnected")))?;
+
+		match response.recv() {
+			Ok(result) => result,
+			Err(_) => Err(Error(storage_internal_error!("Memory writer failed to respond"))),
 		}
-		Ok(())
 	}
 }

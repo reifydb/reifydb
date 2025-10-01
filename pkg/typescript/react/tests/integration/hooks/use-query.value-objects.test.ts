@@ -6,22 +6,18 @@
 
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useQueryOne, useQueryMany, connection, Schema} from '../../../src';
+import {useQueryOne, useQueryMany, getConnection, clearAllConnections, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe('useQuery with Value Objects and Schemas', () => {
     beforeAll(async () => {
         await waitForDatabase();
-        await connection.connect();
+        const conn = getConnection();
+        await conn.connect();
     }, 30000);
 
-    afterEach(() => {
-        // Maintain connection between tests
-    });
-
     afterAll(() => {
-        // Disconnect after all tests
-        connection.disconnect();
+        clearAllConnections();
     });
 
     describe('Value Objects', () => {

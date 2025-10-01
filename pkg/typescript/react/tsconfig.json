@@ -10,10 +10,12 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "outDir": "dist"
+    "outDir": "dist",
+    "jsx": "react"
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.tsx"
   ],
   "exclude": [
     "dist",

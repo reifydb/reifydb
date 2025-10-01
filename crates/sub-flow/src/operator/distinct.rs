@@ -9,7 +9,6 @@ use bincode::{
 };
 use reifydb_core::{
 	CowVec, Error,
-	flow::{FlowChange, FlowDiff},
 	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
 	value::row::{EncodedRow, EncodedRowLayout, EncodedRowNamedLayout, Row},
 };
@@ -18,10 +17,13 @@ use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_type::{Blob, Params, RowNumber, Type, internal_error};
 use serde::{Deserialize, Serialize};
 
-use crate::operator::{
-	Operator,
-	stateful::{RawStatefulOperator, SingleStateful},
-	transform::TransformOperator,
+use crate::{
+	flow::{FlowChange, FlowDiff},
+	operator::{
+		Operator,
+		stateful::{RawStatefulOperator, SingleStateful},
+		transform::TransformOperator,
+	},
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -339,6 +341,6 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 
 		self.save_distinct_state(txn, &state)?;
 
-		Ok(FlowChange::internal(self.node, result))
+		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 }

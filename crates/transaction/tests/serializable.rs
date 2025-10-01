@@ -14,7 +14,7 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path:
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	event::EventBus,
-	interface::{MultiVersionCommandTransaction, MultiVersionRow},
+	interface::{MultiVersionCommandTransaction, MultiVersionQueryTransaction, MultiVersionRow},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::row::EncodedRow,
 };
@@ -173,7 +173,7 @@ impl<'a> testscript::Runner for MvccRunner {
 
 					let value = match t {
 						Transaction::Query(rx) => {
-							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
+							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.row.to_vec())))
 						}
 						Transaction::Command(tx) => {
 							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
@@ -342,7 +342,7 @@ impl<'a> testscript::Runner for MvccRunner {
 						rx.read_as_of_version_inclusive(version);
 					}
 					Transaction::Command(tx) => {
-						let _ = tx.read_as_of_version_inclusive(version);
+						tx.read_as_of_version_inclusive(version)?;
 					}
 				}
 			}

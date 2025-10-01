@@ -232,19 +232,23 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 		}),
 		PhysicalPlan::Distinct(node) => PhysicalPlan::Distinct(crate::plan::physical::DistinctNode {
 			input: Box::new(to_owned_physical_plan(*node.input)),
-			columns: node.columns.into_iter().map(|c| c.into_owned()).collect(),
+			columns: node.columns.into_iter().map(|c| c.to_static()).collect(),
 		}),
 		PhysicalPlan::JoinInner(node) => PhysicalPlan::JoinInner(crate::plan::physical::JoinInnerNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
+			strategy: node.strategy.clone(),
+			right_query: node.right_query.clone(),
 		}),
 		PhysicalPlan::JoinLeft(node) => PhysicalPlan::JoinLeft(crate::plan::physical::JoinLeftNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
+			strategy: node.strategy.clone(),
+			right_query: node.right_query.clone(),
 		}),
 		PhysicalPlan::Extend(node) => PhysicalPlan::Extend(crate::plan::physical::ExtendNode {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),

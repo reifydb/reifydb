@@ -229,7 +229,7 @@ pub trait Scheduler<T: Transaction>: Send + Sync {
 	/// The next execution time is calculated when the task is picked up
 	/// for execution (not when it completes). This means if a task takes
 	/// longer than its interval, multiple instances may be queued.
-	fn schedule_every(&self, task: BoxedTask<T>, interval: Duration) -> reifydb_core::Result<TaskHandle>;
+	fn schedule_every(&self, interval: Duration, task: BoxedTask<T>) -> reifydb_core::Result<TaskHandle>;
 
 	/// Cancel a scheduled task
 	fn cancel(&self, handle: TaskHandle) -> reifydb_core::Result<()>;

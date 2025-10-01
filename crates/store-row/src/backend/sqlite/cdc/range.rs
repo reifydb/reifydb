@@ -5,7 +5,7 @@ use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
 	CommitVersion, CowVec, Result,
-	interface::{CdcEvent, CdcRange},
+	interface::{Cdc, CdcRange},
 	value::row::EncodedRow,
 };
 
@@ -26,7 +26,7 @@ pub struct Range {
 	conn: Reader,
 	start: Bound<CommitVersion>,
 	end: Bound<CommitVersion>,
-	buffer: VecDeque<CdcEvent>,
+	buffer: VecDeque<Cdc>,
 	last_version: Option<CommitVersion>,
 	batch_size: usize,
 	exhausted: bool,
@@ -80,13 +80,10 @@ impl Range {
 		let count = transactions.len();
 
 		for (version, encoded_transaction) in transactions {
-			if let Ok(transaction) = decode_cdc_transaction(&encoded_transaction) {
+			if let Ok(txn) = decode_cdc_transaction(&encoded_transaction) {
 				self.last_version = Some(version);
-				// Add all events from this transaction to the
-				// buffer
-				for event in transaction.to_events() {
-					self.buffer.push_back(event);
-				}
+				// Add the transaction to the buffer
+				self.buffer.push_back(txn);
 			}
 		}
 
@@ -143,7 +140,7 @@ impl Range {
 }
 
 impl Iterator for Range {
-	type Item = CdcEvent;
+	type Item = Cdc;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

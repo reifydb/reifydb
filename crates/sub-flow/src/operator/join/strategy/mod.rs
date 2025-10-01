@@ -1,27 +1,57 @@
-use reifydb_core::{JoinType, flow::FlowDiff, interface::Transaction, value::row::Row};
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_core::{CommitVersion, JoinType, interface::Transaction, value::row::Row};
+use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
+use reifydb_rql::query::QueryString;
 
-use crate::operator::join::{JoinSide, JoinState, operator::JoinOperator};
+use crate::{
+	flow::FlowDiff,
+	operator::join::{JoinSide, JoinState, operator::JoinOperator},
+};
 
-mod inner;
-mod left;
+mod eager;
+mod inner_eager;
+mod inner_lazy;
+mod lazy;
+mod left_eager;
+mod left_lazy;
 
-pub(crate) use inner::InnerJoin;
-pub(crate) use left::LeftJoin;
+use crate::operator::join::strategy::{
+	inner_eager::InnerEagerJoin, inner_lazy::InnerLazyJoin, left_eager::LeftEagerJoin, left_lazy::LeftLazyJoin,
+};
 
-#[derive(Debug, Clone)]
 pub(crate) enum JoinStrategy {
-	Left(LeftJoin),
-	Inner(InnerJoin),
+	LeftEager(LeftEagerJoin),
+	LeftLazy(LeftLazyJoin),
+	InnerEager(InnerEagerJoin),
+	InnerLazy(InnerLazyJoin),
 }
 
 impl JoinStrategy {
-	/// Factory method to create strategy from JoinType
-	pub(crate) fn from_join_type(join_type: JoinType) -> Self {
-		match join_type {
-			JoinType::Left => JoinStrategy::Left(LeftJoin),
-			JoinType::Inner => JoinStrategy::Inner(InnerJoin),
+	pub(crate) fn from(
+		storage_strategy: reifydb_core::JoinStrategy,
+		join_type: JoinType,
+		right_query: QueryString,
+		executor: Executor,
+	) -> Self {
+		match (storage_strategy, join_type) {
+			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Left) => {
+				JoinStrategy::LeftEager(LeftEagerJoin)
+			}
+			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Left) => {
+				JoinStrategy::LeftLazy(LeftLazyJoin {
+					query: right_query,
+					executor,
+				})
+			}
+			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Inner) => {
+				JoinStrategy::InnerEager(InnerEagerJoin)
+			}
+			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Inner) => {
+				JoinStrategy::InnerLazy(InnerLazyJoin {
+					query: right_query,
+					executor,
+				})
+			}
 		}
 	}
 
@@ -34,10 +64,21 @@ impl JoinStrategy {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_insert(txn, post, side, key_hash, state, operator),
-			JoinStrategy::Inner(s) => s.handle_insert(txn, post, side, key_hash, state, operator),
+			JoinStrategy::LeftEager(join_type) => {
+				join_type.handle_insert(txn, post, side, key_hash, state, operator)
+			}
+			JoinStrategy::LeftLazy(join_type) => {
+				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
+			}
+			JoinStrategy::InnerEager(join_type) => {
+				join_type.handle_insert(txn, post, side, key_hash, state, operator)
+			}
+			JoinStrategy::InnerLazy(join_type) => {
+				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
+			}
 		}
 	}
 
@@ -50,10 +91,21 @@ impl JoinStrategy {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::Left(s) => s.handle_remove(txn, pre, side, key_hash, state, operator),
-			JoinStrategy::Inner(s) => s.handle_remove(txn, pre, side, key_hash, state, operator),
+			JoinStrategy::LeftEager(join_type) => {
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
+			}
+			JoinStrategy::LeftLazy(join_type) => {
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator, version)
+			}
+			JoinStrategy::InnerEager(join_type) => {
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
+			}
+			JoinStrategy::InnerLazy(join_type) => {
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator, version)
+			}
 		}
 	}
 
@@ -68,14 +120,19 @@ impl JoinStrategy {
 		new_key: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::Left(s) => {
-				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
+			JoinStrategy::LeftEager(join_type) => {
+				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
 			}
-			JoinStrategy::Inner(s) => {
-				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
+			JoinStrategy::LeftLazy(join_type) => join_type
+				.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
+			JoinStrategy::InnerEager(join_type) => {
+				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
 			}
+			JoinStrategy::InnerLazy(join_type) => join_type
+				.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
 		}
 	}
 }

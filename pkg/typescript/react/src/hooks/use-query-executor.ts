@@ -1,5 +1,6 @@
 import {useState, useCallback, useRef} from 'react';
 import {Column, SchemaNode} from '@reifydb/core';
+import {ConnectionConfig} from '../connection/connection';
 import {useConnection} from './use-connection';
 
 export interface QueryResult<T = any> {
@@ -16,8 +17,12 @@ export interface QueryState<T = any> {
     executionTime: number | undefined;
 }
 
-export function useQueryExecutor<T = any>() {
-    const {client} = useConnection();
+export interface QueryExecutorOptions {
+    connectionConfig?: ConnectionConfig;
+}
+
+export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
+    const {client} = useConnection(options?.connectionConfig);
 
     const [state, setState] = useState<QueryState<T>>({
         isExecuting: false,

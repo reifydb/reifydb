@@ -6,6 +6,7 @@
 pub mod builder;
 #[allow(dead_code, unused_variables)]
 mod engine;
+pub mod flow;
 #[allow(dead_code, unused_variables)]
 mod operator;
 pub mod subsystem;

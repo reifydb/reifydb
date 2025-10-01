@@ -75,7 +75,7 @@ impl<T: Transaction> SchedulerClient<T> {
 }
 
 impl<T: Transaction> Scheduler<T> for SchedulerClient<T> {
-	fn schedule_every(&self, task: BoxedTask<T>, interval: Duration) -> Result<TaskHandle> {
+	fn schedule_every(&self, interval: Duration, task: BoxedTask<T>) -> reifydb_core::Result<TaskHandle> {
 		// Check if the subsystem is running
 		if !self.running.load(Ordering::Relaxed) {
 			// Generate a handle for the task

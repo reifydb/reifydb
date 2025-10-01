@@ -9,14 +9,14 @@
 
 mod builder;
 mod conversion;
+pub mod flow;
+pub mod graph;
+pub mod node;
 mod operator;
 mod source;
 
 use reifydb_catalog::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id};
-use reifydb_core::{
-	flow::{Flow, FlowEdge, FlowNode, FlowNodeType},
-	interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef},
-};
+use reifydb_core::interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef};
 
 use self::{
 	conversion::to_owned_physical_plan,
@@ -240,3 +240,9 @@ pub(crate) trait CompileOperator<T: CommandTransaction> {
 	/// Compiles this operator into a flow operator
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> crate::Result<FlowNodeId>;
 }
+
+// Re-export the flow types for external use
+pub use self::{
+	flow::Flow,
+	node::{FlowEdge, FlowNode, FlowNodeType},
+};

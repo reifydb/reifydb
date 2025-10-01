@@ -2,34 +2,32 @@ use reifydb_core::interface::FlowNodeId;
 use serde::{Deserialize, Serialize};
 
 use super::{Schema, SerializedRow, Store};
+use crate::operator::join::store::UndefinedTracker;
 
-/// The complete join state
 pub(crate) struct JoinState {
-	// Schema is stored separately and loaded once
 	pub(crate) schema: Schema,
-	// Store for left side entries
-	pub(crate) left_store: Store<JoinSideEntry>,
-	// Store for right side entries
-	pub(crate) right_store: Store<JoinSideEntry>,
+	pub(crate) left: Store<JoinSideEntry>,
+	pub(crate) right: Store<JoinSideEntry>,
+	/// Track which left rows have had undefined joins emitted
+	pub(crate) undefined_emitted: UndefinedTracker,
 }
 
 impl JoinState {
 	pub(crate) fn new(node_id: FlowNodeId, schema: Schema) -> Self {
 		Self {
 			schema,
-			left_store: Store::new(node_id, JoinSide::Left),
-			right_store: Store::new(node_id, JoinSide::Right),
+			left: Store::new(node_id, JoinSide::Left),
+			right: Store::new(node_id, JoinSide::Right),
+			undefined_emitted: UndefinedTracker::new(node_id),
 		}
 	}
 }
 
-/// Represents rows stored for each side of the join
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct JoinSideEntry {
 	pub(crate) rows: Vec<SerializedRow>,
 }
 
-/// Which side of the join
 #[derive(Debug, Clone, Copy)]
 pub(crate) enum JoinSide {
 	Left,

@@ -7,14 +7,8 @@ use std::{thread::sleep, time::Duration};
 
 use reifydb::{
 	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
-	core::{
-		flow::FlowChange,
-		interface::{FlowNodeId, Transaction, logging::LogLevel::Info},
-	},
-	embedded,
-	engine::{StandardCommandTransaction, StandardRowEvaluator},
-	log_info,
-	sub_flow::{FlowBuilder, Operator, TransformOperator},
+	core::interface::logging::LogLevel::Info,
+	embedded, log_info,
 	sub_logging::{FormatStyle, LoggingBuilder},
 };
 
@@ -29,70 +23,46 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 		.level(Info)
 }
 
-struct MyOP;
-
-impl<T: Transaction> Operator<T> for MyOP {
-	fn id(&self) -> FlowNodeId {
-		FlowNodeId(12345)
-	}
-
-	fn apply(
-		&self,
-		_txn: &mut StandardCommandTransaction<T>,
-		change: FlowChange,
-		_evaluator: &StandardRowEvaluator,
-	) -> reifydb::Result<FlowChange> {
-		println!("INVOKED");
-		Ok(FlowChange::internal(FlowNodeId(12345), change.diffs))
-	}
-}
-
-impl<T: Transaction> TransformOperator<T> for MyOP {}
-
-fn flow_configuration<T: Transaction>(flow: FlowBuilder<T>) -> FlowBuilder<T> {
-	flow.register_operator("test".to_string(), |_node, _exprs| Ok(Box::new(MyOP {})))
-}
-
 fn main() {
-	let mut db: DB = embedded::memory_optimistic()
-		.with_logging(logger_configuration)
-		.with_flow(flow_configuration)
-		.with_worker(|wp| wp)
-		.build()
-		.unwrap();
+	let mut db: DB =
+		embedded::memory_optimistic().with_logging(logger_configuration).with_worker(|wp| wp).build().unwrap();
 
 	db.start().unwrap();
+
+	// Test left join with duplicate keys on both sides
+	// Should produce Cartesian product for matching keys
 
 	// Create namespace
 	log_info!("Creating namespace test...");
 	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
 
-	// Create source table
-	log_info!("Creating table test.source...");
+	// Create tables
+	log_info!("Creating table test.students...");
+	db.command_as_root(r#"create table test.students { id: int4, name: utf8, class_id: int4 }"#, Params::None)
+		.unwrap();
+
+	log_info!("Creating table test.courses...");
 	db.command_as_root(
-		r#"
-		create table test.products { id: int4, name: utf8 };
-		create table test.categories { id: int4, product_id: int4, category: utf8 };
-	"#,
+		r#"create table test.courses { id: int4, class_id: int4, subject: utf8, teacher: utf8 }"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Create deferred view
-	log_info!("Creating deferred view test.with_undefined...");
+	// Create LEFT JOIN view for student courses
+	log_info!("Creating deferred view test.student_courses...");
 	db.command_as_root(
 		r#"
-create deferred view test.product_catalog {
-    id: int4,
-    name: utf8,
-    category: utf8
+create deferred view test.student_courses {
+    student_name: utf8,
+    subject: utf8,
+    teacher: utf8
 } as {
-    from test.products
-    left join { from test.categories } categories on id == categories.product_id
+    from test.students
+    left join { from test.courses } courses on class_id == courses.class_id with { strategy: lazy_loading }
     map {
-        id: id,
-        name: name,
-        category: category
+        student_name: name,
+        subject: subject,
+        teacher: teacher
     }
 }
 	"#,
@@ -100,29 +70,48 @@ create deferred view test.product_catalog {
 	)
 	.unwrap();
 
-	// Insert data with undefined values
-	log_info!("Inserting data with undefined values...");
+	// Insert students with duplicate class_id
+	log_info!("Inserting students with duplicate class_id...");
 	db.command_as_root(
 		r#"
 from [
-    {id: 1, name: "Laptop"},
-    {id: 2, name: "Phone"},
-    {id: 3, name: "Tablet"}
-] insert test.products
+    {id: 1, name: "Alice", class_id: 10},
+    {id: 2, name: "Bob", class_id: 10},
+    {id: 3, name: "Charlie", class_id: 20},
+    {id: 4, name: "Diana", class_id: 30}
+] insert test.students
 	"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Let the background task run for a while
-	sleep(Duration::from_secs(1));
+	// Insert courses with duplicate class_id
+	log_info!("Inserting courses with duplicate class_id...");
+	db.command_as_root(
+		r#"
+from [
+    {id: 101, class_id: 10, subject: "Math", teacher: "P Smith"},
+    {id: 102, class_id: 10, subject: "Science", teacher: "P Jones"},
+    {id: 103, class_id: 20, subject: "English", teacher: "P Brown"}
+] insert test.courses
+	"#,
+		Params::None,
+	)
+	.unwrap();
 
-	// Query the view
-	log_info!("Querying test.with_undefined...");
-	let result = db.query_as_root("from test.product_catalog sort id asc", Params::None).unwrap();
+	// Let the background task process
+	sleep(Duration::from_millis(100));
+
+	// Should show Cartesian product: Alice and Bob each get 2 rows (Math and Science)
+	// Charlie gets 1 row (English), Diana gets 1 row with Undefined
+	log_info!("Querying LEFT JOIN view with sorting...");
+	let result = db
+		.query_as_root("from test.student_courses sort { student_name asc, subject asc }", Params::None)
+		.unwrap();
 	for frame in result {
-		println!("View data:\n{}", frame);
+		println!("Student courses (sorted):\n{}", frame);
 	}
 
+	log_info!("✅ Test completed successfully!");
 	log_info!("Shutting down...");
 }

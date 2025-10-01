@@ -3,25 +3,28 @@
 
 use JoinType::{Inner, Left};
 use reifydb_core::{
-	JoinType,
-	interface::{CommandTransaction, FlowNodeId, evaluate::expression::Expression},
+	JoinStrategy, JoinType,
+	interface::{CommandTransaction, FlowNodeId, expression::Expression},
 };
 
 use super::super::{
-	CompileOperator, FlowCompiler,
+	CompileOperator, FlowCompiler, FlowNodeType,
 	conversion::{to_owned_expressions, to_owned_physical_plan},
 };
 use crate::{
 	Result,
 	plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
+	query::QueryString,
 };
 
 pub(crate) struct JoinCompiler {
 	pub join_type: JoinType,
 	pub left: Box<PhysicalPlan<'static>>,
 	pub right: Box<PhysicalPlan<'static>>,
+	pub right_query: QueryString,
 	pub on: Vec<Expression<'static>>,
 	pub alias: Option<String>,
+	pub strategy: JoinStrategy,
 }
 
 impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
@@ -30,8 +33,10 @@ impl<'a> From<JoinInnerNode<'a>> for JoinCompiler {
 			join_type: Inner,
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
+			right_query: node.right_query,
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|f| f.text().to_string()),
+			strategy: node.strategy,
 		}
 	}
 }
@@ -42,29 +47,29 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 			join_type: Left,
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
+			right_query: node.right_query,
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|f| f.text().to_string()),
+			strategy: node.strategy,
 		}
 	}
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		// Compile left and right plans
 		let left_node = compiler.compile_plan(*self.left)?;
 		let right_node = compiler.compile_plan(*self.right)?;
 
-		// Extract left and right keys from the join conditions
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
 
-		// Build the join node with the appropriate join type
-		use reifydb_core::flow::FlowNodeType::Join;
 		let node = compiler
-			.build_node(Join {
+			.build_node(FlowNodeType::Join {
 				join_type: self.join_type,
 				left: left_keys,
 				right: right_keys,
 				alias: self.alias,
+				strategy: self.strategy,
+				right_query: self.right_query,
 			})
 			.with_inputs([left_node, right_node])
 			.build()?;

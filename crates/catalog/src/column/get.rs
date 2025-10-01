@@ -56,7 +56,7 @@ impl CatalogStore {
 		let name = LAYOUT.get_utf8(&row, column::NAME).to_string();
 		let base_type = Type::from_u8(LAYOUT.get_u8(&row, column::VALUE));
 		let index = ColumnIndex(LAYOUT.get_u16(&row, column::INDEX));
-		let auto_increment = LAYOUT.get_bool(&row, column::ASVTO_INCREMENT);
+		let auto_increment = LAYOUT.get_bool(&row, column::AUTO_INCREMENT);
 
 		// Reconstruct constraint from stored blob
 		let constraint_bytes = LAYOUT.get_blob(&row, column::CONSTRAINT);

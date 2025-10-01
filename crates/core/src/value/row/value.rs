@@ -100,7 +100,7 @@ impl EncodedRowLayout {
 			) => self.set_undefined(row, index),
 
 			(Type::Undefined, Value::Undefined) => {}
-			(_, _) => unreachable!(),
+			(ty, val) => unreachable!("{ty:?}, {val:?}"),
 		}
 	}
 

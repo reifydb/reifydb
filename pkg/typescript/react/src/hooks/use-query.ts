@@ -1,12 +1,18 @@
 import {useEffect, useMemo} from 'react';
 import {SchemaNode, InferSchema} from '@reifydb/core';
-import {useQueryExecutor, type QueryResult} from './use-query-executor';
+import {ConnectionConfig} from '../connection/connection';
+import {useQueryExecutor, type QueryResult, type QueryExecutorOptions} from './use-query-executor';
+
+export interface QueryOptions extends QueryExecutorOptions {
+    connectionConfig?: ConnectionConfig;
+}
 
 // Single query hook - returns a single result
 export function useQueryOne<S extends SchemaNode = any>(
     rql: string,
     params?: any,
-    schema?: S
+    schema?: S,
+    options?: QueryOptions
 ): {
     isExecuting: boolean;
     result: QueryResult<S extends SchemaNode ? InferSchema<S> : any> | undefined;
@@ -17,7 +23,7 @@ export function useQueryOne<S extends SchemaNode = any>(
         results,
         error,
         query
-    } = useQueryExecutor<S extends SchemaNode ? InferSchema<S> : any>();
+    } = useQueryExecutor<S extends SchemaNode ? InferSchema<S> : any>(options);
 
     useEffect(() => {
         // Pass schema as array for the executor
@@ -37,7 +43,8 @@ export function useQueryOne<S extends SchemaNode = any>(
 export function useQueryMany<S extends readonly SchemaNode[] = readonly SchemaNode[]>(
     statements: string | string[],
     params?: any,
-    schemas?: S
+    schemas?: S,
+    options?: QueryOptions
 ): {
     isExecuting: boolean;
     results: QueryResult<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>[] | undefined;
@@ -48,7 +55,7 @@ export function useQueryMany<S extends readonly SchemaNode[] = readonly SchemaNo
         results,
         error,
         query
-    } = useQueryExecutor<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>();
+    } = useQueryExecutor<S extends readonly SchemaNode[] ? InferSchema<S[number]> : any>(options);
 
     useEffect(() => {
         query(statements, params, schemas);

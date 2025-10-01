@@ -4,6 +4,9 @@
 use reifydb_type::Fragment;
 use serde::{Deserialize, Serialize};
 
+// NOTE: ColumnIdentifier is kept temporarily for backward compatibility with the expression system.
+// It should be replaced with proper resolved types in the future.
+
 /// Column identifier with source qualification
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnIdentifier<'a> {

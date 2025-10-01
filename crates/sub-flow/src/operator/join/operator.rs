@@ -6,35 +6,39 @@ use bincode::{
 };
 use reifydb_core::{
 	EncodedKey, Error, JoinType,
-	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
 	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
 	util::encoding::keycode::KeySerializer,
 	value::row::{EncodedRowLayout, EncodedRowNamedLayout, Row},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::{Hash128, xxh3_128};
+use reifydb_rql::query::QueryString;
 use reifydb_type::{Blob, Params, Type, Value, internal_error};
 
 use super::{JoinSide, JoinState, JoinStrategy, Schema};
-use crate::operator::{
-	Operator,
-	stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful, state_get, state_set},
-	transform::TransformOperator,
+use crate::{
+	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
+	operator::{
+		Operator,
+		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful, state_get, state_set},
+		transform::TransformOperator,
+	},
 };
 
 static EMPTY_PARAMS: Params = Params::None;
 
 pub struct JoinOperator {
 	node: FlowNodeId,
-	join_type: JoinType,
 	strategy: JoinStrategy,
 	left_node: FlowNodeId,
 	right_node: FlowNodeId,
 	left_exprs: Vec<Expression<'static>>,
-	right_exprs: Vec<Expression<'static>>,
+	pub(crate) right_exprs: Vec<Expression<'static>>,
+	right_query: QueryString,
 	alias: Option<String>,
 	layout: EncodedRowLayout,
 	row_number_provider: RowNumberProvider,
+	executor: Executor,
 }
 
 impl JoinOperator {
@@ -45,23 +49,27 @@ impl JoinOperator {
 		right_node: FlowNodeId,
 		left_exprs: Vec<Expression<'static>>,
 		right_exprs: Vec<Expression<'static>>,
+		right_query: QueryString,
 		alias: Option<String>,
+		storage_strategy: reifydb_core::JoinStrategy,
+		executor: Executor,
 	) -> Self {
-		let strategy = JoinStrategy::from_join_type(join_type);
+		let strategy = JoinStrategy::from(storage_strategy, join_type, right_query.clone(), executor.clone());
 		let layout = Self::state_layout();
 		let row_number_provider = RowNumberProvider::new(node);
 
 		Self {
 			node,
-			join_type,
 			strategy,
 			left_node,
 			right_node,
 			left_exprs,
 			right_exprs,
+			right_query,
 			alias,
 			layout,
 			row_number_provider,
+			executor,
 		}
 	}
 
@@ -323,7 +331,7 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		// Check for self-referential calls (should never happen)
 		if let FlowChangeOrigin::Internal(from_node) = &change.origin {
 			if *from_node == self.node {
-				return Ok(FlowChange::internal(self.node, Vec::new()));
+				return Ok(FlowChange::internal(self.node, change.version, Vec::new()));
 			}
 		}
 
@@ -360,8 +368,15 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 						}
 					};
 
-					let diffs =
-						self.strategy.handle_insert(txn, &post, side, key, &mut state, self)?;
+					let diffs = self.strategy.handle_insert(
+						txn,
+						&post,
+						side,
+						key,
+						&mut state,
+						self,
+						change.version,
+					)?;
 					result.extend(diffs);
 				}
 				FlowDiff::Remove {
@@ -375,8 +390,15 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 							self.compute_join_key(&pre, &self.right_exprs, evaluator)?
 						}
 					};
-					let diffs =
-						self.strategy.handle_remove(txn, &pre, side, key, &mut state, self)?;
+					let diffs = self.strategy.handle_remove(
+						txn,
+						&pre,
+						side,
+						key,
+						&mut state,
+						self,
+						change.version,
+					)?;
 					result.extend(diffs);
 				}
 				FlowDiff::Update {
@@ -400,7 +422,15 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 						),
 					};
 					let diffs = self.strategy.handle_update(
-						txn, &pre, &post, side, old_key, new_key, &mut state, self,
+						txn,
+						&pre,
+						&post,
+						side,
+						old_key,
+						new_key,
+						&mut state,
+						self,
+						change.version,
 					)?;
 					result.extend(diffs);
 				}
@@ -410,6 +440,6 @@ impl<T: Transaction> Operator<T> for JoinOperator {
 		// Save the updated schema
 		self.save_schema(txn, &state.schema)?;
 
-		Ok(FlowChange::internal(self.node, result))
+		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 }

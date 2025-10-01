@@ -14,7 +14,7 @@ use std::{
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{
-		CdcEvent, CdcQueryTransaction, CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
+		Cdc, CdcChange, CdcQueryTransaction, CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
 		MultiVersionCommandTransaction, Transaction,
 		key::{CdcConsumerKey, EncodableKey},
 	},
@@ -88,24 +88,43 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 
 		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
 
-		let events = fetch_events_since(&mut transaction, checkpoint)?;
-		if events.is_empty() {
+		let transactions = fetch_cdcs_since(&mut transaction, checkpoint)?;
+		if transactions.is_empty() {
 			return transaction.rollback();
 		}
 
-		let latest_version = events.iter().map(|event| event.version).max().unwrap_or(checkpoint);
+		let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
 
-		let row_events = events
+		// Filter transactions to only those with Row changes
+		let row_transactions = transactions
 			.into_iter()
-			.filter(|event| matches!(Key::decode(event.key()), Some(Key::Row(_))))
+			.filter(|tx| {
+				tx.changes.iter().any(|change| match &change.change {
+					CdcChange::Insert {
+						key,
+						..
+					}
+					| CdcChange::Update {
+						key,
+						..
+					}
+					| CdcChange::Delete {
+						key,
+						..
+					} => {
+						matches!(Key::decode(key), Some(Key::Row(_)))
+					}
+				})
+			})
 			.collect::<Vec<_>>();
 
-		if !row_events.is_empty() {
-			consumer.consume(&mut transaction, row_events)?;
+		if !row_transactions.is_empty() {
+			consumer.consume(&mut transaction, row_transactions)?;
 		}
 
 		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;
-		transaction.commit().map(|_| ())
+		transaction.commit()?;
+		Ok(())
 	}
 
 	fn polling_loop(
@@ -124,8 +143,6 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 			if let Err(error) = Self::consume_batch(&state, &engine, &consumer) {
 				log_error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
 			}
-
-			thread::sleep(config.poll_interval);
 		}
 
 		log_debug!("[Consumer {:?}] Stopped", config.consumer_id);
@@ -171,6 +188,6 @@ impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer for PollConsumer<T,
 	}
 }
 
-fn fetch_events_since(txn: &mut impl CommandTransaction, since_version: CommitVersion) -> Result<Vec<CdcEvent>> {
-	Ok(txn.begin_cdc_query()?.range(Bound::Excluded(since_version), Bound::Unbounded)?.collect())
+fn fetch_cdcs_since(txn: &mut impl CommandTransaction, since_version: CommitVersion) -> Result<Vec<Cdc>> {
+	txn.with_cdc_query(|cdc| Ok(cdc.range(Bound::Excluded(since_version), Bound::Unbounded)?.collect::<Vec<_>>()))
 }

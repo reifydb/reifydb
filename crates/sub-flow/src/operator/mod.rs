@@ -1,8 +1,7 @@
-use reifydb_core::{
-	flow::FlowChange,
-	interface::{FlowNodeId, Transaction},
-};
+use reifydb_core::interface::{FlowNodeId, Transaction};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+
+use crate::flow::FlowChange;
 
 mod apply;
 mod distinct;

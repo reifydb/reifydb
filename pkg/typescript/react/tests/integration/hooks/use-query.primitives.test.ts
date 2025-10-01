@@ -6,22 +6,18 @@
 
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useQueryOne, useQueryMany, connection, Schema} from '../../../src';
+import {useQueryOne, useQueryMany, getConnection, clearAllConnections, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe('useQuery with TypeScript Primitive Types', () => {
     beforeAll(async () => {
         await waitForDatabase();
-        await connection.connect();
+        const conn = getConnection();
+        await conn.connect();
     }, 30000);
 
-    afterEach(() => {
-        // Maintain connection between tests
-    });
-
     afterAll(() => {
-        // Disconnect after all tests
-        connection.disconnect();
+        clearAllConnections();
     });
 
     describe('Primitive Type - With Schema Returns JS Primitives', () => {
@@ -409,6 +405,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
             });
 
             // Without schemas, these return value objects
+            // @ts-ignore
             expect(result.current.results![0].rows[0].str.type).toBe('Utf8');
             expect(result.current.results![1].rows[0].num.type).toBe('Int1');
             expect(result.current.results![2].rows[0].bool.type).toBe('Boolean');

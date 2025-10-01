@@ -1,10 +1,7 @@
-use reifydb_core::{
-	flow::FlowChange,
-	interface::{FlowNodeId, Transaction},
-};
+use reifydb_core::interface::{FlowNodeId, Transaction};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
-use crate::operator::Operator;
+use crate::{flow::FlowChange, operator::Operator};
 
 pub struct UnionOperator {
 	node: FlowNodeId,
@@ -31,6 +28,6 @@ impl<T: Transaction> Operator<T> for UnionOperator {
 	) -> crate::Result<FlowChange> {
 		// TODO: Implement single-row union processing
 		// For now, just pass through all changes with updated from
-		Ok(FlowChange::internal(self.node, change.diffs))
+		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 }

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	CommitVersion, CowVec, Result,
-	interface::{CdcEvent, CdcGet},
+	interface::{Cdc, CdcGet},
 	value::row::EncodedRow,
 };
 use rusqlite::{OptionalExtension, params};
@@ -11,7 +11,7 @@ use rusqlite::{OptionalExtension, params};
 use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
 
 impl CdcGet for Sqlite {
-	fn get(&self, version: CommitVersion) -> Result<Vec<CdcEvent>> {
+	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();
 
@@ -26,10 +26,10 @@ impl CdcGet for Sqlite {
 			.unwrap();
 
 		if let Some(encoded_transaction) = result {
-			let transaction = decode_cdc_transaction(&encoded_transaction)?;
-			Ok(transaction.to_events().collect())
+			let txn = decode_cdc_transaction(&encoded_transaction)?;
+			Ok(Some(txn))
 		} else {
-			Ok(vec![])
+			Ok(None)
 		}
 	}
 }

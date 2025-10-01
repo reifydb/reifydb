@@ -1,10 +1,7 @@
-use reifydb_core::{
-	flow::FlowChange,
-	interface::{FlowNodeId, Transaction, expression::Expression},
-};
+use reifydb_core::interface::{FlowNodeId, Transaction, expression::Expression};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
-use crate::operator::Operator;
+use crate::{flow::FlowChange, operator::Operator};
 
 pub struct SortOperator {
 	node: FlowNodeId,
@@ -33,6 +30,6 @@ impl<T: Transaction> Operator<T> for SortOperator {
 	) -> crate::Result<FlowChange> {
 		// TODO: Implement single-row sort processing
 		// For now, just pass through all changes with updated from
-		Ok(FlowChange::internal(self.node, change.diffs))
+		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 }

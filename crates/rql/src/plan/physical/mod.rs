@@ -10,25 +10,29 @@ use reifydb_catalog::{
 	view::ViewColumnToCreate,
 };
 use reifydb_core::{
-	JoinType, SortKey,
+	JoinStrategy, JoinType, SortKey,
 	interface::{
-		ColumnIdentifier, NamespaceDef, QueryTransaction,
+		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
+		catalog::ColumnIndex,
 		evaluate::expression::{AliasExpression, Expression},
 		resolved::{
-			ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence, ResolvedTable, ResolvedTableVirtual,
-			ResolvedView,
+			ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence, ResolvedSource,
+			ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
 };
 use reifydb_type::{
-	Fragment,
+	Fragment, Type, TypeConstraint,
 	diagnostic::catalog::{ring_buffer_not_found, table_not_found},
 	return_error,
 };
 
-use crate::plan::{
-	logical::LogicalPlan,
-	physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
+use crate::{
+	plan::{
+		logical::LogicalPlan,
+		physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
+	},
+	query::QueryString,
 };
 
 struct Compiler {}
@@ -435,8 +439,10 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinInner(JoinInnerNode {
 						left: Box::new(left),
 						right: Box::new(right),
+						right_query: join.with_query,
 						on: join.on,
 						alias: join.alias,
+						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -446,8 +452,10 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinLeft(JoinLeftNode {
 						left: Box::new(left),
 						right: Box::new(right),
+						right_query: join.with_query,
 						on: join.on,
 						alias: join.alias,
+						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -457,8 +465,10 @@ impl Compiler {
 					stack.push(PhysicalPlan::JoinNatural(JoinNaturalNode {
 						left: Box::new(left),
 						right: Box::new(right),
+						right_query: join.with_query,
 						join_type: join.join_type,
 						alias: join.alias,
+						strategy: join.strategy.unwrap_or_default(),
 					}));
 				}
 
@@ -473,8 +483,52 @@ impl Compiler {
 				LogicalPlan::Distinct(distinct) => {
 					let input = stack.pop().unwrap(); // FIXME
 
+					// For now, create placeholder resolved columns
+					// In a real implementation, this would resolve from the query context
+					let resolved_columns = distinct
+						.columns
+						.into_iter()
+						.map(|col| {
+							// Create a placeholder resolved column
+							let namespace = ResolvedNamespace::new(
+								Fragment::owned_internal("_context"),
+								NamespaceDef {
+									id: NamespaceId(1),
+									name: "_context".to_string(),
+								},
+							);
+
+							let table_def = TableDef {
+								id: TableId(1),
+								namespace: NamespaceId(1),
+								name: "_context".to_string(),
+								columns: vec![],
+								primary_key: None,
+							};
+
+							let resolved_table = ResolvedTable::new(
+								Fragment::owned_internal("_context"),
+								namespace,
+								table_def,
+							);
+
+							let resolved_source = ResolvedSource::Table(resolved_table);
+
+							let column_def = ColumnDef {
+								id: ColumnId(1),
+								name: col.name.text().to_string(),
+								constraint: TypeConstraint::unconstrained(Type::Utf8),
+								policies: vec![],
+								index: ColumnIndex(0),
+								auto_increment: false,
+							};
+
+							ResolvedColumn::new(col.name, resolved_source, column_def)
+						})
+						.collect();
+
 					stack.push(PhysicalPlan::Distinct(DistinctNode {
-						columns: distinct.columns,
+						columns: resolved_columns,
 						input: Box::new(input),
 					}));
 				}
@@ -713,7 +767,7 @@ pub struct CreateRingBufferNode<'a> {
 #[derive(Debug, Clone)]
 pub struct AlterSequenceNode<'a> {
 	pub sequence: ResolvedSequence<'a>,
-	pub column: ColumnIdentifier<'a>,
+	pub column: ResolvedColumn<'a>,
 	pub value: Expression<'a>,
 }
 
@@ -727,7 +781,7 @@ pub struct AggregateNode<'a> {
 #[derive(Debug, Clone)]
 pub struct DistinctNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
-	pub columns: Vec<ColumnIdentifier<'a>>,
+	pub columns: Vec<ResolvedColumn<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -776,24 +830,30 @@ pub struct UpdateRingBufferNode<'a> {
 pub struct JoinInnerNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
+	pub right_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
+	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]
 pub struct JoinLeftNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
+	pub right_query: QueryString,
 	pub on: Vec<Expression<'a>>,
 	pub alias: Option<Fragment<'a>>,
+	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]
 pub struct JoinNaturalNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
+	pub right_query: QueryString,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment<'a>>,
+	pub strategy: JoinStrategy,
 }
 
 #[derive(Debug, Clone)]

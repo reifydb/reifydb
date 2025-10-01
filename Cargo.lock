@@ -513,6 +513,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-testing",
  "reifydb-type",
+ "serde",
  "test_each_file",
 ]
 
@@ -565,6 +566,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-hash",
+ "reifydb-rql",
  "reifydb-store-row",
  "reifydb-sub-api",
  "reifydb-transaction",

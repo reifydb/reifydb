@@ -169,15 +169,37 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 	}
 }
 
-pub struct Executor {
+pub struct Executor(Arc<ExecutorInner>);
+
+pub struct ExecutorInner {
 	pub functions: Functions,
 }
 
+impl Clone for Executor {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl std::ops::Deref for Executor {
+	type Target = ExecutorInner;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
 impl Executor {
+	pub fn new(functions: Functions) -> Self {
+		Self(Arc::new(ExecutorInner {
+			functions,
+		}))
+	}
+
 	#[allow(dead_code)]
 	pub fn testing() -> Self {
-		Self {
-			functions: Functions::builder()
+		Self::new(
+			Functions::builder()
 				.register_aggregate("sum", math::aggregate::Sum::new)
 				.register_aggregate("min", math::aggregate::Min::new)
 				.register_aggregate("max", math::aggregate::Max::new)
@@ -186,7 +208,7 @@ impl Executor {
 				.register_scalar("abs", math::scalar::Abs::new)
 				.register_scalar("avg", math::scalar::Avg::new)
 				.build(),
-		}
+		)
 	}
 }
 

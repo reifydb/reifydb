@@ -94,7 +94,7 @@ impl CatalogStore {
 		column::LAYOUT.set_utf8(&mut row, column::NAME, &column_to_create.column);
 		column::LAYOUT.set_u8(&mut row, column::VALUE, column_to_create.constraint.get_type().to_u8());
 		column::LAYOUT.set_u16(&mut row, column::INDEX, column_to_create.index);
-		column::LAYOUT.set_bool(&mut row, column::ASVTO_INCREMENT, column_to_create.auto_increment);
+		column::LAYOUT.set_bool(&mut row, column::AUTO_INCREMENT, column_to_create.auto_increment);
 
 		// Store constraint as encoded blob
 		let constraint_bytes = encode_constraint(column_to_create.constraint.constraint());

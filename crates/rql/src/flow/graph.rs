@@ -1,11 +1,9 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
+use reifydb_core::interface::{FlowEdgeId, FlowNodeId};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-	flow::FlowEdge,
-	interface::{FlowEdgeId, FlowNodeId},
-};
+use super::node::FlowEdge;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DirectedGraph<NodeData> {

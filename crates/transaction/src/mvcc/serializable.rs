@@ -84,6 +84,11 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 		let iter = QueryTransaction::prefix_rev(self, prefix)?;
 		Ok(Box::new(iter.into_iter()))
 	}
+
+	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), Error> {
+		QueryTransaction::read_as_of_version_inclusive(self, version);
+		Ok(())
+	}
 }
 
 impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQueryTransaction
@@ -168,6 +173,11 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 
 		Ok(Box::new(iter))
 	}
+
+	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), Error> {
+		self.read_as_of_version_inclusive(version)?;
+		Ok(())
+	}
 }
 
 impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionCommandTransaction
@@ -190,11 +200,6 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionComma
 
 	fn rollback(mut self) -> Result<(), Error> {
 		CommandTransaction::rollback(&mut self)?;
-		Ok(())
-	}
-
-	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), Error> {
-		CommandTransaction::read_as_of_version_exclusive(self, version);
 		Ok(())
 	}
 }

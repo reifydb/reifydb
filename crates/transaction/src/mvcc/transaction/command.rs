@@ -357,7 +357,7 @@ where
 					entries.push(pending);
 				};
 
-				pending_writes.into_iter().for_each(|(k, v)| {
+				pending_writes.into_iter_insertion_order().for_each(|(k, v)| {
 					process(
 						&mut all,
 						Pending {

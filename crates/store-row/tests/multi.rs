@@ -12,7 +12,7 @@
 use std::{error::Error as StdError, fmt::Write, path::Path};
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange, async_cow_vec,
+	CommitVersion, EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
 	interface::{MultiVersionRow, MultiVersionStorage, TransactionId},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -40,12 +40,14 @@ fn test_sqlite(path: &Path) {
 /// Runs engine tests.
 pub struct Runner<MVS: MultiVersionStorage> {
 	storage: MVS,
+	version: CommitVersion,
 }
 
 impl<MVS: MultiVersionStorage> Runner<MVS> {
 	fn new(storage: MVS) -> Self {
 		Self {
 			storage,
+			version: 0,
 		}
 	}
 }
@@ -58,7 +60,7 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 			"get" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				let version = args.lookup_parse("version")?.unwrap_or(0u64);
+				let version = args.lookup_parse("version")?.unwrap_or(self.version);
 				args.reject_rest()?;
 				let value = self.storage.get(&key, version)?.map(|sv| sv.row.to_vec());
 				writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
@@ -67,7 +69,7 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 			"contains" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				let version = args.lookup_parse("version")?.unwrap_or(0u64);
+				let version = args.lookup_parse("version")?.unwrap_or(self.version);
 				args.reject_rest()?;
 				let contains = self.storage.contains(&key, version)?;
 				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
@@ -77,7 +79,7 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 			"scan" => {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let version = args.lookup_parse("version")?.unwrap_or(0u64);
+				let version = args.lookup_parse("version")?.unwrap_or(self.version);
 				args.reject_rest()?;
 
 				if !reverse {
@@ -93,7 +95,7 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 				let range = EncodedKeyRange::parse(
 					args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
 				);
-				let version = args.lookup_parse("version")?.unwrap_or(0u64);
+				let version = args.lookup_parse("version")?.unwrap_or(self.version);
 				args.reject_rest()?;
 
 				if !reverse {
@@ -107,7 +109,7 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 			"prefix" => {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let version = args.lookup_parse("version")?.unwrap_or(0u64);
+				let version = args.lookup_parse("version")?.unwrap_or(self.version);
 				let prefix =
 					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
 				args.reject_rest()?;
@@ -125,7 +127,12 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
 				let row = EncodedRow(decode_binary(&kv.value));
-				let version = args.lookup_parse("version")?.unwrap_or(0u64);
+				let version = if let Some(v) = args.lookup_parse("version")? {
+					v
+				} else {
+					self.version += 1;
+					self.version
+				};
 				args.reject_rest()?;
 
 				self.storage.commit(
@@ -137,14 +144,19 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 					],
 					version,
 					TransactionId::default(),
-				)?
+				)?;
 			}
 
 			// remove KEY [version=VERSION]
 			"remove" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				let version = args.lookup_parse("version")?.unwrap_or(0u64);
+				let version = if let Some(v) = args.lookup_parse("version")? {
+					v
+				} else {
+					self.version += 1;
+					self.version
+				};
 				args.reject_rest()?;
 
 				self.storage.commit(

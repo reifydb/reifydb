@@ -15,6 +15,18 @@ impl Default for JoinType {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum JoinStrategy {
+	EagerLoading,
+	LazyLoading,
+}
+
+impl Default for JoinStrategy {
+	fn default() -> Self {
+		JoinStrategy::EagerLoading
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum IndexType {
 	Index,
 	Unique,

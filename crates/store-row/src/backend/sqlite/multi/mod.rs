@@ -320,29 +320,57 @@ pub(crate) fn execute_scan_query(
 		let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
 			(None, "ASC") => (
 				format!(
-					"SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC LIMIT ?",
-					table_name
+					"SELECT t1.key, t1.value, t1.version FROM {} t1 
+					 INNER JOIN (
+					   SELECT key, MAX(version) as max_version 
+					   FROM {} 
+					   WHERE version <= ? 
+					   GROUP BY key
+					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
+					 ORDER BY t1.key ASC LIMIT ?",
+					table_name, table_name
 				),
 				vec![Box::new(version), Box::new(batch_size)],
 			),
 			(None, "DESC") => (
 				format!(
-					"SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key DESC LIMIT ?",
-					table_name
+					"SELECT t1.key, t1.value, t1.version FROM {} t1 
+					 INNER JOIN (
+					   SELECT key, MAX(version) as max_version 
+					   FROM {} 
+					   WHERE version <= ? 
+					   GROUP BY key
+					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
+					 ORDER BY t1.key DESC LIMIT ?",
+					table_name, table_name
 				),
 				vec![Box::new(version), Box::new(batch_size)],
 			),
 			(Some(key), "ASC") => (
 				format!(
-					"SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key ASC LIMIT ?",
-					table_name
+					"SELECT t1.key, t1.value, t1.version FROM {} t1 
+					 INNER JOIN (
+					   SELECT key, MAX(version) as max_version 
+					   FROM {} 
+					   WHERE key > ? AND version <= ? 
+					   GROUP BY key
+					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
+					 ORDER BY t1.key ASC LIMIT ?",
+					table_name, table_name
 				),
 				vec![Box::new(key.to_vec()), Box::new(version), Box::new(batch_size)],
 			),
 			(Some(key), "DESC") => (
 				format!(
-					"SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key DESC LIMIT ?",
-					table_name
+					"SELECT t1.key, t1.value, t1.version FROM {} t1 
+					 INNER JOIN (
+					   SELECT key, MAX(version) as max_version 
+					   FROM {} 
+					   WHERE key < ? AND version <= ? 
+					   GROUP BY key
+					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
+					 ORDER BY t1.key DESC LIMIT ?",
+					table_name, table_name
 				),
 				vec![Box::new(key.to_vec()), Box::new(version), Box::new(batch_size)],
 			),

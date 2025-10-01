@@ -2,11 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::{SortDirection, interface::identifier::ColumnIdentifier};
+use reifydb_core::SortDirection;
 use reifydb_type::Fragment;
 
 use crate::{
-	ast::{AstAlterView, AstAlterViewOperation, identifier::MaybeQualifiedViewIdentifier},
+	ast::{
+		AstAlterView, AstAlterViewOperation,
+		identifier::{MaybeQualifiedColumnIdentifier, MaybeQualifiedViewIdentifier},
+	},
 	plan::logical::{Compiler, LogicalPlan},
 };
 
@@ -27,7 +30,7 @@ pub enum AlterViewOperation<'a> {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AlterIndexColumn<'a> {
-	pub column: ColumnIdentifier<'a>,
+	pub column: MaybeQualifiedColumnIdentifier<'a>,
 	pub order: Option<SortDirection>,
 }
 
@@ -52,29 +55,9 @@ impl Compiler {
 						// Convert columns to AlterIndexColumn
 						let qualified_columns = columns
 							.into_iter()
-							.map(|col| {
-								use reifydb_core::interface::identifier::ColumnSource;
-
-								use crate::ast::identifier::MaybeQualifiedColumnSource;
-
-								AlterIndexColumn {
-									column: ColumnIdentifier {
-										source: match &col.column.source {
-											MaybeQualifiedColumnSource::Source { source, .. } => {
-												ColumnSource::Alias(source.clone())
-											}
-											MaybeQualifiedColumnSource::Alias(alias) => {
-												ColumnSource::Alias(alias.clone())
-											}
-											MaybeQualifiedColumnSource::Unqualified => {
-												// Use view name as the source for now
-												ColumnSource::Alias(view.name.clone())
-											}
-										},
-										name: col.column.name,
-									},
-									order: col.order,
-								}
+							.map(|col| AlterIndexColumn {
+								column: col.column.clone(),
+								order: col.order,
 							})
 							.collect();
 

@@ -6,23 +6,20 @@
 
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, act, waitFor} from '@testing-library/react';
-import {useQueryExecutor, connection, Schema} from '../../../src';
+import {useQueryExecutor, getConnection, clearAllConnections, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe('useQueryExecutor Hook', () => {
     beforeAll(async () => {
         await waitForDatabase();
         // Ensure we're connected before tests
-        await connection.connect();
+        const conn = getConnection();
+        await conn.connect();
     }, 30000);
 
-    afterEach(() => {
-        // Don't disconnect between tests to maintain stable connection
-    });
 
     afterAll(() => {
-        // Disconnect after all tests
-        connection.disconnect();
+        clearAllConnections();
     });
 
     it('should execute a simple query', async () => {

@@ -1,13 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	flow::FlowChange,
-	interface::{FlowNodeId, Transaction, expression::Expression},
-};
+use reifydb_core::interface::{FlowNodeId, Transaction, expression::Expression};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
-use crate::Operator;
+use crate::{Operator, flow::FlowChange};
 
 pub struct ExtendOperator {
 	node: FlowNodeId,
@@ -36,6 +33,6 @@ impl<T: Transaction> Operator<T> for ExtendOperator {
 	) -> crate::Result<FlowChange> {
 		// TODO: Implement single-row extend processing
 		// For now, just pass through all changes with updated from
-		Ok(FlowChange::internal(self.node, change.diffs))
+		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 }
