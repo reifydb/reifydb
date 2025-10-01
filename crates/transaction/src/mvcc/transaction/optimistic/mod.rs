@@ -18,7 +18,7 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{MultiVersionStorage, SingleVersionTransaction},
 };
-use reifydb_storage::memory::Memory;
+use reifydb_store_row::memory::Memory;
 
 use crate::{
 	mvcc::{

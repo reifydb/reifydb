@@ -11,7 +11,7 @@ reifydb-auth = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-core = { workspace = true }
 reifydb-rql = { workspace = true }
-reifydb-storage = { workspace = true }
+reifydb-store-row = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 

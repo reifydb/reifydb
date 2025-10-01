@@ -26,7 +26,7 @@ use reifydb_core::{
 	value::row::EncodedRow,
 };
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine};
-use reifydb_storage::memory::Memory;
+use reifydb_store_row::memory::Memory;
 use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
 use reifydb_type::{OwnedFragment, RowNumber};
 

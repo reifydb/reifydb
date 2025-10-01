@@ -11,7 +11,7 @@ members = [
     "crates/hash",
     "crates/network",
     "crates/rql",
-    "crates/storage",
+    "crates/store-row",
     "crates/testing",
     "crates/transaction",
     "crates/type",
@@ -45,7 +45,7 @@ default-members = [
     "crates/hash",
     "crates/network",
     "crates/rql",
-    "crates/storage",
+    "crates/store-row",
     "crates/testing",
     "crates/transaction",
     "crates/type",
@@ -111,7 +111,9 @@ reifydb-engine = { path = "crates/engine" }
 reifydb-hash = { path = "crates/hash" }
 reifydb-network = { path = "crates/network" }
 reifydb-rql = { path = "crates/rql" }
-reifydb-storage = { path = "crates/storage" }
+reifydb-store-row = { path = "crates/store-row" }
+# Compatibility alias - remove after migration
+reifydb-storage = { path = "crates/store-row" }
 reifydb-testing = { path = "crates/testing" }
 reifydb-transaction = { path = "crates/transaction" }
 reifydb-type = { path = "crates/type" }

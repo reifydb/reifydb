@@ -8,7 +8,7 @@ repository.workspace = true
 
 [dependencies]
 reifydb-core = { workspace = true}
-reifydb-storage = { workspace = true }
+reifydb-store-row = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 

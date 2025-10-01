@@ -7,7 +7,7 @@
 //! without having to specify the transaction types.
 
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction};
-use reifydb_storage::{memory::Memory, sqlite::Sqlite};
+use reifydb_store_row::backend::{memory::Memory, sqlite::Sqlite};
 use reifydb_transaction::{
 	mvcc::transaction::{optimistic::Optimistic, serializable::Serializable},
 	svl::SingleVersionLock,

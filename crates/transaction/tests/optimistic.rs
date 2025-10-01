@@ -18,7 +18,7 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::row::EncodedRow,
 };
-use reifydb_storage::memory::Memory;
+use reifydb_store_row::memory::Memory;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	mvcc::{
@@ -129,7 +129,7 @@ impl<'a> testscript::Runner for MvccRunner {
 					Transaction::Query(_) => {
 						unreachable!("can not call commit on rx")
 					}
-					Transaction::Command(mut tx) => {
+					Transaction::Command(tx) => {
 						tx.commit()?;
 					}
 				}
@@ -217,7 +217,7 @@ impl<'a> testscript::Runner for MvccRunner {
 					Transaction::Query(_) => {
 						unreachable!("can not call rollback on rx")
 					}
-					Transaction::Command(mut tx) => {
+					Transaction::Command(tx) => {
 						tx.rollback()?;
 					}
 				}
@@ -346,7 +346,7 @@ not given")?
 						rx.read_as_of_version_inclusive(version);
 					}
 					Transaction::Command(tx) => {
-						tx.read_as_of_version_inclusive(version);
+						let _ = tx.read_as_of_version_inclusive(version);
 					}
 				}
 			}

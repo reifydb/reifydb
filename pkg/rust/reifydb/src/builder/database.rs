@@ -22,7 +22,7 @@ use reifydb_engine::{
 };
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
-use reifydb_storage::StorageVersion;
+use reifydb_store_row::RowStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
@@ -205,7 +205,7 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 		all_versions.push(CoreVersion.version());
 		all_versions.push(EngineVersion.version());
 		all_versions.push(CatalogVersion.version());
-		all_versions.push(StorageVersion.version());
+		all_versions.push(RowStoreVersion.version());
 		all_versions.push(TransactionVersion.version());
 		all_versions.push(AuthVersion.version());
 		all_versions.push(RqlVersion.version());

@@ -10,7 +10,7 @@
 // http: //www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::EncodedKey;
-use reifydb_storage::memory::Memory;
+use reifydb_store_row::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::optimistic::{CommandTransaction, Optimistic},
 	svl::SingleVersionLock,

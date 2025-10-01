@@ -11,7 +11,7 @@ pub mod identifier;
 pub mod key;
 pub mod logging;
 pub mod resolved;
-mod storage;
+mod store;
 mod transaction;
 pub mod version;
 
@@ -27,7 +27,7 @@ pub use reifydb_type::{
 	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment, Params, StatementColumn, StatementLine,
 };
 pub use resolved::*;
-pub use storage::*;
+pub use store::*;
 pub use transaction::*;
 
 use crate::event::EventBus;

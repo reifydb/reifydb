@@ -137,7 +137,7 @@ where
 #[cfg(test)]
 mod tests {
 	use reifydb_core::event::EventBus;
-	use reifydb_storage::memory::Memory;
+	use reifydb_store_row::memory::Memory;
 
 	use super::*;
 	use crate::svl::SingleVersionLock;

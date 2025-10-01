@@ -13,7 +13,7 @@ use std::{
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{event::EventBus, interceptor::StandardInterceptorFactory};
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardEngine};
-use reifydb_storage::memory::Memory;
+use reifydb_store_row::memory::Memory;
 use reifydb_sub_api::{Priority, Subsystem};
 use reifydb_sub_worker::{InternalClosureTask, WorkerConfig, WorkerSubsystem};
 use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};

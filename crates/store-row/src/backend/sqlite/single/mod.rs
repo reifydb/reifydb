@@ -1,0 +1,236 @@
+// Copyright (c) reifydb.com 2025.
+// This file is licensed under the AGPL-3.0-or-later, see license.md file.
+
+mod commit;
+mod contains;
+mod get;
+mod range;
+mod range_rev;
+mod scan;
+mod scan_rev;
+
+use std::{collections::VecDeque, ops::Bound};
+
+use reifydb_core::{CowVec, EncodedKey, interface::SingleVersionRow, value::row::EncodedRow};
+use rusqlite::Statement;
+
+use crate::backend::sqlite::read::ReadConnection;
+
+/// Helper function to build single query template and determine parameter
+/// count
+pub(crate) fn build_single_query(
+	start_bound: Bound<&EncodedKey>,
+	end_bound: Bound<&EncodedKey>,
+	order: &str, // "ASC" or "DESC"
+) -> (&'static str, u8) {
+	match (start_bound, end_bound) {
+		(Bound::Unbounded, Bound::Unbounded) => match order {
+			"ASC" => ("SELECT key, value FROM single ORDER BY key ASC LIMIT ?", 0),
+			"DESC" => ("SELECT key, value FROM single ORDER BY key DESC LIMIT ?", 0),
+			_ => unreachable!(),
+		},
+		(Bound::Included(_), Bound::Unbounded) => match order {
+			"ASC" => ("SELECT key, value FROM single WHERE key >= ? ORDER BY key ASC LIMIT ?", 1),
+			"DESC" => ("SELECT key, value FROM single WHERE key >= ? ORDER BY key DESC LIMIT ?", 1),
+			_ => unreachable!(),
+		},
+		(Bound::Excluded(_), Bound::Unbounded) => match order {
+			"ASC" => ("SELECT key, value FROM single WHERE key > ? ORDER BY key ASC LIMIT ?", 1),
+			"DESC" => ("SELECT key, value FROM single WHERE key > ? ORDER BY key DESC LIMIT ?", 1),
+			_ => unreachable!(),
+		},
+		(Bound::Unbounded, Bound::Included(_)) => match order {
+			"ASC" => ("SELECT key, value FROM single WHERE key <= ? ORDER BY key ASC LIMIT ?", 1),
+			"DESC" => ("SELECT key, value FROM single WHERE key <= ? ORDER BY key DESC LIMIT ?", 1),
+			_ => unreachable!(),
+		},
+		(Bound::Unbounded, Bound::Excluded(_)) => match order {
+			"ASC" => ("SELECT key, value FROM single WHERE key < ? ORDER BY key ASC LIMIT ?", 1),
+			"DESC" => ("SELECT key, value FROM single WHERE key < ? ORDER BY key DESC LIMIT ?", 1),
+			_ => unreachable!(),
+		},
+		(Bound::Included(_), Bound::Included(_)) => match order {
+			"ASC" => (
+				"SELECT key, value FROM single WHERE key >= ? AND key <= ? ORDER BY key ASC LIMIT ?",
+				2,
+			),
+			"DESC" => (
+				"SELECT key, value FROM single WHERE key >= ? AND key <= ? ORDER BY key DESC LIMIT ?",
+				2,
+			),
+			_ => unreachable!(),
+		},
+		(Bound::Included(_), Bound::Excluded(_)) => match order {
+			"ASC" => {
+				("SELECT key, value FROM single WHERE key >= ? AND key < ? ORDER BY key ASC LIMIT ?", 2)
+			}
+			"DESC" => (
+				"SELECT key, value FROM single WHERE key >= ? AND key < ? ORDER BY key DESC LIMIT ?",
+				2,
+			),
+			_ => unreachable!(),
+		},
+		(Bound::Excluded(_), Bound::Included(_)) => match order {
+			"ASC" => {
+				("SELECT key, value FROM single WHERE key > ? AND key <= ? ORDER BY key ASC LIMIT ?", 2)
+			}
+			"DESC" => (
+				"SELECT key, value FROM single WHERE key > ? AND key <= ? ORDER BY key DESC LIMIT ?",
+				2,
+			),
+			_ => unreachable!(),
+		},
+		(Bound::Excluded(_), Bound::Excluded(_)) => match order {
+			"ASC" => {
+				("SELECT key, value FROM single WHERE key > ? AND key < ? ORDER BY key ASC LIMIT ?", 2)
+			}
+			"DESC" => {
+				("SELECT key, value FROM single WHERE key > ? AND key < ? ORDER BY key DESC LIMIT ?", 2)
+			}
+			_ => unreachable!(),
+		},
+	}
+}
+
+/// Helper function to execute batched single range queries
+pub(crate) fn execute_range_query(
+	stmt: &mut Statement,
+	start_bound: Bound<&EncodedKey>,
+	end_bound: Bound<&EncodedKey>,
+	batch_size: usize,
+	param_count: u8,
+	buffer: &mut VecDeque<SingleVersionRow>,
+) -> usize {
+	let mut count = 0;
+	match param_count {
+		0 => {
+			let rows = stmt
+				.query_map(rusqlite::params![batch_size], |row| {
+					Ok(SingleVersionRow {
+						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
+						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+					})
+				})
+				.unwrap();
+
+			for result in rows {
+				match result {
+					Ok(single) => {
+						buffer.push_back(single);
+						count += 1;
+					}
+					Err(_) => break,
+				}
+			}
+		}
+		1 => {
+			let param = match (start_bound, end_bound) {
+				(Bound::Included(key), _) | (Bound::Excluded(key), _) => key.to_vec(),
+				(_, Bound::Included(key)) | (_, Bound::Excluded(key)) => key.to_vec(),
+				_ => unreachable!(),
+			};
+			let rows = stmt
+				.query_map(rusqlite::params![param, batch_size], |row| {
+					Ok(SingleVersionRow {
+						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
+						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+					})
+				})
+				.unwrap();
+
+			for result in rows {
+				match result {
+					Ok(single) => {
+						buffer.push_back(single);
+						count += 1;
+					}
+					Err(_) => break,
+				}
+			}
+		}
+		2 => {
+			let start_param = match start_bound {
+				Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
+				_ => unreachable!(),
+			};
+			let end_param = match end_bound {
+				Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
+				_ => unreachable!(),
+			};
+			let rows = stmt
+				.query_map(rusqlite::params![start_param, end_param, batch_size], |row| {
+					Ok(SingleVersionRow {
+						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
+						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+					})
+				})
+				.unwrap();
+
+			for result in rows {
+				match result {
+					Ok(single) => {
+						buffer.push_back(single);
+						count += 1;
+					}
+					Err(_) => break,
+				}
+			}
+		}
+		_ => unreachable!(),
+	}
+	count
+}
+
+/// Helper function to execute batched single iteration queries
+pub(crate) fn execute_scan_query(
+	conn: &ReadConnection,
+	batch_size: usize,
+	last_key: Option<&EncodedKey>,
+	order: &str, // "ASC" or "DESC"
+	buffer: &mut VecDeque<SingleVersionRow>,
+) -> usize {
+	let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
+		(None, "ASC") => (
+			"SELECT key, value FROM single ORDER BY key ASC LIMIT ?".to_string(),
+			vec![Box::new(batch_size)],
+		),
+		(None, "DESC") => (
+			"SELECT key, value FROM single ORDER BY key DESC LIMIT ?".to_string(),
+			vec![Box::new(batch_size)],
+		),
+		(Some(key), "ASC") => (
+			"SELECT key, value FROM single WHERE key > ? ORDER BY key ASC LIMIT ?".to_string(),
+			vec![Box::new(key.to_vec()), Box::new(batch_size)],
+		),
+		(Some(key), "DESC") => (
+			"SELECT key, value FROM single WHERE key < ? ORDER BY key DESC LIMIT ?".to_string(),
+			vec![Box::new(key.to_vec()), Box::new(batch_size)],
+		),
+		_ => unreachable!(),
+	};
+
+	let conn_guard = conn.lock().unwrap();
+	let mut stmt = conn_guard.prepare(&query).unwrap();
+
+	let rows = stmt
+		.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+			Ok(SingleVersionRow {
+				key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
+				row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+			})
+		})
+		.unwrap();
+
+	let mut count = 0;
+	for result in rows {
+		match result {
+			Ok(single) => {
+				buffer.push_back(single);
+				count += 1;
+			}
+			Err(_) => break,
+		}
+	}
+
+	count
+}
