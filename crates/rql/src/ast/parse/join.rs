@@ -39,13 +39,13 @@ impl<'a> Parser<'a> {
 						self.advance()?;
 						JoinStrategy::LazyRightLoading
 					}
-					"eager_loading" => {
+					"stateful" => {
 						self.advance()?;
-						JoinStrategy::EagerLoading
+						JoinStrategy::Stateful
 					}
 					_ => {
 						return_error!(unexpected_token_error(
-							"lazy_right_loading or eager_loading",
+							"lazy_right_loading or stateful",
 							self.current()?.fragment.clone()
 						));
 					}
@@ -302,10 +302,9 @@ mod tests {
 
 	#[test]
 	fn test_left_join_with_eager_strategy() {
-		let tokens = tokenize(
-			"left join { from test.orders } on user_id == order_id with { strategy: eager_loading }",
-		)
-		.unwrap();
+		let tokens =
+			tokenize("left join { from test.orders } on user_id == order_id with { strategy: stateful }")
+				.unwrap();
 		let mut parser = Parser::new(tokens);
 		let result = parser.parse().unwrap();
 
@@ -318,7 +317,7 @@ mod tests {
 			panic!("Expected LeftJoin");
 		};
 
-		assert_eq!(strategy, &Some(JoinStrategy::EagerLoading));
+		assert_eq!(strategy, &Some(JoinStrategy::Stateful));
 	}
 
 	#[test]

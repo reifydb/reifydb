@@ -34,7 +34,7 @@ impl JoinStrategy {
 		executor: Executor,
 	) -> Self {
 		match (storage_strategy, join_type) {
-			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Left) => {
+			(reifydb_core::JoinStrategy::Stateful, JoinType::Left) => {
 				JoinStrategy::LeftEager(LeftEagerJoin)
 			}
 			(reifydb_core::JoinStrategy::LazyRightLoading, JoinType::Left) => {
@@ -43,7 +43,7 @@ impl JoinStrategy {
 					executor,
 				})
 			}
-			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Inner) => {
+			(reifydb_core::JoinStrategy::Stateful, JoinType::Inner) => {
 				JoinStrategy::InnerEager(InnerEagerJoin)
 			}
 			(reifydb_core::JoinStrategy::LazyRightLoading, JoinType::Inner) => {

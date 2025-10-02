@@ -16,13 +16,13 @@ impl Default for JoinType {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JoinStrategy {
-	EagerLoading,
+	Stateful,
 	LazyRightLoading,
 }
 
 impl Default for JoinStrategy {
 	fn default() -> Self {
-		JoinStrategy::EagerLoading
+		JoinStrategy::Stateful
 	}
 }
 
