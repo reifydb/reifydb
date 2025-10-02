@@ -31,7 +31,7 @@ impl<T: Transaction> Operator<T> for ExtendOperator {
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		// TODO: Implement single-row extend processing
+		// TODO: Implement single-encoded extend processing
 		// For now, just pass through all changes with updated from
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}

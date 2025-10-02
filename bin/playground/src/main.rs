@@ -102,8 +102,6 @@ from [
 	// Let the background task process
 	sleep(Duration::from_millis(100));
 
-	// Should show Cartesian product: Alice and Bob each get 2 rows (Math and Science)
-	// Charlie gets 1 row (English), Diana gets 1 row with Undefined
 	log_info!("Querying LEFT JOIN view with sorting...");
 	let result = db
 		.query_as_root("from test.student_courses sort { student_name asc, subject asc }", Params::None)

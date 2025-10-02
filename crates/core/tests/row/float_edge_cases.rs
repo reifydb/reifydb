@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Float edge case tests for the row encoding system
+//! Float edge case tests for the encoded encoding system
 
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
 
 #[test]
 fn test_float_special_values_preservation() {
-	let layout = EncodedRowLayout::new(&[Type::Float4, Type::Float8]);
+	let layout = EncodedValuesLayout::new(&[Type::Float4, Type::Float8]);
 	let mut row = layout.allocate_row();
 
 	// Test f32 special values
@@ -74,7 +74,7 @@ fn test_float_special_values_preservation() {
 
 #[test]
 fn test_float_precision_boundaries() {
-	let layout = EncodedRowLayout::new(&[Type::Float4, Type::Float8]);
+	let layout = EncodedValuesLayout::new(&[Type::Float4, Type::Float8]);
 	let mut row = layout.allocate_row();
 
 	// Test f32 precision boundary (about 7 decimal digits)

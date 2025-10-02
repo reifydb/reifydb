@@ -87,7 +87,7 @@ impl Executor {
 					columns,
 				}) = input_node.next(&mut std_txn)?
 				{
-					// Get row numbers from the Columns structure
+					// Get encoded numbers from the Columns structure
 					if columns.row_numbers.is_empty() {
 						return_error!(engine::missing_row_number_column());
 					}
@@ -99,7 +99,7 @@ impl Executor {
 				}
 			}
 
-			// Delete the collected row numbers
+			// Delete the collected encoded numbers
 			use crate::transaction::operation::RingBufferOperations;
 			for row_number in row_numbers_to_delete {
 				let row_key = RowKey {
@@ -108,7 +108,7 @@ impl Executor {
 				}
 				.encode();
 
-				// Remove the row if it exists
+				// Remove the encoded if it exists
 				if txn.contains_key(&row_key)? {
 					txn.remove_from_ring_buffer(ring_buffer.clone(), row_number)?;
 					deleted_count += 1;
@@ -141,7 +141,7 @@ impl Executor {
 					}
 					.encode();
 
-					// Only delete if the row actually exists
+					// Only delete if the encoded actually exists
 					if txn.contains_key(&row_key)? {
 						txn.remove_from_ring_buffer(ring_buffer.clone(), row_number)?;
 						deleted_count += 1;

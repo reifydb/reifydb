@@ -16,17 +16,17 @@ pub struct SvlWriteTransaction<'a, SVS> {
 
 impl<SVS> SingleVersionQueryTransaction for SvlWriteTransaction<'_, SVS>
 where
-	SVS: SingleVersionStorage,
+	SVS: SingleVersionStore,
 {
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {
-					row,
+					values: row,
 					..
-				} => Ok(Some(SingleVersionRow {
+				} => Ok(Some(SingleVersionValues {
 					key: key.clone(),
-					row: row.clone(),
+					values: row.clone(),
 				})),
 				Delta::Remove {
 					..
@@ -80,7 +80,7 @@ where
 
 impl<'a, SVS> SvlWriteTransaction<'a, SVS>
 where
-	SVS: SingleVersionStorage,
+	SVS: SingleVersionStore,
 {
 	pub(super) fn new(storage: RwLockWriteGuard<'a, SVS>) -> Self {
 		Self {
@@ -96,7 +96,7 @@ where
 		&mut self,
 		range: Option<EncodedKeyRange>,
 		reverse: bool,
-	) -> crate::Result<(Vec<(EncodedKey, Delta)>, Vec<SingleVersionRow>)> {
+	) -> crate::Result<(Vec<(EncodedKey, Delta)>, Vec<SingleVersionValues>)> {
 		// Clone and optionally filter pending items from the buffer
 		let mut pending_items: Vec<(EncodedKey, Delta)> = match &range {
 			Some(r) => self
@@ -116,7 +116,7 @@ where
 		}
 
 		// Get committed items from storage
-		let committed_items: Vec<SingleVersionRow> = {
+		let committed_items: Vec<SingleVersionValues> = {
 			match (range, reverse) {
 				(Some(r), true) => self.storage.range_rev(r)?.collect(),
 				(Some(r), false) => self.storage.range(r)?.collect(),
@@ -131,12 +131,12 @@ where
 
 impl<'a, SVS> SingleVersionCommandTransaction for SvlWriteTransaction<'a, SVS>
 where
-	SVS: SingleVersionStorage,
+	SVS: SingleVersionStore,
 {
-	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
+	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
 		let delta = Delta::Set {
 			key: key.clone(),
-			row,
+			values: row,
 		};
 		self.pending.insert(key.clone(), delta);
 		Ok(())

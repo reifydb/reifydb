@@ -6,7 +6,7 @@ mod storage;
 use serde::{Deserialize, Serialize};
 pub use storage::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStorage};
 
-use crate::{CommitVersion, EncodedKey, interface::transaction::TransactionId, value::row::EncodedRow};
+use crate::{CommitVersion, EncodedKey, interface::transaction::TransactionId, value::encoded::EncodedValues};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -34,16 +34,16 @@ impl AsRef<str> for ConsumerId {
 pub enum CdcChange {
 	Insert {
 		key: EncodedKey,
-		post: EncodedRow,
+		post: EncodedValues,
 	},
 	Update {
 		key: EncodedKey,
-		pre: EncodedRow,
-		post: EncodedRow,
+		pre: EncodedValues,
+		post: EncodedValues,
 	},
 	Delete {
 		key: EncodedKey,
-		pre: Option<EncodedRow>,
+		pre: Option<EncodedValues>,
 	},
 }
 

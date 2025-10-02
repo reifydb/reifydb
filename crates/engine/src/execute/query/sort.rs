@@ -94,7 +94,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
 			Equal
 		});
 
-		// Reorder row numbers if present
+		// Reorder encoded numbers if present
 		if !columns.row_numbers.is_empty() {
 			let reordered_row_numbers: Vec<_> = indices.iter().map(|&i| columns.row_numbers[i]).collect();
 			columns.row_numbers = CowVec::new(reordered_row_numbers);

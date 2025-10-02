@@ -16,7 +16,7 @@ pub use query::*;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	event::EventBus,
-	interface::{MultiVersionStorage, SingleVersionTransaction},
+	interface::{MultiVersionStore, SingleVersionTransaction},
 };
 use reifydb_store_row::memory::Memory;
 
@@ -31,15 +31,15 @@ use crate::{
 	svl::SingleVersionLock,
 };
 
-pub struct Serializable<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction>(Arc<Inner<MVS, SMVT>>);
+pub struct Serializable<MVS: MultiVersionStore, SMVT: SingleVersionTransaction>(Arc<Inner<MVS, SMVT>>);
 
-pub struct Inner<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> {
+pub struct Inner<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> {
 	pub(crate) tm: TransactionManager<StdVersionProvider<SMVT>>,
 	pub(crate) multi: MVS,
 	pub(crate) event_bus: EventBus,
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Deref for Serializable<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Deref for Serializable<MVS, SMVT> {
 	type Target = Inner<MVS, SMVT>;
 
 	fn deref(&self) -> &Self::Target {
@@ -47,13 +47,13 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Deref for Seriali
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Clone for Serializable<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Clone for Serializable<MVS, SMVT> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Inner<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Inner<MVS, SMVT> {
 	fn new(multi: MVS, single: SMVT, event_bus: EventBus) -> Self {
 		let tm = TransactionManager::new(StdVersionProvider::new(single).unwrap()).unwrap();
 
@@ -77,13 +77,13 @@ impl Serializable<Memory, SingleVersionLock<Memory>> {
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
 	pub fn new(multi: MVS, single: SMVT, event_bus: EventBus) -> Self {
 		Self(Arc::new(Inner::new(multi, single, event_bus)))
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.0.version()
 	}
@@ -92,18 +92,18 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Serializable<MVS,
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
 	pub fn begin_command(&self) -> crate::Result<CommandTransaction<MVS, SMVT>> {
 		CommandTransaction::new(self.clone())
 	}
 }
 
-pub enum Transaction<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> {
+pub enum Transaction<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> {
 	Query(QueryTransaction<MVS, SMVT>),
 	Command(CommandTransaction<MVS, SMVT>),
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Serializable<MVS, SMVT> {
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(self.multi.get(key, version)?.map(|sv| sv.into()))
 	}

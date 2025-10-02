@@ -17,8 +17,8 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-	interface::{EncodableKeyRange, Key, MultiVersionRow, RowKey, RowKeyRange, TableId},
-	value::row::EncodedRow,
+	interface::{EncodableKeyRange, Key, MultiVersionValues, RowKey, RowKeyRange, TableId},
+	value::encoded::EncodedValues,
 };
 use rusqlite::{Connection, Statement, params};
 
@@ -193,7 +193,7 @@ pub(crate) fn execute_batched_range_query(
 	version: CommitVersion,
 	batch_size: usize,
 	param_count: u8,
-	buffer: &mut VecDeque<MultiVersionRow>,
+	buffer: &mut VecDeque<MultiVersionValues>,
 ) -> usize {
 	let mut count = 0;
 	match param_count {
@@ -202,9 +202,9 @@ pub(crate) fn execute_batched_range_query(
 				.query_map(params![version, batch_size], |row| {
 					let value: Option<Vec<u8>> = row.get(1)?;
 					match value {
-						Some(val) => Ok(Some(MultiVersionRow {
+						Some(val) => Ok(Some(MultiVersionValues {
 							key: EncodedKey(CowVec::new(row.get(0)?)),
-							row: EncodedRow(CowVec::new(val)),
+							values: EncodedValues(CowVec::new(val)),
 							version: row.get(2)?,
 						})),
 						None => Ok(None), // NULL value means deleted
@@ -233,9 +233,9 @@ pub(crate) fn execute_batched_range_query(
 				.query_map(params![param, version, batch_size], |row| {
 					let value: Option<Vec<u8>> = row.get(1)?;
 					match value {
-						Some(val) => Ok(Some(MultiVersionRow {
+						Some(val) => Ok(Some(MultiVersionValues {
 							key: EncodedKey(CowVec::new(row.get(0)?)),
-							row: EncodedRow(CowVec::new(val)),
+							values: EncodedValues(CowVec::new(val)),
 							version: row.get(2)?,
 						})),
 						None => Ok(None), // NULL value means deleted
@@ -267,9 +267,9 @@ pub(crate) fn execute_batched_range_query(
 				.query_map(params![start_param, end_param, version, batch_size], |row| {
 					let value: Option<Vec<u8>> = row.get(1)?;
 					match value {
-						Some(val) => Ok(Some(MultiVersionRow {
+						Some(val) => Ok(Some(MultiVersionValues {
 							key: EncodedKey(CowVec::new(row.get(0)?)),
-							row: EncodedRow(CowVec::new(val)),
+							values: EncodedValues(CowVec::new(val)),
 							version: row.get(2)?,
 						})),
 						None => Ok(None), // NULL value means deleted
@@ -311,7 +311,7 @@ pub(crate) fn execute_scan_query(
 	batch_size: usize,
 	last_key: Option<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"
-	buffer: &mut VecDeque<MultiVersionRow>,
+	buffer: &mut VecDeque<MultiVersionValues>,
 ) -> usize {
 	let mut all_rows = Vec::new();
 
@@ -384,9 +384,9 @@ pub(crate) fn execute_scan_query(
 			.query_map(rusqlite::params_from_iter(params.iter()), |row| {
 				let value: Option<Vec<u8>> = row.get(1)?;
 				match value {
-					Some(val) => Ok(Some(MultiVersionRow {
+					Some(val) => Ok(Some(MultiVersionValues {
 						key: EncodedKey(CowVec::new(row.get(0)?)),
-						row: EncodedRow(CowVec::new(val)),
+						values: EncodedValues(CowVec::new(val)),
 						version: row.get(2)?,
 					})),
 					None => Ok(None), // NULL value means deleted

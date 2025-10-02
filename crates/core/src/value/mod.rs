@@ -3,5 +3,5 @@
 
 pub mod column;
 pub mod container;
+pub mod encoded;
 pub mod index;
-pub mod row;

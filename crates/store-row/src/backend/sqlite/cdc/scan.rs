@@ -6,7 +6,7 @@ use std::collections::VecDeque;
 use reifydb_core::{
 	CommitVersion, CowVec, Result,
 	interface::{Cdc, CdcScan},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 
 use crate::{
@@ -66,11 +66,11 @@ impl Scan {
 		let mut query_params = params;
 		query_params.push(self.batch_size as i64);
 
-		let transactions: Vec<(CommitVersion, EncodedRow)> = stmt
+		let transactions: Vec<(CommitVersion, EncodedValues)> = stmt
 			.query_map(rusqlite::params_from_iter(query_params), |row| {
 				let version: i64 = row.get(0)?;
 				let bytes: Vec<u8> = row.get(1)?;
-				Ok((version as CommitVersion, EncodedRow(CowVec::new(bytes))))
+				Ok((version as CommitVersion, EncodedValues(CowVec::new(bytes))))
 			})
 			.unwrap()
 			.collect::<rusqlite::Result<Vec<_>>>()

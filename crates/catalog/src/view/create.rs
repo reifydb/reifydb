@@ -212,12 +212,12 @@ mod tests {
 		assert_eq!(links.len(), 2);
 
 		let link = &links[1];
-		let row = &link.row;
+		let row = &link.values;
 		assert_eq!(view_namespace::LAYOUT.get_u64(row, view_namespace::ID), 1025);
 		assert_eq!(view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME), "test_view");
 
 		let link = &links[0];
-		let row = &link.row;
+		let row = &link.values;
 		assert_eq!(view_namespace::LAYOUT.get_u64(row, view_namespace::ID), 1026);
 		assert_eq!(view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME), "another_view");
 	}

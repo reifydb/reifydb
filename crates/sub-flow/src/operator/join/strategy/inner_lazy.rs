@@ -1,4 +1,4 @@
-use reifydb_core::{CommitVersion, interface::Transaction, value::row::Row};
+use reifydb_core::{CommitVersion, Row, interface::Transaction};
 use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;
@@ -95,7 +95,7 @@ impl InnerLazyJoin {
 					if state.left.contains_key(txn, &key_hash)? {
 						operator.cleanup_left_row_joins(txn, pre.number.0)?;
 
-						// Remove all joins involving this row
+						// Remove all joins involving this encoded
 						let right_rows = query_right_side(
 							txn,
 							&self.query,
@@ -120,7 +120,7 @@ impl InnerLazyJoin {
 					}
 				}
 				JoinSide::Right => {
-					// Remove all joins involving this row
+					// Remove all joins involving this encoded
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
 						for left_row_ser in &left_entry.rows {
 							let left_row = left_row_ser.to_left_row(&state.schema);
@@ -156,7 +156,7 @@ impl InnerLazyJoin {
 			if let Some(key) = old_key {
 				match side {
 					JoinSide::Left => {
-						// Update the row in state
+						// Update the encoded in state
 						if update_row_in_entry(txn, &mut state.left, &key, pre, post)? {
 							// Emit updates for all joined rows
 							let right_rows = query_right_side(

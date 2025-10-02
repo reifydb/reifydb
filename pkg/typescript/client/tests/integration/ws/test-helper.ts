@@ -56,10 +56,10 @@ export function expectSingleDateResult(
 ): void {
     expect(frames).toHaveLength(1);
     expect(frames[0]).toHaveLength(1);
-    
+
     const result = frames[0][0][fieldName];
     expect(result).toBeInstanceOf(Date);
-    
+
     if (typeof expectedValue === 'string') {
         expect(result.toISOString()).toBe(expectedValue);
     } else {
@@ -80,7 +80,7 @@ export function expectSingleBlobResult(
 ): void {
     expect(frames).toHaveLength(1);
     expect(frames[0]).toHaveLength(1);
-    
+
     const result = frames[0][0][fieldName];
     expect(result).toBeInstanceOf(Uint8Array);
     expect(result).toEqual(expectedValue);
@@ -97,7 +97,7 @@ export function expectSingleValueResult(
 ): void {
     expect(frames).toHaveLength(1);
     expect(frames[0]).toHaveLength(1);
-    
+
     const actualValue = frames[0][0].result;
 
     expect(expectedValue.equals(actualValue)).toBe(true);

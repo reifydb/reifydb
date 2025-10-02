@@ -5,7 +5,7 @@ use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Result,
-	interface::{MultiVersionRange, MultiVersionRow},
+	interface::{MultiVersionRange, MultiVersionValues},
 };
 
 use super::{build_range_query, execute_batched_range_query, table_name_for_range};
@@ -24,7 +24,7 @@ pub struct Range {
 	range: EncodedKeyRange,
 	version: CommitVersion,
 	table: String,
-	buffer: VecDeque<MultiVersionRow>,
+	buffer: VecDeque<MultiVersionValues>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -92,7 +92,7 @@ impl Range {
 }
 
 impl Iterator for Range {
-	type Item = MultiVersionRow;
+	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

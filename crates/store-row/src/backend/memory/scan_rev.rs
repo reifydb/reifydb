@@ -14,8 +14,8 @@ use core::iter::Rev;
 use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	interface::{MultiVersionRow, MultiVersionScanRev, SingleVersionRow, SingleVersionScanRev},
-	value::row::EncodedRow,
+	interface::{MultiVersionScanRev, MultiVersionValues, SingleVersionScanRev, SingleVersionValues},
+	value::encoded::EncodedValues,
 };
 
 use crate::backend::memory::{Memory, MultiVersionRowContainer};
@@ -38,15 +38,15 @@ pub struct IterRev<'a> {
 }
 
 impl Iterator for IterRev<'_> {
-	type Item = MultiVersionRow;
+	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let item = self.iter.next()?;
 			if let Some(row) = item.value().get(self.version) {
-				return Some(MultiVersionRow {
+				return Some(MultiVersionValues {
 					key: item.key().clone(),
-					row,
+					values: row,
 					version: self.version,
 				});
 			}
@@ -66,17 +66,17 @@ impl SingleVersionScanRev for Memory {
 }
 
 pub struct SingleVersionIterRev<'a> {
-	pub(crate) iter: MapIter<'a, EncodedKey, EncodedRow>,
+	pub(crate) iter: MapIter<'a, EncodedKey, EncodedValues>,
 }
 
 impl Iterator for SingleVersionIterRev<'_> {
-	type Item = SingleVersionRow;
+	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let item = self.iter.next_back()?;
-		Some(SingleVersionRow {
+		Some(SingleVersionValues {
 			key: item.key().clone(),
-			row: item.value().clone(),
+			values: item.value().clone(),
 		})
 	}
 }

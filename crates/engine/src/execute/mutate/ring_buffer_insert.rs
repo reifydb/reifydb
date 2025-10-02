@@ -7,7 +7,7 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, Transaction},
 	return_error,
-	value::{column::Columns, row::EncodedRowLayout},
+	value::{column::Columns, encoded::EncodedValuesLayout},
 };
 use reifydb_rql::plan::physical::InsertRingBufferNode;
 use reifydb_type::{Fragment, IntoFragment, RowNumber, Type, Value, diagnostic::catalog::ring_buffer_not_found};
@@ -43,7 +43,7 @@ impl Executor {
 
 		let ring_buffer_types: Vec<Type> =
 			ring_buffer.columns.iter().map(|c| c.constraint.get_type()).collect();
-		let layout = EncodedRowLayout::new(&ring_buffer_types);
+		let layout = EncodedValuesLayout::new(&ring_buffer_types);
 
 		// Create resolved source for the ring buffer
 		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
@@ -111,7 +111,7 @@ impl Executor {
 						return Err(e);
 					}
 
-					// Set the value in the row
+					// Set the value in the encoded
 					match value {
 						Value::Boolean(v) => layout.set_bool(&mut row, rb_idx, v),
 						Value::Float4(v) => layout.set_f32(&mut row, rb_idx, *v),
@@ -158,7 +158,7 @@ impl Executor {
 					RowNumber(metadata.head)
 				};
 
-				// Store the row using interceptors
+				// Store the encoded using interceptors
 				use crate::transaction::operation::RingBufferOperations;
 				std_txn.command_mut().insert_into_ring_buffer_at(
 					ring_buffer.clone(),

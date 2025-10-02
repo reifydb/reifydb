@@ -3,11 +3,12 @@
 
 pub(crate) use reifydb_core::interface::{RowEvaluationContext, RowEvaluator};
 use reifydb_core::{
+	Row,
 	interface::{ColumnDef, ColumnEvaluationContext, ColumnEvaluator, expression::Expression},
 	value::{
 		column::{Column, ColumnData, Columns},
 		container::NumberContainer,
-		row::{EncodedRowNamedLayout, Row},
+		encoded::EncodedValuesNamedLayout,
 	},
 };
 use reifydb_type::{Error, Fragment, Params, ROW_NUMBER_COLUMN_NAME, Type, Value, internal_error};
@@ -142,7 +143,7 @@ impl StandardRowEvaluator {
 			types.push(r#type);
 		}
 
-		let layout = EncodedRowNamedLayout::new(names.into_iter().zip(types.into_iter()));
+		let layout = EncodedValuesNamedLayout::new(names.into_iter().zip(types.into_iter()));
 		let mut encoded = layout.allocate_row();
 		layout.set_values(&mut encoded, &values);
 

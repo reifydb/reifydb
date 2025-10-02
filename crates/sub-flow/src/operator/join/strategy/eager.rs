@@ -1,4 +1,4 @@
-use reifydb_core::{interface::Transaction, value::row::Row};
+use reifydb_core::{Row, interface::Transaction};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
@@ -7,7 +7,7 @@ use crate::{
 	operator::join::{JoinSideEntry, JoinState, SerializedRow, Store, operator::JoinOperator},
 };
 
-/// Add a row to a state entry (left or right)
+/// Add a encoded to a state entry (left or right)
 pub(crate) fn add_to_state_entry<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	store: &mut Store<JoinSideEntry>,
@@ -23,7 +23,7 @@ pub(crate) fn add_to_state_entry<T: Transaction>(
 	Ok(())
 }
 
-/// Remove a row from state entry and cleanup if empty
+/// Remove a encoded from state entry and cleanup if empty
 pub(crate) fn remove_from_state_entry<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	store: &mut Store<JoinSideEntry>,
@@ -45,7 +45,7 @@ pub(crate) fn remove_from_state_entry<T: Transaction>(
 	}
 }
 
-/// Update a row in-place within a state entry
+/// Update a encoded in-place within a state entry
 pub(crate) fn update_row_in_entry<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	store: &mut Store<JoinSideEntry>,
@@ -65,7 +65,7 @@ pub(crate) fn update_row_in_entry<T: Transaction>(
 	Ok(false)
 }
 
-/// Emit joined rows when inserting a left row that has right matches
+/// Emit joined rows when inserting a left encoded that has right matches
 pub(crate) fn emit_joined_rows_left_to_right<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	left_row: &Row,
@@ -88,7 +88,7 @@ pub(crate) fn emit_joined_rows_left_to_right<T: Transaction>(
 	Ok(result)
 }
 
-/// Emit joined rows when inserting a right row that has left matches
+/// Emit joined rows when inserting a right encoded that has left matches
 pub(crate) fn emit_joined_rows_right_to_left<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	right_row: &Row,
@@ -111,7 +111,7 @@ pub(crate) fn emit_joined_rows_right_to_left<T: Transaction>(
 	Ok(result)
 }
 
-/// Emit removal of all joined rows involving a left row
+/// Emit removal of all joined rows involving a left encoded
 pub(crate) fn emit_remove_joined_rows_left<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	left_row: &Row,
@@ -134,7 +134,7 @@ pub(crate) fn emit_remove_joined_rows_left<T: Transaction>(
 	Ok(result)
 }
 
-/// Emit removal of all joined rows involving a right row
+/// Emit removal of all joined rows involving a right encoded
 pub(crate) fn emit_remove_joined_rows_right<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	right_row: &Row,
@@ -157,7 +157,7 @@ pub(crate) fn emit_remove_joined_rows_right<T: Transaction>(
 	Ok(result)
 }
 
-/// Emit updates for all joined rows when a left row is updated
+/// Emit updates for all joined rows when a left encoded is updated
 pub(crate) fn emit_update_joined_rows_left<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	old_left_row: &Row,
@@ -182,7 +182,7 @@ pub(crate) fn emit_update_joined_rows_left<T: Transaction>(
 	Ok(result)
 }
 
-/// Emit updates for all joined rows when a right row is updated
+/// Emit updates for all joined rows when a right encoded is updated
 pub(crate) fn emit_update_joined_rows_right<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	old_right_row: &Row,
@@ -216,7 +216,7 @@ pub(crate) fn has_right_rows<T: Transaction>(
 	Ok(right_store.contains_key(txn, key_hash)?)
 }
 
-/// Check if it's the first right row being added for a key
+/// Check if it's the first right encoded being added for a key
 pub(crate) fn is_first_right_row<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	right_store: &Store<JoinSideEntry>,

@@ -3,15 +3,15 @@
 
 use reifydb_core::{
 	CowVec, EncodedKey, Result,
-	interface::{SingleVersionGet, SingleVersionRow},
-	value::row::EncodedRow,
+	interface::{SingleVersionGet, SingleVersionValues},
+	value::encoded::EncodedValues,
 };
 use rusqlite::{OptionalExtension, params};
 
 use crate::backend::sqlite::Sqlite;
 
 impl SingleVersionGet for Sqlite {
-	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionRow>> {
+	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();
 		Ok(conn_guard
@@ -19,9 +19,9 @@ impl SingleVersionGet for Sqlite {
 				"SELECT key, value FROM single WHERE key = ?1  LIMIT 1",
 				params![key.to_vec()],
 				|row| {
-					Ok(SingleVersionRow {
+					Ok(SingleVersionValues {
 						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+						values: EncodedValues(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					})
 				},
 			)

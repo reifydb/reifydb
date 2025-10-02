@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, Transaction},
-	value::{column::Columns, row::EncodedRowLayout},
+	value::{column::Columns, encoded::EncodedValuesLayout},
 };
 use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_type::{
@@ -46,7 +46,7 @@ impl Executor {
 
 		let ring_buffer_types: Vec<Type> =
 			ring_buffer.columns.iter().map(|c| c.constraint.get_type()).collect();
-		let layout = EncodedRowLayout::new(&ring_buffer_types);
+		let layout = EncodedValuesLayout::new(&ring_buffer_types);
 
 		// Create resolved source for the ring buffer
 		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
@@ -79,7 +79,7 @@ impl Executor {
 				columns,
 			}) = input_node.next(&mut wrapped_txn)?
 			{
-				// Get row numbers from the Columns structure
+				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());
 				}
@@ -155,18 +155,18 @@ impl Executor {
 						}
 					}
 
-					// Update the row using the existing RowNumber from the columns
+					// Update the encoded using the existing RowNumber from the columns
 					let row_number = row_numbers[row_idx];
 
-					// Validate that the row number is within the valid range for this ring buffer
-					// Ring buffer positions are from 0 to capacity-1
+					// Validate that the encoded number is within the valid range for this ring
+					// buffer Ring buffer positions are from 0 to capacity-1
 					if row_number.0 >= metadata.capacity {
-						// Skip invalid row numbers silently or could return an error
+						// Skip invalid encoded numbers silently or could return an error
 						continue;
 					}
 
-					// Check if the row exists in the ring buffer
-					// A row exists if it's within the current entries
+					// Check if the encoded exists in the ring buffer
+					// A encoded exists if it's within the current entries
 					if metadata.is_empty() {
 						// No entries, can't update
 						continue;
@@ -186,7 +186,7 @@ impl Executor {
 						continue;
 					}
 
-					// Update the row using interceptors
+					// Update the encoded using interceptors
 					use crate::transaction::operation::RingBufferOperations;
 					wrapped_txn.command_mut().update_ring_buffer(
 						ring_buffer.clone(),

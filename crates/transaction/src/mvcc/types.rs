@@ -11,23 +11,25 @@
 
 use std::{cmp, cmp::Reverse};
 
-use reifydb_core::{CommitVersion, EncodedKey, delta::Delta, interface::MultiVersionRow, value::row::EncodedRow};
+use reifydb_core::{
+	CommitVersion, EncodedKey, delta::Delta, interface::MultiVersionValues, value::encoded::EncodedValues,
+};
 
 pub enum TransactionValue {
 	PendingIter {
 		version: CommitVersion,
 		key: EncodedKey,
-		row: EncodedRow,
+		row: EncodedValues,
 	},
 	Pending(Pending),
 	Committed(Committed),
 }
 
-impl From<MultiVersionRow> for TransactionValue {
-	fn from(value: MultiVersionRow) -> Self {
+impl From<MultiVersionValues> for TransactionValue {
+	fn from(value: MultiVersionValues) -> Self {
 		Self::Committed(Committed {
 			key: value.key,
-			row: value.row,
+			row: value.values,
 			version: value.version,
 		})
 	}
@@ -84,13 +86,13 @@ impl TransactionValue {
 		}
 	}
 
-	pub fn row(&self) -> &EncodedRow {
+	pub fn row(&self) -> &EncodedValues {
 		match self {
 			Self::PendingIter {
 				row,
 				..
 			} => row,
-			Self::Pending(item) => item.row().expect("row of pending cannot be `None`"),
+			Self::Pending(item) => item.row().expect("encoded of pending cannot be `None`"),
 			Self::Committed(item) => &item.row,
 		}
 	}
@@ -100,8 +102,8 @@ impl TransactionValue {
 	}
 }
 
-impl From<(CommitVersion, EncodedKey, EncodedRow)> for TransactionValue {
-	fn from((version, k, b): (CommitVersion, EncodedKey, EncodedRow)) -> Self {
+impl From<(CommitVersion, EncodedKey, EncodedValues)> for TransactionValue {
+	fn from((version, k, b): (CommitVersion, EncodedKey, EncodedValues)) -> Self {
 		Self::PendingIter {
 			version,
 			key: k,
@@ -110,8 +112,8 @@ impl From<(CommitVersion, EncodedKey, EncodedRow)> for TransactionValue {
 	}
 }
 
-impl From<(CommitVersion, &EncodedKey, &EncodedRow)> for TransactionValue {
-	fn from((version, k, b): (CommitVersion, &EncodedKey, &EncodedRow)) -> Self {
+impl From<(CommitVersion, &EncodedKey, &EncodedValues)> for TransactionValue {
+	fn from((version, k, b): (CommitVersion, &EncodedKey, &EncodedValues)) -> Self {
 		Self::PendingIter {
 			version,
 			key: k.clone(),
@@ -135,15 +137,15 @@ impl From<Committed> for TransactionValue {
 #[derive(Clone, Debug)]
 pub struct Committed {
 	pub(crate) key: EncodedKey,
-	pub(crate) row: EncodedRow,
+	pub(crate) row: EncodedValues,
 	pub(crate) version: CommitVersion,
 }
 
-impl From<MultiVersionRow> for Committed {
-	fn from(value: MultiVersionRow) -> Self {
+impl From<MultiVersionValues> for Committed {
+	fn from(value: MultiVersionValues) -> Self {
 		Self {
 			key: value.key,
-			row: value.row,
+			row: value.values,
 			version: value.version,
 		}
 	}
@@ -154,7 +156,7 @@ impl Committed {
 		&self.key
 	}
 
-	pub fn row(&self) -> &EncodedRow {
+	pub fn row(&self) -> &EncodedValues {
 		&self.row
 	}
 
@@ -207,7 +209,7 @@ impl Pending {
 		self.delta.key()
 	}
 
-	pub fn row(&self) -> Option<&EncodedRow> {
+	pub fn row(&self) -> Option<&EncodedValues> {
 		self.delta.row()
 	}
 

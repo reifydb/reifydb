@@ -14,9 +14,9 @@ use std::{error::Error as StdError, fmt::Write, path::Path};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
-	interface::{MultiVersionRow, MultiVersionStorage, TransactionId},
+	interface::{MultiVersionStore, MultiVersionValues, TransactionId},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 use reifydb_store_row::{
 	memory::Memory,
@@ -38,12 +38,12 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs engine tests.
-pub struct Runner<MVS: MultiVersionStorage> {
+pub struct Runner<MVS: MultiVersionStore> {
 	storage: MVS,
 	version: CommitVersion,
 }
 
-impl<MVS: MultiVersionStorage> Runner<MVS> {
+impl<MVS: MultiVersionStore> Runner<MVS> {
 	fn new(storage: MVS) -> Self {
 		Self {
 			storage,
@@ -52,7 +52,7 @@ impl<MVS: MultiVersionStorage> Runner<MVS> {
 	}
 }
 
-impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
+impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -62,7 +62,7 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = args.lookup_parse("version")?.unwrap_or(self.version);
 				args.reject_rest()?;
-				let value = self.storage.get(&key, version)?.map(|sv| sv.row.to_vec());
+				let value = self.storage.get(&key, version)?.map(|sv| sv.values.to_vec());
 				writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
 			}
 			// contains KEY [version=VERSION]
@@ -126,7 +126,7 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let values = EncodedValues(decode_binary(&kv.value));
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					v
 				} else {
@@ -139,7 +139,7 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 					async_cow_vec![
 						(Delta::Set {
 							key,
-							row
+							values
 						})
 					],
 					version,
@@ -178,9 +178,9 @@ impl<MVS: MultiVersionStorage> testscript::Runner for Runner<MVS> {
 	}
 }
 
-fn print<I: Iterator<Item = MultiVersionRow>>(output: &mut String, iter: I) {
+fn print<I: Iterator<Item = MultiVersionValues>>(output: &mut String, iter: I) {
 	for sv in iter {
-		let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
+		let fmtkv = format::Raw::key_row(&sv.key, sv.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

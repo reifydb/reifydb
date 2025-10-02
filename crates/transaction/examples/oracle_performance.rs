@@ -4,7 +4,7 @@
 use std::{sync::Arc, thread, time::Instant};
 
 use encoding::keycode;
-use reifydb_core::{EncodedKey, util::encoding, value::row::EncodedRow};
+use reifydb_core::{EncodedKey, util::encoding, value::encoded::EncodedValues};
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
 macro_rules! as_key {
@@ -12,7 +12,7 @@ macro_rules! as_key {
 }
 
 macro_rules! as_row {
-	($val:expr) => {{ EncodedRow(reifydb_core::CowVec::new(keycode::serialize(&$val))) }};
+	($val:expr) => {{ EncodedValues(reifydb_core::CowVec::new(keycode::serialize(&$val))) }};
 }
 
 /// Benchmark showing the performance improvement of the new oracle

@@ -29,13 +29,13 @@ fn test_iter() {
 
 	for (expected, tv) in (1..=3).rev().zip(iter) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_row!(expected));
+		assert_eq!(tv.values, as_row!(expected));
 	}
 
 	let iter = txn.scan_rev().unwrap();
 	for (expected, tv) in (1..=3).zip(iter) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.row, as_row!(expected));
+		assert_eq!(tv.values, as_row!(expected));
 	}
 }
 

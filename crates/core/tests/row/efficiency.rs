@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Performance and scalability tests for the row encoding system
+//! Performance and scalability tests for the encoded encoding system
 
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
 
 #[test]
@@ -27,7 +27,7 @@ fn test_large_row() {
 			})
 			.collect();
 
-		let layout = EncodedRowLayout::new(&types);
+		let layout = EncodedValuesLayout::new(&types);
 		let mut row = layout.allocate_row();
 
 		// Set all fields
@@ -86,12 +86,12 @@ fn test_large_row() {
 
 #[test]
 fn test_dynamic_field_reallocation() {
-	let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Blob, Type::Int]);
+	let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Blob, Type::Int]);
 
 	let iterations = 1000;
 
 	// Test performance of setting dynamic fields across many rows
-	// (since dynamic fields can only be set once per row)
+	// (since dynamic fields can only be set once per encoded)
 	let mut rows = Vec::with_capacity(iterations);
 
 	for i in 0..iterations {
@@ -126,7 +126,7 @@ fn test_memory_efficiency() {
 	// Test that memory usage is reasonable
 
 	// Static types should have predictable size
-	let layout = EncodedRowLayout::new(&[
+	let layout = EncodedValuesLayout::new(&[
 		Type::Boolean, // 1 bit validity + 1 byte
 		Type::Int4,    // 1 bit validity + 4 bytes
 		Type::Float8,  // 1 bit validity + 8 bytes
@@ -140,7 +140,7 @@ fn test_memory_efficiency() {
 
 	// Dynamic types should grow as needed - test with separate rows since
 	// dynamic fields can only be set once
-	let layout = EncodedRowLayout::new(&[Type::Utf8]);
+	let layout = EncodedValuesLayout::new(&[Type::Utf8]);
 
 	let initial_size = layout.allocate_row().len();
 

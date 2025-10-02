@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, MultiVersionRow, NamespaceId, NamespaceViewKey, QueryTransaction, ViewDef, ViewId, ViewKey,
+	EncodableKey, MultiVersionValues, NamespaceId, NamespaceViewKey, QueryTransaction, ViewDef, ViewId, ViewKey,
 	ViewKind,
 };
 
@@ -21,7 +21,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
+		let row = multi.values;
 		let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
 		let namespace = NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
 		let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
@@ -49,8 +49,8 @@ impl CatalogStore {
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
 		let Some(view) =
-			rx.range(NamespaceViewKey::full_scan(namespace))?.find_map(|multi: MultiVersionRow| {
-				let row = &multi.row;
+			rx.range(NamespaceViewKey::full_scan(namespace))?.find_map(|multi: MultiVersionValues| {
+				let row = &multi.values;
 				let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
 				if name == view_name {
 					Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)))

@@ -5,21 +5,21 @@ use reifydb_core::{
 	EncodedKey,
 	interface::{FlowNodeId, Transaction},
 	util::{CowVec, encoding::keycode::KeySerializer},
-	value::row::{EncodedKeyRange, EncodedRow},
+	value::encoded::{EncodedKeyRange, EncodedValues},
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::RowNumber;
 
 use crate::operator::stateful::RawStatefulOperator;
 
-/// Provides stable row numbers for keys with automatic Insert/Update detection
+/// Provides stable encoded numbers for keys with automatic Insert/Update detection
 ///
 /// This component maintains:
-/// - A sequential counter for generating new row numbers
-/// - A mapping from keys to their assigned row numbers
+/// - A sequential counter for generating new encoded numbers
+/// - A mapping from keys to their assigned encoded numbers
 ///
-/// When a key is seen for the first time, it gets a new row number and returns
-/// true. When a key is seen again, it returns the existing row number and
+/// When a key is seen for the first time, it gets a new encoded number and returns
+/// true. When a key is seen again, it returns the existing encoded number and
 /// false.
 pub struct RowNumberProvider {
 	node: FlowNodeId,
@@ -42,12 +42,12 @@ impl RowNumberProvider {
 		operator: &O,
 		key: &EncodedKey,
 	) -> crate::Result<(RowNumber, bool)> {
-		// Check if we already have a row number for this key
+		// Check if we already have a encoded number for this key
 		let map_key = self.make_map_key(key);
 		let encoded_map_key = EncodedKey::new(map_key.clone());
 
 		if let Some(existing_row) = operator.state_get(txn, &encoded_map_key)? {
-			// Key exists, return existing row number
+			// Key exists, return existing encoded number
 			let bytes = existing_row.as_ref();
 			if bytes.len() >= 8 {
 				let row_num = u64::from_be_bytes([
@@ -57,16 +57,16 @@ impl RowNumberProvider {
 			}
 		}
 
-		// Key doesn't exist, generate a new row number
+		// Key doesn't exist, generate a new encoded number
 		let counter = self.load_counter(txn, operator)?;
 		let new_row_number = RowNumber(counter);
 
 		// Save the new counter value
 		self.save_counter(txn, operator, counter + 1)?;
 
-		// Save the mapping from key to row number
+		// Save the mapping from key to encoded number
 		let row_num_bytes = counter.to_be_bytes().to_vec();
-		operator.state_set(txn, &encoded_map_key, EncodedRow(CowVec::new(row_num_bytes)))?;
+		operator.state_set(txn, &encoded_map_key, EncodedValues(CowVec::new(row_num_bytes)))?;
 
 		Ok((new_row_number, true))
 	}
@@ -105,7 +105,7 @@ impl RowNumberProvider {
 	) -> crate::Result<()> {
 		let key = self.make_counter_key();
 		let encoded_key = EncodedKey::new(key);
-		let value = EncodedRow(CowVec::new(counter.to_be_bytes().to_vec()));
+		let value = EncodedValues(CowVec::new(counter.to_be_bytes().to_vec()));
 		operator.state_set(txn, &encoded_key, value)?;
 		Ok(())
 	}
@@ -127,8 +127,8 @@ impl RowNumberProvider {
 		serializer.finish()
 	}
 
-	/// Remove all row number mappings with the given prefix
-	/// This is useful for cleaning up all join results from a specific left row
+	/// Remove all encoded number mappings with the given prefix
+	/// This is useful for cleaning up all join results from a specific left encoded
 	pub fn remove_by_prefix<T: Transaction, O: RawStatefulOperator<T>>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
@@ -262,7 +262,7 @@ mod tests {
 
 		let key = test_key("shared_key");
 
-		// Same key in different providers should get different row numbers
+		// Same key in different providers should get different encoded numbers
 		let (rn1, _) = provider1.get_or_create_row_number(&mut txn, &operator1, &key).unwrap();
 		let (rn2, _) = provider2.get_or_create_row_number(&mut txn, &operator2, &key).unwrap();
 
@@ -285,7 +285,7 @@ mod tests {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
-		// Create some row numbers
+		// Create some encoded numbers
 		for i in 1..=3 {
 			let key = test_key(&format!("persist_{}", i));
 			let (rn, _) = provider.get_or_create_row_number(&mut txn, &operator, &key).unwrap();
@@ -307,7 +307,7 @@ mod tests {
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
-		// Create many row numbers
+		// Create many encoded numbers
 		for i in 1..=1000 {
 			let key = test_key(&format!("large_{}", i));
 			let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &operator, &key).unwrap();

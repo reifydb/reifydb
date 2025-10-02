@@ -11,7 +11,7 @@ use reifydb_core::{
 		SystemVersion, SystemVersionKey,
 	},
 	log_error,
-	value::row::EncodedRowLayout,
+	value::encoded::EncodedValuesLayout,
 };
 use reifydb_type::Type;
 
@@ -41,7 +41,7 @@ where
 {
 	fn on(&self, _hook: &OnStartEvent) {
 		if let Err(e) = (|| -> crate::Result<()> {
-			let layout = EncodedRowLayout::new(&[Type::Uint1]);
+			let layout = EncodedValuesLayout::new(&[Type::Uint1]);
 			let key = SystemVersionKey {
 				version: SystemVersion::Storage,
 			}
@@ -55,7 +55,7 @@ where
 					Ok(true)
 				}
 				Some(single) => {
-					let version = layout.get_u8(&single.row, 0);
+					let version = layout.get_u8(&single.values, 0);
 					assert_eq!(CURRENT_STORAGE_VERSION, version, "Storage version mismatch");
 					Ok(false)
 				}

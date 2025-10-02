@@ -1,4 +1,4 @@
-use reifydb_core::{CommitVersion, JoinType, interface::Transaction, value::row::Row};
+use reifydb_core::{CommitVersion, JoinType, Row, interface::Transaction};
 use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;

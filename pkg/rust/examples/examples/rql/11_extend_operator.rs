@@ -15,7 +15,7 @@ fn main() {
 	let mut db = embedded::memory_optimistic().build().unwrap();
 	db.start().unwrap();
 
-	// Example 1: Standalone EXTEND with constants (creates a single-row
+	// Example 1: Standalone EXTEND with constants (creates a single-encoded
 	// frame)
 	log_info!("Example 1: Standalone EXTEND with constants");
 	log_query(r#"extend { total: 42, tax: 3.14 }"#);

@@ -20,7 +20,7 @@ use read::Readers;
 use reifydb_core::{
 	CowVec,
 	delta::Delta,
-	interface::{CdcStorage, MultiVersionStorage, SingleVersionInsert, SingleVersionRemove, SingleVersionStorage},
+	interface::{CdcStorage, MultiVersionStore, SingleVersionInsert, SingleVersionRemove, SingleVersionStore},
 };
 use reifydb_type::Error;
 use rusqlite::Connection;
@@ -150,7 +150,7 @@ impl Sqlite {
 			match delta {
 				Delta::Set {
 					key,
-					row: bytes,
+					values: bytes,
 				} => {
 					operations.push((
 						"INSERT OR REPLACE INTO single (key,value) VALUES (?1, ?2)".to_string(),
@@ -189,8 +189,8 @@ impl Sqlite {
 	}
 }
 
-impl MultiVersionStorage for Sqlite {}
-impl SingleVersionStorage for Sqlite {}
+impl MultiVersionStore for Sqlite {}
+impl SingleVersionStore for Sqlite {}
 impl SingleVersionInsert for Sqlite {}
 impl SingleVersionRemove for Sqlite {}
 impl CdcStorage for Sqlite {}
@@ -421,7 +421,7 @@ mod tests {
 	}
 }
 
-// SqliteRowBackend wrapper for row store specific behavior
+// SqliteRowBackend wrapper for encoded store specific behavior
 #[derive(Clone)]
 pub struct SqliteRowBackend {
 	inner: Sqlite,
@@ -436,12 +436,12 @@ impl SqliteRowBackend {
 		&self,
 		key: &reifydb_core::EncodedKey,
 		version: reifydb_core::CommitVersion,
-	) -> crate::Result<Option<reifydb_core::interface::MultiVersionRow>> {
+	) -> crate::Result<Option<reifydb_core::interface::MultiVersionValues>> {
 		use reifydb_core::interface::MultiVersionGet;
 		self.inner.get(key, version)
 	}
 
-	pub fn put(&self, _row: reifydb_core::interface::MultiVersionRow) -> crate::Result<()> {
+	pub fn put(&self, _row: reifydb_core::interface::MultiVersionValues) -> crate::Result<()> {
 		todo!("Implement put for SqliteRowBackend")
 	}
 
@@ -457,7 +457,7 @@ impl SqliteRowBackend {
 		&self,
 		range: reifydb_core::EncodedKeyRange,
 		version: reifydb_core::CommitVersion,
-	) -> crate::Result<Vec<reifydb_core::interface::MultiVersionRow>> {
+	) -> crate::Result<Vec<reifydb_core::interface::MultiVersionValues>> {
 		use reifydb_core::interface::MultiVersionRange;
 		Ok(self.inner.range(range, version)?.collect())
 	}

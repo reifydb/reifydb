@@ -10,10 +10,10 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		Cdc, CdcChange, CdcGet, CdcRange, CdcScan, CdcSequencedChange, CdcStorage, MultiVersionCommit,
-		MultiVersionGet, MultiVersionStorage, TransactionId,
+		MultiVersionGet, MultiVersionStore, TransactionId,
 	},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 use reifydb_store_row::{
 	memory::Memory,
@@ -43,14 +43,14 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs CDC tests for storage implementations
-pub struct Runner<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorage> {
+pub struct Runner<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStorage> {
 	storage: MVS,
 	next_version: CommitVersion,
 	/// Buffer of deltas to be committed
 	deltas: Vec<Delta>,
 }
 
-impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorage> Runner<MVS> {
+impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStorage> Runner<MVS> {
 	fn new(storage: MVS) -> Self {
 		Self {
 			storage,
@@ -60,8 +60,8 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 	}
 
 	fn format_cdc_change(change: &CdcChange) -> String {
-		let format_value = |row: &EncodedRow| format::Raw::bytes(row.as_slice());
-		let format_option_value = |row_opt: &Option<EncodedRow>| match row_opt {
+		let format_value = |row: &EncodedValues| format::Raw::bytes(row.as_slice());
+		let format_option_value = |row_opt: &Option<EncodedValues>| match row_opt {
 			Some(row) => format::Raw::bytes(row.as_slice()),
 			None => "\"<deleted>\"".to_string(),
 		};
@@ -118,7 +118,7 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 	}
 }
 
-impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorage> testscript::Runner for Runner<MVS> {
+impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStorage> testscript::Runner for Runner<MVS> {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -135,14 +135,14 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let values = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				self.storage.commit(
 					async_cow_vec![
 						(Delta::Set {
 							key,
-							row
+							values
 						})
 					],
 					version,
@@ -162,7 +162,7 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid version")?;
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let row = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				// Update next_version to match the given
@@ -171,7 +171,7 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 				// Buffer the delta
 				self.deltas.push(Delta::Set {
 					key,
-					row,
+					values: row,
 				});
 			}
 
@@ -186,7 +186,7 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 					.map_err(|_| "invalid version")?;
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let row = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				// Update next_version to match the given
@@ -195,7 +195,7 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 				// Buffer the delta
 				self.deltas.push(Delta::Set {
 					key,
-					row,
+					values: row,
 				});
 			}
 
@@ -648,10 +648,10 @@ impl<MVS: MultiVersionStorage + MultiVersionCommit + MultiVersionGet + CdcStorag
 
 				for i in 0..count {
 					let key = EncodedKey(CowVec::new(format!("bulk_{}", i).into_bytes()));
-					let row = EncodedRow(CowVec::new(i.to_string().into_bytes()));
+					let row = EncodedValues(CowVec::new(i.to_string().into_bytes()));
 					deltas.push(Delta::Set {
 						key,
-						row,
+						values: row,
 					});
 				}
 

@@ -1,17 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Stress tests for the row encoding system
+//! Stress tests for the encoded encoding system
 
 use std::str::FromStr;
 
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
 
 #[test]
 fn test_mixed_type_stress() {
 	// Comprehensive test with all types interacting
-	let layout = EncodedRowLayout::new(&[
+	let layout = EncodedValuesLayout::new(&[
 		Type::Boolean,
 		Type::Int1,
 		Type::Int2,

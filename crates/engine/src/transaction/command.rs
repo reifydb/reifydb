@@ -18,13 +18,13 @@ use reifydb_core::{
 	},
 	interface::{
 		BoxedMultiVersionIter, CdcTransaction, CommandTransaction, MultiVersionCommandTransaction,
-		MultiVersionQueryTransaction, MultiVersionRow, MultiVersionTransaction, QueryTransaction,
+		MultiVersionQueryTransaction, MultiVersionTransaction, MultiVersionValues, QueryTransaction,
 		SingleVersionTransaction, Transaction, TransactionId, TransactionalChanges, TransactionalDefChanges,
 		WithEventBus,
 		interceptor::{TransactionInterceptor, WithInterceptors},
 	},
 	return_error,
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 
 use crate::transaction::query::StandardQueryTransaction;
@@ -233,7 +233,7 @@ impl<T: Transaction> MultiVersionQueryTransaction for StandardCommandTransaction
 	}
 
 	#[inline]
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionRow>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().get(key)
 	}
@@ -289,7 +289,7 @@ impl<T: Transaction> MultiVersionQueryTransaction for StandardCommandTransaction
 
 impl<T: Transaction> MultiVersionCommandTransaction for StandardCommandTransaction<T> {
 	#[inline]
-	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
+	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().set(key, row)
 	}

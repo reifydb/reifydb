@@ -141,7 +141,7 @@ fn test_black_white() {
 	assert_eq!(result.len(), 10);
 
 	result.iter().for_each(|sv| {
-		assert_eq!(sv.row, as_row!("black".to_string()));
+		assert_eq!(sv.values, as_row!("black".to_string()));
 	})
 }
 
@@ -258,7 +258,7 @@ fn test_primary_colors() {
 	let mut blue_count = 0;
 
 	result.iter().for_each(|sv| {
-		let value = from_row!(String, sv.row);
+		let value = from_row!(String, sv.values);
 		match value.as_str() {
 			"red" => red_count += 1,
 			"yellow" => yellow_count += 1,

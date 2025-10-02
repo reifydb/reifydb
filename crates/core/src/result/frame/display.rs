@@ -778,9 +778,9 @@ mod tests {
 		// The header should start with __ROW__ID__ column
 		assert!(header_line.contains("__ROW__NUMBER__"));
 
-		// Check that the first data value in the first row is from the
+		// Check that the first data value in the first encoded is from the
 		// RowNumber column
-		let first_data_line = lines[3]; // Fourth line contains first data row
+		let first_data_line = lines[3]; // Fourth line contains first data encoded
 		assert!(first_data_line.contains("1")); // First RowNumber value
 	}
 
@@ -799,8 +799,8 @@ mod tests {
 
 		// Verify that undefined RowNumber displays as "Undefined"
 		let lines: Vec<&str> = output.lines().collect();
-		let first_data_line = lines[3]; // First data row
-		let second_data_line = lines[4]; // Second data row
+		let first_data_line = lines[3]; // First data encoded
+		let second_data_line = lines[4]; // Second data encoded
 
 		assert!(first_data_line.contains("1")); // First RowNumber value
 		assert!(second_data_line.contains("Undefined")); // Second value should be undefined
@@ -865,18 +865,18 @@ mod tests {
 
 	#[test]
 	fn test_renderer_without_row_numbers() {
-		// Create a frame with row numbers
+		// Create a frame with encoded numbers
 		let regular_column = column_with_undefineds!("name", Utf8, [Some("Alice"), Some("Bob")]);
 		let age_column = column_with_undefineds!("age", Int4, [Some(25_i32), Some(30_i32)]);
 
 		let mut frame = Frame::new(vec![regular_column, age_column]);
 		frame.row_numbers = vec![RowNumber::new(1), RowNumber::new(2)];
 
-		// Render with row numbers (using Display trait which uses full renderer)
+		// Render with encoded numbers (using Display trait which uses full renderer)
 		let output_with_row_numbers = format!("{}", frame);
 		assert!(output_with_row_numbers.contains("__ROW__NUMBER__"));
 
-		// Render without row numbers using the new renderer
+		// Render without encoded numbers using the new renderer
 		let output_without_row_numbers = FrameRenderer::render_without_row_numbers(&frame).unwrap();
 		assert!(!output_without_row_numbers.contains("__ROW__NUMBER__"));
 

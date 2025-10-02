@@ -14,8 +14,8 @@ use std::ops::RangeBounds;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	event::transaction::PostCommitEvent,
-	interface::{MultiVersionStorage, SingleVersionTransaction},
-	value::row::EncodedRow,
+	interface::{MultiVersionStore, SingleVersionTransaction},
+	value::encoded::EncodedValues,
 };
 use reifydb_type::Error;
 
@@ -28,12 +28,12 @@ use crate::mvcc::{
 	types::TransactionValue,
 };
 
-pub struct CommandTransaction<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> {
+pub struct CommandTransaction<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> {
 	engine: Optimistic<MVS, SMVT>,
 	pub(crate) tm: TransactionManagerCommand<StdVersionProvider<SMVT>>,
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> CommandTransaction<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<MVS, SMVT> {
 	pub fn new(engine: Optimistic<MVS, SMVT>) -> crate::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
@@ -43,7 +43,7 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> CommandTransactio
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> CommandTransaction<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<MVS, SMVT> {
 	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
 		let mut version: Option<CommitVersion> = None;
 		let mut deltas = CowVec::with_capacity(8);
@@ -76,7 +76,7 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> CommandTransactio
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> CommandTransaction<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<MVS, SMVT> {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -117,7 +117,7 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> CommandTransactio
 		}
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), reifydb_type::Error> {
+	pub fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<(), reifydb_type::Error> {
 		self.tm.set(key, row)
 	}
 

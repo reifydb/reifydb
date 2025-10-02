@@ -31,14 +31,14 @@ fn test_range() {
 	let iter = txn.range(four_to_one.clone()).unwrap();
 	for (expected, v) in (1..=3).rev().zip(iter) {
 		assert_eq!(v.key, as_key!(expected));
-		assert_eq!(v.row, as_row!(expected));
+		assert_eq!(v.values, as_row!(expected));
 		assert_eq!(v.version, 2);
 	}
 
 	let iter = txn.range_rev(four_to_one).unwrap();
 	for (expected, v) in (1..=3).zip(iter) {
 		assert_eq!(v.key, as_key!(expected));
-		assert_eq!(v.row, as_row!(expected));
+		assert_eq!(v.values, as_row!(expected));
 		assert_eq!(v.version, 2);
 	}
 }

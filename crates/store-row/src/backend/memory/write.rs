@@ -13,7 +13,7 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, TransactionId,
 	delta::Delta,
 	interface::{Cdc, CdcSequencedChange},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 use reifydb_type::{Result, return_error};
 
@@ -40,7 +40,7 @@ pub enum WriteCommand {
 pub struct Writer {
 	receiver: Receiver<WriteCommand>,
 	multi: Arc<SkipMap<EncodedKey, MultiVersionRowContainer>>,
-	single: Arc<SkipMap<EncodedKey, EncodedRow>>,
+	single: Arc<SkipMap<EncodedKey, EncodedValues>>,
 	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	commit_buffer: CommitBuffer,
 	// Track pending responses for buffered commits
@@ -50,7 +50,7 @@ pub struct Writer {
 impl Writer {
 	pub fn spawn(
 		multi: Arc<SkipMap<EncodedKey, MultiVersionRowContainer>>,
-		single: Arc<SkipMap<EncodedKey, EncodedRow>>,
+		single: Arc<SkipMap<EncodedKey, EncodedValues>>,
 		cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	) -> Result<Sender<WriteCommand>> {
 		let (sender, receiver) = mpsc::channel();
@@ -157,7 +157,7 @@ impl Writer {
 			match &delta {
 				Delta::Set {
 					key,
-					row,
+					values: row,
 				} => {
 					let item = self
 						.multi
@@ -197,7 +197,7 @@ impl Writer {
 			match delta {
 				Delta::Set {
 					key,
-					row,
+					values: row,
 				} => {
 					self.single.insert(key, row);
 				}

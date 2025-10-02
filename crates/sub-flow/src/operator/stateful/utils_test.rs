@@ -10,7 +10,7 @@ pub mod test {
 		interceptor::StandardInterceptorFactory,
 		interface::{Engine, FlowNodeId},
 		util::CowVec,
-		value::row::{EncodedRow, EncodedRowLayout},
+		value::encoded::{EncodedValues, EncodedValuesLayout},
 	};
 	use reifydb_engine::{
 		EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine,
@@ -53,7 +53,7 @@ pub mod test {
 	/// Test operator implementation for stateful traits
 	pub struct TestOperator {
 		pub id: FlowNodeId,
-		pub layout: EncodedRowLayout,
+		pub layout: EncodedValuesLayout,
 		pub key_types: Vec<Type>,
 	}
 
@@ -62,7 +62,7 @@ pub mod test {
 		pub fn new(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: EncodedRowLayout::new(&[Type::Int8, Type::Float8, Type::Utf8]),
+				layout: EncodedValuesLayout::new(&[Type::Int8, Type::Float8, Type::Utf8]),
 				key_types: vec![Type::Utf8, Type::Int4],
 			}
 		}
@@ -71,7 +71,7 @@ pub mod test {
 		pub fn simple(id: FlowNodeId) -> Self {
 			Self {
 				id,
-				layout: EncodedRowLayout::new(&[Type::Int8]),
+				layout: EncodedValuesLayout::new(&[Type::Int8]),
 				key_types: vec![],
 			}
 		}
@@ -80,7 +80,7 @@ pub mod test {
 		pub fn with_key_types(id: FlowNodeId, key_types: Vec<Type>) -> Self {
 			Self {
 				id,
-				layout: EncodedRowLayout::new(&[Type::Blob, Type::Int4]),
+				layout: EncodedValuesLayout::new(&[Type::Blob, Type::Int4]),
 				key_types,
 			}
 		}
@@ -108,9 +108,9 @@ pub mod test {
 		vec![Value::Utf8("test_key".to_string()), Value::Int4(42)]
 	}
 
-	/// Helper to create test row
-	pub fn test_row() -> EncodedRow {
-		EncodedRow(CowVec::new(vec![1, 2, 3, 4, 5]))
+	/// Helper to create test encoded
+	pub fn test_row() -> EncodedValues {
+		EncodedValues(CowVec::new(vec![1, 2, 3, 4, 5]))
 	}
 
 	/// Helper to create test key with suffix
@@ -118,8 +118,8 @@ pub mod test {
 		EncodedKey::new(format!("test_{}", suffix).into_bytes())
 	}
 
-	/// Helper to verify row equality
-	pub fn assert_row_eq(actual: &EncodedRow, expected: &EncodedRow) {
+	/// Helper to verify encoded equality
+	pub fn assert_row_eq(actual: &EncodedValues, expected: &EncodedValues) {
 		assert_eq!(actual.as_ref().to_vec(), expected.as_ref().to_vec(), "Rows do not match");
 	}
 

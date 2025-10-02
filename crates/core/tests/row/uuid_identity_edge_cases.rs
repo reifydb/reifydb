@@ -1,16 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! UUID and identity edge case tests for the row encoding system
+//! UUID and identity edge case tests for the encoded encoding system
 
 use std::{collections::HashSet, thread::sleep, time::Duration};
 
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
 
 #[test]
 fn test_uuid_uniqueness() {
-	let layout = EncodedRowLayout::new(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
+	let layout = EncodedValuesLayout::new(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
 
 	// Generate many UUIDs and verify uniqueness
 	let mut uuid4_set = HashSet::new();
@@ -42,7 +42,7 @@ fn test_uuid_uniqueness() {
 
 #[test]
 fn test_uuid7_timestamp_ordering() {
-	let layout = EncodedRowLayout::new(&[Type::Uuid7]);
+	let layout = EncodedValuesLayout::new(&[Type::Uuid7]);
 
 	let mut uuids = Vec::new();
 	for _ in 0..10 {

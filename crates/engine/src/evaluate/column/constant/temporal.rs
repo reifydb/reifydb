@@ -20,7 +20,7 @@ impl TemporalParser {
 	}
 
 	/// Parse a temporal constant expression and create a column with the
-	/// specified row count
+	/// specified encoded count
 	pub fn parse_temporal<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
 		let fragment = fragment.into_fragment();
 		let value = fragment.text();

@@ -3,11 +3,9 @@
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
-	interface::{
-		FlowNodeId, MultiVersionCommandTransaction, MultiVersionQueryTransaction, Transaction,
-		key::{EncodableKey, FlowNodeStateKey},
-	},
-	value::row::{EncodedRow, EncodedRowLayout},
+	interface::{FlowNodeId, MultiVersionCommandTransaction, MultiVersionQueryTransaction, Transaction},
+	key::{EncodableKey, FlowNodeStateKey},
+	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
 
@@ -18,12 +16,12 @@ pub fn state_get<T: Transaction>(
 	id: FlowNodeId,
 	txn: &mut StandardCommandTransaction<T>,
 	key: &EncodedKey,
-) -> crate::Result<Option<EncodedRow>> {
+) -> crate::Result<Option<EncodedValues>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
 	match txn.get(&encoded_key)? {
-		Some(multi) => Ok(Some(multi.row)),
+		Some(multi) => Ok(Some(multi.values)),
 		None => Ok(None),
 	}
 }
@@ -33,7 +31,7 @@ pub fn state_set<T: Transaction>(
 	id: FlowNodeId,
 	txn: &mut StandardCommandTransaction<T>,
 	key: &EncodedKey,
-	value: EncodedRow,
+	value: EncodedValues,
 ) -> crate::Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
@@ -91,20 +89,20 @@ pub fn load_or_create_row<T: Transaction>(
 	id: FlowNodeId,
 	txn: &mut StandardCommandTransaction<T>,
 	key: &EncodedKey,
-	layout: &EncodedRowLayout,
-) -> crate::Result<EncodedRow> {
+	layout: &EncodedValuesLayout,
+) -> crate::Result<EncodedValues> {
 	match state_get(id, txn, key)? {
 		Some(row) => Ok(row),
 		None => Ok(layout.allocate_row()),
 	}
 }
 
-/// Save state row
+/// Save state encoded
 pub fn save_row<T: Transaction>(
 	id: FlowNodeId,
 	txn: &mut StandardCommandTransaction<T>,
 	key: &EncodedKey,
-	row: EncodedRow,
+	row: EncodedValues,
 ) -> crate::Result<()> {
 	state_set(id, txn, key, row)
 }
@@ -156,8 +154,8 @@ mod tests {
 		let mut txn = create_test_transaction();
 		let node_id = FlowNodeId(1);
 		let key = test_key("set");
-		let value1 = EncodedRow(CowVec::new(vec![1, 2, 3]));
-		let value2 = EncodedRow(CowVec::new(vec![4, 5, 6]));
+		let value1 = EncodedValues(CowVec::new(vec![1, 2, 3]));
+		let value2 = EncodedValues(CowVec::new(vec![4, 5, 6]));
 
 		// Set initial value
 		state_set(node_id, &mut txn, &key, value1.clone()).unwrap();
@@ -194,7 +192,7 @@ mod tests {
 		// Add multiple entries
 		for i in 0..5 {
 			let key = test_key(&format!("scan_{:02}", i)); // Use padding for proper ordering
-			let value = EncodedRow(CowVec::new(vec![i as u8]));
+			let value = EncodedValues(CowVec::new(vec![i as u8]));
 			state_set(node_id, &mut txn, &key, value).unwrap();
 		}
 
@@ -296,11 +294,11 @@ mod tests {
 		let mut txn = create_test_transaction();
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
-		let layout = EncodedRowLayout::new(&[Type::Int4]);
+		let layout = EncodedValuesLayout::new(&[Type::Int4]);
 
 		// Load non-existing should create new
 		let result = load_or_create_row(node_id, &mut txn, &key, &layout).unwrap();
-		// Should create a row with the expected layout
+		// Should create a encoded with the expected layout
 		assert!(result.len() > 0);
 	}
 
@@ -311,7 +309,7 @@ mod tests {
 		let key = test_key("save");
 		let value = test_row();
 
-		// Save row
+		// Save encoded
 		save_row(node_id, &mut txn, &key, value.clone()).unwrap();
 
 		// Verify saved
@@ -333,8 +331,8 @@ mod tests {
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
 		let key = test_key("shared");
-		let value1 = EncodedRow(CowVec::new(vec![1]));
-		let value2 = EncodedRow(CowVec::new(vec![2]));
+		let value1 = EncodedValues(CowVec::new(vec![1]));
+		let value2 = EncodedValues(CowVec::new(vec![2]));
 
 		// Set different values for same key in different nodes
 		state_set(node1, &mut txn, &key, value1.clone()).unwrap();
@@ -360,7 +358,7 @@ mod tests {
 		let key = test_key("large");
 
 		// Create a large value (10KB)
-		let large_value = EncodedRow(CowVec::new(vec![0xAB; 10240]));
+		let large_value = EncodedValues(CowVec::new(vec![0xAB; 10240]));
 
 		// Store and retrieve
 		state_set(node_id, &mut txn, &key, large_value.clone()).unwrap();
@@ -377,13 +375,13 @@ mod tests {
 
 		// Transaction 1: Set initial value
 		let mut txn1 = engine.begin_command().unwrap();
-		let value1 = EncodedRow(CowVec::new(vec![1]));
+		let value1 = EncodedValues(CowVec::new(vec![1]));
 		state_set(node_id, &mut txn1, &key, value1.clone()).unwrap();
 		txn1.commit().unwrap();
 
 		// Transaction 2: Update value
 		let mut txn2 = engine.begin_command().unwrap();
-		let value2 = EncodedRow(CowVec::new(vec![2]));
+		let value2 = EncodedValues(CowVec::new(vec![2]));
 		state_set(node_id, &mut txn2, &key, value2.clone()).unwrap();
 		txn2.commit().unwrap();
 

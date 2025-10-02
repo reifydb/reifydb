@@ -4,7 +4,7 @@
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::Transaction,
-	value::row::{EncodedRow, EncodedRowLayout},
+	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
 
@@ -15,10 +15,10 @@ use crate::stateful::RawStatefulOperator;
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait WindowStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> EncodedRowLayout;
+	fn layout(&self) -> EncodedValuesLayout;
 
-	/// Create a new state row with default values
-	fn create_state(&self) -> EncodedRow {
+	/// Create a new state encoded with default values
+	fn create_state(&self) -> EncodedValues {
 		let layout = self.layout();
 		layout.allocate_row()
 	}
@@ -28,7 +28,7 @@ pub trait WindowStateful<T: Transaction>: RawStatefulOperator<T> {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		window_key: &EncodedKey,
-	) -> crate::Result<EncodedRow> {
+	) -> crate::Result<EncodedValues> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
@@ -37,7 +37,7 @@ pub trait WindowStateful<T: Transaction>: RawStatefulOperator<T> {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		window_key: &EncodedKey,
-		row: EncodedRow,
+		row: EncodedValues,
 	) -> crate::Result<()> {
 		utils::save_row(self.id(), txn, window_key, row)
 	}
@@ -77,7 +77,7 @@ mod tests {
 
 	// Extend TestOperator to implement WindowStateful
 	impl WindowStateful<TestTransaction> for TestOperator {
-		fn layout(&self) -> EncodedRowLayout {
+		fn layout(&self) -> EncodedValuesLayout {
 			self.layout.clone()
 		}
 	}

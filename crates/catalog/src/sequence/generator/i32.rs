@@ -7,11 +7,11 @@ use reifydb_core::{
 	diagnostic::sequence::sequence_exhausted,
 	interface::{CommandTransaction, SingleVersionCommandTransaction, SingleVersionQueryTransaction},
 	return_error,
-	value::row::EncodedRowLayout,
+	value::encoded::EncodedValuesLayout,
 };
 use reifydb_type::Type;
 
-static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| EncodedRowLayout::new(&[Type::Int4]));
+static LAYOUT: Lazy<EncodedValuesLayout> = Lazy::new(|| EncodedValuesLayout::new(&[Type::Int4]));
 
 pub(crate) struct GeneratorI32 {}
 
@@ -23,7 +23,7 @@ impl GeneratorI32 {
 	) -> crate::Result<i32> {
 		txn.with_single_command(|tx| match tx.get(key)? {
 			Some(row) => {
-				let mut row = row.row;
+				let mut row = row.values;
 				let current_value = LAYOUT.get_i32(&row, 0);
 				let next_value = current_value.saturating_add(1);
 
@@ -48,7 +48,7 @@ impl GeneratorI32 {
 	pub(crate) fn set(txn: &mut impl CommandTransaction, key: &EncodedKey, value: i32) -> crate::Result<()> {
 		txn.with_single_command(|tx| {
 			let mut row = match tx.get(key)? {
-				Some(row) => row.row,
+				Some(row) => row.values,
 				None => LAYOUT.allocate_row(),
 			};
 			LAYOUT.set_i32(&mut row, 0, value);
@@ -63,7 +63,7 @@ mod tests {
 	use reifydb_core::{
 		EncodedKey,
 		diagnostic::sequence::sequence_exhausted,
-		interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction, SingleVersionRow},
+		interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction, SingleVersionValues},
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
@@ -79,13 +79,13 @@ mod tests {
 		}
 
 		txn.with_single_query(|tx| {
-			let mut single: Vec<SingleVersionRow> = tx.scan()?.collect();
+			let mut single: Vec<SingleVersionValues> = tx.scan()?.collect();
 			assert_eq!(single.len(), 2);
 
 			single.pop().unwrap();
 			let single = single.pop().unwrap();
 			assert_eq!(single.key, EncodedKey::new("sequence"));
-			assert_eq!(LAYOUT.get_i32(&single.row, 0), 999);
+			assert_eq!(LAYOUT.get_i32(&single.values, 0), 999);
 
 			Ok(())
 		})

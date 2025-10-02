@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 
 use reifydb_core::{
 	EncodedKey, Result,
-	interface::{SingleVersionRow, SingleVersionScan},
+	interface::{SingleVersionScan, SingleVersionValues},
 };
 
 use super::execute_scan_query;
@@ -21,7 +21,7 @@ impl SingleVersionScan for Sqlite {
 
 pub struct Iter {
 	conn: Reader,
-	buffer: VecDeque<SingleVersionRow>,
+	buffer: VecDeque<SingleVersionValues>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -66,7 +66,7 @@ impl Iter {
 }
 
 impl Iterator for Iter {
-	type Item = SingleVersionRow;
+	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

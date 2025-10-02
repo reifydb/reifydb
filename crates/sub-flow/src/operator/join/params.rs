@@ -1,23 +1,23 @@
 use std::collections::HashMap;
 
-use reifydb_core::value::row::{EncodedRow, EncodedRowNamedLayout};
+use reifydb_core::value::encoded::{EncodedValues, EncodedValuesNamedLayout};
 use reifydb_type::{Params, Value};
 
-/// Extended parameters that can include an encoded row
+/// Extended parameters that can include an encoded encoded
 #[derive(Debug, Clone)]
 pub enum RowParams {
 	/// Standard parameters
 	Standard(Params),
 	/// Row-based parameters with named fields
 	Row {
-		layout: EncodedRowNamedLayout,
-		row: EncodedRow,
+		layout: EncodedValuesNamedLayout,
+		row: EncodedValues,
 	},
 }
 
 impl RowParams {
-	/// Create parameters from an encoded row
-	pub fn from_encoded_row(layout: EncodedRowNamedLayout, row: EncodedRow) -> Self {
+	/// Create parameters from an encoded encoded
+	pub fn from_encoded_row(layout: EncodedValuesNamedLayout, row: EncodedValues) -> Self {
 		Self::Row {
 			layout,
 			row,

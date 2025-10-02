@@ -11,7 +11,7 @@
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
-	interface::{MultiVersionStorage, SingleVersionTransaction},
+	interface::{MultiVersionStore, SingleVersionTransaction},
 };
 
 use crate::mvcc::{
@@ -19,12 +19,12 @@ use crate::mvcc::{
 	types::TransactionValue,
 };
 
-pub struct QueryTransaction<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> {
+pub struct QueryTransaction<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> {
 	pub(crate) engine: Optimistic<MVS, SMVT>,
 	pub(crate) tm: TransactionManagerQuery<StdVersionProvider<SMVT>>,
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> QueryTransaction<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> QueryTransaction<MVS, SMVT> {
 	pub fn new(engine: Optimistic<MVS, SMVT>, version: Option<CommitVersion>) -> crate::Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
@@ -34,7 +34,7 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> QueryTransaction<
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> QueryTransaction<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> QueryTransaction<MVS, SMVT> {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}

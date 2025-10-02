@@ -69,7 +69,7 @@ impl Executor {
 
 		if let Some(input_plan) = plan.input {
 			// Delete specific rows based on input plan
-			// First collect all row numbers to delete
+			// First collect all encoded numbers to delete
 			let mut row_numbers_to_delete = Vec::new();
 
 			let mut std_txn = StandardTransaction::from(txn);
@@ -98,7 +98,7 @@ impl Executor {
 				columns,
 			}) = input_node.next(&mut std_txn)?
 			{
-				// Get row numbers from the Columns structure
+				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());
 				}
@@ -127,7 +127,7 @@ impl Executor {
 				// one
 				if let Some(ref pk_def) = pk_def {
 					if let Some(row_data) = cmd.get(&row_key)? {
-						let row = row_data.row;
+						let row = row_data.values;
 						let layout = table.get_layout();
 						let index_key =
 							primary_key::encode_primary_key(pk_def, &row, &table, &layout)?;
@@ -141,7 +141,7 @@ impl Executor {
 					}
 				}
 
-				// Now remove the row
+				// Now remove the encoded
 				cmd.remove(&row_key)?;
 				deleted_count += 1;
 			}
@@ -167,7 +167,10 @@ impl Executor {
 				if let Some(ref pk_def) = pk_def {
 					let layout = table.get_layout();
 					let index_key = super::primary_key::encode_primary_key(
-						pk_def, &multi.row, &table, &layout,
+						pk_def,
+						&multi.values,
+						&table,
+						&layout,
 					)?;
 
 					txn.remove(&IndexEntryKey::new(
@@ -178,7 +181,7 @@ impl Executor {
 					.encode())?;
 				}
 
-				// Remove the row
+				// Remove the encoded
 				txn.remove(&multi.key)?;
 				deleted_count += 1;
 			}

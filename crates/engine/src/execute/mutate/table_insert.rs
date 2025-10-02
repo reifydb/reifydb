@@ -10,7 +10,7 @@ use reifydb_core::{
 		ResolvedNamespace, ResolvedSource, ResolvedTable, Transaction,
 	},
 	return_error,
-	value::{column::Columns, row::EncodedRowLayout},
+	value::{column::Columns, encoded::EncodedValuesLayout},
 };
 use reifydb_rql::plan::physical::InsertTableNode;
 use reifydb_type::{Fragment, Type, Value, diagnostic::catalog::table_not_found};
@@ -43,7 +43,7 @@ impl Executor {
 		};
 
 		let table_types: Vec<Type> = table.columns.iter().map(|c| c.constraint.get_type()).collect();
-		let layout = EncodedRowLayout::new(&table_types);
+		let layout = EncodedValuesLayout::new(&table_types);
 
 		// Create resolved source for the table
 		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
@@ -150,17 +150,17 @@ impl Executor {
 					}
 				}
 
-				// 	// Insert the row into the database
+				// 	// Insert the encoded into the database
 				// 	let row_number =
 				// TableRowSequence::next_row_number( 		txn,
 				// table.id, 	)?;
 				// 	txn.set(
 				// 		&TableRowKey {
 				// 			table: table.id,
-				// 			row: row_number,
+				// 			encoded: row_number,
 				// 		}
 				// 		.encode(),
-				// 		row.clone(),
+				// 		encoded.clone(),
 				// 	)
 				// 	.unwrap();
 				//
@@ -169,10 +169,10 @@ impl Executor {
 				// txn.add_pending(Pending::InsertIntoTable {
 				// 		table: table.clone(),
 				// 		row_number,
-				// 		row: row.clone(),
+				// 		encoded: encoded.clone(),
 				// 	});
 				//
-				// txn.insert_into_table(table, key, row)
+				// txn.insert_into_table(table, key, encoded)
 
 				let row_number = std_txn.command_mut().insert_into_table(table.clone(), row.clone())?;
 
@@ -182,11 +182,11 @@ impl Executor {
 					let index_key =
 						primary_key::encode_primary_key(&pk_def, &row, &table, &layout)?;
 
-					// Store the index entry with the row
+					// Store the index entry with the encoded
 					// number as value For now, we
-					// encode the row number as a simple
+					// encode the encoded number as a simple
 					// EncodedRow with u64
-					let row_number_layout = EncodedRowLayout::new(&[Type::Uint8]);
+					let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
 					let mut row_number_encoded = row_number_layout.allocate_row();
 					row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 

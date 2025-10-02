@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! String and binary data edge case tests for the row encoding system
+//! String and binary data edge case tests for the encoded encoding system
 
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
 
 #[test]
 fn test_utf8_special_sequences() {
-	let layout = EncodedRowLayout::new(&[Type::Utf8]);
+	let layout = EncodedValuesLayout::new(&[Type::Utf8]);
 
 	let test_strings = [
 		"",                 // Empty string
@@ -35,7 +35,7 @@ fn test_utf8_special_sequences() {
 
 #[test]
 fn test_blob_all_byte_values() {
-	let layout = EncodedRowLayout::new(&[Type::Blob]);
+	let layout = EncodedValuesLayout::new(&[Type::Blob]);
 
 	// Test all possible byte values
 	let mut row = layout.allocate_row();
@@ -51,7 +51,7 @@ fn test_blob_all_byte_values() {
 		(0..255).cycle().take(1000).map(|x| x as u8).collect::<Vec<_>>(),
 	];
 
-	// Create a new row for each pattern since dynamic fields can only be
+	// Create a new encoded for each pattern since dynamic fields can only be
 	// set once
 	for pattern in patterns {
 		let mut row = layout.allocate_row();
@@ -63,7 +63,7 @@ fn test_blob_all_byte_values() {
 #[test]
 fn test_dynamic_field_interleaving() {
 	// Tests multiple dynamic fields to ensure they don't corrupt each other
-	let layout = EncodedRowLayout::new(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Int]);
+	let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Blob, Type::Utf8, Type::Int]);
 
 	// Test initial setting with various sizes
 	let mut row = layout.allocate_row();
@@ -78,7 +78,7 @@ fn test_dynamic_field_interleaving() {
 	assert_eq!(layout.get_utf8(&row, 2), "third");
 	assert_eq!(layout.get_int(&row, 3), Int::from(999999999999i64));
 
-	// Test with different sizes in a new row (since dynamic fields can only
+	// Test with different sizes in a new encoded (since dynamic fields can only
 	// be set once)
 	let mut row2 = layout.allocate_row();
 	layout.set_utf8(&mut row2, 0, "much longer string than before");
@@ -86,13 +86,13 @@ fn test_dynamic_field_interleaving() {
 	layout.set_utf8(&mut row2, 2, "");
 	layout.set_int(&mut row2, 3, &Int::from(123i64));
 
-	// Verify the second row
+	// Verify the second encoded
 	assert_eq!(layout.get_utf8(&row2, 0), "much longer string than before");
 	assert_eq!(layout.get_blob(&row2, 1), Blob::from(&b"x"[..]));
 	assert_eq!(layout.get_utf8(&row2, 2), "");
 	assert_eq!(layout.get_int(&row2, 3), Int::from(123i64));
 
-	// Verify the first row is still intact
+	// Verify the first encoded is still intact
 	assert_eq!(layout.get_utf8(&row, 0), "first");
 	assert_eq!(layout.get_blob(&row, 1), Blob::from(&b"second"[..]));
 	assert_eq!(layout.get_utf8(&row, 2), "third");

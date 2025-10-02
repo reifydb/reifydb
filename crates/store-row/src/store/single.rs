@@ -6,18 +6,18 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionInsert, SingleVersionRange,
-		SingleVersionRangeRev, SingleVersionRemove, SingleVersionRow, SingleVersionScan, SingleVersionScanRev,
-		SingleVersionStorage,
+		SingleVersionRangeRev, SingleVersionRemove, SingleVersionScan, SingleVersionScanRev,
+		SingleVersionStore, SingleVersionValues,
 	},
 };
 
 use super::StandardRowStore;
 
-pub trait SingleVersionIter: Iterator<Item = SingleVersionRow> + Send {}
-impl<T> SingleVersionIter for T where T: Iterator<Item = SingleVersionRow> + Send {}
+pub trait SingleVersionIter: Iterator<Item = SingleVersionValues> + Send {}
+impl<T> SingleVersionIter for T where T: Iterator<Item = SingleVersionValues> + Send {}
 
 impl SingleVersionGet for StandardRowStore {
-	fn get(&self, _key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>> {
+	fn get(&self, _key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		todo!("Implement single version get")
 	}
 }
@@ -81,4 +81,4 @@ impl SingleVersionRangeRev for StandardRowStore {
 	}
 }
 
-impl SingleVersionStorage for StandardRowStore {}
+impl SingleVersionStore for StandardRowStore {}

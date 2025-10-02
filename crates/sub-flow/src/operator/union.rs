@@ -26,7 +26,7 @@ impl<T: Transaction> Operator<T> for UnionOperator {
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		// TODO: Implement single-row union processing
+		// TODO: Implement single-encoded union processing
 		// For now, just pass through all changes with updated from
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}

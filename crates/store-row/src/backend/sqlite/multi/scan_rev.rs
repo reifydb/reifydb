@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	interface::{MultiVersionRow, MultiVersionScanRev},
+	interface::{MultiVersionScanRev, MultiVersionValues},
 };
 
 use super::{execute_scan_query, get_table_names};
@@ -23,7 +23,7 @@ pub struct IterRev {
 	conn: Reader,
 	version: CommitVersion,
 	table_names: Vec<String>,
-	buffer: VecDeque<MultiVersionRow>,
+	buffer: VecDeque<MultiVersionValues>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -75,7 +75,7 @@ impl IterRev {
 }
 
 impl Iterator for IterRev {
-	type Item = MultiVersionRow;
+	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

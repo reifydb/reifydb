@@ -16,8 +16,8 @@ use reifydb_core::{
 	interface::{
 		Cdc, CdcChange, CdcQueryTransaction, CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
 		MultiVersionCommandTransaction, Transaction,
-		key::{CdcConsumerKey, EncodableKey},
 	},
+	key::{CdcConsumerKey, EncodableKey},
 	log_debug, log_error,
 };
 use reifydb_engine::StandardEngine;

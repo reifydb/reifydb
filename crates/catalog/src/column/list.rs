@@ -26,7 +26,7 @@ impl CatalogStore {
 		let ids = rx
 			.range(ColumnKey::full_scan(source))?
 			.map(|multi| {
-				let row = multi.row;
+				let row = multi.values;
 				ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID))
 			})
 			.collect::<Vec<_>>();

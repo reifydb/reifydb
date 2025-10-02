@@ -4,7 +4,7 @@
 use reifydb_core::{
 	CommitVersion, CowVec, Result,
 	interface::{Cdc, CdcGet},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 use rusqlite::{OptionalExtension, params};
 
@@ -20,7 +20,7 @@ impl CdcGet for Sqlite {
 		let result = stmt
 			.query_row(params![version as i64], |row| {
 				let bytes: Vec<u8> = row.get(0)?;
-				Ok(EncodedRow(CowVec::new(bytes)))
+				Ok(EncodedValues(CowVec::new(bytes)))
 			})
 			.optional()
 			.unwrap();

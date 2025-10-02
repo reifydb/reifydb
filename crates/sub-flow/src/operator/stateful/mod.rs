@@ -1,14 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	EncodedKey,
-	interface::{
-		BoxedMultiVersionIter,
-		key::{EncodableKey, FlowNodeStateKey},
-	},
-	value::row::EncodedRow,
-};
+use reifydb_core::{EncodedKey, interface::BoxedMultiVersionIter, value::encoded::EncodedValues};
 
 mod keyed;
 mod raw;
@@ -21,6 +14,7 @@ mod window;
 
 pub use keyed::KeyedStateful;
 pub use raw::RawStatefulOperator;
+use reifydb_core::key::{EncodableKey, FlowNodeStateKey};
 pub use row_number::RowNumberProvider;
 pub use single::SingleStateful;
 pub use utils::*;
@@ -32,14 +26,14 @@ pub struct StateIterator<'a> {
 }
 
 impl<'a> Iterator for StateIterator<'a> {
-	type Item = (EncodedKey, EncodedRow);
+	type Item = (EncodedKey, EncodedValues);
 
 	fn next(&mut self) -> Option<Self::Item> {
 		self.inner.next().map(|multi| {
 			if let Some(state_key) = FlowNodeStateKey::decode(&multi.key) {
-				(EncodedKey::new(state_key.key), multi.row)
+				(EncodedKey::new(state_key.key), multi.values)
 			} else {
-				(multi.key, multi.row)
+				(multi.key, multi.values)
 			}
 		})
 	}

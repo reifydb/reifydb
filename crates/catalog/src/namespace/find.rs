@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{EncodableKey, NamespaceDef, NamespaceId, NamespaceKey, QueryTransaction},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 
 use crate::{
@@ -24,7 +24,7 @@ impl CatalogStore {
 		}
 
 		Ok(rx.range(NamespaceKey::full_scan())?.find_map(|multi| {
-			let row: &EncodedRow = &multi.row;
+			let row: &EncodedValues = &multi.values;
 			let namespace_name = namespace::LAYOUT.get_utf8(row, namespace::NAME);
 			if name == namespace_name {
 				Some(convert_namespace(multi))

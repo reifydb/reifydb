@@ -7,8 +7,8 @@ use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
 	event::EventBus,
-	interface::{SingleVersionRow, SingleVersionStorage, SingleVersionTransaction, WithEventBus},
-	value::row::EncodedRow,
+	interface::{SingleVersionStore, SingleVersionTransaction, SingleVersionValues, WithEventBus},
+	value::encoded::EncodedValues,
 };
 
 pub(crate) mod range;
@@ -33,7 +33,7 @@ struct SvlInner<SVS> {
 
 impl<SVS> SingleVersionLock<SVS>
 where
-	SVS: SingleVersionStorage,
+	SVS: SingleVersionStore,
 {
 	pub fn new(storage: SVS, event_bus: EventBus) -> Self {
 		Self {
@@ -47,7 +47,7 @@ where
 
 impl<SVS> WithEventBus for SingleVersionLock<SVS>
 where
-	SVS: SingleVersionStorage,
+	SVS: SingleVersionStore,
 {
 	fn event_bus(&self) -> &EventBus {
 		&self.inner.event_bus
@@ -56,7 +56,7 @@ where
 
 impl<SVS> SingleVersionTransaction for SingleVersionLock<SVS>
 where
-	SVS: SingleVersionStorage,
+	SVS: SingleVersionStore,
 {
 	type Query<'a> = SvlReadTransaction<'a, SVS>;
 	type Command<'a> = SvlWriteTransaction<'a, SVS>;

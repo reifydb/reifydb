@@ -44,7 +44,7 @@ impl CatalogStore {
 		.encode();
 
 		let value = rx.with_single_query(|tx| match tx.get(&sequence_key)? {
-			Some(row) => Ok(LAYOUT.get_u64(&row.row, VALUE)),
+			Some(row) => Ok(LAYOUT.get_u64(&row.values, VALUE)),
 			None => Ok(0),
 		})?;
 

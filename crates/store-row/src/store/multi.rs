@@ -6,17 +6,17 @@ use reifydb_core::{
 	delta::Delta,
 	interface::{
 		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
-		MultiVersionRow, MultiVersionScan, MultiVersionScanRev, MultiVersionStorage, TransactionId,
+		MultiVersionScan, MultiVersionScanRev, MultiVersionStore, MultiVersionValues, TransactionId,
 	},
 };
 
 use super::StandardRowStore;
 
-pub trait MultiVersionIter: Iterator<Item = MultiVersionRow> + Send {}
-impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionRow> {}
+pub trait MultiVersionIter: Iterator<Item = MultiVersionValues> + Send {}
+impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionValues> {}
 
 impl MultiVersionGet for StandardRowStore {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionRow>> {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
 		// Check hot tier first
 		if let Some(hot) = &self.hot {
 			if let Some(row) = hot.get(key, version)? {
@@ -101,4 +101,4 @@ impl MultiVersionRangeRev for StandardRowStore {
 	}
 }
 
-impl MultiVersionStorage for StandardRowStore {}
+impl MultiVersionStore for StandardRowStore {}

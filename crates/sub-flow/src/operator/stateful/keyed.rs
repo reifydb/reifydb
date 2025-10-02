@@ -5,7 +5,7 @@ use reifydb_core::{
 	EncodedKey,
 	interface::Transaction,
 	util::encoding::keycode::KeySerializer,
-	value::row::{EncodedRow, EncodedRowLayout},
+	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::{Type, Value};
@@ -17,7 +17,7 @@ use crate::stateful::RawStatefulOperator;
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> EncodedRowLayout;
+	fn layout(&self) -> EncodedValuesLayout;
 
 	/// Schema for keys - defines the types of the key components
 	fn key_types(&self) -> &[Type];
@@ -34,8 +34,8 @@ pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
 		EncodedKey::new(serializer.finish())
 	}
 
-	/// Create a new state row with default values
-	fn create_state(&self) -> EncodedRow {
+	/// Create a new state encoded with default values
+	fn create_state(&self) -> EncodedValues {
 		let layout = self.layout();
 		layout.allocate_row()
 	}
@@ -45,7 +45,7 @@ pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		key_values: &[Value],
-	) -> crate::Result<EncodedRow> {
+	) -> crate::Result<EncodedValues> {
 		let key = self.encode_key(key_values);
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
@@ -55,7 +55,7 @@ pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		key_values: &[Value],
-		row: EncodedRow,
+		row: EncodedValues,
 	) -> crate::Result<()> {
 		let key = self.encode_key(key_values);
 		utils::save_row(self.id(), txn, &key, row)
@@ -67,9 +67,9 @@ pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
 		txn: &mut StandardCommandTransaction<T>,
 		key_values: &[Value],
 		f: F,
-	) -> crate::Result<EncodedRow>
+	) -> crate::Result<EncodedValues>
 	where
-		F: FnOnce(&EncodedRowLayout, &mut EncodedRow) -> crate::Result<()>,
+		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
 	{
 		let layout = self.layout();
 		let mut row = self.load_state(txn, key_values)?;
@@ -95,7 +95,7 @@ mod tests {
 
 	// Extend TestOperator to implement KeyedStateful
 	impl KeyedStateful<TestTransaction> for TestOperator {
-		fn layout(&self) -> EncodedRowLayout {
+		fn layout(&self) -> EncodedValuesLayout {
 			self.layout.clone()
 		}
 

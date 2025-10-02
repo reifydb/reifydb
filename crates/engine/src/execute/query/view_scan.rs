@@ -16,7 +16,7 @@ use reifydb_core::{
 	log_debug,
 	value::{
 		column::{Columns, headers::ColumnHeaders},
-		row::EncodedRowLayout,
+		encoded::EncodedValuesLayout,
 	},
 };
 use reifydb_type::Fragment;
@@ -27,7 +27,7 @@ pub(crate) struct ViewScanNode<'a, T: Transaction> {
 	view: ResolvedView<'a>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	headers: ColumnHeaders<'a>,
-	row_layout: EncodedRowLayout,
+	row_layout: EncodedValuesLayout,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
 	_phantom: PhantomData<T>,
@@ -36,7 +36,7 @@ pub(crate) struct ViewScanNode<'a, T: Transaction> {
 impl<'a, T: Transaction> ViewScanNode<'a, T> {
 	pub fn new(view: ResolvedView<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
 		let data = view.columns().iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
-		let row_layout = EncodedRowLayout::new(&data);
+		let row_layout = EncodedValuesLayout::new(&data);
 
 		let headers = ColumnHeaders {
 			columns: view.columns().iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
@@ -101,7 +101,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ViewScanNode<'a, T> {
 
 		for multi in multi_rows.into_iter() {
 			if let Some(key) = RowKey::decode(&multi.key) {
-				batch_rows.push(multi.row);
+				batch_rows.push(multi.values);
 				row_numbers.push(key.row);
 				new_last_key = Some(multi.key);
 				rows_collected += 1;

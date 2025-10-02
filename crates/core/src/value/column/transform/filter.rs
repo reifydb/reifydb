@@ -5,7 +5,7 @@ use crate::{BitVec, util::CowVec, value::column::Columns};
 
 impl<'a> Columns<'a> {
 	pub fn filter(&mut self, mask: &BitVec) -> crate::Result<()> {
-		// Filter row numbers if present
+		// Filter encoded numbers if present
 		if !self.row_numbers.is_empty() {
 			let filtered_row_numbers: Vec<_> = self
 				.row_numbers

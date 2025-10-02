@@ -28,7 +28,7 @@ impl<T: Transaction> Operator<T> for SortOperator {
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		// TODO: Implement single-row sort processing
+		// TODO: Implement single-encoded sort processing
 		// For now, just pass through all changes with updated from
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}

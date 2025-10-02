@@ -15,7 +15,7 @@ impl CatalogStore {
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
 		let maybe_id = rx.range(ColumnKey::full_scan(source))?.find_map(|multi| {
-			let row = multi.row;
+			let row = multi.values;
 			let column = ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID));
 			let name = table_column::LAYOUT.get_utf8(&row, table_column::NAME);
 

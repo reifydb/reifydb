@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, MultiVersionRow, NamespaceId, NamespaceRingBufferKey, QueryTransaction, RingBufferDef,
+	EncodableKey, MultiVersionValues, NamespaceId, NamespaceRingBufferKey, QueryTransaction, RingBufferDef,
 	RingBufferId, RingBufferKey, RingBufferMetadata, RingBufferMetadataKey,
 };
 
@@ -20,7 +20,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
+		let row = multi.values;
 		let id = RingBufferId(ring_buffer::LAYOUT.get_u64(&row, ring_buffer::ID));
 		let namespace = NamespaceId(ring_buffer::LAYOUT.get_u64(&row, ring_buffer::NAMESPACE));
 		let name = ring_buffer::LAYOUT.get_utf8(&row, ring_buffer::NAME).to_string();
@@ -44,7 +44,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
+		let row = multi.values;
 		let buffer_id = RingBufferId(ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::ID));
 		let capacity = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::CAPACITY);
 		let head = ring_buffer_metadata::LAYOUT.get_u64(&row, ring_buffer_metadata::HEAD);
@@ -66,9 +66,9 @@ impl CatalogStore {
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<RingBufferDef>> {
 		let name = name.as_ref();
-		let Some(ring_buffer) =
-			rx.range(NamespaceRingBufferKey::full_scan(namespace))?.find_map(|multi: MultiVersionRow| {
-				let row = &multi.row;
+		let Some(ring_buffer) = rx.range(NamespaceRingBufferKey::full_scan(namespace))?.find_map(
+			|multi: MultiVersionValues| {
+				let row = &multi.values;
 				let ring_buffer_name =
 					ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME);
 				if name == ring_buffer_name {
@@ -78,8 +78,8 @@ impl CatalogStore {
 				} else {
 					None
 				}
-			})
-		else {
+			},
+		) else {
 			return Ok(None);
 		};
 

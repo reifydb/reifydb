@@ -12,7 +12,7 @@ impl CatalogStore {
 	) -> crate::Result<Vec<ColumnPolicy>> {
 		Ok(rx.range(ColumnPolicyKey::full_scan(column))?
 			.map(|multi| {
-				let row = multi.row;
+				let row = multi.values;
 				let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
 				let column = ColumnId(column_policy::LAYOUT.get_u64(&row, column_policy::COLUMN));
 

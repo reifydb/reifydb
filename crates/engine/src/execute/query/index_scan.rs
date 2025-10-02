@@ -6,7 +6,7 @@ use std::sync::Arc;
 use reifydb_core::{
 	EncodedKey,
 	interface::{IndexId, TableDef, Transaction},
-	value::{column::headers::ColumnHeaders, row::EncodedRowLayout},
+	value::{column::headers::ColumnHeaders, encoded::EncodedValuesLayout},
 };
 use reifydb_type::Fragment;
 
@@ -20,7 +20,7 @@ pub(crate) struct IndexScanNode<'a, T: Transaction> {
 	_index_id: IndexId,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	headers: ColumnHeaders<'a>,
-	_row_layout: EncodedRowLayout,
+	_row_layout: EncodedValuesLayout,
 	_last_key: Option<EncodedKey>,
 	_exhausted: bool,
 	_phantom: std::marker::PhantomData<T>,
@@ -29,7 +29,7 @@ pub(crate) struct IndexScanNode<'a, T: Transaction> {
 impl<'a, T: Transaction> IndexScanNode<'a, T> {
 	pub fn new(table: TableDef, index_id: IndexId, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
 		let data = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
-		let row_layout = EncodedRowLayout::new(&data);
+		let row_layout = EncodedValuesLayout::new(&data);
 
 		let headers = ColumnHeaders {
 			columns: table.columns.iter().map(|col| Fragment::owned_internal(&col.name)).collect(),
@@ -95,19 +95,18 @@ impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<'a, T> {
 		// for entry in index_entries.into_iter() {
 		// 	let row_number_layout = EncodedRowLayout::new(&[Uint8]);
 		//
-		// 	let row_number = row_number_layout.get_u64(&entry.row, 0);
+		// 	let row_number = row_number_layout.get_u64(&entry.encoded, 0);
 		//
-		// 	// Fetch the actual row using the row number
 		// 	let source: SourceId = self.table.id.into();
 		// 	let row_key = RowKey {
 		// 		source,
-		// 		row: RowNumber(row_number),
+		// 		encoded: RowNumber(row_number),
 		// 	};
 		//
 		// 	let row_key_encoded = row_key.encode();
 		//
 		// 	if let Some(row_data) = rx.get(&row_key_encoded)? {
-		// 		batch_rows.push(row_data.row);
+		// 		batch_rows.push(row_data.encoded);
 		// 		row_numbers.push(RowNumber(row_number));
 		// 		new_last_key = Some(entry.key);
 		// 		rows_collected += 1;

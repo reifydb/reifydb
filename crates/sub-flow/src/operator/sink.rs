@@ -63,7 +63,7 @@ impl<T: Transaction> Operator<T> for SinkViewOperator {
 					post,
 					..
 				} => {
-					// Transform the row to match the view schema
+					// Transform the encoded to match the view schema
 					let transformed_row = evaluator.coerce(post, target_columns)?;
 
 					let key = RowKey {

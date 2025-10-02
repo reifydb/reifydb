@@ -5,21 +5,21 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Error,
 	event::EventBus,
 	interface::{
-		BoxedMultiVersionIter, MultiVersionCommandTransaction, MultiVersionQueryTransaction, MultiVersionRow,
-		MultiVersionStorage, MultiVersionTransaction, SingleVersionTransaction, TransactionId, WithEventBus,
+		BoxedMultiVersionIter, MultiVersionCommandTransaction, MultiVersionQueryTransaction, MultiVersionStore,
+		MultiVersionTransaction, MultiVersionValues, SingleVersionTransaction, TransactionId, WithEventBus,
 	},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 
 use crate::mvcc::transaction::optimistic::{CommandTransaction, Optimistic, QueryTransaction};
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> WithEventBus for Optimistic<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> WithEventBus for Optimistic<MVS, SMVT> {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionTransaction for Optimistic<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionTransaction for Optimistic<MVS, SMVT> {
 	type Query = QueryTransaction<MVS, SMVT>;
 	type Command = CommandTransaction<MVS, SMVT>;
 
@@ -32,7 +32,7 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionTrans
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQueryTransaction
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTransaction
 	for QueryTransaction<MVS, SMVT>
 {
 	fn version(&self) -> CommitVersion {
@@ -43,10 +43,10 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 		self.tm.id()
 	}
 
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>, Error> {
-		Ok(QueryTransaction::get(self, key)?.map(|tv| MultiVersionRow {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>, Error> {
+		Ok(QueryTransaction::get(self, key)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			row: tv.row().clone(),
+			values: tv.row().clone(),
 			version: tv.version(),
 		}))
 	}
@@ -91,7 +91,7 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQueryTransaction
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTransaction
 	for CommandTransaction<MVS, SMVT>
 {
 	fn version(&self) -> CommitVersion {
@@ -102,10 +102,10 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 		self.tm.id()
 	}
 
-	fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionRow>, Error> {
-		Ok(CommandTransaction::get(self, key)?.map(|tv| MultiVersionRow {
+	fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>, Error> {
+		Ok(CommandTransaction::get(self, key)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			row: tv.row().clone(),
+			values: tv.row().clone(),
 			version: tv.version(),
 		}))
 	}
@@ -115,9 +115,9 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 	}
 
 	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.scan()?.map(|tv| MultiVersionRow {
+		let iter = self.scan()?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			row: tv.row().clone(),
+			values: tv.row().clone(),
 			version: tv.version(),
 		});
 
@@ -125,9 +125,9 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 	}
 
 	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.scan_rev()?.map(|tv| MultiVersionRow {
+		let iter = self.scan_rev()?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			row: tv.row().clone(),
+			values: tv.row().clone(),
 			version: tv.version(),
 		});
 
@@ -135,9 +135,9 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 	}
 
 	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.range(range)?.map(|tv| MultiVersionRow {
+		let iter = self.range(range)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			row: tv.row().clone(),
+			values: tv.row().clone(),
 			version: tv.version(),
 		});
 
@@ -145,9 +145,9 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 	}
 
 	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.range_rev(range)?.map(|tv| MultiVersionRow {
+		let iter = self.range_rev(range)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			row: tv.row().clone(),
+			values: tv.row().clone(),
 			version: tv.version(),
 		});
 
@@ -155,9 +155,9 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 	}
 
 	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.prefix(prefix)?.map(|tv| MultiVersionRow {
+		let iter = self.prefix(prefix)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			row: tv.row().clone(),
+			values: tv.row().clone(),
 			version: tv.version(),
 		});
 
@@ -165,9 +165,9 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 	}
 
 	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.prefix_rev(prefix)?.map(|tv| MultiVersionRow {
+		let iter = self.prefix_rev(prefix)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			row: tv.row().clone(),
+			values: tv.row().clone(),
 			version: tv.version(),
 		});
 
@@ -180,10 +180,10 @@ impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionQuery
 	}
 }
 
-impl<MVS: MultiVersionStorage, SMVT: SingleVersionTransaction> MultiVersionCommandTransaction
+impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionCommandTransaction
 	for CommandTransaction<MVS, SMVT>
 {
-	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> Result<(), Error> {
+	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<(), Error> {
 		CommandTransaction::set(self, key, row)?;
 		Ok(())
 	}

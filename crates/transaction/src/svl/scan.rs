@@ -3,24 +3,24 @@
 
 use std::{cmp, vec::IntoIter};
 
-use reifydb_core::{EncodedKey, delta::Delta, interface::SingleVersionRow};
+use reifydb_core::{EncodedKey, delta::Delta, interface::SingleVersionValues};
 
 /// Iterator for full scan in an SVL WriteTransaction with owned values.
 pub struct SvlScan {
 	/// Iterator over committed data (owned)
-	committed: IntoIter<SingleVersionRow>,
+	committed: IntoIter<SingleVersionValues>,
 	/// Iterator over pending changes (owned)
 	pending: IntoIter<(EncodedKey, Delta)>,
 	/// Next item from pending buffer
 	next_pending: Option<(EncodedKey, Delta)>,
 	/// Next item from committed storage
-	next_committed: Option<SingleVersionRow>,
+	next_committed: Option<SingleVersionValues>,
 	/// Track the last key we yielded to avoid duplicates
 	last_yielded_key: Option<EncodedKey>,
 }
 
 impl SvlScan {
-	pub fn new(pending: IntoIter<(EncodedKey, Delta)>, committed: IntoIter<SingleVersionRow>) -> Self {
+	pub fn new(pending: IntoIter<(EncodedKey, Delta)>, committed: IntoIter<SingleVersionValues>) -> Self {
 		let mut iterator = SvlScan {
 			pending,
 			committed,
@@ -45,7 +45,7 @@ impl SvlScan {
 }
 
 impl Iterator for SvlScan {
-	type Item = SingleVersionRow;
+	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -63,12 +63,12 @@ impl Iterator for SvlScan {
 
 							match delta {
 								Delta::Set {
-									row,
+									values: row,
 									..
 								} => {
-									return Some(SingleVersionRow {
+									return Some(SingleVersionValues {
 										key,
-										row,
+										values: row,
 									});
 								}
 								Delta::Remove {
@@ -89,12 +89,12 @@ impl Iterator for SvlScan {
 
 							match delta {
 								Delta::Set {
-									row,
+									values: row,
 									..
 								} => {
-									return Some(SingleVersionRow {
+									return Some(SingleVersionValues {
 										key,
-										row,
+										values: row,
 									});
 								}
 								Delta::Remove {
@@ -131,12 +131,12 @@ impl Iterator for SvlScan {
 
 					match delta {
 						Delta::Set {
-							row,
+							values: row,
 							..
 						} => {
-							return Some(SingleVersionRow {
+							return Some(SingleVersionValues {
 								key,
-								row,
+								values: row,
 							});
 						}
 						Delta::Remove {

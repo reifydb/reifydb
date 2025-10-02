@@ -3,12 +3,11 @@
 
 mod auth;
 pub mod catalog;
-mod cdc;
+pub(crate) mod cdc;
 mod engine;
 pub mod evaluate;
 mod execute;
 pub mod identifier;
-pub mod key;
 pub mod logging;
 pub mod resolved;
 mod store;
@@ -22,7 +21,6 @@ pub use engine::*;
 pub use evaluate::*;
 pub use execute::*;
 pub use identifier::*;
-pub use key::*;
 pub use reifydb_type::{
 	BorrowedFragment, Fragment, IntoFragment, LazyFragment, OwnedFragment, Params, StatementColumn, StatementLine,
 };
@@ -31,6 +29,7 @@ pub use store::*;
 pub use transaction::*;
 
 use crate::event::EventBus;
+pub use crate::key::*;
 
 pub trait WithEventBus {
 	fn event_bus(&self) -> &EventBus;

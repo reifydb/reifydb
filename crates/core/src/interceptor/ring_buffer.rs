@@ -4,7 +4,7 @@ use reifydb_type::RowNumber;
 
 use crate::{
 	define_api_function, define_closure_interceptor, define_interceptor, impl_register_interceptor,
-	interface::RingBufferDef, value::row::EncodedRow,
+	interface::RingBufferDef, value::encoded::EncodedValues,
 };
 
 // PRE INSERT
@@ -14,7 +14,7 @@ define_interceptor!(
 	fields: {
 		txn: &'a mut T,
 		ring_buffer: &'a RingBufferDef,
-		row: &'a EncodedRow}
+		row: &'a EncodedValues}
 );
 
 define_closure_interceptor!(
@@ -38,7 +38,7 @@ define_interceptor!(
 		txn: &'a mut T,
 		ring_buffer: &'a RingBufferDef,
 		id: RowNumber,
-		row: &'a EncodedRow}
+		row: &'a EncodedValues}
 );
 
 define_closure_interceptor!(
@@ -62,7 +62,7 @@ define_interceptor!(
 		txn: &'a mut T,
 		ring_buffer: &'a RingBufferDef,
 		id: RowNumber,
-		row: &'a EncodedRow}
+		row: &'a EncodedValues}
 );
 
 define_closure_interceptor!(
@@ -86,8 +86,8 @@ define_interceptor!(
 		txn: &'a mut T,
 		ring_buffer: &'a RingBufferDef,
 		id: RowNumber,
-		row: &'a EncodedRow,
-		old_row: &'a EncodedRow}
+		row: &'a EncodedValues,
+		old_row: &'a EncodedValues}
 );
 
 define_closure_interceptor!(
@@ -134,7 +134,7 @@ define_interceptor!(
 		txn: &'a mut T,
 		ring_buffer: &'a RingBufferDef,
 		id: RowNumber,
-		deleted_row: &'a EncodedRow}
+		deleted_row: &'a EncodedValues}
 );
 
 define_closure_interceptor!(

@@ -3,7 +3,7 @@
 
 pub(crate) mod table {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::row::EncodedRowLayout;
+	use reifydb_core::value::encoded::EncodedValuesLayout;
 	use reifydb_type::Type;
 
 	pub(crate) const ID: usize = 0;
@@ -11,8 +11,8 @@ pub(crate) mod table {
 	pub(crate) const NAME: usize = 2;
 	pub(crate) const PRIMARY_KEY: usize = 3;
 
-	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
-		EncodedRowLayout::new(&[
+	pub(crate) static LAYOUT: Lazy<EncodedValuesLayout> = Lazy::new(|| {
+		EncodedValuesLayout::new(&[
 			Type::Uint8, // id
 			Type::Uint8, // namespace id
 			Type::Utf8,  // name
@@ -23,14 +23,14 @@ pub(crate) mod table {
 
 pub(crate) mod table_namespace {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::row::EncodedRowLayout;
+	use reifydb_core::value::encoded::EncodedValuesLayout;
 	use reifydb_type::Type;
 
 	pub(crate) const ID: usize = 0;
 	pub(crate) const NAME: usize = 1;
 
-	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
-		EncodedRowLayout::new(&[
+	pub(crate) static LAYOUT: Lazy<EncodedValuesLayout> = Lazy::new(|| {
+		EncodedValuesLayout::new(&[
 			Type::Uint8, // id
 			Type::Utf8,  // name
 		])

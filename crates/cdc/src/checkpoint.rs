@@ -7,7 +7,7 @@ use reifydb_core::{
 		CommandTransaction, QueryTransaction, SingleVersionCommandTransaction, SingleVersionQueryTransaction,
 		ToConsumerKey,
 	},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 
 pub struct CdcCheckpoint {}
@@ -21,9 +21,9 @@ impl CdcCheckpoint {
 
 		txn.with_single_query(|txn| txn.get(&key))?
 			.and_then(|record| {
-				if record.row.len() >= 8 {
+				if record.values.len() >= 8 {
 					let mut buffer = [0u8; 8];
-					buffer.copy_from_slice(&record.row[0..8]);
+					buffer.copy_from_slice(&record.values[0..8]);
 					Some(u64::from_be_bytes(buffer))
 				} else {
 					None
@@ -40,6 +40,6 @@ impl CdcCheckpoint {
 	) -> reifydb_core::Result<()> {
 		let key = consumer.to_consumer_key();
 		let version_bytes = version.to_be_bytes().to_vec();
-		txn.with_single_command(|txn| txn.set(&key, EncodedRow(CowVec::new(version_bytes))))
+		txn.with_single_command(|txn| txn.set(&key, EncodedValues(CowVec::new(version_bytes))))
 	}
 }

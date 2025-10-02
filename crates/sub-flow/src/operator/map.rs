@@ -2,8 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
+	Row,
 	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
-	value::row::{EncodedRowNamedLayout, Row},
+	value::encoded::EncodedValuesNamedLayout,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::{Params, Type};
@@ -108,7 +109,7 @@ impl MapOperator {
 					if let Expression::AccessSource(access_expr) = expr {
 						let col_name = access_expr.column.name.text();
 
-						// Find the column by name in the row
+						// Find the column by name in the encoded
 						let names = row.layout.names();
 						if let Some(col_idx) = names.iter().position(|n| n == col_name) {
 							row.layout.get_value(&row.encoded, col_idx)
@@ -120,7 +121,7 @@ impl MapOperator {
 						if let Expression::AccessSource(access_expr) = &*alias_expr.expression {
 							let col_name = access_expr.column.name.text();
 
-							// Find the column by name in the row
+							// Find the column by name in the encoded
 							let names = row.layout.names();
 							if let Some(col_idx) = names.iter().position(|n| n == col_name)
 							{
@@ -153,9 +154,9 @@ impl MapOperator {
 		}
 
 		let fields: Vec<(String, Type)> = field_names.into_iter().zip(field_types.into_iter()).collect();
-		let layout = EncodedRowNamedLayout::new(fields);
+		let layout = EncodedValuesNamedLayout::new(fields);
 
-		// Allocate and populate the new row
+		// Allocate and populate the new encoded
 		let mut encoded_row = layout.allocate_row();
 		layout.set_values(&mut encoded_row, &values);
 

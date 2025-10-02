@@ -1,7 +1,6 @@
 use reifydb_core::{
-	CommitVersion,
+	CommitVersion, Row,
 	interface::{FlowNodeId, SourceId},
-	value::row::Row,
 };
 
 #[derive(Debug, Clone)]

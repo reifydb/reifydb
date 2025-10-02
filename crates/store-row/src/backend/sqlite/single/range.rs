@@ -5,7 +5,7 @@ use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, Result,
-	interface::{SingleVersionRange, SingleVersionRow},
+	interface::{SingleVersionRange, SingleVersionValues},
 };
 
 use super::{build_single_query, execute_range_query};
@@ -25,7 +25,7 @@ impl SingleVersionRange for Sqlite {
 pub struct Range {
 	conn: Reader,
 	range: EncodedKeyRange,
-	buffer: VecDeque<SingleVersionRow>,
+	buffer: VecDeque<SingleVersionValues>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -87,7 +87,7 @@ impl Range {
 }
 
 impl Iterator for Range {
-	type Item = SingleVersionRow;
+	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

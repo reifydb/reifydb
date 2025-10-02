@@ -298,14 +298,14 @@ mod tests {
 
 		// Check first link (descending order, so buffer2 comes first)
 		let link = &links[0];
-		let row = &link.row;
+		let row = &link.values;
 		let id2 = ring_buffer_namespace::LAYOUT.get_u64(row, ring_buffer_namespace::ID);
 		assert!(id2 > 0);
 		assert_eq!(ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME), "buffer2");
 
 		// Check second link (buffer1 comes second)
 		let link = &links[1];
-		let row = &link.row;
+		let row = &link.values;
 		let id1 = ring_buffer_namespace::LAYOUT.get_u64(row, ring_buffer_namespace::ID);
 		assert!(id2 > id1);
 		assert_eq!(ring_buffer_namespace::LAYOUT.get_utf8(row, ring_buffer_namespace::NAME), "buffer1");

@@ -12,7 +12,7 @@
 use core::{cmp, iter::Rev};
 use std::collections::btree_map::Range as BTreeMapRange;
 
-use reifydb_core::{Either, EncodedKey, interface::MultiVersionStorage};
+use reifydb_core::{Either, EncodedKey, interface::MultiVersionStore};
 
 use crate::mvcc::{
 	marker::Marker,
@@ -21,7 +21,7 @@ use crate::mvcc::{
 
 pub struct TransactionRangeRev<'a, MVS>
 where
-	MVS: MultiVersionStorage + 'a,
+	MVS: MultiVersionStore + 'a,
 {
 	pub(crate) committed: MVS::RangeIterRev<'a>,
 	pub(crate) pending: Rev<BTreeMapRange<'a, EncodedKey, Pending>>,
@@ -33,7 +33,7 @@ where
 
 impl<'a, MVS> TransactionRangeRev<'a, MVS>
 where
-	MVS: MultiVersionStorage + 'a,
+	MVS: MultiVersionStore + 'a,
 {
 	fn advance_pending(&mut self) {
 		self.next_pending = self.pending.next();
@@ -69,7 +69,7 @@ where
 
 impl<'a, MVS> Iterator for TransactionRangeRev<'a, MVS>
 where
-	MVS: MultiVersionStorage + 'a,
+	MVS: MultiVersionStore + 'a,
 {
 	type Item = TransactionValue;
 

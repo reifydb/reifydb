@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 	value::{
 		column::{Columns, headers::ColumnHeaders},
-		row::EncodedRowLayout,
+		encoded::EncodedValuesLayout,
 	},
 };
 use reifydb_type::{Fragment, RowNumber, Type};
@@ -25,7 +25,7 @@ pub struct RingBufferScan<'a, T: Transaction> {
 	ring_buffer: ResolvedRingBuffer<'a>,
 	metadata: Option<RingBufferMetadata>,
 	headers: ColumnHeaders<'a>,
-	row_layout: EncodedRowLayout,
+	row_layout: EncodedValuesLayout,
 	current_position: u64,
 	rows_returned: u64,
 	context: Option<Arc<ExecutionContext<'a>>>,
@@ -35,9 +35,9 @@ pub struct RingBufferScan<'a, T: Transaction> {
 
 impl<'a, T: Transaction> RingBufferScan<'a, T> {
 	pub fn new(ring_buffer: ResolvedRingBuffer<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
-		// Create row headers based on column types
+		// Create encoded headers based on column types
 		let types: Vec<Type> = ring_buffer.columns().iter().map(|c| c.constraint.get_type()).collect();
-		let row_layout = EncodedRowLayout::new(&types);
+		let row_layout = EncodedValuesLayout::new(&types);
 
 		// Create columns headers
 		let headers = ColumnHeaders {
@@ -113,18 +113,17 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 
 		// Read up to batch_size rows
 		while batch_count < batch_size && self.rows_returned < metadata.count {
-			// Compute the actual row number to read
 			let row_num = RowNumber(self.current_position);
 
-			// Create the row key
+			// Create the encoded key
 			let key = RowKey {
 				source: self.ring_buffer.def().id.into(),
 				row: row_num,
 			};
 
-			// Get the row from storage
+			// Get the encoded from storage
 			if let Some(multi) = txn.get(&key.encode())? {
-				let row_data = multi.row;
+				let row_data = multi.values;
 				batch_rows.push(row_data);
 				row_numbers.push(row_num);
 			}

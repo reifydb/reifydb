@@ -6,18 +6,18 @@ use reifydb_core::{
 	SortDirection,
 	interface::{PrimaryKeyDef, QueryTransaction, TableDef},
 	value::{
+		encoded::{EncodedValues, EncodedValuesLayout},
 		index::{EncodedIndexKey, EncodedIndexLayout},
-		row::{EncodedRow, EncodedRowLayout},
 	},
 };
 use reifydb_type::Type;
 
-/// Extract primary key values from a row and encode them as an index key
+/// Extract primary key values from a encoded and encode them as an index key
 pub fn encode_primary_key(
 	pk_def: &PrimaryKeyDef,
-	row: &EncodedRow,
+	row: &EncodedValues,
 	table: &TableDef,
-	layout: &EncodedRowLayout,
+	layout: &EncodedValuesLayout,
 ) -> crate::Result<EncodedIndexKey> {
 	// Create index layout for PK columns
 	let types: Vec<Type> = pk_def.columns.iter().map(|c| c.constraint.get_type()).collect();
@@ -26,7 +26,7 @@ pub fn encode_primary_key(
 
 	let mut index_key = index_layout.allocate_key();
 
-	// Extract values from row for each PK column
+	// Extract values from encoded for each PK column
 	for (pk_idx, pk_column) in pk_def.columns.iter().enumerate() {
 		// Find column index in table
 		let table_idx = table

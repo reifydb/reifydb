@@ -4,7 +4,7 @@
 use std::collections::Bound;
 
 use super::EncodedIndexKey;
-use crate::value::row::{EncodedKey, EncodedKeyRange};
+use crate::value::encoded::{EncodedKey, EncodedKeyRange};
 
 #[derive(Clone, Debug)]
 pub struct EncodedIndexKeyRange {

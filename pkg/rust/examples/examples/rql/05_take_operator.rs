@@ -186,8 +186,8 @@ take 3"#,
 		log_info!("{}", frame);
 	}
 
-	// Example 7: Take 1 (getting single row)
-	log_info!("\nExample 7: Take single row (take 1)");
+	// Example 7: Take 1 (getting single encoded)
+	log_info!("\nExample 7: Take single encoded (take 1)");
 	log_query(
 		r#"from demo.events
 filter severity == "CRITICAL"

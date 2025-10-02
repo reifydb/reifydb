@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Variable type edge case tests for the row encoding system
+//! Variable type edge case tests for the encoded encoding system
 
 use num_bigint::BigInt;
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
 
 #[test]
 fn test_int_storage_modes() {
-	let layout = EncodedRowLayout::new(&[Type::Int]);
+	let layout = EncodedValuesLayout::new(&[Type::Int]);
 
 	// Test inline storage (fits in 127 bits)
 	let mut row1 = layout.allocate_row();

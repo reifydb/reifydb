@@ -20,52 +20,53 @@ use crate::{
 		CommandTransaction, NamespaceDef, RingBufferDef, TableDef, TransactionId, ViewDef,
 		transaction::change::TransactionalDefChanges,
 	},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 
 pub trait TableInterceptor<CT: CommandTransaction> {
 	/// Intercept table pre-insert operations
-	fn pre_insert(&mut self, table: &TableDef, row: &EncodedRow) -> crate::Result<()>;
+	fn pre_insert(&mut self, table: &TableDef, row: &EncodedValues) -> crate::Result<()>;
 
 	/// Intercept table post-insert operations
-	fn post_insert(&mut self, table: &TableDef, id: RowNumber, row: &EncodedRow) -> crate::Result<()>;
+	fn post_insert(&mut self, table: &TableDef, id: RowNumber, row: &EncodedValues) -> crate::Result<()>;
 
 	/// Intercept table pre-update operations
-	fn pre_update(&mut self, table: &TableDef, id: RowNumber, row: &EncodedRow) -> crate::Result<()>;
+	fn pre_update(&mut self, table: &TableDef, id: RowNumber, row: &EncodedValues) -> crate::Result<()>;
 
 	/// Intercept table post-update operations
 	fn post_update(
 		&mut self,
 		table: &TableDef,
 		id: RowNumber,
-		row: &EncodedRow,
-		old_row: &EncodedRow,
+		row: &EncodedValues,
+		old_row: &EncodedValues,
 	) -> crate::Result<()>;
 
 	/// Intercept table pre-delete operations
 	fn pre_delete(&mut self, table: &TableDef, id: RowNumber) -> crate::Result<()>;
 
 	/// Intercept table post-delete operations
-	fn post_delete(&mut self, table: &TableDef, id: RowNumber, deleted_row: &EncodedRow) -> crate::Result<()>;
+	fn post_delete(&mut self, table: &TableDef, id: RowNumber, deleted_row: &EncodedValues) -> crate::Result<()>;
 }
 
 pub trait RingBufferInterceptor<CT: CommandTransaction> {
 	/// Intercept ring buffer pre-insert operations
-	fn pre_insert(&mut self, ring_buffer: &RingBufferDef, row: &EncodedRow) -> crate::Result<()>;
+	fn pre_insert(&mut self, ring_buffer: &RingBufferDef, row: &EncodedValues) -> crate::Result<()>;
 
 	/// Intercept ring buffer post-insert operations
-	fn post_insert(&mut self, ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedRow) -> crate::Result<()>;
+	fn post_insert(&mut self, ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedValues)
+	-> crate::Result<()>;
 
 	/// Intercept ring buffer pre-update operations
-	fn pre_update(&mut self, ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedRow) -> crate::Result<()>;
+	fn pre_update(&mut self, ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedValues) -> crate::Result<()>;
 
 	/// Intercept ring buffer post-update operations
 	fn post_update(
 		&mut self,
 		ring_buffer: &RingBufferDef,
 		id: RowNumber,
-		row: &EncodedRow,
-		old_row: &EncodedRow,
+		row: &EncodedValues,
+		old_row: &EncodedValues,
 	) -> crate::Result<()>;
 
 	/// Intercept ring buffer pre-delete operations
@@ -76,7 +77,7 @@ pub trait RingBufferInterceptor<CT: CommandTransaction> {
 		&mut self,
 		ring_buffer: &RingBufferDef,
 		id: RowNumber,
-		deleted_row: &EncodedRow,
+		deleted_row: &EncodedValues,
 	) -> crate::Result<()>;
 }
 

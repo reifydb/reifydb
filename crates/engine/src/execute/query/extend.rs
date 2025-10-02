@@ -185,8 +185,6 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 			return Ok(None);
 		}
 
-		// Without input, this behaves like MAP without input
-		// (generates a single row with the computed expressions)
 		let columns = Columns::empty();
 		let mut new_columns = Vec::with_capacity(self.expressions.len());
 
@@ -196,7 +194,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExtendWithoutInputNode<'a, T> {
 			let evaluation_context = ColumnEvaluationContext {
 				target: None,
 				columns: columns.clone(),
-				row_count: 1, // Generate single row
+				row_count: 1,
 				take: None,
 				params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
 			};

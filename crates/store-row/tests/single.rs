@@ -14,9 +14,9 @@ use std::{error::Error as StdError, fmt::Write, path::Path};
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
-	interface::{SingleVersionRow, SingleVersionStorage},
+	interface::{SingleVersionStore, SingleVersionValues},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 use reifydb_store_row::{
 	memory::Memory,
@@ -38,11 +38,11 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs engine tests.
-pub struct Runner<SVS: SingleVersionStorage> {
+pub struct Runner<SVS: SingleVersionStore> {
 	storage: SVS,
 }
 
-impl<SVS: SingleVersionStorage> Runner<SVS> {
+impl<SVS: SingleVersionStore> Runner<SVS> {
 	fn new(storage: SVS) -> Self {
 		Self {
 			storage,
@@ -50,7 +50,7 @@ impl<SVS: SingleVersionStorage> Runner<SVS> {
 	}
 }
 
-impl<SVS: SingleVersionStorage> testscript::Runner for Runner<SVS> {
+impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -59,7 +59,7 @@ impl<SVS: SingleVersionStorage> testscript::Runner for Runner<SVS> {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
-				let value = self.storage.get(&key).unwrap().map(|sv| sv.row.to_vec());
+				let value = self.storage.get(&key).unwrap().map(|sv| sv.values.to_vec());
 				writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
 			}
 			// contains KEY
@@ -119,14 +119,14 @@ impl<SVS: SingleVersionStorage> testscript::Runner for Runner<SVS> {
 				let mut args = command.consume_args();
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedRow(decode_binary(&kv.value));
+				let values = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				self.storage
 					.commit(async_cow_vec![
 						(Delta::Set {
 							key,
-							row
+							values
 						})
 					])
 					.unwrap()
@@ -155,9 +155,9 @@ impl<SVS: SingleVersionStorage> testscript::Runner for Runner<SVS> {
 	}
 }
 
-fn print<I: Iterator<Item = SingleVersionRow>>(output: &mut String, iter: I) {
+fn print<I: Iterator<Item = SingleVersionValues>>(output: &mut String, iter: I) {
 	for sv in iter {
-		let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
+		let fmtkv = format::Raw::key_row(&sv.key, sv.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

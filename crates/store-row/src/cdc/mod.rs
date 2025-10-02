@@ -4,14 +4,14 @@
 pub(crate) mod codec;
 mod layout;
 
-pub(crate) use reifydb_core::{delta::Delta, interface::CdcChange, value::row::EncodedRow};
+pub(crate) use reifydb_core::{delta::Delta, interface::CdcChange, value::encoded::EncodedValues};
 
 /// Generate a CDC change from a Delta
-pub(crate) fn generate_cdc_change(delta: Delta, pre: Option<EncodedRow>) -> CdcChange {
+pub(crate) fn generate_cdc_change(delta: Delta, pre: Option<EncodedValues>) -> CdcChange {
 	match delta {
 		Delta::Set {
 			key,
-			row,
+			values: row,
 		} => {
 			if let Some(pre) = pre {
 				CdcChange::Update {

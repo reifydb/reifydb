@@ -25,20 +25,20 @@ mod write;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	CommitVersion, EncodedKey,
-	interface::{Cdc, MultiVersionStorage, SingleVersionInsert, SingleVersionRemove, SingleVersionStorage},
+	interface::{Cdc, MultiVersionStore, SingleVersionInsert, SingleVersionRemove, SingleVersionStore},
 	util::MultiVersionContainer,
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 use write::{WriteCommand, Writer};
 
-pub type MultiVersionRowContainer = MultiVersionContainer<EncodedRow>;
+pub type MultiVersionRowContainer = MultiVersionContainer<EncodedValues>;
 
 #[derive(Clone)]
 pub struct Memory(Arc<MemoryInner>);
 
 pub struct MemoryInner {
 	multi: Arc<SkipMap<EncodedKey, MultiVersionRowContainer>>,
-	single: Arc<SkipMap<EncodedKey, EncodedRow>>,
+	single: Arc<SkipMap<EncodedKey, EncodedValues>>,
 	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	writer: Sender<WriteCommand>,
 }
@@ -81,12 +81,12 @@ impl Memory {
 	}
 }
 
-impl MultiVersionStorage for Memory {}
-impl SingleVersionStorage for Memory {}
+impl MultiVersionStore for Memory {}
+impl SingleVersionStore for Memory {}
 impl SingleVersionInsert for Memory {}
 impl SingleVersionRemove for Memory {}
 
-// MemoryRowBackend wrapper for row store specific behavior
+// MemoryRowBackend wrapper for encoded store specific behavior
 #[derive(Clone)]
 pub struct MemoryRowBackend {
 	inner: Memory,
@@ -105,12 +105,12 @@ impl MemoryRowBackend {
 		&self,
 		key: &EncodedKey,
 		version: CommitVersion,
-	) -> crate::Result<Option<reifydb_core::interface::MultiVersionRow>> {
+	) -> crate::Result<Option<reifydb_core::interface::MultiVersionValues>> {
 		use reifydb_core::interface::MultiVersionGet;
 		self.inner.get(key, version)
 	}
 
-	pub fn put(&self, _row: reifydb_core::interface::MultiVersionRow) -> crate::Result<()> {
+	pub fn put(&self, _row: reifydb_core::interface::MultiVersionValues) -> crate::Result<()> {
 		todo!("Implement put for MemoryRowBackend")
 	}
 
@@ -122,7 +122,7 @@ impl MemoryRowBackend {
 		&self,
 		range: reifydb_core::EncodedKeyRange,
 		version: CommitVersion,
-	) -> crate::Result<Vec<reifydb_core::interface::MultiVersionRow>> {
+	) -> crate::Result<Vec<reifydb_core::interface::MultiVersionValues>> {
 		use reifydb_core::interface::MultiVersionRange;
 		Ok(self.inner.range(range, version)?.collect())
 	}

@@ -6,13 +6,13 @@ use std::collections::HashMap;
 use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view};
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
-	CommitVersion, Result,
+	CommitVersion, Result, Row,
 	interface::{
 		Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, QueryTransaction, SourceId,
 		Transaction,
 	},
 	util::CowVec,
-	value::row::{EncodedRow, Row},
+	value::encoded::EncodedValues,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 use reifydb_rql::flow::Flow;
@@ -44,7 +44,7 @@ impl<T: Transaction> FlowConsumer<T> {
 		}
 	}
 
-	/// Helper method to convert row bytes to Row format
+	/// Helper method to convert encoded bytes to Row format
 	fn to_row(
 		txn: &mut StandardCommandTransaction<T>,
 		source: SourceId,
@@ -71,7 +71,7 @@ impl<T: Transaction> FlowConsumer<T> {
 			}
 		};
 
-		let encoded = EncodedRow(CowVec::new(row_bytes));
+		let encoded = EncodedValues(CowVec::new(row_bytes));
 		Ok(Row {
 			number: row_number,
 			encoded,

@@ -5,10 +5,10 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	EncodedKey, Error, JoinType,
+	EncodedKey, Error, JoinType, Row,
 	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
 	util::encoding::keycode::KeySerializer,
-	value::row::{EncodedRowLayout, EncodedRowNamedLayout, Row},
+	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::{Hash128, xxh3_128};
@@ -36,7 +36,7 @@ pub struct JoinOperator {
 	pub(crate) right_exprs: Vec<Expression<'static>>,
 	right_query: QueryString,
 	alias: Option<String>,
-	layout: EncodedRowLayout,
+	layout: EncodedValuesLayout,
 	row_number_provider: RowNumberProvider,
 	executor: Executor,
 }
@@ -73,8 +73,8 @@ impl JoinOperator {
 		}
 	}
 
-	fn state_layout() -> EncodedRowLayout {
-		EncodedRowLayout::new(&[Type::Blob])
+	fn state_layout() -> EncodedValuesLayout {
+		EncodedValuesLayout::new(&[Type::Blob])
 	}
 
 	pub(crate) fn compute_join_key(
@@ -92,7 +92,7 @@ impl JoinOperator {
 					// Get the column name without the source
 					let col_name = access_source.column.name.as_ref();
 
-					// Find the column in the row by name
+					// Find the column in the encoded by name
 					let names = row.layout.names();
 					let col_index = names.iter().position(|n| n == col_name);
 
@@ -104,7 +104,7 @@ impl JoinOperator {
 				}
 				_ => {
 					// For other expressions, use the evaluator
-					// TODO: Investigate if we can avoid cloning the row here
+					// TODO: Investigate if we can avoid cloning the encoded here
 					let ctx = RowEvaluationContext {
 						row: row.clone(),
 						target: None,
@@ -129,18 +129,18 @@ impl JoinOperator {
 		Ok(Some(hash))
 	}
 
-	/// Generate a row number for an unmatched left join row
+	/// Generate a encoded number for an unmatched left join encoded
 	pub(crate) fn unmatched_left_row<T: Transaction>(
 		&self,
 		txn: &mut StandardCommandTransaction<T>,
 		left: &Row,
 	) -> crate::Result<Row> {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'L'); // 'L' prefix for left row
+		serializer.extend_u8(b'L'); // 'L' prefix for left encoded
 		serializer.extend_u64(left.number.0);
 		let composite_key = EncodedKey::new(serializer.finish());
 
-		// Get or create a unique row number for this unmatched row
+		// Get or create a unique encoded number for this unmatched encoded
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, self, &composite_key)?;
 
@@ -151,7 +151,7 @@ impl JoinOperator {
 		})
 	}
 
-	/// Clean up all join results for a given left row
+	/// Clean up all join results for a given left encoded
 	/// This removes both matched and unmatched join results
 	pub(crate) fn cleanup_left_row_joins<T: Transaction>(
 		&self,
@@ -173,7 +173,7 @@ impl JoinOperator {
 		left: &Row,
 		right: &Row,
 	) -> crate::Result<Row> {
-		// Combine the two rows into a single row
+		// Combine the two rows into a single encoded
 		// Prefix column names with alias to handle naming conflicts
 
 		// Pre-calculate total capacity to avoid reallocations
@@ -225,21 +225,21 @@ impl JoinOperator {
 
 		// Create combined layout
 		let fields: Vec<(String, Type)> = combined_names.into_iter().zip(combined_types.into_iter()).collect();
-		let layout = EncodedRowNamedLayout::new(fields);
+		let layout = EncodedValuesNamedLayout::new(fields);
 
-		// Allocate and populate the new row
+		// Allocate and populate the new encoded
 		let mut encoded_row = layout.allocate_row();
 		layout.set_values(&mut encoded_row, &combined_values);
 
-		// Use RowNumberProvider to get a stable row number for this join result
-		// Create a composite key from left and right row numbers
+		// Use RowNumberProvider to get a stable encoded number for this join result
+		// Create a composite key from left and right encoded numbers
 		// Structure: 'L' + left_number + 'R' + right_number for efficient prefix scans
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(b'L'); // 'L' prefix for left row
+		serializer.extend_u8(b'L'); // 'L' prefix for left encoded
 		serializer.extend_u64(left.number.0);
 		serializer.extend_u64(right.number.0);
 
-		// Get or create a unique row number for this join result
+		// Get or create a unique encoded number for this join result
 		let composite_key = EncodedKey::new(serializer.finish());
 		let (result_row_number, _is_new) =
 			self.row_number_provider.get_or_create_row_number(txn, self, &composite_key)?;
@@ -256,7 +256,7 @@ impl JoinOperator {
 		let schema_key = EncodedKey::new(vec![0x00]); // Special key for schema
 		match state_get(self.node, txn, &schema_key)? {
 			Some(row) => {
-				// Deserialize Schema from the row
+				// Deserialize Schema from the encoded
 				let blob = self.layout.get_blob(&row, 0);
 				if blob.is_empty() {
 					return Ok(Schema::new());
@@ -312,7 +312,7 @@ impl<T: Transaction> TransformOperator<T> for JoinOperator {}
 impl<T: Transaction> RawStatefulOperator<T> for JoinOperator {}
 
 impl<T: Transaction> SingleStateful<T> for JoinOperator {
-	fn layout(&self) -> EncodedRowLayout {
+	fn layout(&self) -> EncodedValuesLayout {
 		self.layout.clone()
 	}
 }

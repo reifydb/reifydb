@@ -17,9 +17,9 @@ impl CatalogStore {
 					let table_id = table_key.table;
 
 					let namespace_id =
-						NamespaceId(table::LAYOUT.get_u64(&entry.row, table::NAMESPACE));
+						NamespaceId(table::LAYOUT.get_u64(&entry.values, table::NAMESPACE));
 
-					let name = table::LAYOUT.get_utf8(&entry.row, table::NAME).to_string();
+					let name = table::LAYOUT.get_utf8(&entry.values, table::NAME).to_string();
 
 					let primary_key = Self::find_primary_key(rx, table_id)?;
 					let columns = Self::list_columns(rx, table_id)?;

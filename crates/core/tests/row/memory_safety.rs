@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Memory safety edge case tests for the row encoding system
+//! Memory safety edge case tests for the encoded encoding system
 
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
 
 #[test]
@@ -42,7 +42,7 @@ fn test_unaligned_access_all_types() {
 	for target_type in types_to_test {
 		// Create unaligned layout: Int1 (1 byte) followed by target
 		// type
-		let layout = EncodedRowLayout::new(&[
+		let layout = EncodedValuesLayout::new(&[
 			Type::Int1,  // 1 byte - creates odd alignment
 			target_type, // At offset 1 (odd)
 			Type::Int1,  // Another 1 byte
@@ -101,7 +101,7 @@ fn test_repeated_overwrites_no_memory_leak() {
 	// types For dynamic types, test that memory usage is reasonable across
 	// multiple rows
 
-	let layout = EncodedRowLayout::new(&[
+	let layout = EncodedValuesLayout::new(&[
 		Type::Int4,   // Static
 		Type::Float8, // Static
 		Type::Utf8,   // Dynamic
@@ -151,8 +151,8 @@ fn test_repeated_overwrites_no_memory_leak() {
 
 #[test]
 fn test_minimal_row_handling() {
-	// Test edge case of row with minimal fields
-	let layout = EncodedRowLayout::new(&[Type::Boolean]);
+	// Test edge case of encoded with minimal fields
+	let layout = EncodedValuesLayout::new(&[Type::Boolean]);
 	let row = layout.allocate_row();
 	assert!(row.len() > 0, "Row should have validity bits and data");
 }
@@ -170,7 +170,7 @@ fn test_maximum_field_count() {
 		})
 		.collect();
 
-	let layout = EncodedRowLayout::new(&types);
+	let layout = EncodedValuesLayout::new(&types);
 	let mut row = layout.allocate_row();
 
 	// Set and verify some fields

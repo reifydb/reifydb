@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Boolean edge case tests for the row encoding system
+//! Boolean edge case tests for the encoded encoding system
 
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
 
 #[test]
 fn test_boolean_bit_patterns() {
-	let layout = EncodedRowLayout::new(&[Type::Boolean]);
+	let layout = EncodedValuesLayout::new(&[Type::Boolean]);
 	let mut row = layout.allocate_row();
 
 	// Test standard values
@@ -26,7 +26,7 @@ fn test_boolean_bit_patterns() {
 #[test]
 fn test_boolean_field_independence() {
 	// Test that boolean fields don't interfere with each other
-	let layout = EncodedRowLayout::new(&[
+	let layout = EncodedValuesLayout::new(&[
 		Type::Boolean,
 		Type::Boolean,
 		Type::Boolean,

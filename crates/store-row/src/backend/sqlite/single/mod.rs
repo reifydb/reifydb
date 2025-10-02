@@ -11,7 +11,7 @@ mod scan_rev;
 
 use std::{collections::VecDeque, ops::Bound};
 
-use reifydb_core::{CowVec, EncodedKey, interface::SingleVersionRow, value::row::EncodedRow};
+use reifydb_core::{CowVec, EncodedKey, interface::SingleVersionValues, value::encoded::EncodedValues};
 use rusqlite::Statement;
 
 use crate::backend::sqlite::read::ReadConnection;
@@ -99,16 +99,16 @@ pub(crate) fn execute_range_query(
 	end_bound: Bound<&EncodedKey>,
 	batch_size: usize,
 	param_count: u8,
-	buffer: &mut VecDeque<SingleVersionRow>,
+	buffer: &mut VecDeque<SingleVersionValues>,
 ) -> usize {
 	let mut count = 0;
 	match param_count {
 		0 => {
 			let rows = stmt
 				.query_map(rusqlite::params![batch_size], |row| {
-					Ok(SingleVersionRow {
+					Ok(SingleVersionValues {
 						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+						values: EncodedValues(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					})
 				})
 				.unwrap();
@@ -131,9 +131,9 @@ pub(crate) fn execute_range_query(
 			};
 			let rows = stmt
 				.query_map(rusqlite::params![param, batch_size], |row| {
-					Ok(SingleVersionRow {
+					Ok(SingleVersionValues {
 						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+						values: EncodedValues(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					})
 				})
 				.unwrap();
@@ -159,9 +159,9 @@ pub(crate) fn execute_range_query(
 			};
 			let rows = stmt
 				.query_map(rusqlite::params![start_param, end_param, batch_size], |row| {
-					Ok(SingleVersionRow {
+					Ok(SingleVersionValues {
 						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-						row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+						values: EncodedValues(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 					})
 				})
 				.unwrap();
@@ -187,7 +187,7 @@ pub(crate) fn execute_scan_query(
 	batch_size: usize,
 	last_key: Option<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"
-	buffer: &mut VecDeque<SingleVersionRow>,
+	buffer: &mut VecDeque<SingleVersionValues>,
 ) -> usize {
 	let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
 		(None, "ASC") => (
@@ -214,9 +214,9 @@ pub(crate) fn execute_scan_query(
 
 	let rows = stmt
 		.query_map(rusqlite::params_from_iter(params.iter()), |row| {
-			Ok(SingleVersionRow {
+			Ok(SingleVersionValues {
 				key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-				row: EncodedRow(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+				values: EncodedValues(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
 			})
 		})
 		.unwrap();

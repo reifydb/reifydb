@@ -3,23 +3,23 @@
 
 use crate::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::TransactionId,
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 
 #[derive(Debug)]
-pub struct MultiVersionRow {
+pub struct MultiVersionValues {
 	pub key: EncodedKey,
-	pub row: EncodedRow,
+	pub values: EncodedValues,
 	pub version: CommitVersion,
 }
 
 #[derive(Debug)]
-pub struct SingleVersionRow {
+pub struct SingleVersionValues {
 	pub key: EncodedKey,
-	pub row: EncodedRow,
+	pub values: EncodedValues,
 }
 
-pub trait MultiVersionStorage:
+pub trait MultiVersionStore:
 	Send
 	+ Sync
 	+ Clone
@@ -44,15 +44,15 @@ pub trait MultiVersionCommit {
 }
 
 pub trait MultiVersionGet {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionRow>>;
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>>;
 }
 
 pub trait MultiVersionContains {
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool>;
 }
 
-pub trait MultiVersionIter: Iterator<Item = MultiVersionRow> + Send {}
-impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionRow> {}
+pub trait MultiVersionIter: Iterator<Item = MultiVersionValues> + Send {}
+impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionValues> {}
 
 pub trait MultiVersionScan {
 	type ScanIter<'a>: MultiVersionIter
@@ -94,7 +94,7 @@ pub trait MultiVersionRangeRev {
 	}
 }
 
-pub trait SingleVersionStorage:
+pub trait SingleVersionStore:
 	Send
 	+ Sync
 	+ Clone
@@ -116,7 +116,7 @@ pub trait SingleVersionCommit {
 }
 
 pub trait SingleVersionGet {
-	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>>;
+	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>>;
 }
 
 pub trait SingleVersionContains {
@@ -124,12 +124,12 @@ pub trait SingleVersionContains {
 }
 
 pub trait SingleVersionInsert: SingleVersionCommit {
-	fn insert(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()> {
+	fn insert(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Set {
 				key: key.clone(),
-				row: row.clone(),
+				values: row.clone(),
 			}]),
 		)
 	}
@@ -146,8 +146,8 @@ pub trait SingleVersionRemove: SingleVersionCommit {
 	}
 }
 
-pub trait SingleVersionIter: Iterator<Item = SingleVersionRow> + Send {}
-impl<T> SingleVersionIter for T where T: Iterator<Item = SingleVersionRow> + Send {}
+pub trait SingleVersionIter: Iterator<Item = SingleVersionValues> + Send {}
+impl<T> SingleVersionIter for T where T: Iterator<Item = SingleVersionValues> + Send {}
 
 pub trait SingleVersionScan {
 	type ScanIter<'a>: SingleVersionIter
@@ -189,7 +189,7 @@ pub trait SingleVersionRangeRev {
 	}
 }
 
-/// Trait for row stores supporting columnar migration
+/// Trait for encoded stores supporting columnar migration
 pub trait RowStore: Send + Sync + Clone + 'static {
 	/// Get the last version that was merged to column store
 	fn last_merge_version(&self) -> CommitVersion;
@@ -201,9 +201,9 @@ pub trait RowStore: Send + Sync + Clone + 'static {
 	fn should_merge(&self) -> bool;
 
 	/// Get batch of rows for merging
-	fn get_merge_batch(&self, limit: usize) -> crate::Result<Vec<MultiVersionRow>>;
+	fn get_merge_batch(&self, limit: usize) -> crate::Result<Vec<MultiVersionValues>>;
 
-	/// Mark rows as merged and evict them from row store
+	/// Mark rows as merged and evict them from encoded store
 	/// This is called after successful column store write
 	fn mark_merged_and_evict(&self, up_to_version: CommitVersion) -> crate::Result<usize>;
 

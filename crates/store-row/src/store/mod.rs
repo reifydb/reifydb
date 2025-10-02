@@ -11,7 +11,7 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion,
-	interface::{MultiVersionRow, RowStore},
+	interface::{MultiVersionValues, RowStore},
 };
 
 use crate::{backend::Backend, config::RowStoreConfig};
@@ -64,7 +64,7 @@ impl RowStore for StandardRowStore {
 		todo!()
 	}
 
-	fn get_merge_batch(&self, _limit: usize) -> crate::Result<Vec<MultiVersionRow>> {
+	fn get_merge_batch(&self, _limit: usize) -> crate::Result<Vec<MultiVersionValues>> {
 		todo!("Implement get_merge_batch from all tiers")
 	}
 

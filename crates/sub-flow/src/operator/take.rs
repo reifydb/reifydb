@@ -5,9 +5,9 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	Error,
+	Error, Row,
 	interface::{FlowNodeId, Transaction},
-	value::row::{EncodedRowLayout, Row},
+	value::encoded::EncodedValuesLayout,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::{Blob, RowNumber, Type, internal_error};
@@ -26,7 +26,7 @@ use crate::{
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct SerializedRow {
 	number: RowNumber,
-	/// The raw encoded bytes of the row
+	/// The raw encoded bytes of the encoded
 	#[serde(with = "serde_bytes")]
 	encoded_bytes: Vec<u8>,
 	/// The field names from the layout (for recreating EncodedRowNamedLayout)
@@ -48,14 +48,14 @@ impl SerializedRow {
 	fn to_row(self) -> Row {
 		use reifydb_core::{
 			util::CowVec,
-			value::row::{EncodedRow, EncodedRowNamedLayout},
+			value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 		};
 
 		let fields: Vec<(String, Type)> =
 			self.field_names.into_iter().zip(self.field_types.into_iter()).collect();
 
-		let layout = EncodedRowNamedLayout::new(fields);
-		let encoded = EncodedRow(CowVec::new(self.encoded_bytes));
+		let layout = EncodedValuesNamedLayout::new(fields);
+		let encoded = EncodedValues(CowVec::new(self.encoded_bytes));
 
 		Row {
 			number: self.number,
@@ -68,7 +68,7 @@ impl SerializedRow {
 /// State for tracking the top N rows
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct TakeState {
-	/// Map of row numbers to their serialized row data
+	/// Map of encoded numbers to their serialized encoded data
 	/// Using BTreeMap to keep rows sorted by RowNumber
 	rows: BTreeMap<RowNumber, SerializedRow>,
 }
@@ -84,7 +84,7 @@ impl Default for TakeState {
 pub struct TakeOperator {
 	node: FlowNodeId,
 	limit: usize,
-	layout: EncodedRowLayout,
+	layout: EncodedValuesLayout,
 }
 
 impl TakeOperator {
@@ -92,7 +92,7 @@ impl TakeOperator {
 		Self {
 			node,
 			limit,
-			layout: EncodedRowLayout::new(&[Type::Blob]),
+			layout: EncodedValuesLayout::new(&[Type::Blob]),
 		}
 	}
 
@@ -136,7 +136,7 @@ impl<T: Transaction> TransformOperator<T> for TakeOperator {}
 impl<T: Transaction> RawStatefulOperator<T> for TakeOperator {}
 
 impl<T: Transaction> SingleStateful<T> for TakeOperator {
-	fn layout(&self) -> EncodedRowLayout {
+	fn layout(&self) -> EncodedValuesLayout {
 		self.layout.clone()
 	}
 }
@@ -166,24 +166,24 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 					// Add to our tracking
 					state.rows.insert(row_number, SerializedRow::from_row(&post));
 
-					// Keep only the top N rows (highest row numbers)
+					// Keep only the top N rows (highest encoded numbers)
 					// BTreeMap keeps keys sorted, so we can efficiently get the top N
 					while state.rows.len() > self.limit {
-						// Remove the smallest (oldest) row number
+						// Remove the smallest (oldest) encoded number
 						if let Some((&removed_row_num, removed_serialized)) =
 							state.rows.iter().next()
 						{
 							let removed_serialized = removed_serialized.clone();
 							state.rows.remove(&removed_row_num);
 
-							// Emit a remove for the row that fell out of the window
+							// Emit a remove for the encoded that fell out of the window
 							output_diffs.push(FlowDiff::Remove {
 								pre: removed_serialized.to_row(),
 							});
 						}
 					}
 
-					// If this row is within the limit, emit the insert
+					// If this encoded is within the limit, emit the insert
 					if state.rows.contains_key(&row_number) {
 						output_diffs.push(FlowDiff::Insert {
 							post,
@@ -196,7 +196,7 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 				} => {
 					let row_number = post.number;
 
-					// Update our tracking if this row is in the window
+					// Update our tracking if this encoded is in the window
 					if state.rows.contains_key(&row_number) {
 						state.rows.insert(row_number, SerializedRow::from_row(&post));
 						output_diffs.push(FlowDiff::Update {
@@ -211,14 +211,14 @@ impl<T: Transaction> Operator<T> for TakeOperator {
 				} => {
 					let row_number = pre.number;
 
-					// If this row was in our window, remove it
+					// If this encoded was in our window, remove it
 					if state.rows.remove(&row_number).is_some() {
 						output_diffs.push(FlowDiff::Remove {
 							pre,
 						});
 
-						// Note: When a row is removed from the window, we might want to
-						// pull in the next row that was previously outside the window.
+						// Note: When a encoded is removed from the window, we might want to
+						// pull in the next encoded that was previously outside the window.
 						// However, we don't have access to those rows here.
 						// This is a limitation of the current approach.
 					}

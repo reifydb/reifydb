@@ -4,7 +4,7 @@
 use core::cmp;
 use std::collections::btree_map::Iter as BTreeMapIter;
 
-use reifydb_core::{Either, EncodedKey, interface::MultiVersionStorage};
+use reifydb_core::{Either, EncodedKey, interface::MultiVersionStore};
 
 use crate::mvcc::{
 	marker::Marker,
@@ -13,7 +13,7 @@ use crate::mvcc::{
 
 pub struct TransactionIter<'a, MVS>
 where
-	MVS: MultiVersionStorage + 'a,
+	MVS: MultiVersionStore + 'a,
 {
 	committed: MVS::ScanIter<'a>,
 	pending: BTreeMapIter<'a, EncodedKey, Pending>,
@@ -25,7 +25,7 @@ where
 
 impl<'a, MVS> TransactionIter<'a, MVS>
 where
-	MVS: MultiVersionStorage,
+	MVS: MultiVersionStore,
 {
 	fn advance_pending(&mut self) {
 		self.next_pending = self.pending.next();
@@ -61,7 +61,7 @@ where
 
 impl<'a, MVS> Iterator for TransactionIter<'a, MVS>
 where
-	MVS: MultiVersionStorage + 'a,
+	MVS: MultiVersionStore + 'a,
 {
 	type Item = TransactionValue;
 

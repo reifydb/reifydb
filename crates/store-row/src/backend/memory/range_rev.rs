@@ -15,9 +15,10 @@ use crossbeam_skiplist::map::Range as MapRange;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Result,
 	interface::{
-		MultiVersionRangeRev, MultiVersionRow, SingleVersionRangeRev as RangeRevInterface, SingleVersionRow,
+		MultiVersionRangeRev, MultiVersionValues, SingleVersionRangeRev as RangeRevInterface,
+		SingleVersionValues,
 	},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 
 use crate::backend::memory::{Memory, MultiVersionRowContainer};
@@ -42,16 +43,16 @@ pub struct RangeRev<'a> {
 }
 
 impl Iterator for RangeRev<'_> {
-	type Item = MultiVersionRow;
+	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let item = self.range.next()?;
 			if let Some(row) = item.value().get(self.version) {
-				return Some(MultiVersionRow {
+				return Some(MultiVersionValues {
 					key: item.key().clone(),
 					version: self.version,
-					row,
+					values: row,
 				});
 			}
 		}
@@ -72,17 +73,17 @@ impl RangeRevInterface for Memory {
 }
 
 pub struct SingleVersionRangeRev<'a> {
-	pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedRow>,
+	pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedValues>,
 }
 
 impl Iterator for SingleVersionRangeRev<'_> {
-	type Item = SingleVersionRow;
+	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let item = self.range.next_back()?;
-		Some(SingleVersionRow {
+		Some(SingleVersionValues {
 			key: item.key().clone(),
-			row: item.value().clone(),
+			values: item.value().clone(),
 		})
 	}
 }

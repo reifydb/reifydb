@@ -3,13 +3,13 @@
 
 pub(crate) mod sequence {
 	use once_cell::sync::Lazy;
-	use reifydb_core::value::row::EncodedRowLayout;
+	use reifydb_core::value::encoded::EncodedValuesLayout;
 	use reifydb_type::Type;
 
 	pub(crate) const VALUE: usize = 0;
 
-	pub(crate) static LAYOUT: Lazy<EncodedRowLayout> = Lazy::new(|| {
-		EncodedRowLayout::new(&[
+	pub(crate) static LAYOUT: Lazy<EncodedValuesLayout> = Lazy::new(|| {
+		EncodedValuesLayout::new(&[
 			Type::Uint8, // VALUE
 		])
 	});

@@ -88,7 +88,7 @@ pub enum Value {
 	Time(Time),
 	/// An interval representing a duration
 	Interval(Interval),
-	/// A row number (8-byte unsigned integer)
+	/// A encoded number (8-byte unsigned integer)
 	RowNumber(RowNumber),
 	/// An identity identifier (UUID v7)
 	IdentityId(IdentityId),

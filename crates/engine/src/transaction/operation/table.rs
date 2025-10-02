@@ -3,27 +3,28 @@
 
 use reifydb_catalog::sequence::RowSequence;
 use reifydb_core::{
+	Row,
 	event::catalog::TableInsertedEvent,
 	interface::{
 		EncodableKey, GetEncodedRowNamedLayout, MultiVersionCommandTransaction, RowKey, TableDef, Transaction,
 		interceptor::TableInterceptor,
 	},
-	value::row::{EncodedRow, Row},
+	value::encoded::EncodedValues,
 };
 use reifydb_type::RowNumber;
 
 use crate::StandardCommandTransaction;
 
 pub(crate) trait TableOperations {
-	fn insert_into_table(&mut self, table: TableDef, row: EncodedRow) -> crate::Result<RowNumber>;
+	fn insert_into_table(&mut self, table: TableDef, row: EncodedValues) -> crate::Result<RowNumber>;
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedRow) -> crate::Result<()>;
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()>;
 
 	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()>;
 }
 
 impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
-	fn insert_into_table(&mut self, table: TableDef, row: EncodedRow) -> crate::Result<RowNumber> {
+	fn insert_into_table(&mut self, table: TableDef, row: EncodedValues) -> crate::Result<RowNumber> {
 		let row_number = RowSequence::next_row_number(self, table.id)?;
 
 		TableInterceptor::pre_insert(self, &table, &row)?;
@@ -53,14 +54,14 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		Ok(row_number)
 	}
 
-	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedRow) -> crate::Result<()> {
+	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
 		let key = RowKey {
 			source: table.id.into(),
 			row: id,
 		}
 		.encode();
 
-		// Get the current row before updating (for post-update
+		// Get the current encoded before updating (for post-update
 		// interceptor) let old_row = self.get(&key)?.map(|v|
 		// v.into());
 
@@ -68,15 +69,14 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 
 		self.set(&key, row.clone())?;
 
-		// Execute post-update interceptors if we had an old row
 		// if let Some(ref old) = old_row {
-		// 	TableInterceptor::post_update(self, &table, id, &row, old)?;
+		// 	TableInterceptor::post_update(self, &table, id, &encoded, old)?;
 		// }
 
 		// self.add_pending(PendingWrite::TableUpdate {
 		// 	table,
 		// 	id,
-		// 	row,
+		// 	encoded,
 		// });
 
 		Ok(())
@@ -89,18 +89,18 @@ impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
 		}
 		.encode();
 
-		// Get the row before removing (for post-delete interceptor)
+		// Get the encoded before removing (for post-delete interceptor)
 		// let deleted_row = self.get(&key)?.map(|v| v.into_row());
 
 		// Execute pre-delete interceptors
 		TableInterceptor::pre_delete(self, &table, id)?;
 
-		// Remove the row from the database
+		// Remove the encoded from the database
 		self.remove(&key)?;
 
-		// Execute post-delete interceptors if we had a row
-		// if let Some(ref row) = deleted_row {
-		// 	TableInterceptor::post_delete(self, &table, id, row)?;
+		// Execute post-delete interceptors if we had a encoded
+		// if let Some(ref encoded) = deleted_row {
+		// 	TableInterceptor::post_delete(self, &table, id, encoded)?;
 		// }
 
 		// Track the removal for flow processing

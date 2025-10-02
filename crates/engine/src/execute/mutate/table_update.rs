@@ -9,7 +9,7 @@ use reifydb_core::{
 		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
 		Params, ResolvedColumn, ResolvedNamespace, ResolvedSource, ResolvedTable, RowKey, Transaction,
 	},
-	value::{column::Columns, row::EncodedRowLayout},
+	value::{column::Columns, encoded::EncodedValuesLayout},
 };
 use reifydb_rql::plan::physical::UpdateTableNode;
 use reifydb_type::{
@@ -59,7 +59,7 @@ impl Executor {
 		};
 
 		let table_types: Vec<Type> = table.columns.iter().map(|c| c.constraint.get_type()).collect();
-		let layout = EncodedRowLayout::new(&table_types);
+		let layout = EncodedValuesLayout::new(&table_types);
 
 		// Create resolved source for the table
 		let namespace_ident = Fragment::owned_internal(namespace.name.clone());
@@ -69,7 +69,6 @@ impl Executor {
 		let resolved_table = ResolvedTable::new(table_ident, resolved_namespace, table.clone());
 		let resolved_source = Some(ResolvedSource::Table(resolved_table));
 
-		// Create execution context
 		let context = ExecutionContext {
 			functions: self.functions.clone(),
 			source: resolved_source,
@@ -79,25 +78,20 @@ impl Executor {
 
 		let mut updated_count = 0;
 
-		// Process all input batches - we need to handle compilation and
-		// execution with proper transaction borrowing
 		{
 			let mut wrapped_txn = StandardTransaction::from(txn);
 			let mut input_node = compile(*plan.input, &mut wrapped_txn, Arc::new(context.clone()));
 
-			// Initialize the operator before execution
 			input_node.initialize(&mut wrapped_txn, &context)?;
 
 			while let Some(Batch {
 				columns,
 			}) = input_node.next(&mut wrapped_txn)?
 			{
-				// Get row numbers from the Columns structure
 				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());
 				}
 
-				// Extract RowNumber data
 				let row_numbers = &columns.row_numbers;
 
 				let row_count = columns.row_count();
@@ -105,8 +99,6 @@ impl Executor {
 				for row_numberx in 0..row_count {
 					let mut row = layout.allocate_row();
 
-					// For each table column, find if it
-					// exists in the input columns
 					for (table_idx, table_column) in table.columns.iter().enumerate() {
 						let mut value = if let Some(input_column) =
 							columns.iter().find(|col| col.name() == table_column.name)
@@ -116,7 +108,6 @@ impl Executor {
 							Value::Undefined
 						};
 
-						// Create a ResolvedColumn for this table column
 						let column_ident = Fragment::borrowed_internal(&table_column.name);
 						let resolved_column = ResolvedColumn::new(
 							column_ident,
@@ -131,8 +122,6 @@ impl Executor {
 							&context,
 						)?;
 
-						// Validate the value against
-						// the column's constraint
 						if let Err(e) = table_column.constraint.validate(&value) {
 							return Err(e);
 						}
@@ -176,8 +165,6 @@ impl Executor {
 						}
 					}
 
-					// Update the row using the existing
-					// RowNumber from the columns
 					let row_number = row_numbers[row_numberx];
 
 					let row_key = RowKey {
@@ -186,21 +173,15 @@ impl Executor {
 					}
 					.encode();
 
-					// Handle primary key index if table has
-					// one
 					if let Some(pk_def) =
 						primary_key::get_primary_key(wrapped_txn.command_mut(), &table)?
 					{
-						// Get old row to extract old PK
-						// values
 						if let Some(old_row_data) = wrapped_txn.command_mut().get(&row_key)? {
-							let old_row = old_row_data.row;
+							let old_row = old_row_data.values;
 							let old_key = primary_key::encode_primary_key(
 								&pk_def, &old_row, &table, &layout,
 							)?;
 
-							// Remove old index
-							// entry
 							wrapped_txn.command_mut().remove(&IndexEntryKey::new(
 								table.id,
 								IndexId::primary(pk_def.id),
@@ -209,13 +190,11 @@ impl Executor {
 							.encode())?;
 						}
 
-						// Add new index entry
 						let new_key = primary_key::encode_primary_key(
 							&pk_def, &row, &table, &layout,
 						)?;
 
-						// Store the row number as value
-						let row_number_layout = EncodedRowLayout::new(&[Type::Uint8]);
+						let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
 						let mut row_number_encoded = row_number_layout.allocate_row();
 						row_number_layout.set_u64(
 							&mut row_number_encoded,
@@ -234,7 +213,6 @@ impl Executor {
 						)?;
 					}
 
-					// Now update the row
 					wrapped_txn.command_mut().set(&row_key, row)?;
 
 					updated_count += 1;
@@ -242,7 +220,6 @@ impl Executor {
 			}
 		}
 
-		// Return summary columns
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(namespace.name)),
 			("table", Value::Utf8(table.name)),

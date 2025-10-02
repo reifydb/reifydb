@@ -102,7 +102,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 				columns: column_names,
 			});
 
-			// Create new Columns with the original row numbers preserved
+			// Create new Columns with the original encoded numbers preserved
 			let result_columns = if !columns.row_numbers.is_empty() {
 				Columns::with_row_numbers(new_columns, columns.row_numbers.to_vec())
 			} else {

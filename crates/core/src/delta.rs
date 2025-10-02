@@ -3,13 +3,13 @@
 
 use std::cmp;
 
-use crate::value::row::{EncodedKey, EncodedRow};
+use crate::value::encoded::{EncodedKey, EncodedValues};
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Delta {
 	Set {
 		key: EncodedKey,
-		row: EncodedRow,
+		values: EncodedValues,
 	},
 	Remove {
 		key: EncodedKey,
@@ -42,11 +42,11 @@ impl Delta {
 		}
 	}
 
-	/// Returns the row, if None, it means the entry is marked as remove.
-	pub fn row(&self) -> Option<&EncodedRow> {
+	/// Returns the encoded, if None, it means the entry is marked as remove.
+	pub fn row(&self) -> Option<&EncodedValues> {
 		match self {
 			Self::Set {
-				row,
+				values: row,
 				..
 			} => Some(row),
 			Self::Remove {
@@ -61,10 +61,10 @@ impl Clone for Delta {
 		match self {
 			Self::Set {
 				key,
-				row: value,
+				values: value,
 			} => Self::Set {
 				key: key.clone(),
-				row: value.clone(),
+				values: value.clone(),
 			},
 			Self::Remove {
 				key,

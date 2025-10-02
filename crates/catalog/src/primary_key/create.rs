@@ -43,7 +43,7 @@ impl CatalogStore {
 
 		let id = SystemSequence::next_primary_key_id(txn)?;
 
-		// Create primary key row
+		// Create primary key encoded
 		let mut row = LAYOUT.allocate_row();
 		LAYOUT.set_u64(&mut row, primary_key::ID, id.0);
 		LAYOUT.set_u64(&mut row, primary_key::SOURCE, to_create.source.as_u64());

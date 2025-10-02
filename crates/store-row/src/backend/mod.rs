@@ -12,8 +12,8 @@ use std::sync::Arc;
 pub use memory::MemoryRowBackend;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
-	interface::{MultiVersionRow, SingleVersionRow},
-	value::row::EncodedRow,
+	interface::{MultiVersionValues, SingleVersionValues},
+	value::encoded::EncodedValues,
 };
 pub use sqlite::SqliteRowBackend;
 
@@ -28,7 +28,7 @@ pub enum Backend {
 
 impl Backend {
 	#[inline]
-	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionRow>> {
+	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
 		match self {
 			Backend::Memory(m) => m.get(key, version), // Fast: direct call
 			Backend::Sqlite(s) => s.get(key, version), // Fast: direct call
@@ -37,7 +37,7 @@ impl Backend {
 	}
 
 	#[inline]
-	pub fn put(&self, row: MultiVersionRow) -> crate::Result<()> {
+	pub fn put(&self, row: MultiVersionValues) -> crate::Result<()> {
 		match self {
 			Backend::Memory(m) => m.put(row),
 			Backend::Sqlite(s) => s.put(row),
@@ -55,7 +55,7 @@ impl Backend {
 	}
 
 	#[inline]
-	pub fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Vec<MultiVersionRow>> {
+	pub fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Vec<MultiVersionValues>> {
 		match self {
 			Backend::Memory(m) => m.range(range, version),
 			Backend::Sqlite(s) => s.range(range, version),
@@ -93,10 +93,10 @@ impl Backend {
 
 /// Trait for custom storage backends
 pub trait MultiVersionRowBackend: Send + Sync + 'static {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionRow>>;
-	fn put(&self, row: MultiVersionRow) -> crate::Result<()>;
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>>;
+	fn put(&self, row: MultiVersionValues) -> crate::Result<()>;
 	fn delete(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<()>;
-	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Vec<MultiVersionRow>>;
+	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Vec<MultiVersionValues>>;
 	fn count(&self) -> usize;
 
 	// Metadata methods
@@ -106,8 +106,8 @@ pub trait MultiVersionRowBackend: Send + Sync + 'static {
 
 // SingleVersion backend support (for completeness)
 pub trait SingleVersionRowBackend: Send + Sync + 'static {
-	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>>;
-	fn put(&self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
+	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>>;
+	fn put(&self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()>;
 	fn delete(&self, key: &EncodedKey) -> crate::Result<()>;
-	fn scan(&self) -> crate::Result<Vec<SingleVersionRow>>;
+	fn scan(&self) -> crate::Result<Vec<SingleVersionValues>>;
 }

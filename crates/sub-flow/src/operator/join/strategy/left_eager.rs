@@ -1,4 +1,4 @@
-use reifydb_core::{interface::Transaction, value::row::Row};
+use reifydb_core::{Row, interface::Transaction};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
@@ -45,14 +45,14 @@ impl LeftEagerJoin {
 					if !joined_rows.is_empty() {
 						result.extend(joined_rows);
 					} else {
-						// Left join: emit left row even without match
+						// Left join: emit left encoded even without match
 						let unmatched_row = operator.unmatched_left_row(txn, post)?;
 						result.push(FlowDiff::Insert {
 							post: unmatched_row,
 						});
 					}
 				} else {
-					// Undefined key in left join still emits the row
+					// Undefined key in left join still emits the encoded
 					let unmatched_row = operator.unmatched_left_row(txn, post)?;
 					result.push(FlowDiff::Insert {
 						post: unmatched_row,
@@ -68,7 +68,7 @@ impl LeftEagerJoin {
 
 					// Join with matching left rows
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
-						// If first right row, remove previously emitted unmatched left rows
+						// If first right encoded, remove previously emitted unmatched left rows
 						if is_first {
 							for left_row_ser in &left_entry.rows {
 								let left_row = left_row_ser.to_left_row(&state.schema);
@@ -117,7 +117,7 @@ impl LeftEagerJoin {
 					if state.left.contains_key(txn, &key_hash)? {
 						operator.cleanup_left_row_joins(txn, pre.number.0)?;
 
-						// Remove all joins involving this row
+						// Remove all joins involving this encoded
 						let removed_joins = emit_remove_joined_rows_left(
 							txn,
 							pre,
@@ -130,7 +130,7 @@ impl LeftEagerJoin {
 						if !removed_joins.is_empty() {
 							result.extend(removed_joins);
 						} else {
-							// Remove the unmatched left join row
+							// Remove the unmatched left join encoded
 							let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 							result.push(FlowDiff::Remove {
 								pre: unmatched_row,
@@ -141,7 +141,7 @@ impl LeftEagerJoin {
 						remove_from_state_entry(txn, &mut state.left, &key_hash, pre)?;
 					}
 				} else {
-					// Undefined key - remove the unmatched row
+					// Undefined key - remove the unmatched encoded
 					let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 					result.push(FlowDiff::Remove {
 						pre: unmatched_row,
@@ -154,7 +154,7 @@ impl LeftEagerJoin {
 				if let Some(key_hash) = key_hash {
 					// Check if right entry exists
 					if state.right.contains_key(txn, &key_hash)? {
-						// Remove all joins involving this row
+						// Remove all joins involving this encoded
 						let removed_joins = emit_remove_joined_rows_right(
 							txn,
 							pre,
@@ -169,7 +169,7 @@ impl LeftEagerJoin {
 						let became_empty =
 							remove_from_state_entry(txn, &mut state.right, &key_hash, pre)?;
 
-						// If this was the last right row, re-emit left rows as unmatched
+						// If this was the last right encoded, re-emit left rows as unmatched
 						if became_empty {
 							let left_rows =
 								get_left_rows(txn, &state.left, &key_hash, state)?;
@@ -207,7 +207,7 @@ impl LeftEagerJoin {
 			match side {
 				JoinSide::Left => {
 					if let Some(key) = old_key {
-						// Update the row in state
+						// Update the encoded in state
 						if update_row_in_entry(txn, &mut state.left, &key, pre, post)? {
 							// Emit updates for all joined rows
 							let updates = emit_update_joined_rows_left(
@@ -223,7 +223,8 @@ impl LeftEagerJoin {
 							if !updates.is_empty() {
 								result.extend(updates);
 							} else {
-								// No matching right rows - update unmatched left row
+								// No matching right rows - update unmatched left
+								// encoded
 								let unmatched_pre =
 									operator.unmatched_left_row(txn, pre)?;
 								let unmatched_post =
@@ -235,7 +236,7 @@ impl LeftEagerJoin {
 							}
 						}
 					} else {
-						// Both keys are undefined - update the row
+						// Both keys are undefined - update the encoded
 						let unmatched_pre = operator.unmatched_left_row(txn, pre)?;
 						let unmatched_post = operator.unmatched_left_row(txn, post)?;
 						result.push(FlowDiff::Update {
@@ -246,7 +247,7 @@ impl LeftEagerJoin {
 				}
 				JoinSide::Right => {
 					if let Some(key) = old_key {
-						// Update the row in state
+						// Update the encoded in state
 						if update_row_in_entry(txn, &mut state.right, &key, pre, post)? {
 							// Emit updates for all joined rows
 							let updates = emit_update_joined_rows_right(

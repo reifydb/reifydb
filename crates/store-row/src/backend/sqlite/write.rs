@@ -205,7 +205,7 @@ impl Writer {
 		match delta {
 			Delta::Set {
 				key,
-				row,
+				values: row,
 			} => Self::apply_delta_set(tx, key, row, version, ensured_tables),
 			Delta::Remove {
 				key,

@@ -17,7 +17,7 @@ impl CatalogStore {
 			None => return Ok(None),
 		};
 
-		let pk_id = ring_buffer::LAYOUT.get_u64(&multi.row, ring_buffer::PRIMARY_KEY);
+		let pk_id = ring_buffer::LAYOUT.get_u64(&multi.values, ring_buffer::PRIMARY_KEY);
 
 		if pk_id == 0 {
 			Ok(None)

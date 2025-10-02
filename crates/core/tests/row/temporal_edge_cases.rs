@@ -1,14 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Temporal data edge case tests for the row encoding system
+//! Temporal data edge case tests for the encoded encoding system
 
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::*;
 
 #[test]
 fn test_date_boundaries() {
-	let layout = EncodedRowLayout::new(&[Type::Date]);
+	let layout = EncodedValuesLayout::new(&[Type::Date]);
 	let mut row = layout.allocate_row();
 
 	let dates = [
@@ -27,7 +27,7 @@ fn test_date_boundaries() {
 
 #[test]
 fn test_datetime_precision_limits() {
-	let layout = EncodedRowLayout::new(&[Type::DateTime]);
+	let layout = EncodedValuesLayout::new(&[Type::DateTime]);
 	let mut row = layout.allocate_row();
 
 	// Test nanosecond precision preservation
@@ -45,7 +45,7 @@ fn test_datetime_precision_limits() {
 
 #[test]
 fn test_time_edge_values() {
-	let layout = EncodedRowLayout::new(&[Type::Time]);
+	let layout = EncodedValuesLayout::new(&[Type::Time]);
 	let mut row = layout.allocate_row();
 
 	let times = [
@@ -64,7 +64,7 @@ fn test_time_edge_values() {
 
 #[test]
 fn test_interval_combinations() {
-	let layout = EncodedRowLayout::new(&[Type::Interval]);
+	let layout = EncodedValuesLayout::new(&[Type::Interval]);
 	let mut row = layout.allocate_row();
 
 	let intervals = [

@@ -13,10 +13,8 @@ use crate::{
 		ColumnPolicyKind, ColumnSaturationPolicy, DEFAULT_COLUMN_SATURATION_POLICY, Params, ResolvedColumn,
 		expression::Expression,
 	},
-	value::{
-		column::{Column, ColumnData, Columns},
-		row::Row,
-	},
+	row::Row,
+	value::column::{Column, ColumnData, Columns},
 };
 
 /// Represents target column information for evaluation

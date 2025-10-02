@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	MultiVersionQueryTransaction, MultiVersionRow, NamespaceId, PrimaryKeyDef, PrimaryKeyId, ViewDef, ViewId,
+	MultiVersionQueryTransaction, MultiVersionValues, NamespaceId, PrimaryKeyDef, PrimaryKeyId, ViewDef, ViewId,
 	ViewKey, ViewKind,
 };
 
@@ -18,13 +18,8 @@ pub(crate) fn load_views(
 	for multi in views {
 		let version = multi.version;
 
-		// Extract primary key ID from the view row
 		let pk_id = get_view_primary_key_id(&multi);
-
-		// Look up the primary key from the catalog if it exists
 		let primary_key = pk_id.and_then(|id| catalog.find_primary_key(id, version));
-
-		// Convert the view with its primary key
 		let view_def = convert_view(multi, primary_key);
 
 		catalog.set_view(view_def.id, version, Some(view_def));
@@ -33,8 +28,8 @@ pub(crate) fn load_views(
 	Ok(())
 }
 
-fn convert_view(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>) -> ViewDef {
-	let row = multi.row;
+fn convert_view(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> ViewDef {
+	let row = multi.values;
 	let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
 	let namespace = NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
 	let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
@@ -55,8 +50,8 @@ fn convert_view(multi: MultiVersionRow, primary_key: Option<PrimaryKeyDef>) -> V
 	}
 }
 
-fn get_view_primary_key_id(multi: &MultiVersionRow) -> Option<PrimaryKeyId> {
-	let pk_id_raw = view::LAYOUT.get_u64(&multi.row, view::PRIMARY_KEY);
+fn get_view_primary_key_id(multi: &MultiVersionValues) -> Option<PrimaryKeyId> {
+	let pk_id_raw = view::LAYOUT.get_u64(&multi.values, view::PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

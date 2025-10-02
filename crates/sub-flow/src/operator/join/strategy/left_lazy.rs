@@ -1,4 +1,4 @@
-use reifydb_core::{CommitVersion, interface::Transaction, value::row::Row};
+use reifydb_core::{CommitVersion, Row, interface::Transaction};
 use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;
@@ -54,16 +54,16 @@ impl LeftLazyJoin {
 							});
 						}
 					} else {
-						// Left join: emit left row even without match
+						// Left join: emit left encoded even without match
 						let unmatched_row = operator.unmatched_left_row(txn, post)?;
 						result.push(FlowDiff::Insert {
 							post: unmatched_row,
 						});
-						// Track that we emitted an undefined join for this left row
+						// Track that we emitted an undefined join for this left encoded
 						state.undefined_emitted.insert(txn, post.number)?;
 					}
 				} else {
-					// Undefined key in left join still emits the row
+					// Undefined key in left join still emits the encoded
 					let unmatched_row = operator.unmatched_left_row(txn, post)?;
 					result.push(FlowDiff::Insert {
 						post: unmatched_row,
@@ -76,11 +76,12 @@ impl LeftLazyJoin {
 				if let Some(key_hash) = key_hash {
 					// Join with matching left rows
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
-						// Check each left row to see if it has an undefined join we need to
+						// Check each left encoded to see if it has an undefined join we need to
 						// remove
 						for left_row_ser in &left_entry.rows {
 							let left_row = left_row_ser.to_left_row(&state.schema);
-							// If this left row had an undefined join, remove it (only once)
+							// If this left encoded had an undefined join, remove it (only
+							// once)
 							if state.undefined_emitted.remove(txn, left_row.number)? {
 								let unmatched_row =
 									operator.unmatched_left_row(txn, &left_row)?;
@@ -125,7 +126,7 @@ impl LeftLazyJoin {
 					if state.left.contains_key(txn, &key_hash)? {
 						operator.cleanup_left_row_joins(txn, pre.number.0)?;
 
-						// Remove all joins involving this row
+						// Remove all joins involving this encoded
 						let right_rows = query_right_side(
 							txn,
 							&self.query,
@@ -143,7 +144,7 @@ impl LeftLazyJoin {
 								});
 							}
 						} else {
-							// Remove the unmatched left join row
+							// Remove the unmatched left join encoded
 							let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 							result.push(FlowDiff::Remove {
 								pre: unmatched_row,
@@ -152,18 +153,18 @@ impl LeftLazyJoin {
 
 						// Remove from left entries and clean up if empty
 						remove_from_state_entry(txn, &mut state.left, &key_hash, pre)?;
-						// Clean up tracking for this left row
+						// Clean up tracking for this left encoded
 						state.undefined_emitted.remove(txn, pre.number)?;
 					}
 				} else {
-					// Undefined key - remove the unmatched row
+					// Undefined key - remove the unmatched encoded
 					let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 					result.push(FlowDiff::Remove {
 						pre: unmatched_row,
 					});
 
 					operator.cleanup_left_row_joins(txn, pre.number.0)?;
-					// Clean up tracking for this left row
+					// Clean up tracking for this left encoded
 					state.undefined_emitted.remove(txn, pre.number)?;
 				}
 			}
@@ -181,7 +182,7 @@ impl LeftLazyJoin {
 						version,
 					)?;
 
-					// Remove all joins involving this row
+					// Remove all joins involving this encoded
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
 						for left_row_ser in &left_entry.rows {
 							let left_row = left_row_ser.to_left_row(&state.schema);
@@ -190,7 +191,7 @@ impl LeftLazyJoin {
 							});
 						}
 
-						// If this was the last right row, re-emit left rows as unmatched
+						// If this was the last right encoded, re-emit left rows as unmatched
 						if !has_other_rows {
 							for left_row_ser in &left_entry.rows {
 								let left_row = left_row_ser.to_left_row(&state.schema);
@@ -199,7 +200,8 @@ impl LeftLazyJoin {
 								result.push(FlowDiff::Insert {
 									post: unmatched_row,
 								});
-								// Track that we re-emitted undefined for this left row
+								// Track that we re-emitted undefined for this left
+								// encoded
 								state.undefined_emitted.insert(txn, left_row.number)?;
 							}
 						}
@@ -230,7 +232,7 @@ impl LeftLazyJoin {
 			match side {
 				JoinSide::Left => {
 					if let Some(key) = old_key {
-						// Update the row in state
+						// Update the encoded in state
 						if update_row_in_entry(txn, &mut state.left, &key, pre, post)? {
 							// Emit updates for all joined rows
 							let right_rows = query_right_side(
@@ -255,7 +257,8 @@ impl LeftLazyJoin {
 									});
 								}
 							} else {
-								// No matching right rows - update unmatched left row
+								// No matching right rows - update unmatched left
+								// encoded
 								let unmatched_pre =
 									operator.unmatched_left_row(txn, pre)?;
 								let unmatched_post =
@@ -267,7 +270,7 @@ impl LeftLazyJoin {
 							}
 						}
 					} else {
-						// Both keys are undefined - update the row
+						// Both keys are undefined - update the encoded
 						let unmatched_pre = operator.unmatched_left_row(txn, pre)?;
 						let unmatched_post = operator.unmatched_left_row(txn, post)?;
 						result.push(FlowDiff::Update {

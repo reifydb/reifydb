@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	event::EventBus,
-	interface::{CdcTransaction, MultiVersionStorage, SingleVersionTransaction},
+	interface::{CdcTransaction, MultiVersionStore, SingleVersionTransaction},
 };
 use reifydb_engine::StandardCdcTransaction;
 use reifydb_store_row::backend::{
@@ -47,7 +47,7 @@ pub fn sqlite(config: SqliteConfig) -> (Sqlite, SingleVersionLock<Sqlite>, Stand
 /// Convenience function to create an optimistic transaction layer
 pub fn optimistic<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (Optimistic<MVS, SVT>, SVT, C, EventBus)
 where
-	MVS: MultiVersionStorage,
+	MVS: MultiVersionStore,
 	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
@@ -57,7 +57,7 @@ where
 /// Convenience function to create a serializable transaction layer
 pub fn serializable<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (Serializable<MVS, SVT>, SVT, C, EventBus)
 where
-	MVS: MultiVersionStorage,
+	MVS: MultiVersionStore,
 	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {

@@ -8,14 +8,14 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 /// Standard column name for RowNumber columns
 pub static ROW_NUMBER_COLUMN_NAME: &str = "__ROW__NUMBER__";
 
-/// A row number - a unique 64-bit unsigned integer for a table row
+/// A encoded number - a unique 64-bit unsigned integer for a table encoded
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct RowNumber(pub u64);
 
 impl RowNumber {
 	/// Create a new RowNumber from a u64
-	/// Panics if id is 0, as row numbers must start from 1
+	/// Panics if id is 0, as encoded numbers must start from 1
 	pub fn new(id: u64) -> Self {
 		assert!(id > 0, "Row numbers must be greater than 0, got {}", id);
 		RowNumber(id)
@@ -28,7 +28,7 @@ impl RowNumber {
 }
 
 impl Default for RowNumber {
-	/// Default row number is 1 (not 0, as row numbers start from 1)
+	/// Default encoded number is 1 (not 0, as encoded numbers start from 1)
 	fn default() -> Self {
 		RowNumber(1)
 	}

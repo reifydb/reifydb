@@ -28,7 +28,7 @@ impl CatalogStore {
 			)),
 		};
 
-		let mut updated_row = multi.row.clone();
+		let mut updated_row = multi.values.clone();
 		table::LAYOUT.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
 
 		txn.set(

@@ -15,8 +15,8 @@ fn main() {
 	let mut db = embedded::memory_optimistic().build().unwrap();
 	db.start().unwrap();
 
-	// Example 1: FROM with inline data (single row)
-	log_info!("Example 1: FROM with single inline row");
+	// Example 1: FROM with inline data (single encoded)
+	log_info!("Example 1: FROM with single inline encoded");
 	log_query(r#"from [{ name: "Alice", age: 30 }]"#);
 	for frame in db.query_as_root(r#"from [{ name: "Alice", age: 30 }]"#, Params::None).unwrap() {
 		log_info!("{}", frame);

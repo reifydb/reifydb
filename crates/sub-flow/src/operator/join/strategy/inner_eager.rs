@@ -1,4 +1,4 @@
-use reifydb_core::{interface::Transaction, value::row::Row};
+use reifydb_core::{Row, interface::Transaction};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
@@ -82,7 +82,7 @@ impl InnerEagerJoin {
 					if state.left.contains_key(txn, &key_hash)? {
 						operator.cleanup_left_row_joins(txn, pre.number.0)?;
 
-						// Remove all joins involving this row
+						// Remove all joins involving this encoded
 						let removed_joins = emit_remove_joined_rows_left(
 							txn,
 							pre,
@@ -99,7 +99,7 @@ impl InnerEagerJoin {
 				}
 				JoinSide::Right => {
 					if state.right.contains_key(txn, &key_hash)? {
-						// Remove all joins involving this row
+						// Remove all joins involving this encoded
 						let removed_joins = emit_remove_joined_rows_right(
 							txn,
 							pre,
@@ -138,7 +138,7 @@ impl InnerEagerJoin {
 			if let Some(key) = old_key {
 				match side {
 					JoinSide::Left => {
-						// Update the row in state
+						// Update the encoded in state
 						if update_row_in_entry(txn, &mut state.left, &key, pre, post)? {
 							// Emit updates for all joined rows (only if right rows exist)
 							let updates = emit_update_joined_rows_left(
@@ -154,7 +154,7 @@ impl InnerEagerJoin {
 						}
 					}
 					JoinSide::Right => {
-						// Update the row in state
+						// Update the encoded in state
 						if update_row_in_entry(txn, &mut state.right, &key, pre, post)? {
 							// Emit updates for all joined rows (only if left rows exist)
 							let updates = emit_update_joined_rows_right(

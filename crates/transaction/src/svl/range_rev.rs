@@ -3,19 +3,19 @@
 
 use std::cmp;
 
-use reifydb_core::{EncodedKey, delta::Delta, interface::SingleVersionRow};
+use reifydb_core::{EncodedKey, delta::Delta, interface::SingleVersionValues};
 
 /// Iterator for reverse range scan in an SVL WriteTransaction with owned
 /// values.
 pub struct SvlRangeRev {
 	/// Iterator over committed data (owned, reversed)
-	committed: std::vec::IntoIter<SingleVersionRow>,
+	committed: std::vec::IntoIter<SingleVersionValues>,
 	/// Iterator over pending changes (owned, reversed)
 	pending: std::vec::IntoIter<(EncodedKey, Delta)>,
 	/// Next item from pending buffer
 	next_pending: Option<(EncodedKey, Delta)>,
 	/// Next item from committed storage
-	next_committed: Option<SingleVersionRow>,
+	next_committed: Option<SingleVersionValues>,
 	/// Track the last key we yielded to avoid duplicates
 	last_yielded_key: Option<EncodedKey>,
 }
@@ -23,7 +23,7 @@ pub struct SvlRangeRev {
 impl SvlRangeRev {
 	pub fn new(
 		pending: std::vec::IntoIter<(EncodedKey, Delta)>,
-		committed: std::vec::IntoIter<SingleVersionRow>,
+		committed: std::vec::IntoIter<SingleVersionValues>,
 	) -> Self {
 		let mut iterator = SvlRangeRev {
 			pending,
@@ -49,7 +49,7 @@ impl SvlRangeRev {
 }
 
 impl Iterator for SvlRangeRev {
-	type Item = SingleVersionRow;
+	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
@@ -69,12 +69,12 @@ impl Iterator for SvlRangeRev {
 
 							match delta {
 								Delta::Set {
-									row,
+									values: row,
 									..
 								} => {
-									return Some(SingleVersionRow {
+									return Some(SingleVersionValues {
 										key,
-										row,
+										values: row,
 									});
 								}
 								Delta::Remove {
@@ -95,12 +95,12 @@ impl Iterator for SvlRangeRev {
 
 							match delta {
 								Delta::Set {
-									row,
+									values: row,
 									..
 								} => {
-									return Some(SingleVersionRow {
+									return Some(SingleVersionValues {
 										key,
-										row,
+										values: row,
 									});
 								}
 								Delta::Remove {
@@ -137,12 +137,12 @@ impl Iterator for SvlRangeRev {
 
 					match delta {
 						Delta::Set {
-							row,
+							values: row,
 							..
 						} => {
-							return Some(SingleVersionRow {
+							return Some(SingleVersionValues {
 								key,
-								row,
+								values: row,
 							});
 						}
 						Delta::Remove {

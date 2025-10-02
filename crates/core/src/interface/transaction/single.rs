@@ -3,11 +3,11 @@
 
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::{SingleVersionRow, WithEventBus},
-	value::row::EncodedRow,
+	interface::{SingleVersionValues, WithEventBus},
+	value::encoded::EncodedValues,
 };
 
-pub type BoxedSingleVersionIter<'a> = Box<dyn Iterator<Item = SingleVersionRow> + Send + 'a>;
+pub type BoxedSingleVersionIter<'a> = Box<dyn Iterator<Item = SingleVersionValues> + Send + 'a>;
 
 pub trait SingleVersionTransaction: WithEventBus + Send + Sync + Clone + 'static {
 	type Query<'a>: SingleVersionQueryTransaction;
@@ -37,7 +37,7 @@ pub trait SingleVersionTransaction: WithEventBus + Send + Sync + Clone + 'static
 }
 
 pub trait SingleVersionQueryTransaction {
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>>;
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>>;
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
@@ -59,7 +59,7 @@ pub trait SingleVersionQueryTransaction {
 }
 
 pub trait SingleVersionCommandTransaction: SingleVersionQueryTransaction {
-	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
+	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()>;
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 

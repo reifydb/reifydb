@@ -3,7 +3,7 @@
 
 use std::sync::LazyLock;
 
-use reifydb_core::value::row::EncodedRowLayout;
+use reifydb_core::value::encoded::EncodedValuesLayout;
 use reifydb_type::Type;
 
 #[repr(u8)]
@@ -26,8 +26,8 @@ impl From<u8> for ChangeType {
 }
 
 // Layout for efficient transaction storage (shared metadata + packed changes)
-pub(crate) static CDC_TRANSACTION_LAYOUT: LazyLock<EncodedRowLayout> = LazyLock::new(|| {
-	EncodedRowLayout::new(&[
+pub(crate) static CDC_TRANSACTION_LAYOUT: LazyLock<EncodedValuesLayout> = LazyLock::new(|| {
+	EncodedValuesLayout::new(&[
 		Type::Uint8, // version
 		Type::Uint8, // timestamp
 		Type::Blob,  // transaction
@@ -41,8 +41,8 @@ pub(crate) const CDC_TX_TRANSACTION_FIELD: usize = 2;
 pub(crate) const CDC_TX_CHANGES_FIELD: usize = 3;
 
 // Layout for individual changes (without metadata)
-pub(crate) static CDC_CHANGE_LAYOUT: LazyLock<EncodedRowLayout> = LazyLock::new(|| {
-	EncodedRowLayout::new(&[
+pub(crate) static CDC_CHANGE_LAYOUT: LazyLock<EncodedValuesLayout> = LazyLock::new(|| {
+	EncodedValuesLayout::new(&[
 		Type::Uint1, // change_type (1=Insert, 2=Update, 3=Delete)
 		Type::Blob,  // key
 		Type::Blob,  // pre

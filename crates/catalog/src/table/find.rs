@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, MultiVersionRow, NamespaceId, NamespaceTableKey, QueryTransaction, TableDef, TableId, TableKey,
+	EncodableKey, MultiVersionValues, NamespaceId, NamespaceTableKey, QueryTransaction, TableDef, TableId, TableKey,
 };
 
 use crate::{
@@ -20,7 +20,7 @@ impl CatalogStore {
 			return Ok(None);
 		};
 
-		let row = multi.row;
+		let row = multi.values;
 		let id = TableId(table::LAYOUT.get_u64(&row, table::ID));
 		let namespace = NamespaceId(table::LAYOUT.get_u64(&row, table::NAMESPACE));
 		let name = table::LAYOUT.get_utf8(&row, table::NAME).to_string();
@@ -41,8 +41,8 @@ impl CatalogStore {
 	) -> crate::Result<Option<TableDef>> {
 		let name = name.as_ref();
 		let Some(table) =
-			rx.range(NamespaceTableKey::full_scan(namespace))?.find_map(|multi: MultiVersionRow| {
-				let row = &multi.row;
+			rx.range(NamespaceTableKey::full_scan(namespace))?.find_map(|multi: MultiVersionValues| {
+				let row = &multi.values;
 				let table_name = table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME);
 				if name == table_name {
 					Some(TableId(table_namespace::LAYOUT.get_u64(row, table_namespace::ID)))

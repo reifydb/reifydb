@@ -147,7 +147,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			}
 		}
 
-		// Convert each row to a HashMap for easier lookup
+		// Convert each encoded to a HashMap for easier lookup
 		let mut rows_data: Vec<HashMap<String, &AliasExpression>> = Vec::new();
 
 		for row in &self.rows {
@@ -358,7 +358,7 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 						column_data.push_value(Value::Undefined);
 					} else {
 						// This shouldn't happen for
-						// single-row evaluation
+						// single-encoded evaluation
 						// but if it does, take only the
 						// first value
 						let first_value =

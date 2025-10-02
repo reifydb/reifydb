@@ -11,14 +11,14 @@ use crate::result::frame::{Frame, FrameColumn};
 pub struct FrameRenderer;
 
 impl FrameRenderer {
-	/// Render the frame with all features enabled (including row numbers if present)
+	/// Render the frame with all features enabled (including encoded numbers if present)
 	pub fn render_full(frame: &Frame) -> Result<String, fmt::Error> {
 		let mut output = String::new();
 		Self::render_full_to(frame, &mut output)?;
 		Ok(output)
 	}
 
-	/// Render the frame without row numbers
+	/// Render the frame without encoded numbers
 	pub fn render_without_row_numbers(frame: &Frame) -> Result<String, fmt::Error> {
 		let mut output = String::new();
 		Self::render_without_row_numbers_to(frame, &mut output)?;
@@ -30,7 +30,7 @@ impl FrameRenderer {
 		Self::render_internal(frame, f, true)
 	}
 
-	/// Render the frame without row numbers to the given formatter
+	/// Render the frame without encoded numbers to the given formatter
 	pub fn render_without_row_numbers_to(frame: &Frame, f: &mut dyn Write) -> fmt::Result {
 		Self::render_internal(frame, f, false)
 	}
@@ -51,13 +51,13 @@ impl FrameRenderer {
 
 		let mut col_widths = vec![0; col_count];
 
-		// If we have row numbers, calculate width for row number column
+		// If we have encoded numbers, calculate width for encoded number column
 		let row_num_col_idx = if has_row_numbers {
 			// Row number column is always first
 			let row_num_header = "__ROW__NUMBER__";
 			col_widths[0] = Self::display_width(row_num_header);
 
-			// Calculate max width needed for row numbers
+			// Calculate max width needed for encoded numbers
 			for row_num in &frame.row_numbers {
 				let s = row_num.to_string();
 				col_widths[0] = col_widths[0].max(Self::display_width(&s));
@@ -92,7 +92,7 @@ impl FrameRenderer {
 
 		let mut header = Vec::new();
 
-		// Add row number header if present
+		// Add encoded number header if present
 		if has_row_numbers {
 			let w = col_widths[0];
 			let name = "__ROW__NUMBER__";
@@ -120,7 +120,7 @@ impl FrameRenderer {
 		for row_numberx in 0..row_count {
 			let mut row = Vec::new();
 
-			// Add row number value if present
+			// Add encoded number value if present
 			if has_row_numbers {
 				let w = col_widths[0];
 				let s = if row_numberx < frame.row_numbers.len() {
@@ -168,12 +168,12 @@ impl FrameRenderer {
 		s.replace('\n', "\\n").replace('\t', "\\t")
 	}
 
-	/// Create a column display order (no special handling needed since row numbers are separate)
+	/// Create a column display order (no special handling needed since encoded numbers are separate)
 	fn get_column_display_order(frame: &Frame) -> Vec<usize> {
 		(0..frame.len()).collect()
 	}
 
-	/// Extract string value from column at given row index, with proper escaping
+	/// Extract string value from column at given encoded index, with proper escaping
 	fn extract_string_value(col: &FrameColumn, row_numberx: usize) -> String {
 		let s = col.data.as_string(row_numberx);
 		Self::escape_control_chars(&s)

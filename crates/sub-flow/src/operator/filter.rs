@@ -1,6 +1,6 @@
 use reifydb_core::{
+	Row,
 	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
-	value::row::Row,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::{Params, Value, return_internal_error};

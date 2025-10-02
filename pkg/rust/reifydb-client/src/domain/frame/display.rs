@@ -24,12 +24,12 @@ fn escape_control_chars(s: &str) -> String {
 	s.replace('\n', "\\n").replace('\t', "\\t")
 }
 
-/// Create a column display order (no special handling needed since row numbers are separate)
+/// Create a column display order (no special handling needed since encoded numbers are separate)
 fn get_column_display_order(frame: &Frame) -> Vec<usize> {
 	(0..frame.len()).collect()
 }
 
-/// Extract string value from column at given row index, with proper escaping
+/// Extract string value from column at given encoded index, with proper escaping
 fn extract_string_value(col: &FrameColumn, row_number: usize) -> String {
 	let s = col.data.get(row_number).unwrap_or(&Value::Undefined).as_string();
 
@@ -52,13 +52,13 @@ impl Display for Frame {
 
 		let mut col_widths = vec![0; col_count];
 
-		// If we have row numbers, calculate width for row number column
+		// If we have encoded numbers, calculate width for encoded number column
 		let row_num_col_idx = if has_row_numbers {
 			// Row number column is always first
 			let row_num_header = "__ROW__NUMBER__";
 			col_widths[0] = display_width(row_num_header);
 
-			// Calculate max width needed for row numbers
+			// Calculate max width needed for encoded numbers
 			for row_num in &self.row_numbers {
 				let s = row_num.to_string();
 				col_widths[0] = col_widths[0].max(display_width(&s));
@@ -93,7 +93,7 @@ impl Display for Frame {
 
 		let mut header = Vec::new();
 
-		// Add row number header if present
+		// Add encoded number header if present
 		if has_row_numbers {
 			let w = col_widths[0];
 			let name = "__ROW__NUMBER__";
@@ -121,7 +121,7 @@ impl Display for Frame {
 		for row_numberx in 0..row_count {
 			let mut row = Vec::new();
 
-			// Add row number value if present
+			// Add encoded number value if present
 			if has_row_numbers {
 				let w = col_widths[0];
 				let s = if row_numberx < self.row_numbers.len() {
@@ -589,12 +589,12 @@ mod tests {
 
 	#[test]
 	fn test_row_number_display() {
-		// Create a frame with regular columns and separate row numbers
+		// Create a frame with regular columns and separate encoded numbers
 		let regular_column = column_with_undefineds!("name", Utf8, [Some("Alice"), Some("Bob")]);
 
 		let age_column = column_with_undefineds!("age", Int4, [Some(25_i32), Some(30_i32)]);
 
-		// Create frame with row numbers as separate field
+		// Create frame with encoded numbers as separate field
 		let frame = Frame::new(vec![1, 2], vec![regular_column, age_column]);
 		let output = format!("{}", frame);
 
@@ -604,8 +604,8 @@ mod tests {
 
 		assert!(header_line.starts_with("|  __ROW__NUMBER__"));
 
-		// Check that the first data value in the first row is from row numbers
-		let first_data_line = lines[3]; // Fourth line contains first data row
+		// Check that the first data value in the first encoded is from encoded numbers
+		let first_data_line = lines[3]; // Fourth line contains first data encoded
 		assert!(first_data_line.contains("|         1         |")); // First RowNumber value
 	}
 
@@ -624,8 +624,8 @@ mod tests {
 
 		// Verify that undefined RowNumber displays as "Undefined"
 		let lines: Vec<&str> = output.lines().collect();
-		let first_data_line = lines[3]; // First data row
-		let second_data_line = lines[4]; // Second data row
+		let first_data_line = lines[3]; // First data encoded
+		let second_data_line = lines[4]; // Second data encoded
 
 		assert!(first_data_line.contains("1")); // First RowNumber value
 		assert!(second_data_line.contains("Undefined")); // Second value should be

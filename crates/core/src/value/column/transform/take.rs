@@ -5,7 +5,7 @@ use crate::{util::CowVec, value::column::Columns};
 
 impl<'a> Columns<'a> {
 	pub fn take(&mut self, n: usize) -> crate::Result<()> {
-		// Take the first n row numbers
+		// Take the first n encoded numbers
 		if !self.row_numbers.is_empty() {
 			let actual_n = n.min(self.row_numbers.len());
 			let new_row_numbers: Vec<_> = self.row_numbers.iter().take(actual_n).copied().collect();

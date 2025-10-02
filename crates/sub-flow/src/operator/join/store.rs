@@ -7,7 +7,7 @@ use bincode::{
 use reifydb_core::{
 	EncodedKey, Error,
 	interface::{FlowNodeId, Transaction},
-	value::row::EncodedRowLayout,
+	value::encoded::EncodedValuesLayout,
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
@@ -52,8 +52,8 @@ impl Store<JoinSideEntry> {
 		let key = self.make_key(hash);
 		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
-				// Deserialize JoinSideEntry from the row
-				let layout = EncodedRowLayout::new(&[Type::Blob]);
+				// Deserialize JoinSideEntry from the encoded
+				let layout = EncodedValuesLayout::new(&[Type::Blob]);
 				let blob = layout.get_blob(&row, 0);
 				if blob.is_empty() {
 					return Ok(None);
@@ -83,7 +83,7 @@ impl Store<JoinSideEntry> {
 			.map_err(|e| Error(internal_error!("Failed to serialize JoinSideEntry: {}", e)))?;
 
 		// Store as a blob in an EncodedRow
-		let layout = EncodedRowLayout::new(&[Type::Blob]);
+		let layout = EncodedValuesLayout::new(&[Type::Blob]);
 		let mut row = layout.allocate_row();
 		let blob = Blob::from(serialized);
 		layout.set_blob(&mut row, 0, &blob);
@@ -172,7 +172,7 @@ impl UndefinedTracker {
 	) -> crate::Result<()> {
 		let key = self.make_key(row_number);
 		// Store a simple marker (boolean true)
-		let layout = EncodedRowLayout::new(&[Type::Boolean]);
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
 		let mut row = layout.allocate_row();
 		layout.set_bool(&mut row, 0, true);
 		state_set(self.node_id, txn, &key, row)?;

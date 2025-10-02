@@ -32,7 +32,7 @@ use crate::{
 			TransactionInterceptor, ViewDefInterceptor, WithInterceptors,
 		},
 	},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 
 /// Macro to generate interceptor execution methods
@@ -76,7 +76,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 		table_pre_insert_interceptors,
 		TablePreInsertInterceptor,
 		TablePreInsertContext,
-		(table: &TableDef, row: &EncodedRow)
+		(table: &TableDef, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
@@ -84,7 +84,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 		table_post_insert_interceptors,
 		TablePostInsertInterceptor,
 		TablePostInsertContext,
-		(table: &TableDef, id: RowNumber, row: &EncodedRow)
+		(table: &TableDef, id: RowNumber, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
@@ -92,7 +92,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 		table_pre_update_interceptors,
 		TablePreUpdateInterceptor,
 		TablePreUpdateContext,
-		(table: &TableDef, id: RowNumber, row: &EncodedRow)
+		(table: &TableDef, id: RowNumber, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
@@ -100,7 +100,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 		table_post_update_interceptors,
 		TablePostUpdateInterceptor,
 		TablePostUpdateContext,
-		(table: &TableDef, id: RowNumber, row: &EncodedRow, old_row: &EncodedRow)
+		(table: &TableDef, id: RowNumber, row: &EncodedValues, old_row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
@@ -116,7 +116,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 		table_post_delete_interceptors,
 		TablePostDeleteInterceptor,
 		TablePostDeleteContext,
-		(table: &TableDef, id: RowNumber, deleted_row: &EncodedRow)
+		(table: &TableDef, id: RowNumber, deleted_row: &EncodedValues)
 	);
 }
 
@@ -126,7 +126,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferInterceptor<CT> fo
 		ring_buffer_pre_insert_interceptors,
 		RingBufferPreInsertInterceptor,
 		RingBufferPreInsertContext,
-		(ring_buffer: &RingBufferDef, row: &EncodedRow)
+		(ring_buffer: &RingBufferDef, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
@@ -134,7 +134,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferInterceptor<CT> fo
 		ring_buffer_post_insert_interceptors,
 		RingBufferPostInsertInterceptor,
 		RingBufferPostInsertContext,
-		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedRow)
+		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
@@ -142,7 +142,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferInterceptor<CT> fo
 		ring_buffer_pre_update_interceptors,
 		RingBufferPreUpdateInterceptor,
 		RingBufferPreUpdateContext,
-		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedRow)
+		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
@@ -150,7 +150,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferInterceptor<CT> fo
 		ring_buffer_post_update_interceptors,
 		RingBufferPostUpdateInterceptor,
 		RingBufferPostUpdateContext,
-		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedRow, old_row: &EncodedRow)
+		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedValues, old_row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
@@ -166,7 +166,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferInterceptor<CT> fo
 		ring_buffer_post_delete_interceptors,
 		RingBufferPostDeleteInterceptor,
 		RingBufferPostDeleteContext,
-		(ring_buffer: &RingBufferDef, id: RowNumber, deleted_row: &EncodedRow)
+		(ring_buffer: &RingBufferDef, id: RowNumber, deleted_row: &EncodedValues)
 	);
 }
 

@@ -10,7 +10,7 @@ use std::{
 	ops::RangeBounds,
 };
 
-use reifydb_core::{EncodedKey, value::row::EncodedRow};
+use reifydb_core::{EncodedKey, value::encoded::EncodedValues};
 
 use crate::mvcc::types::Pending;
 
@@ -62,7 +62,7 @@ impl PendingWrites {
 	#[inline]
 	pub fn estimate_size(&self, _entry: &Pending) -> u64 {
 		// Use fixed size estimation for speed
-		(size_of::<EncodedKey>() + size_of::<EncodedRow>()) as u64
+		(size_of::<EncodedKey>() + size_of::<EncodedValues>()) as u64
 	}
 
 	/// Get a pending write by key - O(log n) performance
@@ -188,7 +188,7 @@ impl PendingWrites {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{CommitVersion, CowVec, EncodedKey, value::row::EncodedRow};
+	use reifydb_core::{CommitVersion, CowVec, EncodedKey, value::encoded::EncodedValues};
 
 	use super::*;
 
@@ -196,8 +196,8 @@ mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn create_test_row(s: &str) -> EncodedRow {
-		EncodedRow(CowVec::new(s.as_bytes().to_vec()))
+	fn create_test_row(s: &str) -> EncodedValues {
+		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
 	}
 
 	fn create_test_pending(version: CommitVersion, key: &str, row_data: &str) -> Pending {
@@ -205,7 +205,7 @@ mod tests {
 		Pending {
 			delta: Delta::Set {
 				key: create_test_key(key),
-				row: create_test_row(row_data),
+				values: create_test_row(row_data),
 			},
 			version,
 		}

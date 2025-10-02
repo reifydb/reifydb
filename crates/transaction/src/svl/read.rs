@@ -13,9 +13,9 @@ pub struct SvlReadTransaction<'a, SVS> {
 
 impl<SVS> SingleVersionQueryTransaction for SvlReadTransaction<'_, SVS>
 where
-	SVS: SingleVersionStorage,
+	SVS: SingleVersionStore,
 {
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionRow>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		self.storage.get(key)
 	}
 

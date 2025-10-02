@@ -147,15 +147,15 @@ mod tests {
 		assert_eq!(vbytes10[0], 0x02, "view type byte should be 0x02");
 		assert_eq!(tvbytes10[0], 0x03, "table_virtual type byte should be 0x03");
 
-		// Simulate what happens with row keys
+		// Simulate what happens with encoded keys
 		let row_key_10_100 = vec![0xFE, 0xFC]; // version, kind
 		let mut key1 = row_key_10_100.clone();
 		key1.extend(&bytes10);
-		key1.extend(&super::super::serialize(&100u64)); // row 100
+		key1.extend(&super::super::serialize(&100u64)); // encoded 100
 
 		let mut key2 = row_key_10_100.clone();
 		key2.extend(&bytes10);
-		key2.extend(&super::super::serialize(&200u64)); // row 200
+		key2.extend(&super::super::serialize(&200u64)); // encoded 200
 
 		let mut end_key = vec![0xFE, 0xFC];
 		end_key.extend(&bytes9);

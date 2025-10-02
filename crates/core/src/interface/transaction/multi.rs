@@ -3,11 +3,11 @@
 
 use crate::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
-	interface::{MultiVersionRow, TransactionId, WithEventBus},
-	value::row::EncodedRow,
+	interface::{MultiVersionValues, TransactionId, WithEventBus},
+	value::encoded::EncodedValues,
 };
 
-pub type BoxedMultiVersionIter<'a> = Box<dyn Iterator<Item = MultiVersionRow> + Send + 'a>;
+pub type BoxedMultiVersionIter<'a> = Box<dyn Iterator<Item = MultiVersionValues> + Send + 'a>;
 
 pub trait MultiVersionTransaction: WithEventBus + Send + Sync + Clone + 'static {
 	type Query: MultiVersionQueryTransaction;
@@ -41,7 +41,7 @@ pub trait MultiVersionQueryTransaction {
 
 	fn id(&self) -> TransactionId;
 
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionRow>>;
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>>;
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
@@ -65,7 +65,7 @@ pub trait MultiVersionQueryTransaction {
 }
 
 pub trait MultiVersionCommandTransaction: MultiVersionQueryTransaction {
-	fn set(&mut self, key: &EncodedKey, row: EncodedRow) -> crate::Result<()>;
+	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()>;
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 

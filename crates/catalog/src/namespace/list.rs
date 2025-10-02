@@ -18,7 +18,8 @@ impl CatalogStore {
 				if let Key::Namespace(namespace_key) = key {
 					let namespace_id = namespace_key.namespace;
 
-					let name = namespace::LAYOUT.get_utf8(&entry.row, namespace::NAME).to_string();
+					let name =
+						namespace::LAYOUT.get_utf8(&entry.values, namespace::NAME).to_string();
 					let namespace_def = NamespaceDef {
 						id: namespace_id,
 						name,

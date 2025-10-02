@@ -4,7 +4,7 @@
 use reifydb_core::{
 	EncodedKey,
 	interface::Transaction,
-	value::row::{EncodedRow, EncodedRowLayout},
+	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
 
@@ -15,35 +15,35 @@ use crate::stateful::RawStatefulOperator;
 /// Extends TransformOperator directly and uses utility functions for state management
 pub trait SingleStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Get or create the layout for state rows
-	fn layout(&self) -> EncodedRowLayout;
+	fn layout(&self) -> EncodedValuesLayout;
 
 	/// Key for the single state - default is empty
 	fn key(&self) -> EncodedKey {
 		utils::empty_key()
 	}
 
-	/// Create a new state row with default values
-	fn create_state(&self) -> EncodedRow {
+	/// Create a new state encoded with default values
+	fn create_state(&self) -> EncodedValues {
 		let layout = self.layout();
 		layout.allocate_row()
 	}
 
-	/// Load the operator's single state row
-	fn load_state(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<EncodedRow> {
+	/// Load the operator's single state encoded
+	fn load_state(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<EncodedValues> {
 		let key = self.key();
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
-	/// Save the operator's single state row
-	fn save_state(&self, txn: &mut StandardCommandTransaction<T>, row: EncodedRow) -> crate::Result<()> {
+	/// Save the operator's single state encoded
+	fn save_state(&self, txn: &mut StandardCommandTransaction<T>, row: EncodedValues) -> crate::Result<()> {
 		let key = self.key();
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state with a function
-	fn update_state<F>(&self, txn: &mut StandardCommandTransaction<T>, f: F) -> crate::Result<EncodedRow>
+	fn update_state<F>(&self, txn: &mut StandardCommandTransaction<T>, f: F) -> crate::Result<EncodedValues>
 	where
-		F: FnOnce(&EncodedRowLayout, &mut EncodedRow) -> crate::Result<()>,
+		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
 	{
 		let layout = self.layout();
 		let mut row = self.load_state(txn)?;
@@ -68,7 +68,7 @@ mod tests {
 
 	// Extend TestOperator to implement SingleStateful
 	impl SingleStateful<TestTransaction> for TestOperator {
-		fn layout(&self) -> EncodedRowLayout {
+		fn layout(&self) -> EncodedValuesLayout {
 			self.layout.clone()
 		}
 	}

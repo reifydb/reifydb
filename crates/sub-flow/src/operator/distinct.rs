@@ -8,9 +8,9 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	CowVec, Error,
+	CowVec, Error, Row,
 	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
-	value::row::{EncodedRow, EncodedRowLayout, EncodedRowNamedLayout, Row},
+	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
@@ -54,8 +54,8 @@ impl SerializedRow {
 		let fields: Vec<(String, Type)> =
 			layout.names.iter().cloned().zip(layout.types.iter().cloned()).collect();
 
-		let layout = EncodedRowNamedLayout::new(fields);
-		let encoded = EncodedRow(CowVec::new(self.encoded_bytes));
+		let layout = EncodedValuesNamedLayout::new(fields);
+		let encoded = EncodedValues(CowVec::new(self.encoded_bytes));
 
 		Row {
 			number: self.number,
@@ -73,7 +73,7 @@ impl DistinctLayout {
 		}
 	}
 
-	/// Update the layout with a new row, keeping the most defined types
+	/// Update the layout with a new encoded, keeping the most defined types
 	fn update_from_row(&mut self, row: &Row) {
 		let names = row.layout.names();
 		let types: Vec<Type> = row.layout.fields.iter().map(|f| f.r#type).collect();
@@ -109,7 +109,7 @@ impl DistinctLayout {
 struct DistinctEntry {
 	/// Number of times this distinct value appears
 	count: usize,
-	/// The first row that had this distinct value
+	/// The first encoded that had this distinct value
 	first_row: SerializedRow,
 }
 
@@ -134,7 +134,7 @@ impl Default for DistinctState {
 pub struct DistinctOperator {
 	node: FlowNodeId,
 	expressions: Vec<Expression<'static>>,
-	layout: EncodedRowLayout,
+	layout: EncodedValuesLayout,
 }
 
 impl DistinctOperator {
@@ -142,7 +142,7 @@ impl DistinctOperator {
 		Self {
 			node,
 			expressions,
-			layout: EncodedRowLayout::new(&[Type::Blob]),
+			layout: EncodedValuesLayout::new(&[Type::Blob]),
 		}
 	}
 
@@ -156,7 +156,7 @@ impl DistinctOperator {
 		let mut data = Vec::new();
 
 		if self.expressions.is_empty() {
-			// Hash the entire row if no expressions
+			// Hash the entire encoded if no expressions
 			data.extend_from_slice(row.encoded.as_slice());
 		} else {
 			for expr in &self.expressions {
@@ -212,7 +212,7 @@ impl<T: Transaction> TransformOperator<T> for DistinctOperator {}
 impl<T: Transaction> RawStatefulOperator<T> for DistinctOperator {}
 
 impl<T: Transaction> SingleStateful<T> for DistinctOperator {
-	fn layout(&self) -> EncodedRowLayout {
+	fn layout(&self) -> EncodedValuesLayout {
 		self.layout.clone()
 	}
 }
@@ -264,7 +264,7 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 					pre,
 					post,
 				} => {
-					// Update layout with this row's types
+					// Update layout with this encoded's types
 					state.layout.update_from_row(&post);
 
 					// Compute hashes for both old and new values
@@ -272,9 +272,9 @@ impl<T: Transaction> Operator<T> for DistinctOperator {
 					let post_hash = self.compute_hash(&post, evaluator)?;
 
 					if pre_hash == post_hash {
-						// Distinct key didn't change - update the stored row
+						// Distinct key didn't change - update the stored encoded
 						if let Some(entry) = state.entries.get_mut(&pre_hash) {
-							// Update to use the new row data
+							// Update to use the new encoded data
 							if entry.first_row.number == post.number {
 								entry.first_row = SerializedRow::from_row(&post);
 							}

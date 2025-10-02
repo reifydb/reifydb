@@ -49,8 +49,8 @@ pub fn missing_row_number_column() -> Diagnostic {
 		column: None,
 		fragment: OwnedFragment::None,
 		label: Some("missing required column".to_string()),
-		help: Some("Ensure the query includes the row ID in the result set".to_string()),
-		notes: vec!["UPDATE operations require row identifiers to locate existing rows".to_string()],
+		help: Some("Ensure the query includes the encoded ID in the result set".to_string()),
+		notes: vec!["UPDATE operations require encoded identifiers to locate existing rows".to_string()],
 		cause: None,
 	}
 }
@@ -63,8 +63,8 @@ pub fn invalid_row_number_values() -> Diagnostic {
 		message: "All RowNumber values must be defined for UPDATE operations".to_string(),
 		column: None,
 		fragment: OwnedFragment::None,
-		label: Some("invalid row identifiers".to_string()),
-		help: Some("Check that the input data contains valid row IDs".to_string()),
+		label: Some("invalid encoded identifiers".to_string()),
+		help: Some("Check that the input data contains valid encoded IDs".to_string()),
 		notes: vec!["RowNumber column must contain valid identifiers, not undefined values".to_string()],
 		cause: None,
 	}

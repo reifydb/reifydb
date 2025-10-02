@@ -14,9 +14,9 @@ use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path:
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	event::EventBus,
-	interface::{MultiVersionCommandTransaction, MultiVersionQueryTransaction, MultiVersionRow},
+	interface::{MultiVersionCommandTransaction, MultiVersionQueryTransaction, MultiVersionValues},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
-	value::row::EncodedRow,
+	value::encoded::EncodedValues,
 };
 use reifydb_store_row::memory::Memory;
 use reifydb_testing::testscript;
@@ -173,7 +173,7 @@ impl<'a> testscript::Runner for MvccRunner {
 
 					let value = match t {
 						Transaction::Query(rx) => {
-							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.row.to_vec())))
+							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.values.to_vec())))
 						}
 						Transaction::Command(tx) => {
 							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
@@ -196,7 +196,7 @@ impl<'a> testscript::Runner for MvccRunner {
 
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(decode_binary(&kv.value));
+					let row = EncodedValues(decode_binary(&kv.value));
 					if row.is_empty() {
 						tx.remove(&key).unwrap();
 					} else {
@@ -234,7 +234,7 @@ impl<'a> testscript::Runner for MvccRunner {
 					Transaction::Query(rx) => {
 						let iter = rx.scan().unwrap();
 						for multi in iter {
-							kvs.push((multi.key.clone(), multi.row.to_vec()));
+							kvs.push((multi.key.clone(), multi.values.to_vec()));
 						}
 					}
 					Transaction::Command(tx) => {
@@ -312,7 +312,7 @@ impl<'a> testscript::Runner for MvccRunner {
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedRow(decode_binary(&kv.value));
+					let row = EncodedValues(decode_binary(&kv.value));
 					match t {
 						Transaction::Query(_) => {
 							unreachable!("can not call set on rx")
@@ -384,10 +384,10 @@ impl<'a> testscript::Runner for MvccRunner {
 
 fn print_rx<I>(output: &mut String, mut iter: I)
 where
-	I: Iterator<Item = MultiVersionRow>,
+	I: Iterator<Item = MultiVersionValues>,
 {
 	while let Some(sv) = iter.next() {
-		let fmtkv = format::Raw::key_row(&sv.key, sv.row.as_slice());
+		let fmtkv = format::Raw::key_row(&sv.key, sv.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

@@ -6,8 +6,8 @@ use std::marker::PhantomData;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
-		BoxedMultiVersionIter, CdcTransaction, MultiVersionQueryTransaction, MultiVersionRow,
-		MultiVersionTransaction, QueryTransaction, SingleVersionTransaction, Transaction, TransactionId,
+		BoxedMultiVersionIter, CdcTransaction, MultiVersionQueryTransaction, MultiVersionTransaction,
+		MultiVersionValues, QueryTransaction, SingleVersionTransaction, Transaction, TransactionId,
 	},
 };
 
@@ -87,7 +87,7 @@ impl<'a, T: Transaction> MultiVersionQueryTransaction for StandardTransaction<'a
 		}
 	}
 
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionRow>> {
+	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
 		match self {
 			Self::Command(txn) => txn.get(key),
 			Self::Query(txn) => txn.get(key),

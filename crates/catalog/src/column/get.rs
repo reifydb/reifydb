@@ -50,7 +50,7 @@ impl CatalogStore {
 				))
 			})?;
 
-		let row = multi.row;
+		let row = multi.values;
 
 		let id = ColumnId(LAYOUT.get_u64(&row, column::ID));
 		let name = LAYOUT.get_utf8(&row, column::NAME).to_string();

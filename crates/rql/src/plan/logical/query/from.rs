@@ -59,7 +59,7 @@ impl Compiler {
 							return err!(Diagnostic {
 								code: "E0001".to_string(),
 								statement: None,
-								message: "Expected row in static data".to_string(),
+								message: "Expected encoded in static data".to_string(),
 								column: None,
 								fragment: OwnedFragment::None,
 								label: None,

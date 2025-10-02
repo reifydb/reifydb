@@ -1,7 +1,7 @@
 use reifydb_core::{
-	CommitVersion, FrameColumnData,
+	CommitVersion, FrameColumnData, Row,
 	interface::{ExecuteQuery, Identity, Query, Transaction},
-	value::row::{EncodedRowNamedLayout, Row},
+	value::encoded::EncodedValuesNamedLayout,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::Hash128;
@@ -49,7 +49,7 @@ pub(crate) fn process_query_frame(
 ) -> crate::Result<Vec<Row>> {
 	let mut matching_rows = Vec::new();
 
-	// Get row count from columns
+	// Get encoded count from columns
 	let row_count = if let Some(first_column) = frame.columns.first() {
 		first_column.data.len()
 	} else {
@@ -67,17 +67,11 @@ pub(crate) fn process_query_frame(
 
 	// Process rows in order to ensure consistency
 	for row_idx in 0..row_count {
-		// Get the actual row number from frame.row_numbers
 		let row_number = frame.row_numbers.get(row_idx).copied().unwrap();
-
-		// Create a Row from the frame data
 		let right_row = create_row_from_frame(&frame.columns, &frame_names, &frame_types, row_idx, row_number)?;
-
-		// Compute the join key hash for this right row
 		let evaluator = StandardRowEvaluator::new();
 		let right_key_hash = operator.compute_join_key(&right_row, &operator.right_exprs, &evaluator)?;
 
-		// Only include this row if it matches the left row's key
 		if let Some(hash) = right_key_hash {
 			if hash == key_hash {
 				matching_rows.push(right_row);
@@ -130,7 +124,7 @@ pub(crate) fn create_row_from_frame(
 	row_idx: usize,
 	row_number: reifydb_type::RowNumber,
 ) -> crate::Result<Row> {
-	// Extract values for this row from all columns
+	// Extract values for this encoded from all columns
 	let mut values = Vec::new();
 	for column in columns.iter() {
 		values.push(column.data.get_value(row_idx));
@@ -142,7 +136,7 @@ pub(crate) fn create_row_from_frame(
 
 	debug_assert!(!fields.is_empty());
 
-	let layout = EncodedRowNamedLayout::new(fields);
+	let layout = EncodedValuesNamedLayout::new(fields);
 	let mut encoded_row = layout.allocate_row();
 	layout.set_values(&mut encoded_row, &values);
 
@@ -168,7 +162,7 @@ pub(crate) fn has_matching_right_rows<T: Transaction>(
 	Ok(!rows.is_empty())
 }
 
-/// Check if a specific right row is the only one matching
+/// Check if a specific right encoded is the only one matching
 pub(crate) fn is_only_matching_right_row<T: Transaction>(
 	txn: &mut StandardCommandTransaction<T>,
 	query_string: &QueryString,

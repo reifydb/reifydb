@@ -1,8 +1,8 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	CowVec,
-	value::row::{EncodedRow, EncodedRowNamedLayout, Row},
+	CowVec, Row,
+	value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 };
 use reifydb_type::{RowNumber, Type};
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
@@ -77,9 +77,9 @@ impl SerializedRow {
 		let fields: Vec<(String, Type)> =
 			schema.left_names.iter().cloned().zip(schema.left_types.iter().copied()).collect();
 
-		let row_layout = EncodedRowNamedLayout::new(fields);
+		let row_layout = EncodedValuesNamedLayout::new(fields);
 
-		let encoded = EncodedRow(CowVec::new(self.bytes.to_vec()));
+		let encoded = EncodedValues(CowVec::new(self.bytes.to_vec()));
 
 		Row {
 			number: self.number,
@@ -94,9 +94,9 @@ impl SerializedRow {
 		let fields: Vec<(String, Type)> =
 			schema.right_names.iter().cloned().zip(schema.right_types.iter().copied()).collect();
 
-		let row_layout = EncodedRowNamedLayout::new(fields);
+		let row_layout = EncodedValuesNamedLayout::new(fields);
 
-		let encoded = EncodedRow(CowVec::new(self.bytes.to_vec()));
+		let encoded = EncodedValues(CowVec::new(self.bytes.to_vec()));
 
 		Row {
 			number: self.number,

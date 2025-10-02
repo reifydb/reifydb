@@ -12,7 +12,7 @@ use reifydb_core::{
 		EncodableKey, SingleVersionCommandTransaction, SingleVersionQueryTransaction, SingleVersionTransaction,
 		TransactionVersionKey,
 	},
-	value::row::EncodedRowLayout,
+	value::encoded::EncodedValuesLayout,
 };
 use reifydb_type::Type;
 
@@ -79,17 +79,17 @@ where
 	}
 
 	fn load_current_version(single: &SMVT) -> crate::Result<u64> {
-		let layout = EncodedRowLayout::new(&[Type::Uint8]);
+		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 
 		single.with_query(|tx| match tx.get(&key)? {
 			None => Ok(0),
-			Some(single) => Ok(layout.get_u64(&single.row, 0)),
+			Some(single) => Ok(layout.get_u64(&single.values, 0)),
 		})
 	}
 
 	fn persist_version(single: &SMVT, version: u64) -> crate::Result<()> {
-		let layout = EncodedRowLayout::new(&[Type::Uint8]);
+		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut row = layout.allocate_row();
 		layout.set_u64(&mut row, 0, version);
@@ -297,7 +297,7 @@ mod tests {
 		let single = SingleVersionLock::new(memory, EventBus::default());
 
 		// Manually set a version in storage
-		let layout = EncodedRowLayout::new(&[Type::Uint8]);
+		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut row = layout.allocate_row();
 		layout.set_u64(&mut row, 0, 500u64);

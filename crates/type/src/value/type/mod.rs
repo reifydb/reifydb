@@ -54,7 +54,7 @@ pub enum Type {
 	Time,
 	/// An interval representing a duration
 	Interval,
-	/// A row identifier (8-byte unsigned integer)
+	/// A encoded identifier (8-byte unsigned integer)
 	RowNumber,
 	/// An identity identifier (UUID v7)
 	IdentityId,
