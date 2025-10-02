@@ -3,15 +3,16 @@
 
 use std::collections::VecDeque;
 
-use reifydb_core::{EncodedKey, Result, interface::SingleVersionValues};
+use reifydb_core::{EncodedKey, Result};
 
 use super::execute_scan_query;
-use crate::{
-	SingleVersionScan,
-	backend::sqlite::{SqliteBackend, read::Reader},
+use crate::backend::{
+	result::SingleVersionIterResult,
+	single::BackendSingleVersionScan,
+	sqlite::{SqliteBackend, read::Reader},
 };
 
-impl SingleVersionScan for SqliteBackend {
+impl BackendSingleVersionScan for SqliteBackend {
 	type ScanIter<'a> = SingleVersionScanIter;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
@@ -21,7 +22,7 @@ impl SingleVersionScan for SqliteBackend {
 
 pub struct SingleVersionScanIter {
 	reader: Reader,
-	buffer: VecDeque<SingleVersionValues>,
+	buffer: VecDeque<SingleVersionIterResult>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -55,7 +56,7 @@ impl SingleVersionScanIter {
 
 		// Update last_key to the last item we retrieved
 		if let Some(last_item) = self.buffer.back() {
-			self.last_key = Some(last_item.key.clone());
+			self.last_key = Some(last_item.key().clone());
 		}
 
 		// If we got fewer results than requested, we've reached the end
@@ -66,7 +67,7 @@ impl SingleVersionScanIter {
 }
 
 impl Iterator for SingleVersionScanIter {
-	type Item = SingleVersionValues;
+	type Item = SingleVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

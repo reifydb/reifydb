@@ -19,7 +19,7 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	SingleVersionStore,
+	backend::{result::SingleVersionIterResult, single::BackendSingleVersion},
 	memory::MemoryBackend,
 	sqlite::{SqliteBackend, SqliteConfig},
 };
@@ -41,19 +41,19 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs engine tests.
-pub struct Runner<SVS: SingleVersionStore> {
-	store: SVS,
+pub struct Runner<BSV: BackendSingleVersion> {
+	backend: BSV,
 }
 
-impl<SVS: SingleVersionStore> Runner<SVS> {
-	fn new(store: SVS) -> Self {
+impl<BSV: BackendSingleVersion> Runner<BSV> {
+	fn new(backend: BSV) -> Self {
 		Self {
-			store,
+			backend,
 		}
 	}
 }
 
-impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
+impl<BSV: BackendSingleVersion> testscript::Runner for Runner<BSV> {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -62,7 +62,8 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
-				let value = self.store.get(&key).unwrap().map(|sv| sv.values.to_vec());
+				let value: Option<SingleVersionValues> = self.backend.get(&key).unwrap().into();
+				let value = value.map(|sv| sv.values.to_vec());
 				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
 			}
 			// contains KEY
@@ -70,7 +71,7 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
-				let contains = self.store.contains(&key).unwrap();
+				let contains = self.backend.contains(&key).unwrap();
 				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
 			}
 
@@ -81,9 +82,9 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.scan().unwrap())
+					print(&mut output, self.backend.scan().unwrap())
 				} else {
-					print(&mut output, self.store.scan_rev().unwrap())
+					print(&mut output, self.backend.scan_rev().unwrap())
 				};
 			}
 			// range RANGE [reverse=BOOL]
@@ -96,9 +97,9 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.range(range).unwrap())
+					print(&mut output, self.backend.range(range).unwrap())
 				} else {
-					print(&mut output, self.store.range_rev(range).unwrap())
+					print(&mut output, self.backend.range_rev(range).unwrap())
 				};
 			}
 
@@ -111,9 +112,9 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.prefix(&prefix).unwrap())
+					print(&mut output, self.backend.prefix(&prefix).unwrap())
 				} else {
-					print(&mut output, self.store.prefix_rev(&prefix).unwrap())
+					print(&mut output, self.backend.prefix_rev(&prefix).unwrap())
 				};
 			}
 
@@ -125,7 +126,7 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				let values = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
-				self.store
+				self.backend
 					.commit(async_cow_vec![
 						(Delta::Set {
 							key,
@@ -141,7 +142,7 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
-				self.store
+				self.backend
 					.commit(async_cow_vec![
 						(Delta::Remove {
 							key
@@ -158,9 +159,20 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 	}
 }
 
-fn print<I: Iterator<Item = SingleVersionValues>>(output: &mut String, iter: I) {
-	for sv in iter {
-		let fmtkv = format::Raw::key_value(&sv.key, sv.values.as_slice());
-		writeln!(output, "{fmtkv}").unwrap();
+fn print<I: Iterator<Item = SingleVersionIterResult>>(output: &mut String, iter: I) {
+	for item in iter {
+		match item {
+			SingleVersionIterResult::Value(sv) => {
+				let fmtkv = format::Raw::key_value(&sv.key, sv.values.as_slice());
+				writeln!(output, "{fmtkv}").unwrap();
+			}
+			SingleVersionIterResult::Tombstone {
+				key,
+				..
+			} => {
+				let fmtkv = format::Raw::key_value(&key, "tombstone".as_bytes());
+				writeln!(output, "{fmtkv}").unwrap();
+			}
+		}
 	}
 }

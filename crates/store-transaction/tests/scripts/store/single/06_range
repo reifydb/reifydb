@@ -1,0 +1,50 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# This file includes and modifies code from the toydb project (https://github.com/erikgrinaker/toydb),
+# originally licensed under the Apache License, Version 2.0.
+# Original copyright:
+#   Copyright (c) 2024 Erik Grinaker
+#
+# The original Apache License can be found at:
+#   http://www.apache.org/licenses/LICENSE-2.0
+
+# Write some initial data.
+set a=1
+set b=2
+set ba=21
+set bb=22
+set c=3
+set C=3
+---
+ok
+
+# Inclusive and exclusive ranges.
+range b..bb
+---
+"b" => "2"
+"ba" => "21"
+
+range "b..=bb"
+---
+"b" => "2"
+"ba" => "21"
+"bb" => "22"
+
+range "b..=bb" reverse=true
+---
+"bb" => "22"
+"ba" => "21"
+"b" => "2"
+
+# Open ranges.
+range bb..
+---
+"bb" => "22"
+"c" => "3"
+
+range "..=b"
+---
+"C" => "3"
+"a" => "1"
+"b" => "2"

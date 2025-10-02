@@ -7,10 +7,10 @@ use reifydb_core::{
 use rusqlite::{OptionalExtension, params};
 
 use super::table_name;
-use crate::{MultiVersionGet, backend::sqlite::SqliteBackend};
+use crate::backend::{multi::BackendMultiVersionGet, result::MultiVersionGetResult, sqlite::SqliteBackend};
 
-impl MultiVersionGet for SqliteBackend {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
+impl BackendMultiVersionGet for SqliteBackend {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<MultiVersionGetResult> {
 		let reader = self.get_reader();
 		let guard = reader.lock().unwrap();
 
@@ -20,23 +20,30 @@ impl MultiVersionGet for SqliteBackend {
 			table
 		);
 
-		Ok(guard.query_row(&query, params![key.to_vec(), version.0], |row| {
-			// Check if value is NULL (which indicates deletion)
-			let value: Option<Vec<u8>> = row.get(1)?;
-			match value {
-				Some(val) => {
-					let encoded_row = EncodedValues(CowVec::new(val));
-					Ok(Some(MultiVersionValues {
+		match guard
+			.query_row(&query, params![key.to_vec(), version.0], |row| {
+				let value: Option<Vec<u8>> = row.get(1)?;
+				let version = CommitVersion(row.get(2)?);
+				match value {
+					Some(val) => {
+						let encoded_row = EncodedValues(CowVec::new(val));
+						Ok(MultiVersionGetResult::Value(MultiVersionValues {
+							key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
+							values: encoded_row,
+							version,
+						}))
+					}
+					None => Ok(MultiVersionGetResult::Tombstone {
 						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-						values: encoded_row,
-						version: CommitVersion(row.get(2)?),
-					}))
+						version,
+					}),
 				}
-				None => Ok(None), // NULL value means deleted
-			}
-		})
-		.optional()
-		.unwrap()
-		.flatten())
+			})
+			.optional()
+			.unwrap()
+		{
+			Some(result) => Ok(result),
+			None => Ok(MultiVersionGetResult::NotFound),
+		}
 	}
 }

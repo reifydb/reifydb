@@ -1,20 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-// This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Al Liu
-//
-// The original Apache License can be found at:
-//   http://www.apache.org/licenses/LICENSE-2.0
-
 use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{EncodedKey, Result, interface::SingleVersionValues, value::encoded::EncodedValues};
 
-use crate::{SingleVersionScan, backend::memory::MemoryBackend};
+use crate::backend::{memory::MemoryBackend, result::SingleVersionIterResult, single::BackendSingleVersionScan};
 
-impl SingleVersionScan for MemoryBackend {
+impl BackendSingleVersionScan for MemoryBackend {
 	type ScanIter<'a> = SingleVersionScanIter<'a>;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
@@ -26,17 +18,22 @@ impl SingleVersionScan for MemoryBackend {
 }
 
 pub struct SingleVersionScanIter<'a> {
-	pub(crate) iter: MapIter<'a, EncodedKey, EncodedValues>,
+	pub(crate) iter: MapIter<'a, EncodedKey, Option<EncodedValues>>,
 }
 
 impl Iterator for SingleVersionScanIter<'_> {
-	type Item = SingleVersionValues;
+	type Item = SingleVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		let item = self.iter.next()?;
-		Some(SingleVersionValues {
-			key: item.key().clone(),
-			values: item.value().clone(),
+		Some(match item.value().as_ref() {
+			Some(v) => SingleVersionIterResult::Value(SingleVersionValues {
+				key: item.key().clone(),
+				values: v.clone(),
+			}),
+			None => SingleVersionIterResult::Tombstone {
+				key: item.key().clone(),
+			},
 		})
 	}
 }

@@ -7,6 +7,7 @@ pub(crate) mod commit;
 pub(crate) mod diagnostic;
 pub mod memory;
 pub mod multi;
+pub mod result;
 pub mod single;
 pub mod sqlite;
 

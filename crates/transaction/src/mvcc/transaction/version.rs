@@ -52,19 +52,19 @@ impl VersionBlock {
 }
 
 #[derive(Debug)]
-pub struct StdVersionProvider<SMVT>
+pub struct StdVersionProvider<SVT>
 where
-	SMVT: SingleVersionTransaction,
+	SVT: SingleVersionTransaction,
 {
-	single: SMVT,
+	single: SVT,
 	current_block: Arc<Mutex<VersionBlock>>,
 }
 
-impl<SMVT> StdVersionProvider<SMVT>
+impl<SVT> StdVersionProvider<SVT>
 where
-	SMVT: SingleVersionTransaction,
+	SVT: SingleVersionTransaction,
 {
-	pub fn new(single: SMVT) -> crate::Result<Self> {
+	pub fn new(single: SVT) -> crate::Result<Self> {
 		// Load current version and allocate first block
 		let current_version = Self::load_current_version(&single)?;
 		let first_block = VersionBlock::new(current_version);
@@ -78,7 +78,7 @@ where
 		})
 	}
 
-	fn load_current_version(single: &SMVT) -> crate::Result<u64> {
+	fn load_current_version(single: &SVT) -> crate::Result<u64> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 
@@ -88,7 +88,7 @@ where
 		})
 	}
 
-	fn persist_version(single: &SMVT, version: u64) -> crate::Result<()> {
+	fn persist_version(single: &SVT, version: u64) -> crate::Result<()> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut values = layout.allocate();
@@ -101,9 +101,9 @@ where
 	}
 }
 
-impl<SMVT> VersionProvider for StdVersionProvider<SMVT>
+impl<SVT> VersionProvider for StdVersionProvider<SVT>
 where
-	SMVT: SingleVersionTransaction,
+	SVT: SingleVersionTransaction,
 {
 	fn next(&self) -> crate::Result<CommitVersion> {
 		// Fast path: try to get version from current block

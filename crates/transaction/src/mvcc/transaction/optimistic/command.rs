@@ -26,13 +26,13 @@ use crate::mvcc::{
 	types::TransactionValue,
 };
 
-pub struct CommandTransaction<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> {
-	engine: Optimistic<MVS, SMVT>,
-	pub(crate) tm: TransactionManagerCommand<StdVersionProvider<SMVT>>,
+pub struct CommandTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
+	engine: Optimistic<MVS, SVT>,
+	pub(crate) tm: TransactionManagerCommand<StdVersionProvider<SVT>>,
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<MVS, SMVT> {
-	pub fn new(engine: Optimistic<MVS, SMVT>) -> crate::Result<Self> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<MVS, SVT> {
+	pub fn new(engine: Optimistic<MVS, SVT>) -> crate::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
 			engine,
@@ -41,7 +41,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 	}
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<MVS, SVT> {
 	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
 		let mut version: Option<CommitVersion> = None;
 		let mut deltas = CowVec::with_capacity(8);
@@ -74,7 +74,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 	}
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<MVS, SVT> {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}

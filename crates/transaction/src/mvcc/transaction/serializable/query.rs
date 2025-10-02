@@ -17,13 +17,13 @@ use crate::mvcc::{
 	types::TransactionValue,
 };
 
-pub struct QueryTransaction<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> {
-	pub(crate) engine: Serializable<MVS, SMVT>,
-	pub(crate) tm: TransactionManagerQuery<StdVersionProvider<SMVT>>,
+pub struct QueryTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
+	pub(crate) engine: Serializable<MVS, SVT>,
+	pub(crate) tm: TransactionManagerQuery<StdVersionProvider<SVT>>,
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> QueryTransaction<MVS, SMVT> {
-	pub fn new(engine: Serializable<MVS, SMVT>, version: Option<CommitVersion>) -> crate::Result<Self> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> QueryTransaction<MVS, SVT> {
+	pub fn new(engine: Serializable<MVS, SVT>, version: Option<CommitVersion>) -> crate::Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
 			engine,
@@ -32,7 +32,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> QueryTransaction<MV
 	}
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> QueryTransaction<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> QueryTransaction<MVS, SVT> {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}

@@ -7,12 +7,14 @@ use reifydb_core::{CommitVersion, CowVec, Result, delta::Delta, interface::Trans
 use reifydb_type::Error;
 
 use crate::{
-	MultiVersionCommit,
-	backend::sqlite::{SqliteBackend, write::WriteCommand},
+	backend::{
+		multi::BackendMultiVersionCommit,
+		sqlite::{SqliteBackend, write::WriteCommand},
+	},
 	storage_internal_error,
 };
 
-impl MultiVersionCommit for SqliteBackend {
+impl BackendMultiVersionCommit for SqliteBackend {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
 		let (respond_to, response) = mpsc::channel();
 

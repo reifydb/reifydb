@@ -40,7 +40,7 @@ pub enum WriteCommand {
 pub struct Writer {
 	receiver: Receiver<WriteCommand>,
 	multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
-	single: Arc<SkipMap<EncodedKey, EncodedValues>>,
+	single: Arc<SkipMap<EncodedKey, Option<EncodedValues>>>,
 	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	commit_buffer: CommitBuffer,
 	// Track pending responses for buffered commits
@@ -50,7 +50,7 @@ pub struct Writer {
 impl Writer {
 	pub fn spawn(
 		multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
-		single: Arc<SkipMap<EncodedKey, EncodedValues>>,
+		single: Arc<SkipMap<EncodedKey, Option<EncodedValues>>>,
 		cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	) -> Result<Sender<WriteCommand>> {
 		let (sender, receiver) = mpsc::channel();
@@ -142,7 +142,7 @@ impl Writer {
 		let mut cdc_changes = Vec::new();
 
 		// Apply deltas and collect CDC changes
-		for (idx, delta) in deltas.iter().enumerate() {
+		for (idx, delta) in deltas.into_iter().enumerate() {
 			let sequence = match u16::try_from(idx + 1) {
 				Ok(seq) => seq,
 				Err(_) => return_error!(sequence_exhausted()),
@@ -163,23 +163,22 @@ impl Writer {
 						.multi
 						.get_or_insert_with(key.clone(), MultiVersionTransactionContainer::new);
 					let val = item.value();
-					val.insert(version, Some(values.clone()));
+					val.insert(version, values.clone());
 				}
 				Delta::Remove {
 					key,
 				} => {
-					if let Some(values) = self.multi.get(key) {
-						let values = values.value();
-						if !values.is_empty() {
-							values.insert(version, None);
-						}
-					}
+					let item = self
+						.multi
+						.get_or_insert_with(key.clone(), MultiVersionTransactionContainer::new);
+					let val = item.value();
+					val.remove(version);
 				}
 			}
 
 			cdc_changes.push(CdcSequencedChange {
 				sequence,
-				change: generate_cdc_change(delta.clone(), pre),
+				change: generate_cdc_change(delta, pre),
 			});
 		}
 
@@ -199,12 +198,12 @@ impl Writer {
 					key,
 					values,
 				} => {
-					self.single.insert(key, values);
+					self.single.insert(key, Some(values));
 				}
 				Delta::Remove {
 					key,
 				} => {
-					self.single.remove(&key);
+					self.single.insert(key, None);
 				}
 			}
 		}

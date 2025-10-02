@@ -4,9 +4,9 @@
 use reifydb_core::{EncodedKey, Result};
 use rusqlite::params;
 
-use crate::{SingleVersionContains, backend::sqlite::SqliteBackend};
+use crate::backend::{single::BackendSingleVersionContains, sqlite::SqliteBackend};
 
-impl SingleVersionContains for SqliteBackend {
+impl BackendSingleVersionContains for SqliteBackend {
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();

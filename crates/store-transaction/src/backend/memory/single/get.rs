@@ -3,13 +3,21 @@
 
 use reifydb_core::{EncodedKey, Result, interface::SingleVersionValues};
 
-use crate::{SingleVersionGet, backend::memory::MemoryBackend};
+use crate::backend::{memory::MemoryBackend, result::SingleVersionGetResult, single::BackendSingleVersionGet};
 
-impl SingleVersionGet for MemoryBackend {
-	fn get(&self, key: &EncodedKey) -> Result<Option<SingleVersionValues>> {
-		Ok(self.single.get(key).map(|item| SingleVersionValues {
-			key: key.clone(),
-			values: item.value().clone(),
-		}))
+impl BackendSingleVersionGet for MemoryBackend {
+	fn get(&self, key: &EncodedKey) -> Result<SingleVersionGetResult> {
+		match self.single.get(key) {
+			Some(item) => match item.value() {
+				Some(values) => Ok(SingleVersionGetResult::Value(SingleVersionValues {
+					key: key.clone(),
+					values: values.clone(),
+				})),
+				None => Ok(SingleVersionGetResult::Tombstone {
+					key: key.clone(),
+				}),
+			},
+			None => Ok(SingleVersionGetResult::NotFound),
+		}
 	}
 }

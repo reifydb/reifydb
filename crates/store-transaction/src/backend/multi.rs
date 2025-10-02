@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, TransactionId, delta::Delta, interface::MultiVersionValues,
-};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, TransactionId, delta::Delta};
 use reifydb_type::Result;
 
 use crate::{
-	MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
-	MultiVersionScan, MultiVersionScanRev, MultiVersionStore,
-	backend::{memory, sqlite},
+	backend::{
+		memory,
+		result::{MultiVersionGetResult, MultiVersionIterResult},
+		sqlite,
+	},
 	memory::MemoryBackend,
 	sqlite::SqliteBackend,
 };
@@ -22,7 +22,7 @@ pub enum BackendMulti {
 	// Custom(Box<dyn >) = 254, // High discriminant for future built-in backends
 }
 
-impl MultiVersionCommit for BackendMulti {
+impl BackendMultiVersionCommit for BackendMulti {
 	#[inline(always)]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
 		match self {
@@ -32,9 +32,9 @@ impl MultiVersionCommit for BackendMulti {
 	}
 }
 
-impl MultiVersionGet for BackendMulti {
+impl BackendMultiVersionGet for BackendMulti {
 	#[inline(always)]
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<MultiVersionGetResult> {
 		match self {
 			BackendMulti::Memory(backend) => backend.get(key, version),
 			BackendMulti::Sqlite(backend) => backend.get(key, version),
@@ -42,7 +42,7 @@ impl MultiVersionGet for BackendMulti {
 	}
 }
 
-impl MultiVersionContains for BackendMulti {
+impl BackendMultiVersionContains for BackendMulti {
 	#[inline(always)]
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
 		match self {
@@ -58,7 +58,7 @@ pub enum BackendMultiScanIter<'a> {
 }
 
 impl<'a> Iterator for BackendMultiScanIter<'a> {
-	type Item = MultiVersionValues;
+	type Item = MultiVersionIterResult;
 
 	#[inline(always)]
 	fn next(&mut self) -> Option<Self::Item> {
@@ -69,7 +69,7 @@ impl<'a> Iterator for BackendMultiScanIter<'a> {
 	}
 }
 
-impl MultiVersionScan for BackendMulti {
+impl BackendMultiVersionScan for BackendMulti {
 	type ScanIter<'a> = BackendMultiScanIter<'a>;
 
 	#[inline(always)]
@@ -87,7 +87,7 @@ pub enum BackendMultiScanIterRev<'a> {
 }
 
 impl<'a> Iterator for BackendMultiScanIterRev<'a> {
-	type Item = MultiVersionValues;
+	type Item = MultiVersionIterResult;
 
 	#[inline(always)]
 	fn next(&mut self) -> Option<Self::Item> {
@@ -98,7 +98,7 @@ impl<'a> Iterator for BackendMultiScanIterRev<'a> {
 	}
 }
 
-impl MultiVersionScanRev for BackendMulti {
+impl BackendMultiVersionScanRev for BackendMulti {
 	type ScanIterRev<'a> = BackendMultiScanIterRev<'a>;
 
 	#[inline(always)]
@@ -116,7 +116,7 @@ pub enum BackendMultiRangeIter<'a> {
 }
 
 impl<'a> Iterator for BackendMultiRangeIter<'a> {
-	type Item = MultiVersionValues;
+	type Item = MultiVersionIterResult;
 
 	#[inline(always)]
 	fn next(&mut self) -> Option<Self::Item> {
@@ -127,7 +127,7 @@ impl<'a> Iterator for BackendMultiRangeIter<'a> {
 	}
 }
 
-impl MultiVersionRange for BackendMulti {
+impl BackendMultiVersionRange for BackendMulti {
 	type RangeIter<'a> = BackendMultiRangeIter<'a>;
 
 	#[inline(always)]
@@ -149,7 +149,7 @@ pub enum BackendMultiRangeIterRev<'a> {
 }
 
 impl<'a> Iterator for BackendMultiRangeIterRev<'a> {
-	type Item = MultiVersionValues;
+	type Item = MultiVersionIterResult;
 
 	#[inline(always)]
 	fn next(&mut self) -> Option<Self::Item> {
@@ -160,7 +160,7 @@ impl<'a> Iterator for BackendMultiRangeIterRev<'a> {
 	}
 }
 
-impl MultiVersionRangeRev for BackendMulti {
+impl BackendMultiVersionRangeRev for BackendMulti {
 	type RangeIterRev<'a> = BackendMultiRangeIterRev<'a>;
 
 	#[inline(always)]
@@ -176,4 +176,74 @@ impl MultiVersionRangeRev for BackendMulti {
 	}
 }
 
-impl MultiVersionStore for BackendMulti {}
+impl BackendMultiVersion for BackendMulti {}
+
+pub trait BackendMultiVersion:
+	Send
+	+ Sync
+	+ Clone
+	+ BackendMultiVersionCommit
+	+ BackendMultiVersionGet
+	+ BackendMultiVersionContains
+	+ BackendMultiVersionScan
+	+ BackendMultiVersionScanRev
+	+ BackendMultiVersionRange
+	+ BackendMultiVersionRangeRev
+	+ 'static
+{
+}
+
+pub trait BackendMultiVersionCommit {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()>;
+}
+
+pub trait BackendMultiVersionGet {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<MultiVersionGetResult>;
+}
+
+pub trait BackendMultiVersionContains {
+	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool>;
+}
+
+pub trait BackendMultiVersionIter: Iterator<Item = MultiVersionIterResult> + Send {}
+impl<T: Send> BackendMultiVersionIter for T where T: Iterator<Item = MultiVersionIterResult> {}
+
+pub trait BackendMultiVersionScan {
+	type ScanIter<'a>: BackendMultiVersionIter
+	where
+		Self: 'a;
+
+	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>>;
+}
+
+pub trait BackendMultiVersionScanRev {
+	type ScanIterRev<'a>: BackendMultiVersionIter
+	where
+		Self: 'a;
+
+	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>>;
+}
+
+pub trait BackendMultiVersionRange {
+	type RangeIter<'a>: BackendMultiVersionIter
+	where
+		Self: 'a;
+
+	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIter<'_>>;
+
+	fn prefix(&self, prefix: &EncodedKey, version: CommitVersion) -> Result<Self::RangeIter<'_>> {
+		self.range(EncodedKeyRange::prefix(prefix), version)
+	}
+}
+
+pub trait BackendMultiVersionRangeRev {
+	type RangeIterRev<'a>: BackendMultiVersionIter
+	where
+		Self: 'a;
+
+	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>>;
+
+	fn prefix_rev(&self, prefix: &EncodedKey, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
+		self.range_rev(EncodedKeyRange::prefix(prefix), version)
+	}
+}

@@ -5,12 +5,12 @@ use std::sync::mpsc;
 
 use reifydb_core::{CowVec, Result, delta::Delta};
 
-use crate::{
-	SingleVersionCommit,
-	backend::sqlite::{SqliteBackend, write::WriteCommand},
+use crate::backend::{
+	single::BackendSingleVersionCommit,
+	sqlite::{SqliteBackend, write::WriteCommand},
 };
 
-impl SingleVersionCommit for SqliteBackend {
+impl BackendSingleVersionCommit for SqliteBackend {
 	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
 		let (tx, rx) = mpsc::channel();
 		self.writer

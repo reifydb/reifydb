@@ -3,15 +3,16 @@
 
 use std::{collections::VecDeque, ops::Bound};
 
-use reifydb_core::{EncodedKey, EncodedKeyRange, Result, interface::SingleVersionValues};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Result};
 
 use super::{build_single_query, execute_range_query};
-use crate::{
-	SingleVersionRangeRev,
-	backend::sqlite::{SqliteBackend, read::Reader},
+use crate::backend::{
+	result::SingleVersionIterResult,
+	single::BackendSingleVersionRangeRev,
+	sqlite::{SqliteBackend, read::Reader},
 };
 
-impl SingleVersionRangeRev for SqliteBackend {
+impl BackendSingleVersionRangeRev for SqliteBackend {
 	type RangeRev<'a>
 		= SingleVersionRangeRevIter
 	where
@@ -25,7 +26,7 @@ impl SingleVersionRangeRev for SqliteBackend {
 pub struct SingleVersionRangeRevIter {
 	reader: Reader,
 	range: EncodedKeyRange,
-	buffer: VecDeque<SingleVersionValues>,
+	buffer: VecDeque<SingleVersionIterResult>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -79,7 +80,7 @@ impl SingleVersionRangeRevIter {
 		// Update last_key to the last item we retrieved (which is the
 		// smallest key due to DESC order)
 		if let Some(last_item) = self.buffer.back() {
-			self.last_key = Some(last_item.key.clone());
+			self.last_key = Some(last_item.key().clone());
 		}
 
 		// If we got fewer results than requested, we've reached the end
@@ -90,7 +91,7 @@ impl SingleVersionRangeRevIter {
 }
 
 impl Iterator for SingleVersionRangeRevIter {
-	type Item = SingleVersionValues;
+	type Item = SingleVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

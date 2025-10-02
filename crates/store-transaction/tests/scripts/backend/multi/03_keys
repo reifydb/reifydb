@@ -31,11 +31,13 @@ remove a
 remove A
 scan
 ---
-ok
+"A" => "tombstone"
+"a" => "tombstone"
 
 scan
 ---
-ok
+"A" => "tombstone"
+"a" => "tombstone"
 
 # NUL keys and values are valid.
 set "\0"="\0"
@@ -45,10 +47,14 @@ remove "\0"
 ---
 "\x00" => "\x00"
 "\x00" => "\x00"
+"A" => "tombstone"
+"a" => "tombstone"
 
 scan
 ---
-ok
+"\x00" => "tombstone"
+"A" => "tombstone"
+"a" => "tombstone"
 
 # Unicode keys and values work, but are shown as raw UTF-8 bytes.
 set "👋"="👋"
@@ -57,11 +63,17 @@ scan
 remove "👋"
 ---
 "\xf0\x9f\x91\x8b" => "\xf0\x9f\x91\x8b"
+"\x00" => "tombstone"
+"A" => "tombstone"
+"a" => "tombstone"
 "\xf0\x9f\x91\x8b" => "\xf0\x9f\x91\x8b"
 
 scan
 ---
-ok
+"\x00" => "tombstone"
+"A" => "tombstone"
+"a" => "tombstone"
+"\xf0\x9f\x91\x8b" => "tombstone"
 
 # Empty keys and values are valid.
 set ""=""
@@ -72,4 +84,8 @@ get ""
 ---
 "" => ""
 "" => ""
+"\x00" => "tombstone"
+"A" => "tombstone"
+"a" => "tombstone"
+"\xf0\x9f\x91\x8b" => "tombstone"
 "" => None

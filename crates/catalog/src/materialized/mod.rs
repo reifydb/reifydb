@@ -75,7 +75,7 @@ impl MaterializedCatalog {
 
 		let namespaces = SkipMap::new();
 		let container = MultiVersionContainer::new();
-		container.insert(1, Some(system_namespace));
+		container.insert(1, system_namespace);
 		namespaces.insert(system_namespace_id, container);
 
 		let namespaces_by_name = SkipMap::new();

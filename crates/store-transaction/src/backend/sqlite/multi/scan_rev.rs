@@ -3,15 +3,16 @@
 
 use std::collections::VecDeque;
 
-use reifydb_core::{CommitVersion, EncodedKey, Result, interface::MultiVersionValues};
+use reifydb_core::{CommitVersion, EncodedKey, Result};
 
 use super::{execute_scan_query, get_table_names};
-use crate::{
-	MultiVersionScanRev,
-	backend::sqlite::{SqliteBackend, read::Reader},
+use crate::backend::{
+	multi::BackendMultiVersionScanRev,
+	result::MultiVersionIterResult,
+	sqlite::{SqliteBackend, read::Reader},
 };
 
-impl MultiVersionScanRev for SqliteBackend {
+impl BackendMultiVersionScanRev for SqliteBackend {
 	type ScanIterRev<'a> = MultiVersionScanRevIter;
 
 	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>> {
@@ -23,7 +24,7 @@ pub struct MultiVersionScanRevIter {
 	reader: Reader,
 	version: CommitVersion,
 	table_names: Vec<String>,
-	buffer: VecDeque<MultiVersionValues>,
+	buffer: VecDeque<MultiVersionIterResult>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -64,7 +65,13 @@ impl MultiVersionScanRevIter {
 		// Update last_key to the last item we retrieved (which is the
 		// smallest key due to DESC order)
 		if let Some(last_item) = self.buffer.back() {
-			self.last_key = Some(last_item.key.clone());
+			self.last_key = Some(match last_item {
+				MultiVersionIterResult::Value(v) => v.key.clone(),
+				MultiVersionIterResult::Tombstone {
+					key,
+					..
+				} => key.clone(),
+			});
 		}
 
 		// If we got fewer results than requested, we've reached the end
@@ -75,7 +82,7 @@ impl MultiVersionScanRevIter {
 }
 
 impl Iterator for MultiVersionScanRevIter {
-	type Item = MultiVersionValues;
+	type Item = MultiVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

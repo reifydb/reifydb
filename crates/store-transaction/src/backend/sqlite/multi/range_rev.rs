@@ -3,15 +3,16 @@
 
 use std::{collections::VecDeque, ops::Bound};
 
-use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, Result, interface::MultiVersionValues};
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, Result};
 
 use super::{build_range_query, execute_batched_range_query, table_name_for_range};
-use crate::{
-	MultiVersionRangeRev,
-	backend::sqlite::{SqliteBackend, read::Reader},
+use crate::backend::{
+	multi::BackendMultiVersionRangeRev,
+	result::MultiVersionIterResult,
+	sqlite::{SqliteBackend, read::Reader},
 };
 
-impl MultiVersionRangeRev for SqliteBackend {
+impl BackendMultiVersionRangeRev for SqliteBackend {
 	type RangeIterRev<'a> = MultiVersionRangeRevIter;
 
 	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
@@ -24,7 +25,7 @@ pub struct MultiVersionRangeRevIter {
 	range: EncodedKeyRange,
 	version: CommitVersion,
 	table: String,
-	buffer: VecDeque<MultiVersionValues>,
+	buffer: VecDeque<MultiVersionIterResult>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -84,7 +85,13 @@ impl MultiVersionRangeRevIter {
 		// Update last_key to the last item we retrieved (which is the
 		// smallest key due to DESC order)
 		if let Some(last_item) = self.buffer.back() {
-			self.last_key = Some(last_item.key.clone());
+			self.last_key = Some(match last_item {
+				MultiVersionIterResult::Value(v) => v.key.clone(),
+				MultiVersionIterResult::Tombstone {
+					key,
+					..
+				} => key.clone(),
+			});
 		}
 
 		// If we got fewer results than requested, we've reached the end
@@ -95,7 +102,7 @@ impl MultiVersionRangeRevIter {
 }
 
 impl Iterator for MultiVersionRangeRevIter {
-	type Item = MultiVersionValues;
+	type Item = MultiVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

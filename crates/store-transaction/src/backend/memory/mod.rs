@@ -21,7 +21,10 @@ pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionSca
 pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
 use write::{WriteCommand, Writer};
 
-use crate::{MultiVersionStore, SingleVersionRemove, SingleVersionSet, SingleVersionStore};
+use crate::backend::{
+	multi::BackendMultiVersion,
+	single::{BackendSingleVersion, BackendSingleVersionRemove, BackendSingleVersionSet},
+};
 
 pub type MultiVersionTransactionContainer = MultiVersionContainer<EncodedValues>;
 
@@ -30,7 +33,7 @@ pub struct MemoryBackend(Arc<MemoryBackendInner>);
 
 pub struct MemoryBackendInner {
 	multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
-	single: Arc<SkipMap<EncodedKey, EncodedValues>>,
+	single: Arc<SkipMap<EncodedKey, Option<EncodedValues>>>,
 	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	writer: Sender<WriteCommand>,
 }
@@ -73,7 +76,7 @@ impl MemoryBackend {
 	}
 }
 
-impl MultiVersionStore for MemoryBackend {}
-impl SingleVersionStore for MemoryBackend {}
-impl SingleVersionSet for MemoryBackend {}
-impl SingleVersionRemove for MemoryBackend {}
+impl BackendMultiVersion for MemoryBackend {}
+impl BackendSingleVersion for MemoryBackend {}
+impl BackendSingleVersionSet for MemoryBackend {}
+impl BackendSingleVersionRemove for MemoryBackend {}

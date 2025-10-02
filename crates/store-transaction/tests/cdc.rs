@@ -13,7 +13,7 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	MultiVersionCommit, MultiVersionGet, MultiVersionStore,
+	backend::multi::BackendMultiVersion,
 	memory::MemoryBackend,
 	sqlite::{SqliteBackend, SqliteConfig},
 };
@@ -41,17 +41,17 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs CDC tests for storage implementations
-pub struct Runner<MVS: MultiVersionStore + CdcStore> {
-	storage: MVS,
+pub struct Runner<BMV: BackendMultiVersion + CdcStore> {
+	backend: BMV,
 	next_version: CommitVersion,
 	/// Buffer of deltas to be committed
 	deltas: Vec<Delta>,
 }
 
-impl<MVS: MultiVersionStore + CdcStore> Runner<MVS> {
-	fn new(storage: MVS) -> Self {
+impl<BMV: BackendMultiVersion + CdcStore> Runner<BMV> {
+	fn new(backend: BMV) -> Self {
 		Self {
-			storage,
+			backend,
 			next_version: CommitVersion(1),
 			deltas: Vec::new(),
 		}
@@ -116,7 +116,7 @@ impl<MVS: MultiVersionStore + CdcStore> Runner<MVS> {
 	}
 }
 
-impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> testscript::Runner for Runner<MVS> {
+impl<BMV: BackendMultiVersion + CdcStore> testscript::Runner for Runner<BMV> {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -136,7 +136,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				let values = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
-				self.storage.commit(
+				self.backend.commit(
 					async_cow_vec![
 						(Delta::Set {
 							key,
@@ -226,7 +226,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				if !self.deltas.is_empty() {
 					let version = self.next_version;
 					let deltas = CowVec::new(std::mem::take(&mut self.deltas));
-					self.storage.commit(deltas, version, TransactionId::default())?;
+					self.backend.commit(deltas, version, TransactionId::default())?;
 					self.next_version.0 += 1;
 				}
 				writeln!(output, "ok")?;
@@ -248,7 +248,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					.map_err(|_| "invalid sequence")?;
 				args.reject_rest()?;
 
-				let cdc = CdcGet::get(&self.storage, version)?;
+				let cdc = CdcGet::get(&self.backend, version)?;
 
 				match (cdc, sequence) {
 					(Some(cdc), Some(seq)) => {
@@ -287,7 +287,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.backend,
 					Bound::Included(start_version),
 					Bound::Included(end_version),
 				)?;
@@ -308,7 +308,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				let cdcs = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Unbounded)?;
+				let cdcs = CdcRange::range(&self.backend, Bound::Unbounded, Bound::Unbounded)?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -339,7 +339,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.backend,
 					Bound::Included(start_version),
 					Bound::Included(end_version),
 				)?;
@@ -373,7 +373,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.backend,
 					Bound::Included(start_version),
 					Bound::Excluded(end_version),
 				)?;
@@ -407,7 +407,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.backend,
 					Bound::Excluded(start_version),
 					Bound::Included(end_version),
 				)?;
@@ -441,7 +441,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.backend,
 					Bound::Excluded(start_version),
 					Bound::Excluded(end_version),
 				)?;
@@ -469,7 +469,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs =
-					CdcRange::range(&self.storage, Bound::Unbounded, Bound::Included(end_version))?;
+					CdcRange::range(&self.backend, Bound::Unbounded, Bound::Included(end_version))?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -494,7 +494,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs =
-					CdcRange::range(&self.storage, Bound::Unbounded, Bound::Excluded(end_version))?;
+					CdcRange::range(&self.backend, Bound::Unbounded, Bound::Excluded(end_version))?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -519,7 +519,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.backend,
 					Bound::Included(start_version),
 					Bound::Unbounded,
 				)?;
@@ -547,7 +547,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.backend,
 					Bound::Excluded(start_version),
 					Bound::Unbounded,
 				)?;
@@ -568,7 +568,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				let cdcs = CdcScan::scan(&self.storage)?;
+				let cdcs = CdcScan::scan(&self.backend)?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -592,7 +592,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					.map_err(|_| "invalid version")?;
 				args.reject_rest()?;
 
-				let count = self.storage.count(version)?;
+				let count = self.backend.count(version)?;
 				writeln!(output, "count: {}", count)?;
 			}
 
@@ -653,7 +653,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					});
 				}
 
-				self.storage.commit(CowVec::new(deltas), version, TransactionId::default())?;
+				self.backend.commit(CowVec::new(deltas), version, TransactionId::default())?;
 				writeln!(output, "ok")?;
 			}
 

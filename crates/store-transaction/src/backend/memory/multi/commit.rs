@@ -6,9 +6,13 @@ use std::sync::mpsc;
 use reifydb_core::{CommitVersion, CowVec, Result, delta::Delta, interface::TransactionId, util::now_millis};
 use reifydb_type::Error;
 
-use crate::{MultiVersionCommit, backend::memory::write::WriteCommand, memory::MemoryBackend, storage_internal_error};
+use crate::{
+	backend::{memory::write::WriteCommand, multi::BackendMultiVersionCommit},
+	memory::MemoryBackend,
+	storage_internal_error,
+};
 
-impl MultiVersionCommit for MemoryBackend {
+impl BackendMultiVersionCommit for MemoryBackend {
 	fn commit(&self, delta: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
 		let (respond_to, response) = mpsc::channel();
 
