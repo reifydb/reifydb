@@ -29,20 +29,17 @@ impl MaterializedCatalog {
 		// Look up the current view to update the index
 		if let Some(entry) = self.views.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
-				// Remove old name from index
 				self.views_by_name.remove(&(pre.namespace, pre.name.clone()));
 			}
 		}
 
-		// Add new name to index if setting a new value
-		if let Some(ref new) = view {
-			self.views_by_name.insert((new.namespace, new.name.clone()), id);
-		}
-
-		// Update the multi view
 		let multi = self.views.get_or_insert_with(id, MultiVersionViewDef::new);
-
-		multi.value().insert(version, view);
+		if let Some(new) = view {
+			self.views_by_name.insert((new.namespace, new.name.clone()), id);
+			multi.value().insert(version, new);
+		} else {
+			multi.value().remove(version);
+		}
 	}
 }
 

@@ -9,12 +9,16 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{ops::Deref, sync::Arc};
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 pub use command::CommandTransaction;
 pub use query::QueryTransaction;
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus, interface::SingleVersionTransaction};
-use reifydb_store_transaction::{MultiVersionStore, memory::MemoryBackend};
+use reifydb_store_transaction::{
+	BackendConfig, MultiVersionStore, StandardTransactionStore, TransactionStoreConfig,
+	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
+	memory::MemoryBackend,
+};
 
 use crate::{
 	mvcc::{
@@ -27,30 +31,30 @@ use crate::{
 mod command;
 mod query;
 
-pub struct Optimistic<MVS: MultiVersionStore, SMVT: SingleVersionTransaction>(Arc<Inner<MVS, SMVT>>);
+pub struct Optimistic<MVS: MultiVersionStore, SVT: SingleVersionTransaction>(Arc<Inner<MVS, SVT>>);
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Deref for Optimistic<MVS, SMVT> {
-	type Target = Inner<MVS, SMVT>;
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Deref for Optimistic<MVS, SVT> {
+	type Target = Inner<MVS, SVT>;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Clone for Optimistic<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Clone for Optimistic<MVS, SVT> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
 }
 
-pub struct Inner<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> {
-	pub(crate) tm: TransactionManager<StdVersionProvider<SMVT>>,
+pub struct Inner<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
+	pub(crate) tm: TransactionManager<StdVersionProvider<SVT>>,
 	pub(crate) multi: MVS,
 	pub(crate) event_bus: EventBus,
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Inner<MVS, SMVT> {
-	fn new(multi: MVS, single: SMVT, event_bus: EventBus) -> Self {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Inner<MVS, SVT> {
+	fn new(multi: MVS, single: SVT, event_bus: EventBus) -> Self {
 		let tm = TransactionManager::new(StdVersionProvider::new(single).unwrap()).unwrap();
 		Self {
 			tm,
@@ -64,41 +68,57 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Inner<MVS, SMVT> {
 	}
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Optimistic<MVS, SMVT> {
-	pub fn new(multi: MVS, single: SMVT, event_bus: EventBus) -> Self {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Optimistic<MVS, SVT> {
+	pub fn new(multi: MVS, single: SVT, event_bus: EventBus) -> Self {
 		Self(Arc::new(Inner::new(multi, single, event_bus)))
 	}
 }
 
-impl Optimistic<MemoryBackend, SingleVersionLock<MemoryBackend>> {
+impl Optimistic<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>> {
 	pub fn testing() -> Self {
 		let memory = MemoryBackend::new();
+		let store = StandardTransactionStore::new(TransactionStoreConfig {
+			hot: Some(BackendConfig {
+				backend: Backend {
+					multi: BackendMulti::Memory(memory.clone()),
+					single: BackendSingle::Memory(memory.clone()),
+					cdc: BackendCdc::Memory(memory),
+				},
+				retention_period: Duration::from_millis(100),
+			}),
+			warm: None,
+			cold: None,
+			retention: Default::default(),
+			merge_config: Default::default(),
+		})
+		.unwrap();
+
 		let event_bus = EventBus::new();
-		Self::new(MemoryBackend::default(), SingleVersionLock::new(memory, event_bus.clone()), event_bus)
+		Self::new(store.clone(), SingleVersionLock::new(store, event_bus.clone()), event_bus)
 	}
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Optimistic<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Optimistic<MVS, SVT> {
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.0.version()
 	}
-	pub fn begin_query(&self) -> crate::Result<QueryTransaction<MVS, SMVT>> {
+	pub fn begin_query(&self) -> crate::Result<QueryTransaction<MVS, SVT>> {
 		QueryTransaction::new(self.clone(), None)
 	}
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Optimistic<MVS, SMVT> {
-	pub fn begin_command(&self) -> crate::Result<CommandTransaction<MVS, SMVT>> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Optimistic<MVS, SVT> {
+	pub fn begin_command(&self) -> crate::Result<CommandTransaction<MVS, SVT>> {
 		CommandTransaction::new(self.clone())
 	}
 }
 
-pub enum Transaction<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> {
-	Query(QueryTransaction<MVS, SMVT>),
-	Command(CommandTransaction<MVS, SMVT>),
+pub enum Transaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
+	Query(QueryTransaction<MVS, SVT>),
+	Command(CommandTransaction<MVS, SVT>),
 }
 
-impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Optimistic<MVS, SMVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Optimistic<MVS, SVT> {
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(self.multi.get(key, version)?.map(|sv| sv.into()))
 	}

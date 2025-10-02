@@ -7,7 +7,7 @@ use reifydb_catalog::{
 	table::{TableColumnToCreate, TableToCreate},
 };
 use reifydb_core::{event::EventBus, interceptor::Interceptors};
-use reifydb_store_transaction::memory::MemoryBackend;
+use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
 use reifydb_type::{Type, TypeConstraint};
 
@@ -15,32 +15,35 @@ use crate::{EngineTransaction, StandardCommandTransaction, transaction::Standard
 
 pub fn create_test_command_transaction() -> StandardCommandTransaction<
 	EngineTransaction<
-		Serializable<MemoryBackend, SingleVersionLock<MemoryBackend>>,
-		SingleVersionLock<MemoryBackend>,
-		StandardCdcTransaction<MemoryBackend>,
+		Serializable<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
+		SingleVersionLock<StandardTransactionStore>,
+		StandardCdcTransaction<StandardTransactionStore>,
 	>,
 > {
-	let memory = MemoryBackend::new();
+	let store = StandardTransactionStore::testing_memory();
+
 	let event_bus = EventBus::new();
-	let single = SingleVersionLock::new(memory.clone(), event_bus.clone());
-	let cdc = StandardCdcTransaction::new(memory.clone());
-	let multi = Serializable::new(memory, single.clone(), event_bus.clone());
+	let single = SingleVersionLock::new(store.clone(), event_bus.clone());
+	let cdc = StandardCdcTransaction::new(store.clone());
+	let multi = Serializable::new(store, single.clone(), event_bus.clone());
+
 	StandardCommandTransaction::new(multi, single, cdc, event_bus, MaterializedCatalog::new(), Interceptors::new())
 		.unwrap()
 }
 
 pub fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction<
 	EngineTransaction<
-		Serializable<MemoryBackend, SingleVersionLock<MemoryBackend>>,
-		SingleVersionLock<MemoryBackend>,
-		StandardCdcTransaction<MemoryBackend>,
+		Serializable<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
+		SingleVersionLock<StandardTransactionStore>,
+		StandardCdcTransaction<StandardTransactionStore>,
 	>,
 > {
-	let memory = MemoryBackend::new();
+	let store = StandardTransactionStore::testing_memory();
+
 	let event_bus = EventBus::new();
-	let single = SingleVersionLock::new(memory.clone(), event_bus.clone());
-	let cdc = StandardCdcTransaction::new(memory.clone());
-	let multi = Serializable::new(memory, single.clone(), event_bus.clone());
+	let single = SingleVersionLock::new(store.clone(), event_bus.clone());
+	let cdc = StandardCdcTransaction::new(store.clone());
+	let multi = Serializable::new(store.clone(), single.clone(), event_bus.clone());
 	let mut result = StandardCommandTransaction::new(
 		multi,
 		single,

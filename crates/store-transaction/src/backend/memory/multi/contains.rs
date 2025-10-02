@@ -3,9 +3,9 @@
 
 use reifydb_core::{CommitVersion, EncodedKey, Result};
 
-use crate::{MultiVersionContains, backend::memory::MemoryBackend};
+use crate::backend::{memory::MemoryBackend, multi::BackendMultiVersionContains};
 
-impl MultiVersionContains for MemoryBackend {
+impl BackendMultiVersionContains for MemoryBackend {
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
 		let result = match self.multi.get(key) {
 			None => false,

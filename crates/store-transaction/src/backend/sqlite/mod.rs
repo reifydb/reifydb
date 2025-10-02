@@ -15,6 +15,7 @@ use std::{
 	sync::{Arc, mpsc},
 };
 
+pub use cdc::{CdcRangeIter, CdcScanIter};
 pub use config::*;
 pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
 use read::Readers;
@@ -24,9 +25,10 @@ use rusqlite::Connection;
 pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
 use write::{WriteCommand, Writer};
 
-use crate::{
-	MultiVersionStore, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
-	backend::diagnostic::connection_failed,
+use crate::backend::{
+	diagnostic::connection_failed,
+	multi::BackendMultiVersion,
+	single::{BackendSingleVersion, BackendSingleVersionRemove, BackendSingleVersionSet},
 };
 
 #[derive(Clone)]
@@ -85,7 +87,7 @@ impl SqliteBackend {
 
                  CREATE TABLE IF NOT EXISTS single (
                      key     BLOB NOT NULL,
-                     value   BLOB NOT NULL,
+                     value   BLOB,
                      PRIMARY KEY (key)
                  );
 
@@ -165,7 +167,8 @@ impl SqliteBackend {
 					key,
 				} => {
 					operations.push((
-						"DELETE FROM single WHERE key = ?1".to_string(),
+						"INSERT OR REPLACE INTO single (key, value) VALUES (?1, NULL)"
+							.to_string(),
 						vec![rusqlite::types::Value::Blob(key.to_vec())],
 					));
 				}
@@ -190,10 +193,10 @@ impl SqliteBackend {
 	}
 }
 
-impl MultiVersionStore for SqliteBackend {}
-impl SingleVersionStore for SqliteBackend {}
-impl SingleVersionSet for SqliteBackend {}
-impl SingleVersionRemove for SqliteBackend {}
+impl BackendMultiVersion for SqliteBackend {}
+impl BackendSingleVersion for SqliteBackend {}
+impl BackendSingleVersionSet for SqliteBackend {}
+impl BackendSingleVersionRemove for SqliteBackend {}
 impl CdcStore for SqliteBackend {}
 
 #[cfg(test)]

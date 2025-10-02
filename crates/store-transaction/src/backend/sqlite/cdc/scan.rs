@@ -15,14 +15,14 @@ use crate::{
 };
 
 impl CdcScan for SqliteBackend {
-	type ScanIter<'a> = Scan;
+	type ScanIter<'a> = CdcScanIter;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
-		Ok(Scan::new(self.get_reader(), 1024))
+		Ok(CdcScanIter::new(self.get_reader(), 1024))
 	}
 }
 
-pub struct Scan {
+pub struct CdcScanIter {
 	reader: Reader,
 	buffer: VecDeque<Cdc>,
 	last_version: Option<CommitVersion>,
@@ -30,7 +30,7 @@ pub struct Scan {
 	exhausted: bool,
 }
 
-impl Scan {
+impl CdcScanIter {
 	pub fn new(reader: Reader, batch_size: u64) -> Self {
 		Self {
 			reader,
@@ -93,7 +93,7 @@ impl Scan {
 	}
 }
 
-impl Iterator for Scan {
+impl Iterator for CdcScanIter {
 	type Item = Cdc;
 
 	fn next(&mut self) -> Option<Self::Item> {

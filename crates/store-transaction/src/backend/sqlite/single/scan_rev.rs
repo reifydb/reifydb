@@ -3,15 +3,16 @@
 
 use std::collections::VecDeque;
 
-use reifydb_core::{EncodedKey, Result, interface::SingleVersionValues};
+use reifydb_core::{EncodedKey, Result};
 
 use super::execute_scan_query;
-use crate::{
-	SingleVersionScanRev,
-	backend::sqlite::{SqliteBackend, read::Reader},
+use crate::backend::{
+	result::SingleVersionIterResult,
+	single::BackendSingleVersionScanRev,
+	sqlite::{SqliteBackend, read::Reader},
 };
 
-impl SingleVersionScanRev for SqliteBackend {
+impl BackendSingleVersionScanRev for SqliteBackend {
 	type ScanIterRev<'a> = SingleVersionScanRevIter;
 
 	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
@@ -21,7 +22,7 @@ impl SingleVersionScanRev for SqliteBackend {
 
 pub struct SingleVersionScanRevIter {
 	reader: Reader,
-	buffer: VecDeque<SingleVersionValues>,
+	buffer: VecDeque<SingleVersionIterResult>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
@@ -56,7 +57,7 @@ impl SingleVersionScanRevIter {
 		// Update last_key to the last item we retrieved (which is the
 		// smallest key due to DESC order)
 		if let Some(last_item) = self.buffer.back() {
-			self.last_key = Some(last_item.key.clone());
+			self.last_key = Some(last_item.key().clone());
 		}
 
 		// If we got fewer results than requested, we've reached the end
@@ -67,7 +68,7 @@ impl SingleVersionScanRevIter {
 }
 
 impl Iterator for SingleVersionScanRevIter {
-	type Item = SingleVersionValues;
+	type Item = SingleVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {

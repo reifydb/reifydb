@@ -1,23 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-// This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Al Liu
-//
-// The original Apache License can be found at:
-//   http://www.apache.org/licenses/LICENSE-2.0
-
 use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{CommitVersion, EncodedKey, Result, interface::MultiVersionValues};
 
-use crate::{
-	MultiVersionScan,
-	backend::memory::{MemoryBackend, MultiVersionTransactionContainer},
+use crate::backend::{
+	memory::{MemoryBackend, MultiVersionTransactionContainer},
+	multi::BackendMultiVersionScan,
+	result::MultiVersionIterResult,
 };
 
-impl MultiVersionScan for MemoryBackend {
+impl BackendMultiVersionScan for MemoryBackend {
 	type ScanIter<'a> = MultiVersionScanIter<'a>;
 
 	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
@@ -35,16 +28,22 @@ pub struct MultiVersionScanIter<'a> {
 }
 
 impl Iterator for MultiVersionScanIter<'_> {
-	type Item = MultiVersionValues;
+	type Item = MultiVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let item = self.iter.next()?;
-			if let Some(values) = item.value().get(self.version) {
-				return Some(MultiVersionValues {
-					key: item.key().clone(),
-					values,
-					version: self.version,
+			if let Some(values) = item.value().get_or_tombstone(self.version) {
+				return Some(match values {
+					Some(v) => MultiVersionIterResult::Value(MultiVersionValues {
+						key: item.key().clone(),
+						version: self.version,
+						values: v,
+					}),
+					None => MultiVersionIterResult::Tombstone {
+						key: item.key().clone(),
+						version: self.version,
+					},
 				});
 			}
 		}

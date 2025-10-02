@@ -1,57 +1,91 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{error::Error as StdError, fmt::Write, ops::Bound, path::Path};
+use std::{error::Error as StdError, fmt::Write, ops::Bound, path::Path, time::Duration};
 
 #[cfg(debug_assertions)]
 use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, async_cow_vec,
 	delta::Delta,
-	interface::{Cdc, CdcChange, CdcGet, CdcRange, CdcScan, CdcSequencedChange, CdcStore, TransactionId},
+	interface::{Cdc, CdcChange, CdcCount, CdcGet, CdcRange, CdcScan, CdcSequencedChange, TransactionId},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	MultiVersionCommit, MultiVersionGet, MultiVersionStore,
+	BackendConfig, MultiVersionCommit, StandardTransactionStore, TransactionStoreConfig,
+	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
 	memory::MemoryBackend,
 	sqlite::{SqliteBackend, SqliteConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as cdc_memory => test_memory }
-test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as cdc_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/store/cdc" as backend_cdc_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/store/cdc" as backend_cdc_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
-	let storage = MemoryBackend::new();
-	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
+
+	let backend = MemoryBackend::default();
+
+	let config = TransactionStoreConfig {
+		hot: Some(BackendConfig {
+			backend: Backend {
+				multi: BackendMulti::Memory(backend.clone()),
+				single: BackendSingle::Memory(backend.clone()),
+				cdc: BackendCdc::Memory(backend),
+			},
+			retention_period: Duration::from_secs(300),
+		}),
+		warm: None,
+		cold: None,
+		..Default::default()
+	};
+
+	testscript::run_path(&mut Runner::new(StandardTransactionStore::new(config).unwrap()), path)
+		.expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
 	temp_dir(|db_path| {
 		#[cfg(debug_assertions)]
 		mock_time_set(1000);
-		let storage = SqliteBackend::new(SqliteConfig::fast(db_path));
-		testscript::run_path(&mut Runner::new(storage), path)
+
+		let backend = SqliteBackend::new(SqliteConfig::fast(db_path));
+
+		let config = TransactionStoreConfig {
+			hot: Some(BackendConfig {
+				backend: Backend {
+					multi: BackendMulti::Sqlite(backend.clone()),
+					single: BackendSingle::Sqlite(backend.clone()),
+					cdc: BackendCdc::Sqlite(backend),
+				},
+				retention_period: Duration::from_secs(86400),
+			}),
+			warm: None,
+			cold: None,
+			..Default::default()
+		};
+
+		testscript::run_path(&mut Runner::new(StandardTransactionStore::new(config).unwrap()), path)
 	})
 	.expect("test failed")
 }
 
 /// Runs CDC tests for storage implementations
-pub struct Runner<MVS: MultiVersionStore + CdcStore> {
-	storage: MVS,
+pub struct Runner {
+	store: StandardTransactionStore,
 	next_version: CommitVersion,
 	/// Buffer of deltas to be committed
 	deltas: Vec<Delta>,
 }
 
-impl<MVS: MultiVersionStore + CdcStore> Runner<MVS> {
-	fn new(storage: MVS) -> Self {
+impl Runner {
+	fn new(store: StandardTransactionStore) -> Self {
 		Self {
-			storage,
+			store,
 			next_version: CommitVersion(1),
 			deltas: Vec::new(),
 		}
@@ -116,7 +150,7 @@ impl<MVS: MultiVersionStore + CdcStore> Runner<MVS> {
 	}
 }
 
-impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> testscript::Runner for Runner<MVS> {
+impl testscript::Runner for Runner {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -136,7 +170,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				let values = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
-				self.storage.commit(
+				self.store.commit(
 					async_cow_vec![
 						(Delta::Set {
 							key,
@@ -226,7 +260,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				if !self.deltas.is_empty() {
 					let version = self.next_version;
 					let deltas = CowVec::new(std::mem::take(&mut self.deltas));
-					self.storage.commit(deltas, version, TransactionId::default())?;
+					self.store.commit(deltas, version, TransactionId::default())?;
 					self.next_version.0 += 1;
 				}
 				writeln!(output, "ok")?;
@@ -248,7 +282,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					.map_err(|_| "invalid sequence")?;
 				args.reject_rest()?;
 
-				let cdc = CdcGet::get(&self.storage, version)?;
+				let cdc = CdcGet::get(&self.store, version)?;
 
 				match (cdc, sequence) {
 					(Some(cdc), Some(seq)) => {
@@ -287,7 +321,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.store,
 					Bound::Included(start_version),
 					Bound::Included(end_version),
 				)?;
@@ -308,7 +342,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				let cdcs = CdcRange::range(&self.storage, Bound::Unbounded, Bound::Unbounded)?;
+				let cdcs = CdcRange::range(&self.store, Bound::Unbounded, Bound::Unbounded)?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -339,7 +373,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.store,
 					Bound::Included(start_version),
 					Bound::Included(end_version),
 				)?;
@@ -373,7 +407,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.store,
 					Bound::Included(start_version),
 					Bound::Excluded(end_version),
 				)?;
@@ -407,7 +441,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.store,
 					Bound::Excluded(start_version),
 					Bound::Included(end_version),
 				)?;
@@ -441,7 +475,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs = CdcRange::range(
-					&self.storage,
+					&self.store,
 					Bound::Excluded(start_version),
 					Bound::Excluded(end_version),
 				)?;
@@ -469,7 +503,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs =
-					CdcRange::range(&self.storage, Bound::Unbounded, Bound::Included(end_version))?;
+					CdcRange::range(&self.store, Bound::Unbounded, Bound::Included(end_version))?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -494,7 +528,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				args.reject_rest()?;
 
 				let cdcs =
-					CdcRange::range(&self.storage, Bound::Unbounded, Bound::Excluded(end_version))?;
+					CdcRange::range(&self.store, Bound::Unbounded, Bound::Excluded(end_version))?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -518,11 +552,8 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					.map_err(|_| "invalid start version")?;
 				args.reject_rest()?;
 
-				let cdcs = CdcRange::range(
-					&self.storage,
-					Bound::Included(start_version),
-					Bound::Unbounded,
-				)?;
+				let cdcs =
+					CdcRange::range(&self.store, Bound::Included(start_version), Bound::Unbounded)?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -546,11 +577,8 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					.map_err(|_| "invalid start version")?;
 				args.reject_rest()?;
 
-				let cdcs = CdcRange::range(
-					&self.storage,
-					Bound::Excluded(start_version),
-					Bound::Unbounded,
-				)?;
+				let cdcs =
+					CdcRange::range(&self.store, Bound::Excluded(start_version), Bound::Unbounded)?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -568,7 +596,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				let args = command.consume_args();
 				args.reject_rest()?;
 
-				let cdcs = CdcScan::scan(&self.storage)?;
+				let cdcs = CdcScan::scan(&self.store)?;
 				for cdc in cdcs {
 					for change in &cdc.changes {
 						writeln!(
@@ -592,7 +620,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					.map_err(|_| "invalid version")?;
 				args.reject_rest()?;
 
-				let count = self.storage.count(version)?;
+				let count = self.store.count(version)?;
 				writeln!(output, "count: {}", count)?;
 			}
 
@@ -653,7 +681,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					});
 				}
 
-				self.storage.commit(CowVec::new(deltas), version, TransactionId::default())?;
+				self.store.commit(CowVec::new(deltas), version, TransactionId::default())?;
 				writeln!(output, "ok")?;
 			}
 

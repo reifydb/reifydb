@@ -52,19 +52,19 @@ impl VersionBlock {
 }
 
 #[derive(Debug)]
-pub struct StdVersionProvider<SMVT>
+pub struct StdVersionProvider<SVT>
 where
-	SMVT: SingleVersionTransaction,
+	SVT: SingleVersionTransaction,
 {
-	single: SMVT,
+	single: SVT,
 	current_block: Arc<Mutex<VersionBlock>>,
 }
 
-impl<SMVT> StdVersionProvider<SMVT>
+impl<SVT> StdVersionProvider<SVT>
 where
-	SMVT: SingleVersionTransaction,
+	SVT: SingleVersionTransaction,
 {
-	pub fn new(single: SMVT) -> crate::Result<Self> {
+	pub fn new(single: SVT) -> crate::Result<Self> {
 		// Load current version and allocate first block
 		let current_version = Self::load_current_version(&single)?;
 		let first_block = VersionBlock::new(current_version);
@@ -78,7 +78,7 @@ where
 		})
 	}
 
-	fn load_current_version(single: &SMVT) -> crate::Result<u64> {
+	fn load_current_version(single: &SVT) -> crate::Result<u64> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 
@@ -88,7 +88,7 @@ where
 		})
 	}
 
-	fn persist_version(single: &SMVT, version: u64) -> crate::Result<()> {
+	fn persist_version(single: &SVT, version: u64) -> crate::Result<()> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut values = layout.allocate();
@@ -101,9 +101,9 @@ where
 	}
 }
 
-impl<SMVT> VersionProvider for StdVersionProvider<SMVT>
+impl<SVT> VersionProvider for StdVersionProvider<SVT>
 where
-	SMVT: SingleVersionTransaction,
+	SVT: SingleVersionTransaction,
 {
 	fn next(&self) -> crate::Result<CommitVersion> {
 		// Fast path: try to get version from current block
@@ -137,15 +137,14 @@ where
 #[cfg(test)]
 mod tests {
 	use reifydb_core::event::EventBus;
-	use reifydb_store_transaction::memory::MemoryBackend;
+	use reifydb_store_transaction::StandardTransactionStore;
 
 	use super::*;
 	use crate::svl::SingleVersionLock;
 
 	#[test]
 	fn test_new_version_provider() {
-		let memory = MemoryBackend::new();
-		let single = SingleVersionLock::new(memory, EventBus::default());
+		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
 		let provider = StdVersionProvider::new(single).unwrap();
 
 		// Should start at version 0
@@ -154,8 +153,7 @@ mod tests {
 
 	#[test]
 	fn test_next_version_sequential() {
-		let memory = MemoryBackend::new();
-		let single = SingleVersionLock::new(memory, EventBus::default());
+		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
 		let provider = StdVersionProvider::new(single).unwrap();
 
 		assert_eq!(provider.next().unwrap(), 1);
@@ -170,8 +168,7 @@ mod tests {
 
 	#[test]
 	fn test_version_persistence() {
-		let memory = MemoryBackend::new();
-		let single = SingleVersionLock::new(memory, EventBus::default());
+		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
 
 		// Create first provider and get some versions
 		{
@@ -190,8 +187,7 @@ mod tests {
 
 	#[test]
 	fn test_block_exhaustion_and_allocation() {
-		let memory = MemoryBackend::new();
-		let single = SingleVersionLock::new(memory, EventBus::default());
+		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
 		let provider = StdVersionProvider::new(single).unwrap();
 
 		// Exhaust the first block
@@ -213,8 +209,7 @@ mod tests {
 	fn test_concurrent_version_allocation() {
 		use std::{sync::Arc, thread};
 
-		let memory = MemoryBackend::new();
-		let single = SingleVersionLock::new(memory, EventBus::default());
+		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
 		let provider = Arc::new(StdVersionProvider::new(single).unwrap());
 
 		let mut handles = vec![];
@@ -293,8 +288,7 @@ mod tests {
 
 	#[test]
 	fn test_load_existing_version() {
-		let memory = MemoryBackend::new();
-		let single = SingleVersionLock::new(memory, EventBus::default());
+		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
 
 		// Manually set a version in storage
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);

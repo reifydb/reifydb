@@ -11,6 +11,9 @@ mod get;
 mod range;
 mod scan;
 
+pub use range::CdcRangeIter;
+pub use scan::CdcScanIter;
+
 /// Helper to fetch the current value of a key before it's modified
 pub(crate) fn fetch_pre_value(
 	tx: &Transaction,

@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod storage;
+mod store;
 
 use serde::{Deserialize, Serialize};
-pub use storage::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStore};
+pub use store::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStore};
 
 use crate::{CommitVersion, EncodedKey, interface::transaction::TransactionId, value::encoded::EncodedValues};
 

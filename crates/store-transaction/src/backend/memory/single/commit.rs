@@ -6,10 +6,14 @@ use std::sync::mpsc;
 use reifydb_core::{CowVec, Result, delta::Delta};
 use reifydb_type::Error;
 
-use crate::{SingleVersionCommit, backend::memory::write::WriteCommand, memory::MemoryBackend, storage_internal_error};
+use crate::{
+	backend::{memory::write::WriteCommand, single::BackendSingleVersionCommit},
+	memory::MemoryBackend,
+	storage_internal_error,
+};
 
-impl SingleVersionCommit for MemoryBackend {
-	fn commit(&mut self, delta: CowVec<Delta>) -> Result<()> {
+impl BackendSingleVersionCommit for MemoryBackend {
+	fn commit(&self, delta: CowVec<Delta>) -> Result<()> {
 		let (respond_to, response) = mpsc::channel();
 
 		self.writer

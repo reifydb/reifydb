@@ -12,20 +12,20 @@ use reifydb_core::{
 use crate::memory::MemoryBackend;
 
 impl CdcRange for MemoryBackend {
-	type RangeIter<'a> = Range<'a>;
+	type RangeIter<'a> = CdcRangeIter<'a>;
 
 	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Result<Self::RangeIter<'_>> {
-		Ok(Range {
-			version_iter: Box::new(self.cdcs.range((start, end))),
+		Ok(CdcRangeIter {
+			version_iter: Box::new(self.cdc.range((start, end))),
 		})
 	}
 }
 
-pub struct Range<'a> {
+pub struct CdcRangeIter<'a> {
 	version_iter: Box<dyn Iterator<Item = Entry<'a, CommitVersion, Cdc>> + 'a>,
 }
 
-impl<'a> Iterator for Range<'a> {
+impl<'a> Iterator for CdcRangeIter<'a> {
 	type Item = Cdc;
 
 	fn next(&mut self) -> Option<Self::Item> {

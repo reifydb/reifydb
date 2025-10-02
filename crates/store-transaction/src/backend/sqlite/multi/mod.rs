@@ -26,7 +26,7 @@ use rusqlite::{Connection, Statement, params};
 pub use scan::MultiVersionScanIter;
 pub use scan_rev::MultiVersionScanRevIter;
 
-use crate::backend::sqlite::read::ReadConnection;
+use crate::backend::{result::MultiVersionIterResult, sqlite::read::ReadConnection};
 
 /// Cache for table names to avoid repeated string allocations
 static TABLE_NAME_CACHE: OnceLock<Mutex<HashMap<TableId, String>>> = OnceLock::new();
@@ -197,32 +197,36 @@ pub(crate) fn execute_batched_range_query(
 	version: CommitVersion,
 	batch_size: usize,
 	param_count: u8,
-	buffer: &mut VecDeque<MultiVersionValues>,
+	buffer: &mut VecDeque<MultiVersionIterResult>,
 ) -> usize {
 	let mut count = 0;
 	match param_count {
 		1 => {
 			let rows = stmt
 				.query_map(params![version.0, batch_size], |values| {
+					let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
 					let value: Option<Vec<u8>> = values.get(1)?;
+					let version = CommitVersion(values.get(2)?);
 					match value {
-						Some(val) => Ok(Some(MultiVersionValues {
-							key: EncodedKey(CowVec::new(values.get(0)?)),
+						Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
+							key,
 							values: EncodedValues(CowVec::new(val)),
-							version: CommitVersion(values.get(2)?),
+							version,
 						})),
-						None => Ok(None), // NULL value means deleted
+						None => Ok(MultiVersionIterResult::Tombstone {
+							key,
+							version,
+						}), // NULL value means deleted
 					}
 				})
 				.unwrap();
 
 			for result in rows {
 				match result {
-					Ok(Some(multi)) => {
-						buffer.push_back(multi);
+					Ok(iter_value) => {
+						buffer.push_back(iter_value);
 						count += 1;
 					}
-					Ok(None) => {} // Skip deleted entries
 					Err(_) => break,
 				}
 			}
@@ -235,25 +239,29 @@ pub(crate) fn execute_batched_range_query(
 			};
 			let rows = stmt
 				.query_map(params![param, version.0, batch_size], |values| {
+					let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
 					let value: Option<Vec<u8>> = values.get(1)?;
+					let version = CommitVersion(values.get(2)?);
 					match value {
-						Some(val) => Ok(Some(MultiVersionValues {
-							key: EncodedKey(CowVec::new(values.get(0)?)),
+						Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
+							key,
 							values: EncodedValues(CowVec::new(val)),
-							version: CommitVersion(values.get(2)?),
+							version,
 						})),
-						None => Ok(None), // NULL value means deleted
+						None => Ok(MultiVersionIterResult::Tombstone {
+							key,
+							version,
+						}), // NULL value means deleted
 					}
 				})
 				.unwrap();
 
 			for result in rows {
 				match result {
-					Ok(Some(multi)) => {
-						buffer.push_back(multi);
+					Ok(iter_value) => {
+						buffer.push_back(iter_value);
 						count += 1;
 					}
-					Ok(None) => {} // Skip deleted entries
 					Err(_) => break,
 				}
 			}
@@ -269,25 +277,29 @@ pub(crate) fn execute_batched_range_query(
 			};
 			let rows = stmt
 				.query_map(params![start_param, end_param, version.0, batch_size], |values| {
+					let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
 					let value: Option<Vec<u8>> = values.get(1)?;
+					let version = CommitVersion(values.get(2)?);
 					match value {
-						Some(val) => Ok(Some(MultiVersionValues {
-							key: EncodedKey(CowVec::new(values.get(0)?)),
+						Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
+							key,
 							values: EncodedValues(CowVec::new(val)),
-							version: CommitVersion(values.get(2)?),
+							version,
 						})),
-						None => Ok(None), // NULL value means deleted
+						None => Ok(MultiVersionIterResult::Tombstone {
+							key,
+							version,
+						}), // NULL value means deleted
 					}
 				})
 				.unwrap();
 
 			for result in rows {
 				match result {
-					Ok(Some(multi)) => {
-						buffer.push_back(multi);
+					Ok(iter_value) => {
+						buffer.push_back(iter_value);
 						count += 1;
 					}
-					Ok(None) => {} // Skip deleted entries
 					Err(_) => break,
 				}
 			}
@@ -315,7 +327,7 @@ pub(crate) fn execute_scan_query(
 	batch_size: usize,
 	last_key: Option<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"
-	buffer: &mut VecDeque<MultiVersionValues>,
+	buffer: &mut VecDeque<MultiVersionIterResult>,
 ) -> usize {
 	let mut all_rows = Vec::new();
 
@@ -386,22 +398,26 @@ pub(crate) fn execute_scan_query(
 
 		let rows = stmt
 			.query_map(rusqlite::params_from_iter(params.iter()), |values| {
+				let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
 				let value: Option<Vec<u8>> = values.get(1)?;
+				let version = CommitVersion(values.get(2)?);
 				match value {
-					Some(val) => Ok(Some(MultiVersionValues {
-						key: EncodedKey(CowVec::new(values.get(0)?)),
+					Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
+						key,
 						values: EncodedValues(CowVec::new(val)),
-						version: CommitVersion(values.get(2)?),
+						version,
 					})),
-					None => Ok(None), // NULL value means deleted
+					None => Ok(MultiVersionIterResult::Tombstone {
+						key,
+						version,
+					}), // NULL value means deleted
 				}
 			})
 			.unwrap();
 
 		for result in rows {
 			match result {
-				Ok(Some(multi)) => all_rows.push(multi),
-				Ok(None) => {} // Skip deleted entries
+				Ok(iter_value) => all_rows.push(iter_value),
 				Err(_) => break,
 			}
 		}
@@ -409,8 +425,40 @@ pub(crate) fn execute_scan_query(
 
 	// Sort the combined results
 	match order {
-		"ASC" => all_rows.sort_by(|a, b| a.key.cmp(&b.key)),
-		"DESC" => all_rows.sort_by(|a, b| b.key.cmp(&a.key)),
+		"ASC" => all_rows.sort_by(|a, b| {
+			let key_a = match a {
+				MultiVersionIterResult::Value(v) => &v.key,
+				MultiVersionIterResult::Tombstone {
+					key,
+					..
+				} => key,
+			};
+			let key_b = match b {
+				MultiVersionIterResult::Value(v) => &v.key,
+				MultiVersionIterResult::Tombstone {
+					key,
+					..
+				} => key,
+			};
+			key_a.cmp(key_b)
+		}),
+		"DESC" => all_rows.sort_by(|a, b| {
+			let key_a = match a {
+				MultiVersionIterResult::Value(v) => &v.key,
+				MultiVersionIterResult::Tombstone {
+					key,
+					..
+				} => key,
+			};
+			let key_b = match b {
+				MultiVersionIterResult::Value(v) => &v.key,
+				MultiVersionIterResult::Tombstone {
+					key,
+					..
+				} => key,
+			};
+			key_b.cmp(key_a)
+		}),
 		_ => unreachable!(),
 	}
 

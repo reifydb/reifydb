@@ -31,7 +31,6 @@ impl MaterializedCatalog {
 	}
 
 	pub fn set_table(&self, id: TableId, version: CommitVersion, table: Option<TableDef>) {
-		// Look up the current table to update the index
 		if let Some(entry) = self.tables.get(&id) {
 			if let Some(pre) = entry.value().get_latest() {
 				// Remove old name from index
@@ -39,14 +38,13 @@ impl MaterializedCatalog {
 			}
 		}
 
-		// Add new name to index if setting a new value
-		if let Some(ref new) = table {
-			self.tables_by_name.insert((new.namespace, new.name.clone()), id);
-		}
-
-		// Update the multi table
 		let multi = self.tables.get_or_insert_with(id, MultiVersionTableDef::new);
-		multi.value().insert(version, table);
+		if let Some(new) = table {
+			self.tables_by_name.insert((new.namespace, new.name.clone()), id);
+			multi.value().insert(version, new);
+		} else {
+			multi.value().remove(version);
+		}
 	}
 }
 

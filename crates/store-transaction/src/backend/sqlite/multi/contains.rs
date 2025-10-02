@@ -5,9 +5,9 @@ use reifydb_core::{CommitVersion, EncodedKey, Result};
 use rusqlite::params;
 
 use super::table_name;
-use crate::{MultiVersionContains, backend::sqlite::SqliteBackend};
+use crate::backend::{multi::BackendMultiVersionContains, sqlite::SqliteBackend};
 
-impl MultiVersionContains for SqliteBackend {
+impl BackendMultiVersionContains for SqliteBackend {
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
 		let reader = self.get_reader();
 		let guard = reader.lock().unwrap();

@@ -10,7 +10,7 @@
 // http: //www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::EncodedKey;
-use reifydb_store_transaction::memory::MemoryBackend;
+use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_transaction::{
 	mvcc::transaction::optimistic::{CommandTransaction, Optimistic},
 	svl::SingleVersionLock,
@@ -33,7 +33,10 @@ fn test_write_skew() {
 	txn.commit().unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	let get_bal = |txn: &mut CommandTransaction<MemoryBackend, SingleVersionLock<MemoryBackend>>,
+	let get_bal = |txn: &mut CommandTransaction<
+		StandardTransactionStore,
+		SingleVersionLock<StandardTransactionStore>,
+	>,
 	               k: &EncodedKey|
 	 -> u64 {
 		let sv = txn.get(k).unwrap().unwrap();

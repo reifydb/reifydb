@@ -34,14 +34,13 @@ impl MaterializedCatalog {
 			}
 		}
 
-		// Add new name to index if setting a new value
-		if let Some(ref new) = namespace {
-			self.namespaces_by_name.insert(new.name.clone(), id);
-		}
-
-		// Update the multi namespace
 		let multi = self.namespaces.get_or_insert_with(id, MultiVersionNamespaceDef::new);
-		multi.value().insert(version, namespace);
+		if let Some(new) = namespace {
+			self.namespaces_by_name.insert(new.name.clone(), id);
+			multi.value().insert(version, new);
+		} else {
+			multi.value().remove(version);
+		}
 	}
 }
 

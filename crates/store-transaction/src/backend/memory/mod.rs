@@ -17,11 +17,15 @@ mod multi;
 mod single;
 mod write;
 
+pub use cdc::{CdcRangeIter, CdcScanIter};
 pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
 pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
 use write::{WriteCommand, Writer};
 
-use crate::{MultiVersionStore, SingleVersionRemove, SingleVersionSet, SingleVersionStore};
+use crate::backend::{
+	multi::BackendMultiVersion,
+	single::{BackendSingleVersion, BackendSingleVersionRemove, BackendSingleVersionSet},
+};
 
 pub type MultiVersionTransactionContainer = MultiVersionContainer<EncodedValues>;
 
@@ -30,8 +34,8 @@ pub struct MemoryBackend(Arc<MemoryBackendInner>);
 
 pub struct MemoryBackendInner {
 	multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
-	single: Arc<SkipMap<EncodedKey, EncodedValues>>,
-	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
+	single: Arc<SkipMap<EncodedKey, Option<EncodedValues>>>,
+	cdc: Arc<SkipMap<CommitVersion, Cdc>>,
 	writer: Sender<WriteCommand>,
 }
 
@@ -59,21 +63,21 @@ impl MemoryBackend {
 	pub fn new() -> Self {
 		let multi = Arc::new(SkipMap::new());
 		let single = Arc::new(SkipMap::new());
-		let cdcs = Arc::new(SkipMap::new());
+		let cdc = Arc::new(SkipMap::new());
 
-		let writer = Writer::spawn(multi.clone(), single.clone(), cdcs.clone())
+		let writer = Writer::spawn(multi.clone(), single.clone(), cdc.clone())
 			.expect("Failed to spawn memory writer thread");
 
 		Self(Arc::new(MemoryBackendInner {
 			multi,
 			single,
-			cdcs,
+			cdc,
 			writer,
 		}))
 	}
 }
 
-impl MultiVersionStore for MemoryBackend {}
-impl SingleVersionStore for MemoryBackend {}
-impl SingleVersionSet for MemoryBackend {}
-impl SingleVersionRemove for MemoryBackend {}
+impl BackendMultiVersion for MemoryBackend {}
+impl BackendSingleVersion for MemoryBackend {}
+impl BackendSingleVersionSet for MemoryBackend {}
+impl BackendSingleVersionRemove for MemoryBackend {}

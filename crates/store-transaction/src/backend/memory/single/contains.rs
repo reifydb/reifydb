@@ -3,9 +3,9 @@
 
 use reifydb_core::{EncodedKey, Result};
 
-use crate::{SingleVersionContains, backend::memory::MemoryBackend};
+use crate::backend::{memory::MemoryBackend, single::BackendSingleVersionContains};
 
-impl SingleVersionContains for MemoryBackend {
+impl BackendSingleVersionContains for MemoryBackend {
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		Ok(self.single.get(key).is_some())
 	}

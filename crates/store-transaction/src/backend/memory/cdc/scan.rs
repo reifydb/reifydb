@@ -10,20 +10,20 @@ use reifydb_core::{
 use crate::memory::MemoryBackend;
 
 impl CdcScan for MemoryBackend {
-	type ScanIter<'a> = Scan<'a>;
+	type ScanIter<'a> = CdcScanIter<'a>;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
-		Ok(Scan {
-			version_iter: Box::new(self.cdcs.iter()),
+		Ok(CdcScanIter {
+			version_iter: Box::new(self.cdc.iter()),
 		})
 	}
 }
 
-pub struct Scan<'a> {
+pub struct CdcScanIter<'a> {
 	version_iter: Box<dyn Iterator<Item = Entry<'a, CommitVersion, Cdc>> + 'a>,
 }
 
-impl<'a> Iterator for Scan<'a> {
+impl<'a> Iterator for CdcScanIter<'a> {
 	type Item = Cdc;
 
 	fn next(&mut self) -> Option<Self::Item> {

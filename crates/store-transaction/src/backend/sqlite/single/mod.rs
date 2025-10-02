@@ -21,6 +21,8 @@ pub use range_rev::SingleVersionRangeRevIter;
 pub use scan::SingleVersionScanIter;
 pub use scan_rev::SingleVersionScanRevIter;
 
+use crate::backend::result::SingleVersionIterResult;
+
 /// Helper function to build single query template and determine parameter
 /// count
 pub(crate) fn build_single_query(
@@ -104,24 +106,31 @@ pub(crate) fn execute_range_query(
 	end_bound: Bound<&EncodedKey>,
 	batch_size: usize,
 	param_count: u8,
-	buffer: &mut VecDeque<SingleVersionValues>,
+	buffer: &mut VecDeque<SingleVersionIterResult>,
 ) -> usize {
 	let mut count = 0;
 	match param_count {
 		0 => {
 			let rows = stmt
 				.query_map(rusqlite::params![batch_size], |values| {
-					Ok(SingleVersionValues {
-						key: EncodedKey::new(values.get::<_, Vec<u8>>(0)?),
-						values: EncodedValues(CowVec::new(values.get::<_, Vec<u8>>(1)?)),
-					})
+					let key = EncodedKey::new(values.get::<_, Vec<u8>>(0)?);
+					let value: Option<Vec<u8>> = values.get(1)?;
+					match value {
+						Some(val) => Ok(SingleVersionIterResult::Value(SingleVersionValues {
+							key,
+							values: EncodedValues(CowVec::new(val)),
+						})),
+						None => Ok(SingleVersionIterResult::Tombstone {
+							key,
+						}), // NULL value means deleted
+					}
 				})
 				.unwrap();
 
 			for result in rows {
 				match result {
-					Ok(single) => {
-						buffer.push_back(single);
+					Ok(iter_result) => {
+						buffer.push_back(iter_result);
 						count += 1;
 					}
 					Err(_) => break,
@@ -136,17 +145,24 @@ pub(crate) fn execute_range_query(
 			};
 			let rows = stmt
 				.query_map(rusqlite::params![param, batch_size], |values| {
-					Ok(SingleVersionValues {
-						key: EncodedKey::new(values.get::<_, Vec<u8>>(0)?),
-						values: EncodedValues(CowVec::new(values.get::<_, Vec<u8>>(1)?)),
-					})
+					let key = EncodedKey::new(values.get::<_, Vec<u8>>(0)?);
+					let value: Option<Vec<u8>> = values.get(1)?;
+					match value {
+						Some(val) => Ok(SingleVersionIterResult::Value(SingleVersionValues {
+							key,
+							values: EncodedValues(CowVec::new(val)),
+						})),
+						None => Ok(SingleVersionIterResult::Tombstone {
+							key,
+						}), // NULL value means deleted
+					}
 				})
 				.unwrap();
 
 			for result in rows {
 				match result {
-					Ok(single) => {
-						buffer.push_back(single);
+					Ok(iter_result) => {
+						buffer.push_back(iter_result);
 						count += 1;
 					}
 					Err(_) => break,
@@ -164,17 +180,24 @@ pub(crate) fn execute_range_query(
 			};
 			let rows = stmt
 				.query_map(rusqlite::params![start_param, end_param, batch_size], |values| {
-					Ok(SingleVersionValues {
-						key: EncodedKey::new(values.get::<_, Vec<u8>>(0)?),
-						values: EncodedValues(CowVec::new(values.get::<_, Vec<u8>>(1)?)),
-					})
+					let key = EncodedKey::new(values.get::<_, Vec<u8>>(0)?);
+					let value: Option<Vec<u8>> = values.get(1)?;
+					match value {
+						Some(val) => Ok(SingleVersionIterResult::Value(SingleVersionValues {
+							key,
+							values: EncodedValues(CowVec::new(val)),
+						})),
+						None => Ok(SingleVersionIterResult::Tombstone {
+							key,
+						}), // NULL value means deleted
+					}
 				})
 				.unwrap();
 
 			for result in rows {
 				match result {
-					Ok(single) => {
-						buffer.push_back(single);
+					Ok(iter_result) => {
+						buffer.push_back(iter_result);
 						count += 1;
 					}
 					Err(_) => break,
@@ -192,7 +215,7 @@ pub(crate) fn execute_scan_query(
 	batch_size: usize,
 	last_key: Option<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"
-	buffer: &mut VecDeque<SingleVersionValues>,
+	buffer: &mut VecDeque<SingleVersionIterResult>,
 ) -> usize {
 	let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
 		(None, "ASC") => (
@@ -219,18 +242,25 @@ pub(crate) fn execute_scan_query(
 
 	let rows = stmt
 		.query_map(rusqlite::params_from_iter(params.iter()), |values| {
-			Ok(SingleVersionValues {
-				key: EncodedKey::new(values.get::<_, Vec<u8>>(0)?),
-				values: EncodedValues(CowVec::new(values.get::<_, Vec<u8>>(1)?)),
-			})
+			let key = EncodedKey::new(values.get::<_, Vec<u8>>(0)?);
+			let value: Option<Vec<u8>> = values.get(1)?;
+			match value {
+				Some(val) => Ok(SingleVersionIterResult::Value(SingleVersionValues {
+					key,
+					values: EncodedValues(CowVec::new(val)),
+				})),
+				None => Ok(SingleVersionIterResult::Tombstone {
+					key,
+				}), // NULL value means deleted
+			}
 		})
 		.unwrap();
 
 	let mut count = 0;
 	for result in rows {
 		match result {
-			Ok(single) => {
-				buffer.push_back(single);
+			Ok(iter_result) => {
+				buffer.push_back(iter_result);
 				count += 1;
 			}
 			Err(_) => break,

@@ -3,25 +3,26 @@
 
 use reifydb_core::{CommitVersion, EncodedKey, Result, interface::MultiVersionValues};
 
-use crate::{MultiVersionGet, backend::memory::MemoryBackend};
+use crate::backend::{memory::MemoryBackend, multi::BackendMultiVersionGet, result::MultiVersionGetResult};
 
-impl MultiVersionGet for MemoryBackend {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
+impl BackendMultiVersionGet for MemoryBackend {
+	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<MultiVersionGetResult> {
 		let item = match self.multi.get(key) {
 			Some(item) => item,
-			None => return Ok(None),
+			None => return Ok(MultiVersionGetResult::NotFound),
 		};
 
-		// Get the value at the specified version
-		let values = match item.value().get(version) {
-			Some(values) => values,
-			None => return Ok(None),
-		};
-
-		Ok(Some(MultiVersionValues {
-			key: key.clone(),
-			values,
-			version,
-		}))
+		match item.value().get_or_tombstone(version) {
+			Some(Some(values)) => Ok(MultiVersionGetResult::Value(MultiVersionValues {
+				key: key.clone(),
+				values,
+				version,
+			})),
+			Some(None) => Ok(MultiVersionGetResult::Tombstone {
+				key: key.clone(),
+				version,
+			}),
+			None => Ok(MultiVersionGetResult::NotFound),
+		}
 	}
 }

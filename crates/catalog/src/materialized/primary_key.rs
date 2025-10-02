@@ -21,7 +21,11 @@ impl MaterializedCatalog {
 	pub fn set_primary_key(&self, id: PrimaryKeyId, version: CommitVersion, primary_key: Option<PrimaryKeyDef>) {
 		// Update the multi primary key
 		let multi = self.primary_keys.get_or_insert_with(id, MultiVersionPrimaryKeyDef::new);
-		multi.value().insert(version, primary_key);
+		if let Some(new) = primary_key {
+			multi.value().insert(version, new);
+		} else {
+			multi.value().remove(version);
+		}
 	}
 }
 

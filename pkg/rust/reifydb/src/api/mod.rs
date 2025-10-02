@@ -1,15 +1,21 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::time::Duration;
+
 use reifydb_core::{
 	event::EventBus,
 	interface::{CdcTransaction, SingleVersionTransaction},
 };
 use reifydb_engine::StandardCdcTransaction;
 use reifydb_store_transaction::{
-	MultiVersionStore,
+	BackendConfig, MultiVersionStore, StandardTransactionStore, TransactionStoreConfig,
 	backend::{
+		Backend,
+		cdc::BackendCdc,
 		memory::MemoryBackend,
+		multi::BackendMulti,
+		single::BackendSingle,
 		sqlite::{SqliteBackend, SqliteConfig},
 	},
 };
@@ -24,13 +30,34 @@ pub mod embedded;
 pub mod server;
 
 /// Convenience function to create in-memory storage
-pub fn memory() -> (MemoryBackend, SingleVersionLock<MemoryBackend>, StandardCdcTransaction<MemoryBackend>, EventBus) {
+pub fn memory() -> (
+	StandardTransactionStore,
+	SingleVersionLock<StandardTransactionStore>,
+	StandardCdcTransaction<StandardTransactionStore>,
+	EventBus,
+) {
 	let eventbus = EventBus::new();
 	let memory = MemoryBackend::default();
+	let store = StandardTransactionStore::new(TransactionStoreConfig {
+		hot: Some(BackendConfig {
+			backend: Backend {
+				multi: BackendMulti::Memory(memory.clone()),
+				single: BackendSingle::Memory(memory.clone()),
+				cdc: BackendCdc::Memory(memory.clone()),
+			},
+			retention_period: Duration::from_millis(200),
+		}),
+		warm: None,
+		cold: None,
+		retention: Default::default(),
+		merge_config: Default::default(),
+	})
+	.unwrap();
+
 	(
-		memory.clone(),
-		SingleVersionLock::new(MemoryBackend::new(), eventbus.clone()),
-		StandardCdcTransaction::new(memory),
+		store.clone(),
+		SingleVersionLock::new(store.clone(), eventbus.clone()),
+		StandardCdcTransaction::new(store),
 		eventbus,
 	)
 }
@@ -38,13 +65,35 @@ pub fn memory() -> (MemoryBackend, SingleVersionLock<MemoryBackend>, StandardCdc
 /// Convenience function to create SQLite storage
 pub fn sqlite(
 	config: SqliteConfig,
-) -> (SqliteBackend, SingleVersionLock<SqliteBackend>, StandardCdcTransaction<SqliteBackend>, EventBus) {
+) -> (
+	StandardTransactionStore,
+	SingleVersionLock<StandardTransactionStore>,
+	StandardCdcTransaction<StandardTransactionStore>,
+	EventBus,
+) {
 	let eventbus = EventBus::new();
-	let result = SqliteBackend::new(config);
+	let sqlite = SqliteBackend::new(config);
+
+	let store = StandardTransactionStore::new(TransactionStoreConfig {
+		hot: Some(BackendConfig {
+			backend: Backend {
+				multi: BackendMulti::Sqlite(sqlite.clone()),
+				single: BackendSingle::Sqlite(sqlite.clone()),
+				cdc: BackendCdc::Sqlite(sqlite.clone()),
+			},
+			retention_period: Duration::from_millis(200),
+		}),
+		warm: None,
+		cold: None,
+		retention: Default::default(),
+		merge_config: Default::default(),
+	})
+	.unwrap();
+
 	(
-		result.clone(),
-		SingleVersionLock::new(result.clone(), eventbus.clone()),
-		StandardCdcTransaction::new(result),
+		store.clone(),
+		SingleVersionLock::new(store.clone(), eventbus.clone()),
+		StandardCdcTransaction::new(store),
 		eventbus,
 	)
 }

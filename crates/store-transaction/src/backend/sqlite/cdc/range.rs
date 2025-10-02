@@ -15,14 +15,14 @@ use crate::{
 };
 
 impl CdcRange for SqliteBackend {
-	type RangeIter<'a> = Range;
+	type RangeIter<'a> = CdcRangeIter;
 
 	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Result<Self::RangeIter<'_>> {
-		Ok(Range::new(self.get_reader(), start, end, 1024))
+		Ok(CdcRangeIter::new(self.get_reader(), start, end, 1024))
 	}
 }
 
-pub struct Range {
+pub struct CdcRangeIter {
 	conn: Reader,
 	start: Bound<CommitVersion>,
 	end: Bound<CommitVersion>,
@@ -32,7 +32,7 @@ pub struct Range {
 	exhausted: bool,
 }
 
-impl Range {
+impl CdcRangeIter {
 	pub fn new(conn: Reader, start: Bound<CommitVersion>, end: Bound<CommitVersion>, batch_size: usize) -> Self {
 		Self {
 			conn,
@@ -139,7 +139,7 @@ impl Range {
 	}
 }
 
-impl Iterator for Range {
+impl Iterator for CdcRangeIter {
 	type Item = Cdc;
 
 	fn next(&mut self) -> Option<Self::Item> {

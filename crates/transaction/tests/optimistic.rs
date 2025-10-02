@@ -18,7 +18,7 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::memory::MemoryBackend;
+use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	mvcc::{
@@ -33,26 +33,24 @@ test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_opt
 test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_optimistic }
 
 fn test_optimistic(path: &Path) {
+	let store = StandardTransactionStore::testing_memory();
 	let bus = EventBus::default();
 
 	testscript::run_path(
-		&mut MvccRunner::new(Optimistic::new(
-			MemoryBackend::new(),
-			SingleVersionLock::new(MemoryBackend::new(), bus.clone()),
-			bus,
-		)),
+		&mut MvccRunner::new(Optimistic::new(store.clone(), SingleVersionLock::new(store, bus.clone()), bus)),
 		path,
 	)
-	.expect("testfailed")
+	.expect("test failed")
 }
 
 pub struct MvccRunner {
-	engine: Optimistic<MemoryBackend, SingleVersionLock<MemoryBackend>>,
-	transactions: HashMap<String, Transaction<MemoryBackend, SingleVersionLock<MemoryBackend>>>,
+	engine: Optimistic<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
+	transactions:
+		HashMap<String, Transaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>>,
 }
 
 impl MvccRunner {
-	fn new(optimistic: Optimistic<MemoryBackend, SingleVersionLock<MemoryBackend>>) -> Self {
+	fn new(optimistic: Optimistic<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>) -> Self {
 		Self {
 			engine: optimistic,
 			transactions: HashMap::new(),
@@ -63,11 +61,12 @@ impl MvccRunner {
 	fn get_transaction(
 		&mut self,
 		prefix: &Option<String>,
-	) -> Result<&'_ mut Transaction<MemoryBackend, SingleVersionLock<MemoryBackend>>, Box<dyn StdError>> {
+	) -> Result<
+		&'_ mut Transaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
+		Box<dyn StdError>,
+	> {
 		let name = Self::tx_name(prefix)?;
-		self.transactions.get_mut(name).ok_or(format!("unknown transaction
-{name}")
-		.into())
+		self.transactions.get_mut(name).ok_or(format!("unknown transaction {name}").into())
 	}
 
 	/// Fetches the tx name from a command prefix, or errors.

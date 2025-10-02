@@ -10,7 +10,7 @@ use crate::backend::memory::MemoryBackend;
 
 impl CdcGet for MemoryBackend {
 	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
-		if let Some(entry) = self.cdcs.get(&version) {
+		if let Some(entry) = self.cdc.get(&version) {
 			Ok(Some(entry.value().clone()))
 		} else {
 			Ok(None)

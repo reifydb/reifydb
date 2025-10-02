@@ -19,7 +19,7 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	MultiVersionStore,
+	backend::{multi::BackendMultiVersion, result::MultiVersionIterResult},
 	memory::MemoryBackend,
 	sqlite::{SqliteBackend, SqliteConfig},
 };
@@ -41,21 +41,21 @@ fn test_sqlite(path: &Path) {
 }
 
 /// Runs engine tests.
-pub struct Runner<MVS: MultiVersionStore> {
-	store: MVS,
+pub struct Runner<BMV: BackendMultiVersion> {
+	backend: BMV,
 	version: CommitVersion,
 }
 
-impl<MVS: MultiVersionStore> Runner<MVS> {
-	fn new(store: MVS) -> Self {
+impl<BMV: BackendMultiVersion> Runner<BMV> {
+	fn new(backend: BMV) -> Self {
 		Self {
-			store,
+			backend,
 			version: CommitVersion(0),
 		}
 	}
 }
 
-impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
+impl<BMV: BackendMultiVersion> testscript::Runner for Runner<BMV> {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
@@ -65,7 +65,13 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
-				let value = self.store.get(&key, version)?.map(|sv| sv.values.to_vec());
+
+				let value = self
+					.backend
+					.get(&key, version)?
+					.into_option()
+					.map(|sv: MultiVersionValues| sv.values.to_vec());
+
 				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
 			}
 			// contains KEY [version=VERSION]
@@ -74,7 +80,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
-				let contains = self.store.contains(&key, version)?;
+				let contains = self.backend.contains(&key, version)?;
 				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
 			}
 
@@ -86,9 +92,9 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.scan(version)?)
+					print(&mut output, self.backend.scan(version)?)
 				} else {
-					print(&mut output, self.store.scan_rev(version)?)
+					print(&mut output, self.backend.scan_rev(version)?)
 				};
 			}
 			// range RANGE [reverse=BOOL] [version=VERSION]
@@ -102,9 +108,9 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.range(range, version)?)
+					print(&mut output, self.backend.range(range, version)?)
 				} else {
-					print(&mut output, self.store.range_rev(range, version)?)
+					print(&mut output, self.backend.range_rev(range, version)?)
 				};
 			}
 
@@ -118,9 +124,9 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.prefix(&prefix, version)?)
+					print(&mut output, self.backend.prefix(&prefix, version)?)
 				} else {
-					print(&mut output, self.store.prefix_rev(&prefix, version)?)
+					print(&mut output, self.backend.prefix_rev(&prefix, version)?)
 				};
 			}
 
@@ -138,7 +144,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
+				self.backend.commit(
 					async_cow_vec![
 						(Delta::Set {
 							key,
@@ -162,7 +168,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
+				self.backend.commit(
 					async_cow_vec![
 						(Delta::Remove {
 							key
@@ -181,9 +187,20 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 	}
 }
 
-fn print<I: Iterator<Item = MultiVersionValues>>(output: &mut String, iter: I) {
-	for sv in iter {
-		let fmtkv = format::Raw::key_value(&sv.key, sv.values.as_slice());
-		writeln!(output, "{fmtkv}").unwrap();
+fn print<I: Iterator<Item = MultiVersionIterResult>>(output: &mut String, iter: I) {
+	for item in iter {
+		match item {
+			MultiVersionIterResult::Value(sv) => {
+				let fmtkv = format::Raw::key_value(&sv.key, sv.values.as_slice());
+				writeln!(output, "{fmtkv}").unwrap();
+			}
+			MultiVersionIterResult::Tombstone {
+				key,
+				..
+			} => {
+				let fmtkv = format::Raw::key_value(&key, "tombstone".as_bytes());
+				writeln!(output, "{fmtkv}").unwrap();
+			}
+		}
 	}
 }
