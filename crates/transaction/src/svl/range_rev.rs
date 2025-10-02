@@ -7,7 +7,7 @@ use reifydb_core::{EncodedKey, delta::Delta, interface::SingleVersionValues};
 
 /// Iterator for reverse range scan in an SVL WriteTransaction with owned
 /// values.
-pub struct SvlRangeRev {
+pub struct SvlRangeRevIter {
 	/// Iterator over committed data (owned, reversed)
 	committed: std::vec::IntoIter<SingleVersionValues>,
 	/// Iterator over pending changes (owned, reversed)
@@ -20,12 +20,12 @@ pub struct SvlRangeRev {
 	last_yielded_key: Option<EncodedKey>,
 }
 
-impl SvlRangeRev {
+impl SvlRangeRevIter {
 	pub fn new(
 		pending: std::vec::IntoIter<(EncodedKey, Delta)>,
 		committed: std::vec::IntoIter<SingleVersionValues>,
 	) -> Self {
-		let mut iterator = SvlRangeRev {
+		let mut iterator = SvlRangeRevIter {
 			pending,
 			committed,
 			next_pending: None,
@@ -48,7 +48,7 @@ impl SvlRangeRev {
 	}
 }
 
-impl Iterator for SvlRangeRev {
+impl Iterator for SvlRangeRevIter {
 	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {

@@ -9,7 +9,7 @@ use super::Cdc;
 use crate::CommitVersion;
 
 /// Combined trait for all CDC storage operations
-pub trait CdcStorage: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
+pub trait CdcStore: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
 
 /// Retrieve CDC transaction for a specific version
 pub trait CdcGet: Send + Sync {

@@ -3,20 +3,16 @@
 
 use std::sync::mpsc;
 
-use reifydb_core::{
-	CommitVersion, CowVec, Result,
-	delta::Delta,
-	interface::{MultiVersionCommit, TransactionId},
-	util::now_millis,
-};
+use reifydb_core::{CommitVersion, CowVec, Result, delta::Delta, interface::TransactionId, util::now_millis};
 use reifydb_type::Error;
 
 use crate::{
-	backend::sqlite::{Sqlite, write::WriteCommand},
+	MultiVersionCommit,
+	backend::sqlite::{SqliteBackend, write::WriteCommand},
 	storage_internal_error,
 };
 
-impl MultiVersionCommit for Sqlite {
+impl MultiVersionCommit for SqliteBackend {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
 		let (respond_to, response) = mpsc::channel();
 

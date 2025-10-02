@@ -9,9 +9,9 @@ use reifydb_core::{
 	interface::{Cdc, CdcRange},
 };
 
-use crate::memory::Memory;
+use crate::memory::MemoryBackend;
 
-impl CdcRange for Memory {
+impl CdcRange for MemoryBackend {
 	type RangeIter<'a> = Range<'a>;
 
 	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Result<Self::RangeIter<'_>> {

@@ -4,8 +4,8 @@
 #![cfg(feature = "sub_server")]
 
 use reifydb_store_transaction::backend::{
-	memory::Memory,
-	sqlite::{Sqlite, SqliteConfig},
+	memory::MemoryBackend,
+	sqlite::{SqliteBackend, SqliteConfig},
 };
 use reifydb_transaction::mvcc::transaction::{optimistic::Optimistic, serializable::Serializable};
 
@@ -14,14 +14,15 @@ use crate::{
 	serializable, sqlite,
 };
 
-pub fn memory_optimistic() -> ServerBuilder<Optimistic<Memory, SingleVersionMemory>, SingleVersionMemory, MemoryCdc> {
+pub fn memory_optimistic()
+-> ServerBuilder<Optimistic<MemoryBackend, SingleVersionMemory>, SingleVersionMemory, MemoryCdc> {
 	let (storage, single, cdc, eventbus) = memory();
 	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
 	ServerBuilder::new(multi, single, cdc, eventbus)
 }
 
-pub fn memory_serializable() -> ServerBuilder<Serializable<Memory, SingleVersionMemory>, SingleVersionMemory, MemoryCdc>
-{
+pub fn memory_serializable()
+-> ServerBuilder<Serializable<MemoryBackend, SingleVersionMemory>, SingleVersionMemory, MemoryCdc> {
 	let (storage, single, cdc, eventbus) = memory();
 	let (multi, _, _, _) = serializable((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
 	ServerBuilder::new(multi, single, cdc, eventbus)
@@ -29,7 +30,7 @@ pub fn memory_serializable() -> ServerBuilder<Serializable<Memory, SingleVersion
 
 pub fn sqlite_optimistic(
 	config: SqliteConfig,
-) -> ServerBuilder<Optimistic<Sqlite, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
+) -> ServerBuilder<Optimistic<SqliteBackend, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
 	let (storage, single, cdc, eventbus) = sqlite(config);
 	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
 	ServerBuilder::new(multi, single, cdc, eventbus)
@@ -37,7 +38,7 @@ pub fn sqlite_optimistic(
 
 pub fn sqlite_serializable(
 	config: SqliteConfig,
-) -> ServerBuilder<Serializable<Sqlite, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
+) -> ServerBuilder<Serializable<SqliteBackend, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
 	let (storage, single, cdc, eventbus) = sqlite(config);
 	let (multi, _, _, _) = serializable((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
 	ServerBuilder::new(multi, single, cdc, eventbus)

@@ -18,7 +18,7 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::memory::Memory;
+use reifydb_store_transaction::memory::MemoryBackend;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	mvcc::{
@@ -37,8 +37,8 @@ fn test_optimistic(path: &Path) {
 
 	testscript::run_path(
 		&mut MvccRunner::new(Optimistic::new(
-			Memory::new(),
-			SingleVersionLock::new(Memory::new(), bus.clone()),
+			MemoryBackend::new(),
+			SingleVersionLock::new(MemoryBackend::new(), bus.clone()),
 			bus,
 		)),
 		path,
@@ -47,12 +47,12 @@ fn test_optimistic(path: &Path) {
 }
 
 pub struct MvccRunner {
-	engine: Optimistic<Memory, SingleVersionLock<Memory>>,
-	transactions: HashMap<String, Transaction<Memory, SingleVersionLock<Memory>>>,
+	engine: Optimistic<MemoryBackend, SingleVersionLock<MemoryBackend>>,
+	transactions: HashMap<String, Transaction<MemoryBackend, SingleVersionLock<MemoryBackend>>>,
 }
 
 impl MvccRunner {
-	fn new(optimistic: Optimistic<Memory, SingleVersionLock<Memory>>) -> Self {
+	fn new(optimistic: Optimistic<MemoryBackend, SingleVersionLock<MemoryBackend>>) -> Self {
 		Self {
 			engine: optimistic,
 			transactions: HashMap::new(),
@@ -63,7 +63,7 @@ impl MvccRunner {
 	fn get_transaction(
 		&mut self,
 		prefix: &Option<String>,
-	) -> Result<&'_ mut Transaction<Memory, SingleVersionLock<Memory>>, Box<dyn StdError>> {
+	) -> Result<&'_ mut Transaction<MemoryBackend, SingleVersionLock<MemoryBackend>>, Box<dyn StdError>> {
 		let name = Self::tx_name(prefix)?;
 		self.transactions.get_mut(name).ok_or(format!("unknown transaction
 {name}")

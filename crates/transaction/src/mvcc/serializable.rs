@@ -5,11 +5,12 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Error,
 	event::EventBus,
 	interface::{
-		BoxedMultiVersionIter, MultiVersionCommandTransaction, MultiVersionQueryTransaction, MultiVersionStore,
+		BoxedMultiVersionIter, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
 		MultiVersionTransaction, MultiVersionValues, SingleVersionTransaction, TransactionId, WithEventBus,
 	},
 	value::encoded::EncodedValues,
 };
+use reifydb_store_transaction::MultiVersionStore;
 
 use crate::mvcc::transaction::serializable::{CommandTransaction, QueryTransaction, Serializable};
 

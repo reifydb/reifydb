@@ -7,7 +7,7 @@ use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
 	event::EventBus,
-	interface::{SingleVersionStore, SingleVersionTransaction, SingleVersionValues, WithEventBus},
+	interface::{SingleVersionTransaction, SingleVersionValues, WithEventBus},
 	value::encoded::EncodedValues,
 };
 
@@ -19,6 +19,7 @@ pub(crate) mod scan_rev;
 mod write;
 
 pub use read::SvlReadTransaction;
+use reifydb_store_transaction::SingleVersionStore;
 pub use write::SvlWriteTransaction;
 
 #[derive(Clone)]

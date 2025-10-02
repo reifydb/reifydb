@@ -15,20 +15,20 @@ use std::{
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{event::EventBus, interceptor::StandardInterceptorFactory};
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardEngine};
-use reifydb_store_transaction::memory::Memory;
+use reifydb_store_transaction::memory::MemoryBackend;
 use reifydb_sub_api::{ClosureTask, Priority, Scheduler, Subsystem};
 use reifydb_sub_worker::{WorkerConfig, WorkerSubsystem};
 use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
 use reifydb_type::{diagnostic::internal, error};
 
 type TestTransaction = EngineTransaction<
-	Serializable<Memory, SingleVersionLock<Memory>>,
-	SingleVersionLock<Memory>,
-	StandardCdcTransaction<Memory>,
+	Serializable<MemoryBackend, SingleVersionLock<MemoryBackend>>,
+	SingleVersionLock<MemoryBackend>,
+	StandardCdcTransaction<MemoryBackend>,
 >;
 
 fn create_test_engine() -> StandardEngine<TestTransaction> {
-	let memory = Memory::new();
+	let memory = MemoryBackend::new();
 	let eventbus = EventBus::new();
 	let single = SingleVersionLock::new(memory.clone(), eventbus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());

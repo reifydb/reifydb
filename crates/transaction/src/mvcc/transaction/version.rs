@@ -137,14 +137,14 @@ where
 #[cfg(test)]
 mod tests {
 	use reifydb_core::event::EventBus;
-	use reifydb_store_transaction::memory::Memory;
+	use reifydb_store_transaction::memory::MemoryBackend;
 
 	use super::*;
 	use crate::svl::SingleVersionLock;
 
 	#[test]
 	fn test_new_version_provider() {
-		let memory = Memory::new();
+		let memory = MemoryBackend::new();
 		let single = SingleVersionLock::new(memory, EventBus::default());
 		let provider = StdVersionProvider::new(single).unwrap();
 
@@ -154,7 +154,7 @@ mod tests {
 
 	#[test]
 	fn test_next_version_sequential() {
-		let memory = Memory::new();
+		let memory = MemoryBackend::new();
 		let single = SingleVersionLock::new(memory, EventBus::default());
 		let provider = StdVersionProvider::new(single).unwrap();
 
@@ -170,7 +170,7 @@ mod tests {
 
 	#[test]
 	fn test_version_persistence() {
-		let memory = Memory::new();
+		let memory = MemoryBackend::new();
 		let single = SingleVersionLock::new(memory, EventBus::default());
 
 		// Create first provider and get some versions
@@ -190,7 +190,7 @@ mod tests {
 
 	#[test]
 	fn test_block_exhaustion_and_allocation() {
-		let memory = Memory::new();
+		let memory = MemoryBackend::new();
 		let single = SingleVersionLock::new(memory, EventBus::default());
 		let provider = StdVersionProvider::new(single).unwrap();
 
@@ -213,7 +213,7 @@ mod tests {
 	fn test_concurrent_version_allocation() {
 		use std::{sync::Arc, thread};
 
-		let memory = Memory::new();
+		let memory = MemoryBackend::new();
 		let single = SingleVersionLock::new(memory, EventBus::default());
 		let provider = Arc::new(StdVersionProvider::new(single).unwrap());
 
@@ -293,7 +293,7 @@ mod tests {
 
 	#[test]
 	fn test_load_existing_version() {
-		let memory = Memory::new();
+		let memory = MemoryBackend::new();
 		let single = SingleVersionLock::new(memory, EventBus::default());
 
 		// Manually set a version in storage

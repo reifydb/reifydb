@@ -14,13 +14,14 @@ use std::{error::Error as StdError, fmt::Write, path::Path};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
-	interface::{MultiVersionStore, MultiVersionValues, TransactionId},
+	interface::{MultiVersionValues, TransactionId},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	memory::Memory,
-	sqlite::{Sqlite, SqliteConfig},
+	MultiVersionStore,
+	memory::MemoryBackend,
+	sqlite::{SqliteBackend, SqliteConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
@@ -29,24 +30,26 @@ test_each_path! { in "crates/store-transaction/tests/scripts/multi" as multi_mem
 test_each_path! { in "crates/store-transaction/tests/scripts/multi" as multi_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	testscript::run_path(&mut Runner::new(Memory::default()), path).expect("test failed")
+	testscript::run_path(&mut Runner::new(MemoryBackend::default()), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
-	temp_dir(|db_path| testscript::run_path(&mut Runner::new(Sqlite::new(SqliteConfig::fast(db_path))), path))
-		.expect("test failed")
+	temp_dir(|db_path| {
+		testscript::run_path(&mut Runner::new(SqliteBackend::new(SqliteConfig::fast(db_path))), path)
+	})
+	.expect("test failed")
 }
 
 /// Runs engine tests.
 pub struct Runner<MVS: MultiVersionStore> {
-	storage: MVS,
+	store: MVS,
 	version: CommitVersion,
 }
 
 impl<MVS: MultiVersionStore> Runner<MVS> {
-	fn new(storage: MVS) -> Self {
+	fn new(store: MVS) -> Self {
 		Self {
-			storage,
+			store,
 			version: 0,
 		}
 	}
@@ -62,7 +65,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = args.lookup_parse("version")?.unwrap_or(self.version);
 				args.reject_rest()?;
-				let value = self.storage.get(&key, version)?.map(|sv| sv.values.to_vec());
+				let value = self.store.get(&key, version)?.map(|sv| sv.values.to_vec());
 				writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
 			}
 			// contains KEY [version=VERSION]
@@ -71,7 +74,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = args.lookup_parse("version")?.unwrap_or(self.version);
 				args.reject_rest()?;
-				let contains = self.storage.contains(&key, version)?;
+				let contains = self.store.contains(&key, version)?;
 				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
 			}
 
@@ -83,9 +86,9 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.storage.scan(version)?)
+					print(&mut output, self.store.scan(version)?)
 				} else {
-					print(&mut output, self.storage.scan_rev(version)?)
+					print(&mut output, self.store.scan_rev(version)?)
 				};
 			}
 			// range RANGE [reverse=BOOL] [version=VERSION]
@@ -99,9 +102,9 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.storage.range(range, version)?)
+					print(&mut output, self.store.range(range, version)?)
 				} else {
-					print(&mut output, self.storage.range_rev(range, version)?)
+					print(&mut output, self.store.range_rev(range, version)?)
 				};
 			}
 
@@ -115,9 +118,9 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.storage.prefix(&prefix, version)?)
+					print(&mut output, self.store.prefix(&prefix, version)?)
 				} else {
-					print(&mut output, self.storage.prefix_rev(&prefix, version)?)
+					print(&mut output, self.store.prefix_rev(&prefix, version)?)
 				};
 			}
 
@@ -135,7 +138,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				};
 				args.reject_rest()?;
 
-				self.storage.commit(
+				self.store.commit(
 					async_cow_vec![
 						(Delta::Set {
 							key,
@@ -159,7 +162,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				};
 				args.reject_rest()?;
 
-				self.storage.commit(
+				self.store.commit(
 					async_cow_vec![
 						(Delta::Remove {
 							key

@@ -1,39 +1,32 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-// This file includes and modifies code from the skipdb project (https://github.com/al8n/skipdb),
-// originally licensed under the Apache License, Version 2.0.
-// Original copyright:
-//   Copyright (c) 2024 Al Liu
-//
-// The original Apache License can be found at:
-//   http://www.apache.org/licenses/LICENSE-2.0
-
-use core::{cmp, iter::Rev};
+use core::cmp;
 use std::collections::btree_map::Iter as BTreeMapIter;
 
-use reifydb_core::{Either, EncodedKey, interface::MultiVersionStore};
+use reifydb_core::{Either, EncodedKey};
+use reifydb_store_transaction::MultiVersionStore;
 
 use crate::mvcc::{
 	marker::Marker,
 	types::{Pending, TransactionValue},
 };
 
-pub struct TransactionIterRev<'a, MVS>
+pub struct TransactionScanIter<'a, MVS>
 where
 	MVS: MultiVersionStore + 'a,
 {
-	pending: Rev<BTreeMapIter<'a, EncodedKey, Pending>>,
-	committed: MVS::ScanIterRev<'a>,
+	committed: MVS::ScanIter<'a>,
+	pending: BTreeMapIter<'a, EncodedKey, Pending>,
 	next_pending: Option<(&'a EncodedKey, &'a Pending)>,
 	next_committed: Option<TransactionValue>,
 	last_yielded_key: Option<Either<&'a EncodedKey, TransactionValue>>,
 	marker: Option<Marker<'a>>,
 }
 
-impl<'a, MVS> TransactionIterRev<'a, MVS>
+impl<'a, MVS> TransactionScanIter<'a, MVS>
 where
-	MVS: MultiVersionStore + 'a,
+	MVS: MultiVersionStore,
 {
 	fn advance_pending(&mut self) {
 		self.next_pending = self.pending.next();
@@ -47,11 +40,11 @@ where
 	}
 
 	pub fn new(
-		pending: Rev<BTreeMapIter<'a, EncodedKey, Pending>>,
-		committed: MVS::ScanIterRev<'a>,
+		pending: BTreeMapIter<'a, EncodedKey, Pending>,
+		committed: MVS::ScanIter<'a>,
 		marker: Option<Marker<'a>>,
 	) -> Self {
-		let mut iterator = TransactionIterRev {
+		let mut iterator = TransactionScanIter {
 			pending,
 			committed,
 			next_pending: None,
@@ -67,7 +60,7 @@ where
 	}
 }
 
-impl<'a, MVS> Iterator for TransactionIterRev<'a, MVS>
+impl<'a, MVS> Iterator for TransactionScanIter<'a, MVS>
 where
 	MVS: MultiVersionStore + 'a,
 {
@@ -80,17 +73,15 @@ where
 				// items to yield.
 				(Some((pending_key, _)), Some(committed)) => {
 					match pending_key.cmp(committed.key()) {
-						// Pending item has a larger
+						// Pending item has a smaller
 						// key, so yield this one.
-						cmp::Ordering::Greater => {
+						cmp::Ordering::Less => {
 							let (key, value) = self.next_pending.take().unwrap();
 							self.advance_pending();
 							self.last_yielded_key = Some(Either::Left(key));
 							let version = value.version;
 							match value.row() {
-								Some(value) => {
-									return Some((version, key, value).into());
-								}
+								Some(row) => return Some((version, key, row).into()),
 								None => continue,
 							}
 						}
@@ -108,10 +99,10 @@ where
 							// this time.
 							continue;
 						}
-						// Committed item has a larger
+						// Committed item has a smaller
 						// key, so we consider yielding
 						// this one.
-						cmp::Ordering::Less => {
+						cmp::Ordering::Greater => {
 							let committed = self.next_committed.take().unwrap();
 							self.advance_committed(); // Prepare the next committed item for future iterations.
 							// Yield the committed

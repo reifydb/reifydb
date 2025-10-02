@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_store_transaction::backend::{
-	memory::Memory,
-	sqlite::{Sqlite, SqliteConfig},
+	memory::MemoryBackend,
+	sqlite::{SqliteBackend, SqliteConfig},
 };
 use reifydb_transaction::mvcc::transaction::{optimistic::Optimistic, serializable::Serializable};
 
@@ -12,14 +12,15 @@ use crate::{
 	serializable, sqlite,
 };
 
-pub fn memory_optimistic() -> EmbeddedBuilder<Optimistic<Memory, SingleVersionMemory>, SingleVersionMemory, MemoryCdc> {
+pub fn memory_optimistic()
+-> EmbeddedBuilder<Optimistic<MemoryBackend, SingleVersionMemory>, SingleVersionMemory, MemoryCdc> {
 	let (storage, single, cdc, eventbus) = memory();
 	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
 	EmbeddedBuilder::new(multi, single, cdc, eventbus)
 }
 
 pub fn memory_serializable()
--> EmbeddedBuilder<Serializable<Memory, SingleVersionMemory>, SingleVersionMemory, MemoryCdc> {
+-> EmbeddedBuilder<Serializable<MemoryBackend, SingleVersionMemory>, SingleVersionMemory, MemoryCdc> {
 	let (storage, single, cdc, eventbus) = memory();
 	let (multi, _, _, _) = serializable((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
 	EmbeddedBuilder::new(multi, single, cdc, eventbus)
@@ -27,7 +28,7 @@ pub fn memory_serializable()
 
 pub fn sqlite_optimistic(
 	config: SqliteConfig,
-) -> EmbeddedBuilder<Optimistic<Sqlite, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
+) -> EmbeddedBuilder<Optimistic<SqliteBackend, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
 	let (storage, single, cdc, eventbus) = sqlite(config);
 	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
 	EmbeddedBuilder::new(multi, single, cdc, eventbus)
@@ -35,7 +36,7 @@ pub fn sqlite_optimistic(
 
 pub fn sqlite_serializable(
 	config: SqliteConfig,
-) -> EmbeddedBuilder<Serializable<Sqlite, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
+) -> EmbeddedBuilder<Serializable<SqliteBackend, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc> {
 	let (storage, single, cdc, eventbus) = sqlite(config);
 	let (multi, _, _, _) = serializable((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
 	EmbeddedBuilder::new(multi, single, cdc, eventbus)

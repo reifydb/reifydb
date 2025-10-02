@@ -8,16 +8,14 @@ use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, async_cow_vec,
 	delta::Delta,
-	interface::{
-		Cdc, CdcChange, CdcGet, CdcRange, CdcScan, CdcSequencedChange, CdcStorage, MultiVersionCommit,
-		MultiVersionGet, MultiVersionStore, TransactionId,
-	},
+	interface::{Cdc, CdcChange, CdcGet, CdcRange, CdcScan, CdcSequencedChange, CdcStore, TransactionId},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	memory::Memory,
-	sqlite::{Sqlite, SqliteConfig},
+	MultiVersionCommit, MultiVersionGet, MultiVersionStore,
+	memory::MemoryBackend,
+	sqlite::{SqliteBackend, SqliteConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
@@ -28,7 +26,7 @@ test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as cdc_sqlite 
 fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
-	let storage = Memory::new();
+	let storage = MemoryBackend::new();
 	testscript::run_path(&mut Runner::new(storage), path).expect("test failed")
 }
 
@@ -36,21 +34,21 @@ fn test_sqlite(path: &Path) {
 	temp_dir(|db_path| {
 		#[cfg(debug_assertions)]
 		mock_time_set(1000);
-		let storage = Sqlite::new(SqliteConfig::fast(db_path));
+		let storage = SqliteBackend::new(SqliteConfig::fast(db_path));
 		testscript::run_path(&mut Runner::new(storage), path)
 	})
 	.expect("test failed")
 }
 
 /// Runs CDC tests for storage implementations
-pub struct Runner<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStorage> {
+pub struct Runner<MVS: MultiVersionStore + CdcStore> {
 	storage: MVS,
 	next_version: CommitVersion,
 	/// Buffer of deltas to be committed
 	deltas: Vec<Delta>,
 }
 
-impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStorage> Runner<MVS> {
+impl<MVS: MultiVersionStore + CdcStore> Runner<MVS> {
 	fn new(storage: MVS) -> Self {
 		Self {
 			storage,
@@ -118,7 +116,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStorage>
 	}
 }
 
-impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStorage> testscript::Runner for Runner<MVS> {
+impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> testscript::Runner for Runner<MVS> {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {

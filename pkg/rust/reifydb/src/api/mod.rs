@@ -3,12 +3,15 @@
 
 use reifydb_core::{
 	event::EventBus,
-	interface::{CdcTransaction, MultiVersionStore, SingleVersionTransaction},
+	interface::{CdcTransaction, SingleVersionTransaction},
 };
 use reifydb_engine::StandardCdcTransaction;
-use reifydb_store_transaction::backend::{
-	memory::Memory,
-	sqlite::{Sqlite, SqliteConfig},
+use reifydb_store_transaction::{
+	MultiVersionStore,
+	backend::{
+		memory::MemoryBackend,
+		sqlite::{SqliteBackend, SqliteConfig},
+	},
 };
 use reifydb_transaction::{
 	mvcc::transaction::{optimistic::Optimistic, serializable::Serializable},
@@ -21,21 +24,23 @@ pub mod embedded;
 pub mod server;
 
 /// Convenience function to create in-memory storage
-pub fn memory() -> (Memory, SingleVersionLock<Memory>, StandardCdcTransaction<Memory>, EventBus) {
+pub fn memory() -> (MemoryBackend, SingleVersionLock<MemoryBackend>, StandardCdcTransaction<MemoryBackend>, EventBus) {
 	let eventbus = EventBus::new();
-	let memory = Memory::default();
+	let memory = MemoryBackend::default();
 	(
 		memory.clone(),
-		SingleVersionLock::new(Memory::new(), eventbus.clone()),
+		SingleVersionLock::new(MemoryBackend::new(), eventbus.clone()),
 		StandardCdcTransaction::new(memory),
 		eventbus,
 	)
 }
 
 /// Convenience function to create SQLite storage
-pub fn sqlite(config: SqliteConfig) -> (Sqlite, SingleVersionLock<Sqlite>, StandardCdcTransaction<Sqlite>, EventBus) {
+pub fn sqlite(
+	config: SqliteConfig,
+) -> (SqliteBackend, SingleVersionLock<SqliteBackend>, StandardCdcTransaction<SqliteBackend>, EventBus) {
 	let eventbus = EventBus::new();
-	let result = Sqlite::new(config);
+	let result = SqliteBackend::new(config);
 	(
 		result.clone(),
 		SingleVersionLock::new(result.clone(), eventbus.clone()),

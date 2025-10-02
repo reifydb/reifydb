@@ -13,12 +13,8 @@ use std::{ops::Deref, sync::Arc};
 
 pub use command::CommandTransaction;
 pub use query::QueryTransaction;
-use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange,
-	event::EventBus,
-	interface::{MultiVersionStore, SingleVersionTransaction},
-};
-use reifydb_store_transaction::memory::Memory;
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus, interface::SingleVersionTransaction};
+use reifydb_store_transaction::{MultiVersionStore, memory::MemoryBackend};
 
 use crate::{
 	mvcc::{
@@ -74,11 +70,11 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> Optimistic<MVS, SMV
 	}
 }
 
-impl Optimistic<Memory, SingleVersionLock<Memory>> {
+impl Optimistic<MemoryBackend, SingleVersionLock<MemoryBackend>> {
 	pub fn testing() -> Self {
-		let memory = Memory::new();
+		let memory = MemoryBackend::new();
 		let event_bus = EventBus::new();
-		Self::new(Memory::default(), SingleVersionLock::new(memory, event_bus.clone()), event_bus)
+		Self::new(MemoryBackend::default(), SingleVersionLock::new(memory, event_bus.clone()), event_bus)
 	}
 }
 

@@ -4,9 +4,9 @@
 use reifydb_core::{CommitVersion, CowVec, Result, interface::CdcCount, value::encoded::EncodedValues};
 use rusqlite::{OptionalExtension, params};
 
-use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
+use crate::{cdc::codec::decode_cdc_transaction, sqlite::SqliteBackend};
 
-impl CdcCount for Sqlite {
+impl CdcCount for SqliteBackend {
 	fn count(&self, version: CommitVersion) -> Result<usize> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();

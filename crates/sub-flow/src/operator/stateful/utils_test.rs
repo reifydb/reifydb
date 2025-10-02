@@ -16,7 +16,7 @@ pub mod test {
 		EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine,
 		StandardRowEvaluator,
 	};
-	use reifydb_store_transaction::memory::Memory;
+	use reifydb_store_transaction::memory::MemoryBackend;
 	use reifydb_transaction::{mvcc::transaction::optimistic::Optimistic, svl::SingleVersionLock};
 	use reifydb_type::{Type, Value};
 
@@ -27,14 +27,14 @@ pub mod test {
 
 	/// Test transaction type using optimistic concurrency control and memory storage
 	pub type TestTransaction = EngineTransaction<
-		Optimistic<Memory, SingleVersionLock<Memory>>,
-		SingleVersionLock<Memory>,
-		StandardCdcTransaction<Memory>,
+		Optimistic<MemoryBackend, SingleVersionLock<MemoryBackend>>,
+		SingleVersionLock<MemoryBackend>,
+		StandardCdcTransaction<MemoryBackend>,
 	>;
 
 	/// Create a test engine with memory storage and optimistic transactions
 	pub fn create_test_engine() -> StandardEngine<TestTransaction> {
-		let memory = Memory::new();
+		let memory = MemoryBackend::new();
 		let eventbus = EventBus::new();
 		let single = SingleVersionLock::new(memory.clone(), eventbus.clone());
 		let cdc = StandardCdcTransaction::new(memory.clone());

@@ -10,11 +10,11 @@ use reifydb_core::{
 };
 
 use crate::{
-	backend::sqlite::{Sqlite, read::Reader},
+	backend::sqlite::{SqliteBackend, read::Reader},
 	cdc::codec::decode_cdc_transaction,
 };
 
-impl CdcScan for Sqlite {
+impl CdcScan for SqliteBackend {
 	type ScanIter<'a> = Scan;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {

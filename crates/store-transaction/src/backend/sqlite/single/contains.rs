@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{EncodedKey, Result, interface::SingleVersionContains};
+use reifydb_core::{EncodedKey, Result};
 use rusqlite::params;
 
-use crate::backend::sqlite::Sqlite;
+use crate::{SingleVersionContains, backend::sqlite::SqliteBackend};
 
-impl SingleVersionContains for Sqlite {
+impl SingleVersionContains for SqliteBackend {
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();

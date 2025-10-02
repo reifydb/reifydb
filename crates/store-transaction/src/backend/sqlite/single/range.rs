@@ -3,27 +3,27 @@
 
 use std::{collections::VecDeque, ops::Bound};
 
-use reifydb_core::{
-	EncodedKey, EncodedKeyRange, Result,
-	interface::{SingleVersionRange, SingleVersionValues},
-};
+use reifydb_core::{EncodedKey, EncodedKeyRange, Result, interface::SingleVersionValues};
 
 use super::{build_single_query, execute_range_query};
-use crate::backend::sqlite::{Sqlite, read::Reader};
+use crate::{
+	SingleVersionRange,
+	backend::sqlite::{SqliteBackend, read::Reader},
+};
 
-impl SingleVersionRange for Sqlite {
+impl SingleVersionRange for SqliteBackend {
 	type Range<'a>
-		= Range
+		= SingleVersionRangeIter
 	where
 		Self: 'a;
 
 	fn range(&self, range: EncodedKeyRange) -> Result<Self::Range<'_>> {
-		Ok(Range::new(self.get_reader(), range, 1024))
+		Ok(SingleVersionRangeIter::new(self.get_reader(), range, 1024))
 	}
 }
 
-pub struct Range {
-	conn: Reader,
+pub struct SingleVersionRangeIter {
+	reader: Reader,
 	range: EncodedKeyRange,
 	buffer: VecDeque<SingleVersionValues>,
 	last_key: Option<EncodedKey>,
@@ -31,10 +31,10 @@ pub struct Range {
 	exhausted: bool,
 }
 
-impl Range {
-	pub fn new(conn: Reader, range: EncodedKeyRange, batch_size: usize) -> Self {
+impl SingleVersionRangeIter {
+	pub fn new(reader: Reader, range: EncodedKeyRange, batch_size: usize) -> Self {
 		Self {
-			conn,
+			reader,
 			range,
 			buffer: VecDeque::new(),
 			last_key: None,
@@ -62,7 +62,7 @@ impl Range {
 		// for forward iteration
 		let (query_template, param_count) = build_single_query(start_bound, end_bound, "ASC");
 
-		let conn_guard = self.conn.lock().unwrap();
+		let conn_guard = self.reader.lock().unwrap();
 		let mut stmt = conn_guard.prepare(query_template).unwrap();
 
 		let count = execute_range_query(
@@ -86,7 +86,7 @@ impl Range {
 	}
 }
 
-impl Iterator for Range {
+impl Iterator for SingleVersionRangeIter {
 	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {

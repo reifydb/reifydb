@@ -8,9 +8,9 @@ use reifydb_core::{
 };
 use rusqlite::{OptionalExtension, params};
 
-use crate::{cdc::codec::decode_cdc_transaction, sqlite::Sqlite};
+use crate::{cdc::codec::decode_cdc_transaction, sqlite::SqliteBackend};
 
-impl CdcGet for Sqlite {
+impl CdcGet for SqliteBackend {
 	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
 		let conn = self.get_reader();
 		let conn_guard = conn.lock().unwrap();

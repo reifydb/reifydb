@@ -14,13 +14,14 @@ use std::{error::Error as StdError, fmt::Write, path::Path};
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
-	interface::{SingleVersionStore, SingleVersionValues},
+	interface::SingleVersionValues,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
-	memory::Memory,
-	sqlite::{Sqlite, SqliteConfig},
+	SingleVersionStore,
+	memory::MemoryBackend,
+	sqlite::{SqliteBackend, SqliteConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
@@ -29,23 +30,25 @@ test_each_path! { in "crates/store-transaction/tests/scripts/single" as single_m
 test_each_path! { in "crates/store-transaction/tests/scripts/single" as single_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	testscript::run_path(&mut Runner::new(Memory::default()), path).expect("test failed")
+	testscript::run_path(&mut Runner::new(MemoryBackend::default()), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
-	temp_dir(|db_path| testscript::run_path(&mut Runner::new(Sqlite::new(SqliteConfig::fast(db_path))), path))
-		.expect("test failed")
+	temp_dir(|db_path| {
+		testscript::run_path(&mut Runner::new(SqliteBackend::new(SqliteConfig::fast(db_path))), path)
+	})
+	.expect("test failed")
 }
 
 /// Runs engine tests.
 pub struct Runner<SVS: SingleVersionStore> {
-	storage: SVS,
+	store: SVS,
 }
 
 impl<SVS: SingleVersionStore> Runner<SVS> {
-	fn new(storage: SVS) -> Self {
+	fn new(store: SVS) -> Self {
 		Self {
-			storage,
+			store,
 		}
 	}
 }
@@ -59,7 +62,7 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
-				let value = self.storage.get(&key).unwrap().map(|sv| sv.values.to_vec());
+				let value = self.store.get(&key).unwrap().map(|sv| sv.values.to_vec());
 				writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
 			}
 			// contains KEY
@@ -67,7 +70,7 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
-				let contains = self.storage.contains(&key).unwrap();
+				let contains = self.store.contains(&key).unwrap();
 				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
 			}
 
@@ -78,9 +81,9 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.storage.scan().unwrap())
+					print(&mut output, self.store.scan().unwrap())
 				} else {
-					print(&mut output, self.storage.scan_rev().unwrap())
+					print(&mut output, self.store.scan_rev().unwrap())
 				};
 			}
 			// range RANGE [reverse=BOOL]
@@ -93,9 +96,9 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.storage.range(range).unwrap())
+					print(&mut output, self.store.range(range).unwrap())
 				} else {
-					print(&mut output, self.storage.range_rev(range).unwrap())
+					print(&mut output, self.store.range_rev(range).unwrap())
 				};
 			}
 
@@ -108,9 +111,9 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.storage.prefix(&prefix).unwrap())
+					print(&mut output, self.store.prefix(&prefix).unwrap())
 				} else {
-					print(&mut output, self.storage.prefix_rev(&prefix).unwrap())
+					print(&mut output, self.store.prefix_rev(&prefix).unwrap())
 				};
 			}
 
@@ -122,7 +125,7 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				let values = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
-				self.storage
+				self.store
 					.commit(async_cow_vec![
 						(Delta::Set {
 							key,
@@ -138,7 +141,7 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 
-				self.storage
+				self.store
 					.commit(async_cow_vec![
 						(Delta::Remove {
 							key

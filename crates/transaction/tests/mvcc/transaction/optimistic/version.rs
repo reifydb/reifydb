@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_transaction::mvcc::transaction::{
-	iter::TransactionIter, iter_rev::TransactionIterRev, optimistic::Optimistic,
+	optimistic::Optimistic, scan::TransactionScanIter, scan_rev::TransactionScanRevIter,
 };
 
 use crate::{as_key, as_row, from_row, mvcc::transaction::FromRow};
@@ -28,7 +28,7 @@ fn test_versions() {
 		assert_eq!(i + 1, engine.version().unwrap());
 	}
 
-	let check_iter = |itr: TransactionIter<'_, _>, i: u64| {
+	let check_iter = |itr: TransactionScanIter<'_, _>, i: u64| {
 		let mut count = 0;
 		for sv in itr {
 			assert_eq!(sv.key(), &k0);
@@ -39,7 +39,7 @@ fn test_versions() {
 		assert_eq!(1, count) // should only loop once.
 	};
 
-	let check_rev_iter = |itr: TransactionIterRev<'_, _>, i: u64| {
+	let check_rev_iter = |itr: TransactionScanRevIter<'_, _>, i: u64| {
 		let mut count = 0;
 		for sv in itr {
 			let value = from_row!(u64, sv.row());

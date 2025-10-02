@@ -7,7 +7,7 @@ use reifydb_catalog::{
 	table::{TableColumnToCreate, TableToCreate},
 };
 use reifydb_core::{event::EventBus, interceptor::Interceptors};
-use reifydb_store_transaction::memory::Memory;
+use reifydb_store_transaction::memory::MemoryBackend;
 use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
 use reifydb_type::{Type, TypeConstraint};
 
@@ -15,12 +15,12 @@ use crate::{EngineTransaction, StandardCommandTransaction, transaction::Standard
 
 pub fn create_test_command_transaction() -> StandardCommandTransaction<
 	EngineTransaction<
-		Serializable<Memory, SingleVersionLock<Memory>>,
-		SingleVersionLock<Memory>,
-		StandardCdcTransaction<Memory>,
+		Serializable<MemoryBackend, SingleVersionLock<MemoryBackend>>,
+		SingleVersionLock<MemoryBackend>,
+		StandardCdcTransaction<MemoryBackend>,
 	>,
 > {
-	let memory = Memory::new();
+	let memory = MemoryBackend::new();
 	let event_bus = EventBus::new();
 	let single = SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());
@@ -31,12 +31,12 @@ pub fn create_test_command_transaction() -> StandardCommandTransaction<
 
 pub fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction<
 	EngineTransaction<
-		Serializable<Memory, SingleVersionLock<Memory>>,
-		SingleVersionLock<Memory>,
-		StandardCdcTransaction<Memory>,
+		Serializable<MemoryBackend, SingleVersionLock<MemoryBackend>>,
+		SingleVersionLock<MemoryBackend>,
+		StandardCdcTransaction<MemoryBackend>,
 	>,
 > {
-	let memory = Memory::new();
+	let memory = MemoryBackend::new();
 	let event_bus = EventBus::new();
 	let single = SingleVersionLock::new(memory.clone(), event_bus.clone());
 	let cdc = StandardCdcTransaction::new(memory.clone());

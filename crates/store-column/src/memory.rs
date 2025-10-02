@@ -6,12 +6,11 @@ use std::sync::Arc;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	CommitVersion,
-	interface::{ColumnStatistics, ColumnStore},
 	value::column::{ColumnData, Columns, CompressedColumn},
 };
 use reifydb_type::Result;
 
-use crate::{Partition, PartitionKey, statistics::merge};
+use crate::{ColumnStatistics, ColumnStore, Partition, PartitionKey, statistics::merge};
 
 #[derive(Clone)]
 pub struct MemoryColumnStore {

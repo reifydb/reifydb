@@ -3,34 +3,34 @@
 
 use std::collections::VecDeque;
 
-use reifydb_core::{
-	EncodedKey, Result,
-	interface::{SingleVersionScanRev, SingleVersionValues},
-};
+use reifydb_core::{EncodedKey, Result, interface::SingleVersionValues};
 
 use super::execute_scan_query;
-use crate::backend::sqlite::{Sqlite, read::Reader};
+use crate::{
+	SingleVersionScanRev,
+	backend::sqlite::{SqliteBackend, read::Reader},
+};
 
-impl SingleVersionScanRev for Sqlite {
-	type ScanIterRev<'a> = IterRev;
+impl SingleVersionScanRev for SqliteBackend {
+	type ScanIterRev<'a> = SingleVersionScanRevIter;
 
 	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
-		Ok(IterRev::new(self.get_reader(), 1024))
+		Ok(SingleVersionScanRevIter::new(self.get_reader(), 1024))
 	}
 }
 
-pub struct IterRev {
-	conn: Reader,
+pub struct SingleVersionScanRevIter {
+	reader: Reader,
 	buffer: VecDeque<SingleVersionValues>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
 }
 
-impl IterRev {
-	pub fn new(conn: Reader, batch_size: usize) -> Self {
+impl SingleVersionScanRevIter {
+	pub fn new(reader: Reader, batch_size: usize) -> Self {
 		Self {
-			conn,
+			reader,
 			buffer: VecDeque::new(),
 			last_key: None,
 			batch_size,
@@ -46,7 +46,7 @@ impl IterRev {
 		self.buffer.clear();
 
 		let count = execute_scan_query(
-			&self.conn,
+			&self.reader,
 			self.batch_size,
 			self.last_key.as_ref(),
 			"DESC",
@@ -66,7 +66,7 @@ impl IterRev {
 	}
 }
 
-impl Iterator for IterRev {
+impl Iterator for SingleVersionScanRevIter {
 	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {

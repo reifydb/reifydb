@@ -6,8 +6,8 @@ mod get;
 mod range;
 mod scan;
 
-use reifydb_core::interface::CdcStorage;
+use reifydb_core::interface::CdcStore;
 
-use crate::backend::memory::Memory;
+use crate::backend::memory::MemoryBackend;
 
-impl CdcStorage for Memory {}
+impl CdcStore for MemoryBackend {}

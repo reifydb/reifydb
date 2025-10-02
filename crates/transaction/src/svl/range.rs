@@ -7,7 +7,7 @@ use reifydb_core::{EncodedKey, delta::Delta, interface::SingleVersionValues};
 
 /// Iterator for scanning a range in an SVL WriteTransaction with owned values.
 /// This avoids lifetime issues with the storage lock.
-pub struct SvlRange {
+pub struct SvlRangeIter {
 	/// Iterator over committed data
 	committed: IntoIter<SingleVersionValues>,
 	/// Iterator over pending changes
@@ -20,9 +20,9 @@ pub struct SvlRange {
 	last_yielded_key: Option<EncodedKey>,
 }
 
-impl SvlRange {
+impl SvlRangeIter {
 	pub fn new(pending: IntoIter<(EncodedKey, Delta)>, committed: IntoIter<SingleVersionValues>) -> Self {
-		let mut iterator = SvlRange {
+		let mut iterator = SvlRangeIter {
 			pending,
 			committed,
 			next_pending: None,
@@ -45,7 +45,7 @@ impl SvlRange {
 	}
 }
 
-impl Iterator for SvlRange {
+impl Iterator for SvlRangeIter {
 	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {

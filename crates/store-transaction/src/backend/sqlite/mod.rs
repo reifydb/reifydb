@@ -16,22 +16,23 @@ use std::{
 };
 
 pub use config::*;
+pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
 use read::Readers;
-use reifydb_core::{
-	CowVec,
-	delta::Delta,
-	interface::{CdcStorage, MultiVersionStore, SingleVersionInsert, SingleVersionRemove, SingleVersionStore},
-};
+use reifydb_core::{CowVec, delta::Delta, interface::CdcStore};
 use reifydb_type::Error;
 use rusqlite::Connection;
+pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
 use write::{WriteCommand, Writer};
 
-use crate::backend::diagnostic::connection_failed;
+use crate::{
+	MultiVersionStore, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
+	backend::diagnostic::connection_failed,
+};
 
 #[derive(Clone)]
-pub struct Sqlite(Arc<SqliteInner>);
+pub struct SqliteBackend(Arc<SqliteBackendInner>);
 
-pub struct SqliteInner {
+pub struct SqliteBackendInner {
 	readers: Readers,
 	writer: mpsc::Sender<WriteCommand>,
 	#[allow(dead_code)]
@@ -40,21 +41,21 @@ pub struct SqliteInner {
 	config: SqliteConfig,
 }
 
-impl Deref for Sqlite {
-	type Target = SqliteInner;
+impl Deref for SqliteBackend {
+	type Target = SqliteBackendInner;
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-impl Drop for SqliteInner {
+impl Drop for SqliteBackendInner {
 	fn drop(&mut self) {
 		// Send shutdown command to writer actor
 		let _ = self.writer.send(WriteCommand::Shutdown);
 	}
 }
 
-impl Sqlite {
+impl SqliteBackend {
 	/// Create a new Sqlite storage with the given configuration
 	pub fn new(config: SqliteConfig) -> Self {
 		let db_path = Self::resolve_db_path(&config.path);
@@ -97,7 +98,7 @@ impl Sqlite {
 			.unwrap();
 		}
 
-		Self(Arc::new(SqliteInner {
+		Self(Arc::new(SqliteBackendInner {
 			readers: Readers::new(&db_path, flags, 4).unwrap(),
 			writer: Writer::spawn(&db_path, flags).unwrap(),
 			flags,
@@ -189,11 +190,11 @@ impl Sqlite {
 	}
 }
 
-impl MultiVersionStore for Sqlite {}
-impl SingleVersionStore for Sqlite {}
-impl SingleVersionInsert for Sqlite {}
-impl SingleVersionRemove for Sqlite {}
-impl CdcStorage for Sqlite {}
+impl MultiVersionStore for SqliteBackend {}
+impl SingleVersionStore for SqliteBackend {}
+impl SingleVersionSet for SqliteBackend {}
+impl SingleVersionRemove for SqliteBackend {}
+impl CdcStore for SqliteBackend {}
 
 #[cfg(test)]
 mod tests {
@@ -207,7 +208,7 @@ mod tests {
 			let dir_path = temp_path.join("mydb");
 
 			// Test with directory path (no extension)
-			let result = Sqlite::resolve_db_path(&dir_path);
+			let result = SqliteBackend::resolve_db_path(&dir_path);
 
 			// Should append reify.crates to directory
 			assert_eq!(result, dir_path.join("reify.crates"));
@@ -227,7 +228,7 @@ mod tests {
 			let file_path = temp_path.join("custom.crates");
 
 			// Test with file path (has extension)
-			let result = Sqlite::resolve_db_path(&file_path);
+			let result = SqliteBackend::resolve_db_path(&file_path);
 
 			// Should use the exact path provided
 			assert_eq!(result, file_path);
@@ -246,7 +247,7 @@ mod tests {
 			let nested_path = temp_path.join("level1").join("level2").join("mydb");
 
 			// Test with nested directory path
-			let result = Sqlite::resolve_db_path(&nested_path);
+			let result = SqliteBackend::resolve_db_path(&nested_path);
 
 			// Should create nested directories and append reify.crates
 			assert_eq!(result, nested_path.join("reify.crates"));
@@ -264,7 +265,7 @@ mod tests {
 			let nested_file = temp_path.join("level1").join("level2").join("database.sqlite");
 
 			// Test with nested file path
-			let result = Sqlite::resolve_db_path(&nested_file);
+			let result = SqliteBackend::resolve_db_path(&nested_file);
 
 			// Should create parent directories and use exact
 			// filename
@@ -281,19 +282,19 @@ mod tests {
 		temp_dir(|temp_path| {
 			// Test with .crates extension
 			let db_file = temp_path.join("test.crates");
-			assert_eq!(Sqlite::resolve_db_path(&db_file), db_file);
+			assert_eq!(SqliteBackend::resolve_db_path(&db_file), db_file);
 
 			// Test with .sqlite extension
 			let sqlite_file = temp_path.join("test.sqlite");
-			assert_eq!(Sqlite::resolve_db_path(&sqlite_file), sqlite_file);
+			assert_eq!(SqliteBackend::resolve_db_path(&sqlite_file), sqlite_file);
 
 			// Test with .reifydb extension
 			let reifydb_file = temp_path.join("test.reifydb");
-			assert_eq!(Sqlite::resolve_db_path(&reifydb_file), reifydb_file);
+			assert_eq!(SqliteBackend::resolve_db_path(&reifydb_file), reifydb_file);
 
 			// Test with no extension (directory)
 			let no_ext = temp_path.join("testdb");
-			assert_eq!(Sqlite::resolve_db_path(&no_ext), no_ext.join("reify.crates"));
+			assert_eq!(SqliteBackend::resolve_db_path(&no_ext), no_ext.join("reify.crates"));
 
 			Ok(())
 		})
@@ -304,7 +305,7 @@ mod tests {
 	fn test_sqlite_creation_with_new_config() {
 		temp_dir(|db_path| {
 			let config = SqliteConfig::new(db_path.join("test.reifydb"));
-			let storage = Sqlite::new(config);
+			let storage = SqliteBackend::new(config);
 
 			// Verify we can get a reader connection
 			let conn = storage.get_reader();
@@ -318,7 +319,7 @@ mod tests {
 	fn test_sqlite_creation_with_safe_config() {
 		temp_dir(|db_path| {
 			let config = SqliteConfig::safe(db_path.join("safe.reifydb"));
-			let storage = Sqlite::new(config);
+			let storage = SqliteBackend::new(config);
 
 			// Verify we can get a reader connection
 			let conn = storage.get_reader();
@@ -332,7 +333,7 @@ mod tests {
 	fn test_sqlite_creation_with_fast_config() {
 		temp_dir(|db_path| {
 			let config = SqliteConfig::fast(db_path.join("fast.reifydb"));
-			let storage = Sqlite::new(config);
+			let storage = SqliteBackend::new(config);
 
 			// Verify we can get a reader connection
 			let conn = storage.get_reader();
@@ -346,7 +347,7 @@ mod tests {
 	fn test_directory_path_handling() {
 		temp_dir(|db_path| {
 			let config = SqliteConfig::new(db_path);
-			let storage = Sqlite::new(config);
+			let storage = SqliteBackend::new(config);
 
 			let conn = storage.get_reader();
 			let _guard = conn.lock().unwrap();
@@ -363,7 +364,7 @@ mod tests {
 			// Test with specific file path
 			let db_file = db_path.join("custom.reifydb");
 			let config = SqliteConfig::new(&db_file);
-			let storage = Sqlite::new(config);
+			let storage = SqliteBackend::new(config);
 
 			// Verify we can get a reader connection
 			let conn = storage.get_reader();
@@ -386,7 +387,7 @@ mod tests {
 				.shared_cache(true)
 				.uri(true));
 
-			let storage = Sqlite::new(config);
+			let storage = SqliteBackend::new(config);
 
 			let conn = storage.get_reader();
 			let _guard = conn.lock().unwrap();
@@ -399,7 +400,7 @@ mod tests {
 	fn test_tables_created() {
 		temp_dir(|db_path| {
 			let config = SqliteConfig::new(db_path.join("tables.reifydb"));
-			let storage = Sqlite::new(config);
+			let storage = SqliteBackend::new(config);
 			let conn = storage.get_reader();
 			let conn_guard = conn.lock().unwrap();
 
@@ -418,59 +419,5 @@ mod tests {
 			Ok(())
 		})
 		.expect("test failed");
-	}
-}
-
-// SqliteTransactionBackend wrapper for encoded store specific behavior
-#[derive(Clone)]
-pub struct SqliteTransactionBackend {
-	inner: Sqlite,
-}
-
-impl SqliteTransactionBackend {
-	pub fn open(_path: impl AsRef<std::path::Path>) -> crate::Result<Self> {
-		todo!("Implement SqliteTransactionBackend::open")
-	}
-
-	pub fn get(
-		&self,
-		key: &reifydb_core::EncodedKey,
-		version: reifydb_core::CommitVersion,
-	) -> crate::Result<Option<reifydb_core::interface::MultiVersionValues>> {
-		use reifydb_core::interface::MultiVersionGet;
-		self.inner.get(key, version)
-	}
-
-	pub fn put(&self, _row: reifydb_core::interface::MultiVersionValues) -> crate::Result<()> {
-		todo!("Implement put for SqliteTransactionBackend")
-	}
-
-	pub fn delete(
-		&self,
-		_key: &reifydb_core::EncodedKey,
-		_version: reifydb_core::CommitVersion,
-	) -> crate::Result<()> {
-		todo!("Implement delete for SqliteTransactionBackend")
-	}
-
-	pub fn range(
-		&self,
-		range: reifydb_core::EncodedKeyRange,
-		version: reifydb_core::CommitVersion,
-	) -> crate::Result<Vec<reifydb_core::interface::MultiVersionValues>> {
-		use reifydb_core::interface::MultiVersionRange;
-		Ok(self.inner.range(range, version)?.collect())
-	}
-
-	pub fn count(&self) -> usize {
-		todo!("Implement count for SqliteTransactionBackend")
-	}
-
-	pub fn name(&self) -> &str {
-		"sqlite"
-	}
-
-	pub fn is_available(&self) -> bool {
-		true
 	}
 }

@@ -3,22 +3,26 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+pub use reifydb_type::Result;
+
 pub mod backend;
 pub(crate) mod cdc;
 pub mod config;
+mod multi;
+mod single;
 mod store;
 
-pub use backend::{Backend, MultiVersionTransactionBackend};
 pub use config::{BackendConfig, MergeConfig, RetentionConfig, TransactionStoreConfig};
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-pub use reifydb_type::Result;
+pub use multi::*;
+pub use single::*;
 pub use store::StandardTransactionStore;
 
 pub mod memory {
-	pub use crate::backend::memory::Memory;
+	pub use crate::backend::memory::MemoryBackend;
 }
 pub mod sqlite {
-	pub use crate::backend::sqlite::{Sqlite, SqliteConfig};
+	pub use crate::backend::sqlite::{SqliteBackend, SqliteConfig};
 }
 
 pub struct TransactionStoreVersion;

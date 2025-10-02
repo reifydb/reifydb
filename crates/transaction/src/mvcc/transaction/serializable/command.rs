@@ -20,8 +20,8 @@ use reifydb_type::Error;
 use super::*;
 use crate::mvcc::{
 	transaction::{
-		TransactionManagerCommand, iter::TransactionIter, iter_rev::TransactionIterRev,
-		range::TransactionRange, range_rev::TransactionRangeRev, version::StdVersionProvider,
+		TransactionManagerCommand, range::TransactionRangeIter, range_rev::TransactionRangeRevIter,
+		scan::TransactionScanIter, scan_rev::TransactionScanRevIter, version::StdVersionProvider,
 	},
 	types::TransactionValue,
 };
@@ -123,7 +123,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 		self.tm.remove(key)
 	}
 
-	pub fn scan(&mut self) -> Result<TransactionIter<'_, MVS>, reifydb_type::Error> {
+	pub fn scan(&mut self) -> Result<TransactionScanIter<'_, MVS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let pending = pw.iter();
@@ -131,10 +131,10 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 		marker.mark_range(EncodedKeyRange::all());
 		let commited = self.engine.multi.scan(version)?;
 
-		Ok(TransactionIter::new(pending, commited, Some(marker)))
+		Ok(TransactionScanIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn scan_rev(&mut self) -> Result<TransactionIterRev<'_, MVS>, reifydb_type::Error> {
+	pub fn scan_rev(&mut self) -> Result<TransactionScanRevIter<'_, MVS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let pending = pw.iter().rev();
@@ -142,10 +142,10 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 		marker.mark_range(EncodedKeyRange::all());
 		let commited = self.engine.multi.scan_rev(version)?;
 
-		Ok(TransactionIterRev::new(pending, commited, Some(marker)))
+		Ok(TransactionScanRevIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn range(&mut self, range: EncodedKeyRange) -> Result<TransactionRange<'_, MVS>, reifydb_type::Error> {
+	pub fn range(&mut self, range: EncodedKeyRange) -> Result<TransactionRangeIter<'_, MVS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -155,13 +155,13 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 		let pending = pw.range((start, end));
 		let commited = self.engine.multi.range(range, version)?;
 
-		Ok(TransactionRange::new(pending, commited, Some(marker)))
+		Ok(TransactionRangeIter::new(pending, commited, Some(marker)))
 	}
 
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
-	) -> Result<TransactionRangeRev<'_, MVS>, reifydb_type::Error> {
+	) -> Result<TransactionRangeRevIter<'_, MVS>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -171,17 +171,20 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 		let pending = pw.range((start, end));
 		let commited = self.engine.multi.range_rev(range, version)?;
 
-		Ok(TransactionRangeRev::new(pending.rev(), commited, Some(marker)))
+		Ok(TransactionRangeRevIter::new(pending.rev(), commited, Some(marker)))
 	}
 
-	pub fn prefix<'a>(&'a mut self, prefix: &EncodedKey) -> Result<TransactionRange<'a, MVS>, reifydb_type::Error> {
+	pub fn prefix<'a>(
+		&'a mut self,
+		prefix: &EncodedKey,
+	) -> Result<TransactionRangeIter<'a, MVS>, reifydb_type::Error> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 
 	pub fn prefix_rev<'a>(
 		&'a mut self,
 		prefix: &EncodedKey,
-	) -> Result<TransactionRangeRev<'a, MVS>, reifydb_type::Error> {
+	) -> Result<TransactionRangeRevIter<'a, MVS>, reifydb_type::Error> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }

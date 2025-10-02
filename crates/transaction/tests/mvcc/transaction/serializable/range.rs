@@ -11,7 +11,7 @@
 
 use reifydb_core::EncodedKeyRange;
 use reifydb_transaction::mvcc::transaction::{
-	range::TransactionRange, range_rev::TransactionRangeRev, serializable::Serializable,
+	range::TransactionRangeIter, range_rev::TransactionRangeRevIter, serializable::Serializable,
 };
 
 use crate::{as_key, as_row, from_row, mvcc::transaction::FromRow};
@@ -186,7 +186,7 @@ fn test_range_edge() {
 		assert_eq!(5, engine.version().unwrap());
 	}
 
-	let check_iter = |itr: TransactionRange<'_, _>, expected: &[u64]| {
+	let check_iter = |itr: TransactionRangeIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
 			assert_eq!(expected[i], from_row!(u64, *r.row()));
@@ -195,7 +195,7 @@ fn test_range_edge() {
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |itr: TransactionRangeRev<'_, _>, expected: &[u64]| {
+	let check_rev_iter = |itr: TransactionRangeRevIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
 			assert_eq!(expected[i], from_row!(u64, *r.row()));

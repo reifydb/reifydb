@@ -8,12 +8,11 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion,
-	interface::{ColumnStatistics, ColumnStore},
 	value::column::{ColumnData, CompressedColumn},
 };
 use reifydb_type::Result;
 
-use crate::{backend::Backend, config::ColumnStoreConfig, statistics::merge};
+use crate::{ColumnStatistics, ColumnStore, backend::Backend, config::ColumnStoreConfig, statistics::merge};
 
 #[derive(Clone)]
 pub struct StandardColumnStore {

@@ -10,34 +10,33 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use crossbeam_skiplist::map::Range as MapRange;
-use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange, Result,
-	interface::{MultiVersionRange, MultiVersionValues, SingleVersionRange as RangeInterface, SingleVersionValues},
-	value::encoded::EncodedValues,
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, Result, interface::MultiVersionValues};
+
+use crate::{
+	MultiVersionRange,
+	backend::memory::{MemoryBackend, MultiVersionTransactionContainer},
 };
 
-use crate::backend::memory::{Memory, MultiVersionTransactionContainer};
-
-impl MultiVersionRange for Memory {
+impl MultiVersionRange for MemoryBackend {
 	type RangeIter<'a>
-		= Range<'a>
+		= MultiVersionRangeIter<'a>
 	where
 		Self: 'a;
 
 	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIter<'_>> {
-		Ok(Range {
+		Ok(MultiVersionRangeIter {
 			range: self.multi.range(range),
 			version,
 		})
 	}
 }
 
-pub struct Range<'a> {
+pub struct MultiVersionRangeIter<'a> {
 	pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, MultiVersionTransactionContainer>,
 	pub(crate) version: CommitVersion,
 }
 
-impl Iterator for Range<'_> {
+impl Iterator for MultiVersionRangeIter<'_> {
 	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -51,34 +50,5 @@ impl Iterator for Range<'_> {
 				});
 			}
 		}
-	}
-}
-
-impl RangeInterface for Memory {
-	type Range<'a>
-		= SingleVersionRange<'a>
-	where
-		Self: 'a;
-
-	fn range(&self, range: EncodedKeyRange) -> Result<Self::Range<'_>> {
-		Ok(SingleVersionRange {
-			range: self.single.range(range),
-		})
-	}
-}
-
-pub struct SingleVersionRange<'a> {
-	pub(crate) range: MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, EncodedValues>,
-}
-
-impl Iterator for SingleVersionRange<'_> {
-	type Item = SingleVersionValues;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let item = self.range.next()?;
-		Some(SingleVersionValues {
-			key: item.key().clone(),
-			values: item.value().clone(),
-		})
 	}
 }

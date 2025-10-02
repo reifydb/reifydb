@@ -9,10 +9,8 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange,
-	interface::{MultiVersionStore, SingleVersionTransaction},
-};
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::SingleVersionTransaction};
+use reifydb_store_transaction::MultiVersionStore;
 
 use crate::mvcc::{
 	transaction::{query::TransactionManagerQuery, serializable::Serializable, version::StdVersionProvider},

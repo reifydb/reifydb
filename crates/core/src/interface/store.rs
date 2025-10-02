@@ -1,0 +1,19 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use crate::{CommitVersion, EncodedKey, value::encoded::EncodedValues};
+
+pub trait TransactionStore: Send + Sync + Clone + 'static {}
+
+#[derive(Debug)]
+pub struct MultiVersionValues {
+	pub key: EncodedKey,
+	pub values: EncodedValues,
+	pub version: CommitVersion,
+}
+
+#[derive(Debug)]
+pub struct SingleVersionValues {
+	pub key: EncodedKey,
+	pub values: EncodedValues,
+}

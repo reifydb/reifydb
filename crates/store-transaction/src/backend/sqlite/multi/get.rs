@@ -2,19 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, Result,
-	interface::{MultiVersionGet, MultiVersionValues},
-	value::encoded::EncodedValues,
+	CommitVersion, CowVec, EncodedKey, Result, interface::MultiVersionValues, value::encoded::EncodedValues,
 };
 use rusqlite::{OptionalExtension, params};
 
 use super::table_name;
-use crate::backend::sqlite::Sqlite;
+use crate::{MultiVersionGet, backend::sqlite::SqliteBackend};
 
-impl MultiVersionGet for Sqlite {
+impl MultiVersionGet for SqliteBackend {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<MultiVersionValues>> {
-		let conn = self.get_reader();
-		let conn_guard = conn.lock().unwrap();
+		let reader = self.get_reader();
+		let guard = reader.lock().unwrap();
 
 		let table = table_name(key)?;
 		let query = format!(
@@ -22,24 +20,23 @@ impl MultiVersionGet for Sqlite {
 			table
 		);
 
-		Ok(conn_guard
-			.query_row(&query, params![key.to_vec(), version], |row| {
-				// Check if value is NULL (which indicates deletion)
-				let value: Option<Vec<u8>> = row.get(1)?;
-				match value {
-					Some(val) => {
-						let encoded_row = EncodedValues(CowVec::new(val));
-						Ok(Some(MultiVersionValues {
-							key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-							values: encoded_row,
-							version: row.get(2)?,
-						}))
-					}
-					None => Ok(None), // NULL value means deleted
+		Ok(guard.query_row(&query, params![key.to_vec(), version], |row| {
+			// Check if value is NULL (which indicates deletion)
+			let value: Option<Vec<u8>> = row.get(1)?;
+			match value {
+				Some(val) => {
+					let encoded_row = EncodedValues(CowVec::new(val));
+					Ok(Some(MultiVersionValues {
+						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
+						values: encoded_row,
+						version: row.get(2)?,
+					}))
 				}
-			})
-			.optional()
-			.unwrap()
-			.flatten())
+				None => Ok(None), // NULL value means deleted
+			}
+		})
+		.optional()
+		.unwrap()
+		.flatten())
 	}
 }

@@ -10,11 +10,11 @@ use reifydb_core::{
 };
 
 use crate::{
-	backend::sqlite::{Sqlite, read::Reader},
+	backend::sqlite::{SqliteBackend, read::Reader},
 	cdc::codec::decode_cdc_transaction,
 };
 
-impl CdcRange for Sqlite {
+impl CdcRange for SqliteBackend {
 	type RangeIter<'a> = Range;
 
 	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Result<Self::RangeIter<'_>> {

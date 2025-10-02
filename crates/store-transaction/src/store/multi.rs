@@ -2,38 +2,34 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-	delta::Delta,
-	interface::{
-		MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
-		MultiVersionScan, MultiVersionScanRev, MultiVersionStore, MultiVersionValues, TransactionId,
-	},
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, TransactionId, delta::Delta, interface::MultiVersionValues,
 };
 
 use super::StandardTransactionStore;
+use crate::{
+	MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
+	MultiVersionScan, MultiVersionScanRev, MultiVersionStore,
+};
 
 pub trait MultiVersionIter: Iterator<Item = MultiVersionValues> + Send {}
 impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionValues> {}
 
 impl MultiVersionGet for StandardTransactionStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
-		// Check hot tier first
 		if let Some(hot) = &self.hot {
-			if let Some(row) = hot.get(key, version)? {
+			if let Some(row) = hot.multi.get(key, version)? {
 				return Ok(Some(row));
 			}
 		}
 
-		// Check warm tier
 		if let Some(warm) = &self.warm {
-			if let Some(row) = warm.get(key, version)? {
+			if let Some(row) = warm.multi.get(key, version)? {
 				return Ok(Some(row));
 			}
 		}
 
-		// Check cold tier
 		if let Some(cold) = &self.cold {
-			return cold.get(key, version);
+			return cold.multi.get(key, version);
 		}
 
 		Ok(None)

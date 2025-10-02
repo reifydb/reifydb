@@ -7,9 +7,9 @@ use reifydb_core::{
 	interface::{Cdc, CdcScan},
 };
 
-use crate::memory::Memory;
+use crate::memory::MemoryBackend;
 
-impl CdcScan for Memory {
+impl CdcScan for MemoryBackend {
 	type ScanIter<'a> = Scan<'a>;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {

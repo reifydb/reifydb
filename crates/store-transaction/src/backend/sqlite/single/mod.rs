@@ -1,6 +1,13 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
+use std::{collections::VecDeque, ops::Bound};
+
+use reifydb_core::{CowVec, EncodedKey, interface::SingleVersionValues, value::encoded::EncodedValues};
+use rusqlite::Statement;
+
+use crate::backend::sqlite::read::ReadConnection;
+
 mod commit;
 mod contains;
 mod get;
@@ -9,12 +16,10 @@ mod range_rev;
 mod scan;
 mod scan_rev;
 
-use std::{collections::VecDeque, ops::Bound};
-
-use reifydb_core::{CowVec, EncodedKey, interface::SingleVersionValues, value::encoded::EncodedValues};
-use rusqlite::Statement;
-
-use crate::backend::sqlite::read::ReadConnection;
+pub use range::SingleVersionRangeIter;
+pub use range_rev::SingleVersionRangeRevIter;
+pub use scan::SingleVersionScanIter;
+pub use scan_rev::SingleVersionScanRevIter;
 
 /// Helper function to build single query template and determine parameter
 /// count

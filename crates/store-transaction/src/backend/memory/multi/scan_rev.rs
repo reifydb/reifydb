@@ -12,32 +12,31 @@
 use core::iter::Rev;
 
 use crossbeam_skiplist::map::Iter as MapIter;
-use reifydb_core::{
-	CommitVersion, EncodedKey, Result,
-	interface::{MultiVersionScanRev, MultiVersionValues, SingleVersionScanRev, SingleVersionValues},
-	value::encoded::EncodedValues,
+use reifydb_core::{CommitVersion, EncodedKey, Result, interface::MultiVersionValues};
+
+use crate::{
+	MultiVersionScanRev,
+	backend::memory::{MemoryBackend, MultiVersionTransactionContainer},
 };
 
-use crate::backend::memory::{Memory, MultiVersionTransactionContainer};
-
-impl MultiVersionScanRev for Memory {
-	type ScanIterRev<'a> = IterRev<'a>;
+impl MultiVersionScanRev for MemoryBackend {
+	type ScanIterRev<'a> = MultiVersionScanRevIter<'a>;
 
 	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>> {
 		let iter = self.multi.iter();
-		Ok(IterRev {
+		Ok(MultiVersionScanRevIter {
 			iter: iter.rev(),
 			version,
 		})
 	}
 }
 
-pub struct IterRev<'a> {
+pub struct MultiVersionScanRevIter<'a> {
 	pub(crate) iter: Rev<MapIter<'a, EncodedKey, MultiVersionTransactionContainer>>,
 	pub(crate) version: CommitVersion,
 }
 
-impl Iterator for IterRev<'_> {
+impl Iterator for MultiVersionScanRevIter<'_> {
 	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -51,32 +50,5 @@ impl Iterator for IterRev<'_> {
 				});
 			}
 		}
-	}
-}
-
-impl SingleVersionScanRev for Memory {
-	type ScanIterRev<'a> = SingleVersionIterRev<'a>;
-
-	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
-		let iter = self.single.iter();
-		Ok(SingleVersionIterRev {
-			iter,
-		})
-	}
-}
-
-pub struct SingleVersionIterRev<'a> {
-	pub(crate) iter: MapIter<'a, EncodedKey, EncodedValues>,
-}
-
-impl Iterator for SingleVersionIterRev<'_> {
-	type Item = SingleVersionValues;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let item = self.iter.next_back()?;
-		Some(SingleVersionValues {
-			key: item.key().clone(),
-			values: item.value().clone(),
-		})
 	}
 }

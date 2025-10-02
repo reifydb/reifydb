@@ -3,24 +3,24 @@
 
 use std::collections::VecDeque;
 
-use reifydb_core::{
-	CommitVersion, EncodedKey, Result,
-	interface::{MultiVersionScan, MultiVersionValues},
-};
+use reifydb_core::{CommitVersion, EncodedKey, Result, interface::MultiVersionValues};
 
 use super::{execute_scan_query, get_table_names};
-use crate::backend::sqlite::{Sqlite, read::Reader};
+use crate::{
+	MultiVersionScan,
+	backend::sqlite::{SqliteBackend, read::Reader},
+};
 
-impl MultiVersionScan for Sqlite {
-	type ScanIter<'a> = Iter;
+impl MultiVersionScan for SqliteBackend {
+	type ScanIter<'a> = MultiVersionScanIter;
 
 	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
-		Ok(Iter::new(self.get_reader(), version, 1024))
+		Ok(MultiVersionScanIter::new(self.get_reader(), version, 1024))
 	}
 }
 
-pub struct Iter {
-	conn: Reader,
+pub struct MultiVersionScanIter {
+	reader: Reader,
 	version: CommitVersion,
 	table_names: Vec<String>,
 	buffer: VecDeque<MultiVersionValues>,
@@ -29,12 +29,12 @@ pub struct Iter {
 	exhausted: bool,
 }
 
-impl Iter {
-	pub fn new(conn: Reader, version: CommitVersion, batch_size: usize) -> Self {
-		let table_names = get_table_names(&conn);
+impl MultiVersionScanIter {
+	pub fn new(reader: Reader, version: CommitVersion, batch_size: usize) -> Self {
+		let table_names = get_table_names(&reader);
 
 		Self {
-			conn,
+			reader,
 			version,
 			table_names,
 			buffer: VecDeque::new(),
@@ -52,7 +52,7 @@ impl Iter {
 		self.buffer.clear();
 
 		let count = execute_scan_query(
-			&self.conn,
+			&self.reader,
 			&self.table_names,
 			self.version,
 			self.batch_size,
@@ -73,7 +73,7 @@ impl Iter {
 	}
 }
 
-impl Iterator for Iter {
+impl Iterator for MultiVersionScanIter {
 	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {

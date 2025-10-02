@@ -3,24 +3,24 @@
 
 use std::{collections::VecDeque, ops::Bound};
 
-use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange, Result,
-	interface::{MultiVersionRange, MultiVersionValues},
-};
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, Result, interface::MultiVersionValues};
 
 use super::{build_range_query, execute_batched_range_query, table_name_for_range};
-use crate::backend::sqlite::{Sqlite, read::Reader};
+use crate::{
+	MultiVersionRange,
+	backend::sqlite::{SqliteBackend, read::Reader},
+};
 
-impl MultiVersionRange for Sqlite {
-	type RangeIter<'a> = Range;
+impl MultiVersionRange for SqliteBackend {
+	type RangeIter<'a> = MultiVersionRangeIter;
 
 	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIter<'_>> {
-		Ok(Range::new(self.get_reader(), range, version, 1024))
+		Ok(MultiVersionRangeIter::new(self.get_reader(), range, version, 1024))
 	}
 }
 
-pub struct Range {
-	conn: Reader,
+pub struct MultiVersionRangeIter {
+	reader: Reader,
 	range: EncodedKeyRange,
 	version: CommitVersion,
 	table: String,
@@ -30,12 +30,12 @@ pub struct Range {
 	exhausted: bool,
 }
 
-impl Range {
-	pub fn new(conn: Reader, range: EncodedKeyRange, version: CommitVersion, batch_size: usize) -> Self {
+impl MultiVersionRangeIter {
+	pub fn new(reader: Reader, range: EncodedKeyRange, version: CommitVersion, batch_size: usize) -> Self {
 		let table = table_name_for_range(&range).to_string();
 
 		Self {
-			conn,
+			reader,
 			range,
 			version,
 			table,
@@ -66,7 +66,7 @@ impl Range {
 		let (query_template, param_count) = build_range_query(start_bound, end_bound, "ASC");
 
 		let query = query_template.replace("{}", &self.table);
-		let conn_guard = self.conn.lock().unwrap();
+		let conn_guard = self.reader.lock().unwrap();
 		let mut stmt = conn_guard.prepare(&query).unwrap();
 
 		let count = execute_batched_range_query(
@@ -91,7 +91,7 @@ impl Range {
 	}
 }
 
-impl Iterator for Range {
+impl Iterator for MultiVersionRangeIter {
 	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {

@@ -3,9 +3,9 @@
 
 use reifydb_core::{CommitVersion, Result, interface::CdcCount};
 
-use crate::backend::memory::Memory;
+use crate::backend::memory::MemoryBackend;
 
-impl CdcCount for Memory {
+impl CdcCount for MemoryBackend {
 	fn count(&self, version: CommitVersion) -> Result<usize> {
 		// Get the transaction for this specific version and count
 		// changes

@@ -6,64 +6,56 @@ use std::{
 	sync::{Arc, mpsc},
 };
 
+use crossbeam_skiplist::SkipMap;
 use mpsc::Sender;
-pub use range::Range;
-pub use range_rev::RangeRev;
-pub use scan::MultiVersionIter;
-pub use scan_rev::IterRev;
+use reifydb_core::{
+	CommitVersion, EncodedKey, interface::Cdc, util::MultiVersionContainer, value::encoded::EncodedValues,
+};
 
 mod cdc;
-mod commit;
-mod contains;
-mod get;
-mod range;
-mod range_rev;
-mod scan;
-mod scan_rev;
+mod multi;
+mod single;
 mod write;
 
-use crossbeam_skiplist::SkipMap;
-use reifydb_core::{
-	CommitVersion, EncodedKey,
-	interface::{Cdc, MultiVersionStore, SingleVersionInsert, SingleVersionRemove, SingleVersionStore},
-	util::MultiVersionContainer,
-	value::encoded::EncodedValues,
-};
+pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
+pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
 use write::{WriteCommand, Writer};
+
+use crate::{MultiVersionStore, SingleVersionRemove, SingleVersionSet, SingleVersionStore};
 
 pub type MultiVersionTransactionContainer = MultiVersionContainer<EncodedValues>;
 
 #[derive(Clone)]
-pub struct Memory(Arc<MemoryInner>);
+pub struct MemoryBackend(Arc<MemoryBackendInner>);
 
-pub struct MemoryInner {
+pub struct MemoryBackendInner {
 	multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
 	single: Arc<SkipMap<EncodedKey, EncodedValues>>,
 	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	writer: Sender<WriteCommand>,
 }
 
-impl Deref for Memory {
-	type Target = MemoryInner;
+impl Deref for MemoryBackend {
+	type Target = MemoryBackendInner;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-impl Drop for MemoryInner {
+impl Drop for MemoryBackendInner {
 	fn drop(&mut self) {
 		let _ = self.writer.send(WriteCommand::Shutdown);
 	}
 }
 
-impl Default for Memory {
+impl Default for MemoryBackend {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl Memory {
+impl MemoryBackend {
 	pub fn new() -> Self {
 		let multi = Arc::new(SkipMap::new());
 		let single = Arc::new(SkipMap::new());
@@ -72,7 +64,7 @@ impl Memory {
 		let writer = Writer::spawn(multi.clone(), single.clone(), cdcs.clone())
 			.expect("Failed to spawn memory writer thread");
 
-		Self(Arc::new(MemoryInner {
+		Self(Arc::new(MemoryBackendInner {
 			multi,
 			single,
 			cdcs,
@@ -81,61 +73,7 @@ impl Memory {
 	}
 }
 
-impl MultiVersionStore for Memory {}
-impl SingleVersionStore for Memory {}
-impl SingleVersionInsert for Memory {}
-impl SingleVersionRemove for Memory {}
-
-// MemoryTransactionBackend wrapper for encoded store specific behavior
-#[derive(Clone)]
-pub struct MemoryTransactionBackend {
-	inner: Memory,
-	_size_limit: usize,
-}
-
-impl MemoryTransactionBackend {
-	pub fn new(size_limit: usize) -> Self {
-		Self {
-			inner: Memory::new(),
-			_size_limit: size_limit,
-		}
-	}
-
-	pub fn get(
-		&self,
-		key: &EncodedKey,
-		version: CommitVersion,
-	) -> crate::Result<Option<reifydb_core::interface::MultiVersionValues>> {
-		use reifydb_core::interface::MultiVersionGet;
-		self.inner.get(key, version)
-	}
-
-	pub fn put(&self, _row: reifydb_core::interface::MultiVersionValues) -> crate::Result<()> {
-		todo!("Implement put for MemoryTransactionBackend")
-	}
-
-	pub fn delete(&self, _key: &EncodedKey, _version: CommitVersion) -> crate::Result<()> {
-		todo!("Implement delete for MemoryTransactionBackend")
-	}
-
-	pub fn range(
-		&self,
-		range: reifydb_core::EncodedKeyRange,
-		version: CommitVersion,
-	) -> crate::Result<Vec<reifydb_core::interface::MultiVersionValues>> {
-		use reifydb_core::interface::MultiVersionRange;
-		Ok(self.inner.range(range, version)?.collect())
-	}
-
-	pub fn count(&self) -> usize {
-		todo!("Implement count for MemoryTransactionBackend")
-	}
-
-	pub fn name(&self) -> &str {
-		"memory"
-	}
-
-	pub fn is_available(&self) -> bool {
-		true
-	}
-}
+impl MultiVersionStore for MemoryBackend {}
+impl SingleVersionStore for MemoryBackend {}
+impl SingleVersionSet for MemoryBackend {}
+impl SingleVersionRemove for MemoryBackend {}

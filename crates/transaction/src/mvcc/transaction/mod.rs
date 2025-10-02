@@ -19,8 +19,8 @@ use version::VersionProvider;
 
 pub use crate::mvcc::types::*;
 
-pub mod iter;
-pub mod iter_rev;
+pub mod scan;
+pub mod scan_rev;
 
 mod command;
 pub mod optimistic;

@@ -5,15 +5,15 @@ use std::ops::Bound;
 
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Cdc, CdcQueryTransaction, CdcStorage, CdcTransaction},
+	interface::{Cdc, CdcQueryTransaction, CdcStore, CdcTransaction},
 };
 
 #[derive(Clone)]
-pub struct StandardCdcTransaction<S: CdcStorage> {
+pub struct StandardCdcTransaction<S: CdcStore> {
 	storage: S,
 }
 
-impl<S: CdcStorage> StandardCdcTransaction<S> {
+impl<S: CdcStore> StandardCdcTransaction<S> {
 	pub fn new(storage: S) -> Self {
 		Self {
 			storage,
@@ -21,7 +21,7 @@ impl<S: CdcStorage> StandardCdcTransaction<S> {
 	}
 }
 
-impl<S: CdcStorage> CdcTransaction for StandardCdcTransaction<S> {
+impl<S: CdcStore> CdcTransaction for StandardCdcTransaction<S> {
 	type Query<'a>
 		= StandardCdcQueryTransaction<S>
 	where
@@ -34,11 +34,11 @@ impl<S: CdcStorage> CdcTransaction for StandardCdcTransaction<S> {
 
 /// CDC transaction wrapper for storage that implements CdcQuery
 #[derive(Clone)]
-pub struct StandardCdcQueryTransaction<S: CdcStorage> {
+pub struct StandardCdcQueryTransaction<S: CdcStore> {
 	storage: S,
 }
 
-impl<S: CdcStorage> StandardCdcQueryTransaction<S> {
+impl<S: CdcStore> StandardCdcQueryTransaction<S> {
 	pub fn new(storage: S) -> Self {
 		Self {
 			storage,
@@ -46,7 +46,7 @@ impl<S: CdcStorage> StandardCdcQueryTransaction<S> {
 	}
 }
 
-impl<S: CdcStorage> CdcQueryTransaction for StandardCdcQueryTransaction<S> {
+impl<S: CdcStore> CdcQueryTransaction for StandardCdcQueryTransaction<S> {
 	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
 		self.storage.get(version)
 	}

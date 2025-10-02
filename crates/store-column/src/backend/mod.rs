@@ -8,10 +8,11 @@ use std::sync::Arc;
 pub use memory::MemoryColumnBackend;
 use reifydb_core::{
 	CommitVersion,
-	interface::ColumnStatistics,
 	value::column::{ColumnData, CompressedColumn},
 };
 use reifydb_type::Result;
+
+use crate::ColumnStatistics;
 
 #[repr(u8)]
 #[derive(Clone)]
@@ -90,7 +91,7 @@ impl Backend {
 pub trait ColumnBackend: Send + Sync + 'static {
 	fn insert(&self, version: CommitVersion, columns: Vec<CompressedColumn>) -> Result<()>;
 	fn scan(&self, version: CommitVersion, column_indices: &[usize]) -> Result<Vec<ColumnData>>;
-	fn statistics(&self, column_index: usize) -> Option<ColumnStatistics>;
+	fn statistics(&self, column_index: usize) -> Option<ColumnStatistics> where;
 	fn partition_count(&self) -> usize;
 	fn compressed_size(&self) -> usize;
 	fn uncompressed_size(&self) -> usize;

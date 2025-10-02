@@ -6,7 +6,7 @@ use std::{collections::HashMap, mem::take, ops::RangeBounds, sync::RwLockWriteGu
 use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionCommandTransaction, SingleVersionQueryTransaction};
 
 use super::*;
-use crate::svl::{range::SvlRange, range_rev::SvlRangeRev, scan::SvlScan, scan_rev::SvlScanRev};
+use crate::svl::{range::SvlRangeIter, range_rev::SvlRangeRevIter, scan::SvlScanIter, scan_rev::SvlScanRevIter};
 
 pub struct SvlWriteTransaction<'a, SVS> {
 	pending: HashMap<EncodedKey, Delta>,
@@ -55,25 +55,25 @@ where
 
 	fn scan(&mut self) -> crate::Result<BoxedSingleVersionIter> {
 		let (pending_items, committed_items) = self.prepare_scan_data(None, false)?;
-		let iter = SvlScan::new(pending_items.into_iter(), committed_items.into_iter());
+		let iter = SvlScanIter::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
 	fn scan_rev(&mut self) -> crate::Result<BoxedSingleVersionIter> {
 		let (pending_items, committed_items) = self.prepare_scan_data(None, true)?;
-		let iter = SvlScanRev::new(pending_items.into_iter(), committed_items.into_iter());
+		let iter = SvlScanRevIter::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
 	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
 		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), false)?;
-		let iter = SvlRange::new(pending_items.into_iter(), committed_items.into_iter());
+		let iter = SvlRangeIter::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
 	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
 		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), true)?;
-		let iter = SvlRangeRev::new(pending_items.into_iter(), committed_items.into_iter());
+		let iter = SvlRangeRevIter::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 }

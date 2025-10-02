@@ -6,7 +6,7 @@ use std::{cmp, vec::IntoIter};
 use reifydb_core::{EncodedKey, delta::Delta, interface::SingleVersionValues};
 
 /// Iterator for full scan in an SVL WriteTransaction with owned values.
-pub struct SvlScan {
+pub struct SvlScanIter {
 	/// Iterator over committed data (owned)
 	committed: IntoIter<SingleVersionValues>,
 	/// Iterator over pending changes (owned)
@@ -19,9 +19,9 @@ pub struct SvlScan {
 	last_yielded_key: Option<EncodedKey>,
 }
 
-impl SvlScan {
+impl SvlScanIter {
 	pub fn new(pending: IntoIter<(EncodedKey, Delta)>, committed: IntoIter<SingleVersionValues>) -> Self {
-		let mut iterator = SvlScan {
+		let mut iterator = SvlScanIter {
 			pending,
 			committed,
 			next_pending: None,
@@ -44,7 +44,7 @@ impl SvlScan {
 	}
 }
 
-impl Iterator for SvlScan {
+impl Iterator for SvlScanIter {
 	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {

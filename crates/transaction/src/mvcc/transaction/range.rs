@@ -12,14 +12,15 @@
 use core::cmp;
 use std::collections::btree_map::Range as BTreeMapRange;
 
-use reifydb_core::{Either, EncodedKey, interface::MultiVersionStore};
+use reifydb_core::{Either, EncodedKey};
+use reifydb_store_transaction::MultiVersionStore;
 
 use crate::mvcc::{
 	marker::Marker,
 	types::{Pending, TransactionValue},
 };
 
-pub struct TransactionRange<'a, MVS>
+pub struct TransactionRangeIter<'a, MVS>
 where
 	MVS: MultiVersionStore + 'a,
 {
@@ -31,7 +32,7 @@ where
 	marker: Option<Marker<'a>>,
 }
 
-impl<'a, MVS> TransactionRange<'a, MVS>
+impl<'a, MVS> TransactionRangeIter<'a, MVS>
 where
 	MVS: MultiVersionStore + 'a,
 {
@@ -51,7 +52,7 @@ where
 		committed: MVS::RangeIter<'a>,
 		marker: Option<Marker<'a>>,
 	) -> Self {
-		let mut iterator = TransactionRange {
+		let mut iterator = TransactionRangeIter {
 			pending,
 			committed,
 			next_pending: None,
@@ -67,7 +68,7 @@ where
 	}
 }
 
-impl<'a, MVS> Iterator for TransactionRange<'a, MVS>
+impl<'a, MVS> Iterator for TransactionRangeIter<'a, MVS>
 where
 	MVS: MultiVersionStore + 'a,
 {

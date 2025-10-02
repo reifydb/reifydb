@@ -6,9 +6,9 @@ use reifydb_core::{
 	interface::{Cdc, CdcGet},
 };
 
-use crate::backend::memory::Memory;
+use crate::backend::memory::MemoryBackend;
 
-impl CdcGet for Memory {
+impl CdcGet for MemoryBackend {
 	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
 		if let Some(entry) = self.cdcs.get(&version) {
 			Ok(Some(entry.value().clone()))

@@ -4,7 +4,7 @@
 mod storage;
 
 use serde::{Deserialize, Serialize};
-pub use storage::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStorage};
+pub use storage::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStore};
 
 use crate::{CommitVersion, EncodedKey, interface::transaction::TransactionId, value::encoded::EncodedValues};
 

@@ -15,12 +15,16 @@ use std::{
 	sync::{Mutex, OnceLock},
 };
 
+pub use range::MultiVersionRangeIter;
+pub use range_rev::MultiVersionRangeRevIter;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	interface::{EncodableKeyRange, Key, MultiVersionValues, RowKey, RowKeyRange, TableId},
 	value::encoded::EncodedValues,
 };
 use rusqlite::{Connection, Statement, params};
+pub use scan::MultiVersionScanIter;
+pub use scan_rev::MultiVersionScanRevIter;
 
 use crate::backend::sqlite::read::ReadConnection;
 

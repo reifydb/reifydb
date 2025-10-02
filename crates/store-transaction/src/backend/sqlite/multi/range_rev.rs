@@ -3,24 +3,24 @@
 
 use std::{collections::VecDeque, ops::Bound};
 
-use reifydb_core::{
-	CommitVersion, EncodedKey, EncodedKeyRange, Result,
-	interface::{MultiVersionRangeRev, MultiVersionValues},
-};
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, Result, interface::MultiVersionValues};
 
 use super::{build_range_query, execute_batched_range_query, table_name_for_range};
-use crate::backend::sqlite::{Sqlite, read::Reader};
+use crate::{
+	MultiVersionRangeRev,
+	backend::sqlite::{SqliteBackend, read::Reader},
+};
 
-impl MultiVersionRangeRev for Sqlite {
-	type RangeIterRev<'a> = RangeRev;
+impl MultiVersionRangeRev for SqliteBackend {
+	type RangeIterRev<'a> = MultiVersionRangeRevIter;
 
 	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
-		Ok(RangeRev::new(self.get_reader(), range, version, 1024))
+		Ok(MultiVersionRangeRevIter::new(self.get_reader(), range, version, 1024))
 	}
 }
 
-pub struct RangeRev {
-	conn: Reader,
+pub struct MultiVersionRangeRevIter {
+	reader: Reader,
 	range: EncodedKeyRange,
 	version: CommitVersion,
 	table: String,
@@ -30,12 +30,12 @@ pub struct RangeRev {
 	exhausted: bool,
 }
 
-impl RangeRev {
-	pub fn new(conn: Reader, range: EncodedKeyRange, version: CommitVersion, batch_size: usize) -> Self {
+impl MultiVersionRangeRevIter {
+	pub fn new(reader: Reader, range: EncodedKeyRange, version: CommitVersion, batch_size: usize) -> Self {
 		let table = table_name_for_range(&range).to_string();
 
 		Self {
-			conn,
+			reader,
 			range,
 			version,
 			table,
@@ -68,7 +68,7 @@ impl RangeRev {
 		let (query_template, param_count) = build_range_query(start_bound, end_bound, "DESC");
 
 		let query = query_template.replace("{}", &self.table);
-		let conn_guard = self.conn.lock().unwrap();
+		let conn_guard = self.reader.lock().unwrap();
 		let mut stmt = conn_guard.prepare(&query).unwrap();
 
 		let count = execute_batched_range_query(
@@ -94,7 +94,7 @@ impl RangeRev {
 	}
 }
 
-impl Iterator for RangeRev {
+impl Iterator for MultiVersionRangeRevIter {
 	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {

@@ -1,17 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange,
-	delta::Delta,
-	interface::{
-		SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionInsert, SingleVersionRange,
-		SingleVersionRangeRev, SingleVersionRemove, SingleVersionScan, SingleVersionScanRev,
-		SingleVersionStore, SingleVersionValues,
-	},
-};
+use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::SingleVersionValues};
 
 use super::StandardTransactionStore;
+use crate::{
+	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
+	SingleVersionRemove, SingleVersionScan, SingleVersionScanRev, SingleVersionSet, SingleVersionStore,
+};
 
 pub trait SingleVersionIter: Iterator<Item = SingleVersionValues> + Send {}
 impl<T> SingleVersionIter for T where T: Iterator<Item = SingleVersionValues> + Send {}
@@ -34,7 +30,7 @@ impl SingleVersionCommit for StandardTransactionStore {
 	}
 }
 
-impl SingleVersionInsert for StandardTransactionStore {}
+impl SingleVersionSet for StandardTransactionStore {}
 impl SingleVersionRemove for StandardTransactionStore {}
 
 impl SingleVersionScan for StandardTransactionStore {
