@@ -35,9 +35,9 @@ impl<'a> Parser<'a> {
 			// Parse the strategy value
 			let strategy = if self.current()?.is_identifier() {
 				match self.current()?.fragment.text() {
-					"lazy_loading" => {
+					"lazy_right_loading" => {
 						self.advance()?;
-						JoinStrategy::LazyLoading
+						JoinStrategy::LazyRightLoading
 					}
 					"eager_loading" => {
 						self.advance()?;
@@ -45,7 +45,7 @@ impl<'a> Parser<'a> {
 					}
 					_ => {
 						return_error!(unexpected_token_error(
-							"lazy_loading or eager_loading",
+							"lazy_right_loading or eager_loading",
 							self.current()?.fragment.clone()
 						));
 					}
@@ -282,7 +282,7 @@ mod tests {
 	#[test]
 	fn test_left_join_with_strategy() {
 		let tokens = tokenize(
-			"left join { from test.orders } on user_id == order_id with { strategy: lazy_loading }",
+			"left join { from test.orders } on user_id == order_id with { strategy: lazy_right_loading }",
 		)
 		.unwrap();
 		let mut parser = Parser::new(tokens);
@@ -297,7 +297,7 @@ mod tests {
 			panic!("Expected LeftJoin");
 		};
 
-		assert_eq!(strategy, &Some(JoinStrategy::LazyLoading));
+		assert_eq!(strategy, &Some(JoinStrategy::LazyRightLoading));
 	}
 
 	#[test]

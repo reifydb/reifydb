@@ -58,7 +58,7 @@ create deferred view test.student_courses {
     teacher: utf8
 } as {
     from test.students
-    left join { from test.courses } courses on class_id == courses.class_id with { strategy: lazy_loading }
+    left join { from test.courses } courses on class_id == courses.class_id with { strategy: lazy_right_loading }
     map {
         student_name: name,
         subject: subject,

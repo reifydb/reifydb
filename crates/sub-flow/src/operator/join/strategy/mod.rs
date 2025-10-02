@@ -37,7 +37,7 @@ impl JoinStrategy {
 			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Left) => {
 				JoinStrategy::LeftEager(LeftEagerJoin)
 			}
-			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Left) => {
+			(reifydb_core::JoinStrategy::LazyRightLoading, JoinType::Left) => {
 				JoinStrategy::LeftLazy(LeftLazyJoin {
 					query: right_query,
 					executor,
@@ -46,7 +46,7 @@ impl JoinStrategy {
 			(reifydb_core::JoinStrategy::EagerLoading, JoinType::Inner) => {
 				JoinStrategy::InnerEager(InnerEagerJoin)
 			}
-			(reifydb_core::JoinStrategy::LazyLoading, JoinType::Inner) => {
+			(reifydb_core::JoinStrategy::LazyRightLoading, JoinType::Inner) => {
 				JoinStrategy::InnerLazy(InnerLazyJoin {
 					query: right_query,
 					executor,

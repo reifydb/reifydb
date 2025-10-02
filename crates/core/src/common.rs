@@ -17,7 +17,7 @@ impl Default for JoinType {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JoinStrategy {
 	EagerLoading,
-	LazyLoading,
+	LazyRightLoading,
 }
 
 impl Default for JoinStrategy {
