@@ -18,7 +18,7 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_row::memory::Memory;
+use reifydb_store_transaction::memory::Memory;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	mvcc::{

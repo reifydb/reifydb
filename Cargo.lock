@@ -391,7 +391,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-network",
  "reifydb-rql",
- "reifydb-store-row",
+ "reifydb-store-transaction",
  "reifydb-sub-admin",
  "reifydb-sub-api",
  "reifydb-sub-flow",
@@ -418,7 +418,7 @@ dependencies = [
  "once_cell",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-store-row",
+ "reifydb-store-transaction",
  "reifydb-transaction",
  "reifydb-type",
  "serde",
@@ -431,7 +431,7 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-store-row",
+ "reifydb-store-transaction",
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-type",
@@ -477,7 +477,7 @@ dependencies = [
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-rql",
- "reifydb-store-row",
+ "reifydb-store-transaction",
  "reifydb-testing",
  "reifydb-transaction",
  "reifydb-type",
@@ -518,7 +518,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-store-row"
+name = "reifydb-store-transaction"
 version = "0.0.1"
 dependencies = [
  "crossbeam-skiplist",
@@ -551,7 +551,7 @@ version = "0.0.1"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
- "reifydb-store-row",
+ "reifydb-store-transaction",
  "reifydb-transaction",
  "reifydb-type",
 ]
@@ -567,7 +567,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-hash",
  "reifydb-rql",
- "reifydb-store-row",
+ "reifydb-store-transaction",
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-type",
@@ -620,7 +620,7 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-store-row",
+ "reifydb-store-transaction",
  "reifydb-sub-api",
  "reifydb-transaction",
  "reifydb-type",
@@ -642,7 +642,7 @@ dependencies = [
  "parking_lot",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-store-row",
+ "reifydb-store-transaction",
  "reifydb-testing",
  "reifydb-type",
  "test_each_file",

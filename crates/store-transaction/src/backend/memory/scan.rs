@@ -9,35 +9,33 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use core::iter::Rev;
-
 use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	interface::{MultiVersionScanRev, MultiVersionValues, SingleVersionScanRev, SingleVersionValues},
+	interface::{MultiVersionScan, MultiVersionValues, SingleVersionScan, SingleVersionValues},
 	value::encoded::EncodedValues,
 };
 
-use crate::backend::memory::{Memory, MultiVersionRowContainer};
+use crate::backend::memory::{Memory, MultiVersionTransactionContainer};
 
-impl MultiVersionScanRev for Memory {
-	type ScanIterRev<'a> = IterRev<'a>;
+impl MultiVersionScan for Memory {
+	type ScanIter<'a> = MultiVersionIter<'a>;
 
-	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>> {
+	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
 		let iter = self.multi.iter();
-		Ok(IterRev {
-			iter: iter.rev(),
+		Ok(MultiVersionIter {
+			iter,
 			version,
 		})
 	}
 }
 
-pub struct IterRev<'a> {
-	pub(crate) iter: Rev<MapIter<'a, EncodedKey, MultiVersionRowContainer>>,
+pub struct MultiVersionIter<'a> {
+	pub(crate) iter: MapIter<'a, EncodedKey, MultiVersionTransactionContainer>,
 	pub(crate) version: CommitVersion,
 }
 
-impl Iterator for IterRev<'_> {
+impl Iterator for MultiVersionIter<'_> {
 	type Item = MultiVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
@@ -54,26 +52,26 @@ impl Iterator for IterRev<'_> {
 	}
 }
 
-impl SingleVersionScanRev for Memory {
-	type ScanIterRev<'a> = SingleVersionIterRev<'a>;
+impl SingleVersionScan for Memory {
+	type ScanIter<'a> = SingleVersionIter<'a>;
 
-	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
+	fn scan(&self) -> Result<Self::ScanIter<'_>> {
 		let iter = self.single.iter();
-		Ok(SingleVersionIterRev {
+		Ok(SingleVersionIter {
 			iter,
 		})
 	}
 }
 
-pub struct SingleVersionIterRev<'a> {
+pub struct SingleVersionIter<'a> {
 	pub(crate) iter: MapIter<'a, EncodedKey, EncodedValues>,
 }
 
-impl Iterator for SingleVersionIterRev<'_> {
+impl Iterator for SingleVersionIter<'_> {
 	type Item = SingleVersionValues;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let item = self.iter.next_back()?;
+		let item = self.iter.next()?;
 		Some(SingleVersionValues {
 			key: item.key().clone(),
 			values: item.value().clone(),

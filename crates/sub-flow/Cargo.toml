@@ -22,5 +22,5 @@ serde_json = { workspace = true }
 bincode = { workspace = true }
 
 [dev-dependencies]
-reifydb-store-row = { workspace = true}
+reifydb-store-transaction = { workspace = true}
 reifydb-transaction = { workspace = true}

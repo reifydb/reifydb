@@ -11,5 +11,5 @@ reifydb-engine = { workspace = true }
 reifydb-type = { workspace = true }
 
 [dev-dependencies]
-reifydb-store-row = { workspace = true}
+reifydb-store-transaction = { workspace = true}
 reifydb-transaction = { workspace = true}

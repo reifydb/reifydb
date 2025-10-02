@@ -7,7 +7,7 @@ use reifydb_catalog::{
 	table::{TableColumnToCreate, TableToCreate},
 };
 use reifydb_core::{event::EventBus, interceptor::Interceptors};
-use reifydb_store_row::memory::Memory;
+use reifydb_store_transaction::memory::Memory;
 use reifydb_transaction::{mvcc::transaction::serializable::Serializable, svl::SingleVersionLock};
 use reifydb_type::{Type, TypeConstraint};
 

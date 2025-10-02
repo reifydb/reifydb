@@ -421,15 +421,15 @@ mod tests {
 	}
 }
 
-// SqliteRowBackend wrapper for encoded store specific behavior
+// SqliteTransactionBackend wrapper for encoded store specific behavior
 #[derive(Clone)]
-pub struct SqliteRowBackend {
+pub struct SqliteTransactionBackend {
 	inner: Sqlite,
 }
 
-impl SqliteRowBackend {
+impl SqliteTransactionBackend {
 	pub fn open(_path: impl AsRef<std::path::Path>) -> crate::Result<Self> {
-		todo!("Implement SqliteRowBackend::open")
+		todo!("Implement SqliteTransactionBackend::open")
 	}
 
 	pub fn get(
@@ -442,7 +442,7 @@ impl SqliteRowBackend {
 	}
 
 	pub fn put(&self, _row: reifydb_core::interface::MultiVersionValues) -> crate::Result<()> {
-		todo!("Implement put for SqliteRowBackend")
+		todo!("Implement put for SqliteTransactionBackend")
 	}
 
 	pub fn delete(
@@ -450,7 +450,7 @@ impl SqliteRowBackend {
 		_key: &reifydb_core::EncodedKey,
 		_version: reifydb_core::CommitVersion,
 	) -> crate::Result<()> {
-		todo!("Implement delete for SqliteRowBackend")
+		todo!("Implement delete for SqliteTransactionBackend")
 	}
 
 	pub fn range(
@@ -463,7 +463,7 @@ impl SqliteRowBackend {
 	}
 
 	pub fn count(&self) -> usize {
-		todo!("Implement count for SqliteRowBackend")
+		todo!("Implement count for SqliteTransactionBackend")
 	}
 
 	pub fn name(&self) -> &str {

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_store_row::backend::{
+use reifydb_store_transaction::backend::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };

@@ -16,7 +16,7 @@ pub mod test {
 		EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine,
 		StandardRowEvaluator,
 	};
-	use reifydb_store_row::memory::Memory;
+	use reifydb_store_transaction::memory::Memory;
 	use reifydb_transaction::{mvcc::transaction::optimistic::Optimistic, svl::SingleVersionLock};
 	use reifydb_type::{Type, Value};
 

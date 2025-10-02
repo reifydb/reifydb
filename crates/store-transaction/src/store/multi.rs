@@ -10,12 +10,12 @@ use reifydb_core::{
 	},
 };
 
-use super::StandardRowStore;
+use super::StandardTransactionStore;
 
 pub trait MultiVersionIter: Iterator<Item = MultiVersionValues> + Send {}
 impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionValues> {}
 
-impl MultiVersionGet for StandardRowStore {
+impl MultiVersionGet for StandardTransactionStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
 		// Check hot tier first
 		if let Some(hot) = &self.hot {
@@ -40,13 +40,13 @@ impl MultiVersionGet for StandardRowStore {
 	}
 }
 
-impl MultiVersionContains for StandardRowStore {
+impl MultiVersionContains for StandardTransactionStore {
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool> {
 		Ok(MultiVersionGet::get(self, key, version)?.is_some())
 	}
 }
 
-impl MultiVersionCommit for StandardRowStore {
+impl MultiVersionCommit for StandardTransactionStore {
 	fn commit(
 		&self,
 		_deltas: CowVec<Delta>,
@@ -57,7 +57,7 @@ impl MultiVersionCommit for StandardRowStore {
 	}
 }
 
-impl MultiVersionScan for StandardRowStore {
+impl MultiVersionScan for StandardTransactionStore {
 	type ScanIter<'a>
 		= Box<dyn MultiVersionIter + 'a>
 	where
@@ -68,7 +68,7 @@ impl MultiVersionScan for StandardRowStore {
 	}
 }
 
-impl MultiVersionScanRev for StandardRowStore {
+impl MultiVersionScanRev for StandardTransactionStore {
 	type ScanIterRev<'a>
 		= Box<dyn MultiVersionIter + 'a>
 	where
@@ -79,7 +79,7 @@ impl MultiVersionScanRev for StandardRowStore {
 	}
 }
 
-impl MultiVersionRange for StandardRowStore {
+impl MultiVersionRange for StandardTransactionStore {
 	type RangeIter<'a>
 		= Box<dyn MultiVersionIter + 'a>
 	where
@@ -90,7 +90,7 @@ impl MultiVersionRange for StandardRowStore {
 	}
 }
 
-impl MultiVersionRangeRev for StandardRowStore {
+impl MultiVersionRangeRev for StandardTransactionStore {
 	type RangeIterRev<'a>
 		= Box<dyn MultiVersionIter + 'a>
 	where
@@ -101,4 +101,4 @@ impl MultiVersionRangeRev for StandardRowStore {
 	}
 }
 
-impl MultiVersionStore for StandardRowStore {}
+impl MultiVersionStore for StandardTransactionStore {}

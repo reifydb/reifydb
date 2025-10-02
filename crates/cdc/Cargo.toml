@@ -14,5 +14,5 @@ reifydb-type = { workspace = true }
 
 [dev-dependencies]
 reifydb-catalog = { workspace = true }
-reifydb-store-row = { workspace = true }
+reifydb-store-transaction = { workspace = true }
 reifydb-transaction = { workspace = true }

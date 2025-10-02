@@ -11,33 +11,33 @@ use reifydb_core::{
 	},
 };
 
-use super::StandardRowStore;
+use super::StandardTransactionStore;
 
 pub trait SingleVersionIter: Iterator<Item = SingleVersionValues> + Send {}
 impl<T> SingleVersionIter for T where T: Iterator<Item = SingleVersionValues> + Send {}
 
-impl SingleVersionGet for StandardRowStore {
+impl SingleVersionGet for StandardTransactionStore {
 	fn get(&self, _key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		todo!("Implement single version get")
 	}
 }
 
-impl SingleVersionContains for StandardRowStore {
+impl SingleVersionContains for StandardTransactionStore {
 	fn contains(&self, _key: &EncodedKey) -> crate::Result<bool> {
 		todo!("Implement single version contains")
 	}
 }
 
-impl SingleVersionCommit for StandardRowStore {
+impl SingleVersionCommit for StandardTransactionStore {
 	fn commit(&mut self, _deltas: CowVec<Delta>) -> crate::Result<()> {
 		todo!("Implement single version commit")
 	}
 }
 
-impl SingleVersionInsert for StandardRowStore {}
-impl SingleVersionRemove for StandardRowStore {}
+impl SingleVersionInsert for StandardTransactionStore {}
+impl SingleVersionRemove for StandardTransactionStore {}
 
-impl SingleVersionScan for StandardRowStore {
+impl SingleVersionScan for StandardTransactionStore {
 	type ScanIter<'a>
 		= Box<dyn SingleVersionIter + 'a>
 	where
@@ -48,7 +48,7 @@ impl SingleVersionScan for StandardRowStore {
 	}
 }
 
-impl SingleVersionScanRev for StandardRowStore {
+impl SingleVersionScanRev for StandardTransactionStore {
 	type ScanIterRev<'a>
 		= Box<dyn SingleVersionIter + 'a>
 	where
@@ -59,7 +59,7 @@ impl SingleVersionScanRev for StandardRowStore {
 	}
 }
 
-impl SingleVersionRange for StandardRowStore {
+impl SingleVersionRange for StandardTransactionStore {
 	type Range<'a>
 		= Box<dyn SingleVersionIter + 'a>
 	where
@@ -70,7 +70,7 @@ impl SingleVersionRange for StandardRowStore {
 	}
 }
 
-impl SingleVersionRangeRev for StandardRowStore {
+impl SingleVersionRangeRev for StandardTransactionStore {
 	type RangeRev<'a>
 		= Box<dyn SingleVersionIter + 'a>
 	where
@@ -81,4 +81,4 @@ impl SingleVersionRangeRev for StandardRowStore {
 	}
 }
 
-impl SingleVersionStore for StandardRowStore {}
+impl SingleVersionStore for StandardTransactionStore {}

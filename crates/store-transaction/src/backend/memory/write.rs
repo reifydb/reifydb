@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_type::{Result, return_error};
 
 use crate::{
-	backend::{commit::CommitBuffer, diagnostic::sequence_exhausted, memory::MultiVersionRowContainer},
+	backend::{commit::CommitBuffer, diagnostic::sequence_exhausted, memory::MultiVersionTransactionContainer},
 	cdc::generate_cdc_change,
 };
 
@@ -39,7 +39,7 @@ pub enum WriteCommand {
 
 pub struct Writer {
 	receiver: Receiver<WriteCommand>,
-	multi: Arc<SkipMap<EncodedKey, MultiVersionRowContainer>>,
+	multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
 	single: Arc<SkipMap<EncodedKey, EncodedValues>>,
 	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	commit_buffer: CommitBuffer,
@@ -49,7 +49,7 @@ pub struct Writer {
 
 impl Writer {
 	pub fn spawn(
-		multi: Arc<SkipMap<EncodedKey, MultiVersionRowContainer>>,
+		multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
 		single: Arc<SkipMap<EncodedKey, EncodedValues>>,
 		cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	) -> Result<Sender<WriteCommand>> {
@@ -161,7 +161,7 @@ impl Writer {
 				} => {
 					let item = self
 						.multi
-						.get_or_insert_with(key.clone(), MultiVersionRowContainer::new);
+						.get_or_insert_with(key.clone(), MultiVersionTransactionContainer::new);
 					let val = item.value();
 					val.insert(version, Some(row.clone()));
 				}

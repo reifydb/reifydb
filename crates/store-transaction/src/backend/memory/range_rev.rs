@@ -21,7 +21,7 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 
-use crate::backend::memory::{Memory, MultiVersionRowContainer};
+use crate::backend::memory::{Memory, MultiVersionTransactionContainer};
 
 impl MultiVersionRangeRev for Memory {
 	type RangeIterRev<'a>
@@ -38,7 +38,7 @@ impl MultiVersionRangeRev for Memory {
 }
 
 pub struct RangeRev<'a> {
-	pub(crate) range: Rev<MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, MultiVersionRowContainer>>,
+	pub(crate) range: Rev<MapRange<'a, EncodedKey, EncodedKeyRange, EncodedKey, MultiVersionTransactionContainer>>,
 	pub(crate) version: CommitVersion,
 }
 

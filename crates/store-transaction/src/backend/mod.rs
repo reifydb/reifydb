@@ -9,21 +9,21 @@ pub mod sqlite;
 use std::sync::Arc;
 
 // Re-export the backend wrappers from submodules
-pub use memory::MemoryRowBackend;
+pub use memory::MemoryTransactionBackend;
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{MultiVersionValues, SingleVersionValues},
 	value::encoded::EncodedValues,
 };
-pub use sqlite::SqliteRowBackend;
+pub use sqlite::SqliteTransactionBackend;
 
 /// Backend enum with built-in variants and custom extension point
 #[repr(u8)]
 #[derive(Clone)]
 pub enum Backend {
-	Memory(MemoryRowBackend) = 0,
-	Sqlite(SqliteRowBackend) = 1,
-	Custom(Arc<dyn MultiVersionRowBackend>) = 254, // High discriminant for future built-in backends
+	Memory(MemoryTransactionBackend) = 0,
+	Sqlite(SqliteTransactionBackend) = 1,
+	Custom(Arc<dyn MultiVersionTransactionBackend>) = 254, // High discriminant for future built-in backends
 }
 
 impl Backend {
@@ -92,7 +92,7 @@ impl Backend {
 }
 
 /// Trait for custom storage backends
-pub trait MultiVersionRowBackend: Send + Sync + 'static {
+pub trait MultiVersionTransactionBackend: Send + Sync + 'static {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>>;
 	fn put(&self, row: MultiVersionValues) -> crate::Result<()>;
 	fn delete(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<()>;
@@ -105,7 +105,7 @@ pub trait MultiVersionRowBackend: Send + Sync + 'static {
 }
 
 // SingleVersion backend support (for completeness)
-pub trait SingleVersionRowBackend: Send + Sync + 'static {
+pub trait SingleVersionTransactionBackend: Send + Sync + 'static {
 	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>>;
 	fn put(&self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()>;
 	fn delete(&self, key: &EncodedKey) -> crate::Result<()>;

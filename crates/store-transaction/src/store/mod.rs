@@ -11,13 +11,13 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion,
-	interface::{MultiVersionValues, RowStore},
+	interface::{MultiVersionValues, TransactionStore},
 };
 
-use crate::{backend::Backend, config::RowStoreConfig};
+use crate::{backend::Backend, config::TransactionStoreConfig};
 
 #[derive(Clone)]
-pub struct StandardRowStore {
+pub struct StandardTransactionStore {
 	pub(crate) hot: Option<Backend>,
 	pub(crate) warm: Option<Backend>,
 	pub(crate) cold: Option<Backend>,
@@ -31,8 +31,8 @@ struct MergeState {
 	_last_merge_version: CommitVersion,
 }
 
-impl StandardRowStore {
-	pub fn new(config: RowStoreConfig) -> crate::Result<Self> {
+impl StandardTransactionStore {
+	pub fn new(config: TransactionStoreConfig) -> crate::Result<Self> {
 		Ok(Self {
 			hot: config.hot.map(|c| c.backend),
 			warm: config.warm.map(|c| c.backend),
@@ -42,7 +42,7 @@ impl StandardRowStore {
 	}
 }
 
-impl RowStore for StandardRowStore {
+impl TransactionStore for StandardTransactionStore {
 	fn last_merge_version(&self) -> CommitVersion {
 		let state = self.merge_state.lock().unwrap();
 		state._last_merge_version

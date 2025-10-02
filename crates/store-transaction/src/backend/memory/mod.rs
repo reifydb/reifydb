@@ -31,13 +31,13 @@ use reifydb_core::{
 };
 use write::{WriteCommand, Writer};
 
-pub type MultiVersionRowContainer = MultiVersionContainer<EncodedValues>;
+pub type MultiVersionTransactionContainer = MultiVersionContainer<EncodedValues>;
 
 #[derive(Clone)]
 pub struct Memory(Arc<MemoryInner>);
 
 pub struct MemoryInner {
-	multi: Arc<SkipMap<EncodedKey, MultiVersionRowContainer>>,
+	multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
 	single: Arc<SkipMap<EncodedKey, EncodedValues>>,
 	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
 	writer: Sender<WriteCommand>,
@@ -86,14 +86,14 @@ impl SingleVersionStore for Memory {}
 impl SingleVersionInsert for Memory {}
 impl SingleVersionRemove for Memory {}
 
-// MemoryRowBackend wrapper for encoded store specific behavior
+// MemoryTransactionBackend wrapper for encoded store specific behavior
 #[derive(Clone)]
-pub struct MemoryRowBackend {
+pub struct MemoryTransactionBackend {
 	inner: Memory,
 	_size_limit: usize,
 }
 
-impl MemoryRowBackend {
+impl MemoryTransactionBackend {
 	pub fn new(size_limit: usize) -> Self {
 		Self {
 			inner: Memory::new(),
@@ -111,11 +111,11 @@ impl MemoryRowBackend {
 	}
 
 	pub fn put(&self, _row: reifydb_core::interface::MultiVersionValues) -> crate::Result<()> {
-		todo!("Implement put for MemoryRowBackend")
+		todo!("Implement put for MemoryTransactionBackend")
 	}
 
 	pub fn delete(&self, _key: &EncodedKey, _version: CommitVersion) -> crate::Result<()> {
-		todo!("Implement delete for MemoryRowBackend")
+		todo!("Implement delete for MemoryTransactionBackend")
 	}
 
 	pub fn range(
@@ -128,7 +128,7 @@ impl MemoryRowBackend {
 	}
 
 	pub fn count(&self) -> usize {
-		todo!("Implement count for MemoryRowBackend")
+		todo!("Implement count for MemoryTransactionBackend")
 	}
 
 	pub fn name(&self) -> &str {

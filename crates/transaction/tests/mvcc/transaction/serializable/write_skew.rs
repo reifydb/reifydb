@@ -10,7 +10,7 @@
 // http: //www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_store_row::memory::Memory;
+use reifydb_store_transaction::memory::Memory;
 use reifydb_transaction::{
 	mvcc::transaction::{
 		optimistic::{CommandTransaction, Optimistic},

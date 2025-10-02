@@ -190,7 +190,7 @@ pub trait SingleVersionRangeRev {
 }
 
 /// Trait for encoded stores supporting columnar migration
-pub trait RowStore: Send + Sync + Clone + 'static {
+pub trait TransactionStore: Send + Sync + Clone + 'static {
 	/// Get the last version that was merged to column store
 	fn last_merge_version(&self) -> CommitVersion;
 

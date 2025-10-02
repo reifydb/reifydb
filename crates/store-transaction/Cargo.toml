@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-store-row"
+name = "reifydb-store-transaction"
 version.workspace = true
 edition.workspace = true
 license.workspace = true

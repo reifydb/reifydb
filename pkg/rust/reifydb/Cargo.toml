@@ -13,7 +13,7 @@ reifydb-cdc = { path = "../../../crates/cdc" }
 reifydb-core = { path = "../../../crates/core" }
 reifydb-engine = { path = "../../../crates/engine" }
 reifydb-network = { path = "../../../crates/network" }
-reifydb-store-row = { workspace = true }
+reifydb-store-transaction = { workspace = true }
 reifydb-rql = { path = "../../../crates/rql" }
 reifydb-transaction = { path = "../../../crates/transaction" }
 reifydb-type = { path = "../../../crates/type" }

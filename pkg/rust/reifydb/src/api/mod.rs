@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{CdcTransaction, MultiVersionStore, SingleVersionTransaction},
 };
 use reifydb_engine::StandardCdcTransaction;
-use reifydb_store_row::backend::{
+use reifydb_store_transaction::backend::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };

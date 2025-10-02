@@ -36,8 +36,8 @@ pub use reifydb_core::{
 };
 pub use reifydb_engine as engine;
 pub use reifydb_rql as rql;
-pub use reifydb_store_row as storage;
-pub use reifydb_store_row::backend::{
+pub use reifydb_store_transaction as storage;
+pub use reifydb_store_transaction::backend::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };

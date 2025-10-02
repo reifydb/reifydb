@@ -15,15 +15,15 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_row::{
+use reifydb_store_transaction::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-row/tests/scripts/cdc" as cdc_memory => test_memory }
-test_each_path! { in "crates/store-row/tests/scripts/cdc" as cdc_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as cdc_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/cdc" as cdc_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]

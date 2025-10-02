@@ -6,7 +6,7 @@ use std::time::Duration;
 use crate::backend::Backend;
 
 #[derive(Clone)]
-pub struct RowStoreConfig {
+pub struct TransactionStoreConfig {
 	pub hot: Option<BackendConfig>,
 	pub warm: Option<BackendConfig>,
 	pub cold: Option<BackendConfig>,
@@ -34,7 +34,7 @@ pub struct MergeConfig {
 	pub enable_auto_eviction: bool,
 }
 
-impl Default for RowStoreConfig {
+impl Default for TransactionStoreConfig {
 	fn default() -> Self {
 		Self {
 			hot: None,

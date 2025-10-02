@@ -3,7 +3,7 @@
 
 #![cfg(feature = "sub_server")]
 
-use reifydb_store_row::backend::{
+use reifydb_store_transaction::backend::{
 	memory::Memory,
 	sqlite::{Sqlite, SqliteConfig},
 };
