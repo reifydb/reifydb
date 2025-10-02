@@ -19,7 +19,7 @@ pub struct StandardColumnStore {
 	pub(crate) hot: Option<Backend>,
 	pub(crate) warm: Option<Backend>,
 	pub(crate) cold: Option<Backend>,
-	config: ColumnStoreConfig,
+	_config: ColumnStoreConfig,
 	tier_state: Arc<Mutex<TierState>>,
 }
 
@@ -32,8 +32,8 @@ struct TierState {
 impl Default for TierState {
 	fn default() -> Self {
 		Self {
-			_hot_evicted_version: 0,
-			_warm_evicted_version: 0,
+			_hot_evicted_version: CommitVersion(0),
+			_warm_evicted_version: CommitVersion(0),
 			_last_eviction_time: SystemTime::now(),
 		}
 	}
@@ -45,7 +45,7 @@ impl StandardColumnStore {
 			hot: config.hot.as_ref().map(|c| c.backend.clone()),
 			warm: config.warm.as_ref().map(|c| c.backend.clone()),
 			cold: config.cold.as_ref().map(|c| c.backend.clone()),
-			config,
+			_config: config,
 			tier_state: Arc::new(Mutex::new(TierState::default())),
 		})
 	}

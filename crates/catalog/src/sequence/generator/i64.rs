@@ -37,7 +37,7 @@ impl GeneratorI64 {
 			}
 			None => {
 				let result = default.unwrap_or(1i64);
-				let mut new_row = LAYOUT.allocate_row();
+				let mut new_row = LAYOUT.allocate();
 				LAYOUT.set_i64(&mut new_row, 0, result);
 				tx.set(key, new_row)?;
 				Ok(result)
@@ -49,7 +49,7 @@ impl GeneratorI64 {
 		txn.with_single_command(|tx| {
 			let mut row = match tx.get(key)? {
 				Some(row) => row.values,
-				None => LAYOUT.allocate_row(),
+				None => LAYOUT.allocate(),
 			};
 			LAYOUT.set_i64(&mut row, 0, value);
 			tx.set(key, row)?;
@@ -96,7 +96,7 @@ mod tests {
 	fn test_exhaustion() {
 		let mut txn = create_test_command_transaction();
 
-		let mut row = LAYOUT.allocate_row();
+		let mut row = LAYOUT.allocate();
 		LAYOUT.set_i64(&mut row, 0, i64::MAX);
 
 		txn.with_single_command(|tx| tx.set(&EncodedKey::new("sequence"), row)).unwrap();

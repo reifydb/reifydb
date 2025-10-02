@@ -49,7 +49,7 @@ where
 
 			let created = self.single.with_command(|tx| match tx.get(&key)? {
 				None => {
-					let mut row = layout.allocate_row();
+					let mut row = layout.allocate();
 					layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);
 					tx.set(&key, row)?;
 					Ok(true)

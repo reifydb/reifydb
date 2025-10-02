@@ -88,7 +88,7 @@ where
 							self.advance_pending();
 							self.last_yielded_key = Some(Either::Left(key));
 							let version = value.version;
-							match value.row() {
+							match value.values() {
 								Some(value) => {
 									return Some((version, key, value).into());
 								}
@@ -136,7 +136,7 @@ where
 					self.advance_pending(); // Advance the pending iterator for the next iteration.
 					self.last_yielded_key = Some(Either::Left(key)); // Update the last yielded key.
 					let version = value.version;
-					match value.row() {
+					match value.values() {
 						Some(value) => {
 							return Some((version, key, value).into());
 						}

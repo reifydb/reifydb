@@ -22,11 +22,11 @@ where
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
 				Delta::Set {
-					values: row,
+					values,
 					..
 				} => Ok(Some(SingleVersionValues {
 					key: key.clone(),
-					values: row.clone(),
+					values: values.clone(),
 				})),
 				Delta::Remove {
 					..
@@ -133,10 +133,10 @@ impl<'a, SVS> SingleVersionCommandTransaction for SvlWriteTransaction<'a, SVS>
 where
 	SVS: SingleVersionStore,
 {
-	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
+	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
 		let delta = Delta::Set {
 			key: key.clone(),
-			values: row,
+			values,
 		};
 		self.pending.insert(key.clone(), delta);
 		Ok(())

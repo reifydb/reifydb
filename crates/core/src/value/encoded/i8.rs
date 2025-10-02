@@ -41,7 +41,7 @@ mod tests {
 	#[test]
 	fn test_set_get_i8() {
 		let layout = EncodedValuesLayout::new(&[Type::Int1]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_i8(&mut row, 0, 42i8);
 		assert_eq!(layout.get_i8(&row, 0), 42i8);
 	}
@@ -49,7 +49,7 @@ mod tests {
 	#[test]
 	fn test_try_get_i8() {
 		let layout = EncodedValuesLayout::new(&[Type::Int1]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_i8(&row, 0), None);
 
@@ -60,16 +60,16 @@ mod tests {
 	#[test]
 	fn test_extremes() {
 		let layout = EncodedValuesLayout::new(&[Type::Int1]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i8(&mut row, 0, i8::MAX);
 		assert_eq!(layout.get_i8(&row, 0), i8::MAX);
 
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		layout.set_i8(&mut row2, 0, i8::MIN);
 		assert_eq!(layout.get_i8(&row2, 0), i8::MIN);
 
-		let mut row3 = layout.allocate_row();
+		let mut row3 = layout.allocate();
 		layout.set_i8(&mut row3, 0, 0i8);
 		assert_eq!(layout.get_i8(&row3, 0), 0i8);
 	}
@@ -77,7 +77,7 @@ mod tests {
 	#[test]
 	fn test_negative_positive() {
 		let layout = EncodedValuesLayout::new(&[Type::Int1, Type::Int1]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i8(&mut row, 0, -100i8);
 		layout.set_i8(&mut row, 1, 100i8);
@@ -89,7 +89,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Int1, Type::Boolean, Type::Int1]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i8(&mut row, 0, -50i8);
 		layout.set_bool(&mut row, 1, true);
@@ -103,7 +103,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Int1, Type::Int1]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i8(&mut row, 0, 42);
 

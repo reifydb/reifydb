@@ -15,6 +15,6 @@ impl MultiVersionContains for SqliteBackend {
 		let table = table_name(key)?;
 		let query = format!("SELECT EXISTS(SELECT 1 FROM {} WHERE key = ? AND version <= ?)", table);
 
-		Ok(guard.query_row(&query, params![key.to_vec(), version], |row| row.get(0)).unwrap())
+		Ok(guard.query_row(&query, params![key.to_vec(), version.0], |row| row.get(0)).unwrap())
 	}
 }

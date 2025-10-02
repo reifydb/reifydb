@@ -60,7 +60,7 @@ mod tests {
 	#[test]
 	fn test_set_get_interval() {
 		let layout = EncodedValuesLayout::new(&[Type::Interval]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let value = Interval::from_seconds(-7200);
 		layout.set_interval(&mut row, 0, value.clone());
@@ -70,7 +70,7 @@ mod tests {
 	#[test]
 	fn test_try_get_interval() {
 		let layout = EncodedValuesLayout::new(&[Type::Interval]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_interval(&row, 0), None);
 
@@ -82,7 +82,7 @@ mod tests {
 	#[test]
 	fn test_zero() {
 		let layout = EncodedValuesLayout::new(&[Type::Interval]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let zero = Interval::default(); // Zero interval
 		layout.set_interval(&mut row, 0, zero.clone());
@@ -104,7 +104,7 @@ mod tests {
 		];
 
 		for interval in test_intervals {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_interval(&mut row, 0, interval.clone());
 			assert_eq!(layout.get_interval(&row, 0), interval);
 		}
@@ -123,7 +123,7 @@ mod tests {
 		];
 
 		for interval in negative_intervals {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_interval(&mut row, 0, interval.clone());
 			assert_eq!(layout.get_interval(&row, 0), interval);
 		}
@@ -132,7 +132,7 @@ mod tests {
 	#[test]
 	fn test_complex_parts() {
 		let layout = EncodedValuesLayout::new(&[Type::Interval]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Create an interval with all components
 		let complex_interval = Interval::new(
@@ -147,7 +147,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Interval, Type::Boolean, Type::Interval, Type::Int8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let interval1 = Interval::from_hours(24);
 		let interval2 = Interval::from_minutes(-30);
@@ -166,7 +166,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Interval, Type::Interval]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let interval = Interval::from_days(100);
 		layout.set_interval(&mut row, 0, interval.clone());
@@ -181,7 +181,7 @@ mod tests {
 	#[test]
 	fn test_large_values() {
 		let layout = EncodedValuesLayout::new(&[Type::Interval]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Test with large values
 		let large_interval = Interval::new(
@@ -196,7 +196,7 @@ mod tests {
 	#[test]
 	fn test_precision_preservation() {
 		let layout = EncodedValuesLayout::new(&[Type::Interval]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Test that all components are preserved exactly
 		let precise_interval = Interval::new(
@@ -238,7 +238,7 @@ mod tests {
 		];
 
 		for interval in common_intervals {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_interval(&mut row, 0, interval.clone());
 			assert_eq!(layout.get_interval(&row, 0), interval);
 		}
@@ -259,7 +259,7 @@ mod tests {
 		];
 
 		for interval in boundary_intervals {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_interval(&mut row, 0, interval.clone());
 			assert_eq!(layout.get_interval(&row, 0), interval);
 		}

@@ -76,7 +76,7 @@ impl Executor {
 			let row_count = columns.row_count();
 
 			for row_numberx in 0..row_count {
-				let mut row = layout.allocate_row();
+				let mut row = layout.allocate();
 
 				// For each table column, find if it exists in
 				// the input columns
@@ -187,7 +187,7 @@ impl Executor {
 					// encode the encoded number as a simple
 					// EncodedRow with u64
 					let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
-					let mut row_number_encoded = row_number_layout.allocate_row();
+					let mut row_number_encoded = row_number_layout.allocate();
 					row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
 					std_txn.command_mut().set(

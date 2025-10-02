@@ -41,7 +41,7 @@ mod tests {
 	#[test]
 	fn test_set_get_u16() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint2]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_u16(&mut row, 0, 65535u16);
 		assert_eq!(layout.get_u16(&row, 0), 65535u16);
 	}
@@ -49,7 +49,7 @@ mod tests {
 	#[test]
 	fn test_try_get_u16() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint2]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_u16(&row, 0), None);
 
@@ -60,16 +60,16 @@ mod tests {
 	#[test]
 	fn test_extremes() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint2]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_u16(&mut row, 0, u16::MAX);
 		assert_eq!(layout.get_u16(&row, 0), u16::MAX);
 
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		layout.set_u16(&mut row2, 0, u16::MIN);
 		assert_eq!(layout.get_u16(&row2, 0), u16::MIN);
 
-		let mut row3 = layout.allocate_row();
+		let mut row3 = layout.allocate();
 		layout.set_u16(&mut row3, 0, 0u16);
 		assert_eq!(layout.get_u16(&row3, 0), 0u16);
 	}
@@ -81,7 +81,7 @@ mod tests {
 		let test_values = [0u16, 1u16, 255u16, 256u16, 32767u16, 32768u16, 65534u16, 65535u16];
 
 		for value in test_values {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_u16(&mut row, 0, value);
 			assert_eq!(layout.get_u16(&row, 0), value);
 		}
@@ -95,7 +95,7 @@ mod tests {
 		let ports = [80u16, 443u16, 8080u16, 3000u16, 5432u16, 27017u16];
 
 		for port in ports {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_u16(&mut row, 0, port);
 			assert_eq!(layout.get_u16(&row, 0), port);
 		}
@@ -104,7 +104,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint2, Type::Uint1, Type::Uint2]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_u16(&mut row, 0, 60000u16);
 		layout.set_u8(&mut row, 1, 200u8);
@@ -118,7 +118,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint2, Type::Uint2]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_u16(&mut row, 0, 12345u16);
 

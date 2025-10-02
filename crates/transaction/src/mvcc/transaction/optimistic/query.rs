@@ -42,7 +42,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> QueryTransaction<MV
 	}
 
 	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) {
-		self.read_as_of_version_exclusive(version + 1)
+		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1))
 	}
 
 	pub fn get(&self, key: &EncodedKey) -> crate::Result<Option<TransactionValue>> {

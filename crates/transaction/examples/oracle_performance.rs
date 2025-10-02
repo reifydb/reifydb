@@ -11,7 +11,7 @@ macro_rules! as_key {
 	($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
 }
 
-macro_rules! as_row {
+macro_rules! as_values {
 	($val:expr) => {{ EncodedValues(reifydb_core::CowVec::new(keycode::serialize(&$val))) }};
 }
 
@@ -36,7 +36,7 @@ pub fn oracle_performance_benchmark() {
 			let mut tx = engine.begin_command().unwrap();
 
 			let key = as_key!(format!("key_{}", i));
-			let value = as_row!(format!("value_{}", i));
+			let value = as_values!(format!("value_{}", i));
 
 			tx.set(&key, value).unwrap();
 			tx.commit().unwrap();
@@ -81,7 +81,7 @@ pub fn concurrent_oracle_benchmark() {
 					let mut tx = engine_clone.begin_command().unwrap();
 
 					let key = as_key!(base_key + i);
-					let value = as_row!(i);
+					let value = as_values!(i);
 
 					tx.set(&key, value).unwrap();
 					tx.commit().unwrap();
@@ -113,7 +113,7 @@ pub fn conflict_detection_benchmark() {
 	for i in 0..1000 {
 		let mut tx = engine.begin_command().unwrap();
 		let key = as_key!(format!("shared_key_{}", i % 100)); // 100 different keys
-		let value = as_row!(i);
+		let value = as_values!(i);
 		tx.set(&key, value).unwrap();
 		tx.commit().unwrap();
 	}
@@ -130,7 +130,7 @@ pub fn conflict_detection_benchmark() {
 
 		// Try to modify keys that might conflict
 		let key = as_key!(format!("shared_key_{}", i % 100));
-		let value = as_row!(i + 1000);
+		let value = as_values!(i + 1000);
 
 		tx.set(&key, value).unwrap();
 

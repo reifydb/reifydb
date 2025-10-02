@@ -11,18 +11,18 @@ pub(crate) fn generate_cdc_change(delta: Delta, pre: Option<EncodedValues>) -> C
 	match delta {
 		Delta::Set {
 			key,
-			values: row,
+			values,
 		} => {
 			if let Some(pre) = pre {
 				CdcChange::Update {
 					key,
 					pre,
-					post: row,
+					post: values,
 				}
 			} else {
 				CdcChange::Insert {
 					key,
-					post: row,
+					post: values,
 				}
 			}
 		}

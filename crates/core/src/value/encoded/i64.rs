@@ -41,7 +41,7 @@ mod tests {
 	#[test]
 	fn test_set_get_i64() {
 		let layout = EncodedValuesLayout::new(&[Type::Int8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_i64(&mut row, 0, -987654321i64);
 		assert_eq!(layout.get_i64(&row, 0), -987654321i64);
 	}
@@ -49,7 +49,7 @@ mod tests {
 	#[test]
 	fn test_try_get_i64() {
 		let layout = EncodedValuesLayout::new(&[Type::Int8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_i64(&row, 0), None);
 
@@ -60,16 +60,16 @@ mod tests {
 	#[test]
 	fn test_extremes() {
 		let layout = EncodedValuesLayout::new(&[Type::Int8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i64(&mut row, 0, i64::MAX);
 		assert_eq!(layout.get_i64(&row, 0), i64::MAX);
 
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		layout.set_i64(&mut row2, 0, i64::MIN);
 		assert_eq!(layout.get_i64(&row2, 0), i64::MIN);
 
-		let mut row3 = layout.allocate_row();
+		let mut row3 = layout.allocate();
 		layout.set_i64(&mut row3, 0, 0i64);
 		assert_eq!(layout.get_i64(&row3, 0), 0i64);
 	}
@@ -89,7 +89,7 @@ mod tests {
 		];
 
 		for value in test_values {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_i64(&mut row, 0, value);
 			assert_eq!(layout.get_i64(&row, 0), value);
 		}
@@ -108,7 +108,7 @@ mod tests {
 		];
 
 		for timestamp in timestamps {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_i64(&mut row, 0, timestamp);
 			assert_eq!(layout.get_i64(&row, 0), timestamp);
 		}
@@ -117,7 +117,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Int8, Type::Float8, Type::Int8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i64(&mut row, 0, -9_000_000_000_000_000i64);
 		layout.set_f64(&mut row, 1, 3.14159265359);
@@ -131,7 +131,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Int8, Type::Int8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i64(&mut row, 0, 1234567890123456789i64);
 

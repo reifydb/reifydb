@@ -128,7 +128,7 @@ mod tests {
 	#[test]
 	fn test_u64_inline() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Test simple unsigned value
 		let small = Uint::from(42u64);
@@ -139,7 +139,7 @@ mod tests {
 		assert_eq!(retrieved, small);
 
 		// Test larger unsigned value
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		let large = Uint::from(999999999999u64);
 		layout.set_uint(&mut row2, 0, &large);
 		assert_eq!(layout.get_uint(&row2, 0), large);
@@ -148,7 +148,7 @@ mod tests {
 	#[test]
 	fn test_u128_boundary() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Value that needs u128 storage
 		let large = Uint::from(u64::MAX);
@@ -159,7 +159,7 @@ mod tests {
 		assert_eq!(retrieved, large);
 
 		// Test max u128 that fits in 127 bits
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		let max_u127 = Uint::from(u128::MAX >> 1); // 127 bits
 		layout.set_uint(&mut row2, 0, &max_u127);
 		assert_eq!(layout.get_uint(&row2, 0), max_u127);
@@ -168,7 +168,7 @@ mod tests {
 	#[test]
 	fn test_dynamic_storage() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Create a value that requires dynamic storage (>127 bits)
 		// Using string representation for very large numbers
@@ -190,7 +190,7 @@ mod tests {
 	#[test]
 	fn test_zero() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let zero = Uint::from(0);
 		layout.set_uint(&mut row, 0, &zero);
@@ -203,7 +203,7 @@ mod tests {
 	#[test]
 	fn test_try_get() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Undefined initially
 		assert_eq!(layout.try_get_uint(&row, 0), None);
@@ -217,7 +217,7 @@ mod tests {
 	#[test]
 	fn test_clone_on_write() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint]);
-		let row1 = layout.allocate_row();
+		let row1 = layout.allocate();
 		let mut row2 = row1.clone();
 
 		let value = Uint::from(999999999999999u64);
@@ -232,7 +232,7 @@ mod tests {
 	#[test]
 	fn test_multiple_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Uint, Type::Utf8, Type::Uint, Type::Int4]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_bool(&mut row, 0, true);
 
@@ -259,7 +259,7 @@ mod tests {
 
 		// Test how negative values are handled (should be converted to
 		// 0 or error)
-		let mut row1 = layout.allocate_row();
+		let mut row1 = layout.allocate();
 		let negative = Uint::from(-42); // This creates a negative BigInt
 		layout.set_uint(&mut row1, 0, &negative);
 

@@ -1,12 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod multi;
-mod single;
-
 use reifydb_core::interface::TransactionStore;
 
 use crate::{backend::Backend, config::TransactionStoreConfig};
+
+mod multi;
+mod multi_iterator;
+mod single;
+mod single_iterator;
 
 #[derive(Clone)]
 pub struct StandardTransactionStore {

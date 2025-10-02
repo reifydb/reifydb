@@ -120,12 +120,12 @@ where
 	L: VersionProvider,
 {
 	/// Set a key-value pair to the transaction.
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<(), reifydb_type::Error> {
+	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
 
-		self.set_internal(key, row)
+		self.set_internal(key, values)
 	}
 
 	/// Removes a key.
@@ -141,7 +141,7 @@ where
 			delta: Delta::Remove {
 				key: key.clone(),
 			},
-			version: 0,
+			version: CommitVersion(0),
 		})
 	}
 
@@ -192,10 +192,10 @@ where
 			}
 
 			Ok(Some(Pending {
-				delta: match v.row() {
-					Some(row) => Delta::Set {
+				delta: match v.values() {
+					Some(values) => Delta::Set {
 						key: key.clone(),
-						values: row.clone(),
+						values: values.clone(),
 					},
 					None => Delta::Remove {
 						key: key.clone(),
@@ -256,7 +256,7 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
-	fn set_internal(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<(), reifydb_type::Error> {
+	fn set_internal(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
 		}
@@ -264,7 +264,7 @@ where
 		self.modify(Pending {
 			delta: Delta::Set {
 				key: key.clone(),
-				values: row,
+				values,
 			},
 			version: self.base_version(), // Use base version for writes, not read version
 		})
@@ -295,16 +295,16 @@ where
 		// versions. For same versions, we will overwrite the existing
 		// entry.
 		let key = pending.key();
-		let row = pending.row();
+		let values = pending.values();
 		let version = pending.version;
 
 		if let Some((old_key, old_value)) = pending_writes.remove_entry(key) {
 			if old_value.version != version {
 				self.duplicates.push(Pending {
-					delta: match row {
-						Some(row) => Delta::Set {
+					delta: match values {
+						Some(values) => Delta::Set {
 							key: old_key,
-							values: row.clone(),
+							values: values.clone(),
 						},
 						None => Delta::Remove {
 							key: old_key,
@@ -361,10 +361,10 @@ where
 					process(
 						&mut all,
 						Pending {
-							delta: match v.row() {
-								Some(row) => Delta::Set {
+							delta: match v.values() {
+								Some(values) => Delta::Set {
 									key: k,
-									values: row.clone(),
+									values: values.clone(),
 								},
 								None => Delta::Remove {
 									key: k,

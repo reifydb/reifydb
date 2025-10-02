@@ -68,12 +68,12 @@ impl Iterator for SvlScanRevIter {
 
 							match delta {
 								Delta::Set {
-									values: row,
+									values,
 									..
 								} => {
 									return Some(SingleVersionValues {
 										key,
-										values: row,
+										values,
 									});
 								}
 								Delta::Remove {
@@ -94,12 +94,12 @@ impl Iterator for SvlScanRevIter {
 
 							match delta {
 								Delta::Set {
-									values: row,
+									values,
 									..
 								} => {
 									return Some(SingleVersionValues {
 										key,
-										values: row,
+										values,
 									});
 								}
 								Delta::Remove {
@@ -136,12 +136,12 @@ impl Iterator for SvlScanRevIter {
 
 					match delta {
 						Delta::Set {
-							values: row,
+							values,
 							..
 						} => {
 							return Some(SingleVersionValues {
 								key,
-								values: row,
+								values,
 							});
 						}
 						Delta::Remove {

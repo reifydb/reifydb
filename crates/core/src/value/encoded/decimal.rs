@@ -109,7 +109,7 @@ mod tests {
 	#[test]
 	fn test_compact_inline() {
 		let layout = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Test simple decimal
 		let decimal = Decimal::from_str("123.45").unwrap();
@@ -120,7 +120,7 @@ mod tests {
 		assert_eq!(retrieved.to_string(), "123.45");
 
 		// Test negative decimal
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		let negative = Decimal::from_str("-999.99").unwrap();
 		layout.set_decimal(&mut row2, 0, &negative);
 		assert_eq!(layout.get_decimal(&row2, 0).to_string(), "-999.99");
@@ -130,7 +130,7 @@ mod tests {
 	fn test_compact_boundaries() {
 		// Test high precision decimal
 		let layout1 = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row1 = layout1.allocate_row();
+		let mut row1 = layout1.allocate();
 		let high_precision = Decimal::from_str("1.0000000000000000000000000000001").unwrap();
 		layout1.set_decimal(&mut row1, 0, &high_precision);
 		let retrieved = layout1.get_decimal(&row1, 0);
@@ -138,7 +138,7 @@ mod tests {
 
 		// Test large integer (scale 0)
 		let layout2 = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row2 = layout2.allocate_row();
+		let mut row2 = layout2.allocate();
 		let large_int = Decimal::from_str("100000000000000000000000000000000").unwrap();
 		layout2.set_decimal(&mut row2, 0, &large_int);
 		assert_eq!(layout2.get_decimal(&row2, 0).to_string(), "100000000000000000000000000000000");
@@ -147,7 +147,7 @@ mod tests {
 	#[test]
 	fn test_extended_i128() {
 		let layout = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Value that needs i128 mantissa
 		let large = Decimal::from_str("999999999999999999999.123456789").unwrap();
@@ -163,7 +163,7 @@ mod tests {
 		// Use a smaller test that will still trigger dynamic storage
 		// due to large mantissa
 		let layout = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Create a value with large precision that will exceed i128
 		// when scaled
@@ -179,7 +179,7 @@ mod tests {
 	#[test]
 	fn test_zero() {
 		let layout = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let zero = Decimal::from_str("0.0").unwrap();
 		layout.set_decimal(&mut row, 0, &zero);
@@ -194,19 +194,19 @@ mod tests {
 		let layout = EncodedValuesLayout::new(&[Type::Decimal]);
 
 		// Test typical currency value (2 decimal places)
-		let mut row1 = layout.allocate_row();
+		let mut row1 = layout.allocate();
 		let price = Decimal::from_str("19.99").unwrap();
 		layout.set_decimal(&mut row1, 0, &price);
 		assert_eq!(layout.get_decimal(&row1, 0).to_string(), "19.99");
 
 		// Test large currency value
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		let large_price = Decimal::from_str("999999999.99").unwrap();
 		layout.set_decimal(&mut row2, 0, &large_price);
 		assert_eq!(layout.get_decimal(&row2, 0).to_string(), "999999999.99");
 
 		// Test small fraction
-		let mut row3 = layout.allocate_row();
+		let mut row3 = layout.allocate();
 		let fraction = Decimal::from_str("0.00000001").unwrap();
 		layout.set_decimal(&mut row3, 0, &fraction);
 		assert_eq!(layout.get_decimal(&row3, 0), fraction);
@@ -215,7 +215,7 @@ mod tests {
 	#[test]
 	fn test_scientific_notation() {
 		let layout = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let scientific = Decimal::from_str("1.23456e10").unwrap();
 		layout.set_decimal(&mut row, 0, &scientific);
@@ -227,7 +227,7 @@ mod tests {
 	#[test]
 	fn test_try_get() {
 		let layout = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Undefined initially
 		assert_eq!(layout.try_get_decimal(&row, 0), None);
@@ -244,7 +244,7 @@ mod tests {
 	#[test]
 	fn test_clone_on_write() {
 		let layout = EncodedValuesLayout::new(&[Type::Decimal]);
-		let row1 = layout.allocate_row();
+		let row1 = layout.allocate();
 		let mut row2 = row1.clone();
 
 		let value = Decimal::from_str("3.14159").unwrap();
@@ -265,7 +265,7 @@ mod tests {
 			Type::Decimal,
 			Type::Int4,
 		]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_bool(&mut row, 0, true);
 
@@ -291,21 +291,21 @@ mod tests {
 		// Small negative (compact inline) - needs scale 2
 		let layout1 = EncodedValuesLayout::new(&[Type::Decimal]);
 
-		let mut row1 = layout1.allocate_row();
+		let mut row1 = layout1.allocate();
 		let small_neg = Decimal::from_str("-0.01").unwrap();
 		layout1.set_decimal(&mut row1, 0, &small_neg);
 		assert_eq!(layout1.get_decimal(&row1, 0).to_string(), "-0.01");
 
 		// Large negative (extended i128) - needs scale 3
 		let layout2 = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row2 = layout2.allocate_row();
+		let mut row2 = layout2.allocate();
 		let large_neg = Decimal::from_str("-999999999999999999.999").unwrap();
 		layout2.set_decimal(&mut row2, 0, &large_neg);
 		assert_eq!(layout2.get_decimal(&row2, 0).to_string(), "-999999999999999999.999");
 
 		// Huge negative (dynamic) - needs scale 9
 		let layout3 = EncodedValuesLayout::new(&[Type::Decimal]);
-		let mut row3 = layout3.allocate_row();
+		let mut row3 = layout3.allocate();
 		let huge_neg = Decimal::from_str("-99999999999999999999999999999.999999999").unwrap();
 		layout3.set_decimal(&mut row3, 0, &huge_neg);
 		assert_eq!(layout3.get_decimal(&row3, 0).to_string(), "-99999999999999999999999999999.999999999");

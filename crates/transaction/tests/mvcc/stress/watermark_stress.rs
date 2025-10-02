@@ -10,6 +10,7 @@ use std::{
 	time::{Duration, Instant},
 };
 
+use reifydb_core::CommitVersion;
 use reifydb_transaction::mvcc::watermark::{Closer, MAX_PENDING, MAX_WAITERS, WaterMark};
 
 /// Test watermark with many pending versions to trigger cleanup
@@ -24,11 +25,11 @@ fn test_watermark_pending_cleanup() {
 
 	// Begin many versions
 	for version in 1..=NUM_VERSIONS {
-		watermark.begin(version);
+		watermark.begin(CommitVersion(version));
 
 		// Complete some versions to allow progress
 		if version % 3 == 0 {
-			watermark.done(version);
+			watermark.done(CommitVersion(version));
 		}
 	}
 
@@ -38,7 +39,7 @@ fn test_watermark_pending_cleanup() {
 	// Now complete remaining versions
 	for version in 1..=NUM_VERSIONS {
 		if version % 3 != 0 {
-			watermark.done(version);
+			watermark.done(CommitVersion(version));
 		}
 	}
 
@@ -47,7 +48,7 @@ fn test_watermark_pending_cleanup() {
 
 	// Verify the system handled the load without panic
 	let final_done = watermark.done_until();
-	assert!(final_done > 0, "Watermark should have progressed despite high load");
+	assert!(final_done > CommitVersion(0), "Watermark should have progressed despite high load");
 
 	closer.signal_and_wait();
 }
@@ -61,7 +62,7 @@ fn test_watermark_waiters_cleanup() {
 	const NUM_WAITERS: usize = MAX_WAITERS + 5000;
 
 	for i in 1..=NUM_WAITERS as u64 {
-		watermark.begin(i);
+		watermark.begin(CommitVersion(i));
 	}
 
 	let mut handles = vec![];
@@ -73,7 +74,7 @@ fn test_watermark_waiters_cleanup() {
 		let counter = timeout_count.clone();
 
 		let handle = thread::spawn(move || {
-			if !wm.wait_for_mark_timeout(version, Duration::from_secs(2)) {
+			if !wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_secs(2)) {
 				counter.fetch_add(1, Ordering::Relaxed);
 			}
 		});
@@ -85,7 +86,7 @@ fn test_watermark_waiters_cleanup() {
 
 	// Now complete all versions
 	for i in 1..=NUM_WAITERS as u64 {
-		watermark.done(i);
+		watermark.done(CommitVersion(i));
 	}
 
 	for handle in handles {
@@ -123,13 +124,13 @@ fn test_watermark_channel_saturation() {
 				let version = base_version + i as u64;
 
 				// Rapid fire begin/done to stress the channel
-				wm.begin(version);
-				wm.done(version);
+				wm.begin(CommitVersion(version));
+				wm.done(CommitVersion(version));
 
 				// Occasionally wait, but with shorter timeout
 				// to avoid indefinite hangs
 				if i % 100 == 0 {
-					wm.wait_for_mark_timeout(version, Duration::from_millis(100));
+					wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_millis(100));
 				}
 			}
 		});
@@ -145,7 +146,7 @@ fn test_watermark_channel_saturation() {
 
 	// Verify progress was made
 	let final_done = watermark.done_until();
-	assert!(final_done > 0, "Should have processed versions despite channel pressure");
+	assert!(final_done > CommitVersion(0), "Should have processed versions despite channel pressure");
 
 	closer.signal_and_wait();
 }
@@ -158,15 +159,15 @@ fn test_watermark_old_version_stress() {
 
 	// Advance the watermark significantly
 	for i in 1..=1000 {
-		watermark.begin(i);
-		watermark.done(i);
+		watermark.begin(CommitVersion(i));
+		watermark.done(CommitVersion(i));
 	}
 
 	// Wait for processing
 	thread::sleep(Duration::from_millis(100));
 
 	let done_until = watermark.done_until();
-	assert!(done_until >= 900, "Should have processed most versions");
+	assert!(done_until >= CommitVersion(900), "Should have processed most versions");
 
 	// Now try operations with very old versions
 	let mut handles = vec![];

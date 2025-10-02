@@ -19,7 +19,7 @@ pub enum TransactionValue {
 	PendingIter {
 		version: CommitVersion,
 		key: EncodedKey,
-		row: EncodedValues,
+		values: EncodedValues,
 	},
 	Pending(Pending),
 	Committed(Committed),
@@ -29,7 +29,7 @@ impl From<MultiVersionValues> for TransactionValue {
 	fn from(value: MultiVersionValues) -> Self {
 		Self::Committed(Committed {
 			key: value.key,
-			row: value.values,
+			values: value.values,
 			version: value.version,
 		})
 	}
@@ -40,7 +40,7 @@ impl core::fmt::Debug for TransactionValue {
 		f.debug_struct("TransactionValue")
 			.field("key", self.key())
 			.field("version", &self.version())
-			.field("value", &self.row())
+			.field("value", &self.values())
 			.finish()
 	}
 }
@@ -53,11 +53,11 @@ impl Clone for TransactionValue {
 			Self::PendingIter {
 				version,
 				key,
-				row: value,
+				values: value,
 			} => Self::PendingIter {
 				version: *version,
 				key: key.clone(),
-				row: value.clone(),
+				values: value.clone(),
 			},
 		}
 	}
@@ -86,14 +86,14 @@ impl TransactionValue {
 		}
 	}
 
-	pub fn row(&self) -> &EncodedValues {
+	pub fn values(&self) -> &EncodedValues {
 		match self {
 			Self::PendingIter {
-				row,
+				values,
 				..
-			} => row,
-			Self::Pending(item) => item.row().expect("encoded of pending cannot be `None`"),
-			Self::Committed(item) => &item.row,
+			} => values,
+			Self::Pending(item) => item.values().expect("encoded of pending cannot be `None`"),
+			Self::Committed(item) => &item.values,
 		}
 	}
 
@@ -107,7 +107,7 @@ impl From<(CommitVersion, EncodedKey, EncodedValues)> for TransactionValue {
 		Self::PendingIter {
 			version,
 			key: k,
-			row: b,
+			values: b,
 		}
 	}
 }
@@ -117,7 +117,7 @@ impl From<(CommitVersion, &EncodedKey, &EncodedValues)> for TransactionValue {
 		Self::PendingIter {
 			version,
 			key: k.clone(),
-			row: b.clone(),
+			values: b.clone(),
 		}
 	}
 }
@@ -137,7 +137,7 @@ impl From<Committed> for TransactionValue {
 #[derive(Clone, Debug)]
 pub struct Committed {
 	pub(crate) key: EncodedKey,
-	pub(crate) row: EncodedValues,
+	pub(crate) values: EncodedValues,
 	pub(crate) version: CommitVersion,
 }
 
@@ -145,7 +145,7 @@ impl From<MultiVersionValues> for Committed {
 	fn from(value: MultiVersionValues) -> Self {
 		Self {
 			key: value.key,
-			row: value.values,
+			values: value.values,
 			version: value.version,
 		}
 	}
@@ -156,8 +156,8 @@ impl Committed {
 		&self.key
 	}
 
-	pub fn row(&self) -> &EncodedValues {
-		&self.row
+	pub fn values(&self) -> &EncodedValues {
+		&self.values
 	}
 
 	pub fn version(&self) -> CommitVersion {
@@ -201,7 +201,7 @@ impl Pending {
 		self.version
 	}
 
-	pub fn into_components(self) -> (u64, Delta) {
+	pub fn into_components(self) -> (CommitVersion, Delta) {
 		(self.version, self.delta)
 	}
 
@@ -209,8 +209,8 @@ impl Pending {
 		self.delta.key()
 	}
 
-	pub fn row(&self) -> Option<&EncodedValues> {
-		self.delta.row()
+	pub fn values(&self) -> Option<&EncodedValues> {
+		self.delta.values()
 	}
 
 	pub fn was_removed(&self) -> bool {

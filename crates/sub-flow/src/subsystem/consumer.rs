@@ -188,7 +188,7 @@ impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
 	fn consume(&self, txn: &mut StandardCommandTransaction<T>, cdcs: Vec<Cdc>) -> Result<()> {
 		// Collect ALL changes first
 		let mut all_changes = Vec::new();
-		let mut version = CommitVersion::default();
+		let mut version = CommitVersion(0);
 
 		for cdc in cdcs {
 			version = version.max(cdc.version);

@@ -199,7 +199,7 @@ impl DistinctOperator {
 		let serialized = encode_to_vec(state, config)
 			.map_err(|e| Error(internal_error!("Failed to serialize DistinctState: {}", e)))?;
 
-		let mut state_row = self.layout.allocate_row();
+		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 

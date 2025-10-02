@@ -411,7 +411,7 @@ mod tests {
 				)
 				.unwrap();
 			let table_names: Vec<String> =
-				stmt.query_map([], |row| Ok(row.get(0)?)).unwrap().map(Result::unwrap).collect();
+				stmt.query_map([], |values| Ok(values.get(0)?)).unwrap().map(Result::unwrap).collect();
 
 			assert_eq!(table_names.len(), 2);
 			assert!(table_names.contains(&"multi".to_string()));

@@ -68,10 +68,10 @@ impl Range {
 		query_params.push(self.batch_size as i64);
 
 		let transactions: Vec<(CommitVersion, EncodedValues)> = stmt
-			.query_map(rusqlite::params_from_iter(query_params), |row| {
-				let version: i64 = row.get(0)?;
-				let bytes: Vec<u8> = row.get(1)?;
-				Ok((version as CommitVersion, EncodedValues(CowVec::new(bytes))))
+			.query_map(rusqlite::params_from_iter(query_params), |values| {
+				let version = CommitVersion(values.get(0)?);
+				let bytes: Vec<u8> = values.get(1)?;
+				Ok((version, EncodedValues(CowVec::new(bytes))))
 			})
 			.unwrap()
 			.collect::<rusqlite::Result<Vec<_>>>()
@@ -101,11 +101,11 @@ impl Range {
 		match &self.start {
 			Bound::Included(v) => {
 				conditions.push("version >= ?".to_string());
-				params.push(*v as i64);
+				params.push(v.0 as i64);
 			}
 			Bound::Excluded(v) => {
 				conditions.push("version > ?".to_string());
-				params.push(*v as i64);
+				params.push(v.0 as i64);
 			}
 			Bound::Unbounded => {}
 		}
@@ -113,11 +113,11 @@ impl Range {
 		match &self.end {
 			Bound::Included(v) => {
 				conditions.push("version <= ?".to_string());
-				params.push(*v as i64);
+				params.push(v.0 as i64);
 			}
 			Bound::Excluded(v) => {
 				conditions.push("version < ?".to_string());
-				params.push(*v as i64);
+				params.push(v.0 as i64);
 			}
 			Bound::Unbounded => {}
 		}
@@ -126,7 +126,7 @@ impl Range {
 		// transactions)
 		if let Some(last_version) = self.last_version {
 			conditions.push("version > ?".to_string());
-			params.push(last_version as i64);
+			params.push(last_version.0 as i64);
 		}
 
 		let where_clause = if conditions.is_empty() {

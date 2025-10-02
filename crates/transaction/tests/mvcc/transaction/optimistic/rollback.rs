@@ -11,13 +11,13 @@
 
 use reifydb_transaction::mvcc::transaction::optimistic::Optimistic;
 
-use crate::{as_key, as_row};
+use crate::{as_key, as_values};
 
 #[test]
 fn test_rollback_same_tx() {
 	let engine = Optimistic::testing();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_row!(1)).unwrap();
+	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.rollback().unwrap();
 	assert!(txn.get(&as_key!(1)).unwrap().is_none());
 }
@@ -26,7 +26,7 @@ fn test_rollback_same_tx() {
 fn test_rollback_different_tx() {
 	let engine = Optimistic::testing();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_row!(1)).unwrap();
+	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.rollback().unwrap();
 
 	let rx = engine.begin_query().unwrap();

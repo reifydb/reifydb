@@ -40,10 +40,10 @@ impl Iterator for MultiVersionScanIter<'_> {
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let item = self.iter.next()?;
-			if let Some(row) = item.value().get(self.version) {
+			if let Some(values) = item.value().get(self.version) {
 				return Some(MultiVersionValues {
 					key: item.key().clone(),
-					values: row,
+					values,
 					version: self.version,
 				});
 			}

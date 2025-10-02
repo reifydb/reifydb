@@ -60,7 +60,7 @@ pub trait MultiVersionQueryTransaction {
 	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()>;
 
 	fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
-		self.read_as_of_version_exclusive(version + 1)
+		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1))
 	}
 }
 

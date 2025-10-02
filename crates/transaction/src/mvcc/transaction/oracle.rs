@@ -16,7 +16,7 @@ use crate::mvcc::{
 };
 
 /// Configuration for the efficient oracle
-const DEFAULT_WINDOW_SIZE: CommitVersion = 1000;
+const DEFAULT_WINDOW_SIZE: u64 = 1000;
 const MAX_WINDOWS: usize = 50;
 const CLEANUP_THRESHOLD: usize = 40;
 pub const MAX_COMMITTED_TXNS: usize = MAX_WINDOWS * 200;
@@ -88,7 +88,7 @@ where
 	pub key_to_windows: HashMap<EncodedKey, BTreeSet<CommitVersion>>,
 
 	/// Current window size for new windows
-	pub window_size: CommitVersion,
+	pub window_size: u64,
 }
 
 #[derive(Debug)]
@@ -139,7 +139,7 @@ where
 		Self {
 			inner: RwLock::new(OracleInner {
 				clock,
-				last_cleanup: 0,
+				last_cleanup: CommitVersion(0),
 				time_windows: BTreeMap::new(),
 				key_to_windows: HashMap::with_capacity(10000),
 				window_size: DEFAULT_WINDOW_SIZE,
@@ -321,7 +321,7 @@ where
 	/// Add a committed transaction to the appropriate time window
 	fn add_committed_transaction(&mut self, version: CommitVersion, conflicts: ConflictManager) {
 		// Determine which window this transaction belongs to
-		let window_start = (version / self.window_size) * self.window_size;
+		let window_start = CommitVersion((version.0 / self.window_size) * self.window_size);
 
 		// Get or create the window
 		let window =
@@ -343,7 +343,7 @@ where
 		self.last_cleanup = self.last_cleanup.max(version);
 	}
 
-	/// Clean up old time windows to prevent unbounded growth
+	/// Clean up old time windows to prevent unbounded gvaluesth
 	fn cleanup_old_windows(&mut self) {
 		if self.time_windows.len() <= MAX_WINDOWS {
 			return;
@@ -397,20 +397,20 @@ mod tests {
 	}
 
 	impl MockVersionProvider {
-		fn new(start: CommitVersion) -> Self {
+		fn new(start: impl Into<CommitVersion>) -> Self {
 			Self {
-				current: Arc::new(AtomicU64::new(start)),
+				current: Arc::new(AtomicU64::new(start.into().0)),
 			}
 		}
 	}
 
 	impl VersionProvider for MockVersionProvider {
 		fn next(&self) -> crate::Result<CommitVersion> {
-			Ok(self.current.fetch_add(1, Ordering::Relaxed) + 1)
+			Ok(CommitVersion(self.current.fetch_add(1, Ordering::Relaxed) + 1))
 		}
 
 		fn current(&self) -> crate::Result<CommitVersion> {
-			Ok(self.current.load(Ordering::Relaxed))
+			Ok(CommitVersion(self.current.load(Ordering::Relaxed)))
 		}
 	}
 
@@ -441,11 +441,11 @@ mod tests {
 
 		// Simulate committing a transaction
 		let mut done_read = false;
-		let result = oracle.new_commit(&mut done_read, 1, conflicts).unwrap();
+		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).unwrap();
 
 		match result {
 			CreateCommitResult::Success(version) => {
-				assert!(version >= 1); // Should get a new version
+				assert!(version.0 >= 1); // Should get a new version
 
 				// Check that keys were indexed
 				let inner = oracle.inner.read();
@@ -473,10 +473,9 @@ mod tests {
 		conflicts1.mark_conflict(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, 1, conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		let _commit_v1 = match result1 {
-			CreateCommitResult::Success(v) => v, // This should
-			// be version 2
+			CreateCommitResult::Success(v) => v, // This should be version 2
 			_ => panic!("First transaction should succeed"),
 		};
 
@@ -490,7 +489,7 @@ mod tests {
 		let mut done_read2 = false;
 		// txn2 also started reading at version 1, but txn1 committed at
 		// version 2 So txn2 should see the conflict
-		let result2 = oracle.new_commit(&mut done_read2, 1, conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should detect conflict because txn2 read shared_key which
 		// txn1 wrote to
@@ -511,7 +510,7 @@ mod tests {
 		conflicts1.mark_conflict(&key1);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, 1, conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: reads and writes key2 (different key, no
@@ -521,7 +520,7 @@ mod tests {
 		conflicts2.mark_conflict(&key2);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, 1, conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should succeed because different keys
 		assert!(matches!(result2, CreateCommitResult::Success(_)));
@@ -546,7 +545,7 @@ mod tests {
 			}
 
 			let mut done_read = false;
-			let version_start = (i as CommitVersion) * DEFAULT_WINDOW_SIZE + 1;
+			let version_start = CommitVersion(i as u64 * DEFAULT_WINDOW_SIZE + 1);
 			let result = oracle.new_commit(&mut done_read, version_start, conflicts).unwrap();
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}
@@ -575,7 +574,7 @@ mod tests {
 		conflicts1.mark_conflict(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, 5, conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(5), conflicts1).unwrap();
 		let commit_v1 = match result1 {
 			CreateCommitResult::Success(v) => v,
 			_ => panic!("First transaction should succeed"),
@@ -589,7 +588,7 @@ mod tests {
 		conflicts2.mark_conflict(&shared_key);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, 3, conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(3), conflicts2).unwrap();
 		assert!(matches!(result2, CreateCommitResult::Success(_)));
 
 		// Third transaction that started BEFORE the first committed
@@ -600,7 +599,7 @@ mod tests {
 		conflicts3.mark_conflict(&shared_key);
 
 		let mut done_read3 = false;
-		let read_version = commit_v1 - 1; // Started reading before txn1 committed
+		let read_version = CommitVersion(commit_v1.0 - 1); // Started reading before txn1 committed
 		let result3 = oracle.new_commit(&mut done_read3, read_version, conflicts3).unwrap();
 		assert!(matches!(result3, CreateCommitResult::Conflict(_)));
 	}
@@ -617,7 +616,7 @@ mod tests {
 		conflicts1.mark_conflict(&key1);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, 1, conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: does a range operation (which can't be
@@ -631,7 +630,7 @@ mod tests {
 
 		// This should use the fallback mechanism to check all windows
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, 1, conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should detect conflict due to the range overlap with key1
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
@@ -652,7 +651,7 @@ mod tests {
 			conflicts.mark_conflict(&key);
 
 			let mut done_read = false;
-			let version_start = (i as CommitVersion) * DEFAULT_WINDOW_SIZE + 1;
+			let version_start = CommitVersion(i as u64 * DEFAULT_WINDOW_SIZE + 1);
 			let result = oracle.new_commit(&mut done_read, version_start, conflicts).unwrap();
 			assert!(matches!(result, CreateCommitResult::Success(_)));
 		}
@@ -682,7 +681,7 @@ mod tests {
 		let conflicts = ConflictManager::new(); // Empty conflict manager
 
 		let mut done_read = false;
-		let result = oracle.new_commit(&mut done_read, 1, conflicts).unwrap();
+		let result = oracle.new_commit(&mut done_read, CommitVersion(1), conflicts).unwrap();
 
 		// Should succeed but not create any key index entries
 		match result {
@@ -708,7 +707,7 @@ mod tests {
 		conflicts1.mark_conflict(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, 1, conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: also writes to shared_key (write-write
@@ -717,7 +716,7 @@ mod tests {
 		conflicts2.mark_conflict(&shared_key);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, 1, conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should detect conflict because both transactions write to the
 		// same key
@@ -736,7 +735,7 @@ mod tests {
 		conflicts1.mark_conflict(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, 1, conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Second transaction: reads from shared_key (read-write
@@ -745,7 +744,7 @@ mod tests {
 		conflicts2.mark_read(&shared_key);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, 1, conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 
 		// Should detect conflict because txn2 read from key that txn1
 		// wrote to
@@ -765,7 +764,7 @@ mod tests {
 		conflicts1.mark_conflict(&shared_key);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, 1, conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		let commit_v1 = match result1 {
 			CreateCommitResult::Success(v) => v,
 			_ => panic!("First transaction should succeed"),
@@ -777,7 +776,7 @@ mod tests {
 		conflicts2.mark_conflict(&shared_key);
 
 		let mut done_read2 = false;
-		let read_version = commit_v1 + 1; // Started after first committed
+		let read_version = CommitVersion(commit_v1.0 + 1); // Started after first committed
 		let result2 = oracle.new_commit(&mut done_read2, read_version, conflicts2).unwrap();
 
 		// Should NOT conflict because they don't overlap in time
@@ -799,7 +798,7 @@ mod tests {
 		conflicts1.mark_conflict(&key_b);
 
 		let mut done_read1 = false;
-		let result1 = oracle.new_commit(&mut done_read1, 1, conflicts1).unwrap();
+		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
 		assert!(matches!(result1, CreateCommitResult::Success(_)));
 
 		// Transaction 2: reads B, writes C (should conflict because
@@ -809,7 +808,7 @@ mod tests {
 		conflicts2.mark_conflict(&key_c);
 
 		let mut done_read2 = false;
-		let result2 = oracle.new_commit(&mut done_read2, 1, conflicts2).unwrap();
+		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
 		assert!(matches!(result2, CreateCommitResult::Conflict(_)));
 
 		// Transaction 3: reads C, writes A (should not conflict)
@@ -818,7 +817,7 @@ mod tests {
 		conflicts3.mark_conflict(&key_a);
 
 		let mut done_read3 = false;
-		let result3 = oracle.new_commit(&mut done_read3, 1, conflicts3).unwrap();
+		let result3 = oracle.new_commit(&mut done_read3, CommitVersion(1), conflicts3).unwrap();
 		assert!(matches!(result3, CreateCommitResult::Success(_)));
 	}
 }

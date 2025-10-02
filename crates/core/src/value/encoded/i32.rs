@@ -41,7 +41,7 @@ mod tests {
 	#[test]
 	fn test_set_get_i32() {
 		let layout = EncodedValuesLayout::new(&[Type::Int4]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_i32(&mut row, 0, 56789i32);
 		assert_eq!(layout.get_i32(&row, 0), 56789i32);
 	}
@@ -49,7 +49,7 @@ mod tests {
 	#[test]
 	fn test_try_get_i32() {
 		let layout = EncodedValuesLayout::new(&[Type::Int4]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_i32(&row, 0), None);
 
@@ -60,16 +60,16 @@ mod tests {
 	#[test]
 	fn test_extremes() {
 		let layout = EncodedValuesLayout::new(&[Type::Int4]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i32(&mut row, 0, i32::MAX);
 		assert_eq!(layout.get_i32(&row, 0), i32::MAX);
 
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		layout.set_i32(&mut row2, 0, i32::MIN);
 		assert_eq!(layout.get_i32(&row2, 0), i32::MIN);
 
-		let mut row3 = layout.allocate_row();
+		let mut row3 = layout.allocate();
 		layout.set_i32(&mut row3, 0, 0i32);
 		assert_eq!(layout.get_i32(&row3, 0), 0i32);
 	}
@@ -82,7 +82,7 @@ mod tests {
 			[-2_147_483_648i32, -1_000_000_000i32, -1i32, 0i32, 1i32, 1_000_000_000i32, 2_147_483_647i32];
 
 		for value in test_values {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_i32(&mut row, 0, value);
 			assert_eq!(layout.get_i32(&row, 0), value);
 		}
@@ -91,7 +91,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Int4, Type::Boolean, Type::Int4, Type::Float4]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i32(&mut row, 0, -1_000_000i32);
 		layout.set_bool(&mut row, 1, true);
@@ -107,7 +107,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Int4, Type::Int4]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i32(&mut row, 0, 12345);
 

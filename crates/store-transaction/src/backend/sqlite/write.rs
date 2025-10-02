@@ -205,8 +205,8 @@ impl Writer {
 		match delta {
 			Delta::Set {
 				key,
-				values: row,
-			} => Self::apply_delta_set(tx, key, row, version, ensured_tables),
+				values,
+			} => Self::apply_delta_set(tx, key, values, version, ensured_tables),
 			Delta::Remove {
 				key,
 			} => Self::apply_delta_remove(tx, key, version, ensured_tables),
@@ -216,7 +216,7 @@ impl Writer {
 	fn apply_delta_set(
 		tx: &Transaction,
 		key: &[u8],
-		row: &[u8],
+		values: &[u8],
 		version: CommitVersion,
 		ensured_tables: &mut HashSet<String>,
 	) -> Result<()> {
@@ -226,7 +226,7 @@ impl Writer {
 
 		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", table);
 
-		tx.execute(&query, rusqlite::params![key.to_vec(), version, row.to_vec()])
+		tx.execute(&query, rusqlite::params![key.to_vec(), version.0, values.to_vec()])
 			.map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		Ok(())
@@ -244,7 +244,7 @@ impl Writer {
 
 		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, NULL)", table);
 
-		tx.execute(&query, rusqlite::params![key.to_vec(), version])
+		tx.execute(&query, rusqlite::params![key.to_vec(), version.0])
 			.map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		Ok(())

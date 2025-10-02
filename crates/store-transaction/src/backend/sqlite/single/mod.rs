@@ -110,10 +110,10 @@ pub(crate) fn execute_range_query(
 	match param_count {
 		0 => {
 			let rows = stmt
-				.query_map(rusqlite::params![batch_size], |row| {
+				.query_map(rusqlite::params![batch_size], |values| {
 					Ok(SingleVersionValues {
-						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-						values: EncodedValues(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+						key: EncodedKey::new(values.get::<_, Vec<u8>>(0)?),
+						values: EncodedValues(CowVec::new(values.get::<_, Vec<u8>>(1)?)),
 					})
 				})
 				.unwrap();
@@ -135,10 +135,10 @@ pub(crate) fn execute_range_query(
 				_ => unreachable!(),
 			};
 			let rows = stmt
-				.query_map(rusqlite::params![param, batch_size], |row| {
+				.query_map(rusqlite::params![param, batch_size], |values| {
 					Ok(SingleVersionValues {
-						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-						values: EncodedValues(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+						key: EncodedKey::new(values.get::<_, Vec<u8>>(0)?),
+						values: EncodedValues(CowVec::new(values.get::<_, Vec<u8>>(1)?)),
 					})
 				})
 				.unwrap();
@@ -163,10 +163,10 @@ pub(crate) fn execute_range_query(
 				_ => unreachable!(),
 			};
 			let rows = stmt
-				.query_map(rusqlite::params![start_param, end_param, batch_size], |row| {
+				.query_map(rusqlite::params![start_param, end_param, batch_size], |values| {
 					Ok(SingleVersionValues {
-						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-						values: EncodedValues(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+						key: EncodedKey::new(values.get::<_, Vec<u8>>(0)?),
+						values: EncodedValues(CowVec::new(values.get::<_, Vec<u8>>(1)?)),
 					})
 				})
 				.unwrap();
@@ -218,10 +218,10 @@ pub(crate) fn execute_scan_query(
 	let mut stmt = conn_guard.prepare(&query).unwrap();
 
 	let rows = stmt
-		.query_map(rusqlite::params_from_iter(params.iter()), |row| {
+		.query_map(rusqlite::params_from_iter(params.iter()), |values| {
 			Ok(SingleVersionValues {
-				key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
-				values: EncodedValues(CowVec::new(row.get::<_, Vec<u8>>(1)?)),
+				key: EncodedKey::new(values.get::<_, Vec<u8>>(0)?),
+				values: EncodedValues(CowVec::new(values.get::<_, Vec<u8>>(1)?)),
 			})
 		})
 		.unwrap();

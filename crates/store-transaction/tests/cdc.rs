@@ -52,15 +52,15 @@ impl<MVS: MultiVersionStore + CdcStore> Runner<MVS> {
 	fn new(storage: MVS) -> Self {
 		Self {
 			storage,
-			next_version: 1,
+			next_version: CommitVersion(1),
 			deltas: Vec::new(),
 		}
 	}
 
 	fn format_cdc_change(change: &CdcChange) -> String {
-		let format_value = |row: &EncodedValues| format::Raw::bytes(row.as_slice());
+		let format_value = |values: &EncodedValues| format::Raw::bytes(values.as_slice());
 		let format_option_value = |row_opt: &Option<EncodedValues>| match row_opt {
-			Some(row) => format::Raw::bytes(row.as_slice()),
+			Some(values) => format::Raw::bytes(values.as_slice()),
 			None => "\"<deleted>\"".to_string(),
 		};
 
@@ -160,7 +160,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					.map_err(|_| "invalid version")?;
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedValues(decode_binary(&kv.value));
+				let values = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				// Update next_version to match the given
@@ -169,7 +169,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				// Buffer the delta
 				self.deltas.push(Delta::Set {
 					key,
-					values: row,
+					values,
 				});
 			}
 
@@ -184,7 +184,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					.map_err(|_| "invalid version")?;
 				let kv = args.next_key().ok_or("key=value not given")?.clone();
 				let key = EncodedKey(decode_binary(&kv.key.unwrap()));
-				let row = EncodedValues(decode_binary(&kv.value));
+				let values = EncodedValues(decode_binary(&kv.value));
 				args.reject_rest()?;
 
 				// Update next_version to match the given
@@ -193,7 +193,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 				// Buffer the delta
 				self.deltas.push(Delta::Set {
 					key,
-					values: row,
+					values,
 				});
 			}
 
@@ -227,7 +227,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 					let version = self.next_version;
 					let deltas = CowVec::new(std::mem::take(&mut self.deltas));
 					self.storage.commit(deltas, version, TransactionId::default())?;
-					self.next_version += 1;
+					self.next_version.0 += 1;
 				}
 				writeln!(output, "ok")?;
 			}
@@ -615,7 +615,7 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 			// next_version
 			"next_version" => {
 				let version = self.next_version;
-				self.next_version += 1;
+				self.next_version.0 += 1;
 				writeln!(output, "{}", version)?;
 			}
 
@@ -646,10 +646,10 @@ impl<MVS: MultiVersionStore + MultiVersionCommit + MultiVersionGet + CdcStore> t
 
 				for i in 0..count {
 					let key = EncodedKey(CowVec::new(format!("bulk_{}", i).into_bytes()));
-					let row = EncodedValues(CowVec::new(i.to_string().into_bytes()));
+					let values = EncodedValues(CowVec::new(i.to_string().into_bytes()));
 					deltas.push(Delta::Set {
 						key,
-						values: row,
+						values,
 					});
 				}
 

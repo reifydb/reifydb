@@ -43,7 +43,7 @@ mod tests {
 	#[test]
 	fn test_set_get_bool() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_bool(&mut row, 0, true);
 		assert!(layout.get_bool(&row, 0));
 	}
@@ -51,7 +51,7 @@ mod tests {
 	#[test]
 	fn test_try_get_bool() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_bool(&row, 0), None);
 
@@ -62,7 +62,7 @@ mod tests {
 	#[test]
 	fn test_false() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_bool(&mut row, 0, false);
 		assert!(!layout.get_bool(&row, 0));
 		assert_eq!(layout.try_get_bool(&row, 0), Some(false));
@@ -71,7 +71,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Int4, Type::Boolean]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_bool(&mut row, 0, true);
 		layout.set_i32(&mut row, 1, 42);
@@ -85,7 +85,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Boolean]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_bool(&mut row, 0, true);
 

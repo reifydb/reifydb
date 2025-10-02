@@ -54,7 +54,7 @@ mod tests {
 	#[test]
 	fn test_set_get_datetime() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let value = DateTime::new(2024, 9, 9, 08, 17, 0, 1234).unwrap();
 		layout.set_datetime(&mut row, 0, value.clone());
@@ -64,7 +64,7 @@ mod tests {
 	#[test]
 	fn test_try_get_datetime() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_datetime(&row, 0), None);
 
@@ -76,7 +76,7 @@ mod tests {
 	#[test]
 	fn test_epoch() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let epoch = DateTime::default(); // Unix epoch
 		layout.set_datetime(&mut row, 0, epoch.clone());
@@ -86,7 +86,7 @@ mod tests {
 	#[test]
 	fn test_with_nanoseconds() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Test with high precision nanoseconds
 		let precise_datetime = DateTime::new(2024, 12, 25, 15, 30, 45, 123456789).unwrap();
@@ -106,7 +106,7 @@ mod tests {
 		];
 
 		for datetime in test_datetimes {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_datetime(&mut row, 0, datetime.clone());
 			assert_eq!(layout.get_datetime(&row, 0), datetime);
 		}
@@ -123,7 +123,7 @@ mod tests {
 		];
 
 		for datetime in pre_epoch_datetimes {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_datetime(&mut row, 0, datetime.clone());
 			assert_eq!(layout.get_datetime(&row, 0), datetime);
 		}
@@ -132,7 +132,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime, Type::Boolean, Type::DateTime, Type::Int8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let datetime1 = DateTime::new(2025, 6, 15, 12, 0, 0, 0).unwrap();
 		let datetime2 = DateTime::new(1995, 3, 22, 18, 30, 45, 500000000).unwrap();
@@ -151,7 +151,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime, Type::DateTime]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let datetime = DateTime::new(2025, 7, 4, 16, 20, 15, 750000000).unwrap();
 		layout.set_datetime(&mut row, 0, datetime.clone());
@@ -166,7 +166,7 @@ mod tests {
 	#[test]
 	fn test_precision_preservation() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Test that nanosecond precision is preserved
 		let high_precision = DateTime::new(2024, 1, 1, 0, 0, 0, 999999999).unwrap();
@@ -184,7 +184,7 @@ mod tests {
 	#[test]
 	fn test_year_2038_problem() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Test the Y2038 boundary (beyond 32-bit timestamp limits)
 		let post_2038 = DateTime::from_timestamp(2147483648).unwrap(); // 2038-01-19
@@ -195,7 +195,7 @@ mod tests {
 	#[test]
 	fn test_far_future() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Test a far future date
 		let far_future = DateTime::from_timestamp(4102444800).unwrap(); // 2100-01-01
@@ -206,7 +206,7 @@ mod tests {
 	#[test]
 	fn test_microsecond_precision() {
 		let layout = EncodedValuesLayout::new(&[Type::DateTime]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Test microsecond precision (common in databases)
 		let microsecond_precision = DateTime::new(2024, 6, 15, 14, 30, 25, 123456000).unwrap();

@@ -283,7 +283,7 @@ impl JoinOperator {
 			.map_err(|e| Error(internal_error!("Failed to serialize Schema: {}", e)))?;
 
 		// Store as a blob in an EncodedRow
-		let mut row = self.layout.allocate_row();
+		let mut row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut row, 0, &blob);
 

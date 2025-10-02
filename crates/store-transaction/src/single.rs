@@ -36,12 +36,12 @@ pub trait SingleVersionContains {
 }
 
 pub trait SingleVersionSet: SingleVersionCommit {
-	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
+	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
 		Self::commit(
 			self,
 			CowVec::new(vec![Delta::Set {
 				key: key.clone(),
-				values: row.clone(),
+				values: values.clone(),
 			}]),
 		)
 	}

@@ -63,19 +63,19 @@ mod tests {
 		let namespace = create_test_namespace(namespace_id, "test_namespace");
 
 		// Set namespace at version 1
-		catalog.set_namespace(namespace_id, 1, Some(namespace.clone()));
+		catalog.set_namespace(namespace_id, CommitVersion(1), Some(namespace.clone()));
 
 		// Find namespace at version 1
-		let found = catalog.find_namespace(namespace_id, 1);
+		let found = catalog.find_namespace(namespace_id, CommitVersion(1));
 		assert_eq!(found, Some(namespace.clone()));
 
 		// Find namespace at later version (should return same
 		// namespace)
-		let found = catalog.find_namespace(namespace_id, 5);
+		let found = catalog.find_namespace(namespace_id, CommitVersion(5));
 		assert_eq!(found, Some(namespace));
 
 		// Namespace shouldn't exist at version 0
-		let found = catalog.find_namespace(namespace_id, 0);
+		let found = catalog.find_namespace(namespace_id, CommitVersion(0));
 		assert_eq!(found, None);
 	}
 
@@ -86,14 +86,14 @@ mod tests {
 		let namespace = create_test_namespace(namespace_id, "named_namespace");
 
 		// Set namespace
-		catalog.set_namespace(namespace_id, 1, Some(namespace.clone()));
+		catalog.set_namespace(namespace_id, CommitVersion(1), Some(namespace.clone()));
 
 		// Find by name
-		let found = catalog.find_namespace_by_name("named_namespace", 1);
+		let found = catalog.find_namespace_by_name("named_namespace", CommitVersion(1));
 		assert_eq!(found, Some(namespace));
 
 		// Shouldn't find with wrong name
-		let found = catalog.find_namespace_by_name("wrong_name", 1);
+		let found = catalog.find_namespace_by_name("wrong_name", CommitVersion(1));
 		assert_eq!(found, None);
 	}
 
@@ -104,28 +104,28 @@ mod tests {
 
 		// Create and set initial namespace
 		let namespace_v1 = create_test_namespace(namespace_id, "old_name");
-		catalog.set_namespace(namespace_id, 1, Some(namespace_v1.clone()));
+		catalog.set_namespace(namespace_id, CommitVersion(1), Some(namespace_v1.clone()));
 
 		// Verify initial state
-		assert!(catalog.find_namespace_by_name("old_name", 1).is_some());
-		assert!(catalog.find_namespace_by_name("new_name", 1).is_none());
+		assert!(catalog.find_namespace_by_name("old_name", CommitVersion(1)).is_some());
+		assert!(catalog.find_namespace_by_name("new_name", CommitVersion(1)).is_none());
 
 		// Rename the namespace
 		let mut namespace_v2 = namespace_v1.clone();
 		namespace_v2.name = "new_name".to_string();
-		catalog.set_namespace(namespace_id, 2, Some(namespace_v2.clone()));
+		catalog.set_namespace(namespace_id, CommitVersion(2), Some(namespace_v2.clone()));
 
 		// Old name should be gone
-		assert!(catalog.find_namespace_by_name("old_name", 2).is_none());
+		assert!(catalog.find_namespace_by_name("old_name", CommitVersion(2)).is_none());
 
 		// New name can be found
-		assert_eq!(catalog.find_namespace_by_name("new_name", 2), Some(namespace_v2.clone()));
+		assert_eq!(catalog.find_namespace_by_name("new_name", CommitVersion(2)), Some(namespace_v2.clone()));
 
 		// Historical query at version 1 should still show old name
-		assert_eq!(catalog.find_namespace(namespace_id, 1), Some(namespace_v1));
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(1)), Some(namespace_v1));
 
 		// Current version should show new name
-		assert_eq!(catalog.find_namespace(namespace_id, 2), Some(namespace_v2));
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(2)), Some(namespace_v2));
 	}
 
 	#[test]
@@ -135,21 +135,21 @@ mod tests {
 
 		// Create and set namespace
 		let namespace = create_test_namespace(namespace_id, "deletable_namespace");
-		catalog.set_namespace(namespace_id, 1, Some(namespace.clone()));
+		catalog.set_namespace(namespace_id, CommitVersion(1), Some(namespace.clone()));
 
 		// Verify it exists
-		assert_eq!(catalog.find_namespace(namespace_id, 1), Some(namespace.clone()));
-		assert!(catalog.find_namespace_by_name("deletable_namespace", 1).is_some());
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(1)), Some(namespace.clone()));
+		assert!(catalog.find_namespace_by_name("deletable_namespace", CommitVersion(1)).is_some());
 
 		// Delete the namespace
-		catalog.set_namespace(namespace_id, 2, None);
+		catalog.set_namespace(namespace_id, CommitVersion(2), None);
 
 		// Should not exist at version 2
-		assert_eq!(catalog.find_namespace(namespace_id, 2), None);
-		assert!(catalog.find_namespace_by_name("deletable_namespace", 2).is_none());
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(2)), None);
+		assert!(catalog.find_namespace_by_name("deletable_namespace", CommitVersion(2)).is_none());
 
 		// Should still exist at version 1 (historical)
-		assert_eq!(catalog.find_namespace(namespace_id, 1), Some(namespace));
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(1)), Some(namespace));
 	}
 
 	#[test]
@@ -161,14 +161,14 @@ mod tests {
 		let namespace3 = create_test_namespace(NamespaceId(3), "namespace3");
 
 		// Set multiple namespaces
-		catalog.set_namespace(NamespaceId(1), 1, Some(namespace1.clone()));
-		catalog.set_namespace(NamespaceId(2), 1, Some(namespace2.clone()));
-		catalog.set_namespace(NamespaceId(3), 1, Some(namespace3.clone()));
+		catalog.set_namespace(NamespaceId(1), CommitVersion(1), Some(namespace1.clone()));
+		catalog.set_namespace(NamespaceId(2), CommitVersion(1), Some(namespace2.clone()));
+		catalog.set_namespace(NamespaceId(3), CommitVersion(1), Some(namespace3.clone()));
 
 		// All should be findable
-		assert_eq!(catalog.find_namespace_by_name("namespace1", 1), Some(namespace1));
-		assert_eq!(catalog.find_namespace_by_name("namespace2", 1), Some(namespace2));
-		assert_eq!(catalog.find_namespace_by_name("namespace3", 1), Some(namespace3));
+		assert_eq!(catalog.find_namespace_by_name("namespace1", CommitVersion(1)), Some(namespace1));
+		assert_eq!(catalog.find_namespace_by_name("namespace2", CommitVersion(1)), Some(namespace2));
+		assert_eq!(catalog.find_namespace_by_name("namespace3", CommitVersion(1)), Some(namespace3));
 	}
 
 	#[test]
@@ -184,17 +184,17 @@ mod tests {
 		namespace_v3.name = "namespace_v3".to_string();
 
 		// Set at different versions
-		catalog.set_namespace(namespace_id, 10, Some(namespace_v1.clone()));
-		catalog.set_namespace(namespace_id, 20, Some(namespace_v2.clone()));
-		catalog.set_namespace(namespace_id, 30, Some(namespace_v3.clone()));
+		catalog.set_namespace(namespace_id, CommitVersion(10), Some(namespace_v1.clone()));
+		catalog.set_namespace(namespace_id, CommitVersion(20), Some(namespace_v2.clone()));
+		catalog.set_namespace(namespace_id, CommitVersion(30), Some(namespace_v3.clone()));
 
 		// Query at different versions
-		assert_eq!(catalog.find_namespace(namespace_id, 5), None);
-		assert_eq!(catalog.find_namespace(namespace_id, 10), Some(namespace_v1.clone()));
-		assert_eq!(catalog.find_namespace(namespace_id, 15), Some(namespace_v1));
-		assert_eq!(catalog.find_namespace(namespace_id, 20), Some(namespace_v2.clone()));
-		assert_eq!(catalog.find_namespace(namespace_id, 25), Some(namespace_v2));
-		assert_eq!(catalog.find_namespace(namespace_id, 30), Some(namespace_v3.clone()));
-		assert_eq!(catalog.find_namespace(namespace_id, 100), Some(namespace_v3));
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(5)), None);
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(10)), Some(namespace_v1.clone()));
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(15)), Some(namespace_v1));
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(20)), Some(namespace_v2.clone()));
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(25)), Some(namespace_v2));
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(30)), Some(namespace_v3.clone()));
+		assert_eq!(catalog.find_namespace(namespace_id, CommitVersion(100)), Some(namespace_v3));
 	}
 }

@@ -49,7 +49,7 @@ mod tests {
 	#[test]
 	fn test_set_get_date() {
 		let layout = EncodedValuesLayout::new(&[Type::Date]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let value = Date::new(2021, 1, 1).unwrap();
 		layout.set_date(&mut row, 0, value.clone());
@@ -59,7 +59,7 @@ mod tests {
 	#[test]
 	fn test_try_get_date() {
 		let layout = EncodedValuesLayout::new(&[Type::Date]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_date(&row, 0), None);
 
@@ -71,7 +71,7 @@ mod tests {
 	#[test]
 	fn test_epoch() {
 		let layout = EncodedValuesLayout::new(&[Type::Date]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let epoch = Date::default(); // Unix epoch
 		layout.set_date(&mut row, 0, epoch.clone());
@@ -90,7 +90,7 @@ mod tests {
 		];
 
 		for date in test_dates {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_date(&mut row, 0, date.clone());
 			assert_eq!(layout.get_date(&row, 0), date);
 		}
@@ -109,7 +109,7 @@ mod tests {
 		];
 
 		for date in boundary_dates {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_date(&mut row, 0, date.clone());
 			assert_eq!(layout.get_date(&row, 0), date);
 		}
@@ -118,7 +118,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Date, Type::Boolean, Type::Date, Type::Int4]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let date1 = Date::new(2025, 6, 15).unwrap();
 		let date2 = Date::new(1995, 3, 22).unwrap();
@@ -137,7 +137,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Date, Type::Date]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let date = Date::new(2025, 7, 4).unwrap();
 		layout.set_date(&mut row, 0, date.clone());
@@ -152,7 +152,7 @@ mod tests {
 	#[test]
 	fn test_clone_consistency() {
 		let layout = EncodedValuesLayout::new(&[Type::Date]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let original_date = Date::new(2023, 9, 15).unwrap();
 		layout.set_date(&mut row, 0, original_date.clone());
@@ -179,7 +179,7 @@ mod tests {
 		];
 
 		for date in special_dates {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_date(&mut row, 0, date.clone());
 			assert_eq!(layout.get_date(&row, 0), date);
 		}

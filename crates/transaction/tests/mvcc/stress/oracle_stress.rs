@@ -5,7 +5,7 @@ use std::{sync::Arc, thread};
 
 use reifydb_transaction::mvcc::transaction::{MAX_COMMITTED_TXNS, optimistic::Optimistic};
 
-use crate::{as_key, as_row};
+use crate::{as_key, as_values};
 
 /// Test that Oracle properly cleans up committed transactions when limit is
 /// exceeded
@@ -24,7 +24,7 @@ fn test_oracle_committed_txns_cleanup() {
 		// Each transaction writes to a unique key to avoid actual
 		// conflicts
 		let key = as_key!(format!("key_{}", i));
-		let value = as_row!(format!("value_{}", i));
+		let value = as_values!(format!("value_{}", i));
 
 		tx.set(&key, value).unwrap();
 
@@ -44,7 +44,7 @@ fn test_oracle_committed_txns_cleanup() {
 	// Create one more transaction to verify system is still functional
 	let mut final_tx = engine.begin_command().unwrap();
 	let final_key = as_key!("final");
-	let final_value = as_row!("test".to_string());
+	let final_value = as_values!("test".to_string());
 	final_tx.set(&final_key, final_value).unwrap();
 	final_tx.commit().unwrap();
 }
@@ -66,7 +66,7 @@ fn test_oracle_high_concurrency() {
 				let mut tx = engine_clone.begin_command().unwrap();
 
 				let key = as_key!(format!("t{}_{}", thread_id, i));
-				let value = as_row!(format!("v{}_{}", thread_id, i));
+				let value = as_values!(format!("v{}_{}", thread_id, i));
 
 				tx.set(&key, value).unwrap();
 
@@ -85,7 +85,7 @@ fn test_oracle_high_concurrency() {
 
 	let mut final_tx = engine.begin_command().unwrap();
 	let final_key = as_key!("concurrent_test");
-	let final_value = as_row!("passed".to_string());
+	let final_value = as_values!("passed".to_string());
 	final_tx.set(&final_key, final_value).unwrap();
 	final_tx.commit().unwrap();
 }
@@ -99,7 +99,7 @@ fn test_oracle_version_boundaries() {
 	for i in 0..10_000 {
 		let mut tx = engine.begin_command().unwrap();
 		let key = as_key!(format!("boundary_{}", i));
-		let value = as_row!("test".to_string());
+		let value = as_values!("test".to_string());
 		tx.set(&key, value).unwrap();
 		tx.commit().unwrap();
 	}

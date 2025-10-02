@@ -44,11 +44,11 @@ impl Iterator for MultiVersionRangeRevIter<'_> {
 	fn next(&mut self) -> Option<Self::Item> {
 		loop {
 			let item = self.range.next()?;
-			if let Some(row) = item.value().get(self.version) {
+			if let Some(values) = item.value().get(self.version) {
 				return Some(MultiVersionValues {
 					key: item.key().clone(),
 					version: self.version,
-					values: row,
+					values,
 				});
 			}
 		}

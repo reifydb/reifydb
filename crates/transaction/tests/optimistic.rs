@@ -12,7 +12,7 @@
 use std::{collections::HashMap, error::Error as StdError, fmt::Write as _, path::Path};
 
 use reifydb_core::{
-	EncodedKey, EncodedKeyRange,
+	CommitVersion, EncodedKey, EncodedKeyRange,
 	event::EventBus,
 	interface::{MultiVersionCommandTransaction, MultiVersionQueryTransaction, MultiVersionValues},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
@@ -175,13 +175,13 @@ impl<'a> testscript::Runner for MvccRunner {
 						Transaction::Query(rx) => {
 							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.values.to_vec())))
 						}
-						Transaction::Command(tx) => {
-							tx.get(&key).map(|r| r.and_then(|tv| Some(tv.row().to_vec())))
-						}
+						Transaction::Command(tx) => tx
+							.get(&key)
+							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
 					}
 					.unwrap();
 
-					let fmtkv = format::Raw::key_maybe_row(&key, value.as_ref());
+					let fmtkv = format::Raw::key_maybe_value(&key, value.as_ref());
 					writeln!(output, "{fmtkv}")?;
 				}
 				args.reject_rest()?;
@@ -196,11 +196,11 @@ impl<'a> testscript::Runner for MvccRunner {
 
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedValues(decode_binary(&kv.value));
-					if row.is_empty() {
+					let values = EncodedValues(decode_binary(&kv.value));
+					if values.is_empty() {
 						tx.remove(&key).unwrap();
 					} else {
-						tx.set(&key, row).unwrap();
+						tx.set(&key, values).unwrap();
 					}
 				}
 				args.reject_rest()?;
@@ -239,13 +239,13 @@ impl<'a> testscript::Runner for MvccRunner {
 					}
 					Transaction::Command(tx) => {
 						for item in tx.scan().unwrap().into_iter() {
-							kvs.push((item.key().clone(), item.row().to_vec()));
+							kvs.push((item.key().clone(), item.values().to_vec()));
 						}
 					}
 				}
 
 				for (key, value) in kvs {
-					writeln!(output, "{}", format::Raw::key_row(&key, &value))?;
+					writeln!(output, "{}", format::Raw::key_value(&key, &value))?;
 				}
 			}
 
@@ -312,13 +312,13 @@ impl<'a> testscript::Runner for MvccRunner {
 				let mut args = command.consume_args();
 				for kv in args.rest_key() {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
-					let row = EncodedValues(decode_binary(&kv.value));
+					let values = EncodedValues(decode_binary(&kv.value));
 					match t {
 						Transaction::Query(_) => {
 							unreachable!("can not call set on rx")
 						}
 						Transaction::Command(tx) => {
-							tx.set(&key, row).unwrap();
+							tx.set(&key, values).unwrap();
 						}
 					}
 				}
@@ -329,12 +329,13 @@ impl<'a> testscript::Runner for MvccRunner {
 			"set_as_of_inclusive" => {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
-				let version: u64 = args
+				let version = args
 					.next_pos()
 					.ok_or("version not provided")?
 					.value
-					.parse()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version number")?;
+
 				args.reject_rest()?;
 
 				match t {
@@ -351,12 +352,13 @@ impl<'a> testscript::Runner for MvccRunner {
 			"set_as_of_exclusive" => {
 				let t = self.get_transaction(&command.prefix)?;
 				let mut args = command.consume_args();
-				let version: u64 = args
+				let version = args
 					.next_pos()
 					.ok_or("version not provided")?
 					.value
-					.parse()
+					.parse::<CommitVersion>()
 					.map_err(|_| "invalid version number")?;
+
 				args.reject_rest()?;
 
 				match t {
@@ -387,7 +389,7 @@ where
 	I: Iterator<Item = MultiVersionValues>,
 {
 	while let Some(sv) = iter.next() {
-		let fmtkv = format::Raw::key_row(&sv.key, sv.values.as_slice());
+		let fmtkv = format::Raw::key_value(&sv.key, sv.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }
@@ -397,7 +399,7 @@ where
 	I: Iterator<Item = TransactionValue>,
 {
 	while let Some(tv) = iter.next() {
-		let fmtkv = format::Raw::key_row(tv.key(), tv.row().as_slice());
+		let fmtkv = format::Raw::key_value(tv.key(), tv.values().as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

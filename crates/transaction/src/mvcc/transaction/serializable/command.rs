@@ -70,7 +70,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 			});
 		}
 
-		Ok(version.unwrap_or(0))
+		Ok(version.unwrap_or(CommitVersion(0)))
 	}
 }
 
@@ -83,12 +83,12 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 		self.tm.read_as_of_version_exclusive(version);
 	}
 
-	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> Result<(), reifydb_type::Error> {
-		self.read_as_of_version_exclusive(version + 1);
+	pub fn read_as_of_version_inclusive(&mut self, version: CommitVersion) -> Result<(), Error> {
+		self.read_as_of_version_exclusive(CommitVersion(version.0 + 1));
 		Ok(())
 	}
 
-	pub fn rollback(&mut self) -> Result<(), reifydb_type::Error> {
+	pub fn rollback(&mut self) -> Result<(), Error> {
 		self.tm.rollback()
 	}
 
@@ -101,11 +101,11 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 		}
 	}
 
-	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, reifydb_type::Error> {
+	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, Error> {
 		let version = self.tm.version();
 		match self.tm.get(key)? {
 			Some(v) => {
-				if v.row().is_some() {
+				if v.values().is_some() {
 					Ok(Some(v.into()))
 				} else {
 					Ok(None)
@@ -115,8 +115,8 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> CommandTransaction<
 		}
 	}
 
-	pub fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<(), reifydb_type::Error> {
-		self.tm.set(key, row)
+	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
+		self.tm.set(key, values)
 	}
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_type::Error> {

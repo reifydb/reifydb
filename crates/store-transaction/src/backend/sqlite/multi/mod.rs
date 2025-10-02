@@ -203,13 +203,13 @@ pub(crate) fn execute_batched_range_query(
 	match param_count {
 		1 => {
 			let rows = stmt
-				.query_map(params![version, batch_size], |row| {
-					let value: Option<Vec<u8>> = row.get(1)?;
+				.query_map(params![version.0, batch_size], |values| {
+					let value: Option<Vec<u8>> = values.get(1)?;
 					match value {
 						Some(val) => Ok(Some(MultiVersionValues {
-							key: EncodedKey(CowVec::new(row.get(0)?)),
+							key: EncodedKey(CowVec::new(values.get(0)?)),
 							values: EncodedValues(CowVec::new(val)),
-							version: row.get(2)?,
+							version: CommitVersion(values.get(2)?),
 						})),
 						None => Ok(None), // NULL value means deleted
 					}
@@ -234,13 +234,13 @@ pub(crate) fn execute_batched_range_query(
 				_ => unreachable!(),
 			};
 			let rows = stmt
-				.query_map(params![param, version, batch_size], |row| {
-					let value: Option<Vec<u8>> = row.get(1)?;
+				.query_map(params![param, version.0, batch_size], |values| {
+					let value: Option<Vec<u8>> = values.get(1)?;
 					match value {
 						Some(val) => Ok(Some(MultiVersionValues {
-							key: EncodedKey(CowVec::new(row.get(0)?)),
+							key: EncodedKey(CowVec::new(values.get(0)?)),
 							values: EncodedValues(CowVec::new(val)),
-							version: row.get(2)?,
+							version: CommitVersion(values.get(2)?),
 						})),
 						None => Ok(None), // NULL value means deleted
 					}
@@ -268,13 +268,13 @@ pub(crate) fn execute_batched_range_query(
 				_ => unreachable!(),
 			};
 			let rows = stmt
-				.query_map(params![start_param, end_param, version, batch_size], |row| {
-					let value: Option<Vec<u8>> = row.get(1)?;
+				.query_map(params![start_param, end_param, version.0, batch_size], |values| {
+					let value: Option<Vec<u8>> = values.get(1)?;
 					match value {
 						Some(val) => Ok(Some(MultiVersionValues {
-							key: EncodedKey(CowVec::new(row.get(0)?)),
+							key: EncodedKey(CowVec::new(values.get(0)?)),
 							values: EncodedValues(CowVec::new(val)),
-							version: row.get(2)?,
+							version: CommitVersion(values.get(2)?),
 						})),
 						None => Ok(None), // NULL value means deleted
 					}
@@ -304,7 +304,7 @@ pub(crate) fn get_table_names(conn: &ReadConnection) -> Vec<String> {
 		.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='multi' OR name LIKE 'table_%')")
 		.unwrap();
 
-	stmt.query_map([], |row| Ok(row.get::<_, String>(0)?)).unwrap().map(Result::unwrap).collect()
+	stmt.query_map([], |values| Ok(values.get::<_, String>(0)?)).unwrap().map(Result::unwrap).collect()
 }
 
 /// Helper function to execute batched iteration queries across multiple tables
@@ -334,7 +334,7 @@ pub(crate) fn execute_scan_query(
 					 ORDER BY t1.key ASC LIMIT ?",
 					table_name, table_name
 				),
-				vec![Box::new(version), Box::new(batch_size)],
+				vec![Box::new(version.0), Box::new(batch_size)],
 			),
 			(None, "DESC") => (
 				format!(
@@ -348,7 +348,7 @@ pub(crate) fn execute_scan_query(
 					 ORDER BY t1.key DESC LIMIT ?",
 					table_name, table_name
 				),
-				vec![Box::new(version), Box::new(batch_size)],
+				vec![Box::new(version.0), Box::new(batch_size)],
 			),
 			(Some(key), "ASC") => (
 				format!(
@@ -362,7 +362,7 @@ pub(crate) fn execute_scan_query(
 					 ORDER BY t1.key ASC LIMIT ?",
 					table_name, table_name
 				),
-				vec![Box::new(key.to_vec()), Box::new(version), Box::new(batch_size)],
+				vec![Box::new(key.to_vec()), Box::new(version.0), Box::new(batch_size)],
 			),
 			(Some(key), "DESC") => (
 				format!(
@@ -376,7 +376,7 @@ pub(crate) fn execute_scan_query(
 					 ORDER BY t1.key DESC LIMIT ?",
 					table_name, table_name
 				),
-				vec![Box::new(key.to_vec()), Box::new(version), Box::new(batch_size)],
+				vec![Box::new(key.to_vec()), Box::new(version.0), Box::new(batch_size)],
 			),
 			_ => unreachable!(),
 		};
@@ -385,13 +385,13 @@ pub(crate) fn execute_scan_query(
 		let mut stmt = conn_guard.prepare(&query).unwrap();
 
 		let rows = stmt
-			.query_map(rusqlite::params_from_iter(params.iter()), |row| {
-				let value: Option<Vec<u8>> = row.get(1)?;
+			.query_map(rusqlite::params_from_iter(params.iter()), |values| {
+				let value: Option<Vec<u8>> = values.get(1)?;
 				match value {
 					Some(val) => Ok(Some(MultiVersionValues {
-						key: EncodedKey(CowVec::new(row.get(0)?)),
+						key: EncodedKey(CowVec::new(values.get(0)?)),
 						values: EncodedValues(CowVec::new(val)),
-						version: row.get(2)?,
+						version: CommitVersion(values.get(2)?),
 					})),
 					None => Ok(None), // NULL value means deleted
 				}

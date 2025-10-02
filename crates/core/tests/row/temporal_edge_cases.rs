@@ -9,7 +9,7 @@ use reifydb_type::*;
 #[test]
 fn test_date_boundaries() {
 	let layout = EncodedValuesLayout::new(&[Type::Date]);
-	let mut row = layout.allocate_row();
+	let mut row = layout.allocate();
 
 	let dates = [
 		Date::from_ymd(1, 1, 1).unwrap(),      // Minimum reasonable date
@@ -28,7 +28,7 @@ fn test_date_boundaries() {
 #[test]
 fn test_datetime_precision_limits() {
 	let layout = EncodedValuesLayout::new(&[Type::DateTime]);
-	let mut row = layout.allocate_row();
+	let mut row = layout.allocate();
 
 	// Test nanosecond precision preservation
 	let dt = DateTime::new(2024, 12, 25, 12, 34, 56, 123456789).unwrap();
@@ -46,7 +46,7 @@ fn test_datetime_precision_limits() {
 #[test]
 fn test_time_edge_values() {
 	let layout = EncodedValuesLayout::new(&[Type::Time]);
-	let mut row = layout.allocate_row();
+	let mut row = layout.allocate();
 
 	let times = [
 		Time::new(0, 0, 0, 0).unwrap(),            // Midnight
@@ -65,7 +65,7 @@ fn test_time_edge_values() {
 #[test]
 fn test_interval_combinations() {
 	let layout = EncodedValuesLayout::new(&[Type::Interval]);
-	let mut row = layout.allocate_row();
+	let mut row = layout.allocate();
 
 	let intervals = [
 		Interval::from_seconds(0),

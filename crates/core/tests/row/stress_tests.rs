@@ -39,7 +39,7 @@ fn test_mixed_type_stress() {
 		Type::Decimal,
 	]);
 
-	let mut row = layout.allocate_row();
+	let mut row = layout.allocate();
 
 	// Set all fields
 	layout.set_bool(&mut row, 0, true);

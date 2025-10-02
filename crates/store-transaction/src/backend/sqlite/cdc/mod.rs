@@ -21,8 +21,8 @@ pub(crate) fn fetch_pre_value(
 
 	let mut stmt = tx.prepare_cached(&query)?;
 
-	stmt.query_row(params![key.to_vec()], |row| {
-		let value: Vec<u8> = row.get(0)?;
+	stmt.query_row(params![key.to_vec()], |values| {
+		let value: Vec<u8> = values.get(0)?;
 		Ok(EncodedValues(CowVec::new(value)))
 	})
 	.optional()
@@ -35,7 +35,7 @@ pub(crate) fn store_cdc_transaction(tx: &Transaction, transaction: Cdc) -> rusql
 
 	tx.execute(
 		"INSERT OR REPLACE INTO cdc (version, value) VALUES (?1, ?2)",
-		params![transaction.version, encoded_transaction.to_vec()],
+		params![transaction.version.0, encoded_transaction.to_vec()],
 	)?;
 
 	Ok(())

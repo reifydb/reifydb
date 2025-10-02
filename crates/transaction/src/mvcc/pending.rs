@@ -196,16 +196,16 @@ mod tests {
 		EncodedKey::new(s.as_bytes())
 	}
 
-	fn create_test_row(s: &str) -> EncodedValues {
+	fn create_test_values(s: &str) -> EncodedValues {
 		EncodedValues(CowVec::new(s.as_bytes().to_vec()))
 	}
 
-	fn create_test_pending(version: CommitVersion, key: &str, row_data: &str) -> Pending {
+	fn create_test_pending(version: CommitVersion, key: &str, values_data: &str) -> Pending {
 		use reifydb_core::delta::Delta;
 		Pending {
 			delta: Delta::Set {
 				key: create_test_key(key),
-				values: create_test_row(row_data),
+				values: create_test_values(values_data),
 			},
 			version,
 		}
@@ -219,7 +219,7 @@ mod tests {
 		assert_eq!(pw.len(), 0);
 
 		let key1 = create_test_key("key1");
-		let pending1 = create_test_pending(1, "key1", "value1");
+		let pending1 = create_test_pending(CommitVersion(1), "key1", "value1");
 
 		pw.insert(key1.clone(), pending1.clone());
 
@@ -234,8 +234,8 @@ mod tests {
 		let mut pw = PendingWrites::new();
 		let key = create_test_key("key");
 
-		let pending1 = create_test_pending(1, "key", "value1");
-		let pending2 = create_test_pending(2, "key", "value2");
+		let pending1 = create_test_pending(CommitVersion(1), "key", "value1");
+		let pending2 = create_test_pending(CommitVersion(2), "key", "value2");
 
 		pw.insert(key.clone(), pending1);
 		assert_eq!(pw.len(), 1);
@@ -251,11 +251,8 @@ mod tests {
 
 		for i in 0..10 {
 			let key = create_test_key(&format!("key{:02}", i));
-			let pending = create_test_pending(
-				i as CommitVersion,
-				&format!("key{:02}", i),
-				&format!("value{}", i),
-			);
+			let pending =
+				create_test_pending(CommitVersion(i), &format!("key{:02}", i), &format!("value{}", i));
 			pw.insert(key, pending);
 		}
 
@@ -274,7 +271,7 @@ mod tests {
 		for i in 0..5 {
 			let key = create_test_key(&format!("key{}", i));
 			let pending =
-				create_test_pending(i as CommitVersion, &format!("key{}", i), &format!("value{}", i));
+				create_test_pending(CommitVersion(i), &format!("key{}", i), &format!("value{}", i));
 			pw.insert(key, pending);
 		}
 
@@ -304,11 +301,8 @@ mod tests {
 		// characteristics
 		for i in 0..1000 {
 			let key = create_test_key(&format!("key{:06}", i));
-			let pending = create_test_pending(
-				i as CommitVersion,
-				&format!("key{:06}", i),
-				&format!("value{}", i),
-			);
+			let pending =
+				create_test_pending(CommitVersion(i), &format!("key{:06}", i), &format!("value{}", i));
 			pw.insert(key, pending);
 		}
 
@@ -333,7 +327,7 @@ mod tests {
 		for i in 0..10 {
 			let key = create_test_key(&format!("key{}", i));
 			let pending =
-				create_test_pending(i as CommitVersion, &format!("key{}", i), &format!("value{}", i));
+				create_test_pending(CommitVersion(i), &format!("key{}", i), &format!("value{}", i));
 			pw.insert(key, pending);
 		}
 

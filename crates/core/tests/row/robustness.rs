@@ -15,7 +15,7 @@ fn test_massive_field_count() {
 	let field_count = 10000;
 	let types: Vec<Type> = vec![Type::Int4; field_count];
 	let layout = EncodedValuesLayout::new(&types);
-	let mut row = layout.allocate_row();
+	let mut row = layout.allocate();
 
 	// Set and verify a sampling of fields
 	for i in (0..field_count).step_by(100) {
@@ -44,7 +44,7 @@ fn test_mixed_static_dynamic_stress() {
 
 	// Create a encoded and set all dynamic fields once, then repeatedly update
 	// static fields
-	let mut row = layout.allocate_row();
+	let mut row = layout.allocate();
 
 	// First, set all dynamic fields once
 	for i in (1..100).step_by(2) {
@@ -76,7 +76,7 @@ fn test_mixed_static_dynamic_stress() {
 	// Test creating multiple rows with different dynamic content
 	let mut test_rows = Vec::new();
 	for row_idx in 0..10 {
-		let mut test_row = layout.allocate_row();
+		let mut test_row = layout.allocate();
 
 		// Set static fields
 		for i in (0..100).step_by(2) {
@@ -111,7 +111,7 @@ fn test_repeated_clone_stability() {
 	// Test that cloning doesn't degrade or corrupt data
 	let layout = EncodedValuesLayout::new(&[Type::Utf8, Type::Blob, Type::Int, Type::Decimal]);
 
-	let mut original = layout.allocate_row();
+	let mut original = layout.allocate();
 	layout.set_utf8(&mut original, 0, &"x".repeat(1000));
 	layout.set_blob(&mut original, 1, &Blob::from(vec![42u8; 1000]));
 	layout.set_int(&mut original, 2, &Int::from(i128::MAX));
@@ -138,7 +138,7 @@ fn test_validity_bit_stress() {
 	let field_count = 1000;
 	let types: Vec<Type> = vec![Type::Int4; field_count];
 	let layout = EncodedValuesLayout::new(&types);
-	let mut row = layout.allocate_row();
+	let mut row = layout.allocate();
 
 	// Set every other field as undefined
 	for i in 0..field_count {
@@ -191,7 +191,7 @@ fn test_extreme_string_sizes() {
 	let sizes = [0, 1, 100, 1000, 10000, 100000, 1000000];
 
 	for size in sizes {
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		let large_string = "a".repeat(size);
 		layout.set_utf8(&mut row, 0, &large_string);
 		let retrieved = layout.get_utf8(&row, 0);
@@ -219,7 +219,7 @@ fn test_concurrent_field_updates() {
 
 	// Create many rows with rapid field setting
 	for i in 0..iterations {
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set all fields for this encoded
 		layout.set_i64(&mut row, 0, (i * 4) as i64);
@@ -240,7 +240,7 @@ fn test_concurrent_field_updates() {
 
 	// Test that static fields can still be updated repeatedly on a single
 	// encoded
-	let mut static_test_row = layout.allocate_row();
+	let mut static_test_row = layout.allocate();
 
 	for i in 0..1000 {
 		layout.set_i64(&mut static_test_row, 0, i as i64);
@@ -272,7 +272,7 @@ fn test_row_size_stability() {
 	let mut row_sizes = Vec::new();
 
 	for size in sizes {
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_utf8(&mut row, 0, &"x".repeat(size));
 		layout.set_blob(&mut row, 1, &Blob::from(vec![0u8; size]));
 
@@ -292,7 +292,7 @@ fn test_row_size_stability() {
 	// Test size consistency - rows with same content should have same size
 	let mut same_size_rows = Vec::new();
 	for _ in 0..10 {
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_utf8(&mut row, 0, &"x".repeat(50));
 		layout.set_blob(&mut row, 1, &Blob::from(vec![0u8; 50]));
 		same_size_rows.push(row.len());

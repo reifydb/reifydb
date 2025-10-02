@@ -84,7 +84,7 @@ impl Store<JoinSideEntry> {
 
 		// Store as a blob in an EncodedRow
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		let blob = Blob::from(serialized);
 		layout.set_blob(&mut row, 0, &blob);
 
@@ -173,7 +173,7 @@ impl UndefinedTracker {
 		let key = self.make_key(row_number);
 		// Store a simple marker (boolean true)
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_bool(&mut row, 0, true);
 		state_set(self.node_id, txn, &key, row)?;
 		Ok(())

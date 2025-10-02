@@ -37,17 +37,17 @@ impl VersionBlock {
 		}
 	}
 
-	fn next(&self) -> Option<u64> {
+	fn next(&self) -> Option<CommitVersion> {
 		let version = self.current.fetch_add(1, Ordering::Relaxed);
 		if version < self.last {
-			Some(version + 1)
+			Some(CommitVersion(version + 1))
 		} else {
 			None
 		}
 	}
 
-	fn current(&self) -> u64 {
-		self.current.load(Ordering::Relaxed)
+	fn current(&self) -> CommitVersion {
+		CommitVersion(self.current.load(Ordering::Relaxed))
 	}
 }
 
@@ -91,11 +91,11 @@ where
 	fn persist_version(single: &SMVT, version: u64) -> crate::Result<()> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
-		let mut row = layout.allocate_row();
-		layout.set_u64(&mut row, 0, version);
+		let mut values = layout.allocate();
+		layout.set_u64(&mut values, 0, version);
 
 		single.with_command(|tx| {
-			tx.set(&key, row)?;
+			tx.set(&key, values)?;
 			Ok(())
 		})
 	}
@@ -269,10 +269,10 @@ mod tests {
 		assert_eq!(block.current(), 100);
 
 		// Should return sequential versions
-		assert_eq!(block.next(), Some(101));
+		assert_eq!(block.next().unwrap(), 101);
 		assert_eq!(block.current(), 101);
 
-		assert_eq!(block.next(), Some(102));
+		assert_eq!(block.next().unwrap(), 102);
 		assert_eq!(block.current(), 102);
 	}
 
@@ -284,8 +284,8 @@ mod tests {
 			block.next();
 		}
 
-		assert_eq!(block.next(), Some(BLOCK_SIZE - 1));
-		assert_eq!(block.next(), Some(BLOCK_SIZE));
+		assert_eq!(block.next().unwrap(), BLOCK_SIZE - 1);
+		assert_eq!(block.next().unwrap(), BLOCK_SIZE);
 
 		// exhausted
 		assert_eq!(block.next(), None);
@@ -299,10 +299,10 @@ mod tests {
 		// Manually set a version in storage
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
-		let mut row = layout.allocate_row();
-		layout.set_u64(&mut row, 0, 500u64);
+		let mut values = layout.allocate();
+		layout.set_u64(&mut values, 0, 500u64);
 		single.with_command(|tx| {
-			tx.set(&key, row)?;
+			tx.set(&key, values)?;
 			Ok(())
 		})
 		.unwrap();

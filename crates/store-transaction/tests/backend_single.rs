@@ -26,8 +26,8 @@ use reifydb_store_transaction::{
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-transaction/tests/scripts/single" as single_memory => test_memory }
-test_each_path! { in "crates/store-transaction/tests/scripts/single" as single_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/backend/single" as backend_single_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/backend/single" as backend_single_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	testscript::run_path(&mut Runner::new(MemoryBackend::default()), path).expect("test failed")
@@ -63,7 +63,7 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				args.reject_rest()?;
 				let value = self.store.get(&key).unwrap().map(|sv| sv.values.to_vec());
-				writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
+				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
 			}
 			// contains KEY
 			"contains" => {
@@ -160,7 +160,7 @@ impl<SVS: SingleVersionStore> testscript::Runner for Runner<SVS> {
 
 fn print<I: Iterator<Item = SingleVersionValues>>(output: &mut String, iter: I) {
 	for sv in iter {
-		let fmtkv = format::Raw::key_row(&sv.key, sv.values.as_slice());
+		let fmtkv = format::Raw::key_value(&sv.key, sv.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

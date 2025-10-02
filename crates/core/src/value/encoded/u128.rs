@@ -43,7 +43,7 @@ mod tests {
 	#[test]
 	fn test_set_get_u128() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_u128(&mut row, 0, 340282366920938463463374607431768211455u128);
 		assert_eq!(layout.get_u128(&row, 0), 340282366920938463463374607431768211455u128);
 	}
@@ -51,7 +51,7 @@ mod tests {
 	#[test]
 	fn test_try_get_u128() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_u128(&row, 0), None);
 
@@ -62,16 +62,16 @@ mod tests {
 	#[test]
 	fn test_extremes() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_u128(&mut row, 0, u128::MAX);
 		assert_eq!(layout.get_u128(&row, 0), u128::MAX);
 
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		layout.set_u128(&mut row2, 0, u128::MIN);
 		assert_eq!(layout.get_u128(&row2, 0), u128::MIN);
 
-		let mut row3 = layout.allocate_row();
+		let mut row3 = layout.allocate();
 		layout.set_u128(&mut row3, 0, 0u128);
 		assert_eq!(layout.get_u128(&row3, 0), 0u128);
 	}
@@ -92,7 +92,7 @@ mod tests {
 		];
 
 		for value in test_values {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_u128(&mut row, 0, value);
 			assert_eq!(layout.get_u128(&row, 0), value);
 		}
@@ -108,7 +108,7 @@ mod tests {
 		];
 
 		for power in powers {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_u128(&mut row, 0, power);
 			assert_eq!(layout.get_u128(&row, 0), power);
 		}
@@ -127,7 +127,7 @@ mod tests {
 		];
 
 		for ipv6 in ipv6_values {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_u128(&mut row, 0, ipv6);
 			assert_eq!(layout.get_u128(&row, 0), ipv6);
 		}
@@ -145,7 +145,7 @@ mod tests {
 		];
 
 		for uuid_val in uuid_values {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_u128(&mut row, 0, uuid_val);
 			assert_eq!(layout.get_u128(&row, 0), uuid_val);
 		}
@@ -154,7 +154,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint16, Type::Boolean, Type::Uint16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let large_value1 = 200000000000000000000000000000000000000u128;
 		let large_value2 = 150000000000000000000000000000000000000u128;
@@ -171,7 +171,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Uint16, Type::Uint16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let value = 340282366920938463463374607431768211455u128;
 		layout.set_u128(&mut row, 0, value);

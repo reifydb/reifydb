@@ -89,18 +89,18 @@ mod tests {
 		let view = create_test_view(view_id, namespace_id, "test_view");
 
 		// Set view at version 1
-		catalog.set_view(view_id, 1, Some(view.clone()));
+		catalog.set_view(view_id, CommitVersion(1), Some(view.clone()));
 
 		// Find view at version 1
-		let found = catalog.find_view(view_id, 1);
+		let found = catalog.find_view(view_id, CommitVersion(1));
 		assert_eq!(found, Some(view.clone()));
 
 		// Find view at later version (should return same view)
-		let found = catalog.find_view(view_id, 5);
+		let found = catalog.find_view(view_id, CommitVersion(5));
 		assert_eq!(found, Some(view));
 
 		// View shouldn't exist at version 0
-		let found = catalog.find_view(view_id, 0);
+		let found = catalog.find_view(view_id, CommitVersion(0));
 		assert_eq!(found, None);
 	}
 
@@ -112,18 +112,18 @@ mod tests {
 		let view = create_test_view(view_id, namespace_id, "named_view");
 
 		// Set view
-		catalog.set_view(view_id, 1, Some(view.clone()));
+		catalog.set_view(view_id, CommitVersion(1), Some(view.clone()));
 
 		// Find by name
-		let found = catalog.find_view_by_name(namespace_id, "named_view", 1);
+		let found = catalog.find_view_by_name(namespace_id, "named_view", CommitVersion(1));
 		assert_eq!(found, Some(view));
 
 		// Shouldn't find with wrong name
-		let found = catalog.find_view_by_name(namespace_id, "wrong_name", 1);
+		let found = catalog.find_view_by_name(namespace_id, "wrong_name", CommitVersion(1));
 		assert_eq!(found, None);
 
 		// Shouldn't find in wrong namespace
-		let found = catalog.find_view_by_name(NamespaceId(2), "named_view", 1);
+		let found = catalog.find_view_by_name(NamespaceId(2), "named_view", CommitVersion(1));
 		assert_eq!(found, None);
 	}
 
@@ -135,28 +135,31 @@ mod tests {
 
 		// Create and set initial view
 		let view_v1 = create_test_view(view_id, namespace_id, "old_name");
-		catalog.set_view(view_id, 1, Some(view_v1.clone()));
+		catalog.set_view(view_id, CommitVersion(1), Some(view_v1.clone()));
 
 		// Verify initial state
-		assert!(catalog.find_view_by_name(namespace_id, "old_name", 1).is_some());
-		assert!(catalog.find_view_by_name(namespace_id, "new_name", 1).is_none());
+		assert!(catalog.find_view_by_name(namespace_id, "old_name", CommitVersion(1)).is_some());
+		assert!(catalog.find_view_by_name(namespace_id, "new_name", CommitVersion(1)).is_none());
 
 		// Rename the view
 		let mut view_v2 = view_v1.clone();
 		view_v2.name = "new_name".to_string();
-		catalog.set_view(view_id, 2, Some(view_v2.clone()));
+		catalog.set_view(view_id, CommitVersion(2), Some(view_v2.clone()));
 
 		// Old name should be gone
-		assert!(catalog.find_view_by_name(namespace_id, "old_name", 2).is_none());
+		assert!(catalog.find_view_by_name(namespace_id, "old_name", CommitVersion(2)).is_none());
 
 		// New name can be found
-		assert_eq!(catalog.find_view_by_name(namespace_id, "new_name", 2), Some(view_v2.clone()));
+		assert_eq!(
+			catalog.find_view_by_name(namespace_id, "new_name", CommitVersion(2)),
+			Some(view_v2.clone())
+		);
 
 		// Historical query at version 1 should still show old name
-		assert_eq!(catalog.find_view(view_id, 1), Some(view_v1));
+		assert_eq!(catalog.find_view(view_id, CommitVersion(1)), Some(view_v1));
 
 		// Current version should show new name
-		assert_eq!(catalog.find_view(view_id, 2), Some(view_v2));
+		assert_eq!(catalog.find_view(view_id, CommitVersion(2)), Some(view_v2));
 	}
 
 	#[test]
@@ -168,22 +171,22 @@ mod tests {
 
 		// Create view in namespace1
 		let view_v1 = create_test_view(view_id, namespace1, "movable_view");
-		catalog.set_view(view_id, 1, Some(view_v1.clone()));
+		catalog.set_view(view_id, CommitVersion(1), Some(view_v1.clone()));
 
 		// Verify it's in namespace1
-		assert!(catalog.find_view_by_name(namespace1, "movable_view", 1).is_some());
-		assert!(catalog.find_view_by_name(namespace2, "movable_view", 1).is_none());
+		assert!(catalog.find_view_by_name(namespace1, "movable_view", CommitVersion(1)).is_some());
+		assert!(catalog.find_view_by_name(namespace2, "movable_view", CommitVersion(1)).is_none());
 
 		// Move to namespace2
 		let mut view_v2 = view_v1.clone();
 		view_v2.namespace = namespace2;
-		catalog.set_view(view_id, 2, Some(view_v2.clone()));
+		catalog.set_view(view_id, CommitVersion(2), Some(view_v2.clone()));
 
 		// Should no longer be in namespace1
-		assert!(catalog.find_view_by_name(namespace1, "movable_view", 2).is_none());
+		assert!(catalog.find_view_by_name(namespace1, "movable_view", CommitVersion(2)).is_none());
 
 		// Should now be in namespace2
-		assert!(catalog.find_view_by_name(namespace2, "movable_view", 2).is_some());
+		assert!(catalog.find_view_by_name(namespace2, "movable_view", CommitVersion(2)).is_some());
 	}
 
 	#[test]
@@ -194,21 +197,21 @@ mod tests {
 
 		// Create and set view
 		let view = create_test_view(view_id, namespace_id, "deletable_view");
-		catalog.set_view(view_id, 1, Some(view.clone()));
+		catalog.set_view(view_id, CommitVersion(1), Some(view.clone()));
 
 		// Verify it exists
-		assert_eq!(catalog.find_view(view_id, 1), Some(view.clone()));
-		assert!(catalog.find_view_by_name(namespace_id, "deletable_view", 1).is_some());
+		assert_eq!(catalog.find_view(view_id, CommitVersion(1)), Some(view.clone()));
+		assert!(catalog.find_view_by_name(namespace_id, "deletable_view", CommitVersion(1)).is_some());
 
 		// Delete the view
-		catalog.set_view(view_id, 2, None);
+		catalog.set_view(view_id, CommitVersion(2), None);
 
 		// Should not exist at version 2
-		assert_eq!(catalog.find_view(view_id, 2), None);
-		assert!(catalog.find_view_by_name(namespace_id, "deletable_view", 2).is_none());
+		assert_eq!(catalog.find_view(view_id, CommitVersion(2)), None);
+		assert!(catalog.find_view_by_name(namespace_id, "deletable_view", CommitVersion(2)).is_none());
 
 		// Should still exist at version 1 (historical)
-		assert_eq!(catalog.find_view(view_id, 1), Some(view));
+		assert_eq!(catalog.find_view(view_id, CommitVersion(1)), Some(view));
 	}
 
 	#[test]
@@ -221,14 +224,14 @@ mod tests {
 		let view3 = create_test_view(ViewId(3), namespace_id, "view3");
 
 		// Set multiple views
-		catalog.set_view(ViewId(1), 1, Some(view1.clone()));
-		catalog.set_view(ViewId(2), 1, Some(view2.clone()));
-		catalog.set_view(ViewId(3), 1, Some(view3.clone()));
+		catalog.set_view(ViewId(1), CommitVersion(1), Some(view1.clone()));
+		catalog.set_view(ViewId(2), CommitVersion(1), Some(view2.clone()));
+		catalog.set_view(ViewId(3), CommitVersion(1), Some(view3.clone()));
 
 		// All should be findable
-		assert_eq!(catalog.find_view_by_name(namespace_id, "view1", 1), Some(view1));
-		assert_eq!(catalog.find_view_by_name(namespace_id, "view2", 1), Some(view2));
-		assert_eq!(catalog.find_view_by_name(namespace_id, "view3", 1), Some(view3));
+		assert_eq!(catalog.find_view_by_name(namespace_id, "view1", CommitVersion(1)), Some(view1));
+		assert_eq!(catalog.find_view_by_name(namespace_id, "view2", CommitVersion(1)), Some(view2));
+		assert_eq!(catalog.find_view_by_name(namespace_id, "view3", CommitVersion(1)), Some(view3));
 	}
 
 	#[test]
@@ -245,17 +248,17 @@ mod tests {
 		view_v3.name = "view_v3".to_string();
 
 		// Set at different versions
-		catalog.set_view(view_id, 10, Some(view_v1.clone()));
-		catalog.set_view(view_id, 20, Some(view_v2.clone()));
-		catalog.set_view(view_id, 30, Some(view_v3.clone()));
+		catalog.set_view(view_id, CommitVersion(10), Some(view_v1.clone()));
+		catalog.set_view(view_id, CommitVersion(20), Some(view_v2.clone()));
+		catalog.set_view(view_id, CommitVersion(30), Some(view_v3.clone()));
 
 		// Query at different versions
-		assert_eq!(catalog.find_view(view_id, 5), None);
-		assert_eq!(catalog.find_view(view_id, 10), Some(view_v1.clone()));
-		assert_eq!(catalog.find_view(view_id, 15), Some(view_v1));
-		assert_eq!(catalog.find_view(view_id, 20), Some(view_v2.clone()));
-		assert_eq!(catalog.find_view(view_id, 25), Some(view_v2));
-		assert_eq!(catalog.find_view(view_id, 30), Some(view_v3.clone()));
-		assert_eq!(catalog.find_view(view_id, 100), Some(view_v3));
+		assert_eq!(catalog.find_view(view_id, CommitVersion(5)), None);
+		assert_eq!(catalog.find_view(view_id, CommitVersion(10)), Some(view_v1.clone()));
+		assert_eq!(catalog.find_view(view_id, CommitVersion(15)), Some(view_v1));
+		assert_eq!(catalog.find_view(view_id, CommitVersion(20)), Some(view_v2.clone()));
+		assert_eq!(catalog.find_view(view_id, CommitVersion(25)), Some(view_v2));
+		assert_eq!(catalog.find_view(view_id, CommitVersion(30)), Some(view_v3.clone()));
+		assert_eq!(catalog.find_view(view_id, CommitVersion(100)), Some(view_v3));
 	}
 }

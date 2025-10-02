@@ -43,7 +43,7 @@ impl Delta {
 	}
 
 	/// Returns the encoded, if None, it means the entry is marked as remove.
-	pub fn row(&self) -> Option<&EncodedValues> {
+	pub fn values(&self) -> Option<&EncodedValues> {
 		match self {
 			Self::Set {
 				values: row,

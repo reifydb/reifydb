@@ -44,7 +44,7 @@ impl EncodedValuesNamedLayout {
 	}
 
 	pub fn allocate_row(&self) -> EncodedValues {
-		self.layout.allocate_row()
+		self.layout.allocate()
 	}
 
 	pub fn set_values(&self, row: &mut EncodedValues, values: &[Value]) {

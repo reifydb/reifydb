@@ -33,7 +33,7 @@ impl WatermarkInner {
 			let mut pending = pending.borrow_mut();
 			let mut waiters = waiters.borrow_mut();
 
-			// Prevent unbounded growth
+			// Prevent unbounded gvaluesth
 			if pending.len() > MAX_PENDING {
 				// Clean up very old pending entries
 				let done_until = self.done_until.load(Ordering::SeqCst);

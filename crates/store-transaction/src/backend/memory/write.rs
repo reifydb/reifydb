@@ -157,13 +157,13 @@ impl Writer {
 			match &delta {
 				Delta::Set {
 					key,
-					values: row,
+					values,
 				} => {
 					let item = self
 						.multi
 						.get_or_insert_with(key.clone(), MultiVersionTransactionContainer::new);
 					let val = item.value();
-					val.insert(version, Some(row.clone()));
+					val.insert(version, Some(values.clone()));
 				}
 				Delta::Remove {
 					key,
@@ -197,9 +197,9 @@ impl Writer {
 			match delta {
 				Delta::Set {
 					key,
-					values: row,
+					values,
 				} => {
-					self.single.insert(key, row);
+					self.single.insert(key, values);
 				}
 				Delta::Remove {
 					key,

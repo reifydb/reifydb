@@ -20,7 +20,7 @@ impl MultiVersionGet for SqliteBackend {
 			table
 		);
 
-		Ok(guard.query_row(&query, params![key.to_vec(), version], |row| {
+		Ok(guard.query_row(&query, params![key.to_vec(), version.0], |row| {
 			// Check if value is NULL (which indicates deletion)
 			let value: Option<Vec<u8>> = row.get(1)?;
 			match value {
@@ -29,7 +29,7 @@ impl MultiVersionGet for SqliteBackend {
 					Ok(Some(MultiVersionValues {
 						key: EncodedKey::new(row.get::<_, Vec<u8>>(0)?),
 						values: encoded_row,
-						version: row.get(2)?,
+						version: CommitVersion(row.get(2)?),
 					}))
 				}
 				None => Ok(None), // NULL value means deleted

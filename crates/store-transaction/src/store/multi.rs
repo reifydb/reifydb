@@ -7,24 +7,22 @@ use reifydb_core::{
 
 use super::StandardTransactionStore;
 use crate::{
-	MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
-	MultiVersionScan, MultiVersionScanRev, MultiVersionStore,
+	MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionIter, MultiVersionRange,
+	MultiVersionRangeRev, MultiVersionScan, MultiVersionScanRev, MultiVersionStore,
+	store::multi_iterator::MultiVersionMergingIterator,
 };
-
-pub trait MultiVersionIter: Iterator<Item = MultiVersionValues> + Send {}
-impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionValues> {}
 
 impl MultiVersionGet for StandardTransactionStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
 		if let Some(hot) = &self.hot {
-			if let Some(row) = hot.multi.get(key, version)? {
-				return Ok(Some(row));
+			if let Some(values) = hot.multi.get(key, version)? {
+				return Ok(Some(values));
 			}
 		}
 
 		if let Some(warm) = &self.warm {
-			if let Some(row) = warm.multi.get(key, version)? {
-				return Ok(Some(row));
+			if let Some(values) = warm.multi.get(key, version)? {
+				return Ok(Some(values));
 			}
 		}
 
@@ -45,11 +43,23 @@ impl MultiVersionContains for StandardTransactionStore {
 impl MultiVersionCommit for StandardTransactionStore {
 	fn commit(
 		&self,
-		_deltas: CowVec<Delta>,
-		_version: CommitVersion,
-		_transaction: TransactionId,
+		deltas: CowVec<Delta>,
+		version: CommitVersion,
+		transaction: TransactionId,
 	) -> crate::Result<()> {
-		todo!("Implement commit to hot tier")
+		if let Some(hot) = &self.hot {
+			return hot.multi.commit(deltas, version, transaction);
+		}
+
+		if let Some(warm) = &self.warm {
+			return warm.multi.commit(deltas, version, transaction);
+		}
+
+		if let Some(cold) = &self.cold {
+			return cold.multi.commit(deltas, version, transaction);
+		}
+
+		Ok(())
 	}
 }
 
@@ -59,8 +69,25 @@ impl MultiVersionScan for StandardTransactionStore {
 	where
 		Self: 'a;
 
-	fn scan(&self, _version: CommitVersion) -> crate::Result<Self::ScanIter<'_>> {
-		todo!("Implement scan across tiers")
+	fn scan(&self, version: CommitVersion) -> crate::Result<Self::ScanIter<'_>> {
+		let mut iters: Vec<Box<dyn MultiVersionIter + '_>> = Vec::new();
+
+		if let Some(hot) = &self.hot {
+			let iter = hot.multi.scan(version)?;
+			iters.push(Box::new(iter));
+		}
+
+		if let Some(warm) = &self.warm {
+			let iter = warm.multi.scan(version)?;
+			iters.push(Box::new(iter));
+		}
+
+		if let Some(cold) = &self.cold {
+			let iter = cold.multi.scan(version)?;
+			iters.push(Box::new(iter));
+		}
+
+		Ok(Box::new(MultiVersionMergingIterator::new(iters)))
 	}
 }
 
@@ -70,8 +97,25 @@ impl MultiVersionScanRev for StandardTransactionStore {
 	where
 		Self: 'a;
 
-	fn scan_rev(&self, _version: CommitVersion) -> crate::Result<Self::ScanIterRev<'_>> {
-		todo!("Implement reverse scan across tiers")
+	fn scan_rev(&self, version: CommitVersion) -> crate::Result<Self::ScanIterRev<'_>> {
+		let mut iters: Vec<Box<dyn MultiVersionIter + '_>> = Vec::new();
+
+		if let Some(hot) = &self.hot {
+			let iter = hot.multi.scan_rev(version)?;
+			iters.push(Box::new(iter));
+		}
+
+		if let Some(warm) = &self.warm {
+			let iter = warm.multi.scan_rev(version)?;
+			iters.push(Box::new(iter));
+		}
+
+		if let Some(cold) = &self.cold {
+			let iter = cold.multi.scan_rev(version)?;
+			iters.push(Box::new(iter));
+		}
+
+		Ok(Box::new(MultiVersionMergingIterator::new(iters)))
 	}
 }
 
@@ -81,8 +125,25 @@ impl MultiVersionRange for StandardTransactionStore {
 	where
 		Self: 'a;
 
-	fn range(&self, _range: EncodedKeyRange, _version: CommitVersion) -> crate::Result<Self::RangeIter<'_>> {
-		todo!("Implement range scan across tiers")
+	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIter<'_>> {
+		let mut iters: Vec<Box<dyn MultiVersionIter + '_>> = Vec::new();
+
+		if let Some(hot) = &self.hot {
+			let iter = hot.multi.range(range.clone(), version)?;
+			iters.push(Box::new(iter));
+		}
+
+		if let Some(warm) = &self.warm {
+			let iter = warm.multi.range(range.clone(), version)?;
+			iters.push(Box::new(iter));
+		}
+
+		if let Some(cold) = &self.cold {
+			let iter = cold.multi.range(range, version)?;
+			iters.push(Box::new(iter));
+		}
+
+		Ok(Box::new(MultiVersionMergingIterator::new(iters)))
 	}
 }
 
@@ -92,8 +153,25 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 	where
 		Self: 'a;
 
-	fn range_rev(&self, _range: EncodedKeyRange, _version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>> {
-		todo!("Implement reverse range scan across tiers")
+	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>> {
+		let mut iters: Vec<Box<dyn MultiVersionIter + '_>> = Vec::new();
+
+		if let Some(hot) = &self.hot {
+			let iter = hot.multi.range_rev(range.clone(), version)?;
+			iters.push(Box::new(iter));
+		}
+
+		if let Some(warm) = &self.warm {
+			let iter = warm.multi.range_rev(range.clone(), version)?;
+			iters.push(Box::new(iter));
+		}
+
+		if let Some(cold) = &self.cold {
+			let iter = cold.multi.range_rev(range, version)?;
+			iters.push(Box::new(iter));
+		}
+
+		Ok(Box::new(MultiVersionMergingIterator::new(iters)))
 	}
 }
 

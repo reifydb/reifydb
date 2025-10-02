@@ -18,8 +18,8 @@ impl CdcGet for SqliteBackend {
 		let mut stmt = conn_guard.prepare_cached("SELECT value FROM cdc WHERE version = ?").unwrap();
 
 		let result = stmt
-			.query_row(params![version as i64], |row| {
-				let bytes: Vec<u8> = row.get(0)?;
+			.query_row(params![version.0], |values| {
+				let bytes: Vec<u8> = values.get(0)?;
 				Ok(EncodedValues(CowVec::new(bytes)))
 			})
 			.optional()

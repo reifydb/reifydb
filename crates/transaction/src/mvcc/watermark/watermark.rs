@@ -35,7 +35,7 @@ pub struct WatermarkInner {
 
 #[derive(Debug)]
 pub(crate) struct Mark {
-	pub(crate) version: CommitVersion,
+	pub(crate) version: u64,
 	pub(crate) waiter: Option<Sender<()>>,
 	pub(crate) done: bool,
 }
@@ -94,22 +94,22 @@ impl WaterMark {
 	/// Sets the last index to the given value.
 	pub fn begin(&self, version: CommitVersion) {
 		// Update last_index to the maximum
-		self.last_index.fetch_max(version, Ordering::SeqCst);
+		self.last_index.fetch_max(version.0, Ordering::SeqCst);
 
 		// Always send the mark - the processing thread will handle
 		// ordering Handle channel error gracefully
 		let _ = self.tx.send(Mark {
-			version,
+			version: version.0,
 			waiter: None,
 			done: false,
 		});
 	}
 
 	/// Sets a single index as done.
-	pub fn done(&self, index: u64) {
+	pub fn done(&self, index: CommitVersion) {
 		// Handle channel error gracefully
 		let _ = self.tx.send(Mark {
-			version: index,
+			version: index.0,
 			waiter: None,
 			done: true,
 		});
@@ -117,20 +117,20 @@ impl WaterMark {
 
 	/// Returns the maximum index that has the property that all indices
 	/// less than or equal to it are done.
-	pub fn done_until(&self) -> u64 {
-		self.done_until.load(Ordering::SeqCst)
+	pub fn done_until(&self) -> CommitVersion {
+		CommitVersion(self.done_until.load(Ordering::SeqCst))
 	}
 
 	/// Waits until the given index is marked as done with a default
 	/// timeout.
 	pub fn wait_for_mark(&self, index: u64) {
-		self.wait_for_mark_timeout(index, Duration::from_secs(30));
+		self.wait_for_mark_timeout(CommitVersion(index), Duration::from_secs(30));
 	}
 
 	/// Waits until the given index is marked as done with a specified
 	/// timeout.
-	pub fn wait_for_mark_timeout(&self, index: u64, timeout: Duration) -> bool {
-		if self.done_until.load(Ordering::SeqCst) >= index {
+	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
+		if self.done_until.load(Ordering::SeqCst) >= index.0 {
 			return true;
 		}
 
@@ -139,7 +139,7 @@ impl WaterMark {
 		// Handle send error
 		if self.tx
 			.send(Mark {
-				version: index,
+				version: index.0,
 				waiter: Some(wait_tx),
 				done: false,
 			})
@@ -180,29 +180,29 @@ mod tests {
 	#[test]
 	fn test_begin_done() {
 		init_and_close(|watermark| {
-			watermark.begin(1);
-			watermark.begin(2);
-			watermark.begin(3);
+			watermark.begin(CommitVersion(1));
+			watermark.begin(CommitVersion(2));
+			watermark.begin(CommitVersion(3));
 
-			watermark.done(1);
-			watermark.done(2);
-			watermark.done(3);
+			watermark.done(CommitVersion(1));
+			watermark.done(CommitVersion(2));
+			watermark.done(CommitVersion(3));
 		});
 	}
 
 	#[test]
 	fn test_wait_for_mark() {
 		init_and_close(|watermark| {
-			watermark.begin(1);
-			watermark.begin(2);
-			watermark.begin(3);
+			watermark.begin(CommitVersion(1));
+			watermark.begin(CommitVersion(2));
+			watermark.begin(CommitVersion(3));
 
-			watermark.done(2);
-			watermark.done(3);
+			watermark.done(CommitVersion(2));
+			watermark.done(CommitVersion(3));
 
 			assert_eq!(watermark.done_until(), 0);
 
-			watermark.done(1);
+			watermark.done(CommitVersion(1));
 			watermark.wait_for_mark(1);
 			watermark.wait_for_mark(3);
 			assert_eq!(watermark.done_until(), 3);
@@ -234,7 +234,7 @@ mod tests {
 			let wm = watermark.clone();
 			let handle = spawn(move || {
 				for i in 0..OPS_PER_THREAD {
-					let version = (thread_id * OPS_PER_THREAD + i) as u64 + 1;
+					let version = CommitVersion((thread_id * OPS_PER_THREAD + i) as u64 + 1);
 					wm.begin(version);
 					wm.done(version);
 				}
@@ -250,7 +250,7 @@ mod tests {
 
 		// Verify the watermark progressed
 		let final_done = watermark.done_until();
-		assert!(final_done > 0, "Watermark should have progressed");
+		assert!(final_done.0 > 0, "Watermark should have progressed");
 
 		closer.signal_and_wait();
 	}
@@ -263,7 +263,7 @@ mod tests {
 
 		// Start some versions
 		for i in 1..=10 {
-			watermark.begin(i);
+			watermark.begin(CommitVersion(i));
 		}
 
 		let mut handles = vec![];
@@ -275,7 +275,7 @@ mod tests {
 			let handle = spawn(move || {
 				// Use timeout to avoid hanging if something
 				// goes wrong
-				if wm.wait_for_mark_timeout(version, Duration::from_secs(5)) {
+				if wm.wait_for_mark_timeout(CommitVersion(version), Duration::from_secs(5)) {
 					counter.fetch_add(1, Ordering::Relaxed);
 				}
 			});
@@ -287,7 +287,7 @@ mod tests {
 
 		// Complete the versions
 		for i in 1..=10 {
-			watermark.done(i);
+			watermark.done(CommitVersion(i));
 		}
 
 		for handle in handles {
@@ -307,19 +307,19 @@ mod tests {
 		init_and_close(|watermark| {
 			// Advance done_until significantly
 			for i in 1..=100 {
-				watermark.begin(i);
-				watermark.done(i);
+				watermark.begin(CommitVersion(i));
+				watermark.done(CommitVersion(i));
 			}
 
 			// Wait for processing
 			thread::sleep(Duration::from_millis(50));
 
 			let done_until = watermark.done_until();
-			assert!(done_until >= 50, "Should have processed many versions");
+			assert!(done_until.0 >= 50, "Should have processed many versions");
 
 			// Try to wait for a very old version (should return
 			// immediately)
-			let very_old = done_until.saturating_sub(super::super::OLD_VERSION_THRESHOLD + 10);
+			let very_old = done_until.0.saturating_sub(super::super::OLD_VERSION_THRESHOLD + 10);
 			let start = Instant::now();
 			watermark.wait_for_mark(very_old);
 			let elapsed = start.elapsed();
@@ -333,11 +333,11 @@ mod tests {
 	fn test_timeout_behavior() {
 		init_and_close(|watermark| {
 			// Begin but don't complete a version
-			watermark.begin(1);
+			watermark.begin(CommitVersion(1));
 
 			// Wait with short timeout
 			let start = Instant::now();
-			let result = watermark.wait_for_mark_timeout(1, Duration::from_millis(100));
+			let result = watermark.wait_for_mark_timeout(CommitVersion(1), Duration::from_millis(100));
 			let elapsed = start.elapsed();
 
 			// Should timeout and return false

@@ -80,7 +80,7 @@ impl EncodedValuesLayoutInner {
 		}
 	}
 
-	pub fn allocate_row(&self) -> EncodedValues {
+	pub fn allocate(&self) -> EncodedValues {
 		let total_size = self.total_static_size();
 		let layout = std::alloc::Layout::from_size_align(total_size, self.alignment).unwrap();
 		unsafe {
@@ -259,7 +259,7 @@ mod tests {
 		fn test_initial_state() {
 			let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Int1, Type::Uint2]);
 
-			let row = layout.allocate_row();
+			let row = layout.allocate();
 
 			for byte in row.as_slice() {
 				assert_eq!(*byte, 0);
@@ -272,7 +272,7 @@ mod tests {
 		fn test_clone_on_write_semantics() {
 			let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Boolean, Type::Boolean]);
 
-			let row1 = layout.allocate_row();
+			let row1 = layout.allocate();
 			let mut row2 = row1.clone();
 
 			// Initially identical
@@ -299,7 +299,7 @@ mod tests {
 		#[test]
 		fn test_one_field_none_valid() {
 			let layout = EncodedValuesLayout::new(&[Type::Boolean; 1]);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_undefined(&mut row, 0);
 			assert!(!layout.all_defined(&row));
 		}
@@ -307,7 +307,7 @@ mod tests {
 		#[test]
 		fn test_one_field_valid() {
 			let layout = EncodedValuesLayout::new(&[Type::Boolean; 1]);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_bool(&mut row, 0, true);
 			assert!(layout.all_defined(&row));
 		}
@@ -316,7 +316,7 @@ mod tests {
 		fn test_seven_fields_none_valid() {
 			let types = vec![Type::Boolean; 7];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..7 {
 				layout.set_undefined(&mut row, idx);
@@ -329,7 +329,7 @@ mod tests {
 		fn test_seven_fields_allv() {
 			let types = vec![Type::Boolean; 7];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..7 {
 				layout.set_bool(&mut row, idx, idx % 2 == 0);
@@ -342,7 +342,7 @@ mod tests {
 		fn test_seven_fields_partial_valid() {
 			let types = vec![Type::Boolean; 7];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..7 {
 				layout.set_bool(&mut row, idx, idx % 2 == 0);
@@ -359,7 +359,7 @@ mod tests {
 		fn test_eight_fields_none_valid() {
 			let types = vec![Type::Boolean; 8];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..8 {
 				layout.set_undefined(&mut row, idx);
@@ -372,7 +372,7 @@ mod tests {
 		fn test_eight_fields_allv() {
 			let types = vec![Type::Boolean; 8];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..8 {
 				layout.set_bool(&mut row, idx, idx % 2 == 0);
@@ -385,7 +385,7 @@ mod tests {
 		fn test_eight_fields_partial_valid() {
 			let types = vec![Type::Boolean; 8];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..8 {
 				layout.set_bool(&mut row, idx, idx % 2 == 0);
@@ -402,7 +402,7 @@ mod tests {
 		fn test_nine_fields_allv() {
 			let types = vec![Type::Boolean; 9];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..9 {
 				layout.set_bool(&mut row, idx, idx % 2 == 0);
@@ -415,7 +415,7 @@ mod tests {
 		fn test_nine_fields_none_valid() {
 			let types = vec![Type::Boolean; 9];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..9 {
 				layout.set_undefined(&mut row, idx);
@@ -428,7 +428,7 @@ mod tests {
 		fn test_nine_fields_partial_valid() {
 			let types = vec![Type::Boolean; 9];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..9 {
 				layout.set_bool(&mut row, idx, idx % 2 == 0);
@@ -445,7 +445,7 @@ mod tests {
 		fn test_sixteen_fields_allv() {
 			let types = vec![Type::Boolean; 16];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..16 {
 				layout.set_bool(&mut row, idx, idx % 2 == 0);
@@ -458,7 +458,7 @@ mod tests {
 		fn test_sixteen_fields_none_valid() {
 			let types = vec![Type::Boolean; 16];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..16 {
 				layout.set_undefined(&mut row, idx);
@@ -471,7 +471,7 @@ mod tests {
 		fn test_sixteen_fields_partial_valid() {
 			let types = vec![Type::Boolean; 16];
 			let layout = EncodedValuesLayout::new(&types);
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 
 			for idx in 0..16 {
 				layout.set_bool(&mut row, idx, idx % 2 == 0);

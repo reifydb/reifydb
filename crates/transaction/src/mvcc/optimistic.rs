@@ -47,7 +47,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>, Error> {
 		Ok(QueryTransaction::get(self, key)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			values: tv.row().clone(),
+			values: tv.values().clone(),
 			version: tv.version(),
 		}))
 	}
@@ -87,7 +87,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	}
 
 	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), Error> {
-		QueryTransaction::read_as_of_version_inclusive(self, version);
+		QueryTransaction::read_as_of_version_exclusive(self, version);
 		Ok(())
 	}
 }
@@ -106,7 +106,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	fn get(&mut self, key: &EncodedKey) -> Result<Option<MultiVersionValues>, Error> {
 		Ok(CommandTransaction::get(self, key)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			values: tv.row().clone(),
+			values: tv.values().clone(),
 			version: tv.version(),
 		}))
 	}
@@ -118,7 +118,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = self.scan()?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			values: tv.row().clone(),
+			values: tv.values().clone(),
 			version: tv.version(),
 		});
 
@@ -128,7 +128,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = self.scan_rev()?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			values: tv.row().clone(),
+			values: tv.values().clone(),
 			version: tv.version(),
 		});
 
@@ -138,7 +138,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = self.range(range)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			values: tv.row().clone(),
+			values: tv.values().clone(),
 			version: tv.version(),
 		});
 
@@ -148,7 +148,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = self.range_rev(range)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			values: tv.row().clone(),
+			values: tv.values().clone(),
 			version: tv.version(),
 		});
 
@@ -158,7 +158,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = self.prefix(prefix)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			values: tv.row().clone(),
+			values: tv.values().clone(),
 			version: tv.version(),
 		});
 
@@ -168,7 +168,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = self.prefix_rev(prefix)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
-			values: tv.row().clone(),
+			values: tv.values().clone(),
 			version: tv.version(),
 		});
 
@@ -176,7 +176,7 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 	}
 
 	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> Result<(), Error> {
-		self.read_as_of_version_inclusive(version)?;
+		CommandTransaction::read_as_of_version_exclusive(self, version);
 		Ok(())
 	}
 }
@@ -184,8 +184,8 @@ impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionQueryTr
 impl<MVS: MultiVersionStore, SMVT: SingleVersionTransaction> MultiVersionCommandTransaction
 	for CommandTransaction<MVS, SMVT>
 {
-	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> Result<(), Error> {
-		CommandTransaction::set(self, key, row)?;
+	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), Error> {
+		CommandTransaction::set(self, key, values)?;
 		Ok(())
 	}
 

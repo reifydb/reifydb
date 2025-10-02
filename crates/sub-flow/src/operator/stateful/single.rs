@@ -25,7 +25,7 @@ pub trait SingleStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Create a new state encoded with default values
 	fn create_state(&self) -> EncodedValues {
 		let layout = self.layout();
-		layout.allocate_row()
+		layout.allocate()
 	}
 
 	/// Load the operator's single state encoded

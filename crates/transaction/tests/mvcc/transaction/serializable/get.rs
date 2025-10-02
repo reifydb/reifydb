@@ -3,7 +3,7 @@
 
 use reifydb_transaction::mvcc::transaction::serializable::Serializable;
 
-use crate::{as_key, as_row};
+use crate::{as_key, as_values};
 
 #[test]
 fn test_read_after_write() {
@@ -16,7 +16,7 @@ fn test_read_after_write() {
 			let db = engine.clone();
 			std::thread::spawn(move || {
 				let k = as_key!(i);
-				let v = as_row!(i);
+				let v = as_values!(i);
 
 				let mut txn = db.begin_command().unwrap();
 				txn.set(&k, v.clone()).unwrap();
@@ -24,7 +24,7 @@ fn test_read_after_write() {
 
 				let txn = db.begin_query().unwrap();
 				let sv = txn.get(&k).unwrap().unwrap();
-				assert_eq!(*sv.row(), v);
+				assert_eq!(*sv.values(), v);
 			})
 		})
 		.collect::<Vec<_>>();

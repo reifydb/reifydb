@@ -93,7 +93,7 @@ pub fn load_or_create_row<T: Transaction>(
 ) -> crate::Result<EncodedValues> {
 	match state_get(id, txn, key)? {
 		Some(row) => Ok(row),
-		None => Ok(layout.allocate_row()),
+		None => Ok(layout.allocate()),
 	}
 }
 

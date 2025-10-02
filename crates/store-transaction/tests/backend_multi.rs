@@ -26,8 +26,8 @@ use reifydb_store_transaction::{
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-transaction/tests/scripts/multi" as multi_memory => test_memory }
-test_each_path! { in "crates/store-transaction/tests/scripts/multi" as multi_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/backend/multi" as backend_multi_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/backend/multi" as backend_multi_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	testscript::run_path(&mut Runner::new(MemoryBackend::default()), path).expect("test failed")
@@ -50,7 +50,7 @@ impl<MVS: MultiVersionStore> Runner<MVS> {
 	fn new(store: MVS) -> Self {
 		Self {
 			store,
-			version: 0,
+			version: CommitVersion(0),
 		}
 	}
 }
@@ -63,16 +63,16 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 			"get" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				let version = args.lookup_parse("version")?.unwrap_or(self.version);
+				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 				let value = self.store.get(&key, version)?.map(|sv| sv.values.to_vec());
-				writeln!(output, "{}", format::Raw::key_maybe_row(&key, value))?;
+				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
 			}
 			// contains KEY [version=VERSION]
 			"contains" => {
 				let mut args = command.consume_args();
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
-				let version = args.lookup_parse("version")?.unwrap_or(self.version);
+				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 				let contains = self.store.contains(&key, version)?;
 				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
@@ -82,7 +82,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 			"scan" => {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let version = args.lookup_parse("version")?.unwrap_or(self.version);
+				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
 				if !reverse {
@@ -98,7 +98,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				let range = EncodedKeyRange::parse(
 					args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
 				);
-				let version = args.lookup_parse("version")?.unwrap_or(self.version);
+				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
 				if !reverse {
@@ -112,7 +112,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 			"prefix" => {
 				let mut args = command.consume_args();
 				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let version = args.lookup_parse("version")?.unwrap_or(self.version);
+				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				let prefix =
 					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
 				args.reject_rest()?;
@@ -133,7 +133,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					v
 				} else {
-					self.version += 1;
+					self.version.0 += 1;
 					self.version
 				};
 				args.reject_rest()?;
@@ -157,7 +157,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 				let version = if let Some(v) = args.lookup_parse("version")? {
 					v
 				} else {
-					self.version += 1;
+					self.version.0 += 1;
 					self.version
 				};
 				args.reject_rest()?;
@@ -183,7 +183,7 @@ impl<MVS: MultiVersionStore> testscript::Runner for Runner<MVS> {
 
 fn print<I: Iterator<Item = MultiVersionValues>>(output: &mut String, iter: I) {
 	for sv in iter {
-		let fmtkv = format::Raw::key_row(&sv.key, sv.values.as_slice());
+		let fmtkv = format::Raw::key_value(&sv.key, sv.values.as_slice());
 		writeln!(output, "{fmtkv}").unwrap();
 	}
 }

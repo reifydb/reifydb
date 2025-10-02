@@ -13,14 +13,14 @@ impl MultiVersionGet for MemoryBackend {
 		};
 
 		// Get the value at the specified version
-		let row = match item.value().get(version) {
-			Some(row) => row,
+		let values = match item.value().get(version) {
+			Some(values) => values,
 			None => return Ok(None),
 		};
 
 		Ok(Some(MultiVersionValues {
 			key: key.clone(),
-			values: row,
+			values,
 			version,
 		}))
 	}

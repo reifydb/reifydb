@@ -23,17 +23,17 @@ impl CdcScan for SqliteBackend {
 }
 
 pub struct Scan {
-	conn: Reader,
+	reader: Reader,
 	buffer: VecDeque<Cdc>,
 	last_version: Option<CommitVersion>,
-	batch_size: usize,
+	batch_size: u64,
 	exhausted: bool,
 }
 
 impl Scan {
-	pub fn new(conn: Reader, batch_size: usize) -> Self {
+	pub fn new(reader: Reader, batch_size: u64) -> Self {
 		Self {
-			conn,
+			reader,
 			buffer: VecDeque::new(),
 			last_version: None,
 			batch_size,
@@ -49,7 +49,7 @@ impl Scan {
 		self.buffer.clear();
 
 		let (where_clause, params) = if let Some(last_version) = self.last_version {
-			("WHERE version > ?".to_string(), vec![last_version as i64])
+			("WHERE version > ?".to_string(), vec![last_version.0])
 		} else {
 			(String::new(), vec![])
 		};
@@ -60,17 +60,17 @@ impl Scan {
 			format!("SELECT version, value FROM cdc {} ORDER BY version ASC LIMIT ?", where_clause)
 		};
 
-		let conn_guard = self.conn.lock().unwrap();
+		let conn_guard = self.reader.lock().unwrap();
 		let mut stmt = conn_guard.prepare_cached(&query).unwrap();
 
 		let mut query_params = params;
-		query_params.push(self.batch_size as i64);
+		query_params.push(self.batch_size);
 
 		let transactions: Vec<(CommitVersion, EncodedValues)> = stmt
-			.query_map(rusqlite::params_from_iter(query_params), |row| {
-				let version: i64 = row.get(0)?;
-				let bytes: Vec<u8> = row.get(1)?;
-				Ok((version as CommitVersion, EncodedValues(CowVec::new(bytes))))
+			.query_map(rusqlite::params_from_iter(query_params), |values| {
+				let version = CommitVersion(values.get(0)?);
+				let bytes: Vec<u8> = values.get(1)?;
+				Ok((version, EncodedValues(CowVec::new(bytes))))
 			})
 			.unwrap()
 			.collect::<rusqlite::Result<Vec<_>>>()
@@ -87,7 +87,7 @@ impl Scan {
 		}
 
 		// If we got fewer results than requested, we've reached the end
-		if count < self.batch_size {
+		if count < self.batch_size as usize {
 			self.exhausted = true;
 		}
 	}

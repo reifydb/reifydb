@@ -9,19 +9,20 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
+use reifydb_core::CommitVersion;
 use reifydb_transaction::mvcc::transaction::{
 	optimistic::Optimistic, scan::TransactionScanIter, scan_rev::TransactionScanRevIter,
 };
 
-use crate::{as_key, as_row, from_row, mvcc::transaction::FromRow};
+use crate::{as_key, as_values, from_values, mvcc::transaction::FromValues};
 
 #[test]
 fn test_iter() {
 	let engine = Optimistic::testing();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_row!(1)).unwrap();
-	txn.set(&as_key!(2), as_row!(2)).unwrap();
-	txn.set(&as_key!(3), as_row!(3)).unwrap();
+	txn.set(&as_key!(1), as_values!(1)).unwrap();
+	txn.set(&as_key!(2), as_values!(2)).unwrap();
+	txn.set(&as_key!(3), as_values!(3)).unwrap();
 	txn.commit().unwrap();
 
 	let txn = engine.begin_query().unwrap();
@@ -29,13 +30,13 @@ fn test_iter() {
 
 	for (expected, tv) in (1..=3).rev().zip(iter) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.values, as_row!(expected));
+		assert_eq!(tv.values, as_values!(expected));
 	}
 
 	let iter = txn.scan_rev().unwrap();
 	for (expected, tv) in (1..=3).zip(iter) {
 		assert_eq!(tv.key, as_key!(expected));
-		assert_eq!(tv.values, as_row!(expected));
+		assert_eq!(tv.values, as_values!(expected));
 	}
 }
 
@@ -43,41 +44,41 @@ fn test_iter() {
 fn test_iter2() {
 	let engine = Optimistic::testing();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_row!(1)).unwrap();
-	txn.set(&as_key!(2), as_row!(2)).unwrap();
-	txn.set(&as_key!(3), as_row!(3)).unwrap();
+	txn.set(&as_key!(1), as_values!(1)).unwrap();
+	txn.set(&as_key!(2), as_values!(2)).unwrap();
+	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
 	let iter = txn.scan().unwrap();
 	for (expected, tv) in (1..=3).rev().zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.row(), &as_row!(expected));
+		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 1);
 	}
 
 	let iter = txn.scan_rev().unwrap();
 	for (expected, tv) in (1..=3).zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.row(), &as_row!(expected));
+		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 1);
 	}
 	txn.commit().unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(4), as_row!(4)).unwrap();
-	txn.set(&as_key!(5), as_row!(5)).unwrap();
-	txn.set(&as_key!(6), as_row!(6)).unwrap();
+	txn.set(&as_key!(4), as_values!(4)).unwrap();
+	txn.set(&as_key!(5), as_values!(5)).unwrap();
+	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
 	let iter = txn.scan().unwrap();
 	for (expected, tv) in (1..=6).rev().zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.row(), &as_row!(expected));
+		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 2);
 	}
 
 	let iter = txn.scan_rev().unwrap();
 	for (expected, tv) in (1..=6).zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.row(), &as_row!(expected));
+		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 2);
 	}
 }
@@ -86,42 +87,42 @@ fn test_iter2() {
 fn test_iter3() {
 	let engine = Optimistic::testing();
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(4), as_row!(4)).unwrap();
-	txn.set(&as_key!(5), as_row!(5)).unwrap();
-	txn.set(&as_key!(6), as_row!(6)).unwrap();
+	txn.set(&as_key!(4), as_values!(4)).unwrap();
+	txn.set(&as_key!(5), as_values!(5)).unwrap();
+	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
 	let iter = txn.scan().unwrap();
 	for (expected, tv) in (4..=6).rev().zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.row(), &as_row!(expected));
+		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 1);
 	}
 
 	let iter = txn.scan_rev().unwrap();
 	for (expected, tv) in (4..=6).zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.row(), &as_row!(expected));
+		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 1);
 	}
 
 	txn.commit().unwrap();
 
 	let mut txn = engine.begin_command().unwrap();
-	txn.set(&as_key!(1), as_row!(1)).unwrap();
-	txn.set(&as_key!(2), as_row!(2)).unwrap();
-	txn.set(&as_key!(3), as_row!(3)).unwrap();
+	txn.set(&as_key!(1), as_values!(1)).unwrap();
+	txn.set(&as_key!(2), as_values!(2)).unwrap();
+	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
 	let iter = txn.scan().unwrap();
 	for (expected, tv) in (1..=6).rev().zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.row(), &as_row!(expected));
+		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 2);
 	}
 
 	let iter = txn.scan_rev().unwrap();
 	for (expected, tv) in (1..=6).zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
-		assert_eq!(tv.row(), &as_row!(expected));
+		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 2);
 	}
 }
@@ -139,7 +140,7 @@ fn test_iter_edge_case() {
 	// c1
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(3), as_row!(31u64)).unwrap();
+		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
@@ -147,8 +148,8 @@ fn test_iter_edge_case() {
 	// a2, c2
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(1), as_row!(12u64)).unwrap();
-		txn.set(&as_key!(3), as_row!(32u64)).unwrap();
+		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
+		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
@@ -156,15 +157,15 @@ fn test_iter_edge_case() {
 	// b3
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(1), as_row!(13u64)).unwrap();
-		txn.set(&as_key!(2), as_row!(23u64)).unwrap();
+		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
+		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
 
 	// b4, c4(remove) (uncommitted)
 	let mut txn4 = engine.begin_command().unwrap();
-	txn4.set(&as_key!(2), as_row!(24u64)).unwrap();
+	txn4.set(&as_key!(2), as_values!(24u64)).unwrap();
 	txn4.remove(&as_key!(3)).unwrap();
 	assert_eq!(4, engine.version().unwrap());
 
@@ -179,7 +180,7 @@ fn test_iter_edge_case() {
 	let check_iter = |itr: TransactionScanIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
-			assert_eq!(expected[i], from_row!(u64, *r.row()), "read_vs={}", r.version());
+			assert_eq!(expected[i], from_values!(u64, *r.values()), "read_vs={}", r.version());
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -188,7 +189,7 @@ fn test_iter_edge_case() {
 	let check_rev_iter = |itr: TransactionScanRevIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
-			assert_eq!(expected[i], from_row!(u64, *r.row()), "read_vs={}", r.version());
+			assert_eq!(expected[i], from_values!(u64, *r.values()), "read_vs={}", r.version());
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -205,19 +206,19 @@ fn test_iter_edge_case() {
 	check_rev_iter(itr, &[13, 32]);
 	check_rev_iter(itr5, &[13, 24]);
 
-	txn.read_as_of_version_exclusive(4);
+	txn.read_as_of_version_exclusive(CommitVersion(4));
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[32, 23, 13]);
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[13, 23, 32]);
 
-	txn.read_as_of_version_exclusive(3);
+	txn.read_as_of_version_exclusive(CommitVersion(3));
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[32, 12]);
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[12, 32]);
 
-	txn.read_as_of_version_exclusive(2);
+	txn.read_as_of_version_exclusive(CommitVersion(2));
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[31]);
 	let itr = txn.scan_rev().unwrap();
@@ -236,7 +237,7 @@ fn test_iter_edge_case2() {
 	// c1
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(3), as_row!(31u64)).unwrap();
+		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(2, engine.version().unwrap());
 	}
@@ -244,8 +245,8 @@ fn test_iter_edge_case2() {
 	// a2, c2
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(1), as_row!(12u64)).unwrap();
-		txn.set(&as_key!(3), as_row!(32u64)).unwrap();
+		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
+		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(3, engine.version().unwrap());
 	}
@@ -253,8 +254,8 @@ fn test_iter_edge_case2() {
 	// b3
 	{
 		let mut txn = engine.begin_command().unwrap();
-		txn.set(&as_key!(1), as_row!(13u64)).unwrap();
-		txn.set(&as_key!(2), as_row!(23u64)).unwrap();
+		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
+		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(4, engine.version().unwrap());
 	}
@@ -270,7 +271,7 @@ fn test_iter_edge_case2() {
 	let check_iter = |itr: TransactionScanIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
-			assert_eq!(expected[i], from_row!(u64, *r.row()));
+			assert_eq!(expected[i], from_values!(u64, *r.values()));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -279,7 +280,7 @@ fn test_iter_edge_case2() {
 	let check_rev_iter = |itr: TransactionScanRevIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
-			assert_eq!(expected[i], from_row!(u64, *r.row()));
+			assert_eq!(expected[i], from_values!(u64, *r.values()));
 			i += 1;
 		}
 		assert_eq!(expected.len(), i);
@@ -291,21 +292,21 @@ fn test_iter_edge_case2() {
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[13, 32]);
 
-	txn.read_as_of_version_exclusive(4);
+	txn.read_as_of_version_exclusive(CommitVersion(4));
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[32, 23, 13]);
 
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[13, 23, 32]);
 
-	txn.read_as_of_version_exclusive(3);
+	txn.read_as_of_version_exclusive(CommitVersion(3));
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[32, 12]);
 
 	let itr = txn.scan_rev().unwrap();
 	check_rev_iter(itr, &[12, 32]);
 
-	txn.read_as_of_version_exclusive(2);
+	txn.read_as_of_version_exclusive(CommitVersion(2));
 	let itr = txn.scan().unwrap();
 	check_iter(itr, &[31]);
 	let itr = txn.scan_rev().unwrap();

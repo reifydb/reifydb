@@ -23,7 +23,7 @@ impl CatalogStore {
 
 		let namespace_id = SystemSequence::next_namespace_id(txn)?;
 
-		let mut row = namespace::LAYOUT.allocate_row();
+		let mut row = namespace::LAYOUT.allocate();
 		namespace::LAYOUT.set_u64(&mut row, namespace::ID, namespace_id);
 		namespace::LAYOUT.set_utf8(&mut row, namespace::NAME, &to_create.name);
 

@@ -43,7 +43,7 @@ mod tests {
 	#[test]
 	fn test_set_get_i128() {
 		let layout = EncodedValuesLayout::new(&[Type::Int16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 		layout.set_i128(&mut row, 0, 123456789012345678901234567890i128);
 		assert_eq!(layout.get_i128(&row, 0), 123456789012345678901234567890i128);
 	}
@@ -51,7 +51,7 @@ mod tests {
 	#[test]
 	fn test_try_get_i128() {
 		let layout = EncodedValuesLayout::new(&[Type::Int16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		assert_eq!(layout.try_get_i128(&row, 0), None);
 
@@ -62,16 +62,16 @@ mod tests {
 	#[test]
 	fn test_extremes() {
 		let layout = EncodedValuesLayout::new(&[Type::Int16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		layout.set_i128(&mut row, 0, i128::MAX);
 		assert_eq!(layout.get_i128(&row, 0), i128::MAX);
 
-		let mut row2 = layout.allocate_row();
+		let mut row2 = layout.allocate();
 		layout.set_i128(&mut row2, 0, i128::MIN);
 		assert_eq!(layout.get_i128(&row2, 0), i128::MIN);
 
-		let mut row3 = layout.allocate_row();
+		let mut row3 = layout.allocate();
 		layout.set_i128(&mut row3, 0, 0i128);
 		assert_eq!(layout.get_i128(&row3, 0), 0i128);
 	}
@@ -91,7 +91,7 @@ mod tests {
 		];
 
 		for value in test_values {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_i128(&mut row, 0, value);
 			assert_eq!(layout.get_i128(&row, 0), value);
 		}
@@ -117,11 +117,11 @@ mod tests {
 		];
 
 		for power in powers {
-			let mut row = layout.allocate_row();
+			let mut row = layout.allocate();
 			layout.set_i128(&mut row, 0, power);
 			assert_eq!(layout.get_i128(&row, 0), power);
 
-			let mut row2 = layout.allocate_row();
+			let mut row2 = layout.allocate();
 			layout.set_i128(&mut row2, 0, -power);
 			assert_eq!(layout.get_i128(&row2, 0), -power);
 		}
@@ -130,7 +130,7 @@ mod tests {
 	#[test]
 	fn test_mixed_with_other_types() {
 		let layout = EncodedValuesLayout::new(&[Type::Int16, Type::Boolean, Type::Int16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let large_negative = -12345678901234567890123456789012345i128;
 		let large_positive = 98765432109876543210987654321098765i128;
@@ -147,7 +147,7 @@ mod tests {
 	#[test]
 	fn test_undefined_handling() {
 		let layout = EncodedValuesLayout::new(&[Type::Int16, Type::Int16]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		let value = 170141183460469231731687303715884105727i128; // Max i128
 		layout.set_i128(&mut row, 0, value);

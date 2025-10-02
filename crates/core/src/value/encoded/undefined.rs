@@ -19,7 +19,7 @@ mod tests {
 	#[test]
 	fn test_set_bool() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set a value
 		layout.set_bool(&mut row, 0, true);
@@ -35,7 +35,7 @@ mod tests {
 	#[test]
 	fn test_set_integer() {
 		let layout = EncodedValuesLayout::new(&[Type::Int4]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set a value
 		layout.set_i32(&mut row, 0, 12345);
@@ -51,7 +51,7 @@ mod tests {
 	#[test]
 	fn test_set_dynamic_type() {
 		let layout = EncodedValuesLayout::new(&[Type::Utf8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set a string value
 		layout.set_utf8(&mut row, 0, "hello world");
@@ -67,7 +67,7 @@ mod tests {
 	#[test]
 	fn test_set_multiple_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Int4, Type::Utf8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set all fields
 		layout.set_bool(&mut row, 0, true);
@@ -93,7 +93,7 @@ mod tests {
 	#[test]
 	fn test_set_all_fields() {
 		let layout = EncodedValuesLayout::new(&[Type::Boolean, Type::Int4, Type::Float8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set all fields
 		layout.set_bool(&mut row, 0, false);
@@ -118,7 +118,7 @@ mod tests {
 	#[test]
 	fn test_set_reuse_field() {
 		let layout = EncodedValuesLayout::new(&[Type::Int8]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set, unset, then set again
 		layout.set_i64(&mut row, 0, 100);
@@ -136,7 +136,7 @@ mod tests {
 		use reifydb_type::{Date, DateTime, Interval, Time};
 
 		let layout = EncodedValuesLayout::new(&[Type::Date, Type::DateTime, Type::Time, Type::Interval]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set temporal values
 		let date = Date::new(2025, 1, 15).unwrap();
@@ -176,7 +176,7 @@ mod tests {
 		use reifydb_type::{IdentityId, Uuid4, Uuid7};
 
 		let layout = EncodedValuesLayout::new(&[Type::Uuid4, Type::Uuid7, Type::IdentityId]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set UUID values
 		let uuid4 = Uuid4::generate();
@@ -212,7 +212,7 @@ mod tests {
 		use reifydb_type::{Decimal, Int, Uint};
 
 		let layout = EncodedValuesLayout::new(&[Type::Decimal, Type::Int, Type::Uint]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set values
 		let decimal = Decimal::from_str("123.45").unwrap();
@@ -247,7 +247,7 @@ mod tests {
 		use reifydb_type::Blob;
 
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set a blob value
 		let blob = Blob::from_slice(&[1, 2, 3, 4, 5]);
@@ -276,7 +276,7 @@ mod tests {
 			Type::Boolean,
 			Type::Boolean,
 		]);
-		let mut row = layout.allocate_row();
+		let mut row = layout.allocate();
 
 		// Set all as true
 		for i in 0..5 {

@@ -90,7 +90,7 @@ impl Executor {
 				let row_count = columns.row_count();
 
 				for row_idx in 0..row_count {
-					let mut row = layout.allocate_row();
+					let mut row = layout.allocate();
 
 					// For each ring buffer column, find if it exists in the input columns
 					for (rb_idx, rb_column) in ring_buffer.columns.iter().enumerate() {

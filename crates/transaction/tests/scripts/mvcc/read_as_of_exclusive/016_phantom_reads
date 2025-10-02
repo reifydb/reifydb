@@ -14,14 +14,14 @@ t1: scan
 ---
 ok
 
-# Add new rows in another transaction
+# Add new valuess in another transaction
 t2: begin
 t2: set c=3 d=4 e=5
 t2: commit
 ---
 ok
 
-# t1 should not see phantom rows
+# t1 should not see phantom valuess
 t1: scan
 ---
 ok

@@ -75,7 +75,7 @@ impl CommitBuffer {
 		let mut result = Vec::new();
 		while let Some(commit) = self.buffer.remove(&current_version) {
 			result.push(commit);
-			current_version += 1;
+			current_version = CommitVersion(current_version.0 + 1);
 		}
 
 		// Update the next expected version
@@ -102,15 +102,15 @@ mod tests {
 		let mut buffer = CommitBuffer::new();
 
 		// First commit establishes the baseline
-		let ready = buffer.add_commit(42, CowVec::new(vec![]), TransactionId::generate(), 0);
+		let ready = buffer.add_commit(CommitVersion(42), CowVec::new(vec![]), TransactionId::generate(), 0);
 
 		assert!(ready);
-		assert_eq!(buffer.next_expected, Some(42));
+		assert_eq!(buffer.next_expected.unwrap(), 42);
 
 		let commits = buffer.drain_ready();
 		assert_eq!(commits.len(), 1);
 		assert_eq!(commits[0].version, 42);
-		assert_eq!(buffer.next_expected, Some(43));
+		assert_eq!(buffer.next_expected.unwrap(), 43);
 	}
 
 	#[test]
@@ -118,20 +118,20 @@ mod tests {
 		let mut buffer = CommitBuffer::new();
 
 		// First commit establishes baseline at version 10
-		assert!(buffer.add_commit(10, CowVec::new(vec![]), TransactionId::generate(), 0));
+		assert!(buffer.add_commit(CommitVersion(10), CowVec::new(vec![]), TransactionId::generate(), 0));
 		let ready = buffer.drain_ready();
 		assert_eq!(ready.len(), 1);
 		assert_eq!(ready[0].version, 10);
 
 		// Next commits in order
-		assert!(buffer.add_commit(11, CowVec::new(vec![]), TransactionId::generate(), 1));
-		assert!(!buffer.add_commit(12, CowVec::new(vec![]), TransactionId::generate(), 2));
+		assert!(buffer.add_commit(CommitVersion(11), CowVec::new(vec![]), TransactionId::generate(), 1));
+		assert!(!buffer.add_commit(CommitVersion(12), CowVec::new(vec![]), TransactionId::generate(), 2));
 
 		let ready = buffer.drain_ready();
 		assert_eq!(ready.len(), 2);
 		assert_eq!(ready[0].version, 11);
 		assert_eq!(ready[1].version, 12);
-		assert_eq!(buffer.next_expected, Some(13));
+		assert_eq!(buffer.next_expected.unwrap(), 13);
 	}
 
 	#[test]
@@ -139,14 +139,14 @@ mod tests {
 		let mut buffer = CommitBuffer::new();
 
 		// Establish baseline with version 1
-		assert!(buffer.add_commit(1, CowVec::new(vec![]), TransactionId::generate(), 0));
+		assert!(buffer.add_commit(CommitVersion(1), CowVec::new(vec![]), TransactionId::generate(), 0));
 		buffer.drain_ready();
 
 		// Add commits out of order
-		assert!(!buffer.add_commit(3, CowVec::new(vec![]), TransactionId::generate(), 3));
-		assert!(!buffer.add_commit(5, CowVec::new(vec![]), TransactionId::generate(), 5));
-		assert!(buffer.add_commit(2, CowVec::new(vec![]), TransactionId::generate(), 2));
-		assert!(!buffer.add_commit(4, CowVec::new(vec![]), TransactionId::generate(), 4));
+		assert!(!buffer.add_commit(CommitVersion(3), CowVec::new(vec![]), TransactionId::generate(), 3));
+		assert!(!buffer.add_commit(CommitVersion(5), CowVec::new(vec![]), TransactionId::generate(), 5));
+		assert!(buffer.add_commit(CommitVersion(2), CowVec::new(vec![]), TransactionId::generate(), 2));
+		assert!(!buffer.add_commit(CommitVersion(4), CowVec::new(vec![]), TransactionId::generate(), 4));
 
 		// Should drain 2, 3, 4, 5 in order
 		let ready = buffer.drain_ready();
@@ -155,7 +155,7 @@ mod tests {
 		assert_eq!(ready[1].version, 3);
 		assert_eq!(ready[2].version, 4);
 		assert_eq!(ready[3].version, 5);
-		assert_eq!(buffer.next_expected, Some(6));
+		assert_eq!(buffer.next_expected.unwrap(), 6);
 	}
 
 	#[test]
@@ -163,13 +163,13 @@ mod tests {
 		let mut buffer = CommitBuffer::new();
 
 		// Establish baseline
-		assert!(buffer.add_commit(1, CowVec::new(vec![]), TransactionId::generate(), 0));
+		assert!(buffer.add_commit(CommitVersion(1), CowVec::new(vec![]), TransactionId::generate(), 0));
 		buffer.drain_ready();
 
 		// Add with a gap
-		assert!(!buffer.add_commit(3, CowVec::new(vec![]), TransactionId::generate(), 3));
-		assert!(!buffer.add_commit(4, CowVec::new(vec![]), TransactionId::generate(), 4));
-		assert!(!buffer.add_commit(5, CowVec::new(vec![]), TransactionId::generate(), 5));
+		assert!(!buffer.add_commit(CommitVersion(3), CowVec::new(vec![]), TransactionId::generate(), 3));
+		assert!(!buffer.add_commit(CommitVersion(4), CowVec::new(vec![]), TransactionId::generate(), 4));
+		assert!(!buffer.add_commit(CommitVersion(5), CowVec::new(vec![]), TransactionId::generate(), 5));
 
 		// Nothing should drain yet - waiting for version 2
 		let ready = buffer.drain_ready();
@@ -177,7 +177,7 @@ mod tests {
 		assert_eq!(buffer.buffer.len(), 3);
 
 		// Add the missing version
-		assert!(buffer.add_commit(2, CowVec::new(vec![]), TransactionId::generate(), 2));
+		assert!(buffer.add_commit(CommitVersion(2), CowVec::new(vec![]), TransactionId::generate(), 2));
 
 		// Now all should drain
 		let ready = buffer.drain_ready();
