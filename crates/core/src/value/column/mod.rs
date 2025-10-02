@@ -4,6 +4,7 @@
 use reifydb_type::{Fragment, IntoFragment, Type};
 
 mod columns;
+mod compressed;
 mod data;
 pub mod frame;
 pub mod headers;
@@ -14,6 +15,7 @@ mod transform;
 mod view;
 
 pub use columns::Columns;
+pub use compressed::{CompressedColumn, CompressionType};
 pub use data::ColumnData;
 pub use view::group_by::{GroupByView, GroupKey};
 

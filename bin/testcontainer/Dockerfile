@@ -1,7 +1,7 @@
 FROM rust:1.85.1-slim AS builder
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    pkg-config \
+    pkg-CONFIG \
     libssl-dev \
  && rm -rf /var/lib/apt/lists/*
 
@@ -10,7 +10,7 @@ WORKDIR /build
 # Copy workspace root files
 COPY Cargo.toml Cargo.lock rust-toolchain ./
 
-# Copy vendor directory and cargo config for offline builds
+# Copy vendor directory and cargo CONFIG for offline builds
 COPY vendor ./vendor
 COPY .cargo ./.cargo
 

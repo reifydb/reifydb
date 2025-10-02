@@ -452,6 +452,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-compression"
+version = "0.0.1"
+dependencies = [
+ "bincode",
+ "reifydb-core",
+ "reifydb-type",
+]
+
+[[package]]
 name = "reifydb-core"
 version = "0.0.1"
 dependencies = [
@@ -515,6 +524,16 @@ dependencies = [
  "reifydb-type",
  "serde",
  "test_each_file",
+]
+
+[[package]]
+name = "reifydb-store-column"
+version = "0.0.1"
+dependencies = [
+ "crossbeam-skiplist",
+ "reifydb-compression",
+ "reifydb-core",
+ "reifydb-type",
 ]
 
 [[package]]

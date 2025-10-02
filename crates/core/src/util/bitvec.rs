@@ -281,6 +281,10 @@ impl BitVec {
 		count
 	}
 
+	pub fn count_zeros(&self) -> usize {
+		self.inner.len - self.count_ones()
+	}
+
 	pub fn any(&self) -> bool {
 		// Fast path: check if any complete bytes are non-zero
 		let full_bytes = self.inner.len / 8;

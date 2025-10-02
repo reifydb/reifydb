@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::diagnostic::serialization;
+use reifydb_type::diagnostic::serde::serde_keycode_error;
 use serde::de::{DeserializeSeed, EnumAccess, IntoDeserializer, SeqAccess, VariantAccess, Visitor};
 
 use crate::util::encoding::Error;
@@ -19,7 +19,7 @@ impl<'de> Deserializer<'de> {
 
 	fn take_bytes(&mut self, len: usize) -> crate::Result<&[u8]> {
 		if self.input.len() < len {
-			return Err(crate::error!(serialization::keycode_serialization_error(format!(
+			return Err(crate::error!(serde_keycode_error(format!(
 				"insufficient bytes, expected {len} bytes for {:x?}",
 				self.input
 			))));
@@ -38,14 +38,14 @@ impl<'de> Deserializer<'de> {
 					Some((i, 0xff)) => break i + 1,        // terminator
 					Some((_, 0x00)) => decoded.push(0xff), // escaped 0xff
 					_ => {
-						return Err(crate::error!(serialization::keycode_serialization_error(
+						return Err(crate::error!(serde_keycode_error(
 							"invalid escape sequence".to_string()
 						)));
 					}
 				},
 				Some((_, b)) => decoded.push(*b),
 				None => {
-					return Err(crate::error!(serialization::keycode_serialization_error(
+					return Err(crate::error!(serde_keycode_error(
 						"unexpected end of input".to_string()
 					)));
 				}
@@ -68,9 +68,7 @@ impl<'de> serde::de::Deserializer<'de> for &mut Deserializer<'de> {
 			0x01 => false,
 			0x00 => true,
 			b => {
-				return Err(crate::error!(serialization::keycode_serialization_error(format!(
-					"invalid boolean value {b}"
-				))));
+				return Err(crate::error!(serde_keycode_error(format!("invalid boolean value {b}"))));
 			}
 		})
 	}

@@ -17,7 +17,7 @@ mod serialize;
 mod serializer;
 
 pub use catalog::{deserialize_index_id, deserialize_source_id, serialize_index_id, serialize_source_id};
-use reifydb_type::diagnostic::serialization;
+use reifydb_type::diagnostic::serde::serde_keycode_error;
 pub use serializer::KeySerializer;
 
 use crate::util::encoding::keycode::{deserialize::Deserializer, serialize::Serializer};
@@ -184,7 +184,7 @@ pub fn deserialize<'a, T: Deserialize<'a>>(input: &'a [u8]) -> crate::Result<T> 
 	let mut deserializer = Deserializer::from_bytes(input);
 	let t = T::deserialize(&mut deserializer)?;
 	if !deserializer.input.is_empty() {
-		return Err(crate::error!(serialization::keycode_serialization_error(format!(
+		return Err(crate::error!(serde_keycode_error(format!(
 			"unexpected trailing bytes {:x?} at end of key {input:x?}",
 			deserializer.input,
 		))));

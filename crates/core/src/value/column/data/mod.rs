@@ -246,6 +246,10 @@ impl ColumnData {
 			ColumnData::Undefined(_) => unreachable!(),
 		}
 	}
+
+	pub fn undefined_count(&self) -> usize {
+		self.bitvec().count_zeros()
+	}
 }
 
 impl ColumnData {

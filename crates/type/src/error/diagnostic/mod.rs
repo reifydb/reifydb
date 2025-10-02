@@ -3,7 +3,7 @@
 
 use std::fmt::{Display, Formatter};
 
-use serde::{Deserialize, Serialize};
+use ::serde::{Deserialize, Serialize};
 
 pub mod ast;
 pub mod auth;
@@ -28,7 +28,7 @@ pub mod operator;
 pub mod query;
 pub mod render;
 pub mod sequence;
-pub mod serialization;
+pub mod serde;
 pub mod temporal;
 pub mod transaction;
 mod util;

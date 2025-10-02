@@ -6,7 +6,7 @@ use std::{
 	ops::{Deref, Index, IndexMut},
 };
 
-use reifydb_type::{Fragment, Value};
+use reifydb_type::{Fragment, RowNumber, Value};
 
 use crate::{
 	interface::resolved::{ResolvedRingBuffer, ResolvedTable, ResolvedView},
@@ -19,7 +19,7 @@ use crate::{
 
 #[derive(Debug, Clone)]
 pub struct Columns<'a> {
-	pub row_numbers: CowVec<reifydb_type::RowNumber>,
+	pub row_numbers: CowVec<RowNumber>,
 	pub columns: CowVec<Column<'a>>,
 }
 
@@ -56,7 +56,7 @@ impl<'a> Columns<'a> {
 		}
 	}
 
-	pub fn with_row_numbers(columns: Vec<Column<'a>>, row_numbers: Vec<reifydb_type::RowNumber>) -> Self {
+	pub fn with_row_numbers(columns: Vec<Column<'a>>, row_numbers: Vec<RowNumber>) -> Self {
 		let n = columns.first().map_or(0, |c| c.data().len());
 		assert!(columns.iter().all(|c| c.data().len() == n));
 		assert_eq!(row_numbers.len(), n, "row_numbers length must match column data length");

@@ -6,6 +6,31 @@ use crate::{
 	value::encoded::EncodedValues,
 };
 
+/// Trait for encoded stores supporting columnar migration
+pub trait TransactionStore: Send + Sync + Clone + 'static {
+	/// Get the last version that was merged to column store
+	fn last_merge_version(&self) -> CommitVersion;
+
+	/// Count of rows pending merge
+	fn pending_row_count(&self) -> usize;
+
+	/// Check if merge should be triggered
+	fn should_merge(&self) -> bool;
+
+	/// Get batch of rows for merging
+	fn get_merge_batch(&self, limit: usize) -> crate::Result<Vec<MultiVersionValues>>;
+
+	/// Mark rows as merged and evict them from encoded store
+	/// This is called after successful column store write
+	fn mark_merged_and_evict(&self, up_to_version: CommitVersion) -> crate::Result<usize>;
+
+	/// Verify data can be safely evicted (column store has it)
+	fn verify_safe_to_evict(&self, up_to_version: CommitVersion) -> crate::Result<bool>;
+
+	/// Get retention period for hot data
+	fn retention_period(&self) -> std::time::Duration;
+}
+
 #[derive(Debug)]
 pub struct MultiVersionValues {
 	pub key: EncodedKey,
@@ -187,29 +212,4 @@ pub trait SingleVersionRangeRev {
 	fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<Self::RangeRev<'_>> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
-}
-
-/// Trait for encoded stores supporting columnar migration
-pub trait TransactionStore: Send + Sync + Clone + 'static {
-	/// Get the last version that was merged to column store
-	fn last_merge_version(&self) -> CommitVersion;
-
-	/// Count of rows pending merge
-	fn pending_row_count(&self) -> usize;
-
-	/// Check if merge should be triggered
-	fn should_merge(&self) -> bool;
-
-	/// Get batch of rows for merging
-	fn get_merge_batch(&self, limit: usize) -> crate::Result<Vec<MultiVersionValues>>;
-
-	/// Mark rows as merged and evict them from encoded store
-	/// This is called after successful column store write
-	fn mark_merged_and_evict(&self, up_to_version: CommitVersion) -> crate::Result<usize>;
-
-	/// Verify data can be safely evicted (column store has it)
-	fn verify_safe_to_evict(&self, up_to_version: CommitVersion) -> crate::Result<bool>;
-
-	/// Get retention period for hot data
-	fn retention_period(&self) -> std::time::Duration;
 }
