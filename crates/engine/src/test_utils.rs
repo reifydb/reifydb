@@ -8,7 +8,7 @@ use reifydb_catalog::{
 };
 use reifydb_core::{event::EventBus, interceptor::Interceptors};
 use reifydb_store_transaction::StandardTransactionStore;
-use reifydb_transaction::{mvcc::transaction::serializable::SerializableTransaction, svl::SingleVersionLock};
+use reifydb_transaction::{multi::transaction::serializable::SerializableTransaction, single::SingleVersionLock};
 use reifydb_type::{Type, TypeConstraint};
 
 use crate::{EngineTransaction, StandardCommandTransaction, transaction::StandardCdcTransaction};

@@ -9,8 +9,8 @@
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction};
 use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_transaction::{
-	mvcc::transaction::{optimistic::OptimisticTransaction, serializable::SerializableTransaction},
-	svl::SingleVersionLock,
+	multi::transaction::{optimistic::OptimisticTransaction, serializable::SerializableTransaction},
+	single::SingleVersionLock,
 };
 
 use crate::Database;

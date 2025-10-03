@@ -4,7 +4,7 @@
 #![cfg(feature = "sub_server")]
 
 use reifydb_store_transaction::{StandardTransactionStore, backend::sqlite::SqliteConfig};
-use reifydb_transaction::mvcc::transaction::{
+use reifydb_transaction::multi::transaction::{
 	optimistic::OptimisticTransaction, serializable::SerializableTransaction,
 };
 

@@ -17,7 +17,7 @@ pub mod test {
 		StandardRowEvaluator,
 	};
 	use reifydb_store_transaction::StandardTransactionStore;
-	use reifydb_transaction::{mvcc::transaction::optimistic::OptimisticTransaction, svl::SingleVersionLock};
+	use reifydb_transaction::{multi::transaction::optimistic::OptimisticTransaction, single::SingleVersionLock};
 	use reifydb_type::{Type, Value};
 
 	use crate::{

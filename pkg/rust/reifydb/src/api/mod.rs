@@ -20,8 +20,8 @@ use reifydb_store_transaction::{
 	},
 };
 use reifydb_transaction::{
-	mvcc::transaction::{optimistic::OptimisticTransaction, serializable::SerializableTransaction},
-	svl::SingleVersionLock,
+	multi::transaction::{optimistic::OptimisticTransaction, serializable::SerializableTransaction},
+	single::SingleVersionLock,
 };
 
 pub mod embedded;

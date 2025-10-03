@@ -28,7 +28,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine};
 use reifydb_store_transaction::StandardTransactionStore;
-use reifydb_transaction::{mvcc::transaction::serializable::SerializableTransaction, svl::SingleVersionLock};
+use reifydb_transaction::{multi::transaction::serializable::SerializableTransaction, single::SingleVersionLock};
 use reifydb_type::{OwnedFragment, RowNumber};
 
 #[test]

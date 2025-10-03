@@ -5,8 +5,8 @@
 
 pub use reifydb_type::Result;
 
-pub mod mvcc;
-pub mod svl;
+pub mod multi;
+pub mod single;
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 

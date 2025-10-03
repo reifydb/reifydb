@@ -21,16 +21,16 @@ use reifydb_core::{
 use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
-	mvcc::{
+	multi::{
 		transaction::optimistic::{CommandTransaction, OptimisticTransaction, QueryTransaction, Transaction},
 		types::TransactionValue,
 	},
-	svl::SingleVersionLock,
+	single::SingleVersionLock,
 };
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_optimistic }
-test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_optimistic }
+test_each_path! { in "crates/transaction/tests/scripts/multi" as optimistic_multi => test_optimistic }
+test_each_path! { in "crates/transaction/tests/scripts/all" as optimistic_all => test_optimistic }
 
 fn test_optimistic(path: &Path) {
 	let store = StandardTransactionStore::testing_memory();

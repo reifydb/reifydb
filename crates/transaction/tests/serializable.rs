@@ -21,18 +21,18 @@ use reifydb_core::{
 use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
-	mvcc::{
+	multi::{
 		transaction::serializable::{
 			CommandTransaction, QueryTransaction, SerializableTransaction, Transaction,
 		},
 		types::TransactionValue,
 	},
-	svl::SingleVersionLock,
+	single::SingleVersionLock,
 };
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/transaction/tests/scripts/mvcc" as mvcc => test_serializable }
-test_each_path! { in "crates/transaction/tests/scripts/all" as all => test_serializable }
+test_each_path! { in "crates/transaction/tests/scripts/multi" as serializable_multi => test_serializable }
+test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all => test_serializable }
 
 fn test_serializable(path: &Path) {
 	let store = StandardTransactionStore::testing_memory();

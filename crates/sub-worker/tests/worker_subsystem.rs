@@ -16,7 +16,7 @@ use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardEngine};
 use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_sub_api::{Priority, Subsystem};
 use reifydb_sub_worker::{InternalClosureTask, WorkerConfig, WorkerSubsystem};
-use reifydb_transaction::{mvcc::transaction::serializable::SerializableTransaction, svl::SingleVersionLock};
+use reifydb_transaction::{multi::transaction::serializable::SerializableTransaction, single::SingleVersionLock};
 
 type TestTransaction = EngineTransaction<
 	SerializableTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,

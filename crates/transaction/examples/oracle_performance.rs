@@ -5,7 +5,7 @@ use std::{sync::Arc, thread, time::Instant};
 
 use encoding::keycode;
 use reifydb_core::{EncodedKey, util::encoding, value::encoded::EncodedValues};
-use reifydb_transaction::mvcc::transaction::optimistic::OptimisticTransaction;
+use reifydb_transaction::multi::transaction::optimistic::OptimisticTransaction;
 
 macro_rules! as_key {
 	($key:expr) => {{ EncodedKey::new(keycode::serialize(&$key)) }};
