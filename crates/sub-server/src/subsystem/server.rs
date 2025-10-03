@@ -3,24 +3,21 @@
 
 use std::any::Any;
 
-use reifydb_core::interface::{
-	Transaction,
-	version::{ComponentType, HasVersion, SystemVersion},
-};
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{HealthStatus, Subsystem};
 
 use crate::{config::ServerConfig, core::ProtocolServer};
 
 /// Server subsystem that supports WebSocket and HTTP protocols
-pub struct ServerSubsystem<T: Transaction> {
+pub struct ServerSubsystem {
 	config: ServerConfig,
-	server: Option<ProtocolServer<T>>,
-	engine: StandardEngine<T>,
+	server: Option<ProtocolServer>,
+	engine: StandardEngine,
 }
 
-impl<T: Transaction> ServerSubsystem<T> {
-	pub fn new(config: ServerConfig, engine: StandardEngine<T>) -> Self {
+impl ServerSubsystem {
+	pub fn new(config: ServerConfig, engine: StandardEngine) -> Self {
 		Self {
 			config,
 			server: None,
@@ -34,7 +31,7 @@ impl<T: Transaction> ServerSubsystem<T> {
 	}
 }
 
-impl<T: Transaction> Subsystem for ServerSubsystem<T> {
+impl Subsystem for ServerSubsystem {
 	fn name(&self) -> &'static str {
 		"server"
 	}
@@ -93,7 +90,7 @@ impl<T: Transaction> Subsystem for ServerSubsystem<T> {
 	}
 }
 
-impl<T: Transaction> HasVersion for ServerSubsystem<T> {
+impl HasVersion for ServerSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
 			name: "sub-server".to_string(),

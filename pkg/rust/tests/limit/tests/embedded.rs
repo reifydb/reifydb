@@ -6,9 +6,8 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	Database, EmbeddedBuilder, Session,
 	core::{event::EventBus, interface::Params},
-	engine::TransactionCdc,
 	memory, serializable,
-	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;

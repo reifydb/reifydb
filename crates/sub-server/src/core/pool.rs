@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	marker::PhantomData,
 	net::{SocketAddr, ToSocketAddrs},
 	sync::{
 		Arc,
@@ -11,7 +10,6 @@ use std::{
 	thread::{self, JoinHandle},
 };
 
-use reifydb_core::interface::Transaction;
 use reifydb_engine::StandardEngine;
 use socket2::{Domain, Protocol, Socket, Type};
 
@@ -21,17 +19,16 @@ use crate::{
 };
 
 /// Worker pool that manages multiple worker threads for handling connections
-pub struct WorkerPool<T: Transaction> {
+pub struct WorkerPool {
 	workers: Vec<JoinHandle<()>>,
 	shutdown: Arc<AtomicBool>,
 	bound_port: u16,
-	_phantom: PhantomData<T>,
 }
 
-impl<T: Transaction> WorkerPool<T> {
+impl WorkerPool {
 	pub fn new(
 		config: ServerConfig,
-		engine: StandardEngine<T>,
+		engine: StandardEngine,
 		websocket_handler: Option<WebSocketHandler>,
 		http_handler: Option<HttpHandler>,
 	) -> Self {
@@ -102,7 +99,6 @@ impl<T: Transaction> WorkerPool<T> {
 			workers,
 			shutdown,
 			bound_port,
-			_phantom: PhantomData,
 		}
 	}
 
@@ -160,7 +156,7 @@ impl<T: Transaction> WorkerPool<T> {
 	}
 }
 
-impl<T: Transaction> Drop for WorkerPool<T> {
+impl Drop for WorkerPool {
 	fn drop(&mut self) {
 		// Signal all workers to stop
 		self.shutdown.store(true, Ordering::Relaxed);

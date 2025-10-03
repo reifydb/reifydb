@@ -17,10 +17,7 @@ use reifydb_core::{
 	ioc::IocContainer,
 	log_timed_debug,
 };
-use reifydb_engine::{
-	EngineTransaction, EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
-	TransactionCdc,
-};
+use reifydb_engine::{EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction};
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
 use reifydb_store_transaction::TransactionStoreVersion;
@@ -31,7 +28,9 @@ use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_worker")]
 use reifydb_sub_worker::{WorkerBuilder, WorkerSubsystem, WorkerSubsystemFactory};
-use reifydb_transaction::{TransactionVersion, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{
+	TransactionVersion, cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
+};
 
 use crate::{
 	database::{Database, DatabaseConfig},
@@ -41,67 +40,15 @@ use crate::{
 
 pub struct DatabaseBuilder {
 	config: DatabaseConfig,
-	interceptors: StandardInterceptorBuilder<
-		StandardCommandTransaction<
-			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-		>,
-	>,
-	subsystems: Vec<
-		Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			>,
-		>,
-	>,
+	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
+	subsystems: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	ioc: IocContainer,
 	#[cfg(feature = "sub_logging")]
-	logging_factory: Option<
-		Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			>,
-		>,
-	>,
+	logging_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_worker")]
-	worker_factory: Option<
-		Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			>,
-		>,
-	>,
+	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_flow")]
-	flow_factory: Option<
-		Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			>,
-		>,
-	>,
+	flow_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 }
 
 impl DatabaseBuilder {
@@ -174,48 +121,20 @@ impl DatabaseBuilder {
 	#[cfg(feature = "sub_flow")]
 	pub fn with_flow<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(
-				FlowBuilder<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			) -> FlowBuilder<
-				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-			> + Send
-			+ 'static,
+		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
 	{
 		self.flow_factory = Some(Box::new(FlowSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 
-	pub fn add_subsystem_factory(
-		mut self,
-		factory: Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			>,
-		>,
-	) -> Self {
+	pub fn add_subsystem_factory(mut self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self {
 		self.subsystems.push(factory);
 		self
 	}
 
 	pub fn with_interceptor_builder(
 		mut self,
-		builder: StandardInterceptorBuilder<
-			StandardCommandTransaction<
-				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-			>,
-		>,
+		builder: StandardInterceptorBuilder<StandardCommandTransaction>,
 	) -> Self {
 		self.interceptors = builder;
 		self
@@ -235,18 +154,10 @@ impl DatabaseBuilder {
 		self.subsystems.push(self.logging_factory.unwrap_or_else(|| Box::new(LoggingSubsystemFactory::new())));
 
 		#[cfg(feature = "sub_worker")]
-		self.subsystems.push(self.worker_factory.unwrap_or_else(|| {
-			Box::new(WorkerSubsystemFactory::<
-				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-			>::new())
-		}));
+		self.subsystems.push(self.worker_factory.unwrap_or_else(|| Box::new(WorkerSubsystemFactory::new())));
 
 		#[cfg(feature = "sub_flow")]
-		self.subsystems.push(self.flow_factory.unwrap_or_else(|| {
-			Box::new(FlowSubsystemFactory::<
-				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-			>::new())
-		}));
+		self.subsystems.push(self.flow_factory.unwrap_or_else(|| Box::new(FlowSubsystemFactory::new())));
 
 		// Collect interceptors from all factories
 		for factory in &self.subsystems {
@@ -308,9 +219,7 @@ impl DatabaseBuilder {
 		// Get the scheduler - it must exist when feature is enabled
 		#[cfg(feature = "sub_worker")]
 		let scheduler = subsystems
-			.get::<WorkerSubsystem<
-				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-			>>()
+			.get::<WorkerSubsystem>()
 			.map(|w| w.get_scheduler())
 			.expect("Worker subsystem should always be created when feature is enabled");
 
@@ -347,9 +256,12 @@ impl DatabaseBuilder {
 		cdc: &TransactionCdc,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {
-		let mut qt: StandardQueryTransaction<
-			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-		> = StandardQueryTransaction::new(multi.begin_query()?, single.clone(), cdc.clone(), catalog.clone());
+		let mut qt = StandardQueryTransaction::new(
+			multi.begin_query()?,
+			single.clone(),
+			cdc.clone(),
+			catalog.clone(),
+		);
 
 		log_timed_debug!("Loading materialized catalog", {
 			MaterializedCatalogLoader::load_all(&mut qt, catalog)?;

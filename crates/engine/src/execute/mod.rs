@@ -21,7 +21,7 @@ use query::{
 };
 use reifydb_core::{
 	Frame,
-	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedSource, Transaction},
+	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedSource},
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::{
@@ -40,14 +40,14 @@ mod query;
 
 /// Unified trait for query execution nodes following the volcano iterator
 /// pattern
-pub(crate) trait QueryNode<'a, T: Transaction> {
+pub(crate) trait QueryNode<'a> {
 	/// Initialize the operator with execution context
 	/// Called once before iteration begins
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()>;
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
 	/// Returns None when exhausted
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>>;
+	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>>;
 
 	/// Get the headers of columns this node produces
 	fn headers(&self) -> Option<ColumnHeaders<'a>>;
@@ -66,33 +66,33 @@ pub struct Batch<'a> {
 	pub columns: Columns<'a>,
 }
 
-pub(crate) enum ExecutionPlan<'a, T: Transaction> {
-	Aggregate(AggregateNode<'a, T>),
-	Filter(FilterNode<'a, T>),
-	IndexScan(IndexScanNode<'a, T>),
-	InlineData(InlineDataNode<'a, T>),
-	InnerJoin(InnerJoinNode<'a, T>),
-	LeftJoin(LeftJoinNode<'a, T>),
-	NaturalJoin(NaturalJoinNode<'a, T>),
-	Map(MapNode<'a, T>),
-	MapWithoutInput(MapWithoutInputNode<'a, T>),
-	Extend(ExtendNode<'a, T>),
-	ExtendWithoutInput(ExtendWithoutInputNode<'a, T>),
-	Sort(SortNode<'a, T>),
-	TableScan(TableScanNode<'a, T>),
-	Take(TakeNode<'a, T>),
-	ViewScan(ViewScanNode<'a, T>),
-	VirtualScan(VirtualScanNode<'a, T>),
-	RingBufferScan(RingBufferScan<'a, T>),
+pub(crate) enum ExecutionPlan<'a> {
+	Aggregate(AggregateNode<'a>),
+	Filter(FilterNode<'a>),
+	IndexScan(IndexScanNode<'a>),
+	InlineData(InlineDataNode<'a>),
+	InnerJoin(InnerJoinNode<'a>),
+	LeftJoin(LeftJoinNode<'a>),
+	NaturalJoin(NaturalJoinNode<'a>),
+	Map(MapNode<'a>),
+	MapWithoutInput(MapWithoutInputNode<'a>),
+	Extend(ExtendNode<'a>),
+	ExtendWithoutInput(ExtendWithoutInputNode<'a>),
+	Sort(SortNode<'a>),
+	TableScan(TableScanNode<'a>),
+	Take(TakeNode<'a>),
+	ViewScan(ViewScanNode<'a>),
+	VirtualScan(VirtualScanNode<'a>),
+	RingBufferScan(RingBufferScan<'a>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
-impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for Box<ExecutionPlan<'a>> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		(**self).initialize(rx, ctx)
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		(**self).next(rx)
 	}
 
@@ -101,8 +101,8 @@ impl<'a, T: Transaction> QueryNode<'a, T> for Box<ExecutionPlan<'a, T>> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Filter(node) => node.initialize(rx, ctx),
@@ -124,7 +124,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for ExecutionPlan<'a, T> {
 		}
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(rx),
 			ExecutionPlan::Filter(node) => node.next(rx),
@@ -212,12 +212,8 @@ impl Executor {
 	}
 }
 
-impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>> for Executor {
-	fn execute_command(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		cmd: Command<'_>,
-	) -> crate::Result<Vec<Frame>> {
+impl ExecuteCommand<StandardCommandTransaction> for Executor {
+	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(cmd.rql)?;
 
@@ -232,8 +228,8 @@ impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>> for Executor 
 	}
 }
 
-impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>> for Executor {
-	fn execute_query(&self, txn: &mut StandardQueryTransaction<T>, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
+impl ExecuteQuery<StandardQueryTransaction> for Executor {
+	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(qry.rql)?;
 
@@ -248,12 +244,12 @@ impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>> for Executor {
 	}
 }
 
-impl<T: Transaction> Execute<StandardCommandTransaction<T>, StandardQueryTransaction<T>> for Executor {}
+impl Execute<StandardCommandTransaction, StandardQueryTransaction> for Executor {}
 
 impl Executor {
-	pub(crate) fn execute_query_plan<'a, T: Transaction>(
+	pub(crate) fn execute_query_plan<'a>(
 		&self,
-		rx: &'a mut StandardQueryTransaction<T>,
+		rx: &'a mut StandardQueryTransaction,
 		plan: PhysicalPlan<'a>,
 		params: Params,
 	) -> crate::Result<Columns<'a>> {
@@ -303,9 +299,9 @@ impl Executor {
 		}
 	}
 
-	pub fn execute_command_plan<'a, T: Transaction>(
+	pub fn execute_command_plan<'a>(
 		&self,
-		txn: &'a mut StandardCommandTransaction<T>,
+		txn: &'a mut StandardCommandTransaction,
 		plan: PhysicalPlan<'a>,
 		params: Params,
 	) -> crate::Result<Columns<'a>> {
@@ -352,9 +348,9 @@ impl Executor {
 		}
 	}
 
-	fn query<'a, T: Transaction>(
+	fn query<'a>(
 		&self,
-		rx: &mut StandardTransaction<'a, T>,
+		rx: &mut StandardTransaction<'a>,
 		plan: PhysicalPlan<'a>,
 		params: Params,
 	) -> crate::Result<Columns<'a>> {

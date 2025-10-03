@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use ViewKind::{Deferred, Transactional};
+use ViewKind::Deferred;
 use reifydb_core::{
 	diagnostic::catalog::view_already_exists,
 	interface::{
 		ColumnIndex, CommandTransaction, EncodableKey, Key, NamespaceId, NamespaceViewKey, TableId, ViewDef,
-		ViewId, ViewKey, ViewKind,
+		ViewId, ViewKey, ViewKind, ViewKind::Transactional,
 	},
 	return_error,
 };

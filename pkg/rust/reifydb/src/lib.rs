@@ -8,7 +8,6 @@ mod context;
 mod database;
 pub mod event;
 mod health;
-mod presets;
 mod session;
 pub mod subsystem;
 
@@ -22,7 +21,6 @@ pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::{Database, DatabaseConfig};
 pub use event::{OnCreateContext, WithEventBus};
 pub use health::HealthMonitor;
-pub use presets::*;
 pub use reifydb_auth as auth;
 pub use reifydb_cdc as cdc;
 // subsystems

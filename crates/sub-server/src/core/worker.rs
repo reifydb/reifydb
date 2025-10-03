@@ -15,7 +15,6 @@ use mio::{
 	event::Event,
 	net::{TcpListener, TcpStream},
 };
-use reifydb_core::interface::Transaction;
 use reifydb_engine::StandardEngine;
 use slab::Slab;
 
@@ -29,23 +28,23 @@ const LISTENER: Token = Token(0);
 const WAKE_TOKEN: Token = Token(1);
 const TOKEN_BASE: usize = 2;
 
-pub struct Worker<T: Transaction> {
+pub struct Worker {
 	worker_id: usize,
 	listener: TcpListener,
 	config: ServerConfig,
 	shutdown: Arc<AtomicBool>,
-	engine: StandardEngine<T>,
+	engine: StandardEngine,
 	websocket_handler: Option<WebSocketHandler>,
 	http_handler: Option<HttpHandler>,
 }
 
-impl<T: Transaction> Worker<T> {
+impl Worker {
 	pub fn new(
 		worker_id: usize,
 		std_listener: std::net::TcpListener,
 		config: ServerConfig,
 		shutdown: Arc<AtomicBool>,
-		engine: StandardEngine<T>,
+		engine: StandardEngine,
 	) -> Self {
 		let listener = TcpListener::from_std(std_listener);
 
@@ -88,7 +87,7 @@ impl<T: Transaction> Worker<T> {
 		let waker = Waker::new(poll.registry(), WAKE_TOKEN).expect("failed to create waker");
 		let _ctrl = Arc::new(waker);
 
-		let mut connections = Slab::<Connection<T>>::new();
+		let mut connections = Slab::<Connection>::new();
 		let mut last_cleanup = std::time::Instant::now();
 
 		// Worker started, entering event loop
@@ -142,7 +141,7 @@ impl<T: Transaction> Worker<T> {
 		// Worker stopped
 	}
 
-	fn handle_accept(&mut self, connections: &mut Slab<Connection<T>>, poll: &Poll) {
+	fn handle_accept(&mut self, connections: &mut Slab<Connection>, poll: &Poll) {
 		loop {
 			match self.listener.accept() {
 				Ok((stream, peer)) => {
@@ -168,7 +167,7 @@ impl<T: Transaction> Worker<T> {
 
 	fn handle_connection_event(
 		&self,
-		connections: &mut Slab<Connection<T>>,
+		connections: &mut Slab<Connection>,
 		_poll: &Poll,
 		token: Token,
 		event: &Event,
@@ -224,7 +223,7 @@ impl<T: Transaction> Worker<T> {
 
 	fn on_accept(
 		&self,
-		connections: &mut Slab<Connection<T>>,
+		connections: &mut Slab<Connection>,
 		poll: &Poll,
 		mut stream: TcpStream,
 		peer: SocketAddr,
@@ -254,7 +253,7 @@ impl<T: Transaction> Worker<T> {
 
 	fn on_connection_event(
 		&self,
-		connections: &mut Slab<Connection<T>>,
+		connections: &mut Slab<Connection>,
 		poll: &Poll,
 		key: usize,
 		event: &Event,
@@ -334,7 +333,7 @@ impl<T: Transaction> Worker<T> {
 		Ok(())
 	}
 
-	fn detect_and_init_protocol(&self, conn: &mut Connection<T>) -> Result<(), Box<dyn std::error::Error>> {
+	fn detect_and_init_protocol(&self, conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
 		// Read some data to detect protocol
 		let mut buf = [0u8; 1024];
 		match conn.stream().read(&mut buf) {
@@ -394,14 +393,14 @@ impl<T: Transaction> Worker<T> {
 	fn detect_protocol(&self, buffer: &[u8]) -> Option<&'static str> {
 		// Check WebSocket first (more specific)
 		if let Some(ref ws_handler) = self.websocket_handler {
-			if <WebSocketHandler as ProtocolHandler<T>>::can_handle(ws_handler, buffer) {
+			if <WebSocketHandler as ProtocolHandler>::can_handle(ws_handler, buffer) {
 				return Some("ws");
 			}
 		}
 
 		// Check HTTP
 		if let Some(ref http_handler) = self.http_handler {
-			if <HttpHandler as ProtocolHandler<T>>::can_handle(http_handler, buffer) {
+			if <HttpHandler as ProtocolHandler>::can_handle(http_handler, buffer) {
 				return Some("http");
 			}
 		}
@@ -409,7 +408,7 @@ impl<T: Transaction> Worker<T> {
 		None
 	}
 
-	fn handle_read_event(&self, conn: &mut Connection<T>) -> Result<(), Box<dyn std::error::Error>> {
+	fn handle_read_event(&self, conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
 		match conn.state() {
 			ConnectionState::WebSocket(_) => {
 				if let Some(ref ws_handler) = self.websocket_handler {
@@ -435,7 +434,7 @@ impl<T: Transaction> Worker<T> {
 		Ok(())
 	}
 
-	fn handle_write_event(&self, conn: &mut Connection<T>) -> Result<(), Box<dyn std::error::Error>> {
+	fn handle_write_event(&self, conn: &mut Connection) -> Result<(), Box<dyn std::error::Error>> {
 		match conn.state() {
 			ConnectionState::WebSocket(_) => {
 				if let Some(ref ws_handler) = self.websocket_handler {
@@ -461,13 +460,13 @@ impl<T: Transaction> Worker<T> {
 		Ok(())
 	}
 
-	fn close_connection(&self, connections: &mut Slab<Connection<T>>, key: usize) {
+	fn close_connection(&self, connections: &mut Slab<Connection>, key: usize) {
 		if let Some(mut conn) = connections.try_remove(key) {
 			conn.shutdown();
 		}
 	}
 
-	fn cleanup_abandoned_connections(&self, connections: &mut Slab<Connection<T>>) {
+	fn cleanup_abandoned_connections(&self, connections: &mut Slab<Connection>) {
 		let mut to_close = Vec::new();
 		let mut _state_closed = 0;
 		let mut _eof_connections = 0;

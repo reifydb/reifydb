@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{Engine, Identity, Transaction};
+use reifydb_core::interface::{Engine, Identity};
 use reifydb_type::diagnostic::Diagnostic;
 
 use crate::{
@@ -13,10 +13,7 @@ use crate::{
 };
 
 /// Handle /v1/command endpoint
-pub fn handle_v1_command<T: Transaction>(
-	conn: &Connection<T>,
-	cmd_req: &CommandRequest,
-) -> Result<CommandResponse, ErrResponse> {
+pub fn handle_v1_command(conn: &Connection, cmd_req: &CommandRequest) -> Result<CommandResponse, ErrResponse> {
 	let mut all_frames = Vec::new();
 
 	for statement in &cmd_req.statements {

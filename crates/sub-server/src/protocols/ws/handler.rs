@@ -3,7 +3,7 @@
 
 use std::io::{Read, Write};
 
-use reifydb_core::interface::{Engine, Identity, Transaction};
+use reifydb_core::interface::{Engine, Identity};
 
 use super::{CommandResponse, QueryResponse, Request, Response, ResponsePayload, WebSocketConnectionData, WsState};
 use crate::{
@@ -24,7 +24,7 @@ impl WebSocketHandler {
 	}
 }
 
-impl<T: Transaction> ProtocolHandler<T> for WebSocketHandler {
+impl ProtocolHandler for WebSocketHandler {
 	fn name(&self) -> &'static str {
 		"ws"
 	}
@@ -46,14 +46,14 @@ impl<T: Transaction> ProtocolHandler<T> for WebSocketHandler {
 				|| request_lower.contains("connection: keep-alive, upgrade"))
 	}
 
-	fn handle_connection(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_connection(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		// Initialize WebSocket state
 		let ws_state = WsState::Handshake(WebSocketConnectionData::new());
 		conn.set_state(crate::core::ConnectionState::WebSocket(ws_state));
 		Ok(())
 	}
 
-	fn handle_read(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_read(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		if let crate::core::ConnectionState::WebSocket(ws_state) = conn.state() {
 			match ws_state {
 				WsState::Handshake(_) => self.handle_handshake_read(conn),
@@ -65,7 +65,7 @@ impl<T: Transaction> ProtocolHandler<T> for WebSocketHandler {
 		}
 	}
 
-	fn handle_write(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_write(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		if let crate::core::ConnectionState::WebSocket(ws_state) = conn.state() {
 			match ws_state {
 				WsState::Handshake(_) => self.handle_handshake_write(conn),
@@ -77,7 +77,7 @@ impl<T: Transaction> ProtocolHandler<T> for WebSocketHandler {
 		}
 	}
 
-	fn should_close(&self, conn: &Connection<T>) -> bool {
+	fn should_close(&self, conn: &Connection) -> bool {
 		matches!(
 			conn.state(),
 			crate::core::ConnectionState::WebSocket(WsState::Closed) | crate::core::ConnectionState::Closed
@@ -86,7 +86,7 @@ impl<T: Transaction> ProtocolHandler<T> for WebSocketHandler {
 }
 
 impl WebSocketHandler {
-	fn handle_handshake_read<T: Transaction>(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_handshake_read(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		// First, check if we already have complete headers in the
 		// buffer (from protocol detection)
 		if !conn.buffer().is_empty() {
@@ -146,7 +146,7 @@ impl WebSocketHandler {
 		Ok(())
 	}
 
-	fn handle_handshake_write<T: Transaction>(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_handshake_write(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		// Extract the necessary data to avoid borrowing issues
 		let (response, written) =
 			if let crate::core::ConnectionState::WebSocket(WsState::Handshake(data)) = conn.state() {
@@ -187,7 +187,7 @@ impl WebSocketHandler {
 		Ok(())
 	}
 
-	fn handle_ws_read<T: Transaction>(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_ws_read(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		let mut buf = [0u8; 8192];
 
 		loop {
@@ -211,7 +211,7 @@ impl WebSocketHandler {
 		Ok(())
 	}
 
-	fn handle_ws_write<T: Transaction>(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_ws_write(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		loop {
 			// Check if there's a frame to send
 			let frame_to_send =
@@ -259,7 +259,7 @@ impl WebSocketHandler {
 		Ok(())
 	}
 
-	fn process_buffered_ws_data<T: Transaction>(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn process_buffered_ws_data(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		let mut total_processed = 0;
 
 		// Process frames directly from buffer to avoid copies
@@ -364,12 +364,7 @@ impl WebSocketHandler {
 		Ok(pos)
 	}
 
-	fn process_ws_frame<T: Transaction>(
-		&self,
-		conn: &mut Connection<T>,
-		opcode: u8,
-		payload: Vec<u8>,
-	) -> ProtocolResult<()> {
+	fn process_ws_frame(&self, conn: &mut Connection, opcode: u8, payload: Vec<u8>) -> ProtocolResult<()> {
 		match opcode {
 			1 => {
 				// Text frame - try to parse as WebSocket
@@ -451,11 +446,7 @@ impl WebSocketHandler {
 		Ok(())
 	}
 
-	fn handle_request<T: Transaction>(
-		&self,
-		conn: &mut Connection<T>,
-		request: &Request,
-	) -> ProtocolResult<ResponsePayload> {
+	fn handle_request(&self, conn: &mut Connection, request: &Request) -> ProtocolResult<ResponsePayload> {
 		use super::{AuthResponse, RequestPayload};
 
 		match &request.payload {
@@ -468,9 +459,9 @@ impl WebSocketHandler {
 		}
 	}
 
-	fn handle_command_request<T: Transaction>(
+	fn handle_command_request(
 		&self,
-		conn: &mut Connection<T>,
+		conn: &mut Connection,
 		cmd_req: &super::CommandRequest,
 	) -> ProtocolResult<ResponsePayload> {
 		// Execute each statement and collect results
@@ -509,9 +500,9 @@ impl WebSocketHandler {
 		}))
 	}
 
-	fn handle_query_request<T: Transaction>(
+	fn handle_query_request(
 		&self,
-		conn: &mut Connection<T>,
+		conn: &mut Connection,
 		query_req: &super::QueryRequest,
 	) -> ProtocolResult<ResponsePayload> {
 		// Execute each statement and collect results
@@ -550,7 +541,7 @@ impl WebSocketHandler {
 		}))
 	}
 
-	fn send_frame<T: Transaction>(&self, conn: &mut Connection<T>, frame: Vec<u8>) -> ProtocolResult<()> {
+	fn send_frame(&self, conn: &mut Connection, frame: Vec<u8>) -> ProtocolResult<()> {
 		if let crate::core::ConnectionState::WebSocket(WsState::Active(data)) = conn.state_mut() {
 			if data.outbox_bytes + frame.len() > data.max_outbox_bytes {
 				return Err(ProtocolError::BufferOverflow);

@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	marker::PhantomData,
 	ops::Bound::{Excluded, Included},
 	sync::Arc,
 };
@@ -10,7 +9,7 @@ use std::{
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{
-		EncodableKey, EncodableKeyRange, MultiVersionQueryTransaction, RowKey, RowKeyRange, Transaction,
+		EncodableKey, EncodableKeyRange, MultiVersionQueryTransaction, RowKey, RowKeyRange,
 		resolved::ResolvedTable,
 	},
 	value::{
@@ -22,17 +21,16 @@ use reifydb_type::Fragment;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
-pub(crate) struct TableScanNode<'a, T: Transaction> {
+pub(crate) struct TableScanNode<'a> {
 	table: ResolvedTable<'a>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	headers: ColumnHeaders<'a>,
 	row_layout: EncodedValuesLayout,
 	last_key: Option<EncodedKey>,
 	exhausted: bool,
-	_phantom: PhantomData<T>,
 }
 
-impl<'a, T: Transaction> TableScanNode<'a, T> {
+impl<'a> TableScanNode<'a> {
 	pub fn new(table: ResolvedTable<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
 		let data = table.columns().iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedValuesLayout::new(&data);
@@ -48,22 +46,21 @@ impl<'a, T: Transaction> TableScanNode<'a, T> {
 			row_layout,
 			last_key: None,
 			exhausted: false,
-			_phantom: PhantomData,
 		})
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for TableScanNode<'a, T> {
+impl<'a> QueryNode<'a> for TableScanNode<'a> {
 	fn initialize(
 		&mut self,
-		_rx: &mut crate::StandardTransaction<'a, T>,
+		_rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &ExecutionContext<'a>,
 	) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "TableScanNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 

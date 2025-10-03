@@ -18,9 +18,8 @@ use common::{
 use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
-	engine::TransactionCdc,
 	memory, optimistic,
-	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{
 	WsCallbackSession, WsClient,

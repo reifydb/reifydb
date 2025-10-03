@@ -3,23 +3,20 @@
 
 use std::any::Any;
 
-use reifydb_core::interface::{
-	Transaction,
-	version::{ComponentType, HasVersion, SystemVersion},
-};
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{HealthStatus, Subsystem};
 
 use crate::{config::AdminConfig, server::AdminServer};
 
-pub struct AdminSubsystem<T: Transaction> {
+pub struct AdminSubsystem {
 	config: AdminConfig,
-	server: Option<AdminServer<T>>,
-	engine: StandardEngine<T>,
+	server: Option<AdminServer>,
+	engine: StandardEngine,
 }
 
-impl<T: Transaction> AdminSubsystem<T> {
-	pub fn new(config: AdminConfig, engine: StandardEngine<T>) -> Self {
+impl AdminSubsystem {
+	pub fn new(config: AdminConfig, engine: StandardEngine) -> Self {
 		Self {
 			config,
 			server: None,
@@ -32,7 +29,7 @@ impl<T: Transaction> AdminSubsystem<T> {
 	}
 }
 
-impl<T: Transaction> Subsystem for AdminSubsystem<T> {
+impl Subsystem for AdminSubsystem {
 	fn name(&self) -> &'static str {
 		"admin"
 	}
@@ -93,7 +90,7 @@ impl<T: Transaction> Subsystem for AdminSubsystem<T> {
 	}
 }
 
-impl<T: Transaction> HasVersion for AdminSubsystem<T> {
+impl HasVersion for AdminSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
 			name: "sub-admin".to_string(),

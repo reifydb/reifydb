@@ -7,7 +7,7 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
 		EncodableKey, MultiVersionQueryTransaction, Params, ResolvedNamespace, ResolvedRingBuffer,
-		ResolvedSource, RowKey, Transaction,
+		ResolvedSource, RowKey,
 	},
 	value::column::Columns,
 };
@@ -24,9 +24,9 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn delete_ring_buffer<'a, T: Transaction>(
+	pub(crate) fn delete_ring_buffer<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: DeleteRingBufferNode<'a>,
 		params: Params,
 	) -> crate::Result<Columns<'a>> {

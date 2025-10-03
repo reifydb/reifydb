@@ -3,7 +3,6 @@
 
 use reifydb_core::{
 	EncodedKey,
-	interface::Transaction,
 	util::encoding::keycode::KeySerializer,
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
@@ -15,7 +14,7 @@ use crate::stateful::RawStatefulOperator;
 
 /// Operator with multiple keyed state values (for aggregations, grouping, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
-pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
+pub trait KeyedStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedValuesLayout;
 
@@ -43,7 +42,7 @@ pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Load state for a specific key
 	fn load_state(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		key_values: &[Value],
 	) -> crate::Result<EncodedValues> {
 		let key = self.encode_key(key_values);
@@ -53,7 +52,7 @@ pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Save state for a specific key
 	fn save_state(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		key_values: &[Value],
 		row: EncodedValues,
 	) -> crate::Result<()> {
@@ -64,7 +63,7 @@ pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Update state for a key with a function
 	fn update_state<F>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		key_values: &[Value],
 		f: F,
 	) -> crate::Result<EncodedValues>
@@ -79,7 +78,7 @@ pub trait KeyedStateful<T: Transaction>: RawStatefulOperator<T> {
 	}
 
 	/// Remove state for a key
-	fn remove_state(&self, txn: &mut StandardCommandTransaction<T>, key_values: &[Value]) -> crate::Result<()> {
+	fn remove_state(&self, txn: &mut StandardCommandTransaction, key_values: &[Value]) -> crate::Result<()> {
 		let key = self.encode_key(key_values);
 		utils::state_remove(self.id(), txn, &key)
 	}
@@ -94,7 +93,7 @@ mod tests {
 	use crate::operator::stateful::utils_test::test::*;
 
 	// Extend TestOperator to implement KeyedStateful
-	impl KeyedStateful<TestTransaction> for TestOperator {
+	impl KeyedStateful for TestOperator {
 		fn layout(&self) -> EncodedValuesLayout {
 			self.layout.clone()
 		}

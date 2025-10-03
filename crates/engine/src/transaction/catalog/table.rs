@@ -4,14 +4,13 @@
 use OperationType::{Create, Update};
 use reifydb_catalog::transaction::CatalogTrackTableChangeOperations;
 use reifydb_core::interface::{
-	Change, NamespaceId, OperationType, OperationType::Delete, TableDef, TableId, Transaction,
-	TransactionalTableChanges,
+	Change, NamespaceId, OperationType, OperationType::Delete, TableDef, TableId, TransactionalTableChanges,
 };
 use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
-impl<T: Transaction> CatalogTrackTableChangeOperations for StandardCommandTransaction<T> {
+impl CatalogTrackTableChangeOperations for StandardCommandTransaction {
 	fn track_table_def_created(&mut self, table: TableDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: None,
@@ -43,7 +42,7 @@ impl<T: Transaction> CatalogTrackTableChangeOperations for StandardCommandTransa
 	}
 }
 
-impl<T: Transaction> TransactionalTableChanges for StandardCommandTransaction<T> {
+impl TransactionalTableChanges for StandardCommandTransaction {
 	fn find_table(&self, id: TableId) -> Option<&TableDef> {
 		// Find the last change for this table ID
 		for change in self.changes.table_def.iter().rev() {
@@ -89,7 +88,7 @@ impl<T: Transaction> TransactionalTableChanges for StandardCommandTransaction<T>
 	}
 }
 
-impl<T: Transaction> TransactionalTableChanges for StandardQueryTransaction<T> {
+impl TransactionalTableChanges for StandardQueryTransaction {
 	fn find_table(&self, _id: TableId) -> Option<&TableDef> {
 		None
 	}

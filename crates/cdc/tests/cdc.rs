@@ -26,12 +26,9 @@ use reifydb_core::{
 	util::{CowVec, mock_time_set},
 	value::encoded::EncodedValues,
 };
-use reifydb_engine::{EngineTransaction, StandardCommandTransaction, StandardEngine, TransactionCdc};
-use reifydb_store_transaction::{StandardTransactionStore, TransactionStore};
-use reifydb_transaction::{
-	multi::transaction::serializable::TransactionSerializable,
-	single::{TransactionSingleVersion, TransactionSvl},
-};
+use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_store_transaction::TransactionStore;
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 use reifydb_type::{OwnedFragment, RowNumber};
 
 #[test]
@@ -369,20 +366,14 @@ fn test_rapid_start_stop() {
 	}
 }
 
-type TestTransaction = EngineTransaction<TransactionSerializable, TransactionSvl, TransactionCdc>;
-
-fn create_test_engine() -> StandardEngine<TestTransaction> {
+fn create_test_engine() -> StandardEngine {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 	let store = TransactionStore::testing_memory();
 	let eventbus = EventBus::new();
-	let single = TransactionSvl::new(store.clone(), eventbus.clone());
+	let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionSerializable::new(
-		store,
-		TransactionSingleVersion::SingleVersionLock(single.clone()),
-		eventbus.clone(),
-	);
+	let multi = TransactionMultiVersion::optimistic(store, single.clone(), eventbus.clone());
 
 	StandardEngine::new(
 		multi,
@@ -436,12 +427,8 @@ impl Clone for TestConsumer {
 	}
 }
 
-impl CdcConsume<TestTransaction> for TestConsumer {
-	fn consume(
-		&self,
-		_txn: &mut StandardCommandTransaction<TestTransaction>,
-		transactions: Vec<Cdc>,
-	) -> Result<()> {
+impl CdcConsume for TestConsumer {
+	fn consume(&self, _txn: &mut StandardCommandTransaction, transactions: Vec<Cdc>) -> Result<()> {
 		if self.should_fail.load(Ordering::SeqCst) {
 			return Err(reifydb_type::Error(Diagnostic {
 				code: "TEST_ERROR".to_string(),
@@ -463,7 +450,7 @@ impl CdcConsume<TestTransaction> for TestConsumer {
 	}
 }
 
-fn insert_test_events(engine: &StandardEngine<TestTransaction>, count: usize) -> Result<()> {
+fn insert_test_events(engine: &StandardEngine, count: usize) -> Result<()> {
 	for i in 0..count {
 		let mut txn = engine.begin_command()?;
 		let key = RowKey {

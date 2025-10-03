@@ -4,14 +4,13 @@
 use OperationType::{Create, Update};
 use reifydb_catalog::transaction::CatalogTrackNamespaceChangeOperations;
 use reifydb_core::interface::{
-	Change, NamespaceDef, NamespaceId, OperationType, OperationType::Delete, Transaction,
-	TransactionalNamespaceChanges,
+	Change, NamespaceDef, NamespaceId, OperationType, OperationType::Delete, TransactionalNamespaceChanges,
 };
 use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
-impl<T: Transaction> CatalogTrackNamespaceChangeOperations for StandardCommandTransaction<T> {
+impl CatalogTrackNamespaceChangeOperations for StandardCommandTransaction {
 	fn track_namespace_def_created(&mut self, namespace: NamespaceDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: None,
@@ -43,7 +42,7 @@ impl<T: Transaction> CatalogTrackNamespaceChangeOperations for StandardCommandTr
 	}
 }
 
-impl<T: Transaction> TransactionalNamespaceChanges for StandardCommandTransaction<T> {
+impl TransactionalNamespaceChanges for StandardCommandTransaction {
 	fn find_namespace(&self, id: NamespaceId) -> Option<&NamespaceDef> {
 		// Find the last change for this namespace ID
 		for change in self.changes.namespace_def.iter().rev() {
@@ -86,7 +85,7 @@ impl<T: Transaction> TransactionalNamespaceChanges for StandardCommandTransactio
 	}
 }
 
-impl<T: Transaction> TransactionalNamespaceChanges for StandardQueryTransaction<T> {
+impl TransactionalNamespaceChanges for StandardQueryTransaction {
 	fn find_namespace(&self, _id: NamespaceId) -> Option<&NamespaceDef> {
 		None
 	}

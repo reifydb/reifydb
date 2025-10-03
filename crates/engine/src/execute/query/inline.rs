@@ -3,12 +3,11 @@
 
 use std::{
 	collections::{BTreeSet, HashMap},
-	marker::PhantomData,
 	sync::Arc,
 };
 
 use reifydb_core::{
-	interface::{ResolvedSource, TargetColumn, Transaction, evaluate::expression::AliasExpression},
+	interface::{ResolvedSource, TargetColumn, evaluate::expression::AliasExpression},
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_type::{Fragment, Params, Type, Value};
@@ -18,15 +17,14 @@ use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 
-pub(crate) struct InlineDataNode<'a, T: Transaction> {
+pub(crate) struct InlineDataNode<'a> {
 	rows: Vec<Vec<AliasExpression<'a>>>,
 	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	executed: bool,
-	_phantom: PhantomData<T>,
 }
 
-impl<'a, T: Transaction> InlineDataNode<'a, T> {
+impl<'a> InlineDataNode<'a> {
 	pub fn new(rows: Vec<Vec<AliasExpression<'a>>>, context: Arc<ExecutionContext<'a>>) -> Self {
 		// Clone the Arc to extract headers without borrowing issues
 		let cloned_context = context.clone();
@@ -38,7 +36,6 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 			headers,
 			context: Some(context),
 			executed: false,
-			_phantom: PhantomData,
 		}
 	}
 
@@ -49,17 +46,17 @@ impl<'a, T: Transaction> InlineDataNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
+impl<'a> QueryNode<'a> for InlineDataNode<'a> {
 	fn initialize(
 		&mut self,
-		_rx: &mut crate::StandardTransaction<'a, T>,
+		_rx: &mut crate::StandardTransaction<'a>,
 		_ctx: &ExecutionContext<'a>,
 	) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	fn next(&mut self, _rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, _rx: &mut crate::StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap().clone();
 
@@ -93,7 +90,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for InlineDataNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> InlineDataNode<'a, T> {
+impl<'a> InlineDataNode<'a> {
 	/// Determines the optimal (narrowest) integer type that can hold all
 	/// values
 	fn find_optimal_integer_type(column: &ColumnData) -> Type {

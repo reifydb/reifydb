@@ -1,4 +1,4 @@
-use reifydb_core::{CommitVersion, Row, interface::Transaction};
+use reifydb_core::{CommitVersion, Row};
 use reifydb_engine::{StandardCommandTransaction, execute::Executor};
 use reifydb_hash::Hash128;
 use reifydb_rql::query::QueryString;
@@ -18,9 +18,9 @@ pub(crate) struct InnerLazyJoin {
 }
 
 impl InnerLazyJoin {
-	pub(crate) fn handle_insert<T: Transaction>(
+	pub(crate) fn handle_insert(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		post: &Row,
 		side: JoinSide,
 		key_hash: Option<Hash128>,
@@ -76,9 +76,9 @@ impl InnerLazyJoin {
 		Ok(result)
 	}
 
-	pub(crate) fn handle_remove<T: Transaction>(
+	pub(crate) fn handle_remove(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		pre: &Row,
 		side: JoinSide,
 		key_hash: Option<Hash128>,
@@ -137,9 +137,9 @@ impl InnerLazyJoin {
 		Ok(result)
 	}
 
-	pub(crate) fn handle_update<T: Transaction>(
+	pub(crate) fn handle_update(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		pre: &Row,
 		post: &Row,
 		side: JoinSide,

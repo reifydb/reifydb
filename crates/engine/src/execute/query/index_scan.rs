@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	EncodedKey,
-	interface::{IndexId, TableDef, Transaction},
+	interface::{IndexId, TableDef},
 	value::{column::headers::ColumnHeaders, encoded::EncodedValuesLayout},
 };
 use reifydb_type::Fragment;
@@ -15,7 +15,7 @@ use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 
-pub(crate) struct IndexScanNode<'a, T: Transaction> {
+pub(crate) struct IndexScanNode<'a> {
 	_table: TableDef, // FIXME needs to work with different sources
 	_index_id: IndexId,
 	context: Option<Arc<ExecutionContext<'a>>>,
@@ -23,10 +23,9 @@ pub(crate) struct IndexScanNode<'a, T: Transaction> {
 	_row_layout: EncodedValuesLayout,
 	_last_key: Option<EncodedKey>,
 	_exhausted: bool,
-	_phantom: std::marker::PhantomData<T>,
 }
 
-impl<'a, T: Transaction> IndexScanNode<'a, T> {
+impl<'a> IndexScanNode<'a> {
 	pub fn new(table: TableDef, index_id: IndexId, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
 		let data = table.columns.iter().map(|c| c.constraint.get_type()).collect::<Vec<_>>();
 		let row_layout = EncodedValuesLayout::new(&data);
@@ -43,22 +42,17 @@ impl<'a, T: Transaction> IndexScanNode<'a, T> {
 			_row_layout: row_layout,
 			_last_key: None,
 			_exhausted: false,
-			_phantom: std::marker::PhantomData,
 		})
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for IndexScanNode<'a, T> {
-	fn initialize(
-		&mut self,
-		_rx: &mut StandardTransaction<'a, T>,
-		_ctx: &ExecutionContext<'a>,
-	) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for IndexScanNode<'a> {
+	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	fn next(&mut self, _rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, _rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		unimplemented!()
 		// let ctx = self.context.as_ref().unwrap();

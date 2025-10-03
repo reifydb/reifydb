@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{EncodedKey, EncodedKeyRange, interface::Transaction, value::encoded::EncodedValues};
+use reifydb_core::{EncodedKey, EncodedKeyRange, value::encoded::EncodedValues};
 use reifydb_engine::StandardCommandTransaction;
 
 use super::utils;
@@ -9,11 +9,11 @@ use crate::operator::transform::TransformOperator;
 
 /// Raw Stateful operations - provides raw key-value access
 /// This is the foundation for operators that need state management
-pub trait RawStatefulOperator<T: Transaction>: TransformOperator<T> {
+pub trait RawStatefulOperator: TransformOperator {
 	/// Get raw bytes for a key
 	fn state_get(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		key: &EncodedKey,
 	) -> crate::Result<Option<EncodedValues>> {
 		utils::state_get(self.id(), txn, key)
@@ -22,7 +22,7 @@ pub trait RawStatefulOperator<T: Transaction>: TransformOperator<T> {
 	/// Set raw bytes for a key
 	fn state_set(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		key: &EncodedKey,
 		value: EncodedValues,
 	) -> crate::Result<()> {
@@ -30,29 +30,26 @@ pub trait RawStatefulOperator<T: Transaction>: TransformOperator<T> {
 	}
 
 	/// Remove a key
-	fn state_remove(&self, txn: &mut StandardCommandTransaction<T>, key: &EncodedKey) -> crate::Result<()> {
+	fn state_remove(&self, txn: &mut StandardCommandTransaction, key: &EncodedKey) -> crate::Result<()> {
 		utils::state_remove(self.id(), txn, key)
 	}
 
 	/// Scan all keys for this operator
-	fn state_scan<'a>(
-		&self,
-		txn: &'a mut StandardCommandTransaction<T>,
-	) -> crate::Result<super::StateIterator<'a>> {
+	fn state_scan<'a>(&self, txn: &'a mut StandardCommandTransaction) -> crate::Result<super::StateIterator<'a>> {
 		utils::state_scan(self.id(), txn)
 	}
 
 	/// Range query between keys
 	fn state_range<'a>(
 		&self,
-		txn: &'a mut StandardCommandTransaction<T>,
+		txn: &'a mut StandardCommandTransaction,
 		range: EncodedKeyRange,
 	) -> crate::Result<super::StateIterator<'a>> {
 		utils::state_range(self.id(), txn, range)
 	}
 
 	/// Clear all state for this operator
-	fn state_clear(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<()> {
+	fn state_clear(&self, txn: &mut StandardCommandTransaction) -> crate::Result<()> {
 		utils::state_clear(self.id(), txn)
 	}
 }
@@ -70,7 +67,7 @@ mod tests {
 	use crate::operator::stateful::utils_test::test::*;
 
 	// Test implementation of SimpleStatefulOperator
-	impl RawStatefulOperator<TestTransaction> for TestOperator {}
+	impl RawStatefulOperator for TestOperator {}
 
 	#[test]
 	fn test_simple_state_get_set() {

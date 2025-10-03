@@ -8,9 +8,8 @@ use common::{cleanup_http_client, cleanup_server, connect_http, create_server_in
 use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
-	engine::TransactionCdc,
 	memory, optimistic,
-	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{HttpBlockingSession, HttpClient};
 use reifydb_testing::{testscript, testscript::Command};

@@ -1,4 +1,4 @@
-use reifydb_core::{Row, interface::Transaction};
+use reifydb_core::Row;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
@@ -8,14 +8,14 @@ use crate::{
 };
 
 /// Add a encoded to a state entry (left or right)
-pub(crate) fn add_to_state_entry<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
-	store: &mut Store<JoinSideEntry>,
+pub(crate) fn add_to_state_entry(
+	txn: &mut StandardCommandTransaction,
+	store: &mut Store,
 	key_hash: &Hash128,
 	row: &Row,
 ) -> crate::Result<()> {
 	let serialized = SerializedRow::from_row(row);
-	let mut entry = store.get_or_insert_with(txn, key_hash, || JoinSideEntry {
+	let mut entry = store.get_or_insert_with::<StandardCommandTransaction, _>(txn, key_hash, || JoinSideEntry {
 		rows: Vec::new(),
 	})?;
 	entry.rows.push(serialized);
@@ -24,9 +24,9 @@ pub(crate) fn add_to_state_entry<T: Transaction>(
 }
 
 /// Remove a encoded from state entry and cleanup if empty
-pub(crate) fn remove_from_state_entry<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
-	store: &mut Store<JoinSideEntry>,
+pub(crate) fn remove_from_state_entry(
+	txn: &mut StandardCommandTransaction,
+	store: &mut Store,
 	key_hash: &Hash128,
 	row: &Row,
 ) -> crate::Result<bool> {
@@ -46,9 +46,9 @@ pub(crate) fn remove_from_state_entry<T: Transaction>(
 }
 
 /// Update a encoded in-place within a state entry
-pub(crate) fn update_row_in_entry<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
-	store: &mut Store<JoinSideEntry>,
+pub(crate) fn update_row_in_entry(
+	txn: &mut StandardCommandTransaction,
+	store: &mut Store,
 	key_hash: &Hash128,
 	old_row: &Row,
 	new_row: &Row,
@@ -66,10 +66,10 @@ pub(crate) fn update_row_in_entry<T: Transaction>(
 }
 
 /// Emit joined rows when inserting a left encoded that has right matches
-pub(crate) fn emit_joined_rows_left_to_right<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn emit_joined_rows_left_to_right(
+	txn: &mut StandardCommandTransaction,
 	left_row: &Row,
-	right_store: &Store<JoinSideEntry>,
+	right_store: &Store,
 	key_hash: &Hash128,
 	state: &JoinState,
 	operator: &JoinOperator,
@@ -89,10 +89,10 @@ pub(crate) fn emit_joined_rows_left_to_right<T: Transaction>(
 }
 
 /// Emit joined rows when inserting a right encoded that has left matches
-pub(crate) fn emit_joined_rows_right_to_left<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn emit_joined_rows_right_to_left(
+	txn: &mut StandardCommandTransaction,
 	right_row: &Row,
-	left_store: &Store<JoinSideEntry>,
+	left_store: &Store,
 	key_hash: &Hash128,
 	state: &JoinState,
 	operator: &JoinOperator,
@@ -112,10 +112,10 @@ pub(crate) fn emit_joined_rows_right_to_left<T: Transaction>(
 }
 
 /// Emit removal of all joined rows involving a left encoded
-pub(crate) fn emit_remove_joined_rows_left<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn emit_remove_joined_rows_left(
+	txn: &mut StandardCommandTransaction,
 	left_row: &Row,
-	right_store: &Store<JoinSideEntry>,
+	right_store: &Store,
 	key_hash: &Hash128,
 	state: &JoinState,
 	operator: &JoinOperator,
@@ -135,10 +135,10 @@ pub(crate) fn emit_remove_joined_rows_left<T: Transaction>(
 }
 
 /// Emit removal of all joined rows involving a right encoded
-pub(crate) fn emit_remove_joined_rows_right<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn emit_remove_joined_rows_right(
+	txn: &mut StandardCommandTransaction,
 	right_row: &Row,
-	left_store: &Store<JoinSideEntry>,
+	left_store: &Store,
 	key_hash: &Hash128,
 	state: &JoinState,
 	operator: &JoinOperator,
@@ -158,11 +158,11 @@ pub(crate) fn emit_remove_joined_rows_right<T: Transaction>(
 }
 
 /// Emit updates for all joined rows when a left encoded is updated
-pub(crate) fn emit_update_joined_rows_left<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn emit_update_joined_rows_left(
+	txn: &mut StandardCommandTransaction,
 	old_left_row: &Row,
 	new_left_row: &Row,
-	right_store: &Store<JoinSideEntry>,
+	right_store: &Store,
 	key_hash: &Hash128,
 	state: &JoinState,
 	operator: &JoinOperator,
@@ -183,11 +183,11 @@ pub(crate) fn emit_update_joined_rows_left<T: Transaction>(
 }
 
 /// Emit updates for all joined rows when a right encoded is updated
-pub(crate) fn emit_update_joined_rows_right<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn emit_update_joined_rows_right(
+	txn: &mut StandardCommandTransaction,
 	old_right_row: &Row,
 	new_right_row: &Row,
-	left_store: &Store<JoinSideEntry>,
+	left_store: &Store,
 	key_hash: &Hash128,
 	state: &JoinState,
 	operator: &JoinOperator,
@@ -208,27 +208,27 @@ pub(crate) fn emit_update_joined_rows_right<T: Transaction>(
 }
 
 /// Check if a right side has any rows for a given key
-pub(crate) fn has_right_rows<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
-	right_store: &Store<JoinSideEntry>,
+pub(crate) fn has_right_rows(
+	txn: &mut StandardCommandTransaction,
+	right_store: &Store,
 	key_hash: &Hash128,
 ) -> crate::Result<bool> {
 	Ok(right_store.contains_key(txn, key_hash)?)
 }
 
 /// Check if it's the first right encoded being added for a key
-pub(crate) fn is_first_right_row<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
-	right_store: &Store<JoinSideEntry>,
+pub(crate) fn is_first_right_row(
+	txn: &mut StandardCommandTransaction,
+	right_store: &Store,
 	key_hash: &Hash128,
 ) -> crate::Result<bool> {
 	Ok(!right_store.contains_key(txn, key_hash)?)
 }
 
 /// Get all left rows for a given key
-pub(crate) fn get_left_rows<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
-	left_store: &Store<JoinSideEntry>,
+pub(crate) fn get_left_rows(
+	txn: &mut StandardCommandTransaction,
+	left_store: &Store,
 	key_hash: &Hash128,
 	state: &JoinState,
 ) -> crate::Result<Vec<Row>> {
@@ -242,9 +242,9 @@ pub(crate) fn get_left_rows<T: Transaction>(
 }
 
 /// Get all right rows for a given key
-pub(crate) fn get_right_rows<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
-	right_store: &Store<JoinSideEntry>,
+pub(crate) fn get_right_rows(
+	txn: &mut StandardCommandTransaction,
+	right_store: &Store,
 	key_hash: &Hash128,
 	state: &JoinState,
 ) -> crate::Result<Vec<Row>> {

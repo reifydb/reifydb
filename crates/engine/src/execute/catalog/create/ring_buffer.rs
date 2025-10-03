@@ -5,16 +5,16 @@ use reifydb_catalog::{
 	ring_buffer::create::RingBufferToCreate,
 	transaction::{CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations},
 };
-use reifydb_core::{interface::Transaction, value::column::Columns};
+use reifydb_core::value::column::Columns;
 use reifydb_rql::plan::physical::CreateRingBufferNode;
 use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_ring_buffer<'a, T: Transaction>(
+	pub(crate) fn create_ring_buffer<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: CreateRingBufferNode,
 	) -> crate::Result<Columns<'a>> {
 		// Check if ring buffer already exists using the transaction's

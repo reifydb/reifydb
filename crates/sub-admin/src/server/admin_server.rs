@@ -15,7 +15,6 @@ use mio::{
 	Events, Interest, Poll, Token,
 	net::{TcpListener as MioTcpListener, TcpStream as MioTcpStream},
 };
-use reifydb_core::interface::Transaction;
 use reifydb_engine::StandardEngine;
 use reifydb_network::{HttpRequest, HttpResponse, http::parse_request};
 use slab::Slab;
@@ -25,15 +24,15 @@ use crate::{config::AdminConfig, handlers};
 
 const LISTENER: Token = Token(0);
 
-pub struct AdminServer<T: Transaction> {
+pub struct AdminServer {
 	config: AdminConfig,
-	engine: StandardEngine<T>,
+	engine: StandardEngine,
 	running: Arc<AtomicBool>,
 	thread_handle: Option<thread::JoinHandle<()>>,
 }
 
-impl<T: Transaction> AdminServer<T> {
-	pub fn new(config: AdminConfig, engine: StandardEngine<T>) -> Self {
+impl AdminServer {
+	pub fn new(config: AdminConfig, engine: StandardEngine) -> Self {
 		Self {
 			config,
 			engine,
@@ -75,7 +74,7 @@ impl<T: Transaction> AdminServer<T> {
 
 	fn run_server(
 		config: AdminConfig,
-		engine: StandardEngine<T>,
+		engine: StandardEngine,
 		running: Arc<AtomicBool>,
 	) -> Result<(), Box<dyn std::error::Error>> {
 		let listener = TcpListener::bind(&config.address())?;
@@ -181,7 +180,7 @@ impl<T: Transaction> AdminServer<T> {
 		Ok(())
 	}
 
-	fn handle_request(config: &AdminConfig, engine: &StandardEngine<T>, request: HttpRequest) -> HttpResponse {
+	fn handle_request(config: &AdminConfig, engine: &StandardEngine, request: HttpRequest) -> HttpResponse {
 		let route = Router::route(&request.method, &request.path);
 
 		match route {

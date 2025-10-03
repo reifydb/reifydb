@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
-	interface::{FlowNodeId, MultiVersionCommandTransaction, MultiVersionQueryTransaction, Transaction},
+	interface::{FlowNodeId, MultiVersionCommandTransaction, MultiVersionQueryTransaction},
 	key::{EncodableKey, FlowNodeStateKey},
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
@@ -12,9 +12,9 @@ use reifydb_engine::StandardCommandTransaction;
 /// Helper functions for state operations that can be used by any stateful trait
 
 /// Get raw bytes for a key
-pub fn state_get<T: Transaction>(
+pub fn state_get(
 	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction<T>,
+	txn: &mut StandardCommandTransaction,
 	key: &EncodedKey,
 ) -> crate::Result<Option<EncodedValues>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
@@ -27,9 +27,9 @@ pub fn state_get<T: Transaction>(
 }
 
 /// Set raw bytes for a key
-pub fn state_set<T: Transaction>(
+pub fn state_set(
 	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction<T>,
+	txn: &mut StandardCommandTransaction,
 	key: &EncodedKey,
 	value: EncodedValues,
 ) -> crate::Result<()> {
@@ -40,11 +40,7 @@ pub fn state_set<T: Transaction>(
 }
 
 /// Remove a key
-pub fn state_remove<T: Transaction>(
-	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction<T>,
-	key: &EncodedKey,
-) -> crate::Result<()> {
+pub fn state_remove(id: FlowNodeId, txn: &mut StandardCommandTransaction, key: &EncodedKey) -> crate::Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.remove(&encoded_key)?;
@@ -52,10 +48,7 @@ pub fn state_remove<T: Transaction>(
 }
 
 /// Scan all keys for this operator
-pub fn state_scan<T: Transaction>(
-	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction<T>,
-) -> crate::Result<super::StateIterator> {
+pub fn state_scan(id: FlowNodeId, txn: &mut StandardCommandTransaction) -> crate::Result<super::StateIterator> {
 	let range = FlowNodeStateKey::node_range(id);
 	Ok(super::StateIterator {
 		inner: txn.range(range)?,
@@ -63,9 +56,9 @@ pub fn state_scan<T: Transaction>(
 }
 
 /// Range query between keys  
-pub fn state_range<T: Transaction>(
+pub fn state_range(
 	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction<T>,
+	txn: &mut StandardCommandTransaction,
 	range: EncodedKeyRange,
 ) -> crate::Result<super::StateIterator> {
 	Ok(super::StateIterator {
@@ -74,7 +67,7 @@ pub fn state_range<T: Transaction>(
 }
 
 /// Clear all state for this operator
-pub fn state_clear<T: Transaction>(id: FlowNodeId, txn: &mut StandardCommandTransaction<T>) -> crate::Result<()> {
+pub fn state_clear(id: FlowNodeId, txn: &mut StandardCommandTransaction) -> crate::Result<()> {
 	let range = FlowNodeStateKey::node_range(id);
 	let keys_to_remove: Vec<_> = txn.range(range)?.map(|multi| multi.key).collect();
 
@@ -85,9 +78,9 @@ pub fn state_clear<T: Transaction>(id: FlowNodeId, txn: &mut StandardCommandTran
 }
 
 /// Load state for a key, creating if not exists
-pub fn load_or_create_row<T: Transaction>(
+pub fn load_or_create_row(
 	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction<T>,
+	txn: &mut StandardCommandTransaction,
 	key: &EncodedKey,
 	layout: &EncodedValuesLayout,
 ) -> crate::Result<EncodedValues> {
@@ -98,9 +91,9 @@ pub fn load_or_create_row<T: Transaction>(
 }
 
 /// Save state encoded
-pub fn save_row<T: Transaction>(
+pub fn save_row(
 	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction<T>,
+	txn: &mut StandardCommandTransaction,
 	key: &EncodedKey,
 	row: EncodedValues,
 ) -> crate::Result<()> {

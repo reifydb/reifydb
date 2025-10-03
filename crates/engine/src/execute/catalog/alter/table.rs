@@ -2,10 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
-use reifydb_core::{
-	interface::{SourceId, Transaction},
-	value::column::Columns,
-};
+use reifydb_core::{interface::SourceId, value::column::Columns};
 use reifydb_rql::plan::{logical::alter::AlterTableOperation, physical::AlterTableNode};
 use reifydb_type::{
 	Value,
@@ -19,9 +16,9 @@ use reifydb_type::{
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn alter_table<'a, T: Transaction>(
+	pub(crate) fn alter_table<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: AlterTableNode,
 	) -> crate::Result<Columns<'a>> {
 		// Get namespace and table names from MaybeQualified type

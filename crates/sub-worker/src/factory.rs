@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::marker::PhantomData;
-
-use reifydb_core::{Result, interceptor::StandardInterceptorBuilder, interface::Transaction, ioc::IocContainer};
+use reifydb_core::{Result, interceptor::StandardInterceptorBuilder, util::ioc::IocContainer};
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
 
@@ -13,17 +11,15 @@ use super::{WorkerBuilder, WorkerConfig, WorkerSubsystem};
 pub type WorkerPoolConfigurator = Box<dyn FnOnce(WorkerBuilder) -> WorkerBuilder + Send>;
 
 /// Factory for creating WorkerPoolSubsystem instances
-pub struct WorkerSubsystemFactory<T: Transaction> {
+pub struct WorkerSubsystemFactory {
 	configurator: Option<WorkerPoolConfigurator>,
-	_phantom: PhantomData<T>,
 }
 
-impl<T: Transaction> WorkerSubsystemFactory<T> {
+impl WorkerSubsystemFactory {
 	/// Create a new factory with default configuration
 	pub fn new() -> Self {
 		Self {
 			configurator: None,
-			_phantom: PhantomData,
 		}
 	}
 
@@ -34,7 +30,6 @@ impl<T: Transaction> WorkerSubsystemFactory<T> {
 	{
 		Self {
 			configurator: Some(Box::new(configurator)),
-			_phantom: PhantomData,
 		}
 	}
 
@@ -50,18 +45,18 @@ impl<T: Transaction> WorkerSubsystemFactory<T> {
 	}
 }
 
-impl<T: Transaction> Default for WorkerSubsystemFactory<T> {
+impl Default for WorkerSubsystemFactory {
 	fn default() -> Self {
 		Self::new()
 	}
 }
 
-impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for WorkerSubsystemFactory<T> {
+impl SubsystemFactory<StandardCommandTransaction> for WorkerSubsystemFactory {
 	fn provide_interceptors(
 		&self,
-		builder: StandardInterceptorBuilder<StandardCommandTransaction<T>>,
+		builder: StandardInterceptorBuilder<StandardCommandTransaction>,
 		_ioc: &IocContainer,
-	) -> StandardInterceptorBuilder<StandardCommandTransaction<T>> {
+	) -> StandardInterceptorBuilder<StandardCommandTransaction> {
 		// WorkerPool doesn't need any interceptors
 		builder
 	}
@@ -75,7 +70,7 @@ impl<T: Transaction> SubsystemFactory<StandardCommandTransaction<T>> for WorkerS
 		};
 
 		// Get the StandardEngine from IoC
-		let engine = ioc.resolve::<StandardEngine<T>>()?;
+		let engine = ioc.resolve::<StandardEngine>()?;
 
 		// Create subsystem
 		let config = builder.build();

@@ -8,28 +8,30 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
 	interface::{
 		BoxedMultiVersionIter, CdcTransaction, MultiVersionQueryTransaction, MultiVersionTransaction,
-		MultiVersionValues, QueryTransaction, SingleVersionTransaction, Transaction, TransactionId,
-		TransactionalChanges,
+		MultiVersionValues, QueryTransaction, SingleVersionTransaction, TransactionId, TransactionalChanges,
 	},
 };
+use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion};
+
+use crate::transaction::TransactionCdc;
 
 /// An active query transaction that holds a multi query transaction
 /// and provides query-only access to single storage.
-pub struct StandardQueryTransaction<T: Transaction> {
-	pub(crate) multi: <T::MultiVersion as MultiVersionTransaction>::Query,
-	pub(crate) single: T::SingleVersion,
-	pub(crate) cdc: T::Cdc,
+pub struct StandardQueryTransaction {
+	pub(crate) multi: <TransactionMultiVersion as MultiVersionTransaction>::Query,
+	pub(crate) single: TransactionSingleVersion,
+	pub(crate) cdc: TransactionCdc,
 	pub(crate) catalog: MaterializedCatalog,
 	// Marker to prevent Send and Sync
 	_not_send_sync: PhantomData<*const ()>,
 }
 
-impl<T: Transaction> StandardQueryTransaction<T> {
+impl StandardQueryTransaction {
 	/// Creates a new active query transaction
 	pub fn new(
-		multi: <T::MultiVersion as MultiVersionTransaction>::Query,
-		single: T::SingleVersion,
-		cdc: T::Cdc,
+		multi: <TransactionMultiVersion as MultiVersionTransaction>::Query,
+		single: TransactionSingleVersion,
+		cdc: TransactionCdc,
 		catalog: MaterializedCatalog,
 	) -> Self {
 		Self {
@@ -44,7 +46,7 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 	/// Execute a function with query access to the single transaction.
 	pub fn with_single_query<F, R>(&self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(&mut <T::SingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
+		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
 	{
 		self.single.with_query(f)
 	}
@@ -53,18 +55,18 @@ impl<T: Transaction> StandardQueryTransaction<T> {
 	/// This operates within the same transaction context.
 	pub fn with_multi_query<F, R>(&mut self, f: F) -> crate::Result<R>
 	where
-		F: FnOnce(&mut <T::MultiVersion as MultiVersionTransaction>::Query) -> crate::Result<R>,
+		F: FnOnce(&mut <TransactionMultiVersion as MultiVersionTransaction>::Query) -> crate::Result<R>,
 	{
 		f(&mut self.multi)
 	}
 
 	/// Get access to the CDC transaction interface
-	pub fn cdc(&self) -> &T::Cdc {
+	pub fn cdc(&self) -> &TransactionCdc {
 		&self.cdc
 	}
 }
 
-impl<T: Transaction> MultiVersionQueryTransaction for StandardQueryTransaction<T> {
+impl MultiVersionQueryTransaction for StandardQueryTransaction {
 	#[inline]
 	fn version(&self) -> CommitVersion {
 		self.multi.version()
@@ -121,10 +123,10 @@ impl<T: Transaction> MultiVersionQueryTransaction for StandardQueryTransaction<T
 	}
 }
 
-impl<T: Transaction> QueryTransaction for StandardQueryTransaction<T> {
-	type SingleVersionQuery<'a> = <T::SingleVersion as SingleVersionTransaction>::Query<'a>;
+impl QueryTransaction for StandardQueryTransaction {
+	type SingleVersionQuery<'a> = <TransactionSingleVersion as SingleVersionTransaction>::Query<'a>;
 	type CdcQuery<'a>
-		= <T::Cdc as CdcTransaction>::Query<'a>
+		= <TransactionCdc as CdcTransaction>::Query<'a>
 	where
 		Self: 'a;
 
@@ -137,10 +139,10 @@ impl<T: Transaction> QueryTransaction for StandardQueryTransaction<T> {
 	}
 }
 
-impl<T: Transaction> MaterializedCatalogTransaction for StandardQueryTransaction<T> {
+impl MaterializedCatalogTransaction for StandardQueryTransaction {
 	fn catalog(&self) -> &MaterializedCatalog {
 		&self.catalog
 	}
 }
 
-impl<T: Transaction> TransactionalChanges for StandardQueryTransaction<T> {}
+impl TransactionalChanges for StandardQueryTransaction {}

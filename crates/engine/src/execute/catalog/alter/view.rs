@@ -2,20 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogStore, primary_key::PrimaryKeyToCreate};
-use reifydb_core::{
-	interface::{SourceId, Transaction},
-	return_error,
-	value::column::Columns,
-};
+use reifydb_core::{interface::SourceId, return_error, value::column::Columns};
 use reifydb_rql::plan::{logical::alter::AlterViewOperation, physical::AlterViewNode};
 use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn execute_alter_view<'a, T: Transaction>(
+	pub(crate) fn execute_alter_view<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: AlterViewNode,
 	) -> crate::Result<Columns<'a>> {
 		// Get namespace and view names from MaybeQualified type

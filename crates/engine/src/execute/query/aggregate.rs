@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::{Transaction, evaluate::expression::Expression},
+	interface::evaluate::expression::Expression,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
@@ -29,17 +29,17 @@ enum Projection {
 	},
 }
 
-pub(crate) struct AggregateNode<'a, T: Transaction> {
-	input: Box<ExecutionPlan<'a, T>>,
+pub(crate) struct AggregateNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
 	by: Vec<Expression<'a>>,
 	map: Vec<Expression<'a>>,
 	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
-impl<'a, T: Transaction> AggregateNode<'a, T> {
+impl<'a> AggregateNode<'a> {
 	pub fn new(
-		input: Box<ExecutionPlan<'a, T>>,
+		input: Box<ExecutionPlan<'a>>,
 		by: Vec<Expression<'a>>,
 		map: Vec<Expression<'a>>,
 		context: Arc<ExecutionContext<'a>>,
@@ -54,10 +54,10 @@ impl<'a, T: Transaction> AggregateNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
+impl<'a> QueryNode<'a> for AggregateNode<'a> {
 	fn initialize(
 		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
+		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &ExecutionContext<'a>,
 	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
@@ -65,7 +65,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for AggregateNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 

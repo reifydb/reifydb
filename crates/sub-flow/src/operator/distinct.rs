@@ -9,7 +9,7 @@ use bincode::{
 };
 use reifydb_core::{
 	CowVec, Error, Row,
-	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
+	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, expression::Expression},
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
@@ -169,10 +169,7 @@ impl DistinctOperator {
 		Ok(xxh3_128(&data))
 	}
 
-	fn load_distinct_state<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-	) -> crate::Result<DistinctState> {
+	fn load_distinct_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<DistinctState> {
 		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -190,9 +187,9 @@ impl DistinctOperator {
 			.map_err(|e| Error(internal_error!("Failed to deserialize DistinctState: {}", e)))
 	}
 
-	fn save_distinct_state<T: Transaction>(
+	fn save_distinct_state(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		state: &DistinctState,
 	) -> crate::Result<()> {
 		let config = standard();
@@ -207,24 +204,24 @@ impl DistinctOperator {
 	}
 }
 
-impl<T: Transaction> TransformOperator<T> for DistinctOperator {}
+impl TransformOperator for DistinctOperator {}
 
-impl<T: Transaction> RawStatefulOperator<T> for DistinctOperator {}
+impl RawStatefulOperator for DistinctOperator {}
 
-impl<T: Transaction> SingleStateful<T> for DistinctOperator {
+impl SingleStateful for DistinctOperator {
 	fn layout(&self) -> EncodedValuesLayout {
 		self.layout.clone()
 	}
 }
 
-impl<T: Transaction> Operator<T> for DistinctOperator {
+impl Operator for DistinctOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {

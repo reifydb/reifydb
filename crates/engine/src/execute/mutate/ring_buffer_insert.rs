@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
-	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, Transaction},
+	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource},
 	return_error,
 	value::{column::Columns, encoded::EncodedValuesLayout},
 };
@@ -19,9 +19,9 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn insert_ring_buffer<'a, T: Transaction>(
+	pub(crate) fn insert_ring_buffer<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: InsertRingBufferNode<'a>,
 		params: Params,
 	) -> crate::Result<Columns<'a>> {

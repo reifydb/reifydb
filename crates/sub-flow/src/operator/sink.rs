@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, FlowNodeId, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId, Transaction,
+	EncodableKey, FlowNodeId, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
@@ -25,14 +25,14 @@ impl SinkViewOperator {
 	}
 }
 
-impl<T: Transaction> Operator<T> for SinkViewOperator {
+impl Operator for SinkViewOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {

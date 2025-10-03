@@ -3,10 +3,10 @@
 
 use reifydb_core::{
 	SortKey,
-	interface::{Params, TableVirtualDef, Transaction, expression::Expression},
+	interface::{Params, TableVirtualDef, expression::Expression},
 };
 
-use crate::{StandardTransaction, execute::Batch};
+use crate::{execute::Batch, transaction::StandardTransaction};
 
 pub(crate) mod system;
 
@@ -32,17 +32,13 @@ pub enum TableVirtualContext<'a> {
 }
 
 /// Trait for virtual table instances that follow the volcano iterator pattern
-pub trait TableVirtual<'a, T: Transaction>: Send + Sync {
+pub trait TableVirtual<'a>: Send + Sync {
 	/// Initialize the virtual table iterator with context
 	/// Called once before iteration begins
-	fn initialize(
-		&mut self,
-		txn: &mut StandardTransaction<'a, T>,
-		ctx: TableVirtualContext<'a>,
-	) -> crate::Result<()>;
+	fn initialize(&mut self, txn: &mut StandardTransaction<'a>, ctx: TableVirtualContext<'a>) -> crate::Result<()>;
 
 	/// Get the next batch of results (volcano iterator pattern)
-	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>>;
+	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>>;
 
 	/// Get the table definition
 	fn definition(&self) -> &TableVirtualDef;

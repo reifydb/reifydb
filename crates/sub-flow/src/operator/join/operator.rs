@@ -6,7 +6,7 @@ use bincode::{
 };
 use reifydb_core::{
 	EncodedKey, Error, JoinType, Row,
-	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
+	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, expression::Expression},
 	util::encoding::keycode::KeySerializer,
 	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
 };
@@ -130,9 +130,9 @@ impl JoinOperator {
 	}
 
 	/// Generate a encoded number for an unmatched left join encoded
-	pub(crate) fn unmatched_left_row<T: Transaction>(
+	pub(crate) fn unmatched_left_row(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		left: &Row,
 	) -> crate::Result<Row> {
 		let mut serializer = KeySerializer::new();
@@ -142,7 +142,7 @@ impl JoinOperator {
 
 		// Get or create a unique encoded number for this unmatched encoded
 		let (result_row_number, _is_new) =
-			self.row_number_provider.get_or_create_row_number(txn, self, &composite_key)?;
+			self.row_number_provider.get_or_create_row_number::<JoinOperator>(txn, self, &composite_key)?;
 
 		Ok(Row {
 			number: result_row_number,
@@ -153,9 +153,9 @@ impl JoinOperator {
 
 	/// Clean up all join results for a given left encoded
 	/// This removes both matched and unmatched join results
-	pub(crate) fn cleanup_left_row_joins<T: Transaction>(
+	pub(crate) fn cleanup_left_row_joins(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		left_number: u64,
 	) -> crate::Result<()> {
 		let mut serializer = KeySerializer::new();
@@ -164,12 +164,12 @@ impl JoinOperator {
 		let prefix = serializer.finish();
 
 		// Remove all mappings with this prefix
-		self.row_number_provider.remove_by_prefix(txn, self, &prefix)
+		self.row_number_provider.remove_by_prefix::<JoinOperator>(txn, self, &prefix)
 	}
 
-	pub(crate) fn join_rows<T: Transaction>(
+	pub(crate) fn join_rows(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		left: &Row,
 		right: &Row,
 	) -> crate::Result<Row> {
@@ -251,7 +251,7 @@ impl JoinOperator {
 		})
 	}
 
-	fn load_schema<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<Schema> {
+	fn load_schema(&self, txn: &mut StandardCommandTransaction) -> crate::Result<Schema> {
 		// Load schema from a special key (empty key)
 		let schema_key = EncodedKey::new(vec![0x00]); // Special key for schema
 		match state_get(self.node, txn, &schema_key)? {
@@ -270,11 +270,7 @@ impl JoinOperator {
 		}
 	}
 
-	fn save_schema<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		schema: &Schema,
-	) -> crate::Result<()> {
+	fn save_schema(&self, txn: &mut StandardCommandTransaction, schema: &Schema) -> crate::Result<()> {
 		// Save schema to a special key (empty key)
 		let schema_key = EncodedKey::new(vec![0x00]); // Special key for schema
 
@@ -307,24 +303,24 @@ impl JoinOperator {
 	}
 }
 
-impl<T: Transaction> TransformOperator<T> for JoinOperator {}
+impl TransformOperator for JoinOperator {}
 
-impl<T: Transaction> RawStatefulOperator<T> for JoinOperator {}
+impl RawStatefulOperator for JoinOperator {}
 
-impl<T: Transaction> SingleStateful<T> for JoinOperator {
+impl SingleStateful for JoinOperator {
 	fn layout(&self) -> EncodedValuesLayout {
 		self.layout.clone()
 	}
 }
 
-impl<T: Transaction> Operator<T> for JoinOperator {
+impl Operator for JoinOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {

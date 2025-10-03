@@ -4,14 +4,14 @@
 use OperationType::{Create, Update};
 use reifydb_catalog::transaction::CatalogTrackRingBufferChangeOperations;
 use reifydb_core::interface::{
-	Change, NamespaceId, OperationType, OperationType::Delete, RingBufferDef, RingBufferId, Transaction,
+	Change, NamespaceId, OperationType, OperationType::Delete, RingBufferDef, RingBufferId,
 	TransactionalRingBufferChanges,
 };
 use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
-impl<T: Transaction> CatalogTrackRingBufferChangeOperations for StandardCommandTransaction<T> {
+impl CatalogTrackRingBufferChangeOperations for StandardCommandTransaction {
 	fn track_ring_buffer_def_created(&mut self, ring_buffer: RingBufferDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: None,
@@ -47,7 +47,7 @@ impl<T: Transaction> CatalogTrackRingBufferChangeOperations for StandardCommandT
 	}
 }
 
-impl<T: Transaction> TransactionalRingBufferChanges for StandardCommandTransaction<T> {
+impl TransactionalRingBufferChanges for StandardCommandTransaction {
 	fn find_ring_buffer(&self, id: RingBufferId) -> Option<&RingBufferDef> {
 		// Find the last change for this ring buffer ID
 		for change in self.changes.ring_buffer_def.iter().rev() {
@@ -113,7 +113,7 @@ impl<T: Transaction> TransactionalRingBufferChanges for StandardCommandTransacti
 	}
 }
 
-impl<T: Transaction> TransactionalRingBufferChanges for StandardQueryTransaction<T> {
+impl TransactionalRingBufferChanges for StandardQueryTransaction {
 	fn find_ring_buffer(&self, _id: RingBufferId) -> Option<&RingBufferDef> {
 		None
 	}

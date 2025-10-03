@@ -12,7 +12,7 @@ use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	Result,
 	interface::{
-		CdcConsumerId, Transaction,
+		CdcConsumerId,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
@@ -23,7 +23,7 @@ use reifydb_sub_api::{HealthStatus, Priority, Subsystem};
 use self::consumer::FlowConsumer;
 use crate::builder::OperatorFactory;
 
-pub struct FlowSubsystemConfig<T: Transaction> {
+pub struct FlowSubsystemConfig {
 	/// Unique identifier for this consumer
 	pub consumer_id: CdcConsumerId,
 	/// How often to poll for new CDC events
@@ -31,17 +31,17 @@ pub struct FlowSubsystemConfig<T: Transaction> {
 	/// Priority for the polling task in the worker pool
 	pub priority: Priority,
 	/// Custom operator factories
-	pub operators: Vec<(String, OperatorFactory<T>)>,
+	pub operators: Vec<(String, OperatorFactory)>,
 }
 
-pub struct FlowSubsystem<T: Transaction> {
-	consumer: PollConsumer<T, FlowConsumer<T>>,
+pub struct FlowSubsystem {
+	consumer: PollConsumer<FlowConsumer>,
 	running: bool,
 }
 
-impl<T: Transaction> FlowSubsystem<T> {
-	pub fn new(cfg: FlowSubsystemConfig<T>, ioc: &IocContainer) -> Result<Self> {
-		let engine = ioc.resolve::<StandardEngine<T>>()?;
+impl FlowSubsystem {
+	pub fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
+		let engine = ioc.resolve::<StandardEngine>()?;
 
 		let consumer = FlowConsumer::new(engine.clone(), cfg.operators);
 
@@ -56,13 +56,13 @@ impl<T: Transaction> FlowSubsystem<T> {
 	}
 }
 
-impl<T: Transaction> Drop for FlowSubsystem<T> {
+impl Drop for FlowSubsystem {
 	fn drop(&mut self) {
 		let _ = self.shutdown();
 	}
 }
 
-impl<T: Transaction> Subsystem for FlowSubsystem<T> {
+impl Subsystem for FlowSubsystem {
 	fn name(&self) -> &'static str {
 		"Flow"
 	}
@@ -109,7 +109,7 @@ impl<T: Transaction> Subsystem for FlowSubsystem<T> {
 	}
 }
 
-impl<T: Transaction> HasVersion for FlowSubsystem<T> {
+impl HasVersion for FlowSubsystem {
 	fn version(&self) -> SystemVersion {
 		SystemVersion {
 			name: "sub-flow".to_string(),

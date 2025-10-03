@@ -4,7 +4,7 @@
 use reifydb_type::RowNumber;
 
 use crate::{
-	CommitVersion,
+	CommitVersion, TransactionId,
 	interceptor::{
 		Chain, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
 		NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor, PostCommitInterceptor,
@@ -17,7 +17,7 @@ use crate::{
 		ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
 	},
 	interface::{
-		CommandTransaction, NamespaceDef, RingBufferDef, TableDef, TransactionId, ViewDef,
+		CommandTransaction, NamespaceDef, RingBufferDef, TableDef, ViewDef,
 		transaction::change::TransactionalDefChanges,
 	},
 	value::encoded::EncodedValues,

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{interface::Transaction, value::column::headers::ColumnHeaders};
+use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_type::Fragment;
 
 use crate::{
@@ -12,16 +12,16 @@ use crate::{
 	table_virtual::{TableVirtual, TableVirtualContext},
 };
 
-pub(crate) struct VirtualScanNode<'a, T: Transaction> {
-	virtual_table: Box<dyn TableVirtual<'a, T>>,
+pub(crate) struct VirtualScanNode<'a> {
+	virtual_table: Box<dyn TableVirtual<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	headers: ColumnHeaders<'a>,
 	table_context: Option<TableVirtualContext<'a>>,
 }
 
-impl<'a, T: Transaction> VirtualScanNode<'a, T> {
+impl<'a> VirtualScanNode<'a> {
 	pub fn new(
-		virtual_table: Box<dyn TableVirtual<'a, T>>,
+		virtual_table: Box<dyn TableVirtual<'a>>,
 		context: Arc<ExecutionContext<'a>>,
 		table_context: TableVirtualContext<'a>,
 	) -> crate::Result<Self> {
@@ -40,12 +40,8 @@ impl<'a, T: Transaction> VirtualScanNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for VirtualScanNode<'a, T> {
-	fn initialize(
-		&mut self,
-		rx: &mut StandardTransaction<'a, T>,
-		_ctx: &ExecutionContext<'a>,
-	) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for VirtualScanNode<'a> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		let ctx = self.table_context.take().unwrap_or_else(|| TableVirtualContext::Basic {
 			params: self.context.as_ref().unwrap().params.clone(),
 		});
@@ -53,7 +49,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for VirtualScanNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
 		self.virtual_table.next(rx)
 	}

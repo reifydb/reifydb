@@ -2,16 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogStore, view::ViewToCreate};
-use reifydb_core::{interface::Transaction, return_error, value::column::Columns};
+use reifydb_core::{return_error, value::column::Columns};
 use reifydb_rql::plan::physical::CreateTransactionalViewNode;
 use reifydb_type::{Value, diagnostic::catalog::view_already_exists};
 
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_transactional_view<'a, T: Transaction>(
+	pub(crate) fn create_transactional_view<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: CreateTransactionalViewNode,
 	) -> crate::Result<Columns<'a>> {
 		if let Some(view) = CatalogStore::find_view_by_name(txn, plan.namespace.id, plan.view.text())? {

@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_core::interface::{IndexId, NamespaceId, Transaction};
+use reifydb_core::interface::{IndexId, NamespaceId};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
 
 use crate::{
@@ -35,11 +35,11 @@ use crate::{
 	},
 };
 
-pub(crate) fn compile<'a, T: Transaction>(
+pub(crate) fn compile<'a>(
 	plan: PhysicalPlan<'a>,
-	rx: &mut StandardTransaction<'a, T>,
+	rx: &mut StandardTransaction<'a>,
 	context: Arc<ExecutionContext<'a>>,
-) -> ExecutionPlan<'a, T> {
+) -> ExecutionPlan<'a> {
 	match plan {
 		PhysicalPlan::Aggregate(physical::AggregateNode {
 			by,
@@ -166,7 +166,7 @@ pub(crate) fn compile<'a, T: Transaction>(
 			// Create the appropriate virtual table implementation
 			let namespace = node.source.namespace().def();
 			let table = node.source.def();
-			let virtual_table_impl: Box<dyn TableVirtual<T>> = if namespace.id == NamespaceId(1) {
+			let virtual_table_impl: Box<dyn TableVirtual> = if namespace.id == NamespaceId(1) {
 				match table.name.as_str() {
 					"sequences" => Box::new(Sequences::new()),
 					"namespaces" => Box::new(Namespaces::new()),

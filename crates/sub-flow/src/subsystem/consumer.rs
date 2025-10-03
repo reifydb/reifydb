@@ -9,7 +9,6 @@ use reifydb_core::{
 	CommitVersion, Result, Row,
 	interface::{
 		Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, QueryTransaction, SourceId,
-		Transaction,
 	},
 	util::CowVec,
 	value::encoded::EncodedValues,
@@ -31,13 +30,13 @@ use crate::{
 const FLOWS_TABLE_ID: u64 = 1025;
 
 /// Consumer that processes CDC events for Flow subsystem
-pub struct FlowConsumer<T: Transaction> {
-	engine: StandardEngine<T>,
-	operators: Vec<(String, OperatorFactory<T>)>,
+pub struct FlowConsumer {
+	engine: StandardEngine,
+	operators: Vec<(String, OperatorFactory)>,
 }
 
-impl<T: Transaction> FlowConsumer<T> {
-	pub fn new(engine: StandardEngine<T>, operators: Vec<(String, OperatorFactory<T>)>) -> Self {
+impl FlowConsumer {
+	pub fn new(engine: StandardEngine, operators: Vec<(String, OperatorFactory)>) -> Self {
 		Self {
 			engine,
 			operators,
@@ -46,7 +45,7 @@ impl<T: Transaction> FlowConsumer<T> {
 
 	/// Helper method to convert encoded bytes to Row format
 	fn to_row(
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		source: SourceId,
 		row_number: RowNumber,
 		row_bytes: Vec<u8>,
@@ -110,7 +109,7 @@ impl<T: Transaction> FlowConsumer<T> {
 
 	fn process_all_changes(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		version: CommitVersion,
 		changes: Vec<(SourceId, Change)>,
 	) -> Result<()> {
@@ -184,8 +183,8 @@ impl<T: Transaction> FlowConsumer<T> {
 	}
 }
 
-impl<T: Transaction> CdcConsume<T> for FlowConsumer<T> {
-	fn consume(&self, txn: &mut StandardCommandTransaction<T>, cdcs: Vec<Cdc>) -> Result<()> {
+impl CdcConsume for FlowConsumer {
+	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
 		// Collect ALL changes first
 		let mut all_changes = Vec::new();
 		let mut version = CommitVersion(0);

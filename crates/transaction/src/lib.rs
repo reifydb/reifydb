@@ -5,6 +5,7 @@
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
+pub mod cdc;
 pub mod multi;
 pub mod single;
 

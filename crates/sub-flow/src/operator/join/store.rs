@@ -1,12 +1,10 @@
-use std::marker::PhantomData;
-
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
 	EncodedKey, Error,
-	interface::{FlowNodeId, Transaction},
+	interface::{CommandTransaction, FlowNodeId},
 	value::encoded::EncodedValuesLayout,
 };
 use reifydb_engine::StandardCommandTransaction;
@@ -17,13 +15,12 @@ use super::{JoinSide, JoinSideEntry};
 use crate::operator::stateful::{state_get, state_remove, state_set};
 
 /// A key-value store backed by the stateful storage system
-pub(crate) struct Store<T> {
+pub(crate) struct Store {
 	node_id: FlowNodeId,
 	prefix: Vec<u8>,
-	_phantom: PhantomData<T>,
 }
 
-impl Store<JoinSideEntry> {
+impl Store {
 	pub(crate) fn new(node_id: FlowNodeId, side: JoinSide) -> Self {
 		// Use different prefixes for left and right stores
 		let prefix = match side {
@@ -33,7 +30,6 @@ impl Store<JoinSideEntry> {
 		Self {
 			node_id,
 			prefix,
-			_phantom: PhantomData,
 		}
 	}
 
@@ -44,9 +40,9 @@ impl Store<JoinSideEntry> {
 		reifydb_core::EncodedKey::new(key_bytes)
 	}
 
-	pub(crate) fn get<T: Transaction>(
+	pub(crate) fn get(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		hash: &Hash128,
 	) -> crate::Result<Option<JoinSideEntry>> {
 		let key = self.make_key(hash);
@@ -69,9 +65,9 @@ impl Store<JoinSideEntry> {
 		}
 	}
 
-	pub(crate) fn set<T: Transaction>(
+	pub(crate) fn set(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		hash: &Hash128,
 		entry: &JoinSideEntry,
 	) -> crate::Result<()> {
@@ -92,28 +88,20 @@ impl Store<JoinSideEntry> {
 		Ok(())
 	}
 
-	pub(crate) fn contains_key<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		hash: &Hash128,
-	) -> crate::Result<bool> {
+	pub(crate) fn contains_key(&self, txn: &mut StandardCommandTransaction, hash: &Hash128) -> crate::Result<bool> {
 		let key = self.make_key(hash);
 		Ok(state_get(self.node_id, txn, &key)?.is_some())
 	}
 
-	pub(crate) fn remove<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		hash: &Hash128,
-	) -> crate::Result<()> {
+	pub(crate) fn remove(&self, txn: &mut StandardCommandTransaction, hash: &Hash128) -> crate::Result<()> {
 		let key = self.make_key(hash);
 		state_remove(self.node_id, txn, &key)?;
 		Ok(())
 	}
 
-	pub(crate) fn get_or_insert_with<T: Transaction, F>(
+	pub(crate) fn get_or_insert_with<T: CommandTransaction, F>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		hash: &Hash128,
 		f: F,
 	) -> crate::Result<JoinSideEntry>
@@ -129,9 +117,9 @@ impl Store<JoinSideEntry> {
 		}
 	}
 
-	pub(crate) fn update_entry<T: Transaction, F>(
+	pub(crate) fn update_entry<T: CommandTransaction, F>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		hash: &Hash128,
 		f: F,
 	) -> crate::Result<()>
@@ -165,11 +153,7 @@ impl UndefinedTracker {
 		EncodedKey::new(key_bytes)
 	}
 
-	pub(crate) fn insert<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		row_number: RowNumber,
-	) -> crate::Result<()> {
+	pub(crate) fn insert(&self, txn: &mut StandardCommandTransaction, row_number: RowNumber) -> crate::Result<()> {
 		let key = self.make_key(row_number);
 		// Store a simple marker (boolean true)
 		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
@@ -179,9 +163,9 @@ impl UndefinedTracker {
 		Ok(())
 	}
 
-	pub(crate) fn remove<T: Transaction>(
+	pub(crate) fn remove(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		row_number: RowNumber,
 	) -> crate::Result<bool> {
 		let key = self.make_key(row_number);
@@ -193,9 +177,9 @@ impl UndefinedTracker {
 		Ok(exists)
 	}
 
-	pub(crate) fn contains<T: Transaction>(
+	pub(crate) fn contains(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		row_number: RowNumber,
 	) -> crate::Result<bool> {
 		let key = self.make_key(row_number);

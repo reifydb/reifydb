@@ -8,25 +8,25 @@ use reifydb_store_transaction::backend::sqlite::SqliteConfig;
 use crate::{ServerBuilder, memory, optimistic, serializable, sqlite};
 
 pub fn memory_optimistic() -> ServerBuilder {
-	let (storage, single, cdc, eventbus) = memory();
-	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
-	ServerBuilder::new(multi, single, cdc, eventbus)
+	let (store, single, cdc, bus) = memory();
+	let (multi, single, cdc, bus) = optimistic((store, single, cdc, bus));
+	ServerBuilder::new(multi, single, cdc, bus)
 }
 
 pub fn memory_serializable() -> ServerBuilder {
-	let (storage, single, cdc, eventbus) = memory();
-	let (multi, _, _, _) = serializable((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
-	ServerBuilder::new(multi, single, cdc, eventbus)
+	let (store, single, cdc, bus) = memory();
+	let (multi, single, cdc, bus) = serializable((store, single, cdc, bus));
+	ServerBuilder::new(multi, single, cdc, bus)
 }
 
 pub fn sqlite_optimistic(config: SqliteConfig) -> ServerBuilder {
-	let (storage, single, cdc, eventbus) = sqlite(config);
-	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
-	ServerBuilder::new(multi, single, cdc, eventbus)
+	let (store, single, cdc, bus) = sqlite(config);
+	let (multi, single, cdc, bus) = optimistic((store, single, cdc, bus));
+	ServerBuilder::new(multi, single, cdc, bus)
 }
 
 pub fn sqlite_serializable(config: SqliteConfig) -> ServerBuilder {
-	let (storage, single, cdc, eventbus) = sqlite(config);
-	let (multi, _, _, _) = serializable((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
-	ServerBuilder::new(multi, single, cdc, eventbus)
+	let (store, single, cdc, bus) = sqlite(config);
+	let (multi, single, cdc, bus) = serializable((store, single, cdc, bus));
+	ServerBuilder::new(multi, single, cdc, bus)
 }

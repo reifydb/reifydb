@@ -3,6 +3,9 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+use reifydb_type::Result;
+
 mod engine;
 mod evaluate;
 pub mod execute;
@@ -15,12 +18,7 @@ pub mod transaction;
 
 pub use engine::StandardEngine;
 pub use evaluate::{column::StandardColumnEvaluator, row::StandardRowEvaluator};
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
-pub use reifydb_type::Result;
-pub use transaction::{
-	EngineTransaction, StandardCdcQueryTransaction, StandardCommandTransaction, StandardQueryTransaction,
-	StandardTransaction, TransactionCdc,
-};
+pub use transaction::{StandardCommandTransaction, StandardQueryTransaction, StandardTransaction};
 
 pub struct EngineVersion;
 

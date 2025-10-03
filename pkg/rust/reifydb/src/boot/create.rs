@@ -3,24 +3,24 @@
 
 use reifydb_core::{
 	event::{EventListener, lifecycle::OnCreateEvent},
-	interface::{Engine as EngineInterface, Identity, Params, Transaction},
+	interface::{Engine as EngineInterface, Identity, Params},
 	log_error,
 };
 use reifydb_engine::StandardEngine;
 
-pub(crate) struct CreateEventListener<T: Transaction> {
-	engine: StandardEngine<T>,
+pub(crate) struct CreateEventListener {
+	engine: StandardEngine,
 }
 
-impl<T: Transaction> CreateEventListener<T> {
-	pub(crate) fn new(engine: StandardEngine<T>) -> Self {
+impl CreateEventListener {
+	pub(crate) fn new(engine: StandardEngine) -> Self {
 		Self {
 			engine,
 		}
 	}
 }
 
-impl<T: Transaction> EventListener<OnCreateEvent> for CreateEventListener<T> {
+impl EventListener<OnCreateEvent> for CreateEventListener {
 	fn on(&self, _event: &OnCreateEvent) {
 		if let Err(e) = self.engine.command_as(
 			&Identity::root(),

@@ -3,7 +3,7 @@
 
 use std::io::{Read, Write};
 
-use reifydb_core::interface::{Engine, Identity, Params, Transaction};
+use reifydb_core::interface::{Engine, Identity, Params};
 use reifydb_type::diagnostic::Diagnostic;
 
 use super::{HttpConnectionData, HttpState, command::handle_v1_command, query::handle_v1_query};
@@ -89,7 +89,7 @@ impl HttpHandler {
 	}
 
 	/// Handle query execution for HTTP requests
-	fn handle_query<T: Transaction>(&self, conn: &Connection<T>, query: &str) -> Result<String, String> {
+	fn handle_query(&self, conn: &Connection, query: &str) -> Result<String, String> {
 		match conn.engine().query_as(
 			&Identity::System {
 				id: 1,
@@ -117,7 +117,7 @@ impl HttpHandler {
 	}
 }
 
-impl<T: Transaction> ProtocolHandler<T> for HttpHandler {
+impl ProtocolHandler for HttpHandler {
 	fn name(&self) -> &'static str {
 		"http"
 	}
@@ -137,14 +137,14 @@ impl<T: Transaction> ProtocolHandler<T> for HttpHandler {
 			|| request.starts_with("OPTIONS ")
 	}
 
-	fn handle_connection(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_connection(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		// Initialize HTTP state
 		let http_state = HttpState::ReadingRequest(HttpConnectionData::new());
 		conn.set_state(crate::core::ConnectionState::Http(http_state));
 		Ok(())
 	}
 
-	fn handle_read(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_read(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		if let crate::core::ConnectionState::Http(http_state) = conn.state() {
 			match http_state {
 				HttpState::ReadingRequest(_) => self.handle_request_read(conn),
@@ -161,7 +161,7 @@ impl<T: Transaction> ProtocolHandler<T> for HttpHandler {
 		}
 	}
 
-	fn handle_write(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_write(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		if let crate::core::ConnectionState::Http(http_state) = conn.state() {
 			match http_state {
 				HttpState::ReadingRequest(_) => {
@@ -178,7 +178,7 @@ impl<T: Transaction> ProtocolHandler<T> for HttpHandler {
 		}
 	}
 
-	fn should_close(&self, conn: &Connection<T>) -> bool {
+	fn should_close(&self, conn: &Connection) -> bool {
 		matches!(
 			conn.state(),
 			crate::core::ConnectionState::Http(HttpState::Closed) | crate::core::ConnectionState::Closed
@@ -187,7 +187,7 @@ impl<T: Transaction> ProtocolHandler<T> for HttpHandler {
 }
 
 impl HttpHandler {
-	fn handle_request_read<T: Transaction>(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_request_read(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		println!("HttpHandler: handle_request_read called, buffer has {} bytes", conn.buffer().len());
 
 		// Check if we already found headers and are waiting for body
@@ -272,7 +272,7 @@ impl HttpHandler {
 		Ok(())
 	}
 
-	fn handle_response_write<T: Transaction>(&self, conn: &mut Connection<T>) -> ProtocolResult<()> {
+	fn handle_response_write(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		// Extract response data to avoid borrowing conflicts
 		let (response_data, bytes_written, keep_alive) =
 			if let crate::core::ConnectionState::Http(HttpState::WritingResponse(data)) = conn.state() {
@@ -331,11 +331,7 @@ impl HttpHandler {
 	}
 
 	/// Process a complete HTTP request
-	fn process_http_request<T: Transaction>(
-		&self,
-		conn: &mut Connection<T>,
-		header_end: usize,
-	) -> ProtocolResult<()> {
+	fn process_http_request(&self, conn: &mut Connection, header_end: usize) -> ProtocolResult<()> {
 		// Parse the request
 		let (method, path, headers) = self
 			.parse_request(&conn.buffer()[..header_end])

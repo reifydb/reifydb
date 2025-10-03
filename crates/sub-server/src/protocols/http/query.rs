@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{Engine, Identity, Transaction};
+use reifydb_core::interface::{Engine, Identity};
 use reifydb_type::diagnostic::Diagnostic;
 
 use crate::{
@@ -13,10 +13,7 @@ use crate::{
 };
 
 /// Handle /v1/query endpoint
-pub fn handle_v1_query<T: Transaction>(
-	conn: &Connection<T>,
-	query_req: &QueryRequest,
-) -> Result<QueryResponse, ErrResponse> {
+pub fn handle_v1_query(conn: &Connection, query_req: &QueryRequest) -> Result<QueryResponse, ErrResponse> {
 	let mut all_frames = Vec::new();
 
 	for statement in &query_req.statements {

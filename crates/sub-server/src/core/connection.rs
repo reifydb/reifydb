@@ -4,7 +4,6 @@
 use std::{net::SocketAddr, time::Instant};
 
 use mio::{Interest, Token, net::TcpStream};
-use reifydb_core::interface::Transaction;
 use reifydb_engine::StandardEngine;
 
 use crate::protocols::{http::HttpState, ws::WsState};
@@ -28,19 +27,19 @@ pub enum ConnectionState {
 }
 
 /// Generic connection wrapper that can handle multiple protocols
-pub struct Connection<T: Transaction> {
+pub struct Connection {
 	stream: TcpStream,
 	peer: SocketAddr,
 	token: Token,
 	state: ConnectionState,
-	engine: StandardEngine<T>,
+	engine: StandardEngine,
 	created_at: Instant,
 	last_activity: Instant,
 	buffer: Vec<u8>,
 }
 
-impl<T: Transaction> Connection<T> {
-	pub fn new(stream: TcpStream, peer: SocketAddr, token: Token, engine: StandardEngine<T>) -> Self {
+impl Connection {
+	pub fn new(stream: TcpStream, peer: SocketAddr, token: Token, engine: StandardEngine) -> Self {
 		let now = Instant::now();
 		Self {
 			stream,
@@ -80,7 +79,7 @@ impl<T: Transaction> Connection<T> {
 		self.last_activity = Instant::now();
 	}
 
-	pub fn engine(&self) -> &StandardEngine<T> {
+	pub fn engine(&self) -> &StandardEngine {
 		&self.engine
 	}
 

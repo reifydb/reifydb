@@ -5,7 +5,7 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 };
-use reifydb_engine::{EngineTransaction, StandardCommandTransaction, TransactionCdc};
+use reifydb_engine::StandardCommandTransaction;
 #[cfg(feature = "sub_admin")]
 use reifydb_sub_admin::{AdminConfig, AdminSubsystemFactory};
 use reifydb_sub_api::SubsystemFactory;
@@ -17,7 +17,7 @@ use reifydb_sub_logging::LoggingBuilder;
 use reifydb_sub_server::{ServerConfig, ServerSubsystemFactory};
 #[cfg(feature = "sub_worker")]
 use reifydb_sub_worker::WorkerBuilder;
-use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
 use super::{DatabaseBuilder, traits::WithSubsystem};
 use crate::Database;
@@ -28,49 +28,14 @@ pub struct ServerBuilder {
 	single: TransactionSingleVersion,
 	cdc: TransactionCdc,
 	eventbus: EventBus,
-	interceptors: StandardInterceptorBuilder<
-		StandardCommandTransaction<
-			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-		>,
-	>,
-	subsystem_factories: Vec<
-		Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			>,
-		>,
-	>,
+	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
+	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_logging")]
 	logging_configurator: Option<Box<dyn FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_worker")]
 	worker_configurator: Option<Box<dyn FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
-	flow_configurator: Option<
-		Box<
-			dyn FnOnce(
-					FlowBuilder<
-						EngineTransaction<
-							TransactionMultiVersion,
-							TransactionSingleVersion,
-							TransactionCdc,
-						>,
-					>,
-				) -> FlowBuilder<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				> + Send
-				+ 'static,
-		>,
-	>,
+	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
 }
 
 #[cfg(feature = "sub_server")]
@@ -99,18 +64,7 @@ impl ServerBuilder {
 
 	pub fn intercept<I>(mut self, interceptor: I) -> Self
 	where
-		I: RegisterInterceptor<
-				StandardCommandTransaction<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			> + Send
-			+ Sync
-			+ Clone
-			+ 'static,
+		I: RegisterInterceptor<StandardCommandTransaction> + Send + Sync + Clone + 'static,
 	{
 		self.interceptors = self.interceptors.add_factory(move |interceptors| {
 			interceptors.register(interceptor.clone());
@@ -162,9 +116,7 @@ impl ServerBuilder {
 }
 
 #[cfg(feature = "sub_server")]
-impl WithSubsystem<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>
-	for ServerBuilder
-{
+impl WithSubsystem for ServerBuilder {
 	#[cfg(feature = "sub_logging")]
 	fn with_logging<F>(mut self, configurator: F) -> Self
 	where
@@ -177,18 +129,7 @@ impl WithSubsystem<EngineTransaction<TransactionMultiVersion, TransactionSingleV
 	#[cfg(feature = "sub_flow")]
 	fn with_flow<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(
-				FlowBuilder<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			) -> FlowBuilder<
-				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-			> + Send
-			+ 'static,
+		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static,
 	{
 		self.flow_configurator = Some(Box::new(configurator));
 		self
@@ -203,20 +144,7 @@ impl WithSubsystem<EngineTransaction<TransactionMultiVersion, TransactionSingleV
 		self
 	}
 
-	fn with_subsystem(
-		mut self,
-		factory: Box<
-			dyn SubsystemFactory<
-				StandardCommandTransaction<
-					EngineTransaction<
-						TransactionMultiVersion,
-						TransactionSingleVersion,
-						TransactionCdc,
-					>,
-				>,
-			>,
-		>,
-	) -> Self {
+	fn with_subsystem(mut self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self {
 		self.subsystem_factories.push(factory);
 		self
 	}

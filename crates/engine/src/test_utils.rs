@@ -8,43 +8,38 @@ use reifydb_catalog::{
 };
 use reifydb_core::{event::EventBus, interceptor::Interceptors};
 use reifydb_store_transaction::TransactionStore;
+pub use reifydb_transaction::multi::{TransactionMultiVersion, transaction::serializable::TransactionSerializable};
 use reifydb_transaction::{
-	multi::transaction::serializable::TransactionSerializable,
+	cdc::TransactionCdc,
 	single::{TransactionSingleVersion, TransactionSvl},
 };
 use reifydb_type::{Type, TypeConstraint};
 
-use crate::{EngineTransaction, StandardCommandTransaction, transaction::TransactionCdc};
+use crate::StandardCommandTransaction;
 
-pub fn create_test_command_transaction()
--> StandardCommandTransaction<EngineTransaction<TransactionSerializable, TransactionSvl, TransactionCdc>> {
+pub fn create_test_command_transaction() -> StandardCommandTransaction {
 	let store = TransactionStore::testing_memory();
 
 	let event_bus = EventBus::new();
-	let single = TransactionSvl::new(store.clone(), event_bus.clone());
+	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
+	let single = TransactionSingleVersion::SingleVersionLock(single_svl.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionSerializable::new(
-		store,
-		TransactionSingleVersion::SingleVersionLock(single.clone()),
-		event_bus.clone(),
-	);
+	let multi_serializable = TransactionSerializable::new(store, single.clone(), event_bus.clone());
+	let multi = TransactionMultiVersion::Serializable(multi_serializable);
 
 	StandardCommandTransaction::new(multi, single, cdc, event_bus, MaterializedCatalog::new(), Interceptors::new())
 		.unwrap()
 }
 
-pub fn create_test_command_transaction_with_internal_schema()
--> StandardCommandTransaction<EngineTransaction<TransactionSerializable, TransactionSvl, TransactionCdc>> {
+pub fn create_test_command_transaction_with_internal_schema() -> StandardCommandTransaction {
 	let store = TransactionStore::testing_memory();
 
 	let event_bus = EventBus::new();
-	let single = TransactionSvl::new(store.clone(), event_bus.clone());
+	let single_svl = TransactionSvl::new(store.clone(), event_bus.clone());
+	let single = TransactionSingleVersion::SingleVersionLock(single_svl.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionSerializable::new(
-		store.clone(),
-		TransactionSingleVersion::SingleVersionLock(single.clone()),
-		event_bus.clone(),
-	);
+	let multi_serializable = TransactionSerializable::new(store.clone(), single.clone(), event_bus.clone());
+	let multi = TransactionMultiVersion::Serializable(multi_serializable);
 	let mut result = StandardCommandTransaction::new(
 		multi,
 		single,

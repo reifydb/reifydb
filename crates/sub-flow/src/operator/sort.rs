@@ -1,4 +1,4 @@
-use reifydb_core::interface::{FlowNodeId, Transaction, expression::Expression};
+use reifydb_core::interface::{FlowNodeId, expression::Expression};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
 use crate::{flow::FlowChange, operator::Operator};
@@ -17,14 +17,14 @@ impl SortOperator {
 	}
 }
 
-impl<T: Transaction> Operator<T> for SortOperator {
+impl Operator for SortOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
 	fn apply(
 		&self,
-		_txn: &mut StandardCommandTransaction<T>,
+		_txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {

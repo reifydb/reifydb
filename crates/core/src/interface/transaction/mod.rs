@@ -65,9 +65,3 @@ impl Display for TransactionId {
 		write!(f, "{}", self.0)
 	}
 }
-
-pub trait Transaction: Send + Sync + Clone + 'static {
-	type MultiVersion: MultiVersionTransaction;
-	type SingleVersion: SingleVersionTransaction;
-	type Cdc: CdcTransaction;
-}

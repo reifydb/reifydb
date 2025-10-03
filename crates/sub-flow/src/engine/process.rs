@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::Transaction;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_rql::flow::{
 	Flow, FlowNode,
@@ -13,8 +12,8 @@ use crate::{
 	flow::{FlowChange, FlowChangeOrigin},
 };
 
-impl<T: Transaction> FlowEngine<T> {
-	pub fn process(&self, txn: &mut StandardCommandTransaction<T>, change: FlowChange) -> crate::Result<()> {
+impl FlowEngine {
+	pub fn process(&self, txn: &mut StandardCommandTransaction, change: FlowChange) -> crate::Result<()> {
 		match change.origin {
 			FlowChangeOrigin::External(source) => {
 				if let Some(node_registrations) = self.sources.get(&source) {
@@ -43,7 +42,7 @@ impl<T: Transaction> FlowEngine<T> {
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		node: &FlowNode,
 		change: FlowChange,
 	) -> crate::Result<FlowChange> {
@@ -54,7 +53,7 @@ impl<T: Transaction> FlowEngine<T> {
 
 	fn process_node(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		flow: &Flow,
 		node: &FlowNode,
 		change: FlowChange,

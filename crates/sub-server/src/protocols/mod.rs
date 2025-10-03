@@ -9,7 +9,6 @@ pub mod ws;
 use std::fmt;
 
 pub use http::HttpHandler;
-use reifydb_core::interface::Transaction;
 pub use ws::WebSocketHandler;
 
 use crate::core::Connection;
@@ -60,7 +59,7 @@ impl From<std::io::Error> for ProtocolError {
 }
 
 /// Trait for protocol handlers
-pub trait ProtocolHandler<T: Transaction>: Send + Sync {
+pub trait ProtocolHandler: Send + Sync {
 	/// Protocol name for identification
 	fn name(&self) -> &'static str;
 
@@ -68,14 +67,14 @@ pub trait ProtocolHandler<T: Transaction>: Send + Sync {
 	fn can_handle(&self, buffer: &[u8]) -> bool;
 
 	/// Handle a connection using this protocol
-	fn handle_connection(&self, conn: &mut Connection<T>) -> ProtocolResult<()>;
+	fn handle_connection(&self, conn: &mut Connection) -> ProtocolResult<()>;
 
 	/// Handle readable events for this connection
-	fn handle_read(&self, conn: &mut Connection<T>) -> ProtocolResult<()>;
+	fn handle_read(&self, conn: &mut Connection) -> ProtocolResult<()>;
 
 	/// Handle writable events for this connection
-	fn handle_write(&self, conn: &mut Connection<T>) -> ProtocolResult<()>;
+	fn handle_write(&self, conn: &mut Connection) -> ProtocolResult<()>;
 
 	/// Check if the connection should be closed
-	fn should_close(&self, conn: &Connection<T>) -> bool;
+	fn should_close(&self, conn: &Connection) -> bool;
 }

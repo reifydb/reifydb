@@ -1,16 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use OperationType::{Create, Delete, Update};
 use reifydb_catalog::transaction::CatalogTrackViewChangeOperations;
 use reifydb_core::interface::{
-	Change, NamespaceId, OperationType, Transaction, TransactionalViewChanges, ViewDef, ViewId,
+	Change, NamespaceId,
+	OperationType::{Create, Delete, Update},
+	TransactionalViewChanges, ViewDef, ViewId,
 };
 use reifydb_type::IntoFragment;
 
 use crate::{StandardCommandTransaction, StandardQueryTransaction};
 
-impl<T: Transaction> CatalogTrackViewChangeOperations for StandardCommandTransaction<T> {
+impl CatalogTrackViewChangeOperations for StandardCommandTransaction {
 	fn track_view_def_created(&mut self, view: ViewDef) -> reifydb_core::Result<()> {
 		let change = Change {
 			pre: None,
@@ -42,7 +43,7 @@ impl<T: Transaction> CatalogTrackViewChangeOperations for StandardCommandTransac
 	}
 }
 
-impl<T: Transaction> TransactionalViewChanges for StandardCommandTransaction<T> {
+impl TransactionalViewChanges for StandardCommandTransaction {
 	fn find_view(&self, id: ViewId) -> Option<&ViewDef> {
 		// Find the last change for this view ID
 		for change in self.changes.view_def.iter().rev() {
@@ -88,7 +89,7 @@ impl<T: Transaction> TransactionalViewChanges for StandardCommandTransaction<T> 
 	}
 }
 
-impl<T: Transaction> TransactionalViewChanges for StandardQueryTransaction<T> {
+impl TransactionalViewChanges for StandardQueryTransaction {
 	fn find_view(&self, _id: ViewId) -> Option<&ViewDef> {
 		None
 	}

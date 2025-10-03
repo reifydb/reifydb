@@ -4,19 +4,16 @@
 mod lifecycle;
 
 pub use lifecycle::*;
-use reifydb_core::{
-	event::lifecycle::OnCreateEvent,
-	interface::{Transaction, WithEventBus as _},
-};
+use reifydb_core::{event::lifecycle::OnCreateEvent, interface::WithEventBus as _};
 use reifydb_engine::StandardEngine;
 
-pub trait WithEventBus<T: Transaction> {
-	fn engine(&self) -> &StandardEngine<T>;
+pub trait WithEventBus {
+	fn engine(&self) -> &StandardEngine;
 
 	fn on_create<F>(self, f: F) -> Self
 	where
 		Self: Sized,
-		F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
+		F: Fn(&OnCreateContext) -> crate::Result<()> + Send + Sync + 'static,
 	{
 		let callback = OnCreateEventListener {
 			callback: f,

@@ -3,7 +3,6 @@
 
 use reifydb_core::{
 	EncodedKey,
-	interface::Transaction,
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
@@ -13,7 +12,7 @@ use crate::stateful::RawStatefulOperator;
 
 /// Operator with a single state value (like counters, running sums, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
-pub trait SingleStateful<T: Transaction>: RawStatefulOperator<T> {
+pub trait SingleStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedValuesLayout;
 
@@ -29,19 +28,19 @@ pub trait SingleStateful<T: Transaction>: RawStatefulOperator<T> {
 	}
 
 	/// Load the operator's single state encoded
-	fn load_state(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<EncodedValues> {
+	fn load_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<EncodedValues> {
 		let key = self.key();
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	/// Save the operator's single state encoded
-	fn save_state(&self, txn: &mut StandardCommandTransaction<T>, row: EncodedValues) -> crate::Result<()> {
+	fn save_state(&self, txn: &mut StandardCommandTransaction, row: EncodedValues) -> crate::Result<()> {
 		let key = self.key();
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state with a function
-	fn update_state<F>(&self, txn: &mut StandardCommandTransaction<T>, f: F) -> crate::Result<EncodedValues>
+	fn update_state<F>(&self, txn: &mut StandardCommandTransaction, f: F) -> crate::Result<EncodedValues>
 	where
 		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
 	{
@@ -53,7 +52,7 @@ pub trait SingleStateful<T: Transaction>: RawStatefulOperator<T> {
 	}
 
 	/// Clear state
-	fn clear_state(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<()> {
+	fn clear_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<()> {
 		let key = self.key();
 		utils::state_remove(self.id(), txn, &key)
 	}
@@ -67,7 +66,7 @@ mod tests {
 	use crate::operator::stateful::utils_test::test::*;
 
 	// Extend TestOperator to implement SingleStateful
-	impl SingleStateful<TestTransaction> for TestOperator {
+	impl SingleStateful for TestOperator {
 		fn layout(&self) -> EncodedValuesLayout {
 			self.layout.clone()
 		}

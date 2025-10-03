@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{ResolvedColumn, TargetColumn, Transaction, evaluate::expression::Expression},
+	interface::{ResolvedColumn, TargetColumn, evaluate::expression::Expression},
 	value::column::{Column, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::column_name_from_expression;
@@ -16,15 +16,15 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct MapNode<'a, T: Transaction> {
-	input: Box<ExecutionPlan<'a, T>>,
+pub(crate) struct MapNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
 	expressions: Vec<Expression<'a>>,
 	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
-impl<'a, T: Transaction> MapNode<'a, T> {
-	pub fn new(input: Box<ExecutionPlan<'a, T>>, expressions: Vec<Expression<'a>>) -> Self {
+impl<'a> MapNode<'a> {
+	pub fn new(input: Box<ExecutionPlan<'a>>, expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			input,
 			expressions,
@@ -34,14 +34,14 @@ impl<'a, T: Transaction> MapNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for MapNode<'a> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "MapNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 
@@ -121,35 +121,29 @@ impl<'a, T: Transaction> QueryNode<'a, T> for MapNode<'a, T> {
 	}
 }
 
-pub(crate) struct MapWithoutInputNode<'a, T: Transaction> {
+pub(crate) struct MapWithoutInputNode<'a> {
 	expressions: Vec<Expression<'a>>,
 	headers: Option<ColumnHeaders<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
-	_phantom: PhantomData<T>,
 }
 
-impl<'a, T: Transaction> MapWithoutInputNode<'a, T> {
+impl<'a> MapWithoutInputNode<'a> {
 	pub fn new(expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			expressions,
 			headers: None,
 			context: None,
-			_phantom: PhantomData,
 		}
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for MapWithoutInputNode<'a, T> {
-	fn initialize(
-		&mut self,
-		_rx: &mut StandardTransaction<'a, T>,
-		ctx: &ExecutionContext<'a>,
-	) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for MapWithoutInputNode<'a> {
+	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	fn next(&mut self, _rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, _rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "MapWithoutInputNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 

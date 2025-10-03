@@ -6,9 +6,8 @@ use std::{collections::HashMap, error::Error, fmt::Write, net::ToSocketAddrs};
 use reifydb::{
 	Database, ServerBuilder,
 	core::event::EventBus,
-	engine::TransactionCdc,
 	sub_server::{NetworkConfig, ServerConfig},
-	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, Frame, HttpClient, Params, Value, WsClient};
 use reifydb_testing::testscript::Command;
@@ -17,7 +16,7 @@ pub fn create_server_instance(
 	input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus),
 ) -> Database {
 	let (multi, single, cdc, eventbus) = input;
-	// Use only 1 worker for tests to avoid file descriptor exhaustion
+
 	let network_config = NetworkConfig {
 		workers: Some(1), // Limit to 1 worker for tests
 		..Default::default()

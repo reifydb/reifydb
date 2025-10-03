@@ -3,18 +3,18 @@
 
 use reifydb_catalog::sequence::ColumnSequence;
 use reifydb_core::{
-	interface::{ColumnEvaluationContext, Params, TargetColumn, Transaction, resolved::ResolvedSource},
+	interface::{ColumnEvaluationContext, Params, TargetColumn, resolved::ResolvedSource},
 	value::column::Columns,
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
 use reifydb_type::{Value, diagnostic::sequence::can_not_alter_not_auto_increment, return_error};
 
-use crate::{StandardCommandTransaction, evaluate::column::evaluate, execute::Executor};
+use crate::{evaluate::column::evaluate, execute::Executor, transaction::StandardCommandTransaction};
 
 impl Executor {
-	pub(crate) fn alter_table_sequence<'a, T: Transaction>(
+	pub(crate) fn alter_table_sequence<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: AlterSequenceNode,
 	) -> crate::Result<Columns<'a>> {
 		// let namespace_name = plan.sequence.namespace().name();

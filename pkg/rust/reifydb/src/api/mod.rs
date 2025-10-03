@@ -4,7 +4,6 @@
 use std::time::Duration;
 
 use reifydb_core::event::EventBus;
-use reifydb_engine::TransactionCdc;
 use reifydb_store_transaction::{
 	BackendConfig, TransactionStore, TransactionStoreConfig,
 	backend::{
@@ -16,7 +15,7 @@ use reifydb_store_transaction::{
 		sqlite::{SqliteBackend, SqliteConfig},
 	},
 };
-use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
 pub mod embedded;
 
@@ -82,12 +81,14 @@ pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingleVersi
 pub fn optimistic(
 	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
 ) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
-	(TransactionMultiVersion::optimistic(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
+	let multi = TransactionMultiVersion::optimistic(input.0, input.1.clone(), input.3.clone());
+	(multi, input.1, input.2, input.3)
 }
 
 /// Convenience function to create a serializable transaction layer
 pub fn serializable(
 	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
 ) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
-	(TransactionMultiVersion::serializable(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
+	let multi = TransactionMultiVersion::serializable(input.0, input.1.clone(), input.3.clone());
+	(multi, input.1, input.2, input.3)
 }

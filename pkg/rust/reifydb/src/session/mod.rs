@@ -18,19 +18,19 @@ pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::{
 	Frame,
-	interface::{Engine as EngineInterface, Identity, Params, Transaction},
+	interface::{Engine as EngineInterface, Identity, Params},
 };
 use reifydb_engine::StandardEngine;
 #[cfg(feature = "sub_worker")]
 use reifydb_sub_api::Scheduler;
 
-pub trait Session<T: Transaction> {
-	fn command_session(&self, session: impl IntoCommandSession<T>) -> crate::Result<CommandSession<T>>;
+pub trait Session {
+	fn command_session(&self, session: impl IntoCommandSession) -> crate::Result<CommandSession>;
 
-	fn query_session(&self, session: impl IntoQuerySession<T>) -> crate::Result<QuerySession<T>>;
+	fn query_session(&self, session: impl IntoQuerySession) -> crate::Result<QuerySession>;
 
 	#[cfg(feature = "sub_worker")]
-	fn scheduler(&self) -> Arc<dyn Scheduler<T>>;
+	fn scheduler(&self) -> Arc<dyn Scheduler>;
 
 	fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let session = self.command_session(Identity::root())?;
@@ -43,8 +43,8 @@ pub trait Session<T: Transaction> {
 	}
 }
 
-impl<T: Transaction> CommandSession<T> {
-	pub(crate) fn new(engine: StandardEngine<T>, identity: Identity) -> Self {
+impl CommandSession {
+	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
 		Self {
 			engine,
 			identity,
@@ -61,8 +61,8 @@ impl<T: Transaction> CommandSession<T> {
 	}
 }
 
-impl<T: Transaction> QuerySession<T> {
-	pub(crate) fn new(engine: StandardEngine<T>, identity: Identity) -> Self {
+impl QuerySession {
+	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
 		Self {
 			engine,
 			identity,
@@ -79,22 +79,22 @@ impl<T: Transaction> QuerySession<T> {
 	}
 }
 
-pub trait IntoCommandSession<T: Transaction> {
-	fn into_command_session(self, engine: StandardEngine<T>) -> crate::Result<CommandSession<T>>;
+pub trait IntoCommandSession {
+	fn into_command_session(self, engine: StandardEngine) -> crate::Result<CommandSession>;
 }
 
-pub trait IntoQuerySession<T: Transaction> {
-	fn into_query_session(self, engine: StandardEngine<T>) -> crate::Result<QuerySession<T>>;
+pub trait IntoQuerySession {
+	fn into_query_session(self, engine: StandardEngine) -> crate::Result<QuerySession>;
 }
 
-impl<T: Transaction> IntoCommandSession<T> for Identity {
-	fn into_command_session(self, engine: StandardEngine<T>) -> crate::Result<CommandSession<T>> {
+impl IntoCommandSession for Identity {
+	fn into_command_session(self, engine: StandardEngine) -> crate::Result<CommandSession> {
 		Ok(CommandSession::new(engine, self))
 	}
 }
 
-impl<T: Transaction> IntoQuerySession<T> for Identity {
-	fn into_query_session(self, engine: StandardEngine<T>) -> crate::Result<QuerySession<T>> {
+impl IntoQuerySession for Identity {
+	fn into_query_session(self, engine: StandardEngine) -> crate::Result<QuerySession> {
 		Ok(QuerySession::new(engine, self))
 	}
 }

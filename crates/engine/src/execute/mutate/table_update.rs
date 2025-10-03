@@ -7,7 +7,7 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
 		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
-		Params, ResolvedColumn, ResolvedNamespace, ResolvedSource, ResolvedTable, RowKey, Transaction,
+		Params, ResolvedColumn, ResolvedNamespace, ResolvedSource, ResolvedTable, RowKey,
 	},
 	value::{column::Columns, encoded::EncodedValuesLayout},
 };
@@ -31,9 +31,9 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn update_table<'a, T: Transaction>(
+	pub(crate) fn update_table<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: UpdateTableNode<'a>,
 		params: Params,
 	) -> crate::Result<Columns<'a>> {

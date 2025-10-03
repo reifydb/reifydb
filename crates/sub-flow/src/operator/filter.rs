@@ -1,6 +1,6 @@
 use reifydb_core::{
 	Row,
-	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, Transaction, expression::Expression},
+	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, expression::Expression},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::{Params, Value, return_internal_error};
@@ -27,14 +27,14 @@ impl FilterOperator {
 	}
 }
 
-impl<T: Transaction> Operator<T> for FilterOperator {
+impl Operator for FilterOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
 	fn apply(
 		&self,
-		_txn: &mut StandardCommandTransaction<T>,
+		_txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {

@@ -6,31 +6,27 @@ mod register;
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::{FlowId, FlowNodeId, SourceId, Transaction};
+use reifydb_core::interface::{FlowId, FlowNodeId, SourceId};
 use reifydb_engine::{StandardRowEvaluator, execute::Executor};
 use reifydb_rql::flow::Flow;
 
 use crate::operator::{Operators, transform::registry::TransformOperatorRegistry};
 
-pub struct FlowEngine<T: Transaction> {
+pub struct FlowEngine {
 	evaluator: StandardRowEvaluator,
 	executor: Executor,
-	operators: HashMap<FlowNodeId, Operators<T>>,
+	operators: HashMap<FlowNodeId, Operators>,
 	flows: HashMap<FlowId, Flow>,
 	// Maps sources to specific nodes that listen to them
 	// This allows multiple nodes in the same flow to listen to the same
 	// source
 	sources: HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>,
 	sinks: HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>,
-	registry: TransformOperatorRegistry<T>,
+	registry: TransformOperatorRegistry,
 }
 
-impl<T: Transaction> FlowEngine<T> {
-	pub fn new(
-		evaluator: StandardRowEvaluator,
-		executor: Executor,
-		registry: TransformOperatorRegistry<T>,
-	) -> Self {
+impl FlowEngine {
+	pub fn new(evaluator: StandardRowEvaluator, executor: Executor, registry: TransformOperatorRegistry) -> Self {
 		Self {
 			evaluator,
 			executor,

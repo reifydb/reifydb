@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::Transaction;
 use reifydb_engine::StandardEngine;
 
 use super::WorkerPool;
@@ -11,16 +10,16 @@ use crate::{
 };
 
 /// Multi-protocol server that can handle WebSocket and HTTP protocols
-pub struct ProtocolServer<T: Transaction> {
+pub struct ProtocolServer {
 	config: ServerConfig,
 	websocket: Option<WebSocketHandler>,
 	http: Option<HttpHandler>,
-	worker_pool: Option<WorkerPool<T>>,
-	engine: StandardEngine<T>,
+	worker_pool: Option<WorkerPool>,
+	engine: StandardEngine,
 }
 
-impl<T: Transaction> ProtocolServer<T> {
-	pub fn new(config: ServerConfig, engine: StandardEngine<T>) -> Self {
+impl ProtocolServer {
+	pub fn new(config: ServerConfig, engine: StandardEngine) -> Self {
 		Self {
 			config,
 			websocket: None,
@@ -81,13 +80,13 @@ impl<T: Transaction> ProtocolServer<T> {
 	pub fn detect_protocol(&self, buffer: &[u8]) -> Option<&str> {
 		// Check protocols in order of likelihood/preference
 		if let Some(ref websocket) = self.websocket {
-			if <WebSocketHandler as ProtocolHandler<T>>::can_handle(websocket, buffer) {
+			if <WebSocketHandler as ProtocolHandler>::can_handle(websocket, buffer) {
 				return Some("ws");
 			}
 		}
 
 		if let Some(ref http) = self.http {
-			if <HttpHandler as ProtocolHandler<T>>::can_handle(http, buffer) {
+			if <HttpHandler as ProtocolHandler>::can_handle(http, buffer) {
 				return Some("http");
 			}
 		}

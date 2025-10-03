@@ -15,7 +15,7 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{
 		Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, CommandTransaction, Engine as EngineInterface, Key,
-		MultiVersionCommandTransaction, Transaction,
+		MultiVersionCommandTransaction,
 	},
 	key::{CdcConsumerKey, EncodableKey},
 	log_debug, log_error,
@@ -51,8 +51,8 @@ impl PollConsumerConfig {
 	}
 }
 
-pub struct PollConsumer<T: Transaction, F: CdcConsume<T>> {
-	engine: Option<StandardEngine<T>>,
+pub struct PollConsumer<F: CdcConsume> {
+	engine: Option<StandardEngine>,
 	consumer: Option<Box<F>>,
 	config: PollConsumerConfig,
 	state: Arc<ConsumerState>,
@@ -64,8 +64,8 @@ struct ConsumerState {
 	running: AtomicBool,
 }
 
-impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
-	pub fn new(config: PollConsumerConfig, engine: StandardEngine<T>, consume: C) -> Self {
+impl<C: CdcConsume> PollConsumer<C> {
+	pub fn new(config: PollConsumerConfig, engine: StandardEngine, consume: C) -> Self {
 		let consumer_key = CdcConsumerKey {
 			consumer: config.consumer_id.clone(),
 		}
@@ -83,7 +83,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 		}
 	}
 
-	fn consume_batch(state: &ConsumerState, engine: &StandardEngine<T>, consumer: &C) -> Result<()> {
+	fn consume_batch(state: &ConsumerState, engine: &StandardEngine, consumer: &C) -> Result<()> {
 		let mut transaction = engine.begin_command()?;
 
 		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
@@ -129,7 +129,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 
 	fn polling_loop(
 		config: &PollConsumerConfig,
-		engine: StandardEngine<T>,
+		engine: StandardEngine,
 		consumer: Box<C>,
 		state: Arc<ConsumerState>,
 	) {
@@ -149,7 +149,7 @@ impl<T: Transaction, C: CdcConsume<T>> PollConsumer<T, C> {
 	}
 }
 
-impl<T: Transaction + 'static, F: CdcConsume<T>> CdcConsumer for PollConsumer<T, F> {
+impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 	fn start(&mut self) -> Result<()> {
 		assert!(self.worker.is_none(), "start() can only be called once");
 

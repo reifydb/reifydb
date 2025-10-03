@@ -1,4 +1,4 @@
-use reifydb_core::interface::{FlowNodeId, Transaction};
+use reifydb_core::interface::FlowNodeId;
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
 use crate::flow::FlowChange;
@@ -28,18 +28,18 @@ pub use take::TakeOperator;
 pub use transform::registry::TransformOperatorRegistry;
 pub use union::UnionOperator;
 
-pub trait Operator<T: Transaction>: Send + Sync {
+pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId;
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange>;
 }
 
-pub enum Operators<T: Transaction> {
+pub enum Operators {
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
@@ -48,14 +48,14 @@ pub enum Operators<T: Transaction> {
 	Take(TakeOperator),
 	Distinct(DistinctOperator),
 	Union(UnionOperator),
-	Apply(ApplyOperator<T>),
+	Apply(ApplyOperator),
 	SinkView(SinkViewOperator),
 }
 
-impl<T: Transaction> Operators<T> {
+impl Operators {
 	pub fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {

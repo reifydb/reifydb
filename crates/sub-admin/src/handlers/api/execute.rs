@@ -1,12 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::Transaction;
 use reifydb_engine::StandardEngine;
 use reifydb_network::{HttpRequest, HttpResponse};
 use serde_json::{Value, json};
 
-pub fn handle_execute<T: Transaction>(_engine: &StandardEngine<T>, request: HttpRequest) -> HttpResponse {
+pub fn handle_execute(_engine: &StandardEngine, request: HttpRequest) -> HttpResponse {
 	// Parse JSON body
 	let body_str = String::from_utf8_lossy(&request.body);
 	let json_body: Result<Value, _> = serde_json::from_str(&body_str);

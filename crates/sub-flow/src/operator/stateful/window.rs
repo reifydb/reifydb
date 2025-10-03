@@ -3,7 +3,6 @@
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
-	interface::Transaction,
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
@@ -13,7 +12,7 @@ use crate::stateful::RawStatefulOperator;
 
 /// Window-based state management for time or count-based windowing
 /// Extends TransformOperator directly and uses utility functions for state management
-pub trait WindowStateful<T: Transaction>: RawStatefulOperator<T> {
+pub trait WindowStateful: RawStatefulOperator {
 	/// Get or create the layout for state rows
 	fn layout(&self) -> EncodedValuesLayout;
 
@@ -26,7 +25,7 @@ pub trait WindowStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Load state for a window
 	fn load_state(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		window_key: &EncodedKey,
 	) -> crate::Result<EncodedValues> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
@@ -35,7 +34,7 @@ pub trait WindowStateful<T: Transaction>: RawStatefulOperator<T> {
 	/// Save state for a window
 	fn save_state(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		window_key: &EncodedKey,
 		row: EncodedValues,
 	) -> crate::Result<()> {
@@ -44,7 +43,7 @@ pub trait WindowStateful<T: Transaction>: RawStatefulOperator<T> {
 
 	/// Expire windows within a given range
 	/// The range should be constructed by the caller based on their window ordering semantics
-	fn expire_range(&self, txn: &mut StandardCommandTransaction<T>, range: EncodedKeyRange) -> crate::Result<u32> {
+	fn expire_range(&self, txn: &mut StandardCommandTransaction, range: EncodedKeyRange) -> crate::Result<u32> {
 		let mut count = 0;
 		let keys_to_remove: Vec<_> = utils::state_range(self.id(), txn, range)?.map(|(key, _)| key).collect();
 
@@ -76,7 +75,7 @@ mod tests {
 	}
 
 	// Extend TestOperator to implement WindowStateful
-	impl WindowStateful<TestTransaction> for TestOperator {
+	impl WindowStateful for TestOperator {
 		fn layout(&self) -> EncodedValuesLayout {
 			self.layout.clone()
 		}

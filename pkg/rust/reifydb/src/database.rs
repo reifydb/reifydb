@@ -10,13 +10,11 @@ use std::{
 	time::Duration,
 };
 
-#[cfg(feature = "sub_flow")]
-use reifydb_core::interface::Transaction;
 use reifydb_core::{
 	Result, event::lifecycle::OnStartEvent, interface::WithEventBus, log_debug, log_error, log_timed_trace,
 	log_warn,
 };
-use reifydb_engine::{EngineTransaction, StandardEngine, TransactionCdc};
+use reifydb_engine::StandardEngine;
 use reifydb_sub_api::HealthStatus;
 #[cfg(feature = "sub_worker")]
 use reifydb_sub_api::Scheduler;
@@ -24,7 +22,6 @@ use reifydb_sub_api::Scheduler;
 use reifydb_sub_flow::FlowSubsystem;
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::ServerSubsystem;
-use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
 use crate::{
 	boot::Bootloader,
@@ -74,48 +71,34 @@ impl Default for DatabaseConfig {
 
 pub struct Database {
 	config: DatabaseConfig,
-	engine: StandardEngine<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>,
-	bootloader: Bootloader<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>,
+	engine: StandardEngine,
+	bootloader: Bootloader,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
 	#[cfg(feature = "sub_worker")]
-	scheduler: Arc<
-		dyn Scheduler<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>,
-	>,
+	scheduler: Arc<dyn Scheduler>,
 }
 
 impl Database {
 	#[cfg(feature = "sub_flow")]
-	pub fn sub_flow<T: Transaction>(&self) -> Option<&FlowSubsystem<T>> {
-		self.subsystem::<FlowSubsystem<T>>()
+	pub fn sub_flow(&self) -> Option<&FlowSubsystem> {
+		self.subsystem::<FlowSubsystem>()
 	}
 
 	#[cfg(feature = "sub_server")]
-	pub fn sub_server(
-		&self,
-	) -> Option<
-		&ServerSubsystem<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>,
-	> {
-		self.subsystems.get::<ServerSubsystem<
-			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-		>>()
+	pub fn sub_server(&self) -> Option<&ServerSubsystem> {
+		self.subsystems.get::<ServerSubsystem>()
 	}
 }
 
 impl Database {
 	pub(crate) fn new(
-		engine: StandardEngine<
-			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-		>,
+		engine: StandardEngine,
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
-		#[cfg(feature = "sub_worker")] scheduler: Arc<
-			dyn Scheduler<
-				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-			>,
-		>,
+		#[cfg(feature = "sub_worker")] scheduler: Arc<dyn Scheduler>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -129,9 +112,7 @@ impl Database {
 		}
 	}
 
-	pub fn engine(
-		&self,
-	) -> &StandardEngine<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>> {
+	pub fn engine(&self) -> &StandardEngine {
 		&self.engine
 	}
 
@@ -257,9 +238,7 @@ impl Database {
 	}
 
 	#[cfg(feature = "sub_worker")]
-	pub fn scheduler(
-		&self,
-	) -> Arc<dyn Scheduler<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>> {
+	pub fn scheduler(&self) -> Arc<dyn Scheduler> {
 		self.scheduler.clone()
 	}
 
@@ -315,31 +294,17 @@ impl Drop for Database {
 	}
 }
 
-impl Session<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>> for Database {
-	fn command_session(
-		&self,
-		session: impl IntoCommandSession<
-			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-		>,
-	) -> Result<CommandSession<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>>
-	{
+impl Session for Database {
+	fn command_session(&self, session: impl IntoCommandSession) -> Result<CommandSession> {
 		session.into_command_session(self.engine.clone())
 	}
 
-	fn query_session(
-		&self,
-		session: impl IntoQuerySession<
-			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
-		>,
-	) -> Result<QuerySession<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>>
-	{
+	fn query_session(&self, session: impl IntoQuerySession) -> Result<QuerySession> {
 		session.into_query_session(self.engine.clone())
 	}
 
 	#[cfg(feature = "sub_worker")]
-	fn scheduler(
-		&self,
-	) -> Arc<dyn Scheduler<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>> {
+	fn scheduler(&self) -> Arc<dyn Scheduler> {
 		self.scheduler.clone()
 	}
 }

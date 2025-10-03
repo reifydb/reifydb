@@ -1,4 +1,4 @@
-use reifydb_core::interface::{FlowNodeId, Transaction};
+use reifydb_core::interface::FlowNodeId;
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
 use crate::{flow::FlowChange, operator::Operator};
@@ -15,14 +15,14 @@ impl UnionOperator {
 	}
 }
 
-impl<T: Transaction> Operator<T> for UnionOperator {
+impl Operator for UnionOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
 	fn apply(
 		&self,
-		_txn: &mut StandardCommandTransaction<T>,
+		_txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {

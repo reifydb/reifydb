@@ -2,16 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogViewCommandOperations, CatalogViewQueryOperations, view::ViewToCreate};
-use reifydb_core::{interface::Transaction, value::column::Columns};
+use reifydb_core::value::column::Columns;
 use reifydb_rql::plan::physical::CreateDeferredViewNode;
 use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_deferred_view<'a, T: Transaction>(
+	pub(crate) fn create_deferred_view<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: CreateDeferredViewNode,
 	) -> crate::Result<Columns<'a>> {
 		if let Some(_) = txn.find_view_by_name(plan.namespace.id, plan.view.text())? {

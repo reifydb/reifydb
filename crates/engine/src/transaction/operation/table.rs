@@ -6,7 +6,7 @@ use reifydb_core::{
 	Row,
 	event::catalog::TableInsertedEvent,
 	interface::{
-		EncodableKey, GetEncodedRowNamedLayout, MultiVersionCommandTransaction, RowKey, TableDef, Transaction,
+		EncodableKey, GetEncodedRowNamedLayout, MultiVersionCommandTransaction, RowKey, TableDef,
 		interceptor::TableInterceptor,
 	},
 	value::encoded::EncodedValues,
@@ -23,7 +23,7 @@ pub(crate) trait TableOperations {
 	fn remove_from_table(&mut self, table: TableDef, id: RowNumber) -> crate::Result<()>;
 }
 
-impl<T: Transaction> TableOperations for StandardCommandTransaction<T> {
+impl TableOperations for StandardCommandTransaction {
 	fn insert_into_table(&mut self, table: TableDef, row: EncodedValues) -> crate::Result<RowNumber> {
 		let row_number = RowSequence::next_row_number(self, table.id)?;
 

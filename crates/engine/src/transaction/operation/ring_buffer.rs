@@ -4,7 +4,7 @@
 use reifydb_core::{
 	interface::{
 		EncodableKey, MultiVersionCommandTransaction, MultiVersionQueryTransaction, RingBufferDef, RowKey,
-		Transaction, interceptor::RingBufferInterceptor,
+		interceptor::RingBufferInterceptor,
 	},
 	value::encoded::EncodedValues,
 };
@@ -36,7 +36,7 @@ pub(crate) trait RingBufferOperations {
 	fn remove_from_ring_buffer(&mut self, ring_buffer: RingBufferDef, id: RowNumber) -> crate::Result<()>;
 }
 
-impl<T: Transaction> RingBufferOperations for StandardCommandTransaction<T> {
+impl RingBufferOperations for StandardCommandTransaction {
 	fn insert_into_ring_buffer(
 		&mut self,
 		_ring_buffer: RingBufferDef,

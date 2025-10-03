@@ -9,7 +9,7 @@ use reifydb_core::{
 	interface::{
 		EncodableKey, EncodableKeyRange, GetEncodedRowLayout, IndexEntryKey, IndexId,
 		MultiVersionCommandTransaction, MultiVersionQueryTransaction, Params, ResolvedNamespace,
-		ResolvedSource, ResolvedTable, RowKey, RowKeyRange, Transaction,
+		ResolvedSource, ResolvedTable, RowKey, RowKeyRange,
 	},
 	value::column::Columns,
 };
@@ -30,9 +30,9 @@ use crate::{
 };
 
 impl Executor {
-	pub(crate) fn delete<'a, T: Transaction>(
+	pub(crate) fn delete<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: DeleteTableNode<'a>,
 		params: Params,
 	) -> crate::Result<Columns<'a>> {

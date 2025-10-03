@@ -6,18 +6,18 @@
 use reifydb_core::{
 	Frame,
 	event::{EventListener, lifecycle::OnCreateEvent},
-	interface::{Engine as _, Identity, Params, Transaction},
+	interface::{Engine as _, Identity, Params},
 	log_error,
 };
 use reifydb_engine::StandardEngine;
 
 /// Context provided to on_create eventbus
-pub struct OnCreateContext<T: Transaction> {
-	engine: StandardEngine<T>,
+pub struct OnCreateContext {
+	engine: StandardEngine,
 }
 
-impl<'a, T: Transaction> OnCreateContext<T> {
-	pub fn new(engine: StandardEngine<T>) -> Self {
+impl<'a> OnCreateContext {
+	pub fn new(engine: StandardEngine) -> Self {
 		Self {
 			engine,
 		}
@@ -60,17 +60,17 @@ impl<'a, T: Transaction> OnCreateContext<T> {
 }
 
 /// Shared callback implementation for OnCreate hook
-pub struct OnCreateEventListener<T: Transaction, F>
+pub struct OnCreateEventListener<F>
 where
-	F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
+	F: Fn(&OnCreateContext) -> crate::Result<()> + Send + Sync + 'static,
 {
 	pub callback: F,
-	pub engine: StandardEngine<T>,
+	pub engine: StandardEngine,
 }
 
-impl<T: Transaction, F> EventListener<OnCreateEvent> for OnCreateEventListener<T, F>
+impl<F> EventListener<OnCreateEvent> for OnCreateEventListener<F>
 where
-	F: Fn(&OnCreateContext<T>) -> crate::Result<()> + Send + Sync + 'static,
+	F: Fn(&OnCreateContext) -> crate::Result<()> + Send + Sync + 'static,
 {
 	fn on(&self, _hook: &OnCreateEvent) {
 		let context = OnCreateContext::new(self.engine.clone());

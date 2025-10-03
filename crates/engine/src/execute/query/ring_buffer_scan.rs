@@ -1,13 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
-		EncodableKey, MultiVersionQueryTransaction, RingBufferMetadata, RowKey, Transaction,
-		resolved::ResolvedRingBuffer,
+		EncodableKey, MultiVersionQueryTransaction, RingBufferMetadata, RowKey, resolved::ResolvedRingBuffer,
 	},
 	value::{
 		column::{Columns, headers::ColumnHeaders},
@@ -21,7 +20,7 @@ use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 
-pub struct RingBufferScan<'a, T: Transaction> {
+pub struct RingBufferScan<'a> {
 	ring_buffer: ResolvedRingBuffer<'a>,
 	metadata: Option<RingBufferMetadata>,
 	headers: ColumnHeaders<'a>,
@@ -30,10 +29,9 @@ pub struct RingBufferScan<'a, T: Transaction> {
 	rows_returned: u64,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	initialized: bool,
-	_phantom: PhantomData<T>,
 }
 
-impl<'a, T: Transaction> RingBufferScan<'a, T> {
+impl<'a> RingBufferScan<'a> {
 	pub fn new(ring_buffer: ResolvedRingBuffer<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
 		// Create encoded headers based on column types
 		let types: Vec<Type> = ring_buffer.columns().iter().map(|c| c.constraint.get_type()).collect();
@@ -53,17 +51,12 @@ impl<'a, T: Transaction> RingBufferScan<'a, T> {
 			rows_returned: 0,
 			context: Some(context),
 			initialized: false,
-			_phantom: PhantomData,
 		})
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
-	fn initialize(
-		&mut self,
-		txn: &mut StandardTransaction<'a, T>,
-		_ctx: &ExecutionContext<'a>,
-	) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for RingBufferScan<'a> {
+	fn initialize(&mut self, txn: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		if !self.initialized {
 			// Get ring buffer metadata from the appropriate transaction type
 			let metadata = match txn {
@@ -90,7 +83,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for RingBufferScan<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		let ctx = self.context.as_ref().expect("RingBufferScan context not set");
 
 		// Get metadata or return empty

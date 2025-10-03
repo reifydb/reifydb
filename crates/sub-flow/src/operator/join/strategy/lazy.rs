@@ -1,6 +1,6 @@
 use reifydb_core::{
 	CommitVersion, FrameColumnData, Row,
-	interface::{ExecuteQuery, Identity, Query, Transaction},
+	interface::{ExecuteQuery, Identity, Query},
 	value::encoded::EncodedValuesNamedLayout,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
@@ -11,8 +11,8 @@ use reifydb_type::{Params, Type};
 use crate::operator::join::{JoinState, operator::JoinOperator};
 
 /// Query the right side and return rows that match the join condition
-pub(crate) fn query_right_side<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn query_right_side(
+	txn: &mut StandardCommandTransaction,
 	query_string: &QueryString,
 	executor: &Executor,
 	key_hash: Hash128,
@@ -149,8 +149,8 @@ pub(crate) fn create_row_from_frame(
 
 /// Check if there are any right rows matching the key
 /// This executes the query and checks if any rows match
-pub(crate) fn has_matching_right_rows<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn has_matching_right_rows(
+	txn: &mut StandardCommandTransaction,
 	query_string: &QueryString,
 	executor: &Executor,
 	key_hash: Hash128,
@@ -163,8 +163,8 @@ pub(crate) fn has_matching_right_rows<T: Transaction>(
 }
 
 /// Check if a specific right encoded is the only one matching
-pub(crate) fn is_only_matching_right_row<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn is_only_matching_right_row(
+	txn: &mut StandardCommandTransaction,
 	query_string: &QueryString,
 	executor: &Executor,
 	key_hash: Hash128,
@@ -178,8 +178,8 @@ pub(crate) fn is_only_matching_right_row<T: Transaction>(
 }
 
 /// Check if there are any other right rows besides the one being removed
-pub(crate) fn has_other_right_rows<T: Transaction>(
-	txn: &mut StandardCommandTransaction<T>,
+pub(crate) fn has_other_right_rows(
+	txn: &mut StandardCommandTransaction,
 	query_string: &QueryString,
 	executor: &Executor,
 	key_hash: Hash128,

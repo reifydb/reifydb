@@ -2,12 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::MaterializedCatalog;
-use reifydb_core::{
-	interceptor::{PostCommitContext, PostCommitInterceptor},
-	interface::Transaction,
-};
+use reifydb_core::interceptor::{PostCommitContext, PostCommitInterceptor};
 
-use crate::StandardCommandTransaction;
+use crate::transaction::StandardCommandTransaction;
 
 pub(crate) struct MaterializedCatalogInterceptor {
 	catalog: MaterializedCatalog,
@@ -21,7 +18,7 @@ impl MaterializedCatalogInterceptor {
 	}
 }
 
-impl<T: Transaction> PostCommitInterceptor<StandardCommandTransaction<T>> for MaterializedCatalogInterceptor {
+impl PostCommitInterceptor<StandardCommandTransaction> for MaterializedCatalogInterceptor {
 	fn intercept(&self, ctx: &mut PostCommitContext) -> crate::Result<()> {
 		let version = ctx.version;
 

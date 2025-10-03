@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
-	interface::{TableVirtualDef, Transaction},
+	interface::TableVirtualDef,
 	value::column::{Column, ColumnData, Columns},
 };
 use reifydb_type::{Fragment, Value};
@@ -18,29 +18,27 @@ use crate::{
 };
 
 /// Virtual table that exposes system view information
-pub struct Views<T: Transaction> {
+pub struct Views {
 	definition: Arc<TableVirtualDef>,
 	exhausted: bool,
-	_phantom: PhantomData<T>,
 }
 
-impl<T: Transaction> Views<T> {
+impl Views {
 	pub fn new() -> Self {
 		Self {
 			definition: SystemCatalog::get_system_views_table_def().clone(),
 			exhausted: false,
-			_phantom: PhantomData,
 		}
 	}
 }
 
-impl<'a, T: Transaction> TableVirtual<'a, T> for Views<T> {
-	fn initialize(&mut self, _txn: &mut StandardTransaction<'a, T>, _ctx: TableVirtualContext<'a>) -> Result<()> {
+impl<'a> TableVirtual<'a> for Views {
+	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a, T>) -> Result<Option<Batch<'a>>> {
+	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> Result<Option<Batch<'a>>> {
 		if self.exhausted {
 			return Ok(None);
 		}

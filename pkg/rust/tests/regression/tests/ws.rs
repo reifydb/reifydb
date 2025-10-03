@@ -6,10 +6,9 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	Database, ServerBuilder,
 	core::{event::EventBus, retry},
-	engine::TransactionCdc,
 	memory, optimistic,
 	sub_server::ServerConfig,
-	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};

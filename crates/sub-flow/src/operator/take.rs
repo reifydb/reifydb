@@ -4,11 +4,7 @@ use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
-use reifydb_core::{
-	Error, Row,
-	interface::{FlowNodeId, Transaction},
-	value::encoded::EncodedValuesLayout,
-};
+use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::{Blob, RowNumber, Type, internal_error};
 use serde::{Deserialize, Serialize};
@@ -96,7 +92,7 @@ impl TakeOperator {
 		}
 	}
 
-	fn load_take_state<T: Transaction>(&self, txn: &mut StandardCommandTransaction<T>) -> crate::Result<TakeState> {
+	fn load_take_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<TakeState> {
 		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -114,11 +110,7 @@ impl TakeOperator {
 			.map_err(|e| Error(internal_error!("Failed to deserialize TakeState: {}", e)))
 	}
 
-	fn save_take_state<T: Transaction>(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		state: &TakeState,
-	) -> crate::Result<()> {
+	fn save_take_state(&self, txn: &mut StandardCommandTransaction, state: &TakeState) -> crate::Result<()> {
 		let config = standard();
 		let serialized = encode_to_vec(state, config)
 			.map_err(|e| Error(internal_error!("Failed to serialize TakeState: {}", e)))?;
@@ -131,24 +123,24 @@ impl TakeOperator {
 	}
 }
 
-impl<T: Transaction> TransformOperator<T> for TakeOperator {}
+impl TransformOperator for TakeOperator {}
 
-impl<T: Transaction> RawStatefulOperator<T> for TakeOperator {}
+impl RawStatefulOperator for TakeOperator {}
 
-impl<T: Transaction> SingleStateful<T> for TakeOperator {
+impl SingleStateful for TakeOperator {
 	fn layout(&self) -> EncodedValuesLayout {
 		self.layout.clone()
 	}
 }
 
-impl<T: Transaction> Operator<T> for TakeOperator {
+impl Operator for TakeOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {

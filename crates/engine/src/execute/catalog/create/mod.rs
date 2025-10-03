@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{Command, ExecuteCommand, Identity, Params, Transaction, ViewDef};
+use reifydb_core::interface::{Command, ExecuteCommand, Identity, Params, ViewDef};
 use reifydb_rql::{flow::compile_flow, plan::physical::PhysicalPlan};
 
 use crate::{StandardCommandTransaction, execute::Executor};
@@ -16,9 +16,9 @@ mod transactional;
 
 impl Executor {
 	// FIXME
-	pub(crate) fn create_flow<T: Transaction>(
+	pub(crate) fn create_flow(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		view: &ViewDef,
 		plan: Box<PhysicalPlan>,
 	) -> crate::Result<()> {

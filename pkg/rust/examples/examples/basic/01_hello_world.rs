@@ -8,12 +8,8 @@
 //!
 //! Run with: `make hello-world` or `cargo run --bin hello-world`
 
-use reifydb::{Identity, MemoryDatabaseOptimistic, Params, Session, embedded, log_info};
+use reifydb::{Identity, Params, Session, embedded, log_info};
 use reifydb_examples::log_query;
-
-// Type alias for our in-memory optimistic database
-// This uses optimistic concurrency control for better performance
-pub type DB = MemoryDatabaseOptimistic;
 
 fn main() {
 	// Step 1: Create and start a synchronous in-memory database
@@ -21,7 +17,7 @@ fn main() {
 	// - Stores all data in memory (no persistence)
 	// - Uses optimistic concurrency control
 	// - Operates synchronously (blocking operations)
-	let mut db: DB = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory_optimistic().build().unwrap();
 
 	// Start the database engine - this initializes internal structures
 	// and makes the database ready to accept commands and queries

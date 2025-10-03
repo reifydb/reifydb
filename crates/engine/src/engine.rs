@@ -10,28 +10,29 @@ use reifydb_core::{
 	interceptor::InterceptorFactory,
 	interface::{
 		Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery, Identity, MultiVersionTransaction,
-		Params, Query, Transaction, WithEventBus,
+		Params, Query, WithEventBus,
 	},
 };
+use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
 use crate::{
-	StandardCommandTransaction, StandardQueryTransaction,
 	execute::Executor,
 	function::{Functions, math},
 	interceptor::materialized_catalog::MaterializedCatalogInterceptor,
+	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 };
 
-pub struct StandardEngine<T: Transaction>(Arc<EngineInner<T>>);
+pub struct StandardEngine(Arc<EngineInner>);
 
-impl<T: Transaction> WithEventBus for StandardEngine<T> {
+impl WithEventBus for StandardEngine {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
-impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
-	type Command = StandardCommandTransaction<T>;
-	type Query = StandardQueryTransaction<T>;
+impl EngineInterface for StandardEngine {
+	type Command = StandardCommandTransaction;
+	type Query = StandardQueryTransaction;
 
 	fn begin_command(&self) -> crate::Result<Self::Command> {
 		let mut interceptors = self.interceptors.create();
@@ -85,55 +86,51 @@ impl<T: Transaction> EngineInterface<T> for StandardEngine<T> {
 	}
 }
 
-impl<T: Transaction> ExecuteCommand<StandardCommandTransaction<T>> for StandardEngine<T> {
+impl ExecuteCommand<StandardCommandTransaction> for StandardEngine {
 	#[inline]
-	fn execute_command(
-		&self,
-		txn: &mut StandardCommandTransaction<T>,
-		cmd: Command<'_>,
-	) -> crate::Result<Vec<Frame>> {
+	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_command(txn, cmd)
 	}
 }
 
-impl<T: Transaction> ExecuteQuery<StandardQueryTransaction<T>> for StandardEngine<T> {
+impl ExecuteQuery<StandardQueryTransaction> for StandardEngine {
 	#[inline]
-	fn execute_query(&self, txn: &mut StandardQueryTransaction<T>, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
+	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		self.executor.execute_query(txn, qry)
 	}
 }
 
-impl<T: Transaction> Clone for StandardEngine<T> {
+impl Clone for StandardEngine {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
 }
 
-impl<T: Transaction> Deref for StandardEngine<T> {
-	type Target = EngineInner<T>;
+impl Deref for StandardEngine {
+	type Target = EngineInner;
 
 	fn deref(&self) -> &Self::Target {
 		&self.0
 	}
 }
 
-pub struct EngineInner<T: Transaction> {
-	multi: T::MultiVersion,
-	single: T::SingleVersion,
-	cdc: T::Cdc,
+pub struct EngineInner {
+	multi: TransactionMultiVersion,
+	single: TransactionSingleVersion,
+	cdc: TransactionCdc,
 	event_bus: EventBus,
 	executor: Executor,
-	interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
+	interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
 	catalog: MaterializedCatalog,
 }
 
-impl<T: Transaction> StandardEngine<T> {
+impl StandardEngine {
 	pub fn new(
-		multi: T::MultiVersion,
-		single: T::SingleVersion,
-		cdc: T::Cdc,
+		multi: TransactionMultiVersion,
+		single: TransactionSingleVersion,
+		cdc: TransactionCdc,
 		event_bus: EventBus,
-		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction<T>>>,
+		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
 		catalog: MaterializedCatalog,
 	) -> Self {
 		Self(Arc::new(EngineInner {
@@ -158,32 +155,32 @@ impl<T: Transaction> StandardEngine<T> {
 	}
 
 	#[inline]
-	pub fn multi(&self) -> &T::MultiVersion {
+	pub fn multi(&self) -> &TransactionMultiVersion {
 		&self.multi
 	}
 
 	#[inline]
-	pub fn multi_owned(&self) -> T::MultiVersion {
+	pub fn multi_owned(&self) -> TransactionMultiVersion {
 		self.multi.clone()
 	}
 
 	#[inline]
-	pub fn single(&self) -> &T::SingleVersion {
+	pub fn single(&self) -> &TransactionSingleVersion {
 		&self.single
 	}
 
 	#[inline]
-	pub fn single_owned(&self) -> T::SingleVersion {
+	pub fn single_owned(&self) -> TransactionSingleVersion {
 		self.single.clone()
 	}
 
 	#[inline]
-	pub fn cdc(&self) -> &T::Cdc {
+	pub fn cdc(&self) -> &TransactionCdc {
 		&self.cdc
 	}
 
 	#[inline]
-	pub fn cdc_owned(&self) -> T::Cdc {
+	pub fn cdc_owned(&self) -> TransactionCdc {
 		self.cdc.clone()
 	}
 

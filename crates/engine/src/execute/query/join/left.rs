@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{Transaction, evaluate::expression::Expression},
+	interface::evaluate::expression::Expression,
 	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_type::{Fragment, Value};
@@ -14,19 +14,19 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub struct LeftJoinNode<'a, T: Transaction> {
-	left: Box<ExecutionPlan<'a, T>>,
-	right: Box<ExecutionPlan<'a, T>>,
+pub struct LeftJoinNode<'a> {
+	left: Box<ExecutionPlan<'a>>,
+	right: Box<ExecutionPlan<'a>>,
 	on: Vec<Expression<'a>>,
 	alias: Option<Fragment<'a>>,
 	headers: Option<ColumnHeaders<'a>>,
 	context: JoinContext<'a>,
 }
 
-impl<'a, T: Transaction> LeftJoinNode<'a, T> {
+impl<'a> LeftJoinNode<'a> {
 	pub fn new(
-		left: Box<ExecutionPlan<'a, T>>,
-		right: Box<ExecutionPlan<'a, T>>,
+		left: Box<ExecutionPlan<'a>>,
+		right: Box<ExecutionPlan<'a>>,
 		on: Vec<Expression<'a>>,
 		alias: Option<Fragment<'a>>,
 	) -> Self {
@@ -41,15 +41,15 @@ impl<'a, T: Transaction> LeftJoinNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for LeftJoinNode<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for LeftJoinNode<'a> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
 		self.right.initialize(rx, ctx)?;
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_initialized(), "LeftJoinNode::next() called before initialize()");
 		let ctx = self.context.get();
 

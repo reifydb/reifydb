@@ -6,7 +6,6 @@ use std::cmp::Ordering::Equal;
 use reifydb_core::{
 	SortDirection::{Asc, Desc},
 	SortKey, error,
-	interface::Transaction,
 	util::CowVec,
 	value::column::{Columns, headers::ColumnHeaders},
 };
@@ -17,14 +16,14 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct SortNode<'a, T: Transaction> {
-	input: Box<ExecutionPlan<'a, T>>,
+pub(crate) struct SortNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
 	by: Vec<SortKey>,
 	initialized: Option<()>,
 }
 
-impl<'a, T: Transaction> SortNode<'a, T> {
-	pub(crate) fn new(input: Box<ExecutionPlan<'a, T>>, by: Vec<SortKey>) -> Self {
+impl<'a> SortNode<'a> {
+	pub(crate) fn new(input: Box<ExecutionPlan<'a>>, by: Vec<SortKey>) -> Self {
 		Self {
 			input,
 			by,
@@ -33,14 +32,14 @@ impl<'a, T: Transaction> SortNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for SortNode<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for SortNode<'a> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
 		self.initialized = Some(());
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 
 		let mut columns_opt: Option<Columns> = None;

@@ -6,13 +6,11 @@
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{
-	MemoryDatabaseOptimistic, Params, Session, WithSubsystem,
+	Params, Session, WithSubsystem,
 	core::interface::logging::LogLevel::Info,
 	embedded, log_info,
 	sub_logging::{FormatStyle, LoggingBuilder},
 };
-
-pub type DB = MemoryDatabaseOptimistic;
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 	logging.with_console(|console| console.color(true).stderr_for_errors(true).format_style(FormatStyle::Timeline))
@@ -24,7 +22,7 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 }
 
 fn main() {
-	let mut db: DB =
+	let mut db =
 		embedded::memory_optimistic().with_logging(logger_configuration).with_worker(|wp| wp).build().unwrap();
 
 	db.start().unwrap();

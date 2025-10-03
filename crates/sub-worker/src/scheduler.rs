@@ -11,20 +11,20 @@ use std::{
 	time::{Duration, Instant},
 };
 
-use reifydb_core::{Result, interface::Transaction};
+use reifydb_core::Result;
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{BoxedTask, Priority, TaskContext as CoreTaskContext, TaskHandle};
 
 use crate::task::{InternalTaskContext, PoolTask, ScheduledTask};
 
 /// Adapter from SchedulableTask to PoolTask
-pub(crate) struct SchedulableTaskAdapter<T: Transaction> {
-	task: BoxedTask<T>,
-	engine: StandardEngine<T>,
+pub(crate) struct SchedulableTaskAdapter {
+	task: BoxedTask,
+	engine: StandardEngine,
 }
 
-impl<T: Transaction> SchedulableTaskAdapter<T> {
-	pub(crate) fn new(task: BoxedTask<T>, engine: StandardEngine<T>) -> Self {
+impl SchedulableTaskAdapter {
+	pub(crate) fn new(task: BoxedTask, engine: StandardEngine) -> Self {
 		Self {
 			task,
 			engine,
@@ -32,7 +32,7 @@ impl<T: Transaction> SchedulableTaskAdapter<T> {
 	}
 }
 
-impl<T: Transaction> PoolTask for SchedulableTaskAdapter<T> {
+impl PoolTask for SchedulableTaskAdapter {
 	fn execute(&self, _ctx: &InternalTaskContext) -> Result<()> {
 		let core_ctx = CoreTaskContext::new(self.engine.clone());
 		self.task.execute(&core_ctx)

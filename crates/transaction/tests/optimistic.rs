@@ -18,7 +18,7 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::{StandardTransactionStore, TransactionStore};
+use reifydb_store_transaction::TransactionStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	multi::{

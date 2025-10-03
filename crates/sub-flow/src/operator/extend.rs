@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{FlowNodeId, Transaction, expression::Expression};
+use reifydb_core::interface::{FlowNodeId, expression::Expression};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 
 use crate::{Operator, flow::FlowChange};
@@ -20,14 +20,14 @@ impl ExtendOperator {
 	}
 }
 
-impl<T: Transaction> Operator<T> for ExtendOperator {
+impl Operator for ExtendOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
 
 	fn apply(
 		&self,
-		_txn: &mut StandardCommandTransaction<T>,
+		_txn: &mut StandardCommandTransaction,
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {

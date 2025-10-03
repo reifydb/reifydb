@@ -1,18 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{interface::Transaction, value::column::headers::ColumnHeaders};
+use reifydb_core::value::column::headers::ColumnHeaders;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 
-pub(crate) struct TakeNode<'a, T: Transaction> {
-	input: Box<ExecutionPlan<'a, T>>,
+pub(crate) struct TakeNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
 	remaining: usize,
 	initialized: Option<()>,
 }
 
-impl<'a, T: Transaction> TakeNode<'a, T> {
-	pub(crate) fn new(input: Box<ExecutionPlan<'a, T>>, take: usize) -> Self {
+impl<'a> TakeNode<'a> {
+	pub(crate) fn new(input: Box<ExecutionPlan<'a>>, take: usize) -> Self {
 		Self {
 			input,
 			remaining: take,
@@ -21,10 +21,10 @@ impl<'a, T: Transaction> TakeNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
+impl<'a> QueryNode<'a> for TakeNode<'a> {
 	fn initialize(
 		&mut self,
-		rx: &mut crate::StandardTransaction<'a, T>,
+		rx: &mut crate::StandardTransaction<'a>,
 		ctx: &ExecutionContext<'a>,
 	) -> crate::Result<()> {
 		self.input.initialize(rx, ctx)?;
@@ -32,7 +32,7 @@ impl<'a, T: Transaction> QueryNode<'a, T> for TakeNode<'a, T> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut crate::StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
 
 		while let Some(Batch {

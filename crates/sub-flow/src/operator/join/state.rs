@@ -6,8 +6,8 @@ use crate::operator::join::store::UndefinedTracker;
 
 pub(crate) struct JoinState {
 	pub(crate) schema: Schema,
-	pub(crate) left: Store<JoinSideEntry>,
-	pub(crate) right: Store<JoinSideEntry>,
+	pub(crate) left: Store,
+	pub(crate) right: Store,
 	/// Track which left rows have had undefined joins emitted
 	pub(crate) undefined_emitted: UndefinedTracker,
 }

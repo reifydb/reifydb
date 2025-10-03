@@ -12,13 +12,10 @@ pub mod test {
 		util::CowVec,
 		value::encoded::{EncodedValues, EncodedValuesLayout},
 	};
-	use reifydb_engine::{
-		EngineTransaction, StandardCommandTransaction, StandardEngine, StandardRowEvaluator, TransactionCdc,
-	};
+	use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 	use reifydb_store_transaction::TransactionStore;
 	use reifydb_transaction::{
-		multi::transaction::optimistic::TransactionOptimistic,
-		single::{TransactionSingleVersion, TransactionSvl},
+		cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
 	};
 	use reifydb_type::{Type, Value};
 
@@ -27,20 +24,13 @@ pub mod test {
 		operator::{Operator, transform::TransformOperator},
 	};
 
-	/// Test transaction type using optimistic concurrency control and memory storage
-	pub type TestTransaction = EngineTransaction<TransactionOptimistic, TransactionSvl, TransactionCdc>;
-
 	/// Create a test engine with memory storage and optimistic transactions
-	pub fn create_test_engine() -> StandardEngine<TestTransaction> {
+	pub fn create_test_engine() -> StandardEngine {
 		let store = TransactionStore::testing_memory();
 		let eventbus = EventBus::new();
-		let single = TransactionSvl::new(store.clone(), eventbus.clone());
+		let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
 		let cdc = TransactionCdc::new(store.clone());
-		let multi = TransactionOptimistic::new(
-			store,
-			TransactionSingleVersion::SingleVersionLock(single.clone()),
-			eventbus.clone(),
-		);
+		let multi = TransactionMultiVersion::optimistic(store, single.clone(), eventbus.clone());
 
 		StandardEngine::new(
 			multi,
@@ -88,14 +78,14 @@ pub mod test {
 		}
 	}
 
-	impl Operator<TestTransaction> for TestOperator {
+	impl Operator for TestOperator {
 		fn id(&self) -> FlowNodeId {
 			self.id
 		}
 
 		fn apply(
 			&self,
-			txn: &mut StandardCommandTransaction<TestTransaction>,
+			txn: &mut StandardCommandTransaction,
 			change: FlowChange,
 			evaluator: &StandardRowEvaluator,
 		) -> reifydb_core::Result<FlowChange> {
@@ -103,7 +93,7 @@ pub mod test {
 		}
 	}
 
-	impl TransformOperator<TestTransaction> for TestOperator {}
+	impl TransformOperator for TestOperator {}
 
 	/// Helper to create test values
 	pub fn test_values() -> Vec<Value> {
@@ -126,7 +116,7 @@ pub mod test {
 	}
 
 	/// Helper to create a test transaction
-	pub fn create_test_transaction() -> StandardCommandTransaction<TestTransaction> {
+	pub fn create_test_transaction() -> StandardCommandTransaction {
 		let engine = create_test_engine();
 		engine.begin_command().unwrap()
 	}

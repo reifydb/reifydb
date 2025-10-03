@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	BitVec,
-	interface::{Transaction, evaluate::expression::Expression},
+	interface::evaluate::expression::Expression,
 	value::column::{ColumnData, headers::ColumnHeaders},
 };
 
@@ -15,14 +15,14 @@ use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 
-pub(crate) struct FilterNode<'a, T: Transaction> {
-	input: Box<ExecutionPlan<'a, T>>,
+pub(crate) struct FilterNode<'a> {
+	input: Box<ExecutionPlan<'a>>,
 	expressions: Vec<Expression<'a>>,
 	context: Option<Arc<ExecutionContext<'a>>>,
 }
 
-impl<'a, T: Transaction> FilterNode<'a, T> {
-	pub fn new(input: Box<ExecutionPlan<'a, T>>, expressions: Vec<Expression<'a>>) -> Self {
+impl<'a> FilterNode<'a> {
+	pub fn new(input: Box<ExecutionPlan<'a>>, expressions: Vec<Expression<'a>>) -> Self {
 		Self {
 			input,
 			expressions,
@@ -31,14 +31,14 @@ impl<'a, T: Transaction> FilterNode<'a, T> {
 	}
 }
 
-impl<'a, T: Transaction> QueryNode<'a, T> for FilterNode<'a, T> {
-	fn initialize(&mut self, rx: &mut StandardTransaction<'a, T>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
+impl<'a> QueryNode<'a> for FilterNode<'a> {
+	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a, T>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
 		let ctx = self.context.as_ref().unwrap();
 

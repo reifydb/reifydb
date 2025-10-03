@@ -5,7 +5,7 @@ use FlowNodeType::{Aggregate, SinkView, SourceInlineData, SourceTable, SourceVie
 use reifydb_catalog::resolve::resolve_view;
 use reifydb_core::{
 	Error,
-	interface::{FlowId, FlowNodeId, SourceId, Transaction},
+	interface::{FlowId, FlowNodeId, SourceId},
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_rql::flow::{
@@ -22,8 +22,8 @@ use crate::{
 	},
 };
 
-impl<T: Transaction> FlowEngine<T> {
-	pub fn register(&mut self, txn: &mut StandardCommandTransaction<T>, flow: Flow) -> crate::Result<()> {
+impl FlowEngine {
+	pub fn register(&mut self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
 		debug_assert!(!self.flows.contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.get_node_ids() {
@@ -36,7 +36,7 @@ impl<T: Transaction> FlowEngine<T> {
 		Ok(())
 	}
 
-	fn add(&mut self, txn: &mut StandardCommandTransaction<T>, flow: &Flow, node: &FlowNode) -> crate::Result<()> {
+	fn add(&mut self, txn: &mut StandardCommandTransaction, flow: &Flow, node: &FlowNode) -> crate::Result<()> {
 		debug_assert!(!self.operators.contains_key(&node.id), "Operator already registered");
 		let node = node.clone();
 

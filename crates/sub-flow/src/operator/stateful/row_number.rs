@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	EncodedKey,
-	interface::{FlowNodeId, Transaction},
+	interface::FlowNodeId,
 	util::{CowVec, encoding::keycode::KeySerializer},
 	value::encoded::{EncodedKeyRange, EncodedValues},
 };
@@ -36,9 +36,9 @@ impl RowNumberProvider {
 	/// Get or create a RowNumber for a given key
 	/// Returns (RowNumber, is_new) where is_new indicates if it was newly
 	/// created
-	pub fn get_or_create_row_number<T: Transaction, O: RawStatefulOperator<T>>(
+	pub fn get_or_create_row_number<O: RawStatefulOperator>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		operator: &O,
 		key: &EncodedKey,
 	) -> crate::Result<(RowNumber, bool)> {
@@ -58,11 +58,11 @@ impl RowNumberProvider {
 		}
 
 		// Key doesn't exist, generate a new encoded number
-		let counter = self.load_counter(txn, operator)?;
+		let counter = self.load_counter::<O>(txn, operator)?;
 		let new_row_number = RowNumber(counter);
 
 		// Save the new counter value
-		self.save_counter(txn, operator, counter + 1)?;
+		self.save_counter::<O>(txn, operator, counter + 1)?;
 
 		// Save the mapping from key to encoded number
 		let row_num_bytes = counter.to_be_bytes().to_vec();
@@ -72,9 +72,9 @@ impl RowNumberProvider {
 	}
 
 	/// Load the current counter value
-	fn load_counter<T: Transaction, O: RawStatefulOperator<T>>(
+	fn load_counter<O: RawStatefulOperator>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		operator: &O,
 	) -> crate::Result<u64> {
 		let key = self.make_counter_key();
@@ -97,9 +97,9 @@ impl RowNumberProvider {
 	}
 
 	/// Save the counter value
-	fn save_counter<T: Transaction, O: RawStatefulOperator<T>>(
+	fn save_counter<O: RawStatefulOperator>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		operator: &O,
 		counter: u64,
 	) -> crate::Result<()> {
@@ -129,9 +129,9 @@ impl RowNumberProvider {
 
 	/// Remove all encoded number mappings with the given prefix
 	/// This is useful for cleaning up all join results from a specific left encoded
-	pub fn remove_by_prefix<T: Transaction, O: RawStatefulOperator<T>>(
+	pub fn remove_by_prefix<O: RawStatefulOperator>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		operator: &O,
 		key_prefix: &[u8],
 	) -> crate::Result<()> {

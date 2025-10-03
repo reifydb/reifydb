@@ -2,16 +2,16 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::{CatalogTableCommandOperations, CatalogTableQueryOperations, table::TableToCreate};
-use reifydb_core::{interface::Transaction, value::column::Columns};
+use reifydb_core::value::column::Columns;
 use reifydb_rql::plan::physical::CreateTableNode;
 use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
 
 impl Executor {
-	pub(crate) fn create_table<'a, T: Transaction>(
+	pub(crate) fn create_table<'a>(
 		&self,
-		txn: &mut StandardCommandTransaction<T>,
+		txn: &mut StandardCommandTransaction,
 		plan: CreateTableNode,
 	) -> crate::Result<Columns<'a>> {
 		// Check if table already exists using the transaction's catalog

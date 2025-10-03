@@ -29,8 +29,8 @@ trait EventListenerList: Any + Send + Sync {
 	fn as_any_mut(&mut self) -> &mut dyn Any;
 }
 
-struct EventListenerListImpl<T> {
-	listeners: RwLock<Vec<Box<dyn EventListener<T>>>>,
+struct EventListenerListImpl<E> {
+	listeners: RwLock<Vec<Box<dyn EventListener<E>>>>,
 }
 
 impl<E> EventListenerListImpl<E>

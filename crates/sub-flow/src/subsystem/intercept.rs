@@ -12,7 +12,7 @@ use reifydb_core::{
 		TablePostDeleteInterceptor, TablePostInsertContext, TablePostInsertInterceptor, TablePostUpdateContext,
 		TablePostUpdateInterceptor,
 	},
-	interface::{CommandTransaction, SourceId, Transaction},
+	interface::{CommandTransaction, SourceId},
 	ioc::{IocContainer, LazyResolveRc},
 };
 use reifydb_engine::StandardEngine;
@@ -39,14 +39,14 @@ pub(crate) enum Change {
 	},
 }
 
-pub struct TransactionalFlowInterceptor<T: Transaction> {
-	engine: LazyResolveRc<StandardEngine<T>>,
+pub struct TransactionalFlowInterceptor {
+	engine: LazyResolveRc<StandardEngine>,
 	ioc: IocContainer,
 	// Transaction-scoped change buffer
 	changes: Rc<RefCell<Vec<Change>>>,
 }
 
-impl<T: Transaction> TransactionalFlowInterceptor<T> {
+impl TransactionalFlowInterceptor {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
 			engine: LazyResolveRc::new(),
@@ -56,7 +56,7 @@ impl<T: Transaction> TransactionalFlowInterceptor<T> {
 	}
 }
 
-impl<T: Transaction> Clone for TransactionalFlowInterceptor<T> {
+impl Clone for TransactionalFlowInterceptor {
 	fn clone(&self) -> Self {
 		Self {
 			engine: self.engine.clone(),
@@ -66,7 +66,7 @@ impl<T: Transaction> Clone for TransactionalFlowInterceptor<T> {
 	}
 }
 
-impl<T: Transaction, CT: CommandTransaction> TablePostInsertInterceptor<CT> for TransactionalFlowInterceptor<T> {
+impl<CT: CommandTransaction> TablePostInsertInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, ctx: &mut TablePostInsertContext<CT>) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Insert {
 			_source_id: SourceId::from(ctx.table.id),
@@ -78,7 +78,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostInsertInterceptor<CT> for 
 	}
 }
 
-impl<T: Transaction, CT: CommandTransaction> TablePostUpdateInterceptor<CT> for TransactionalFlowInterceptor<T> {
+impl<CT: CommandTransaction> TablePostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, ctx: &mut TablePostUpdateContext<CT>) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Update {
 			_source_id: SourceId::from(ctx.table.id),
@@ -90,7 +90,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostUpdateInterceptor<CT> for 
 	}
 }
 
-impl<T: Transaction, CT: CommandTransaction> TablePostDeleteInterceptor<CT> for TransactionalFlowInterceptor<T> {
+impl<CT: CommandTransaction> TablePostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, ctx: &mut TablePostDeleteContext<CT>) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Delete {
 			_source_id: SourceId::from(ctx.table.id),
@@ -101,7 +101,7 @@ impl<T: Transaction, CT: CommandTransaction> TablePostDeleteInterceptor<CT> for 
 	}
 }
 
-impl<T: Transaction, CT: CommandTransaction> RingBufferPostInsertInterceptor<CT> for TransactionalFlowInterceptor<T> {
+impl<CT: CommandTransaction> RingBufferPostInsertInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, ctx: &mut RingBufferPostInsertContext<CT>) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Insert {
 			_source_id: SourceId::from(ctx.ring_buffer.id),
@@ -113,7 +113,7 @@ impl<T: Transaction, CT: CommandTransaction> RingBufferPostInsertInterceptor<CT>
 	}
 }
 
-impl<T: Transaction, CT: CommandTransaction> RingBufferPostUpdateInterceptor<CT> for TransactionalFlowInterceptor<T> {
+impl<CT: CommandTransaction> RingBufferPostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, ctx: &mut RingBufferPostUpdateContext<CT>) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Update {
 			_source_id: SourceId::from(ctx.ring_buffer.id),
@@ -125,7 +125,7 @@ impl<T: Transaction, CT: CommandTransaction> RingBufferPostUpdateInterceptor<CT>
 	}
 }
 
-impl<T: Transaction, CT: CommandTransaction> RingBufferPostDeleteInterceptor<CT> for TransactionalFlowInterceptor<T> {
+impl<CT: CommandTransaction> RingBufferPostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, ctx: &mut RingBufferPostDeleteContext<CT>) -> Result<()> {
 		self.changes.borrow_mut().push(Change::Delete {
 			_source_id: SourceId::from(ctx.ring_buffer.id),
@@ -136,7 +136,7 @@ impl<T: Transaction, CT: CommandTransaction> RingBufferPostDeleteInterceptor<CT>
 	}
 }
 
-impl<T: Transaction, CT: CommandTransaction> PreCommitInterceptor<CT> for TransactionalFlowInterceptor<T> {
+impl<CT: CommandTransaction> PreCommitInterceptor<CT> for TransactionalFlowInterceptor {
 	fn intercept(&self, _ctx: &mut PreCommitContext<CT>) -> Result<()> {
 		let _engine = self.engine.get_or_resolve(&self.ioc)?;
 
@@ -156,7 +156,7 @@ impl<T: Transaction, CT: CommandTransaction> PreCommitInterceptor<CT> for Transa
 	}
 }
 
-impl<T: Transaction, CT: CommandTransaction> RegisterInterceptor<CT> for TransactionalFlowInterceptor<T> {
+impl<CT: CommandTransaction> RegisterInterceptor<CT> for TransactionalFlowInterceptor {
 	fn register(self: Rc<Self>, interceptors: &mut Interceptors<CT>) {
 		interceptors.table_post_insert.add(self.clone());
 		interceptors.table_post_update.add(self.clone());

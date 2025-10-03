@@ -8,9 +8,8 @@ use common::{cleanup_server, cleanup_ws_client, create_server_instance};
 use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
-	engine::TransactionCdc,
 	memory, optimistic,
-	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
+	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
