@@ -12,24 +12,27 @@ use std::{
 
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{event::EventBus, interceptor::StandardInterceptorFactory};
-use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardEngine};
-use reifydb_store_transaction::StandardTransactionStore;
+use reifydb_engine::{EngineTransaction, StandardEngine, TransactionCdc};
+use reifydb_store_transaction::TransactionStore;
 use reifydb_sub_api::{Priority, Subsystem};
 use reifydb_sub_worker::{InternalClosureTask, WorkerConfig, WorkerSubsystem};
-use reifydb_transaction::{multi::transaction::serializable::SerializableTransaction, single::TransactionSvl};
+use reifydb_transaction::{
+	multi::transaction::serializable::TransactionSerializable,
+	single::{TransactionSingleVersion, TransactionSvl},
+};
 
-type TestTransaction = EngineTransaction<
-	SerializableTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-	TransactionSvl<StandardTransactionStore>,
-	StandardCdcTransaction<StandardTransactionStore>,
->;
+type TestTransaction = EngineTransaction<TransactionSerializable, TransactionSvl, TransactionCdc>;
 
 fn create_test_engine() -> StandardEngine<TestTransaction> {
-	let store = StandardTransactionStore::testing_memory();
+	let store = TransactionStore::testing_memory();
 	let eventbus = EventBus::new();
 	let single = TransactionSvl::new(store.clone(), eventbus.clone());
-	let cdc = StandardCdcTransaction::new(store.clone());
-	let multi = SerializableTransaction::new(store, single.clone(), eventbus.clone());
+	let cdc = TransactionCdc::new(store.clone());
+	let multi = TransactionSerializable::new(
+		store,
+		TransactionSingleVersion::SingleVersionLock(single.clone()),
+		eventbus.clone(),
+	);
 
 	StandardEngine::new(
 		multi,

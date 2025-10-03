@@ -6,6 +6,7 @@ mod start;
 
 use reifydb_core::interface::{Transaction, WithEventBus};
 use reifydb_engine::StandardEngine;
+use reifydb_transaction::single::TransactionSingleVersion;
 
 use crate::boot::{create::CreateEventListener, start::StartEventListener};
 
@@ -21,7 +22,7 @@ impl<T: Transaction> Bootloader<T> {
 	}
 }
 
-impl<T: Transaction> Bootloader<T> {
+impl<T: Transaction<SingleVersion = TransactionSingleVersion>> Bootloader<T> {
 	pub fn load(&self) -> crate::Result<()> {
 		let engine = self.engine.clone();
 		let eventbus = engine.event_bus();

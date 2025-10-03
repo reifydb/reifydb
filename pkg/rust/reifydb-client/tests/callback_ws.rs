@@ -17,12 +17,10 @@ use common::{
 };
 use reifydb::{
 	Database,
-	core::{
-		event::EventBus,
-		interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
-		retry,
-	},
+	core::{event::EventBus, retry},
+	engine::TransactionCdc,
 	memory, optimistic,
+	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{
 	WsCallbackSession, WsClient,
@@ -34,26 +32,16 @@ use thread::sleep;
 
 use crate::common::create_server_instance;
 
-pub struct CallbackRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	instance: Option<Database<MVT, SVT, C>>,
+pub struct CallbackRunner {
+	instance: Option<Database>,
 	client: Option<WsClient>,
 	session: Option<WsCallbackSession>,
 	last_command_result: Arc<Mutex<Option<Result<CommandResult, String>>>>,
 	last_query_result: Arc<Mutex<Option<Result<QueryResult, String>>>>,
 }
 
-impl<MVT, SVT, C> CallbackRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	pub fn new(input: (MVT, SVT, C, EventBus)) -> Self {
+impl CallbackRunner {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
 		Self {
 			instance: Some(create_server_instance(input)),
 			client: None,
@@ -64,12 +52,7 @@ where
 	}
 }
 
-impl<MVT, SVT, C> testscript::Runner for CallbackRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
+impl testscript::Runner for CallbackRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let session = self.session.as_ref().ok_or("No session available")?;
 

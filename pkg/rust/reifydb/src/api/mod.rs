@@ -3,13 +3,10 @@
 
 use std::time::Duration;
 
-use reifydb_core::{
-	event::EventBus,
-	interface::{CdcTransaction, SingleVersionTransaction},
-};
-use reifydb_engine::StandardCdcTransaction;
+use reifydb_core::event::EventBus;
+use reifydb_engine::TransactionCdc;
 use reifydb_store_transaction::{
-	BackendConfig, MultiVersionStore, StandardTransactionStore, TransactionStoreConfig,
+	BackendConfig, TransactionStore, TransactionStoreConfig,
 	backend::{
 		Backend,
 		cdc::BackendCdc,
@@ -19,10 +16,7 @@ use reifydb_store_transaction::{
 		sqlite::{SqliteBackend, SqliteConfig},
 	},
 };
-use reifydb_transaction::{
-	multi::transaction::{optimistic::TransactionOptimistic, serializable::SerializableTransaction},
-	single::TransactionSvl,
-};
+use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
 pub mod embedded;
 
@@ -30,15 +24,10 @@ pub mod embedded;
 pub mod server;
 
 /// Convenience function to create in-memory storage
-pub fn memory() -> (
-	StandardTransactionStore,
-	TransactionSvl<StandardTransactionStore>,
-	StandardCdcTransaction<StandardTransactionStore>,
-	EventBus,
-) {
+pub fn memory() -> (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
 	let memory = MemoryBackend::default();
-	let store = StandardTransactionStore::new(TransactionStoreConfig {
+	let store = TransactionStore::standard(TransactionStoreConfig {
 		hot: Some(BackendConfig {
 			backend: Backend {
 				multi: BackendMulti::Memory(memory.clone()),
@@ -51,30 +40,22 @@ pub fn memory() -> (
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
-	})
-	.unwrap();
+	});
 
 	(
 		store.clone(),
-		TransactionSvl::new(store.clone(), eventbus.clone()),
-		StandardCdcTransaction::new(store),
+		TransactionSingleVersion::svl(store.clone(), eventbus.clone()),
+		TransactionCdc::new(store),
 		eventbus,
 	)
 }
 
 /// Convenience function to create SQLite storage
-pub fn sqlite(
-	config: SqliteConfig,
-) -> (
-	StandardTransactionStore,
-	TransactionSvl<StandardTransactionStore>,
-	StandardCdcTransaction<StandardTransactionStore>,
-	EventBus,
-) {
+pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus) {
 	let eventbus = EventBus::new();
 	let sqlite = SqliteBackend::new(config);
 
-	let store = StandardTransactionStore::new(TransactionStoreConfig {
+	let store = TransactionStore::standard(TransactionStoreConfig {
 		hot: Some(BackendConfig {
 			backend: Backend {
 				multi: BackendMulti::Sqlite(sqlite.clone()),
@@ -87,35 +68,26 @@ pub fn sqlite(
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
-	})
-	.unwrap();
+	});
 
 	(
 		store.clone(),
-		TransactionSvl::new(store.clone(), eventbus.clone()),
-		StandardCdcTransaction::new(store),
+		TransactionSingleVersion::svl(store.clone(), eventbus.clone()),
+		TransactionCdc::new(store),
 		eventbus,
 	)
 }
 
 /// Convenience function to create an optimistic transaction layer
-pub fn optimistic<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (TransactionOptimistic<MVS, SVT>, SVT, C, EventBus)
-where
-	MVS: MultiVersionStore,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	(TransactionOptimistic::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
+pub fn optimistic(
+	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
+) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
+	(TransactionMultiVersion::optimistic(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
 }
 
 /// Convenience function to create a serializable transaction layer
-pub fn serializable<MVS, SVT, C>(
-	input: (MVS, SVT, C, EventBus),
-) -> (SerializableTransaction<MVS, SVT>, SVT, C, EventBus)
-where
-	MVS: MultiVersionStore,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	(SerializableTransaction::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
+pub fn serializable(
+	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
+) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
+	(TransactionMultiVersion::serializable(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
 }

@@ -10,7 +10,7 @@ use reifydb_core::{
 	interface::{SingleVersionTransaction, SingleVersionValues, WithEventBus},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::SingleVersionStore;
+use reifydb_store_transaction::TransactionStore;
 
 pub(crate) mod range;
 pub(crate) mod range_rev;
@@ -23,17 +23,17 @@ pub use read::SvlQueryTransaction;
 pub use write::SvlCommandTransaction;
 
 #[derive(Clone)]
-pub struct TransactionSvl<SVS> {
-	inner: Arc<TransactionSvlInner<SVS>>,
+pub struct TransactionSvl {
+	inner: Arc<TransactionSvlInner>,
 }
 
-struct TransactionSvlInner<SVS> {
-	store: RwLock<SVS>,
+struct TransactionSvlInner {
+	store: RwLock<TransactionStore>,
 	event_bus: EventBus,
 }
 
-impl<SVS> TransactionSvl<SVS> {
-	pub fn new(store: SVS, event_bus: EventBus) -> Self {
+impl TransactionSvl {
+	pub fn new(store: TransactionStore, event_bus: EventBus) -> Self {
 		Self {
 			inner: Arc::new(TransactionSvlInner {
 				store: RwLock::new(store),
@@ -43,26 +43,20 @@ impl<SVS> TransactionSvl<SVS> {
 	}
 }
 
-impl<SVS> WithEventBus for TransactionSvl<SVS>
-where
-	SVS: SingleVersionStore,
-{
+impl WithEventBus for TransactionSvl {
 	fn event_bus(&self) -> &EventBus {
 		&self.inner.event_bus
 	}
 }
 
-impl<SVS> SingleVersionTransaction for TransactionSvl<SVS>
-where
-	SVS: SingleVersionStore,
-{
-	type Query<'a> = SvlQueryTransaction<'a, SVS>;
-	type Command<'a> = SvlCommandTransaction<'a, SVS>;
+impl SingleVersionTransaction for TransactionSvl {
+	type Query<'a> = SvlQueryTransaction<'a>;
+	type Command<'a> = SvlCommandTransaction<'a>;
 
 	fn begin_query(&self) -> crate::Result<Self::Query<'_>> {
 		let storage = self.inner.store.read().unwrap();
 		Ok(SvlQueryTransaction {
-			storage,
+			store: storage,
 		})
 	}
 

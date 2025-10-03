@@ -8,25 +8,20 @@ use reifydb_core::{
 	},
 	interface::{
 		EncodableKey, SingleVersionCommandTransaction, SingleVersionQueryTransaction, SingleVersionTransaction,
-		SystemVersion, SystemVersionKey,
+		SystemVersion, SystemVersionKey, WithEventBus,
 	},
 	log_error,
 	value::encoded::EncodedValuesLayout,
 };
+use reifydb_transaction::single::TransactionSingleVersion;
 use reifydb_type::Type;
 
-pub(crate) struct StartEventListener<SVT>
-where
-	SVT: SingleVersionTransaction,
-{
-	single: SVT,
+pub(crate) struct StartEventListener {
+	single: TransactionSingleVersion,
 }
 
-impl<SVT> StartEventListener<SVT>
-where
-	SVT: SingleVersionTransaction,
-{
-	pub(crate) fn new(single: SVT) -> Self {
+impl StartEventListener {
+	pub(crate) fn new(single: TransactionSingleVersion) -> Self {
 		Self {
 			single,
 		}
@@ -35,10 +30,7 @@ where
 
 const CURRENT_STORAGE_VERSION: u8 = 0x01;
 
-impl<SVT> EventListener<OnStartEvent> for StartEventListener<SVT>
-where
-	SVT: SingleVersionTransaction,
-{
+impl EventListener<OnStartEvent> for StartEventListener {
 	fn on(&self, _hook: &OnStartEvent) {
 		if let Err(e) = (|| -> crate::Result<()> {
 			let layout = EncodedValuesLayout::new(&[Type::Uint1]);
@@ -73,10 +65,7 @@ where
 	}
 }
 
-impl<SVT> StartEventListener<SVT>
-where
-	SVT: SingleVersionTransaction,
-{
+impl StartEventListener {
 	fn trigger_database_creation(&self) -> crate::Result<()> {
 		self.single.event_bus().emit(OnCreateEvent {});
 		Ok(())

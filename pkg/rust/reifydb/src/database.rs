@@ -13,12 +13,10 @@ use std::{
 #[cfg(feature = "sub_flow")]
 use reifydb_core::interface::Transaction;
 use reifydb_core::{
-	Result,
-	event::lifecycle::OnStartEvent,
-	interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction, WithEventBus},
-	log_debug, log_error, log_timed_trace, log_warn,
+	Result, event::lifecycle::OnStartEvent, interface::WithEventBus, log_debug, log_error, log_timed_trace,
+	log_warn,
 };
-use reifydb_engine::{EngineTransaction, StandardEngine};
+use reifydb_engine::{EngineTransaction, StandardEngine, TransactionCdc};
 use reifydb_sub_api::HealthStatus;
 #[cfg(feature = "sub_worker")]
 use reifydb_sub_api::Scheduler;
@@ -26,6 +24,7 @@ use reifydb_sub_api::Scheduler;
 use reifydb_sub_flow::FlowSubsystem;
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::ServerSubsystem;
+use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
 use crate::{
 	boot::Bootloader,
@@ -73,36 +72,50 @@ impl Default for DatabaseConfig {
 	}
 }
 
-pub struct Database<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction> {
+pub struct Database {
 	config: DatabaseConfig,
-	engine: StandardEngine<EngineTransaction<MVT, SVT, C>>,
-	bootloader: Bootloader<EngineTransaction<MVT, SVT, C>>,
+	engine: StandardEngine<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>,
+	bootloader: Bootloader<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>,
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
 	#[cfg(feature = "sub_worker")]
-	scheduler: Arc<dyn Scheduler<EngineTransaction<MVT, SVT, C>>>,
+	scheduler: Arc<
+		dyn Scheduler<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>,
+	>,
 }
 
-impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction> Database<MVT, SVT, C> {
+impl Database {
 	#[cfg(feature = "sub_flow")]
 	pub fn sub_flow<T: Transaction>(&self) -> Option<&FlowSubsystem<T>> {
 		self.subsystem::<FlowSubsystem<T>>()
 	}
 
 	#[cfg(feature = "sub_server")]
-	pub fn sub_server(&self) -> Option<&ServerSubsystem<EngineTransaction<MVT, SVT, C>>> {
-		self.subsystems.get::<ServerSubsystem<EngineTransaction<MVT, SVT, C>>>()
+	pub fn sub_server(
+		&self,
+	) -> Option<
+		&ServerSubsystem<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>,
+	> {
+		self.subsystems.get::<ServerSubsystem<
+			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+		>>()
 	}
 }
 
-impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction> Database<MVT, SVT, C> {
+impl Database {
 	pub(crate) fn new(
-		engine: StandardEngine<EngineTransaction<MVT, SVT, C>>,
+		engine: StandardEngine<
+			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+		>,
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
-		#[cfg(feature = "sub_worker")] scheduler: Arc<dyn Scheduler<EngineTransaction<MVT, SVT, C>>>,
+		#[cfg(feature = "sub_worker")] scheduler: Arc<
+			dyn Scheduler<
+				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+			>,
+		>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -116,7 +129,9 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 		}
 	}
 
-	pub fn engine(&self) -> &StandardEngine<EngineTransaction<MVT, SVT, C>> {
+	pub fn engine(
+		&self,
+	) -> &StandardEngine<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>> {
 		&self.engine
 	}
 
@@ -242,7 +257,9 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 	}
 
 	#[cfg(feature = "sub_worker")]
-	pub fn scheduler(&self) -> Arc<dyn Scheduler<EngineTransaction<MVT, SVT, C>>> {
+	pub fn scheduler(
+		&self,
+	) -> Arc<dyn Scheduler<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>> {
 		self.scheduler.clone()
 	}
 
@@ -289,7 +306,7 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 	}
 }
 
-impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction> Drop for Database<MVT, SVT, C> {
+impl Drop for Database {
 	fn drop(&mut self) {
 		if self.running {
 			log_warn!("System being dropped while running, attempting graceful shutdown");
@@ -298,28 +315,31 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 	}
 }
 
-impl<MVT, SVT, C> Session<EngineTransaction<MVT, SVT, C>> for Database<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
+impl Session<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>> for Database {
 	fn command_session(
 		&self,
-		session: impl IntoCommandSession<EngineTransaction<MVT, SVT, C>>,
-	) -> Result<CommandSession<EngineTransaction<MVT, SVT, C>>> {
+		session: impl IntoCommandSession<
+			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+		>,
+	) -> Result<CommandSession<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>>
+	{
 		session.into_command_session(self.engine.clone())
 	}
 
 	fn query_session(
 		&self,
-		session: impl IntoQuerySession<EngineTransaction<MVT, SVT, C>>,
-	) -> Result<QuerySession<EngineTransaction<MVT, SVT, C>>> {
+		session: impl IntoQuerySession<
+			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+		>,
+	) -> Result<QuerySession<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>>
+	{
 		session.into_query_session(self.engine.clone())
 	}
 
 	#[cfg(feature = "sub_worker")]
-	fn scheduler(&self) -> Arc<dyn Scheduler<EngineTransaction<MVT, SVT, C>>> {
+	fn scheduler(
+		&self,
+	) -> Arc<dyn Scheduler<EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>>> {
 		self.scheduler.clone()
 	}
 }

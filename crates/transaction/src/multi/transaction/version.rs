@@ -16,6 +16,8 @@ use reifydb_core::{
 };
 use reifydb_type::Type;
 
+use crate::single::TransactionSingleVersion;
+
 const BLOCK_SIZE: u64 = 100_000;
 
 pub trait VersionProvider {
@@ -51,20 +53,13 @@ impl VersionBlock {
 	}
 }
 
-#[derive(Debug)]
-pub struct StandardVersionProvider<SVT>
-where
-	SVT: SingleVersionTransaction,
-{
-	single: SVT,
+pub struct StandardVersionProvider {
+	single: TransactionSingleVersion,
 	current_block: Arc<Mutex<VersionBlock>>,
 }
 
-impl<SVT> StandardVersionProvider<SVT>
-where
-	SVT: SingleVersionTransaction,
-{
-	pub fn new(single: SVT) -> crate::Result<Self> {
+impl StandardVersionProvider {
+	pub fn new(single: TransactionSingleVersion) -> crate::Result<Self> {
 		// Load current version and allocate first block
 		let current_version = Self::load_current_version(&single)?;
 		let first_block = VersionBlock::new(current_version);
@@ -78,7 +73,7 @@ where
 		})
 	}
 
-	fn load_current_version(single: &SVT) -> crate::Result<u64> {
+	fn load_current_version(single: &TransactionSingleVersion) -> crate::Result<u64> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 
@@ -88,7 +83,7 @@ where
 		})
 	}
 
-	fn persist_version(single: &SVT, version: u64) -> crate::Result<()> {
+	fn persist_version(single: &TransactionSingleVersion, version: u64) -> crate::Result<()> {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 		let mut values = layout.allocate();
@@ -101,10 +96,7 @@ where
 	}
 }
 
-impl<SVT> VersionProvider for StandardVersionProvider<SVT>
-where
-	SVT: SingleVersionTransaction,
-{
+impl VersionProvider for StandardVersionProvider {
 	fn next(&self) -> crate::Result<CommitVersion> {
 		// Fast path: try to get version from current block
 		let mut block = self.current_block.lock().unwrap();
@@ -136,15 +128,11 @@ where
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::event::EventBus;
-	use reifydb_store_transaction::StandardTransactionStore;
-
 	use super::*;
-	use crate::single::TransactionSvl;
 
 	#[test]
 	fn test_new_version_provider() {
-		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSingleVersion::testing();
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Should start at version 0
@@ -153,7 +141,7 @@ mod tests {
 
 	#[test]
 	fn test_next_version_sequential() {
-		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSingleVersion::testing();
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		assert_eq!(provider.next().unwrap(), 1);
@@ -168,7 +156,7 @@ mod tests {
 
 	#[test]
 	fn test_version_persistence() {
-		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSingleVersion::testing();
 
 		// Create first provider and get some versions
 		{
@@ -187,7 +175,7 @@ mod tests {
 
 	#[test]
 	fn test_block_exhaustion_and_allocation() {
-		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSingleVersion::testing();
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Exhaust the first block
@@ -209,7 +197,7 @@ mod tests {
 	fn test_concurrent_version_allocation() {
 		use std::{sync::Arc, thread};
 
-		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSingleVersion::testing();
 		let provider = Arc::new(StandardVersionProvider::new(single).unwrap());
 
 		let mut handles = vec![];
@@ -288,7 +276,7 @@ mod tests {
 
 	#[test]
 	fn test_load_existing_version() {
-		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSingleVersion::testing();
 
 		// Manually set a version in storage
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);

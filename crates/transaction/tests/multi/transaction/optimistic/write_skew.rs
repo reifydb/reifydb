@@ -10,11 +10,7 @@
 // http: //www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::EncodedKey;
-use reifydb_store_transaction::StandardTransactionStore;
-use reifydb_transaction::{
-	multi::transaction::optimistic::{CommandTransaction, TransactionOptimistic},
-	single::TransactionSvl,
-};
+use reifydb_transaction::multi::transaction::optimistic::{CommandTransaction, TransactionOptimistic};
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
@@ -33,14 +29,11 @@ fn test_write_skew() {
 	txn.commit().unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	let get_bal =
-		|txn: &mut CommandTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-		 k: &EncodedKey|
-		 -> u64 {
-			let sv = txn.get(k).unwrap().unwrap();
-			let val = sv.values();
-			from_values!(u64, val)
-		};
+	let get_bal = |txn: &mut CommandTransaction, k: &EncodedKey| -> u64 {
+		let sv = txn.get(k).unwrap().unwrap();
+		let val = sv.values();
+		from_values!(u64, val)
+	};
 
 	// Start two transactions, each would read both accounts and deduct from
 	// one account.

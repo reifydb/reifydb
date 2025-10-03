@@ -53,6 +53,18 @@ pub enum TransactionStore {
 	// Other(Box<dyn >) = 254,
 }
 
+impl TransactionStore {
+	pub fn standard(config: TransactionStoreConfig) -> Self {
+		Self::Standard(StandardTransactionStore::new(config).unwrap())
+	}
+}
+
+impl TransactionStore {
+	pub fn testing_memory() -> Self {
+		TransactionStore::Standard(StandardTransactionStore::testing_memory())
+	}
+}
+
 // MultiVersion trait implementations
 impl MultiVersionGet for TransactionStore {
 	#[inline]

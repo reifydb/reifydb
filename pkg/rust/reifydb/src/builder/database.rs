@@ -11,7 +11,7 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::StandardInterceptorBuilder,
 	interface::{
-		CdcTransaction, MultiVersionTransaction, SingleVersionTransaction,
+		MultiVersionTransaction,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
@@ -19,6 +19,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{
 	EngineTransaction, EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
+	TransactionCdc,
 };
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
@@ -30,7 +31,7 @@ use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
 #[cfg(feature = "sub_worker")]
 use reifydb_sub_worker::{WorkerBuilder, WorkerSubsystem, WorkerSubsystemFactory};
-use reifydb_transaction::TransactionVersion;
+use reifydb_transaction::{TransactionVersion, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
 use crate::{
 	database::{Database, DatabaseConfig},
@@ -38,22 +39,79 @@ use crate::{
 	subsystem::Subsystems,
 };
 
-pub struct DatabaseBuilder<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction> {
+pub struct DatabaseBuilder {
 	config: DatabaseConfig,
-	interceptors: StandardInterceptorBuilder<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>,
-	subsystems: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>>>,
+	interceptors: StandardInterceptorBuilder<
+		StandardCommandTransaction<
+			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+		>,
+	>,
+	subsystems: Vec<
+		Box<
+			dyn SubsystemFactory<
+				StandardCommandTransaction<
+					EngineTransaction<
+						TransactionMultiVersion,
+						TransactionSingleVersion,
+						TransactionCdc,
+					>,
+				>,
+			>,
+		>,
+	>,
 	ioc: IocContainer,
 	#[cfg(feature = "sub_logging")]
-	logging_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>>>,
+	logging_factory: Option<
+		Box<
+			dyn SubsystemFactory<
+				StandardCommandTransaction<
+					EngineTransaction<
+						TransactionMultiVersion,
+						TransactionSingleVersion,
+						TransactionCdc,
+					>,
+				>,
+			>,
+		>,
+	>,
 	#[cfg(feature = "sub_worker")]
-	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>>>,
+	worker_factory: Option<
+		Box<
+			dyn SubsystemFactory<
+				StandardCommandTransaction<
+					EngineTransaction<
+						TransactionMultiVersion,
+						TransactionSingleVersion,
+						TransactionCdc,
+					>,
+				>,
+			>,
+		>,
+	>,
 	#[cfg(feature = "sub_flow")]
-	flow_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>>>,
+	flow_factory: Option<
+		Box<
+			dyn SubsystemFactory<
+				StandardCommandTransaction<
+					EngineTransaction<
+						TransactionMultiVersion,
+						TransactionSingleVersion,
+						TransactionCdc,
+					>,
+				>,
+			>,
+		>,
+	>,
 }
 
-impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction> DatabaseBuilder<MVT, SVT, C> {
+impl DatabaseBuilder {
 	#[allow(unused_mut)]
-	pub fn new(multi: MVT, single: SVT, cdc: C, eventbus: EventBus) -> Self {
+	pub fn new(
+		multi: TransactionMultiVersion,
+		single: TransactionSingleVersion,
+		cdc: TransactionCdc,
+		eventbus: EventBus,
+	) -> Self {
 		let ioc = IocContainer::new()
 			.register(MaterializedCatalog::new())
 			.register(eventbus)
@@ -117,9 +175,16 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 	pub fn with_flow<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(
-				FlowBuilder<EngineTransaction<MVT, SVT, C>>,
-			) -> FlowBuilder<EngineTransaction<MVT, SVT, C>>
-			+ Send
+				FlowBuilder<
+					EngineTransaction<
+						TransactionMultiVersion,
+						TransactionSingleVersion,
+						TransactionCdc,
+					>,
+				>,
+			) -> FlowBuilder<
+				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+			> + Send
 			+ 'static,
 	{
 		self.flow_factory = Some(Box::new(FlowSubsystemFactory::with_configurator(configurator)));
@@ -128,7 +193,17 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 
 	pub fn add_subsystem_factory(
 		mut self,
-		factory: Box<dyn SubsystemFactory<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>>,
+		factory: Box<
+			dyn SubsystemFactory<
+				StandardCommandTransaction<
+					EngineTransaction<
+						TransactionMultiVersion,
+						TransactionSingleVersion,
+						TransactionCdc,
+					>,
+				>,
+			>,
+		>,
 	) -> Self {
 		self.subsystems.push(factory);
 		self
@@ -136,7 +211,11 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 
 	pub fn with_interceptor_builder(
 		mut self,
-		builder: StandardInterceptorBuilder<StandardCommandTransaction<EngineTransaction<MVT, SVT, C>>>,
+		builder: StandardInterceptorBuilder<
+			StandardCommandTransaction<
+				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+			>,
+		>,
 	) -> Self {
 		self.interceptors = builder;
 		self
@@ -150,20 +229,24 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 		self.subsystems.len()
 	}
 
-	pub fn build(mut self) -> crate::Result<Database<MVT, SVT, C>> {
+	pub fn build(mut self) -> crate::Result<Database> {
 		// Add configured or default subsystems
 		#[cfg(feature = "sub_logging")]
 		self.subsystems.push(self.logging_factory.unwrap_or_else(|| Box::new(LoggingSubsystemFactory::new())));
 
 		#[cfg(feature = "sub_worker")]
-		self.subsystems.push(self
-			.worker_factory
-			.unwrap_or_else(|| Box::new(WorkerSubsystemFactory::<EngineTransaction<MVT, SVT, C>>::new())));
+		self.subsystems.push(self.worker_factory.unwrap_or_else(|| {
+			Box::new(WorkerSubsystemFactory::<
+				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+			>::new())
+		}));
 
 		#[cfg(feature = "sub_flow")]
-		self.subsystems.push(self
-			.flow_factory
-			.unwrap_or_else(|| Box::new(FlowSubsystemFactory::<EngineTransaction<MVT, SVT, C>>::new())));
+		self.subsystems.push(self.flow_factory.unwrap_or_else(|| {
+			Box::new(FlowSubsystemFactory::<
+				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+			>::new())
+		}));
 
 		// Collect interceptors from all factories
 		for factory in &self.subsystems {
@@ -171,9 +254,9 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 		}
 
 		let catalog = self.ioc.resolve::<MaterializedCatalog>()?;
-		let multi = self.ioc.resolve::<MVT>()?;
-		let single = self.ioc.resolve::<SVT>()?;
-		let cdc = self.ioc.resolve::<C>()?;
+		let multi = self.ioc.resolve::<TransactionMultiVersion>()?;
+		let single = self.ioc.resolve::<TransactionSingleVersion>()?;
+		let cdc = self.ioc.resolve::<TransactionCdc>()?;
 		let eventbus = self.ioc.resolve::<EventBus>()?;
 
 		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog)?;
@@ -225,7 +308,9 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 		// Get the scheduler - it must exist when feature is enabled
 		#[cfg(feature = "sub_worker")]
 		let scheduler = subsystems
-			.get::<WorkerSubsystem<EngineTransaction<MVT, SVT, C>>>()
+			.get::<WorkerSubsystem<
+				EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+			>>()
 			.map(|w| w.get_scheduler())
 			.expect("Worker subsystem should always be created when feature is enabled");
 
@@ -257,42 +342,19 @@ impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransact
 
 	/// Load the materialized catalog from storage
 	fn load_materialized_catalog(
-		multi: &MVT,
-		single: &SVT,
-		cdc: &C,
+		multi: &TransactionMultiVersion,
+		single: &TransactionSingleVersion,
+		cdc: &TransactionCdc,
 		catalog: &MaterializedCatalog,
 	) -> crate::Result<()> {
-		let mut qt: StandardQueryTransaction<EngineTransaction<MVT, SVT, C>> = StandardQueryTransaction::new(
-			multi.begin_query()?,
-			single.clone(),
-			cdc.clone(),
-			catalog.clone(),
-		);
+		let mut qt: StandardQueryTransaction<
+			EngineTransaction<TransactionMultiVersion, TransactionSingleVersion, TransactionCdc>,
+		> = StandardQueryTransaction::new(multi.begin_query()?, single.clone(), cdc.clone(), catalog.clone());
 
 		log_timed_debug!("Loading materialized catalog", {
 			MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
 		});
 
 		Ok(())
-	}
-}
-
-impl<MVT: MultiVersionTransaction, SVT: SingleVersionTransaction, C: CdcTransaction> DatabaseBuilder<MVT, SVT, C> {
-	pub fn development_config(self) -> Self {
-		self.with_graceful_shutdown_timeout(Duration::from_secs(10))
-			.with_health_check_interval(Duration::from_secs(2))
-			.with_max_startup_time(Duration::from_secs(30))
-	}
-
-	pub fn production_config(self) -> Self {
-		self.with_graceful_shutdown_timeout(Duration::from_secs(60))
-			.with_health_check_interval(Duration::from_secs(10))
-			.with_max_startup_time(Duration::from_secs(120))
-	}
-
-	pub fn testing_config(self) -> Self {
-		self.with_graceful_shutdown_timeout(Duration::from_secs(5))
-			.with_health_check_interval(Duration::from_secs(1))
-			.with_max_startup_time(Duration::from_secs(10))
 	}
 }

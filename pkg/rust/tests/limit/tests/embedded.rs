@@ -5,31 +5,20 @@ use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb::{
 	Database, EmbeddedBuilder, Session,
-	core::{
-		event::EventBus,
-		interface::{CdcTransaction, MultiVersionTransaction, Params, SingleVersionTransaction},
-	},
+	core::{event::EventBus, interface::Params},
+	engine::TransactionCdc,
 	memory, serializable,
+	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-pub struct Runner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	instance: Database<MVT, SVT, C>,
+pub struct Runner {
+	instance: Database,
 }
 
-impl<MVT, SVT, C> Runner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	pub fn new(input: (MVT, SVT, C, EventBus)) -> Self {
+impl Runner {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		Self {
 			instance: EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap(),
@@ -37,12 +26,7 @@ where
 	}
 }
 
-impl<MVT, SVT, C> testscript::Runner for Runner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
+impl testscript::Runner for Runner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 		match command.name.as_str() {

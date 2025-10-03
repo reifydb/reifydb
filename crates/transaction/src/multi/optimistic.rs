@@ -6,25 +6,22 @@ use reifydb_core::{
 	event::EventBus,
 	interface::{
 		BoxedMultiVersionIter, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
-		MultiVersionTransaction, MultiVersionValues, SingleVersionTransaction, TransactionId, WithEventBus,
+		MultiVersionTransaction, MultiVersionValues, TransactionId, WithEventBus,
 	},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::MultiVersionStore;
 
 use crate::multi::transaction::optimistic::{CommandTransaction, QueryTransaction, TransactionOptimistic};
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> WithEventBus for TransactionOptimistic<MVS, SVT> {
+impl WithEventBus for TransactionOptimistic {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> MultiVersionTransaction
-	for TransactionOptimistic<MVS, SVT>
-{
-	type Query = QueryTransaction<MVS, SVT>;
-	type Command = CommandTransaction<MVS, SVT>;
+impl MultiVersionTransaction for TransactionOptimistic {
+	type Query = QueryTransaction;
+	type Command = CommandTransaction;
 
 	fn begin_query(&self) -> Result<Self::Query, Error> {
 		self.begin_query()
@@ -35,9 +32,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> MultiVersionTransact
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> MultiVersionQueryTransaction
-	for QueryTransaction<MVS, SVT>
-{
+impl MultiVersionQueryTransaction for QueryTransaction {
 	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -94,9 +89,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> MultiVersionQueryTra
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> MultiVersionQueryTransaction
-	for CommandTransaction<MVS, SVT>
-{
+impl MultiVersionQueryTransaction for CommandTransaction {
 	fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -183,9 +176,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> MultiVersionQueryTra
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> MultiVersionCommandTransaction
-	for CommandTransaction<MVS, SVT>
-{
+impl MultiVersionCommandTransaction for CommandTransaction {
 	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), Error> {
 		CommandTransaction::set(self, key, values)?;
 		Ok(())

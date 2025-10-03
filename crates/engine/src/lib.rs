@@ -18,8 +18,8 @@ pub use evaluate::{column::StandardColumnEvaluator, row::StandardRowEvaluator};
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 pub use reifydb_type::Result;
 pub use transaction::{
-	EngineTransaction, StandardCdcQueryTransaction, StandardCdcTransaction, StandardCommandTransaction,
-	StandardQueryTransaction, StandardTransaction,
+	EngineTransaction, StandardCdcQueryTransaction, StandardCommandTransaction, StandardQueryTransaction,
+	StandardTransaction, TransactionCdc,
 };
 
 pub struct EngineVersion;

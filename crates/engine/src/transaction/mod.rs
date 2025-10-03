@@ -18,7 +18,7 @@ mod command;
 pub(crate) mod operation;
 mod query;
 
-pub use cdc::{StandardCdcQueryTransaction, StandardCdcTransaction};
+pub use cdc::{StandardCdcQueryTransaction, TransactionCdc};
 pub use command::StandardCommandTransaction;
 pub use query::StandardQueryTransaction;
 use reifydb_catalog::MaterializedCatalog;

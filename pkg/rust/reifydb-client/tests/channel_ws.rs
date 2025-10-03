@@ -11,36 +11,24 @@ use common::{
 };
 use reifydb::{
 	Database,
-	core::{
-		event::EventBus,
-		interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
-		retry,
-	},
+	core::{event::EventBus, retry},
+	engine::TransactionCdc,
 	memory, optimistic,
+	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{ChannelResponse, ResponseMessage, WsChannelSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-pub struct ChannelRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	instance: Option<Database<MVT, SVT, C>>,
+pub struct ChannelRunner {
+	instance: Option<Database>,
 	client: Option<WsClient>,
 	session: Option<WsChannelSession>,
 	receiver: Option<Receiver<ResponseMessage>>,
 }
 
-impl<MVT, SVT, C> ChannelRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	pub fn new(input: (MVT, SVT, C, EventBus)) -> Self {
+impl ChannelRunner {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
 		Self {
 			instance: Some(create_server_instance(input)),
 			client: None,
@@ -50,12 +38,7 @@ where
 	}
 }
 
-impl<MVT, SVT, C> testscript::Runner for ChannelRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
+impl testscript::Runner for ChannelRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let session = self.session.as_ref().ok_or("No session available")?;
 		let receiver = self.receiver.as_ref().ok_or("No receiver available")?;

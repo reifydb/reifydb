@@ -7,12 +7,10 @@ use std::{error::Error, path::Path};
 use common::{cleanup_server, cleanup_ws_client, create_server_instance};
 use reifydb::{
 	Database,
-	core::{
-		event::EventBus,
-		interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
-		retry,
-	},
+	core::{event::EventBus, retry},
+	engine::TransactionCdc,
 	memory, optimistic,
+	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
@@ -20,24 +18,14 @@ use test_each_file::test_each_path;
 
 use crate::common::{parse_named_params, parse_positional_params, parse_rql, write_frames};
 
-pub struct BlockingRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	instance: Option<Database<MVT, SVT, C>>,
+pub struct BlockingRunner {
+	instance: Option<Database>,
 	client: Option<WsClient>,
 	session: Option<WsBlockingSession>,
 }
 
-impl<MVT, SVT, C> BlockingRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	pub fn new(input: (MVT, SVT, C, EventBus)) -> Self {
+impl BlockingRunner {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
 		Self {
 			instance: Some(create_server_instance(input)),
 			client: None,
@@ -46,12 +34,7 @@ where
 	}
 }
 
-impl<MVT, SVT, C> testscript::Runner for BlockingRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
+impl testscript::Runner for BlockingRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let session = self.session.as_mut().ok_or("No session available")?;
 

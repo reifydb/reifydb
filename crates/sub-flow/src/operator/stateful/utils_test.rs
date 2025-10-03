@@ -13,11 +13,13 @@ pub mod test {
 		value::encoded::{EncodedValues, EncodedValuesLayout},
 	};
 	use reifydb_engine::{
-		EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine,
-		StandardRowEvaluator,
+		EngineTransaction, StandardCommandTransaction, StandardEngine, StandardRowEvaluator, TransactionCdc,
 	};
-	use reifydb_store_transaction::StandardTransactionStore;
-	use reifydb_transaction::{multi::transaction::optimistic::TransactionOptimistic, single::TransactionSvl};
+	use reifydb_store_transaction::TransactionStore;
+	use reifydb_transaction::{
+		multi::transaction::optimistic::TransactionOptimistic,
+		single::{TransactionSingleVersion, TransactionSvl},
+	};
 	use reifydb_type::{Type, Value};
 
 	use crate::{
@@ -26,19 +28,19 @@ pub mod test {
 	};
 
 	/// Test transaction type using optimistic concurrency control and memory storage
-	pub type TestTransaction = EngineTransaction<
-		TransactionOptimistic<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-		TransactionSvl<StandardTransactionStore>,
-		StandardCdcTransaction<StandardTransactionStore>,
-	>;
+	pub type TestTransaction = EngineTransaction<TransactionOptimistic, TransactionSvl, TransactionCdc>;
 
 	/// Create a test engine with memory storage and optimistic transactions
 	pub fn create_test_engine() -> StandardEngine<TestTransaction> {
-		let store = StandardTransactionStore::testing_memory();
+		let store = TransactionStore::testing_memory();
 		let eventbus = EventBus::new();
 		let single = TransactionSvl::new(store.clone(), eventbus.clone());
-		let cdc = StandardCdcTransaction::new(store.clone());
-		let multi = TransactionOptimistic::new(store, single.clone(), eventbus.clone());
+		let cdc = TransactionCdc::new(store.clone());
+		let multi = TransactionOptimistic::new(
+			store,
+			TransactionSingleVersion::SingleVersionLock(single.clone()),
+			eventbus.clone(),
+		);
 
 		StandardEngine::new(
 			multi,

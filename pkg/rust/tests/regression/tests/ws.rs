@@ -5,36 +5,24 @@ use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb::{
 	Database, ServerBuilder,
-	core::{
-		event::EventBus,
-		interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
-		retry,
-	},
+	core::{event::EventBus, retry},
+	engine::TransactionCdc,
 	memory, optimistic,
 	sub_server::ServerConfig,
+	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-pub struct WsRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	instance: Option<Database<MVT, SVT, C>>,
+pub struct WsRunner {
+	instance: Option<Database>,
 	client: Option<WsClient>,
 	session: Option<WsBlockingSession>,
 }
 
-impl<MVT, SVT, C> WsRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
-	pub fn new(input: (MVT, SVT, C, EventBus)) -> Self {
+impl WsRunner {
+	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
 			.with_config(ServerConfig::new().bind_addr("::1:0"))
@@ -49,12 +37,7 @@ where
 	}
 }
 
-impl<MVT, SVT, C> testscript::Runner for WsRunner<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
+impl testscript::Runner for WsRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 

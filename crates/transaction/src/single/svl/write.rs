@@ -4,22 +4,23 @@
 use std::{collections::HashMap, mem::take, ops::RangeBounds, sync::RwLockWriteGuard};
 
 use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionCommandTransaction, SingleVersionQueryTransaction};
+use reifydb_store_transaction::{
+	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
+	SingleVersionScan, SingleVersionScanRev,
+};
 
 use super::*;
 use crate::single::svl::{
 	range::SvlRangeIter, range_rev::SvlRangeRevIter, scan::SvlScanIter, scan_rev::SvlScanRevIter,
 };
 
-pub struct SvlCommandTransaction<'a, SVS> {
+pub struct SvlCommandTransaction<'a> {
 	pending: HashMap<EncodedKey, Delta>,
 	completed: bool,
-	storage: RwLockWriteGuard<'a, SVS>,
+	store: RwLockWriteGuard<'a, TransactionStore>,
 }
 
-impl<SVS> SingleVersionQueryTransaction for SvlCommandTransaction<'_, SVS>
-where
-	SVS: SingleVersionStore,
-{
+impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		if let Some(delta) = self.pending.get(key) {
 			return match delta {
@@ -36,7 +37,7 @@ where
 			};
 		}
 
-		self.storage.get(key)
+		self.store.get(key)
 	}
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
@@ -52,7 +53,7 @@ where
 		}
 
 		// Then check storage
-		self.storage.contains(key)
+		self.store.contains(key)
 	}
 
 	fn scan(&mut self) -> crate::Result<BoxedSingleVersionIter> {
@@ -80,15 +81,12 @@ where
 	}
 }
 
-impl<'a, SVS> SvlCommandTransaction<'a, SVS>
-where
-	SVS: SingleVersionStore,
-{
-	pub(super) fn new(storage: RwLockWriteGuard<'a, SVS>) -> Self {
+impl<'a> SvlCommandTransaction<'a> {
+	pub(super) fn new(store: RwLockWriteGuard<'a, TransactionStore>) -> Self {
 		Self {
 			pending: HashMap::new(),
 			completed: false,
-			storage,
+			store,
 		}
 	}
 
@@ -120,10 +118,10 @@ where
 		// Get committed items from storage
 		let committed_items: Vec<SingleVersionValues> = {
 			match (range, reverse) {
-				(Some(r), true) => self.storage.range_rev(r)?.collect(),
-				(Some(r), false) => self.storage.range(r)?.collect(),
-				(None, true) => self.storage.scan_rev()?.collect(),
-				(None, false) => self.storage.scan()?.collect(),
+				(Some(r), true) => self.store.range_rev(r)?.collect(),
+				(Some(r), false) => self.store.range(r)?.collect(),
+				(None, true) => self.store.scan_rev()?.collect(),
+				(None, false) => self.store.scan()?.collect(),
 			}
 		};
 
@@ -131,10 +129,7 @@ where
 	}
 }
 
-impl<'a, SVS> SingleVersionCommandTransaction for SvlCommandTransaction<'a, SVS>
-where
-	SVS: SingleVersionStore,
-{
+impl<'a> SingleVersionCommandTransaction for SvlCommandTransaction<'a> {
 	fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> crate::Result<()> {
 		let delta = Delta::Set {
 			key: key.clone(),
@@ -158,7 +153,7 @@ where
 		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
-			self.storage.commit(CowVec::new(deltas))?;
+			self.store.commit(CowVec::new(deltas))?;
 		}
 
 		self.completed = true;

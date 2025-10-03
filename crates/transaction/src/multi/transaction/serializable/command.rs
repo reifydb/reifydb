@@ -15,6 +15,7 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent,
 	value::encoded::EncodedValues,
 };
+use reifydb_store_transaction::MultiVersionCommit;
 use reifydb_type::Error;
 
 use super::*;
@@ -26,13 +27,13 @@ use crate::multi::{
 	types::TransactionValue,
 };
 
-pub struct CommandTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
-	engine: SerializableTransaction<MVS, SVT>,
-	pub(crate) tm: TransactionManagerCommand<StandardVersionProvider<SVT>>,
+pub struct CommandTransaction {
+	engine: TransactionSerializable,
+	pub(crate) tm: TransactionManagerCommand<StandardVersionProvider>,
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<MVS, SVT> {
-	pub fn new(engine: SerializableTransaction<MVS, SVT>) -> crate::Result<Self> {
+impl CommandTransaction {
+	pub fn new(engine: TransactionSerializable) -> crate::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
 			engine,
@@ -41,7 +42,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<MVS, SVT> {
+impl CommandTransaction {
 	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
 		let mut version: Option<CommitVersion> = None;
 		let mut deltas = CowVec::with_capacity(8);
@@ -58,7 +59,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 			}
 
 			if let Some(version) = version {
-				self.engine.multi.commit(deltas.clone(), version, transaction_id)?;
+				self.engine.store.commit(deltas.clone(), version, transaction_id)?;
 			}
 			Ok(())
 		})?;
@@ -74,7 +75,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<MVS, SVT> {
+impl CommandTransaction {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -97,7 +98,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 		match self.tm.contains_key(key)? {
 			Some(true) => Ok(true),
 			Some(false) => Ok(false),
-			None => self.engine.multi.contains(key, version),
+			None => self.engine.store.contains(key, version),
 		}
 	}
 
@@ -111,7 +112,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 					Ok(None)
 				}
 			}
-			None => Ok(self.engine.multi.get(key, version)?.map(Into::into)),
+			None => Ok(self.engine.store.get(key, version)?.map(Into::into)),
 		}
 	}
 
@@ -123,29 +124,32 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 		self.tm.remove(key)
 	}
 
-	pub fn scan(&mut self) -> Result<TransactionScanIter<'_, MVS>, reifydb_type::Error> {
+	pub fn scan(&mut self) -> Result<TransactionScanIter<'_, TransactionStore>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let pending = pw.iter();
 
 		marker.mark_range(EncodedKeyRange::all());
-		let commited = self.engine.multi.scan(version)?;
+		let commited = self.engine.store.scan(version)?;
 
 		Ok(TransactionScanIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn scan_rev(&mut self) -> Result<TransactionScanRevIter<'_, MVS>, reifydb_type::Error> {
+	pub fn scan_rev(&mut self) -> Result<TransactionScanRevIter<'_, TransactionStore>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let pending = pw.iter().rev();
 
 		marker.mark_range(EncodedKeyRange::all());
-		let commited = self.engine.multi.scan_rev(version)?;
+		let commited = self.engine.store.scan_rev(version)?;
 
 		Ok(TransactionScanRevIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn range(&mut self, range: EncodedKeyRange) -> Result<TransactionRangeIter<'_, MVS>, reifydb_type::Error> {
+	pub fn range(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<TransactionRangeIter<'_, TransactionStore>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -153,7 +157,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 
 		marker.mark_range(range.clone());
 		let pending = pw.range((start, end));
-		let commited = self.engine.multi.range(range, version)?;
+		let commited = self.engine.store.range(range, version)?;
 
 		Ok(TransactionRangeIter::new(pending, commited, Some(marker)))
 	}
@@ -161,7 +165,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
-	) -> Result<TransactionRangeRevIter<'_, MVS>, reifydb_type::Error> {
+	) -> Result<TransactionRangeRevIter<'_, TransactionStore>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
@@ -169,7 +173,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 
 		marker.mark_range(range.clone());
 		let pending = pw.range((start, end));
-		let commited = self.engine.multi.range_rev(range, version)?;
+		let commited = self.engine.store.range_rev(range, version)?;
 
 		Ok(TransactionRangeRevIter::new(pending.rev(), commited, Some(marker)))
 	}
@@ -177,14 +181,14 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<M
 	pub fn prefix<'a>(
 		&'a mut self,
 		prefix: &EncodedKey,
-	) -> Result<TransactionRangeIter<'a, MVS>, reifydb_type::Error> {
+	) -> Result<TransactionRangeIter<'a, TransactionStore>, reifydb_type::Error> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 
 	pub fn prefix_rev<'a>(
 		&'a mut self,
 		prefix: &EncodedKey,
-	) -> Result<TransactionRangeRevIter<'a, MVS>, reifydb_type::Error> {
+	) -> Result<TransactionRangeRevIter<'a, TransactionStore>, reifydb_type::Error> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }

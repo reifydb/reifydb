@@ -9,8 +9,10 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::SingleVersionTransaction};
-use reifydb_store_transaction::MultiVersionStore;
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange};
+use reifydb_store_transaction::{
+	MultiVersionRange, MultiVersionRangeRev, MultiVersionScan, MultiVersionScanRev, TransactionStore,
+};
 
 use crate::multi::{
 	transaction::{
@@ -19,13 +21,13 @@ use crate::multi::{
 	types::TransactionValue,
 };
 
-pub struct QueryTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
-	pub(crate) engine: TransactionOptimistic<MVS, SVT>,
-	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider<SVT>>,
+pub struct QueryTransaction {
+	pub(crate) engine: TransactionOptimistic,
+	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider>,
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> QueryTransaction<MVS, SVT> {
-	pub fn new(engine: TransactionOptimistic<MVS, SVT>, version: Option<CommitVersion>) -> crate::Result<Self> {
+impl QueryTransaction {
+	pub fn new(engine: TransactionOptimistic, version: Option<CommitVersion>) -> crate::Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
 			engine,
@@ -34,7 +36,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> QueryTransaction<MVS
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> QueryTransaction<MVS, SVT> {
+impl QueryTransaction {
 	pub fn version(&self) -> CommitVersion {
 		self.tm.version()
 	}
@@ -57,31 +59,43 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> QueryTransaction<MVS
 		Ok(self.engine.contains_key(key, version)?)
 	}
 
-	pub fn scan(&self) -> crate::Result<MVS::ScanIter<'_>> {
+	pub fn scan(&self) -> crate::Result<<TransactionStore as MultiVersionScan>::ScanIter<'_>> {
 		let version = self.tm.version();
 		Ok(self.engine.scan(version)?)
 	}
 
-	pub fn scan_rev(&self) -> crate::Result<MVS::ScanIterRev<'_>> {
+	pub fn scan_rev(&self) -> crate::Result<<TransactionStore as MultiVersionScanRev>::ScanIterRev<'_>> {
 		let version = self.tm.version();
 		Ok(self.engine.scan_rev(version)?)
 	}
 
-	pub fn range(&self, range: EncodedKeyRange) -> crate::Result<MVS::RangeIter<'_>> {
+	pub fn range(
+		&self,
+		range: EncodedKeyRange,
+	) -> crate::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
 		let version = self.tm.version();
 		Ok(self.engine.range(range, version)?)
 	}
 
-	pub fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<MVS::RangeIterRev<'_>> {
+	pub fn range_rev(
+		&self,
+		range: EncodedKeyRange,
+	) -> crate::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
 		let version = self.tm.version();
 		Ok(self.engine.range_rev(range, version)?)
 	}
 
-	pub fn prefix(&self, prefix: &EncodedKey) -> crate::Result<MVS::RangeIter<'_>> {
+	pub fn prefix(
+		&self,
+		prefix: &EncodedKey,
+	) -> crate::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 
-	pub fn prefix_rev(&self, prefix: &EncodedKey) -> crate::Result<MVS::RangeIterRev<'_>> {
+	pub fn prefix_rev(
+		&self,
+		prefix: &EncodedKey,
+	) -> crate::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }

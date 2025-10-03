@@ -18,14 +18,14 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::StandardTransactionStore;
+use reifydb_store_transaction::{StandardTransactionStore, TransactionStore};
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	multi::{
 		transaction::optimistic::{CommandTransaction, QueryTransaction, Transaction, TransactionOptimistic},
 		types::TransactionValue,
 	},
-	single::TransactionSvl,
+	single::{TransactionSingleVersion, TransactionSvl},
 };
 use test_each_file::test_each_path;
 
@@ -33,13 +33,13 @@ test_each_path! { in "crates/transaction/tests/scripts/multi" as optimistic_mult
 test_each_path! { in "crates/transaction/tests/scripts/all" as optimistic_all => test_optimistic }
 
 fn test_optimistic(path: &Path) {
-	let store = StandardTransactionStore::testing_memory();
+	let store = TransactionStore::testing_memory();
 	let bus = EventBus::default();
 
 	testscript::run_path(
 		&mut MvccRunner::new(TransactionOptimistic::new(
 			store.clone(),
-			TransactionSvl::new(store, bus.clone()),
+			TransactionSingleVersion::SingleVersionLock(TransactionSvl::new(store, bus.clone())),
 			bus,
 		)),
 		path,
@@ -48,14 +48,12 @@ fn test_optimistic(path: &Path) {
 }
 
 pub struct MvccRunner {
-	engine: TransactionOptimistic<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-	transactions: HashMap<String, Transaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>>,
+	engine: TransactionOptimistic,
+	transactions: HashMap<String, Transaction>,
 }
 
 impl MvccRunner {
-	fn new(
-		optimistic: TransactionOptimistic<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-	) -> Self {
+	fn new(optimistic: TransactionOptimistic) -> Self {
 		Self {
 			engine: optimistic,
 			transactions: HashMap::new(),
@@ -63,13 +61,7 @@ impl MvccRunner {
 	}
 
 	/// Fetches the named transaction from a command prefix.
-	fn get_transaction(
-		&mut self,
-		prefix: &Option<String>,
-	) -> Result<
-		&'_ mut Transaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-		Box<dyn StdError>,
-	> {
+	fn get_transaction(&mut self, prefix: &Option<String>) -> Result<&'_ mut Transaction, Box<dyn StdError>> {
 		let name = Self::tx_name(prefix)?;
 		self.transactions.get_mut(name).ok_or(format!("unknown transaction {name}").into())
 	}

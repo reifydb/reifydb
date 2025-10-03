@@ -69,7 +69,7 @@ pub trait MultiVersionCommandTransaction: MultiVersionQueryTransaction {
 
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 
-	fn commit(self) -> crate::Result<crate::CommitVersion>;
+	fn commit(self) -> crate::Result<CommitVersion>;
 
 	fn rollback(self) -> crate::Result<()>;
 }

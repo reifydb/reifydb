@@ -26,9 +26,12 @@ use reifydb_core::{
 	util::{CowVec, mock_time_set},
 	value::encoded::EncodedValues,
 };
-use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardCommandTransaction, StandardEngine};
-use reifydb_store_transaction::StandardTransactionStore;
-use reifydb_transaction::{multi::transaction::serializable::SerializableTransaction, single::TransactionSvl};
+use reifydb_engine::{EngineTransaction, StandardCommandTransaction, StandardEngine, TransactionCdc};
+use reifydb_store_transaction::{StandardTransactionStore, TransactionStore};
+use reifydb_transaction::{
+	multi::transaction::serializable::TransactionSerializable,
+	single::{TransactionSingleVersion, TransactionSvl},
+};
 use reifydb_type::{OwnedFragment, RowNumber};
 
 #[test]
@@ -366,20 +369,20 @@ fn test_rapid_start_stop() {
 	}
 }
 
-type TestTransaction = EngineTransaction<
-	SerializableTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-	TransactionSvl<StandardTransactionStore>,
-	StandardCdcTransaction<StandardTransactionStore>,
->;
+type TestTransaction = EngineTransaction<TransactionSerializable, TransactionSvl, TransactionCdc>;
 
 fn create_test_engine() -> StandardEngine<TestTransaction> {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
-	let store = StandardTransactionStore::testing_memory();
+	let store = TransactionStore::testing_memory();
 	let eventbus = EventBus::new();
 	let single = TransactionSvl::new(store.clone(), eventbus.clone());
-	let cdc = StandardCdcTransaction::new(store.clone());
-	let multi = SerializableTransaction::new(store, single.clone(), eventbus.clone());
+	let cdc = TransactionCdc::new(store.clone());
+	let multi = TransactionSerializable::new(
+		store,
+		TransactionSingleVersion::SingleVersionLock(single.clone()),
+		eventbus.clone(),
+	);
 
 	StandardEngine::new(
 		multi,

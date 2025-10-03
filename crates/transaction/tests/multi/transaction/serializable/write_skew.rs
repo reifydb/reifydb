@@ -10,13 +10,9 @@
 // http: //www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{EncodedKey, EncodedKeyRange};
-use reifydb_store_transaction::StandardTransactionStore;
-use reifydb_transaction::{
-	multi::transaction::{
-		optimistic::{CommandTransaction, TransactionOptimistic},
-		serializable::SerializableTransaction,
-	},
-	single::TransactionSvl,
+use reifydb_transaction::multi::transaction::{
+	optimistic::{CommandTransaction, TransactionOptimistic},
+	serializable::TransactionSerializable,
 };
 
 use crate::{
@@ -39,14 +35,11 @@ fn test_write_skew() {
 	txn.commit().unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	let get_bal =
-		|txn: &mut CommandTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-		 k: &EncodedKey|
-		 -> u64 {
-			let sv = txn.get(k).unwrap().unwrap();
-			let val = sv.values();
-			from_values!(u64, val)
-		};
+	let get_bal = |txn: &mut CommandTransaction, k: &EncodedKey| -> u64 {
+		let sv = txn.get(k).unwrap().unwrap();
+		let val = sv.values();
+		from_values!(u64, val)
+	};
 
 	// Start two transactions, each would read both accounts and deduct from
 	// one account.
@@ -278,7 +271,7 @@ fn test_primary_colors() {
 // https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[test]
 fn test_intersecting_data() {
-	let engine = SerializableTransaction::testing();
+	let engine = TransactionSerializable::testing();
 
 	// Setup
 	let mut txn = engine.begin_command().unwrap();
@@ -350,7 +343,7 @@ fn test_intersecting_data() {
 // https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[test]
 fn test_intersecting_data2() {
-	let engine = SerializableTransaction::testing();
+	let engine = TransactionSerializable::testing();
 
 	// Setup
 	let mut txn = engine.begin_command().unwrap();
@@ -404,7 +397,7 @@ fn test_intersecting_data2() {
 // https://wiki.postgresql.org/wiki/SSI#Intersecting_Data
 #[test]
 fn test_intersecting_data3() {
-	let engine = SerializableTransaction::testing();
+	let engine = TransactionSerializable::testing();
 
 	// // Setup
 	let mut txn = engine.begin_command().unwrap();

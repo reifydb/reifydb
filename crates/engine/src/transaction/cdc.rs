@@ -7,48 +7,48 @@ use reifydb_core::{
 	CommitVersion, Result,
 	interface::{Cdc, CdcQueryTransaction, CdcTransaction},
 };
-use reifydb_store_transaction::CdcStore;
+use reifydb_store_transaction::{CdcCount, CdcGet, CdcRange, CdcScan, TransactionStore};
 
 #[derive(Clone)]
-pub struct StandardCdcTransaction<S: CdcStore> {
-	storage: S,
+pub struct TransactionCdc {
+	store: TransactionStore,
 }
 
-impl<S: CdcStore> StandardCdcTransaction<S> {
-	pub fn new(storage: S) -> Self {
+impl TransactionCdc {
+	pub fn new(store: TransactionStore) -> Self {
 		Self {
-			storage,
+			store,
 		}
 	}
 }
 
-impl<S: CdcStore> CdcTransaction for StandardCdcTransaction<S> {
+impl CdcTransaction for TransactionCdc {
 	type Query<'a>
-		= StandardCdcQueryTransaction<S>
+		= StandardCdcQueryTransaction
 	where
 		Self: 'a;
 
 	fn begin_query(&self) -> Result<Self::Query<'_>> {
-		Ok(StandardCdcQueryTransaction::new(self.storage.clone()))
+		Ok(StandardCdcQueryTransaction::new(self.store.clone()))
 	}
 }
 
 #[derive(Clone)]
-pub struct StandardCdcQueryTransaction<S: CdcStore> {
-	storage: S,
+pub struct StandardCdcQueryTransaction {
+	store: TransactionStore,
 }
 
-impl<S: CdcStore> StandardCdcQueryTransaction<S> {
-	pub fn new(storage: S) -> Self {
+impl StandardCdcQueryTransaction {
+	pub fn new(store: TransactionStore) -> Self {
 		Self {
-			storage,
+			store,
 		}
 	}
 }
 
-impl<S: CdcStore> CdcQueryTransaction for StandardCdcQueryTransaction<S> {
+impl CdcQueryTransaction for StandardCdcQueryTransaction {
 	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
-		self.storage.get(version)
+		self.store.get(version)
 	}
 
 	fn range(
@@ -56,14 +56,14 @@ impl<S: CdcStore> CdcQueryTransaction for StandardCdcQueryTransaction<S> {
 		start: Bound<CommitVersion>,
 		end: Bound<CommitVersion>,
 	) -> Result<Box<dyn Iterator<Item = Cdc> + '_>> {
-		Ok(Box::new(self.storage.range(start, end)?))
+		Ok(Box::new(self.store.range(start, end)?))
 	}
 
 	fn scan(&self) -> Result<Box<dyn Iterator<Item = Cdc> + '_>> {
-		Ok(Box::new(self.storage.scan()?))
+		Ok(Box::new(self.store.scan()?))
 	}
 
 	fn count(&self, version: CommitVersion) -> Result<usize> {
-		self.storage.count(version)
+		self.store.count(version)
 	}
 }

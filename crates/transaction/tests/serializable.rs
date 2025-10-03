@@ -18,16 +18,16 @@ use reifydb_core::{
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::StandardTransactionStore;
+use reifydb_store_transaction::{StandardTransactionStore, TransactionStore};
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	multi::{
 		transaction::serializable::{
-			CommandTransaction, QueryTransaction, SerializableTransaction, Transaction,
+			CommandTransaction, QueryTransaction, Transaction, TransactionSerializable,
 		},
 		types::TransactionValue,
 	},
-	single::TransactionSvl,
+	single::{TransactionSingleVersion, TransactionSvl},
 };
 use test_each_file::test_each_path;
 
@@ -35,13 +35,13 @@ test_each_path! { in "crates/transaction/tests/scripts/multi" as serializable_mu
 test_each_path! { in "crates/transaction/tests/scripts/all" as serializable_all => test_serializable }
 
 fn test_serializable(path: &Path) {
-	let store = StandardTransactionStore::testing_memory();
+	let store = TransactionStore::testing_memory();
 	let bus = EventBus::default();
 
 	testscript::run_path(
-		&mut MvccRunner::new(SerializableTransaction::new(
+		&mut MvccRunner::new(TransactionSerializable::new(
 			store.clone(),
-			TransactionSvl::new(store.clone(), bus.clone()),
+			TransactionSingleVersion::SingleVersionLock(TransactionSvl::new(store.clone(), bus.clone())),
 			bus,
 		)),
 		path,
@@ -50,17 +50,12 @@ fn test_serializable(path: &Path) {
 }
 
 pub struct MvccRunner {
-	engine: SerializableTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-	transactions: HashMap<String, Transaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>>,
+	engine: TransactionSerializable,
+	transactions: HashMap<String, Transaction>,
 }
 
 impl MvccRunner {
-	fn new(
-		serializable: SerializableTransaction<
-			StandardTransactionStore,
-			TransactionSvl<StandardTransactionStore>,
-		>,
-	) -> Self {
+	fn new(serializable: TransactionSerializable) -> Self {
 		Self {
 			engine: serializable,
 			transactions: HashMap::new(),
@@ -68,13 +63,7 @@ impl MvccRunner {
 	}
 
 	/// Fetches the named transaction from a command prefix.
-	fn get_transaction(
-		&mut self,
-		prefix: &Option<String>,
-	) -> Result<
-		&'_ mut Transaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
-		Box<dyn StdError>,
-	> {
+	fn get_transaction(&mut self, prefix: &Option<String>) -> Result<&'_ mut Transaction, Box<dyn StdError>> {
 		let name = Self::tx_name(prefix)?;
 		self.transactions.get_mut(name).ok_or(format!("unknown transaction {name}").into())
 	}

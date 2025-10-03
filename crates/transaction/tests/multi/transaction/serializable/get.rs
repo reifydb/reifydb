@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_transaction::multi::transaction::serializable::SerializableTransaction;
+use reifydb_transaction::multi::transaction::serializable::TransactionSerializable;
 
 use crate::{as_key, as_values};
 
@@ -9,7 +9,7 @@ use crate::{as_key, as_values};
 fn test_read_after_write() {
 	const N: u64 = 100;
 
-	let engine = SerializableTransaction::testing();
+	let engine = TransactionSerializable::testing();
 
 	let handles = (0..N)
 		.map(|i| {

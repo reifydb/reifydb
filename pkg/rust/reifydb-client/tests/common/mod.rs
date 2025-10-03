@@ -5,21 +5,17 @@ use std::{collections::HashMap, error::Error, fmt::Write, net::ToSocketAddrs};
 
 use reifydb::{
 	Database, ServerBuilder,
-	core::{
-		event::EventBus,
-		interface::{CdcTransaction, MultiVersionTransaction, SingleVersionTransaction},
-	},
+	core::event::EventBus,
+	engine::TransactionCdc,
 	sub_server::{NetworkConfig, ServerConfig},
+	transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, Frame, HttpClient, Params, Value, WsClient};
 use reifydb_testing::testscript::Command;
 
-pub fn create_server_instance<MVT, SVT, C>(input: (MVT, SVT, C, EventBus)) -> Database<MVT, SVT, C>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
+pub fn create_server_instance(
+	input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus),
+) -> Database {
 	let (multi, single, cdc, eventbus) = input;
 	// Use only 1 worker for tests to avoid file descriptor exhaustion
 	let network_config = NetworkConfig {
@@ -33,12 +29,7 @@ where
 }
 
 /// Start server and return WebSocket port
-pub fn start_server_and_get_port<MVT, SVT, C>(server: &mut Database<MVT, SVT, C>) -> Result<u16, Box<dyn Error>>
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
+pub fn start_server_and_get_port(server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
 	Ok(server.sub_server().unwrap().port().unwrap())
 }
@@ -153,12 +144,7 @@ pub fn cleanup_http_client(client: Option<HttpClient>) {
 }
 
 /// Clean up server instance
-pub fn cleanup_server<MVT, SVT, C>(mut server: Option<Database<MVT, SVT, C>>)
-where
-	MVT: MultiVersionTransaction,
-	SVT: SingleVersionTransaction,
-	C: CdcTransaction,
-{
+pub fn cleanup_server(mut server: Option<Database>) {
 	if let Some(mut srv) = server.take() {
 		let _ = srv.stop();
 		drop(srv);

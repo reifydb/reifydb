@@ -12,7 +12,7 @@
 use std::{cmp, cmp::Reverse};
 
 use reifydb_core::{
-	CommitVersion, EncodedKey, delta::Delta, interface::MultiVersionValues, value::encoded::EncodedValues,
+	CommitVersion, CowVec, EncodedKey, delta::Delta, interface::MultiVersionValues, value::encoded::EncodedValues,
 };
 
 pub enum TransactionValue {
@@ -99,6 +99,43 @@ impl TransactionValue {
 
 	pub fn is_committed(&self) -> bool {
 		matches!(self, Self::Committed(_))
+	}
+
+	pub fn into_multi_version_values(self) -> MultiVersionValues {
+		match self {
+			Self::PendingIter {
+				version,
+				key,
+				values,
+			} => MultiVersionValues {
+				key,
+				values,
+				version,
+			},
+			Self::Pending(item) => match item.delta {
+				Delta::Set {
+					key,
+					values,
+				} => MultiVersionValues {
+					key,
+					values,
+					version: item.version,
+				},
+				Delta::Remove {
+					key,
+					..
+				} => MultiVersionValues {
+					key,
+					values: EncodedValues(CowVec::default()),
+					version: item.version,
+				},
+			},
+			Self::Committed(item) => MultiVersionValues {
+				key: item.key,
+				values: item.values,
+				version: item.version,
+			},
+		}
 	}
 }
 
