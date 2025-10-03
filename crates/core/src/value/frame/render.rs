@@ -5,7 +5,7 @@ use std::fmt::{self, Write};
 
 use reifydb_type::util::unicode::UnicodeWidthStr;
 
-use crate::result::frame::{Frame, FrameColumn};
+use crate::value::frame::{Frame, FrameColumn};
 
 /// Frame renderer with various rendering options
 pub struct FrameRenderer;

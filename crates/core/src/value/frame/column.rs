@@ -5,7 +5,7 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::frame::data::FrameColumnData;
+use crate::value::frame::data::FrameColumnData;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FrameColumn {

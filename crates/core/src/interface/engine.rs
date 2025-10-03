@@ -1,6 +1,6 @@
 use crate::{
 	interface::{CommandTransaction, Identity, Params, QueryTransaction, Transaction, WithEventBus},
-	result::frame::Frame,
+	value::frame::Frame,
 };
 
 pub trait Engine<T: Transaction>: WithEventBus + Send + Sync + Clone + 'static {

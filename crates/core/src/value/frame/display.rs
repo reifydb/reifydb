@@ -3,7 +3,7 @@
 
 use std::fmt::{self, Display, Formatter};
 
-use crate::result::frame::{Frame, FrameRenderer};
+use crate::value::frame::{Frame, FrameRenderer};
 
 impl Display for Frame {
 	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {

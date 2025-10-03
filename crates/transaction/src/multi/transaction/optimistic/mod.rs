@@ -9,16 +9,12 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use std::{ops::Deref, sync::Arc, time::Duration};
+use std::{ops::Deref, sync::Arc};
 
 pub use command::CommandTransaction;
 pub use query::QueryTransaction;
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus, interface::SingleVersionTransaction};
-use reifydb_store_transaction::{
-	BackendConfig, MultiVersionStore, StandardTransactionStore, TransactionStoreConfig,
-	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
-	memory::MemoryBackend,
-};
+use reifydb_store_transaction::{MultiVersionStore, StandardTransactionStore};
 
 use crate::{
 	multi::{
@@ -76,23 +72,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> TransactionOptimisti
 
 impl TransactionOptimistic<StandardTransactionStore, TransactionSvl<StandardTransactionStore>> {
 	pub fn testing() -> Self {
-		let memory = MemoryBackend::new();
-		let store = StandardTransactionStore::new(TransactionStoreConfig {
-			hot: Some(BackendConfig {
-				backend: Backend {
-					multi: BackendMulti::Memory(memory.clone()),
-					single: BackendSingle::Memory(memory.clone()),
-					cdc: BackendCdc::Memory(memory),
-				},
-				retention_period: Duration::from_millis(100),
-			}),
-			warm: None,
-			cold: None,
-			retention: Default::default(),
-			merge_config: Default::default(),
-		})
-		.unwrap();
-
+		let store = StandardTransactionStore::testing_memory();
 		let event_bus = EventBus::new();
 		Self::new(store.clone(), TransactionSvl::new(store, event_bus.clone()), event_bus)
 	}

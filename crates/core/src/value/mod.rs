@@ -4,4 +4,5 @@
 pub mod column;
 pub mod container;
 pub mod encoded;
+pub mod frame;
 pub mod index;
