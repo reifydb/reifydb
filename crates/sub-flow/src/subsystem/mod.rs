@@ -12,7 +12,7 @@ use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
 use reifydb_core::{
 	Result,
 	interface::{
-		ConsumerId, Transaction,
+		CdcConsumerId, Transaction,
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
@@ -25,7 +25,7 @@ use crate::builder::OperatorFactory;
 
 pub struct FlowSubsystemConfig<T: Transaction> {
 	/// Unique identifier for this consumer
-	pub consumer_id: ConsumerId,
+	pub consumer_id: CdcConsumerId,
 	/// How often to poll for new CDC events
 	pub poll_interval: Duration,
 	/// Priority for the polling task in the worker pool

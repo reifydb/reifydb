@@ -4,7 +4,7 @@
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey,
-	interface::cdc::ConsumerId,
+	interface::CdcConsumerId,
 	util::encoding::keycode::{KeySerializer, deserialize},
 };
 
@@ -19,7 +19,7 @@ impl ToConsumerKey for EncodedKey {
 	}
 }
 
-impl ToConsumerKey for ConsumerId {
+impl ToConsumerKey for CdcConsumerId {
 	fn to_consumer_key(&self) -> EncodedKey {
 		CdcConsumerKey {
 			consumer: self.clone(),
@@ -30,7 +30,7 @@ impl ToConsumerKey for ConsumerId {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
 pub struct CdcConsumerKey {
-	pub consumer: ConsumerId,
+	pub consumer: CdcConsumerId,
 }
 
 const VERSION_BYTE: u8 = 1;
@@ -65,7 +65,7 @@ impl EncodableKey for CdcConsumerKey {
 		let consumer_id: String = deserialize(&key[2..]).ok()?;
 
 		Some(Self {
-			consumer: ConsumerId(consumer_id),
+			consumer: CdcConsumerId(consumer_id),
 		})
 	}
 }
@@ -73,17 +73,17 @@ impl EncodableKey for CdcConsumerKey {
 #[cfg(test)]
 mod tests {
 	use super::{CdcConsumerKey, EncodableKey};
-	use crate::interface::ConsumerId;
+	use crate::interface::CdcConsumerId;
 
 	#[test]
 	fn test_encode_decode_cdc_consumer() {
 		let key = CdcConsumerKey {
-			consumer: ConsumerId::new("test-consumer"),
+			consumer: CdcConsumerId::new("test-consumer"),
 		};
 
 		let encoded = key.encode();
 		let decoded = CdcConsumerKey::decode(&encoded).expect("Failed to decode key");
 
-		assert_eq!(decoded.consumer, ConsumerId::new("test-consumer"));
+		assert_eq!(decoded.consumer, CdcConsumerId::new("test-consumer"));
 	}
 }

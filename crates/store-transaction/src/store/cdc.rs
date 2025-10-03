@@ -3,12 +3,13 @@
 
 use std::collections::Bound;
 
-use reifydb_core::{
-	CommitVersion,
-	interface::{Cdc, CdcCount, CdcGet, CdcRange, CdcScan, CdcStore},
-};
+use reifydb_core::{CommitVersion, interface::Cdc};
 
-use crate::{StandardTransactionStore, store::cdc_iterator::CdcMergingIterator};
+use crate::{
+	CdcStore, StandardTransactionStore,
+	cdc::{CdcCount, CdcGet, CdcRange, CdcScan},
+	store::cdc_iterator::CdcMergingIterator,
+};
 
 impl CdcGet for StandardTransactionStore {
 	fn get(&self, version: CommitVersion) -> reifydb_type::Result<Option<Cdc>> {

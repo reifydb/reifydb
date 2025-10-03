@@ -1,9 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{CommitVersion, Result, interface::CdcCount};
+use reifydb_core::{CommitVersion, Result};
 
-use crate::backend::memory::MemoryBackend;
+use crate::{CdcCount, backend::memory::MemoryBackend};
 
 impl CdcCount for MemoryBackend {
 	fn count(&self, version: CommitVersion) -> Result<usize> {

@@ -4,12 +4,9 @@
 use std::ops::Bound;
 
 use crossbeam_skiplist::map::Entry;
-use reifydb_core::{
-	CommitVersion, Result,
-	interface::{Cdc, CdcRange},
-};
+use reifydb_core::{CommitVersion, Result, interface::Cdc};
 
-use crate::memory::MemoryBackend;
+use crate::{CdcRange, memory::MemoryBackend};
 
 impl CdcRange for MemoryBackend {
 	type RangeIter<'a> = CdcRangeIter<'a>;

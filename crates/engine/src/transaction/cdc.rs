@@ -5,8 +5,9 @@ use std::ops::Bound;
 
 use reifydb_core::{
 	CommitVersion, Result,
-	interface::{Cdc, CdcQueryTransaction, CdcStore, CdcTransaction},
+	interface::{Cdc, CdcQueryTransaction, CdcTransaction},
 };
+use reifydb_store_transaction::CdcStore;
 
 #[derive(Clone)]
 pub struct StandardCdcTransaction<S: CdcStore> {
@@ -32,7 +33,6 @@ impl<S: CdcStore> CdcTransaction for StandardCdcTransaction<S> {
 	}
 }
 
-/// CDC transaction wrapper for storage that implements CdcQuery
 #[derive(Clone)]
 pub struct StandardCdcQueryTransaction<S: CdcStore> {
 	storage: S,

@@ -14,7 +14,7 @@ use std::{
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
 	interface::{
-		Cdc, CdcChange, CdcQueryTransaction, CommandTransaction, ConsumerId, Engine as EngineInterface, Key,
+		Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, CommandTransaction, Engine as EngineInterface, Key,
 		MultiVersionCommandTransaction, Transaction,
 	},
 	key::{CdcConsumerKey, EncodableKey},
@@ -29,7 +29,7 @@ use crate::{CdcCheckpoint, CdcConsume, CdcConsumer};
 #[derive(Debug, Clone)]
 pub struct PollConsumerConfig {
 	/// Unique identifier for this consumer
-	pub consumer_id: ConsumerId,
+	pub consumer_id: CdcConsumerId,
 	/// How often to poll for new CDC events
 	pub poll_interval: Duration,
 	/// Priority for the polling task in the worker pool
@@ -37,7 +37,7 @@ pub struct PollConsumerConfig {
 }
 
 impl PollConsumerConfig {
-	pub fn new(consumer_id: ConsumerId, poll_interval: Duration) -> Self {
+	pub fn new(consumer_id: CdcConsumerId, poll_interval: Duration) -> Self {
 		Self {
 			consumer_id,
 			poll_interval,

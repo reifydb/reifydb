@@ -19,7 +19,7 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::StandardInterceptorFactory,
 	interface::{
-		Cdc, CdcChange, CdcConsumerKey, ConsumerId, EncodableKey, Engine as EngineInterface, Key,
+		Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, EncodableKey, Engine as EngineInterface, Key,
 		MultiVersionCommandTransaction, QueryTransaction, SingleVersionQueryTransaction, SourceId, TableId,
 	},
 	key::RowKey,
@@ -35,7 +35,7 @@ use reifydb_type::{OwnedFragment, RowNumber};
 fn test_consumer_lifecycle() {
 	let engine = create_test_engine();
 	let consumer = TestConsumer::new();
-	let consumer_id = ConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::flow_consumer();
 
 	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(100));
 	let mut test_instance = PollConsumer::new(config, engine, consumer);
@@ -61,7 +61,7 @@ fn test_event_processing() {
 	let engine = create_test_engine();
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
-	let consumer_id = ConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::flow_consumer();
 
 	insert_test_events(&engine, 5).expect("Failed to insert test events");
 
@@ -105,7 +105,7 @@ fn test_checkpoint_persistence() {
 	let engine = create_test_engine();
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
-	let consumer_id = ConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::flow_consumer();
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
@@ -154,7 +154,7 @@ fn test_error_handling() {
 	let engine = create_test_engine();
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
-	let consumer_id = ConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::flow_consumer();
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
@@ -189,7 +189,7 @@ fn test_empty_events_handling() {
 	let engine = create_test_engine();
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
-	let consumer_id = ConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::flow_consumer();
 
 	let config = PollConsumerConfig::new(consumer_id, Duration::from_millis(50));
 	let mut test_instance = PollConsumer::new(config, engine.clone(), consumer);
@@ -218,11 +218,11 @@ fn test_multiple_consumers() {
 
 	let consumer1 = TestConsumer::new();
 	let consumer1_clone = consumer1.clone();
-	let consumer_id1 = ConsumerId::new("consumer-1");
+	let consumer_id1 = CdcConsumerId::new("consumer-1");
 
 	let consumer2 = TestConsumer::new();
 	let consumer2_clone = consumer2.clone();
-	let consumer_id2 = ConsumerId::new("consumer-2");
+	let consumer_id2 = CdcConsumerId::new("consumer-2");
 
 	insert_test_events(&engine, 3).expect("Failed to insert test events");
 
@@ -293,7 +293,7 @@ fn test_non_table_events_filtered() {
 	let engine = create_test_engine();
 	let consumer = TestConsumer::new();
 	let consumer_clone = consumer.clone();
-	let consumer_id = ConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::flow_consumer();
 
 	let mut txn = engine.begin_command().expect("Failed to begin transaction");
 
@@ -350,7 +350,7 @@ fn test_non_table_events_filtered() {
 fn test_rapid_start_stop() {
 	let engine = create_test_engine();
 	let consumer = TestConsumer::new();
-	let consumer_id = ConsumerId::flow_consumer();
+	let consumer_id = CdcConsumerId::flow_consumer();
 
 	for _ in 0..5 {
 		let config = PollConsumerConfig::new(consumer_id.clone(), Duration::from_millis(100));

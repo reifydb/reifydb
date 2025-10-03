@@ -5,7 +5,7 @@
 
 use std::{marker::PhantomData, sync::Arc, time::Duration};
 
-use reifydb_core::interface::{ConsumerId, FlowNodeId, Transaction, expression::Expression};
+use reifydb_core::interface::{CdcConsumerId, FlowNodeId, Transaction, expression::Expression};
 use reifydb_sub_api::Priority;
 
 use crate::{operator::Operator, subsystem::FlowSubsystemConfig};
@@ -15,7 +15,7 @@ pub type OperatorFactory<T> =
 	Arc<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator<T>>> + Send + Sync>;
 
 pub struct FlowBuilder<T: Transaction> {
-	consumer_id: ConsumerId,
+	consumer_id: CdcConsumerId,
 	poll_interval: Duration,
 	priority: Priority,
 	operators: Vec<(String, OperatorFactory<T>)>,
@@ -32,7 +32,7 @@ impl<T: Transaction> FlowBuilder<T> {
 	/// Create a new FlowBuilder with default settings
 	pub fn new() -> Self {
 		Self {
-			consumer_id: ConsumerId::flow_consumer(),
+			consumer_id: CdcConsumerId::flow_consumer(),
 			poll_interval: Duration::from_millis(1),
 			priority: Priority::Normal,
 			operators: Vec::new(),
@@ -41,7 +41,7 @@ impl<T: Transaction> FlowBuilder<T> {
 	}
 
 	/// Set the consumer ID for the flow subsystem
-	pub fn consumer_id(mut self, id: ConsumerId) -> Self {
+	pub fn consumer_id(mut self, id: CdcConsumerId) -> Self {
 		self.consumer_id = id;
 		self
 	}

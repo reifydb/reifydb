@@ -8,11 +8,12 @@ use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, async_cow_vec,
 	delta::Delta,
-	interface::{Cdc, CdcChange, CdcGet, CdcRange, CdcScan, CdcSequencedChange, CdcStore, TransactionId},
+	interface::{Cdc, CdcChange, CdcSequencedChange, TransactionId},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::{
+	CdcGet, CdcRange, CdcScan, CdcStore,
 	backend::multi::BackendMultiVersion,
 	memory::MemoryBackend,
 	sqlite::{SqliteBackend, SqliteConfig},

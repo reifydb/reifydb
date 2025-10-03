@@ -3,13 +3,12 @@
 
 use std::collections::Bound;
 
-use reifydb_core::{
-	CommitVersion,
-	interface::{Cdc, CdcCount, CdcGet, CdcRange, CdcScan, CdcStore},
-};
+use reifydb_core::{CommitVersion, interface::Cdc};
 
 use crate::{
+	CdcCount, CdcScan, CdcStore,
 	backend::{memory, sqlite},
+	cdc::{CdcGet, CdcRange},
 	memory::MemoryBackend,
 	sqlite::SqliteBackend,
 };

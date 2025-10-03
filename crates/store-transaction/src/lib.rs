@@ -15,12 +15,13 @@ mod store;
 
 use std::collections::Bound;
 
+pub use cdc::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStore};
 pub use config::{BackendConfig, MergeConfig, RetentionConfig, TransactionStoreConfig};
 pub use multi::*;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, TransactionId,
 	delta::Delta,
-	interface::{Cdc, CdcCount, CdcGet, CdcRange, CdcScan, CdcStore, MultiVersionValues, SingleVersionValues},
+	interface::{Cdc, MultiVersionValues, SingleVersionValues},
 };
 pub use single::*;
 pub use store::StandardTransactionStore;

@@ -3,13 +3,10 @@
 
 use std::{collections::VecDeque, ops::Bound};
 
-use reifydb_core::{
-	CommitVersion, CowVec, Result,
-	interface::{Cdc, CdcRange},
-	value::encoded::EncodedValues,
-};
+use reifydb_core::{CommitVersion, CowVec, Result, interface::Cdc, value::encoded::EncodedValues};
 
 use crate::{
+	CdcRange,
 	backend::sqlite::{SqliteBackend, read::Reader},
 	cdc::codec::decode_cdc_transaction,
 };

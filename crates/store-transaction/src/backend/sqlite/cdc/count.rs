@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{CommitVersion, CowVec, Result, interface::CdcCount, value::encoded::EncodedValues};
+use reifydb_core::{CommitVersion, CowVec, Result, value::encoded::EncodedValues};
 use rusqlite::{OptionalExtension, params};
 
-use crate::{cdc::codec::decode_cdc_transaction, sqlite::SqliteBackend};
+use crate::{CdcCount, cdc::codec::decode_cdc_transaction, sqlite::SqliteBackend};
 
 impl CdcCount for SqliteBackend {
 	fn count(&self, version: CommitVersion) -> Result<usize> {

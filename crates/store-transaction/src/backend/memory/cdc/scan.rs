@@ -2,12 +2,9 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crossbeam_skiplist::map::Entry;
-use reifydb_core::{
-	CommitVersion, Result,
-	interface::{Cdc, CdcScan},
-};
+use reifydb_core::{CommitVersion, Result, interface::Cdc};
 
-use crate::memory::MemoryBackend;
+use crate::{CdcScan, memory::MemoryBackend};
 
 impl CdcScan for MemoryBackend {
 	type ScanIter<'a> = CdcScanIter<'a>;

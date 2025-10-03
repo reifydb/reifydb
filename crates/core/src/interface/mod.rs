@@ -3,7 +3,7 @@
 
 mod auth;
 pub mod catalog;
-pub(crate) mod cdc;
+mod cdc;
 mod engine;
 pub mod evaluate;
 mod execute;

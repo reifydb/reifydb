@@ -19,16 +19,19 @@ pub use cdc::{CdcRangeIter, CdcScanIter};
 pub use config::*;
 pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
 use read::Readers;
-use reifydb_core::{CowVec, delta::Delta, interface::CdcStore};
+use reifydb_core::{CowVec, delta::Delta};
 use reifydb_type::Error;
 use rusqlite::Connection;
 pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
 use write::{WriteCommand, Writer};
 
-use crate::backend::{
-	diagnostic::connection_failed,
-	multi::BackendMultiVersion,
-	single::{BackendSingleVersion, BackendSingleVersionRemove, BackendSingleVersionSet},
+use crate::{
+	CdcStore,
+	backend::{
+		diagnostic::connection_failed,
+		multi::BackendMultiVersion,
+		single::{BackendSingleVersion, BackendSingleVersionRemove, BackendSingleVersionSet},
+	},
 };
 
 #[derive(Clone)]

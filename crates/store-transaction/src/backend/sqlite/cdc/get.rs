@@ -1,14 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	CommitVersion, CowVec, Result,
-	interface::{Cdc, CdcGet},
-	value::encoded::EncodedValues,
-};
+use reifydb_core::{CommitVersion, CowVec, Result, interface::Cdc, value::encoded::EncodedValues};
 use rusqlite::{OptionalExtension, params};
 
-use crate::{cdc::codec::decode_cdc_transaction, sqlite::SqliteBackend};
+use crate::{CdcGet, cdc::codec::decode_cdc_transaction, sqlite::SqliteBackend};
 
 impl CdcGet for SqliteBackend {
 	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {

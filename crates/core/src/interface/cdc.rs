@@ -1,18 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod store;
-
 use serde::{Deserialize, Serialize};
-pub use store::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStore};
 
 use crate::{CommitVersion, EncodedKey, interface::transaction::TransactionId, value::encoded::EncodedValues};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
-pub struct ConsumerId(pub(crate) String);
+pub struct CdcConsumerId(pub(crate) String);
 
-impl ConsumerId {
+impl CdcConsumerId {
 	pub fn new(id: impl Into<String>) -> Self {
 		let id = id.into();
 		assert_ne!(id, "__FLOW_CONSUMER");
@@ -24,7 +21,7 @@ impl ConsumerId {
 	}
 }
 
-impl AsRef<str> for ConsumerId {
+impl AsRef<str> for CdcConsumerId {
 	fn as_ref(&self) -> &str {
 		&self.0
 	}
