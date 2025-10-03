@@ -22,7 +22,7 @@ use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	mvcc::{
-		transaction::optimistic::{CommandTransaction, Optimistic, QueryTransaction, Transaction},
+		transaction::optimistic::{CommandTransaction, OptimisticTransaction, QueryTransaction, Transaction},
 		types::TransactionValue,
 	},
 	svl::SingleVersionLock,
@@ -37,20 +37,29 @@ fn test_optimistic(path: &Path) {
 	let bus = EventBus::default();
 
 	testscript::run_path(
-		&mut MvccRunner::new(Optimistic::new(store.clone(), SingleVersionLock::new(store, bus.clone()), bus)),
+		&mut MvccRunner::new(OptimisticTransaction::new(
+			store.clone(),
+			SingleVersionLock::new(store, bus.clone()),
+			bus,
+		)),
 		path,
 	)
 	.expect("test failed")
 }
 
 pub struct MvccRunner {
-	engine: Optimistic<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
+	engine: OptimisticTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
 	transactions:
 		HashMap<String, Transaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>>,
 }
 
 impl MvccRunner {
-	fn new(optimistic: Optimistic<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>) -> Self {
+	fn new(
+		optimistic: OptimisticTransaction<
+			StandardTransactionStore,
+			SingleVersionLock<StandardTransactionStore>,
+		>,
+	) -> Self {
 		Self {
 			engine: optimistic,
 			transactions: HashMap::new(),

@@ -22,7 +22,9 @@ use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	mvcc::{
-		transaction::serializable::{CommandTransaction, QueryTransaction, Serializable, Transaction},
+		transaction::serializable::{
+			CommandTransaction, QueryTransaction, SerializableTransaction, Transaction,
+		},
 		types::TransactionValue,
 	},
 	svl::SingleVersionLock,
@@ -37,7 +39,7 @@ fn test_serializable(path: &Path) {
 	let bus = EventBus::default();
 
 	testscript::run_path(
-		&mut MvccRunner::new(Serializable::new(
+		&mut MvccRunner::new(SerializableTransaction::new(
 			store.clone(),
 			SingleVersionLock::new(store.clone(), bus.clone()),
 			bus,
@@ -48,14 +50,17 @@ fn test_serializable(path: &Path) {
 }
 
 pub struct MvccRunner {
-	engine: Serializable<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
+	engine: SerializableTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
 	transactions:
 		HashMap<String, Transaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>>,
 }
 
 impl MvccRunner {
 	fn new(
-		serializable: Serializable<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
+		serializable: SerializableTransaction<
+			StandardTransactionStore,
+			SingleVersionLock<StandardTransactionStore>,
+		>,
 	) -> Self {
 		Self {
 			engine: serializable,

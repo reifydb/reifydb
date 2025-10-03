@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_transaction::mvcc::transaction::serializable::Serializable;
+use reifydb_transaction::mvcc::transaction::serializable::SerializableTransaction;
 
 use crate::{as_key, as_values, from_values, mvcc::transaction::FromValues};
 
@@ -9,7 +9,7 @@ use crate::{as_key, as_values, from_values, mvcc::transaction::FromValues};
 fn test_write() {
 	let key = as_key!("foo");
 
-	let engine = Serializable::testing();
+	let engine = SerializableTransaction::testing();
 	{
 		let mut tx = engine.begin_command().unwrap();
 		assert_eq!(tx.version(), 1);
@@ -30,7 +30,7 @@ fn test_write() {
 
 #[test]
 fn test_multiple_write() {
-	let engine = Serializable::testing();
+	let engine = SerializableTransaction::testing();
 
 	{
 		let mut txn = engine.begin_command().unwrap();

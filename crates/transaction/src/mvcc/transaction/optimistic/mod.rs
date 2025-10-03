@@ -31,9 +31,9 @@ use crate::{
 mod command;
 mod query;
 
-pub struct Optimistic<MVS: MultiVersionStore, SVT: SingleVersionTransaction>(Arc<Inner<MVS, SVT>>);
+pub struct OptimisticTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction>(Arc<Inner<MVS, SVT>>);
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Deref for Optimistic<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Deref for OptimisticTransaction<MVS, SVT> {
 	type Target = Inner<MVS, SVT>;
 
 	fn deref(&self) -> &Self::Target {
@@ -41,7 +41,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Deref for Optimistic
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Clone for Optimistic<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Clone for OptimisticTransaction<MVS, SVT> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
@@ -68,13 +68,13 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Inner<MVS, SVT> {
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Optimistic<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> OptimisticTransaction<MVS, SVT> {
 	pub fn new(multi: MVS, single: SVT, event_bus: EventBus) -> Self {
 		Self(Arc::new(Inner::new(multi, single, event_bus)))
 	}
 }
 
-impl Optimistic<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>> {
+impl OptimisticTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>> {
 	pub fn testing() -> Self {
 		let memory = MemoryBackend::new();
 		let store = StandardTransactionStore::new(TransactionStoreConfig {
@@ -98,7 +98,7 @@ impl Optimistic<StandardTransactionStore, SingleVersionLock<StandardTransactionS
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Optimistic<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> OptimisticTransaction<MVS, SVT> {
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.0.version()
 	}
@@ -107,7 +107,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Optimistic<MVS, SVT>
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Optimistic<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> OptimisticTransaction<MVS, SVT> {
 	pub fn begin_command(&self) -> crate::Result<CommandTransaction<MVS, SVT>> {
 		CommandTransaction::new(self.clone())
 	}
@@ -118,7 +118,7 @@ pub enum Transaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
 	Command(CommandTransaction<MVS, SVT>),
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Optimistic<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> OptimisticTransaction<MVS, SVT> {
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(self.multi.get(key, version)?.map(|sv| sv.into()))
 	}

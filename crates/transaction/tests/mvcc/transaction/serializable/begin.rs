@@ -9,18 +9,18 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_transaction::mvcc::transaction::serializable::Serializable;
+use reifydb_transaction::mvcc::transaction::serializable::SerializableTransaction;
 
 #[test]
 fn test_begin_query() {
-	let engine = Serializable::testing();
+	let engine = SerializableTransaction::testing();
 	let tx = engine.begin_query().unwrap();
 	assert_eq!(tx.version(), 1);
 }
 
 #[test]
 fn test_begin_command() {
-	let engine = Serializable::testing();
+	let engine = SerializableTransaction::testing();
 	let tx = engine.begin_command().unwrap();
 	assert_eq!(tx.version(), 1);
 }

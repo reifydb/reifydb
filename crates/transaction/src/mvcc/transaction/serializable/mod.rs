@@ -31,7 +31,7 @@ use crate::{
 	svl::SingleVersionLock,
 };
 
-pub struct Serializable<MVS: MultiVersionStore, SVT: SingleVersionTransaction>(Arc<Inner<MVS, SVT>>);
+pub struct SerializableTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction>(Arc<Inner<MVS, SVT>>);
 
 pub struct Inner<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
 	pub(crate) tm: TransactionManager<StdVersionProvider<SVT>>,
@@ -39,7 +39,7 @@ pub struct Inner<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
 	pub(crate) event_bus: EventBus,
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Deref for Serializable<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Deref for SerializableTransaction<MVS, SVT> {
 	type Target = Inner<MVS, SVT>;
 
 	fn deref(&self) -> &Self::Target {
@@ -47,7 +47,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Deref for Serializab
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Clone for Serializable<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Clone for SerializableTransaction<MVS, SVT> {
 	fn clone(&self) -> Self {
 		Self(self.0.clone())
 	}
@@ -69,7 +69,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Inner<MVS, SVT> {
 	}
 }
 
-impl Serializable<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>> {
+impl SerializableTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>> {
 	pub fn testing() -> Self {
 		let memory = MemoryBackend::new();
 		let store = StandardTransactionStore::new(TransactionStoreConfig {
@@ -93,13 +93,13 @@ impl Serializable<StandardTransactionStore, SingleVersionLock<StandardTransactio
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Serializable<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> SerializableTransaction<MVS, SVT> {
 	pub fn new(multi: MVS, single: SVT, event_bus: EventBus) -> Self {
 		Self(Arc::new(Inner::new(multi, single, event_bus)))
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Serializable<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> SerializableTransaction<MVS, SVT> {
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.0.version()
 	}
@@ -108,7 +108,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Serializable<MVS, SV
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Serializable<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> SerializableTransaction<MVS, SVT> {
 	pub fn begin_command(&self) -> crate::Result<CommandTransaction<MVS, SVT>> {
 		CommandTransaction::new(self.clone())
 	}
@@ -119,7 +119,7 @@ pub enum Transaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
 	Command(CommandTransaction<MVS, SVT>),
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Serializable<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> SerializableTransaction<MVS, SVT> {
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(self.multi.get(key, version)?.map(|sv| sv.into()))
 	}

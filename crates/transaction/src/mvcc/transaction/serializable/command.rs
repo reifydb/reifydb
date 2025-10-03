@@ -27,12 +27,12 @@ use crate::mvcc::{
 };
 
 pub struct CommandTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
-	engine: Serializable<MVS, SVT>,
+	engine: SerializableTransaction<MVS, SVT>,
 	pub(crate) tm: TransactionManagerCommand<StdVersionProvider<SVT>>,
 }
 
 impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<MVS, SVT> {
-	pub fn new(engine: Serializable<MVS, SVT>) -> crate::Result<Self> {
+	pub fn new(engine: SerializableTransaction<MVS, SVT>) -> crate::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
 			engine,

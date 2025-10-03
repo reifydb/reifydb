@@ -13,17 +13,19 @@ use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, interface::Single
 use reifydb_store_transaction::MultiVersionStore;
 
 use crate::mvcc::{
-	transaction::{query::TransactionManagerQuery, serializable::Serializable, version::StdVersionProvider},
+	transaction::{
+		query::TransactionManagerQuery, serializable::SerializableTransaction, version::StdVersionProvider,
+	},
 	types::TransactionValue,
 };
 
 pub struct QueryTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
-	pub(crate) engine: Serializable<MVS, SVT>,
+	pub(crate) engine: SerializableTransaction<MVS, SVT>,
 	pub(crate) tm: TransactionManagerQuery<StdVersionProvider<SVT>>,
 }
 
 impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> QueryTransaction<MVS, SVT> {
-	pub fn new(engine: Serializable<MVS, SVT>, version: Option<CommitVersion>) -> crate::Result<Self> {
+	pub fn new(engine: SerializableTransaction<MVS, SVT>, version: Option<CommitVersion>) -> crate::Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
 			engine,

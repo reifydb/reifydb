@@ -12,15 +12,17 @@ use reifydb_core::{
 };
 use reifydb_store_transaction::MultiVersionStore;
 
-use crate::mvcc::transaction::optimistic::{CommandTransaction, Optimistic, QueryTransaction};
+use crate::mvcc::transaction::optimistic::{CommandTransaction, OptimisticTransaction, QueryTransaction};
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> WithEventBus for Optimistic<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> WithEventBus for OptimisticTransaction<MVS, SVT> {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
-impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> MultiVersionTransaction for Optimistic<MVS, SVT> {
+impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> MultiVersionTransaction
+	for OptimisticTransaction<MVS, SVT>
+{
 	type Query = QueryTransaction<MVS, SVT>;
 	type Command = CommandTransaction<MVS, SVT>;
 

@@ -20,7 +20,7 @@ use reifydb_store_transaction::{
 	},
 };
 use reifydb_transaction::{
-	mvcc::transaction::{optimistic::Optimistic, serializable::Serializable},
+	mvcc::transaction::{optimistic::OptimisticTransaction, serializable::SerializableTransaction},
 	svl::SingleVersionLock,
 };
 
@@ -99,21 +99,23 @@ pub fn sqlite(
 }
 
 /// Convenience function to create an optimistic transaction layer
-pub fn optimistic<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (Optimistic<MVS, SVT>, SVT, C, EventBus)
+pub fn optimistic<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (OptimisticTransaction<MVS, SVT>, SVT, C, EventBus)
 where
 	MVS: MultiVersionStore,
 	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	(Optimistic::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
+	(OptimisticTransaction::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
 }
 
 /// Convenience function to create a serializable transaction layer
-pub fn serializable<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (Serializable<MVS, SVT>, SVT, C, EventBus)
+pub fn serializable<MVS, SVT, C>(
+	input: (MVS, SVT, C, EventBus),
+) -> (SerializableTransaction<MVS, SVT>, SVT, C, EventBus)
 where
 	MVS: MultiVersionStore,
 	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	(Serializable::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
+	(SerializableTransaction::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
 }
