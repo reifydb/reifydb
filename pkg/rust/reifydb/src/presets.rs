@@ -9,14 +9,14 @@
 use reifydb_engine::{EngineTransaction, StandardCdcTransaction};
 use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_transaction::{
-	multi::transaction::{optimistic::OptimisticTransaction, serializable::SerializableTransaction},
-	single::SingleVersionLock,
+	multi::transaction::{optimistic::TransactionOptimistic, serializable::SerializableTransaction},
+	single::TransactionSvl,
 };
 
 use crate::Database;
 
-pub type SingleVersionMemory = SingleVersionLock<StandardTransactionStore>;
-pub type SingleVersionSqlite = SingleVersionLock<StandardTransactionStore>;
+pub type SingleVersionMemory = TransactionSvl<StandardTransactionStore>;
+pub type SingleVersionSqlite = TransactionSvl<StandardTransactionStore>;
 
 /// CDC transaction type for Memory storage
 pub type MemoryCdc = StandardCdcTransaction<StandardTransactionStore>;
@@ -40,14 +40,14 @@ pub type MemoryDatabaseSerializable = Database<
 
 /// In-memory with optimistic concurrency control
 pub type MemoryOptimisticTransaction = EngineTransaction<
-	OptimisticTransaction<StandardTransactionStore, SingleVersionMemory>,
+	TransactionOptimistic<StandardTransactionStore, SingleVersionMemory>,
 	SingleVersionMemory,
 	MemoryCdc,
 >;
 
 /// In-memory post with optimistic concurrency control
 pub type MemoryDatabaseOptimistic =
-	Database<OptimisticTransaction<StandardTransactionStore, SingleVersionMemory>, SingleVersionMemory, MemoryCdc>;
+	Database<TransactionOptimistic<StandardTransactionStore, SingleVersionMemory>, SingleVersionMemory, MemoryCdc>;
 
 /// SQLite with serializable isolation
 pub type SqliteSerializableTransaction = EngineTransaction<
@@ -65,11 +65,11 @@ pub type SqliteDatabaseSerializable = Database<
 
 /// SQLite with optimistic concurrency control
 pub type SqliteOptimisticTransaction = EngineTransaction<
-	OptimisticTransaction<StandardTransactionStore, SingleVersionSqlite>,
+	TransactionOptimistic<StandardTransactionStore, SingleVersionSqlite>,
 	SingleVersionSqlite,
 	SqliteCdc,
 >;
 
 /// SQLite-backed post with optimistic concurrency control
 pub type SqliteDatabaseOptimistic =
-	Database<OptimisticTransaction<StandardTransactionStore, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc>;
+	Database<TransactionOptimistic<StandardTransactionStore, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc>;

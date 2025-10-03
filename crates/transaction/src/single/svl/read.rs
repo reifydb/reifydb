@@ -7,11 +7,11 @@ use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionQueryTransact
 
 use super::*;
 
-pub struct SvlReadTransaction<'a, SVS> {
+pub struct SvlQueryTransaction<'a, SVS> {
 	pub(super) storage: RwLockReadGuard<'a, SVS>,
 }
 
-impl<SVS> SingleVersionQueryTransaction for SvlReadTransaction<'_, SVS>
+impl<SVS> SingleVersionQueryTransaction for SvlQueryTransaction<'_, SVS>
 where
 	SVS: SingleVersionStore,
 {

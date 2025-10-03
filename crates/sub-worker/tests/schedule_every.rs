@@ -18,19 +18,19 @@ use reifydb_engine::{EngineTransaction, StandardCdcTransaction, StandardEngine};
 use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_sub_api::{ClosureTask, Priority, Scheduler, Subsystem};
 use reifydb_sub_worker::{WorkerConfig, WorkerSubsystem};
-use reifydb_transaction::{multi::transaction::serializable::SerializableTransaction, single::SingleVersionLock};
+use reifydb_transaction::{multi::transaction::serializable::SerializableTransaction, single::TransactionSvl};
 use reifydb_type::{diagnostic::internal, error};
 
 type TestTransaction = EngineTransaction<
-	SerializableTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
-	SingleVersionLock<StandardTransactionStore>,
+	SerializableTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
+	TransactionSvl<StandardTransactionStore>,
 	StandardCdcTransaction<StandardTransactionStore>,
 >;
 
 fn create_test_engine() -> StandardEngine<TestTransaction> {
 	let store = StandardTransactionStore::testing_memory();
 	let eventbus = EventBus::new();
-	let single = SingleVersionLock::new(store.clone(), eventbus.clone());
+	let single = TransactionSvl::new(store.clone(), eventbus.clone());
 	let cdc = StandardCdcTransaction::new(store.clone());
 	let multi = SerializableTransaction::new(store, single.clone(), eventbus.clone());
 

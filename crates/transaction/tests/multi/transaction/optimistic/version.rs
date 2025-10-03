@@ -11,14 +11,14 @@
 
 use reifydb_core::CommitVersion;
 use reifydb_transaction::multi::transaction::{
-	optimistic::OptimisticTransaction, scan::TransactionScanIter, scan_rev::TransactionScanRevIter,
+	optimistic::TransactionOptimistic, scan::TransactionScanIter, scan_rev::TransactionScanRevIter,
 };
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
 #[test]
 fn test_versions() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 
 	let k0 = as_key!(0);
 

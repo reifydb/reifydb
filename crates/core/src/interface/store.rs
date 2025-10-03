@@ -3,8 +3,6 @@
 
 use crate::{CommitVersion, EncodedKey, value::encoded::EncodedValues};
 
-pub trait TransactionStore: Send + Sync + Clone + 'static {}
-
 #[derive(Debug, Clone)]
 pub struct MultiVersionValues {
 	pub key: EncodedKey,

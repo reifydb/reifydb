@@ -3,7 +3,7 @@
 
 use reifydb_store_transaction::{StandardTransactionStore, backend::sqlite::SqliteConfig};
 use reifydb_transaction::multi::transaction::{
-	optimistic::OptimisticTransaction, serializable::SerializableTransaction,
+	optimistic::TransactionOptimistic, serializable::SerializableTransaction,
 };
 
 use crate::{
@@ -12,7 +12,7 @@ use crate::{
 };
 
 pub fn memory_optimistic()
--> EmbeddedBuilder<OptimisticTransaction<StandardTransactionStore, SingleVersionMemory>, SingleVersionMemory, MemoryCdc>
+-> EmbeddedBuilder<TransactionOptimistic<StandardTransactionStore, SingleVersionMemory>, SingleVersionMemory, MemoryCdc>
 {
 	let (storage, single, cdc, eventbus) = memory();
 	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));
@@ -31,7 +31,7 @@ pub fn memory_serializable() -> EmbeddedBuilder<
 
 pub fn sqlite_optimistic(
 	config: SqliteConfig,
-) -> EmbeddedBuilder<OptimisticTransaction<StandardTransactionStore, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc>
+) -> EmbeddedBuilder<TransactionOptimistic<StandardTransactionStore, SingleVersionSqlite>, SingleVersionSqlite, SqliteCdc>
 {
 	let (storage, single, cdc, eventbus) = sqlite(config);
 	let (multi, _, _, _) = optimistic((storage.clone(), single.clone(), cdc.clone(), eventbus.clone()));

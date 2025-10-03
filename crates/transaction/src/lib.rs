@@ -3,12 +3,12 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-pub use reifydb_type::Result;
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 
 pub mod multi;
 pub mod single;
 
-use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
+pub use reifydb_type::Result;
 
 pub struct TransactionVersion;
 

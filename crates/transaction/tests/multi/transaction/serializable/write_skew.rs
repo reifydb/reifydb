@@ -13,10 +13,10 @@ use reifydb_core::{EncodedKey, EncodedKeyRange};
 use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_transaction::{
 	multi::transaction::{
-		optimistic::{CommandTransaction, OptimisticTransaction},
+		optimistic::{CommandTransaction, TransactionOptimistic},
 		serializable::SerializableTransaction,
 	},
-	single::SingleVersionLock,
+	single::TransactionSvl,
 };
 
 use crate::{
@@ -30,7 +30,7 @@ fn test_write_skew() {
 	let a999: EncodedKey = as_key!(999);
 	let a888: EncodedKey = as_key!(888);
 
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 
 	// Set balance to $100 in each account.
 	let mut txn = engine.begin_command().unwrap();
@@ -39,16 +39,14 @@ fn test_write_skew() {
 	txn.commit().unwrap();
 	assert_eq!(2, engine.version().unwrap());
 
-	let get_bal = |txn: &mut CommandTransaction<
-		StandardTransactionStore,
-		SingleVersionLock<StandardTransactionStore>,
-	>,
-	               k: &EncodedKey|
-	 -> u64 {
-		let sv = txn.get(k).unwrap().unwrap();
-		let val = sv.values();
-		from_values!(u64, val)
-	};
+	let get_bal =
+		|txn: &mut CommandTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
+		 k: &EncodedKey|
+		 -> u64 {
+			let sv = txn.get(k).unwrap().unwrap();
+			let val = sv.values();
+			from_values!(u64, val)
+		};
 
 	// Start two transactions, each would read both accounts and deduct from
 	// one account.
@@ -90,7 +88,7 @@ fn test_write_skew() {
 // https://wiki.postgresql.org/wiki/SSI#Black_and_White
 #[test]
 fn test_black_white() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 
 	// Setup
 	let mut txn = engine.begin_command().unwrap();
@@ -153,7 +151,7 @@ fn test_black_white() {
 // https://wiki.postgresql.org/wiki/SSI#Overdraft_Protection
 #[test]
 fn test_overdraft_protection() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 
 	let key = as_key!("karen");
 
@@ -184,7 +182,7 @@ fn test_overdraft_protection() {
 // https://wiki.postgresql.org/wiki/SSI#Primary_Colors
 #[test]
 fn test_primary_colors() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 
 	// Setup
 	let mut txn = engine.begin_command().unwrap();

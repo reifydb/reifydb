@@ -140,11 +140,11 @@ mod tests {
 	use reifydb_store_transaction::StandardTransactionStore;
 
 	use super::*;
-	use crate::single::SingleVersionLock;
+	use crate::single::TransactionSvl;
 
 	#[test]
 	fn test_new_version_provider() {
-		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Should start at version 0
@@ -153,7 +153,7 @@ mod tests {
 
 	#[test]
 	fn test_next_version_sequential() {
-		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		assert_eq!(provider.next().unwrap(), 1);
@@ -168,7 +168,7 @@ mod tests {
 
 	#[test]
 	fn test_version_persistence() {
-		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
 
 		// Create first provider and get some versions
 		{
@@ -187,7 +187,7 @@ mod tests {
 
 	#[test]
 	fn test_block_exhaustion_and_allocation() {
-		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
 		let provider = StandardVersionProvider::new(single).unwrap();
 
 		// Exhaust the first block
@@ -209,7 +209,7 @@ mod tests {
 	fn test_concurrent_version_allocation() {
 		use std::{sync::Arc, thread};
 
-		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
 		let provider = Arc::new(StandardVersionProvider::new(single).unwrap());
 
 		let mut handles = vec![];
@@ -288,7 +288,7 @@ mod tests {
 
 	#[test]
 	fn test_load_existing_version() {
-		let single = SingleVersionLock::new(StandardTransactionStore::testing_memory(), EventBus::default());
+		let single = TransactionSvl::new(StandardTransactionStore::testing_memory(), EventBus::default());
 
 		// Manually set a version in storage
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);

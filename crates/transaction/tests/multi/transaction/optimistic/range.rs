@@ -11,14 +11,14 @@
 
 use reifydb_core::{CommitVersion, EncodedKeyRange};
 use reifydb_transaction::multi::transaction::{
-	optimistic::OptimisticTransaction, range::TransactionRangeIter, range_rev::TransactionRangeRevIter,
+	optimistic::TransactionOptimistic, range::TransactionRangeIter, range_rev::TransactionRangeRevIter,
 };
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
 #[test]
 fn test_range() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
@@ -45,7 +45,7 @@ fn test_range() {
 
 #[test]
 fn test_range2() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
@@ -93,7 +93,7 @@ fn test_range2() {
 
 #[test]
 fn test_range3() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 	let mut txn = engine.begin_command().unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
@@ -146,7 +146,7 @@ fn test_range3() {
 /// Read at ts=1 -> c1
 #[test]
 fn test_range_edge() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 
 	// c1
 	{

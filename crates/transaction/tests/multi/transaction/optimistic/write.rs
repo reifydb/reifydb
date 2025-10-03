@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_transaction::multi::transaction::optimistic::OptimisticTransaction;
+use reifydb_transaction::multi::transaction::optimistic::TransactionOptimistic;
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
@@ -17,7 +17,7 @@ use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 fn test_write() {
 	let key = as_key!("foo");
 
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 	{
 		let mut tx = engine.begin_command().unwrap();
 		assert_eq!(tx.version(), 1);
@@ -38,7 +38,7 @@ fn test_write() {
 
 #[test]
 fn test_multiple_write() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 
 	{
 		let mut txn = engine.begin_command().unwrap();

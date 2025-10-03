@@ -14,18 +14,18 @@ use reifydb_store_transaction::MultiVersionStore;
 
 use crate::multi::{
 	transaction::{
-		optimistic::OptimisticTransaction, query::TransactionManagerQuery, version::StandardVersionProvider,
+		optimistic::TransactionOptimistic, query::TransactionManagerQuery, version::StandardVersionProvider,
 	},
 	types::TransactionValue,
 };
 
 pub struct QueryTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
-	pub(crate) engine: OptimisticTransaction<MVS, SVT>,
+	pub(crate) engine: TransactionOptimistic<MVS, SVT>,
 	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider<SVT>>,
 }
 
 impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> QueryTransaction<MVS, SVT> {
-	pub fn new(engine: OptimisticTransaction<MVS, SVT>, version: Option<CommitVersion>) -> crate::Result<Self> {
+	pub fn new(engine: TransactionOptimistic<MVS, SVT>, version: Option<CommitVersion>) -> crate::Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
 			engine,

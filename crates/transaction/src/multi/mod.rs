@@ -9,3 +9,12 @@ pub mod serializable;
 pub mod transaction;
 pub mod types;
 pub mod watermark;
+
+// use crate::multi::transaction::optimistic::TransactionOptimistic;
+// use crate::single::TransactionSingleVersionLock;
+// use reifydb_store_transaction::TransactionStore;
+// use crate::transaction_single::TransactionSingle;
+//
+// pub enum TransactionMulti {
+// 	Optimistic(TransactionOptimistic<TransactionStore, TransactionSingle>),
+// }

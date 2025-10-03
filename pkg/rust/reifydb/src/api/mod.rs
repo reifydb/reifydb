@@ -20,8 +20,8 @@ use reifydb_store_transaction::{
 	},
 };
 use reifydb_transaction::{
-	multi::transaction::{optimistic::OptimisticTransaction, serializable::SerializableTransaction},
-	single::SingleVersionLock,
+	multi::transaction::{optimistic::TransactionOptimistic, serializable::SerializableTransaction},
+	single::TransactionSvl,
 };
 
 pub mod embedded;
@@ -32,7 +32,7 @@ pub mod server;
 /// Convenience function to create in-memory storage
 pub fn memory() -> (
 	StandardTransactionStore,
-	SingleVersionLock<StandardTransactionStore>,
+	TransactionSvl<StandardTransactionStore>,
 	StandardCdcTransaction<StandardTransactionStore>,
 	EventBus,
 ) {
@@ -56,7 +56,7 @@ pub fn memory() -> (
 
 	(
 		store.clone(),
-		SingleVersionLock::new(store.clone(), eventbus.clone()),
+		TransactionSvl::new(store.clone(), eventbus.clone()),
 		StandardCdcTransaction::new(store),
 		eventbus,
 	)
@@ -67,7 +67,7 @@ pub fn sqlite(
 	config: SqliteConfig,
 ) -> (
 	StandardTransactionStore,
-	SingleVersionLock<StandardTransactionStore>,
+	TransactionSvl<StandardTransactionStore>,
 	StandardCdcTransaction<StandardTransactionStore>,
 	EventBus,
 ) {
@@ -92,20 +92,20 @@ pub fn sqlite(
 
 	(
 		store.clone(),
-		SingleVersionLock::new(store.clone(), eventbus.clone()),
+		TransactionSvl::new(store.clone(), eventbus.clone()),
 		StandardCdcTransaction::new(store),
 		eventbus,
 	)
 }
 
 /// Convenience function to create an optimistic transaction layer
-pub fn optimistic<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (OptimisticTransaction<MVS, SVT>, SVT, C, EventBus)
+pub fn optimistic<MVS, SVT, C>(input: (MVS, SVT, C, EventBus)) -> (TransactionOptimistic<MVS, SVT>, SVT, C, EventBus)
 where
 	MVS: MultiVersionStore,
 	SVT: SingleVersionTransaction,
 	C: CdcTransaction,
 {
-	(OptimisticTransaction::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
+	(TransactionOptimistic::new(input.0, input.1.clone(), input.3.clone()), input.1, input.2, input.3)
 }
 
 /// Convenience function to create a serializable transaction layer

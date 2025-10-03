@@ -22,10 +22,10 @@ use reifydb_store_transaction::StandardTransactionStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	multi::{
-		transaction::optimistic::{CommandTransaction, OptimisticTransaction, QueryTransaction, Transaction},
+		transaction::optimistic::{CommandTransaction, QueryTransaction, Transaction, TransactionOptimistic},
 		types::TransactionValue,
 	},
-	single::SingleVersionLock,
+	single::TransactionSvl,
 };
 use test_each_file::test_each_path;
 
@@ -37,9 +37,9 @@ fn test_optimistic(path: &Path) {
 	let bus = EventBus::default();
 
 	testscript::run_path(
-		&mut MvccRunner::new(OptimisticTransaction::new(
+		&mut MvccRunner::new(TransactionOptimistic::new(
 			store.clone(),
-			SingleVersionLock::new(store, bus.clone()),
+			TransactionSvl::new(store, bus.clone()),
 			bus,
 		)),
 		path,
@@ -48,17 +48,13 @@ fn test_optimistic(path: &Path) {
 }
 
 pub struct MvccRunner {
-	engine: OptimisticTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
-	transactions:
-		HashMap<String, Transaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>>,
+	engine: TransactionOptimistic<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
+	transactions: HashMap<String, Transaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>>,
 }
 
 impl MvccRunner {
 	fn new(
-		optimistic: OptimisticTransaction<
-			StandardTransactionStore,
-			SingleVersionLock<StandardTransactionStore>,
-		>,
+		optimistic: TransactionOptimistic<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
 	) -> Self {
 		Self {
 			engine: optimistic,
@@ -71,7 +67,7 @@ impl MvccRunner {
 		&mut self,
 		prefix: &Option<String>,
 	) -> Result<
-		&'_ mut Transaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
+		&'_ mut Transaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
 		Box<dyn StdError>,
 	> {
 		let name = Self::tx_name(prefix)?;

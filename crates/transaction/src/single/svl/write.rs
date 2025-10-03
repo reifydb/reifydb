@@ -6,15 +6,17 @@ use std::{collections::HashMap, mem::take, ops::RangeBounds, sync::RwLockWriteGu
 use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionCommandTransaction, SingleVersionQueryTransaction};
 
 use super::*;
-use crate::single::{range::SvlRangeIter, range_rev::SvlRangeRevIter, scan::SvlScanIter, scan_rev::SvlScanRevIter};
+use crate::single::svl::{
+	range::SvlRangeIter, range_rev::SvlRangeRevIter, scan::SvlScanIter, scan_rev::SvlScanRevIter,
+};
 
-pub struct SvlWriteTransaction<'a, SVS> {
+pub struct SvlCommandTransaction<'a, SVS> {
 	pending: HashMap<EncodedKey, Delta>,
 	completed: bool,
 	storage: RwLockWriteGuard<'a, SVS>,
 }
 
-impl<SVS> SingleVersionQueryTransaction for SvlWriteTransaction<'_, SVS>
+impl<SVS> SingleVersionQueryTransaction for SvlCommandTransaction<'_, SVS>
 where
 	SVS: SingleVersionStore,
 {
@@ -78,7 +80,7 @@ where
 	}
 }
 
-impl<'a, SVS> SvlWriteTransaction<'a, SVS>
+impl<'a, SVS> SvlCommandTransaction<'a, SVS>
 where
 	SVS: SingleVersionStore,
 {
@@ -129,7 +131,7 @@ where
 	}
 }
 
-impl<'a, SVS> SingleVersionCommandTransaction for SvlWriteTransaction<'a, SVS>
+impl<'a, SVS> SingleVersionCommandTransaction for SvlCommandTransaction<'a, SVS>
 where
 	SVS: SingleVersionStore,
 {

@@ -9,18 +9,18 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_transaction::multi::transaction::optimistic::OptimisticTransaction;
+use reifydb_transaction::multi::transaction::optimistic::TransactionOptimistic;
 
 #[test]
 fn test_begin_query() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 	let tx = engine.begin_query().unwrap();
 	assert_eq!(tx.version(), 1);
 }
 
 #[test]
 fn test_begin_command() {
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 	let tx = engine.begin_command().unwrap();
 	assert_eq!(tx.version(), 1);
 }

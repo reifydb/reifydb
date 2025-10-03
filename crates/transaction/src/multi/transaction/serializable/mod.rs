@@ -28,7 +28,7 @@ pub(crate) mod query;
 
 use crate::{
 	multi::transaction::{Committed, TransactionManager},
-	single::SingleVersionLock,
+	single::TransactionSvl,
 };
 
 pub struct SerializableTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction>(Arc<Inner<MVS, SVT>>);
@@ -69,7 +69,7 @@ impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> Inner<MVS, SVT> {
 	}
 }
 
-impl SerializableTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>> {
+impl SerializableTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>> {
 	pub fn testing() -> Self {
 		let memory = MemoryBackend::new();
 		let store = StandardTransactionStore::new(TransactionStoreConfig {
@@ -89,7 +89,7 @@ impl SerializableTransaction<StandardTransactionStore, SingleVersionLock<Standar
 		.unwrap();
 
 		let event_bus = EventBus::new();
-		Self::new(store.clone(), SingleVersionLock::new(store, event_bus.clone()), event_bus)
+		Self::new(store.clone(), TransactionSvl::new(store, event_bus.clone()), event_bus)
 	}
 }
 

@@ -55,8 +55,8 @@ pub use reifydb_sub_server as sub_server;
 pub use reifydb_sub_worker as sub_worker;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{
-	multi::transaction::{optimistic::OptimisticTransaction, serializable::SerializableTransaction},
-	single::SingleVersionLock,
+	multi::transaction::{optimistic::TransactionOptimistic, serializable::SerializableTransaction},
+	single::TransactionSvl,
 };
 pub use reifydb_type as r#type;
 pub use session::{CommandSession, QuerySession, Session};

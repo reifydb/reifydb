@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_transaction::multi::transaction::optimistic::OptimisticTransaction;
+use reifydb_transaction::multi::transaction::optimistic::TransactionOptimistic;
 
 use crate::{as_key, as_values};
 
@@ -17,7 +17,7 @@ use crate::{as_key, as_values};
 fn test_read_after_write() {
 	const N: u64 = 100;
 
-	let engine = OptimisticTransaction::testing();
+	let engine = TransactionOptimistic::testing();
 
 	let handles = (0..N)
 		.map(|i| {

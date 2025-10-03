@@ -27,12 +27,12 @@ use crate::multi::{
 };
 
 pub struct CommandTransaction<MVS: MultiVersionStore, SVT: SingleVersionTransaction> {
-	engine: OptimisticTransaction<MVS, SVT>,
+	engine: TransactionOptimistic<MVS, SVT>,
 	pub(crate) tm: TransactionManagerCommand<StandardVersionProvider<SVT>>,
 }
 
 impl<MVS: MultiVersionStore, SVT: SingleVersionTransaction> CommandTransaction<MVS, SVT> {
-	pub fn new(engine: OptimisticTransaction<MVS, SVT>) -> crate::Result<Self> {
+	pub fn new(engine: TransactionOptimistic<MVS, SVT>) -> crate::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
 			engine,

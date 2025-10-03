@@ -27,7 +27,7 @@ use reifydb_transaction::{
 		},
 		types::TransactionValue,
 	},
-	single::SingleVersionLock,
+	single::TransactionSvl,
 };
 use test_each_file::test_each_path;
 
@@ -41,7 +41,7 @@ fn test_serializable(path: &Path) {
 	testscript::run_path(
 		&mut MvccRunner::new(SerializableTransaction::new(
 			store.clone(),
-			SingleVersionLock::new(store.clone(), bus.clone()),
+			TransactionSvl::new(store.clone(), bus.clone()),
 			bus,
 		)),
 		path,
@@ -50,16 +50,15 @@ fn test_serializable(path: &Path) {
 }
 
 pub struct MvccRunner {
-	engine: SerializableTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
-	transactions:
-		HashMap<String, Transaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>>,
+	engine: SerializableTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
+	transactions: HashMap<String, Transaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>>,
 }
 
 impl MvccRunner {
 	fn new(
 		serializable: SerializableTransaction<
 			StandardTransactionStore,
-			SingleVersionLock<StandardTransactionStore>,
+			TransactionSvl<StandardTransactionStore>,
 		>,
 	) -> Self {
 		Self {
@@ -73,7 +72,7 @@ impl MvccRunner {
 		&mut self,
 		prefix: &Option<String>,
 	) -> Result<
-		&'_ mut Transaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
+		&'_ mut Transaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
 		Box<dyn StdError>,
 	> {
 		let name = Self::tx_name(prefix)?;

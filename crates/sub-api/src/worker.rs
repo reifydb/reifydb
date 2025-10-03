@@ -239,16 +239,14 @@ pub trait Scheduler<T: Transaction>: Send + Sync {
 mod tests {
 	use reifydb_engine::{EngineTransaction, StandardCdcTransaction};
 	use reifydb_store_transaction::StandardTransactionStore;
-	use reifydb_transaction::{
-		multi::transaction::serializable::SerializableTransaction, single::SingleVersionLock,
-	};
+	use reifydb_transaction::{multi::transaction::serializable::SerializableTransaction, single::TransactionSvl};
 
 	use super::*;
 	use crate::Priority::{High, Low, Normal};
 
 	type TestTransaction = EngineTransaction<
-		SerializableTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
-		SingleVersionLock<StandardTransactionStore>,
+		SerializableTransaction<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
+		TransactionSvl<StandardTransactionStore>,
 		StandardCdcTransaction<StandardTransactionStore>,
 	>;
 

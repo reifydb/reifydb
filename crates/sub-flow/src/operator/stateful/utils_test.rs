@@ -17,7 +17,7 @@ pub mod test {
 		StandardRowEvaluator,
 	};
 	use reifydb_store_transaction::StandardTransactionStore;
-	use reifydb_transaction::{multi::transaction::optimistic::OptimisticTransaction, single::SingleVersionLock};
+	use reifydb_transaction::{multi::transaction::optimistic::TransactionOptimistic, single::TransactionSvl};
 	use reifydb_type::{Type, Value};
 
 	use crate::{
@@ -27,8 +27,8 @@ pub mod test {
 
 	/// Test transaction type using optimistic concurrency control and memory storage
 	pub type TestTransaction = EngineTransaction<
-		OptimisticTransaction<StandardTransactionStore, SingleVersionLock<StandardTransactionStore>>,
-		SingleVersionLock<StandardTransactionStore>,
+		TransactionOptimistic<StandardTransactionStore, TransactionSvl<StandardTransactionStore>>,
+		TransactionSvl<StandardTransactionStore>,
 		StandardCdcTransaction<StandardTransactionStore>,
 	>;
 
@@ -36,9 +36,9 @@ pub mod test {
 	pub fn create_test_engine() -> StandardEngine<TestTransaction> {
 		let store = StandardTransactionStore::testing_memory();
 		let eventbus = EventBus::new();
-		let single = SingleVersionLock::new(store.clone(), eventbus.clone());
+		let single = TransactionSvl::new(store.clone(), eventbus.clone());
 		let cdc = StandardCdcTransaction::new(store.clone());
-		let multi = OptimisticTransaction::new(store, single.clone(), eventbus.clone());
+		let multi = TransactionOptimistic::new(store, single.clone(), eventbus.clone());
 
 		StandardEngine::new(
 			multi,
