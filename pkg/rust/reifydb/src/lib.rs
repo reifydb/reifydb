@@ -33,6 +33,7 @@ pub use reifydb_core::{
 	log_timed_info, log_timed_trace, log_timed_warn, log_trace, log_warn,
 };
 pub use reifydb_engine as engine;
+pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_store_transaction as storage;
 pub use reifydb_store_transaction::backend::{
@@ -41,7 +42,6 @@ pub use reifydb_store_transaction::backend::{
 };
 #[cfg(feature = "sub_admin")]
 pub use reifydb_sub_admin as sub_admin;
-#[cfg(feature = "sub_worker")]
 pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
