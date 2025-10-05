@@ -31,6 +31,8 @@ impl FlowEngine {
 			self.add(txn, &flow, node)?;
 		}
 
+		// Add flow to analyzer for dependency tracking
+		self.analyzer.add(flow.clone());
 		self.flows.insert(flow.id, flow);
 
 		Ok(())

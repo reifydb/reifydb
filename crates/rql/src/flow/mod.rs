@@ -39,8 +39,8 @@ pub fn compile_flow(txn: &mut impl CommandTransaction, plan: PhysicalPlan, sink:
 
 /// Compiler for converting RQL plans into executable Flows
 pub(crate) struct FlowCompiler<T: CommandTransaction> {
-	/// The flow graph being built
-	flow: Flow,
+	/// The flow builder being used for construction
+	builder: FlowBuilder,
 	/// Reference to transaction for ID generation
 	pub(crate) txn: *mut T,
 	/// The sink view schema (for terminal nodes)
@@ -51,7 +51,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	/// Creates a new FlowCompiler instance
 	pub fn new(txn: &mut T) -> crate::Result<Self> {
 		Ok(Self {
-			flow: Flow::new(next_flow_id(txn)?),
+			builder: Flow::builder(next_flow_id(txn)?),
 			txn: txn as *mut T,
 			sink: None,
 		})
@@ -70,13 +70,13 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	/// Adds an edge between two nodes
 	fn add_edge(&mut self, from: &FlowNodeId, to: &FlowNodeId) -> crate::Result<()> {
 		let edge_id = self.next_edge_id()?;
-		self.flow.add_edge(FlowEdge::new(edge_id, from, to))
+		self.builder.add_edge(FlowEdge::new(edge_id, from, to))
 	}
 
 	/// Adds a operator to the flow graph
 	fn add_node(&mut self, node_type: FlowNodeType) -> crate::Result<FlowNodeId> {
 		let node_id = self.next_node_id()?;
-		let flow_node_id = self.flow.add_node(FlowNode::new(node_id, node_type));
+		let flow_node_id = self.builder.add_node(FlowNode::new(node_id, node_type));
 		Ok(flow_node_id)
 	}
 
@@ -92,7 +92,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 
 		self.add_edge(&root_node_id, &result_node)?;
 
-		Ok(self.flow)
+		Ok(self.builder.build())
 	}
 
 	/// Compiles a physical plan operator into the FlowGraph
@@ -247,6 +247,6 @@ pub use self::{
 	analyzer::{
 		FlowDependency, FlowDependencyGraph, FlowGraphAnalyzer, FlowSummary, SinkReference, SourceReference,
 	},
-	flow::Flow,
+	flow::{Flow, FlowBuilder},
 	node::{FlowEdge, FlowNode, FlowNodeType},
 };

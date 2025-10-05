@@ -52,29 +52,50 @@ pub struct FlowDependencyGraph {
 	pub sink_views: HashMap<ViewId, FlowId>,
 }
 
-pub struct FlowGraphAnalyzer;
+pub struct FlowGraphAnalyzer {
+	flows: Vec<Flow>,
+	dependency_graph: FlowDependencyGraph,
+}
 
 impl FlowGraphAnalyzer {
 	pub fn new() -> Self {
-		Self
+		Self {
+			flows: Vec::new(),
+			dependency_graph: FlowDependencyGraph {
+				flows: Vec::new(),
+				dependencies: Vec::new(),
+				source_tables: HashMap::new(),
+				source_views: HashMap::new(),
+				sink_views: HashMap::new(),
+			},
+		}
 	}
 
-	pub fn analyze_flow(&self, flow: &Flow) -> FlowSummary {
-		let sources = self.get_source_dependencies(flow);
-		let sinks = self.get_sink_outputs(flow);
+	/// Add a flow to the analyzer
+	pub fn add(&mut self, flow: Flow) -> FlowSummary {
+		let result = Self::analyze_flow(&flow);
+		self.flows.push(flow);
+		self.dependency_graph = self.calculate();
+		result
+	}
+
+	/// Analyze a flow without adding it to the analyzer
+	fn analyze_flow(flow: &Flow) -> FlowSummary {
+		let sources = Self::get_sources(flow);
+		let sinks = Self::get_sinks(flow);
 		let execution_order = flow.topological_order().unwrap_or_default();
 
 		FlowSummary {
-			id: flow.id,
+			id: flow.id(),
 			sources,
 			sinks,
-			node_count: flow.graph.node_count(),
-			edge_count: flow.graph.edge_count(),
+			node_count: flow.node_count(),
+			edge_count: flow.edge_count(),
 			execution_order,
 		}
 	}
 
-	pub fn get_source_dependencies(&self, flow: &Flow) -> Vec<SourceReference> {
+	fn get_sources(flow: &Flow) -> Vec<SourceReference> {
 		let mut sources = Vec::new();
 
 		for node_id in flow.get_node_ids() {
@@ -98,7 +119,7 @@ impl FlowGraphAnalyzer {
 		sources
 	}
 
-	pub fn get_sink_outputs(&self, flow: &Flow) -> Vec<SinkReference> {
+	fn get_sinks(flow: &Flow) -> Vec<SinkReference> {
 		let mut sinks = Vec::new();
 
 		for node_id in flow.get_node_ids() {
@@ -115,30 +136,38 @@ impl FlowGraphAnalyzer {
 		sinks
 	}
 
-	pub fn calculate_dependency_graph(&self, flows: &[Flow]) -> FlowDependencyGraph {
+	/// Get the cached dependency graph
+	pub fn get_dependency_graph(&self) -> &FlowDependencyGraph {
+		&self.dependency_graph
+	}
+
+	fn calculate(&self) -> FlowDependencyGraph {
 		let mut flow_summaries = Vec::new();
 		let mut source_tables: HashMap<TableId, Vec<FlowId>> = HashMap::new();
 		let mut source_views: HashMap<ViewId, Vec<FlowId>> = HashMap::new();
 		let mut sink_views: HashMap<ViewId, FlowId> = HashMap::new();
 
-		for flow in flows {
-			let summary = self.analyze_flow(flow);
+		// First pass: analyze all stored flows and build lookup maps
+		for flow in &self.flows {
+			let summary = Self::analyze_flow(flow);
 
+			// Track which flows use which tables as sources
 			for source in &summary.sources {
 				match source {
 					SourceReference::Table(table_id) => {
-						source_tables.entry(*table_id).or_default().push(flow.id);
+						source_tables.entry(*table_id).or_default().push(flow.id());
 					}
 					SourceReference::View(view_id) => {
-						source_views.entry(*view_id).or_default().push(flow.id);
+						source_views.entry(*view_id).or_default().push(flow.id());
 					}
 				}
 			}
 
+			// Track which flow produces which view
 			for sink in &summary.sinks {
 				match sink {
 					SinkReference::View(view_id) => {
-						sink_views.insert(*view_id, flow.id);
+						sink_views.insert(*view_id, flow.id());
 					}
 				}
 			}
@@ -146,6 +175,7 @@ impl FlowGraphAnalyzer {
 			flow_summaries.push(summary);
 		}
 
+		// Second pass: identify dependencies between flows
 		let dependencies = self.find_flow_dependencies(&flow_summaries, &sink_views);
 
 		FlowDependencyGraph {
@@ -213,12 +243,33 @@ impl FlowGraphAnalyzer {
 		dependency_graph.sink_views.get(&view_id).copied()
 	}
 
+	/// Get all stored flows
+	pub fn flows(&self) -> &[Flow] {
+		&self.flows
+	}
+
+	/// Get the number of stored flows
+	pub fn flow_count(&self) -> usize {
+		self.flows.len()
+	}
+
+	/// Clear all stored flows
+	pub fn clear(&mut self) {
+		self.flows.clear();
+		self.dependency_graph = FlowDependencyGraph {
+			flows: Vec::new(),
+			dependencies: Vec::new(),
+			source_tables: HashMap::new(),
+			source_views: HashMap::new(),
+			sink_views: HashMap::new(),
+		};
+	}
+
 	/// Calculate the execution order for all flows considering dependencies
 	pub fn calculate_execution_order(&self, dependency_graph: &FlowDependencyGraph) -> Vec<FlowId> {
 		let mut in_degree: HashMap<FlowId, usize> = HashMap::new();
 		let mut adjacency: HashMap<FlowId, Vec<FlowId>> = HashMap::new();
 
-		// Initialize in-degree for all flows
 		for flow_summary in &dependency_graph.flows {
 			in_degree.insert(flow_summary.id, 0);
 			adjacency.insert(flow_summary.id, Vec::new());
@@ -244,7 +295,6 @@ impl FlowGraphAnalyzer {
 		while let Some(flow_id) = queue.pop() {
 			result.push(flow_id);
 
-			// Update in-degrees of dependent flows
 			if let Some(dependents) = adjacency.get(&flow_id) {
 				for &dependent_flow in dependents {
 					if let Some(degree) = in_degree.get_mut(&dependent_flow) {
@@ -276,19 +326,19 @@ mod tests {
 	use crate::flow::{Flow, FlowNode, FlowNodeType};
 
 	fn create_test_flow_with_nodes(id: u64, node_types: Vec<FlowNodeType>) -> Flow {
-		let mut flow = Flow::new(FlowId(id));
+		let mut builder = Flow::builder(FlowId(id));
 
 		for (i, node_type) in node_types.into_iter().enumerate() {
 			let node = FlowNode::new(FlowNodeId(i as u64 + 1), node_type);
-			flow.add_node(node);
+			builder.add_node(node);
 		}
 
-		flow
+		builder.build()
 	}
 
 	#[test]
 	fn test_analyze_single_flow_with_table_source() {
-		let analyzer = FlowGraphAnalyzer::new();
+		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow = create_test_flow_with_nodes(
 			1,
@@ -302,17 +352,18 @@ mod tests {
 			],
 		);
 
-		let summary = analyzer.analyze_flow(&flow);
+		let summary = analyzer.add(flow);
 
 		assert_eq!(summary.id, FlowId(1));
 		assert_eq!(summary.sources, vec![SourceReference::Table(TableId(100))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(200))]);
 		assert_eq!(summary.node_count, 2);
+		assert_eq!(analyzer.flow_count(), 1);
 	}
 
 	#[test]
 	fn test_analyze_single_flow_with_view_source() {
-		let analyzer = FlowGraphAnalyzer::new();
+		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow = create_test_flow_with_nodes(
 			2,
@@ -329,17 +380,18 @@ mod tests {
 			],
 		);
 
-		let summary = analyzer.analyze_flow(&flow);
+		let summary = analyzer.add(flow);
 
 		assert_eq!(summary.id, FlowId(2));
 		assert_eq!(summary.sources, vec![SourceReference::View(ViewId(300))]);
 		assert_eq!(summary.sinks, vec![SinkReference::View(ViewId(400))]);
 		assert_eq!(summary.node_count, 3);
+		assert_eq!(analyzer.flow_count(), 1);
 	}
 
 	#[test]
 	fn test_analyze_flow_with_multiple_sources_and_sinks() {
-		let analyzer = FlowGraphAnalyzer::new();
+		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow = create_test_flow_with_nodes(
 			3,
@@ -367,7 +419,7 @@ mod tests {
 			],
 		);
 
-		let summary = analyzer.analyze_flow(&flow);
+		let summary = analyzer.add(flow);
 
 		assert_eq!(summary.id, FlowId(3));
 		assert_eq!(summary.sources.len(), 2);
@@ -379,9 +431,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_get_source_dependencies() {
-		let analyzer = FlowGraphAnalyzer::new();
-
+	fn test_get_sources() {
 		let flow = create_test_flow_with_nodes(
 			4,
 			vec![
@@ -398,7 +448,7 @@ mod tests {
 			],
 		);
 
-		let sources = analyzer.get_source_dependencies(&flow);
+		let sources = FlowGraphAnalyzer::get_sources(&flow);
 
 		assert_eq!(sources.len(), 2);
 		assert!(sources.contains(&SourceReference::Table(TableId(100))));
@@ -406,9 +456,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_get_sink_outputs() {
-		let analyzer = FlowGraphAnalyzer::new();
-
+	fn test_get_sinks() {
 		let flow = create_test_flow_with_nodes(
 			5,
 			vec![
@@ -424,7 +472,7 @@ mod tests {
 			],
 		);
 
-		let sinks = analyzer.get_sink_outputs(&flow);
+		let sinks = FlowGraphAnalyzer::get_sinks(&flow);
 
 		assert_eq!(sinks.len(), 2);
 		assert!(sinks.contains(&SinkReference::View(ViewId(200))));
@@ -433,7 +481,7 @@ mod tests {
 
 	#[test]
 	fn test_calculate_dependency_graph_simple() {
-		let analyzer = FlowGraphAnalyzer::new();
+		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow1 = create_test_flow_with_nodes(
 			1,
@@ -459,8 +507,9 @@ mod tests {
 			],
 		);
 
-		let flows = vec![flow1, flow2];
-		let dependency_graph = analyzer.calculate_dependency_graph(&flows);
+		analyzer.add(flow1);
+		analyzer.add(flow2);
+		let dependency_graph = analyzer.get_dependency_graph();
 
 		assert_eq!(dependency_graph.flows.len(), 2);
 		assert_eq!(dependency_graph.dependencies.len(), 1);
@@ -478,7 +527,7 @@ mod tests {
 
 	#[test]
 	fn test_calculate_dependency_graph_complex() {
-		let analyzer = FlowGraphAnalyzer::new();
+		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow1 = create_test_flow_with_nodes(
 			1,
@@ -519,8 +568,10 @@ mod tests {
 			],
 		);
 
-		let flows = vec![flow1, flow2, flow3];
-		let dependency_graph = analyzer.calculate_dependency_graph(&flows);
+		analyzer.add(flow1);
+		analyzer.add(flow2);
+		analyzer.add(flow3);
+		let dependency_graph = analyzer.get_dependency_graph();
 
 		assert_eq!(dependency_graph.flows.len(), 3);
 		assert_eq!(dependency_graph.dependencies.len(), 2);
@@ -538,7 +589,7 @@ mod tests {
 
 	#[test]
 	fn test_no_self_dependencies() {
-		let analyzer = FlowGraphAnalyzer::new();
+		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow = create_test_flow_with_nodes(
 			1,
@@ -552,8 +603,8 @@ mod tests {
 			],
 		);
 
-		let flows = vec![flow];
-		let dependency_graph = analyzer.calculate_dependency_graph(&flows);
+		analyzer.add(flow);
+		let dependency_graph = analyzer.get_dependency_graph();
 
 		assert_eq!(dependency_graph.flows.len(), 1);
 		assert_eq!(dependency_graph.dependencies.len(), 0);
@@ -561,7 +612,7 @@ mod tests {
 
 	#[test]
 	fn test_get_flows_depending_on_table() {
-		let analyzer = FlowGraphAnalyzer::new();
+		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow1 = create_test_flow_with_nodes(
 			1,
@@ -599,22 +650,24 @@ mod tests {
 			],
 		);
 
-		let flows = vec![flow1, flow2, flow3];
-		let dependency_graph = analyzer.calculate_dependency_graph(&flows);
+		analyzer.add(flow1);
+		analyzer.add(flow2);
+		analyzer.add(flow3);
+		let dependency_graph = analyzer.get_dependency_graph();
 
-		let flows_using_table_100 = analyzer.get_flows_depending_on_table(&dependency_graph, TableId(100));
+		let flows_using_table_100 = analyzer.get_flows_depending_on_table(dependency_graph, TableId(100));
 		assert_eq!(flows_using_table_100.len(), 2);
 		assert!(flows_using_table_100.contains(&FlowId(1)));
 		assert!(flows_using_table_100.contains(&FlowId(2)));
 
-		let flows_using_table_101 = analyzer.get_flows_depending_on_table(&dependency_graph, TableId(101));
+		let flows_using_table_101 = analyzer.get_flows_depending_on_table(dependency_graph, TableId(101));
 		assert_eq!(flows_using_table_101.len(), 1);
 		assert!(flows_using_table_101.contains(&FlowId(3)));
 	}
 
 	#[test]
 	fn test_calculate_execution_order() {
-		let analyzer = FlowGraphAnalyzer::new();
+		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow1 = create_test_flow_with_nodes(
 			1,
@@ -652,10 +705,12 @@ mod tests {
 			],
 		);
 
-		let flows = vec![flow1, flow2, flow3];
-		let dependency_graph = analyzer.calculate_dependency_graph(&flows);
+		analyzer.add(flow1);
+		analyzer.add(flow2);
+		analyzer.add(flow3);
+		let dependency_graph = analyzer.get_dependency_graph();
 
-		let execution_order = analyzer.calculate_execution_order(&dependency_graph);
+		let execution_order = analyzer.calculate_execution_order(dependency_graph);
 
 		assert_eq!(execution_order.len(), 3);
 		assert_eq!(execution_order[0], FlowId(1));
@@ -665,7 +720,7 @@ mod tests {
 
 	#[test]
 	fn test_parallel_flows_execution_order() {
-		let analyzer = FlowGraphAnalyzer::new();
+		let mut analyzer = FlowGraphAnalyzer::new();
 
 		let flow1 = create_test_flow_with_nodes(
 			1,
@@ -691,10 +746,11 @@ mod tests {
 			],
 		);
 
-		let flows = vec![flow1, flow2];
-		let dependency_graph = analyzer.calculate_dependency_graph(&flows);
+		analyzer.add(flow1);
+		analyzer.add(flow2);
+		let dependency_graph = analyzer.get_dependency_graph();
 
-		let execution_order = analyzer.calculate_execution_order(&dependency_graph);
+		let execution_order = analyzer.calculate_execution_order(dependency_graph);
 
 		assert_eq!(execution_order.len(), 2);
 
