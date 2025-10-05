@@ -3,12 +3,12 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{thread::sleep, time::Duration};
+use std::time::Duration;
 
 use reifydb::{
 	Params, Session, WithSubsystem,
 	core::interface::logging::LogLevel::Info,
-	embedded, log_info,
+	embedded,
 	sub_logging::{FormatStyle, LoggingBuilder},
 };
 
@@ -27,87 +27,13 @@ fn main() {
 
 	db.start().unwrap();
 
-	// Test left join with duplicate keys on both sides
-	// Should produce Cartesian product for matching keys
-
-	// Create namespace
-	log_info!("Creating namespace test...");
-	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
-
-	// Create tables
-	log_info!("Creating table test.students...");
-	db.command_as_root(r#"create table test.students { id: int4, name: utf8, class_id: int4 }"#, Params::None)
-		.unwrap();
-
-	log_info!("Creating table test.courses...");
-	db.command_as_root(
-		r#"create table test.courses { id: int4, class_id: int4, subject: utf8, teacher: utf8 }"#,
-		Params::None,
-	)
-	.unwrap();
-
-	// Create LEFT JOIN view for student courses
-	log_info!("Creating deferred view test.student_courses...");
-	db.command_as_root(
-		r#"
-create deferred view test.student_courses {
-    student_name: utf8,
-    subject: utf8,
-    teacher: utf8
-} as {
-    from test.students
-    left join { from test.courses } courses on class_id == courses.class_id with { strategy: lazy_right_loading }
-    map {
-        student_name: name,
-        subject: subject,
-        teacher: teacher
-    }
-}
-	"#,
-		Params::None,
-	)
-	.unwrap();
-
-	// Insert students with duplicate class_id
-	log_info!("Inserting students with duplicate class_id...");
-	db.command_as_root(
-		r#"
-from [
-    {id: 1, name: "Alice", class_id: 10},
-    {id: 2, name: "Bob", class_id: 10},
-    {id: 3, name: "Charlie", class_id: 20},
-    {id: 4, name: "Diana", class_id: 30}
-] insert test.students
-	"#,
-		Params::None,
-	)
-	.unwrap();
-
-	// Insert courses with duplicate class_id
-	log_info!("Inserting courses with duplicate class_id...");
-	db.command_as_root(
-		r#"
-from [
-    {id: 101, class_id: 10, subject: "Math", teacher: "P Smith"},
-    {id: 102, class_id: 10, subject: "Science", teacher: "P Jones"},
-    {id: 103, class_id: 20, subject: "English", teacher: "P Brown"}
-] insert test.courses
-	"#,
-		Params::None,
-	)
-	.unwrap();
-
-	// Let the background task process
-	sleep(Duration::from_millis(100));
-
-	log_info!("Querying LEFT JOIN view with sorting...");
-	let result = db
-		.query_as_root("from test.student_courses sort { student_name asc, subject asc }", Params::None)
-		.unwrap();
-	for frame in result {
-		println!("Student courses (sorted):\n{}", frame);
+	for frame in db
+		.command_as_root(
+			r#"FROM generate_series{ start: cast(1, int4) , end: cast(100, int4) } TAKE 10"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		println!("{}", frame);
 	}
-
-	log_info!("✅ Test completed successfully!");
-	log_info!("Shutting down...");
 }

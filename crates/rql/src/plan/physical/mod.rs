@@ -111,6 +111,13 @@ impl Compiler {
 					}));
 				}
 
+				LogicalPlan::Generator(generator) => {
+					stack.push(PhysicalPlan::Generator(GeneratorNode {
+						name: generator.name,
+						expressions: generator.expressions,
+					}));
+				}
+
 				LogicalPlan::DeleteTable(delete) => {
 					// If delete has its own input, compile it first
 					// Otherwise, try to pop from stack (for pipeline operations)
@@ -721,6 +728,7 @@ pub enum PhysicalPlan<'a> {
 	TableVirtualScan(TableVirtualScanNode<'a>),
 	ViewScan(ViewScanNode<'a>),
 	RingBufferScan(RingBufferScanNode<'a>),
+	Generator(GeneratorNode<'a>),
 }
 
 #[derive(Debug, Clone)]
@@ -905,6 +913,12 @@ pub struct ViewScanNode<'a> {
 #[derive(Debug, Clone)]
 pub struct RingBufferScanNode<'a> {
 	pub source: ResolvedRingBuffer<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct GeneratorNode<'a> {
+	pub name: Fragment<'a>,
+	pub expressions: Vec<Expression<'a>>,
 }
 
 #[derive(Debug, Clone)]

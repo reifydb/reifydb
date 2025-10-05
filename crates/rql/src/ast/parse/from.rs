@@ -3,11 +3,11 @@
 
 use crate::ast::{
 	Ast, AstList, TokenKind,
-	ast::AstFrom,
+	ast::{AstFrom, AstGenerator},
 	parse::Parser,
 	tokenize::{
 		Keyword, Operator,
-		Operator::{CloseBracket, OpenBracket},
+		Operator::{CloseBracket, OpenBracket, OpenCurly},
 		Separator,
 	},
 };
@@ -33,6 +33,29 @@ impl<'a> Parser<'a> {
 
 			// Get the first identifier token
 			let first_token = self.consume(TokenKind::Identifier)?;
+
+			// Check if this is a generator function call: identifier { ... }
+			let is_generatortion = if !self.is_eof() {
+				if let Ok(current) = self.current() {
+					current.is_operator(OpenCurly)
+				} else {
+					false
+				}
+			} else {
+				false
+			};
+
+			if is_generatortion {
+				// Parse as generator function
+				let function_name = first_token.fragment.clone();
+				let (nodes, _has_braces) = self.parse_expressions(true)?; // Parse { ... } content
+
+				return Ok(AstFrom::Generator(AstGenerator {
+					token,
+					name: function_name,
+					nodes,
+				}));
+			}
 
 			// Check if there's a dot following
 			let has_dot = if !self.is_eof() {
@@ -135,7 +158,7 @@ impl<'a> Parser<'a> {
 
 #[cfg(test)]
 mod tests {
-	use crate::ast::{AstFrom, parse::Parser, tokenize::tokenize};
+	use crate::ast::{AstFrom, InfixOperator::TypeAscription, parse::Parser, tokenize::tokenize};
 
 	#[test]
 	fn test_from_schema_and_table() {
@@ -160,6 +183,7 @@ mod tests {
 			AstFrom::Inline {
 				..
 			} => unreachable!(),
+			AstFrom::Generator(_) => unreachable!(),
 		}
 	}
 
@@ -186,6 +210,7 @@ mod tests {
 			AstFrom::Inline {
 				..
 			} => unreachable!(),
+			AstFrom::Generator(_) => unreachable!(),
 		}
 	}
 
@@ -210,6 +235,7 @@ mod tests {
 				let block = query;
 				assert_eq!(block.len(), 0);
 			}
+			AstFrom::Generator(_) => unreachable!(),
 		}
 	}
 
@@ -239,6 +265,7 @@ mod tests {
 				assert_eq!(row.keyed_values[0].key.text(), "field");
 				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 			}
+			AstFrom::Generator(_) => unreachable!(),
 		}
 	}
 
@@ -279,6 +306,7 @@ mod tests {
 				assert_eq!(row.keyed_values[0].key.text(), "field");
 				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value2");
 			}
+			AstFrom::Generator(_) => unreachable!(),
 		}
 	}
 
@@ -305,6 +333,7 @@ mod tests {
 			AstFrom::Inline {
 				..
 			} => unreachable!(),
+			AstFrom::Generator(_) => unreachable!(),
 		}
 	}
 
@@ -331,6 +360,7 @@ mod tests {
 			AstFrom::Inline {
 				..
 			} => unreachable!(),
+			AstFrom::Generator(_) => unreachable!(),
 		}
 	}
 
@@ -358,6 +388,7 @@ mod tests {
 			AstFrom::Inline {
 				..
 			} => unreachable!(),
+			AstFrom::Generator(_) => unreachable!(),
 		}
 	}
 
@@ -385,6 +416,7 @@ mod tests {
 			AstFrom::Inline {
 				..
 			} => unreachable!(),
+			AstFrom::Generator(_) => unreachable!(),
 		}
 	}
 
@@ -414,6 +446,70 @@ mod tests {
 				assert_eq!(row.keyed_values[0].key.text(), "field");
 				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 			}
+			AstFrom::Generator(_) => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_from_generator_simple() {
+		let tokens = tokenize("FROM generate_series { start: 1, end: 100 }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let from = result.first_unchecked().as_from();
+
+		match from {
+			AstFrom::Generator(generator) => {
+				assert_eq!(generator.name.text(), "generate_series");
+				assert_eq!(generator.nodes.len(), 2);
+
+				let first_param = generator.nodes[0].as_infix();
+				assert!(matches!(first_param.operator, crate::ast::InfixOperator::As(_)));
+				assert_eq!(first_param.left.as_literal_number().value(), "1");
+				assert_eq!(first_param.right.as_identifier().text(), "start");
+
+				let second_param = generator.nodes[1].as_infix();
+				assert!(matches!(second_param.operator, TypeAscription(_)));
+				assert_eq!(second_param.left.as_identifier().text(), "end");
+				assert_eq!(second_param.right.as_literal_number().value(), "100");
+			}
+			_ => unreachable!("Expected Generator"),
+		}
+	}
+
+	#[test]
+	fn test_from_generator_complex() {
+		let tokens = tokenize("FROM data_loader { endpoint: '/api/v1', timeout: 30 * 1000 }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let from = result.first_unchecked().as_from();
+
+		match from {
+			AstFrom::Generator(generator) => {
+				assert_eq!(generator.name.text(), "data_loader");
+				assert_eq!(generator.nodes.len(), 2);
+
+				let first_param = generator.nodes[0].as_infix();
+				assert!(matches!(first_param.operator, crate::ast::InfixOperator::As(_)));
+				assert_eq!(first_param.left.as_literal_text().value(), "/api/v1");
+				assert_eq!(first_param.right.as_identifier().text(), "endpoint");
+
+				let second_param = generator.nodes[1].as_infix();
+				assert!(matches!(second_param.operator, crate::ast::InfixOperator::As(_)));
+
+				let timeout_expr = second_param.left.as_infix();
+				assert!(matches!(timeout_expr.operator, crate::ast::InfixOperator::Multiply(_)));
+				assert_eq!(timeout_expr.left.as_literal_number().value(), "30");
+				assert_eq!(timeout_expr.right.as_literal_number().value(), "1000");
+
+				assert_eq!(second_param.right.as_identifier().text(), "timeout");
+			}
+			_ => unreachable!("Expected Generator"),
 		}
 	}
 }

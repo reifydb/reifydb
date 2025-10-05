@@ -144,6 +144,10 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				// TODO: Implement RingBufferScanCompiler for flow
 				unimplemented!("RingBufferScan compilation not yet implemented for flow")
 			}
+			PhysicalPlan::Generator(_generator) => {
+				// TODO: Implement GeneratorCompiler for flow
+				unimplemented!("Generator compilation not yet implemented for flow")
+			}
 		}
 	}
 }

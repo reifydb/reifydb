@@ -5,6 +5,7 @@ pub mod aggregate;
 pub mod compile;
 pub mod extend;
 pub mod filter;
+pub mod generator;
 pub mod index_scan;
 pub mod inline;
 pub mod join;

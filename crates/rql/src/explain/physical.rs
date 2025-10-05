@@ -349,5 +349,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			let label = format!("VirtualScan: {}.{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
+		PhysicalPlan::Generator(node) => {
+			let label = format!("Generator: {}", node.name.text());
+			write_node_header(output, prefix, is_last, &label);
+		}
 	}
 }

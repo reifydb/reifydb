@@ -38,9 +38,9 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::From(_) => "From",
 		Ast::Identifier(_) => "Identifier",
 		Ast::Infix(_) => "Infix",
-		Ast::AstDelete(_) => "Delete",
-		Ast::AstInsert(_) => "Insert",
-		Ast::AstUpdate(_) => "Update",
+		Ast::Delete(_) => "Delete",
+		Ast::Insert(_) => "Insert",
+		Ast::Update(_) => "Update",
 		Ast::Join(_) => "Join",
 		Ast::List(_) => "List",
 		Ast::Literal(_) => "Literal",
@@ -50,6 +50,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::PolicyBlock(_) => "PolicyBlock",
 		Ast::Prefix(_) => "Prefix",
 		Ast::Map(_) => "Map",
+		Ast::Generator(_) => "Generator",
 		Ast::Extend(_) => "Extend",
 		Ast::Take(_) => "Take",
 		Ast::Tuple(_) => "Tuple",
@@ -163,6 +164,9 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 				} => {
 					children.extend(query.nodes);
 				}
+				AstFrom::Generator(generator_func) => {
+					children.extend(generator_func.nodes.clone());
+				}
 			}
 		}
 		Ast::Aggregate(a) => {
@@ -194,7 +198,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 			// Return early since we handled the children
 			return;
 		}
-		Ast::AstInsert(_) => {
+		Ast::Insert(_) => {
 			unimplemented!()
 		}
 		Ast::Join(AstJoin::LeftJoin {
@@ -207,6 +211,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 			children.extend(on);
 		}
 		Ast::Map(s) => children.extend(s.nodes),
+		Ast::Generator(s) => children.extend(s.nodes),
 		Ast::Sort(_o) => {
 			// Column identifiers are now complex structures, not
 			// simple AST nodes Skip adding them as children for

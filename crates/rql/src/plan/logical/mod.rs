@@ -59,8 +59,8 @@ impl Compiler {
 		let ast_vec = ast.nodes; // Extract the inner Vec
 
 		// Check if this is a pipeline ending with UPDATE or DELETE
-		let is_update_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::AstUpdate(_)));
-		let is_delete_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::AstDelete(_)));
+		let is_update_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::Update(_)));
+		let is_delete_pipeline = ast_len > 1 && matches!(ast_vec.last(), Some(Ast::Delete(_)));
 
 		if is_update_pipeline || is_delete_pipeline {
 			// Build pipeline: compile all nodes except the last one
@@ -71,7 +71,7 @@ impl Compiler {
 				if i == ast_len - 1 {
 					// Last operator is UPDATE or DELETE
 					match node {
-						Ast::AstUpdate(update_ast) => {
+						Ast::Update(update_ast) => {
 							// Build the pipeline as
 							// input to update
 							let input = if !pipeline_nodes.is_empty() {
@@ -146,7 +146,7 @@ impl Compiler {
 								input,
 							})]);
 						}
-						Ast::AstDelete(delete_ast) => {
+						Ast::Delete(delete_ast) => {
 							// Build the pipeline as
 							// input to delete
 							let input = if !pipeline_nodes.is_empty() {
@@ -264,9 +264,9 @@ impl Compiler {
 		match node {
 			Ast::Create(node) => Self::compile_create(node, tx),
 			Ast::Alter(node) => Self::compile_alter(node, tx),
-			Ast::AstDelete(node) => Self::compile_delete(node, tx),
-			Ast::AstInsert(node) => Self::compile_insert(node, tx),
-			Ast::AstUpdate(node) => Self::compile_update(node, tx),
+			Ast::Delete(node) => Self::compile_delete(node, tx),
+			Ast::Insert(node) => Self::compile_insert(node, tx),
+			Ast::Update(node) => Self::compile_update(node, tx),
 			Ast::Aggregate(node) => Self::compile_aggregate(node, tx),
 			Ast::Filter(node) => Self::compile_filter(node, tx),
 			Ast::From(node) => Self::compile_from(node, tx),
@@ -337,6 +337,7 @@ pub enum LogicalPlan<'a> {
 	Apply(ApplyNode<'a>),
 	InlineData(InlineDataNode<'a>),
 	SourceScan(SourceScanNode<'a>),
+	Generator(GeneratorNode<'a>),
 	// Pipeline wrapper for piped operations
 	Pipeline(PipelineNode<'a>),
 }
@@ -524,6 +525,12 @@ pub struct SourceScanNode<'a> {
 	pub source: ResolvedSource<'a>,
 	pub columns: Option<Vec<ResolvedColumn<'a>>>,
 	pub index: Option<ResolvedIndex<'a>>,
+}
+
+#[derive(Debug)]
+pub struct GeneratorNode<'a> {
+	pub name: Fragment<'a>,
+	pub expressions: Vec<Expression<'a>>,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

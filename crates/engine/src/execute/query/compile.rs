@@ -14,6 +14,7 @@ use crate::{
 			aggregate::AggregateNode,
 			extend::{ExtendNode, ExtendWithoutInputNode},
 			filter::FilterNode,
+			generator::GeneratorNode,
 			index_scan::IndexScanNode,
 			inline::InlineDataNode,
 			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
@@ -140,6 +141,11 @@ pub(crate) fn compile<'a>(
 		PhysicalPlan::InlineData(physical::InlineDataNode {
 			rows,
 		}) => ExecutionPlan::InlineData(InlineDataNode::new(rows, context)),
+
+		PhysicalPlan::Generator(physical::GeneratorNode {
+			name,
+			expressions,
+		}) => ExecutionPlan::Generator(GeneratorNode::new(name, expressions)),
 
 		PhysicalPlan::IndexScan(node) => {
 			let table = node.source.def().clone();

@@ -8,7 +8,7 @@ use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
 use crate::{
 	ast::{Ast, AstFrom},
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, InlineDataNode, LogicalPlan, SourceScanNode, resolver},
+	plan::logical::{Compiler, GeneratorNode, InlineDataNode, LogicalPlan, SourceScanNode, resolver},
 };
 
 impl Compiler {
@@ -73,6 +73,18 @@ impl Compiler {
 
 				Ok(LogicalPlan::InlineData(InlineDataNode {
 					rows,
+				}))
+			}
+			AstFrom::Generator(generator) => {
+				let expressions = generator
+					.nodes
+					.into_iter()
+					.map(ExpressionCompiler::compile)
+					.collect::<crate::Result<Vec<_>>>()?;
+
+				Ok(LogicalPlan::Generator(GeneratorNode {
+					name: generator.name,
+					expressions,
 				}))
 			}
 		}

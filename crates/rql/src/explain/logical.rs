@@ -7,7 +7,7 @@ use reifydb_core::{JoinType, interface::QueryTransaction};
 use crate::{
 	ast::parse_str,
 	plan::logical::{
-		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode,
+		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
 		SourceScanNode, TakeNode,
 		alter::{AlterTableNode, AlterViewNode},
@@ -425,6 +425,13 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				rows.len(),
 				total_fields
 			));
+		}
+		LogicalPlan::Generator(GeneratorNode {
+			name,
+			expressions,
+		}) => {
+			output.push_str(&format!("{}{} Generator {}\n", prefix, branch, name.text()));
+			output.push_str(&format!("{}{} parameters: {}\n", child_prefix, "└──", expressions.len()));
 		}
 		LogicalPlan::Distinct(DistinctNode {
 			columns,

@@ -8,6 +8,7 @@ use query::{
 	compile::compile,
 	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,
+	generator::GeneratorNode,
 	index_scan::IndexScanNode,
 	inline::InlineDataNode,
 	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
@@ -31,7 +32,7 @@ use reifydb_rql::{
 
 use crate::{
 	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
-	function::{Functions, math},
+	function::{Functions, generator, math},
 };
 
 mod catalog;
@@ -84,6 +85,7 @@ pub(crate) enum ExecutionPlan<'a> {
 	ViewScan(ViewScanNode<'a>),
 	VirtualScan(VirtualScanNode<'a>),
 	RingBufferScan(RingBufferScan<'a>),
+	Generator(GeneratorNode<'a>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -121,6 +123,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::ViewScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::VirtualScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::RingBufferScan(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Generator(node) => node.initialize(rx, ctx),
 		}
 	}
 
@@ -143,6 +146,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::ViewScan(node) => node.next(rx),
 			ExecutionPlan::VirtualScan(node) => node.next(rx),
 			ExecutionPlan::RingBufferScan(node) => node.next(rx),
+			ExecutionPlan::Generator(node) => node.next(rx),
 		}
 	}
 
@@ -165,6 +169,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::ViewScan(node) => node.headers(),
 			ExecutionPlan::VirtualScan(node) => node.headers(),
 			ExecutionPlan::RingBufferScan(node) => node.headers(),
+			ExecutionPlan::Generator(node) => node.headers(),
 		}
 	}
 }
@@ -207,6 +212,7 @@ impl Executor {
 				.register_aggregate("count", math::aggregate::Count::new)
 				.register_scalar("abs", math::scalar::Abs::new)
 				.register_scalar("avg", math::scalar::Avg::new)
+				.register_generator("generate_series", generator::GenerateSeries::new)
 				.build(),
 		)
 	}
@@ -266,6 +272,7 @@ impl Executor {
 			| PhysicalPlan::Map(_)
 			| PhysicalPlan::Extend(_)
 			| PhysicalPlan::InlineData(_)
+			| PhysicalPlan::Generator(_)
 			| PhysicalPlan::Delete(_)
 			| PhysicalPlan::DeleteRingBuffer(_)
 			| PhysicalPlan::InsertTable(_)
@@ -330,6 +337,7 @@ impl Executor {
 			| PhysicalPlan::Map(_)
 			| PhysicalPlan::Extend(_)
 			| PhysicalPlan::InlineData(_)
+			| PhysicalPlan::Generator(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::TableVirtualScan(_)

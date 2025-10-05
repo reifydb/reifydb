@@ -70,9 +70,9 @@ pub enum Ast<'a> {
 	Identifier(UnqualifiedIdentifier<'a>),
 	Infix(AstInfix<'a>),
 	Inline(AstInline<'a>),
-	AstDelete(AstDelete<'a>),
-	AstInsert(AstInsert<'a>),
-	AstUpdate(AstUpdate<'a>),
+	Delete(AstDelete<'a>),
+	Insert(AstInsert<'a>),
+	Update(AstUpdate<'a>),
 	Join(AstJoin<'a>),
 	Take(AstTake<'a>),
 	List(AstList<'a>),
@@ -85,6 +85,7 @@ pub enum Ast<'a> {
 	PolicyBlock(AstPolicyBlock<'a>),
 	Prefix(AstPrefix<'a>),
 	Map(AstMap<'a>),
+	Generator(AstGenerator<'a>),
 	Extend(AstExtend<'a>),
 	Tuple(AstTuple<'a>),
 	Wildcard(AstWildcard<'a>),
@@ -119,9 +120,9 @@ impl<'a> Ast<'a> {
 			Ast::Aggregate(node) => &node.token,
 			Ast::Identifier(identifier) => &identifier.token,
 			Ast::Infix(node) => &node.token,
-			Ast::AstDelete(node) => &node.token,
-			Ast::AstInsert(node) => &node.token,
-			Ast::AstUpdate(node) => &node.token,
+			Ast::Delete(node) => &node.token,
+			Ast::Insert(node) => &node.token,
+			Ast::Update(node) => &node.token,
 			Ast::Take(node) => &node.token,
 			Ast::List(node) => &node.token,
 			Ast::Literal(node) => match node {
@@ -153,6 +154,7 @@ impl<'a> Ast<'a> {
 			Ast::PolicyBlock(node) => &node.token,
 			Ast::Prefix(node) => node.node.token(),
 			Ast::Map(node) => &node.token,
+			Ast::Generator(node) => &node.token,
 			Ast::Extend(node) => &node.token,
 			Ast::Tuple(node) => &node.token,
 			Ast::Wildcard(node) => &node.0,
@@ -301,10 +303,10 @@ impl<'a> Ast<'a> {
 	}
 
 	pub fn is_delete(&self) -> bool {
-		matches!(self, Ast::AstDelete(_))
+		matches!(self, Ast::Delete(_))
 	}
 	pub fn as_delete(&self) -> &AstDelete<'a> {
-		if let Ast::AstDelete(result) = self {
+		if let Ast::Delete(result) = self {
 			result
 		} else {
 			panic!("not delete")
@@ -312,10 +314,10 @@ impl<'a> Ast<'a> {
 	}
 
 	pub fn is_insert(&self) -> bool {
-		matches!(self, Ast::AstInsert(_))
+		matches!(self, Ast::Insert(_))
 	}
 	pub fn as_insert(&self) -> &AstInsert<'a> {
-		if let Ast::AstInsert(result) = self {
+		if let Ast::Insert(result) = self {
 			result
 		} else {
 			panic!("not insert")
@@ -323,10 +325,10 @@ impl<'a> Ast<'a> {
 	}
 
 	pub fn is_update(&self) -> bool {
-		matches!(self, Ast::AstUpdate(_))
+		matches!(self, Ast::Update(_))
 	}
 	pub fn as_update(&self) -> &AstUpdate<'a> {
-		if let Ast::AstUpdate(result) = self {
+		if let Ast::Update(result) = self {
 			result
 		} else {
 			panic!("not update")
@@ -501,6 +503,18 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not map")
+		}
+	}
+
+	pub fn is_generator(&self) -> bool {
+		matches!(self, Ast::Generator(_))
+	}
+
+	pub fn as_generator(&self) -> &AstGenerator<'a> {
+		if let Ast::Generator(result) = self {
+			result
+		} else {
+			panic!("not generator")
 		}
 	}
 
@@ -808,6 +822,7 @@ pub enum AstFrom<'a> {
 		token: Token<'a>,
 		list: AstList<'a>,
 	},
+	Generator(AstGenerator<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -828,6 +843,7 @@ impl<'a> AstFrom<'a> {
 				token,
 				..
 			} => token,
+			AstFrom::Generator(generator) => &generator.token,
 		}
 	}
 }
@@ -1071,6 +1087,27 @@ impl<'a> Index<usize> for AstMap<'a> {
 }
 
 impl<'a> AstMap<'a> {
+	pub fn len(&self) -> usize {
+		self.nodes.len()
+	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstGenerator<'a> {
+	pub token: Token<'a>,
+	pub name: Fragment<'a>,
+	pub nodes: Vec<Ast<'a>>,
+}
+
+impl<'a> Index<usize> for AstGenerator<'a> {
+	type Output = Ast<'a>;
+
+	fn index(&self, index: usize) -> &Self::Output {
+		&self.nodes[index]
+	}
+}
+
+impl<'a> AstGenerator<'a> {
 	pub fn len(&self) -> usize {
 		self.nodes.len()
 	}
