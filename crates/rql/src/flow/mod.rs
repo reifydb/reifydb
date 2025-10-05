@@ -7,6 +7,7 @@
 //! streaming dataflow engine, enabling automatic incremental computation for
 //! RQL queries.
 
+pub mod analyzer;
 mod builder;
 mod conversion;
 pub mod flow;
@@ -243,6 +244,9 @@ pub(crate) trait CompileOperator<T: CommandTransaction> {
 
 // Re-export the flow types for external use
 pub use self::{
+	analyzer::{
+		FlowDependency, FlowDependencyGraph, FlowGraphAnalyzer, FlowSummary, SinkReference, SourceReference,
+	},
 	flow::Flow,
 	node::{FlowEdge, FlowNode, FlowNodeType},
 };

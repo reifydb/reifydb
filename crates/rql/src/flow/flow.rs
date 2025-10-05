@@ -33,7 +33,6 @@ impl Flow {
 
 		self.graph.add_edge(edge);
 
-		// Update operator input/output lists
 		if let Some(from_node) = self.graph.get_node_mut(&source) {
 			from_node.outputs.push(target.clone());
 		}
