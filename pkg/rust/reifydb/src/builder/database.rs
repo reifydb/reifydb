@@ -17,7 +17,10 @@ use reifydb_core::{
 	ioc::IocContainer,
 	log_timed_debug,
 };
-use reifydb_engine::{EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction};
+use reifydb_engine::{
+	EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
+	function::{Functions, FunctionsBuilder, generator, math},
+};
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
 use reifydb_store_transaction::TransactionStoreVersion;
@@ -43,6 +46,7 @@ pub struct DatabaseBuilder {
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
 	subsystems: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	ioc: IocContainer,
+	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_logging")]
 	logging_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_worker")]
@@ -71,6 +75,7 @@ impl DatabaseBuilder {
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystems: Vec::new(),
 			ioc,
+			functions_configurator: None,
 			#[cfg(feature = "sub_logging")]
 			logging_factory: None,
 			#[cfg(feature = "sub_worker")]
@@ -140,6 +145,14 @@ impl DatabaseBuilder {
 		self
 	}
 
+	pub fn with_functions_configurator<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
+	{
+		self.functions_configurator = Some(Box::new(configurator));
+		self
+	}
+
 	pub fn config(&self) -> &DatabaseConfig {
 		&self.config
 	}
@@ -172,14 +185,33 @@ impl DatabaseBuilder {
 
 		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog)?;
 
+		// Build Functions with default functions plus user configurator
+		let functions = if let Some(configurator) = self.functions_configurator {
+			// Start with default functions and apply user configurator
+			let default_builder = Functions::builder()
+				.register_aggregate("sum", math::aggregate::Sum::new)
+				.register_aggregate("min", math::aggregate::Min::new)
+				.register_aggregate("max", math::aggregate::Max::new)
+				.register_aggregate("avg", math::aggregate::Avg::new)
+				.register_aggregate("count", math::aggregate::Count::new)
+				.register_scalar("abs", math::scalar::Abs::new)
+				.register_scalar("avg", math::scalar::Avg::new)
+				.register_generator("generate_series", generator::GenerateSeries::new);
+
+			Some(configurator(default_builder).build())
+		} else {
+			None
+		};
+
 		// First create the engine (needed by subsystems)
-		let engine = StandardEngine::new(
+		let engine = StandardEngine::with_functions(
 			multi.clone(),
 			single.clone(),
 			cdc.clone(),
 			eventbus.clone(),
 			Box::new(self.interceptors.build()),
 			catalog.clone(),
+			functions,
 		);
 
 		self.ioc = self.ioc.register(engine.clone());

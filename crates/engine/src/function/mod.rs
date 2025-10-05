@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub use registry::Functions;
 use reifydb_core::value::column::{Column, ColumnData, Columns, GroupByView, GroupKey};
 
 use crate::{StandardTransaction, execute::ExecutionContext};
@@ -10,6 +9,8 @@ pub mod blob;
 pub mod generator;
 pub mod math;
 mod registry;
+
+pub use registry::{Functions, FunctionsBuilder};
 
 pub struct ScalarFunctionContext<'a> {
 	pub columns: &'a Columns<'a>,
@@ -32,8 +33,8 @@ pub trait AggregateFunction: Send + Sync {
 }
 
 pub struct GeneratorContext<'a> {
-	pub evaluated_params: Columns<'a>,
-	pub execution_ctx: ExecutionContext<'a>,
+	pub params: Columns<'a>,
+	pub execution: ExecutionContext<'a>,
 }
 
 pub trait GeneratorFunction: Send + Sync {

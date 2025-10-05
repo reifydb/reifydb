@@ -23,7 +23,7 @@ impl GeneratorFunction for GenerateSeries {
 		ctx: GeneratorContext<'a>,
 	) -> crate::Result<Columns<'a>> {
 		// Extract parameters: start and end
-		let params = &ctx.evaluated_params;
+		let params = &ctx.params;
 
 		assert_eq!(params.len(), 2, "generate_series requires exactly 2 parameters: start and end");
 

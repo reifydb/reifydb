@@ -80,8 +80,8 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 		let columns = generator.generate(
 			txn,
 			GeneratorContext {
-				evaluated_params,
-				execution_ctx: cloned_ctx,
+				params: evaluated_params,
+				execution: cloned_ctx,
 			},
 		)?;
 
