@@ -3,8 +3,10 @@
 
 use reifydb_catalog::{
 	CatalogStore, MaterializedCatalog,
-	namespace::NamespaceToCreate,
-	table::{TableColumnToCreate, TableToCreate},
+	store::{
+		namespace::NamespaceToCreate,
+		table::{TableColumnToCreate, TableToCreate},
+	},
 };
 use reifydb_core::{event::EventBus, interceptor::Interceptors};
 use reifydb_store_transaction::TransactionStore;

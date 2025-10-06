@@ -7,6 +7,7 @@
 //! streaming dataflow engine, enabling automatic incremental computation for
 //! RQL queries.
 
+pub mod analyzer;
 mod builder;
 mod conversion;
 pub mod flow;
@@ -15,7 +16,7 @@ pub mod node;
 mod operator;
 mod source;
 
-use reifydb_catalog::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id};
+use reifydb_catalog::store::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id};
 use reifydb_core::interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef};
 
 use self::{
@@ -23,6 +24,7 @@ use self::{
 	operator::{
 		aggregate::AggregateCompiler, apply::ApplyCompiler, distinct::DistinctCompiler, extend::ExtendCompiler,
 		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, sort::SortCompiler, take::TakeCompiler,
+		window::WindowCompiler,
 	},
 	source::{inline_data::InlineDataCompiler, table_scan::TableScanCompiler, view_scan::ViewScanCompiler},
 };
@@ -38,8 +40,8 @@ pub fn compile_flow(txn: &mut impl CommandTransaction, plan: PhysicalPlan, sink:
 
 /// Compiler for converting RQL plans into executable Flows
 pub(crate) struct FlowCompiler<T: CommandTransaction> {
-	/// The flow graph being built
-	flow: Flow,
+	/// The flow builder being used for construction
+	builder: FlowBuilder,
 	/// Reference to transaction for ID generation
 	pub(crate) txn: *mut T,
 	/// The sink view schema (for terminal nodes)
@@ -50,7 +52,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	/// Creates a new FlowCompiler instance
 	pub fn new(txn: &mut T) -> crate::Result<Self> {
 		Ok(Self {
-			flow: Flow::new(next_flow_id(txn)?),
+			builder: Flow::builder(next_flow_id(txn)?),
 			txn: txn as *mut T,
 			sink: None,
 		})
@@ -69,13 +71,13 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	/// Adds an edge between two nodes
 	fn add_edge(&mut self, from: &FlowNodeId, to: &FlowNodeId) -> crate::Result<()> {
 		let edge_id = self.next_edge_id()?;
-		self.flow.add_edge(FlowEdge::new(edge_id, from, to))
+		self.builder.add_edge(FlowEdge::new(edge_id, from, to))
 	}
 
 	/// Adds a operator to the flow graph
 	fn add_node(&mut self, node_type: FlowNodeType) -> crate::Result<FlowNodeId> {
 		let node_id = self.next_node_id()?;
-		let flow_node_id = self.flow.add_node(FlowNode::new(node_id, node_type));
+		let flow_node_id = self.builder.add_node(FlowNode::new(node_id, node_type));
 		Ok(flow_node_id)
 	}
 
@@ -91,7 +93,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 
 		self.add_edge(&root_node_id, &result_node)?;
 
-		Ok(self.flow)
+		Ok(self.builder.build())
 	}
 
 	/// Compiles a physical plan operator into the FlowGraph
@@ -143,6 +145,11 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				// TODO: Implement RingBufferScanCompiler for flow
 				unimplemented!("RingBufferScan compilation not yet implemented for flow")
 			}
+			PhysicalPlan::Generator(_generator) => {
+				// TODO: Implement GeneratorCompiler for flow
+				unimplemented!("Generator compilation not yet implemented for flow")
+			}
+			PhysicalPlan::Window(window) => WindowCompiler::from(window).compile(self),
 		}
 	}
 }
@@ -243,6 +250,9 @@ pub(crate) trait CompileOperator<T: CommandTransaction> {
 
 // Re-export the flow types for external use
 pub use self::{
-	flow::Flow,
+	analyzer::{
+		FlowDependency, FlowDependencyGraph, FlowGraphAnalyzer, FlowSummary, SinkReference, SourceReference,
+	},
+	flow::{Flow, FlowBuilder},
 	node::{FlowEdge, FlowNode, FlowNodeType},
 };

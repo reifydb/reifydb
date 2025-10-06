@@ -10,7 +10,7 @@ mod engine;
 mod evaluate;
 pub mod execute;
 #[allow(dead_code)]
-mod function;
+pub mod function;
 pub(crate) mod interceptor;
 pub mod table_virtual;
 pub mod test_utils;

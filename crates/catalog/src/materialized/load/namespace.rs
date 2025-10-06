@@ -3,7 +3,7 @@
 
 use reifydb_core::interface::{MultiVersionQueryTransaction, NamespaceKey};
 
-use crate::{MaterializedCatalog, namespace};
+use crate::{MaterializedCatalog, store::namespace};
 
 /// Load all namespaces from storage
 pub(crate) fn load_namespaces(

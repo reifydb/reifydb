@@ -12,3 +12,4 @@ pub(crate) mod join;
 pub(crate) mod map;
 pub(crate) mod sort;
 pub(crate) mod take;
+pub(crate) mod window;

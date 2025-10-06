@@ -36,7 +36,7 @@ impl<'a> Parser<'a> {
 
 			// Handle comma separation
 			if self.current()?.is_separator(Comma) {
-				self.advance()?;
+				let _ = self.advance()?;
 			} else if self.current()?.is_operator(CloseCurly) {
 				break;
 			} else {
@@ -58,11 +58,11 @@ impl<'a> Parser<'a> {
 
 			let current = self.current()?;
 			if current.is_keyword(With) {
-				self.advance()?; // consume 'with'
+				let _ = self.advance()?; // consume 'with'
 				let with_config = self.parse_with_clause()?;
 				config.extend(with_config);
 			} else if current.is_keyword(By) {
-				self.advance()?; // consume 'by'
+				let _ = self.advance()?; // consume 'by'
 				let by_exprs = self.parse_by_clause()?;
 				group_by.extend(by_exprs);
 			} else {
@@ -113,7 +113,7 @@ impl<'a> Parser<'a> {
 
 			// Handle comma separation
 			if self.current()?.is_separator(Comma) {
-				self.advance()?;
+				let _ = self.advance()?;
 			} else if self.current()?.is_operator(CloseCurly) {
 				break;
 			} else {
@@ -145,7 +145,7 @@ impl<'a> Parser<'a> {
 
 			// Handle comma separation
 			if self.current()?.is_separator(Comma) {
-				self.advance()?;
+				let _ = self.advance()?;
 			} else if self.current()?.is_operator(CloseCurly) {
 				break;
 			} else {

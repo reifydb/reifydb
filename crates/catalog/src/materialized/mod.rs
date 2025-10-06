@@ -22,7 +22,7 @@ pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
 pub type MultiVersionViewDef = MultiVersionContainer<ViewDef>;
 pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 
-/// A materialized catalog that stores multi namespace, table, and view
+/// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
 /// hitting storage.
 #[derive(Debug, Clone)]

@@ -3,7 +3,13 @@
 
 use reifydb_core::interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyId, PrimaryKeyKey, QueryTransaction};
 
-use crate::{CatalogStore, MaterializedCatalog, primary_key::layout::primary_key};
+use crate::{
+	CatalogStore, MaterializedCatalog,
+	store::primary_key::layout::{
+		primary_key,
+		primary_key::{COLUMN_IDS, ID, deserialize_column_ids},
+	},
+};
 
 /// Load all primary keys from storage
 pub fn load_primary_keys(qt: &mut impl QueryTransaction, catalog: &MaterializedCatalog) -> crate::Result<()> {
@@ -15,10 +21,10 @@ pub fn load_primary_keys(qt: &mut impl QueryTransaction, catalog: &MaterializedC
 		let version = multi.version;
 		let row = multi.values;
 
-		let pk_id = PrimaryKeyId(primary_key::LAYOUT.get_u64(&row, primary_key::ID));
+		let pk_id = PrimaryKeyId(primary_key::LAYOUT.get_u64(&row, ID));
 
-		let column_ids_blob = primary_key::LAYOUT.get_blob(&row, primary_key::COLUMN_IDS);
-		let column_ids = primary_key::deserialize_column_ids(&column_ids_blob);
+		let column_ids_blob = primary_key::LAYOUT.get_blob(&row, COLUMN_IDS);
+		let column_ids = deserialize_column_ids(&column_ids_blob);
 
 		let mut columns = Vec::new();
 		for column_id in column_ids {

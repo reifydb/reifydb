@@ -16,7 +16,8 @@ use reifydb_type::{
 };
 
 use crate::{
-	CatalogNamespaceQueryOperations, CatalogStore, transaction::MaterializedCatalogTransaction, view::ViewToCreate,
+	CatalogNamespaceQueryOperations, CatalogStore, store::view::ViewToCreate,
+	transaction::MaterializedCatalogTransaction,
 };
 
 pub trait CatalogViewCommandOperations {

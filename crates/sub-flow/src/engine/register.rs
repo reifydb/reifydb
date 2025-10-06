@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_rql::flow::{
 	Flow, FlowNode, FlowNodeType,
-	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union},
+	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union, Window},
 };
 use reifydb_type::internal_error;
 
@@ -18,7 +18,7 @@ use crate::{
 	engine::FlowEngine,
 	operator::{
 		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, Operators,
-		SinkViewOperator, SortOperator, TakeOperator,
+		SinkViewOperator, SortOperator, TakeOperator, WindowOperator,
 	},
 };
 
@@ -31,6 +31,8 @@ impl FlowEngine {
 			self.add(txn, &flow, node)?;
 		}
 
+		// Add flow to analyzer for dependency tracking
+		self.analyzer.add(flow.clone());
 		self.flows.insert(flow.id, flow);
 
 		Ok(())
@@ -150,6 +152,23 @@ impl FlowEngine {
 			Aggregate {
 				..
 			} => unimplemented!(),
+			Window {
+				window_type,
+				size,
+				slide,
+				group_by,
+				aggregations,
+			} => {
+				let operator = WindowOperator::new(
+					node.id,
+					window_type,
+					size.clone(),
+					slide.clone(),
+					group_by.clone(),
+					aggregations.clone(),
+				);
+				self.operators.insert(node.id, Operators::Window(operator));
+			}
 		}
 
 		Ok(())

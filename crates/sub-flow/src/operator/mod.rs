@@ -15,6 +15,7 @@ pub mod stateful;
 mod take;
 pub mod transform;
 mod union;
+mod window;
 
 pub use apply::ApplyOperator;
 pub use distinct::DistinctOperator;
@@ -27,6 +28,7 @@ pub use sort::SortOperator;
 pub use take::TakeOperator;
 pub use transform::registry::TransformOperatorRegistry;
 pub use union::UnionOperator;
+pub use window::WindowOperator;
 
 pub trait Operator: Send + Sync {
 	fn id(&self) -> FlowNodeId;
@@ -50,6 +52,7 @@ pub enum Operators {
 	Union(UnionOperator),
 	Apply(ApplyOperator),
 	SinkView(SinkViewOperator),
+	Window(WindowOperator),
 }
 
 impl Operators {
@@ -70,6 +73,7 @@ impl Operators {
 			Operators::Union(op) => op.apply(txn, change, evaluator),
 			Operators::Apply(op) => op.apply(txn, change, evaluator),
 			Operators::SinkView(op) => op.apply(txn, change, evaluator),
+			Operators::Window(op) => op.apply(txn, change, evaluator),
 		};
 		result
 	}

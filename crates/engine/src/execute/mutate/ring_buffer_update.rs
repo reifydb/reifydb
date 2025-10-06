@@ -58,7 +58,7 @@ impl Executor {
 
 		// Create execution context
 		let context = ExecutionContext {
-			functions: self.functions.clone(),
+			executor: self.clone(),
 			source: resolved_source,
 			batch_size: 1024,
 			params: params.clone(),

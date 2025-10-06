@@ -14,6 +14,7 @@ use crate::{
 			aggregate::AggregateNode,
 			extend::{ExtendNode, ExtendWithoutInputNode},
 			filter::FilterNode,
+			generator::GeneratorNode,
 			index_scan::IndexScanNode,
 			inline::InlineDataNode,
 			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
@@ -141,6 +142,11 @@ pub(crate) fn compile<'a>(
 			rows,
 		}) => ExecutionPlan::InlineData(InlineDataNode::new(rows, context)),
 
+		PhysicalPlan::Generator(physical::GeneratorNode {
+			name,
+			expressions,
+		}) => ExecutionPlan::Generator(GeneratorNode::new(name, expressions)),
+
 		PhysicalPlan::IndexScan(node) => {
 			let table = node.source.def().clone();
 			let Some(pk) = table.primary_key.clone() else {
@@ -219,6 +225,11 @@ pub(crate) fn compile<'a>(
 		PhysicalPlan::Apply(_) => {
 			unimplemented!(
 				"Apply operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+			)
+		}
+		PhysicalPlan::Window(_) => {
+			unimplemented!(
+				"Window operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
 	}

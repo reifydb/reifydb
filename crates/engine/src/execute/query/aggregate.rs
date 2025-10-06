@@ -73,7 +73,7 @@ impl<'a> QueryNode<'a> for AggregateNode<'a> {
 			return Ok(None);
 		}
 
-		let (keys, mut projections) = parse_keys_and_aggregates(&self.by, &self.map, &ctx.functions)?;
+		let (keys, mut projections) = parse_keys_and_aggregates(&self.by, &self.map, &ctx.executor.functions)?;
 
 		let mut seen_groups = HashSet::<Vec<Value>>::new();
 		let mut group_key_order: Vec<Vec<Value>> = Vec::new();

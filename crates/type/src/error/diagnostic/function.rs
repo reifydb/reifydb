@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{Type, error::diagnostic::Diagnostic, fragment::OwnedFragment};
+use crate::{IntoFragment, Type, error::diagnostic::Diagnostic, fragment::OwnedFragment};
 
 /// Function is not recognized or does not exist
 pub fn unknown_function(name: String) -> Diagnostic {
@@ -126,6 +126,23 @@ pub fn internal_error(function: String, details: String) -> Diagnostic {
 		fragment: OwnedFragment::None,
 		label: None,
 		help: Some("This is an internal error - please report this issue".to_string()),
+		notes: vec![],
+		cause: None,
+	}
+}
+
+/// Generator function is not recognized or does not exist
+pub fn generator_not_found<'a>(fragment: impl IntoFragment<'a>) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	let name = fragment.text();
+	Diagnostic {
+		code: "FUNCTION_009".to_string(),
+		statement: None,
+		message: format!("Generator function '{}' not found", name),
+		column: None,
+		fragment,
+		label: Some("unknown generator function".to_string()),
+		help: Some("Check the generator function name and ensure it is registered".to_string()),
 		notes: vec![],
 		cause: None,
 	}

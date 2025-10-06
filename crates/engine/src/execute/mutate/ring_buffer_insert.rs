@@ -54,7 +54,7 @@ impl Executor {
 		let resolved_source = Some(ResolvedSource::RingBuffer(resolved_rb));
 
 		let execution_context = Arc::new(ExecutionContext {
-			functions: self.functions.clone(),
+			executor: self.clone(),
 			source: resolved_source,
 			batch_size: 1024,
 			params: params.clone(),

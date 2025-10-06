@@ -3,7 +3,7 @@
 
 use std::{collections::HashMap, ops::Deref, sync::Arc};
 
-use crate::function::{AggregateFunction, ScalarFunction};
+use crate::function::{AggregateFunction, GeneratorFunction, ScalarFunction};
 
 #[derive(Clone)]
 pub struct Functions(Arc<FunctionsInner>);
@@ -13,6 +13,7 @@ impl Functions {
 		FunctionsBuilder(FunctionsInner {
 			scalars: HashMap::new(),
 			aggregates: HashMap::new(),
+			generators: HashMap::new(),
 		})
 	}
 }
@@ -29,6 +30,7 @@ impl Deref for Functions {
 pub struct FunctionsInner {
 	scalars: HashMap<String, Arc<dyn Fn() -> Box<dyn ScalarFunction> + Send + Sync>>,
 	aggregates: HashMap<String, Arc<dyn Fn() -> Box<dyn AggregateFunction> + Send + Sync>>,
+	generators: HashMap<String, Arc<dyn Fn() -> Box<dyn GeneratorFunction> + Send + Sync>>,
 }
 
 impl FunctionsInner {
@@ -38,6 +40,10 @@ impl FunctionsInner {
 
 	pub fn get_scalar(&self, name: &str) -> Option<Box<dyn ScalarFunction>> {
 		self.scalars.get(name).map(|func| func())
+	}
+
+	pub fn get_generator(&self, name: &str) -> Option<Box<dyn GeneratorFunction>> {
+		self.generators.get(name).map(|func| func())
 	}
 }
 
@@ -61,6 +67,17 @@ impl FunctionsBuilder {
 	{
 		self.0.aggregates
 			.insert(name.to_string(), Arc::new(move || Box::new(init()) as Box<dyn AggregateFunction>));
+
+		self
+	}
+
+	pub fn register_generator<F, G>(mut self, name: &str, init: F) -> Self
+	where
+		F: Fn() -> G + Send + Sync + 'static,
+		G: GeneratorFunction + 'static,
+	{
+		self.0.generators
+			.insert(name.to_string(), Arc::new(move || Box::new(init()) as Box<dyn GeneratorFunction>));
 
 		self
 	}

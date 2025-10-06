@@ -16,7 +16,7 @@ use reifydb_type::{
 };
 
 use crate::{
-	CatalogNamespaceQueryOperations, CatalogStore, table::TableToCreate,
+	CatalogNamespaceQueryOperations, CatalogStore, store::table::TableToCreate,
 	transaction::MaterializedCatalogTransaction,
 };
 

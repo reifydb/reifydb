@@ -1,5 +1,5 @@
 use reifydb_core::{
-	JoinStrategy, JoinType, SortKey,
+	JoinStrategy, JoinType, SortKey, WindowSize, WindowSlide, WindowType,
 	interface::{FlowEdgeId, FlowNodeId, TableId, ViewId, expression::Expression},
 };
 use serde::{Deserialize, Serialize};
@@ -52,6 +52,13 @@ pub enum FlowNodeType {
 	},
 	SinkView {
 		view: ViewId,
+	},
+	Window {
+		window_type: WindowType,
+		size: WindowSize,
+		slide: Option<WindowSlide>,
+		group_by: Vec<Expression<'static>>,
+		aggregations: Vec<Expression<'static>>,
 	},
 }
 

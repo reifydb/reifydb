@@ -5,7 +5,7 @@ use reifydb_core::{
 	event::EventBus,
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 };
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_engine::{StandardCommandTransaction, function::FunctionsBuilder};
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
@@ -25,6 +25,7 @@ pub struct EmbeddedBuilder {
 	eventbus: EventBus,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
 	subsystem_factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
+	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_logging")]
 	logging_configurator: Option<Box<dyn FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_worker")]
@@ -47,6 +48,7 @@ impl EmbeddedBuilder {
 			eventbus,
 			interceptors: StandardInterceptorBuilder::new(),
 			subsystem_factories: Vec::new(),
+			functions_configurator: None,
 			#[cfg(feature = "sub_logging")]
 			logging_configurator: None,
 			#[cfg(feature = "sub_worker")]
@@ -66,9 +68,22 @@ impl EmbeddedBuilder {
 		self
 	}
 
+	pub fn with_functions<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static,
+	{
+		self.functions_configurator = Some(Box::new(configurator));
+		self
+	}
+
 	pub fn build(self) -> crate::Result<Database> {
 		let mut builder = DatabaseBuilder::new(self.multi, self.single, self.cdc, self.eventbus)
 			.with_interceptor_builder(self.interceptors);
+
+		// Pass functions configurator if provided
+		if let Some(configurator) = self.functions_configurator {
+			builder = builder.with_functions_configurator(configurator);
+		}
 
 		// Add configured subsystems using the proper methods
 		#[cfg(feature = "sub_logging")]

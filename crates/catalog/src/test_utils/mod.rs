@@ -8,13 +8,13 @@ use reifydb_type::TypeConstraint;
 
 use crate::{
 	CatalogStore,
-	column::{ColumnIndex, ColumnToCreate},
-	namespace::NamespaceToCreate,
-	ring_buffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
-	table,
-	table::TableToCreate,
-	view,
-	view::ViewToCreate,
+	store::{
+		column::{ColumnIndex, ColumnToCreate},
+		namespace::NamespaceToCreate,
+		ring_buffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
+		table::TableToCreate,
+		view::ViewToCreate,
+	},
 };
 
 pub fn create_namespace(txn: &mut impl CommandTransaction, namespace: &str) -> NamespaceDef {
@@ -48,7 +48,7 @@ pub fn create_table(
 	txn: &mut impl CommandTransaction,
 	namespace: &str,
 	table: &str,
-	columns: &[table::TableColumnToCreate],
+	columns: &[crate::store::table::TableColumnToCreate],
 ) -> TableDef {
 	// First look up the namespace to get its ID
 	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
@@ -98,7 +98,7 @@ pub fn create_view(
 	txn: &mut impl CommandTransaction,
 	namespace: &str,
 	view: &str,
-	columns: &[view::ViewColumnToCreate],
+	columns: &[crate::store::view::ViewColumnToCreate],
 ) -> ViewDef {
 	// First look up the namespace to get its ID
 	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");

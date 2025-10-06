@@ -17,7 +17,7 @@ use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, s
 
 use crate::{
 	execute::Executor,
-	function::{Functions, math},
+	function::{Functions, generator, math},
 	interceptor::materialized_catalog::MaterializedCatalogInterceptor,
 	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 };
@@ -133,22 +133,37 @@ impl StandardEngine {
 		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
 		catalog: MaterializedCatalog,
 	) -> Self {
+		Self::with_functions(multi, single, cdc, event_bus, interceptors, catalog, None)
+	}
+
+	pub fn with_functions(
+		multi: TransactionMultiVersion,
+		single: TransactionSingleVersion,
+		cdc: TransactionCdc,
+		event_bus: EventBus,
+		interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
+		catalog: MaterializedCatalog,
+		custom_functions: Option<Functions>,
+	) -> Self {
+		let functions = custom_functions.unwrap_or_else(|| {
+			Functions::builder()
+				.register_aggregate("sum", math::aggregate::Sum::new)
+				.register_aggregate("min", math::aggregate::Min::new)
+				.register_aggregate("max", math::aggregate::Max::new)
+				.register_aggregate("avg", math::aggregate::Avg::new)
+				.register_aggregate("count", math::aggregate::Count::new)
+				.register_scalar("abs", math::scalar::Abs::new)
+				.register_scalar("avg", math::scalar::Avg::new)
+				.register_generator("generate_series", generator::GenerateSeries::new)
+				.build()
+		});
+
 		Self(Arc::new(EngineInner {
 			multi,
 			single,
 			cdc,
 			event_bus,
-			executor: Executor::new(
-				Functions::builder()
-					.register_aggregate("sum", math::aggregate::Sum::new)
-					.register_aggregate("min", math::aggregate::Min::new)
-					.register_aggregate("max", math::aggregate::Max::new)
-					.register_aggregate("avg", math::aggregate::Avg::new)
-					.register_aggregate("count", math::aggregate::Count::new)
-					.register_scalar("abs", math::scalar::Abs::new)
-					.register_scalar("avg", math::scalar::Avg::new)
-					.build(),
-			),
+			executor: Executor::new(functions),
 			interceptors,
 			catalog,
 		}))

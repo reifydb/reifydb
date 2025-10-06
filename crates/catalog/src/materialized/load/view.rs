@@ -6,7 +6,13 @@ use reifydb_core::interface::{
 	ViewKey, ViewKind,
 };
 
-use crate::{MaterializedCatalog, view::layout::view};
+use crate::{
+	MaterializedCatalog,
+	store::view::layout::{
+		view,
+		view::{ID, KIND, NAME, NAMESPACE, PRIMARY_KEY},
+	},
+};
 
 pub(crate) fn load_views(
 	qt: &mut impl MultiVersionQueryTransaction,
@@ -30,11 +36,11 @@ pub(crate) fn load_views(
 
 fn convert_view(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -> ViewDef {
 	let row = multi.values;
-	let id = ViewId(view::LAYOUT.get_u64(&row, view::ID));
-	let namespace = NamespaceId(view::LAYOUT.get_u64(&row, view::NAMESPACE));
-	let name = view::LAYOUT.get_utf8(&row, view::NAME).to_string();
+	let id = ViewId(view::LAYOUT.get_u64(&row, ID));
+	let namespace = NamespaceId(view::LAYOUT.get_u64(&row, NAMESPACE));
+	let name = view::LAYOUT.get_utf8(&row, NAME).to_string();
 
-	let kind = match view::LAYOUT.get_u8(&row, view::KIND) {
+	let kind = match view::LAYOUT.get_u8(&row, KIND) {
 		0 => ViewKind::Deferred,
 		1 => ViewKind::Transactional,
 		_ => unimplemented!(),
@@ -51,7 +57,7 @@ fn convert_view(multi: MultiVersionValues, primary_key: Option<PrimaryKeyDef>) -
 }
 
 fn get_view_primary_key_id(multi: &MultiVersionValues) -> Option<PrimaryKeyId> {
-	let pk_id_raw = view::LAYOUT.get_u64(&multi.values, view::PRIMARY_KEY);
+	let pk_id_raw = view::LAYOUT.get_u64(&multi.values, PRIMARY_KEY);
 	if pk_id_raw == 0 {
 		None
 	} else {

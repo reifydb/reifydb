@@ -6,11 +6,11 @@ mod create;
 
 pub use alter::{AlterTableNode, AlterViewNode};
 use reifydb_catalog::{
-	CatalogStore, ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	CatalogStore,
+	store::{ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
 };
 use reifydb_core::{
-	JoinStrategy, JoinType, SortKey,
+	JoinStrategy, JoinType, SortKey, WindowSize, WindowSlide, WindowType,
 	interface::{
 		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
 		catalog::ColumnIndex,
@@ -108,6 +108,13 @@ impl Compiler {
 				LogicalPlan::InlineData(inline) => {
 					stack.push(PhysicalPlan::InlineData(InlineDataNode {
 						rows: inline.rows,
+					}));
+				}
+
+				LogicalPlan::Generator(generator) => {
+					stack.push(PhysicalPlan::Generator(GeneratorNode {
+						name: generator.name,
+						expressions: generator.expressions,
 					}));
 				}
 
@@ -659,6 +666,18 @@ impl Compiler {
 					}));
 				}
 
+				LogicalPlan::Window(window) => {
+					let input = stack.pop().map(Box::new);
+					stack.push(PhysicalPlan::Window(WindowNode {
+						window_type: window.window_type,
+						size: window.size,
+						slide: window.slide,
+						group_by: window.group_by,
+						aggregations: window.aggregations,
+						input,
+					}));
+				}
+
 				LogicalPlan::Pipeline(pipeline) => {
 					// Compile the pipeline of operations
 					// This ensures they all share the same
@@ -721,6 +740,8 @@ pub enum PhysicalPlan<'a> {
 	TableVirtualScan(TableVirtualScanNode<'a>),
 	ViewScan(ViewScanNode<'a>),
 	RingBufferScan(RingBufferScanNode<'a>),
+	Generator(GeneratorNode<'a>),
+	Window(WindowNode<'a>),
 }
 
 #[derive(Debug, Clone)]
@@ -908,6 +929,12 @@ pub struct RingBufferScanNode<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct GeneratorNode<'a> {
+	pub name: Fragment<'a>,
+	pub expressions: Vec<Expression<'a>>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TableVirtualScanNode<'a> {
 	pub source: ResolvedTableVirtual<'a>,
 	pub pushdown_context: Option<TableVirtualPushdownContext<'a>>,
@@ -925,4 +952,14 @@ pub struct TableVirtualPushdownContext<'a> {
 pub struct TakeNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
 	pub take: usize,
+}
+
+#[derive(Debug, Clone)]
+pub struct WindowNode<'a> {
+	pub input: Option<Box<PhysicalPlan<'a>>>,
+	pub window_type: WindowType,
+	pub size: WindowSize,
+	pub slide: Option<WindowSlide>,
+	pub group_by: Vec<Expression<'a>>,
+	pub aggregations: Vec<Expression<'a>>,
 }

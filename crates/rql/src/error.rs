@@ -3,6 +3,9 @@
 
 use std::fmt;
 
+use reifydb_core::{Error, diagnostic::internal::internal, error};
+use reifydb_type::diagnostic::catalog::table_not_found;
+
 /// Errors related to identifier resolution
 #[derive(Debug, Clone)]
 pub enum IdentifierError {
@@ -61,21 +64,17 @@ impl fmt::Display for IdentifierError {
 
 impl std::error::Error for IdentifierError {}
 
-impl From<IdentifierError> for reifydb_core::Error {
+impl From<IdentifierError> for Error {
 	fn from(err: IdentifierError) -> Self {
 		match err {
 			IdentifierError::SourceNotFound(ref e) => {
 				// Create a proper catalog error for source not
 				// found
-				reifydb_core::error!(reifydb_type::diagnostic::catalog::table_not_found(
-					e.fragment.clone(),
-					&e.namespace,
-					&e.name
-				))
+				error!(table_not_found(e.fragment.clone(), &e.namespace, &e.name))
 			}
 			_ => {
 				// For other errors, use internal error
-				reifydb_core::error!(reifydb_core::diagnostic::internal::internal(err.to_string()))
+				error!(internal(err.to_string()))
 			}
 		}
 	}

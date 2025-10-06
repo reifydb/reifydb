@@ -15,7 +15,7 @@ use reifydb_type::{
 	error, internal_error, return_error,
 };
 
-use crate::{CatalogStore, namespace::NamespaceToCreate, transaction::MaterializedCatalogTransaction};
+use crate::{CatalogStore, store::namespace::NamespaceToCreate, transaction::MaterializedCatalogTransaction};
 
 pub trait CatalogNamespaceCommandOperations {
 	fn create_namespace(&mut self, to_create: NamespaceToCreate) -> crate::Result<NamespaceDef>;
