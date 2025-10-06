@@ -35,6 +35,7 @@ pub trait AggregateFunction: Send + Sync {
 pub struct GeneratorContext<'a> {
 	pub params: Columns<'a>,
 	pub execution: ExecutionContext<'a>,
+	pub executor: crate::execute::Executor,
 }
 
 pub trait GeneratorFunction: Send + Sync {

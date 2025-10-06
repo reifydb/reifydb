@@ -56,7 +56,7 @@ pub(crate) trait QueryNode<'a> {
 
 #[derive(Clone)]
 pub struct ExecutionContext<'a> {
-	pub functions: Functions,
+	pub executor: Executor,
 	pub source: Option<ResolvedSource<'a>>,
 	pub batch_size: usize,
 	pub params: Params,
@@ -373,7 +373,7 @@ impl Executor {
 			// }
 			_ => {
 				let context = Arc::new(ExecutionContext {
-					functions: self.functions.clone(),
+					executor: self.clone(),
 					source: None,
 					batch_size: 1024,
 					params: params.clone(),

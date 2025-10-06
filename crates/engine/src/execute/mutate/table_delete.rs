@@ -77,7 +77,7 @@ impl Executor {
 				*input_plan,
 				&mut std_txn,
 				Arc::new(ExecutionContext {
-					functions: self.functions.clone(),
+					executor: self.clone(),
 					source: resolved_source.clone(),
 					batch_size: 1024,
 					params: params.clone(),
@@ -85,7 +85,7 @@ impl Executor {
 			);
 
 			let context = ExecutionContext {
-				functions: self.functions.clone(),
+				executor: self.clone(),
 				source: resolved_source.clone(),
 				batch_size: 1024,
 				params: params.clone(),

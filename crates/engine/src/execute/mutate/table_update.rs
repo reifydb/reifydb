@@ -70,7 +70,7 @@ impl Executor {
 		let resolved_source = Some(ResolvedSource::Table(resolved_table));
 
 		let context = ExecutionContext {
-			functions: self.functions.clone(),
+			executor: self.clone(),
 			source: resolved_source,
 			batch_size: 1024,
 			params: params.clone(),

@@ -42,6 +42,7 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 		self.context = Some(Arc::new(ctx.clone()));
 
 		let generator = ctx
+			.executor
 			.functions
 			.get_generator(self.function_name.text())
 			.ok_or_else(|| error!(generator_not_found(self.function_name.clone())))?;
@@ -81,7 +82,8 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 			txn,
 			GeneratorContext {
 				params: evaluated_params,
-				execution: cloned_ctx,
+				execution: cloned_ctx.clone(),
+				executor: cloned_ctx.executor.clone(),
 			},
 		)?;
 
