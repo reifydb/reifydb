@@ -13,7 +13,9 @@ use reifydb_type::{
 	diagnostic::catalog::{ring_buffer_already_exists, ring_buffer_not_found},
 };
 
-use crate::{CatalogStore, ring_buffer::create::RingBufferToCreate, transaction::MaterializedCatalogTransaction};
+use crate::{
+	CatalogStore, store::ring_buffer::create::RingBufferToCreate, transaction::MaterializedCatalogTransaction,
+};
 
 pub trait CatalogRingBufferQueryOperations {
 	fn find_ring_buffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>>;

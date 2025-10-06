@@ -16,7 +16,7 @@ pub mod node;
 mod operator;
 mod source;
 
-use reifydb_catalog::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id};
+use reifydb_catalog::store::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id};
 use reifydb_core::interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef};
 
 use self::{

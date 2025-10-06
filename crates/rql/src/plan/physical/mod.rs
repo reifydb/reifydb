@@ -6,8 +6,8 @@ mod create;
 
 pub use alter::{AlterTableNode, AlterViewNode};
 use reifydb_catalog::{
-	CatalogStore, ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	CatalogStore,
+	store::{ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
 };
 use reifydb_core::{
 	JoinStrategy, JoinType, SortKey,

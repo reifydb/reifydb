@@ -8,8 +8,8 @@ mod query;
 pub mod resolver;
 
 use reifydb_catalog::{
-	CatalogQueryTransaction, ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate,
-	view::ViewColumnToCreate,
+	CatalogQueryTransaction,
+	store::{ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
 };
 use reifydb_core::{
 	IndexType, JoinStrategy, JoinType, SortDirection, SortKey,
