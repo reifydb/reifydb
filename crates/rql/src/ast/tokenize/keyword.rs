@@ -92,6 +92,7 @@ Create     => "CREATE",
 Alter      => "ALTER",
 Drop       => "DROP",
 Filter     => "FILTER",
+Window     => "WINDOW",
 
 In         => "IN",
 Between    => "BETWEEN",
@@ -165,6 +166,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("ALTER", Keyword::Alter);
 	map.insert("DROP", Keyword::Drop);
 	map.insert("FILTER", Keyword::Filter);
+	map.insert("WINDOW", Keyword::Window);
 	map.insert("IN", Keyword::In);
 	map.insert("BETWEEN", Keyword::Between);
 	map.insert("LIKE", Keyword::Like);
@@ -323,6 +325,7 @@ mod tests {
 	test_keyword_is => (Is, "IS"),
 	test_keyword_with => (With, "WITH"),
 	test_keyword_is_in => (Filter, "FILTER"),
+	test_keyword_window => (Window, "WINDOW"),
 	test_keyword_namespace => (Namespace, "NAMESPACE"),
 	test_keyword_series => (Series, "SERIES"),
 	test_keyword_table => (Table, "TABLE"),
@@ -441,6 +444,7 @@ mod tests {
 	test_not_keyword_is => ( "is"),
 	test_not_keyword_with => ( "with"),
 	test_not_keyword_filter => ( "filter"),
+	test_not_keyword_window => ( "window"),
 	test_not_keyword_namespace => ( "namespace"),
 	test_not_keyword_series => ( "series"),
 	test_not_keyword_table => ( "table"),

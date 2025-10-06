@@ -88,6 +88,7 @@ pub enum Ast<'a> {
 	Extend(AstExtend<'a>),
 	Tuple(AstTuple<'a>),
 	Wildcard(AstWildcard<'a>),
+	Window(AstWindow<'a>),
 }
 
 impl<'a> Default for Ast<'a> {
@@ -156,6 +157,7 @@ impl<'a> Ast<'a> {
 			Ast::Extend(node) => &node.token,
 			Ast::Tuple(node) => &node.token,
 			Ast::Wildcard(node) => &node.0,
+			Ast::Window(node) => &node.token,
 		}
 	}
 
@@ -529,6 +531,18 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not tuple")
+		}
+	}
+
+	pub fn is_window(&self) -> bool {
+		matches!(self, Ast::Window(_))
+	}
+
+	pub fn as_window(&self) -> &AstWindow<'a> {
+		if let Ast::Window(result) = self {
+			result
+		} else {
+			panic!("not window")
 		}
 	}
 }
@@ -1150,4 +1164,18 @@ impl<'a> AstParameterRef<'a> {
 			ParameterKind::Positional(_) => None,
 		}
 	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstWindow<'a> {
+	pub token: Token<'a>,
+	pub config: Vec<AstWindowConfig<'a>>,
+	pub aggregations: Vec<Ast<'a>>,
+	pub group_by: Vec<Ast<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstWindowConfig<'a> {
+	pub key: UnqualifiedIdentifier<'a>,
+	pub value: Ast<'a>,
 }

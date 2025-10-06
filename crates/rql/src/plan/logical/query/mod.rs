@@ -11,3 +11,4 @@ mod join;
 mod map;
 mod order;
 mod take;
+pub mod window;

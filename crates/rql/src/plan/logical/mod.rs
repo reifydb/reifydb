@@ -4,7 +4,7 @@
 pub mod alter;
 mod create;
 mod mutate;
-mod query;
+pub mod query;
 pub mod resolver;
 
 use reifydb_catalog::{
@@ -277,6 +277,7 @@ impl Compiler {
 			Ast::Map(node) => Self::compile_map(node, tx),
 			Ast::Extend(node) => Self::compile_extend(node, tx),
 			Ast::Apply(node) => Self::compile_apply(node),
+			Ast::Window(node) => Self::compile_window(node, tx),
 			Ast::Identifier(ref id) => {
 				return_error!(unsupported_ast_node(id.clone(), "standalone identifier"))
 			}
@@ -337,6 +338,7 @@ pub enum LogicalPlan<'a> {
 	Apply(ApplyNode<'a>),
 	InlineData(InlineDataNode<'a>),
 	SourceScan(SourceScanNode<'a>),
+	Window(query::window::WindowNode<'a>),
 	// Pipeline wrapper for piped operations
 	Pipeline(PipelineNode<'a>),
 }

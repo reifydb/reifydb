@@ -129,3 +129,27 @@ impl Default for IndexType {
 		IndexType::Index
 	}
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum WindowType {
+	Time,
+	Count,
+}
+
+impl Default for WindowType {
+	fn default() -> Self {
+		WindowType::Time
+	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WindowSize {
+	Duration(std::time::Duration),
+	Count(u64),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum WindowSlide {
+	Duration(std::time::Duration),
+	Count(u64),
+}

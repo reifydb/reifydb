@@ -620,5 +620,34 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				}
 			}
 		}
+		LogicalPlan::Window(window) => {
+			output.push_str(&format!("{}{} Window\n", prefix, branch));
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			output.push_str(&format!("{}├── Window Type: {:?}\n", child_prefix, window.window_type));
+			output.push_str(&format!("{}├── Size: {:?}\n", child_prefix, window.size));
+			if let Some(ref slide) = window.slide {
+				output.push_str(&format!("{}├── Slide: {:?}\n", child_prefix, slide));
+			}
+			if !window.group_by.is_empty() {
+				output.push_str(&format!(
+					"{}├── Group By: {} expressions\n",
+					child_prefix,
+					window.group_by.len()
+				));
+			}
+			output.push_str(&format!(
+				"{}└── Aggregations: {} expressions\n",
+				child_prefix,
+				window.aggregations.len()
+			));
+		}
 	}
 }

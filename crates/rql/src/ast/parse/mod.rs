@@ -31,6 +31,7 @@ pub mod sub_query;
 mod take;
 mod tuple;
 mod update;
+mod window;
 
 use std::cmp::PartialOrd;
 

@@ -68,6 +68,7 @@ impl<'a> Parser<'a> {
 					Keyword::Call => Ok(Ast::Call(self.parse_call()?)),
 					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
+					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
 					_ => {
 						// Try to parse as statement keyword first, if that fails, treat as
 						// identifier
