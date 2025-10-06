@@ -154,6 +154,10 @@ impl StandardEngine {
 				.register_aggregate("count", math::aggregate::Count::new)
 				.register_scalar("abs", math::scalar::Abs::new)
 				.register_scalar("avg", math::scalar::Avg::new)
+				.register_scalar("count", math::scalar::Count::new)
+				.register_scalar("max", math::scalar::Max::new)
+				.register_scalar("min", math::scalar::Min::new)
+				.register_scalar("sum", math::scalar::Sum::new)
 				.register_generator("generate_series", generator::GenerateSeries::new)
 				.build()
 		});

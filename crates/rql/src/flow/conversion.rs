@@ -318,6 +318,14 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 				})
 				.collect(),
 		}),
+		PhysicalPlan::Window(node) => PhysicalPlan::Window(crate::plan::physical::WindowNode {
+			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
+			window_type: node.window_type,
+			size: node.size,
+			slide: node.slide,
+			group_by: to_owned_expressions(node.group_by),
+			aggregations: to_owned_expressions(node.aggregations),
+		}),
 		_ => unimplemented!("Implement conversion for remaining PhysicalPlan variants"),
 	}
 }
