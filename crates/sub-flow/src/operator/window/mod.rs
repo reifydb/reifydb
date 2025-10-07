@@ -6,7 +6,7 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowType,
+	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
 	interface::{
 		ColumnEvaluationContext, ColumnEvaluator, FlowNodeId, RowEvaluationContext, RowEvaluator,
 		expression::Expression,
@@ -32,21 +32,27 @@ use crate::{
 	},
 };
 
+mod sliding;
+mod tumbling;
+
+pub use sliding::apply_sliding_window;
+pub use tumbling::apply_tumbling_window;
+
 static EMPTY_PARAMS: Params = Params::None;
 
 /// A single event stored within a window
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct WindowEvent {
-	row_number: RowNumber,
-	timestamp: u64, // System timestamp in milliseconds
+pub struct WindowEvent {
+	pub row_number: RowNumber,
+	pub timestamp: u64, // System timestamp in milliseconds
 	#[serde(with = "serde_bytes")]
-	encoded_bytes: Vec<u8>,
-	layout_names: Vec<String>,
-	layout_types: Vec<Type>,
+	pub encoded_bytes: Vec<u8>,
+	pub layout_names: Vec<String>,
+	pub layout_types: Vec<Type>,
 }
 
 impl WindowEvent {
-	fn from_row(row: &Row, timestamp: u64) -> Self {
+	pub fn from_row(row: &Row, timestamp: u64) -> Self {
 		let names = row.layout.names().to_vec();
 		let types: Vec<Type> = row.layout.fields.iter().map(|f| f.r#type).collect();
 
@@ -59,7 +65,7 @@ impl WindowEvent {
 		}
 	}
 
-	fn to_row(&self) -> Row {
+	pub fn to_row(&self) -> Row {
 		let fields: Vec<(String, Type)> =
 			self.layout_names.iter().cloned().zip(self.layout_types.iter().cloned()).collect();
 
@@ -76,15 +82,15 @@ impl WindowEvent {
 
 /// State for a single window
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct WindowState {
+pub struct WindowState {
 	/// All events in this window (stored in insertion order)
-	events: Vec<WindowEvent>,
+	pub events: Vec<WindowEvent>,
 	/// Window creation timestamp
-	window_start: u64,
+	pub window_start: u64,
 	/// Count of events in window (for count-based windows)
-	event_count: u64,
+	pub event_count: u64,
 	/// Whether this window has been triggered/computed
-	is_triggered: bool,
+	pub is_triggered: bool,
 }
 
 impl Default for WindowState {
@@ -100,14 +106,14 @@ impl Default for WindowState {
 
 /// The main window operator
 pub struct WindowOperator {
-	node: FlowNodeId,
-	window_type: WindowType,
-	size: WindowSize,
-	slide: Option<WindowSlide>,
-	group_by: Vec<Expression<'static>>,
-	aggregations: Vec<Expression<'static>>,
-	layout: EncodedValuesLayout,
-	column_evaluator: StandardColumnEvaluator,
+	pub node: FlowNodeId,
+	pub window_type: WindowType,
+	pub size: WindowSize,
+	pub slide: Option<WindowSlide>,
+	pub group_by: Vec<Expression<'static>>,
+	pub aggregations: Vec<Expression<'static>>,
+	pub layout: EncodedValuesLayout,
+	pub column_evaluator: StandardColumnEvaluator,
 }
 
 impl WindowOperator {
@@ -132,12 +138,12 @@ impl WindowOperator {
 	}
 
 	/// Get the current timestamp in milliseconds
-	fn current_timestamp(&self) -> u64 {
+	pub fn current_timestamp(&self) -> u64 {
 		clock::now_millis()
 	}
 
 	/// Compute the group key for a row (used for partitioning windows by group_by expressions)
-	fn compute_group_key(&self, row: &Row, evaluator: &StandardRowEvaluator) -> crate::Result<Hash128> {
+	pub fn compute_group_key(&self, row: &Row, evaluator: &StandardRowEvaluator) -> crate::Result<Hash128> {
 		if self.group_by.is_empty() {
 			// Single global window
 			return Ok(Hash128::from(0u128));
@@ -160,7 +166,7 @@ impl WindowOperator {
 	}
 
 	/// Create a window key for storage
-	fn create_window_key(&self, group_hash: Hash128, window_id: u64) -> EncodedKey {
+	pub fn create_window_key(&self, group_hash: Hash128, window_id: u64) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(32);
 		serializer.extend_bytes(b"win:");
 		serializer.extend_u128(group_hash);
@@ -169,84 +175,36 @@ impl WindowOperator {
 	}
 
 	/// Extract timestamp from row data
-	fn extract_timestamp_from_row(&self, row: &Row) -> crate::Result<u64> {
-		// Try to find timestamp field in the row
-		if let Some(timestamp_index) = row.layout.names().iter().position(|name| name == "timestamp") {
-			let timestamp_value = row.layout.layout().get_i64(&row.encoded, timestamp_index);
-			return Ok(timestamp_value as u64);
-		}
-
-		// Fallback to current time if no timestamp field found
-		Ok(self.current_timestamp())
-	}
-
-	/// Determine which window(s) an event belongs to
-	fn get_window_ids(&self, timestamp: u64) -> Vec<u64> {
-		match (&self.window_type, &self.size) {
-			(WindowType::Time, WindowSize::Duration(duration)) => {
-				let window_size_ms = duration.as_millis() as u64;
-				let base_window = timestamp / window_size_ms;
-
-				match &self.slide {
-					Some(WindowSlide::Duration(slide_duration)) => {
-						let slide_ms = slide_duration.as_millis() as u64;
-						if slide_ms >= window_size_ms {
-							// Non-overlapping windows
-							vec![base_window]
-						} else {
-							// Overlapping windows - event belongs to multiple windows
-							let mut windows = Vec::new();
-							let num_windows = window_size_ms / slide_ms;
-							for i in 0..num_windows {
-								let window_start = base_window.saturating_sub(i);
-								if timestamp >= window_start * window_size_ms {
-									windows.push(window_start);
-								}
-							}
-							windows
-						}
-					}
-					Some(WindowSlide::Count(_)) => {
-						// Time windows with count-based slide not supported yet
-						vec![base_window]
-					}
-					None => {
-						// Tumbling window
-						vec![base_window]
+	pub fn extract_timestamp_from_row(&self, row: &Row) -> crate::Result<u64> {
+		match &self.window_type {
+			WindowType::Time(time_mode) => match time_mode {
+				WindowTimeMode::Processing => Ok(self.current_timestamp()),
+				WindowTimeMode::EventTime(column_name) => {
+					if let Some(timestamp_index) =
+						row.layout.names().iter().position(|name| name == column_name)
+					{
+						let timestamp_value =
+							row.layout.layout().get_i64(&row.encoded, timestamp_index);
+						Ok(timestamp_value as u64)
+					} else {
+						Err(Error(internal_error!(
+							"Event time column '{}' not found in row with columns: {:?}",
+							column_name,
+							row.layout.names()
+						)))
 					}
 				}
+			},
+			WindowType::Count => {
+				unreachable!(
+					"extract_timestamp_from_row should never be called for count-based windows"
+				)
 			}
-			(WindowType::Count, WindowSize::Count(count)) => {
-				// For count-based windows, we use a simple incrementing window ID
-				// This is a simplified implementation - real implementation would need
-				// to track event counts per group
-				vec![timestamp / *count]
-			}
-			_ => {
-				// Mismatched window type and size
-				vec![0]
-			}
-		}
-	}
-
-	/// Check if a window should be triggered (emitted)
-	fn should_trigger_window(&self, state: &WindowState, current_timestamp: u64) -> bool {
-		if state.is_triggered {
-			return false;
-		}
-
-		match (&self.window_type, &self.size) {
-			(WindowType::Time, WindowSize::Duration(duration)) => {
-				let window_size_ms = duration.as_millis() as u64;
-				current_timestamp >= state.window_start + window_size_ms
-			}
-			(WindowType::Count, WindowSize::Count(count)) => state.event_count >= *count,
-			_ => false,
 		}
 	}
 
 	/// Extract group values from window events (all events in a group have the same group values)
-	fn extract_group_values(
+	pub fn extract_group_values(
 		&self,
 		events: &[WindowEvent],
 		row_evaluator: &StandardRowEvaluator,
@@ -279,7 +237,7 @@ impl WindowOperator {
 	}
 
 	/// Convert window events to columnar format for aggregation
-	fn events_to_columns(&self, events: &[WindowEvent]) -> crate::Result<Columns<'static>> {
+	pub fn events_to_columns(&self, events: &[WindowEvent]) -> crate::Result<Columns<'static>> {
 		if events.is_empty() {
 			return Ok(Columns::new(Vec::new()));
 		}
@@ -311,7 +269,7 @@ impl WindowOperator {
 	}
 
 	/// Apply aggregations to all events in a window
-	fn apply_aggregations(
+	pub fn apply_aggregations(
 		&self,
 		events: &[WindowEvent],
 		row_evaluator: &StandardRowEvaluator,
@@ -378,7 +336,7 @@ impl WindowOperator {
 	}
 
 	/// Process expired windows and clean up state
-	fn process_expired_windows(
+	pub fn process_expired_windows(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		current_timestamp: u64,
@@ -386,7 +344,7 @@ impl WindowOperator {
 		let result = Vec::new();
 
 		// For time-based windows, expire windows that are older than the window size + slide
-		if let (WindowType::Time, WindowSize::Duration(duration)) = (&self.window_type, &self.size) {
+		if let (WindowType::Time(_), WindowSize::Duration(duration)) = (&self.window_type, &self.size) {
 			let window_size_ms = duration.as_millis() as u64;
 			let expire_before = current_timestamp.saturating_sub(window_size_ms * 2); // Keep 2 window sizes
 
@@ -400,6 +358,47 @@ impl WindowOperator {
 		}
 
 		Ok(result)
+	}
+
+	/// Load window state from storage
+	pub fn load_window_state(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		window_key: &EncodedKey,
+	) -> crate::Result<WindowState> {
+		let state_row = self.load_state(txn, window_key)?;
+
+		if state_row.is_empty() || !state_row.is_defined(0) {
+			return Ok(WindowState::default());
+		}
+
+		let blob = self.layout.get_blob(&state_row, 0);
+		if blob.is_empty() {
+			return Ok(WindowState::default());
+		}
+
+		let config = standard();
+		decode_from_slice(blob.as_ref(), config)
+			.map(|(state, _)| state)
+			.map_err(|e| Error(internal_error!("Failed to deserialize WindowState: {}", e)))
+	}
+
+	/// Save window state to storage
+	pub fn save_window_state(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		window_key: &EncodedKey,
+		state: &WindowState,
+	) -> crate::Result<()> {
+		let config = standard();
+		let serialized = encode_to_vec(state, config)
+			.map_err(|e| Error(internal_error!("Failed to serialize WindowState: {}", e)))?;
+
+		let mut state_row = self.layout.allocate();
+		let blob = Blob::from(serialized);
+		self.layout.set_blob(&mut state_row, 0, &blob);
+
+		self.save_state(txn, window_key, state_row)
 	}
 }
 
@@ -424,141 +423,37 @@ impl Operator for WindowOperator {
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		let mut result = Vec::new();
-		let current_timestamp = self.current_timestamp();
-
-		// First, process any expired windows
-		let expired_diffs = self.process_expired_windows(txn, current_timestamp)?;
-		result.extend(expired_diffs);
-
-		// Process each incoming change
-		for diff in change.diffs.iter() {
-			match diff {
-				FlowDiff::Insert {
-					post,
-				} => {
-					let group_hash = self.compute_group_key(&post, evaluator)?;
-					let event_timestamp = self.extract_timestamp_from_row(&post)?;
-					let window_ids = self.get_window_ids(event_timestamp);
-
-					for window_id in window_ids {
-						let window_key = self.create_window_key(group_hash, window_id);
-						let mut window_state = self.load_window_state(txn, &window_key)?;
-
-						// Add event to window
-						let event = WindowEvent::from_row(&post, event_timestamp);
-						window_state.events.push(event);
-						window_state.event_count += 1;
-
-						if window_state.window_start == 0 {
-							window_state.window_start = event_timestamp;
-						}
-
-						// Check if window should be triggered
-						let should_trigger =
-							self.should_trigger_window(&window_state, current_timestamp);
-
-						if should_trigger {
-							window_state.is_triggered = true;
-
-							// Apply aggregations and emit result
-							if let Some(aggregated_row) = self
-								.apply_aggregations(&window_state.events, evaluator)?
-							{
-								result.push(FlowDiff::Insert {
-									post: aggregated_row,
-								});
-							}
-						}
-
-						self.save_window_state(txn, &window_key, &window_state)?;
-					}
-				}
-				FlowDiff::Update {
-					pre: _,
-					post,
-				} => {
-					// For windows, updates are treated as insert of new value
-					// Real implementation might need to handle retractions
-					let group_hash = self.compute_group_key(&post, evaluator)?;
-					let event_timestamp = self.extract_timestamp_from_row(&post)?;
-					let window_ids = self.get_window_ids(event_timestamp);
-
-					for window_id in window_ids {
-						let window_key = self.create_window_key(group_hash, window_id);
-						let mut window_state = self.load_window_state(txn, &window_key)?;
-
-						let event = WindowEvent::from_row(&post, event_timestamp);
-						window_state.events.push(event);
-						window_state.event_count += 1;
-
-						if self.should_trigger_window(&window_state, current_timestamp) {
-							window_state.is_triggered = true;
-
-							if let Some(aggregated_row) = self
-								.apply_aggregations(&window_state.events, evaluator)?
-							{
-								result.push(FlowDiff::Insert {
-									post: aggregated_row,
-								});
-							}
-						}
-
-						self.save_window_state(txn, &window_key, &window_state)?;
-					}
-				}
-				FlowDiff::Remove {
-					pre: _,
-				} => {
-					// Window operators typically don't handle removes in streaming scenarios
-					// This would require complex retraction logic
-				}
-			}
+		match &self.slide {
+			Some(_) => apply_sliding_window(self, txn, change, evaluator),
+			None => apply_tumbling_window(self, txn, change, evaluator),
 		}
-
-		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 }
 
+/// Additional helper methods for window triggering
 impl WindowOperator {
-	/// Load window state from storage
-	fn load_window_state(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		window_key: &EncodedKey,
-	) -> crate::Result<WindowState> {
-		let state_row = self.load_state(txn, window_key)?;
-
-		if state_row.is_empty() || !state_row.is_defined(0) {
-			return Ok(WindowState::default());
+	/// Check if a window should be triggered (emitted)
+	pub fn should_trigger_window(&self, state: &WindowState, current_timestamp: u64) -> bool {
+		match (&self.window_type, &self.size, &self.slide) {
+			// Tumbling windows (no slide): emit immediately when events arrive (streaming behavior)
+			(WindowType::Time(_), WindowSize::Duration(_), None) => {
+				if state.event_count > 0 {
+					return true;
+				}
+				false
+			}
+			// Sliding windows: use time-based triggering with once-per-window logic
+			(WindowType::Time(_), WindowSize::Duration(duration), Some(_)) => {
+				if state.is_triggered {
+					return false;
+				}
+				let window_size_ms = duration.as_millis() as u64;
+				let trigger_time = state.window_start + window_size_ms;
+				current_timestamp >= trigger_time
+			}
+			// Count-based windows: trigger when count threshold is reached
+			(WindowType::Count, WindowSize::Count(count), _) => state.event_count >= *count,
+			_ => false,
 		}
-
-		let blob = self.layout.get_blob(&state_row, 0);
-		if blob.is_empty() {
-			return Ok(WindowState::default());
-		}
-
-		let config = standard();
-		decode_from_slice(blob.as_ref(), config)
-			.map(|(state, _)| state)
-			.map_err(|e| Error(internal_error!("Failed to deserialize WindowState: {}", e)))
-	}
-
-	/// Save window state to storage
-	fn save_window_state(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		window_key: &EncodedKey,
-		state: &WindowState,
-	) -> crate::Result<()> {
-		let config = standard();
-		let serialized = encode_to_vec(state, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize WindowState: {}", e)))?;
-
-		let mut state_row = self.layout.allocate();
-		let blob = Blob::from(serialized);
-		self.layout.set_blob(&mut state_row, 0, &blob);
-
-		self.save_state(txn, window_key, state_row)
 	}
 }

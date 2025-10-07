@@ -25,7 +25,6 @@ fn main() {
 	// Set mock time to a known value for testing time-based windows
 	let base_time = 1000000; // Start at 1,000,000 milliseconds
 	clock::mock_time_set(base_time);
-	println!("DEBUG: Set mock time to {}", base_time);
 
 	let mut db =
 		embedded::memory_optimistic().with_logging(logger_configuration).with_worker(|wp| wp).build().unwrap();
@@ -64,7 +63,7 @@ fn main() {
 		} AS {
 		   FROM iot.sensors 
 		   WINDOW { avg_temperature: avg(temperature), sum_humidity: sum(humidity) } 
-		   WITH { interval: "5m" } 
+		   WITH { interval: "100ms" } 
 		   BY { location }
 		}"#,
 		Params::None,
@@ -103,7 +102,7 @@ fn main() {
 		} AS {
 		   FROM iot.sensors 
 		   WINDOW { avg_temperature: avg(temperature), sum_humidity: sum(humidity) } 
-		   WITH { interval: "1h", slide: "10m" } 
+		   WITH { interval: "2s", slide: "1s" } 
 		   BY { location, sensor_id }
 		}"#,
 		Params::None,
@@ -122,14 +121,14 @@ fn main() {
 		   sum_humidity: FLOAT8,
 		   avg_pressure: FLOAT8
 		} AS {
-		   FROM iot.sensors 
-		   WINDOW { 
-			   avg_temperature: avg(temperature), 
+		   FROM iot.sensors
+		   WINDOW {
+			   avg_temperature: avg(temperature),
 			   sum_humidity: sum(humidity),
 			   avg_pressure: avg(pressure)
-		   } 
-		   BY { sensor_id, location } 
-		   WITH { interval: "15m" }
+		   }
+		   BY { sensor_id, location }
+		   WITH { interval: "100ms" }
 		}"#,
 		Params::None,
 	) {
@@ -142,7 +141,6 @@ fn main() {
 
 	// Insert realistic IoT sensor data using proper ReifyDB syntax with current timestamps
 	let current_time = clock::now_millis();
-	println!("DEBUG: Current time for initial data: {}", current_time);
 
 	match db.command_as_root(
 		&format!(r#"FROM [
@@ -167,10 +165,21 @@ fn main() {
 		Err(e) => println!("Initial insert failed: {}", e),
 	}
 
-	// Advance mock time to trigger time-based windows
-	clock::mock_time_advance(6 * 60 * 1000); // Advance by 6 minutes to trigger 5-minute windows
-	let new_time = clock::now_millis();
-	println!("DEBUG: Advanced time to {} (advanced by 6 minutes)", new_time);
+	// Wait for windows to potentially trigger (using real time since windows use real timestamps)
+	println!("Waiting 2 seconds for 1-second windows to trigger...");
+	sleep(Duration::from_secs(2));
+
+	// Insert a dummy row to trigger window processing
+	println!("Inserting trigger data to process expired windows...");
+	match db.command_as_root(
+		r#"FROM [
+			{ sensor_id: "trigger", location: "trigger", temperature: 0.0, humidity: 0.0, pressure: 0.0, timestamp: 0 }
+		] INSERT iot.sensors"#,
+		Params::None,
+	) {
+		Ok(_) => println!("Trigger data inserted"),
+		Err(e) => println!("Trigger insert failed: {}", e),
+	}
 
 	// Insert additional data for count-based window testing (need >100 readings)
 	println!("\nInserting additional data for count-based window testing...");
@@ -197,12 +206,9 @@ fn main() {
 		Err(e) => println!("Batch insert failed: {}", e),
 	}
 
-	// Advance time again to trigger more windows
-	clock::mock_time_advance(10 * 60 * 1000); // Advance by another 10 minutes
-	let final_time = clock::now_millis();
-	println!("DEBUG: Final time advanced to {} (total 16 minutes from start)", final_time);
-
-	sleep(Duration::from_millis(100));
+	// Wait again for windows to trigger after additional data
+	println!("Waiting another 2 seconds for windows to trigger with additional data...");
+	sleep(Duration::from_secs(2));
 
 	// 🔍 QUERY WINDOW VIEWS TO VALIDATE FUNCTIONALITY
 	println!("\n🔍 Querying window views to validate functionality...");

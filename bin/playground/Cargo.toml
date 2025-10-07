@@ -6,5 +6,9 @@ authors.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[[bin]]
+name = "playground"
+path = "src/main.rs"
+
 [dependencies]
 reifydb = { workspace = true, features = ["sub_flow", "sub_logging", "sub_worker"] }

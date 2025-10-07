@@ -3,6 +3,7 @@ use std::{
 	fmt::{Display, Formatter},
 	num::ParseIntError,
 	str::FromStr,
+	time::Duration,
 };
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
@@ -132,24 +133,36 @@ impl Default for IndexType {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum WindowType {
-	Time,
+	Time(WindowTimeMode),
 	Count,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum WindowTimeMode {
+	Processing,
+	EventTime(String),
 }
 
 impl Default for WindowType {
 	fn default() -> Self {
-		WindowType::Time
+		WindowType::Time(WindowTimeMode::Processing)
+	}
+}
+
+impl Default for WindowTimeMode {
+	fn default() -> Self {
+		WindowTimeMode::Processing
 	}
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WindowSize {
-	Duration(std::time::Duration),
+	Duration(Duration),
 	Count(u64),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum WindowSlide {
-	Duration(std::time::Duration),
+	Duration(Duration),
 	Count(u64),
 }
