@@ -2,10 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::{QueryTransaction, evaluate::expression::Expression};
+use reifydb_core::interface::QueryTransaction;
 
 use crate::{
 	ast::AstStatement,
+	expression::Expression,
 	plan::{
 		logical::compile_logical,
 		physical::{PhysicalPlan, compile_physical},

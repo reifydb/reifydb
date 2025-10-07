@@ -22,6 +22,7 @@ use crate::{
 		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
+	stack::Stack,
 	transaction::operation::TableOperations,
 };
 
@@ -58,7 +59,7 @@ impl Executor {
 			source: resolved_source,
 			batch_size: 1024,
 			params: params.clone(),
-			stack: reifydb_core::stack::Stack::new(),
+			stack: Stack::new(),
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);

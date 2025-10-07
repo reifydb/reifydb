@@ -1,11 +1,14 @@
 use reifydb_core::{
-	interface::{ResolvedColumn, TargetColumn},
+	interface::ResolvedColumn,
 	value::column::{ColumnData, Columns},
 };
 use reifydb_type::{Fragment, Type, Value};
 
 use crate::{
-	evaluate::column::{ColumnEvaluationContext, cast::cast_column_data},
+	evaluate::{
+		TargetColumn,
+		column::{ColumnEvaluationContext, cast::cast_column_data},
+	},
 	execute::ExecutionContext,
 };
 

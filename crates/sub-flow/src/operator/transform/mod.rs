@@ -1,7 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{FlowNodeId, expression::Expression};
+use reifydb_core::interface::FlowNodeId;
+use reifydb_rql::expression::Expression;
 
 use crate::operator::Operator;
 
@@ -17,7 +18,7 @@ pub trait TransformOperatorFactory: Send + Sync {
 }
 
 pub mod extract {
-	use reifydb_core::interface::expression::ConstantExpression;
+	use reifydb_rql::expression::ConstantExpression;
 
 	use super::*;
 

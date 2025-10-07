@@ -6,10 +6,8 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{
-	interface::evaluate::expression::Expression,
-	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
-};
+use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
+use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
 
 use crate::{

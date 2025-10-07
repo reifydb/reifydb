@@ -8,13 +8,13 @@ mod uuid;
 
 use number::NumberParser;
 use reifydb_core::{
-	interface::evaluate::expression::ConstantExpression,
 	return_error,
 	value::{
 		column::{Column, ColumnData},
 		container::undefined::UndefinedContainer,
 	},
 };
+use reifydb_rql::expression::ConstantExpression;
 use reifydb_type::{
 	IntoFragment, Type, diagnostic::cast, parse_bool, parse_float, parse_primitive_int, parse_primitive_uint,
 };

@@ -3,16 +3,14 @@
 
 use std::cmp::min;
 
-use reifydb_core::{
-	interface::{ColumnEvaluationContext, expression::ColumnExpression},
-	value::column::{Column, ColumnData},
-};
+use reifydb_core::value::column::{Column, ColumnData};
+use reifydb_rql::expression::ColumnExpression;
 use reifydb_type::{
 	Date, DateTime, Decimal, Interval, RowNumber, Time, Type, Uint, Value,
 	value::{Blob, IdentityId, Uuid4, Uuid7},
 };
 
-use crate::StandardColumnEvaluator;
+use crate::{StandardColumnEvaluator, evaluate::ColumnEvaluationContext};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn column<'a>(

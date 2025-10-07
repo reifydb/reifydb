@@ -46,15 +46,13 @@ impl Executor {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::{
-		interface::{NamespaceDef, NamespaceId, Params, resolved::ResolvedNamespace},
-		stack::Stack,
-	};
+	use reifydb_core::interface::{NamespaceDef, NamespaceId, Params, resolved::ResolvedNamespace};
 	use reifydb_rql::plan::physical::PhysicalPlan;
 	use reifydb_type::{Fragment, Value};
 
 	use crate::{
 		execute::{Executor, catalog::create::table::CreateTableNode},
+		stack::Stack,
 		test_utils::create_test_command_transaction,
 	};
 

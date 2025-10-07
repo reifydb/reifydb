@@ -12,12 +12,15 @@ pub mod execute;
 #[allow(dead_code)]
 pub mod function;
 pub(crate) mod interceptor;
+pub(crate) mod stack;
 pub mod table_virtual;
 pub mod test_utils;
 pub mod transaction;
 
 pub use engine::StandardEngine;
-pub use evaluate::{column::StandardColumnEvaluator, row::StandardRowEvaluator};
+pub use evaluate::{
+	ColumnEvaluationContext, RowEvaluationContext, column::StandardColumnEvaluator, row::StandardRowEvaluator,
+};
 pub use transaction::{StandardCommandTransaction, StandardQueryTransaction, StandardTransaction};
 
 pub struct EngineVersion;

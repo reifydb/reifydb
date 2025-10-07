@@ -44,7 +44,7 @@ mod tests {
 	use reifydb_rql::plan::physical::{CreateNamespaceNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Value};
 
-	use crate::{execute::Executor, test_utils::create_test_command_transaction};
+	use crate::{execute::Executor, stack::Stack, test_utils::create_test_command_transaction};
 
 	#[test]
 	fn test_create_namespace() {
@@ -57,7 +57,7 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let mut stack = reifydb_core::stack::Stack::new();
+		let mut stack = Stack::new();
 		let result = instance
 			.execute_command_plan(
 				&mut txn,

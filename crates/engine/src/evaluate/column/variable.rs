@@ -1,11 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{ColumnEvaluationContext, evaluate::expression::VariableExpression},
-	stack::Variable,
-	value::column::{Column, ColumnData},
-};
+use reifydb_core::value::column::{Column, ColumnData};
+use reifydb_rql::expression::VariableExpression;
 use reifydb_type::{
 	Fragment,
 	diagnostic::runtime::{variable_is_dataframe, variable_not_found},
@@ -13,6 +10,7 @@ use reifydb_type::{
 };
 
 use super::StandardColumnEvaluator;
+use crate::{evaluate::ColumnEvaluationContext, stack::Variable};
 
 impl StandardColumnEvaluator {
 	pub(super) fn variable<'a>(

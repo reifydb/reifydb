@@ -4,16 +4,19 @@
 //! Conversion utilities for transforming borrowed data to owned data at the
 //! flow compilation boundary
 
-use reifydb_core::interface::evaluate::expression::{
-	AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
-	CastExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression,
-	GreaterThanEqExpression, GreaterThanExpression, IdentExpression, LessThanEqExpression, LessThanExpression,
-	MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator,
-	RemExpression, SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
-};
 use reifydb_type::Fragment;
 
-use crate::plan::physical::PhysicalPlan;
+use crate::{
+	expression::{
+		AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
+		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression,
+		Expression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression, LessThanEqExpression,
+		LessThanExpression, MulExpression, NotEqExpression, OrExpression, ParameterExpression,
+		PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression, TypeExpression,
+		VariableExpression, XorExpression,
+	},
+	plan::physical::PhysicalPlan,
+};
 
 /// Converts an Expression<'a> to Expression<'static> by converting all
 /// fragments to owned

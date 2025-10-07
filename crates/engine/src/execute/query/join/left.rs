@@ -1,10 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::evaluate::expression::Expression,
-	value::column::{Columns, headers::ColumnHeaders},
-};
+use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
+use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, Value};
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};

@@ -3,11 +3,8 @@
 
 use std::collections::HashMap;
 
-use reifydb_type::Value;
-
-use crate::value::column::Columns;
-
-// FIXME this should not be in the core crate - move into engine
+use reifydb_core::value::column::Columns;
+use reifydb_type::{Value, diagnostic, error};
 
 /// A variable can be either a scalar value or a dataframe
 #[derive(Debug, Clone)]
@@ -101,9 +98,7 @@ impl Stack {
 	/// Returns error if trying to exit the global scope
 	pub fn exit_scope(&mut self) -> crate::Result<()> {
 		if self.scopes.len() <= 1 {
-			return Err(crate::error!(crate::diagnostic::internal::internal(
-				"Cannot exit global scope".to_string()
-			)));
+			return Err(error!(diagnostic::internal::internal("Cannot exit global scope".to_string())));
 		}
 		self.scopes.pop();
 		Ok(())
@@ -231,10 +226,10 @@ impl Default for Stack {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::value::column::{Column, ColumnData};
 	use reifydb_type::Value;
 
 	use super::*;
-	use crate::value::column::{Column, ColumnData, Columns};
 
 	// Helper function to create test columns
 	fn create_test_columns(values: Vec<Value>) -> Columns<'static> {

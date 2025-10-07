@@ -1,5 +1,6 @@
-use reifydb_core::interface::{FlowNodeId, expression::Expression};
+use reifydb_core::interface::FlowNodeId;
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_rql::expression::Expression;
 
 use crate::{flow::FlowChange, operator::Operator};
 

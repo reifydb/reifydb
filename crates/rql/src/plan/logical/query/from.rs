@@ -2,12 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::evaluate::expression::{AliasExpression, IdentExpression};
 use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
 
 use crate::{
 	ast::{Ast, AstFrom},
-	expression::ExpressionCompiler,
+	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{Compiler, GeneratorNode, InlineDataNode, LogicalPlan, SourceScanNode, resolver},
 };
 

@@ -3,12 +3,9 @@
 
 use reifydb_core::{
 	error,
-	interface::{
-		ColumnEvaluator,
-		evaluate::expression::{CallExpression, Expression},
-	},
 	value::column::{Column, Columns},
 };
+use reifydb_rql::expression::{CallExpression, Expression};
 use reifydb_type::diagnostic::function;
 
 use crate::{

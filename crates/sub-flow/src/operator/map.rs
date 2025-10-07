@@ -1,12 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	Row,
-	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, expression::Expression},
-	value::encoded::EncodedValuesNamedLayout,
-};
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_core::{Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
+use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_rql::expression::Expression;
 use reifydb_type::{Params, Type};
 
 use crate::{

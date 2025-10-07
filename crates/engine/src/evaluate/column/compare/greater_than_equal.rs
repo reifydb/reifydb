@@ -2,19 +2,19 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{ColumnEvaluator, evaluate::expression::GreaterThanEqExpression},
 	return_error,
 	value::{
 		column::{Column, ColumnData},
 		container::{Utf8Container, number::NumberContainer, temporal::TemporalContainer},
 	},
 };
+use reifydb_rql::expression::GreaterThanEqExpression;
 use reifydb_type::{
 	Fragment, IsNumber, IsTemporal, Promote, Type::Boolean,
 	diagnostic::operator::greater_than_equal_cannot_be_applied_to_incompatible_types, temporal, value::number,
 };
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use crate::evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn greater_than_equal<'a>(

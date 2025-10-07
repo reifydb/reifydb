@@ -3,13 +3,18 @@
 
 use reifydb_catalog::sequence::ColumnSequence;
 use reifydb_core::{
-	interface::{ColumnEvaluationContext, Params, TargetColumn, resolved::ResolvedSource},
+	interface::{Params, resolved::ResolvedSource},
 	value::column::Columns,
 };
 use reifydb_rql::plan::physical::AlterSequenceNode;
 use reifydb_type::{Value, diagnostic::sequence::can_not_alter_not_auto_increment, return_error};
 
-use crate::{evaluate::column::evaluate, execute::Executor, transaction::StandardCommandTransaction};
+use crate::{
+	evaluate::{ColumnEvaluationContext, TargetColumn, column::evaluate},
+	execute::Executor,
+	stack::Stack,
+	transaction::StandardCommandTransaction,
+};
 
 impl Executor {
 	pub(crate) fn alter_table_sequence<'a>(
@@ -42,8 +47,7 @@ impl Executor {
 		// ExecutionContext is available
 		use std::sync::LazyLock;
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
-		static EMPTY_STACK: LazyLock<reifydb_core::stack::Stack> =
-			LazyLock::new(|| reifydb_core::stack::Stack::new());
+		static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
 		let value = evaluate(
 			&ColumnEvaluationContext {

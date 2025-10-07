@@ -3,7 +3,8 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::interface::{FlowNodeId, expression::Expression};
+use reifydb_core::interface::FlowNodeId;
+use reifydb_rql::expression::Expression;
 
 use crate::operator::Operator;
 

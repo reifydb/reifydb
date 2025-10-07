@@ -1,13 +1,10 @@
-// Copyright (c) reifydb.com 2025.
-// This file is licensed under the AGPL-3.0-or-later, see license.md file.
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
 use reifydb_type::Fragment;
 
-use crate::interface::{
-	evaluate::expression::{
-		AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
-		RemExpression, SubExpression,
-	},
-	expression::ParameterExpression,
+use crate::expression::{
+	AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
+	ParameterExpression, RemExpression, SubExpression,
 };
 
 impl<'a> Expression<'a> {

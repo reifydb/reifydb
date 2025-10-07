@@ -7,13 +7,17 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::{ResolvedSource, TargetColumn, evaluate::expression::AliasExpression},
+	interface::ResolvedSource,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
+use reifydb_rql::expression::AliasExpression;
 use reifydb_type::{Fragment, Type, Value};
 
 use crate::{
-	evaluate::column::{ColumnEvaluationContext, cast::cast_column_data, evaluate},
+	evaluate::{
+		TargetColumn,
+		column::{ColumnEvaluationContext, cast::cast_column_data, evaluate},
+	},
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 

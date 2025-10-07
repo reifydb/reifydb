@@ -1,16 +1,15 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use reifydb_core::{
-	interface::Convert,
-	value::{column::ColumnData, container::NumberContainer},
-};
+use reifydb_core::value::{column::ColumnData, container::NumberContainer};
 use reifydb_type::{
 	BorrowedFragment, Decimal, GetType, Int, IsNumber, LazyFragment, SafeConvert, Type, Uint,
 	diagnostic::cast,
 	error, parse_decimal, parse_float, return_error,
 	value::number::{parse_primitive_int, parse_primitive_uint},
 };
+
+use crate::evaluate::convert::Convert;
 
 pub fn to_number<'a>(
 	ctx: impl Convert,
@@ -648,7 +647,7 @@ fn number_to_number<'a>(
                     match target {
                         $(
                         Type::$dst_variant => return convert_vec::<$src_ty, $dst_ty>(
-                            container,
+                            &container,
                                 ctx,
                                 lazy_fragment,
                                 Type::$dst_variant,
@@ -657,7 +656,7 @@ fn number_to_number<'a>(
                         )*
                         $($(
                         Type::$struct_variant { .. } => return convert_vec::<$src_ty, $struct_ty>(
-                            container,
+                            &container,
                                 ctx,
                                 lazy_fragment,
                                 target,
@@ -1216,10 +1215,10 @@ where
 #[cfg(test)]
 mod tests {
 	mod convert {
-		use reifydb_core::{BitVec, interface::Convert, value::container::NumberContainer};
+		use reifydb_core::{BitVec, value::container::NumberContainer};
 		use reifydb_type::{Fragment, GetType, SafeConvert, Type};
 
-		use crate::evaluate::column::cast::number::convert_vec;
+		use crate::evaluate::{Convert, column::cast::number::convert_vec, convert::Convert};
 
 		#[test]
 		fn test_promote_ok() {

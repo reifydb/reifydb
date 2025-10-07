@@ -1,13 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{ColumnEvaluator, TargetColumn, evaluate::expression::AliasExpression},
-	value::column::Column,
-};
+use reifydb_core::value::column::Column;
+use reifydb_rql::expression::AliasExpression;
 use reifydb_type::Fragment;
 
-use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
+use crate::evaluate::{
+	TargetColumn,
+	column::{ColumnEvaluationContext, StandardColumnEvaluator},
+};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn alias<'a>(

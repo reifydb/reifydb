@@ -5,14 +5,14 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	error,
-	interface::{ColumnEvaluationContext, expression::Expression},
 	value::column::{Columns, headers::ColumnHeaders},
 };
+use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, diagnostic::function::generator_not_found};
 
 use crate::{
 	StandardTransaction,
-	evaluate::column::evaluate,
+	evaluate::{ColumnEvaluationContext, column::evaluate},
 	execute::{Batch, ExecutionContext, QueryNode},
 	function::{GeneratorContext, GeneratorFunction},
 };

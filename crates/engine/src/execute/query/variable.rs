@@ -3,16 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	interface::evaluate::expression::VariableExpression,
-	stack::Variable,
-	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
-};
+use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
+use reifydb_rql::expression::VariableExpression;
 use reifydb_type::{Fragment, diagnostic::runtime::variable_not_found, return_error};
 
 use crate::{
 	StandardTransaction,
 	execute::{Batch, ExecutionContext, QueryNode},
+	stack::Variable,
 };
 
 pub(crate) struct VariableNode<'a> {

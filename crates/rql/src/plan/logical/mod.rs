@@ -16,7 +16,6 @@ use reifydb_core::{
 	IndexType, JoinStrategy, JoinType, SortDirection, SortKey,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
-		expression::{AliasExpression, Expression},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSource},
 	},
 	return_error,
@@ -33,6 +32,7 @@ use crate::{
 			MaybeQualifiedTransactionalViewIdentifier,
 		},
 	},
+	expression::{AliasExpression, Expression},
 	plan::logical::alter::{AlterTableNode, AlterViewNode},
 	query::QueryString,
 };

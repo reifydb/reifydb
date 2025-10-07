@@ -14,7 +14,6 @@ use reifydb_core::{
 	interface::{
 		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
 		catalog::ColumnIndex,
-		evaluate::expression::{AliasExpression, Expression, VariableExpression},
 		resolved::{
 			ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence, ResolvedSource,
 			ResolvedTable, ResolvedTableVirtual, ResolvedView,
@@ -28,6 +27,7 @@ use reifydb_type::{
 };
 
 use crate::{
+	expression::{AliasExpression, Expression, VariableExpression},
 	plan::{
 		logical::LogicalPlan,
 		physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},

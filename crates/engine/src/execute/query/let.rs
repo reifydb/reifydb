@@ -3,17 +3,14 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{
-	interface::evaluate::expression::Expression,
-	stack::Variable,
-	value::column::{Columns, headers::ColumnHeaders},
-};
-use reifydb_rql::plan::physical;
+use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
+use reifydb_rql::{expression::Expression, plan::physical};
 
 use crate::{
 	StandardTransaction,
 	evaluate::column::{ColumnEvaluationContext, evaluate},
 	execute::{Batch, ExecutionContext, QueryNode},
+	stack::Variable,
 };
 
 pub(crate) struct LetNode<'a> {

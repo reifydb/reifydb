@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	BitVec,
-	interface::evaluate::expression::Expression,
 	value::column::{ColumnData, headers::ColumnHeaders},
 };
+use reifydb_rql::expression::Expression;
 
 use crate::{
 	StandardTransaction,

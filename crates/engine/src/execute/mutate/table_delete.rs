@@ -27,6 +27,7 @@ use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
+	stack::Stack,
 };
 
 impl Executor {
@@ -81,7 +82,7 @@ impl Executor {
 					source: resolved_source.clone(),
 					batch_size: 1024,
 					params: params.clone(),
-					stack: reifydb_core::stack::Stack::new(),
+					stack: Stack::new(),
 				}),
 			);
 
@@ -90,7 +91,7 @@ impl Executor {
 				source: resolved_source.clone(),
 				batch_size: 1024,
 				params: params.clone(),
-				stack: reifydb_core::stack::Stack::new(),
+				stack: Stack::new(),
 			};
 
 			// Initialize the operator before execution

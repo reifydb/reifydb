@@ -56,6 +56,7 @@ mod tests {
 
 	use crate::{
 		execute::{Executor, catalog::create::ring_buffer::CreateRingBufferNode},
+		stack::Stack,
 		test_utils::create_test_command_transaction,
 	};
 
@@ -78,7 +79,7 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let mut stack = reifydb_core::stack::Stack::new();
+		let mut stack = Stack::new();
 		let result = instance
 			.execute_command_plan(
 				&mut txn,
@@ -140,7 +141,7 @@ mod tests {
 			capacity: 1000,
 		};
 
-		let mut stack = reifydb_core::stack::Stack::new();
+		let mut stack = Stack::new();
 		let result = instance
 			.execute_command_plan(
 				&mut txn,
@@ -199,7 +200,7 @@ mod tests {
 		// With defensive fallback, this now succeeds even with
 		// non-existent namespace The ring buffer is created with the
 		// provided namespace ID
-		let mut stack = reifydb_core::stack::Stack::new();
+		let mut stack = Stack::new();
 		let result = instance
 			.execute_command_plan(
 				&mut txn,

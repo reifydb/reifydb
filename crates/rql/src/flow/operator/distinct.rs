@@ -3,15 +3,14 @@
 
 use FlowNodeType::Distinct;
 use reifydb_core::interface::{
-	ColumnSource, CommandTransaction, FlowNodeId, ResolvedColumn, ResolvedSource,
-	expression::{ColumnExpression, Expression},
-	identifier::ColumnIdentifier,
+	ColumnSource, CommandTransaction, FlowNodeId, ResolvedColumn, ResolvedSource, identifier::ColumnIdentifier,
 };
 use reifydb_type::Fragment;
 
 use super::super::{CompileOperator, FlowCompiler, FlowNodeType, conversion::to_owned_physical_plan};
 use crate::{
 	Result,
+	expression::{ColumnExpression, Expression},
 	plan::physical::{DistinctNode, PhysicalPlan},
 };
 

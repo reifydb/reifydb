@@ -1,8 +1,6 @@
-use reifydb_core::{
-	Row,
-	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, expression::Expression},
-};
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_core::{Row, interface::FlowNodeId};
+use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_rql::expression::Expression;
 use reifydb_type::{Params, Value, return_internal_error};
 
 use crate::{

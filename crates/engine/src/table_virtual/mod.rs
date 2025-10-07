@@ -3,8 +3,9 @@
 
 use reifydb_core::{
 	SortKey,
-	interface::{Params, TableVirtualDef, expression::Expression},
+	interface::{Params, TableVirtualDef},
 };
+use reifydb_rql::expression::Expression;
 
 use crate::{execute::Batch, transaction::StandardTransaction};
 

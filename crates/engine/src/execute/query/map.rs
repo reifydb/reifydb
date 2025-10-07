@@ -4,15 +4,18 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	interface::{ResolvedColumn, TargetColumn, evaluate::expression::Expression},
+	interface::ResolvedColumn,
 	value::column::{Column, Columns, headers::ColumnHeaders},
 };
-use reifydb_rql::expression::column_name_from_expression;
+use reifydb_rql::expression::{Expression, column_name_from_expression};
 use reifydb_type::Fragment;
 
 use crate::{
 	StandardTransaction,
-	evaluate::column::{ColumnEvaluationContext, evaluate},
+	evaluate::{
+		TargetColumn,
+		column::{ColumnEvaluationContext, evaluate},
+	},
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
 };
 

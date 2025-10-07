@@ -1,7 +1,5 @@
-use reifydb_core::{
-	interface::{ColumnEvaluator, evaluate::expression::TupleExpression},
-	value::column::Column,
-};
+use reifydb_core::value::column::Column;
+use reifydb_rql::expression::TupleExpression;
 
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 

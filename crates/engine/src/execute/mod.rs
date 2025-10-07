@@ -25,7 +25,6 @@ use query::{
 use reifydb_core::{
 	Frame,
 	interface::{Command, Execute, ExecuteCommand, ExecuteQuery, Params, Query, ResolvedSource},
-	stack::Stack,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::{
@@ -36,6 +35,7 @@ use reifydb_rql::{
 use crate::{
 	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
 	function::{Functions, generator, math},
+	stack::{Stack, Variable},
 };
 
 mod catalog;
@@ -256,21 +256,13 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 				// For positional parameters, use $1, $2, $3, etc.
 				for (index, value) in values.iter().enumerate() {
 					let param_name = (index + 1).to_string(); // 1-based indexing
-					persistent_stack.set(
-						param_name,
-						reifydb_core::stack::Variable::Scalar(value.clone()),
-						false,
-					)?;
+					persistent_stack.set(param_name, Variable::Scalar(value.clone()), false)?;
 				}
 			}
 			reifydb_core::interface::Params::Named(map) => {
 				// For named parameters, use the parameter name directly
 				for (name, value) in map {
-					persistent_stack.set(
-						name.clone(),
-						reifydb_core::stack::Variable::Scalar(value.clone()),
-						false,
-					)?;
+					persistent_stack.set(name.clone(), Variable::Scalar(value.clone()), false)?;
 				}
 			}
 			reifydb_core::interface::Params::None => {
@@ -306,21 +298,13 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 				// For positional parameters, use $1, $2, $3, etc.
 				for (index, value) in values.iter().enumerate() {
 					let param_name = (index + 1).to_string(); // 1-based indexing
-					persistent_stack.set(
-						param_name,
-						reifydb_core::stack::Variable::Scalar(value.clone()),
-						false,
-					)?;
+					persistent_stack.set(param_name, Variable::Scalar(value.clone()), false)?;
 				}
 			}
 			reifydb_core::interface::Params::Named(map) => {
 				// For named parameters, use the parameter name directly
 				for (name, value) in map {
-					persistent_stack.set(
-						name.clone(),
-						reifydb_core::stack::Variable::Scalar(value.clone()),
-						false,
-					)?;
+					persistent_stack.set(name.clone(), Variable::Scalar(value.clone()), false)?;
 				}
 			}
 			reifydb_core::interface::Params::None => {
