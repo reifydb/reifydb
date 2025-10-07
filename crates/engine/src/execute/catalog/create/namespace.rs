@@ -57,9 +57,17 @@ mod tests {
 		};
 
 		// First creation should succeed
+		let mut stack = reifydb_core::stack::Stack::new();
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateNamespace(plan.clone()), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateNamespace(plan.clone()),
+				Params::default(),
+				&mut stack,
+			)
+			.unwrap()
 			.unwrap();
+
 		assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
 		assert_eq!(result.row(0)[1], Value::Boolean(true));
 
@@ -67,7 +75,13 @@ mod tests {
 		// should not error
 		plan.if_not_exists = true;
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateNamespace(plan.clone()), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateNamespace(plan.clone()),
+				Params::default(),
+				&mut stack,
+			)
+			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
 		assert_eq!(result.row(0)[1], Value::Boolean(false));
@@ -76,7 +90,12 @@ mod tests {
 		// false` should return error
 		plan.if_not_exists = false;
 		let err = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateNamespace(plan), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateNamespace(plan),
+				Params::default(),
+				&mut stack,
+			)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}

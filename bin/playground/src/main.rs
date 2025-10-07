@@ -27,13 +27,7 @@ fn main() {
 
 	db.start().unwrap();
 
-	for frame in db
-		.command_as_root(
-			r#"FROM generate_series{ start: cast(1, int4) , end: cast(100, int4) } TAKE 10"#,
-			Params::None,
-		)
-		.unwrap()
-	{
+	for frame in db.command_as_root(r#"let x = 42; MAP { $x }"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 }

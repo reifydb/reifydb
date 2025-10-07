@@ -38,13 +38,17 @@ impl<'a> QueryNode<'a> for FilterNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "FilterNode::next() called before initialize()");
-		let ctx = self.context.as_ref().unwrap();
+		let stored_ctx = self.context.as_ref().unwrap();
 
 		while let Some(Batch {
 			mut columns,
-		}) = self.input.next(rx)?
+		}) = self.input.next(rx, ctx)?
 		{
 			let mut row_count = columns.row_count();
 
@@ -62,7 +66,8 @@ impl<'a> QueryNode<'a> for FilterNode<'a> {
 					columns: columns.clone(),
 					row_count,
 					take: None,
-					params: &ctx.params,
+					params: &stored_ctx.params,
+					stack: &stored_ctx.stack,
 				};
 
 				// Evaluate the filter expression

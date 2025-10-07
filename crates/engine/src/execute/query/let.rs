@@ -5,10 +5,10 @@ use std::sync::Arc;
 
 use reifydb_core::{
 	interface::evaluate::expression::Expression,
+	stack::Variable,
 	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::plan::physical;
-use reifydb_type::Params;
 
 use crate::{
 	StandardTransaction,
@@ -42,7 +42,11 @@ impl<'a> QueryNode<'a> for LetNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		_rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "LetNode::next() called before initialize()");
 
 		// Let statements execute once and return no data
@@ -50,7 +54,7 @@ impl<'a> QueryNode<'a> for LetNode<'a> {
 			return Ok(None);
 		}
 
-		let ctx = self.context.as_ref().unwrap();
+		let stored_ctx = self.context.as_ref().unwrap();
 
 		// Evaluate the expression to get the value
 		let evaluation_context = ColumnEvaluationContext {
@@ -58,18 +62,49 @@ impl<'a> QueryNode<'a> for LetNode<'a> {
 			columns: Columns::empty(),
 			row_count: 1, // Single value evaluation
 			take: None,
-			params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
+			params: &stored_ctx.params,
+			stack: &stored_ctx.stack,
 		};
 
 		let result_column = evaluate(&evaluation_context, &self.value)?;
 		let result_columns = Columns::new(vec![result_column]);
 
-		// Store the variable in the stack
-		// Note: We need to get a mutable reference to the execution context's stack
-		// This is a limitation of the current design - we need to modify this
-		// For now, we'll return an error indicating this needs to be handled at a higher level
+		// Determine if this should be stored as a Scalar or Frame variable
+		let variable = if result_columns.len() == 1 && result_columns.row_count() == 1 {
+			// Single column, single row -> check if we should store as scalar
+			if let Some(first_column) = result_columns.iter().next() {
+				if let Some(first_value) = first_column.data().iter().next() {
+					Variable::scalar(first_value)
+				} else {
+					// Empty column -> store as frame
+					Variable::frame(unsafe {
+						std::mem::transmute::<Columns<'_>, Columns<'static>>(
+							result_columns.clone(),
+						)
+					})
+				}
+			} else {
+				// No columns -> store as frame
+				Variable::frame(unsafe {
+					std::mem::transmute::<Columns<'_>, Columns<'static>>(result_columns.clone())
+				})
+			}
+		} else {
+			// Multiple columns or rows -> store as frame
+			Variable::frame(unsafe {
+				std::mem::transmute::<Columns<'_>, Columns<'static>>(result_columns.clone())
+			})
+		};
+
+		// Store the variable in the stack with mutable access
+		ctx.stack.set(self.name.clone(), variable, self.mutable)?;
 
 		self.executed = true;
+
+		// Transmute the columns to extend their lifetime
+		// SAFETY: The columns come from evaluate() which returns Column<'a>
+		// so they genuinely have lifetime 'a through the query execution
+		let result_columns = unsafe { std::mem::transmute::<Columns<'_>, Columns<'a>>(result_columns) };
 
 		// Return the result as a single batch for debugging/inspection
 		Ok(Some(Batch {

@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{Column, Columns, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::column_name_from_expression;
-use reifydb_type::{Fragment, Params, diagnostic::query::extend_duplicate_column, return_error};
+use reifydb_type::{Fragment, diagnostic::query::extend_duplicate_column, return_error};
 
 use crate::{
 	StandardTransaction,
@@ -41,13 +41,17 @@ impl<'a> QueryNode<'a> for ExtendNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "ExtendNode::next() called before initialize()");
-		let ctx = self.context.as_ref().unwrap();
+		let stored_ctx = self.context.as_ref().unwrap();
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx)?
+		}) = self.input.next(rx, ctx)?
 		{
 			// Start with all existing columns (EXTEND preserves
 			// everything)
@@ -64,11 +68,12 @@ impl<'a> QueryNode<'a> for ExtendNode<'a> {
 					columns: Columns::new(new_columns.clone()),
 					row_count,
 					take: None,
-					params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
+					params: &ctx.params,
+					stack: &ctx.stack,
 				};
 
 				// Check if this is an alias expression and we have source information
-				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &ctx.source) {
+				if let (Expression::Alias(alias_expr), Some(source)) = (expr, &stored_ctx.source) {
 					let alias_name = alias_expr.alias.name();
 
 					// Find the matching column in the source
@@ -171,9 +176,13 @@ impl<'a> QueryNode<'a> for ExtendWithoutInputNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, _rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		_rx: &mut StandardTransaction<'a>,
+		_ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "ExtendWithoutInputNode::next() called before initialize()");
-		let ctx = self.context.as_ref().unwrap();
+		let stored_ctx = self.context.as_ref().unwrap();
 
 		if self.headers.is_some() {
 			return Ok(None);
@@ -190,7 +199,8 @@ impl<'a> QueryNode<'a> for ExtendWithoutInputNode<'a> {
 				columns: columns.clone(),
 				row_count: 1,
 				take: None,
-				params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
+				params: &stored_ctx.params,
+				stack: &stored_ctx.stack,
 			};
 
 			let column = evaluate(&evaluation_context, expr)?;
@@ -211,6 +221,12 @@ impl<'a> QueryNode<'a> for ExtendWithoutInputNode<'a> {
 		self.headers = Some(ColumnHeaders {
 			columns: column_names,
 		});
+
+		// Transmute the vector to extend its lifetime
+		// SAFETY: The columns either come from the input (already transmuted to 'a)
+		// or from evaluate() which returns Column<'a>, so they all genuinely have
+		// lifetime 'a through the query execution
+		let new_columns = unsafe { std::mem::transmute::<Vec<Column<'_>>, Vec<Column<'a>>>(new_columns) };
 
 		Ok(Some(Batch {
 			columns: Columns::new(new_columns),

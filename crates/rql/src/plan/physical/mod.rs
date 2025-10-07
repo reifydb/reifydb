@@ -14,7 +14,7 @@ use reifydb_core::{
 	interface::{
 		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
 		catalog::ColumnIndex,
-		evaluate::expression::{AliasExpression, Expression},
+		evaluate::expression::{AliasExpression, Expression, VariableExpression},
 		resolved::{
 			ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence, ResolvedSource,
 			ResolvedTable, ResolvedTableVirtual, ResolvedView,
@@ -719,6 +719,8 @@ pub enum PhysicalPlan<'a> {
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
 	// Variable assignment
 	Let(LetNode<'a>),
+	// Variable resolution
+	Variable(VariableNode<'a>),
 
 	// Query
 	Aggregate(AggregateNode<'a>),
@@ -794,6 +796,11 @@ pub struct LetNode<'a> {
 	pub name: Fragment<'a>,
 	pub value: Expression<'a>,
 	pub mutable: bool,
+}
+
+#[derive(Debug, Clone)]
+pub struct VariableNode<'a> {
+	pub variable_expr: VariableExpression<'a>,
 }
 
 #[derive(Debug, Clone)]

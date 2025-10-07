@@ -10,8 +10,8 @@ use reifydb_core::interface::evaluate::expression::{
 	AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression, CastExpression,
 	ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression, GreaterThanEqExpression,
 	GreaterThanExpression, IdentExpression, LessThanEqExpression, LessThanExpression, MulExpression,
-	NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RemExpression,
-	SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
+	NotEqExpression, OrExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression,
+	TypeExpression, VariableExpression, XorExpression,
 };
 use reifydb_type::{Fragment, OwnedFragment};
 

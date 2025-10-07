@@ -5,7 +5,7 @@ use reifydb_type::Fragment;
 use crate::interface::{
 	evaluate::expression::{
 		AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
-		RemExpression, SubExpression, VariableExpression,
+		RemExpression, SubExpression,
 	},
 	expression::ParameterExpression,
 };

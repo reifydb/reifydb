@@ -151,6 +151,10 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::Let(_) => {
 				panic!("Let statements are not supported in flow graphs");
 			}
+
+			PhysicalPlan::Variable(_) => {
+				panic!("Variable references are not supported in flow graphs");
+			}
 		}
 	}
 }

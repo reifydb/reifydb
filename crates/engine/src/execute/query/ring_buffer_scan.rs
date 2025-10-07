@@ -83,8 +83,12 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
-		let ctx = self.context.as_ref().expect("RingBufferScan context not set");
+	fn next(
+		&mut self,
+		txn: &mut StandardTransaction<'a>,
+		_ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
+		let stored_ctx = self.context.as_ref().expect("RingBufferScan context not set");
 
 		// Get metadata or return empty
 		let metadata = match &self.metadata {
@@ -97,7 +101,7 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 			return Ok(None);
 		}
 
-		let batch_size = ctx.batch_size;
+		let batch_size = stored_ctx.batch_size;
 
 		// Collect rows for this batch
 		let mut batch_rows = Vec::new();

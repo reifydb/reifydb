@@ -62,7 +62,7 @@ impl Executor {
 			source: resolved_source,
 			batch_size: 1024,
 			params: params.clone(),
-			stack: crate::stack::Stack::new(),
+			stack: reifydb_core::stack::Stack::new(),
 		};
 
 		let mut updated_count = 0;
@@ -76,9 +76,10 @@ impl Executor {
 			// Initialize the operator before execution
 			input_node.initialize(&mut wrapped_txn, &context)?;
 
+			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut wrapped_txn)?
+			}) = input_node.next(&mut wrapped_txn, &mut mutable_context)?
 			{
 				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {

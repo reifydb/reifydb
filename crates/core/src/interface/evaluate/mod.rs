@@ -14,8 +14,10 @@ use crate::{
 		expression::Expression,
 	},
 	row::Row,
+	stack::Stack,
 	value::column::{Column, ColumnData, Columns},
 };
+// FIXME this should not be part of core - engine should be sufficient now
 
 /// Represents target column information for evaluation
 #[derive(Debug, Clone)]
@@ -92,18 +94,21 @@ pub struct ColumnEvaluationContext<'a> {
 	pub row_count: usize,
 	pub take: Option<usize>,
 	pub params: &'a Params,
+	pub stack: &'a Stack,
 }
 
 impl<'a> ColumnEvaluationContext<'a> {
 	pub fn testing() -> Self {
 		use std::sync::LazyLock;
 		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
+		static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 		Self {
 			target: None,
 			columns: Columns::empty(),
 			row_count: 1,
 			take: None,
 			params: &EMPTY_PARAMS,
+			stack: &EMPTY_STACK,
 		}
 	}
 

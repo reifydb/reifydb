@@ -46,7 +46,10 @@ impl Executor {
 #[cfg(test)]
 mod tests {
 	use reifydb_catalog::test_utils::{create_namespace, ensure_test_namespace};
-	use reifydb_core::interface::{NamespaceDef, NamespaceId, Params, resolved::ResolvedNamespace};
+	use reifydb_core::{
+		interface::{NamespaceDef, NamespaceId, Params, resolved::ResolvedNamespace},
+		stack::Stack,
+	};
 	use reifydb_rql::plan::physical::PhysicalPlan;
 	use reifydb_type::{Fragment, Value};
 
@@ -72,8 +75,15 @@ mod tests {
 		};
 
 		// First creation should succeed
+		let mut stack = Stack::new();
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateTable(plan.clone()),
+				Params::default(),
+				&mut stack,
+			)
+			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
@@ -83,7 +93,13 @@ mod tests {
 		// should not error
 		plan.if_not_exists = true;
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateTable(plan.clone()),
+				Params::default(),
+				&mut stack,
+			)
+			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
@@ -93,7 +109,7 @@ mod tests {
 		// should return error
 		plan.if_not_exists = false;
 		let err = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default())
+			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
@@ -115,8 +131,15 @@ mod tests {
 			columns: vec![],
 		};
 
+		let mut stack = Stack::new();
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateTable(plan.clone()),
+				Params::default(),
+				&mut stack,
+			)
+			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
@@ -131,7 +154,13 @@ mod tests {
 		};
 
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan.clone()), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateTable(plan.clone()),
+				Params::default(),
+				&mut stack,
+			)
+			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_table".to_string()));
@@ -159,8 +188,10 @@ mod tests {
 		// With defensive fallback, this now succeeds even with
 		// non-existent namespace The table is created with the provided
 		// namespace ID
+		let mut stack = Stack::new();
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default())
+			.execute_command_plan(&mut txn, PhysicalPlan::CreateTable(plan), Params::default(), &mut stack)
+			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("missing_schema".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("my_table".to_string()));

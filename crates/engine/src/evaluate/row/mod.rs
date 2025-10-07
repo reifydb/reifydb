@@ -84,6 +84,7 @@ impl RowEvaluator for StandardRowEvaluator {
 			row_count: 1,
 			take: None,
 			params: ctx.params,
+			stack: &reifydb_core::stack::Stack::new(),
 		};
 
 		let result = self.evaluator.evaluate(&ctx, &expr)?;
@@ -122,6 +123,7 @@ impl StandardRowEvaluator {
 			row_count: 1,
 			take: None,
 			params: &Params::None,
+			stack: &reifydb_core::stack::Stack::new(),
 		};
 
 		let mut values = Vec::with_capacity(target_columns.len());

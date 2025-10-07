@@ -21,6 +21,7 @@ mod logic;
 mod parameter;
 mod prefix;
 mod tuple;
+mod variable;
 
 pub struct StandardColumnEvaluator {
 	functions: Functions,
@@ -68,6 +69,7 @@ impl ColumnEvaluator for StandardColumnEvaluator {
 			Expression::Sub(expr) => self.sub(ctx, expr),
 			Expression::Tuple(expr) => self.tuple(ctx, expr),
 			Expression::Parameter(expr) => self.parameter(ctx, expr),
+			Expression::Variable(expr) => self.variable(ctx, expr),
 			expr => unimplemented!("{expr:?}"),
 		}
 	}

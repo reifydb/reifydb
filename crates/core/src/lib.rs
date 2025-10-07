@@ -11,6 +11,7 @@ pub mod interface;
 pub mod key;
 mod row;
 mod sort;
+pub mod stack;
 pub mod util;
 pub mod value;
 

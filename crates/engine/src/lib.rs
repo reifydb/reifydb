@@ -12,7 +12,6 @@ pub mod execute;
 #[allow(dead_code)]
 pub mod function;
 pub(crate) mod interceptor;
-pub mod stack;
 pub mod table_virtual;
 pub mod test_utils;
 pub mod transaction;

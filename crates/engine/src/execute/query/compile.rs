@@ -18,7 +18,7 @@ use crate::{
 			index_scan::IndexScanNode,
 			inline::InlineDataNode,
 			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
-			let_node::LetNode,
+			r#let::LetNode,
 			map::{MapNode, MapWithoutInputNode},
 			ring_buffer_scan::RingBufferScan,
 			sort::SortNode,
@@ -209,6 +209,10 @@ pub(crate) fn compile<'a>(
 		}
 
 		PhysicalPlan::Let(let_node) => ExecutionPlan::Let(LetNode::new(let_node)),
+
+		PhysicalPlan::Variable(var_node) => ExecutionPlan::Variable(
+			crate::execute::query::variable::VariableNode::new(var_node.variable_expr),
+		),
 
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::AlterTable(_)

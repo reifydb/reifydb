@@ -362,5 +362,10 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			);
 			write_node_header(output, prefix, is_last, &label);
 		}
+
+		PhysicalPlan::Variable(var_node) => {
+			let label = format!("Variable: {}", var_node.variable_expr.fragment.text());
+			write_node_header(output, prefix, is_last, &label);
+		}
 	}
 }

@@ -40,7 +40,11 @@ impl Executor {
 
 		// For catalog operations, use empty params since no
 		// ExecutionContext is available
-		let empty_params = Params::None;
+		use std::sync::LazyLock;
+		static EMPTY_PARAMS: LazyLock<Params> = LazyLock::new(|| Params::None);
+		static EMPTY_STACK: LazyLock<reifydb_core::stack::Stack> =
+			LazyLock::new(|| reifydb_core::stack::Stack::new());
+
 		let value = evaluate(
 			&ColumnEvaluationContext {
 				target: Some(TargetColumn::Partial {
@@ -52,7 +56,8 @@ impl Executor {
 				columns: Columns::empty(),
 				row_count: 1,
 				take: None,
-				params: &empty_params,
+				params: &EMPTY_PARAMS,
+				stack: &EMPTY_STACK,
 			},
 			&plan.value,
 		)?;

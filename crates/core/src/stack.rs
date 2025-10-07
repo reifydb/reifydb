@@ -3,7 +3,48 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::value::column::Columns;
+use reifydb_type::Value;
+
+use crate::value::column::Columns;
+
+// FIXME this should not be in the core crate - move into engine
+
+/// A variable can be either a scalar value or a dataframe
+#[derive(Debug, Clone)]
+pub enum Variable {
+	/// A scalar value that can be used directly in expressions
+	Scalar(Value),
+	/// A dataframe (columns) that requires explicit conversion to scalar
+	Frame(Columns<'static>),
+}
+
+impl Variable {
+	/// Create a scalar variable
+	pub fn scalar(value: Value) -> Self {
+		Variable::Scalar(value)
+	}
+
+	/// Create a frame variable
+	pub fn frame(columns: Columns<'static>) -> Self {
+		Variable::Frame(columns)
+	}
+
+	/// Get the scalar value if this is a scalar variable
+	pub fn as_scalar(&self) -> Option<&Value> {
+		match self {
+			Variable::Scalar(value) => Some(value),
+			Variable::Frame(_) => None,
+		}
+	}
+
+	/// Get the frame if this is a frame variable
+	pub fn as_frame(&self) -> Option<&Columns<'static>> {
+		match self {
+			Variable::Scalar(_) => None,
+			Variable::Frame(columns) => Some(columns),
+		}
+	}
+}
 
 /// Context for storing and managing variables during query execution with scope support
 #[derive(Debug, Clone)]
@@ -27,10 +68,10 @@ pub enum ScopeType {
 	Conditional,
 }
 
-/// Represents a variable binding with its dataframe and mutability
+/// Represents a variable binding with its value and mutability
 #[derive(Debug, Clone)]
 struct VariableBinding {
-	columns: Columns<'static>,
+	variable: Variable,
 	mutable: bool,
 }
 
@@ -60,7 +101,7 @@ impl Stack {
 	/// Returns error if trying to exit the global scope
 	pub fn exit_scope(&mut self) -> crate::Result<()> {
 		if self.scopes.len() <= 1 {
-			return Err(reifydb_core::error!(reifydb_core::diagnostic::internal::internal(
+			return Err(crate::error!(crate::diagnostic::internal::internal(
 				"Cannot exit global scope".to_string()
 			)));
 		}
@@ -79,17 +120,12 @@ impl Stack {
 	}
 
 	/// Set a variable in the current (innermost) scope
-	pub fn set(&mut self, name: String, columns: Columns<'static>, mutable: bool) -> crate::Result<()> {
-		self.set_in_current_scope(name, columns, mutable)
+	pub fn set(&mut self, name: String, variable: Variable, mutable: bool) -> crate::Result<()> {
+		self.set_in_current_scope(name, variable, mutable)
 	}
 
 	/// Set a variable specifically in the current scope
-	pub fn set_in_current_scope(
-		&mut self,
-		name: String,
-		columns: Columns<'static>,
-		mutable: bool,
-	) -> crate::Result<()> {
+	pub fn set_in_current_scope(&mut self, name: String, variable: Variable, mutable: bool) -> crate::Result<()> {
 		let current_scope = self.scopes.last_mut().unwrap();
 
 		// Check if variable already exists in current scope and handle mutability rules
@@ -102,7 +138,7 @@ impl Stack {
 		current_scope.variables.insert(
 			name,
 			VariableBinding {
-				columns,
+				variable,
 				mutable,
 			},
 		);
@@ -110,23 +146,23 @@ impl Stack {
 	}
 
 	/// Get a variable by searching from innermost to outermost scope
-	pub fn get(&self, name: &str) -> Option<&Columns<'static>> {
+	pub fn get(&self, name: &str) -> Option<&Variable> {
 		// Search from innermost scope (end of vector) to outermost scope (beginning)
 		for scope in self.scopes.iter().rev() {
 			if let Some(binding) = scope.variables.get(name) {
-				return Some(&binding.columns);
+				return Some(&binding.variable);
 			}
 		}
 		None
 	}
 
 	/// Get a variable with its scope depth information
-	pub fn get_with_scope(&self, name: &str) -> Option<(&Columns<'static>, usize)> {
+	pub fn get_with_scope(&self, name: &str) -> Option<(&Variable, usize)> {
 		// Search from innermost scope to outermost scope
 		for (depth_from_end, scope) in self.scopes.iter().rev().enumerate() {
 			if let Some(binding) = scope.variables.get(name) {
 				let scope_depth = self.scopes.len() - 1 - depth_from_end;
-				return Some((&binding.columns, scope_depth));
+				return Some((&binding.variable, scope_depth));
 			}
 		}
 		None
@@ -195,10 +231,10 @@ impl Default for Stack {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::column::{Column, ColumnData, Columns};
 	use reifydb_type::Value;
 
 	use super::*;
+	use crate::value::column::{Column, ColumnData, Columns};
 
 	// Helper function to create test columns
 	fn create_test_columns(values: Vec<Value>) -> Columns<'static> {
@@ -223,7 +259,7 @@ mod tests {
 		let cols = create_test_columns(vec![Value::utf8("Alice".to_string())]);
 
 		// Set a variable
-		ctx.set("name".to_string(), cols.clone(), false).unwrap();
+		ctx.set("name".to_string(), Variable::frame(cols.clone()), false).unwrap();
 
 		// Get the variable
 		assert!(ctx.get("name").is_some());
@@ -239,12 +275,12 @@ mod tests {
 		let cols2 = create_test_columns(vec![Value::Int4(84)]);
 
 		// Set as mutable
-		ctx.set("counter".to_string(), cols1.clone(), true).unwrap();
+		ctx.set("counter".to_string(), Variable::frame(cols1.clone()), true).unwrap();
 		assert!(ctx.is_mutable("counter"));
 		assert!(ctx.get("counter").is_some());
 
 		// Update mutable variable
-		ctx.set("counter".to_string(), cols2.clone(), true).unwrap();
+		ctx.set("counter".to_string(), Variable::frame(cols2.clone()), true).unwrap();
 		assert!(ctx.get("counter").is_some());
 	}
 
@@ -256,10 +292,10 @@ mod tests {
 		let cols2 = create_test_columns(vec![Value::utf8("Bob".to_string())]);
 
 		// Set as immutable
-		ctx.set("name".to_string(), cols1.clone(), false).unwrap();
+		ctx.set("name".to_string(), Variable::frame(cols1.clone()), false).unwrap();
 
 		// Try to reassign immutable variable - should fail
-		let result = ctx.set("name".to_string(), cols2, false);
+		let result = ctx.set("name".to_string(), Variable::frame(cols2), false);
 		assert!(result.is_err());
 
 		// Original value should be preserved
@@ -305,12 +341,12 @@ mod tests {
 		let inner_cols = create_test_columns(vec![Value::utf8("inner".to_string())]);
 
 		// Set variable in global scope
-		ctx.set("var".to_string(), outer_cols.clone(), false).unwrap();
+		ctx.set("var".to_string(), Variable::frame(outer_cols.clone()), false).unwrap();
 		assert!(ctx.get("var").is_some());
 
 		// Enter new scope and shadow the variable
 		ctx.enter_scope(ScopeType::Block);
-		ctx.set("var".to_string(), inner_cols.clone(), false).unwrap();
+		ctx.set("var".to_string(), Variable::frame(inner_cols.clone()), false).unwrap();
 
 		// Should see the inner variable
 		assert!(ctx.get("var").is_some());
@@ -327,7 +363,7 @@ mod tests {
 		let outer_cols = create_test_columns(vec![Value::utf8("outer".to_string())]);
 
 		// Set variable in global scope
-		ctx.set("global_var".to_string(), outer_cols.clone(), false).unwrap();
+		ctx.set("global_var".to_string(), Variable::frame(outer_cols.clone()), false).unwrap();
 
 		// Enter new scope
 		ctx.enter_scope(ScopeType::Function);
@@ -349,11 +385,11 @@ mod tests {
 		let cols2 = create_test_columns(vec![Value::utf8("value2".to_string())]);
 
 		// Set immutable variable in global scope
-		ctx.set("var".to_string(), cols1.clone(), false).unwrap();
+		ctx.set("var".to_string(), Variable::frame(cols1.clone()), false).unwrap();
 
 		// Enter new scope and create new variable with same name (shadowing)
 		ctx.enter_scope(ScopeType::Block);
-		ctx.set("var".to_string(), cols2.clone(), true).unwrap(); // This one is mutable
+		ctx.set("var".to_string(), Variable::frame(cols2.clone()), true).unwrap(); // This one is mutable
 
 		// Should be mutable in current scope
 		assert!(ctx.is_mutable("var"));
@@ -369,8 +405,8 @@ mod tests {
 		let cols = create_test_columns(vec![Value::utf8("test".to_string())]);
 
 		// Set variables in global scope
-		ctx.set("global1".to_string(), cols.clone(), false).unwrap();
-		ctx.set("global2".to_string(), cols.clone(), false).unwrap();
+		ctx.set("global1".to_string(), Variable::frame(cols.clone()), false).unwrap();
+		ctx.set("global2".to_string(), Variable::frame(cols.clone()), false).unwrap();
 
 		let global_visible = ctx.visible_variable_names();
 		assert_eq!(global_visible.len(), 2);
@@ -379,8 +415,8 @@ mod tests {
 
 		// Enter new scope and add more variables
 		ctx.enter_scope(ScopeType::Function);
-		ctx.set("local1".to_string(), cols.clone(), false).unwrap();
-		ctx.set("global1".to_string(), cols.clone(), false).unwrap(); // Shadow global1
+		ctx.set("local1".to_string(), Variable::frame(cols.clone()), false).unwrap();
+		ctx.set("global1".to_string(), Variable::frame(cols.clone()), false).unwrap(); // Shadow global1
 
 		let function_visible = ctx.visible_variable_names();
 		assert_eq!(function_visible.len(), 3); // global1 (shadowed), global2, local1
@@ -395,11 +431,11 @@ mod tests {
 		let cols = create_test_columns(vec![Value::utf8("test".to_string())]);
 
 		// Add variables and enter scopes
-		ctx.set("var1".to_string(), cols.clone(), false).unwrap();
+		ctx.set("var1".to_string(), Variable::frame(cols.clone()), false).unwrap();
 		ctx.enter_scope(ScopeType::Function);
-		ctx.set("var2".to_string(), cols.clone(), false).unwrap();
+		ctx.set("var2".to_string(), Variable::frame(cols.clone()), false).unwrap();
 		ctx.enter_scope(ScopeType::Block);
-		ctx.set("var3".to_string(), cols.clone(), false).unwrap();
+		ctx.set("var3".to_string(), Variable::frame(cols.clone()), false).unwrap();
 
 		assert_eq!(ctx.scope_depth(), 2);
 		assert_eq!(ctx.visible_variable_names().len(), 3);
