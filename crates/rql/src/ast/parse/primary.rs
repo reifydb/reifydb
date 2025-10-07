@@ -66,6 +66,7 @@ impl<'a> Parser<'a> {
 					Keyword::Distinct => Ok(Ast::Distinct(self.parse_distinct()?)),
 					Keyword::Apply => Ok(Ast::Apply(self.parse_apply()?)),
 					Keyword::Call => Ok(Ast::Call(self.parse_call()?)),
+					Keyword::Let | Keyword::Mut => Ok(Ast::Let(self.parse_variable_declaration()?)),
 					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
 					_ => {

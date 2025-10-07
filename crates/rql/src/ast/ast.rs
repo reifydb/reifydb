@@ -70,6 +70,7 @@ pub enum Ast<'a> {
 	Identifier(UnqualifiedIdentifier<'a>),
 	Infix(AstInfix<'a>),
 	Inline(AstInline<'a>),
+	Let(AstLet<'a>),
 	Delete(AstDelete<'a>),
 	Insert(AstInsert<'a>),
 	Update(AstUpdate<'a>),
@@ -120,6 +121,7 @@ impl<'a> Ast<'a> {
 			Ast::Aggregate(node) => &node.token,
 			Ast::Identifier(identifier) => &identifier.token,
 			Ast::Infix(node) => &node.token,
+			Ast::Let(node) => &node.token,
 			Ast::Delete(node) => &node.token,
 			Ast::Insert(node) => &node.token,
 			Ast::Update(node) => &node.token,
@@ -299,6 +301,17 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not infix")
+		}
+	}
+
+	pub fn is_let(&self) -> bool {
+		matches!(self, Ast::Let(_))
+	}
+	pub fn as_let(&self) -> &AstLet<'a> {
+		if let Ast::Let(result) = self {
+			result
+		} else {
+			panic!("not let")
 		}
 	}
 
@@ -926,6 +939,14 @@ pub struct AstInfix<'a> {
 	pub left: Box<Ast<'a>>,
 	pub operator: InfixOperator<'a>,
 	pub right: Box<Ast<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstLet<'a> {
+	pub token: Token<'a>,
+	pub name: UnqualifiedIdentifier<'a>,
+	pub value: Box<Ast<'a>>,
+	pub mutable: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
