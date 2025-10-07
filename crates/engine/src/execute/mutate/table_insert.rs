@@ -58,6 +58,7 @@ impl Executor {
 			source: resolved_source,
 			batch_size: 1024,
 			params: params.clone(),
+			stack: crate::stack::Stack::new(),
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);

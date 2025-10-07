@@ -70,6 +70,7 @@ impl Executor {
 						source: resolved_source.clone(),
 						batch_size: 1024,
 						params: params.clone(),
+						stack: crate::stack::Stack::new(),
 					}),
 				);
 
@@ -78,6 +79,7 @@ impl Executor {
 					source: None,
 					batch_size: 1024,
 					params: params.clone(),
+					stack: crate::stack::Stack::new(),
 				};
 
 				// Initialize the operator before execution

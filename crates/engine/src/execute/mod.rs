@@ -33,6 +33,7 @@ use reifydb_rql::{
 use crate::{
 	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
 	function::{Functions, generator, math},
+	stack::Stack,
 };
 
 mod catalog;
@@ -60,6 +61,7 @@ pub struct ExecutionContext<'a> {
 	pub source: Option<ResolvedSource<'a>>,
 	pub batch_size: usize,
 	pub params: Params,
+	pub stack: Stack<'a>,
 }
 
 #[derive(Debug)]
@@ -377,6 +379,7 @@ impl Executor {
 					source: None,
 					batch_size: 1024,
 					params: params.clone(),
+					stack: Stack::new(),
 				});
 				let mut node = compile(plan, rx, context.clone());
 
