@@ -4,7 +4,7 @@
 use reifydb_core::{diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstParameterRef, AstWildcard,
+	Ast, AstVariable, AstWildcard,
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -91,11 +91,10 @@ impl<'a> Parser<'a> {
 					}
 				}
 				_ => {
-					if let TokenKind::Parameter(kind) = current.kind {
+					if let TokenKind::Variable = current.kind {
 						let token = self.advance()?;
-						Ok(Ast::ParameterRef(AstParameterRef {
+						Ok(Ast::Variable(AstVariable {
 							token,
-							kind,
 						}))
 					} else {
 						return_error!(ast::unsupported_token_error(self.advance()?.fragment))

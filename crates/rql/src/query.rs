@@ -86,9 +86,9 @@ fn reconstruct_filter_expr(ast: &Ast) -> crate::Result<String> {
 			Ok(format!("{} {} {}", left, op, right))
 		}
 		Ast::Identifier(ident) => Ok(ident.token.fragment.text().to_string()),
-		Ast::ParameterRef(param) => {
-			// The parameter token already includes the $ prefix
-			Ok(param.token.fragment.text().to_string())
+		Ast::Variable(var) => {
+			// The variable token already includes the $ prefix
+			Ok(var.token.fragment.text().to_string())
 		}
 		_ => {
 			// For now, panic on unsupported types

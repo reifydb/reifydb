@@ -152,5 +152,6 @@ fn simplified_name<'a>(expr: &Expression<'a>) -> Fragment<'a> {
 		)),
 		Expression::Type(type_expr) => type_expr.fragment.clone(),
 		Expression::Parameter(_) => Fragment::owned_internal("parameter"),
+		Expression::Variable(var) => Fragment::owned_internal(format!("var_{}", var.name())),
 	}
 }

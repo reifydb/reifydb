@@ -4,5 +4,5 @@
 // Re-export all the scanning functions from the individual modules
 pub use super::{
 	identifier::scan_identifier, keyword::scan_keyword, literal::scan_literal, operator::scan_operator,
-	parameter::scan_parameter, separator::scan_separator,
+	separator::scan_separator,
 };

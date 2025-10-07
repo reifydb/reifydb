@@ -75,6 +75,7 @@ pub enum Expression<'a> {
 	Type(TypeExpression<'a>),
 
 	Parameter(ParameterExpression<'a>),
+	Variable(VariableExpression<'a>),
 }
 
 use crate::interface::identifier::ColumnIdentifier;
@@ -556,6 +557,7 @@ impl<'a> Display for Expression<'a> {
 					fragment,
 				} => write!(f, "{}", fragment.text()),
 			},
+			Expression::Variable(var) => write!(f, "{}", var.fragment.text()),
 		}
 	}
 }
@@ -625,6 +627,23 @@ impl<'a> ParameterExpression<'a> {
 			ParameterExpression::Positional {
 				..
 			} => None,
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct VariableExpression<'a> {
+	pub fragment: Fragment<'a>,
+}
+
+impl<'a> VariableExpression<'a> {
+	pub fn name(&self) -> &str {
+		// Extract variable name from token value (skip the '$')
+		let text = self.fragment.text();
+		if text.starts_with('$') {
+			&text[1..]
+		} else {
+			text
 		}
 	}
 }

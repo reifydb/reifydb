@@ -5,7 +5,7 @@ use reifydb_type::Fragment;
 use crate::interface::{
 	evaluate::expression::{
 		AddExpression, CastExpression, ConstantExpression, DivExpression, Expression, MulExpression,
-		RemExpression, SubExpression,
+		RemExpression, SubExpression, VariableExpression,
 	},
 	expression::ParameterExpression,
 };
@@ -74,6 +74,7 @@ impl<'a> Expression<'a> {
 					fragment,
 				} => fragment.clone(),
 			},
+			Expression::Variable(var) => var.fragment.clone(),
 		}
 	}
 }

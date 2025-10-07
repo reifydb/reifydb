@@ -11,13 +11,13 @@ use reifydb_core::interface::evaluate::expression::{
 	ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression, GreaterThanEqExpression,
 	GreaterThanExpression, IdentExpression, LessThanEqExpression, LessThanExpression, MulExpression,
 	NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RemExpression,
-	SubExpression, TupleExpression, TypeExpression, XorExpression,
+	SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
 };
 use reifydb_type::{Fragment, OwnedFragment};
 
 use crate::{
 	ast,
-	ast::{Ast, AstInfix, AstLiteral, InfixOperator, parse_str, tokenize::ParameterKind},
+	ast::{Ast, AstInfix, AstLiteral, InfixOperator, parse_str},
 	convert_data_type,
 };
 
@@ -165,16 +165,9 @@ impl ExpressionCompiler {
 					},
 				}))
 			}
-			Ast::ParameterRef(param) => match param.kind {
-				ParameterKind::Positional(_) => {
-					Ok(Expression::Parameter(ParameterExpression::Positional {
-						fragment: param.token.fragment,
-					}))
-				}
-				ParameterKind::Named => Ok(Expression::Parameter(ParameterExpression::Named {
-					fragment: param.token.fragment,
-				})),
-			},
+			Ast::Variable(var) => Ok(Expression::Variable(VariableExpression {
+				fragment: var.token.fragment,
+			})),
 			ast => unimplemented!("{:?}", ast),
 		}
 	}

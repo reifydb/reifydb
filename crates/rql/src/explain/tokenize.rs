@@ -31,8 +31,8 @@ pub fn explain_tokenize(query: &str) -> crate::Result<String> {
 				TokenKind::Operator(op) => {
 					format!("Operator({:?})", op)
 				}
-				TokenKind::Parameter(param) => {
-					format!("Parameter({:?})", param)
+				TokenKind::Variable => {
+					format!("Variable({:?})", token.value())
 				}
 				TokenKind::Separator(sep) => {
 					format!("Separator({:?})", sep)

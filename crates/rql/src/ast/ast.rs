@@ -13,7 +13,7 @@ use crate::ast::{
 		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
 		UnresolvedSourceIdentifier,
 	},
-	tokenize::{Literal, ParameterKind, Token, TokenKind},
+	tokenize::{Literal, Token, TokenKind},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -79,7 +79,7 @@ pub enum Ast<'a> {
 	List(AstList<'a>),
 	Literal(AstLiteral<'a>),
 	Nop,
-	ParameterRef(AstParameterRef<'a>),
+	Variable(AstVariable<'a>),
 	Sort(AstSort<'a>),
 	SubQuery(AstSubQuery<'a>),
 	Policy(AstPolicy<'a>),
@@ -149,7 +149,7 @@ impl<'a> Ast<'a> {
 				} => token,
 			},
 			Ast::Nop => unreachable!(),
-			Ast::ParameterRef(node) => &node.token,
+			Ast::Variable(node) => &node.token,
 			Ast::Sort(node) => &node.token,
 			Ast::SubQuery(node) => &node.token,
 			Ast::Policy(node) => &node.token,
@@ -312,6 +312,17 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not let")
+		}
+	}
+
+	pub fn is_variable(&self) -> bool {
+		matches!(self, Ast::Variable(_))
+	}
+	pub fn as_variable(&self) -> &AstVariable<'a> {
+		if let Ast::Variable(result) = self {
+			result
+		} else {
+			panic!("not variable")
 		}
 	}
 
@@ -1186,26 +1197,18 @@ pub struct AstBetween<'a> {
 pub struct AstWildcard<'a>(pub Token<'a>);
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstParameterRef<'a> {
+pub struct AstVariable<'a> {
 	pub token: Token<'a>,
-	pub kind: ParameterKind,
 }
 
-impl<'a> AstParameterRef<'a> {
-	pub fn position(&self) -> Option<u32> {
-		match self.kind {
-			ParameterKind::Positional(n) => Some(n),
-			ParameterKind::Named => None,
-		}
-	}
-
-	pub fn name(&self) -> Option<&str> {
-		match self.kind {
-			ParameterKind::Named => {
-				// Extract name from token value (skip the '$')
-				Some(&self.token.value()[1..])
-			}
-			ParameterKind::Positional(_) => None,
+impl<'a> AstVariable<'a> {
+	pub fn name(&self) -> &str {
+		// Extract name from token value (skip the '$')
+		let text = self.token.value();
+		if text.starts_with('$') {
+			&text[1..]
+		} else {
+			text
 		}
 	}
 }

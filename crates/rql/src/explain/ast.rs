@@ -56,7 +56,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Take(_) => "Take",
 		Ast::Tuple(_) => "Tuple",
 		Ast::Wildcard(_) => "Wildcard",
-		Ast::ParameterRef(_) => "ParameterRef",
+		Ast::Variable(_) => "Variable",
 		Ast::Distinct(_) => "Distinct",
 		Ast::Apply(_) => "Apply",
 		Ast::Call(_) => "Call",
