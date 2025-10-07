@@ -65,6 +65,7 @@ impl<'a> QueryNode<'a> for ExtendNode<'a> {
 					row_count,
 					take: None,
 					params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
+					is_aggregate_context: false,
 				};
 
 				// Check if this is an alias expression and we have source information
@@ -191,6 +192,7 @@ impl<'a> QueryNode<'a> for ExtendWithoutInputNode<'a> {
 				row_count: 1,
 				take: None,
 				params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
+				is_aggregate_context: false,
 			};
 
 			let column = evaluate(&evaluation_context, expr)?;

@@ -94,10 +94,17 @@ pub fn apply_tumbling_window(
 						(event_timestamp, window_id)
 					}
 					WindowType::Count => {
-						// For count-based windows, use current processing time and simple
-						// window ID
+						// For count-based windows, use current processing time and calculate
+						// window ID based on global event count
 						let event_timestamp = operator.current_timestamp();
-						let window_id = 0; // Simple count-based window ID
+						let global_count =
+							operator.get_and_increment_global_count(txn, group_hash)?;
+						let window_size = if let WindowSize::Count(count) = &operator.size {
+							*count
+						} else {
+							3 // fallback
+						};
+						let window_id = global_count / window_size;
 						(event_timestamp, window_id)
 					}
 				};
@@ -115,17 +122,32 @@ pub fn apply_tumbling_window(
 					window_state.window_start = operator.set_tumbling_window_start(timestamp);
 				}
 
-				// Check if window should be triggered (get fresh timestamp for each check)
-				let trigger_check_time = operator.current_timestamp();
-				let should_trigger = operator.should_trigger_window(&window_state, trigger_check_time);
-
-				if should_trigger {
-					if let Some(aggregated_row) =
-						operator.apply_aggregations(&window_state.events, evaluator)?
-					{
+				// Always emit result for count-based windows - Insert for first, Update for subsequent
+				if let Some((aggregated_row, is_new)) =
+					operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
+				{
+					if is_new {
+						// First time we see this window - emit Insert
 						result.push(FlowDiff::Insert {
 							post: aggregated_row,
 						});
+					} else {
+						// Window already exists - emit Update
+						// We need to compute the previous aggregation (without the current
+						// event)
+						let previous_events =
+							&window_state.events[..window_state.events.len() - 1];
+						if let Some((previous_aggregated, _)) = operator.apply_aggregations(
+							txn,
+							&window_key,
+							previous_events,
+							evaluator,
+						)? {
+							result.push(FlowDiff::Update {
+								pre: previous_aggregated,
+								post: aggregated_row,
+							});
+						}
 					}
 				}
 
@@ -145,10 +167,17 @@ pub fn apply_tumbling_window(
 						(event_timestamp, window_id)
 					}
 					WindowType::Count => {
-						// For count-based windows, use current processing time and simple
-						// window ID
+						// For count-based windows, use current processing time and calculate
+						// window ID based on global event count
 						let event_timestamp = operator.current_timestamp();
-						let window_id = 0; // Simple count-based window ID
+						let global_count =
+							operator.get_and_increment_global_count(txn, group_hash)?;
+						let window_size = if let WindowSize::Count(count) = &operator.size {
+							*count
+						} else {
+							3 // fallback
+						};
+						let window_id = global_count / window_size;
 						(event_timestamp, window_id)
 					}
 				};
@@ -164,17 +193,32 @@ pub fn apply_tumbling_window(
 					window_state.window_start = operator.set_tumbling_window_start(event_timestamp);
 				}
 
-				let trigger_check_time = operator.current_timestamp();
-				if operator.should_trigger_window(&window_state, trigger_check_time) {
-					// For tumbling windows, don't permanently mark as triggered - allow streaming
-					// updates
-
-					if let Some(aggregated_row) =
-						operator.apply_aggregations(&window_state.events, evaluator)?
-					{
+				// Always emit result for count-based windows - Insert for first, Update for subsequent
+				if let Some((aggregated_row, is_new)) =
+					operator.apply_aggregations(txn, &window_key, &window_state.events, evaluator)?
+				{
+					if is_new {
+						// First time we see this window - emit Insert
 						result.push(FlowDiff::Insert {
 							post: aggregated_row,
 						});
+					} else {
+						// Window already exists - emit Update
+						// We need to compute the previous aggregation (without the current
+						// event)
+						let previous_events =
+							&window_state.events[..window_state.events.len() - 1];
+						if let Some((previous_aggregated, _)) = operator.apply_aggregations(
+							txn,
+							&window_key,
+							previous_events,
+							evaluator,
+						)? {
+							result.push(FlowDiff::Update {
+								pre: previous_aggregated,
+								post: aggregated_row,
+							});
+						}
 					}
 				}
 

@@ -63,6 +63,7 @@ impl<'a> QueryNode<'a> for FilterNode<'a> {
 					row_count,
 					take: None,
 					params: &ctx.params,
+					is_aggregate_context: false,
 				};
 
 				// Evaluate the filter expression

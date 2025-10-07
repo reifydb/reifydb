@@ -9,7 +9,7 @@ use crate::flow::{FlowChange, FlowDiff};
 
 impl WindowOperator {
 	/// Determine which windows an event belongs to for sliding windows
-	pub fn get_sliding_window_ids(&self, timestamp: u64) -> Vec<u64> {
+	pub fn get_sliding_window_ids(&self, row_index: u64) -> Vec<u64> {
 		match (&self.window_type, &self.size, &self.slide) {
 			(
 				WindowType::Time(_),
@@ -18,7 +18,7 @@ impl WindowOperator {
 			) => {
 				let window_size_ms = duration.as_millis() as u64;
 				let slide_ms = slide_duration.as_millis() as u64;
-				let base_window = timestamp / window_size_ms;
+				let base_window = row_index / window_size_ms;
 
 				if slide_ms >= window_size_ms {
 					// Non-overlapping windows
@@ -29,7 +29,7 @@ impl WindowOperator {
 					let num_windows = window_size_ms / slide_ms;
 					for i in 0..num_windows {
 						let window_start = base_window.saturating_sub(i);
-						if timestamp >= window_start * window_size_ms {
+						if row_index >= window_start * window_size_ms {
 							windows.push(window_start);
 						}
 					}
@@ -39,17 +39,49 @@ impl WindowOperator {
 			(WindowType::Time(_), WindowSize::Duration(duration), Some(WindowSlide::Count(_))) => {
 				// Time windows with count-based slide not supported yet
 				let window_size_ms = duration.as_millis() as u64;
-				let base_window = timestamp / window_size_ms;
+				let base_window = row_index / window_size_ms;
 				vec![base_window]
 			}
 			(WindowType::Count, WindowSize::Count(count), Some(WindowSlide::Count(slide_count))) => {
 				// Count-based sliding windows
-				let base_window = timestamp / *count;
-				let num_windows = (*count / *slide_count).max(1);
+				// For count=3, slide=2:
+				// Window 0: rows 1,2,3 (row indices 0,1,2)
+				// Window 1: rows 3,4,5 (row indices 2,3,4)
+				// Window 2: rows 5,6,7 (row indices 4,5,6)
+
+				let row_idx = row_index.saturating_sub(1); // Convert to 0-based index
 				let mut windows = Vec::new();
-				for i in 0..num_windows {
-					windows.push(base_window.saturating_sub(i));
+
+				// A row at 0-based position N belongs to window W if:
+				// W * slide <= N < W * slide + count
+				// Rearranging: (N - count + 1) / slide <= W <= N / slide
+
+				if row_idx < *count {
+					// Early rows may not fill enough windows yet
+					let max_window = row_idx / *slide_count;
+					for window_id in 0..=max_window {
+						let window_start = window_id * *slide_count;
+						let window_end = window_start + *count;
+
+						if row_idx >= window_start && row_idx < window_end {
+							windows.push(window_id);
+						}
+					}
+				} else {
+					// For later rows, calculate the range of windows this row belongs to
+					let min_window = (row_idx + 1).saturating_sub(*count) / *slide_count;
+					let max_window = row_idx / *slide_count;
+
+					for window_id in min_window..=max_window {
+						let window_start = window_id * *slide_count;
+						let window_end = window_start + *count;
+
+						if row_idx >= window_start && row_idx < window_end {
+							windows.push(window_id);
+						}
+					}
 				}
+
 				windows
 			}
 			_ => {
@@ -124,13 +156,23 @@ pub fn apply_sliding_window(
 					if should_trigger {
 						window_state.is_triggered = true;
 						// Apply aggregations and emit result
-						if let Some(aggregated_row) =
-							operator.apply_aggregations(&window_state.events, evaluator)?
-						{
-							result.push(FlowDiff::Insert {
-								post: aggregated_row,
-							});
-						} else {
+						if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
+							txn,
+							&window_key,
+							&window_state.events,
+							evaluator,
+						)? {
+							if is_new {
+								result.push(FlowDiff::Insert {
+									post: aggregated_row,
+								});
+							} else {
+								// This shouldn't happen for sliding windows with
+								// is_triggered logic
+								result.push(FlowDiff::Insert {
+									post: aggregated_row,
+								});
+							}
 						}
 					}
 
@@ -176,12 +218,23 @@ pub fn apply_sliding_window(
 					if operator.should_trigger_window(&window_state, trigger_check_time) {
 						window_state.is_triggered = true;
 
-						if let Some(aggregated_row) =
-							operator.apply_aggregations(&window_state.events, evaluator)?
-						{
-							result.push(FlowDiff::Insert {
-								post: aggregated_row,
-							});
+						if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
+							txn,
+							&window_key,
+							&window_state.events,
+							evaluator,
+						)? {
+							if is_new {
+								result.push(FlowDiff::Insert {
+									post: aggregated_row,
+								});
+							} else {
+								// This shouldn't happen for sliding windows with
+								// is_triggered logic
+								result.push(FlowDiff::Insert {
+									post: aggregated_row,
+								});
+							}
 						}
 					}
 

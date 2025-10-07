@@ -53,6 +53,7 @@ impl Executor {
 				row_count: 1,
 				take: None,
 				params: &empty_params,
+				is_aggregate_context: false,
 			},
 			&plan.value,
 		)?;

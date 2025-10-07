@@ -84,6 +84,7 @@ impl RowEvaluator for StandardRowEvaluator {
 			row_count: 1,
 			take: None,
 			params: ctx.params,
+			is_aggregate_context: false,
 		};
 
 		let result = self.evaluator.evaluate(&ctx, &expr)?;
@@ -122,6 +123,7 @@ impl StandardRowEvaluator {
 			row_count: 1,
 			take: None,
 			params: &Params::None,
+			is_aggregate_context: false,
 		};
 
 		let mut values = Vec::with_capacity(target_columns.len());

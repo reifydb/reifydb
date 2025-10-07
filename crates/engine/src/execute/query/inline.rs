@@ -174,6 +174,7 @@ impl<'a> InlineDataNode<'a> {
 						params: unsafe {
 							std::mem::transmute::<&Params, &'a Params>(&ctx.params)
 						},
+						is_aggregate_context: false,
 					};
 
 					let evaluated = evaluate(&ctx, &alias_expr.expression)?;
@@ -235,6 +236,7 @@ impl<'a> InlineDataNode<'a> {
 							params: unsafe {
 								std::mem::transmute::<&Params, &'a Params>(&ctx.params)
 							},
+							is_aggregate_context: false,
 						};
 
 						match cast_column_data(&ctx, &temp_data, wide_type, || Fragment::none())
@@ -270,6 +272,7 @@ impl<'a> InlineDataNode<'a> {
 						params: unsafe {
 							std::mem::transmute::<&Params, &'a Params>(&ctx.params)
 						},
+						is_aggregate_context: false,
 					};
 
 					if let Ok(demoted) =
@@ -340,6 +343,7 @@ impl<'a> InlineDataNode<'a> {
 						params: unsafe {
 							std::mem::transmute::<&Params, &'a Params>(&ctx.params)
 						},
+						is_aggregate_context: false,
 					};
 
 					let evaluated = evaluate(&ctx, &alias_expr.expression)?;

@@ -89,6 +89,7 @@ impl<'a> QueryNode<'a> for InnerJoinNode<'a> {
 					row_count: 1,
 					take: Some(1),
 					params: &ctx.params,
+					is_aggregate_context: false,
 				};
 
 				let all_true = self.on.iter().fold(true, |acc, cond| {

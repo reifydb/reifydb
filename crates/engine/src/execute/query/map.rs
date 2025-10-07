@@ -63,6 +63,7 @@ impl<'a> QueryNode<'a> for MapNode<'a> {
 					row_count,
 					take: None,
 					params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
+					is_aggregate_context: false,
 				};
 
 				// Check if this is an alias expression and we have source information
@@ -163,6 +164,7 @@ impl<'a> QueryNode<'a> for MapWithoutInputNode<'a> {
 					row_count: 1,
 					take: None,
 					params: unsafe { std::mem::transmute::<&Params, &'a Params>(&ctx.params) },
+					is_aggregate_context: false,
 				},
 				&expr,
 			)?;

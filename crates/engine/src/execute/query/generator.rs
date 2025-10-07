@@ -66,6 +66,7 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 			row_count: 1,              // Single evaluation context
 			take: None,
 			params: unsafe { transmute::<&Params, &'a Params>(&ctx.params) },
+			is_aggregate_context: false,
 		};
 
 		// Evaluate all parameter expressions into columns

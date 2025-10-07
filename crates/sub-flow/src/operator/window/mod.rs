@@ -27,7 +27,7 @@ use crate::{
 	flow::{FlowChange, FlowDiff},
 	operator::{
 		Operator,
-		stateful::{RawStatefulOperator, WindowStateful},
+		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful},
 		transform::TransformOperator,
 	},
 };
@@ -114,6 +114,7 @@ pub struct WindowOperator {
 	pub aggregations: Vec<Expression<'static>>,
 	pub layout: EncodedValuesLayout,
 	pub column_evaluator: StandardColumnEvaluator,
+	pub row_number_provider: RowNumberProvider,
 }
 
 impl WindowOperator {
@@ -134,6 +135,7 @@ impl WindowOperator {
 			aggregations,
 			layout: EncodedValuesLayout::new(&[Type::Blob]),
 			column_evaluator: StandardColumnEvaluator::default(),
+			row_number_provider: RowNumberProvider::new(node),
 		}
 	}
 
@@ -242,6 +244,8 @@ impl WindowOperator {
 			return Ok(Columns::new(Vec::new()));
 		}
 
+		eprintln!("DEBUG events_to_columns: Converting {} events to columns", events.len());
+
 		// Use the first event to determine the schema
 		let first_event = &events[0];
 		let mut columns = Vec::new();
@@ -271,16 +275,22 @@ impl WindowOperator {
 	/// Apply aggregations to all events in a window
 	pub fn apply_aggregations(
 		&self,
+		txn: &mut StandardCommandTransaction,
+		window_key: &EncodedKey,
 		events: &[WindowEvent],
 		row_evaluator: &StandardRowEvaluator,
-	) -> crate::Result<Option<Row>> {
+	) -> crate::Result<Option<(Row, bool)>> {
 		if events.is_empty() {
 			return Ok(None);
 		}
 
 		if self.aggregations.is_empty() {
 			// No aggregations configured, return first event as result
-			return Ok(Some(events[0].to_row()));
+			let (result_row_number, is_new) =
+				self.row_number_provider.get_or_create_row_number(txn, self, window_key)?;
+			let mut result_row = events[0].to_row();
+			result_row.number = result_row_number;
+			return Ok(Some((result_row, is_new)));
 		}
 
 		// Convert window events to columnar format
@@ -293,6 +303,7 @@ impl WindowOperator {
 			row_count: events.len(),
 			take: None,
 			params: &EMPTY_PARAMS,
+			is_aggregate_context: true, // Use aggregate functions for window aggregations
 		};
 
 		// Extract group values from window events
@@ -311,10 +322,17 @@ impl WindowOperator {
 		}
 
 		// Apply aggregation expressions
-		for aggregation in &self.aggregations {
+		eprintln!("DEBUG apply_aggregations: Processing {} aggregation expressions", self.aggregations.len());
+		for (i, aggregation) in self.aggregations.iter().enumerate() {
+			eprintln!("DEBUG apply_aggregations: Evaluating aggregation {}: {:?}", i, aggregation);
 			let agg_column = self.column_evaluator.evaluate(&ctx, aggregation)?;
+			eprintln!(
+				"DEBUG apply_aggregations: Got aggregation result with {} values",
+				agg_column.data().len()
+			);
 			// For aggregations, we take the computed aggregated value (should be single value)
 			let value = agg_column.data().get_value(0);
+			eprintln!("DEBUG apply_aggregations: Aggregation {} result: {:?}", i, value);
 			result_values.push(value.clone());
 			result_names.push(column_name_from_expression(aggregation).text().to_string());
 			result_types.push(value.get_type());
@@ -326,13 +344,17 @@ impl WindowOperator {
 		let mut encoded = layout.allocate_row();
 		layout.set_values(&mut encoded, &result_values);
 
+		// Use RowNumberProvider to get unique, stable row number for this window
+		let (result_row_number, is_new) =
+			self.row_number_provider.get_or_create_row_number(txn, self, window_key)?;
+
 		let result_row = Row {
-			number: events[0].row_number, // Use the first event's row number
+			number: result_row_number,
 			encoded,
 			layout,
 		};
 
-		Ok(Some(result_row))
+		Ok(Some((result_row, is_new)))
 	}
 
 	/// Process expired windows and clean up state
@@ -400,6 +422,51 @@ impl WindowOperator {
 
 		self.save_state(txn, window_key, state_row)
 	}
+
+	/// Get and increment global event count for count-based windows
+	pub fn get_and_increment_global_count(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		group_hash: Hash128,
+	) -> crate::Result<u64> {
+		let count_key = self.create_count_key(group_hash);
+		let count_row = self.load_state(txn, &count_key)?;
+
+		let current_count = if count_row.is_empty() || !count_row.is_defined(0) {
+			0
+		} else {
+			let blob = self.layout.get_blob(&count_row, 0);
+			if blob.is_empty() {
+				0
+			} else {
+				let config = standard();
+				decode_from_slice(blob.as_ref(), config).map(|(count, _): (u64, _)| count).unwrap_or(0)
+			}
+		};
+
+		let new_count = current_count + 1;
+
+		// Save updated count
+		let config = standard();
+		let serialized = encode_to_vec(&new_count, config)
+			.map_err(|e| Error(internal_error!("Failed to serialize count: {}", e)))?;
+
+		let mut count_state_row = self.layout.allocate();
+		let blob = Blob::from(serialized);
+		self.layout.set_blob(&mut count_state_row, 0, &blob);
+
+		self.save_state(txn, &count_key, count_state_row)?;
+
+		Ok(current_count)
+	}
+
+	/// Create a count key for global event counting
+	pub fn create_count_key(&self, group_hash: Hash128) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(32);
+		serializer.extend_bytes(b"cnt:");
+		serializer.extend_u128(group_hash);
+		EncodedKey::new(serializer.finish())
+	}
 }
 
 impl TransformOperator for WindowOperator {}
@@ -451,8 +518,16 @@ impl WindowOperator {
 				let trigger_time = state.window_start + window_size_ms;
 				current_timestamp >= trigger_time
 			}
-			// Count-based windows: trigger when count threshold is reached
-			(WindowType::Count, WindowSize::Count(count), _) => state.event_count >= *count,
+			// Count-based tumbling windows: trigger when count threshold is reached
+			(WindowType::Count, WindowSize::Count(count), None) => state.event_count >= *count,
+			// Count-based sliding windows: trigger when count threshold is reached and not already
+			// triggered
+			(WindowType::Count, WindowSize::Count(count), Some(_)) => {
+				if state.is_triggered {
+					return false;
+				}
+				state.event_count >= *count
+			}
 			_ => false,
 		}
 	}

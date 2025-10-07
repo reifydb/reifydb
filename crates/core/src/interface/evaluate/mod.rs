@@ -92,6 +92,9 @@ pub struct ColumnEvaluationContext<'a> {
 	pub row_count: usize,
 	pub take: Option<usize>,
 	pub params: &'a Params,
+	// TODO: This is a temporary hack to support aggregate functions in StandardColumnEvaluator
+	// Should be replaced with proper function detection or separate aggregation methods
+	pub is_aggregate_context: bool,
 }
 
 impl<'a> ColumnEvaluationContext<'a> {
@@ -104,6 +107,7 @@ impl<'a> ColumnEvaluationContext<'a> {
 			row_count: 1,
 			take: None,
 			params: &EMPTY_PARAMS,
+			is_aggregate_context: false,
 		}
 	}
 
