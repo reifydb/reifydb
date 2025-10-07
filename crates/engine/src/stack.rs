@@ -7,14 +7,14 @@ use reifydb_core::value::column::Columns;
 
 /// Context for storing and managing variables during query execution with scope support
 #[derive(Debug, Clone)]
-pub struct Stack<'a> {
-	scopes: Vec<Scope<'a>>,
+pub struct Stack {
+	scopes: Vec<Scope>,
 }
 
 /// Represents a single scope containing variables
 #[derive(Debug, Clone)]
-struct Scope<'a> {
-	variables: HashMap<String, VariableBinding<'a>>,
+struct Scope {
+	variables: HashMap<String, VariableBinding>,
 	scope_type: ScopeType,
 }
 
@@ -29,12 +29,12 @@ pub enum ScopeType {
 
 /// Represents a variable binding with its dataframe and mutability
 #[derive(Debug, Clone)]
-struct VariableBinding<'a> {
-	columns: Columns<'a>,
+struct VariableBinding {
+	columns: Columns<'static>,
 	mutable: bool,
 }
 
-impl<'a> Stack<'a> {
+impl Stack {
 	/// Create a new variable context with a global scope
 	pub fn new() -> Self {
 		let global_scope = Scope {
@@ -79,12 +79,17 @@ impl<'a> Stack<'a> {
 	}
 
 	/// Set a variable in the current (innermost) scope
-	pub fn set(&mut self, name: String, columns: Columns<'a>, mutable: bool) -> crate::Result<()> {
+	pub fn set(&mut self, name: String, columns: Columns<'static>, mutable: bool) -> crate::Result<()> {
 		self.set_in_current_scope(name, columns, mutable)
 	}
 
 	/// Set a variable specifically in the current scope
-	pub fn set_in_current_scope(&mut self, name: String, columns: Columns<'a>, mutable: bool) -> crate::Result<()> {
+	pub fn set_in_current_scope(
+		&mut self,
+		name: String,
+		columns: Columns<'static>,
+		mutable: bool,
+	) -> crate::Result<()> {
 		let current_scope = self.scopes.last_mut().unwrap();
 
 		// Check if variable already exists in current scope and handle mutability rules
@@ -105,7 +110,7 @@ impl<'a> Stack<'a> {
 	}
 
 	/// Get a variable by searching from innermost to outermost scope
-	pub fn get(&self, name: &str) -> Option<&Columns<'a>> {
+	pub fn get(&self, name: &str) -> Option<&Columns<'static>> {
 		// Search from innermost scope (end of vector) to outermost scope (beginning)
 		for scope in self.scopes.iter().rev() {
 			if let Some(binding) = scope.variables.get(name) {
@@ -116,7 +121,7 @@ impl<'a> Stack<'a> {
 	}
 
 	/// Get a variable with its scope depth information
-	pub fn get_with_scope(&self, name: &str) -> Option<(&Columns<'a>, usize)> {
+	pub fn get_with_scope(&self, name: &str) -> Option<(&Columns<'static>, usize)> {
 		// Search from innermost scope to outermost scope
 		for (depth_from_end, scope) in self.scopes.iter().rev().enumerate() {
 			if let Some(binding) = scope.variables.get(name) {
@@ -182,7 +187,7 @@ impl<'a> Stack<'a> {
 	}
 }
 
-impl<'a> Default for Stack<'a> {
+impl Default for Stack {
 	fn default() -> Self {
 		Self::new()
 	}

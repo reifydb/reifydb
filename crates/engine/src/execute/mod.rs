@@ -62,7 +62,7 @@ pub struct ExecutionContext<'a> {
 	pub source: Option<ResolvedSource<'a>>,
 	pub batch_size: usize,
 	pub params: Params,
-	pub stack: Stack<'a>,
+	pub stack: Stack,
 }
 
 #[derive(Debug)]
