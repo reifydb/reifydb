@@ -64,6 +64,7 @@ const fn get_precedence_for_operator(op: Operator) -> Precedence {
 
 	match op {
 		As => Assignment,
+		ColonEqual => Assignment,
 		Equal | DoubleEqual | BangEqual | LeftAngle | LeftAngleEqual | RightAngle | RightAngleEqual => {
 			Comparison
 		}

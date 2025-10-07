@@ -26,8 +26,16 @@ pub(crate) struct LetNode<'a> {
 
 impl<'a> LetNode<'a> {
 	pub fn new(physical_node: physical::LetNode<'a>) -> Self {
+		let name_text = physical_node.name.text();
+		// Strip the '$' prefix if present
+		let clean_name = if name_text.starts_with('$') {
+			name_text[1..].to_string()
+		} else {
+			name_text.to_string()
+		};
+
 		Self {
-			name: physical_node.name.text().to_string(),
+			name: clean_name,
 			value: physical_node.value,
 			mutable: physical_node.mutable,
 			context: None,

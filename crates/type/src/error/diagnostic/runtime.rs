@@ -31,14 +31,14 @@ pub fn variable_is_dataframe(name: &str) -> Diagnostic {
 		fragment: OwnedFragment::None,
 		label: None,
 		help: Some(format!(
-			"Extract a scalar value from the dataframe using '${} | only()', '${} | first()', or '${} | first_or_null()'",
+			"Extract a scalar value from the dataframe using '${} | only()', '${} | first()', or '${} | first_or_undefined()'",
 			name, name, name
 		)),
 		notes: vec![
 			"Dataframes must be explicitly converted to scalar values before use in expressions"
 				.to_string(),
-			"Use .only() for exactly 1 row × 1 column dataframes".to_string(),
-			"Use .first() to take the first value from the first column".to_string(),
+			"Use only() for exactly 1 row × 1 column dataframes".to_string(),
+			"Use first() to take the first value from the first column".to_string(),
 		],
 		cause: None,
 	}

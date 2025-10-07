@@ -269,6 +269,7 @@ impl Compiler {
 			Ast::Insert(node) => Self::compile_insert(node, tx),
 			Ast::Update(node) => Self::compile_update(node, tx),
 			Ast::Let(node) => Self::compile_let(node, tx),
+			Ast::Infix(node) => Self::compile_infix(node, tx),
 			Ast::Aggregate(node) => Self::compile_aggregate(node, tx),
 			Ast::Filter(node) => Self::compile_filter(node, tx),
 			Ast::From(node) => Self::compile_from(node, tx),
@@ -286,6 +287,65 @@ impl Compiler {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
 				return_error!(unsupported_ast_node(node.token().fragment.clone(), &node_type))
+			}
+		}
+	}
+
+	fn compile_infix<'a, 't, T: CatalogQueryTransaction>(
+		node: crate::ast::AstInfix<'a>,
+		_tx: &mut T,
+	) -> crate::Result<LogicalPlan<'a>> {
+		use crate::ast::InfixOperator;
+
+		match node.operator {
+			InfixOperator::Assign(token) => {
+				// Only allow variable assignments with := operator, not = operator
+				if !matches!(
+					token.kind,
+					crate::ast::tokenize::TokenKind::Operator(
+						crate::ast::tokenize::Operator::ColonEqual
+					)
+				) {
+					return_error!(unsupported_ast_node(
+						node.token.fragment,
+						"variable assignment must use := operator"
+					))
+				}
+
+				// This is a variable assignment statement
+				// Extract the variable name from the left side
+				let variable = match *node.left {
+					crate::ast::Ast::Variable(var) => var,
+					_ => {
+						return_error!(unsupported_ast_node(
+							node.token.fragment,
+							"assignment to non-variable"
+						))
+					}
+				};
+
+				// Convert the right side to an expression
+				let value = crate::expression::ExpressionCompiler::compile(*node.right)?;
+
+				// Extract variable name (remove $ prefix if present)
+				let name_text = variable.token.fragment.text();
+				let clean_name = if name_text.starts_with('$') {
+					&name_text[1..]
+				} else {
+					name_text
+				};
+
+				Ok(LogicalPlan::Let(LetNode {
+					name: Fragment::Owned(reifydb_type::OwnedFragment::Internal {
+						text: clean_name.to_string(),
+					}),
+					value,
+					mutable: true, // Assignments are to mutable variables
+				}))
+			}
+			_ => {
+				// Other infix operations are not supported as standalone statements
+				return_error!(unsupported_ast_node(node.token.fragment, "infix operation as statement"))
 			}
 		}
 	}

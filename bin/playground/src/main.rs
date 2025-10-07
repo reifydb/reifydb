@@ -27,7 +27,9 @@ fn main() {
 
 	db.start().unwrap();
 
-	for frame in db.command_as_root(r#"let x = 42; MAP { $x }"#, Params::None).unwrap() {
+	// Test let mut $var syntax with := operator
+	for frame in db.command_as_root(r#"let $user_data := FROM [{ name: "Alice", age: 25 }, { name: "Bob", age: 17 }, { name: "Carol", age: 30 }] | FILTER age > 21; $user_data"#, Params::None).unwrap() {
+		println!("let mut $counter result:");
 		println!("{}", frame);
 	}
 }

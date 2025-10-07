@@ -231,7 +231,7 @@ mod tests {
 
 	#[test]
 	fn test_tuple_with_identifiers_and_declaration() {
-		let tokens = tokenize("(u = 1, v = 2)").unwrap();
+		let tokens = tokenize("(u := 1, v := 2)").unwrap();
 		let result = parse(tokens).unwrap();
 		assert_eq!(result.len(), 1);
 
