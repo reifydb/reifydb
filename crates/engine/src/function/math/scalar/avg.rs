@@ -31,6 +31,22 @@ impl ScalarFunction for Avg {
 						}
 					}
 				}
+				ColumnData::Int4(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
+				ColumnData::Float4(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
 				ColumnData::Float8(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {

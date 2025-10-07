@@ -51,6 +51,29 @@ impl AggregateFunction for Avg {
 				}
 				Ok(())
 			}
+			ColumnData::Float4(container) => {
+				for (group, indices) in groups.iter() {
+					let mut sum = 0.0;
+					let mut count = 0;
+
+					for &i in indices {
+						if let Some(value) = container.get(i) {
+							sum += *value as f64;
+							count += 1;
+						}
+					}
+
+					if count > 0 {
+						self.sums.entry(group.clone()).and_modify(|v| *v += sum).or_insert(sum);
+
+						self.counts
+							.entry(group.clone())
+							.and_modify(|c| *c += count)
+							.or_insert(count);
+					}
+				}
+				Ok(())
+			}
 			ColumnData::Int2(container) => {
 				for (group, indices) in groups.iter() {
 					let mut sum = 0.0;

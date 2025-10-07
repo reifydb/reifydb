@@ -34,6 +34,14 @@ impl AggregateFunction for Sum {
 				}
 				Ok(())
 			}
+			ColumnData::Float4(container) => {
+				for (group, indices) in groups.iter() {
+					let sum: f32 = indices.iter().filter_map(|&i| container.get(i)).sum();
+
+					self.sums.insert(group.clone(), Value::float4(sum));
+				}
+				Ok(())
+			}
 			ColumnData::Int4(container) => {
 				for (group, indices) in groups.iter() {
 					let sum: i32 = indices.iter().filter_map(|&i| container.get(i)).sum();

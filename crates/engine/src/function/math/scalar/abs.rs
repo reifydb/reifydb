@@ -97,6 +97,94 @@ impl ScalarFunction for Abs {
 					Ok(ColumnData::int2_with_bitvec(data, container.bitvec().clone()))
 				}
 			}
+			ColumnData::Int4(container) => {
+				if container.is_fully_defined() {
+					// Fast path: all values are defined
+					let data: Vec<i32> = container
+						.data()
+						.iter()
+						.take(row_count)
+						.map(|&value| {
+							if value < 0 {
+								value * -1
+							} else {
+								value
+							}
+						})
+						.collect();
+					Ok(ColumnData::int4(data))
+				} else {
+					// Slow path: some values may be undefined
+					let mut data = Vec::with_capacity(container.len());
+
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							data.push(if *value < 0 {
+								*value * -1
+							} else {
+								*value
+							});
+						} else {
+							// Push default value for undefined entries
+							data.push(0);
+						}
+					}
+
+					Ok(ColumnData::int4_with_bitvec(data, container.bitvec().clone()))
+				}
+			}
+			ColumnData::Float4(container) => {
+				if container.is_fully_defined() {
+					// Fast path: all values are defined
+					let data: Vec<f32> = container
+						.data()
+						.iter()
+						.take(row_count)
+						.map(|&value| value.abs())
+						.collect();
+					Ok(ColumnData::float4(data))
+				} else {
+					// Slow path: some values may be undefined
+					let mut data = Vec::with_capacity(container.len());
+
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							data.push(value.abs());
+						} else {
+							// Push default value for undefined entries
+							data.push(0.0);
+						}
+					}
+
+					Ok(ColumnData::float4_with_bitvec(data, container.bitvec().clone()))
+				}
+			}
+			ColumnData::Float8(container) => {
+				if container.is_fully_defined() {
+					// Fast path: all values are defined
+					let data: Vec<f64> = container
+						.data()
+						.iter()
+						.take(row_count)
+						.map(|&value| value.abs())
+						.collect();
+					Ok(ColumnData::float8(data))
+				} else {
+					// Slow path: some values may be undefined
+					let mut data = Vec::with_capacity(container.len());
+
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							data.push(value.abs());
+						} else {
+							// Push default value for undefined entries
+							data.push(0.0);
+						}
+					}
+
+					Ok(ColumnData::float8_with_bitvec(data, container.bitvec().clone()))
+				}
+			}
 			_ => unimplemented!(),
 		}
 	}
