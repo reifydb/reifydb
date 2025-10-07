@@ -9,6 +9,7 @@ pub mod generator;
 pub mod index_scan;
 pub mod inline;
 pub mod join;
+pub mod let_node;
 pub mod map;
 pub mod ring_buffer_scan;
 pub mod sort;

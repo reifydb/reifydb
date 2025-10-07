@@ -353,5 +353,14 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			let label = format!("Generator: {}", node.name.text());
 			write_node_header(output, prefix, is_last, &label);
 		}
+		PhysicalPlan::Let(let_node) => {
+			let label = format!(
+				"Let {} = {} (mutable: {})",
+				let_node.name.text(),
+				let_node.value,
+				let_node.mutable
+			);
+			write_node_header(output, prefix, is_last, &label);
+		}
 	}
 }

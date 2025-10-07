@@ -676,6 +676,14 @@ impl Compiler {
 					}
 				}
 
+				LogicalPlan::Let(let_node) => {
+					stack.push(PhysicalPlan::Let(LetNode {
+						name: let_node.name,
+						value: let_node.value,
+						mutable: let_node.mutable,
+					}));
+				}
+
 				_ => unimplemented!(),
 			}
 		}
@@ -709,6 +717,8 @@ pub enum PhysicalPlan<'a> {
 	InsertRingBuffer(InsertRingBufferNode<'a>),
 	Update(UpdateTableNode<'a>),
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
+	// Variable assignment
+	Let(LetNode<'a>),
 
 	// Query
 	Aggregate(AggregateNode<'a>),
@@ -777,6 +787,13 @@ pub struct AlterSequenceNode<'a> {
 	pub sequence: ResolvedSequence<'a>,
 	pub column: ResolvedColumn<'a>,
 	pub value: Expression<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LetNode<'a> {
+	pub name: Fragment<'a>,
+	pub value: Expression<'a>,
+	pub mutable: bool,
 }
 
 #[derive(Debug, Clone)]

@@ -6,6 +6,7 @@ mod create;
 mod mutate;
 mod query;
 pub mod resolver;
+mod variable;
 
 use reifydb_catalog::{
 	CatalogQueryTransaction,
@@ -267,6 +268,7 @@ impl Compiler {
 			Ast::Delete(node) => Self::compile_delete(node, tx),
 			Ast::Insert(node) => Self::compile_insert(node, tx),
 			Ast::Update(node) => Self::compile_update(node, tx),
+			Ast::Let(node) => Self::compile_let(node, tx),
 			Ast::Aggregate(node) => Self::compile_aggregate(node, tx),
 			Ast::Filter(node) => Self::compile_filter(node, tx),
 			Ast::From(node) => Self::compile_from(node, tx),
@@ -323,6 +325,8 @@ pub enum LogicalPlan<'a> {
 	InsertRingBuffer(InsertRingBufferNode<'a>),
 	Update(UpdateTableNode<'a>),
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
+	// Variable assignment
+	Let(LetNode<'a>),
 	// Query
 	Aggregate(AggregateNode<'a>),
 	Distinct(DistinctNode<'a>),
@@ -345,6 +349,13 @@ pub enum LogicalPlan<'a> {
 #[derive(Debug)]
 pub struct PipelineNode<'a> {
 	pub steps: Vec<LogicalPlan<'a>>,
+}
+
+#[derive(Debug)]
+pub struct LetNode<'a> {
+	pub name: Fragment<'a>,
+	pub value: Expression<'a>,
+	pub mutable: bool,
 }
 
 #[derive(Debug)]

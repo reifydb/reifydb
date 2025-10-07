@@ -12,6 +12,7 @@ use query::{
 	index_scan::IndexScanNode,
 	inline::InlineDataNode,
 	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
+	let_node::LetNode,
 	map::{MapNode, MapWithoutInputNode},
 	ring_buffer_scan::RingBufferScan,
 	sort::SortNode,
@@ -88,6 +89,7 @@ pub(crate) enum ExecutionPlan<'a> {
 	VirtualScan(VirtualScanNode<'a>),
 	RingBufferScan(RingBufferScan<'a>),
 	Generator(GeneratorNode<'a>),
+	Let(LetNode<'a>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -126,6 +128,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::VirtualScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::RingBufferScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Generator(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Let(node) => node.initialize(rx, ctx),
 		}
 	}
 
@@ -149,6 +152,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::VirtualScan(node) => node.next(rx),
 			ExecutionPlan::RingBufferScan(node) => node.next(rx),
 			ExecutionPlan::Generator(node) => node.next(rx),
+			ExecutionPlan::Let(node) => node.next(rx),
 		}
 	}
 
@@ -172,6 +176,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::VirtualScan(node) => node.headers(),
 			ExecutionPlan::RingBufferScan(node) => node.headers(),
 			ExecutionPlan::Generator(node) => node.headers(),
+			ExecutionPlan::Let(node) => node.headers(),
 		}
 	}
 }
@@ -284,7 +289,8 @@ impl Executor {
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
-			| PhysicalPlan::RingBufferScan(_) => {
+			| PhysicalPlan::RingBufferScan(_)
+			| PhysicalPlan::Let(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params)
 			}
@@ -344,7 +350,8 @@ impl Executor {
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
-			| PhysicalPlan::Distinct(_) => {
+			| PhysicalPlan::Distinct(_)
+			| PhysicalPlan::Let(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params)
 			}

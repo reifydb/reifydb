@@ -148,6 +148,9 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				// TODO: Implement GeneratorCompiler for flow
 				unimplemented!("Generator compilation not yet implemented for flow")
 			}
+			PhysicalPlan::Let(_) => {
+				panic!("Let statements are not supported in flow graphs");
+			}
 		}
 	}
 }

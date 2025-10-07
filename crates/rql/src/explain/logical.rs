@@ -627,5 +627,15 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				}
 			}
 		}
+		LogicalPlan::Let(let_node) => {
+			output.push_str(&format!(
+				"{}{} Let {} = {} (mutable: {})\n",
+				prefix,
+				branch,
+				let_node.name.text(),
+				let_node.value,
+				let_node.mutable
+			));
+		}
 	}
 }

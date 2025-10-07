@@ -18,6 +18,7 @@ use crate::{
 			index_scan::IndexScanNode,
 			inline::InlineDataNode,
 			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
+			let_node::LetNode,
 			map::{MapNode, MapWithoutInputNode},
 			ring_buffer_scan::RingBufferScan,
 			sort::SortNode,
@@ -206,6 +207,8 @@ pub(crate) fn compile<'a>(
 				VirtualScanNode::new(virtual_table_impl, context, virtual_context).unwrap(),
 			)
 		}
+
+		PhysicalPlan::Let(let_node) => ExecutionPlan::Let(LetNode::new(let_node)),
 
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::AlterTable(_)
