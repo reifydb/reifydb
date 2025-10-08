@@ -20,20 +20,12 @@ impl WindowOperator {
 			) => {
 				let window_size_ms = duration.as_millis() as u64;
 				let slide_ms = slide_duration.as_millis() as u64;
-				let timestamp = timestamp_or_row_index;
 
-				eprintln!(
-					"DEBUG get_sliding_window_ids: timestamp={}, window_size_ms={}, slide_ms={}",
-					timestamp, window_size_ms, slide_ms
-				);
+				let timestamp = timestamp_or_row_index;
 
 				if slide_ms >= window_size_ms {
 					// Non-overlapping windows - each event belongs to exactly one window
 					let window_id = timestamp / slide_ms;
-					eprintln!(
-						"DEBUG get_sliding_window_ids: Non-overlapping, window_id={}",
-						window_id
-					);
 					vec![window_id]
 				} else {
 					// Overlapping windows - event belongs to multiple windows
@@ -52,21 +44,12 @@ impl WindowOperator {
 					};
 					let max_window_id = timestamp / slide_ms;
 
-					eprintln!(
-						"DEBUG get_sliding_window_ids: Overlapping, min_window_id={}, max_window_id={}",
-						min_window_id, max_window_id
-					);
-
 					for window_id in min_window_id..=max_window_id {
 						let window_start = window_id * slide_ms;
 						let window_end = window_start + window_size_ms;
 
 						if timestamp >= window_start && timestamp < window_end {
 							windows.push(window_id);
-							eprintln!(
-								"DEBUG get_sliding_window_ids: Added window_id={} (start={}, end={})",
-								window_id, window_start, window_end
-							);
 						}
 					}
 					windows
@@ -77,10 +60,6 @@ impl WindowOperator {
 				let window_size_ms = duration.as_millis() as u64;
 				let timestamp = timestamp_or_row_index;
 				let base_window = timestamp / window_size_ms;
-				eprintln!(
-					"DEBUG get_sliding_window_ids: Time+Count slide not fully supported, using base_window={}",
-					base_window
-				);
 				vec![base_window]
 			}
 			(WindowType::Count, WindowSize::Count(count), Some(WindowSlide::Count(slide_count))) => {
@@ -92,11 +71,6 @@ impl WindowOperator {
 
 				let global_count = timestamp_or_row_index; // 0-based global count from get_and_increment_global_count
 				let mut windows = Vec::new();
-
-				eprintln!(
-					"DEBUG get_sliding_window_ids: Count-based, global_count={}, count={}, slide_count={}",
-					global_count, count, slide_count
-				);
 
 				// Convert to 1-based row number for window calculations
 				let row_number = global_count + 1; // 1-based row number as expected by test
@@ -116,11 +90,6 @@ impl WindowOperator {
 				};
 				let max_window = (row_number - 1) / *slide_count;
 
-				eprintln!(
-					"DEBUG get_sliding_window_ids: row_number={}, min_window={}, max_window={}",
-					row_number, min_window, max_window
-				);
-
 				for window_id in min_window..=max_window {
 					let window_start_row = window_id * *slide_count + 1; // 1-based
 					let window_end_row = window_start_row + *count - 1; // 1-based, inclusive
@@ -131,10 +100,6 @@ impl WindowOperator {
 
 					if belongs_to_window {
 						windows.push(window_id);
-						eprintln!(
-							"DEBUG get_sliding_window_ids: Added window_id={} (rows {}-{}), current row={}",
-							window_id, window_start_row, window_end_row, row_number
-						);
 					}
 				}
 
@@ -154,15 +119,10 @@ impl WindowOperator {
 				// For sliding windows, window start is aligned to slide boundaries
 				let slide_ms = slide_duration.as_millis() as u64;
 				let window_start = window_id * slide_ms;
-				eprintln!(
-					"DEBUG set_sliding_window_start: timestamp={}, window_id={}, slide_ms={}, window_start={}",
-					timestamp, window_id, slide_ms, window_start
-				);
 				window_start
 			}
 			_ => {
 				// Fallback: use timestamp as-is
-				eprintln!("DEBUG set_sliding_window_start: Fallback to timestamp={}", timestamp);
 				timestamp
 			}
 		}
@@ -184,20 +144,12 @@ pub fn apply_sliding_window(
 	result.extend(expired_diffs);
 
 	// Process each incoming change
-	eprintln!("DEBUG apply_sliding_window: Processing {} diffs", change.diffs.len());
 	for (diff_idx, diff) in change.diffs.iter().enumerate() {
-		eprintln!(
-			"DEBUG apply_sliding_window: Processing diff {}/{}: {:?}",
-			diff_idx + 1,
-			change.diffs.len(),
-			diff
-		);
 		match diff {
 			FlowDiff::Insert {
 				post,
 			} => {
 				let group_hash = operator.compute_group_key(&post, evaluator)?;
-				eprintln!("DEBUG apply_sliding_window: Insert, group_hash={:?}", group_hash);
 				let (timestamp, window_ids) = match &operator.window_type {
 					WindowType::Time(_) => {
 						let event_timestamp = operator.extract_timestamp_from_row(&post)?;
@@ -211,29 +163,17 @@ pub fn apply_sliding_window(
 						let group_count =
 							operator.get_and_increment_global_count(txn, group_hash)?;
 						let window_ids = operator.get_sliding_window_ids(group_count); // Use count as row index
-						eprintln!(
-							"DEBUG apply_sliding_window: Count-based Insert, group_count={}, window_ids={:?}",
-							group_count, window_ids
-						);
 						(event_timestamp, window_ids)
 					}
 				};
 
-				eprintln!(
-					"DEBUG apply_sliding_window: Insert, processing {} windows: {:?}",
-					window_ids.len(),
-					window_ids
-				);
 				for window_id in window_ids {
 					let window_key = operator.create_window_key(group_hash, window_id);
 					let mut window_state = operator.load_window_state(txn, &window_key)?;
-					eprintln!(
-						"DEBUG apply_sliding_window: Insert, window_id={}, existing_event_count={}",
-						window_id, window_state.event_count
-					);
 
 					// Calculate previous aggregation BEFORE adding the new event (for Update diff)
-					let previous_aggregation = if !window_state.events.is_empty() {
+					// Only calculate if previous state had enough events for aggregation
+					let previous_aggregation = if window_state.events.len() >= operator.min_events {
 						operator.apply_aggregations(
 							txn,
 							&window_key,
@@ -241,20 +181,13 @@ pub fn apply_sliding_window(
 							evaluator,
 						)?
 					} else {
-						None
+						None // Not enough events for previous aggregation
 					};
 
 					// Add event to window
 					let event = WindowEvent::from_row(&post, timestamp);
 					window_state.events.push(event);
 					window_state.event_count += 1;
-
-					eprintln!(
-						"DEBUG apply_sliding_window: Insert, window_id={}, NEW event_count={}, event_value={:?}",
-						window_id,
-						window_state.event_count,
-						post.layout.get_value(&post.encoded, 1)
-					); // Assuming value is at index 1
 
 					if window_state.window_start == 0 {
 						// Set window start using event timestamp for sliding windows
@@ -267,11 +200,6 @@ pub fn apply_sliding_window(
 					let should_trigger =
 						operator.should_trigger_window(&window_state, trigger_check_time);
 
-					eprintln!(
-						"DEBUG apply_sliding_window: Insert, window_id={}, should_trigger={}",
-						window_id, should_trigger
-					);
-
 					if should_trigger {
 						// Apply aggregations and emit result
 						if let Some((aggregated_row, is_new)) = operator.apply_aggregations(
@@ -280,11 +208,6 @@ pub fn apply_sliding_window(
 							&window_state.events,
 							evaluator,
 						)? {
-							eprintln!(
-								"DEBUG apply_sliding_window: Insert, window_id={}, emitting result, is_new={}",
-								window_id, is_new
-							);
-
 							if is_new {
 								// First time this window appears
 								result.push(FlowDiff::Insert {
@@ -332,10 +255,6 @@ pub fn apply_sliding_window(
 						let group_count =
 							operator.get_and_increment_global_count(txn, group_hash)?;
 						let window_ids = operator.get_sliding_window_ids(group_count); // Use count as row index
-						eprintln!(
-							"DEBUG apply_sliding_window: Count-based Insert, group_count={}, window_ids={:?}",
-							group_count, window_ids
-						);
 						(event_timestamp, window_ids)
 					}
 				};
@@ -345,7 +264,8 @@ pub fn apply_sliding_window(
 					let mut window_state = operator.load_window_state(txn, &window_key)?;
 
 					// Calculate previous aggregation BEFORE adding the new event (for Update diff)
-					let previous_aggregation = if !window_state.events.is_empty() {
+					// Only calculate if previous state had enough events for aggregation
+					let previous_aggregation = if window_state.events.len() >= operator.min_events {
 						operator.apply_aggregations(
 							txn,
 							&window_key,
@@ -353,7 +273,7 @@ pub fn apply_sliding_window(
 							evaluator,
 						)?
 					} else {
-						None
+						None // Not enough events for previous aggregation
 					};
 
 					let event = WindowEvent::from_row(&post, event_timestamp);
@@ -373,11 +293,6 @@ pub fn apply_sliding_window(
 							&window_state.events,
 							evaluator,
 						)? {
-							eprintln!(
-								"DEBUG apply_sliding_window: Update, window_id={}, emitting result, is_new={}",
-								window_id, is_new
-							);
-
 							if is_new {
 								// First time this window appears
 								result.push(FlowDiff::Insert {

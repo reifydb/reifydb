@@ -28,7 +28,11 @@ impl AggregateFunction for Sum {
 		match &column.data() {
 			ColumnData::Float8(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: f64 = indices.iter().filter_map(|&i| container.get(i)).sum();
+					let sum: f64 = indices
+						.iter()
+						.filter(|&i| container.is_defined(*i))
+						.filter_map(|&i| container.get(i))
+						.sum();
 
 					self.sums.insert(group.clone(), Value::float8(sum));
 				}
@@ -36,7 +40,11 @@ impl AggregateFunction for Sum {
 			}
 			ColumnData::Float4(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: f32 = indices.iter().filter_map(|&i| container.get(i)).sum();
+					let sum: f32 = indices
+						.iter()
+						.filter(|&i| container.is_defined(*i))
+						.filter_map(|&i| container.get(i))
+						.sum();
 
 					self.sums.insert(group.clone(), Value::float4(sum));
 				}
@@ -44,22 +52,22 @@ impl AggregateFunction for Sum {
 			}
 			ColumnData::Int4(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: i32 = indices.iter().filter_map(|&i| container.get(i)).sum();
-					eprintln!(
-						"DEBUG Sum::aggregate Int4: Group {:?} with {} indices: {:?} -> Sum {}",
-						group,
-						indices.len(),
-						indices,
-						sum
-					);
-
+					let sum: i32 = indices
+						.iter()
+						.filter(|&i| container.is_defined(*i))
+						.filter_map(|&i| container.get(i))
+						.sum();
 					self.sums.insert(group.clone(), Value::Int4(sum));
 				}
 				Ok(())
 			}
 			ColumnData::Int8(container) => {
 				for (group, indices) in groups.iter() {
-					let sum: i64 = indices.iter().filter_map(|&i| container.get(i)).sum();
+					let sum: i64 = indices
+						.iter()
+						.filter(|&i| container.is_defined(*i))
+						.filter_map(|&i| container.get(i))
+						.sum();
 
 					self.sums.insert(group.clone(), Value::Int8(sum));
 				}
@@ -73,9 +81,7 @@ impl AggregateFunction for Sum {
 		let mut keys = Vec::with_capacity(self.sums.len());
 		let mut data = ColumnData::undefined(0);
 
-		eprintln!("DEBUG Sum::finalize: {} sums", self.sums.len());
 		for (key, sum) in std::mem::take(&mut self.sums) {
-			eprintln!("DEBUG Sum::finalize: Key {:?} -> Sum {:?}", key, sum);
 			keys.push(key);
 			data.push_value(sum);
 		}

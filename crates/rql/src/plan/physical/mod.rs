@@ -674,6 +674,9 @@ impl Compiler {
 						slide: window.slide,
 						group_by: window.group_by,
 						aggregations: window.aggregations,
+						min_events: window.min_events,
+						max_window_count: window.max_window_count,
+						max_window_age: window.max_window_age,
 						input,
 					}));
 				}
@@ -962,4 +965,7 @@ pub struct WindowNode<'a> {
 	pub slide: Option<WindowSlide>,
 	pub group_by: Vec<Expression<'a>>,
 	pub aggregations: Vec<Expression<'a>>,
+	pub min_events: usize,
+	pub max_window_count: Option<usize>,
+	pub max_window_age: Option<std::time::Duration>,
 }

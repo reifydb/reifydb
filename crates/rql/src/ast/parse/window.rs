@@ -245,4 +245,37 @@ mod tests {
 		assert_eq!(window.group_by.len(), 2);
 		assert_eq!(window.aggregations.len(), 3);
 	}
+
+	#[test]
+	fn test_parse_rolling_count_window() {
+		let tokens =
+			tokenize(r#"window { count(*), avg(value) } with { count: 10, rolling: true } by { user_id }"#)
+				.unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 1);
+		let window = result[0].first_unchecked().as_window();
+
+		assert_eq!(window.config.len(), 2);
+		assert_eq!(window.config[0].key.text(), "count");
+		assert_eq!(window.config[1].key.text(), "rolling");
+		assert_eq!(window.group_by.len(), 1);
+		assert_eq!(window.aggregations.len(), 2);
+	}
+
+	#[test]
+	fn test_parse_rolling_time_window() {
+		let tokens = tokenize(r#"window { sum(amount) } with { interval: "5m", rolling: true }"#).unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse().unwrap();
+
+		assert_eq!(result.len(), 1);
+		let window = result[0].first_unchecked().as_window();
+
+		assert_eq!(window.config.len(), 2);
+		assert_eq!(window.config[0].key.text(), "interval");
+		assert_eq!(window.config[1].key.text(), "rolling");
+		assert_eq!(window.aggregations.len(), 1);
+	}
 }

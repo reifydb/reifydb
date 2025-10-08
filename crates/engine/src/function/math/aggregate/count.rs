@@ -22,16 +22,118 @@ impl Count {
 
 impl AggregateFunction for Count {
 	fn aggregate(&mut self, ctx: AggregateFunctionContext) -> crate::Result<()> {
+		let column = ctx.column;
 		let groups = &ctx.groups;
 
-		eprintln!("DEBUG Count::aggregate: {} groups", groups.len());
-		for (i, (group, indices)) in groups.iter().enumerate() {
-			let count = indices.len() as i64;
-			eprintln!(
-				"DEBUG Count::aggregate: Group {}: {:?} with {} indices: {:?}",
-				i, group, count, indices
-			);
-			self.counts.insert(group.clone(), count);
+		// Check if this is count(*) by examining if we have a dummy column
+		let is_count_star = column.name.text() == "dummy" && matches!(column.data(), ColumnData::Int4(_));
+
+		if is_count_star {
+			// For count(*), count all rows including those with undefined values
+			for (group, indices) in groups.iter() {
+				let count = indices.len() as i64;
+				self.counts.insert(group.clone(), count);
+			}
+		} else {
+			// For count(column), only count defined (non-null) values
+			match &column.data() {
+				ColumnData::Bool(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Float8(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Float4(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Int4(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Int8(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Int2(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Int1(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Int16(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Utf8 {
+					container,
+					..
+				} => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Date(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::DateTime(container) => {
+					for (group, indices) in groups.iter() {
+						let count = indices.iter().filter(|&i| container.is_defined(*i)).count()
+							as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+				ColumnData::Undefined(_) => {
+					// Undefined columns have no defined values to count
+					for (group, _indices) in groups.iter() {
+						self.counts.insert(group.clone(), 0);
+					}
+				}
+				_ => {
+					// For other column types, use generic is_defined check
+					for (group, indices) in groups.iter() {
+						let count = indices
+							.iter()
+							.filter(|&i| column.data().is_defined(*i))
+							.count() as i64;
+						self.counts.insert(group.clone(), count);
+					}
+				}
+			}
 		}
 		Ok(())
 	}
@@ -40,9 +142,7 @@ impl AggregateFunction for Count {
 		let mut keys = Vec::with_capacity(self.counts.len());
 		let mut data = ColumnData::int8_with_capacity(self.counts.len());
 
-		eprintln!("DEBUG Count::finalize: {} counts", self.counts.len());
 		for (key, count) in std::mem::take(&mut self.counts) {
-			eprintln!("DEBUG Count::finalize: Key {:?} -> Count {}", key, count);
 			keys.push(key);
 			data.push_value(Value::Int8(count));
 		}

@@ -59,6 +59,9 @@ pub enum FlowNodeType {
 		slide: Option<WindowSlide>,
 		group_by: Vec<Expression<'static>>,
 		aggregations: Vec<Expression<'static>>,
+		min_events: usize,
+		max_window_count: Option<usize>,
+		max_window_age: Option<std::time::Duration>,
 	},
 }
 

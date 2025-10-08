@@ -165,4 +165,5 @@ pub enum WindowSize {
 pub enum WindowSlide {
 	Duration(Duration),
 	Count(u64),
+	Rolling,
 }

@@ -325,6 +325,9 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			slide: node.slide,
 			group_by: to_owned_expressions(node.group_by),
 			aggregations: to_owned_expressions(node.aggregations),
+			min_events: node.min_events,
+			max_window_count: node.max_window_count,
+			max_window_age: node.max_window_age,
 		}),
 		_ => unimplemented!("Implement conversion for remaining PhysicalPlan variants"),
 	}

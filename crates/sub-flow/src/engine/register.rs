@@ -158,14 +158,20 @@ impl FlowEngine {
 				slide,
 				group_by,
 				aggregations,
+				min_events,
+				max_window_count,
+				max_window_age,
 			} => {
 				let operator = WindowOperator::new(
 					node.id,
-					window_type,
+					window_type.clone(),
 					size.clone(),
 					slide.clone(),
 					group_by.clone(),
 					aggregations.clone(),
+					min_events.clone(),
+					max_window_count.clone(),
+					max_window_age.clone(),
 				);
 				self.operators.insert(node.id, Operators::Window(operator));
 			}

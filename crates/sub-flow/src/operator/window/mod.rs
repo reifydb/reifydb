@@ -32,9 +32,11 @@ use crate::{
 	},
 };
 
+mod rolling;
 mod sliding;
 mod tumbling;
 
+pub use rolling::apply_rolling_window;
 pub use sliding::apply_sliding_window;
 pub use tumbling::apply_tumbling_window;
 
@@ -63,18 +65,6 @@ impl WindowEvent {
 			stored_values.push(format!("{:?}", value));
 		}
 
-		eprintln!(
-			"DEBUG WindowEvent::from_row: Storing event row_number={}, timestamp={}, values=[{}]",
-			row.number,
-			timestamp,
-			stored_values.join(", ")
-		);
-		eprintln!(
-			"DEBUG WindowEvent::from_row: Encoded bytes length={}, names={:?}",
-			row.encoded.as_slice().len(),
-			names
-		);
-
 		Self {
 			row_number: row.number,
 			timestamp,
@@ -96,26 +86,6 @@ impl WindowEvent {
 			encoded,
 			layout,
 		};
-
-		// Debug: Extract and log the actual values being retrieved
-		let mut retrieved_values = Vec::new();
-		for (i, _field) in row.layout.fields.iter().enumerate() {
-			let value = row.layout.get_value(&row.encoded, i);
-			retrieved_values.push(format!("{:?}", value));
-		}
-
-		eprintln!(
-			"DEBUG WindowEvent::to_row: Retrieving event row_number={}, timestamp={}, values=[{}]",
-			self.row_number,
-			self.timestamp,
-			retrieved_values.join(", ")
-		);
-		eprintln!(
-			"DEBUG WindowEvent::to_row: Original encoded length={}, retrieved encoded length={}, names={:?}",
-			self.encoded_bytes.len(),
-			row.encoded.as_slice().len(),
-			self.layout_names
-		);
 
 		row
 	}
@@ -156,6 +126,9 @@ pub struct WindowOperator {
 	pub layout: EncodedValuesLayout,
 	pub column_evaluator: StandardColumnEvaluator,
 	pub row_number_provider: RowNumberProvider,
+	pub min_events: usize,               // Minimum events required before window becomes visible
+	pub max_window_count: Option<usize>, // Maximum number of windows to keep per group
+	pub max_window_age: Option<std::time::Duration>, // Maximum age of windows before expiration
 }
 
 impl WindowOperator {
@@ -166,6 +139,9 @@ impl WindowOperator {
 		slide: Option<WindowSlide>,
 		group_by: Vec<Expression<'static>>,
 		aggregations: Vec<Expression<'static>>,
+		min_events: usize,
+		max_window_count: Option<usize>,
+		max_window_age: Option<std::time::Duration>,
 	) -> Self {
 		Self {
 			node,
@@ -177,6 +153,9 @@ impl WindowOperator {
 			layout: EncodedValuesLayout::new(&[Type::Blob]),
 			column_evaluator: StandardColumnEvaluator::default(),
 			row_number_provider: RowNumberProvider::new(node),
+			min_events: min_events.max(1), // Ensure at least 1 event is required
+			max_window_count,
+			max_window_age,
 		}
 	}
 
@@ -285,16 +264,6 @@ impl WindowOperator {
 			return Ok(Columns::new(Vec::new()));
 		}
 
-		eprintln!("DEBUG events_to_columns: Converting {} events to columns", events.len());
-
-		// Debug: Log each event before conversion
-		for (i, event) in events.iter().enumerate() {
-			eprintln!(
-				"DEBUG events_to_columns: Event[{}] row_number={}, timestamp={}",
-				i, event.row_number, event.timestamp
-			);
-		}
-
 		// Use the first event to determine the schema
 		let first_event = &events[0];
 		let mut columns = Vec::new();
@@ -303,31 +272,14 @@ impl WindowOperator {
 		for (field_idx, (field_name, field_type)) in
 			first_event.layout_names.iter().zip(first_event.layout_types.iter()).enumerate()
 		{
-			eprintln!(
-				"DEBUG events_to_columns: Processing field[{}] name='{}' type={:?}",
-				field_idx, field_name, field_type
-			);
-
 			let mut column_data = ColumnData::with_capacity(*field_type, events.len());
-			let mut field_values = Vec::new();
 
 			// Collect values from all events for this column
-			for (event_idx, event) in events.iter().enumerate() {
+			for (_event_idx, event) in events.iter().enumerate() {
 				let row = event.to_row();
 				let value = row.layout.get_value(&row.encoded, field_idx);
-				eprintln!(
-					"DEBUG events_to_columns: Event[{}] field[{}] '{}' = {:?}",
-					event_idx, field_idx, field_name, value
-				);
-				field_values.push(format!("{:?}", value));
 				column_data.push_value(value);
 			}
-
-			eprintln!(
-				"DEBUG events_to_columns: Column '{}' final values = [{}]",
-				field_name,
-				field_values.join(", ")
-			);
 
 			columns.push(Column {
 				name: Fragment::owned_internal(field_name.clone()),
@@ -335,7 +287,6 @@ impl WindowOperator {
 			});
 		}
 
-		eprintln!("DEBUG events_to_columns: Created {} columns", columns.len());
 		Ok(Columns::new(columns))
 	}
 
@@ -389,17 +340,10 @@ impl WindowOperator {
 		}
 
 		// Apply aggregation expressions
-		eprintln!("DEBUG apply_aggregations: Processing {} aggregation expressions", self.aggregations.len());
-		for (i, aggregation) in self.aggregations.iter().enumerate() {
-			eprintln!("DEBUG apply_aggregations: Evaluating aggregation {}: {:?}", i, aggregation);
+		for (_i, aggregation) in self.aggregations.iter().enumerate() {
 			let agg_column = self.column_evaluator.evaluate(&ctx, aggregation)?;
-			eprintln!(
-				"DEBUG apply_aggregations: Got aggregation result with {} values",
-				agg_column.data().len()
-			);
 			// For aggregations, we take the computed aggregated value (should be single value)
 			let value = agg_column.data().get_value(0);
-			eprintln!("DEBUG apply_aggregations: Aggregation {} result: {:?}", i, value);
 			result_values.push(value.clone());
 			result_names.push(column_name_from_expression(aggregation).text().to_string());
 			result_types.push(value.get_type());
@@ -455,57 +399,21 @@ impl WindowOperator {
 		txn: &mut StandardCommandTransaction,
 		window_key: &EncodedKey,
 	) -> crate::Result<WindowState> {
-		eprintln!("DEBUG load_window_state: Loading window key={:?}", window_key);
-
 		let state_row = self.load_state(txn, window_key)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
-			eprintln!("DEBUG load_window_state: No state found, returning default WindowState");
 			return Ok(WindowState::default());
 		}
 
 		let blob = self.layout.get_blob(&state_row, 0);
 		if blob.is_empty() {
-			eprintln!("DEBUG load_window_state: Empty blob, returning default WindowState");
 			return Ok(WindowState::default());
 		}
-
-		eprintln!("DEBUG load_window_state: Deserializing {} bytes of state data", blob.as_ref().len());
 
 		let config = standard();
 		let result: Result<WindowState, _> = decode_from_slice(blob.as_ref(), config)
 			.map(|(state, _): (WindowState, usize)| state)
 			.map_err(|e| Error(internal_error!("Failed to deserialize WindowState: {}", e)));
-
-		match &result {
-			Ok(state) => {
-				eprintln!(
-					"DEBUG load_window_state: Loaded state with {} events, window_start={}, event_count={}",
-					state.events.len(),
-					state.window_start,
-					state.event_count
-				);
-
-				// Debug: Log the actual event values that were loaded
-				for (i, event) in state.events.iter().enumerate() {
-					let row = event.to_row();
-					let mut event_values = Vec::new();
-					for (field_idx, _) in row.layout.fields.iter().enumerate() {
-						let value = row.layout.get_value(&row.encoded, field_idx);
-						event_values.push(format!("{:?}", value));
-					}
-					eprintln!(
-						"DEBUG load_window_state: Loaded event[{}] row_number={}, values=[{}]",
-						i,
-						event.row_number,
-						event_values.join(", ")
-					);
-				}
-			}
-			Err(e) => {
-				eprintln!("DEBUG load_window_state: Failed to deserialize: {:?}", e);
-			}
-		}
 
 		result
 	}
@@ -517,47 +425,15 @@ impl WindowOperator {
 		window_key: &EncodedKey,
 		state: &WindowState,
 	) -> crate::Result<()> {
-		eprintln!("DEBUG save_window_state: Saving window key={:?}", window_key);
-		eprintln!(
-			"DEBUG save_window_state: State has {} events, window_start={}, event_count={}",
-			state.events.len(),
-			state.window_start,
-			state.event_count
-		);
-
-		// Debug: Log the actual event values being saved
-		for (i, event) in state.events.iter().enumerate() {
-			let row = event.to_row();
-			let mut event_values = Vec::new();
-			for (field_idx, _) in row.layout.fields.iter().enumerate() {
-				let value = row.layout.get_value(&row.encoded, field_idx);
-				event_values.push(format!("{:?}", value));
-			}
-			eprintln!(
-				"DEBUG save_window_state: Saving event[{}] row_number={}, values=[{}]",
-				i,
-				event.row_number,
-				event_values.join(", ")
-			);
-		}
-
 		let config = standard();
 		let serialized = encode_to_vec(state, config)
 			.map_err(|e| Error(internal_error!("Failed to serialize WindowState: {}", e)))?;
-
-		eprintln!("DEBUG save_window_state: Serialized to {} bytes", serialized.len());
 
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
 		self.layout.set_blob(&mut state_row, 0, &blob);
 
-		let result = self.save_state(txn, window_key, state_row);
-		match &result {
-			Ok(_) => eprintln!("DEBUG save_window_state: Successfully saved window state"),
-			Err(e) => eprintln!("DEBUG save_window_state: Failed to save: {:?}", e),
-		}
-
-		result
+		self.save_state(txn, window_key, state_row)
 	}
 
 	/// Get and increment global event count for count-based windows
@@ -628,6 +504,7 @@ impl Operator for WindowOperator {
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		match &self.slide {
+			Some(WindowSlide::Rolling) => apply_rolling_window(self, txn, change, evaluator),
 			Some(_) => apply_sliding_window(self, txn, change, evaluator),
 			None => apply_tumbling_window(self, txn, change, evaluator),
 		}
@@ -655,10 +532,6 @@ impl WindowOperator {
 				if state.event_count > 0 {
 					let window_size_ms = duration.as_millis() as u64;
 					let trigger_time = state.window_start + window_size_ms;
-					eprintln!(
-						"DEBUG should_trigger_window: Sliding time window, current_timestamp={}, trigger_time={}, window_start={}, event_count={}",
-						current_timestamp, trigger_time, state.window_start, state.event_count
-					);
 					current_timestamp >= trigger_time
 				} else {
 					false
@@ -666,14 +539,10 @@ impl WindowOperator {
 			}
 			// Count-based tumbling windows: trigger when count threshold is reached
 			(WindowType::Count, WindowSize::Count(count), None) => state.event_count >= *count,
-			// Count-based sliding windows: trigger immediately but limit window creation
-			(WindowType::Count, WindowSize::Count(count), Some(_)) => {
-				eprintln!(
-					"DEBUG should_trigger_window: Count-based sliding window, event_count={}, count={}",
-					state.event_count, count
-				);
-				// Trigger immediately for partial window visibility
-				state.event_count > 0
+			// Count-based sliding windows: trigger when min_events threshold is met
+			(WindowType::Count, WindowSize::Count(_count), Some(_)) => {
+				// Only trigger when we have enough events for meaningful aggregation
+				state.event_count >= self.min_events as u64
 			}
 			_ => false,
 		}

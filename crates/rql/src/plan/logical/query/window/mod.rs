@@ -31,6 +31,9 @@ pub struct WindowNode<'a> {
 	pub slide: Option<WindowSlide>,
 	pub group_by: Vec<Expression<'a>>,
 	pub aggregations: Vec<Expression<'a>>,
+	pub min_events: usize,
+	pub max_window_count: Option<usize>,
+	pub max_window_age: Option<Duration>,
 }
 
 /// Configuration parameters parsed from WITH clause
@@ -40,6 +43,10 @@ pub struct WindowConfig {
 	pub size: Option<WindowSize>,
 	pub slide: Option<WindowSlide>,
 	pub timestamp_column: Option<String>,
+	pub min_events: Option<usize>,
+	pub max_window_count: Option<usize>,
+	pub max_window_age: Option<Duration>,
+	pub is_rolling: bool,
 }
 
 impl Compiler {
@@ -69,7 +76,12 @@ impl Compiler {
 		}
 
 		// Determine window type based on configuration
-		let window_node = if config.slide.is_some() {
+		let window_node = if config.is_rolling {
+			// Rolling window - set slide to Rolling variant
+			let mut rolling_config = config;
+			rolling_config.slide = Some(WindowSlide::Rolling);
+			sliding::create_sliding_window(rolling_config, group_by, aggregations)?
+		} else if config.slide.is_some() {
 			// Sliding window
 			sliding::create_sliding_window(config, group_by, aggregations)?
 		} else {
@@ -132,9 +144,61 @@ impl Compiler {
 					));
 				}
 			}
+			"min_events" => {
+				if let Some(min_events_val) = Self::extract_literal_number(&config_item.value) {
+					if min_events_val < 1 {
+						return_error!(unexpected_token_error(
+							"min_events must be >= 1",
+							config_item.value.token().fragment.clone()
+						));
+					}
+					config.min_events = Some(min_events_val as usize);
+				} else {
+					return_error!(unexpected_token_error(
+						"number",
+						config_item.value.token().fragment.clone()
+					));
+				}
+			}
+			"max_window_count" => {
+				if let Some(max_window_count_val) = Self::extract_literal_number(&config_item.value) {
+					if max_window_count_val < 1 {
+						return_error!(unexpected_token_error(
+							"max_window_count must be >= 1",
+							config_item.value.token().fragment.clone()
+						));
+					}
+					config.max_window_count = Some(max_window_count_val as usize);
+				} else {
+					return_error!(unexpected_token_error(
+						"number",
+						config_item.value.token().fragment.clone()
+					));
+				}
+			}
+			"max_window_age" => {
+				if let Some(duration_str) = Self::extract_literal_string(&config_item.value) {
+					config.max_window_age = Some(Self::parse_duration(&duration_str)?);
+				} else {
+					return_error!(unexpected_token_error(
+						"duration string",
+						config_item.value.token().fragment.clone()
+					));
+				}
+			}
+			"rolling" => {
+				if let Some(rolling_val) = Self::extract_literal_boolean(&config_item.value) {
+					config.is_rolling = rolling_val;
+				} else {
+					return_error!(unexpected_token_error(
+						"boolean value",
+						config_item.value.token().fragment.clone()
+					));
+				}
+			}
 			_ => {
 				return_error!(unexpected_token_error(
-					"interval, count, slide, or timestamp_column",
+					"interval, count, slide, timestamp_column, min_events, max_window_count, max_window_age, or rolling",
 					config_item.key.token.fragment.clone()
 				));
 			}
@@ -202,6 +266,22 @@ impl Compiler {
 		if let Literal(literal) = ast {
 			if let Number(number) = literal {
 				number.0.fragment.text().parse().ok()
+			} else {
+				None
+			}
+		} else {
+			None
+		}
+	}
+
+	pub fn extract_literal_boolean(ast: &crate::ast::Ast) -> Option<bool> {
+		if let Literal(literal) = ast {
+			if let crate::ast::AstLiteral::Boolean(boolean) = literal {
+				match boolean.0.fragment.text() {
+					"true" => Some(true),
+					"false" => Some(false),
+					_ => None,
+				}
 			} else {
 				None
 			}

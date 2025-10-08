@@ -28,6 +28,9 @@ pub fn create_tumbling_window<'a>(
 		slide,
 		group_by,
 		aggregations,
+		min_events: config.min_events.unwrap_or(1),
+		max_window_count: config.max_window_count,
+		max_window_age: config.max_window_age,
 	})
 }
 
@@ -70,6 +73,10 @@ mod tests {
 			size: Some(WindowSize::Duration(Duration::from_secs(60))),
 			slide: None,
 			timestamp_column: None,
+			min_events: None,
+			max_window_count: None,
+			max_window_age: None,
+			is_rolling: false,
 		};
 
 		let result = create_tumbling_window(config, vec![], vec![]);
@@ -88,6 +95,10 @@ mod tests {
 			size: Some(WindowSize::Count(100)),
 			slide: None,
 			timestamp_column: None,
+			min_events: None,
+			max_window_count: None,
+			max_window_age: None,
+			is_rolling: false,
 		};
 
 		let result = create_tumbling_window(config, vec![], vec![]);
@@ -106,6 +117,10 @@ mod tests {
 			size: Some(WindowSize::Duration(Duration::from_secs(60))),
 			slide: Some(reifydb_core::WindowSlide::Duration(Duration::from_secs(30))),
 			timestamp_column: None,
+			min_events: None,
+			max_window_count: None,
+			max_window_age: None,
+			is_rolling: false,
 		};
 
 		let result = create_tumbling_window(config, vec![], vec![]);
@@ -119,6 +134,10 @@ mod tests {
 			size: Some(WindowSize::Count(100)),
 			slide: None,
 			timestamp_column: None,
+			min_events: None,
+			max_window_count: None,
+			max_window_age: None,
+			is_rolling: false,
 		};
 
 		let result = create_tumbling_window(config, vec![], vec![]);
