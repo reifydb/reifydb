@@ -29,6 +29,7 @@ use reifydb_type::{
 use crate::{
 	expression::{AliasExpression, Expression, VariableExpression},
 	plan::{
+		logical,
 		logical::LogicalPlan,
 		physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
 	},
@@ -676,11 +677,61 @@ impl Compiler {
 					}
 				}
 
-				LogicalPlan::Let(let_node) => {
-					stack.push(PhysicalPlan::Let(LetNode {
-						name: let_node.name,
-						value: let_node.value,
-						mutable: let_node.mutable,
+				LogicalPlan::Declare(declare_node) => {
+					let value = match declare_node.value {
+						logical::LetValue::Expression(expr) => LetValue::Expression(expr),
+						logical::LetValue::Statement(logical_plans) => {
+							// Compile the logical plans to physical plans
+							let mut physical_plans = Vec::new();
+							for logical_plan in logical_plans {
+								if let Some(physical_plan) =
+									Self::compile(rx, vec![logical_plan])?
+								{
+									physical_plans.push(physical_plan);
+								}
+							}
+							LetValue::Statement(physical_plans)
+						}
+					};
+
+					stack.push(PhysicalPlan::Declare(DeclareNode {
+						name: declare_node.name,
+						value,
+						mutable: declare_node.mutable,
+					}));
+				}
+
+				LogicalPlan::Assign(assign_node) => {
+					let value = match assign_node.value {
+						logical::AssignValue::Expression(expr) => AssignValue::Expression(expr),
+						logical::AssignValue::Statement(logical_plans) => {
+							// Compile the logical plans to physical plans
+							let mut physical_plans = Vec::new();
+							for logical_plan in logical_plans {
+								if let Some(physical_plan) =
+									Self::compile(rx, vec![logical_plan])?
+								{
+									physical_plans.push(physical_plan);
+								}
+							}
+							AssignValue::Statement(physical_plans)
+						}
+					};
+
+					stack.push(PhysicalPlan::Assign(AssignNode {
+						name: assign_node.name,
+						value,
+					}));
+				}
+
+				LogicalPlan::VariableSource(source) => {
+					// Create a variable expression to resolve at runtime
+					let variable_expr = VariableExpression {
+						fragment: source.name.clone(),
+					};
+
+					stack.push(PhysicalPlan::Variable(VariableNode {
+						variable_expr,
 					}));
 				}
 
@@ -718,7 +769,8 @@ pub enum PhysicalPlan<'a> {
 	Update(UpdateTableNode<'a>),
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
 	// Variable assignment
-	Let(LetNode<'a>),
+	Declare(DeclareNode<'a>),
+	Assign(AssignNode<'a>),
 	// Variable resolution
 	Variable(VariableNode<'a>),
 
@@ -792,10 +844,46 @@ pub struct AlterSequenceNode<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct LetNode<'a> {
+pub enum LetValue<'a> {
+	Expression(Expression<'a>),       // scalar/column expression
+	Statement(Vec<PhysicalPlan<'a>>), // query pipeline as physical plans
+}
+
+impl<'a> std::fmt::Display for LetValue<'a> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			LetValue::Expression(expr) => write!(f, "{}", expr),
+			LetValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct DeclareNode<'a> {
 	pub name: Fragment<'a>,
-	pub value: Expression<'a>,
+	pub value: LetValue<'a>,
 	pub mutable: bool,
+}
+
+#[derive(Debug, Clone)]
+pub enum AssignValue<'a> {
+	Expression(Expression<'a>),       // scalar/column expression
+	Statement(Vec<PhysicalPlan<'a>>), // query pipeline as physical plans
+}
+
+impl<'a> std::fmt::Display for AssignValue<'a> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			AssignValue::Expression(expr) => write!(f, "{}", expr),
+			AssignValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+		}
+	}
+}
+
+#[derive(Debug, Clone)]
+pub struct AssignNode<'a> {
+	pub name: Fragment<'a>,
+	pub value: AssignValue<'a>,
 }
 
 #[derive(Debug, Clone)]

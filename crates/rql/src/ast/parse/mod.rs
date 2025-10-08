@@ -19,6 +19,7 @@ mod infix;
 mod inline;
 mod insert;
 mod join;
+mod r#let;
 mod list;
 mod literal;
 mod map;
@@ -31,7 +32,6 @@ pub mod sub_query;
 mod take;
 mod tuple;
 mod update;
-mod variable;
 
 use std::cmp::PartialOrd;
 
@@ -104,33 +104,71 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			let mut nodes = Vec::with_capacity(8);
-			let mut has_pipes = false;
-			loop {
-				if self.is_eof()
-					|| self.consume_if(TokenKind::Separator(Separator::Semicolon))?.is_some()
-				{
-					break;
+			result.push(self.parse_statement()?);
+		}
+		Ok(result)
+	}
+
+	/// Parse a single statement (possibly with pipes)
+	pub(crate) fn parse_statement(&mut self) -> crate::Result<AstStatement<'a>> {
+		let mut nodes = Vec::with_capacity(8);
+		let mut has_pipes = false;
+		loop {
+			if self.is_eof() || self.consume_if(TokenKind::Separator(Separator::Semicolon))?.is_some() {
+				break;
+			}
+			nodes.push(self.parse_node(Precedence::None)?);
+			if !self.is_eof() {
+				// Check for pipe operator or newline as
+				// separator
+				if self.current()?.is_operator(Operator::Pipe) {
+					self.advance()?; // consume the pipe
+					has_pipes = true;
+				} else {
+					self.consume_if(TokenKind::Separator(NewLine))?;
 				}
-				nodes.push(self.parse_node(Precedence::None)?);
-				if !self.is_eof() {
-					// Check for pipe operator or newline as
-					// separator
-					if self.current()?.is_operator(Operator::Pipe) {
-						self.advance()?; // consume the pipe
-						has_pipes = true;
-					} else {
-						self.consume_if(TokenKind::Separator(NewLine))?;
-					}
+			}
+		}
+
+		Ok(AstStatement {
+			nodes,
+			has_pipes,
+		})
+	}
+
+	/// Parse statement content without handling termination (for use within other constructs)
+	pub(crate) fn parse_statement_content(&mut self) -> crate::Result<AstStatement<'a>> {
+		let mut nodes = Vec::with_capacity(8);
+		let mut has_pipes = false;
+		loop {
+			// Don't check for semicolon termination - that's handled by the outer context
+			if self.is_eof() {
+				break;
+			}
+
+			// Check if we hit a semicolon - if so, stop but don't consume it
+			if let Ok(current) = self.current() {
+				if current.is_separator(Separator::Semicolon) {
+					break;
 				}
 			}
 
-			result.push(AstStatement {
-				nodes,
-				has_pipes,
-			});
+			nodes.push(self.parse_node(Precedence::None)?);
+			if !self.is_eof() {
+				// Check for pipe operator or newline as separator
+				if self.current()?.is_operator(Operator::Pipe) {
+					self.advance()?; // consume the pipe
+					has_pipes = true;
+				} else {
+					self.consume_if(TokenKind::Separator(NewLine))?;
+				}
+			}
 		}
-		Ok(result)
+
+		Ok(AstStatement {
+			nodes,
+			has_pipes,
+		})
 	}
 
 	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> crate::Result<Ast<'a>> {
@@ -255,6 +293,25 @@ impl<'a> Parser<'a> {
 
 	pub(crate) fn is_eof(&self) -> bool {
 		self.position >= self.tokens.len()
+	}
+
+	/// Look ahead from current position to find a pipe operator (|)
+	/// Returns true if pipe found before semicolon or EOF
+	/// Returns false if semicolon or EOF found first
+	pub(crate) fn has_pipe_ahead(&self) -> bool {
+		let mut pos = self.position;
+
+		while pos < self.tokens.len() {
+			let token = &self.tokens[pos];
+			match token.kind {
+				TokenKind::Operator(Operator::Pipe) => return true,
+				TokenKind::Separator(Separator::Semicolon) => return false,
+				_ => pos += 1,
+			}
+		}
+
+		// Reached EOF without finding pipe or semicolon
+		false
 	}
 
 	pub(crate) fn skip_new_line(&mut self) -> crate::Result<()> {
@@ -458,6 +515,52 @@ mod tests {
 		let parser = Parser::new(tokens);
 		let result = parser.current();
 		assert_eq!(result, err!(ast::unexpected_eof_error()))
+	}
+
+	#[test]
+	fn test_semicolon_statement_separation() {
+		use crate::ast::tokenize::tokenize;
+		let tokens = tokenize("let $x := 1; FROM users").unwrap();
+		let mut parser = Parser::new(tokens);
+		let statements = parser.parse().unwrap();
+		assert_eq!(statements.len(), 2, "Should parse two separate statements");
+
+		// First statement should be the let assignment
+		let first_stmt = &statements[0];
+		assert_eq!(first_stmt.nodes.len(), 1);
+		assert!(matches!(first_stmt.nodes[0], crate::ast::Ast::Let(_)));
+
+		// Second statement should be the FROM
+		let second_stmt = &statements[1];
+		assert_eq!(second_stmt.nodes.len(), 1);
+		assert!(matches!(second_stmt.nodes[0], crate::ast::Ast::From(_)));
+	}
+
+	#[test]
+	fn test_variable_multiline_separation() {
+		use crate::ast::tokenize::tokenize;
+		let sql = r#"
+		let $user_data := FROM [{ name: "Alice", age: 25 }, { name: "Bob", age: 17 }, { name: "Carol", age: 30 }] | FILTER age > 21;
+		FROM $user_data
+		"#;
+		let tokens = tokenize(sql).unwrap();
+		let mut parser = Parser::new(tokens);
+		let statements = parser.parse().unwrap();
+		assert_eq!(statements.len(), 2, "Should parse two separate statements from multiline input");
+
+		// First statement should be the let assignment
+		let first_stmt = &statements[0];
+		assert_eq!(first_stmt.nodes.len(), 1);
+		assert!(matches!(first_stmt.nodes[0], crate::ast::Ast::Let(_)));
+
+		// Second statement should be the FROM with variable
+		let second_stmt = &statements[1];
+		assert_eq!(second_stmt.nodes.len(), 1);
+		if let crate::ast::Ast::From(from_ast) = &second_stmt.nodes[0] {
+			assert!(matches!(from_ast, crate::ast::AstFrom::Variable { .. }));
+		} else {
+			panic!("Expected FROM statement with variable");
+		}
 	}
 
 	#[test]

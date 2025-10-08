@@ -842,6 +842,10 @@ pub enum AstFrom<'a> {
 		source: UnresolvedSourceIdentifier<'a>,
 		index_name: Option<Fragment<'a>>,
 	},
+	Variable {
+		token: Token<'a>,
+		variable: AstVariable<'a>,
+	},
 	Inline {
 		token: Token<'a>,
 		list: AstList<'a>,
@@ -860,6 +864,10 @@ impl<'a> AstFrom<'a> {
 	pub fn token(&self) -> &Token<'a> {
 		match self {
 			AstFrom::Source {
+				token,
+				..
+			} => token,
+			AstFrom::Variable {
 				token,
 				..
 			} => token,
@@ -953,10 +961,16 @@ pub struct AstInfix<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub enum LetValue<'a> {
+	Expression(Box<Ast<'a>>),    // scalar/column expression
+	Statement(AstStatement<'a>), // FROM … | …
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstLet<'a> {
 	pub token: Token<'a>,
 	pub name: UnqualifiedIdentifier<'a>,
-	pub value: Box<Ast<'a>>,
+	pub value: LetValue<'a>,
 	pub mutable: bool,
 }
 

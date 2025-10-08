@@ -325,7 +325,8 @@ impl Compiler {
 				};
 
 				// Convert the right side to an expression
-				let value = crate::expression::ExpressionCompiler::compile(*node.right)?;
+				let expr = crate::expression::ExpressionCompiler::compile(*node.right)?;
+				let value = AssignValue::Expression(expr);
 
 				// Extract variable name (remove $ prefix if present)
 				let name_text = variable.token.fragment.text();
@@ -335,12 +336,11 @@ impl Compiler {
 					name_text
 				};
 
-				Ok(LogicalPlan::Let(LetNode {
+				Ok(LogicalPlan::Assign(AssignNode {
 					name: Fragment::Owned(reifydb_type::OwnedFragment::Internal {
 						text: clean_name.to_string(),
 					}),
 					value,
-					mutable: true, // Assignments are to mutable variables
 				}))
 			}
 			_ => {
@@ -386,7 +386,8 @@ pub enum LogicalPlan<'a> {
 	Update(UpdateTableNode<'a>),
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
 	// Variable assignment
-	Let(LetNode<'a>),
+	Declare(DeclareNode<'a>),
+	Assign(AssignNode<'a>),
 	// Query
 	Aggregate(AggregateNode<'a>),
 	Distinct(DistinctNode<'a>),
@@ -402,6 +403,7 @@ pub enum LogicalPlan<'a> {
 	InlineData(InlineDataNode<'a>),
 	SourceScan(SourceScanNode<'a>),
 	Generator(GeneratorNode<'a>),
+	VariableSource(VariableSourceNode<'a>),
 	// Pipeline wrapper for piped operations
 	Pipeline(PipelineNode<'a>),
 }
@@ -412,10 +414,46 @@ pub struct PipelineNode<'a> {
 }
 
 #[derive(Debug)]
-pub struct LetNode<'a> {
+pub enum LetValue<'a> {
+	Expression(Expression<'a>),      // scalar/column expression
+	Statement(Vec<LogicalPlan<'a>>), // query pipeline as logical plans
+}
+
+impl<'a> std::fmt::Display for LetValue<'a> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			LetValue::Expression(expr) => write!(f, "{}", expr),
+			LetValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub enum AssignValue<'a> {
+	Expression(Expression<'a>),      // scalar/column expression
+	Statement(Vec<LogicalPlan<'a>>), // query pipeline as logical plans
+}
+
+impl<'a> std::fmt::Display for AssignValue<'a> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			AssignValue::Expression(expr) => write!(f, "{}", expr),
+			AssignValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct DeclareNode<'a> {
 	pub name: Fragment<'a>,
-	pub value: Expression<'a>,
+	pub value: LetValue<'a>,
 	pub mutable: bool,
+}
+
+#[derive(Debug)]
+pub struct AssignNode<'a> {
+	pub name: Fragment<'a>,
+	pub value: AssignValue<'a>,
 }
 
 #[derive(Debug)]
@@ -602,6 +640,11 @@ pub struct SourceScanNode<'a> {
 pub struct GeneratorNode<'a> {
 	pub name: Fragment<'a>,
 	pub expressions: Vec<Expression<'a>>,
+}
+
+#[derive(Debug)]
+pub struct VariableSourceNode<'a> {
+	pub name: Fragment<'a>,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

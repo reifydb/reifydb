@@ -168,6 +168,18 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 				AstFrom::Generator(generator_func) => {
 					children.extend(generator_func.nodes.clone());
 				}
+				AstFrom::Variable {
+					variable,
+					..
+				} => {
+					// Create an Identifier AST for the variable
+					let variable_token = Token {
+						kind: TokenKind::Variable,
+						fragment: variable.token.fragment.clone(),
+					};
+					use crate::ast::identifier::UnqualifiedIdentifier;
+					children.push(Ast::Identifier(UnqualifiedIdentifier::new(variable_token)));
+				}
 			}
 		}
 		Ast::Aggregate(a) => {

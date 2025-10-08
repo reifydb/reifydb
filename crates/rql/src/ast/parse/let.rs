@@ -1,22 +1,23 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::diagnostic::ast::unexpected_token_error;
+
 use crate::ast::{
-	AstLet,
-	parse::Parser,
-	tokenize::{Keyword, Operator},
+	AstLet, LetValue,
+	parse::{Parser, Precedence},
+	tokenize::{Keyword, Operator, TokenKind},
 };
 
 impl<'a> Parser<'a> {
-	/// Parse a variable declaration: `let $name = expression` or `let mut $name = expression` or `mut $name =
-	/// expression`
-	pub(crate) fn parse_variable_declaration(&mut self) -> crate::Result<AstLet<'a>> {
+	pub(crate) fn parse_let(&mut self) -> crate::Result<AstLet<'a>> {
 		let mut is_mut = false;
 		let token = self.current()?.clone();
 
 		// Handle both `let` and `mut` keywords
 		if self.current()?.is_keyword(Keyword::Let) {
 			self.advance()?; // consume 'let'
+
 			// Check if the next token is 'mut'
 			if self.current()?.is_keyword(Keyword::Mut) {
 				is_mut = true;
@@ -26,7 +27,7 @@ impl<'a> Parser<'a> {
 			is_mut = true;
 			self.advance()?; // consume 'mut'
 		} else {
-			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
+			return Err(reifydb_type::Error(unexpected_token_error(
 				"expected 'let' or 'mut'",
 				self.current()?.fragment.clone(),
 			)));
@@ -34,8 +35,8 @@ impl<'a> Parser<'a> {
 
 		// Parse the variable name (must start with $)
 		let variable_token = self.current()?;
-		if !matches!(variable_token.kind, crate::ast::tokenize::TokenKind::Variable) {
-			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
+		if !matches!(variable_token.kind, TokenKind::Variable) {
+			return Err(reifydb_type::Error(unexpected_token_error(
 				"expected variable name starting with '$'",
 				variable_token.fragment.clone(),
 			)));
@@ -50,8 +51,14 @@ impl<'a> Parser<'a> {
 		// Consume the ':=' operator
 		self.consume_operator(Operator::ColonEqual)?;
 
-		// Parse the value expression
-		let value = Box::new(self.parse_node(crate::ast::parse::Precedence::None)?);
+		// Check if the RHS is a statement or an expression
+		let value = if self.is_statement()? {
+			let statement = self.parse_statement_content()?;
+			LetValue::Statement(statement)
+		} else {
+			let expr = Box::new(self.parse_node(Precedence::None)?);
+			LetValue::Expression(expr)
+		};
 
 		Ok(AstLet {
 			token,
@@ -59,5 +66,20 @@ impl<'a> Parser<'a> {
 			value,
 			mutable: is_mut,
 		})
+	}
+
+	/// Check if the current token starts a statement (FROM, SELECT, MAP, EXTEND, etc.)
+	/// Also checks for variables followed by pipes ($var | ...)
+	fn is_statement(&self) -> crate::Result<bool> {
+		if let Ok(token) = self.current() {
+			Ok(matches!(
+				token.kind,
+				TokenKind::Keyword(Keyword::From)
+					| TokenKind::Keyword(Keyword::Select)
+					| TokenKind::Keyword(Keyword::Map) | TokenKind::Keyword(Keyword::Extend)
+			) || (matches!(token.kind, TokenKind::Variable) && self.has_pipe_ahead()))
+		} else {
+			Ok(false)
+		}
 	}
 }

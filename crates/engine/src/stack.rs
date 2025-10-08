@@ -114,22 +114,43 @@ impl Stack {
 		&self.scopes.last().unwrap().scope_type
 	}
 
-	/// Set a variable in the current (innermost) scope
+	/// Set a variable in the current (innermost) scope (allows shadowing)
 	pub fn set(&mut self, name: String, variable: Variable, mutable: bool) -> crate::Result<()> {
 		self.set_in_current_scope(name, variable, mutable)
 	}
 
+	/// Reassign an existing variable (checks mutability)
+	pub fn reassign(&mut self, name: String, variable: Variable) -> crate::Result<()> {
+		let current_scope = self.scopes.last_mut().unwrap();
+
+		// Check if variable exists and is mutable
+		if let Some(existing) = current_scope.variables.get(&name) {
+			if !existing.mutable {
+				return Err(reifydb_type::Error(
+					reifydb_type::diagnostic::runtime::variable_is_immutable(&name),
+				));
+			}
+			// Update existing variable, keeping its mutability
+			current_scope.variables.insert(
+				name,
+				VariableBinding {
+					variable,
+					mutable: existing.mutable,
+				},
+			);
+		} else {
+			return Err(reifydb_type::Error(reifydb_type::diagnostic::runtime::variable_not_found(&name)));
+		}
+
+		Ok(())
+	}
+
 	/// Set a variable specifically in the current scope
+	/// Allows shadowing - new variable declarations can shadow existing ones
 	pub fn set_in_current_scope(&mut self, name: String, variable: Variable, mutable: bool) -> crate::Result<()> {
 		let current_scope = self.scopes.last_mut().unwrap();
 
-		// Check if variable already exists in current scope and handle mutability rules
-		if let Some(existing) = current_scope.variables.get(&name) {
-			if !existing.mutable {
-				panic!("Cannot reassign immutable variable '{}' in current scope", name);
-			}
-		}
-
+		// Allow shadowing - simply insert the new variable binding
 		current_scope.variables.insert(
 			name,
 			VariableBinding {

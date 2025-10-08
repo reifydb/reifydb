@@ -5,19 +5,27 @@ use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
-	ast::AstLet,
+	ast::{AstLet, LetValue as AstLetValue},
 	expression::ExpressionCompiler,
-	plan::logical::{Compiler, LetNode, LogicalPlan},
+	plan::logical::{Compiler, DeclareNode, LetValue, LogicalPlan},
 };
 
 impl Compiler {
 	pub(crate) fn compile_let<'a, T: CatalogQueryTransaction>(
 		ast: AstLet<'a>,
-		_tx: &mut T,
+		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
-		Ok(LogicalPlan::Let(LetNode {
+		let value = match ast.value {
+			AstLetValue::Expression(expr) => LetValue::Expression(ExpressionCompiler::compile(*expr)?),
+			AstLetValue::Statement(statement) => {
+				let plan = Self::compile(statement, tx)?;
+				LetValue::Statement(plan)
+			}
+		};
+
+		Ok(LogicalPlan::Declare(DeclareNode {
 			name: Fragment::owned_internal(ast.name.text().to_string()),
-			value: ExpressionCompiler::compile(*ast.value)?,
+			value,
 			mutable: ast.mutable,
 		}))
 	}

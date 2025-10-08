@@ -43,3 +43,18 @@ pub fn variable_is_dataframe(name: &str) -> Diagnostic {
 		cause: None,
 	}
 }
+
+/// Variable is immutable and cannot be reassigned
+pub fn variable_is_immutable(name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "RUNTIME_003".to_string(),
+		statement: None,
+		message: format!("Cannot reassign immutable variable '{}'", name),
+		column: None,
+		fragment: OwnedFragment::None,
+		label: None,
+		help: Some("Use 'let mut $name := value' to declare a mutable variable".to_string()),
+		notes: vec!["Only mutable variables can be reassigned".to_string()],
+		cause: None,
+	}
+}

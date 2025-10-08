@@ -5,14 +5,15 @@ use std::sync::Arc;
 
 use query::{
 	aggregate::AggregateNode,
+	assign::AssignNode,
 	compile::compile,
+	declare::DeclareNode,
 	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,
 	generator::GeneratorNode,
 	index_scan::IndexScanNode,
 	inline::InlineDataNode,
 	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
-	r#let::LetNode,
 	map::{MapNode, MapWithoutInputNode},
 	ring_buffer_scan::RingBufferScan,
 	sort::SortNode,
@@ -95,7 +96,8 @@ pub(crate) enum ExecutionPlan<'a> {
 	VirtualScan(VirtualScanNode<'a>),
 	RingBufferScan(RingBufferScan<'a>),
 	Generator(GeneratorNode<'a>),
-	Let(LetNode<'a>),
+	Declare(DeclareNode<'a>),
+	Assign(AssignNode<'a>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -139,7 +141,8 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::VirtualScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::RingBufferScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Generator(node) => node.initialize(rx, ctx),
-			ExecutionPlan::Let(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Declare(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Assign(node) => node.initialize(rx, ctx),
 		}
 	}
 
@@ -168,7 +171,8 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::VirtualScan(node) => node.next(rx, ctx),
 			ExecutionPlan::RingBufferScan(node) => node.next(rx, ctx),
 			ExecutionPlan::Generator(node) => node.next(rx, ctx),
-			ExecutionPlan::Let(node) => node.next(rx, ctx),
+			ExecutionPlan::Declare(node) => node.next(rx, ctx),
+			ExecutionPlan::Assign(node) => node.next(rx, ctx),
 		}
 	}
 
@@ -193,7 +197,8 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::VirtualScan(node) => node.headers(),
 			ExecutionPlan::RingBufferScan(node) => node.headers(),
 			ExecutionPlan::Generator(node) => node.headers(),
-			ExecutionPlan::Let(node) => node.headers(),
+			ExecutionPlan::Declare(node) => node.headers(),
+			ExecutionPlan::Assign(node) => node.headers(),
 		}
 	}
 }
@@ -360,7 +365,8 @@ impl Executor {
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
-			| PhysicalPlan::Let(_)
+			| PhysicalPlan::Declare(_)
+			| PhysicalPlan::Assign(_)
 			| PhysicalPlan::Variable(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)
@@ -374,8 +380,8 @@ impl Executor {
 			| PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::CreateRingBuffer(_)
-			| PhysicalPlan::Distinct(_) => unreachable!(), // FIXME return explanatory diagnostic
-			PhysicalPlan::Apply(_) => {
+			| PhysicalPlan::Distinct(_)
+			| PhysicalPlan::Apply(_) => {
 				// Apply operator requires flow engine for mod
 				// execution
 				unimplemented!(
@@ -425,14 +431,15 @@ impl Executor {
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Distinct(_)
-			| PhysicalPlan::Let(_)
-			| PhysicalPlan::Variable(_) => {
+			| PhysicalPlan::Variable(_)
+			| PhysicalPlan::Apply(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}
-			PhysicalPlan::Apply(_) => {
+			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
-				self.query(&mut std_txn, plan, params, stack)
+				self.query(&mut std_txn, plan, params, stack)?;
+				Ok(None)
 			}
 			PhysicalPlan::AlterTable(plan) => Ok(Some(self.alter_table(txn, plan)?)),
 			PhysicalPlan::AlterView(plan) => Ok(Some(self.execute_alter_view(txn, plan)?)),
@@ -455,11 +462,6 @@ impl Executor {
 			// result else { panic!() };
 			//     Ok(ExecutionResult::DescribeQuery { columns })
 			// }
-			PhysicalPlan::Let(let_plan) => {
-				// Execute the let statement but always return None (no output)
-				self.execute_plan_with_iterator(rx, PhysicalPlan::Let(let_plan), params, stack)?;
-				Ok(None)
-			}
 			_ => self.execute_plan_with_iterator(rx, plan, params, stack),
 		}
 	}

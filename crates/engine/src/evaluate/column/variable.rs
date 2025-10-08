@@ -23,11 +23,7 @@ impl StandardColumnEvaluator {
 		// Look up the variable in the stack
 		match ctx.stack.get(variable_name) {
 			Some(Variable::Scalar(value)) => {
-				// Scalar variables can be used directly in expressions
-				// Create a column containing the scalar value, repeated for each row
-				let value_type = value.get_type();
-				let mut data = ColumnData::with_capacity(value_type, ctx.row_count);
-
+				let mut data = ColumnData::with_capacity(value.get_type(), ctx.row_count);
 				for _ in 0..ctx.row_count {
 					data.push_value(value.clone());
 				}

@@ -12,13 +12,14 @@ use crate::{
 		ExecutionContext, ExecutionPlan,
 		query::{
 			aggregate::AggregateNode,
+			assign::AssignNode,
+			declare::DeclareNode,
 			extend::{ExtendNode, ExtendWithoutInputNode},
 			filter::FilterNode,
 			generator::GeneratorNode,
 			index_scan::IndexScanNode,
 			inline::InlineDataNode,
 			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
-			r#let::LetNode,
 			map::{MapNode, MapWithoutInputNode},
 			ring_buffer_scan::RingBufferScan,
 			sort::SortNode,
@@ -208,7 +209,9 @@ pub(crate) fn compile<'a>(
 			)
 		}
 
-		PhysicalPlan::Let(let_node) => ExecutionPlan::Let(LetNode::new(let_node)),
+		PhysicalPlan::Declare(declare_node) => ExecutionPlan::Declare(DeclareNode::new(declare_node)),
+
+		PhysicalPlan::Assign(assign_node) => ExecutionPlan::Assign(AssignNode::new(assign_node)),
 
 		PhysicalPlan::Variable(var_node) => ExecutionPlan::Variable(
 			crate::execute::query::variable::VariableNode::new(var_node.variable_expr),

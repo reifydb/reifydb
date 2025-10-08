@@ -4,25 +4,25 @@
 use std::sync::Arc;
 
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
-use reifydb_rql::{expression::Expression, plan::physical};
+use reifydb_rql::plan::{physical, physical::LetValue};
 
 use crate::{
 	StandardTransaction,
 	evaluate::column::{ColumnEvaluationContext, evaluate},
-	execute::{Batch, ExecutionContext, QueryNode},
+	execute::{Batch, ExecutionContext, QueryNode, query::compile::compile},
 	stack::Variable,
 };
 
-pub(crate) struct LetNode<'a> {
+pub(crate) struct DeclareNode<'a> {
 	name: String,
-	value: Expression<'a>,
+	value: LetValue<'a>,
 	mutable: bool,
 	context: Option<Arc<ExecutionContext<'a>>>,
 	executed: bool,
 }
 
-impl<'a> LetNode<'a> {
-	pub fn new(physical_node: physical::LetNode<'a>) -> Self {
+impl<'a> DeclareNode<'a> {
+	pub fn new(physical_node: physical::DeclareNode<'a>) -> Self {
 		let name_text = physical_node.name.text();
 		// Strip the '$' prefix if present
 		let clean_name = if name_text.starts_with('$') {
@@ -41,7 +41,7 @@ impl<'a> LetNode<'a> {
 	}
 }
 
-impl<'a> QueryNode<'a> for LetNode<'a> {
+impl<'a> QueryNode<'a> for DeclareNode<'a> {
 	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
@@ -49,30 +49,39 @@ impl<'a> QueryNode<'a> for LetNode<'a> {
 
 	fn next(
 		&mut self,
-		_rx: &mut StandardTransaction<'a>,
+		rx: &mut StandardTransaction<'a>,
 		ctx: &mut ExecutionContext<'a>,
 	) -> crate::Result<Option<Batch<'a>>> {
-		debug_assert!(self.context.is_some(), "LetNode::next() called before initialize()");
+		debug_assert!(self.context.is_some(), "DeclareNode::next() called before initialize()");
 
-		// Let statements execute once and return no data
+		// Declare statements execute once and return no data
 		if self.executed {
 			return Ok(None);
 		}
 
 		let stored_ctx = self.context.as_ref().unwrap();
 
-		// Evaluate the expression to get the value
-		let evaluation_context = ColumnEvaluationContext {
-			target: None,
-			columns: Columns::empty(),
-			row_count: 1, // Single value evaluation
-			take: None,
-			params: &stored_ctx.params,
-			stack: &stored_ctx.stack,
-		};
+		// Handle both expression and statement values
+		let result_columns = match &self.value {
+			LetValue::Expression(expr) => {
+				// Evaluate the expression to get the value
+				let evaluation_context = ColumnEvaluationContext {
+					target: None,
+					columns: Columns::empty(),
+					row_count: 1, // Single value evaluation
+					take: None,
+					params: &stored_ctx.params,
+					stack: &stored_ctx.stack,
+				};
 
-		let result_column = evaluate(&evaluation_context, &self.value)?;
-		let result_columns = Columns::new(vec![result_column]);
+				let result_column = evaluate(&evaluation_context, expr)?;
+				Columns::new(vec![result_column])
+			}
+			LetValue::Statement(physical_plans) => {
+				// Execute the pipeline of physical plans
+				self.execute_statement_pipeline(rx, ctx, physical_plans)?
+			}
+		};
 
 		// Determine if this should be stored as a Scalar or Frame variable
 		let variable = if result_columns.len() == 1 && result_columns.row_count() == 1 {
@@ -118,7 +127,50 @@ impl<'a> QueryNode<'a> for LetNode<'a> {
 	}
 
 	fn headers(&self) -> Option<ColumnHeaders<'a>> {
-		// Let statements don't produce meaningful column headers
+		// Declare statements don't produce meaningful column headers
 		None
+	}
+}
+
+impl<'a> DeclareNode<'a> {
+	/// Execute a pipeline of physical plans and return the final result
+	fn execute_statement_pipeline(
+		&self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext<'a>,
+		physical_plans: &[physical::PhysicalPlan<'a>],
+	) -> crate::Result<Columns<'a>> {
+		if physical_plans.is_empty() {
+			return Ok(Columns::empty());
+		}
+
+		// For a pipeline, we need to execute each plan in sequence
+		// The last plan in the pipeline produces the final result
+		let last_plan = physical_plans.last().unwrap();
+
+		// For now, execute just the last plan as a simple implementation
+		// TODO: Implement proper pipeline chaining for complex cases
+		let execution_context = Arc::new(ctx.clone());
+		let mut node = compile(last_plan.clone(), rx, execution_context.clone());
+
+		// Initialize the operator before execution
+		node.initialize(rx, &execution_context)?;
+
+		let mut result: Option<Columns> = None;
+		let mut mutable_context = (*execution_context).clone();
+
+		while let Some(crate::execute::Batch {
+			columns,
+		}) = node.next(rx, &mut mutable_context)?
+		{
+			if let Some(mut result_columns) = result.take() {
+				result_columns.append_columns(columns)?;
+				result = Some(result_columns);
+			} else {
+				result = Some(columns);
+			}
+		}
+
+		Ok(result.unwrap_or_else(Columns::empty))
 	}
 }

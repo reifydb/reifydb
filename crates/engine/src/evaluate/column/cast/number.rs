@@ -1218,7 +1218,7 @@ mod tests {
 		use reifydb_core::{BitVec, value::container::NumberContainer};
 		use reifydb_type::{Fragment, GetType, SafeConvert, Type};
 
-		use crate::evaluate::{Convert, column::cast::number::convert_vec, convert::Convert};
+		use crate::evaluate::{column::cast::number::convert_vec, convert::Convert};
 
 		#[test]
 		fn test_promote_ok() {

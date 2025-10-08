@@ -135,7 +135,11 @@ fn reconstruct_query(ast: &Ast) -> crate::Result<String> {
 			} => {
 				unimplemented!()
 			}
-			AstFrom::Generator(generator_func) => Ok(format!("from {}", generator_func.name.text())),
+			AstFrom::Generator(generator) => Ok(format!("from {}", generator.name.text())),
+			AstFrom::Variable {
+				variable,
+				..
+			} => Ok(format!("from {}", variable.token.fragment.text())),
 		},
 		Ast::Filter(filter_node) => {
 			// Reconstruct the filter expression

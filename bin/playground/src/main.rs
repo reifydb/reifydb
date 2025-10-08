@@ -3,7 +3,7 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::time::Duration;
+use std::{thread::sleep, time::Duration};
 
 use reifydb::{
 	Params, Session, WithSubsystem,
@@ -27,9 +27,51 @@ fn main() {
 
 	db.start().unwrap();
 
-	// Test let mut $var syntax with := operator
-	for frame in db.command_as_root(r#"let $user_data := FROM [{ name: "Alice", age: 25 }, { name: "Bob", age: 17 }, { name: "Carol", age: 30 }] | FILTER age > 21; $user_data"#, Params::None).unwrap() {
-		println!("let mut $counter result:");
+	// Test variable shadowing (should work)
+	println!("=== Testing Shadowing ===");
+	for frame in db
+		.command_as_root(
+			r#"
+		let $x := 10; 
+		let $x := 20; 
+		MAP { $x }
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
 		println!("{}", frame);
 	}
+
+	// Test mutable assignment (should work)
+	println!("=== Testing Mutable Assignment ===");
+	for frame in db
+		.command_as_root(
+			r#"
+		let mut $x := 10; 
+		$x := 20; 
+		MAP { $x }
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		println!("{}", frame);
+	}
+
+	// Test immutable assignment (should fail)
+	println!("=== Testing Immutable Assignment (should fail) ===");
+	match db.command_as_root(
+		r#"
+		let $x := 10; 
+		$x := 20; 
+		MAP { $x }
+	"#,
+		Params::None,
+	) {
+		Ok(_) => println!("ERROR: Should have failed!"),
+		Err(e) => println!("✓ Correctly failed: {}", e),
+	}
+
+	sleep(Duration::from_millis(100));
 }
