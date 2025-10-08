@@ -874,6 +874,23 @@ impl ExpressionCompiler {
 			Ast::Variable(var) => Ok(Expression::Variable(VariableExpression {
 				fragment: var.token.fragment,
 			})),
+			Ast::If(if_ast) => {
+				// For conditional expressions, we need to return a special conditional expression
+				// that will be evaluated at runtime. For now, we can treat it as an unsupported
+				// operation since this is used for conditional statements, not expressions.
+				use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
+				return err!(Diagnostic {
+					code: "AST_009".to_string(),
+					statement: None,
+					message: "unsupported query syntax: Conditional".to_string(),
+					column: None,
+					fragment: OwnedFragment::None,
+					label: Some("conditionals are only supported as statements, not expressions".to_string()),
+					help: Some("Use conditional statements in query context rather than within expressions".to_string()),
+					notes: vec![],
+					cause: None,
+				});
+			}
 			ast => unimplemented!("{:?}", ast),
 		}
 	}
@@ -1062,17 +1079,41 @@ impl ExpressionCompiler {
 			}
 
 			InfixOperator::TypeAscription(token) => {
-				let Ast::Identifier(alias) = *ast.left else {
-					unimplemented!()
-				};
+				match *ast.left {
+					Ast::Identifier(alias) => {
+						let right = Self::compile(*ast.right)?;
 
-				let right = Self::compile(*ast.right)?;
+						Ok(Expression::Alias(AliasExpression {
+							alias: IdentExpression(alias.token.fragment),
+							expression: Box::new(right),
+							fragment: token.fragment,
+						}))
+					}
+					Ast::Literal(AstLiteral::Text(text)) => {
+						// Handle string literals as alias names (common in MAP syntax)
+						let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::Alias(AliasExpression {
-					alias: IdentExpression(alias.token.fragment),
-					expression: Box::new(right),
-					fragment: token.fragment,
-				}))
+						Ok(Expression::Alias(AliasExpression {
+							alias: IdentExpression(text.0.fragment),
+							expression: Box::new(right),
+							fragment: token.fragment,
+						}))
+					}
+					_ => {
+						use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
+						return err!(Diagnostic {
+							code: "EXPR_001".to_string(),
+							statement: None,
+							message: "Invalid alias expression".to_string(),
+							column: None,
+							fragment: OwnedFragment::None,
+							label: Some("Only identifiers and string literals can be used as alias names".to_string()),
+							help: Some("Use an identifier or string literal for the alias name".to_string()),
+							notes: vec![],
+							cause: None,
+						});
+					}
+				}
 			}
 			operator => {
 				unimplemented!("not implemented: {operator:?}")

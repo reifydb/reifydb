@@ -6,6 +6,7 @@ mod alter;
 mod apply;
 mod call;
 mod cast;
+mod conditional;
 mod create;
 mod create_index;
 mod delete;

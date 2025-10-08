@@ -4,6 +4,7 @@
 pub mod aggregate;
 pub mod assign;
 pub mod compile;
+pub mod conditional;
 pub mod declare;
 pub mod extend;
 pub mod filter;

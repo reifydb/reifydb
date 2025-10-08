@@ -37,6 +37,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Filter(_) => "Filter",
 		Ast::From(_) => "From",
 		Ast::Identifier(_) => "Identifier",
+		Ast::If(_) => "If",
 		Ast::Infix(_) => "Infix",
 		Ast::Let(_) => "Let",
 		Ast::Delete(_) => "Delete",

@@ -73,5 +73,59 @@ fn main() {
 		Err(e) => println!("✓ Correctly failed: {}", e),
 	}
 
+	// Test conditional statements
+	println!("=== Testing Conditional Statements ===");
+
+	// Test basic if without else - should succeed by parsing but produce no output
+	match db.command_as_root(r#"if false { MAP { "result": "no output" } }"#, Params::None) {
+		Ok(frames) => {
+			let count = frames.len();
+			println!("✓ Simple if statement (false condition) succeeded, {} frames", count);
+		}
+		Err(e) => println!("✗ Simple if statement failed: {}", e),
+	}
+
+	// Test if with true condition
+	match db.command_as_root(r#"if true { MAP { "result": "yes output" } }"#, Params::None) {
+		Ok(frames) => {
+			let count = frames.len();
+			println!("✓ Simple if statement (true condition) succeeded, {} frames", count);
+			for frame in frames {
+				println!("   {}", frame);
+			}
+		}
+		Err(e) => println!("✗ Simple if statement failed: {}", e),
+	}
+
+	// Test if-else with false condition
+	match db.command_as_root(
+		r#"if false { MAP { "result": "then" } } else { MAP { "result": "else" } }"#,
+		Params::None,
+	) {
+		Ok(frames) => {
+			let count = frames.len();
+			println!("✓ If-else statement (false condition) succeeded, {} frames", count);
+			for frame in frames {
+				println!("   {}", frame);
+			}
+		}
+		Err(e) => println!("✗ If-else statement failed: {}", e),
+	}
+
+	// Test else-if chain
+	match db.command_as_root(
+		r#"let $result := if false { MAP { "result": "first" } } else if true { MAP { "result": "second" } } else { MAP { "result": "third" } }; FROM $result;"#,
+		Params::None,
+	) {
+		Ok(frames) => {
+			let count = frames.len();
+			println!("✓ Else-if chain succeeded, {} frames", count);
+			for frame in frames {
+				println!("   {}", frame);
+			}
+		}
+		Err(e) => println!("✗ Else-if chain failed: {}", e),
+	}
+
 	sleep(Duration::from_millis(100));
 }

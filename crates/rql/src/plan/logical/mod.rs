@@ -268,6 +268,7 @@ impl Compiler {
 			Ast::Delete(node) => Self::compile_delete(node, tx),
 			Ast::Insert(node) => Self::compile_insert(node, tx),
 			Ast::Update(node) => Self::compile_update(node, tx),
+			Ast::If(node) => Self::compile_if(node, tx),
 			Ast::Let(node) => Self::compile_let(node, tx),
 			Ast::Infix(node) => Self::compile_infix(node, tx),
 			Ast::Aggregate(node) => Self::compile_aggregate(node, tx),
@@ -388,6 +389,8 @@ pub enum LogicalPlan<'a> {
 	// Variable assignment
 	Declare(DeclareNode<'a>),
 	Assign(AssignNode<'a>),
+	// Control flow
+	Conditional(ConditionalNode<'a>),
 	// Query
 	Aggregate(AggregateNode<'a>),
 	Distinct(DistinctNode<'a>),
@@ -454,6 +457,20 @@ pub struct DeclareNode<'a> {
 pub struct AssignNode<'a> {
 	pub name: Fragment<'a>,
 	pub value: AssignValue<'a>,
+}
+
+#[derive(Debug)]
+pub struct ConditionalNode<'a> {
+	pub condition: Expression<'a>,
+	pub then_branch: Box<LogicalPlan<'a>>,
+	pub else_ifs: Vec<ElseIfBranch<'a>>,
+	pub else_branch: Option<Box<LogicalPlan<'a>>>,
+}
+
+#[derive(Debug)]
+pub struct ElseIfBranch<'a> {
+	pub condition: Expression<'a>,
+	pub then_branch: Box<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]

@@ -13,6 +13,7 @@ use crate::{
 		query::{
 			aggregate::AggregateNode,
 			assign::AssignNode,
+			conditional::ConditionalNode,
 			declare::DeclareNode,
 			extend::{ExtendNode, ExtendWithoutInputNode},
 			filter::FilterNode,
@@ -212,6 +213,10 @@ pub(crate) fn compile<'a>(
 		PhysicalPlan::Declare(declare_node) => ExecutionPlan::Declare(DeclareNode::new(declare_node)),
 
 		PhysicalPlan::Assign(assign_node) => ExecutionPlan::Assign(AssignNode::new(assign_node)),
+
+		PhysicalPlan::Conditional(conditional_node) => {
+			ExecutionPlan::Conditional(ConditionalNode::new(conditional_node))
+		}
 
 		PhysicalPlan::Variable(var_node) => ExecutionPlan::Variable(
 			crate::execute::query::variable::VariableNode::new(var_node.variable_expr),

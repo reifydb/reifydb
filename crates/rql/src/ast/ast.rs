@@ -68,6 +68,7 @@ pub enum Ast<'a> {
 	Filter(AstFilter<'a>),
 	From(AstFrom<'a>),
 	Identifier(UnqualifiedIdentifier<'a>),
+	If(AstIf<'a>),
 	Infix(AstInfix<'a>),
 	Inline(AstInline<'a>),
 	Let(AstLet<'a>),
@@ -120,6 +121,7 @@ impl<'a> Ast<'a> {
 			Ast::From(node) => node.token(),
 			Ast::Aggregate(node) => &node.token,
 			Ast::Identifier(identifier) => &identifier.token,
+			Ast::If(node) => &node.token,
 			Ast::Infix(node) => &node.token,
 			Ast::Let(node) => &node.token,
 			Ast::Delete(node) => &node.token,
@@ -290,6 +292,17 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not identifier")
+		}
+	}
+
+	pub fn is_if(&self) -> bool {
+		matches!(self, Ast::If(_))
+	}
+	pub fn as_if(&self) -> &AstIf<'a> {
+		if let Ast::If(result) = self {
+			result
+		} else {
+			panic!("not if")
 		}
 	}
 
@@ -1225,4 +1238,20 @@ impl<'a> AstVariable<'a> {
 			text
 		}
 	}
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstIf<'a> {
+	pub token: Token<'a>,
+	pub condition: Box<Ast<'a>>,
+	pub then_block: Box<Ast<'a>>,
+	pub else_ifs: Vec<AstElseIf<'a>>,
+	pub else_block: Option<Box<Ast<'a>>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstElseIf<'a> {
+	pub token: Token<'a>,
+	pub condition: Box<Ast<'a>>,
+	pub then_block: Box<Ast<'a>>,
 }

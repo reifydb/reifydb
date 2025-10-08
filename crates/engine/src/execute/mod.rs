@@ -98,6 +98,7 @@ pub(crate) enum ExecutionPlan<'a> {
 	Generator(GeneratorNode<'a>),
 	Declare(DeclareNode<'a>),
 	Assign(AssignNode<'a>),
+	Conditional(query::conditional::ConditionalNode<'a>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -143,6 +144,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Generator(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Declare(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Assign(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Conditional(node) => node.initialize(rx, ctx),
 		}
 	}
 
@@ -173,6 +175,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Generator(node) => node.next(rx, ctx),
 			ExecutionPlan::Declare(node) => node.next(rx, ctx),
 			ExecutionPlan::Assign(node) => node.next(rx, ctx),
+			ExecutionPlan::Conditional(node) => node.next(rx, ctx),
 		}
 	}
 
@@ -199,6 +202,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Generator(node) => node.headers(),
 			ExecutionPlan::Declare(node) => node.headers(),
 			ExecutionPlan::Assign(node) => node.headers(),
+			ExecutionPlan::Conditional(node) => node.headers(),
 		}
 	}
 }
@@ -367,7 +371,8 @@ impl Executor {
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Declare(_)
 			| PhysicalPlan::Assign(_)
-			| PhysicalPlan::Variable(_) => {
+			| PhysicalPlan::Variable(_)
+			| PhysicalPlan::Conditional(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)
 			}
@@ -432,7 +437,8 @@ impl Executor {
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Distinct(_)
 			| PhysicalPlan::Variable(_)
-			| PhysicalPlan::Apply(_) => {
+			| PhysicalPlan::Apply(_)
+			| PhysicalPlan::Conditional(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}

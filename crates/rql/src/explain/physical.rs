@@ -372,5 +372,56 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			let label = format!("Variable: {}", var_node.variable_expr.fragment.text());
 			write_node_header(output, prefix, is_last, &label);
 		}
+
+		PhysicalPlan::Conditional(conditional_node) => {
+			write_node_header(output, prefix, is_last, "Conditional");
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				// Show condition
+				let condition_label = format!("If: {}", conditional_node.condition);
+				write_node_header(output, child_prefix, false, &condition_label);
+
+				// Show then branch
+				write_node_header(output, child_prefix, false, "Then:");
+				with_child_prefix(child_prefix, false, |then_child_prefix| {
+					render_physical_plan_inner(
+						&conditional_node.then_branch,
+						then_child_prefix,
+						true,
+						output,
+					);
+				});
+
+				// Show else if branches
+				for (i, else_if) in conditional_node.else_ifs.iter().enumerate() {
+					let is_last_else_if = i == conditional_node.else_ifs.len() - 1
+						&& conditional_node.else_branch.is_none();
+					let else_if_label = format!("Else If: {}", else_if.condition);
+					write_node_header(output, child_prefix, false, &else_if_label);
+
+					write_node_header(output, child_prefix, is_last_else_if, "Then:");
+					with_child_prefix(child_prefix, is_last_else_if, |else_if_child_prefix| {
+						render_physical_plan_inner(
+							&else_if.then_branch,
+							else_if_child_prefix,
+							true,
+							output,
+						);
+					});
+				}
+
+				// Show else branch if present
+				if let Some(else_branch) = &conditional_node.else_branch {
+					write_node_header(output, child_prefix, false, "Else:");
+					with_child_prefix(child_prefix, true, |else_child_prefix| {
+						render_physical_plan_inner(
+							else_branch,
+							else_child_prefix,
+							true,
+							output,
+						);
+					});
+				}
+			});
+		}
 	}
 }
