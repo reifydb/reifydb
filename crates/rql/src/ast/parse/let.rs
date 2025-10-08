@@ -77,6 +77,7 @@ impl<'a> Parser<'a> {
 				TokenKind::Keyword(Keyword::From)
 					| TokenKind::Keyword(Keyword::Select)
 					| TokenKind::Keyword(Keyword::Map) | TokenKind::Keyword(Keyword::Extend)
+					| TokenKind::Keyword(Keyword::If)
 			) || (matches!(token.kind, TokenKind::Variable) && self.has_pipe_ahead()))
 		} else {
 			Ok(false)

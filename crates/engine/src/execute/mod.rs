@@ -369,14 +369,16 @@ impl Executor {
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
-			| PhysicalPlan::Declare(_)
-			| PhysicalPlan::Assign(_)
 			| PhysicalPlan::Variable(_)
 			| PhysicalPlan::Conditional(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)
 			}
-
+			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
+				let mut std_txn = StandardTransaction::from(rx);
+				self.query(&mut std_txn, plan, params, stack)?;
+				Ok(None)
+			}
 			PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
 			| PhysicalPlan::AlterView(_)
@@ -453,26 +455,6 @@ impl Executor {
 	}
 
 	fn query<'a>(
-		&self,
-		rx: &mut StandardTransaction<'a>,
-		plan: PhysicalPlan<'a>,
-		params: Params,
-		stack: &mut Stack,
-	) -> crate::Result<Option<Columns<'a>>> {
-		match plan {
-			// PhysicalPlan::Describe { plan } => {
-			//     // FIXME evaluating the entire columns is quite
-			// wasteful but good enough to write some tests
-			//     let result = self.execute_query_plan(rx, *plan)?;
-			//     let ExecutionResult::Query { columns, .. } =
-			// result else { panic!() };
-			//     Ok(ExecutionResult::DescribeQuery { columns })
-			// }
-			_ => self.execute_plan_with_iterator(rx, plan, params, stack),
-		}
-	}
-
-	fn execute_plan_with_iterator<'a>(
 		&self,
 		rx: &mut StandardTransaction<'a>,
 		plan: PhysicalPlan<'a>,

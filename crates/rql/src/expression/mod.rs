@@ -874,23 +874,6 @@ impl ExpressionCompiler {
 			Ast::Variable(var) => Ok(Expression::Variable(VariableExpression {
 				fragment: var.token.fragment,
 			})),
-			Ast::If(if_ast) => {
-				// For conditional expressions, we need to return a special conditional expression
-				// that will be evaluated at runtime. For now, we can treat it as an unsupported
-				// operation since this is used for conditional statements, not expressions.
-				use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
-				return err!(Diagnostic {
-					code: "AST_009".to_string(),
-					statement: None,
-					message: "unsupported query syntax: Conditional".to_string(),
-					column: None,
-					fragment: OwnedFragment::None,
-					label: Some("conditionals are only supported as statements, not expressions".to_string()),
-					help: Some("Use conditional statements in query context rather than within expressions".to_string()),
-					notes: vec![],
-					cause: None,
-				});
-			}
 			ast => unimplemented!("{:?}", ast),
 		}
 	}
