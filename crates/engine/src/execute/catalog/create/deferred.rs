@@ -49,7 +49,9 @@ mod tests {
 	use reifydb_rql::plan::physical::{CreateDeferredViewNode, InlineDataNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Value};
 
-	use crate::{execute::Executor, test_utils::create_test_command_transaction_with_internal_schema};
+	use crate::{
+		execute::Executor, stack::Stack, test_utils::create_test_command_transaction_with_internal_schema,
+	};
 
 	#[test]
 	fn test_create_view() {
@@ -72,12 +74,15 @@ mod tests {
 		};
 
 		// First creation should succeed
+		let mut stack = Stack::new();
 		let result = instance
 			.execute_command_plan(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
+				&mut stack,
 			)
+			.unwrap()
 			.unwrap();
 
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -92,7 +97,9 @@ mod tests {
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
+				&mut stack,
 			)
+			.unwrap()
 			.unwrap();
 
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -103,7 +110,12 @@ mod tests {
 		// should return error
 		plan.if_not_exists = false;
 		let err = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateDeferredView(plan),
+				Params::default(),
+				&mut stack,
+			)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
@@ -129,12 +141,15 @@ mod tests {
 			})),
 		};
 
+		let mut stack = Stack::new();
 		let result = instance
 			.execute_command_plan(
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
+				&mut stack,
 			)
+			.unwrap()
 			.unwrap();
 
 		assert_eq!(result.row(0)[0], Value::Utf8("test_namespace".to_string()));
@@ -158,7 +173,9 @@ mod tests {
 				&mut txn,
 				PhysicalPlan::CreateDeferredView(plan.clone()),
 				Params::default(),
+				&mut stack,
 			)
+			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("another_schema".to_string()));
 		assert_eq!(result.row(0)[1], Value::Utf8("test_view".to_string()));
@@ -183,7 +200,13 @@ mod tests {
 			})),
 		};
 
-		instance.execute_command_plan(&mut txn, PhysicalPlan::CreateDeferredView(plan), Params::default())
-			.unwrap_err();
+		let mut stack = Stack::new();
+		instance.execute_command_plan(
+			&mut txn,
+			PhysicalPlan::CreateDeferredView(plan),
+			Params::default(),
+			&mut stack,
+		)
+		.unwrap_err();
 	}
 }

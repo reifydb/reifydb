@@ -1,11 +1,14 @@
 use reifydb_core::{
-	interface::{ResolvedColumn, TargetColumn},
+	interface::ResolvedColumn,
 	value::column::{ColumnData, Columns},
 };
 use reifydb_type::{Fragment, Type, Value};
 
 use crate::{
-	evaluate::column::{ColumnEvaluationContext, cast::cast_column_data},
+	evaluate::{
+		TargetColumn,
+		column::{ColumnEvaluationContext, cast::cast_column_data},
+	},
 	execute::ExecutionContext,
 };
 
@@ -45,6 +48,7 @@ pub(crate) fn coerce_value_to_column_type<'a>(
 			row_count: 1,
 			take: None,
 			params: &ctx.params,
+			stack: &ctx.stack,
 			is_aggregate_context: false,
 		},
 		&temp_column_data,

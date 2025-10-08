@@ -39,6 +39,7 @@ impl<'a> Parser<'a> {
 				Operator::Asterisk => Ok(InfixOperator::Multiply(token)),
 				Operator::Slash => Ok(InfixOperator::Divide(token)),
 				Operator::Percent => Ok(InfixOperator::Rem(token)),
+				Operator::ColonEqual => Ok(InfixOperator::Assign(token)),
 				Operator::Equal => Ok(InfixOperator::Assign(token)),
 				Operator::DoubleEqual => Ok(InfixOperator::Equal(token)),
 				Operator::BangEqual => Ok(InfixOperator::NotEqual(token)),

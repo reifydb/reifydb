@@ -3,14 +3,15 @@
 
 //! Compilation of inline data operations
 
-use reifydb_core::interface::{
-	CommandTransaction, FlowNodeId,
-	expression::{AliasExpression, IdentExpression},
-};
+use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 use reifydb_type::Fragment;
 
 use super::super::{CompileOperator, FlowCompiler, FlowNodeType, conversion::to_owned_expression};
-use crate::{Result, plan::physical::InlineDataNode};
+use crate::{
+	Result,
+	expression::{AliasExpression, IdentExpression},
+	plan::physical::InlineDataNode,
+};
 
 pub(crate) struct InlineDataCompiler {
 	pub inline_data: InlineDataNode<'static>,

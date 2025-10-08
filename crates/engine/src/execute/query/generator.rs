@@ -1,18 +1,18 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{mem::transmute, sync::Arc};
+use std::sync::Arc;
 
 use reifydb_core::{
 	error,
-	interface::{ColumnEvaluationContext, Params, expression::Expression},
 	value::column::{Columns, headers::ColumnHeaders},
 };
-use reifydb_type::{Fragment, diagnostic::function::generator_not_found};
+use reifydb_rql::expression::Expression;
+use reifydb_type::{Fragment, Params, diagnostic::function::generator_not_found};
 
 use crate::{
 	StandardTransaction,
-	evaluate::column::evaluate,
+	evaluate::{ColumnEvaluationContext, column::evaluate},
 	execute::{Batch, ExecutionContext, QueryNode},
 	function::{GeneratorContext, GeneratorFunction},
 };
@@ -52,20 +52,28 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, txn: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		txn: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let ctx = self.context.as_ref().unwrap();
+		// Use the passed context parameter directly
 		let generator = self.generator.as_ref().unwrap();
 
+		let stored_ctx = self.context.as_ref().unwrap();
 		let evaluation_ctx = ColumnEvaluationContext {
 			target: None,
 			columns: Columns::empty(), // No input columns for generator functions
 			row_count: 1,              // Single evaluation context
 			take: None,
-			params: unsafe { transmute::<&Params, &'a Params>(&ctx.params) },
+			params: unsafe { std::mem::transmute::<&Params, &'a Params>(&stored_ctx.params) },
+			stack: unsafe {
+				std::mem::transmute::<&crate::stack::Stack, &'a crate::stack::Stack>(&stored_ctx.stack)
+			},
 			is_aggregate_context: false,
 		};
 
@@ -77,7 +85,7 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 		}
 		let evaluated_params = Columns::new(evaluated_columns);
 
-		let cloned_ctx = ctx.as_ref().clone();
+		let cloned_ctx = ctx.clone();
 
 		let columns = generator.generate(
 			txn,
@@ -89,6 +97,11 @@ impl<'a> QueryNode<'a> for GeneratorNode<'a> {
 		)?;
 
 		self.exhausted = true;
+
+		// Transmute the columns to extend their lifetime
+		// SAFETY: The columns come from generator.generate() which returns Columns<'a>
+		// so they genuinely have lifetime 'a through the query execution
+		let columns = unsafe { std::mem::transmute::<Columns<'_>, Columns<'a>>(columns) };
 
 		Ok(Some(Batch {
 			columns,

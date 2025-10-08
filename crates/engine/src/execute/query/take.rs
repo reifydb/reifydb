@@ -32,12 +32,16 @@ impl<'a> QueryNode<'a> for TakeNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a>,
+		ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
 
 		while let Some(Batch {
 			mut columns,
-		}) = self.input.next(rx)?
+		}) = self.input.next(rx, ctx)?
 		{
 			let row_count = columns.row_count();
 			if row_count == 0 {

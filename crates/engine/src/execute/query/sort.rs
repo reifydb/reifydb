@@ -39,14 +39,18 @@ impl<'a> QueryNode<'a> for SortNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "SortNode::next() called before initialize()");
 
 		let mut columns_opt: Option<Columns> = None;
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx)?
+		}) = self.input.next(rx, ctx)?
 		{
 			if let Some(existing_columns) = &mut columns_opt {
 				for (i, col) in columns.into_iter().enumerate() {

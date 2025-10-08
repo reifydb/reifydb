@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{ColumnEvaluator, evaluate::expression::LessThanEqExpression},
 	return_error,
 	value::{
 		column::{Column, ColumnData},
 		container::{Utf8Container, number::NumberContainer, temporal::TemporalContainer},
 	},
 };
+use reifydb_rql::expression::LessThanEqExpression;
 use reifydb_type::{
 	Fragment, IsNumber, IsTemporal, Promote, Type::Boolean,
 	diagnostic::operator::less_than_equal_cannot_be_applied_to_incompatible_types, temporal, value::number,

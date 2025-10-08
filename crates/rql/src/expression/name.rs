@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::evaluate::expression::{ConstantExpression, Expression};
 use reifydb_type::Fragment;
+
+use crate::expression::{ConstantExpression, Expression};
 
 /// Get the column name for an expression
 pub fn column_name_from_expression<'a>(expr: &Expression<'a>) -> Fragment<'a> {
@@ -152,5 +153,6 @@ fn simplified_name<'a>(expr: &Expression<'a>) -> Fragment<'a> {
 		)),
 		Expression::Type(type_expr) => type_expr.fragment.clone(),
 		Expression::Parameter(_) => Fragment::owned_internal("parameter"),
+		Expression::Variable(var) => Fragment::owned_internal(format!("var_{}", var.name())),
 	}
 }

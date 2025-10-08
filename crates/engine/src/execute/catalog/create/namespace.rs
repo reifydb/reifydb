@@ -44,7 +44,7 @@ mod tests {
 	use reifydb_rql::plan::physical::{CreateNamespaceNode, PhysicalPlan};
 	use reifydb_type::{Fragment, Value};
 
-	use crate::{execute::Executor, test_utils::create_test_command_transaction};
+	use crate::{execute::Executor, stack::Stack, test_utils::create_test_command_transaction};
 
 	#[test]
 	fn test_create_namespace() {
@@ -57,9 +57,17 @@ mod tests {
 		};
 
 		// First creation should succeed
+		let mut stack = Stack::new();
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateNamespace(plan.clone()), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateNamespace(plan.clone()),
+				Params::default(),
+				&mut stack,
+			)
+			.unwrap()
 			.unwrap();
+
 		assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
 		assert_eq!(result.row(0)[1], Value::Boolean(true));
 
@@ -67,7 +75,13 @@ mod tests {
 		// should not error
 		plan.if_not_exists = true;
 		let result = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateNamespace(plan.clone()), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateNamespace(plan.clone()),
+				Params::default(),
+				&mut stack,
+			)
+			.unwrap()
 			.unwrap();
 		assert_eq!(result.row(0)[0], Value::Utf8("my_schema".to_string()));
 		assert_eq!(result.row(0)[1], Value::Boolean(false));
@@ -76,7 +90,12 @@ mod tests {
 		// false` should return error
 		plan.if_not_exists = false;
 		let err = instance
-			.execute_command_plan(&mut txn, PhysicalPlan::CreateNamespace(plan), Params::default())
+			.execute_command_plan(
+				&mut txn,
+				PhysicalPlan::CreateNamespace(plan),
+				Params::default(),
+				&mut stack,
+			)
 			.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_001");
 	}

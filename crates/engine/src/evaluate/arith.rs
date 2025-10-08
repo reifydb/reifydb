@@ -1,12 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::interface::ColumnSaturationPolicy;
 use reifydb_type::{
 	Error, GetType, IsNumber, LazyFragment, Promote, SafeAdd, SafeDiv, SafeMul, SafeRemainder, SafeSub,
 	diagnostic::number::number_out_of_range, return_error,
 };
 
-use crate::interface::{ColumnSaturationPolicy, evaluate::ColumnEvaluationContext};
+use crate::evaluate::ColumnEvaluationContext;
 
 impl ColumnEvaluationContext<'_> {
 	pub fn add<'a, L, R>(
@@ -14,7 +15,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
-	) -> crate::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -64,7 +65,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
-	) -> crate::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -114,7 +115,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
-	) -> crate::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -164,7 +165,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
-	) -> crate::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -214,7 +215,7 @@ impl ColumnEvaluationContext<'_> {
 		l: &L,
 		r: &R,
 		fragment: impl LazyFragment<'a> + Copy,
-	) -> crate::Result<Option<<L as Promote<R>>::Output>>
+	) -> reifydb_core::Result<Option<<L as Promote<R>>::Output>>
 	where
 		L: Promote<R>,
 		R: IsNumber,
@@ -262,7 +263,7 @@ impl ColumnEvaluationContext<'_> {
 mod tests {
 	use reifydb_type::Fragment;
 
-	use crate::interface::evaluate::ColumnEvaluationContext;
+	use crate::evaluate::ColumnEvaluationContext;
 
 	#[test]
 	fn test_add() {

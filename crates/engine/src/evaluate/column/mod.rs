@@ -1,12 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub(crate) use reifydb_core::interface::ColumnEvaluationContext;
-use reifydb_core::{
-	interface::{ColumnEvaluator, evaluate::expression::Expression},
-	value::column::Column,
-};
+use reifydb_core::value::column::Column;
+use reifydb_rql::expression::Expression;
 
+pub(crate) use crate::evaluate::ColumnEvaluationContext;
 use crate::function::{Functions, blob, math};
 
 mod access;
@@ -21,6 +19,7 @@ mod logic;
 mod parameter;
 mod prefix;
 mod tuple;
+mod variable;
 
 pub struct StandardColumnEvaluator {
 	functions: Functions,
@@ -45,8 +44,12 @@ impl Default for StandardColumnEvaluator {
 	}
 }
 
-impl ColumnEvaluator for StandardColumnEvaluator {
-	fn evaluate<'a>(&self, ctx: &ColumnEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Column<'a>> {
+impl StandardColumnEvaluator {
+	pub fn evaluate<'a>(
+		&self,
+		ctx: &ColumnEvaluationContext<'a>,
+		expr: &Expression<'a>,
+	) -> crate::Result<Column<'a>> {
 		match expr {
 			Expression::AccessSource(expr) => self.access(ctx, expr),
 			Expression::Alias(expr) => self.alias(ctx, expr),
@@ -72,6 +75,7 @@ impl ColumnEvaluator for StandardColumnEvaluator {
 			Expression::Sub(expr) => self.sub(ctx, expr),
 			Expression::Tuple(expr) => self.tuple(ctx, expr),
 			Expression::Parameter(expr) => self.parameter(ctx, expr),
+			Expression::Variable(expr) => self.variable(ctx, expr),
 			expr => unimplemented!("{expr:?}"),
 		}
 	}

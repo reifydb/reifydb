@@ -15,12 +15,13 @@ use crate::{
 pub fn load_and_merge_all<'a>(
 	node: &mut Box<ExecutionPlan<'a>>,
 	rx: &mut StandardTransaction<'a>,
+	ctx: &mut ExecutionContext<'a>,
 ) -> crate::Result<Columns<'a>> {
 	let mut result: Option<Columns> = None;
 
 	while let Some(Batch {
 		columns,
-	}) = node.next(rx)?
+	}) = node.next(rx, ctx)?
 	{
 		if let Some(mut acc) = result.take() {
 			acc.append_columns(columns)?;

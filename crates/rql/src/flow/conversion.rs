@@ -4,16 +4,19 @@
 //! Conversion utilities for transforming borrowed data to owned data at the
 //! flow compilation boundary
 
-use reifydb_core::interface::evaluate::expression::{
-	AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression, CallExpression,
-	CastExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression, Expression,
-	GreaterThanEqExpression, GreaterThanExpression, IdentExpression, LessThanEqExpression, LessThanExpression,
-	MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator,
-	RemExpression, SubExpression, TupleExpression, TypeExpression, XorExpression,
-};
 use reifydb_type::Fragment;
 
-use crate::plan::physical::PhysicalPlan;
+use crate::{
+	expression::{
+		AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
+		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression,
+		Expression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression, LessThanEqExpression,
+		LessThanExpression, MulExpression, NotEqExpression, OrExpression, ParameterExpression,
+		PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression, TypeExpression,
+		VariableExpression, XorExpression,
+	},
+	plan::physical::PhysicalPlan,
+};
 
 /// Converts an Expression<'a> to Expression<'static> by converting all
 /// fragments to owned
@@ -126,6 +129,7 @@ pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
 		}),
 		Expression::Type(type_expr) => Expression::Type(to_owned_type_expression(type_expr)),
 		Expression::Parameter(param) => Expression::Parameter(to_owned_parameter_expression(param)),
+		Expression::Variable(var) => Expression::Variable(to_owned_variable_expression(var)),
 	}
 }
 
@@ -183,6 +187,12 @@ fn to_owned_parameter_expression(param: ParameterExpression<'_>) -> ParameterExp
 		} => ParameterExpression::Named {
 			fragment: Fragment::Owned(fragment.into_owned()),
 		},
+	}
+}
+
+fn to_owned_variable_expression(var: VariableExpression<'_>) -> VariableExpression<'static> {
+	VariableExpression {
+		fragment: Fragment::Owned(var.fragment.into_owned()),
 	}
 }
 

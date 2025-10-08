@@ -1,13 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{ColumnEvaluator, evaluate::expression::SubExpression},
-	value::{
-		column::{Column, ColumnData, push::Push},
-		container::{UndefinedContainer, number::NumberContainer},
-	},
+use reifydb_core::value::{
+	column::{Column, ColumnData, push::Push},
+	container::{UndefinedContainer, number::NumberContainer},
 };
+use reifydb_rql::expression::SubExpression;
 use reifydb_type::{
 	GetType, IsNumber, LazyFragment, Promote, SafeSub, Type,
 	diagnostic::operator::sub_cannot_be_applied_to_incompatible_types, return_error,

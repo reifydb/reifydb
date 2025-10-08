@@ -12,6 +12,8 @@ use crate::{
 		ExecutionContext, ExecutionPlan,
 		query::{
 			aggregate::AggregateNode,
+			assign::AssignNode,
+			declare::DeclareNode,
 			extend::{ExtendNode, ExtendWithoutInputNode},
 			filter::FilterNode,
 			generator::GeneratorNode,
@@ -206,6 +208,14 @@ pub(crate) fn compile<'a>(
 				VirtualScanNode::new(virtual_table_impl, context, virtual_context).unwrap(),
 			)
 		}
+
+		PhysicalPlan::Declare(declare_node) => ExecutionPlan::Declare(DeclareNode::new(declare_node)),
+
+		PhysicalPlan::Assign(assign_node) => ExecutionPlan::Assign(AssignNode::new(assign_node)),
+
+		PhysicalPlan::Variable(var_node) => ExecutionPlan::Variable(
+			crate::execute::query::variable::VariableNode::new(var_node.variable_expr),
+		),
 
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::AlterTable(_)

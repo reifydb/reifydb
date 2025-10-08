@@ -2,13 +2,14 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::interface::evaluate::expression::{AliasExpression, IdentExpression};
 use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
 
 use crate::{
 	ast::{Ast, AstFrom},
-	expression::ExpressionCompiler,
-	plan::logical::{Compiler, GeneratorNode, InlineDataNode, LogicalPlan, SourceScanNode, resolver},
+	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
+	plan::logical::{
+		Compiler, GeneratorNode, InlineDataNode, LogicalPlan, SourceScanNode, VariableSourceNode, resolver,
+	},
 };
 
 impl Compiler {
@@ -85,6 +86,16 @@ impl Compiler {
 				Ok(LogicalPlan::Generator(GeneratorNode {
 					name: generator.name,
 					expressions,
+				}))
+			}
+			AstFrom::Variable {
+				variable,
+				..
+			} => {
+				// Create a variable source node
+				let variable_name = variable.token.fragment.clone();
+				Ok(LogicalPlan::VariableSource(VariableSourceNode {
+					name: variable_name,
 				}))
 			}
 		}

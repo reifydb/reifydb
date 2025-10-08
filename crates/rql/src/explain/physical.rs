@@ -362,5 +362,24 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 				render_physical_plan_inner(input, &child_prefix, true, output);
 			}
 		}
+		PhysicalPlan::Declare(declare_node) => {
+			let label = format!(
+				"Declare {} = {} (mutable: {})",
+				declare_node.name.text(),
+				declare_node.value,
+				declare_node.mutable
+			);
+			write_node_header(output, prefix, is_last, &label);
+		}
+
+		PhysicalPlan::Assign(assign_node) => {
+			let label = format!("Assign {} = {}", assign_node.name.text(), assign_node.value);
+			write_node_header(output, prefix, is_last, &label);
+		}
+
+		PhysicalPlan::Variable(var_node) => {
+			let label = format!("Variable: {}", var_node.variable_expr.fragment.text());
+			write_node_header(output, prefix, is_last, &label);
+		}
 	}
 }

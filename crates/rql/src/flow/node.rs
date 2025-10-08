@@ -1,10 +1,10 @@
 use reifydb_core::{
 	JoinStrategy, JoinType, SortKey, WindowSize, WindowSlide, WindowType,
-	interface::{FlowEdgeId, FlowNodeId, TableId, ViewId, expression::Expression},
+	interface::{FlowEdgeId, FlowNodeId, TableId, ViewId},
 };
 use serde::{Deserialize, Serialize};
 
-use crate::query::QueryString;
+use crate::{expression::Expression, query::QueryString};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum FlowNodeType {

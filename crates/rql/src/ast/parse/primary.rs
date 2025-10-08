@@ -4,7 +4,7 @@
 use reifydb_core::{diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstParameterRef, AstWildcard,
+	Ast, AstFrom, AstVariable, AstWildcard,
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -66,6 +66,7 @@ impl<'a> Parser<'a> {
 					Keyword::Distinct => Ok(Ast::Distinct(self.parse_distinct()?)),
 					Keyword::Apply => Ok(Ast::Apply(self.parse_apply()?)),
 					Keyword::Call => Ok(Ast::Call(self.parse_call()?)),
+					Keyword::Let => Ok(Ast::Let(self.parse_let()?)),
 					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
 					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
@@ -91,12 +92,26 @@ impl<'a> Parser<'a> {
 					}
 				}
 				_ => {
-					if let TokenKind::Parameter(kind) = current.kind {
-						let token = self.advance()?;
-						Ok(Ast::ParameterRef(AstParameterRef {
-							token,
-							kind,
-						}))
+					if let TokenKind::Variable = current.kind {
+						// Check if there's a pipe ahead - if so, treat as frame source
+						if self.has_pipe_ahead() {
+							let var_token = self.advance()?;
+							let from_token = var_token.clone(); // Create FROM token before moving var_token
+							let variable = AstVariable {
+								token: var_token,
+							};
+							// Create a FROM AST node to treat variable as frame source
+							Ok(Ast::From(AstFrom::Variable {
+								token: from_token,
+								variable,
+							}))
+						} else {
+							// No pipe ahead, treat as normal variable expression
+							let token = self.advance()?;
+							Ok(Ast::Variable(AstVariable {
+								token,
+							}))
+						}
 					} else {
 						return_error!(ast::unsupported_token_error(self.advance()?.fragment))
 					}

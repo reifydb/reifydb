@@ -1,6 +1,6 @@
-# =============================================================================
-# Test Suites (smoke, compatibility, diagnostic, functional, integration, stress)
-# =============================================================================
+# ============
+# Test Suites
+# ============
 
 # Dynamically discover test suites from directories in TEST_SUITE_DIR
 TEST_SUITES := $(shell find $(TEST_SUITE_DIR) -maxdepth 1 -type d -exec basename {} \; | grep -v testsuite | sort)

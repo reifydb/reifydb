@@ -16,6 +16,7 @@ use super::coerce::coerce_value_to_column_type;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
+	stack::Stack,
 };
 
 impl Executor {
@@ -58,6 +59,7 @@ impl Executor {
 			source: resolved_source,
 			batch_size: 1024,
 			params: params.clone(),
+			stack: Stack::new(),
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);
@@ -69,9 +71,10 @@ impl Executor {
 		input_node.initialize(&mut std_txn, &execution_context)?;
 
 		// Process all input batches
+		let mut mutable_context = (*execution_context).clone();
 		while let Some(Batch {
 			columns,
-		}) = input_node.next(&mut std_txn)?
+		}) = input_node.next(&mut std_txn, &mut mutable_context)?
 		{
 			let row_count = columns.row_count();
 

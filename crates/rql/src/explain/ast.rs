@@ -38,6 +38,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::From(_) => "From",
 		Ast::Identifier(_) => "Identifier",
 		Ast::Infix(_) => "Infix",
+		Ast::Let(_) => "Let",
 		Ast::Delete(_) => "Delete",
 		Ast::Insert(_) => "Insert",
 		Ast::Update(_) => "Update",
@@ -55,7 +56,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Take(_) => "Take",
 		Ast::Tuple(_) => "Tuple",
 		Ast::Wildcard(_) => "Wildcard",
-		Ast::ParameterRef(_) => "ParameterRef",
+		Ast::Variable(_) => "Variable",
 		Ast::Distinct(_) => "Distinct",
 		Ast::Apply(_) => "Apply",
 		Ast::Call(_) => "Call",
@@ -167,6 +168,18 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 				}
 				AstFrom::Generator(generator_func) => {
 					children.extend(generator_func.nodes.clone());
+				}
+				AstFrom::Variable {
+					variable,
+					..
+				} => {
+					// Create an Identifier AST for the variable
+					let variable_token = Token {
+						kind: TokenKind::Variable,
+						fragment: variable.token.fragment.clone(),
+					};
+					use crate::ast::identifier::UnqualifiedIdentifier;
+					children.push(Ast::Identifier(UnqualifiedIdentifier::new(variable_token)));
 				}
 			}
 		}

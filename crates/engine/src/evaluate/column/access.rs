@@ -1,13 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{ColumnEvaluationContext, evaluate::expression::AccessSourceExpression},
-	value::column::Column,
-};
+use reifydb_core::value::column::Column;
+use reifydb_rql::expression::AccessSourceExpression;
 use reifydb_type::{Fragment, OwnedFragment, diagnostic::query::column_not_found, error};
 
-use crate::evaluate::column::StandardColumnEvaluator;
+use crate::evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator};
 
 impl StandardColumnEvaluator {
 	pub(crate) fn access<'a>(

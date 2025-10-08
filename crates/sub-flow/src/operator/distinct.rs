@@ -9,11 +9,12 @@ use bincode::{
 };
 use reifydb_core::{
 	CowVec, Error, Row,
-	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, expression::Expression},
+	interface::FlowNodeId,
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
+use reifydb_rql::expression::Expression;
 use reifydb_type::{Blob, Params, RowNumber, Type, internal_error};
 use serde::{Deserialize, Serialize};
 

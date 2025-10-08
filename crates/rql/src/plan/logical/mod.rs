@@ -6,6 +6,7 @@ mod create;
 mod mutate;
 pub mod query;
 pub mod resolver;
+mod variable;
 
 use query::window::WindowNode;
 use reifydb_catalog::{
@@ -16,7 +17,6 @@ use reifydb_core::{
 	IndexType, JoinStrategy, JoinType, SortDirection, SortKey,
 	interface::{
 		ColumnPolicyKind, ColumnSaturationPolicy,
-		expression::{AliasExpression, Expression},
 		resolved::{ResolvedColumn, ResolvedIndex, ResolvedSource},
 	},
 	return_error,
@@ -33,6 +33,7 @@ use crate::{
 			MaybeQualifiedTransactionalViewIdentifier,
 		},
 	},
+	expression::{AliasExpression, Expression},
 	plan::logical::alter::{AlterTableNode, AlterViewNode},
 	query::QueryString,
 };
@@ -268,6 +269,8 @@ impl Compiler {
 			Ast::Delete(node) => Self::compile_delete(node, tx),
 			Ast::Insert(node) => Self::compile_insert(node, tx),
 			Ast::Update(node) => Self::compile_update(node, tx),
+			Ast::Let(node) => Self::compile_let(node, tx),
+			Ast::Infix(node) => Self::compile_infix(node, tx),
 			Ast::Aggregate(node) => Self::compile_aggregate(node, tx),
 			Ast::Filter(node) => Self::compile_filter(node, tx),
 			Ast::From(node) => Self::compile_from(node, tx),
@@ -286,6 +289,65 @@ impl Compiler {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
 				return_error!(unsupported_ast_node(node.token().fragment.clone(), &node_type))
+			}
+		}
+	}
+
+	fn compile_infix<'a, 't, T: CatalogQueryTransaction>(
+		node: crate::ast::AstInfix<'a>,
+		_tx: &mut T,
+	) -> crate::Result<LogicalPlan<'a>> {
+		use crate::ast::InfixOperator;
+
+		match node.operator {
+			InfixOperator::Assign(token) => {
+				// Only allow variable assignments with := operator, not = operator
+				if !matches!(
+					token.kind,
+					crate::ast::tokenize::TokenKind::Operator(
+						crate::ast::tokenize::Operator::ColonEqual
+					)
+				) {
+					return_error!(unsupported_ast_node(
+						node.token.fragment,
+						"variable assignment must use := operator"
+					))
+				}
+
+				// This is a variable assignment statement
+				// Extract the variable name from the left side
+				let variable = match *node.left {
+					crate::ast::Ast::Variable(var) => var,
+					_ => {
+						return_error!(unsupported_ast_node(
+							node.token.fragment,
+							"assignment to non-variable"
+						))
+					}
+				};
+
+				// Convert the right side to an expression
+				let expr = crate::expression::ExpressionCompiler::compile(*node.right)?;
+				let value = AssignValue::Expression(expr);
+
+				// Extract variable name (remove $ prefix if present)
+				let name_text = variable.token.fragment.text();
+				let clean_name = if name_text.starts_with('$') {
+					&name_text[1..]
+				} else {
+					name_text
+				};
+
+				Ok(LogicalPlan::Assign(AssignNode {
+					name: Fragment::Owned(reifydb_type::OwnedFragment::Internal {
+						text: clean_name.to_string(),
+					}),
+					value,
+				}))
+			}
+			_ => {
+				// Other infix operations are not supported as standalone statements
+				return_error!(unsupported_ast_node(node.token.fragment, "infix operation as statement"))
 			}
 		}
 	}
@@ -325,6 +387,9 @@ pub enum LogicalPlan<'a> {
 	InsertRingBuffer(InsertRingBufferNode<'a>),
 	Update(UpdateTableNode<'a>),
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
+	// Variable assignment
+	Declare(DeclareNode<'a>),
+	Assign(AssignNode<'a>),
 	// Query
 	Aggregate(AggregateNode<'a>),
 	Distinct(DistinctNode<'a>),
@@ -341,6 +406,7 @@ pub enum LogicalPlan<'a> {
 	SourceScan(SourceScanNode<'a>),
 	Window(WindowNode<'a>),
 	Generator(GeneratorNode<'a>),
+	VariableSource(VariableSourceNode<'a>),
 	// Pipeline wrapper for piped operations
 	Pipeline(PipelineNode<'a>),
 }
@@ -348,6 +414,49 @@ pub enum LogicalPlan<'a> {
 #[derive(Debug)]
 pub struct PipelineNode<'a> {
 	pub steps: Vec<LogicalPlan<'a>>,
+}
+
+#[derive(Debug)]
+pub enum LetValue<'a> {
+	Expression(Expression<'a>),      // scalar/column expression
+	Statement(Vec<LogicalPlan<'a>>), // query pipeline as logical plans
+}
+
+impl<'a> std::fmt::Display for LetValue<'a> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			LetValue::Expression(expr) => write!(f, "{}", expr),
+			LetValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub enum AssignValue<'a> {
+	Expression(Expression<'a>),      // scalar/column expression
+	Statement(Vec<LogicalPlan<'a>>), // query pipeline as logical plans
+}
+
+impl<'a> std::fmt::Display for AssignValue<'a> {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		match self {
+			AssignValue::Expression(expr) => write!(f, "{}", expr),
+			AssignValue::Statement(plans) => write!(f, "Statement({} plans)", plans.len()),
+		}
+	}
+}
+
+#[derive(Debug)]
+pub struct DeclareNode<'a> {
+	pub name: Fragment<'a>,
+	pub value: LetValue<'a>,
+	pub mutable: bool,
+}
+
+#[derive(Debug)]
+pub struct AssignNode<'a> {
+	pub name: Fragment<'a>,
+	pub value: AssignValue<'a>,
 }
 
 #[derive(Debug)]
@@ -534,6 +643,11 @@ pub struct SourceScanNode<'a> {
 pub struct GeneratorNode<'a> {
 	pub name: Fragment<'a>,
 	pub expressions: Vec<Expression<'a>>,
+}
+
+#[derive(Debug)]
+pub struct VariableSourceNode<'a> {
+	pub name: Fragment<'a>,
 }
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {

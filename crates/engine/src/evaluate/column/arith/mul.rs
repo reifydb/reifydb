@@ -1,13 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{ColumnEvaluator, evaluate::expression::MulExpression},
-	value::{
-		column::{Column, ColumnData, push::Push},
-		container::{UndefinedContainer, number::NumberContainer},
-	},
+use reifydb_core::value::{
+	column::{Column, ColumnData, push::Push},
+	container::{UndefinedContainer, number::NumberContainer},
 };
+use reifydb_rql::expression::MulExpression;
 use reifydb_type::{
 	GetType, IsNumber, LazyFragment, Promote, SafeMul, Type,
 	diagnostic::operator::mul_cannot_be_applied_to_incompatible_types, return_error,

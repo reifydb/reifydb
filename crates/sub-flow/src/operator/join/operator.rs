@@ -6,13 +6,13 @@ use bincode::{
 };
 use reifydb_core::{
 	EncodedKey, Error, JoinType, Row,
-	interface::{FlowNodeId, RowEvaluationContext, RowEvaluator, expression::Expression},
+	interface::FlowNodeId,
 	util::encoding::keycode::KeySerializer,
 	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
+use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::{Hash128, xxh3_128};
-use reifydb_rql::query::QueryString;
+use reifydb_rql::{expression::Expression, query::QueryString};
 use reifydb_type::{Blob, Params, Type, Value, internal_error};
 
 use super::{JoinSide, JoinState, JoinStrategy, Schema};

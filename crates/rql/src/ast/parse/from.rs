@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::{Error, diagnostic::ast::unexpected_token_error};
+
 use crate::ast::{
 	Ast, AstList, TokenKind,
 	ast::{AstFrom, AstGenerator},
@@ -29,7 +31,31 @@ impl<'a> Parser<'a> {
 				list: self.parse_static()?,
 			})
 		} else {
-			use crate::ast::identifier::UnresolvedSourceIdentifier;
+			use crate::ast::{AstVariable, identifier::UnresolvedSourceIdentifier};
+
+			// Check if this is a variable or identifier
+			let current = self.current()?;
+			match current.kind {
+				TokenKind::Variable => {
+					// Parse variable source: FROM $variable_name
+					let var_token = self.advance()?;
+					let variable = AstVariable {
+						token: var_token,
+					};
+
+					return Ok(AstFrom::Variable {
+						token,
+						variable,
+					});
+				}
+				TokenKind::Identifier => {}
+				_ => {
+					return Err(Error(unexpected_token_error(
+						"expected identifier or variable",
+						current.fragment.clone(),
+					)));
+				}
+			}
 
 			// Get the first identifier token
 			let first_token = self.consume(TokenKind::Identifier)?;
@@ -180,10 +206,7 @@ mod tests {
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name, &None);
 			}
-			AstFrom::Inline {
-				..
-			} => unreachable!(),
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 
@@ -207,10 +230,7 @@ mod tests {
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name, &None);
 			}
-			AstFrom::Inline {
-				..
-			} => unreachable!(),
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 
@@ -225,9 +245,6 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Source {
-				..
-			} => unreachable!(),
 			AstFrom::Inline {
 				list: query,
 				..
@@ -235,7 +252,7 @@ mod tests {
 				let block = query;
 				assert_eq!(block.len(), 0);
 			}
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 
@@ -250,9 +267,6 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Source {
-				..
-			} => unreachable!(),
 			AstFrom::Inline {
 				list,
 				..
@@ -265,7 +279,7 @@ mod tests {
 				assert_eq!(row.keyed_values[0].key.text(), "field");
 				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 			}
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 
@@ -285,9 +299,6 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Source {
-				..
-			} => unreachable!(),
 			AstFrom::Inline {
 				list,
 				..
@@ -306,7 +317,7 @@ mod tests {
 				assert_eq!(row.keyed_values[0].key.text(), "field");
 				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value2");
 			}
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 
@@ -330,10 +341,7 @@ mod tests {
 				assert_eq!(source.name.text(), "users");
 				assert_eq!(index_name.as_ref().unwrap().text(), "user_id_pk");
 			}
-			AstFrom::Inline {
-				..
-			} => unreachable!(),
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 
@@ -357,10 +365,7 @@ mod tests {
 				assert_eq!(source.name.text(), "employees");
 				assert_eq!(index_name.as_ref().unwrap().text(), "employee_email_pk");
 			}
-			AstFrom::Inline {
-				..
-			} => unreachable!(),
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 
@@ -385,10 +390,7 @@ mod tests {
 				assert_eq!(index_name, &None);
 				assert_eq!(source.alias.as_ref().unwrap().text(), "o");
 			}
-			AstFrom::Inline {
-				..
-			} => unreachable!(),
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 
@@ -413,10 +415,7 @@ mod tests {
 				assert_eq!(index_name, &None);
 				assert_eq!(source.alias.as_ref().unwrap().text(), "o");
 			}
-			AstFrom::Inline {
-				..
-			} => unreachable!(),
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 
@@ -431,9 +430,6 @@ mod tests {
 		let from = result.first_unchecked().as_from();
 
 		match from {
-			AstFrom::Source {
-				..
-			} => unreachable!(),
 			AstFrom::Inline {
 				list,
 				..
@@ -446,7 +442,7 @@ mod tests {
 				assert_eq!(row.keyed_values[0].key.text(), "field");
 				assert_eq!(row.keyed_values[0].value.as_literal_text().value(), "value");
 			}
-			AstFrom::Generator(_) => unreachable!(),
+			_ => unreachable!(),
 		}
 	}
 

@@ -28,6 +28,7 @@ use crate::{
 		Batch, ExecutionContext, Executor, QueryNode, mutate::coerce::coerce_value_to_column_type,
 		query::compile::compile,
 	},
+	stack::Stack,
 };
 
 impl Executor {
@@ -74,6 +75,7 @@ impl Executor {
 			source: resolved_source,
 			batch_size: 1024,
 			params: params.clone(),
+			stack: Stack::new(),
 		};
 
 		let mut updated_count = 0;
@@ -84,9 +86,10 @@ impl Executor {
 
 			input_node.initialize(&mut wrapped_txn, &context)?;
 
+			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut wrapped_txn)?
+			}) = input_node.next(&mut wrapped_txn, &mut mutable_context)?
 			{
 				if columns.row_numbers.is_empty() {
 					return_error!(engine::missing_row_number_column());

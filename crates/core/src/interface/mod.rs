@@ -5,7 +5,6 @@ mod auth;
 pub mod catalog;
 mod cdc;
 mod engine;
-pub mod evaluate;
 mod execute;
 pub mod identifier;
 pub mod logging;
@@ -18,7 +17,6 @@ pub use auth::*;
 pub use catalog::*;
 pub use cdc::*;
 pub use engine::*;
-pub use evaluate::*;
 pub use execute::*;
 pub use identifier::*;
 pub use reifydb_type::{

@@ -5,7 +5,8 @@
 
 use std::{sync::Arc, time::Duration};
 
-use reifydb_core::interface::{CdcConsumerId, FlowNodeId, expression::Expression};
+use reifydb_core::interface::{CdcConsumerId, FlowNodeId};
+use reifydb_rql::expression::Expression;
 use reifydb_sub_api::Priority;
 
 use crate::{operator::Operator, subsystem::FlowSubsystemConfig};

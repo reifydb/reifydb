@@ -49,7 +49,11 @@ impl<'a> QueryNode<'a> for VirtualScanNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		_ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "VirtualScanNode::next() called before initialize()");
 		self.virtual_table.next(rx)
 	}

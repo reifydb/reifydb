@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{WindowSize, WindowSlide, WindowType, interface::expression::Expression};
+use reifydb_core::{WindowSize, WindowSlide, WindowType};
 use reifydb_type::{Error, OwnedFragment, diagnostic::operation, return_error};
 
 use super::{WindowConfig, WindowNode};
-use crate::Result;
+use crate::{Result, expression::Expression};
 
 pub fn create_sliding_window<'a>(
 	config: WindowConfig,

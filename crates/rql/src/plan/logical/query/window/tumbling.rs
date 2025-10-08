@@ -1,11 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{WindowSize, WindowType, interface::expression::Expression};
+use reifydb_core::{WindowSize, WindowType};
 use reifydb_type::{Error, OwnedFragment, diagnostic::operation, return_error};
 
 use super::{WindowConfig, WindowNode};
-use crate::Result;
+use crate::{Result, expression::Expression};
 
 pub fn create_tumbling_window<'a>(
 	config: WindowConfig,

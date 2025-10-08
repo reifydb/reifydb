@@ -61,15 +61,19 @@ impl<'a> QueryNode<'a> for ViewScanNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a>,
+		_ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "ViewScanNode::next() called before initialize()");
-		let ctx = self.context.as_ref().unwrap();
+		let stored_ctx = self.context.as_ref().unwrap();
 
 		if self.exhausted {
 			return Ok(None);
 		}
 
-		let batch_size = ctx.batch_size;
+		let batch_size = stored_ctx.batch_size;
 		let range = RowKeyRange {
 			source: self.view.def().id.into(),
 		};

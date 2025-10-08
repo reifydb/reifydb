@@ -1,19 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub(crate) use reifydb_core::interface::{RowEvaluationContext, RowEvaluator};
 use reifydb_core::{
 	Row,
-	interface::{ColumnDef, ColumnEvaluationContext, ColumnEvaluator, expression::Expression},
+	interface::ColumnDef,
 	value::{
 		column::{Column, ColumnData, Columns},
 		container::NumberContainer,
 		encoded::EncodedValuesNamedLayout,
 	},
 };
+use reifydb_rql::expression::Expression;
 use reifydb_type::{Error, Fragment, Params, ROW_NUMBER_COLUMN_NAME, Type, Value, internal_error};
 
 use crate::evaluate::column::{StandardColumnEvaluator, cast};
+pub(crate) use crate::evaluate::{ColumnEvaluationContext, RowEvaluationContext};
 
 pub struct StandardRowEvaluator {
 	evaluator: StandardColumnEvaluator,
@@ -33,8 +34,8 @@ impl Default for StandardRowEvaluator {
 	}
 }
 
-impl RowEvaluator for StandardRowEvaluator {
-	fn evaluate<'a>(&self, ctx: &RowEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Value> {
+impl StandardRowEvaluator {
+	pub fn evaluate<'a>(&self, ctx: &RowEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Value> {
 		let mut columns = Vec::new();
 
 		let row_number_column = Column {
@@ -84,6 +85,7 @@ impl RowEvaluator for StandardRowEvaluator {
 			row_count: 1,
 			take: None,
 			params: ctx.params,
+			stack: &crate::stack::Stack::new(),
 			is_aggregate_context: false,
 		};
 
@@ -123,6 +125,7 @@ impl StandardRowEvaluator {
 			row_count: 1,
 			take: None,
 			params: &Params::None,
+			stack: &crate::stack::Stack::new(),
 			is_aggregate_context: false,
 		};
 

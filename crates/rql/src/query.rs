@@ -86,9 +86,9 @@ fn reconstruct_filter_expr(ast: &Ast) -> crate::Result<String> {
 			Ok(format!("{} {} {}", left, op, right))
 		}
 		Ast::Identifier(ident) => Ok(ident.token.fragment.text().to_string()),
-		Ast::ParameterRef(param) => {
-			// The parameter token already includes the $ prefix
-			Ok(param.token.fragment.text().to_string())
+		Ast::Variable(var) => {
+			// The variable token already includes the $ prefix
+			Ok(var.token.fragment.text().to_string())
 		}
 		_ => {
 			// For now, panic on unsupported types
@@ -135,7 +135,11 @@ fn reconstruct_query(ast: &Ast) -> crate::Result<String> {
 			} => {
 				unimplemented!()
 			}
-			AstFrom::Generator(generator_func) => Ok(format!("from {}", generator_func.name.text())),
+			AstFrom::Generator(generator) => Ok(format!("from {}", generator.name.text())),
+			AstFrom::Variable {
+				variable,
+				..
+			} => Ok(format!("from {}", variable.token.fragment.text())),
 		},
 		Ast::Filter(filter_node) => {
 			// Reconstruct the filter expression

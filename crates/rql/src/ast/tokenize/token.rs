@@ -3,7 +3,7 @@
 
 use reifydb_type::{Fragment, OwnedFragment};
 
-pub use super::{keyword::Keyword, operator::Operator, parameter::ParameterKind, separator::Separator};
+pub use super::{keyword::Keyword, operator::Operator, separator::Separator};
 
 #[derive(Debug, Clone)]
 pub struct Token<'a> {
@@ -42,6 +42,9 @@ impl<'a> Token<'a> {
 	pub fn is_operator(&self, operator: Operator) -> bool {
 		self.kind == TokenKind::Operator(operator)
 	}
+	pub fn is_variable(&self) -> bool {
+		self.kind == TokenKind::Variable
+	}
 	pub fn value(&self) -> &str {
 		self.fragment.text()
 	}
@@ -54,7 +57,7 @@ pub enum TokenKind {
 	Identifier,
 	Literal(Literal),
 	Operator(Operator),
-	Parameter(ParameterKind),
+	Variable,
 	Separator(Separator),
 }
 

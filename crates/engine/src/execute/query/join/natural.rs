@@ -64,15 +64,19 @@ impl<'a> QueryNode<'a> for NaturalJoinNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		rx: &mut StandardTransaction<'a>,
+		ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_initialized(), "NaturalJoinNode::next() called before initialize()");
 
 		if self.headers.is_some() {
 			return Ok(None);
 		}
 
-		let left_columns = load_and_merge_all(&mut self.left, rx)?;
-		let right_columns = load_and_merge_all(&mut self.right, rx)?;
+		let left_columns = load_and_merge_all(&mut self.left, rx, ctx)?;
+		let right_columns = load_and_merge_all(&mut self.right, rx, ctx)?;
 
 		let left_rows = left_columns.row_count();
 		let right_rows = right_columns.row_count();

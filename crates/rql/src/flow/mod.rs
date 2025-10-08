@@ -150,6 +150,17 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				unimplemented!("Generator compilation not yet implemented for flow")
 			}
 			PhysicalPlan::Window(window) => WindowCompiler::from(window).compile(self),
+			PhysicalPlan::Declare(_) => {
+				panic!("Declare statements are not supported in flow graphs");
+			}
+
+			PhysicalPlan::Assign(_) => {
+				panic!("Assign statements are not supported in flow graphs");
+			}
+
+			PhysicalPlan::Variable(_) => {
+				panic!("Variable references are not supported in flow graphs");
+			}
 		}
 	}
 }

@@ -4,7 +4,7 @@
 use std::time::Duration;
 
 use reifydb_catalog::CatalogQueryTransaction;
-use reifydb_core::{WindowSize, WindowSlide, WindowTimeMode, WindowType, interface::expression::Expression};
+use reifydb_core::{WindowSize, WindowSlide, WindowTimeMode, WindowType};
 use reifydb_type::{diagnostic::ast::unexpected_token_error, return_error};
 
 use crate::{
@@ -14,7 +14,7 @@ use crate::{
 		AstLiteral::{Number, Text},
 		AstWindow,
 	},
-	expression::ExpressionCompiler,
+	expression::{Expression, ExpressionCompiler},
 	plan::logical::{Compiler, LogicalPlan},
 };
 

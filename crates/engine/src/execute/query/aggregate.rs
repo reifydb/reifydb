@@ -6,10 +6,8 @@ use std::{
 	sync::Arc,
 };
 
-use reifydb_core::{
-	interface::evaluate::expression::Expression,
-	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
-};
+use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
+use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
 
 use crate::{
@@ -65,22 +63,27 @@ impl<'a> QueryNode<'a> for AggregateNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, rx: &mut crate::StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		rx: &mut crate::StandardTransaction<'a>,
+		ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "AggregateNode::next() called before initialize()");
-		let ctx = self.context.as_ref().unwrap();
+		let stored_ctx = self.context.as_ref().unwrap();
 
 		if self.headers.is_some() {
 			return Ok(None);
 		}
 
-		let (keys, mut projections) = parse_keys_and_aggregates(&self.by, &self.map, &ctx.executor.functions)?;
+		let (keys, mut projections) =
+			parse_keys_and_aggregates(&self.by, &self.map, &stored_ctx.executor.functions)?;
 
 		let mut seen_groups = HashSet::<Vec<Value>>::new();
 		let mut group_key_order: Vec<Vec<Value>> = Vec::new();
 
 		while let Some(Batch {
 			columns,
-		}) = self.input.next(rx)?
+		}) = self.input.next(rx, ctx)?
 		{
 			let groups = columns.group_by_view(&keys)?;
 

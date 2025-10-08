@@ -74,6 +74,7 @@ Set        => "SET",
 Delete     => "DELETE",
 
 Let        => "LET",
+Mut        => "MUT",
 If         => "IF",
 Else       => "ELSE",
 End        => "END",
@@ -152,6 +153,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("SET", Keyword::Set);
 	map.insert("DELETE", Keyword::Delete);
 	map.insert("LET", Keyword::Let);
+	map.insert("MUT", Keyword::Mut);
 	map.insert("IF", Keyword::If);
 	map.insert("ELSE", Keyword::Else);
 	map.insert("END", Keyword::End);
@@ -308,6 +310,7 @@ mod tests {
 	test_keyword_intersect => (Intersect, "INTERSECT"),
 	test_keyword_except => (Except, "EXCEPT"),
 	test_keyword_let => (Let, "LET"),
+	test_keyword_mut => (Mut, "MUT"),
 	test_keyword_if => (If, "IF"),
 	test_keyword_else => (Else, "ELSE"),
 	test_keyword_end => (End, "END"),
@@ -427,6 +430,7 @@ mod tests {
 	test_not_keyword_intersect => ( "intersect"),
 	test_not_keyword_except => ( "except"),
 	test_not_keyword_let => ( "let"),
+	test_not_keyword_mut => ( "mut"),
 	test_not_keyword_if => ( "if"),
 	test_not_keyword_else => ( "else"),
 	test_not_keyword_end => ( "end"),

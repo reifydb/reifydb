@@ -42,6 +42,7 @@ operator! {
     Dot              => ".",
     Colon            => ":",
     DoubleColon      => "::",
+    ColonEqual       => ":=",
     Arrow            => "->",
     DoubleDot        => "..",
     Plus             => "+",
@@ -138,6 +139,9 @@ pub fn scan_operator<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 			if cursor.peek_str(2) == "::" {
 				cursor.consume_str("::");
 				Some(Operator::DoubleColon)
+			} else if cursor.peek_str(2) == ":=" {
+				cursor.consume_str(":=");
+				Some(Operator::ColonEqual)
 			} else {
 				None
 			}
@@ -286,6 +290,7 @@ mod tests {
 		test_operator_dot => (Dot, "."),
 		test_operator_colon => (Colon, ":"),
 		test_operator_double_colon => (DoubleColon, "::"),
+		test_operator_colon_equal => (ColonEqual, ":="),
 		test_operator_arrow => (Arrow, "->"),
 		test_operator_double_dot => (DoubleDot, ".."),
 		test_operator_plus => (Plus, "+"),

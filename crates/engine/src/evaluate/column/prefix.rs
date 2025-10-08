@@ -4,9 +4,9 @@
 use operator::{not_can_not_applied_to_number, not_can_not_applied_to_temporal, not_can_not_applied_to_uuid};
 use reifydb_core::{
 	err,
-	interface::evaluate::expression::{PrefixExpression, PrefixOperator},
 	value::column::{Column, ColumnData},
 };
+use reifydb_rql::expression::{PrefixExpression, PrefixOperator};
 use reifydb_type::{
 	Decimal, Int, Uint, diagnostic,
 	diagnostic::{engine::frame_error, operator},

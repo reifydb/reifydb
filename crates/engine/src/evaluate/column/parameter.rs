@@ -1,10 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::expression::ParameterExpression,
-	value::column::{Column, ColumnData},
-};
+use reifydb_core::value::column::{Column, ColumnData};
+use reifydb_rql::expression::ParameterExpression;
 use reifydb_type::{Fragment, Value, diagnostic::engine, error};
 
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use FlowNodeType::Apply;
-use reifydb_core::interface::{CommandTransaction, FlowNodeId, expression::Expression};
+use reifydb_core::interface::{CommandTransaction, FlowNodeId};
 use reifydb_type::Fragment;
 
 use super::super::{
@@ -11,6 +11,7 @@ use super::super::{
 };
 use crate::{
 	Result,
+	expression::Expression,
 	plan::physical::{ApplyNode, PhysicalPlan},
 };
 

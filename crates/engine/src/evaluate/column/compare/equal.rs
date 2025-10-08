@@ -2,13 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{ColumnEvaluator, evaluate::expression::EqExpression},
 	return_error,
 	value::{
 		column::{Column, ColumnData},
 		container::{BoolContainer, NumberContainer, TemporalContainer, Utf8Container},
 	},
 };
+use reifydb_rql::expression::EqExpression;
 use reifydb_type::{
 	Decimal, Fragment, Int, IsNumber, IsTemporal, Promote, Type::Boolean, Uint,
 	diagnostic::operator::equal_cannot_be_applied_to_incompatible_types, temporal, value::number,

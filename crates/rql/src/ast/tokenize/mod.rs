@@ -8,15 +8,16 @@ mod identifier;
 mod keyword;
 mod literal;
 mod operator;
-mod parameter;
 mod scanner;
 mod separator;
 mod token;
+mod variable;
 
 use cursor::Cursor;
 use reifydb_type::Error;
-use scanner::{scan_identifier, scan_keyword, scan_literal, scan_operator, scan_parameter, scan_separator};
-pub use token::{Keyword, Literal, Operator, ParameterKind, Separator, Token, TokenKind};
+use scanner::{scan_identifier, scan_keyword, scan_literal, scan_operator, scan_separator};
+pub use token::{Keyword, Literal, Operator, Separator, Token, TokenKind};
+use variable::scan_variable;
 
 /// Tokenize the input string into a vector of tokens
 pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
@@ -37,8 +38,8 @@ pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
 		// Character-based dispatch for better performance
 		let token = match cursor.peek() {
 			Some(ch) => match ch {
-				// Parameters start with $
-				'$' => scan_parameter(&mut cursor),
+				// Variables start with $
+				'$' => scan_variable(&mut cursor),
 
 				// String literals
 				'\'' | '"' => scan_literal(&mut cursor),
@@ -88,7 +89,7 @@ pub fn tokenize<'a>(input: &'a str) -> crate::Result<Vec<Token<'a>>> {
 				// Everything else - try all scanners in order
 				_ => scan_literal(&mut cursor)
 					.or_else(|| scan_operator(&mut cursor))
-					.or_else(|| scan_parameter(&mut cursor))
+					.or_else(|| scan_variable(&mut cursor))
 					.or_else(|| scan_identifier(&mut cursor))
 					.or_else(|| scan_separator(&mut cursor)),
 			},
@@ -165,12 +166,12 @@ mod tests {
 	}
 
 	#[test]
-	fn test_tokenize_parameters() {
+	fn test_tokenize_variables() {
 		let tokens = tokenize("$1 + $user_id").unwrap();
 		assert_eq!(tokens.len(), 3);
-		assert_eq!(tokens[0].kind, TokenKind::Parameter(ParameterKind::Positional(1)));
+		assert_eq!(tokens[0].kind, TokenKind::Variable);
 		assert_eq!(tokens[1].kind, TokenKind::Operator(Operator::Plus));
-		assert_eq!(tokens[2].kind, TokenKind::Parameter(ParameterKind::Named));
+		assert_eq!(tokens[2].kind, TokenKind::Variable);
 	}
 
 	#[test]

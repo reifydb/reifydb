@@ -27,6 +27,7 @@ use super::primary_key;
 use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
+	stack::Stack,
 };
 
 impl Executor {
@@ -81,6 +82,7 @@ impl Executor {
 					source: resolved_source.clone(),
 					batch_size: 1024,
 					params: params.clone(),
+					stack: Stack::new(),
 				}),
 			);
 
@@ -89,14 +91,16 @@ impl Executor {
 				source: resolved_source.clone(),
 				batch_size: 1024,
 				params: params.clone(),
+				stack: Stack::new(),
 			};
 
 			// Initialize the operator before execution
 			input_node.initialize(&mut std_txn, &context)?;
 
+			let mut mutable_context = context.clone();
 			while let Some(Batch {
 				columns,
-			}) = input_node.next(&mut std_txn)?
+			}) = input_node.next(&mut std_txn, &mut mutable_context)?
 			{
 				// Get encoded numbers from the Columns structure
 				if columns.row_numbers.is_empty() {

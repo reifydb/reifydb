@@ -52,7 +52,11 @@ impl<'a> QueryNode<'a> for IndexScanNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, _rx: &mut StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		_rx: &mut StandardTransaction<'a>,
+		_ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "IndexScanNode::next() called before initialize()");
 		unimplemented!()
 		// let ctx = self.context.as_ref().unwrap();

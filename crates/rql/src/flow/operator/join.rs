@@ -4,7 +4,7 @@
 use JoinType::{Inner, Left};
 use reifydb_core::{
 	JoinStrategy, JoinType,
-	interface::{CommandTransaction, FlowNodeId, expression::Expression},
+	interface::{CommandTransaction, FlowNodeId},
 };
 
 use super::super::{
@@ -13,6 +13,7 @@ use super::super::{
 };
 use crate::{
 	Result,
+	expression::Expression,
 	plan::physical::{JoinInnerNode, JoinLeftNode, PhysicalPlan},
 	query::QueryString,
 };

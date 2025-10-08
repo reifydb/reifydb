@@ -7,19 +7,19 @@ use bincode::{
 };
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
-	interface::{
-		ColumnEvaluationContext, ColumnEvaluator, FlowNodeId, RowEvaluationContext, RowEvaluator,
-		expression::Expression,
-	},
+	interface::FlowNodeId,
 	util::{clock, encoding::keycode::KeySerializer},
 	value::{
 		column::{Column, ColumnData, Columns},
 		encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 	},
 };
-use reifydb_engine::{StandardColumnEvaluator, StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_engine::{
+	ColumnEvaluationContext, RowEvaluationContext, StandardColumnEvaluator, StandardCommandTransaction,
+	StandardRowEvaluator,
+};
 use reifydb_hash::{Hash128, xxh3_128};
-use reifydb_rql::expression::column_name_from_expression;
+use reifydb_rql::expression::{Expression, column_name_from_expression};
 use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal_error};
 use serde::{Deserialize, Serialize};
 
@@ -41,6 +41,11 @@ pub use sliding::apply_sliding_window;
 pub use tumbling::apply_tumbling_window;
 
 static EMPTY_PARAMS: Params = Params::None;
+
+use std::sync::LazyLock;
+
+use reifydb_engine::stack::Stack;
+static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
 /// A single event stored within a window
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -321,6 +326,7 @@ impl WindowOperator {
 			row_count: events.len(),
 			take: None,
 			params: &EMPTY_PARAMS,
+			stack: &EMPTY_STACK,
 			is_aggregate_context: true, // Use aggregate functions for window aggregations
 		};
 

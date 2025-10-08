@@ -7,13 +7,17 @@ use std::{
 };
 
 use reifydb_core::{
-	interface::{ResolvedSource, TargetColumn, evaluate::expression::AliasExpression},
+	interface::ResolvedSource,
 	value::column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 };
-use reifydb_type::{Fragment, Params, Type, Value};
+use reifydb_rql::expression::AliasExpression;
+use reifydb_type::{Fragment, Type, Value};
 
 use crate::{
-	evaluate::column::{ColumnEvaluationContext, cast::cast_column_data, evaluate},
+	evaluate::{
+		TargetColumn,
+		column::{ColumnEvaluationContext, cast::cast_column_data, evaluate},
+	},
 	execute::{Batch, ExecutionContext, QueryNode},
 };
 
@@ -56,9 +60,13 @@ impl<'a> QueryNode<'a> for InlineDataNode<'a> {
 		Ok(())
 	}
 
-	fn next(&mut self, _rx: &mut crate::StandardTransaction<'a>) -> crate::Result<Option<Batch<'a>>> {
+	fn next(
+		&mut self,
+		_rx: &mut crate::StandardTransaction<'a>,
+		_ctx: &mut ExecutionContext<'a>,
+	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.context.is_some(), "InlineDataNode::next() called before initialize()");
-		let ctx = self.context.as_ref().unwrap().clone();
+		let stored_ctx = self.context.as_ref().unwrap().clone();
 
 		if self.executed {
 			return Ok(None);
@@ -79,9 +87,9 @@ impl<'a> QueryNode<'a> for InlineDataNode<'a> {
 		// Choose execution path based on whether we have table
 		// namespace
 		if self.headers.is_some() {
-			self.next_with_source(&ctx)
+			self.next_with_source(&stored_ctx)
 		} else {
-			self.next_infer_namespace(&ctx)
+			self.next_infer_namespace(&stored_ctx)
 		}
 	}
 
@@ -171,9 +179,8 @@ impl<'a> InlineDataNode<'a> {
 						columns: Columns::empty(),
 						row_count: 1,
 						take: None,
-						params: unsafe {
-							std::mem::transmute::<&Params, &'a Params>(&ctx.params)
-						},
+						params: &ctx.params,
+						stack: &ctx.stack,
 						is_aggregate_context: false,
 					};
 
@@ -233,9 +240,8 @@ impl<'a> InlineDataNode<'a> {
 							columns: Columns::empty(),
 							row_count: 1,
 							take: None,
-							params: unsafe {
-								std::mem::transmute::<&Params, &'a Params>(&ctx.params)
-							},
+							params: &ctx.params,
+							stack: &ctx.stack,
 							is_aggregate_context: false,
 						};
 
@@ -269,9 +275,8 @@ impl<'a> InlineDataNode<'a> {
 						columns: Columns::empty(),
 						row_count: column_data.len(),
 						take: None,
-						params: unsafe {
-							std::mem::transmute::<&Params, &'a Params>(&ctx.params)
-						},
+						params: &ctx.params,
+						stack: &ctx.stack,
 						is_aggregate_context: false,
 					};
 
@@ -340,9 +345,8 @@ impl<'a> InlineDataNode<'a> {
 						columns: Columns::empty(),
 						row_count: 1,
 						take: None,
-						params: unsafe {
-							std::mem::transmute::<&Params, &'a Params>(&ctx.params)
-						},
+						params: &ctx.params,
+						stack: &ctx.stack,
 						is_aggregate_context: false,
 					};
 

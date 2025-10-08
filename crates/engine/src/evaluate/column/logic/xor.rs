@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{ColumnEvaluator, evaluate::expression::XorExpression},
 	return_error,
 	value::column::{Column, ColumnData},
 };
+use reifydb_rql::expression::XorExpression;
 use reifydb_type::diagnostic::operator::{
 	xor_can_not_applied_to_number, xor_can_not_applied_to_temporal, xor_can_not_applied_to_text,
 	xor_can_not_applied_to_uuid,

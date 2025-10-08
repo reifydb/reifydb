@@ -31,6 +31,9 @@ fn main() {
 
 	db.start().unwrap();
 
+	// =================
+	// WINDOW FUNCTIONALITY TESTING
+	// =================
 	match db.command_as_root(r#"CREATE NAMESPACE iot"#, Params::None) {
 		Ok(_) => println!("✅ IoT namespace created"),
 		Err(e) => println!("❌ Namespace creation failed: {}", e),
@@ -71,25 +74,6 @@ fn main() {
 		Ok(_) => println!("   ✅ 5-minute temperature averages view created"),
 		Err(e) => println!("   ❌ Time window view failed: {}", e),
 	}
-
-	// // 2. COUNT-BASED WINDOW: Every 100 readings statistics
-	// println!("\n2️⃣ Count-based Window (every 100 readings):");
-	// match db.command_as_root(
-	// 	r#"CREATE DEFERRED VIEW iot.readings_100 {
-	// 	   sensor_id: UTF8,
-	// 	   avg_temperature: FLOAT8,
-	// 	   max_humidity: FLOAT8
-	// 	} AS {
-	// 	   FROM iot.sensors
-	// 	   WINDOW { avg_temperature: avg(temperature), max_humidity: max(humidity) }
-	// 	   WITH { count: 100 }
-	// 	   BY { sensor_id }
-	// 	}"#,
-	// 	Params::None,
-	// ) {
-	// 	Ok(_) => println!("   ✅ 100-reading statistics view created"),
-	// 	Err(e) => println!("   ❌ Count window view failed: {}", e),
-	// }
 
 	// 3. SLIDING WINDOW: 1-hour window sliding every 10 minutes
 	println!("\n3️⃣ Sliding Window (1-hour window, 10-minute slide):");
@@ -169,47 +153,6 @@ fn main() {
 	println!("Waiting 2 seconds for 1-second windows to trigger...");
 	sleep(Duration::from_secs(2));
 
-	// Insert a dummy row to trigger window processing
-	println!("Inserting trigger data to process expired windows...");
-	match db.command_as_root(
-		r#"FROM [
-			{ sensor_id: "trigger", location: "trigger", temperature: 0.0, humidity: 0.0, pressure: 0.0, timestamp: 0 }
-		] INSERT iot.sensors"#,
-		Params::None,
-	) {
-		Ok(_) => println!("Trigger data inserted"),
-		Err(e) => println!("Trigger insert failed: {}", e),
-	}
-
-	// Insert additional data for count-based window testing (need >100 readings)
-	println!("\nInserting additional data for count-based window testing...");
-
-	// Create a batch of 100 additional readings with current timestamps
-	let mut additional_data = Vec::new();
-	let batch_start_time = clock::now_millis();
-	for i in 10..120 {
-		let timestamp = batch_start_time + (i * 100);
-		let temp = 20.0 + (i % 10) as f64 * 0.5;
-		let humidity = 40.0 + (i % 15) as f64 * 2.0;
-		let pressure = 1012.0 + (i % 20) as f64 * 0.1;
-
-		additional_data.push(format!(
-			r#"{{ sensor_id: "sensor_a", location: "kitchen", temperature: {}, humidity: {}, pressure: {}, timestamp: {} }}"#,
-			temp, humidity, pressure, timestamp
-		));
-	}
-
-	let batch_query = format!(r#"FROM [{}] INSERT iot.sensors"#, additional_data.join(",\n\t\t\t"));
-
-	match db.command_as_root(&batch_query, Params::None) {
-		Ok(_) => println!("Added {} additional readings for count-based testing", additional_data.len()),
-		Err(e) => println!("Batch insert failed: {}", e),
-	}
-
-	// Wait again for windows to trigger after additional data
-	println!("Waiting another 2 seconds for windows to trigger with additional data...");
-	sleep(Duration::from_secs(2));
-
 	// 🔍 QUERY WINDOW VIEWS TO VALIDATE FUNCTIONALITY
 	println!("\n🔍 Querying window views to validate functionality...");
 
@@ -224,18 +167,6 @@ fn main() {
 		}
 		Err(e) => println!("   ❌ Query failed: {}", e),
 	}
-
-	// Query 2: Count-based window (every 100 readings)
-	// println!("\n2️⃣ Count-based Window Results (iot.readings_100):");
-	// match db.command_as_root(r#"FROM iot.readings_100"#, Params::None) {
-	// 	Ok(frames) => {
-	// 		println!("   📊 {} result rows:", frames.len());
-	// 		for frame in frames {
-	// 			println!("   {}", frame);
-	// 		}
-	// 	}
-	// 	Err(e) => println!("   ❌ Query failed: {}", e),
-	// }
 
 	// Query 3: Sliding window (1-hour sliding every 10 minutes)
 	println!("\n3️⃣ Sliding Window Results (iot.sliding_temp):");
@@ -260,4 +191,57 @@ fn main() {
 		}
 		Err(e) => println!("   ❌ Query failed: {}", e),
 	}
+
+	// =================
+	// VARIABLE FUNCTIONALITY TESTING
+	// =================
+	println!("\n\n=== VARIABLE TESTING ===");
+
+	// Test variable shadowing (should work)
+	println!("=== Testing Shadowing ===");
+	for frame in db
+		.command_as_root(
+			r#"
+		let $x := 10; 
+		let $x := 20; 
+		MAP { $x }
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		println!("{}", frame);
+	}
+
+	// Test mutable assignment (should work)
+	println!("=== Testing Mutable Assignment ===");
+	for frame in db
+		.command_as_root(
+			r#"
+		let mut $x := 10; 
+		$x := 20; 
+		MAP { $x }
+	"#,
+			Params::None,
+		)
+		.unwrap()
+	{
+		println!("{}", frame);
+	}
+
+	// Test immutable assignment (should fail)
+	println!("=== Testing Immutable Assignment (should fail) ===");
+	match db.command_as_root(
+		r#"
+		let $x := 10; 
+		$x := 20; 
+		MAP { $x }
+	"#,
+		Params::None,
+	) {
+		Ok(_) => println!("ERROR: Should have failed!"),
+		Err(e) => println!("✓ Correctly failed: {}", e),
+	}
+
+	sleep(Duration::from_millis(100));
 }

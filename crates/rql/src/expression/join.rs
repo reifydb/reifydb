@@ -1,20 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::evaluate::expression::{
-		AccessSourceExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
-		GreaterThanEqExpression, GreaterThanExpression, LessThanEqExpression, LessThanExpression,
-		MulExpression, NotEqExpression, OrExpression, RemExpression, SubExpression, TupleExpression,
-		XorExpression,
-	},
-	return_error,
-};
+use reifydb_core::return_error;
 use reifydb_type::{Fragment, diagnostic::query::unsupported_source_qualification};
 
 use crate::{
 	ast::{Ast, AstInfix, InfixOperator},
-	expression::ExpressionCompiler,
+	expression::{
+		AccessSourceExpression, AddExpression, AndExpression, DivExpression, EqExpression, Expression,
+		ExpressionCompiler, GreaterThanEqExpression, GreaterThanExpression, LessThanEqExpression,
+		LessThanExpression, MulExpression, NotEqExpression, OrExpression, PrefixExpression, PrefixOperator,
+		RemExpression, SubExpression, TupleExpression, XorExpression,
+	},
 };
 
 /// Compiles join conditions with proper alias scoping
@@ -62,8 +59,6 @@ impl<'a> JoinConditionCompiler<'a> {
 			}
 			// Handle prefix operators (!, -, +) - need to recursively compile the inner expression
 			Ast::Prefix(prefix) => {
-				use reifydb_core::interface::evaluate::expression::{PrefixExpression, PrefixOperator};
-
 				use crate::ast::AstPrefixOperator;
 
 				let inner = self.compile(*prefix.node)?;

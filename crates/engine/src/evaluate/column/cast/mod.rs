@@ -10,14 +10,9 @@ pub mod uuid;
 
 use std::ops::Deref;
 
-use reifydb_core::{
-	interface::{
-		ColumnEvaluator, LazyFragment,
-		expression::{CastExpression, Expression},
-	},
-	value::column::{Column, ColumnData},
-};
-use reifydb_type::{Type, diagnostic::cast, err, error};
+use reifydb_core::value::column::{Column, ColumnData};
+use reifydb_rql::expression::{CastExpression, Expression};
+use reifydb_type::{LazyFragment, Type, diagnostic::cast, err, error};
 
 use crate::evaluate::column::{ColumnEvaluationContext, StandardColumnEvaluator};
 
@@ -89,21 +84,16 @@ pub(crate) fn cast_column_data<'a>(
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::{
-		interface::{
-			ColumnEvaluationContext,
-			expression::{
-				CastExpression, ConstantExpression,
-				ConstantExpression::Number,
-				Expression::{Cast, Constant, Prefix},
-				PrefixExpression, PrefixOperator, TypeExpression,
-			},
-		},
-		value::column::ColumnData,
+	use reifydb_core::value::column::ColumnData;
+	use reifydb_rql::expression::{
+		CastExpression, ConstantExpression,
+		ConstantExpression::Number,
+		Expression::{Cast, Constant, Prefix},
+		PrefixExpression, PrefixOperator, TypeExpression,
 	};
 	use reifydb_type::{Fragment, Type};
 
-	use crate::evaluate::column::evaluate;
+	use crate::evaluate::{ColumnEvaluationContext, column::evaluate};
 
 	#[test]
 	fn test_cast_integer() {
