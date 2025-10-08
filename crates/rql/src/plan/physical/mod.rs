@@ -794,6 +794,24 @@ impl Compiler {
 					}));
 				}
 
+				LogicalPlan::Scalarize(scalarize_node) => {
+					// Compile the input plan
+					let input_plan =
+						if let Some(plan) = Self::compile(rx, vec![*scalarize_node.input])? {
+							Box::new(plan)
+						} else {
+							return Err(reifydb_type::Error(internal_error(
+								"compile_physical".to_string(),
+								"Failed to compile scalarize input".to_string(),
+							)));
+						};
+
+					stack.push(PhysicalPlan::Scalarize(ScalarizeNode {
+						input: input_plan,
+						fragment: scalarize_node.fragment,
+					}));
+				}
+
 				_ => unimplemented!(),
 			}
 		}
@@ -854,6 +872,8 @@ pub enum PhysicalPlan<'a> {
 	ViewScan(ViewScanNode<'a>),
 	RingBufferScan(RingBufferScanNode<'a>),
 	Generator(GeneratorNode<'a>),
+	// Auto-scalarization for 1x1 frames
+	Scalarize(ScalarizeNode<'a>),
 }
 
 #[derive(Debug, Clone)]
@@ -964,6 +984,12 @@ pub struct ConditionalNode<'a> {
 pub struct ElseIfBranch<'a> {
 	pub condition: Expression<'a>,
 	pub then_branch: Box<PhysicalPlan<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScalarizeNode<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub fragment: Fragment<'a>,
 }
 
 #[derive(Debug, Clone)]

@@ -23,6 +23,7 @@ use crate::{
 			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 			map::{MapNode, MapWithoutInputNode},
 			ring_buffer_scan::RingBufferScan,
+			scalarize::ScalarizeNode,
 			sort::SortNode,
 			table_scan::TableScanNode,
 			table_virtual_scan::VirtualScanNode,
@@ -221,6 +222,11 @@ pub(crate) fn compile<'a>(
 		PhysicalPlan::Variable(var_node) => ExecutionPlan::Variable(
 			crate::execute::query::variable::VariableNode::new(var_node.variable_expr),
 		),
+
+		PhysicalPlan::Scalarize(scalarize_node) => {
+			let input = compile(*scalarize_node.input, rx, context.clone());
+			ExecutionPlan::Scalarize(ScalarizeNode::new(Box::new(input)))
+		}
 
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::AlterTable(_)

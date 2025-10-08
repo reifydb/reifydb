@@ -746,5 +746,21 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				);
 			}
 		}
+
+		LogicalPlan::Scalarize(scalarize) => {
+			output.push_str(&format!("{}{} Scalarize (convert 1x1 frame to scalar)\n", prefix, branch));
+
+			// Render the input plan
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			render_logical_plan_inner(&scalarize.input, &child_prefix, true, output);
+		}
 	}
 }

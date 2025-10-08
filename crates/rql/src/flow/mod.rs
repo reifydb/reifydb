@@ -163,6 +163,10 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::Variable(_) => {
 				panic!("Variable references are not supported in flow graphs");
 			}
+
+			PhysicalPlan::Scalarize(_) => {
+				panic!("Scalarize operations are not supported in flow graphs");
+			}
 		}
 	}
 }

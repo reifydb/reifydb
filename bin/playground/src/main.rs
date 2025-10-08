@@ -30,7 +30,7 @@ fn main() {
 	for frame in db
 		.query_as_root(
 			r#"
-		let $my_variable := "test value"; $my_variable
+let $base := "Result"; let $status := "success"; let $message := $base + ": " + (if $status = "success" { "Operation completed" } else { "Operation failed" }); $message
 	"#,
 			Params::None,
 		)

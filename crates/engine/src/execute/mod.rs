@@ -16,6 +16,7 @@ use query::{
 	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
 	ring_buffer_scan::RingBufferScan,
+	scalarize::ScalarizeNode,
 	sort::SortNode,
 	table_scan::TableScanNode,
 	table_virtual_scan::VirtualScanNode,
@@ -99,6 +100,7 @@ pub(crate) enum ExecutionPlan<'a> {
 	Declare(DeclareNode<'a>),
 	Assign(AssignNode<'a>),
 	Conditional(query::conditional::ConditionalNode<'a>),
+	Scalarize(ScalarizeNode<'a>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -145,6 +147,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Declare(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Assign(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Conditional(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Scalarize(node) => node.initialize(rx, ctx),
 		}
 	}
 
@@ -176,6 +179,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Declare(node) => node.next(rx, ctx),
 			ExecutionPlan::Assign(node) => node.next(rx, ctx),
 			ExecutionPlan::Conditional(node) => node.next(rx, ctx),
+			ExecutionPlan::Scalarize(node) => node.next(rx, ctx),
 		}
 	}
 
@@ -203,6 +207,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Declare(node) => node.headers(),
 			ExecutionPlan::Assign(node) => node.headers(),
 			ExecutionPlan::Conditional(node) => node.headers(),
+			ExecutionPlan::Scalarize(node) => node.headers(),
 		}
 	}
 }
@@ -370,7 +375,8 @@ impl Executor {
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Variable(_)
-			| PhysicalPlan::Conditional(_) => {
+			| PhysicalPlan::Conditional(_)
+			| PhysicalPlan::Scalarize(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)
 			}
@@ -440,7 +446,8 @@ impl Executor {
 			| PhysicalPlan::Distinct(_)
 			| PhysicalPlan::Variable(_)
 			| PhysicalPlan::Apply(_)
-			| PhysicalPlan::Conditional(_) => {
+			| PhysicalPlan::Conditional(_)
+			| PhysicalPlan::Scalarize(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}

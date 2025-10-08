@@ -14,6 +14,7 @@ pub mod inline;
 pub mod join;
 pub mod map;
 pub mod ring_buffer_scan;
+pub mod scalarize;
 pub mod sort;
 pub mod table_scan;
 pub mod table_virtual_scan;

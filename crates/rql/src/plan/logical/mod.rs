@@ -365,20 +365,13 @@ impl Compiler {
 	}
 
 	fn compile_infix<'a, 't, T: CatalogQueryTransaction>(
-		node: crate::ast::AstInfix<'a>,
+		node: AstInfix<'a>,
 		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
-		use crate::ast::InfixOperator;
-
 		match node.operator {
 			InfixOperator::Assign(token) => {
 				// Only allow variable assignments with := operator, not = operator
-				if !matches!(
-					token.kind,
-					crate::ast::tokenize::TokenKind::Operator(
-						crate::ast::tokenize::Operator::ColonEqual
-					)
-				) {
+				if !matches!(token.kind, TokenKind::Operator(Operator::ColonEqual)) {
 					return_error!(unsupported_ast_node(
 						node.token.fragment,
 						"variable assignment must use := operator"
@@ -479,6 +472,8 @@ pub enum LogicalPlan<'a> {
 	SourceScan(SourceScanNode<'a>),
 	Generator(GeneratorNode<'a>),
 	VariableSource(VariableSourceNode<'a>),
+	// Auto-scalarization for 1x1 frames in scalar contexts
+	Scalarize(ScalarizeNode<'a>),
 	// Pipeline wrapper for piped operations
 	Pipeline(PipelineNode<'a>),
 }
@@ -486,6 +481,12 @@ pub enum LogicalPlan<'a> {
 #[derive(Debug)]
 pub struct PipelineNode<'a> {
 	pub steps: Vec<LogicalPlan<'a>>,
+}
+
+#[derive(Debug)]
+pub struct ScalarizeNode<'a> {
+	pub input: Box<LogicalPlan<'a>>,
+	pub fragment: Fragment<'a>,
 }
 
 #[derive(Debug)]

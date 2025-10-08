@@ -423,5 +423,12 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 				}
 			});
 		}
+
+		PhysicalPlan::Scalarize(scalarize) => {
+			write_node_header(output, prefix, is_last, "Scalarize (convert 1x1 frame to scalar)");
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				render_physical_plan_inner(&scalarize.input, child_prefix, true, output);
+			});
+		}
 	}
 }
