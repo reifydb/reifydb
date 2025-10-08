@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::value::column::headers::ColumnHeaders;
-use reifydb_type::{Fragment, internal_error};
+use reifydb_type::internal_error;
 
 use crate::execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode};
 

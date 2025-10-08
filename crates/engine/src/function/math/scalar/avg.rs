@@ -23,6 +23,14 @@ impl ScalarFunction for Avg {
 
 		for col in columns.iter() {
 			match &col.data() {
+				ColumnData::Int1(container) => {
+					for i in 0..row_count {
+						if let Some(value) = container.get(i) {
+							sum[i] += *value as f64;
+							count[i] += 1;
+						}
+					}
+				}
 				ColumnData::Int2(container) => {
 					for i in 0..row_count {
 						if let Some(value) = container.get(i) {

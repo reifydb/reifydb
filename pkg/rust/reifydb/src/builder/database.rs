@@ -189,13 +189,13 @@ impl DatabaseBuilder {
 		let functions = if let Some(configurator) = self.functions_configurator {
 			// Start with default functions and apply user configurator
 			let default_builder = Functions::builder()
-				.register_aggregate("sum", math::aggregate::Sum::new)
-				.register_aggregate("min", math::aggregate::Min::new)
-				.register_aggregate("max", math::aggregate::Max::new)
-				.register_aggregate("avg", math::aggregate::Avg::new)
-				.register_aggregate("count", math::aggregate::Count::new)
-				.register_scalar("abs", math::scalar::Abs::new)
-				.register_scalar("avg", math::scalar::Avg::new)
+				.register_aggregate("math::sum", math::aggregate::Sum::new)
+				.register_aggregate("math::min", math::aggregate::Min::new)
+				.register_aggregate("math::max", math::aggregate::Max::new)
+				.register_aggregate("math::avg", math::aggregate::Avg::new)
+				.register_aggregate("math::count", math::aggregate::Count::new)
+				.register_scalar("math::abs", math::scalar::Abs::new)
+				.register_scalar("math::avg", math::scalar::Avg::new)
 				.register_generator("generate_series", generator::GenerateSeries::new);
 
 			Some(configurator(default_builder).build())

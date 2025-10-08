@@ -266,7 +266,7 @@ aggregate { avg(salary), count(emp_id) }
 			inner join {
 				from company.departments
 			} departments on dept_id == departments.dept_id
-			aggregate { avg(salary), count(emp_id) }
+			aggregate { math::avg(salary), math::count(emp_id) }
 				by dept_name
 			"#,
 			Params::None,

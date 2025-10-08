@@ -9,11 +9,11 @@ use reifydb_type::Fragment;
 use crate::{
 	expression::{
 		AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
-		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, EqExpression,
-		Expression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression, LessThanEqExpression,
-		LessThanExpression, MulExpression, NotEqExpression, OrExpression, ParameterExpression,
-		PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression, TypeExpression,
-		VariableExpression, XorExpression,
+		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression,
+		EqExpression, Expression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression,
+		IfExpression, LessThanEqExpression, LessThanExpression, MulExpression, NotEqExpression, OrExpression,
+		ParameterExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression,
+		TypeExpression, VariableExpression, XorExpression,
 	},
 	plan::physical::PhysicalPlan,
 };
@@ -130,6 +130,7 @@ pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
 		Expression::Type(type_expr) => Expression::Type(to_owned_type_expression(type_expr)),
 		Expression::Parameter(param) => Expression::Parameter(to_owned_parameter_expression(param)),
 		Expression::Variable(var) => Expression::Variable(to_owned_variable_expression(var)),
+		Expression::If(if_expr) => Expression::If(to_owned_if_expression(if_expr)),
 	}
 }
 
@@ -193,6 +194,24 @@ fn to_owned_parameter_expression(param: ParameterExpression<'_>) -> ParameterExp
 fn to_owned_variable_expression(var: VariableExpression<'_>) -> VariableExpression<'static> {
 	VariableExpression {
 		fragment: Fragment::Owned(var.fragment.into_owned()),
+	}
+}
+
+fn to_owned_if_expression(if_expr: IfExpression<'_>) -> IfExpression<'static> {
+	IfExpression {
+		condition: Box::new(to_owned_expression(*if_expr.condition)),
+		then_expr: Box::new(to_owned_expression(*if_expr.then_expr)),
+		else_ifs: if_expr
+			.else_ifs
+			.into_iter()
+			.map(|else_if| ElseIfExpression {
+				condition: Box::new(to_owned_expression(*else_if.condition)),
+				then_expr: Box::new(to_owned_expression(*else_if.then_expr)),
+				fragment: Fragment::Owned(else_if.fragment.into_owned()),
+			})
+			.collect(),
+		else_expr: if_expr.else_expr.map(|else_expr| Box::new(to_owned_expression(*else_expr))),
+		fragment: Fragment::Owned(if_expr.fragment.into_owned()),
 	}
 }
 
