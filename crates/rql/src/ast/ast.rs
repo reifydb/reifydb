@@ -91,6 +91,7 @@ pub enum Ast<'a> {
 	Extend(AstExtend<'a>),
 	Tuple(AstTuple<'a>),
 	Wildcard(AstWildcard<'a>),
+	StatementExpression(AstStatementExpression<'a>),
 }
 
 impl<'a> Default for Ast<'a> {
@@ -162,6 +163,7 @@ impl<'a> Ast<'a> {
 			Ast::Extend(node) => &node.token,
 			Ast::Tuple(node) => &node.token,
 			Ast::Wildcard(node) => &node.0,
+			Ast::StatementExpression(node) => node.expression.token(),
 		}
 	}
 
@@ -580,6 +582,18 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not tuple")
+		}
+	}
+
+	pub fn is_statement_expression(&self) -> bool {
+		matches!(self, Ast::StatementExpression(_))
+	}
+
+	pub fn as_statement_expression(&self) -> &AstStatementExpression<'a> {
+		if let Ast::StatementExpression(result) = self {
+			result
+		} else {
+			panic!("not statement expression")
 		}
 	}
 }
@@ -1254,4 +1268,9 @@ pub struct AstElseIf<'a> {
 	pub token: Token<'a>,
 	pub condition: Box<Ast<'a>>,
 	pub then_block: Box<Ast<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstStatementExpression<'a> {
+	pub expression: Box<Ast<'a>>,
 }

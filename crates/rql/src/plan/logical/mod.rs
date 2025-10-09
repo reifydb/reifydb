@@ -272,8 +272,25 @@ impl Compiler {
 			Ast::Update(node) => Self::compile_update(node, tx),
 			Ast::If(node) => Self::compile_if(node, tx),
 			Ast::Let(node) => Self::compile_let(node, tx),
+			Ast::StatementExpression(node) => {
+				// Compile the inner expression and wrap it in a MAP
+				let map_node = Self::wrap_scalar_in_map(*node.expression.clone());
+				Self::compile_map(map_node, tx)
+			}
 			Ast::Infix(ref infix_node) => {
 				match infix_node.operator {
+					// Assignment operations - check if it's a valid variable assignment
+					InfixOperator::Assign(ref token) => {
+						// Only allow variable assignments with := operator, not = operator
+						if matches!(token.kind, TokenKind::Operator(Operator::ColonEqual)) {
+							// This is a valid variable assignment statement
+							Self::compile_infix(infix_node.clone(), tx)
+						} else {
+							// This is a = operator, treat as expression comparison
+							let map_node = Self::wrap_scalar_in_map(node);
+							Self::compile_map(map_node, tx)
+						}
+					}
 					// Expression-like operations - wrap in MAP
 					InfixOperator::Add(_)
 					| InfixOperator::Subtract(_)
@@ -297,8 +314,7 @@ impl Compiler {
 					}
 
 					// Statement-like operations - compile directly
-					InfixOperator::Assign(_)
-					| InfixOperator::Arrow(_)
+					InfixOperator::Arrow(_)
 					| InfixOperator::AccessTable(_)
 					| InfixOperator::AccessNamespace(_) => Self::compile_infix(infix_node.clone(), tx),
 				}

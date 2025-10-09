@@ -62,6 +62,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Apply(_) => "Apply",
 		Ast::Call(_) => "Call",
 		Ast::SubQuery(_) => "SubQuery",
+		Ast::StatementExpression(_) => "StatementExpression",
 	};
 
 	let branch = if is_last {
