@@ -106,6 +106,8 @@ pub enum Expression<'a> {
 	Variable(VariableExpression<'a>),
 
 	If(IfExpression<'a>),
+	Map(MapExpression<'a>),
+	Extend(ExtendExpression<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -585,6 +587,25 @@ impl<'a> Display for Expression<'a> {
 			},
 			Expression::Variable(var) => write!(f, "{}", var.fragment.text()),
 			Expression::If(if_expr) => write!(f, "{}", if_expr),
+			Expression::Map(map_expr) => write!(
+				f,
+				"MAP{{ {} }}",
+				map_expr.expressions
+					.iter()
+					.map(|expr| format!("{}", expr))
+					.collect::<Vec<_>>()
+					.join(", ")
+			),
+			Expression::Extend(extend_expr) => write!(
+				f,
+				"EXTEND{{ {} }}",
+				extend_expr
+					.expressions
+					.iter()
+					.map(|expr| format!("{}", expr))
+					.collect::<Vec<_>>()
+					.join(", ")
+			),
 		}
 	}
 }
@@ -953,6 +974,30 @@ impl ExpressionCompiler {
 					fragment: if_ast.token.fragment,
 				}))
 			}
+			Ast::Map(map) => {
+				// Compile expressions in the map
+				let mut expressions = Vec::with_capacity(map.nodes.len());
+				for node in map.nodes {
+					expressions.push(Self::compile(node)?);
+				}
+
+				Ok(Expression::Map(MapExpression {
+					expressions,
+					fragment: map.token.fragment,
+				}))
+			}
+			Ast::Extend(extend) => {
+				// Compile expressions in the extend
+				let mut expressions = Vec::with_capacity(extend.nodes.len());
+				for node in extend.nodes {
+					expressions.push(Self::compile(node)?);
+				}
+
+				Ok(Expression::Extend(ExtendExpression {
+					expressions,
+					fragment: extend.token.fragment,
+				}))
+			}
 			ast => unimplemented!("{:?}", ast),
 		}
 	}
@@ -1188,4 +1233,16 @@ impl ExpressionCompiler {
 			   * InfixOperator::TypeAscription(_) => {} */
 		}
 	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MapExpression<'a> {
+	pub expressions: Vec<Expression<'a>>,
+	pub fragment: Fragment<'a>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtendExpression<'a> {
+	pub expressions: Vec<Expression<'a>>,
+	pub fragment: Fragment<'a>,
 }

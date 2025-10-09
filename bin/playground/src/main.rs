@@ -27,12 +27,15 @@ fn main() {
 
 	db.start().unwrap();
 
-	// Test empty if blocks
-	println!("=== Testing: if true {{}} ===");
+	// Test EXTEND expressions in scalar contexts
+	println!("=== Testing: EXTEND expressions ===");
 	for frame in db
 		.query_as_root(
 			r#"
-	(if true { } else { false }) AND true
+if EXTEND { "test": true } = false { "extend1" }
+            else if EXTEND { "test": true } = false { "extend2" }
+            else if EXTEND { "test": true } = true { "extend3" }
+            else { "no_extend" }
 	"#,
 			Params::None,
 		)

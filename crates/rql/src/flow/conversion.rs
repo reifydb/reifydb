@@ -10,10 +10,10 @@ use crate::{
 	expression::{
 		AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
 		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression,
-		EqExpression, Expression, GreaterThanEqExpression, GreaterThanExpression, IdentExpression,
-		IfExpression, LessThanEqExpression, LessThanExpression, MulExpression, NotEqExpression, OrExpression,
-		ParameterExpression, PrefixExpression, PrefixOperator, RemExpression, SubExpression, TupleExpression,
-		TypeExpression, VariableExpression, XorExpression,
+		EqExpression, Expression, ExtendExpression, GreaterThanEqExpression, GreaterThanExpression,
+		IdentExpression, IfExpression, LessThanEqExpression, LessThanExpression, MapExpression, MulExpression,
+		NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RemExpression,
+		SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
 	},
 	plan::physical::PhysicalPlan,
 };
@@ -131,11 +131,11 @@ pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
 		Expression::Parameter(param) => Expression::Parameter(to_owned_parameter_expression(param)),
 		Expression::Variable(var) => Expression::Variable(to_owned_variable_expression(var)),
 		Expression::If(if_expr) => Expression::If(to_owned_if_expression(if_expr)),
+		Expression::Map(map_expr) => Expression::Map(to_owned_map_expression(map_expr)),
+		Expression::Extend(extend_expr) => Expression::Extend(to_owned_extend_expression(extend_expr)),
 	}
 }
 
-/// Helper function to convert ConstantExpression<'a> to
-/// ConstantExpression<'static>
 fn to_owned_constant_expression(constant: ConstantExpression<'_>) -> ConstantExpression<'static> {
 	match constant {
 		ConstantExpression::Undefined {
@@ -166,7 +166,6 @@ fn to_owned_constant_expression(constant: ConstantExpression<'_>) -> ConstantExp
 	}
 }
 
-/// Helper function to convert TypeExpression<'a> to TypeExpression<'static>
 fn to_owned_type_expression(type_expr: TypeExpression<'_>) -> TypeExpression<'static> {
 	TypeExpression {
 		ty: type_expr.ty,
@@ -215,7 +214,6 @@ fn to_owned_if_expression(if_expr: IfExpression<'_>) -> IfExpression<'static> {
 	}
 }
 
-/// Helper function to convert PrefixOperator<'a> to PrefixOperator<'static>
 fn to_owned_prefix_operator(op: PrefixOperator<'_>) -> PrefixOperator<'static> {
 	match op {
 		PrefixOperator::Minus(fragment) => PrefixOperator::Minus(Fragment::Owned(fragment.into_owned())),
@@ -229,13 +227,10 @@ pub fn to_owned_expressions(exprs: Vec<Expression<'_>>) -> Vec<Expression<'stati
 	exprs.into_iter().map(to_owned_expression).collect()
 }
 
-/// Converts a fragment to owned form
 pub fn to_owned_fragment(fragment: Fragment<'_>) -> Fragment<'static> {
 	Fragment::Owned(fragment.into_owned())
 }
 
-/// Converts a PhysicalPlan<'a> to PhysicalPlan<'static> by converting all
-/// contained data to owned
 pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 	match plan {
 		PhysicalPlan::Aggregate(node) => PhysicalPlan::Aggregate(crate::plan::physical::AggregateNode {
@@ -348,5 +343,21 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 				.collect(),
 		}),
 		_ => unimplemented!("Implement conversion for remaining PhysicalPlan variants"),
+	}
+}
+
+/// Helper function to convert MapExpression<'a> to MapExpression<'static>
+fn to_owned_map_expression(map: MapExpression<'_>) -> MapExpression<'static> {
+	MapExpression {
+		expressions: map.expressions.into_iter().map(to_owned_expression).collect(),
+		fragment: Fragment::Owned(map.fragment.into_owned()),
+	}
+}
+
+/// Helper function to convert ExtendExpression<'a> to ExtendExpression<'static>
+fn to_owned_extend_expression(extend: ExtendExpression<'_>) -> ExtendExpression<'static> {
+	ExtendExpression {
+		expressions: extend.expressions.into_iter().map(to_owned_expression).collect(),
+		fragment: Fragment::Owned(extend.fragment.into_owned()),
 	}
 }

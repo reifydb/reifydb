@@ -73,6 +73,8 @@ impl<'a> Expression<'a> {
 			},
 			Expression::Variable(var) => var.fragment.clone(),
 			Expression::If(if_expr) => if_expr.full_fragment_owned(),
+			Expression::Map(map_expr) => map_expr.fragment.clone(),
+			Expression::Extend(extend_expr) => extend_expr.fragment.clone(),
 		}
 	}
 }

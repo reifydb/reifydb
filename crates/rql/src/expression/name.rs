@@ -164,5 +164,7 @@ fn simplified_name<'a>(expr: &Expression<'a>) -> Fragment<'a> {
 				String::new()
 			}
 		)),
+		Expression::Map(_map_expr) => Fragment::owned_internal("map"),
+		Expression::Extend(_extend_expr) => Fragment::owned_internal("extend"),
 	}
 }

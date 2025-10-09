@@ -15,8 +15,10 @@ pub(crate) mod cast;
 mod column;
 mod compare;
 pub(crate) mod constant;
+mod extend_expr;
 mod if_expr;
 mod logic;
+mod map_expr;
 mod parameter;
 mod prefix;
 mod tuple;
@@ -82,6 +84,8 @@ impl StandardColumnEvaluator {
 			Expression::Parameter(expr) => self.parameter(ctx, expr),
 			Expression::Variable(expr) => self.variable(ctx, expr),
 			Expression::If(expr) => self.if_expr(ctx, expr),
+			Expression::Map(expr) => self.map_expr(ctx, expr),
+			Expression::Extend(expr) => self.extend_expr(ctx, expr),
 			expr => unimplemented!("{expr:?}"),
 		}
 	}
