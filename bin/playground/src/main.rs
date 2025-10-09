@@ -27,10 +27,12 @@ fn main() {
 
 	db.start().unwrap();
 
+	// Test empty if blocks
+	println!("=== Testing: if true {{}} ===");
 	for frame in db
 		.query_as_root(
 			r#"
-(if true { 10 } else { 20 }) = (if false { 5 } else { 10 })
+	(if true { } else { false }) AND true
 	"#,
 			Params::None,
 		)

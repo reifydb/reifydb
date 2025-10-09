@@ -277,6 +277,11 @@ impl Compiler {
 				let map_node = Self::wrap_scalar_in_map(*node.expression.clone());
 				Self::compile_map(map_node, tx)
 			}
+			Ast::Prefix(node) => {
+				// Prefix operations as statements - wrap in MAP
+				let map_node = Self::wrap_scalar_in_map(Ast::Prefix(node));
+				Self::compile_map(map_node, tx)
+			}
 			Ast::Infix(ref infix_node) => {
 				match infix_node.operator {
 					// Assignment operations - check if it's a valid variable assignment

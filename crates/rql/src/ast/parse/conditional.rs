@@ -1,12 +1,19 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::diagnostic::ast::unexpected_token_error;
+use ast::{
+	AstLiteral, AstLiteralUndefined,
+	tokenize::{Literal::Undefined, Token, TokenKind},
+};
+use reifydb_type::{Fragment, diagnostic::ast::unexpected_token_error};
 
-use crate::ast::{
-	Ast, AstElseIf, AstIf,
-	parse::{Parser, Precedence},
-	tokenize::{Keyword, Operator},
+use crate::{
+	ast,
+	ast::{
+		Ast, AstElseIf, AstIf,
+		parse::{Parser, Precedence},
+		tokenize::{Keyword, Operator},
+	},
 };
 
 impl<'a> Parser<'a> {
@@ -35,7 +42,17 @@ impl<'a> Parser<'a> {
 
 		// Parse the then block - should be a single expression inside {}
 		self.advance()?; // consume '{'
-		let then_expr = self.parse_node(Precedence::None)?;
+
+		// Check if the block is empty (next token is '}')
+		let then_expr = if self.current()?.is_operator(Operator::CloseCurly) {
+			// Empty block - return undefined literal
+			Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
+				kind: TokenKind::Literal(Undefined),
+				fragment: Fragment::owned_internal("undefined"),
+			})))
+		} else {
+			self.parse_node(Precedence::None)?
+		};
 
 		// Expect closing brace '}'
 		if !self.current()?.is_operator(Operator::CloseCurly) {
@@ -102,7 +119,15 @@ impl<'a> Parser<'a> {
 
 			// Parse the then block - should be a single expression inside {}
 			self.advance()?; // consume '{'
-			let then_expr = self.parse_node(Precedence::None)?;
+
+			let then_expr = if self.current()?.is_operator(Operator::CloseCurly) {
+				Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
+					kind: TokenKind::Literal(Undefined),
+					fragment: Fragment::owned_internal("undefined"),
+				})))
+			} else {
+				self.parse_node(Precedence::None)?
+			};
 
 			// Expect closing brace '}'
 			if !self.current()?.is_operator(Operator::CloseCurly) {
@@ -144,7 +169,15 @@ impl<'a> Parser<'a> {
 
 		// Parse the else block - should be a single expression inside {}
 		self.advance()?; // consume '{'
-		let else_expr = self.parse_node(Precedence::None)?;
+
+		let else_expr = if self.current()?.is_operator(Operator::CloseCurly) {
+			Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
+				kind: TokenKind::Literal(Undefined),
+				fragment: Fragment::owned_internal("undefined"),
+			})))
+		} else {
+			self.parse_node(Precedence::None)?
+		};
 
 		// Expect closing brace '}'
 		if !self.current()?.is_operator(Operator::CloseCurly) {

@@ -1,10 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use ast::{
+	Ast, AstLiteral, AstLiteralUndefined,
+	tokenize::{Literal, Token, TokenKind},
+};
 use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_type::Fragment;
 
 use crate::{
+	ast,
 	ast::{AstIf, AstLet, LetValue as AstLetValue},
 	expression::ExpressionCompiler,
 	plan::logical::{Compiler, ConditionalNode, DeclareNode, ElseIfBranch, LetValue, LogicalPlan},
@@ -56,7 +61,12 @@ impl Compiler {
 		let else_branch = if let Some(else_block) = ast.else_block {
 			Some(Box::new(Self::compile_single(*else_block, tx)?))
 		} else {
-			None
+			let undefined_literal = Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
+				kind: TokenKind::Literal(Literal::Undefined),
+				fragment: Fragment::owned_internal("undefined"),
+			})));
+			let wrapped_map = Self::wrap_scalar_in_map(undefined_literal);
+			Some(Box::new(Self::compile_map(wrapped_map, tx)?))
 		};
 
 		Ok(LogicalPlan::Conditional(ConditionalNode {
