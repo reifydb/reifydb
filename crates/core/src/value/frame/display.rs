@@ -37,7 +37,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Bool(BoolContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -53,7 +53,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Float4(NumberContainer::new(
 					values,
@@ -72,7 +72,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Float8(NumberContainer::new(
 					values,
@@ -91,7 +91,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int1(NumberContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -107,7 +107,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int2(NumberContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -123,7 +123,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int4(NumberContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -139,7 +139,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int8(NumberContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -155,7 +155,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Int16(NumberContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -171,7 +171,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint1(NumberContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -187,7 +187,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint2(NumberContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -203,7 +203,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint4(NumberContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -219,7 +219,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint8(NumberContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -235,7 +235,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uint16(NumberContainer::new(
 					values,
@@ -254,7 +254,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Utf8(Utf8Container::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -270,7 +270,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Date(TemporalContainer::new(
 					values,
@@ -289,7 +289,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::DateTime(TemporalContainer::new(
 					values,
@@ -308,7 +308,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Time(TemporalContainer::new(
 					values,
@@ -327,7 +327,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Interval(TemporalContainer::new(
 					values,
@@ -346,7 +346,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Blob(BlobContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -367,7 +367,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uuid4(UuidContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -388,7 +388,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: $name.to_string(),
 				data: FrameColumnData::Uuid7(UuidContainer::new(values, BitVec::from_slice(&bitvec))),
 			}
@@ -404,7 +404,7 @@ mod tests {
 
 			FrameColumn {
 				namespace: None,
-				store: None,
+				source: None,
 				name: "__ROW__NUMBER__".to_string(),
 				data: FrameColumnData::RowNumber(RowNumberContainer::new(
 					values,
@@ -417,7 +417,7 @@ mod tests {
 	fn undefined_column(name: &str, count: usize) -> FrameColumn {
 		FrameColumn {
 			namespace: None,
-			store: None,
+			source: None,
 			name: name.to_string(),
 			data: FrameColumnData::Undefined(UndefinedContainer::new(count)),
 		}
@@ -428,7 +428,7 @@ mod tests {
 		let bitvec = BitVec::repeat(data_vec.len(), true);
 		FrameColumn {
 			namespace: None,
-			store: None,
+			source: None,
 			name: "__ROW__NUMBER__".to_string(),
 			data: FrameColumnData::RowNumber(RowNumberContainer::new(data_vec, bitvec)),
 		}

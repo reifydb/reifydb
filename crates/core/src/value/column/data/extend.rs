@@ -281,6 +281,9 @@ impl ColumnData {
 						));
 					}
 					ColumnData::Undefined(_) => {}
+					ColumnData::Any(_) => {
+						unreachable!("Any type not supported in extend operations");
+					}
 				}
 			}
 
@@ -331,6 +334,9 @@ impl ColumnData {
 					} => l.extend_from_undefined(r_len),
 					ColumnData::Undefined(_) => {
 						unreachable!()
+					}
+					&mut ColumnData::Any(_) => {
+						unreachable!("Any type not supported in extend operations");
 					}
 				}
 			}

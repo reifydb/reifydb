@@ -140,6 +140,9 @@ fn reconstruct_query(ast: &Ast) -> crate::Result<String> {
 				variable,
 				..
 			} => Ok(format!("from {}", variable.token.fragment.text())),
+			AstFrom::Environment {
+				..
+			} => Ok("from $env".to_string()),
 		},
 		Ast::Filter(filter_node) => {
 			// Reconstruct the filter expression

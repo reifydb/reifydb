@@ -50,6 +50,7 @@ impl From<ColumnData> for FrameColumnData {
 				container,
 				..
 			} => FrameColumnData::Decimal(container),
+			ColumnData::Any(container) => FrameColumnData::Any(container),
 			ColumnData::Undefined(container) => FrameColumnData::Undefined(container),
 		}
 	}
@@ -68,7 +69,7 @@ impl From<Column<'_>> for FrameColumn {
 		};
 		FrameColumn {
 			namespace,
-			store,
+			source: store,
 			name,
 			data: value.data.into(),
 		}

@@ -150,6 +150,7 @@ impl Executor {
 						Value::Uint(v) => layout.set_uint(&mut row, table_idx, &v),
 						Value::Decimal(v) => layout.set_decimal(&mut row, table_idx, &v),
 						Value::Undefined => layout.set_undefined(&mut row, table_idx),
+						Value::Any(_) => unreachable!("Any type cannot be stored in table"),
 					}
 				}
 

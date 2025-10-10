@@ -7,6 +7,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 use reifydb_type::Result;
 
 mod engine;
+pub mod environment;
 mod evaluate;
 pub mod execute;
 #[allow(dead_code)]

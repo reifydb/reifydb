@@ -20,6 +20,13 @@ impl StandardColumnEvaluator {
 	) -> crate::Result<Column<'a>> {
 		let variable_name = expr.name();
 
+		// Special case: $env variable returns environment dataframe
+		if variable_name == "env" {
+			// Frame variables cannot be used directly in scalar expressions
+			// Return a clear error with helpful guidance
+			return_error!(variable_is_dataframe(variable_name));
+		}
+
 		// Look up the variable in the stack
 		match ctx.stack.get(variable_name) {
 			Some(Variable::Scalar(value)) => {

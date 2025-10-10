@@ -5,8 +5,8 @@ use reifydb_type::{Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uui
 use serde::{Deserialize, Serialize};
 
 use crate::value::container::{
-	BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, RowNumberContainer, TemporalContainer,
-	UndefinedContainer, Utf8Container, UuidContainer,
+	AnyContainer, BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, RowNumberContainer,
+	TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -37,6 +37,7 @@ pub enum FrameColumnData {
 	Int(NumberContainer<Int>),
 	Uint(NumberContainer<Uint>),
 	Decimal(NumberContainer<Decimal>),
+	Any(AnyContainer),
 	// special case: all undefined
 	Undefined(UndefinedContainer),
 }
@@ -70,6 +71,7 @@ impl FrameColumnData {
 			FrameColumnData::Int(_) => Type::Int,
 			FrameColumnData::Uint(_) => Type::Uint,
 			FrameColumnData::Decimal(_) => Type::Decimal,
+			FrameColumnData::Any(_) => Type::Any,
 			FrameColumnData::Undefined(_) => Type::Undefined,
 		}
 	}
@@ -102,6 +104,7 @@ impl FrameColumnData {
 			FrameColumnData::Int(container) => container.is_defined(idx),
 			FrameColumnData::Uint(container) => container.is_defined(idx),
 			FrameColumnData::Decimal(container) => container.is_defined(idx),
+			FrameColumnData::Any(container) => container.is_defined(idx),
 			FrameColumnData::Undefined(_) => false,
 		}
 	}
@@ -175,6 +178,7 @@ impl FrameColumnData {
 			FrameColumnData::Int(container) => container.len(),
 			FrameColumnData::Uint(container) => container.len(),
 			FrameColumnData::Decimal(container) => container.len(),
+			FrameColumnData::Any(container) => container.len(),
 			FrameColumnData::Undefined(container) => container.len(),
 		}
 	}
@@ -207,6 +211,7 @@ impl FrameColumnData {
 			FrameColumnData::Int(container) => container.as_string(index),
 			FrameColumnData::Uint(container) => container.as_string(index),
 			FrameColumnData::Decimal(container) => container.as_string(index),
+			FrameColumnData::Any(container) => container.as_string(index),
 			FrameColumnData::Undefined(container) => container.as_string(index),
 		}
 	}
@@ -241,6 +246,7 @@ impl FrameColumnData {
 			FrameColumnData::Int(container) => container.get_value(index),
 			FrameColumnData::Uint(container) => container.get_value(index),
 			FrameColumnData::Decimal(container) => container.get_value(index),
+			FrameColumnData::Any(container) => container.get_value(index),
 			FrameColumnData::Undefined(container) => container.get_value(index),
 		}
 	}

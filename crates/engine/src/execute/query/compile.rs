@@ -223,6 +223,10 @@ pub(crate) fn compile<'a>(
 			crate::execute::query::variable::VariableNode::new(var_node.variable_expr),
 		),
 
+		PhysicalPlan::Environment(_) => {
+			ExecutionPlan::Environment(crate::execute::query::environment::EnvironmentNode::new())
+		}
+
 		PhysicalPlan::Scalarize(scalarize_node) => {
 			let input = compile(*scalarize_node.input, rx, context.clone());
 			ExecutionPlan::Scalarize(ScalarizeNode::new(Box::new(input)))

@@ -138,6 +138,7 @@ fn parse_typed_value(type_str: &str, value_val: &serde_json::Value) -> Result<Va
 		Type::Int | Type::Uint | Type::Decimal => {
 			unimplemented!()
 		}
+		Type::Any => unreachable!("Any type cannot be used as parameter"),
 	};
 
 	Ok(parsed_value)

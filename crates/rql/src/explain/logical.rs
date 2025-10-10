@@ -438,6 +438,10 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 		}) => {
 			output.push_str(&format!("{}{} VariableSource {}\n", prefix, branch, variable_name.text()));
 		}
+
+		LogicalPlan::Environment(_) => {
+			output.push_str(&format!("{}{} Environment\n", prefix, branch));
+		}
 		LogicalPlan::Distinct(DistinctNode {
 			columns,
 		}) => {

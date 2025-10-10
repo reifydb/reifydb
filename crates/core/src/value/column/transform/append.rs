@@ -189,6 +189,10 @@ impl<'a> Columns<'a> {
 						vec![Decimal::from(0); size],
 						BitVec::repeat(size, false),
 					),
+					Type::Any => ColumnData::any_with_bitvec(
+						vec![Box::new(reifydb_type::Value::Undefined); size],
+						BitVec::repeat(size, false),
+					),
 				};
 
 				*column = column.with_new_data(new_data);

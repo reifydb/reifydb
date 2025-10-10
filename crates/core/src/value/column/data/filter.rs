@@ -57,6 +57,7 @@ impl ColumnData {
 				container,
 				..
 			} => container.filter(mask),
+			ColumnData::Any(container) => container.filter(mask),
 		}
 		Ok(())
 	}

@@ -48,6 +48,7 @@ impl ColumnData {
 				container,
 				..
 			} => container.reorder(indices),
+			ColumnData::Any(container) => container.reorder(indices),
 		}
 	}
 }

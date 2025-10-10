@@ -100,6 +100,8 @@ impl EncodedValuesLayout {
 			) => self.set_undefined(row, index),
 
 			(Type::Undefined, Value::Undefined) => {}
+			(Type::Any, Value::Any(_)) => unreachable!("Any type cannot be stored in database"),
+			(Type::Any, Value::Undefined) => self.set_undefined(row, index),
 			(ty, val) => unreachable!("{ty:?}, {val:?}"),
 		}
 	}
@@ -145,6 +147,7 @@ impl EncodedValuesLayout {
 				..
 			} => Value::Decimal(self.get_decimal(row, index)),
 			Type::Undefined => Value::Undefined,
+			Type::Any => unreachable!("Any type cannot be stored in database"),
 		}
 	}
 }

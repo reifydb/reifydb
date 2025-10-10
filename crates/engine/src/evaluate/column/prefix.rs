@@ -430,6 +430,14 @@ impl StandardColumnEvaluator {
 				let new_data = ColumnData::decimal_with_bitvec(result, container.bitvec());
 				Ok(column.with_new_data(new_data))
 			}
+			ColumnData::Any(_) => match prefix.operator {
+				PrefixOperator::Not(_) => {
+					err!(frame_error("Cannot apply NOT operator to Any type".to_string()))
+				}
+				_ => err!(frame_error(
+					"Cannot apply arithmetic prefix operator to Any type".to_string()
+				)),
+			},
 		}
 	}
 }

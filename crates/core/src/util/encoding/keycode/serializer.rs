@@ -328,6 +328,9 @@ impl KeySerializer {
 			Value::Decimal(d) => {
 				self.extend_decimal(d);
 			}
+			Value::Any(_) => {
+				unreachable!("Any type cannot be serialized in keys");
+			}
 		}
 		self
 	}

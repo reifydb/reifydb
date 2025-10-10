@@ -4,7 +4,7 @@
 use reifydb_core::{diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstFrom, AstVariable, AstWildcard,
+	Ast, AstEnvironment, AstFrom, AstVariable, AstWildcard,
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -94,9 +94,14 @@ impl<'a> Parser<'a> {
 				}
 				_ => {
 					if let TokenKind::Variable = current.kind {
+						let var_token = self.advance()?;
+						if var_token.fragment.text() == "$env" {
+							return Ok(Ast::Environment(AstEnvironment {
+								token: var_token,
+							}));
+						}
 						// Check if there's a pipe ahead - if so, treat as frame source
 						if self.has_pipe_ahead() {
-							let var_token = self.advance()?;
 							let from_token = var_token.clone(); // Create FROM token before moving var_token
 							let variable = AstVariable {
 								token: var_token,
@@ -108,9 +113,8 @@ impl<'a> Parser<'a> {
 							}))
 						} else {
 							// No pipe ahead, treat as normal variable expression
-							let token = self.advance()?;
 							Ok(Ast::Variable(AstVariable {
-								token,
+								token: var_token,
 							}))
 						}
 					} else {

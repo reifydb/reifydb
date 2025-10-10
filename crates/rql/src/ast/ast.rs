@@ -81,6 +81,7 @@ pub enum Ast<'a> {
 	Literal(AstLiteral<'a>),
 	Nop,
 	Variable(AstVariable<'a>),
+	Environment(AstEnvironment<'a>),
 	Sort(AstSort<'a>),
 	SubQuery(AstSubQuery<'a>),
 	Policy(AstPolicy<'a>),
@@ -166,6 +167,7 @@ impl<'a> Ast<'a> {
 			Ast::Wildcard(node) => &node.0,
 			Ast::Window(node) => &node.token,
 			Ast::StatementExpression(node) => node.expression.token(),
+			Ast::Environment(node) => &node.token,
 		}
 	}
 
@@ -340,6 +342,14 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not variable")
+		}
+	}
+
+	pub fn as_environment(&self) -> &AstEnvironment<'a> {
+		if let Ast::Environment(result) = self {
+			result
+		} else {
+			panic!("not environment")
 		}
 	}
 
@@ -887,6 +897,9 @@ pub enum AstFrom<'a> {
 		token: Token<'a>,
 		variable: AstVariable<'a>,
 	},
+	Environment {
+		token: Token<'a>,
+	},
 	Inline {
 		token: Token<'a>,
 		list: AstList<'a>,
@@ -917,6 +930,9 @@ impl<'a> AstFrom<'a> {
 				..
 			} => token,
 			AstFrom::Generator(generator) => &generator.token,
+			AstFrom::Environment {
+				token,
+			} => token,
 		}
 	}
 }
@@ -1253,6 +1269,11 @@ pub struct AstWildcard<'a>(pub Token<'a>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstVariable<'a> {
+	pub token: Token<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstEnvironment<'a> {
 	pub token: Token<'a>,
 }
 
