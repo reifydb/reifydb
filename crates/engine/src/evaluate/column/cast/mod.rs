@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
+pub mod any;
 pub mod blob;
 pub mod boolean;
 pub mod number;
@@ -69,6 +70,7 @@ pub(crate) fn cast_column_data<'a>(
 	let source_type = data.get_type();
 	match (source_type, target) {
 		_ if target == source_type => Ok(data.clone()),
+		(Type::Any, _) => any::from_any(ctx, data, target, lazy_fragment),
 		(_, target) if target.is_number() => number::to_number(ctx, data, target, lazy_fragment),
 		(_, target) if target.is_blob() => blob::to_blob(data, lazy_fragment),
 		(_, target) if target.is_bool() => boolean::to_boolean(data, lazy_fragment),

@@ -605,6 +605,28 @@ impl StandardColumnEvaluator {
 				}
 				Ok(col.with_new_data(ColumnData::uint_with_bitvec(data, bitvec)))
 			}
+			Type::Any => {
+				let mut data = Vec::new();
+				let mut bitvec = Vec::new();
+				let mut count = 0;
+				for v in col.data().iter() {
+					if count >= take {
+						break;
+					}
+					match v {
+						Value::Any(boxed) => {
+							data.push(Box::new(*boxed.clone()));
+							bitvec.push(true);
+						}
+						_ => {
+							data.push(Box::new(Value::Undefined));
+							bitvec.push(false);
+						}
+					}
+					count += 1;
+				}
+				Ok(col.with_new_data(ColumnData::any_with_bitvec(data, bitvec)))
+			}
 			Type::Decimal => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
@@ -631,7 +653,6 @@ impl StandardColumnEvaluator {
 				let count = min(ctx.row_count, take);
 				Ok(col.with_new_data(ColumnData::undefined(count)))
 			}
-			Type::Any => unreachable!("Any type not supported in column operations"),
 		}
 	}
 }

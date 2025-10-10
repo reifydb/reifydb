@@ -32,7 +32,7 @@ fn main() {
 	for frame in db
 		.query_as_root(
 			r#"
-FROM $env
+FROM $env | FILTER key == 'answer' | MAP {answer: cast(value,int1) / 2 }
 	"#,
 			Params::None,
 		)
