@@ -8,6 +8,7 @@ use query::{
 	assign::AssignNode,
 	compile::compile,
 	declare::DeclareNode,
+	environment::EnvironmentNode,
 	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,
 	generator::GeneratorNode,
@@ -94,6 +95,7 @@ pub(crate) enum ExecutionPlan<'a> {
 	Take(TakeNode<'a>),
 	ViewScan(ViewScanNode<'a>),
 	Variable(VariableNode<'a>),
+	Environment(EnvironmentNode),
 	VirtualScan(VirtualScanNode<'a>),
 	RingBufferScan(RingBufferScan<'a>),
 	Generator(GeneratorNode<'a>),
@@ -141,6 +143,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Take(node) => node.initialize(rx, ctx),
 			ExecutionPlan::ViewScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Variable(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Environment(node) => node.initialize(rx, ctx),
 			ExecutionPlan::VirtualScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::RingBufferScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Generator(node) => node.initialize(rx, ctx),
@@ -173,6 +176,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Take(node) => node.next(rx, ctx),
 			ExecutionPlan::ViewScan(node) => node.next(rx, ctx),
 			ExecutionPlan::Variable(node) => node.next(rx, ctx),
+			ExecutionPlan::Environment(node) => node.next(rx, ctx),
 			ExecutionPlan::VirtualScan(node) => node.next(rx, ctx),
 			ExecutionPlan::RingBufferScan(node) => node.next(rx, ctx),
 			ExecutionPlan::Generator(node) => node.next(rx, ctx),
@@ -201,6 +205,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Take(node) => node.headers(),
 			ExecutionPlan::ViewScan(node) => node.headers(),
 			ExecutionPlan::Variable(node) => node.headers(),
+			ExecutionPlan::Environment(node) => node.headers(),
 			ExecutionPlan::VirtualScan(node) => node.headers(),
 			ExecutionPlan::RingBufferScan(node) => node.headers(),
 			ExecutionPlan::Generator(node) => node.headers(),
@@ -375,6 +380,7 @@ impl Executor {
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Variable(_)
+			| PhysicalPlan::Environment(_)
 			| PhysicalPlan::Conditional(_)
 			| PhysicalPlan::Scalarize(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
@@ -445,6 +451,7 @@ impl Executor {
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Distinct(_)
 			| PhysicalPlan::Variable(_)
+			| PhysicalPlan::Environment(_)
 			| PhysicalPlan::Apply(_)
 			| PhysicalPlan::Conditional(_)
 			| PhysicalPlan::Scalarize(_) => {

@@ -428,6 +428,21 @@ impl ColumnData {
 				}
 				_ => unimplemented!(),
 			},
+
+			Value::Any(v) => match self {
+				ColumnData::Any(container) => container.push(v),
+				ColumnData::Undefined(container) => {
+					let mut new_container = ColumnData::any(vec![]);
+					if let ColumnData::Any(new_container) = &mut new_container {
+						for _ in 0..container.len() {
+							new_container.push_undefined();
+						}
+						new_container.push(v);
+					}
+					*self = new_container;
+				}
+				_ => unreachable!("Cannot push Any value to non-Any column"),
+			},
 		}
 	}
 }

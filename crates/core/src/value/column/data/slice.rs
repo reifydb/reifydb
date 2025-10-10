@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Date, DateTime, Decimal, Int, Interval, Time, Uint};
+use reifydb_type::{Date, DateTime, Decimal, Int, Interval, Time, Uint, Value};
 
 use crate::value::column::ColumnData;
 
@@ -25,7 +25,7 @@ impl AsSlice<bool> for ColumnData {
 				panic!("as_slice() is not supported for BitVec. Use to_vec() instead.")
 			}
 			other => {
-				panic!("called `as_slice::<bool>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<bool>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -36,7 +36,7 @@ impl AsSlice<f32> for ColumnData {
 		match self {
 			ColumnData::Float4(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<f32>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<f32>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -47,7 +47,7 @@ impl AsSlice<f64> for ColumnData {
 		match self {
 			ColumnData::Float8(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<f64>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<f64>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -58,7 +58,7 @@ impl AsSlice<i8> for ColumnData {
 		match self {
 			ColumnData::Int1(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<i8>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<i8>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -69,7 +69,7 @@ impl AsSlice<i16> for ColumnData {
 		match self {
 			ColumnData::Int2(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<i16>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<i16>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -80,7 +80,7 @@ impl AsSlice<i32> for ColumnData {
 		match self {
 			ColumnData::Int4(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<i32>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<i32>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -91,7 +91,7 @@ impl AsSlice<i64> for ColumnData {
 		match self {
 			ColumnData::Int8(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<i64>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<i64>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -102,7 +102,7 @@ impl AsSlice<i128> for ColumnData {
 		match self {
 			ColumnData::Int16(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<i128>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<i128>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -113,7 +113,7 @@ impl AsSlice<u8> for ColumnData {
 		match self {
 			ColumnData::Uint1(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<u8>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<u8>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -124,7 +124,7 @@ impl AsSlice<u16> for ColumnData {
 		match self {
 			ColumnData::Uint2(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<u16>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<u16>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -135,7 +135,7 @@ impl AsSlice<u32> for ColumnData {
 		match self {
 			ColumnData::Uint4(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<u32>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<u32>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -146,7 +146,7 @@ impl AsSlice<u64> for ColumnData {
 		match self {
 			ColumnData::Uint8(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<u64>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<u64>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -157,7 +157,7 @@ impl AsSlice<u128> for ColumnData {
 		match self {
 			ColumnData::Uint16(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<u128>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<u128>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -171,7 +171,7 @@ impl AsSlice<String> for ColumnData {
 				..
 			} => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<String>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<String>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -182,7 +182,7 @@ impl AsSlice<Date> for ColumnData {
 		match self {
 			ColumnData::Date(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<Date>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<Date>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -193,7 +193,7 @@ impl AsSlice<DateTime> for ColumnData {
 		match self {
 			ColumnData::DateTime(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<DateTime>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<DateTime>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -204,7 +204,7 @@ impl AsSlice<Time> for ColumnData {
 		match self {
 			ColumnData::Time(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<Time>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<Time>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -215,7 +215,7 @@ impl AsSlice<Interval> for ColumnData {
 		match self {
 			ColumnData::Interval(container) => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<Interval>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<Interval>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -225,12 +225,11 @@ impl AsSlice<Int> for ColumnData {
 	fn as_slice(&self) -> &[Int] {
 		match self {
 			ColumnData::Int {
+				container,
 				..
-			} => {
-				panic!("as_slice() is not supported for variable-length Int. Use to_vec() instead.")
-			}
+			} => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<Int>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<Int>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -240,12 +239,11 @@ impl AsSlice<Uint> for ColumnData {
 	fn as_slice(&self) -> &[Uint] {
 		match self {
 			ColumnData::Uint {
+				container,
 				..
-			} => {
-				panic!("as_slice() is not supported for variable-length Uint. Use to_vec() instead.")
-			}
+			} => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<Uint>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<Uint>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}
@@ -255,12 +253,22 @@ impl AsSlice<Decimal> for ColumnData {
 	fn as_slice(&self) -> &[Decimal] {
 		match self {
 			ColumnData::Decimal {
+				container,
 				..
-			} => {
-				panic!("as_slice() is not supported for variable-length Decimal. Use to_vec() instead.")
-			}
+			} => container.data().as_slice(),
 			other => {
-				panic!("called `as_slice::<Decimal>()` on EngineColumnData::{:?}", other.get_type())
+				panic!("called `as_slice::<Decimal>()` on ColumnData::{:?}", other.get_type())
+			}
+		}
+	}
+}
+
+impl AsSlice<Box<Value>> for ColumnData {
+	fn as_slice(&self) -> &[Box<Value>] {
+		match self {
+			ColumnData::Any(container) => container.data().as_slice(),
+			other => {
+				panic!("called `as_slice::<Box<Value>>()` on ColumnData::{:?}", other.get_type())
 			}
 		}
 	}

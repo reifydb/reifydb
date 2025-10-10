@@ -37,8 +37,14 @@ impl<'a> Parser<'a> {
 			let current = self.current()?;
 			match current.kind {
 				TokenKind::Variable => {
-					// Parse variable source: FROM $variable_name
 					let var_token = self.advance()?;
+
+					if var_token.fragment.text() == "$env" {
+						return Ok(AstFrom::Environment {
+							token,
+						});
+					}
+
 					let variable = AstVariable {
 						token: var_token,
 					};

@@ -8,7 +8,8 @@ use crate::{
 	ast::{Ast, AstFrom},
 	expression::{AliasExpression, ExpressionCompiler, IdentExpression},
 	plan::logical::{
-		Compiler, GeneratorNode, InlineDataNode, LogicalPlan, SourceScanNode, VariableSourceNode, resolver,
+		Compiler, EnvironmentNode, GeneratorNode, InlineDataNode, LogicalPlan, SourceScanNode,
+		VariableSourceNode, resolver,
 	},
 };
 
@@ -92,12 +93,16 @@ impl Compiler {
 				variable,
 				..
 			} => {
-				// Create a variable source node
+				// Create a variable source node for regular variables
 				let variable_name = variable.token.fragment.clone();
 				Ok(LogicalPlan::VariableSource(VariableSourceNode {
 					name: variable_name,
 				}))
 			}
+
+			AstFrom::Environment {
+				..
+			} => Ok(LogicalPlan::Environment(EnvironmentNode {})),
 		}
 	}
 }

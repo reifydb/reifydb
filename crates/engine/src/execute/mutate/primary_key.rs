@@ -159,6 +159,9 @@ pub fn encode_primary_key(
 				// handled later with constraints
 				index_layout.set_undefined(&mut index_key, pk_idx);
 			}
+			Type::Any => {
+				panic!("Any type cannot be used in primary keys");
+			}
 		}
 	}
 

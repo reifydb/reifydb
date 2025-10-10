@@ -63,6 +63,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Call(_) => "Call",
 		Ast::SubQuery(_) => "SubQuery",
 		Ast::StatementExpression(_) => "StatementExpression",
+		Ast::Environment(_) => "Environment",
 	};
 
 	let branch = if is_last {
@@ -181,6 +182,17 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 					};
 					use crate::ast::identifier::UnqualifiedIdentifier;
 					children.push(Ast::Identifier(UnqualifiedIdentifier::new(variable_token)));
+				}
+				AstFrom::Environment {
+					..
+				} => {
+					// Create an Identifier AST for the environment
+					let env_token = Token {
+						kind: TokenKind::Variable,
+						fragment: reifydb_type::Fragment::owned_internal("env"),
+					};
+					use crate::ast::identifier::UnqualifiedIdentifier;
+					children.push(Ast::Identifier(UnqualifiedIdentifier::new(env_token)));
 				}
 			}
 		}

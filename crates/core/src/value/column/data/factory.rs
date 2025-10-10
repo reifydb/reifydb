@@ -8,8 +8,8 @@ use crate::{
 	value::{
 		column::ColumnData,
 		container::{
-			BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, RowNumberContainer,
-			TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
+			AnyContainer, BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
+			RowNumberContainer, TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
 		},
 	},
 };
@@ -1042,6 +1042,45 @@ impl ColumnData {
 			precision: Precision::MAX,
 			scale: Scale::new(0),
 		}
+	}
+
+	pub fn any(data: impl IntoIterator<Item = Box<reifydb_type::Value>>) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		ColumnData::Any(AnyContainer::from_vec(data))
+	}
+
+	pub fn any_optional(data: impl IntoIterator<Item = Option<Box<reifydb_type::Value>>>) -> Self {
+		let mut values = Vec::new();
+		let mut bitvec = Vec::new();
+
+		for opt in data {
+			match opt {
+				Some(value) => {
+					values.push(value);
+					bitvec.push(true);
+				}
+				None => {
+					values.push(Box::new(reifydb_type::Value::Undefined));
+					bitvec.push(false);
+				}
+			}
+		}
+
+		ColumnData::Any(AnyContainer::new(values, BitVec::from(bitvec)))
+	}
+
+	pub fn any_with_capacity(capacity: usize) -> Self {
+		ColumnData::Any(AnyContainer::with_capacity(capacity))
+	}
+
+	pub fn any_with_bitvec(
+		data: impl IntoIterator<Item = Box<reifydb_type::Value>>,
+		bitvec: impl Into<BitVec>,
+	) -> Self {
+		let data = data.into_iter().collect::<Vec<_>>();
+		let bitvec = bitvec.into();
+		assert_eq!(bitvec.len(), data.len());
+		ColumnData::Any(AnyContainer::new(data, bitvec))
 	}
 
 	pub fn undefined(len: usize) -> Self {

@@ -6,6 +6,7 @@ pub mod assign;
 pub mod compile;
 pub mod conditional;
 pub mod declare;
+pub mod environment;
 pub mod extend;
 pub mod filter;
 pub mod generator;

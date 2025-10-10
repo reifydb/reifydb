@@ -143,6 +143,9 @@ impl Executor {
 						Value::Uint(v) => layout.set_uint(&mut row, rb_idx, &v),
 						Value::Decimal(v) => layout.set_decimal(&mut row, rb_idx, &v),
 						Value::Undefined => layout.set_undefined(&mut row, rb_idx),
+						Value::Any(_) => {
+							unreachable!("Any type cannot be stored in ring buffer")
+						}
 					}
 				}
 

@@ -72,6 +72,8 @@ pub enum Type {
 	Decimal,
 	/// Value is not defined (think null in common programming languages)
 	Undefined,
+	/// A container that can hold any value type
+	Any,
 }
 
 impl Type {
@@ -156,6 +158,7 @@ impl Type {
 				..
 			} => 0x19,
 			Type::Undefined => 0x00,
+			Type::Any => 0x1B,
 		}
 	}
 }
@@ -190,6 +193,7 @@ impl Type {
 			0x18 => Type::Int,
 			0x1A => Type::Uint,
 			0x19 => Type::Decimal,
+			0x1B => Type::Any,
 			_ => unreachable!(),
 		}
 	}
@@ -231,6 +235,7 @@ impl Type {
 			} => 16, // i128 inline or dynamic
 			// storage with offset + length
 			Type::Undefined => 0,
+			Type::Any => 8, // pointer size on 64-bit systems
 		}
 	}
 
@@ -268,6 +273,7 @@ impl Type {
 			} => 16, // i128 alignment for
 			// inline storage
 			Type::Undefined => 0,
+			Type::Any => 8, // pointer alignment
 		}
 	}
 }
@@ -302,6 +308,7 @@ impl Display for Type {
 			Type::Uint => f.write_str("Uint"),
 			Type::Decimal => f.write_str("Decimal"),
 			Type::Undefined => f.write_str("Undefined"),
+			Type::Any => f.write_str("Any"),
 		}
 	}
 }
@@ -336,6 +343,7 @@ impl From<&Value> for Type {
 			Value::Int(_) => Type::Int,
 			Value::Uint(_) => Type::Uint,
 			Value::Decimal(_) => Type::Decimal,
+			Value::Any(_) => Type::Any,
 		}
 	}
 }
@@ -372,6 +380,7 @@ impl FromStr for Type {
 			"UINT" => Ok(Type::Uint),
 			"DECIMAL" => Ok(Type::Decimal),
 			"UNDEFINED" => Ok(Type::Undefined),
+			"ANY" => Ok(Type::Any),
 			_ => Err(()),
 		}
 	}

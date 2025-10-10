@@ -41,7 +41,7 @@ pub fn convert_result_to_frames(result: Vec<Frame>) -> ProtocolResult<Vec<Websoc
 
 			ws_columns.push(WebsocketColumn {
 				namespace: column.namespace.clone(),
-				store: column.store.clone(),
+				store: column.source.clone(),
 				name: column.name.clone(),
 				r#type: column.data.get_type(),
 				data: column_data,

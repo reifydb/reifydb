@@ -104,6 +104,8 @@ pub enum Value {
 	Uint(Uint),
 	/// An arbitrary-precision decimal
 	Decimal(Decimal),
+	/// A container that can hold any value type
+	Any(Box<Value>),
 }
 
 impl Value {
@@ -202,6 +204,10 @@ impl Value {
 	pub fn blob(v: impl Into<Blob>) -> Self {
 		Value::Blob(v.into())
 	}
+
+	pub fn any(v: impl Into<Value>) -> Self {
+		Value::Any(Box::new(v.into()))
+	}
 }
 
 impl PartialOrd for Value {
@@ -233,6 +239,7 @@ impl PartialOrd for Value {
 			(Value::Int(l), Value::Int(r)) => l.partial_cmp(r),
 			(Value::Uint(l), Value::Uint(r)) => l.partial_cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.partial_cmp(r),
+			(Value::Any(_), Value::Any(_)) => None, // Any values are not comparable
 			(Value::Undefined, Value::Undefined) => Some(Ordering::Equal),
 			// Undefined sorts after all other values (similar to NULL in SQL)
 			(Value::Undefined, _) => Some(Ordering::Greater),
@@ -273,6 +280,7 @@ impl Ord for Value {
 			(Value::Int(l), Value::Int(r)) => l.cmp(r),
 			(Value::Uint(l), Value::Uint(r)) => l.cmp(r),
 			(Value::Decimal(l), Value::Decimal(r)) => l.cmp(r),
+			(Value::Any(_), Value::Any(_)) => unreachable!("Any values are not orderable"),
 			_ => unimplemented!(),
 		}
 	}
@@ -308,6 +316,7 @@ impl Display for Value {
 			Value::Int(value) => Display::fmt(value, f),
 			Value::Uint(value) => Display::fmt(value, f),
 			Value::Decimal(value) => Display::fmt(value, f),
+			Value::Any(value) => Display::fmt(value, f),
 			Value::Undefined => f.write_str("undefined"),
 		}
 	}
@@ -343,6 +352,7 @@ impl Value {
 			Value::Int(_) => Type::Int,
 			Value::Uint(_) => Type::Uint,
 			Value::Decimal(_) => Type::Decimal,
+			Value::Any(_) => Type::Any,
 		}
 	}
 }

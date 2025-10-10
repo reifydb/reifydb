@@ -32,10 +32,7 @@ fn main() {
 	for frame in db
 		.query_as_root(
 			r#"
-if EXTEND { "test": true } = false { "extend1" }
-            else if EXTEND { "test": true } = false { "extend2" }
-            else if EXTEND { "test": true } = true { "extend3" }
-            else { "no_extend" }
+FROM $env
 	"#,
 			Params::None,
 		)

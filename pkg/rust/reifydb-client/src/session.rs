@@ -259,5 +259,6 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 				Value::Undefined
 			}
 		}
+		Type::Any => Value::Undefined,
 	}
 }

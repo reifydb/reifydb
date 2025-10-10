@@ -430,5 +430,9 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 				render_physical_plan_inner(&scalarize.input, child_prefix, true, output);
 			});
 		}
+
+		PhysicalPlan::Environment(_) => {
+			write_node_header(output, prefix, is_last, "Environment");
+		}
 	}
 }

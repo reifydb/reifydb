@@ -48,6 +48,7 @@ impl ColumnData {
 				container,
 				..
 			} => container.push_undefined(),
+			&mut ColumnData::Any(ref mut container) => container.push_undefined(),
 		}
 	}
 }

@@ -65,6 +65,7 @@ impl ColumnData {
 				precision: *precision,
 				scale: *scale,
 			},
+			ColumnData::Any(container) => ColumnData::Any(container.take(num)),
 		}
 	}
 }

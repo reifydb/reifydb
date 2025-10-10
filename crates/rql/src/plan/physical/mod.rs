@@ -738,6 +738,10 @@ impl Compiler {
 					}));
 				}
 
+				LogicalPlan::Environment(_) => {
+					stack.push(PhysicalPlan::Environment(EnvironmentNode {}));
+				}
+
 				LogicalPlan::Conditional(conditional_node) => {
 					// Compile the then branch
 					let then_branch = if let Some(then_plan) =
@@ -850,6 +854,7 @@ pub enum PhysicalPlan<'a> {
 	Assign(AssignNode<'a>),
 	// Variable resolution
 	Variable(VariableNode<'a>),
+	Environment(EnvironmentNode),
 	// Control flow
 	Conditional(ConditionalNode<'a>),
 
@@ -971,6 +976,9 @@ pub struct AssignNode<'a> {
 pub struct VariableNode<'a> {
 	pub variable_expr: VariableExpression<'a>,
 }
+
+#[derive(Debug, Clone)]
+pub struct EnvironmentNode {}
 
 #[derive(Debug, Clone)]
 pub struct ConditionalNode<'a> {

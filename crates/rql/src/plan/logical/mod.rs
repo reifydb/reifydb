@@ -493,6 +493,7 @@ pub enum LogicalPlan<'a> {
 	SourceScan(SourceScanNode<'a>),
 	Generator(GeneratorNode<'a>),
 	VariableSource(VariableSourceNode<'a>),
+	Environment(EnvironmentNode),
 	// Auto-scalarization for 1x1 frames in scalar contexts
 	Scalarize(ScalarizeNode<'a>),
 	// Pipeline wrapper for piped operations
@@ -757,6 +758,9 @@ pub struct GeneratorNode<'a> {
 pub struct VariableSourceNode<'a> {
 	pub name: Fragment<'a>,
 }
+
+#[derive(Debug)]
+pub struct EnvironmentNode {}
 
 pub(crate) fn convert_policy(ast: &AstPolicy) -> ColumnPolicyKind {
 	use ColumnPolicyKind::*;

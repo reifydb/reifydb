@@ -631,6 +631,7 @@ impl StandardColumnEvaluator {
 				let count = min(ctx.row_count, take);
 				Ok(col.with_new_data(ColumnData::undefined(count)))
 			}
+			Type::Any => unreachable!("Any type not supported in column operations"),
 		}
 	}
 }

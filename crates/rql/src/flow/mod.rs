@@ -167,6 +167,10 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::Scalarize(_) => {
 				panic!("Scalarize operations are not supported in flow graphs");
 			}
+
+			PhysicalPlan::Environment(_) => {
+				panic!("Environment operations are not supported in flow graphs");
+			}
 		}
 	}
 }

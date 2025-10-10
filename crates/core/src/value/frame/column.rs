@@ -10,7 +10,7 @@ use crate::value::frame::data::FrameColumnData;
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FrameColumn {
 	pub namespace: Option<String>,
-	pub store: Option<String>,
+	pub source: Option<String>,
 	pub name: String,
 	pub data: FrameColumnData,
 }
@@ -25,7 +25,7 @@ impl Deref for FrameColumn {
 
 impl FrameColumn {
 	pub fn qualified_name(&self) -> String {
-		match (&self.namespace, &self.store) {
+		match (&self.namespace, &self.source) {
 			(Some(namespace), Some(table)) => {
 				format!("{}.{}.{}", namespace, table, self.name)
 			}
