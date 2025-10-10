@@ -22,7 +22,10 @@ use reifydb_core::{
 };
 use reifydb_type::{
 	Fragment, Type, TypeConstraint,
-	diagnostic::catalog::{ring_buffer_not_found, table_not_found},
+	diagnostic::{
+		catalog::{ring_buffer_not_found, table_not_found},
+		function::internal_error,
+	},
 	return_error,
 };
 
@@ -750,6 +753,80 @@ impl Compiler {
 					}));
 				}
 
+				LogicalPlan::Conditional(conditional_node) => {
+					// Compile the then branch
+					let then_branch = if let Some(then_plan) =
+						Self::compile(rx, vec![*conditional_node.then_branch])?
+					{
+						Box::new(then_plan)
+					} else {
+						return Err(reifydb_type::Error(internal_error(
+							"compile_physical".to_string(),
+							"Failed to compile conditional then branch".to_string(),
+						)));
+					};
+
+					// Compile else if branches
+					let mut else_ifs = Vec::new();
+					for else_if in conditional_node.else_ifs {
+						let condition = else_if.condition;
+						let then_branch = if let Some(plan) =
+							Self::compile(rx, vec![*else_if.then_branch])?
+						{
+							Box::new(plan)
+						} else {
+							return Err(reifydb_type::Error(internal_error(
+								"compile_physical".to_string(),
+								"Failed to compile conditional else if branch"
+									.to_string(),
+							)));
+						};
+						else_ifs.push(ElseIfBranch {
+							condition,
+							then_branch,
+						});
+					}
+
+					// Compile optional else branch
+					let else_branch = if let Some(else_logical) = conditional_node.else_branch {
+						if let Some(plan) = Self::compile(rx, vec![*else_logical])? {
+							Some(Box::new(plan))
+						} else {
+							return Err(reifydb_type::Error(internal_error(
+								"compile_physical".to_string(),
+								"Failed to compile conditional else branch".to_string(),
+							)));
+						}
+					} else {
+						None
+					};
+
+					stack.push(PhysicalPlan::Conditional(ConditionalNode {
+						condition: conditional_node.condition,
+						then_branch,
+						else_ifs,
+						else_branch,
+					}));
+				}
+
+				LogicalPlan::Scalarize(scalarize_node) => {
+					// Compile the input plan
+					let input_plan =
+						if let Some(plan) = Self::compile(rx, vec![*scalarize_node.input])? {
+							Box::new(plan)
+						} else {
+							return Err(reifydb_type::Error(internal_error(
+								"compile_physical".to_string(),
+								"Failed to compile scalarize input".to_string(),
+							)));
+						};
+
+					stack.push(PhysicalPlan::Scalarize(ScalarizeNode {
+						input: input_plan,
+						fragment: scalarize_node.fragment,
+					}));
+				}
+
 				_ => unimplemented!(),
 			}
 		}
@@ -788,6 +865,8 @@ pub enum PhysicalPlan<'a> {
 	Assign(AssignNode<'a>),
 	// Variable resolution
 	Variable(VariableNode<'a>),
+	// Control flow
+	Conditional(ConditionalNode<'a>),
 
 	// Query
 	Aggregate(AggregateNode<'a>),
@@ -809,6 +888,8 @@ pub enum PhysicalPlan<'a> {
 	RingBufferScan(RingBufferScanNode<'a>),
 	Generator(GeneratorNode<'a>),
 	Window(WindowNode<'a>),
+	// Auto-scalarization for 1x1 frames
+	Scalarize(ScalarizeNode<'a>),
 }
 
 #[derive(Debug, Clone)]
@@ -905,6 +986,26 @@ pub struct AssignNode<'a> {
 #[derive(Debug, Clone)]
 pub struct VariableNode<'a> {
 	pub variable_expr: VariableExpression<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ConditionalNode<'a> {
+	pub condition: Expression<'a>,
+	pub then_branch: Box<PhysicalPlan<'a>>,
+	pub else_ifs: Vec<ElseIfBranch<'a>>,
+	pub else_branch: Option<Box<PhysicalPlan<'a>>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ElseIfBranch<'a> {
+	pub condition: Expression<'a>,
+	pub then_branch: Box<PhysicalPlan<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct ScalarizeNode<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub fragment: Fragment<'a>,
 }
 
 #[derive(Debug, Clone)]

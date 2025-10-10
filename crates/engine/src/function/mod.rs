@@ -9,8 +9,11 @@ pub mod blob;
 pub mod generator;
 pub mod math;
 mod registry;
+pub mod text;
 
 pub use registry::{Functions, FunctionsBuilder};
+
+use crate::execute::Executor;
 
 pub struct ScalarFunctionContext<'a> {
 	pub columns: &'a Columns<'a>,
@@ -35,7 +38,7 @@ pub trait AggregateFunction: Send + Sync {
 pub struct GeneratorContext<'a> {
 	pub params: Columns<'a>,
 	pub execution: ExecutionContext<'a>,
-	pub executor: crate::execute::Executor,
+	pub executor: Executor,
 }
 
 pub trait GeneratorFunction: Send + Sync {

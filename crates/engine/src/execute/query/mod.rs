@@ -4,6 +4,7 @@
 pub mod aggregate;
 pub mod assign;
 pub mod compile;
+pub mod conditional;
 pub mod declare;
 pub mod extend;
 pub mod filter;
@@ -13,6 +14,7 @@ pub mod inline;
 pub mod join;
 pub mod map;
 pub mod ring_buffer_scan;
+pub mod scalarize;
 pub mod sort;
 pub mod table_scan;
 pub mod table_virtual_scan;

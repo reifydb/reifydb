@@ -104,6 +104,10 @@ pub enum Expression<'a> {
 
 	Parameter(ParameterExpression<'a>),
 	Variable(VariableExpression<'a>),
+
+	If(IfExpression<'a>),
+	Map(MapExpression<'a>),
+	Extend(ExtendExpression<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -582,6 +586,26 @@ impl<'a> Display for Expression<'a> {
 				} => write!(f, "{}", fragment.text()),
 			},
 			Expression::Variable(var) => write!(f, "{}", var.fragment.text()),
+			Expression::If(if_expr) => write!(f, "{}", if_expr),
+			Expression::Map(map_expr) => write!(
+				f,
+				"MAP{{ {} }}",
+				map_expr.expressions
+					.iter()
+					.map(|expr| format!("{}", expr))
+					.collect::<Vec<_>>()
+					.join(", ")
+			),
+			Expression::Extend(extend_expr) => write!(
+				f,
+				"EXTEND{{ {} }}",
+				extend_expr
+					.expressions
+					.iter()
+					.map(|expr| format!("{}", expr))
+					.collect::<Vec<_>>()
+					.join(", ")
+			),
 		}
 	}
 }
@@ -669,6 +693,48 @@ impl<'a> VariableExpression<'a> {
 		} else {
 			text
 		}
+	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct IfExpression<'a> {
+	pub condition: Box<Expression<'a>>,
+	pub then_expr: Box<Expression<'a>>,
+	pub else_ifs: Vec<ElseIfExpression<'a>>,
+	pub else_expr: Option<Box<Expression<'a>>>,
+	pub fragment: Fragment<'a>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ElseIfExpression<'a> {
+	pub condition: Box<Expression<'a>>,
+	pub then_expr: Box<Expression<'a>>,
+	pub fragment: Fragment<'a>,
+}
+
+impl<'a> IfExpression<'a> {
+	pub fn full_fragment_owned(&self) -> Fragment<'a> {
+		self.fragment.clone()
+	}
+
+	pub fn lazy_fragment(&self) -> impl Fn() -> Fragment<'a> + '_ {
+		move || self.full_fragment_owned()
+	}
+}
+
+impl<'a> Display for IfExpression<'a> {
+	fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
+		write!(f, "if {} {{ {} }}", self.condition, self.then_expr)?;
+
+		for else_if in &self.else_ifs {
+			write!(f, " else if {} {{ {} }}", else_if.condition, else_if.then_expr)?;
+		}
+
+		if let Some(else_expr) = &self.else_expr {
+			write!(f, " else {{ {} }}", else_expr)?;
+		}
+
+		Ok(())
 	}
 }
 
@@ -874,6 +940,64 @@ impl ExpressionCompiler {
 			Ast::Variable(var) => Ok(Expression::Variable(VariableExpression {
 				fragment: var.token.fragment,
 			})),
+			Ast::If(if_ast) => {
+				// Compile condition
+				let condition = Box::new(Self::compile(*if_ast.condition)?);
+
+				// Compile then expression
+				let then_expr = Box::new(Self::compile(*if_ast.then_block)?);
+
+				// Compile else_if chains
+				let mut else_ifs = Vec::new();
+				for else_if in if_ast.else_ifs {
+					let else_if_condition = Box::new(Self::compile(*else_if.condition)?);
+					let else_if_then = Box::new(Self::compile(*else_if.then_block)?);
+					else_ifs.push(ElseIfExpression {
+						condition: else_if_condition,
+						then_expr: else_if_then,
+						fragment: else_if.token.fragment,
+					});
+				}
+
+				// Compile optional else expression
+				let else_expr = if let Some(else_block) = if_ast.else_block {
+					Some(Box::new(Self::compile(*else_block)?))
+				} else {
+					None
+				};
+
+				Ok(Expression::If(IfExpression {
+					condition,
+					then_expr,
+					else_ifs,
+					else_expr,
+					fragment: if_ast.token.fragment,
+				}))
+			}
+			Ast::Map(map) => {
+				// Compile expressions in the map
+				let mut expressions = Vec::with_capacity(map.nodes.len());
+				for node in map.nodes {
+					expressions.push(Self::compile(node)?);
+				}
+
+				Ok(Expression::Map(MapExpression {
+					expressions,
+					fragment: map.token.fragment,
+				}))
+			}
+			Ast::Extend(extend) => {
+				// Compile expressions in the extend
+				let mut expressions = Vec::with_capacity(extend.nodes.len());
+				for node in extend.nodes {
+					expressions.push(Self::compile(node)?);
+				}
+
+				Ok(Expression::Extend(ExtendExpression {
+					expressions,
+					fragment: extend.token.fragment,
+				}))
+			}
 			ast => unimplemented!("{:?}", ast),
 		}
 	}
@@ -1062,17 +1186,41 @@ impl ExpressionCompiler {
 			}
 
 			InfixOperator::TypeAscription(token) => {
-				let Ast::Identifier(alias) = *ast.left else {
-					unimplemented!()
-				};
+				match *ast.left {
+					Ast::Identifier(alias) => {
+						let right = Self::compile(*ast.right)?;
 
-				let right = Self::compile(*ast.right)?;
+						Ok(Expression::Alias(AliasExpression {
+							alias: IdentExpression(alias.token.fragment),
+							expression: Box::new(right),
+							fragment: token.fragment,
+						}))
+					}
+					Ast::Literal(AstLiteral::Text(text)) => {
+						// Handle string literals as alias names (common in MAP syntax)
+						let right = Self::compile(*ast.right)?;
 
-				Ok(Expression::Alias(AliasExpression {
-					alias: IdentExpression(alias.token.fragment),
-					expression: Box::new(right),
-					fragment: token.fragment,
-				}))
+						Ok(Expression::Alias(AliasExpression {
+							alias: IdentExpression(text.0.fragment),
+							expression: Box::new(right),
+							fragment: token.fragment,
+						}))
+					}
+					_ => {
+						use reifydb_type::{OwnedFragment, diagnostic::Diagnostic, err};
+						return err!(Diagnostic {
+							code: "EXPR_001".to_string(),
+							statement: None,
+							message: "Invalid alias expression".to_string(),
+							column: None,
+							fragment: OwnedFragment::None,
+							label: Some("Only identifiers and string literals can be used as alias names".to_string()),
+							help: Some("Use an identifier or string literal for the alias name".to_string()),
+							notes: vec![],
+							cause: None,
+						});
+					}
+				}
 			}
 			operator => {
 				unimplemented!("not implemented: {operator:?}")
@@ -1085,4 +1233,16 @@ impl ExpressionCompiler {
 			   * InfixOperator::TypeAscription(_) => {} */
 		}
 	}
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MapExpression<'a> {
+	pub expressions: Vec<Expression<'a>>,
+	pub fragment: Fragment<'a>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExtendExpression<'a> {
+	pub expressions: Vec<Expression<'a>>,
+	pub fragment: Fragment<'a>,
 }

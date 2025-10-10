@@ -62,6 +62,14 @@ impl StandardColumnEvaluator {
 					})
 				}
 			}
+			(ColumnData::Undefined(container), _) => Ok(Column {
+				name: expr.full_fragment_owned(),
+				data: ColumnData::Undefined(container.clone()),
+			}),
+			(_, ColumnData::Undefined(container)) => Ok(Column {
+				name: expr.full_fragment_owned(),
+				data: ColumnData::Undefined(container.clone()),
+			}),
 			(l, r) => {
 				if l.is_number() || r.is_number() {
 					return_error!(or_can_not_applied_to_number(expr.full_fragment_owned()));
@@ -69,8 +77,10 @@ impl StandardColumnEvaluator {
 					return_error!(or_can_not_applied_to_text(expr.full_fragment_owned()));
 				} else if l.is_temporal() || r.is_temporal() {
 					return_error!(or_can_not_applied_to_temporal(expr.full_fragment_owned()));
-				} else {
+				} else if l.is_uuid() || r.is_uuid() {
 					return_error!(or_can_not_applied_to_uuid(expr.full_fragment_owned()));
+				} else {
+					unimplemented!("{} or {}", l.get_type(), r.get_type());
 				}
 			}
 		}

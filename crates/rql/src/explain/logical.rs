@@ -681,5 +681,115 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				assign_node.value
 			));
 		}
+
+		LogicalPlan::Conditional(conditional_node) => {
+			output.push_str(&format!("{}{} Conditional\n", prefix, branch));
+
+			// Show condition
+			output.push_str(&format!(
+				"{}{}   If: {}\n",
+				child_prefix,
+				if conditional_node.else_ifs.is_empty() && conditional_node.else_branch.is_none() {
+					"└──"
+				} else {
+					"├──"
+				},
+				conditional_node.condition
+			));
+
+			// Show then branch
+			output.push_str(&format!(
+				"{}{}   Then:\n",
+				child_prefix,
+				if conditional_node.else_ifs.is_empty() && conditional_node.else_branch.is_none() {
+					"    "
+				} else {
+					"│   "
+				}
+			));
+			render_logical_plan_inner(
+				&conditional_node.then_branch,
+				&format!(
+					"{}{}     ",
+					child_prefix,
+					if conditional_node.else_ifs.is_empty()
+						&& conditional_node.else_branch.is_none()
+					{
+						"    "
+					} else {
+						"│   "
+					}
+				),
+				true,
+				output,
+			);
+
+			// Show else if branches
+			for (i, else_if) in conditional_node.else_ifs.iter().enumerate() {
+				let is_last_else_if = i == conditional_node.else_ifs.len() - 1
+					&& conditional_node.else_branch.is_none();
+				output.push_str(&format!(
+					"{}{}   Else If: {}\n",
+					child_prefix,
+					if is_last_else_if {
+						"└──"
+					} else {
+						"├──"
+					},
+					else_if.condition
+				));
+
+				output.push_str(&format!(
+					"{}{}   Then:\n",
+					child_prefix,
+					if is_last_else_if {
+						"    "
+					} else {
+						"│   "
+					}
+				));
+				render_logical_plan_inner(
+					&else_if.then_branch,
+					&format!(
+						"{}{}     ",
+						child_prefix,
+						if is_last_else_if {
+							"    "
+						} else {
+							"│   "
+						}
+					),
+					true,
+					output,
+				);
+			}
+
+			// Show else branch if present
+			if let Some(else_branch) = &conditional_node.else_branch {
+				output.push_str(&format!("{}└──   Else:\n", child_prefix));
+				render_logical_plan_inner(
+					else_branch,
+					&format!("{}      ", child_prefix),
+					true,
+					output,
+				);
+			}
+		}
+
+		LogicalPlan::Scalarize(scalarize) => {
+			output.push_str(&format!("{}{} Scalarize (convert 1x1 frame to scalar)\n", prefix, branch));
+
+			// Render the input plan
+			let child_prefix = format!(
+				"{}{}",
+				prefix,
+				if is_last {
+					"    "
+				} else {
+					"│   "
+				}
+			);
+			render_logical_plan_inner(&scalarize.input, &child_prefix, true, output);
+		}
 	}
 }

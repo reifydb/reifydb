@@ -68,6 +68,7 @@ pub enum Ast<'a> {
 	Filter(AstFilter<'a>),
 	From(AstFrom<'a>),
 	Identifier(UnqualifiedIdentifier<'a>),
+	If(AstIf<'a>),
 	Infix(AstInfix<'a>),
 	Inline(AstInline<'a>),
 	Let(AstLet<'a>),
@@ -91,6 +92,7 @@ pub enum Ast<'a> {
 	Tuple(AstTuple<'a>),
 	Wildcard(AstWildcard<'a>),
 	Window(AstWindow<'a>),
+	StatementExpression(AstStatementExpression<'a>),
 }
 
 impl<'a> Default for Ast<'a> {
@@ -121,6 +123,7 @@ impl<'a> Ast<'a> {
 			Ast::From(node) => node.token(),
 			Ast::Aggregate(node) => &node.token,
 			Ast::Identifier(identifier) => &identifier.token,
+			Ast::If(node) => &node.token,
 			Ast::Infix(node) => &node.token,
 			Ast::Let(node) => &node.token,
 			Ast::Delete(node) => &node.token,
@@ -162,6 +165,7 @@ impl<'a> Ast<'a> {
 			Ast::Tuple(node) => &node.token,
 			Ast::Wildcard(node) => &node.0,
 			Ast::Window(node) => &node.token,
+			Ast::StatementExpression(node) => node.expression.token(),
 		}
 	}
 
@@ -292,6 +296,17 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not identifier")
+		}
+	}
+
+	pub fn is_if(&self) -> bool {
+		matches!(self, Ast::If(_))
+	}
+	pub fn as_if(&self) -> &AstIf<'a> {
+		if let Ast::If(result) = self {
+			result
+		} else {
+			panic!("not if")
 		}
 	}
 
@@ -581,6 +596,18 @@ impl<'a> Ast<'a> {
 			result
 		} else {
 			panic!("not window")
+		}
+	}
+
+	pub fn is_statement_expression(&self) -> bool {
+		matches!(self, Ast::StatementExpression(_))
+	}
+
+	pub fn as_statement_expression(&self) -> &AstStatementExpression<'a> {
+		if let Ast::StatementExpression(result) = self {
+			result
+		} else {
+			panic!("not statement expression")
 		}
 	}
 }
@@ -1242,6 +1269,22 @@ impl<'a> AstVariable<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstIf<'a> {
+	pub token: Token<'a>,
+	pub condition: Box<Ast<'a>>,
+	pub then_block: Box<Ast<'a>>,
+	pub else_ifs: Vec<AstElseIf<'a>>,
+	pub else_block: Option<Box<Ast<'a>>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstElseIf<'a> {
+	pub token: Token<'a>,
+	pub condition: Box<Ast<'a>>,
+	pub then_block: Box<Ast<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstWindow<'a> {
 	pub token: Token<'a>,
 	pub config: Vec<AstWindowConfig<'a>>,
@@ -1253,4 +1296,9 @@ pub struct AstWindow<'a> {
 pub struct AstWindowConfig<'a> {
 	pub key: UnqualifiedIdentifier<'a>,
 	pub value: Ast<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstStatementExpression<'a> {
+	pub expression: Box<Ast<'a>>,
 }

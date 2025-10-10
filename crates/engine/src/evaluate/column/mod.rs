@@ -5,7 +5,7 @@ use reifydb_core::value::column::Column;
 use reifydb_rql::expression::Expression;
 
 pub(crate) use crate::evaluate::ColumnEvaluationContext;
-use crate::function::{Functions, blob, math};
+use crate::function::{Functions, blob, math, text};
 
 mod access;
 mod alias;
@@ -15,7 +15,10 @@ pub(crate) mod cast;
 mod column;
 mod compare;
 pub(crate) mod constant;
+mod extend_expr;
+mod if_expr;
 mod logic;
+mod map_expr;
 mod parameter;
 mod prefix;
 mod tuple;
@@ -29,16 +32,20 @@ impl Default for StandardColumnEvaluator {
 	fn default() -> Self {
 		Self {
 			functions: Functions::builder()
-				.register_scalar("abs", math::scalar::Abs::new)
-				.register_aggregate("avg", math::aggregate::Avg::new)
-				.register_aggregate("count", math::aggregate::Count::new)
-				.register_aggregate("max", math::aggregate::Max::new)
-				.register_aggregate("min", math::aggregate::Min::new)
-				.register_aggregate("sum", math::aggregate::Sum::new)
+				.register_scalar("math::abs", math::scalar::Abs::new)
+				.register_scalar("math::avg", math::scalar::Avg::new)
+				.register_scalar("math::max", math::scalar::Max::new)
+				.register_scalar("math::min", math::scalar::Min::new)
+				.register_scalar("math::power", math::scalar::Power::new)
+				.register_scalar("math::round", math::scalar::Round::new)
 				.register_scalar("blob::hex", blob::BlobHex::new)
 				.register_scalar("blob::b64", blob::BlobB64::new)
 				.register_scalar("blob::b64url", blob::BlobB64url::new)
 				.register_scalar("blob::utf8", blob::BlobUtf8::new)
+				.register_scalar("text::trim", text::TextTrim::new)
+				.register_scalar("text::upper", text::TextUpper::new)
+				.register_scalar("text::substring", text::TextSubstring::new)
+				.register_scalar("text::length", text::TextLength::new)
 				.build(),
 		}
 	}
@@ -76,6 +83,9 @@ impl StandardColumnEvaluator {
 			Expression::Tuple(expr) => self.tuple(ctx, expr),
 			Expression::Parameter(expr) => self.parameter(ctx, expr),
 			Expression::Variable(expr) => self.variable(ctx, expr),
+			Expression::If(expr) => self.if_expr(ctx, expr),
+			Expression::Map(expr) => self.map_expr(ctx, expr),
+			Expression::Extend(expr) => self.extend_expr(ctx, expr),
 			expr => unimplemented!("{expr:?}"),
 		}
 	}
@@ -84,16 +94,20 @@ impl StandardColumnEvaluator {
 pub fn evaluate<'a>(ctx: &ColumnEvaluationContext<'a>, expr: &Expression<'a>) -> crate::Result<Column<'a>> {
 	let evaluator = StandardColumnEvaluator {
 		functions: Functions::builder()
-			.register_scalar("abs", math::scalar::Abs::new)
-			.register_aggregate("avg", math::aggregate::Avg::new)
-			.register_aggregate("count", math::aggregate::Count::new)
-			.register_aggregate("max", math::aggregate::Max::new)
-			.register_aggregate("min", math::aggregate::Min::new)
-			.register_aggregate("sum", math::aggregate::Sum::new)
+			.register_scalar("math::abs", math::scalar::Abs::new)
+			.register_scalar("math::avg", math::scalar::Avg::new)
+			.register_scalar("math::max", math::scalar::Max::new)
+			.register_scalar("math::min", math::scalar::Min::new)
+			.register_scalar("math::power", math::scalar::Power::new)
+			.register_scalar("math::round", math::scalar::Round::new)
 			.register_scalar("blob::hex", blob::BlobHex::new)
 			.register_scalar("blob::b64", blob::BlobB64::new)
 			.register_scalar("blob::b64url", blob::BlobB64url::new)
 			.register_scalar("blob::utf8", blob::BlobUtf8::new)
+			.register_scalar("text::trim", text::TextTrim::new)
+			.register_scalar("text::upper", text::TextUpper::new)
+			.register_scalar("text::substring", text::TextSubstring::new)
+			.register_scalar("text::length", text::TextLength::new)
 			.build(),
 	};
 

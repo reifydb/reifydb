@@ -16,6 +16,7 @@ use query::{
 	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
 	ring_buffer_scan::RingBufferScan,
+	scalarize::ScalarizeNode,
 	sort::SortNode,
 	table_scan::TableScanNode,
 	table_virtual_scan::VirtualScanNode,
@@ -98,6 +99,8 @@ pub(crate) enum ExecutionPlan<'a> {
 	Generator(GeneratorNode<'a>),
 	Declare(DeclareNode<'a>),
 	Assign(AssignNode<'a>),
+	Conditional(query::conditional::ConditionalNode<'a>),
+	Scalarize(ScalarizeNode<'a>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -143,6 +146,8 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Generator(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Declare(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Assign(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Conditional(node) => node.initialize(rx, ctx),
+			ExecutionPlan::Scalarize(node) => node.initialize(rx, ctx),
 		}
 	}
 
@@ -173,6 +178,8 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Generator(node) => node.next(rx, ctx),
 			ExecutionPlan::Declare(node) => node.next(rx, ctx),
 			ExecutionPlan::Assign(node) => node.next(rx, ctx),
+			ExecutionPlan::Conditional(node) => node.next(rx, ctx),
+			ExecutionPlan::Scalarize(node) => node.next(rx, ctx),
 		}
 	}
 
@@ -199,6 +206,8 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Generator(node) => node.headers(),
 			ExecutionPlan::Declare(node) => node.headers(),
 			ExecutionPlan::Assign(node) => node.headers(),
+			ExecutionPlan::Conditional(node) => node.headers(),
+			ExecutionPlan::Scalarize(node) => node.headers(),
 		}
 	}
 }
@@ -234,13 +243,13 @@ impl Executor {
 	pub fn testing() -> Self {
 		Self::new(
 			Functions::builder()
-				.register_aggregate("sum", math::aggregate::Sum::new)
-				.register_aggregate("min", math::aggregate::Min::new)
-				.register_aggregate("max", math::aggregate::Max::new)
-				.register_aggregate("avg", math::aggregate::Avg::new)
-				.register_aggregate("count", math::aggregate::Count::new)
-				.register_scalar("abs", math::scalar::Abs::new)
-				.register_scalar("avg", math::scalar::Avg::new)
+				.register_aggregate("math::sum", math::aggregate::Sum::new)
+				.register_aggregate("math::min", math::aggregate::Min::new)
+				.register_aggregate("math::max", math::aggregate::Max::new)
+				.register_aggregate("math::avg", math::aggregate::Avg::new)
+				.register_aggregate("math::count", math::aggregate::Count::new)
+				.register_scalar("math::abs", math::scalar::Abs::new)
+				.register_scalar("math::avg", math::scalar::Avg::new)
 				.register_generator("generate_series", generator::GenerateSeries::new)
 				.build(),
 		)
@@ -365,13 +374,17 @@ impl Executor {
 			| PhysicalPlan::ViewScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
-			| PhysicalPlan::Declare(_)
-			| PhysicalPlan::Assign(_)
-			| PhysicalPlan::Variable(_) => {
+			| PhysicalPlan::Variable(_)
+			| PhysicalPlan::Conditional(_)
+			| PhysicalPlan::Scalarize(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)
 			}
-
+			PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => {
+				let mut std_txn = StandardTransaction::from(rx);
+				self.query(&mut std_txn, plan, params, stack)?;
+				Ok(None)
+			}
 			PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
 			| PhysicalPlan::AlterView(_)
@@ -439,7 +452,9 @@ impl Executor {
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Distinct(_)
 			| PhysicalPlan::Variable(_)
-			| PhysicalPlan::Apply(_) => {
+			| PhysicalPlan::Apply(_)
+			| PhysicalPlan::Conditional(_)
+			| PhysicalPlan::Scalarize(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}
@@ -459,26 +474,6 @@ impl Executor {
 	}
 
 	fn query<'a>(
-		&self,
-		rx: &mut StandardTransaction<'a>,
-		plan: PhysicalPlan<'a>,
-		params: Params,
-		stack: &mut Stack,
-	) -> crate::Result<Option<Columns<'a>>> {
-		match plan {
-			// PhysicalPlan::Describe { plan } => {
-			//     // FIXME evaluating the entire columns is quite
-			// wasteful but good enough to write some tests
-			//     let result = self.execute_query_plan(rx, *plan)?;
-			//     let ExecutionResult::Query { columns, .. } =
-			// result else { panic!() };
-			//     Ok(ExecutionResult::DescribeQuery { columns })
-			// }
-			_ => self.execute_plan_with_iterator(rx, plan, params, stack),
-		}
-	}
-
-	fn execute_plan_with_iterator<'a>(
 		&self,
 		rx: &mut StandardTransaction<'a>,
 		plan: PhysicalPlan<'a>,

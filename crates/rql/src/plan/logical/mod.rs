@@ -25,13 +25,15 @@ use reifydb_type::{Fragment, diagnostic::ast::unsupported_ast_node};
 
 use crate::{
 	ast::{
-		Ast, AstPolicy, AstPolicyKind, AstStatement,
+		Ast, AstInfix, AstLiteral, AstLiteralText, AstMap, AstPolicy, AstPolicyKind, AstStatement,
+		InfixOperator, Token, TokenKind,
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
 			MaybeQualifiedIndexIdentifier, MaybeQualifiedRingBufferIdentifier,
 			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
 			MaybeQualifiedTransactionalViewIdentifier,
 		},
+		tokenize::{Keyword, Literal, Operator},
 	},
 	expression::{AliasExpression, Expression},
 	plan::logical::alter::{AlterTableNode, AlterViewNode},
@@ -269,8 +271,60 @@ impl Compiler {
 			Ast::Delete(node) => Self::compile_delete(node, tx),
 			Ast::Insert(node) => Self::compile_insert(node, tx),
 			Ast::Update(node) => Self::compile_update(node, tx),
+			Ast::If(node) => Self::compile_if(node, tx),
 			Ast::Let(node) => Self::compile_let(node, tx),
-			Ast::Infix(node) => Self::compile_infix(node, tx),
+			Ast::StatementExpression(node) => {
+				// Compile the inner expression and wrap it in a MAP
+				let map_node = Self::wrap_scalar_in_map(*node.expression.clone());
+				Self::compile_map(map_node, tx)
+			}
+			Ast::Prefix(node) => {
+				// Prefix operations as statements - wrap in MAP
+				let map_node = Self::wrap_scalar_in_map(Ast::Prefix(node));
+				Self::compile_map(map_node, tx)
+			}
+			Ast::Infix(ref infix_node) => {
+				match infix_node.operator {
+					// Assignment operations - check if it's a valid variable assignment
+					InfixOperator::Assign(ref token) => {
+						// Only allow variable assignments with := operator, not = operator
+						if matches!(token.kind, TokenKind::Operator(Operator::ColonEqual)) {
+							// This is a valid variable assignment statement
+							Self::compile_infix(infix_node.clone(), tx)
+						} else {
+							// This is a = operator, treat as expression comparison
+							let map_node = Self::wrap_scalar_in_map(node);
+							Self::compile_map(map_node, tx)
+						}
+					}
+					// Expression-like operations - wrap in MAP
+					InfixOperator::Add(_)
+					| InfixOperator::Subtract(_)
+					| InfixOperator::Multiply(_)
+					| InfixOperator::Divide(_)
+					| InfixOperator::Rem(_)
+					| InfixOperator::Equal(_)
+					| InfixOperator::NotEqual(_)
+					| InfixOperator::GreaterThan(_)
+					| InfixOperator::LessThan(_)
+					| InfixOperator::GreaterThanEqual(_)
+					| InfixOperator::LessThanEqual(_)
+					| InfixOperator::And(_)
+					| InfixOperator::Or(_)
+					| InfixOperator::Xor(_)
+					| InfixOperator::Call(_)
+					| InfixOperator::As(_)
+					| InfixOperator::TypeAscription(_) => {
+						let wrapped_map = Self::wrap_scalar_in_map(node);
+						Self::compile_map(wrapped_map, tx)
+					}
+
+					// Statement-like operations - compile directly
+					InfixOperator::Arrow(_)
+					| InfixOperator::AccessTable(_)
+					| InfixOperator::AccessNamespace(_) => Self::compile_infix(infix_node.clone(), tx),
+				}
+			}
 			Ast::Aggregate(node) => Self::compile_aggregate(node, tx),
 			Ast::Filter(node) => Self::compile_filter(node, tx),
 			Ast::From(node) => Self::compile_from(node, tx),
@@ -285,6 +339,11 @@ impl Compiler {
 			Ast::Identifier(ref id) => {
 				return_error!(unsupported_ast_node(id.clone(), "standalone identifier"))
 			}
+			// Auto-wrap scalar expressions into MAP constructs
+			Ast::Literal(_) | Ast::Variable(_) | Ast::CallFunction(_) => {
+				let wrapped_map = Self::wrap_scalar_in_map(node);
+				Self::compile_map(wrapped_map, tx)
+			}
 			node => {
 				let node_type =
 					format!("{:?}", node).split('(').next().unwrap_or("Unknown").to_string();
@@ -293,21 +352,49 @@ impl Compiler {
 		}
 	}
 
+	// Helper to wrap scalar expressions in MAP { "value": expression }
+	fn wrap_scalar_in_map(scalar_node: Ast) -> crate::ast::AstMap {
+		let scalar_fragment = scalar_node.token().fragment.clone();
+
+		// Create synthetic tokens for the MAP structure
+		let map_token = Token {
+			kind: TokenKind::Keyword(Keyword::Map),
+			fragment: scalar_fragment.clone(),
+		};
+
+		let key_token = Token {
+			kind: TokenKind::Literal(Literal::Text),
+			fragment: Fragment::owned_internal("value"),
+		};
+
+		let colon_token = Token {
+			kind: TokenKind::Operator(Operator::Colon),
+			fragment: scalar_fragment.clone(),
+		};
+
+		// Create the key-value pair: "value": scalar_node
+		let key_literal = Ast::Literal(AstLiteral::Text(AstLiteralText(key_token.clone())));
+		let key_value_pair = Ast::Infix(AstInfix {
+			token: key_token,
+			left: Box::new(key_literal),
+			operator: InfixOperator::TypeAscription(colon_token),
+			right: Box::new(scalar_node),
+		});
+
+		AstMap {
+			token: map_token,
+			nodes: vec![key_value_pair],
+		}
+	}
+
 	fn compile_infix<'a, 't, T: CatalogQueryTransaction>(
-		node: crate::ast::AstInfix<'a>,
+		node: AstInfix<'a>,
 		_tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
-		use crate::ast::InfixOperator;
-
 		match node.operator {
 			InfixOperator::Assign(token) => {
 				// Only allow variable assignments with := operator, not = operator
-				if !matches!(
-					token.kind,
-					crate::ast::tokenize::TokenKind::Operator(
-						crate::ast::tokenize::Operator::ColonEqual
-					)
-				) {
+				if !matches!(token.kind, TokenKind::Operator(Operator::ColonEqual)) {
 					return_error!(unsupported_ast_node(
 						node.token.fragment,
 						"variable assignment must use := operator"
@@ -352,7 +439,7 @@ impl Compiler {
 		}
 	}
 
-	fn build_pipeline<'a>(plans: Vec<LogicalPlan<'a>>) -> crate::Result<LogicalPlan<'a>> {
+	fn build_pipeline(plans: Vec<LogicalPlan>) -> crate::Result<LogicalPlan> {
 		// The pipeline should be properly structured with inputs
 		// For now, we'll wrap them in a special Pipeline plan
 		// that the physical compiler can handle
@@ -390,6 +477,8 @@ pub enum LogicalPlan<'a> {
 	// Variable assignment
 	Declare(DeclareNode<'a>),
 	Assign(AssignNode<'a>),
+	// Control flow
+	Conditional(ConditionalNode<'a>),
 	// Query
 	Aggregate(AggregateNode<'a>),
 	Distinct(DistinctNode<'a>),
@@ -407,6 +496,8 @@ pub enum LogicalPlan<'a> {
 	Window(WindowNode<'a>),
 	Generator(GeneratorNode<'a>),
 	VariableSource(VariableSourceNode<'a>),
+	// Auto-scalarization for 1x1 frames in scalar contexts
+	Scalarize(ScalarizeNode<'a>),
 	// Pipeline wrapper for piped operations
 	Pipeline(PipelineNode<'a>),
 }
@@ -414,6 +505,12 @@ pub enum LogicalPlan<'a> {
 #[derive(Debug)]
 pub struct PipelineNode<'a> {
 	pub steps: Vec<LogicalPlan<'a>>,
+}
+
+#[derive(Debug)]
+pub struct ScalarizeNode<'a> {
+	pub input: Box<LogicalPlan<'a>>,
+	pub fragment: Fragment<'a>,
 }
 
 #[derive(Debug)]
@@ -457,6 +554,20 @@ pub struct DeclareNode<'a> {
 pub struct AssignNode<'a> {
 	pub name: Fragment<'a>,
 	pub value: AssignValue<'a>,
+}
+
+#[derive(Debug)]
+pub struct ConditionalNode<'a> {
+	pub condition: Expression<'a>,
+	pub then_branch: Box<LogicalPlan<'a>>,
+	pub else_ifs: Vec<ElseIfBranch<'a>>,
+	pub else_branch: Option<Box<LogicalPlan<'a>>>,
+}
+
+#[derive(Debug)]
+pub struct ElseIfBranch<'a> {
+	pub condition: Expression<'a>,
+	pub then_branch: Box<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]

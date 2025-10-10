@@ -5,11 +5,11 @@ use reifydb_core::value::column::ColumnData;
 
 use crate::function::{ScalarFunction, ScalarFunctionContext};
 
-pub struct Min {}
+pub struct Min;
 
 impl Min {
 	pub fn new() -> Self {
-		Self {}
+		Self
 	}
 }
 
@@ -18,72 +18,107 @@ impl ScalarFunction for Min {
 		let columns = ctx.columns;
 		let row_count = ctx.row_count;
 
-		let mut min_values = vec![None::<f64>; row_count];
-
-		for col in columns.iter() {
-			match &col.data() {
-				ColumnData::Int2(container) => {
-					for i in 0..row_count {
-						if let Some(value) = container.get(i) {
-							let val = *value as f64;
-							min_values[i] =
-								Some(min_values[i].map_or(val, |curr| curr.min(val)));
-						}
-					}
-				}
-				ColumnData::Int4(container) => {
-					for i in 0..row_count {
-						if let Some(value) = container.get(i) {
-							let val = *value as f64;
-							min_values[i] =
-								Some(min_values[i].map_or(val, |curr| curr.min(val)));
-						}
-					}
-				}
-				ColumnData::Int8(container) => {
-					for i in 0..row_count {
-						if let Some(value) = container.get(i) {
-							let val = *value as f64;
-							min_values[i] =
-								Some(min_values[i].map_or(val, |curr| curr.min(val)));
-						}
-					}
-				}
-				ColumnData::Float4(container) => {
-					for i in 0..row_count {
-						if let Some(value) = container.get(i) {
-							let val = *value as f64;
-							min_values[i] =
-								Some(min_values[i].map_or(val, |curr| curr.min(val)));
-						}
-					}
-				}
-				ColumnData::Float8(container) => {
-					for i in 0..row_count {
-						if let Some(value) = container.get(i) {
-							let val = *value;
-							min_values[i] =
-								Some(min_values[i].map_or(val, |curr| curr.min(val)));
-						}
-					}
-				}
-				data => unimplemented!("{data:?}"),
-			}
+		if columns.is_empty() {
+			return Ok(ColumnData::int4(Vec::<i32>::new()));
 		}
 
-		let mut data = Vec::with_capacity(row_count);
-		let mut valids = Vec::with_capacity(row_count);
+		// For min function, we need to find the minimum value across all columns for each row
+		let first_column = columns.get(0).unwrap();
 
-		for i in 0..row_count {
-			if let Some(min_val) = min_values[i] {
-				data.push(min_val);
-				valids.push(true);
-			} else {
-				data.push(0.0);
-				valids.push(false);
+		match first_column.data() {
+			ColumnData::Int1(_) => {
+				let mut result = Vec::with_capacity(row_count);
+
+				for row_idx in 0..row_count {
+					let mut min_value: Option<i8> = None;
+
+					// Check all columns for this row
+					for column in columns.iter() {
+						if let ColumnData::Int1(container) = column.data() {
+							if let Some(value) = container.get(row_idx) {
+								min_value = Some(match min_value {
+									None => *value,
+									Some(current_min) => current_min.min(*value),
+								});
+							}
+						}
+					}
+
+					result.push(min_value.unwrap_or(0));
+				}
+
+				Ok(ColumnData::int1(result))
 			}
-		}
+			ColumnData::Int2(_) => {
+				let mut result = Vec::with_capacity(row_count);
 
-		Ok(ColumnData::float8_with_bitvec(data, valids))
+				for row_idx in 0..row_count {
+					let mut min_value: Option<i16> = None;
+
+					// Check all columns for this row
+					for column in columns.iter() {
+						if let ColumnData::Int2(container) = column.data() {
+							if let Some(value) = container.get(row_idx) {
+								min_value = Some(match min_value {
+									None => *value,
+									Some(current_min) => current_min.min(*value),
+								});
+							}
+						}
+					}
+
+					result.push(min_value.unwrap_or(0));
+				}
+
+				Ok(ColumnData::int2(result))
+			}
+			ColumnData::Int4(_) => {
+				let mut result = Vec::with_capacity(row_count);
+
+				for row_idx in 0..row_count {
+					let mut min_value: Option<i32> = None;
+
+					// Check all columns for this row
+					for column in columns.iter() {
+						if let ColumnData::Int4(container) = column.data() {
+							if let Some(value) = container.get(row_idx) {
+								min_value = Some(match min_value {
+									None => *value,
+									Some(current_min) => current_min.min(*value),
+								});
+							}
+						}
+					}
+
+					result.push(min_value.unwrap_or(0));
+				}
+
+				Ok(ColumnData::int4(result))
+			}
+			ColumnData::Int8(_) => {
+				let mut result = Vec::with_capacity(row_count);
+
+				for row_idx in 0..row_count {
+					let mut min_value: Option<i64> = None;
+
+					// Check all columns for this row
+					for column in columns.iter() {
+						if let ColumnData::Int8(container) = column.data() {
+							if let Some(value) = container.get(row_idx) {
+								min_value = Some(match min_value {
+									None => *value,
+									Some(current_min) => current_min.min(*value),
+								});
+							}
+						}
+					}
+
+					result.push(min_value.unwrap_or(0));
+				}
+
+				Ok(ColumnData::int8(result))
+			}
+			_ => unimplemented!("Min function currently supports integer types only"),
+		}
 	}
 }

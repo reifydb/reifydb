@@ -154,5 +154,17 @@ fn simplified_name<'a>(expr: &Expression<'a>) -> Fragment<'a> {
 		Expression::Type(type_expr) => type_expr.fragment.clone(),
 		Expression::Parameter(_) => Fragment::owned_internal("parameter"),
 		Expression::Variable(var) => Fragment::owned_internal(format!("var_{}", var.name())),
+		Expression::If(if_expr) => Fragment::owned_internal(format!(
+			"if({},{}{})",
+			simplified_name(&if_expr.condition).text(),
+			simplified_name(&if_expr.then_expr).text(),
+			if let Some(else_expr) = &if_expr.else_expr {
+				format!(",{}", simplified_name(else_expr).text())
+			} else {
+				String::new()
+			}
+		)),
+		Expression::Map(_map_expr) => Fragment::owned_internal("map"),
+		Expression::Extend(_extend_expr) => Fragment::owned_internal("extend"),
 	}
 }

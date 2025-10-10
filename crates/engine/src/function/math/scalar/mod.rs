@@ -3,14 +3,14 @@
 
 pub use abs::Abs;
 pub use avg::Avg;
-pub use count::Count;
 pub use max::Max;
 pub use min::Min;
-pub use sum::Sum;
+pub use power::Power;
+pub use round::Round;
 
 mod abs;
 mod avg;
-mod count;
 mod max;
 mod min;
-mod sum;
+mod power;
+mod round;

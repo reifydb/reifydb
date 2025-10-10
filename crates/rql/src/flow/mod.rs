@@ -158,8 +158,16 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				panic!("Assign statements are not supported in flow graphs");
 			}
 
+			PhysicalPlan::Conditional(_) => {
+				panic!("Conditional statements are not supported in flow graphs");
+			}
+
 			PhysicalPlan::Variable(_) => {
 				panic!("Variable references are not supported in flow graphs");
+			}
+
+			PhysicalPlan::Scalarize(_) => {
+				panic!("Scalarize operations are not supported in flow graphs");
 			}
 		}
 	}
