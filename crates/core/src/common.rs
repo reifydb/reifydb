@@ -107,18 +107,6 @@ impl Default for JoinType {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum JoinStrategy {
-	Stateful,
-	LazyRightLoading,
-}
-
-impl Default for JoinStrategy {
-	fn default() -> Self {
-		JoinStrategy::Stateful
-	}
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum IndexType {
 	Index,
 	Unique,

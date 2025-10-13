@@ -15,7 +15,6 @@ pub mod expression;
 #[allow(dead_code, unused_variables)]
 pub mod flow;
 pub mod plan;
-pub mod query;
 
 pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {
 	Ok(match ast.text().to_ascii_lowercase().as_str() {

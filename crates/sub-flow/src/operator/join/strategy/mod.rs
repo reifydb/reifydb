@@ -1,57 +1,28 @@
 use reifydb_core::{CommitVersion, JoinType, Row};
-use reifydb_engine::{StandardCommandTransaction, execute::Executor};
+use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
-use reifydb_rql::query::QueryString;
 
 use crate::{
 	flow::FlowDiff,
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
 };
 
-mod eager;
-mod inner_eager;
-mod inner_lazy;
-mod lazy;
-mod left_eager;
-mod left_lazy;
+mod hash;
+mod hash_inner;
+mod hash_left;
 
-use crate::operator::join::strategy::{
-	inner_eager::InnerEagerJoin, inner_lazy::InnerLazyJoin, left_eager::LeftEagerJoin, left_lazy::LeftLazyJoin,
-};
+use crate::operator::join::strategy::{hash_inner::InnerHashJoin, hash_left::LeftHashJoin};
 
 pub(crate) enum JoinStrategy {
-	LeftEager(LeftEagerJoin),
-	LeftLazy(LeftLazyJoin),
-	InnerEager(InnerEagerJoin),
-	InnerLazy(InnerLazyJoin),
+	LeftHash(LeftHashJoin),
+	InnerHash(InnerHashJoin),
 }
 
 impl JoinStrategy {
-	pub(crate) fn from(
-		storage_strategy: reifydb_core::JoinStrategy,
-		join_type: JoinType,
-		right_query: QueryString,
-		executor: Executor,
-	) -> Self {
-		match (storage_strategy, join_type) {
-			(reifydb_core::JoinStrategy::Stateful, JoinType::Left) => {
-				JoinStrategy::LeftEager(LeftEagerJoin)
-			}
-			(reifydb_core::JoinStrategy::LazyRightLoading, JoinType::Left) => {
-				JoinStrategy::LeftLazy(LeftLazyJoin {
-					query: right_query,
-					executor,
-				})
-			}
-			(reifydb_core::JoinStrategy::Stateful, JoinType::Inner) => {
-				JoinStrategy::InnerEager(InnerEagerJoin)
-			}
-			(reifydb_core::JoinStrategy::LazyRightLoading, JoinType::Inner) => {
-				JoinStrategy::InnerLazy(InnerLazyJoin {
-					query: right_query,
-					executor,
-				})
-			}
+	pub(crate) fn from(join_type: JoinType) -> Self {
+		match join_type {
+			JoinType::Left => JoinStrategy::LeftHash(LeftHashJoin),
+			JoinType::Inner => JoinStrategy::InnerHash(InnerHashJoin),
 		}
 	}
 
@@ -67,17 +38,11 @@ impl JoinStrategy {
 		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftEager(join_type) => {
+			JoinStrategy::LeftHash(join_type) => {
 				join_type.handle_insert(txn, post, side, key_hash, state, operator)
 			}
-			JoinStrategy::LeftLazy(join_type) => {
-				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
-			}
-			JoinStrategy::InnerEager(join_type) => {
+			JoinStrategy::InnerHash(join_type) => {
 				join_type.handle_insert(txn, post, side, key_hash, state, operator)
-			}
-			JoinStrategy::InnerLazy(join_type) => {
-				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
 			}
 		}
 	}
@@ -94,17 +59,11 @@ impl JoinStrategy {
 		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftEager(join_type) => {
+			JoinStrategy::LeftHash(join_type) => {
 				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
 			}
-			JoinStrategy::LeftLazy(join_type) => {
-				join_type.handle_remove(txn, pre, side, key_hash, state, operator, version)
-			}
-			JoinStrategy::InnerEager(join_type) => {
+			JoinStrategy::InnerHash(join_type) => {
 				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
-			}
-			JoinStrategy::InnerLazy(join_type) => {
-				join_type.handle_remove(txn, pre, side, key_hash, state, operator, version)
 			}
 		}
 	}
@@ -123,16 +82,12 @@ impl JoinStrategy {
 		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftEager(join_type) => {
+			JoinStrategy::LeftHash(join_type) => {
 				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
 			}
-			JoinStrategy::LeftLazy(join_type) => join_type
-				.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
-			JoinStrategy::InnerEager(join_type) => {
+			JoinStrategy::InnerHash(join_type) => {
 				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
 			}
-			JoinStrategy::InnerLazy(join_type) => join_type
-				.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
 		}
 	}
 }

@@ -1,23 +1,20 @@
-use reifydb_core::{CommitVersion, Row};
-use reifydb_engine::{StandardCommandTransaction, execute::Executor};
+use reifydb_core::Row;
+use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
-use reifydb_rql::query::QueryString;
 
-use super::{
-	eager::{add_to_state_entry, remove_from_state_entry, update_row_in_entry},
-	lazy::{has_other_right_rows, query_right_side},
+use super::hash::{
+	add_to_state_entry, emit_joined_rows_left_to_right, emit_joined_rows_right_to_left,
+	emit_remove_joined_rows_left, emit_remove_joined_rows_right, emit_update_joined_rows_left,
+	emit_update_joined_rows_right, get_left_rows, is_first_right_row, remove_from_state_entry, update_row_in_entry,
 };
 use crate::{
 	flow::FlowDiff,
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
 };
 
-pub(crate) struct LeftLazyJoin {
-	pub(crate) query: QueryString,
-	pub(crate) executor: Executor,
-}
+pub(crate) struct LeftHashJoin;
 
-impl LeftLazyJoin {
+impl LeftHashJoin {
 	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut StandardCommandTransaction,
@@ -26,7 +23,6 @@ impl LeftLazyJoin {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -36,31 +32,24 @@ impl LeftLazyJoin {
 					// Add to left entries
 					add_to_state_entry(txn, &mut state.left, &key_hash, post)?;
 
-					// Query right side for matching rows
-					let right_rows = query_right_side(
+					// Join with matching right rows
+					let joined_rows = emit_joined_rows_left_to_right(
 						txn,
-						&self.query,
-						&self.executor,
-						key_hash,
+						post,
+						&state.right,
+						&key_hash,
 						state,
 						operator,
-						version,
 					)?;
 
-					if !right_rows.is_empty() {
-						for right_row in &right_rows {
-							result.push(FlowDiff::Insert {
-								post: operator.join_rows(txn, post, right_row)?,
-							});
-						}
+					if !joined_rows.is_empty() {
+						result.extend(joined_rows);
 					} else {
 						// Left join: emit left encoded even without match
 						let unmatched_row = operator.unmatched_left_row(txn, post)?;
 						result.push(FlowDiff::Insert {
 							post: unmatched_row,
 						});
-						// Track that we emitted an undefined join for this left encoded
-						state.undefined_emitted.insert(txn, post.number)?;
 					}
 				} else {
 					// Undefined key in left join still emits the encoded
@@ -68,21 +57,21 @@ impl LeftLazyJoin {
 					result.push(FlowDiff::Insert {
 						post: unmatched_row,
 					});
-					// Track undefined emission for rows with undefined keys too
-					state.undefined_emitted.insert(txn, post.number)?;
 				}
 			}
 			JoinSide::Right => {
 				if let Some(key_hash) = key_hash {
+					let is_first = is_first_right_row(txn, &state.right, &key_hash)?;
+
+					// Add to right entries
+					add_to_state_entry(txn, &mut state.right, &key_hash, post)?;
+
 					// Join with matching left rows
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
-						// Check each left encoded to see if it has an undefined join we need to
-						// remove
-						for left_row_ser in &left_entry.rows {
-							let left_row = left_row_ser.to_left_row(&state.schema);
-							// If this left encoded had an undefined join, remove it (only
-							// once)
-							if state.undefined_emitted.remove(txn, left_row.number)? {
+						// If first right encoded, remove previously emitted unmatched left rows
+						if is_first {
+							for left_row_ser in &left_entry.rows {
+								let left_row = left_row_ser.to_left_row(&state.schema);
 								let unmatched_row =
 									operator.unmatched_left_row(txn, &left_row)?;
 								result.push(FlowDiff::Remove {
@@ -92,12 +81,15 @@ impl LeftLazyJoin {
 						}
 
 						// Add properly joined rows
-						for left_row_ser in &left_entry.rows {
-							let left_row = left_row_ser.to_left_row(&state.schema);
-							result.push(FlowDiff::Insert {
-								post: operator.join_rows(txn, &left_row, post)?,
-							});
-						}
+						let joined_rows = emit_joined_rows_right_to_left(
+							txn,
+							post,
+							&state.left,
+							&key_hash,
+							state,
+							operator,
+						)?;
+						result.extend(joined_rows);
 					}
 				}
 				// Right side inserts with undefined keys don't produce output
@@ -115,7 +107,6 @@ impl LeftLazyJoin {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -127,22 +118,17 @@ impl LeftLazyJoin {
 						operator.cleanup_left_row_joins(txn, pre.number.0)?;
 
 						// Remove all joins involving this encoded
-						let right_rows = query_right_side(
+						let removed_joins = emit_remove_joined_rows_left(
 							txn,
-							&self.query,
-							&self.executor,
-							key_hash,
+							pre,
+							&state.right,
+							&key_hash,
 							state,
 							operator,
-							version,
 						)?;
 
-						if !right_rows.is_empty() {
-							for right_row in &right_rows {
-								result.push(FlowDiff::Remove {
-									pre: operator.join_rows(txn, pre, right_row)?,
-								});
-							}
+						if !removed_joins.is_empty() {
+							result.extend(removed_joins);
 						} else {
 							// Remove the unmatched left join encoded
 							let unmatched_row = operator.unmatched_left_row(txn, pre)?;
@@ -153,8 +139,6 @@ impl LeftLazyJoin {
 
 						// Remove from left entries and clean up if empty
 						remove_from_state_entry(txn, &mut state.left, &key_hash, pre)?;
-						// Clean up tracking for this left encoded
-						state.undefined_emitted.remove(txn, pre.number)?;
 					}
 				} else {
 					// Undefined key - remove the unmatched encoded
@@ -164,45 +148,37 @@ impl LeftLazyJoin {
 					});
 
 					operator.cleanup_left_row_joins(txn, pre.number.0)?;
-					// Clean up tracking for this left encoded
-					state.undefined_emitted.remove(txn, pre.number)?;
 				}
 			}
 			JoinSide::Right => {
 				if let Some(key_hash) = key_hash {
-					// Check if there are other right rows besides this one
-					let has_other_rows = has_other_right_rows(
-						txn,
-						&self.query,
-						&self.executor,
-						key_hash,
-						state,
-						operator,
-						pre,
-						version,
-					)?;
+					// Check if right entry exists
+					if state.right.contains_key(txn, &key_hash)? {
+						// Remove all joins involving this encoded
+						let removed_joins = emit_remove_joined_rows_right(
+							txn,
+							pre,
+							&state.left,
+							&key_hash,
+							state,
+							operator,
+						)?;
+						result.extend(removed_joins);
 
-					// Remove all joins involving this encoded
-					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
-						for left_row_ser in &left_entry.rows {
-							let left_row = left_row_ser.to_left_row(&state.schema);
-							result.push(FlowDiff::Remove {
-								pre: operator.join_rows(txn, &left_row, pre)?,
-							});
-						}
+						// Remove from right entries
+						let became_empty =
+							remove_from_state_entry(txn, &mut state.right, &key_hash, pre)?;
 
 						// If this was the last right encoded, re-emit left rows as unmatched
-						if !has_other_rows {
-							for left_row_ser in &left_entry.rows {
-								let left_row = left_row_ser.to_left_row(&state.schema);
+						if became_empty {
+							let left_rows =
+								get_left_rows(txn, &state.left, &key_hash, state)?;
+							for left_row in &left_rows {
 								let unmatched_row =
 									operator.unmatched_left_row(txn, &left_row)?;
 								result.push(FlowDiff::Insert {
 									post: unmatched_row,
 								});
-								// Track that we re-emitted undefined for this left
-								// encoded
-								state.undefined_emitted.insert(txn, left_row.number)?;
 							}
 						}
 					}
@@ -223,7 +199,6 @@ impl LeftLazyJoin {
 		new_key: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -235,27 +210,18 @@ impl LeftLazyJoin {
 						// Update the encoded in state
 						if update_row_in_entry(txn, &mut state.left, &key, pre, post)? {
 							// Emit updates for all joined rows
-							let right_rows = query_right_side(
+							let updates = emit_update_joined_rows_left(
 								txn,
-								&self.query,
-								&self.executor,
-								key,
+								pre,
+								post,
+								&state.right,
+								&key,
 								state,
 								operator,
-								version,
 							)?;
 
-							if !right_rows.is_empty() {
-								for right_row in &right_rows {
-									result.push(FlowDiff::Update {
-										pre: operator.join_rows(
-											txn, pre, right_row,
-										)?,
-										post: operator.join_rows(
-											txn, post, right_row,
-										)?,
-									});
-								}
+							if !updates.is_empty() {
+								result.extend(updates);
 							} else {
 								// No matching right rows - update unmatched left
 								// encoded
@@ -281,28 +247,29 @@ impl LeftLazyJoin {
 				}
 				JoinSide::Right => {
 					if let Some(key) = old_key {
-						// In lazy mode, we don't track right-side state
-						// We just emit updates for all joined rows with left side
-						if let Some(left_entry) = state.left.get(txn, &key)? {
-							for left_row_ser in &left_entry.rows {
-								let left_row = left_row_ser.to_left_row(&state.schema);
-
-								result.push(FlowDiff::Update {
-									pre: operator.join_rows(txn, &left_row, pre)?,
-									post: operator
-										.join_rows(txn, &left_row, post)?,
-								});
-							}
+						// Update the encoded in state
+						if update_row_in_entry(txn, &mut state.right, &key, pre, post)? {
+							// Emit updates for all joined rows
+							let updates = emit_update_joined_rows_right(
+								txn,
+								pre,
+								post,
+								&state.left,
+								&key,
+								state,
+								operator,
+							)?;
+							result.extend(updates);
 						}
 					}
 				}
 			}
 		} else {
 			// Key changed - treat as remove + insert
-			let remove_diffs = self.handle_remove(txn, pre, side, old_key, state, operator, version)?;
+			let remove_diffs = self.handle_remove(txn, pre, side, old_key, state, operator)?;
 			result.extend(remove_diffs);
 
-			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator, version)?;
+			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator)?;
 			result.extend(insert_diffs);
 		}
 

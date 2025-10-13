@@ -12,7 +12,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::{Hash128, xxh3_128};
-use reifydb_rql::{expression::Expression, query::QueryString};
+use reifydb_rql::expression::Expression;
 use reifydb_type::{Blob, Params, RowNumber, Type, Value, internal_error};
 
 use super::{JoinSide, JoinState, JoinStrategy, Schema};
@@ -36,7 +36,6 @@ pub struct JoinOperator {
 	right_node: FlowNodeId,
 	left_exprs: Vec<Expression<'static>>,
 	pub(crate) right_exprs: Vec<Expression<'static>>,
-	right_query: QueryString,
 	alias: Option<String>,
 	layout: EncodedValuesLayout,
 	row_number_provider: RowNumberProvider,
@@ -53,12 +52,10 @@ impl JoinOperator {
 		right_node: FlowNodeId,
 		left_exprs: Vec<Expression<'static>>,
 		right_exprs: Vec<Expression<'static>>,
-		right_query: QueryString,
 		alias: Option<String>,
-		storage_strategy: reifydb_core::JoinStrategy,
 		executor: Executor,
 	) -> Self {
-		let strategy = JoinStrategy::from(storage_strategy, join_type, right_query.clone(), executor.clone());
+		let strategy = JoinStrategy::from(join_type);
 		let layout = Self::state_layout();
 		let row_number_provider = RowNumberProvider::new(node);
 
@@ -71,7 +68,6 @@ impl JoinOperator {
 			right_node,
 			left_exprs,
 			right_exprs,
-			right_query,
 			alias,
 			layout,
 			row_number_provider,

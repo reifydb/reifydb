@@ -160,8 +160,6 @@ impl FlowEngine {
 				left,
 				right,
 				alias,
-				strategy,
-				right_query,
 			} => {
 				// Find the left and right node IDs from the flow inputs
 				// The join node should have exactly 2 inputs
@@ -193,9 +191,7 @@ impl FlowEngine {
 						right_node,
 						left,
 						right,
-						right_query,
 						alias,
-						strategy,
 						self.executor.clone(),
 					))),
 				);

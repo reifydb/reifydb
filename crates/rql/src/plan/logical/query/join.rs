@@ -11,7 +11,6 @@ use crate::{
 		Compiler, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, LogicalPlan::SourceScan,
 		SourceScanNode, resolver,
 	},
-	query::QueryString,
 };
 
 impl Compiler {
@@ -24,11 +23,8 @@ impl Compiler {
 				with,
 				on,
 				alias,
-				strategy,
 				..
 			} => {
-				let with_query = QueryString::from(&with)?;
-				// Subqueries should always have at least one node
 				let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
 				let with = match with_ast {
 					Ast::From(AstFrom::Source {
@@ -121,23 +117,18 @@ impl Compiler {
 				let join_compiler = JoinConditionCompiler::new(alias.clone());
 				Ok(LogicalPlan::JoinInner(JoinInnerNode {
 					with,
-					with_query,
 					on: on.into_iter()
 						.map(|expr| join_compiler.compile(expr))
 						.collect::<crate::Result<Vec<_>>>()?,
 					alias,
-					strategy,
 				}))
 			}
 			AstJoin::LeftJoin {
 				with,
 				on,
 				alias,
-				strategy,
 				..
 			} => {
-				let with_query = QueryString::from(&with)?;
-				// Subqueries should always have at least one node
 				let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
 				let with = match with_ast {
 					Ast::From(AstFrom::Source {
@@ -230,22 +221,18 @@ impl Compiler {
 				let join_compiler = JoinConditionCompiler::new(alias.clone());
 				Ok(LogicalPlan::JoinLeft(JoinLeftNode {
 					with,
-					with_query,
 					on: on.into_iter()
 						.map(|expr| join_compiler.compile(expr))
 						.collect::<crate::Result<Vec<_>>>()?,
 					alias,
-					strategy,
 				}))
 			}
 			AstJoin::NaturalJoin {
 				with,
 				join_type,
 				alias,
-				strategy,
 				..
 			} => {
-				let with_query = QueryString::from(&with)?;
 				// Subqueries should always have at least one node
 				let with_ast = with.statement.nodes.first().expect("Empty subquery in join");
 				let with = match with_ast {
@@ -330,10 +317,8 @@ impl Compiler {
 
 				Ok(LogicalPlan::JoinNatural(JoinNaturalNode {
 					with,
-					with_query,
 					join_type: join_type.unwrap_or(JoinType::Inner),
 					alias,
-					strategy,
 				}))
 			}
 		}

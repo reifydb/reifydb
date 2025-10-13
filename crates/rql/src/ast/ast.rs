@@ -3,7 +3,7 @@
 
 use std::ops::Index;
 
-use reifydb_core::{IndexType, JoinStrategy, JoinType, SortDirection};
+use reifydb_core::{IndexType, JoinType, SortDirection};
 use reifydb_type::Fragment;
 
 use crate::ast::{
@@ -1056,21 +1056,18 @@ pub enum AstJoin<'a> {
 		with: AstSubQuery<'a>,
 		on: Vec<Ast<'a>>,
 		alias: Option<Fragment<'a>>,
-		strategy: Option<JoinStrategy>,
 	},
 	LeftJoin {
 		token: Token<'a>,
 		with: AstSubQuery<'a>,
 		on: Vec<Ast<'a>>,
 		alias: Option<Fragment<'a>>,
-		strategy: Option<JoinStrategy>,
 	},
 	NaturalJoin {
 		token: Token<'a>,
 		with: AstSubQuery<'a>,
 		join_type: Option<JoinType>,
 		alias: Option<Fragment<'a>>,
-		strategy: Option<JoinStrategy>,
 	},
 }
 

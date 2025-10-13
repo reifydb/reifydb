@@ -2,7 +2,7 @@ use reifydb_core::Row;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
-use super::eager::{
+use super::hash::{
 	add_to_state_entry, emit_joined_rows_left_to_right, emit_joined_rows_right_to_left,
 	emit_remove_joined_rows_left, emit_remove_joined_rows_right, emit_update_joined_rows_left,
 	emit_update_joined_rows_right, remove_from_state_entry, update_row_in_entry,
@@ -12,9 +12,9 @@ use crate::{
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
 };
 
-pub(crate) struct InnerEagerJoin;
+pub(crate) struct InnerHashJoin;
 
-impl InnerEagerJoin {
+impl InnerHashJoin {
 	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut StandardCommandTransaction,
