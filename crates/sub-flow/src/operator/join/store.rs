@@ -3,13 +3,13 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	EncodedKey, Error,
+	Error,
 	interface::{CommandTransaction, FlowNodeId},
 	value::encoded::EncodedValuesLayout,
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
-use reifydb_type::{Blob, RowNumber, Type, internal_error};
+use reifydb_type::{Blob, Type, internal_error};
 
 use super::{JoinSide, JoinSideEntry};
 use crate::operator::stateful::{state_get, state_remove, state_set};
@@ -131,58 +131,5 @@ impl Store {
 			self.set(txn, hash, &entry)?;
 		}
 		Ok(())
-	}
-}
-
-/// Tracks undefined joins for left rows persistently
-pub(crate) struct UndefinedTracker {
-	node_id: FlowNodeId,
-}
-
-impl UndefinedTracker {
-	pub(crate) fn new(node_id: FlowNodeId) -> Self {
-		Self {
-			node_id,
-		}
-	}
-
-	fn make_key(&self, row_number: RowNumber) -> EncodedKey {
-		// Use prefix 0x03 for undefined tracking
-		let mut key_bytes = vec![0x03];
-		key_bytes.extend_from_slice(&row_number.0.to_le_bytes());
-		EncodedKey::new(key_bytes)
-	}
-
-	pub(crate) fn insert(&self, txn: &mut StandardCommandTransaction, row_number: RowNumber) -> crate::Result<()> {
-		let key = self.make_key(row_number);
-		// Store a simple marker (boolean true)
-		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
-		let mut row = layout.allocate();
-		layout.set_bool(&mut row, 0, true);
-		state_set(self.node_id, txn, &key, row)?;
-		Ok(())
-	}
-
-	pub(crate) fn remove(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		row_number: RowNumber,
-	) -> crate::Result<bool> {
-		let key = self.make_key(row_number);
-		// Check if it exists before removing
-		let exists = state_get(self.node_id, txn, &key)?.is_some();
-		if exists {
-			state_remove(self.node_id, txn, &key)?;
-		}
-		Ok(exists)
-	}
-
-	pub(crate) fn contains(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		row_number: RowNumber,
-	) -> crate::Result<bool> {
-		let key = self.make_key(row_number);
-		Ok(state_get(self.node_id, txn, &key)?.is_some())
 	}
 }

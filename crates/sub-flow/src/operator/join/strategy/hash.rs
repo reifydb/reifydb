@@ -8,7 +8,7 @@ use crate::{
 	flow::FlowDiff,
 	operator::{
 		Operators,
-		join::{JoinSideEntry, JoinState, Store, operator::JoinOperator},
+		join::{JoinSideEntry, Store, operator::JoinOperator},
 	},
 };
 
@@ -75,7 +75,6 @@ pub(crate) fn emit_joined_rows_left_to_right(
 	left_row: &Row,
 	right_store: &Store,
 	key_hash: &Hash128,
-	_state: &JoinState,
 	operator: &JoinOperator,
 	right_parent: &Arc<Operators>,
 	version: CommitVersion,
@@ -103,7 +102,6 @@ pub(crate) fn emit_joined_rows_right_to_left(
 	right_row: &Row,
 	left_store: &Store,
 	key_hash: &Hash128,
-	_state: &JoinState,
 	operator: &JoinOperator,
 	left_parent: &Arc<Operators>,
 	version: CommitVersion,
@@ -131,7 +129,6 @@ pub(crate) fn emit_remove_joined_rows_left(
 	left_row: &Row,
 	right_store: &Store,
 	key_hash: &Hash128,
-	_state: &JoinState,
 	operator: &JoinOperator,
 	right_parent: &Arc<Operators>,
 	version: CommitVersion,
@@ -159,7 +156,6 @@ pub(crate) fn emit_remove_joined_rows_right(
 	right_row: &Row,
 	left_store: &Store,
 	key_hash: &Hash128,
-	_state: &JoinState,
 	operator: &JoinOperator,
 	left_parent: &Arc<Operators>,
 	version: CommitVersion,
@@ -188,7 +184,6 @@ pub(crate) fn emit_update_joined_rows_left(
 	new_left_row: &Row,
 	right_store: &Store,
 	key_hash: &Hash128,
-	_state: &JoinState,
 	operator: &JoinOperator,
 	right_parent: &Arc<Operators>,
 	version: CommitVersion,
@@ -218,7 +213,6 @@ pub(crate) fn emit_update_joined_rows_right(
 	new_right_row: &Row,
 	left_store: &Store,
 	key_hash: &Hash128,
-	_state: &JoinState,
 	operator: &JoinOperator,
 	left_parent: &Arc<Operators>,
 	version: CommitVersion,
@@ -264,7 +258,6 @@ pub(crate) fn get_left_rows(
 	txn: &mut StandardCommandTransaction,
 	left_store: &Store,
 	key_hash: &Hash128,
-	_state: &JoinState,
 	left_parent: &Arc<Operators>,
 	version: CommitVersion,
 ) -> crate::Result<Vec<Row>> {
@@ -286,7 +279,6 @@ pub(crate) fn get_right_rows(
 	txn: &mut StandardCommandTransaction,
 	right_store: &Store,
 	key_hash: &Hash128,
-	_state: &JoinState,
 	right_parent: &Arc<Operators>,
 	version: CommitVersion,
 ) -> crate::Result<Vec<Row>> {

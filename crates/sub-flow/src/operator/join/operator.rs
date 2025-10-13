@@ -1,9 +1,6 @@
 use std::{collections::HashSet, sync::Arc};
 
-use bincode::{
-	config::standard,
-	serde::{decode_from_slice, encode_to_vec},
-};
+use bincode::{config::standard, serde::encode_to_vec};
 use reifydb_core::{
 	CommitVersion, EncodedKey, Error, JoinType, Row,
 	interface::FlowNodeId,
@@ -13,14 +10,14 @@ use reifydb_core::{
 use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Blob, Params, RowNumber, Type, Value, internal_error};
+use reifydb_type::{Params, RowNumber, Type, Value, internal_error};
 
-use super::{JoinSide, JoinState, JoinStrategy, Schema};
+use super::{JoinSide, JoinState, JoinStrategy};
 use crate::{
 	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
 	operator::{
 		Operator, Operators,
-		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful, state_get, state_set},
+		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful},
 		transform::TransformOperator,
 	},
 };
@@ -253,42 +250,6 @@ impl JoinOperator {
 		})
 	}
 
-	fn load_schema(&self, txn: &mut StandardCommandTransaction) -> crate::Result<Schema> {
-		// Load schema from a special key (empty key)
-		let schema_key = EncodedKey::new(vec![0x00]); // Special key for schema
-		match state_get(self.node, txn, &schema_key)? {
-			Some(row) => {
-				// Deserialize Schema from the encoded
-				let blob = self.layout.get_blob(&row, 0);
-				if blob.is_empty() {
-					return Ok(Schema::new());
-				}
-				let config = standard();
-				let (schema, _): (Schema, usize) = decode_from_slice(blob.as_ref(), config)
-					.map_err(|e| Error(internal_error!("Failed to deserialize Schema: {}", e)))?;
-				Ok(schema)
-			}
-			None => Ok(Schema::new()),
-		}
-	}
-
-	fn save_schema(&self, txn: &mut StandardCommandTransaction, schema: &Schema) -> crate::Result<()> {
-		// Save schema to a special key (empty key)
-		let schema_key = EncodedKey::new(vec![0x00]); // Special key for schema
-
-		let config = standard();
-		let serialized = encode_to_vec(schema, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize Schema: {}", e)))?;
-
-		// Store as a blob in an EncodedRow
-		let mut row = self.layout.allocate();
-		let blob = Blob::from(serialized);
-		self.layout.set_blob(&mut row, 0, &blob);
-
-		state_set(self.node, txn, &schema_key, row)?;
-		Ok(())
-	}
-
 	fn determine_side(&self, change: &FlowChange) -> Option<JoinSide> {
 		match &change.origin {
 			FlowChangeOrigin::Internal(from_node) => {
@@ -333,9 +294,8 @@ impl Operator for JoinOperator {
 			}
 		}
 
-		// Load the schema and create the state
-		let schema = self.load_schema(txn)?;
-		let mut state = JoinState::new(self.node, schema);
+		// Create the state
+		let mut state = JoinState::new(self.node);
 		// Pre-allocate result vector with estimated capacity
 		let estimated_capacity = change.diffs.len() * 2; // Rough estimate
 		let mut result = Vec::with_capacity(estimated_capacity);
@@ -350,12 +310,6 @@ impl Operator for JoinOperator {
 				FlowDiff::Insert {
 					post,
 				} => {
-					// Update schema based on side
-					match side {
-						JoinSide::Left => state.schema.update_left_from_row(&post),
-						JoinSide::Right => state.schema.update_right_from_row(&post),
-					}
-
 					// Compute join key based on side
 					let key = match side {
 						JoinSide::Left => {
@@ -403,12 +357,6 @@ impl Operator for JoinOperator {
 					pre,
 					post,
 				} => {
-					// Update schema if needed
-					match side {
-						JoinSide::Left => state.schema.update_left_from_row(&post),
-						JoinSide::Right => state.schema.update_right_from_row(&post),
-					}
-
 					let (old_key, new_key) = match side {
 						JoinSide::Left => (
 							self.compute_join_key(&pre, &self.left_exprs, evaluator)?,
@@ -434,9 +382,6 @@ impl Operator for JoinOperator {
 				}
 			}
 		}
-
-		// Save the updated schema
-		self.save_schema(txn, &state.schema)?;
 
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
