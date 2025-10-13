@@ -9,7 +9,7 @@ use crate::{
 	interface::catalog::{IndexId, SourceId},
 	util::{
 		CowVec,
-		encoding::keycode::{self, KeySerializer},
+		encoding::keycode::{KeyDeserializer, KeySerializer},
 	},
 	value::index::{EncodedIndexKey, EncodedIndexKeyRange},
 };
@@ -43,28 +43,20 @@ pub struct IndexEntryKeyRange {
 
 impl IndexEntryKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 20 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() < 18 {
-			// 9 bytes for source + 9 bytes for index
-			return None;
-		}
-
-		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
-		let index = keycode::deserialize_index_id(&payload[9..18]).ok()?;
+		let source = de.read_source_id().ok()?;
+		let index = de.read_index_id().ok()?;
 
 		Some(IndexEntryKeyRange {
 			source,
@@ -130,33 +122,26 @@ impl EncodableKey for IndexEntryKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 20 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() < 18 {
-			// 9 bytes for source + 9 bytes for index
-			return None;
-		}
-
-		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
-		let index = keycode::deserialize_index_id(&payload[9..18]).ok()?;
+		let source = de.read_source_id().ok()?;
+		let index = de.read_index_id().ok()?;
 
 		// The remaining bytes are the index key
-		if payload.len() > 18 {
-			let index_key_bytes = &payload[18..];
-			let index_key = EncodedIndexKey(CowVec::new(index_key_bytes.to_vec()));
+		let remaining = de.remaining();
+		if remaining > 0 {
+			let remaining_bytes = de.read_raw(remaining).ok()?;
+			let index_key = EncodedIndexKey(CowVec::new(remaining_bytes.to_vec()));
 			Some(Self {
 				source,
 				index,

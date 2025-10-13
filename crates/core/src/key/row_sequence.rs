@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::catalog::SourceId,
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -25,27 +25,21 @@ impl EncodableKey for RowSequenceKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() != 9 {
-			// 9 bytes for source
-			return None;
-		}
+		let source = de.read_source_id().ok()?;
 
-		keycode::deserialize_source_id(&payload[..9]).ok().map(|source| Self {
+		Some(Self {
 			source,
 		})
 	}

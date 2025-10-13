@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey,
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -52,27 +52,22 @@ impl EncodableKey for SystemVersionKey {
 	where
 		Self: Sized,
 	{
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() != 1 {
-			return None;
-		}
+		let version_enum = de.read_u8().ok()?.try_into().ok()?;
 
-		keycode::deserialize(&payload[..1]).ok().map(|version| Self {
-			version,
+		Some(Self {
+			version: version_enum,
 		})
 	}
 }

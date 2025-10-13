@@ -344,7 +344,12 @@ impl Default for KeySerializer {
 
 #[cfg(test)]
 mod tests {
+	use std::f64;
+
+	use reifydb_type::util::hex;
+
 	use super::*;
+	use crate::util::encoding::keycode::KeyDeserializer;
 
 	#[test]
 	fn test_new() {
@@ -366,11 +371,13 @@ mod tests {
 		serializer.extend_bool(true);
 		let result = serializer.finish();
 		assert_eq!(result, vec![0x00]);
+		assert_eq!(hex::encode(&result), "00");
 
 		let mut serializer = KeySerializer::new();
 		serializer.extend_bool(false);
 		let result = serializer.finish();
 		assert_eq!(result, vec![0x01]);
+		assert_eq!(hex::encode(&result), "01");
 	}
 
 	#[test]
@@ -379,137 +386,288 @@ mod tests {
 		serializer.extend_f32(3.14f32);
 		let result = serializer.finish();
 		assert_eq!(result.len(), 4);
+		assert_eq!(hex::encode(&result), "3fb70a3c");
 
-		// Test negative value
 		let mut serializer = KeySerializer::new();
 		serializer.extend_f32(-3.14f32);
 		let result = serializer.finish();
 		assert_eq!(result.len(), 4);
+		assert_eq!(hex::encode(&result), "c048f5c3");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_f32(0.0f32);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "7fffffff");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_f32(f32::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "00800000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_f32(f32::MIN);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "ff7fffff");
 	}
 
 	#[test]
 	fn test_extend_f64() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_f64(3.14159);
+		serializer.extend_f64(f64::consts::PI);
 		let result = serializer.finish();
 		assert_eq!(result.len(), 8);
+		assert_eq!(hex::encode(&result), "3ff6de04abbbd2e7");
 
-		// Test negative value
 		let mut serializer = KeySerializer::new();
-		serializer.extend_f64(-3.14159);
+		serializer.extend_f64(-f64::consts::PI);
 		let result = serializer.finish();
 		assert_eq!(result.len(), 8);
+		assert_eq!(hex::encode(&result), "c00921fb54442d18");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_f64(0.0f64);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "7fffffffffffffff");
 	}
 
 	#[test]
 	fn test_extend_i8() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i8(42i8);
+		serializer.extend_i8(0i8);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 1);
+		assert_eq!(hex::encode(&result), "7f");
 
-		// Test negative value
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i8(-42i8);
+		serializer.extend_i8(1i8);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 1);
+		assert_eq!(hex::encode(&result), "7e");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i8(-1i8);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "80");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i8(i8::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "00");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i8(i8::MIN);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "ff");
 	}
 
 	#[test]
 	fn test_extend_i16() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i16(1000i16);
+		serializer.extend_i16(0i16);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 2);
+		assert_eq!(hex::encode(&result), "7fff");
 
-		// Test negative value
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i16(-1000i16);
+		serializer.extend_i16(1i16);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 2);
+		assert_eq!(hex::encode(&result), "7ffe");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i16(-1i16);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "8000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i16(i16::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "0000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i16(i16::MIN);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "ffff");
 	}
 
 	#[test]
 	fn test_extend_i32() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i32(100000i32);
+		serializer.extend_i32(0i32);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 4);
+		assert_eq!(hex::encode(&result), "7fffffff");
 
-		// Test negative value
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i32(-100000i32);
+		serializer.extend_i32(1i32);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 4);
+		assert_eq!(hex::encode(&result), "7ffffffe");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i32(-1i32);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "80000000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i32(i32::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "00000000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i32(i32::MIN);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "ffffffff");
 	}
 
 	#[test]
 	fn test_extend_i64() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i64(1000000000i64);
+		serializer.extend_i64(0i64);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 8);
+		assert_eq!(hex::encode(&result), "7fffffffffffffff");
 
-		// Test negative value
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i64(-1000000000i64);
+		serializer.extend_i64(1i64);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 8);
+		assert_eq!(hex::encode(&result), "7ffffffffffffffe");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i64(-1i64);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "8000000000000000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i64(i64::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "0000000000000000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i64(i64::MIN);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "ffffffffffffffff");
 	}
 
 	#[test]
 	fn test_extend_i128() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i128(100000000000000i128);
+		serializer.extend_i128(0i128);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 16);
+		assert_eq!(hex::encode(&result), "7fffffffffffffffffffffffffffffff");
 
-		// Test negative value
 		let mut serializer = KeySerializer::new();
-		serializer.extend_i128(-100000000000000i128);
+		serializer.extend_i128(1i128);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 16);
+		assert_eq!(hex::encode(&result), "7ffffffffffffffffffffffffffffffe");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i128(-1i128);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "80000000000000000000000000000000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i128(i128::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "00000000000000000000000000000000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_i128(i128::MIN);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "ffffffffffffffffffffffffffffffff");
 	}
 
 	#[test]
 	fn test_extend_u8() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u8(42u8);
+		serializer.extend_u8(0u8);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 1);
-		assert_eq!(result[0], !42u8);
+		assert_eq!(hex::encode(&result), "ff");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u8(1u8);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "fe");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u8(255u8);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "00");
 	}
 
 	#[test]
 	fn test_extend_u16() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u16(1000u16);
+		serializer.extend_u16(0u16);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 2);
+		assert_eq!(hex::encode(&result), "ffff");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u16(1u16);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "fffe");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u16(255u16);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "ff00");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u16(u16::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "0000");
 	}
 
 	#[test]
 	fn test_extend_u32() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u32(100000u32);
+		serializer.extend_u32(0u32);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 4);
+		assert_eq!(hex::encode(&result), "ffffffff");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u32(1u32);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "fffffffe");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u32(u32::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "00000000");
 	}
 
 	#[test]
 	fn test_extend_u64() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u64(1000000000u64);
+		serializer.extend_u64(0u64);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 8);
+		assert_eq!(hex::encode(&result), "ffffffffffffffff");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u64(1u64);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "fffffffffffffffe");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u64(65535u64);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "ffffffffffff0000");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u64(u64::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "0000000000000000");
 	}
 
 	#[test]
 	fn test_extend_u128() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u128(100000000000000u128);
+		serializer.extend_u128(0u128);
 		let result = serializer.finish();
-		assert_eq!(result.len(), 16);
+		assert_eq!(hex::encode(&result), "ffffffffffffffffffffffffffffffff");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u128(1u128);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "fffffffffffffffffffffffffffffffe");
+
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u128(u128::MAX);
+		let result = serializer.finish();
+		assert_eq!(hex::encode(&result), "00000000000000000000000000000000");
 	}
 
 	#[test]
@@ -549,11 +707,100 @@ mod tests {
 	#[test]
 	fn test_chaining() {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_bool(true).extend_i32(42).extend_str("test").extend_u64(1000u64);
+		serializer.extend_bool(true).extend_i32(42i32).extend_str("test").extend_u64(1000u64);
 		let result = serializer.finish();
 
 		// Should have bool (1 byte) + i32 (4 bytes) + "test" with terminator (6 bytes) + u64 (8 bytes)
 		assert!(result.len() >= 19);
+
+		let mut de = KeyDeserializer::from_bytes(&result);
+		assert_eq!(de.read_bool().unwrap(), true);
+		assert_eq!(de.read_i32().unwrap(), 42);
+		assert_eq!(de.read_str().unwrap(), "test");
+		assert_eq!(de.read_u64().unwrap(), 1000);
+		assert!(de.is_empty());
+	}
+
+	#[test]
+	fn test_ordering_descending_i32() {
+		// Test that descending order is preserved: larger values -> smaller bytes
+		let mut ser1 = KeySerializer::new();
+		ser1.extend_i32(1i32);
+		let bytes1 = ser1.finish();
+
+		let mut ser2 = KeySerializer::new();
+		ser2.extend_i32(100i32);
+		let bytes2 = ser2.finish();
+
+		let mut ser3 = KeySerializer::new();
+		ser3.extend_i32(1000i32);
+		let bytes3 = ser3.finish();
+
+		// In descending order: larger values encode to smaller bytes
+		// So: bytes_1000 < bytes_100 < bytes_1
+		assert!(bytes3 < bytes2, "encode(1000) should be < encode(100)");
+		assert!(bytes2 < bytes1, "encode(100) should be < encode(1)");
+	}
+
+	#[test]
+	fn test_ordering_descending_u64() {
+		let mut ser1 = KeySerializer::new();
+		ser1.extend_u64(1u64);
+		let bytes1 = ser1.finish();
+
+		let mut ser2 = KeySerializer::new();
+		ser2.extend_u64(100u64);
+		let bytes2 = ser2.finish();
+
+		let mut ser3 = KeySerializer::new();
+		ser3.extend_u64(10000u64);
+		let bytes3 = ser3.finish();
+
+		// Descending: larger u64 -> smaller bytes
+		assert!(bytes3 < bytes2, "encode(10000) should be < encode(100)");
+		assert!(bytes2 < bytes1, "encode(100) should be < encode(1)");
+	}
+
+	#[test]
+	fn test_ordering_descending_negative() {
+		// Test negative numbers ordering
+		// In descending order: -1 > -100 > -1000
+		// So encoded bytes: encode(-1) < encode(-100) < encode(-1000)
+		let mut ser1 = KeySerializer::new();
+		ser1.extend_i32(-1i32);
+		let bytes_neg1 = ser1.finish();
+
+		let mut ser2 = KeySerializer::new();
+		ser2.extend_i32(-100i32);
+		let bytes_neg100 = ser2.finish();
+
+		let mut ser3 = KeySerializer::new();
+		ser3.extend_i32(-1000i32);
+		let bytes_neg1000 = ser3.finish();
+
+		// In descending: -1 > -100 > -1000, so encode(-1) < encode(-100) < encode(-1000)
+		assert!(bytes_neg1 < bytes_neg100, "encode(-1) should be < encode(-100)");
+		assert!(bytes_neg100 < bytes_neg1000, "encode(-100) should be < encode(-1000)");
+	}
+
+	#[test]
+	fn test_ordering_mixed_sign() {
+		// Test that positive/negative ordering is correct
+		let mut ser_neg = KeySerializer::new();
+		ser_neg.extend_i32(-1i32);
+		let bytes_neg = ser_neg.finish();
+
+		let mut ser_zero = KeySerializer::new();
+		ser_zero.extend_i32(0i32);
+		let bytes_zero = ser_zero.finish();
+
+		let mut ser_pos = KeySerializer::new();
+		ser_pos.extend_i32(1i32);
+		let bytes_pos = ser_pos.finish();
+
+		// In descending: 1 > 0 > -1, so encode(1) < encode(0) < encode(-1)
+		assert!(bytes_pos < bytes_zero, "encode(1) should be < encode(0)");
+		assert!(bytes_zero < bytes_neg, "encode(0) should be < encode(-1)");
 	}
 
 	#[test]

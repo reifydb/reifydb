@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::{NamespaceId, RingBufferId},
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 const VERSION: u8 = 1;
@@ -55,31 +55,24 @@ impl EncodableKey for NamespaceRingBufferKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() != 16 {
-			return None;
-		}
-
-		let namespace: NamespaceId = keycode::deserialize(&payload[0..8]).ok()?;
-		let ring_buffer: RingBufferId = keycode::deserialize(&payload[8..16]).ok()?;
+		let namespace = de.read_u64().ok()?;
+		let ring_buffer = de.read_u64().ok()?;
 
 		Some(Self {
-			namespace,
-			ring_buffer,
+			namespace: NamespaceId(namespace),
+			ring_buffer: RingBufferId(ring_buffer),
 		})
 	}
 }

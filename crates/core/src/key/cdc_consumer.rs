@@ -5,7 +5,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey,
 	interface::CdcConsumerId,
-	util::encoding::keycode::{KeySerializer, deserialize},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 /// Trait for types that can be converted to a consumer key
@@ -48,21 +48,19 @@ impl EncodableKey for CdcConsumerKey {
 	where
 		Self: Sized,
 	{
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION_BYTE {
 			return None;
 		}
 
-		let kind: KeyKind = deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let consumer_id: String = deserialize(&key[2..]).ok()?;
+		let consumer_id = de.read_str().ok()?;
 
 		Some(Self {
 			consumer: CdcConsumerId(consumer_id),

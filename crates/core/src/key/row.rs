@@ -9,7 +9,7 @@ use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
 	interface::{EncodableKeyRange, catalog::SourceId},
-	util::encoding::keycode::{self, KeySerializer},
+	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
 const VERSION: u8 = 1;
@@ -34,28 +34,20 @@ impl EncodableKey for RowKey {
 	}
 
 	fn decode(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() != 17 {
-			// 9 bytes for source + 8 bytes for encoded
-			return None;
-		}
-
-		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
-		let row: RowNumber = keycode::deserialize(&payload[9..]).ok()?;
+		let source = de.read_source_id().ok()?;
+		let row = de.read_row_number().ok()?;
 
 		Some(Self {
 			source,
@@ -71,26 +63,20 @@ pub struct RowKeyRange {
 
 impl RowKeyRange {
 	fn decode_key(key: &EncodedKey) -> Option<Self> {
-		if key.len() < 2 {
-			return None;
-		}
+		let mut de = KeyDeserializer::from_bytes(key.as_slice());
 
-		let version: u8 = keycode::deserialize(&key[0..1]).ok()?;
+		let version = de.read_u8().ok()?;
 		if version != VERSION {
 			return None;
 		}
 
-		let kind: KeyKind = keycode::deserialize(&key[1..2]).ok()?;
+		let kind: KeyKind = de.read_u8().ok()?.try_into().ok()?;
 		if kind != Self::KIND {
 			return None;
 		}
 
-		let payload = &key[2..];
-		if payload.len() < 9 {
-			return None;
-		}
+		let source = de.read_source_id().ok()?;
 
-		let source = keycode::deserialize_source_id(&payload[..9]).ok()?;
 		Some(RowKeyRange {
 			source,
 		})

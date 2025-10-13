@@ -13,10 +13,12 @@ use serde::{Deserialize, Serialize};
 
 mod catalog;
 mod deserialize;
+mod deserializer;
 mod serialize;
 mod serializer;
 
 pub use catalog::{deserialize_index_id, deserialize_source_id, serialize_index_id, serialize_source_id};
+pub use deserializer::KeyDeserializer;
 use reifydb_type::diagnostic::serde::serde_keycode_error;
 pub use serializer::KeySerializer;
 

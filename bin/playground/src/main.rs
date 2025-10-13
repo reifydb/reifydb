@@ -7,7 +7,7 @@ use std::{thread::sleep, time::Duration};
 
 use reifydb::{
 	Params, Session, WithSubsystem,
-	core::{interface::logging::LogLevel::Info, util::clock},
+	core::interface::logging::LogLevel::Info,
 	embedded,
 	sub_logging::{FormatStyle, LoggingBuilder},
 };
@@ -22,10 +22,6 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 }
 
 fn main() {
-	// Set mock time to a known value for testing time-based windows
-	let base_time = 1000000; // Start at 1,000,000 milliseconds
-	clock::mock_time_set(base_time);
-
 	let mut db =
 		embedded::memory_optimistic().with_logging(logger_configuration).with_worker(|wp| wp).build().unwrap();
 
