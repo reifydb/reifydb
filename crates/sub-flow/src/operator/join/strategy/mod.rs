@@ -39,10 +39,10 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(join_type) => {
-				join_type.handle_insert(txn, post, side, key_hash, state, operator)
+				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
 			}
 			JoinStrategy::InnerHash(join_type) => {
-				join_type.handle_insert(txn, post, side, key_hash, state, operator)
+				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
 			}
 		}
 	}
@@ -60,10 +60,10 @@ impl JoinStrategy {
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(join_type) => {
-				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator, version)
 			}
 			JoinStrategy::InnerHash(join_type) => {
-				join_type.handle_remove(txn, pre, side, key_hash, state, operator)
+				join_type.handle_remove(txn, pre, side, key_hash, state, operator, version)
 			}
 		}
 	}
@@ -82,12 +82,10 @@ impl JoinStrategy {
 		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftHash(join_type) => {
-				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
-			}
-			JoinStrategy::InnerHash(join_type) => {
-				join_type.handle_update(txn, pre, post, side, old_key, new_key, state, operator)
-			}
+			JoinStrategy::LeftHash(join_type) => join_type
+				.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
+			JoinStrategy::InnerHash(join_type) => join_type
+				.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
 		}
 	}
 }

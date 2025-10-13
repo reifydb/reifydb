@@ -28,8 +28,8 @@ use crate::{
 static EMPTY_PARAMS: Params = Params::None;
 
 pub struct JoinOperator {
-	left_parent: Arc<Operators>,
-	right_parent: Arc<Operators>,
+	pub(crate) left_parent: Arc<Operators>,
+	pub(crate) right_parent: Arc<Operators>,
 	node: FlowNodeId,
 	strategy: JoinStrategy,
 	left_node: FlowNodeId,

@@ -1,7 +1,8 @@
 use reifydb_core::interface::FlowNodeId;
+use reifydb_type::RowNumber;
 use serde::{Deserialize, Serialize};
 
-use super::{Schema, SerializedRow, Store};
+use super::{Schema, Store};
 use crate::operator::join::store::UndefinedTracker;
 
 pub(crate) struct JoinState {
@@ -25,7 +26,7 @@ impl JoinState {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub(crate) struct JoinSideEntry {
-	pub(crate) rows: Vec<SerializedRow>,
+	pub(crate) rows: Vec<RowNumber>,
 }
 
 #[derive(Debug, Clone, Copy)]

@@ -1,10 +1,15 @@
-use reifydb_core::Row;
+use std::sync::Arc;
+
+use reifydb_core::{CommitVersion, Row};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
 use crate::{
 	flow::FlowDiff,
-	operator::join::{JoinSideEntry, JoinState, SerializedRow, Store, operator::JoinOperator},
+	operator::{
+		Operators,
+		join::{JoinSideEntry, JoinState, Store, operator::JoinOperator},
+	},
 };
 
 /// Add a encoded to a state entry (left or right)
@@ -14,11 +19,10 @@ pub(crate) fn add_to_state_entry(
 	key_hash: &Hash128,
 	row: &Row,
 ) -> crate::Result<()> {
-	let serialized = SerializedRow::from_row(row);
 	let mut entry = store.get_or_insert_with::<StandardCommandTransaction, _>(txn, key_hash, || JoinSideEntry {
 		rows: Vec::new(),
 	})?;
-	entry.rows.push(serialized);
+	entry.rows.push(row.number);
 	store.set(txn, key_hash, &entry)?;
 	Ok(())
 }
@@ -31,7 +35,7 @@ pub(crate) fn remove_from_state_entry(
 	row: &Row,
 ) -> crate::Result<bool> {
 	if let Some(mut entry) = store.get(txn, key_hash)? {
-		entry.rows.retain(|r| r.number != row.number);
+		entry.rows.retain(|&r| r != row.number);
 
 		if entry.rows.is_empty() {
 			store.remove(txn, key_hash)?;
@@ -55,8 +59,8 @@ pub(crate) fn update_row_in_entry(
 ) -> crate::Result<bool> {
 	if let Some(mut entry) = store.get(txn, key_hash)? {
 		for row in &mut entry.rows {
-			if row.number == old_row.number {
-				*row = SerializedRow::from_row(new_row);
+			if *row == old_row.number {
+				*row = new_row.number;
 				store.set(txn, key_hash, &entry)?;
 				return Ok(true);
 			}
@@ -71,17 +75,22 @@ pub(crate) fn emit_joined_rows_left_to_right(
 	left_row: &Row,
 	right_store: &Store,
 	key_hash: &Hash128,
-	state: &JoinState,
+	_state: &JoinState,
 	operator: &JoinOperator,
+	right_parent: &Arc<Operators>,
+	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 
 	if let Some(right_entry) = right_store.get(txn, key_hash)? {
-		for right_row_ser in &right_entry.rows {
-			let right_row = right_row_ser.to_right_row(&state.schema);
-			result.push(FlowDiff::Insert {
-				post: operator.join_rows(txn, left_row, &right_row)?,
-			});
+		let right_rows = right_parent.get_rows(txn, &right_entry.rows, version)?;
+
+		for right_row_opt in right_rows {
+			if let Some(right_row) = right_row_opt {
+				result.push(FlowDiff::Insert {
+					post: operator.join_rows(txn, left_row, &right_row)?,
+				});
+			}
 		}
 	}
 
@@ -94,17 +103,22 @@ pub(crate) fn emit_joined_rows_right_to_left(
 	right_row: &Row,
 	left_store: &Store,
 	key_hash: &Hash128,
-	state: &JoinState,
+	_state: &JoinState,
 	operator: &JoinOperator,
+	left_parent: &Arc<Operators>,
+	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 
 	if let Some(left_entry) = left_store.get(txn, key_hash)? {
-		for left_row_ser in &left_entry.rows {
-			let left_row = left_row_ser.to_left_row(&state.schema);
-			result.push(FlowDiff::Insert {
-				post: operator.join_rows(txn, &left_row, right_row)?,
-			});
+		let left_rows = left_parent.get_rows(txn, &left_entry.rows, version)?;
+
+		for left_row_opt in left_rows {
+			if let Some(left_row) = left_row_opt {
+				result.push(FlowDiff::Insert {
+					post: operator.join_rows(txn, &left_row, right_row)?,
+				});
+			}
 		}
 	}
 
@@ -117,17 +131,22 @@ pub(crate) fn emit_remove_joined_rows_left(
 	left_row: &Row,
 	right_store: &Store,
 	key_hash: &Hash128,
-	state: &JoinState,
+	_state: &JoinState,
 	operator: &JoinOperator,
+	right_parent: &Arc<Operators>,
+	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 
 	if let Some(right_entry) = right_store.get(txn, key_hash)? {
-		for right_row_ser in &right_entry.rows {
-			let right_row = right_row_ser.to_right_row(&state.schema);
-			result.push(FlowDiff::Remove {
-				pre: operator.join_rows(txn, left_row, &right_row)?,
-			});
+		let right_rows = right_parent.get_rows(txn, &right_entry.rows, version)?;
+
+		for right_row_opt in right_rows {
+			if let Some(right_row) = right_row_opt {
+				result.push(FlowDiff::Remove {
+					pre: operator.join_rows(txn, left_row, &right_row)?,
+				});
+			}
 		}
 	}
 
@@ -140,17 +159,22 @@ pub(crate) fn emit_remove_joined_rows_right(
 	right_row: &Row,
 	left_store: &Store,
 	key_hash: &Hash128,
-	state: &JoinState,
+	_state: &JoinState,
 	operator: &JoinOperator,
+	left_parent: &Arc<Operators>,
+	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 
 	if let Some(left_entry) = left_store.get(txn, key_hash)? {
-		for left_row_ser in &left_entry.rows {
-			let left_row = left_row_ser.to_left_row(&state.schema);
-			result.push(FlowDiff::Remove {
-				pre: operator.join_rows(txn, &left_row, right_row)?,
-			});
+		let left_rows = left_parent.get_rows(txn, &left_entry.rows, version)?;
+
+		for left_row_opt in left_rows {
+			if let Some(left_row) = left_row_opt {
+				result.push(FlowDiff::Remove {
+					pre: operator.join_rows(txn, &left_row, right_row)?,
+				});
+			}
 		}
 	}
 
@@ -164,18 +188,23 @@ pub(crate) fn emit_update_joined_rows_left(
 	new_left_row: &Row,
 	right_store: &Store,
 	key_hash: &Hash128,
-	state: &JoinState,
+	_state: &JoinState,
 	operator: &JoinOperator,
+	right_parent: &Arc<Operators>,
+	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 
 	if let Some(right_entry) = right_store.get(txn, key_hash)? {
-		for right_row_ser in &right_entry.rows {
-			let right_row = right_row_ser.to_right_row(&state.schema);
-			result.push(FlowDiff::Update {
-				pre: operator.join_rows(txn, old_left_row, &right_row)?,
-				post: operator.join_rows(txn, new_left_row, &right_row)?,
-			});
+		let right_rows = right_parent.get_rows(txn, &right_entry.rows, version)?;
+
+		for right_row_opt in right_rows {
+			if let Some(right_row) = right_row_opt {
+				result.push(FlowDiff::Update {
+					pre: operator.join_rows(txn, old_left_row, &right_row)?,
+					post: operator.join_rows(txn, new_left_row, &right_row)?,
+				});
+			}
 		}
 	}
 
@@ -189,18 +218,23 @@ pub(crate) fn emit_update_joined_rows_right(
 	new_right_row: &Row,
 	left_store: &Store,
 	key_hash: &Hash128,
-	state: &JoinState,
+	_state: &JoinState,
 	operator: &JoinOperator,
+	left_parent: &Arc<Operators>,
+	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 
 	if let Some(left_entry) = left_store.get(txn, key_hash)? {
-		for left_row_ser in &left_entry.rows {
-			let left_row = left_row_ser.to_left_row(&state.schema);
-			result.push(FlowDiff::Update {
-				pre: operator.join_rows(txn, &left_row, old_right_row)?,
-				post: operator.join_rows(txn, &left_row, new_right_row)?,
-			});
+		let left_rows = left_parent.get_rows(txn, &left_entry.rows, version)?;
+
+		for left_row_opt in left_rows {
+			if let Some(left_row) = left_row_opt {
+				result.push(FlowDiff::Update {
+					pre: operator.join_rows(txn, &left_row, old_right_row)?,
+					post: operator.join_rows(txn, &left_row, new_right_row)?,
+				});
+			}
 		}
 	}
 
@@ -230,12 +264,18 @@ pub(crate) fn get_left_rows(
 	txn: &mut StandardCommandTransaction,
 	left_store: &Store,
 	key_hash: &Hash128,
-	state: &JoinState,
+	_state: &JoinState,
+	left_parent: &Arc<Operators>,
+	version: CommitVersion,
 ) -> crate::Result<Vec<Row>> {
 	let mut rows = Vec::new();
 	if let Some(left_entry) = left_store.get(txn, key_hash)? {
-		for left_row_ser in &left_entry.rows {
-			rows.push(left_row_ser.to_left_row(&state.schema));
+		let left_rows = left_parent.get_rows(txn, &left_entry.rows, version)?;
+
+		for left_row_opt in left_rows {
+			if let Some(left_row) = left_row_opt {
+				rows.push(left_row);
+			}
 		}
 	}
 	Ok(rows)
@@ -246,12 +286,18 @@ pub(crate) fn get_right_rows(
 	txn: &mut StandardCommandTransaction,
 	right_store: &Store,
 	key_hash: &Hash128,
-	state: &JoinState,
+	_state: &JoinState,
+	right_parent: &Arc<Operators>,
+	version: CommitVersion,
 ) -> crate::Result<Vec<Row>> {
 	let mut rows = Vec::new();
 	if let Some(right_entry) = right_store.get(txn, key_hash)? {
-		for right_row_ser in &right_entry.rows {
-			rows.push(right_row_ser.to_right_row(&state.schema));
+		let right_rows = right_parent.get_rows(txn, &right_entry.rows, version)?;
+
+		for right_row_opt in right_rows {
+			if let Some(right_row) = right_row_opt {
+				rows.push(right_row);
+			}
 		}
 	}
 	Ok(rows)
