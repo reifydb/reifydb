@@ -7,7 +7,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	thread::{self, JoinHandle},
+	thread::{self, JoinHandle, sleep},
 	time::Duration,
 };
 
@@ -83,14 +83,19 @@ impl<C: CdcConsume> PollConsumer<C> {
 		}
 	}
 
-	fn consume_batch(state: &ConsumerState, engine: &StandardEngine, consumer: &C) -> Result<()> {
+	fn consume_batch(
+		state: &ConsumerState,
+		engine: &StandardEngine,
+		consumer: &C,
+	) -> Result<Option<(CommitVersion, u64)>> {
 		let mut transaction = engine.begin_command()?;
 
 		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
 
 		let transactions = fetch_cdcs_since(&mut transaction, checkpoint)?;
 		if transactions.is_empty() {
-			return transaction.rollback();
+			transaction.rollback()?;
+			return Ok(None);
 		}
 
 		let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
@@ -123,8 +128,11 @@ impl<C: CdcConsume> PollConsumer<C> {
 		}
 
 		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;
-		transaction.commit()?;
-		Ok(())
+		let current_version = transaction.commit()?;
+
+		let lag = current_version.0.saturating_sub(latest_version.0);
+
+		Ok(Some((latest_version, lag)))
 	}
 
 	fn polling_loop(
@@ -140,8 +148,21 @@ impl<C: CdcConsume> PollConsumer<C> {
 		);
 
 		while state.running.load(Ordering::Acquire) {
-			if let Err(error) = Self::consume_batch(&state, &engine, &consumer) {
-				log_error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
+			match Self::consume_batch(&state, &engine, &consumer) {
+				Ok(Some((processed_version, lag))) => {
+					println!(
+						"[Consumer {:?}] Processed up to version {}, lag: {}",
+						config.consumer_id, processed_version.0, lag
+					);
+				}
+				Ok(None) => {}
+				Err(error) => {
+					log_error!(
+						"[Consumer {:?}] Error consuming events: {}",
+						config.consumer_id,
+						error
+					);
+				}
 			}
 		}
 
