@@ -260,19 +260,25 @@ impl ConsoleBackend {
 					let mut is_first_chunk = j == 0;
 
 					while !remaining.is_empty() {
-						// Find a good break point
+						// Find a good break point that respects char boundaries
 						let chunk_end = if remaining.len() > MAX_LINE_WIDTH {
-							let mut break_point = MAX_LINE_WIDTH;
-							// Try to break at word
-							// boundaries
-							for (idx, ch) in
-								remaining[..MAX_LINE_WIDTH].char_indices().rev()
+							// Find the last char boundary at or before MAX_LINE_WIDTH
+							let mut max_byte_idx = MAX_LINE_WIDTH.min(remaining.len());
+							while max_byte_idx > 0
+								&& !remaining.is_char_boundary(max_byte_idx)
+							{
+								max_byte_idx -= 1;
+							}
+
+							let mut break_point = max_byte_idx;
+							// Try to break at word boundaries
+							for (idx, ch) in remaining[..max_byte_idx].char_indices().rev()
 							{
 								if ch == ' '
 									|| ch == ',' || ch == ';' || ch == ':' || ch == ']'
 									|| ch == '}'
 								{
-									break_point = idx + 1;
+									break_point = idx + ch.len_utf8();
 									break;
 								}
 							}
@@ -402,14 +408,25 @@ impl ConsoleBackend {
 						let mut remaining = line;
 						while !remaining.is_empty() {
 							let chunk_end = if remaining.len() > MAX_LINE_WIDTH {
-								let mut break_point = MAX_LINE_WIDTH;
-								for (i, ch) in
-									remaining[..MAX_LINE_WIDTH].char_indices().rev()
+								// Find the last char boundary at or before
+								// MAX_LINE_WIDTH
+								let mut max_byte_idx =
+									MAX_LINE_WIDTH.min(remaining.len());
+								while max_byte_idx > 0
+									&& !remaining.is_char_boundary(max_byte_idx)
+								{
+									max_byte_idx -= 1;
+								}
+
+								let mut break_point = max_byte_idx;
+								// Try to break at word boundaries
+								for (idx, ch) in
+									remaining[..max_byte_idx].char_indices().rev()
 								{
 									if ch == ' '
 										|| ch == ',' || ch == ';' || ch == ':'
 									{
-										break_point = i + 1;
+										break_point = idx + ch.len_utf8();
 										break;
 									}
 								}
@@ -446,14 +463,25 @@ impl ConsoleBackend {
 						let mut remaining = line;
 						while !remaining.is_empty() {
 							let chunk_end = if remaining.len() > MAX_LINE_WIDTH {
-								let mut break_point = MAX_LINE_WIDTH;
-								for (i, ch) in
-									remaining[..MAX_LINE_WIDTH].char_indices().rev()
+								// Find the last char boundary at or before
+								// MAX_LINE_WIDTH
+								let mut max_byte_idx =
+									MAX_LINE_WIDTH.min(remaining.len());
+								while max_byte_idx > 0
+									&& !remaining.is_char_boundary(max_byte_idx)
+								{
+									max_byte_idx -= 1;
+								}
+
+								let mut break_point = max_byte_idx;
+								// Try to break at word boundaries
+								for (idx, ch) in
+									remaining[..max_byte_idx].char_indices().rev()
 								{
 									if ch == ' '
 										|| ch == ',' || ch == ';' || ch == ':'
 									{
-										break_point = i + 1;
+										break_point = idx + ch.len_utf8();
 										break;
 									}
 								}

@@ -1,18 +1,25 @@
+use std::sync::Arc;
+
 use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_rql::expression::Expression;
 use reifydb_type::RowNumber;
 
-use crate::{flow::FlowChange, operator::Operator};
+use crate::{
+	flow::FlowChange,
+	operator::{Operator, Operators},
+};
 
 pub struct SortOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	_expressions: Vec<Expression<'static>>,
 }
 
 impl SortOperator {
-	pub fn new(node: FlowNodeId, _expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, _expressions: Vec<Expression<'static>>) -> Self {
 		Self {
+			parent,
 			node,
 			_expressions,
 		}
@@ -41,6 +48,6 @@ impl Operator for SortOperator {
 		rows: &[RowNumber],
 		version: CommitVersion,
 	) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
+		self.parent.get_rows(txn, rows, version)
 	}
 }

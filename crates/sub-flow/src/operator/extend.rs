@@ -1,21 +1,25 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_rql::expression::Expression;
 use reifydb_type::RowNumber;
 
-use crate::{Operator, flow::FlowChange};
+use crate::{Operator, flow::FlowChange, operator::Operators};
 
 pub struct ExtendOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression<'static>>,
 }
 
 impl ExtendOperator {
-	pub fn new(node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
 		Self {
+			parent,
 			node,
 			expressions,
 		}
@@ -44,6 +48,6 @@ impl Operator for ExtendOperator {
 		rows: &[RowNumber],
 		version: CommitVersion,
 	) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
+		self.parent.get_rows(txn, rows, version)
 	}
 }

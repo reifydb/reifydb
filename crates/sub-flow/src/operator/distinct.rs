@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
+use std::{collections::HashMap, sync::Arc};
 
 use bincode::{
 	config::standard,
@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	flow::{FlowChange, FlowDiff},
 	operator::{
-		Operator,
+		Operator, Operators,
 		stateful::{RawStatefulOperator, SingleStateful},
 		transform::TransformOperator,
 	},
@@ -133,14 +133,16 @@ impl Default for DistinctState {
 }
 
 pub struct DistinctOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression<'static>>,
 	layout: EncodedValuesLayout,
 }
 
 impl DistinctOperator {
-	pub fn new(node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
 		Self {
+			parent,
 			node,
 			expressions,
 			layout: EncodedValuesLayout::new(&[Type::Blob]),
@@ -348,6 +350,6 @@ impl Operator for DistinctOperator {
 		rows: &[RowNumber],
 		version: CommitVersion,
 	) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
+		self.parent.get_rows(txn, rows, version)
 	}
 }

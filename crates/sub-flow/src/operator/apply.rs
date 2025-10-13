@@ -1,17 +1,24 @@
+use std::sync::Arc;
+
 use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::RowNumber;
 
-use crate::{flow::FlowChange, operator::Operator};
+use crate::{
+	flow::FlowChange,
+	operator::{Operator, Operators},
+};
 
 pub struct ApplyOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	inner: Box<dyn Operator>,
 }
 
 impl ApplyOperator {
-	pub fn new(node: FlowNodeId, inner: Box<dyn Operator>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, inner: Box<dyn Operator>) -> Self {
 		Self {
+			parent,
 			node,
 			inner,
 		}
@@ -38,6 +45,6 @@ impl Operator for ApplyOperator {
 		rows: &[RowNumber],
 		version: CommitVersion,
 	) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
+		self.parent.get_rows(txn, rows, version)
 	}
 }

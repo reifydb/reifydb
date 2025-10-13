@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_core::{
 	CommitVersion, Row,
 	interface::{EncodableKey, FlowNodeId, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId},
@@ -11,16 +13,19 @@ use reifydb_type::RowNumber;
 use crate::{
 	Operator,
 	flow::{FlowChange, FlowDiff},
+	operator::Operators,
 };
 
 pub struct SinkViewOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	view: ResolvedView<'static>,
 }
 
 impl SinkViewOperator {
-	pub fn new(node: FlowNodeId, view: ResolvedView<'static>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, view: ResolvedView<'static>) -> Self {
 		Self {
+			parent,
 			node,
 			view,
 		}
@@ -97,7 +102,6 @@ impl Operator for SinkViewOperator {
 			}
 		}
 
-		// Sink is a terminal node - don't propagate changes further
 		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
 	}
 
@@ -107,6 +111,6 @@ impl Operator for SinkViewOperator {
 		rows: &[RowNumber],
 		version: CommitVersion,
 	) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
+		unreachable!()
 	}
 }

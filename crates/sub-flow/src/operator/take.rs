@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, sync::Arc};
 
 use bincode::{
 	config::standard,
@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	flow::{FlowChange, FlowDiff},
 	operator::{
-		Operator,
+		Operator, Operators,
 		stateful::{RawStatefulOperator, SingleStateful},
 		transform::TransformOperator,
 	},
@@ -78,14 +78,16 @@ impl Default for TakeState {
 }
 
 pub struct TakeOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	limit: usize,
 	layout: EncodedValuesLayout,
 }
 
 impl TakeOperator {
-	pub fn new(node: FlowNodeId, limit: usize) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, limit: usize) -> Self {
 		Self {
+			parent,
 			node,
 			limit,
 			layout: EncodedValuesLayout::new(&[Type::Blob]),
@@ -230,6 +232,6 @@ impl Operator for TakeOperator {
 		rows: &[RowNumber],
 		version: CommitVersion,
 	) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
+		self.parent.get_rows(txn, rows, version)
 	}
 }

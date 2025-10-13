@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, sync::Arc};
 
 use bincode::{
 	config::standard,
@@ -19,7 +19,7 @@ use super::{JoinSide, JoinState, JoinStrategy, Schema};
 use crate::{
 	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
 	operator::{
-		Operator,
+		Operator, Operators,
 		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful, state_get, state_set},
 		transform::TransformOperator,
 	},
@@ -28,6 +28,8 @@ use crate::{
 static EMPTY_PARAMS: Params = Params::None;
 
 pub struct JoinOperator {
+	left_parent: Arc<Operators>,
+	right_parent: Arc<Operators>,
 	node: FlowNodeId,
 	strategy: JoinStrategy,
 	left_node: FlowNodeId,
@@ -43,6 +45,8 @@ pub struct JoinOperator {
 
 impl JoinOperator {
 	pub fn new(
+		left_parent: Arc<Operators>,
+		right_parent: Arc<Operators>,
 		node: FlowNodeId,
 		join_type: JoinType,
 		left_node: FlowNodeId,
@@ -59,6 +63,8 @@ impl JoinOperator {
 		let row_number_provider = RowNumberProvider::new(node);
 
 		Self {
+			left_parent,
+			right_parent,
 			node,
 			strategy,
 			left_node,

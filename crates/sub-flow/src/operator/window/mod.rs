@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
@@ -27,7 +29,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
 	flow::{FlowChange, FlowDiff},
 	operator::{
-		Operator,
+		Operator, Operators,
 		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful},
 		transform::TransformOperator,
 	},
@@ -123,6 +125,7 @@ impl Default for WindowState {
 
 /// The main window operator
 pub struct WindowOperator {
+	pub parent: Arc<Operators>,
 	pub node: FlowNodeId,
 	pub window_type: WindowType,
 	pub size: WindowSize,
@@ -139,6 +142,7 @@ pub struct WindowOperator {
 
 impl WindowOperator {
 	pub fn new(
+		parent: Arc<Operators>,
 		node: FlowNodeId,
 		window_type: WindowType,
 		size: WindowSize,
@@ -150,6 +154,7 @@ impl WindowOperator {
 		max_window_age: Option<std::time::Duration>,
 	) -> Self {
 		Self {
+			parent,
 			node,
 			window_type,
 			size,

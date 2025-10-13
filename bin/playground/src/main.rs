@@ -33,6 +33,7 @@ fn main() {
 	db.command_as_root(
 		r#"create deferred view test.projection { id: int4, name: utf8 } as {
   from test.source
+  map {id: id, name: name + " overwritten"}
 }"#,
 		Params::None,
 	)

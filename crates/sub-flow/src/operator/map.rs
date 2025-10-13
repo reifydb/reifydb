@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::sync::Arc;
+
 use reifydb_core::{CommitVersion, Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
 use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_rql::expression::Expression;
@@ -9,19 +11,22 @@ use reifydb_type::{Params, RowNumber, Type};
 use crate::{
 	Operator,
 	flow::{FlowChange, FlowDiff},
+	operator::Operators,
 };
 
 // Static empty params instance for use in RowEvaluationContext
 static EMPTY_PARAMS: Params = Params::None;
 
 pub struct MapOperator {
+	parent: Arc<Operators>,
 	node: FlowNodeId,
 	expressions: Vec<Expression<'static>>,
 }
 
 impl MapOperator {
-	pub fn new(node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, expressions: Vec<Expression<'static>>) -> Self {
 		Self {
+			parent,
 			node,
 			expressions,
 		}
@@ -41,13 +46,11 @@ impl Operator for MapOperator {
 	) -> crate::Result<FlowChange> {
 		let mut result = Vec::new();
 
-		for (i, diff) in change.diffs.into_iter().enumerate() {
+		for diff in change.diffs.into_iter() {
 			match diff {
 				FlowDiff::Insert {
 					post,
 				} => {
-					// let projected = self.project_row(&post, evaluator)?;
-
 					let projected = match self.project_row(&post, evaluator) {
 						Ok(projected) => projected,
 						Err(err) => {
@@ -89,7 +92,7 @@ impl Operator for MapOperator {
 		rows: &[RowNumber],
 		version: CommitVersion,
 	) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
+		self.parent.get_rows(txn, rows, version)
 	}
 }
 
@@ -171,9 +174,5 @@ impl MapOperator {
 			encoded: encoded_row,
 			layout,
 		})
-	}
-
-	fn get_rows(&self, rows: &[reifydb_type::RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
 	}
 }
