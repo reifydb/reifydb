@@ -6,7 +6,10 @@ use std::ops::Deref;
 use reifydb_type::TypeConstraint;
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{ColumnId, ColumnPolicy};
+use crate::{
+	interface::{ColumnId, ColumnPolicy},
+	value::encoded::EncodedValuesNamedLayout,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ColumnDef {
@@ -39,5 +42,11 @@ impl PartialEq<u16> for ColumnIndex {
 impl From<ColumnIndex> for u16 {
 	fn from(value: ColumnIndex) -> Self {
 		value.0
+	}
+}
+
+impl From<&[ColumnDef]> for EncodedValuesNamedLayout {
+	fn from(value: &[ColumnDef]) -> Self {
+		EncodedValuesNamedLayout::new(value.iter().map(|col| (col.name.clone(), col.constraint.get_type())))
 	}
 }

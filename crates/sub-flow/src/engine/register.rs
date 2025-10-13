@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use FlowNodeType::{Aggregate, SinkView, SourceInlineData, SourceTable, SourceView};
-use reifydb_catalog::resolve::resolve_view;
+use reifydb_catalog::{CatalogTableQueryOperations, CatalogViewQueryOperations, resolve::resolve_view};
 use reifydb_core::{
 	Error,
 	interface::{FlowId, FlowNodeId, SourceId},
@@ -18,7 +18,7 @@ use crate::{
 	engine::FlowEngine,
 	operator::{
 		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, Operators,
-		SinkViewOperator, SortOperator, TakeOperator, WindowOperator,
+		SinkViewOperator, SortOperator, SourceTableOperator, SourceViewOperator, TakeOperator, WindowOperator,
 	},
 };
 
@@ -51,12 +51,20 @@ impl FlowEngine {
 			SourceTable {
 				table,
 			} => {
-				self.add_source(flow.id, node.id, SourceId::table(*table));
+				let table = txn.get_table(table)?;
+				self.add_source(flow.id, node.id, SourceId::table(table.id));
+				self.operators.insert(
+					node.id,
+					Operators::SourceTable(SourceTableOperator::new(node.id, table)),
+				);
 			}
 			SourceView {
 				view,
 			} => {
-				self.add_source(flow.id, node.id, SourceId::view(*view));
+				let view = txn.get_view(view)?;
+				self.add_source(flow.id, node.id, SourceId::view(view.id));
+				self.operators
+					.insert(node.id, Operators::SourceView(SourceViewOperator::new(node.id, view)));
 			}
 			SinkView {
 				view,

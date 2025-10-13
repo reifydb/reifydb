@@ -5,7 +5,7 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	EncodedKey, Error, JoinType, Row,
+	CommitVersion, EncodedKey, Error, JoinType, Row,
 	interface::FlowNodeId,
 	util::encoding::keycode::KeySerializer,
 	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
@@ -13,7 +13,7 @@ use reifydb_core::{
 use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::{expression::Expression, query::QueryString};
-use reifydb_type::{Blob, Params, Type, Value, internal_error};
+use reifydb_type::{Blob, Params, RowNumber, Type, Value, internal_error};
 
 use super::{JoinSide, JoinState, JoinStrategy, Schema};
 use crate::{
@@ -437,5 +437,14 @@ impl Operator for JoinOperator {
 		self.save_schema(txn, &state.schema)?;
 
 		Ok(FlowChange::internal(self.node, change.version, result))
+	}
+
+	fn get_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		rows: &[RowNumber],
+		version: CommitVersion,
+	) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }

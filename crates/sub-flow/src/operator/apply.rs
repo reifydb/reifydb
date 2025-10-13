@@ -1,5 +1,6 @@
-use reifydb_core::interface::FlowNodeId;
+use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_type::RowNumber;
 
 use crate::{flow::FlowChange, operator::Operator};
 
@@ -29,5 +30,14 @@ impl Operator for ApplyOperator {
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
 		self.inner.apply(txn, change, evaluator)
+	}
+
+	fn get_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		rows: &[RowNumber],
+		version: CommitVersion,
+	) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }

@@ -2,10 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_engine::StandardCommandTransaction;
-use reifydb_rql::flow::{
-	Flow, FlowNode,
-	FlowNodeType::{SourceInlineData, SourceTable, SourceView},
-};
+use reifydb_rql::flow::{Flow, FlowNode, FlowNodeType::SourceInlineData};
 
 use crate::{
 	engine::FlowEngine,
@@ -20,7 +17,7 @@ impl FlowEngine {
 					for (flow_id, node_id) in node_registrations {
 						if let Some(flow) = self.flows.get(flow_id) {
 							if let Some(node) = flow.get_node(node_id) {
-								self.process_node(
+								self.process_change(
 									txn,
 									flow,
 									node,
@@ -51,7 +48,7 @@ impl FlowEngine {
 		Ok(result)
 	}
 
-	fn process_node(
+	fn process_change(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow: &Flow,
@@ -63,26 +60,19 @@ impl FlowEngine {
 
 		let change = match &node_type {
 			SourceInlineData {} => unimplemented!(),
-			SourceTable {
-				..
-			} => change,
-			SourceView {
-				..
-			} => change,
 			_ => self.apply(txn, node, change)?,
 		};
 
-		// Propagate to downstream
 		if changes.is_empty() {
 		} else if changes.len() == 1 {
 			let output_id = changes[0];
-			self.process_node(txn, flow, flow.get_node(&output_id).unwrap(), change)?;
+			self.process_change(txn, flow, flow.get_node(&output_id).unwrap(), change)?;
 		} else {
 			let (last, rest) = changes.split_last().unwrap();
 			for output_id in rest {
-				self.process_node(txn, flow, flow.get_node(output_id).unwrap(), change.clone())?;
+				self.process_change(txn, flow, flow.get_node(output_id).unwrap(), change.clone())?;
 			}
-			self.process_node(txn, flow, flow.get_node(last).unwrap(), change)?;
+			self.process_change(txn, flow, flow.get_node(last).unwrap(), change)?;
 		}
 
 		Ok(())

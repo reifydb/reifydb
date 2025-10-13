@@ -1,10 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
+use reifydb_core::{CommitVersion, Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
 use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Params, Type};
+use reifydb_type::{Params, RowNumber, Type};
 
 use crate::{
 	Operator,
@@ -81,6 +81,15 @@ impl Operator for MapOperator {
 		}
 
 		Ok(FlowChange::internal(self.node, change.version, result))
+	}
+
+	fn get_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		rows: &[RowNumber],
+		version: CommitVersion,
+	) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }
 
@@ -162,5 +171,9 @@ impl MapOperator {
 			encoded: encoded_row,
 			layout,
 		})
+	}
+
+	fn get_rows(&self, rows: &[reifydb_type::RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }

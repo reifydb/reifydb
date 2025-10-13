@@ -3,7 +3,10 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{ColumnDef, NamespaceId, PrimaryKeyDef, TableId};
+use crate::{
+	interface::{ColumnDef, NamespaceId, PrimaryKeyDef, TableId},
+	value::encoded::EncodedValuesNamedLayout,
+};
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TableDef {
@@ -12,4 +15,10 @@ pub struct TableDef {
 	pub name: String,
 	pub columns: Vec<ColumnDef>,
 	pub primary_key: Option<PrimaryKeyDef>,
+}
+
+impl From<&TableDef> for EncodedValuesNamedLayout {
+	fn from(value: &TableDef) -> Self {
+		value.columns.as_slice().into()
+	}
 }

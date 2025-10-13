@@ -4,7 +4,7 @@ use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
-use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
+use reifydb_core::{CommitVersion, Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_type::{Blob, RowNumber, Type, internal_error};
 use serde::{Deserialize, Serialize};
@@ -222,5 +222,14 @@ impl Operator for TakeOperator {
 		self.save_take_state(txn, &state)?;
 
 		Ok(FlowChange::internal(self.node, change.version, output_diffs))
+	}
+
+	fn get_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		rows: &[RowNumber],
+		version: CommitVersion,
+	) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }

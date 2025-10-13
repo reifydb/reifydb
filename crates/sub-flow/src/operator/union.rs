@@ -1,5 +1,6 @@
-use reifydb_core::interface::FlowNodeId;
+use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_type::RowNumber;
 
 use crate::{flow::FlowChange, operator::Operator};
 
@@ -29,5 +30,14 @@ impl Operator for UnionOperator {
 		// TODO: Implement single-encoded union processing
 		// For now, just pass through all changes with updated from
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
+	}
+
+	fn get_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		rows: &[RowNumber],
+		version: CommitVersion,
+	) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }

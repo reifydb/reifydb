@@ -1,10 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{
-	EncodableKey, FlowNodeId, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId,
+use reifydb_core::{
+	CommitVersion, Row,
+	interface::{EncodableKey, FlowNodeId, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_type::RowNumber;
 
 use crate::{
 	Operator,
@@ -97,5 +99,14 @@ impl Operator for SinkViewOperator {
 
 		// Sink is a terminal node - don't propagate changes further
 		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
+	}
+
+	fn get_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		rows: &[RowNumber],
+		version: CommitVersion,
+	) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }

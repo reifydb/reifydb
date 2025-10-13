@@ -1,7 +1,7 @@
-use reifydb_core::{Row, interface::FlowNodeId};
+use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
 use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Params, Value, return_internal_error};
+use reifydb_type::{Params, RowNumber, Value, return_internal_error};
 
 use crate::{
 	flow::{FlowChange, FlowDiff},
@@ -80,6 +80,15 @@ impl Operator for FilterOperator {
 
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
+
+	fn get_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		rows: &[RowNumber],
+		version: CommitVersion,
+	) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
+	}
 }
 
 impl FilterOperator {
@@ -104,5 +113,9 @@ impl FilterOperator {
 		}
 
 		Ok(true)
+	}
+
+	fn get_rows(&self, rows: &[reifydb_type::RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }

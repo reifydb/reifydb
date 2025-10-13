@@ -27,12 +27,37 @@ fn main() {
 
 	db.start().unwrap();
 
-	// Test EXTEND expressions in scalar contexts
-	println!("=== Testing: EXTEND expressions ===");
+	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
+	db.command_as_root(r#"create table test.source { id: int4, name: utf8, age: int4, city: utf8 }"#, Params::None)
+		.unwrap();
+	db.command_as_root(
+		r#"create deferred view test.projection { id: int4, name: utf8 } as {
+  from test.source
+}"#,
+		Params::None,
+	)
+	.unwrap();
+
+	db.command_as_root(
+		r#"
+from [
+  {id: 1, name: "Alice", age: 30, city: "NYC"},
+  {id: 2, name: "Bob", age: 25, city: "LA"},
+  {id: 3, name: "Charlie", age: 35, city: "Chicago"},
+  {id: 4, name: "Diana", age: 28, city: "Boston"}
+] insert test.source
+
+	"#,
+		Params::None,
+	)
+	.unwrap();
+
+	sleep(Duration::from_millis(10));
+
 	for frame in db
 		.query_as_root(
 			r#"
-FROM $env
+from test.projection
 	"#,
 			Params::None,
 		)

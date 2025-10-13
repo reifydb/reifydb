@@ -8,7 +8,7 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	CowVec, Error, Row,
+	CommitVersion, CowVec, Error, Row,
 	interface::FlowNodeId,
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
@@ -340,5 +340,14 @@ impl Operator for DistinctOperator {
 		self.save_distinct_state(txn, &state)?;
 
 		Ok(FlowChange::internal(self.node, change.version, result))
+	}
+
+	fn get_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		rows: &[RowNumber],
+		version: CommitVersion,
+	) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }

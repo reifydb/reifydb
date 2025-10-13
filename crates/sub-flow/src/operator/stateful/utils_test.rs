@@ -5,7 +5,7 @@
 pub mod test {
 	use reifydb_catalog::MaterializedCatalog;
 	use reifydb_core::{
-		EncodedKey,
+		CommitVersion, EncodedKey, Row,
 		event::EventBus,
 		interceptor::StandardInterceptorFactory,
 		interface::{Engine, FlowNodeId},
@@ -17,7 +17,7 @@ pub mod test {
 	use reifydb_transaction::{
 		cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
 	};
-	use reifydb_type::{Type, Value};
+	use reifydb_type::{RowNumber, Type, Value};
 
 	use crate::{
 		flow::FlowChange,
@@ -90,6 +90,15 @@ pub mod test {
 			evaluator: &StandardRowEvaluator,
 		) -> reifydb_core::Result<FlowChange> {
 			todo!()
+		}
+
+		fn get_rows(
+			&self,
+			txn: &mut StandardCommandTransaction,
+			rows: &[RowNumber],
+			version: CommitVersion,
+		) -> crate::Result<Vec<Option<Row>>> {
+			unimplemented!()
 		}
 	}
 

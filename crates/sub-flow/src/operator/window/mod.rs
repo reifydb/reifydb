@@ -6,7 +6,8 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode,
+	WindowType,
 	interface::FlowNodeId,
 	util::{clock, encoding::keycode::KeySerializer},
 	value::{
@@ -515,6 +516,15 @@ impl Operator for WindowOperator {
 			None => apply_tumbling_window(self, txn, change, evaluator),
 		}
 	}
+
+	fn get_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		rows: &[RowNumber],
+		version: CommitVersion,
+	) -> crate::Result<Vec<Option<Row>>> {
+		todo!()
+	}
 }
 
 /// Additional helper methods for window triggering
@@ -552,5 +562,9 @@ impl WindowOperator {
 			}
 			_ => false,
 		}
+	}
+
+	fn get_rows(&self, rows: &[reifydb_type::RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		unimplemented!()
 	}
 }
