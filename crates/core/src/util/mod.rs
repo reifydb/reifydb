@@ -9,6 +9,7 @@ pub mod cowvec;
 pub mod either;
 pub mod encoding;
 pub mod ioc;
+pub mod lru;
 mod multi;
 pub mod retry;
 pub mod wait_group;
@@ -25,6 +26,7 @@ pub use clock::{
 pub use clock::{now, now_micros, now_millis, now_nanos};
 pub use cowvec::CowVec;
 pub use either::Either;
+pub use lru::LruCache;
 pub use multi::MultiVersionContainer;
 pub use retry::{RetryError, retry};
 pub use wait_group::WaitGroup;
