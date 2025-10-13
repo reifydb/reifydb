@@ -34,6 +34,7 @@ fn main() {
 		r#"create deferred view test.projection { id: int4, name: utf8 } as {
   from test.source
   map {id: id, name: name + " overwritten"}
+  take 1
 }"#,
 		Params::None,
 	)
