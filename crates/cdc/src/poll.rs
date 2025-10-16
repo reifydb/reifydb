@@ -7,7 +7,7 @@ use std::{
 		Arc,
 		atomic::{AtomicBool, Ordering},
 	},
-	thread::{self, JoinHandle, sleep},
+	thread::{self, JoinHandle},
 	time::Duration,
 };
 

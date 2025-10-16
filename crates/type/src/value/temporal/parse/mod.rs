@@ -3,10 +3,10 @@
 
 pub mod date;
 pub mod datetime;
-pub mod interval;
+pub mod duration;
 pub mod time;
 
 pub use date::parse_date;
 pub use datetime::parse_datetime;
-pub use interval::parse_interval;
+pub use duration::parse_duration;
 pub use time::parse_time;

@@ -13,7 +13,7 @@ impl Display for Frame {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_type::{Blob, Date, DateTime, Interval, RowNumber, Time, Uuid4, Uuid7, parse_uuid4, parse_uuid7};
+	use reifydb_type::{Blob, Date, DateTime, Duration, RowNumber, Time, Uuid4, Uuid7, parse_uuid4, parse_uuid7};
 
 	use super::*;
 	use crate::{
@@ -316,12 +316,12 @@ mod tests {
 				)),
 			}
 		}};
-		($name:expr, Interval, $data:expr) => {{
+		($name:expr, Duration, $data:expr) => {{
 			let (values, bitvec): (Vec<_>, Vec<_>) = $data
 				.into_iter()
 				.map(|opt| match opt {
 					Some(v) => (v, true),
-					None => (Interval::from_days(0), false), // dummy value
+					None => (Duration::from_days(0), false), // dummy value
 				})
 				.unzip();
 
@@ -329,7 +329,7 @@ mod tests {
 				namespace: None,
 				source: None,
 				name: $name.to_string(),
-				data: FrameColumnData::Interval(TemporalContainer::new(
+				data: FrameColumnData::Duration(TemporalContainer::new(
 					values,
 					BitVec::from_slice(&bitvec),
 				)),
@@ -721,8 +721,8 @@ mod tests {
 	fn test_interval() {
 		let frame = Frame::new(vec![column_with_undefineds!(
 			"interval",
-			Interval,
-			[Some(Interval::from_days(30)), None]
+			Duration,
+			[Some(Duration::from_days(30)), None]
 		)]);
 		let output = format!("{}", frame);
 

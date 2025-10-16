@@ -8,11 +8,11 @@ import { Type, Value, TypeValuePair } from ".";
 import { UNDEFINED_VALUE } from "../constant";
 
 /**
- * An interval value representing a duration between two points in time.
+ * A duration value representing a time span or elapsed time.
  * Internally stored as months, days, and nanoseconds.
  */
-export class IntervalValue implements Value {
-    readonly type: Type = "Interval" as const;
+export class DurationValue implements Value {
+    readonly type: Type = "Duration" as const;
     private readonly months?: number;  // years*12 + months
     private readonly days?: number;    // separate days (don't normalize due to variable month length)
     private readonly nanos?: bigint;   // all time components as nanoseconds
@@ -21,9 +21,9 @@ export class IntervalValue implements Value {
         if (value !== undefined) {
             if (typeof value === 'string') {
                 // Parse ISO 8601 duration format
-                const parsed = IntervalValue.parseDuration(value);
+                const parsed = DurationValue.parseDuration(value);
                 if (!parsed) {
-                    throw new Error(`Invalid interval string: ${value}`);
+                    throw new Error(`Invalid duration string: ${value}`);
                 }
                 this.months = parsed.months;
                 this.days = parsed.days;
@@ -33,7 +33,7 @@ export class IntervalValue implements Value {
                 this.days = value.days;
                 this.nanos = value.nanos;
             } else {
-                throw new Error(`Interval value must be an object or string, got ${typeof value}`);
+                throw new Error(`Duration value must be an object or string, got ${typeof value}`);
             }
         } else {
             this.months = undefined;
@@ -43,112 +43,112 @@ export class IntervalValue implements Value {
     }
 
     /**
-     * Create a new interval from months, days, and nanoseconds
+     * Create a new duration from months, days, and nanoseconds
      */
-    static new(months: number, days: number, nanos: bigint): IntervalValue {
-        return new IntervalValue({ months, days, nanos });
+    static new(months: number, days: number, nanos: bigint): DurationValue {
+        return new DurationValue({ months, days, nanos });
     }
 
     /**
-     * Create an interval from seconds
+     * Create a duration from seconds
      */
-    static fromSeconds(seconds: number): IntervalValue {
-        return new IntervalValue({ months: 0, days: 0, nanos: BigInt(seconds) * 1_000_000_000n });
+    static fromSeconds(seconds: number): DurationValue {
+        return new DurationValue({ months: 0, days: 0, nanos: BigInt(seconds) * 1_000_000_000n });
     }
 
     /**
-     * Create an interval from milliseconds
+     * Create a duration from milliseconds
      */
-    static fromMilliseconds(milliseconds: number): IntervalValue {
-        return new IntervalValue({ months: 0, days: 0, nanos: BigInt(milliseconds) * 1_000_000n });
+    static fromMilliseconds(milliseconds: number): DurationValue {
+        return new DurationValue({ months: 0, days: 0, nanos: BigInt(milliseconds) * 1_000_000n });
     }
 
     /**
-     * Create an interval from microseconds
+     * Create a duration from microseconds
      */
-    static fromMicroseconds(microseconds: number): IntervalValue {
-        return new IntervalValue({ months: 0, days: 0, nanos: BigInt(microseconds) * 1_000n });
+    static fromMicroseconds(microseconds: number): DurationValue {
+        return new DurationValue({ months: 0, days: 0, nanos: BigInt(microseconds) * 1_000n });
     }
 
     /**
-     * Create an interval from nanoseconds
+     * Create a duration from nanoseconds
      */
-    static fromNanoseconds(nanoseconds: bigint): IntervalValue {
-        return new IntervalValue({ months: 0, days: 0, nanos: nanoseconds });
+    static fromNanoseconds(nanoseconds: bigint): DurationValue {
+        return new DurationValue({ months: 0, days: 0, nanos: nanoseconds });
     }
 
     /**
-     * Create an interval from minutes
+     * Create a duration from minutes
      */
-    static fromMinutes(minutes: number): IntervalValue {
-        return new IntervalValue({ months: 0, days: 0, nanos: BigInt(minutes) * 60n * 1_000_000_000n });
+    static fromMinutes(minutes: number): DurationValue {
+        return new DurationValue({ months: 0, days: 0, nanos: BigInt(minutes) * 60n * 1_000_000_000n });
     }
 
     /**
-     * Create an interval from hours
+     * Create a duration from hours
      */
-    static fromHours(hours: number): IntervalValue {
-        return new IntervalValue({ months: 0, days: 0, nanos: BigInt(hours) * 60n * 60n * 1_000_000_000n });
+    static fromHours(hours: number): DurationValue {
+        return new DurationValue({ months: 0, days: 0, nanos: BigInt(hours) * 60n * 60n * 1_000_000_000n });
     }
 
     /**
-     * Create an interval from days
+     * Create a duration from days
      */
-    static fromDays(days: number): IntervalValue {
-        return new IntervalValue({ months: 0, days, nanos: 0n });
+    static fromDays(days: number): DurationValue {
+        return new DurationValue({ months: 0, days, nanos: 0n });
     }
 
     /**
-     * Create an interval from weeks
+     * Create a duration from weeks
      */
-    static fromWeeks(weeks: number): IntervalValue {
-        return new IntervalValue({ months: 0, days: weeks * 7, nanos: 0n });
+    static fromWeeks(weeks: number): DurationValue {
+        return new DurationValue({ months: 0, days: weeks * 7, nanos: 0n });
     }
 
     /**
-     * Create an interval from months
+     * Create a duration from months
      */
-    static fromMonths(months: number): IntervalValue {
-        return new IntervalValue({ months, days: 0, nanos: 0n });
+    static fromMonths(months: number): DurationValue {
+        return new DurationValue({ months, days: 0, nanos: 0n });
     }
 
     /**
-     * Create an interval from years
+     * Create a duration from years
      */
-    static fromYears(years: number): IntervalValue {
-        return new IntervalValue({ months: years * 12, days: 0, nanos: 0n });
+    static fromYears(years: number): DurationValue {
+        return new DurationValue({ months: years * 12, days: 0, nanos: 0n });
     }
 
     /**
-     * Create a zero interval
+     * Create a zero duration
      */
-    static zero(): IntervalValue {
-        return new IntervalValue({ months: 0, days: 0, nanos: 0n });
+    static zero(): DurationValue {
+        return new DurationValue({ months: 0, days: 0, nanos: 0n });
     }
 
     /**
-     * Get default interval (zero)
+     * Get default duration (zero)
      */
-    static default(): IntervalValue {
-        return IntervalValue.zero();
+    static default(): DurationValue {
+        return DurationValue.zero();
     }
 
     /**
-     * Parse an interval string in ISO 8601 duration format
+     * Parse a duration string in ISO 8601 duration format
      */
-    static parse(str: string): IntervalValue {
+    static parse(str: string): DurationValue {
         const trimmed = str.trim();
         
         if (trimmed === '' || trimmed === UNDEFINED_VALUE) {
-            return new IntervalValue(undefined);
+            return new DurationValue(undefined);
         }
 
-        const parsed = IntervalValue.parseDuration(trimmed);
+        const parsed = DurationValue.parseDuration(trimmed);
         if (!parsed) {
-            throw new Error(`Cannot parse "${str}" as Interval`);
+            throw new Error(`Cannot parse "${str}" as Duration`);
         }
 
-        return new IntervalValue({ months: parsed.months, days: parsed.days, nanos: parsed.nanos });
+        return new DurationValue({ months: parsed.months, days: parsed.days, nanos: parsed.nanos });
     }
 
     /**
@@ -204,7 +204,7 @@ export class IntervalValue implements Value {
     }
 
     /**
-     * Check if interval is positive (any component > 0)
+     * Check if duration is positive (any component > 0)
      */
     isPositive(): boolean {
         if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
@@ -214,7 +214,7 @@ export class IntervalValue implements Value {
     }
 
     /**
-     * Check if interval is negative (any component < 0)
+     * Check if duration is negative (any component < 0)
      */
     isNegative(): boolean {
         if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
@@ -224,13 +224,13 @@ export class IntervalValue implements Value {
     }
 
     /**
-     * Get absolute value of interval
+     * Get absolute value of duration
      */
-    abs(): IntervalValue {
+    abs(): DurationValue {
         if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
-            return new IntervalValue(undefined);
+            return new DurationValue(undefined);
         }
-        return new IntervalValue({
+        return new DurationValue({
             months: Math.abs(this.months),
             days: Math.abs(this.days),
             nanos: this.nanos < 0n ? -this.nanos : this.nanos
@@ -238,13 +238,13 @@ export class IntervalValue implements Value {
     }
 
     /**
-     * Negate the interval
+     * Negate the duration
      */
-    negate(): IntervalValue {
+    negate(): DurationValue {
         if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
-            return new IntervalValue(undefined);
+            return new DurationValue(undefined);
         }
-        return new IntervalValue({
+        return new DurationValue({
             months: -this.months,
             days: -this.days,
             nanos: -this.nanos
@@ -259,7 +259,7 @@ export class IntervalValue implements Value {
             return 'undefined';
         }
 
-        // Handle zero interval
+        // Handle zero duration
         if (this.months === 0 && this.days === 0 && this.nanos === 0n) {
             return 'PT0S';
         }
@@ -402,23 +402,23 @@ export class IntervalValue implements Value {
     }
 
     /**
-     * Compare two intervals for equality
+     * Compare two durations for equality
      */
     equals(other: Value): boolean {
         if (other.type !== this.type) {
             return false;
         }
         
-        const otherInterval = other as IntervalValue;
-        if (this.months === undefined || otherInterval.months === undefined) {
-            return this.months === otherInterval.months && 
-                   this.days === otherInterval.days && 
-                   this.nanos === otherInterval.nanos;
+        const otherDuration = other as DurationValue;
+        if (this.months === undefined || otherDuration.months === undefined) {
+            return this.months === otherDuration.months && 
+                   this.days === otherDuration.days && 
+                   this.nanos === otherDuration.nanos;
         }
         
-        return this.months === otherInterval.months && 
-               this.days === otherInterval.days && 
-               this.nanos === otherInterval.nanos;
+        return this.months === otherDuration.months && 
+               this.days === otherDuration.days && 
+               this.nanos === otherDuration.nanos;
     }
 
     encode(): TypeValuePair {

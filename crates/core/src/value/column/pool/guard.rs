@@ -13,7 +13,7 @@ use std::{
 	rc::{Rc, Weak},
 };
 
-use reifydb_type::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
+use reifydb_type::{Date, DateTime, Duration, Time, Uuid4, Uuid7};
 
 use super::{PoolAllocator, Pools, PoolsInner};
 use crate::value::container::*;
@@ -144,9 +144,9 @@ impl Releasable for TemporalContainer<Time> {
 	}
 }
 
-impl Releasable for TemporalContainer<Interval> {
+impl Releasable for TemporalContainer<Duration> {
 	fn release_to_pool(self, pools: &Pools) {
-		pools.interval_pool().release(self);
+		pools.duration_pool().release(self);
 	}
 }
 
@@ -378,11 +378,11 @@ impl PooledGuard<TemporalContainer<Time>> {
 	}
 }
 
-impl PooledGuard<TemporalContainer<Interval>> {
-	/// Create a new pooled TemporalContainer<Interval> with the specified
+impl PooledGuard<TemporalContainer<Duration>> {
+	/// Create a new pooled TemporalContainer<Duration> with the specified
 	/// capacity
-	pub fn new_interval(pools: Pools, capacity: usize) -> Self {
-		let container = pools.interval_pool().acquire(capacity);
+	pub fn new_duration(pools: Pools, capacity: usize) -> Self {
+		let container = pools.duration_pool().acquire(capacity);
 		Self::new(container, pools)
 	}
 }
@@ -566,14 +566,14 @@ mod tests {
 			let _date_guard = PooledGuard::new_date(pools.clone(), 10);
 			let _datetime_guard = PooledGuard::new_datetime(pools.clone(), 20);
 			let _time_guard = PooledGuard::new_time(pools.clone(), 30);
-			let _interval_guard = PooledGuard::new_interval(pools.clone(), 40);
+			let _duration_guard = PooledGuard::new_duration(pools.clone(), 40);
 		}
 
 		let all_stats = pools.all_stats();
 		assert_eq!(all_stats["date"].available, 1);
 		assert_eq!(all_stats["datetime"].available, 1);
 		assert_eq!(all_stats["time"].available, 1);
-		assert_eq!(all_stats["interval"].available, 1);
+		assert_eq!(all_stats["duration"].available, 1);
 	}
 
 	#[test]

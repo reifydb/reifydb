@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7};
+use reifydb_type::{Date, DateTime, Duration, IdentityId, Time, Type, Uuid4, Uuid7};
 use uuid::Uuid;
 
 use crate::{
@@ -354,9 +354,9 @@ impl EncodedIndexLayout {
 		Time::from_nanos_since_midnight(nanos).unwrap()
 	}
 
-	pub fn get_interval(&self, key: &EncodedIndexKey, index: usize) -> Interval {
+	pub fn get_duration(&self, key: &EncodedIndexKey, index: usize) -> Duration {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Interval);
+		debug_assert_eq!(field.value, Type::Duration);
 
 		let mut months_bytes = [0u8; 4];
 		let mut days_bytes = [0u8; 4];
@@ -393,7 +393,7 @@ impl EncodedIndexLayout {
 		let months = i32::from_be_bytes(months_bytes);
 		let days = i32::from_be_bytes(days_bytes);
 		let nanos = i64::from_be_bytes(nanos_bytes);
-		Interval::new(months, days, nanos)
+		Duration::new(months, days, nanos)
 	}
 
 	pub fn get_uuid4(&self, key: &EncodedIndexKey, index: usize) -> Uuid4 {

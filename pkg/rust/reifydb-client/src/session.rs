@@ -191,7 +191,7 @@ fn parse_value_from_string(s: &str, value_type: &Type) -> Value {
 				Value::Undefined
 			}
 		}
-		Type::Interval => {
+		Type::Duration => {
 			// For now, store as string - proper ISO 8601 duration
 			// parsing would need additional logic
 			Value::Utf8(s.to_string())

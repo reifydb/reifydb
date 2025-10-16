@@ -15,7 +15,7 @@ export {Int2Value} from './int2';
 export {Int4Value} from './int4';
 export {Int8Value} from './int8';
 export {Int16Value} from './int16';
-export {IntervalValue} from './interval';
+export {DurationValue} from './duration';
 export {TimeValue} from './time';
 export {Uint1Value} from './uint1';
 export {Uint2Value} from './uint2';
@@ -36,7 +36,7 @@ export type Type =
     | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
     | "Uint1" | "Uint2" | "Uint4" | "Uint8" | "Uint16"
     | "Utf8"
-    | "Date" | "DateTime" | "Time" | "Interval"
+    | "Date" | "DateTime" | "Time" | "Duration"
     | "Uuid4" | "Uuid7"
     | "Undefined"
     | "RowNumber"

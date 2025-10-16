@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Blob, Date, DateTime, Decimal, IdentityId, Int, Interval, RowNumber, Time, Uint, Uuid4, Uuid7};
+use reifydb_type::{Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, RowNumber, Time, Uint, Uuid4, Uuid7};
 use serde::Serialize;
 
 use super::{
@@ -180,9 +180,9 @@ impl KeySerializer {
 		self.extend_u64(time.to_nanos_since_midnight())
 	}
 
-	/// Extend with Interval value
-	pub fn extend_interval(&mut self, interval: &Interval) -> &mut Self {
-		self.extend_i64(interval.get_nanos())
+	/// Extend with Duration value
+	pub fn extend_duration(&mut self, duration: &Duration) -> &mut Self {
+		self.extend_i64(duration.get_nanos())
 	}
 
 	/// Extend with RowNumber value
@@ -301,8 +301,8 @@ impl KeySerializer {
 			Value::Time(t) => {
 				self.extend_time(t);
 			}
-			Value::Interval(i) => {
-				self.extend_interval(i);
+			Value::Duration(i) => {
+				self.extend_duration(i);
 			}
 			Value::RowNumber(r) => {
 				self.extend_row_number(r);
@@ -835,10 +835,10 @@ mod tests {
 
 	#[test]
 	fn test_interval() {
-		use reifydb_type::Interval;
+		use reifydb_type::Duration;
 		let mut serializer = KeySerializer::new();
-		let interval = Interval::from_nanoseconds(1000000);
-		serializer.extend_interval(&interval);
+		let duration = Duration::from_nanoseconds(1000000);
+		serializer.extend_duration(&duration);
 		let result = serializer.finish();
 		assert_eq!(result.len(), 8); // i64 encoding
 	}

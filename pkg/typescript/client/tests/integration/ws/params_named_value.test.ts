@@ -11,7 +11,7 @@ import {
     BooleanValue, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     Float4Value, Float8Value, Utf8Value, BlobValue, RowNumberValue,
-    DateValue, TimeValue, DateTimeValue, IntervalValue,
+    DateValue, TimeValue, DateTimeValue, DurationValue,
     Uuid4Value, Uuid7Value, UndefinedValue, IdentityIdValue,
     Schema
 } from "@reifydb/core";
@@ -243,14 +243,14 @@ describe('Named Parameters', () => {
             expectSingleValueResult(frames, new DateTimeValue(datetime));
         }, 1000);
 
-        it('Interval', async () => {
+        it('Duration', async () => {
             const frames = await wsClient.command(
                 'MAP $value as result',
-                { value: new IntervalValue("P1DT2H30M") },
-                [Schema.object({result: Schema.intervalValue()})]
+                { value: new DurationValue("P1DT2H30M") },
+                [Schema.object({result: Schema.durationValue()})]
             );
 
-            expectSingleValueResult(frames, new IntervalValue("P1DT2H30M"));
+            expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
         }, 1000);
 
         it('Uuid4', async () => {
@@ -493,14 +493,14 @@ describe('Named Parameters', () => {
             expectSingleValueResult(frames, new DateTimeValue(datetime));
         }, 1000);
 
-        it('Interval', async () => {
+        it('Duration', async () => {
             const frames = await wsClient.query(
                 'MAP $value as result',
-                { value: new IntervalValue("P1DT2H30M") },
-                [Schema.object({result: Schema.intervalValue()})]
+                { value: new DurationValue("P1DT2H30M") },
+                [Schema.object({result: Schema.durationValue()})]
             );
 
-            expectSingleValueResult(frames, new IntervalValue("P1DT2H30M"));
+            expectSingleValueResult(frames, new DurationValue("P1DT2H30M"));
         }, 1000);
 
         it('Uuid4', async () => {

@@ -15,7 +15,7 @@ import {
     Int1Value,
     Int2Value,
     Int4Value, Int8Value,
-    IntervalValue,
+    DurationValue,
     RowNumberValue,
     TimeValue,
     Uint16Value, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
@@ -124,9 +124,9 @@ describe('UNDEFINED_VALUE parsing', () => {
         expect(datetime.value).toBeUndefined();
     });
 
-    it('should parse UNDEFINED_VALUE as undefined for Interval', () => {
-        const interval = IntervalValue.parse(undefinedString);
-        expect(interval.value).toBeUndefined();
+    it('should parse UNDEFINED_VALUE as undefined for Duration', () => {
+        const duration = DurationValue.parse(undefinedString);
+        expect(duration.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Uuid4', () => {

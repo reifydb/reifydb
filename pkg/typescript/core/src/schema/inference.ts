@@ -8,7 +8,7 @@ import {
     BlobValue, BooleanValue, DateValue, DateTimeValue,
     Float4Value, Float8Value,
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
-    IntervalValue, TimeValue,
+    DurationValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
     RowNumberValue, UndefinedValue, Utf8Value,
     Uuid4Value, Uuid7Value, IdentityIdValue,
@@ -38,7 +38,7 @@ export type PrimitiveToTS<T extends Type> =
                                                                 T extends 'Date' ? Date :
                                                                     T extends 'DateTime' ? Date :
                                                                         T extends 'Time' ? string :
-                                                                            T extends 'Interval' ? string :
+                                                                            T extends 'Duration' ? string :
                                                                                 T extends 'Uuid4' ? string :
                                                                                     T extends 'Uuid7' ? string :
                                                                                         T extends 'Undefined' ? undefined :
@@ -65,7 +65,7 @@ export type PrimitiveToValue<T extends Type> =
                                                                 T extends 'Date' ? DateValue :
                                                                     T extends 'DateTime' ? DateTimeValue :
                                                                         T extends 'Time' ? TimeValue :
-                                                                            T extends 'Interval' ? IntervalValue :
+                                                                            T extends 'Duration' ? DurationValue :
                                                                                 T extends 'Uuid4' ? Uuid4Value :
                                                                                     T extends 'Uuid7' ? Uuid7Value :
                                                                                         T extends 'Undefined' ? UndefinedValue :

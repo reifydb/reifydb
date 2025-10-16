@@ -37,7 +37,7 @@ pub(crate) fn convert_data_type(ast: &Fragment) -> Result<Type> {
 		"date" => Type::Date,
 		"datetime" => Type::DateTime,
 		"time" => Type::Time,
-		"interval" => Type::Interval,
+		"duration" => Type::Duration,
 		"uuid4" => Type::Uuid4,
 		"uuid7" => Type::Uuid7,
 		"blob" => Type::Blob,

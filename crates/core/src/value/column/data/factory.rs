@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Blob, Date, DateTime, Decimal, IdentityId, Int, Interval, RowNumber, Time, Uint, Uuid4, Uuid7};
+use reifydb_type::{Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, RowNumber, Time, Uint, Uuid4, Uuid7};
 
 use crate::{
 	BitVec,
@@ -646,12 +646,12 @@ impl ColumnData {
 		ColumnData::Time(TemporalContainer::new(data, bitvec))
 	}
 
-	pub fn interval(data: impl IntoIterator<Item = Interval>) -> Self {
+	pub fn duration(data: impl IntoIterator<Item = Duration>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
-		ColumnData::Interval(TemporalContainer::from_vec(data))
+		ColumnData::Duration(TemporalContainer::from_vec(data))
 	}
 
-	pub fn interval_optional(data: impl IntoIterator<Item = Option<Interval>>) -> Self {
+	pub fn duration_optional(data: impl IntoIterator<Item = Option<Duration>>) -> Self {
 		let mut values = Vec::new();
 		let mut bitvec = Vec::new();
 
@@ -662,24 +662,24 @@ impl ColumnData {
 					bitvec.push(true);
 				}
 				None => {
-					values.push(Interval::default());
+					values.push(Duration::default());
 					bitvec.push(false);
 				}
 			}
 		}
 
-		ColumnData::Interval(TemporalContainer::new(values, BitVec::from(bitvec)))
+		ColumnData::Duration(TemporalContainer::new(values, BitVec::from(bitvec)))
 	}
 
-	pub fn interval_with_capacity(capacity: usize) -> Self {
-		ColumnData::Interval(TemporalContainer::with_capacity(capacity))
+	pub fn duration_with_capacity(capacity: usize) -> Self {
+		ColumnData::Duration(TemporalContainer::with_capacity(capacity))
 	}
 
-	pub fn interval_with_bitvec(data: impl IntoIterator<Item = Interval>, bitvec: impl Into<BitVec>) -> Self {
+	pub fn duration_with_bitvec(data: impl IntoIterator<Item = Duration>, bitvec: impl Into<BitVec>) -> Self {
 		let data = data.into_iter().collect::<Vec<_>>();
 		let bitvec = bitvec.into();
 		assert_eq!(bitvec.len(), data.len());
-		ColumnData::Interval(TemporalContainer::new(data, bitvec))
+		ColumnData::Duration(TemporalContainer::new(data, bitvec))
 	}
 
 	pub fn uuid4(data: impl IntoIterator<Item = Uuid4>) -> Self {

@@ -37,7 +37,7 @@ impl TextParser {
 			Type::Date => TemporalParser::parse_temporal_type(fragment, Type::Date, row_count),
 			Type::DateTime => TemporalParser::parse_temporal_type(fragment, Type::DateTime, row_count),
 			Type::Time => TemporalParser::parse_temporal_type(fragment, Type::Time, row_count),
-			Type::Interval => TemporalParser::parse_temporal_type(fragment, Type::Interval, row_count),
+			Type::Duration => TemporalParser::parse_temporal_type(fragment, Type::Duration, row_count),
 			Type::Uuid4 => UuidParser::from_text(fragment, Type::Uuid4, row_count),
 			Type::Uuid7 => UuidParser::from_text(fragment, Type::Uuid7, row_count),
 			_ => return_error!(cast::unsupported_cast(fragment, Type::Utf8, target)),

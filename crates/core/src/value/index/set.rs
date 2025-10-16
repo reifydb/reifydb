@@ -3,7 +3,7 @@
 
 use std::ptr;
 
-use reifydb_type::{Date, DateTime, IdentityId, Interval, Time, Type, Uuid4, Uuid7};
+use reifydb_type::{Date, DateTime, Duration, IdentityId, Time, Type, Uuid4, Uuid7};
 use uuid::Uuid;
 
 use crate::{
@@ -376,9 +376,9 @@ impl EncodedIndexLayout {
 		}
 	}
 
-	pub fn set_interval(&self, key: &mut EncodedIndexKey, index: usize, value: Interval) {
+	pub fn set_duration(&self, key: &mut EncodedIndexKey, index: usize, value: Duration) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::Interval);
+		debug_assert_eq!(field.value, Type::Duration);
 		key.set_valid(index, true);
 
 		let mut months_bytes = value.get_months().to_be_bytes();

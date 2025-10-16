@@ -54,7 +54,7 @@ impl StandardColumnEvaluator {
 			Value::Date(d) => ColumnData::date(vec![*d; ctx.row_count]),
 			Value::DateTime(dt) => ColumnData::datetime(vec![*dt; ctx.row_count]),
 			Value::Time(t) => ColumnData::time(vec![*t; ctx.row_count]),
-			Value::Interval(i) => ColumnData::interval(vec![*i; ctx.row_count]),
+			Value::Duration(i) => ColumnData::duration(vec![*i; ctx.row_count]),
 			Value::Uuid4(u) => ColumnData::uuid4(vec![*u; ctx.row_count]),
 			Value::Uuid7(u) => ColumnData::uuid7(vec![*u; ctx.row_count]),
 			Value::Blob(b) => ColumnData::blob(vec![b.clone(); ctx.row_count]),

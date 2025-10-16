@@ -28,7 +28,7 @@ fn test_unaligned_access_all_types() {
 		Type::Date,
 		Type::DateTime,
 		Type::Time,
-		Type::Interval,
+		Type::Duration,
 		Type::Uuid4,
 		Type::Uuid7,
 		Type::IdentityId,

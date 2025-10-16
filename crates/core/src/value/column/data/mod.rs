@@ -11,7 +11,7 @@ mod slice;
 mod take;
 
 use reifydb_type::{
-	Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4, Uuid7, Value,
+	Date, DateTime, Decimal, Duration, Int, Time, Type, Uint, Uuid4, Uuid7, Value,
 	value::constraint::{bytes::MaxBytes, precision::Precision, scale::Scale},
 };
 use serde::{Deserialize, Serialize};
@@ -46,7 +46,7 @@ pub enum ColumnData {
 	Date(TemporalContainer<Date>),
 	DateTime(TemporalContainer<DateTime>),
 	Time(TemporalContainer<Time>),
-	Interval(TemporalContainer<Interval>),
+	Duration(TemporalContainer<Duration>),
 	RowNumber(RowNumberContainer),
 	IdentityId(IdentityIdContainer),
 	Uuid4(UuidContainer<Uuid4>),
@@ -96,7 +96,7 @@ impl ColumnData {
 			ColumnData::Date(_) => Type::Date,
 			ColumnData::DateTime(_) => Type::DateTime,
 			ColumnData::Time(_) => Type::Time,
-			ColumnData::Interval(_) => Type::Interval,
+			ColumnData::Duration(_) => Type::Duration,
 			ColumnData::RowNumber(_) => Type::RowNumber,
 			ColumnData::IdentityId(_) => Type::IdentityId,
 			ColumnData::Uuid4(_) => Type::Uuid4,
@@ -140,7 +140,7 @@ impl ColumnData {
 			ColumnData::Date(container) => container.is_defined(idx),
 			ColumnData::DateTime(container) => container.is_defined(idx),
 			ColumnData::Time(container) => container.is_defined(idx),
-			ColumnData::Interval(container) => container.is_defined(idx),
+			ColumnData::Duration(container) => container.is_defined(idx),
 			ColumnData::RowNumber(container) => container.is_defined(idx),
 			ColumnData::IdentityId(container) => container.get(idx).is_some(),
 			ColumnData::Uuid4(container) => container.is_defined(idx),
@@ -195,7 +195,7 @@ impl ColumnData {
 	}
 
 	pub fn is_temporal(&self) -> bool {
-		matches!(self.get_type(), Type::Date | Type::DateTime | Type::Time | Type::Interval)
+		matches!(self.get_type(), Type::Date | Type::DateTime | Type::Time | Type::Duration)
 	}
 
 	pub fn is_uuid(&self) -> bool {
@@ -226,7 +226,7 @@ impl ColumnData {
 			ColumnData::Date(container) => container.bitvec(),
 			ColumnData::DateTime(container) => container.bitvec(),
 			ColumnData::Time(container) => container.bitvec(),
-			ColumnData::Interval(container) => container.bitvec(),
+			ColumnData::Duration(container) => container.bitvec(),
 			ColumnData::RowNumber(container) => container.bitvec(),
 			ColumnData::IdentityId(container) => container.bitvec(),
 			ColumnData::Uuid4(container) => container.bitvec(),
@@ -277,7 +277,7 @@ impl ColumnData {
 			Type::Date => Self::date_with_capacity(capacity),
 			Type::DateTime => Self::datetime_with_capacity(capacity),
 			Type::Time => Self::time_with_capacity(capacity),
-			Type::Interval => Self::interval_with_capacity(capacity),
+			Type::Duration => Self::duration_with_capacity(capacity),
 			Type::RowNumber => Self::row_number_with_capacity(capacity),
 			Type::IdentityId => Self::identity_id_with_capacity(capacity),
 			Type::Uuid4 => Self::uuid4_with_capacity(capacity),
@@ -319,7 +319,7 @@ impl ColumnData {
 			ColumnData::Date(container) => container.len(),
 			ColumnData::DateTime(container) => container.len(),
 			ColumnData::Time(container) => container.len(),
-			ColumnData::Interval(container) => container.len(),
+			ColumnData::Duration(container) => container.len(),
 			ColumnData::RowNumber(container) => container.len(),
 			ColumnData::IdentityId(container) => container.len(),
 			ColumnData::Uuid4(container) => container.len(),
@@ -367,7 +367,7 @@ impl ColumnData {
 			ColumnData::Date(container) => container.capacity(),
 			ColumnData::DateTime(container) => container.capacity(),
 			ColumnData::Time(container) => container.capacity(),
-			ColumnData::Interval(container) => container.capacity(),
+			ColumnData::Duration(container) => container.capacity(),
 			ColumnData::RowNumber(container) => container.capacity(),
 			ColumnData::IdentityId(container) => container.capacity(),
 			ColumnData::Uuid4(container) => container.capacity(),
@@ -415,7 +415,7 @@ impl ColumnData {
 			ColumnData::Date(container) => container.as_string(index),
 			ColumnData::DateTime(container) => container.as_string(index),
 			ColumnData::Time(container) => container.as_string(index),
-			ColumnData::Interval(container) => container.as_string(index),
+			ColumnData::Duration(container) => container.as_string(index),
 			ColumnData::RowNumber(container) => container.as_string(index),
 			ColumnData::IdentityId(container) => container.as_string(index),
 			ColumnData::Uuid4(container) => container.as_string(index),

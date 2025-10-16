@@ -3,7 +3,7 @@
 
 use num_bigint::Sign;
 use reifydb_type::{
-	Blob, Date, DateTime, Decimal, IdentityId, Int, Interval, OrderedF32, RowNumber, Time, Uint, Uuid4, Uuid7,
+	Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, OrderedF32, RowNumber, Time, Uint, Uuid4, Uuid7,
 	diagnostic::serde::serde_keycode_error,
 };
 
@@ -202,9 +202,9 @@ impl<'a> KeyDeserializer<'a> {
 		})
 	}
 
-	pub fn read_interval(&mut self) -> Result<Interval> {
+	pub fn read_duration(&mut self) -> Result<Duration> {
 		let nanos = self.read_i64()?;
-		Ok(Interval::from_nanoseconds(nanos))
+		Ok(Duration::from_nanoseconds(nanos))
 	}
 
 	pub fn read_row_number(&mut self) -> Result<RowNumber> {
@@ -367,8 +367,8 @@ impl<'a> KeyDeserializer<'a> {
 				Ok(Value::Time(t))
 			}
 			0x12 => {
-				let i = self.read_interval()?;
-				Ok(Value::Interval(i))
+				let i = self.read_duration()?;
+				Ok(Value::Duration(i))
 			}
 			0x13 => {
 				let r = self.read_row_number()?;
@@ -538,15 +538,15 @@ mod tests {
 	}
 
 	#[test]
-	fn test_read_interval() {
-		use reifydb_type::Interval;
+	fn test_read_duration() {
+		use reifydb_type::Duration;
 		let mut ser = KeySerializer::new();
-		let interval = Interval::from_nanoseconds(1000000);
-		ser.extend_interval(&interval);
+		let duration = Duration::from_nanoseconds(1000000);
+		ser.extend_duration(&duration);
 		let bytes = ser.finish();
 
 		let mut de = KeyDeserializer::from_bytes(&bytes);
-		assert_eq!(de.read_interval().unwrap(), interval);
+		assert_eq!(de.read_duration().unwrap(), duration);
 		assert!(de.is_empty());
 	}
 

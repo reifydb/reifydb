@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_type::{
-	Blob, Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4, Uuid7, diagnostic::engine, return_error,
+	Blob, Date, DateTime, Decimal, Duration, Int, Time, Type, Uint, Uuid4, Uuid7, diagnostic::engine, return_error,
 };
 
 use crate::{
@@ -150,8 +150,8 @@ impl<'a> Columns<'a> {
 						vec![Time::default(); size],
 						BitVec::repeat(size, false),
 					),
-					Type::Interval => ColumnData::interval_with_bitvec(
-						vec![Interval::default(); size],
+					Type::Duration => ColumnData::duration_with_bitvec(
+						vec![Duration::default(); size],
 						BitVec::repeat(size, false),
 					),
 					Type::Undefined => column.data().clone(),
@@ -274,8 +274,8 @@ impl<'a> Columns<'a> {
 				(ColumnData::Time(container), Type::Time) => {
 					container.push(layout.get_time(&row, index));
 				}
-				(ColumnData::Interval(container), Type::Interval) => {
-					container.push(layout.get_interval(&row, index));
+				(ColumnData::Duration(container), Type::Duration) => {
+					container.push(layout.get_duration(&row, index));
 				}
 				(ColumnData::Uuid4(container), Type::Uuid4) => {
 					container.push(layout.get_uuid4(&row, index));
@@ -416,8 +416,8 @@ impl<'a> Columns<'a> {
 					Some(v) => container.push(v),
 					None => container.push_undefined(),
 				},
-				(ColumnData::Interval(container), Type::Interval) => {
-					match layout.try_get_interval(row, index) {
+				(ColumnData::Duration(container), Type::Duration) => {
+					match layout.try_get_duration(row, index) {
 						Some(v) => container.push(v),
 						None => container.push_undefined(),
 					}

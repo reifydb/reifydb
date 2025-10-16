@@ -35,7 +35,7 @@ impl ColumnData {
 			ColumnData::Date(container) => container.filter(mask),
 			ColumnData::DateTime(container) => container.filter(mask),
 			ColumnData::Time(container) => container.filter(mask),
-			ColumnData::Interval(container) => container.filter(mask),
+			ColumnData::Duration(container) => container.filter(mask),
 			ColumnData::Undefined(container) => container.filter(mask),
 			ColumnData::RowNumber(container) => container.filter(mask),
 			ColumnData::IdentityId(container) => container.filter(mask),

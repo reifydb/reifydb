@@ -158,7 +158,7 @@ mod tests {
 	use std::convert::TryFrom;
 
 	use reifydb_type::{
-		Blob, Date, DateTime, Interval, OrderedF32, OrderedF64, RowNumber, Time, Type, Uuid4, Uuid7, Value,
+		Blob, Date, DateTime, Duration, OrderedF32, OrderedF64, RowNumber, Time, Type, Uuid4, Uuid7, Value,
 		parse_uuid4, parse_uuid7,
 	};
 
@@ -554,7 +554,7 @@ mod tests {
 	fn test_interval() {
 		let frame = Frame::new(
 			vec![],
-			vec![column_with_undefineds!("interval", Interval, [Some(Interval::from_days(30)), None])],
+			vec![column_with_undefineds!("interval", Duration, [Some(Duration::from_days(30)), None])],
 		);
 		let output = format!("{}", frame);
 

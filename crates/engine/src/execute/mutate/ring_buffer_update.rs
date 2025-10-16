@@ -143,7 +143,7 @@ impl Executor {
 							Value::Date(v) => layout.set_date(&mut row, rb_idx, v),
 							Value::DateTime(v) => layout.set_datetime(&mut row, rb_idx, v),
 							Value::Time(v) => layout.set_time(&mut row, rb_idx, v),
-							Value::Interval(v) => layout.set_interval(&mut row, rb_idx, v),
+							Value::Duration(v) => layout.set_duration(&mut row, rb_idx, v),
 							Value::RowNumber(_v) => {}
 							Value::IdentityId(v) => {
 								layout.set_identity_id(&mut row, rb_idx, v)

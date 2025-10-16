@@ -1279,7 +1279,7 @@ fn can_promote_to_string(data: &ColumnData) -> bool {
 			| ColumnData::Uint8(_)
 			| ColumnData::Uint16(_)
 			| ColumnData::Date(_) | ColumnData::DateTime(_)
-			| ColumnData::Time(_) | ColumnData::Interval(_)
+			| ColumnData::Time(_) | ColumnData::Duration(_)
 			| ColumnData::Uuid4(_)
 			| ColumnData::Uuid7(_)
 			| ColumnData::Blob { .. }

@@ -3,7 +3,7 @@
 
 use std::{any::TypeId, fmt::Debug, mem::transmute_copy, ops::Deref};
 
-use reifydb_type::{Date, DateTime, Interval, IsTemporal, Time, Value};
+use reifydb_type::{Date, DateTime, Duration, IsTemporal, Time, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{BitVec, CowVec};
@@ -135,9 +135,9 @@ where
 			} else if TypeId::of::<T>() == TypeId::of::<Time>() {
 				let time_val = unsafe { transmute_copy::<T, Time>(value) };
 				Value::Time(time_val)
-			} else if TypeId::of::<T>() == TypeId::of::<Interval>() {
-				let interval_val = unsafe { transmute_copy::<T, Interval>(value) };
-				Value::Interval(interval_val)
+			} else if TypeId::of::<T>() == TypeId::of::<Duration>() {
+				let duration_val = unsafe { transmute_copy::<T, Duration>(value) };
+				Value::Duration(duration_val)
 			} else {
 				Value::Undefined
 			}
@@ -283,12 +283,12 @@ mod tests {
 
 	#[test]
 	fn test_interval_container() {
-		let intervals = vec![Interval::from_days(30), Interval::from_hours(24)];
-		let container = TemporalContainer::from_vec(intervals.clone());
+		let durations = vec![Duration::from_days(30), Duration::from_hours(24)];
+		let container = TemporalContainer::from_vec(durations.clone());
 
 		assert_eq!(container.len(), 2);
-		assert_eq!(container.get(0), Some(&intervals[0]));
-		assert_eq!(container.get(1), Some(&intervals[1]));
+		assert_eq!(container.get(0), Some(&durations[0]));
+		assert_eq!(container.get(1), Some(&durations[1]));
 	}
 
 	#[test]

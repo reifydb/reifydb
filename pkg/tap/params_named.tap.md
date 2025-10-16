@@ -346,11 +346,11 @@ expected:
 ### interval_param
 ```yaml
 operation: command
-statement: "MAP $interval_val as result"
+statement: "MAP $duration_val as result"
 params:
   type: named
   values:
-    interval_val: "P1DT2H30M"
+    duration_val: "P1DT2H30M"
 expected:
   status: success
   output: |

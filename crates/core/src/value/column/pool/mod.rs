@@ -24,7 +24,7 @@ use std::{collections::HashMap, ops::Deref, rc::Rc};
 pub use config::{PoolConfig, init_default_thread_pools, init_test_pools, init_thread_pools};
 pub use guard::PooledGuard;
 pub use lazy::{ensure_thread_pools, get_or_init_pools, thread_pools_lazy};
-use reifydb_type::{Date, DateTime, Interval, Time, Uuid4, Uuid7};
+use reifydb_type::{Date, DateTime, Duration, Time, Uuid4, Uuid7};
 pub use scoped::{ScopedPools, with_default_pools, with_scoped_pools, with_test_pools};
 pub use thread_local::{get_thread_pools, has_thread_pools, thread_pools};
 
@@ -72,7 +72,7 @@ pub struct PoolsInner {
 	date_pool: StdPoolAllocator<TemporalContainer<Date>>,
 	datetime_pool: StdPoolAllocator<TemporalContainer<DateTime>>,
 	time_pool: StdPoolAllocator<TemporalContainer<Time>>,
-	interval_pool: StdPoolAllocator<TemporalContainer<Interval>>,
+	duration_pool: StdPoolAllocator<TemporalContainer<Duration>>,
 
 	// UUID pools
 	uuid4_pool: StdPoolAllocator<UuidContainer<Uuid4>>,
@@ -110,7 +110,7 @@ impl Pools {
 			date_pool: StdPoolAllocator::new(max_pool_size),
 			datetime_pool: StdPoolAllocator::new(max_pool_size),
 			time_pool: StdPoolAllocator::new(max_pool_size),
-			interval_pool: StdPoolAllocator::new(max_pool_size),
+			duration_pool: StdPoolAllocator::new(max_pool_size),
 
 			uuid4_pool: StdPoolAllocator::new(max_pool_size),
 			uuid7_pool: StdPoolAllocator::new(max_pool_size),
@@ -180,8 +180,8 @@ impl Pools {
 	pub fn time_pool(&self) -> &StdPoolAllocator<TemporalContainer<Time>> {
 		&self.time_pool
 	}
-	pub fn interval_pool(&self) -> &StdPoolAllocator<TemporalContainer<Interval>> {
-		&self.interval_pool
+	pub fn duration_pool(&self) -> &StdPoolAllocator<TemporalContainer<Duration>> {
+		&self.duration_pool
 	}
 
 	pub fn uuid4_pool(&self) -> &StdPoolAllocator<UuidContainer<Uuid4>> {
@@ -215,7 +215,7 @@ impl Pools {
 		self.date_pool.clear();
 		self.datetime_pool.clear();
 		self.time_pool.clear();
-		self.interval_pool.clear();
+		self.duration_pool.clear();
 
 		self.uuid4_pool.clear();
 		self.uuid7_pool.clear();
@@ -247,7 +247,7 @@ impl Pools {
 		stats.insert("date".to_string(), self.date_pool.stats());
 		stats.insert("datetime".to_string(), self.datetime_pool.stats());
 		stats.insert("time".to_string(), self.time_pool.stats());
-		stats.insert("interval".to_string(), self.interval_pool.stats());
+		stats.insert("duration".to_string(), self.duration_pool.stats());
 
 		stats.insert("uuid4".to_string(), self.uuid4_pool.stats());
 		stats.insert("uuid7".to_string(), self.uuid7_pool.stats());

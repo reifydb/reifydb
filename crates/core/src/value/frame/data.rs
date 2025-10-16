@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Date, DateTime, Decimal, Int, Interval, Time, Type, Uint, Uuid4, Uuid7, Value};
+use reifydb_type::{Date, DateTime, Decimal, Duration, Int, Time, Type, Uint, Uuid4, Uuid7, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::value::container::{
@@ -28,7 +28,7 @@ pub enum FrameColumnData {
 	Date(TemporalContainer<Date>),
 	DateTime(TemporalContainer<DateTime>),
 	Time(TemporalContainer<Time>),
-	Interval(TemporalContainer<Interval>),
+	Duration(TemporalContainer<Duration>),
 	RowNumber(RowNumberContainer),
 	IdentityId(IdentityIdContainer),
 	Uuid4(UuidContainer<Uuid4>),
@@ -62,7 +62,7 @@ impl FrameColumnData {
 			FrameColumnData::Date(_) => Type::Date,
 			FrameColumnData::DateTime(_) => Type::DateTime,
 			FrameColumnData::Time(_) => Type::Time,
-			FrameColumnData::Interval(_) => Type::Interval,
+			FrameColumnData::Duration(_) => Type::Duration,
 			FrameColumnData::RowNumber(_) => Type::RowNumber,
 			FrameColumnData::IdentityId(_) => Type::IdentityId,
 			FrameColumnData::Uuid4(_) => Type::Uuid4,
@@ -95,7 +95,7 @@ impl FrameColumnData {
 			FrameColumnData::Date(container) => container.is_defined(idx),
 			FrameColumnData::DateTime(container) => container.is_defined(idx),
 			FrameColumnData::Time(container) => container.is_defined(idx),
-			FrameColumnData::Interval(container) => container.is_defined(idx),
+			FrameColumnData::Duration(container) => container.is_defined(idx),
 			FrameColumnData::RowNumber(container) => container.is_defined(idx),
 			FrameColumnData::IdentityId(container) => container.is_defined(idx),
 			FrameColumnData::Uuid4(container) => container.is_defined(idx),
@@ -137,7 +137,7 @@ impl FrameColumnData {
 	}
 
 	pub fn is_temporal(&self) -> bool {
-		matches!(self.get_type(), Type::Date | Type::DateTime | Type::Time | Type::Interval)
+		matches!(self.get_type(), Type::Date | Type::DateTime | Type::Time | Type::Duration)
 	}
 
 	pub fn is_uuid(&self) -> bool {
@@ -169,7 +169,7 @@ impl FrameColumnData {
 			FrameColumnData::Date(container) => container.len(),
 			FrameColumnData::DateTime(container) => container.len(),
 			FrameColumnData::Time(container) => container.len(),
-			FrameColumnData::Interval(container) => container.len(),
+			FrameColumnData::Duration(container) => container.len(),
 			FrameColumnData::RowNumber(container) => container.len(),
 			FrameColumnData::IdentityId(container) => container.len(),
 			FrameColumnData::Uuid4(container) => container.len(),
@@ -202,7 +202,7 @@ impl FrameColumnData {
 			FrameColumnData::Date(container) => container.as_string(index),
 			FrameColumnData::DateTime(container) => container.as_string(index),
 			FrameColumnData::Time(container) => container.as_string(index),
-			FrameColumnData::Interval(container) => container.as_string(index),
+			FrameColumnData::Duration(container) => container.as_string(index),
 			FrameColumnData::RowNumber(container) => container.as_string(index),
 			FrameColumnData::IdentityId(container) => container.as_string(index),
 			FrameColumnData::Uuid4(container) => container.as_string(index),
@@ -237,7 +237,7 @@ impl FrameColumnData {
 			FrameColumnData::Date(container) => container.get_value(index),
 			FrameColumnData::DateTime(container) => container.get_value(index),
 			FrameColumnData::Time(container) => container.get_value(index),
-			FrameColumnData::Interval(container) => container.get_value(index),
+			FrameColumnData::Duration(container) => container.get_value(index),
 			FrameColumnData::RowNumber(container) => container.get_value(index),
 			FrameColumnData::IdentityId(container) => container.get_value(index),
 			FrameColumnData::Uuid4(container) => container.get_value(index),

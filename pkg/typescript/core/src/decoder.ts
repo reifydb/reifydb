@@ -6,7 +6,7 @@
 
 import {
     BlobValue, BooleanValue, DateValue, DateTimeValue, Float4Value, Float8Value,
-    Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, IntervalValue,
+    Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, DurationValue,
     RowNumberValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value, IdentityIdValue,
     Value, TypeValuePair
@@ -37,8 +37,8 @@ export function decode(pair: TypeValuePair): Value {
             return Int8Value.parse(pair.value);
         case "Int16":
             return Int16Value.parse(pair.value);
-        case "Interval":
-            return IntervalValue.parse(pair.value);
+        case "Duration":
+            return DurationValue.parse(pair.value);
         case "RowNumber":
             return RowNumberValue.parse(pair.value);
         case "Time":

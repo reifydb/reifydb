@@ -149,8 +149,8 @@ impl Executor {
 								layout.set_datetime(&mut row, table_idx, v)
 							}
 							Value::Time(v) => layout.set_time(&mut row, table_idx, v),
-							Value::Interval(v) => {
-								layout.set_interval(&mut row, table_idx, v)
+							Value::Duration(v) => {
+								layout.set_duration(&mut row, table_idx, v)
 							}
 							Value::RowNumber(_v) => {}
 							Value::IdentityId(v) => {

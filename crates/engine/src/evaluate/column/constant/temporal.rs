@@ -3,7 +3,7 @@
 
 use reifydb_core::value::column::ColumnData;
 use reifydb_type::{
-	IntoFragment, Type, diagnostic::temporal, parse_date, parse_datetime, parse_interval, parse_time, return_error,
+	IntoFragment, Type, diagnostic::temporal, parse_date, parse_datetime, parse_duration, parse_time, return_error,
 };
 
 pub struct TemporalParser;
@@ -27,12 +27,12 @@ impl TemporalParser {
 
 		// Route based on character patterns
 		if value.starts_with('P') || value.starts_with('p') {
-			// Interval format (ISO 8601 duration)
-			let interval = match parse_interval(&fragment) {
-				Ok(interval) => interval,
+			// Duration format (ISO 8601 duration)
+			let duration = match parse_duration(&fragment) {
+				Ok(duration) => duration,
 				Err(e) => return_error!(e.diagnostic()),
 			};
-			Ok(ColumnData::interval(vec![interval; row_count]))
+			Ok(ColumnData::duration(vec![duration; row_count]))
 		} else if value.contains(':') && value.contains('-') {
 			// DateTime format (contains both : and -)
 			let datetime = match parse_datetime(&fragment) {
@@ -91,12 +91,12 @@ impl TemporalParser {
 				};
 				Ok(ColumnData::time(vec![time; row_count]))
 			}
-			Type::Interval => {
-				let interval = match parse_interval(&fragment) {
-					Ok(interval) => interval,
-					Err(e) => return_error!(cast::invalid_temporal(fragment, Type::Interval, e.0)),
+			Type::Duration => {
+				let duration = match parse_duration(&fragment) {
+					Ok(duration) => duration,
+					Err(e) => return_error!(cast::invalid_temporal(fragment, Type::Duration, e.0)),
 				};
-				Ok(ColumnData::interval(vec![interval; row_count]))
+				Ok(ColumnData::duration(vec![duration; row_count]))
 			}
 			_ => return_error!(cast::unsupported_cast(fragment, Type::DateTime, target)),
 		}

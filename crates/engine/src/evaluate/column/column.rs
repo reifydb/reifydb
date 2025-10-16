@@ -6,7 +6,7 @@ use std::cmp::min;
 use reifydb_core::value::column::{Column, ColumnData};
 use reifydb_rql::expression::ColumnExpression;
 use reifydb_type::{
-	Date, DateTime, Decimal, Interval, RowNumber, Time, Type, Uint, Value,
+	Date, DateTime, Decimal, Duration, RowNumber, Time, Type, Uint, Value,
 	value::{Blob, IdentityId, Uuid4, Uuid7},
 };
 
@@ -429,7 +429,7 @@ impl StandardColumnEvaluator {
 				Ok(col.with_new_data(ColumnData::time_with_bitvec(data, bitvec)))
 			}
 
-			Type::Interval => {
+			Type::Duration => {
 				let mut data = Vec::new();
 				let mut bitvec = Vec::new();
 				let mut count = 0;
@@ -438,18 +438,18 @@ impl StandardColumnEvaluator {
 						break;
 					}
 					match v {
-						Value::Interval(i) => {
+						Value::Duration(i) => {
 							data.push(i.clone());
 							bitvec.push(true);
 						}
 						_ => {
-							data.push(Interval::default());
+							data.push(Duration::default());
 							bitvec.push(false);
 						}
 					}
 					count += 1;
 				}
-				Ok(col.with_new_data(ColumnData::interval_with_bitvec(data, bitvec)))
+				Ok(col.with_new_data(ColumnData::duration_with_bitvec(data, bitvec)))
 			}
 			Type::RowNumber => {
 				let mut data = Vec::new();

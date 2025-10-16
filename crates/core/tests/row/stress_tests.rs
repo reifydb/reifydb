@@ -30,7 +30,7 @@ fn test_mixed_type_stress() {
 		Type::Date,
 		Type::DateTime,
 		Type::Time,
-		Type::Interval,
+		Type::Duration,
 		Type::Uuid4,
 		Type::Uuid7,
 		Type::IdentityId,
@@ -60,7 +60,7 @@ fn test_mixed_type_stress() {
 	layout.set_date(&mut row, 15, Date::from_ymd(2024, 12, 25).unwrap());
 	layout.set_datetime(&mut row, 16, DateTime::from_timestamp(0).unwrap());
 	layout.set_time(&mut row, 17, Time::from_hms(23, 59, 59).unwrap());
-	layout.set_interval(&mut row, 18, Interval::from_days(365));
+	layout.set_duration(&mut row, 18, Duration::from_days(365));
 	layout.set_uuid4(&mut row, 19, Uuid4::generate());
 	layout.set_uuid7(&mut row, 20, Uuid7::generate());
 	layout.set_identity_id(&mut row, 21, IdentityId::generate());
@@ -87,7 +87,7 @@ fn test_mixed_type_stress() {
 	assert_eq!(layout.get_date(&row, 15), Date::from_ymd(2024, 12, 25).unwrap());
 	assert_eq!(layout.get_datetime(&row, 16), DateTime::from_timestamp(0).unwrap());
 	assert_eq!(layout.get_time(&row, 17), Time::from_hms(23, 59, 59).unwrap());
-	assert_eq!(layout.get_interval(&row, 18), Interval::from_days(365));
+	assert_eq!(layout.get_duration(&row, 18), Duration::from_days(365));
 	// UUIDs are generated, so just check they exist
 	assert!(row.is_defined(19));
 	assert!(row.is_defined(20));

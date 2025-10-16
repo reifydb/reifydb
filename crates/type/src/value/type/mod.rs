@@ -52,8 +52,8 @@ pub enum Type {
 	DateTime,
 	/// A time value (hour, minute, second, nanosecond)
 	Time,
-	/// An interval representing a duration
-	Interval,
+	/// A duration representing a duration
+	Duration,
 	/// A encoded identifier (8-byte unsigned integer)
 	RowNumber,
 	/// An identity identifier (UUID v7)
@@ -114,7 +114,7 @@ impl Type {
 	}
 
 	pub fn is_temporal(&self) -> bool {
-		matches!(self, Type::Date | Type::DateTime | Type::Time | Type::Interval)
+		matches!(self, Type::Date | Type::DateTime | Type::Time | Type::Duration)
 	}
 
 	pub fn is_uuid(&self) -> bool {
@@ -146,7 +146,7 @@ impl Type {
 			Type::Date => 0x0F,
 			Type::DateTime => 0x10,
 			Type::Time => 0x11,
-			Type::Interval => 0x12,
+			Type::Duration => 0x12,
 			Type::RowNumber => 0x13,
 			Type::IdentityId => 0x17,
 			Type::Uuid4 => 0x14,
@@ -184,7 +184,7 @@ impl Type {
 			0x0F => Type::Date,
 			0x10 => Type::DateTime,
 			0x11 => Type::Time,
-			0x12 => Type::Interval,
+			0x12 => Type::Duration,
 			0x13 => Type::RowNumber,
 			0x14 => Type::Uuid4,
 			0x15 => Type::Uuid7,
@@ -219,7 +219,7 @@ impl Type {
 			Type::Date => 4,
 			Type::DateTime => 12, // seconds: i64 + nanos: u32
 			Type::Time => 8,
-			Type::Interval => 16, // months: i32 + days: i32 +
+			Type::Duration => 16, // months: i32 + days: i32 +
 			// nanos: i64
 			Type::RowNumber => 8,
 			Type::IdentityId => 16, // UUID v7 is 16 bytes
@@ -258,7 +258,7 @@ impl Type {
 			Type::Date => 4,
 			Type::DateTime => 8,
 			Type::Time => 8,
-			Type::Interval => 8,
+			Type::Duration => 8,
 			Type::RowNumber => 8,
 			Type::IdentityId => 8, // Same alignment as UUID
 			Type::Uuid4 => 8,
@@ -298,7 +298,7 @@ impl Display for Type {
 			Type::Date => f.write_str("Date"),
 			Type::DateTime => f.write_str("DateTime"),
 			Type::Time => f.write_str("Time"),
-			Type::Interval => f.write_str("Interval"),
+			Type::Duration => f.write_str("Duration"),
 			Type::RowNumber => f.write_str("RowNumber"),
 			Type::IdentityId => f.write_str("IdentityId"),
 			Type::Uuid4 => f.write_str("Uuid4"),
@@ -334,7 +334,7 @@ impl From<&Value> for Type {
 			Value::Date(_) => Type::Date,
 			Value::DateTime(_) => Type::DateTime,
 			Value::Time(_) => Type::Time,
-			Value::Interval(_) => Type::Interval,
+			Value::Duration(_) => Type::Duration,
 			Value::RowNumber(_) => Type::RowNumber,
 			Value::IdentityId(_) => Type::IdentityId,
 			Value::Uuid4(_) => Type::Uuid4,
@@ -370,7 +370,7 @@ impl FromStr for Type {
 			"DATE" => Ok(Type::Date),
 			"DATETIME" => Ok(Type::DateTime),
 			"TIME" => Ok(Type::Time),
-			"INTERVAL" => Ok(Type::Interval),
+			"DURATION" | "INTERVAL" => Ok(Type::Duration),
 			"ROWNUMBER" | "ROWID" => Ok(Type::RowNumber),
 			"IDENTITYID" | "IDENTITY_ID" => Ok(Type::IdentityId),
 			"UUID4" => Ok(Type::Uuid4),

@@ -294,14 +294,14 @@ describe('useQuery with Value Objects and Schemas', () => {
                 expect(result.current.result!.rows[0].time.type).toBe('Time');
             });
 
-            it('should handle Interval value objects', async () => {
+            it('should handle Duration value objects', async () => {
                 const schema = Schema.object({
-                    duration: Schema.intervalValue()
+                    duration: Schema.durationValue()
                 });
 
                 const { result } = renderHook(() =>
                     useQueryOne(
-                        `MAP {duration: cast('PT1H30M', interval)}`,
+                        `MAP {duration: cast('PT1H30M', duration)}`,
                         undefined,
                         schema
                     )
@@ -311,7 +311,7 @@ describe('useQuery with Value Objects and Schemas', () => {
                     expect(result.current.isExecuting).toBe(false);
                 });
 
-                expect(result.current.result!.rows[0].duration.type).toBe('Interval');
+                expect(result.current.result!.rows[0].duration.type).toBe('Duration');
             });
         });
 

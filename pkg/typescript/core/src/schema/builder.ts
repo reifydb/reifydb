@@ -107,8 +107,12 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'Time'};
     }
 
-    static interval(): PrimitiveSchemaNode<'Interval'> {
-        return {kind: 'primitive', type: 'Interval'};
+    static duration(): PrimitiveSchemaNode<'Duration'> {
+        return {kind: 'primitive', type: 'Duration'};
+    }
+
+    static duration(): PrimitiveSchemaNode<'Duration'> {
+        return {kind: 'primitive', type: 'Duration'};
     }
 
     static uuid4(): PrimitiveSchemaNode<'Uuid4'> {
@@ -219,8 +223,8 @@ export class SchemaBuilder {
         return {kind: 'value', type: 'Time'};
     }
 
-    static intervalValue(): ValueSchemaNode<'Interval'> {
-        return {kind: 'value', type: 'Interval'};
+    static durationValue(): ValueSchemaNode<'Duration'> {
+        return {kind: 'value', type: 'Duration'};
     }
 
     static uuid4Value(): ValueSchemaNode<'Uuid4'> {

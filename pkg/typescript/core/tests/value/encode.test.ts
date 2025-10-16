@@ -7,7 +7,7 @@
 import {describe, expect, it} from 'vitest';
 import {
     BlobValue, BooleanValue, DateValue, DateTimeValue, Float4Value, Float8Value,
-    Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, IntervalValue,
+    Int1Value, Int2Value, Int4Value, Int8Value, Int16Value, DurationValue,
     RowNumberValue, TimeValue, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     Uint16Value, UndefinedValue, Utf8Value, Uuid4Value, Uuid7Value, decode
 } from '../../src';
@@ -179,38 +179,38 @@ describe('Value encode method', () => {
         });
     });
 
-    describe('IntervalValue', () => {
-        it('should encode 1 hour interval and be parseable', () => {
-            const value = IntervalValue.fromHours(1);
+    describe('DurationValue', () => {
+        it('should encode 1 hour duration and be parseable', () => {
+            const value = DurationValue.fromHours(1);
             const encoded = value.encode();
 
-            expect(encoded.type).toBe('Interval');
+            expect(encoded.type).toBe('Duration');
             expect(encoded.value).toBe('PT1H');
 
             const decoded = decode(encoded);
-            expect((decoded as IntervalValue).toString()).toBe('PT1H');
+            expect((decoded as DurationValue).toString()).toBe('PT1H');
         });
 
-        it('should encode 5 days interval and be parseable', () => {
-            const value = IntervalValue.fromDays(5);
+        it('should encode 5 days duration and be parseable', () => {
+            const value = DurationValue.fromDays(5);
             const encoded = value.encode();
 
-            expect(encoded.type).toBe('Interval');
+            expect(encoded.type).toBe('Duration');
             expect(encoded.value).toBe('P5D');
 
             const decoded = decode(encoded);
-            expect((decoded as IntervalValue).toString()).toBe('P5D');
+            expect((decoded as DurationValue).toString()).toBe('P5D');
         });
 
-        it('should encode zero interval and be parseable', () => {
-            const value = IntervalValue.zero();
+        it('should encode zero duration and be parseable', () => {
+            const value = DurationValue.zero();
             const encoded = value.encode();
 
-            expect(encoded.type).toBe('Interval');
+            expect(encoded.type).toBe('Duration');
             expect(encoded.value).toBe('PT0S');
 
             const decoded = decode(encoded);
-            expect((decoded as IntervalValue).toString()).toBe('PT0S');
+            expect((decoded as DurationValue).toString()).toBe('PT0S');
         });
     });
 
@@ -349,8 +349,8 @@ describe('Value encode method', () => {
             expect(decoded.valueOf()).toBeUndefined();
         });
 
-        it('should encode undefined IntervalValue', () => {
-            const value = new IntervalValue(undefined);
+        it('should encode undefined DurationValue', () => {
+            const value = new DurationValue(undefined);
             const encoded = value.encode();
             expect(encoded.value).toBe(UNDEFINED_VALUE);
             const decoded = decode(encoded);

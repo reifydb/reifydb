@@ -3,7 +3,7 @@
 
 use std::fmt::Debug;
 
-use reifydb_type::{Blob, Date, DateTime, Interval, Time};
+use reifydb_type::{Blob, Date, DateTime, Duration, Time};
 
 use crate::value::column::ColumnData;
 
@@ -88,7 +88,7 @@ impl_push!(f64, Float8, float8);
 impl_push!(Date, Date, date);
 impl_push!(DateTime, DateTime, datetime);
 impl_push!(Time, Time, time);
-impl_push!(Interval, Interval, interval);
+impl_push!(Duration, Duration, duration);
 
 impl Push<Blob> for ColumnData {
 	fn push(&mut self, value: Blob) {

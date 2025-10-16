@@ -241,15 +241,15 @@ describe('Named Parameters', () => {
             expectSingleDateResult(frames, datetime);
         }, 1000);
 
-        it('Interval', async () => {
-            const interval = "P1DT2H30M";
+        it('Duration', async () => {
+            const duration = "P1DT2H30M";
             const frames = await wsClient.command(
                 'MAP $value as result',
-                { value: interval },
-                [Schema.object({result: Schema.interval()})]
+                { value: duration },
+                [Schema.object({result: Schema.duration()})]
             );
 
-            expectSingleResult(frames, interval, 'string');
+            expectSingleResult(frames, duration, 'string');
         }, 1000);
 
         it('Uuid4', async () => {
@@ -483,15 +483,15 @@ describe('Named Parameters', () => {
             expectSingleDateResult(frames, datetime);
         }, 1000);
 
-        it('Interval', async () => {
-            const interval = "P1DT2H30M";
+        it('Duration', async () => {
+            const duration = "P1DT2H30M";
             const frames = await wsClient.query(
                 'MAP $value as result',
-                { value: interval },
-                [Schema.object({result: Schema.interval()})]
+                { value: duration },
+                [Schema.object({result: Schema.duration()})]
             );
 
-            expectSingleResult(frames, interval, 'string');
+            expectSingleResult(frames, duration, 'string');
         }, 1000);
 
         it('Uuid4', async () => {

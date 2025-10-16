@@ -31,7 +31,7 @@ pub fn to_text<'a>(data: &ColumnData, lazy_fragment: impl LazyFragment<'a>) -> c
 		ColumnData::Date(container) => from_temporal(container),
 		ColumnData::DateTime(container) => from_temporal(container),
 		ColumnData::Time(container) => from_temporal(container),
-		ColumnData::Interval(container) => from_temporal(container),
+		ColumnData::Duration(container) => from_temporal(container),
 		ColumnData::Uuid4(container) => from_uuid(container),
 		ColumnData::Uuid7(container) => from_uuid(container),
 		_ => {
