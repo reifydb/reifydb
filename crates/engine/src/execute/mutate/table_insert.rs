@@ -31,7 +31,7 @@ impl Executor {
 		&self,
 		txn: &mut StandardCommandTransaction,
 		plan: InsertTableNode<'a>,
-		params: Params,
+		stack: &mut Stack,
 	) -> crate::Result<Columns<'a>> {
 		let namespace_name = plan.target.namespace().name();
 
@@ -58,8 +58,8 @@ impl Executor {
 			executor: self.clone(),
 			source: resolved_source,
 			batch_size: 1024,
-			params: params.clone(),
-			stack: Stack::new(),
+			params: Params::None,
+			stack: stack.clone(),
 		});
 
 		let mut std_txn = StandardTransaction::from(txn);

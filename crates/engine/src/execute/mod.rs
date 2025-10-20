@@ -435,7 +435,7 @@ impl Executor {
 			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ring_buffer(txn, plan)?)),
 			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params)?)),
 			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ring_buffer(txn, plan, params)?)),
-			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, params)?)),
+			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack)?)),
 			PhysicalPlan::InsertRingBuffer(plan) => Ok(Some(self.insert_ring_buffer(txn, plan, params)?)),
 			PhysicalPlan::Update(plan) => Ok(Some(self.update_table(txn, plan, params)?)),
 			PhysicalPlan::UpdateRingBuffer(plan) => Ok(Some(self.update_ring_buffer(txn, plan, params)?)),
