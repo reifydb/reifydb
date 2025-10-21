@@ -7,6 +7,7 @@ use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, Result};
 
 use super::{build_range_query, execute_batched_range_query, source_name_for_range};
 use crate::backend::{
+	diagnostic::database_error,
 	multi::BackendMultiVersionRange,
 	result::MultiVersionIterResult,
 	sqlite::{SqliteBackend, read::Reader},
@@ -71,10 +72,9 @@ impl MultiVersionRangeIter {
 			use crate::backend::diagnostic::database_error;
 			reifydb_type::Error(database_error(format!("Failed to acquire reader lock: {}", e)))
 		})?;
-		let mut stmt = conn_guard.prepare(&query).map_err(|e| {
-			use crate::backend::diagnostic::database_error;
-			reifydb_type::Error(database_error(format!("Failed to prepare query: {}", e)))
-		})?;
+		let mut stmt = conn_guard
+			.prepare(&query)
+			.map_err(|e| reifydb_type::Error(database_error(format!("Failed to prepare query: {}", e))))?;
 
 		let count = execute_batched_range_query(
 			&mut stmt,

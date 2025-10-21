@@ -88,96 +88,100 @@ pub(crate) fn build_range_query(
 ) -> (&'static str, u8) {
 	match (start_bound, end_bound) {
 		(Bound::Unbounded, Bound::Unbounded) => match order {
-			"ASC" => ("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key ASC LIMIT ?", 1),
-			"DESC" => {
-				("SELECT key, value, version FROM {} WHERE version <= ? ORDER BY key DESC LIMIT ?", 1)
-			}
+			"ASC" => (
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
+				1,
+			),
+			"DESC" => (
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
+				1,
+			),
 			_ => unreachable!(),
 		},
 		(Bound::Included(_), Bound::Unbounded) => match order {
 			"ASC" => (
-				"SELECT key, value, version FROM {} WHERE key >= ? AND version <= ? ORDER BY key ASC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
 				2,
 			),
 			"DESC" => (
-				"SELECT key, value, version FROM {} WHERE key >= ? AND version <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
 				2,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Excluded(_), Bound::Unbounded) => match order {
 			"ASC" => (
-				"SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key ASC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
 				2,
 			),
 			"DESC" => (
-				"SELECT key, value, version FROM {} WHERE key > ? AND version <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
 				2,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Unbounded, Bound::Included(_)) => match order {
 			"ASC" => (
-				"SELECT key, value, version FROM {} WHERE key <= ? AND version <= ? ORDER BY key ASC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
 				2,
 			),
 			"DESC" => (
-				"SELECT key, value, version FROM {} WHERE key <= ? AND version <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
 				2,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Unbounded, Bound::Excluded(_)) => match order {
 			"ASC" => (
-				"SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key ASC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
 				2,
 			),
 			"DESC" => (
-				"SELECT key, value, version FROM {} WHERE key < ? AND version <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
 				2,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Included(_), Bound::Included(_)) => match order {
 			"ASC" => (
-				"SELECT key, value, version FROM {} WHERE key >= ? AND key <= ? AND version <= ? ORDER BY key ASC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
 				3,
 			),
 			"DESC" => (
-				"SELECT key, value, version FROM {} WHERE key >= ? AND key <= ? AND version <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
 				3,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Included(_), Bound::Excluded(_)) => match order {
 			"ASC" => (
-				"SELECT key, value, version FROM {} WHERE key >= ? AND key < ? AND version <= ? ORDER BY key ASC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
 				3,
 			),
 			"DESC" => (
-				"SELECT key, value, version FROM {} WHERE key >= ? AND key < ? AND version <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
 				3,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Excluded(_), Bound::Included(_)) => match order {
 			"ASC" => (
-				"SELECT key, value, version FROM {} WHERE key > ? AND key <= ? AND version <= ? ORDER BY key ASC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
 				3,
 			),
 			"DESC" => (
-				"SELECT key, value, version FROM {} WHERE key > ? AND key <= ? AND version <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
 				3,
 			),
 			_ => unreachable!(),
 		},
 		(Bound::Excluded(_), Bound::Excluded(_)) => match order {
 			"ASC" => (
-				"SELECT key, value, version FROM {} WHERE key > ? AND key < ? AND version <= ? ORDER BY key ASC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
 				3,
 			),
 			"DESC" => (
-				"SELECT key, value, version FROM {} WHERE key > ? AND key < ? AND version <= ? ORDER BY key DESC LIMIT ?",
+				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
 				3,
 			),
 			_ => unreachable!(),
@@ -219,8 +223,8 @@ pub(crate) fn execute_batched_range_query(
 
 			for result in rows {
 				match result {
-					Ok(iter_value) => {
-						buffer.push_back(iter_value);
+					Ok(v) => {
+						buffer.push_back(v);
 						count += 1;
 					}
 					Err(_) => break,
@@ -254,8 +258,8 @@ pub(crate) fn execute_batched_range_query(
 
 			for result in rows {
 				match result {
-					Ok(iter_value) => {
-						buffer.push_back(iter_value);
+					Ok(v) => {
+						buffer.push_back(v);
 						count += 1;
 					}
 					Err(_) => break,
@@ -292,8 +296,8 @@ pub(crate) fn execute_batched_range_query(
 
 			for result in rows {
 				match result {
-					Ok(iter_value) => {
-						buffer.push_back(iter_value);
+					Ok(v) => {
+						buffer.push_back(v);
 						count += 1;
 					}
 					Err(_) => break,
@@ -309,9 +313,7 @@ pub(crate) fn execute_batched_range_query(
 pub(crate) fn get_source_names(conn: &ReadConnection) -> Vec<String> {
 	let conn_guard = conn.lock().unwrap();
 	let mut stmt = conn_guard
-		.prepare(
-			"SELECT name FROM sqlite_master WHERE type='source' AND (name='multi' OR name LIKE 'source_%')",
-		)
+		.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='multi' OR name LIKE 'source_%')")
 		.unwrap();
 
 	stmt.query_map([], |values| Ok(values.get::<_, String>(0)?)).unwrap().map(Result::unwrap).collect()
@@ -415,7 +417,7 @@ pub(crate) fn execute_scan_query(
 
 		for result in rows {
 			match result {
-				Ok(iter_value) => all_rows.push(iter_value),
+				Ok(v) => all_rows.push(v),
 				Err(_) => break,
 			}
 		}

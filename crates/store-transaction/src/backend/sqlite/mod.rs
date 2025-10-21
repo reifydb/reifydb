@@ -413,7 +413,7 @@ mod tests {
 			// Check that both sources exist
 			let mut stmt = conn_guard
 				.prepare(
-					"SELECT name FROM sqlite_master WHERE type='source' AND name IN ('multi', 'single')",
+					"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('multi', 'single')",
 				)
 				.unwrap();
 			let source_names: Vec<String> =

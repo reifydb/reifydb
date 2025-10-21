@@ -111,10 +111,6 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'Duration'};
     }
 
-    static duration(): PrimitiveSchemaNode<'Duration'> {
-        return {kind: 'primitive', type: 'Duration'};
-    }
-
     static uuid4(): PrimitiveSchemaNode<'Uuid4'> {
         return {kind: 'primitive', type: 'Uuid4'};
     }
