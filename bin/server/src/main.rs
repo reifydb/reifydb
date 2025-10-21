@@ -23,7 +23,11 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 
 fn main() {
 	let mut db = server::memory_optimistic()
-		.with_config(ServerConfig::default())
+		.with_config(ServerConfig {
+			bind_addr: "0.0.0.0:8090".to_string(),
+			network: Default::default(),
+			protocols: Default::default(),
+		})
 		.with_admin(AdminConfig::default().with_port(9092))
 		.with_logging(logger_configuration)
 		.build()

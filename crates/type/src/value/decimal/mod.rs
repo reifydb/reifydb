@@ -9,7 +9,7 @@ use std::{
 };
 
 use bigdecimal::{BigDecimal as BigDecimalInner, FromPrimitive};
-use num_traits::Zero;
+use num_traits::{One, Zero};
 use serde::{Deserialize, Serialize};
 
 use super::{int::Int, uint::Uint};
@@ -28,6 +28,10 @@ pub struct Decimal(pub BigDecimalInner);
 impl Decimal {
 	pub fn zero() -> Self {
 		Self(BigDecimalInner::zero())
+	}
+
+	pub fn one() -> Self {
+		Self(BigDecimalInner::one())
 	}
 }
 

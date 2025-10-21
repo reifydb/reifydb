@@ -23,6 +23,10 @@ export class SchemaBuilder {
         return {kind: 'primitive', type: 'Boolean'};
     }
 
+    static decimal(): PrimitiveSchemaNode<'Decimal'> {
+        return {kind: 'primitive', type: 'Decimal'};
+    }
+
     static float4(): PrimitiveSchemaNode<'Float4'> {
         return {kind: 'primitive', type: 'Float4'};
     }
@@ -153,6 +157,10 @@ export class SchemaBuilder {
 
     static booleanValue(): ValueSchemaNode<'Boolean'> {
         return {kind: 'value', type: 'Boolean'};
+    }
+
+    static decimalValue(): ValueSchemaNode<'Decimal'> {
+        return {kind: 'value', type: 'Decimal'};
     }
 
     static int1Value(): ValueSchemaNode<'Int1'> {

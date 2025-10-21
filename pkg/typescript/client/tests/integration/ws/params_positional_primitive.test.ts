@@ -177,6 +177,17 @@ describe('Positional Parameters', () => {
             expectSingleResult(frames, 3.141592653589793, 'number');
         }, 1000);
 
+        it('Decimal', async () => {
+            const decimal = "123.456789";
+            const frames = await wsClient.command(
+                'MAP $1 as result',
+                [decimal],
+                [Schema.object({result: Schema.decimal()})]
+            );
+
+            expectSingleResult(frames, decimal, 'string');
+        }, 1000);
+
         it('Utf8', async () => {
             const frames = await wsClient.command(
                 'MAP $1 as result',
@@ -417,6 +428,17 @@ describe('Positional Parameters', () => {
             );
 
             expectSingleResult(frames, 3.141592653589793, 'number');
+        }, 1000);
+
+        it('Decimal', async () => {
+            const decimal = "123.456789";
+            const frames = await wsClient.query(
+                'MAP $1 as result',
+                [decimal],
+                [Schema.object({result: Schema.decimal()})]
+            );
+
+            expectSingleResult(frames, decimal, 'string');
         }, 1000);
 
         it('Utf8', async () => {

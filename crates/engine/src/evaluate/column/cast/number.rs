@@ -33,6 +33,9 @@ pub fn to_number<'a>(
 	if data.is_utf8() {
 		return match target {
 			Type::Float4 | Type::Float8 => text_to_float(data, target, lazy_fragment),
+			Type::Decimal {
+				..
+			} => text_to_decimal(data, target, lazy_fragment),
 			_ => text_to_integer(data, target, lazy_fragment),
 		};
 	}
@@ -468,6 +471,39 @@ fn text_to_float<'a>(
 						));
 					}
 				}
+			} else {
+				out.push_undefined();
+			}
+		}
+		Ok(out)
+	} else {
+		let source_type = column_data.get_type();
+		return_error!(cast::unsupported_cast(lazy_fragment.fragment(), source_type, target))
+	}
+}
+
+fn text_to_decimal<'a>(
+	column_data: &ColumnData,
+	target: Type,
+	lazy_fragment: impl LazyFragment<'a>,
+) -> crate::Result<ColumnData> {
+	if let ColumnData::Utf8 {
+		container,
+		..
+	} = column_data
+	{
+		let base_fragment = lazy_fragment.fragment().into_owned();
+		let mut out = ColumnData::with_capacity(target, container.len());
+		for idx in 0..container.len() {
+			if container.is_defined(idx) {
+				let val = &container[idx];
+				let temp_fragment = BorrowedFragment::new_internal(val);
+
+				let result = parse_decimal(temp_fragment.clone()).map_err(|mut e| {
+					e.0.with_fragment(base_fragment.clone());
+					error!(cast::invalid_number(base_fragment.clone(), target, e.diagnostic(),))
+				})?;
+				out.push::<Decimal>(result);
 			} else {
 				out.push_undefined();
 			}

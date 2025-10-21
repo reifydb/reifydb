@@ -254,6 +254,24 @@ expected:
     +--------------------+
 ```
 
+### decimal_param
+```yaml
+operation: command
+statement: "MAP $1 as result"
+params:
+  type: positional
+  values:
+    - "123.456789"
+expected:
+  status: success
+  output: |
+    +-------------+
+    |   result    |
+    +-------------+
+    | 123.456789  |
+    +-------------+
+```
+
 ### utf8_param
 ```yaml
 operation: command

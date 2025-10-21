@@ -10,7 +10,7 @@ import {waitForDatabase} from "../setup";
 import {
     BooleanValue, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
-    Float4Value, Float8Value, Utf8Value, BlobValue, RowNumberValue,
+    Float4Value, Float8Value, DecimalValue, Utf8Value, BlobValue, RowNumberValue,
     DateValue, TimeValue, DateTimeValue, DurationValue,
     Uuid4Value, Uuid7Value, UndefinedValue, IdentityIdValue,
     Schema
@@ -177,6 +177,16 @@ describe('Positional Parameters', () => {
             );
 
             expectSingleValueResult(frames, new Float8Value(3.141592653589793));
+        }, 1000);
+
+        it('Decimal', async () => {
+            const frames = await wsClient.command(
+                'MAP $1 as result',
+                [new DecimalValue("123.456789")],
+                [Schema.object({result: Schema.decimalValue()})]
+            );
+
+            expectSingleValueResult(frames, new DecimalValue("123.456789"));
         }, 1000);
 
         it('Utf8', async () => {
@@ -426,6 +436,16 @@ describe('Positional Parameters', () => {
             );
 
             expectSingleValueResult(frames, new Float8Value(3.141592653589793));
+        }, 1000);
+
+        it('Decimal', async () => {
+            const frames = await wsClient.query(
+                'MAP $1 as result',
+                [new DecimalValue("123.456789")],
+                [Schema.object({result: Schema.decimalValue()})]
+            );
+
+            expectSingleValueResult(frames, new DecimalValue("123.456789"));
         }, 1000);
 
         it('Utf8', async () => {

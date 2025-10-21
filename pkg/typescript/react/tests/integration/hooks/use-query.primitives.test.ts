@@ -133,6 +133,24 @@ describe('useQuery with TypeScript Primitive Types', () => {
                 expect(result.current.result!.rows[0].value).toBeCloseTo(3.141592653589793);
             });
 
+            it('should handle decimal numbers', async () => {
+                const schema = Schema.object({ amount: Schema.decimal() });
+                const { result } = renderHook(() => 
+                    useQueryOne(
+                        `MAP {amount: cast('123.456789', decimal)}`,
+                        undefined,
+                        schema
+                    )
+                );
+
+                await waitFor(() => {
+                    expect(result.current.isExecuting).toBe(false);
+                });
+
+                expect(result.current.result!.rows[0].amount).toBe('123.456789');
+                expect(typeof result.current.result!.rows[0].amount).toBe('string');
+            });
+
             it('should handle integer type', async () => {
                 const schema = Schema.object({ count: Schema.int() });
                 const { result } = renderHook(() => 

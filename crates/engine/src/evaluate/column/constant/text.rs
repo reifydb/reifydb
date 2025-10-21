@@ -3,8 +3,8 @@
 
 use reifydb_core::value::column::ColumnData;
 use reifydb_type::{
-	IntoFragment, Type, diagnostic::cast, parse_bool, parse_float, parse_primitive_int, parse_primitive_uint,
-	return_error,
+	Int, IntoFragment, Type, Uint, diagnostic::cast, parse_bool, parse_decimal, parse_float, parse_primitive_int,
+	parse_primitive_uint, return_error,
 };
 use temporal::TemporalParser;
 
@@ -34,6 +34,11 @@ impl TextParser {
 			Type::Uint4 => Self::parse_uint4(fragment, row_count),
 			Type::Uint8 => Self::parse_uint8(fragment, row_count),
 			Type::Uint16 => Self::parse_uint16(fragment, row_count),
+			Type::Int => Self::parse_int(fragment, row_count),
+			Type::Uint => Self::parse_uint(fragment, row_count),
+			Type::Decimal {
+				..
+			} => Self::parse_decimal(fragment, target, row_count),
 			Type::Date => TemporalParser::parse_temporal_type(fragment, Type::Date, row_count),
 			Type::DateTime => TemporalParser::parse_temporal_type(fragment, Type::DateTime, row_count),
 			Type::Time => TemporalParser::parse_temporal_type(fragment, Type::Time, row_count),
@@ -180,5 +185,33 @@ impl TextParser {
 			};
 			row_count
 		]))
+	}
+
+	fn parse_int<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
+		let fragment = fragment.into_fragment();
+		match parse_primitive_int::<Int>(&fragment) {
+			Ok(v) => Ok(ColumnData::int(vec![v; row_count])),
+			Err(e) => return_error!(cast::invalid_number(fragment, Type::Int, e.diagnostic())),
+		}
+	}
+
+	fn parse_uint<'a>(fragment: impl IntoFragment<'a>, row_count: usize) -> crate::Result<ColumnData> {
+		let fragment = fragment.into_fragment();
+		match parse_primitive_uint::<Uint>(&fragment) {
+			Ok(v) => Ok(ColumnData::uint(vec![v; row_count])),
+			Err(e) => return_error!(cast::invalid_number(fragment, Type::Uint, e.diagnostic())),
+		}
+	}
+
+	fn parse_decimal<'a>(
+		fragment: impl IntoFragment<'a>,
+		target: Type,
+		row_count: usize,
+	) -> crate::Result<ColumnData> {
+		let fragment = fragment.into_fragment();
+		match parse_decimal(&fragment) {
+			Ok(v) => Ok(ColumnData::decimal(vec![v; row_count])),
+			Err(e) => return_error!(cast::invalid_number(fragment, target, e.diagnostic())),
+		}
 	}
 }

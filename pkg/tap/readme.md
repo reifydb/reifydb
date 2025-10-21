@@ -128,6 +128,7 @@ expected:
 | uint16 | bigint | u128 | UINT16 | Requires BigInt in TypeScript |
 | float4 | number | f32 | FLOAT4 | Single precision |
 | float8 | number | f64 | FLOAT8 | Double precision |
+| decimal | string | String | DECIMAL | Arbitrary-precision decimal |
 | utf8 | string | String | UTF8 | Unicode text |
 | blob | Uint8Array | Vec<u8> | BLOB | Binary data |
 | date | Date | Date | DATE | Date only |

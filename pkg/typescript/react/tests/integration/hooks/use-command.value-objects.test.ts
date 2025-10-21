@@ -188,6 +188,29 @@ describe('useCommand with Value Objects and Schemas', () => {
 
                 expect(result.current.result!.rows[0].value.type).toBe('Float8');
             });
+
+            it('should handle Decimal value objects', async () => {
+                const schema = Schema.object({
+                    amount: Schema.decimalValue()
+                });
+
+                const {result} = renderHook(() =>
+                    useCommandOne(
+                        `MAP {amount: cast('123.456789', decimal)}`,
+                        undefined,
+                        schema
+                    )
+                );
+
+                await waitFor(() => {
+                    expect(result.current.isExecuting).toBe(false);
+                });
+
+                expect(result.current.error).toBeUndefined();
+                expect(result.current.result!.rows[0].amount).toBeDefined();
+                expect(result.current.result!.rows[0].amount.type).toBe('Decimal');
+                expect(result.current.result!.rows[0].amount.value).toBe('123.456789');
+            });
         });
 
         describe('String and Binary Types', () => {

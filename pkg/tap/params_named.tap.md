@@ -253,6 +253,24 @@ expected:
     +--------------------+
 ```
 
+### decimal_param
+```yaml
+operation: command
+statement: "MAP $decimal_val as result"
+params:
+  type: named
+  values:
+    decimal_val: "123.456789"
+expected:
+  status: success
+  output: |
+    +-------------+
+    |   result    |
+    +-------------+
+    | 123.456789  |
+    +-------------+
+```
+
 ### utf8_param
 ```yaml
 operation: command

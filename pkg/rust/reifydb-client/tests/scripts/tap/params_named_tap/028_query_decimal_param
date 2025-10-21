@@ -1,0 +1,11 @@
+# Generated from: params_named.tap.md#decimal_param
+# Test: Named parameter with decimal type (query operation)
+
+query_named 'MAP $decimal_val as result' 'decimal_val=123.456789'
+---
+> +--------------+
+> |    result    |
+> +--------------+
+> |  123.456789  |
+> +--------------+
+> 

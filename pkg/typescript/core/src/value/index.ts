@@ -8,6 +8,7 @@ export {BlobValue} from './blob';
 export {BooleanValue} from './boolean';
 export {DateValue} from './date';
 export {DateTimeValue} from './datetime';
+export {DecimalValue} from './decimal';
 export {Float4Value} from './float4';
 export {Float8Value} from './float8';
 export {Int1Value} from './int1';
@@ -32,6 +33,7 @@ export {IdentityIdValue} from './identityid';
 export type Type =
     | "Blob"
     | "Boolean"
+    | "Decimal"
     | "Float4" | "Float8"
     | "Int1" | "Int2" | "Int4" | "Int8" | "Int16"
     | "Uint1" | "Uint2" | "Uint4" | "Uint8" | "Uint16"

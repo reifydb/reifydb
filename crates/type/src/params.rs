@@ -10,7 +10,7 @@ use serde::{
 
 use crate::{
 	Blob, BorrowedFragment, OrderedF32, OrderedF64, RowNumber, Type, Value, parse_bool, parse_date, parse_datetime,
-	parse_duration, parse_float, parse_time, parse_uuid4, parse_uuid7,
+	parse_decimal, parse_duration, parse_float, parse_time, parse_uuid4, parse_uuid7,
 	value::{
 		IdentityId,
 		number::{parse_primitive_int, parse_primitive_uint},
@@ -135,7 +135,8 @@ fn parse_typed_value(type_str: &str, value_val: &serde_json::Value) -> Result<Va
 			.unwrap_or(Value::Undefined),
 		Type::Blob => Blob::from_hex(fragment).map(Value::Blob).unwrap_or(Value::Undefined),
 		Type::Undefined => Value::Undefined,
-		Type::Int | Type::Uint | Type::Decimal => {
+		Type::Decimal => parse_decimal(fragment).map(Value::Decimal).unwrap_or(Value::Undefined),
+		Type::Int | Type::Uint => {
 			unimplemented!()
 		}
 		Type::Any => unreachable!("Any type cannot be used as parameter"),
