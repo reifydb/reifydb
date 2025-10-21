@@ -4,7 +4,7 @@
 use reifydb_core::{CommitVersion, EncodedKey, Result};
 use rusqlite::params;
 
-use super::table_name;
+use super::source_name;
 use crate::backend::{multi::BackendMultiVersionContains, sqlite::SqliteBackend};
 
 impl BackendMultiVersionContains for SqliteBackend {
@@ -12,8 +12,8 @@ impl BackendMultiVersionContains for SqliteBackend {
 		let reader = self.get_reader();
 		let guard = reader.lock().unwrap();
 
-		let table = table_name(key)?;
-		let query = format!("SELECT EXISTS(SELECT 1 FROM {} WHERE key = ? AND version <= ?)", table);
+		let source = source_name(key)?;
+		let query = format!("SELECT EXISTS(SELECT 1 FROM {} WHERE key = ? AND version <= ?)", source);
 
 		Ok(guard.query_row(&query, params![key.to_vec(), version.0], |row| row.get(0)).unwrap())
 	}

@@ -5,7 +5,7 @@ use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, Result};
 
-use super::{build_range_query, execute_batched_range_query, table_name_for_range};
+use super::{build_range_query, execute_batched_range_query, source_name_for_range};
 use crate::backend::{
 	multi::BackendMultiVersionRangeRev,
 	result::MultiVersionIterResult,
@@ -24,7 +24,7 @@ pub struct MultiVersionRangeRevIter {
 	reader: Reader,
 	range: EncodedKeyRange,
 	version: CommitVersion,
-	table: String,
+	source: String,
 	buffer: VecDeque<MultiVersionIterResult>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
@@ -33,13 +33,13 @@ pub struct MultiVersionRangeRevIter {
 
 impl MultiVersionRangeRevIter {
 	pub fn new(reader: Reader, range: EncodedKeyRange, version: CommitVersion, batch_size: usize) -> Self {
-		let table = table_name_for_range(&range).to_string();
+		let source = source_name_for_range(&range).to_string();
 
 		Self {
 			reader,
 			range,
 			version,
-			table,
+			source,
 			buffer: VecDeque::new(),
 			last_key: None,
 			batch_size,
@@ -68,7 +68,7 @@ impl MultiVersionRangeRevIter {
 		// for reverse
 		let (query_template, param_count) = build_range_query(start_bound, end_bound, "DESC");
 
-		let query = query_template.replace("{}", &self.table);
+		let query = query_template.replace("{}", &self.source);
 		let conn_guard = self.reader.lock().unwrap();
 		let mut stmt = conn_guard.prepare(&query).unwrap();
 

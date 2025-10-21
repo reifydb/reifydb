@@ -19,7 +19,7 @@ pub use range::MultiVersionRangeIter;
 pub use range_rev::MultiVersionRangeRevIter;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-	interface::{EncodableKeyRange, Key, MultiVersionValues, RowKey, RowKeyRange, TableId},
+	interface::{EncodableKeyRange, Key, MultiVersionValues, RowKey, RowKeyRange},
 	value::encoded::EncodedValues,
 };
 use rusqlite::{Connection, Statement, params};
@@ -28,11 +28,10 @@ pub use scan_rev::MultiVersionScanRevIter;
 
 use crate::backend::{result::MultiVersionIterResult, sqlite::read::ReadConnection};
 
-/// Cache for table names to avoid repeated string allocations
-static TABLE_NAME_CACHE: OnceLock<Mutex<HashMap<TableId, String>>> = OnceLock::new();
+/// Cache for source names to avoid repeated string allocations
+static INTERNAL_NAME_CACHE: OnceLock<Mutex<HashMap<u64, String>>> = OnceLock::new();
 
-/// Checks if an EncodedKey represents a RowKey
-pub(crate) fn as_table_row_key(key: &EncodedKey) -> Option<RowKey> {
+pub(crate) fn as_row_key(key: &EncodedKey) -> Option<RowKey> {
 	match Key::decode(key) {
 		None => None,
 		Some(key) => match key {
@@ -42,27 +41,25 @@ pub(crate) fn as_table_row_key(key: &EncodedKey) -> Option<RowKey> {
 	}
 }
 
-/// Returns the appropriate table name for a given key, with caching
-pub(crate) fn table_name(key: &EncodedKey) -> crate::Result<&'static str> {
-	if let Some(key) = as_table_row_key(key) {
-		let cache = TABLE_NAME_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+/// Returns the appropriate source name for a given key, with caching
+pub(crate) fn source_name(key: &EncodedKey) -> crate::Result<&'static str> {
+	if let Some(key) = as_row_key(key) {
+		let source_id = key.source.as_u64();
+		let cache = INTERNAL_NAME_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
 		let mut cache_guard = cache.lock().unwrap();
 
-		let table_id = key.source.to_table_id()?;
-
-		let table_name = cache_guard.entry(table_id).or_insert_with(|| format!("table_{}", table_id));
+		let source_name = cache_guard.entry(source_id).or_insert_with(|| format!("source_{}", source_id));
 
 		// SAFETY: We're returning a reference to a string that's stored
 		// in the static cache The cache is never cleared, so the
 		// reference remains valid for the lifetime of the program
-		unsafe { Ok(std::mem::transmute(table_name.as_str())) }
+		unsafe { Ok(std::mem::transmute(source_name.as_str())) }
 	} else {
 		Ok("multi")
 	}
 }
 
-/// Ensures a table exists for the given TableId
-pub(crate) fn ensure_table_exists(conn: &Connection, table: &str) {
+pub(crate) fn ensure_source_exists(conn: &Connection, source: &str) {
 	let create_sql = format!(
 		"CREATE TABLE IF NOT EXISTS {} (
             key     BLOB NOT NULL,
@@ -70,16 +67,15 @@ pub(crate) fn ensure_table_exists(conn: &Connection, table: &str) {
             value   BLOB,
             PRIMARY KEY (key, version)
         )",
-		table
+		source
 	);
 	conn.execute(&create_sql, []).unwrap();
 }
 
-/// Returns the appropriate table name for a range operation based on range
-/// bounds
-pub(crate) fn table_name_for_range(range: &EncodedKeyRange) -> String {
+pub(crate) fn source_name_for_range(range: &EncodedKeyRange) -> String {
 	if let (Some(start), _) = RowKeyRange::decode(range) {
-		return format!("table_{}", start.source);
+		let internal_id = start.source.as_u64();
+		return format!("source_{}", internal_id);
 	}
 	"multi".to_string()
 }
@@ -309,20 +305,22 @@ pub(crate) fn execute_batched_range_query(
 	count
 }
 
-/// Helper function to get all table names for iteration
-pub(crate) fn get_table_names(conn: &ReadConnection) -> Vec<String> {
+/// Helper function to get all source names for iteration
+pub(crate) fn get_source_names(conn: &ReadConnection) -> Vec<String> {
 	let conn_guard = conn.lock().unwrap();
 	let mut stmt = conn_guard
-		.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='multi' OR name LIKE 'table_%')")
+		.prepare(
+			"SELECT name FROM sqlite_master WHERE type='source' AND (name='multi' OR name LIKE 'source_%')",
+		)
 		.unwrap();
 
 	stmt.query_map([], |values| Ok(values.get::<_, String>(0)?)).unwrap().map(Result::unwrap).collect()
 }
 
-/// Helper function to execute batched iteration queries across multiple tables
+/// Helper function to execute batched iteration queries across multiple sources
 pub(crate) fn execute_scan_query(
 	conn: &ReadConnection,
-	table_names: &[String],
+	source_names: &[String],
 	version: CommitVersion,
 	batch_size: usize,
 	last_key: Option<&EncodedKey>,
@@ -331,8 +329,8 @@ pub(crate) fn execute_scan_query(
 ) -> usize {
 	let mut all_rows = Vec::new();
 
-	// Query each table
-	for table_name in table_names {
+	// Query each source
+	for source_name in source_names {
 		let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
 			(None, "ASC") => (
 				format!(
@@ -344,7 +342,7 @@ pub(crate) fn execute_scan_query(
 					   GROUP BY key
 					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
 					 ORDER BY t1.key ASC LIMIT ?",
-					table_name, table_name
+					source_name, source_name
 				),
 				vec![Box::new(version.0), Box::new(batch_size)],
 			),
@@ -358,7 +356,7 @@ pub(crate) fn execute_scan_query(
 					   GROUP BY key
 					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
 					 ORDER BY t1.key DESC LIMIT ?",
-					table_name, table_name
+					source_name, source_name
 				),
 				vec![Box::new(version.0), Box::new(batch_size)],
 			),
@@ -372,7 +370,7 @@ pub(crate) fn execute_scan_query(
 					   GROUP BY key
 					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
 					 ORDER BY t1.key ASC LIMIT ?",
-					table_name, table_name
+					source_name, source_name
 				),
 				vec![Box::new(key.to_vec()), Box::new(version.0), Box::new(batch_size)],
 			),
@@ -386,7 +384,7 @@ pub(crate) fn execute_scan_query(
 					   GROUP BY key
 					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
 					 ORDER BY t1.key DESC LIMIT ?",
-					table_name, table_name
+					source_name, source_name
 				),
 				vec![Box::new(key.to_vec()), Box::new(version.0), Box::new(batch_size)],
 			),

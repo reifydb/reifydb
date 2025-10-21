@@ -6,7 +6,7 @@ use reifydb_core::{
 };
 use rusqlite::{OptionalExtension, params};
 
-use super::table_name;
+use super::source_name;
 use crate::backend::{multi::BackendMultiVersionGet, result::MultiVersionGetResult, sqlite::SqliteBackend};
 
 impl BackendMultiVersionGet for SqliteBackend {
@@ -14,10 +14,10 @@ impl BackendMultiVersionGet for SqliteBackend {
 		let reader = self.get_reader();
 		let guard = reader.lock().unwrap();
 
-		let table = table_name(key)?;
+		let source = source_name(key)?;
 		let query = format!(
 			"SELECT key, value, version FROM {} WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
-			table
+			source
 		);
 
 		match guard

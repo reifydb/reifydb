@@ -9,7 +9,10 @@ use crate::backend::{result::SingleVersionGetResult, single::BackendSingleVersio
 impl BackendSingleVersionGet for SqliteBackend {
 	fn get(&self, key: &EncodedKey) -> Result<SingleVersionGetResult> {
 		let reader = self.get_reader();
-		let guard = reader.lock().unwrap();
+		let guard = reader.lock().map_err(|e| {
+			use crate::backend::diagnostic::database_error;
+			reifydb_type::Error(database_error(format!("Failed to acquire reader lock: {}", e)))
+		})?;
 		match guard
 			.query_row(
 				"SELECT key, value FROM single WHERE key = ?1  LIMIT 1",
@@ -29,8 +32,10 @@ impl BackendSingleVersionGet for SqliteBackend {
 				},
 			)
 			.optional()
-			.unwrap()
-		{
+			.map_err(|e| {
+				use crate::backend::diagnostic::database_error;
+				reifydb_type::Error(database_error(format!("Database query failed: {}", e)))
+			})? {
 			Some(result) => Ok(result),
 			None => Ok(SingleVersionGetResult::NotFound),
 		}

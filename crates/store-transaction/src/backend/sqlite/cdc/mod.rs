@@ -18,9 +18,9 @@ pub use scan::CdcScanIter;
 pub(crate) fn fetch_pre_value(
 	tx: &Transaction,
 	key: &EncodedKey,
-	table: &str,
+	source: &str,
 ) -> rusqlite::Result<Option<EncodedValues>> {
-	let query = format!("SELECT value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1", table);
+	let query = format!("SELECT value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1", source);
 
 	let mut stmt = tx.prepare_cached(&query)?;
 

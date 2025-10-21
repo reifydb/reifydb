@@ -24,7 +24,7 @@ use crate::{
 		diagnostic::{connection_failed, sequence_exhausted},
 		sqlite::{
 			cdc::{fetch_pre_value, store_cdc_transaction},
-			multi::{ensure_table_exists, table_name},
+			multi::{ensure_source_exists, source_name},
 		},
 	},
 	cdc::generate_cdc_change,
@@ -48,7 +48,7 @@ pub enum WriteCommand {
 pub struct Writer {
 	receiver: mpsc::Receiver<WriteCommand>,
 	conn: Connection,
-	ensured_tables: HashSet<String>,
+	ensured_sources: HashSet<String>,
 	commit_buffer: CommitBuffer,
 	pending_responses: HashMap<CommitVersion, Sender<Result<()>>>,
 }
@@ -64,7 +64,7 @@ impl Writer {
 			let mut actor = Writer {
 				receiver,
 				conn,
-				ensured_tables: HashSet::new(),
+				ensured_sources: HashSet::new(),
 				commit_buffer: CommitBuffer::new(),
 				pending_responses: HashMap::new(),
 			};
@@ -157,7 +157,7 @@ impl Writer {
 	) -> Result<()> {
 		let mut tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
 
-		let cdc_changes = Self::apply_deltas(&mut tx, &deltas, version, &mut self.ensured_tables)?;
+		let cdc_changes = Self::apply_deltas(&mut tx, &deltas, version, &mut self.ensured_sources)?;
 
 		if !cdc_changes.is_empty() {
 			Self::store_cdc_changes(&tx, version, timestamp, transaction, cdc_changes)?;
@@ -172,7 +172,7 @@ impl Writer {
 		tx: &mut Transaction,
 		deltas: &[Delta],
 		version: CommitVersion,
-		ensured_tables: &mut HashSet<String>,
+		ensured_sources: &mut HashSet<String>,
 	) -> Result<Vec<CdcSequencedChange>> {
 		let mut result = Vec::with_capacity(deltas.len());
 
@@ -182,10 +182,10 @@ impl Writer {
 				Err(_) => return_error!(sequence_exhausted()),
 			};
 
-			let table = table_name(delta.key())?;
-			let pre = fetch_pre_value(tx, delta.key(), table).ok().flatten();
+			let source = source_name(delta.key())?;
+			let pre = fetch_pre_value(tx, delta.key(), source).ok().flatten();
 
-			Self::apply_single_delta(tx, delta, version, ensured_tables)?;
+			Self::apply_single_delta(tx, delta, version, ensured_sources)?;
 
 			result.push(CdcSequencedChange {
 				sequence,
@@ -200,16 +200,16 @@ impl Writer {
 		tx: &Transaction,
 		delta: &Delta,
 		version: CommitVersion,
-		ensured_tables: &mut HashSet<String>,
+		ensured_sources: &mut HashSet<String>,
 	) -> Result<()> {
 		match delta {
 			Delta::Set {
 				key,
 				values,
-			} => Self::apply_delta_set(tx, key, values, version, ensured_tables),
+			} => Self::apply_delta_set(tx, key, values, version, ensured_sources),
 			Delta::Remove {
 				key,
-			} => Self::apply_delta_remove(tx, key, version, ensured_tables),
+			} => Self::apply_delta_remove(tx, key, version, ensured_sources),
 		}
 	}
 
@@ -218,13 +218,13 @@ impl Writer {
 		key: &[u8],
 		values: &[u8],
 		version: CommitVersion,
-		ensured_tables: &mut HashSet<String>,
+		ensured_sources: &mut HashSet<String>,
 	) -> Result<()> {
 		let encoded_key = EncodedKey::new(key.to_vec());
-		let table = table_name(&encoded_key)?;
-		Self::ensure_table_if_needed(tx, table, ensured_tables)?;
+		let source = source_name(&encoded_key)?;
+		Self::ensure_source_if_needed(tx, source, ensured_sources)?;
 
-		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", table);
+		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", source);
 
 		tx.execute(&query, rusqlite::params![key.to_vec(), version.0, values.to_vec()])
 			.map_err(|e| Error(from_rusqlite_error(e)))?;
@@ -236,13 +236,13 @@ impl Writer {
 		tx: &Transaction,
 		key: &[u8],
 		version: CommitVersion,
-		ensured_tables: &mut HashSet<String>,
+		ensured_sources: &mut HashSet<String>,
 	) -> Result<()> {
 		let encoded_key = EncodedKey::new(key.to_vec());
-		let table = table_name(&encoded_key)?;
-		Self::ensure_table_if_needed(tx, table, ensured_tables)?;
+		let source = source_name(&encoded_key)?;
+		Self::ensure_source_if_needed(tx, source, ensured_sources)?;
 
-		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, NULL)", table);
+		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, NULL)", source);
 
 		tx.execute(&query, rusqlite::params![key.to_vec(), version.0])
 			.map_err(|e| Error(from_rusqlite_error(e)))?;
@@ -250,10 +250,14 @@ impl Writer {
 		Ok(())
 	}
 
-	fn ensure_table_if_needed(tx: &Transaction, table: &str, ensured_tables: &mut HashSet<String>) -> Result<()> {
-		if table != "multi" && !ensured_tables.contains(table) {
-			ensure_table_exists(tx, table);
-			ensured_tables.insert(table.to_string());
+	fn ensure_source_if_needed(
+		tx: &Transaction,
+		source: &str,
+		ensured_sources: &mut HashSet<String>,
+	) -> Result<()> {
+		if source != "multi" && !ensured_sources.contains(source) {
+			ensure_source_exists(tx, source);
+			ensured_sources.insert(source.to_string());
 		}
 		Ok(())
 	}

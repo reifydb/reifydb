@@ -5,7 +5,7 @@ use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, Result};
 
-use super::{build_range_query, execute_batched_range_query, table_name_for_range};
+use super::{build_range_query, execute_batched_range_query, source_name_for_range};
 use crate::backend::{
 	multi::BackendMultiVersionRange,
 	result::MultiVersionIterResult,
@@ -24,7 +24,7 @@ pub struct MultiVersionRangeIter {
 	reader: Reader,
 	range: EncodedKeyRange,
 	version: CommitVersion,
-	table: String,
+	source: String,
 	buffer: VecDeque<MultiVersionIterResult>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
@@ -33,13 +33,13 @@ pub struct MultiVersionRangeIter {
 
 impl MultiVersionRangeIter {
 	pub fn new(reader: Reader, range: EncodedKeyRange, version: CommitVersion, batch_size: usize) -> Self {
-		let table = table_name_for_range(&range).to_string();
+		let source = source_name_for_range(&range).to_string();
 
 		Self {
 			reader,
 			range,
 			version,
-			table,
+			source,
 			buffer: VecDeque::new(),
 			last_key: None,
 			batch_size,
@@ -47,9 +47,9 @@ impl MultiVersionRangeIter {
 		}
 	}
 
-	fn refill_buffer(&mut self) {
+	fn refill_buffer(&mut self) -> Result<()> {
 		if self.exhausted {
-			return;
+			return Ok(());
 		}
 
 		self.buffer.clear();
@@ -66,9 +66,15 @@ impl MultiVersionRangeIter {
 		// for forward iteration
 		let (query_template, param_count) = build_range_query(start_bound, end_bound, "ASC");
 
-		let query = query_template.replace("{}", &self.table);
-		let conn_guard = self.reader.lock().unwrap();
-		let mut stmt = conn_guard.prepare(&query).unwrap();
+		let query = query_template.replace("{}", &self.source);
+		let conn_guard = self.reader.lock().map_err(|e| {
+			use crate::backend::diagnostic::database_error;
+			reifydb_type::Error(database_error(format!("Failed to acquire reader lock: {}", e)))
+		})?;
+		let mut stmt = conn_guard.prepare(&query).map_err(|e| {
+			use crate::backend::diagnostic::database_error;
+			reifydb_type::Error(database_error(format!("Failed to prepare query: {}", e)))
+		})?;
 
 		let count = execute_batched_range_query(
 			&mut stmt,
@@ -95,6 +101,7 @@ impl MultiVersionRangeIter {
 		if count < self.batch_size {
 			self.exhausted = true;
 		}
+		Ok(())
 	}
 }
 
@@ -103,7 +110,9 @@ impl Iterator for MultiVersionRangeIter {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		if self.buffer.is_empty() {
-			self.refill_buffer();
+			if let Err(_) = self.refill_buffer() {
+				return None;
+			}
 		}
 		self.buffer.pop_front()
 	}

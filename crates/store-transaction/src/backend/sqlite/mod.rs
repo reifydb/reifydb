@@ -66,7 +66,7 @@ impl SqliteBackend {
 		let db_path = Self::resolve_db_path(&config.path);
 		let flags = Self::convert_flags(&config.flags);
 
-		// Create the database and set up tables with a temporary
+		// Create the database and set up sources with a temporary
 		// connection
 		{
 			let conn = Connection::open_with_flags(&db_path, flags)
@@ -403,25 +403,25 @@ mod tests {
 	}
 
 	#[test]
-	fn test_tables_created() {
+	fn test_sources_created() {
 		temp_dir(|db_path| {
-			let config = SqliteConfig::new(db_path.join("tables.reifydb"));
+			let config = SqliteConfig::new(db_path.join("sources.reifydb"));
 			let storage = SqliteBackend::new(config);
 			let conn = storage.get_reader();
 			let conn_guard = conn.lock().unwrap();
 
-			// Check that both tables exist
+			// Check that both sources exist
 			let mut stmt = conn_guard
 				.prepare(
-					"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('multi', 'single')",
+					"SELECT name FROM sqlite_master WHERE type='source' AND name IN ('multi', 'single')",
 				)
 				.unwrap();
-			let table_names: Vec<String> =
+			let source_names: Vec<String> =
 				stmt.query_map([], |values| Ok(values.get(0)?)).unwrap().map(Result::unwrap).collect();
 
-			assert_eq!(table_names.len(), 2);
-			assert!(table_names.contains(&"multi".to_string()));
-			assert!(table_names.contains(&"single".to_string()));
+			assert_eq!(source_names.len(), 2);
+			assert!(source_names.contains(&"multi".to_string()));
+			assert!(source_names.contains(&"single".to_string()));
 			Ok(())
 		})
 		.expect("test failed");

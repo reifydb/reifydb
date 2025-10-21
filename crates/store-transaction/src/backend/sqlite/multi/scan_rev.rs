@@ -5,7 +5,7 @@ use std::collections::VecDeque;
 
 use reifydb_core::{CommitVersion, EncodedKey, Result};
 
-use super::{execute_scan_query, get_table_names};
+use super::{execute_scan_query, get_source_names};
 use crate::backend::{
 	multi::BackendMultiVersionScanRev,
 	result::MultiVersionIterResult,
@@ -23,7 +23,7 @@ impl BackendMultiVersionScanRev for SqliteBackend {
 pub struct MultiVersionScanRevIter {
 	reader: Reader,
 	version: CommitVersion,
-	table_names: Vec<String>,
+	source_names: Vec<String>,
 	buffer: VecDeque<MultiVersionIterResult>,
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
@@ -32,12 +32,12 @@ pub struct MultiVersionScanRevIter {
 
 impl MultiVersionScanRevIter {
 	pub fn new(reader: Reader, version: CommitVersion, batch_size: usize) -> Self {
-		let table_names = get_table_names(&reader);
+		let source_names = get_source_names(&reader);
 
 		Self {
 			reader,
 			version,
-			table_names,
+			source_names,
 			buffer: VecDeque::new(),
 			last_key: None,
 			batch_size,
@@ -54,7 +54,7 @@ impl MultiVersionScanRevIter {
 
 		let count = execute_scan_query(
 			&self.reader,
-			&self.table_names,
+			&self.source_names,
 			self.version,
 			self.batch_size,
 			self.last_key.as_ref(),
