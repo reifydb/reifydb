@@ -7,6 +7,7 @@ use crate::backend::{memory::MemoryBackend, single::BackendSingleVersionContains
 
 impl BackendSingleVersionContains for MemoryBackend {
 	fn contains(&self, key: &EncodedKey) -> Result<bool> {
-		Ok(self.single.get(key).is_some())
+		let single = self.single.read();
+		Ok(single.contains_key(key))
 	}
 }

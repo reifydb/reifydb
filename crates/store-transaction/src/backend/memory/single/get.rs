@@ -7,8 +7,9 @@ use crate::backend::{memory::MemoryBackend, result::SingleVersionGetResult, sing
 
 impl BackendSingleVersionGet for MemoryBackend {
 	fn get(&self, key: &EncodedKey) -> Result<SingleVersionGetResult> {
-		match self.single.get(key) {
-			Some(item) => match item.value() {
+		let single = self.single.read();
+		match single.get(key) {
+			Some(opt_values) => match opt_values {
 				Some(values) => Ok(SingleVersionGetResult::Value(SingleVersionValues {
 					key: key.clone(),
 					values: values.clone(),

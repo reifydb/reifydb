@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::marker::PhantomData;
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, delta::Delta, value::encoded::EncodedValues};
 
 use crate::{
@@ -56,7 +57,7 @@ impl BackendSingleVersionSet for BackendSingle {}
 impl BackendSingleVersionRemove for BackendSingle {}
 
 pub enum BackendSingleScanIter<'a> {
-	Memory(memory::SingleVersionScanIter<'a>),
+	Memory(memory::SingleVersionScanIter, PhantomData<&'a ()>),
 	Sqlite(sqlite::SingleVersionScanIter),
 }
 
@@ -66,7 +67,7 @@ impl<'a> Iterator for BackendSingleScanIter<'a> {
 	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
 		match self {
-			BackendSingleScanIter::Memory(iter) => iter.next(),
+			BackendSingleScanIter::Memory(iter, _) => iter.next(),
 			BackendSingleScanIter::Sqlite(iter) => iter.next(),
 		}
 	}
@@ -78,14 +79,14 @@ impl BackendSingleVersionScan for BackendSingle {
 	#[inline]
 	fn scan(&self) -> reifydb_type::Result<Self::ScanIter<'_>> {
 		match self {
-			BackendSingle::Memory(backend) => backend.scan().map(BackendSingleScanIter::Memory),
+			BackendSingle::Memory(backend) => backend.scan().map(|iter| BackendSingleScanIter::Memory(iter, PhantomData)),
 			BackendSingle::Sqlite(backend) => backend.scan().map(BackendSingleScanIter::Sqlite),
 		}
 	}
 }
 
 pub enum BackendSingleScanIterRev<'a> {
-	Memory(memory::SingleVersionScanRevIter<'a>),
+	Memory(memory::SingleVersionScanRevIter, PhantomData<&'a ()>),
 	Sqlite(sqlite::SingleVersionScanRevIter),
 }
 
@@ -95,7 +96,7 @@ impl<'a> Iterator for BackendSingleScanIterRev<'a> {
 	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
 		match self {
-			BackendSingleScanIterRev::Memory(iter) => iter.next(),
+			BackendSingleScanIterRev::Memory(iter, _) => iter.next(),
 			BackendSingleScanIterRev::Sqlite(iter) => iter.next(),
 		}
 	}
@@ -107,14 +108,14 @@ impl BackendSingleVersionScanRev for BackendSingle {
 	#[inline]
 	fn scan_rev(&self) -> reifydb_type::Result<Self::ScanIterRev<'_>> {
 		match self {
-			BackendSingle::Memory(backend) => backend.scan_rev().map(BackendSingleScanIterRev::Memory),
+			BackendSingle::Memory(backend) => backend.scan_rev().map(|iter| BackendSingleScanIterRev::Memory(iter, PhantomData)),
 			BackendSingle::Sqlite(backend) => backend.scan_rev().map(BackendSingleScanIterRev::Sqlite),
 		}
 	}
 }
 
 pub enum BackendSingleRangeIter<'a> {
-	Memory(memory::SingleVersionRangeIter<'a>),
+	Memory(memory::SingleVersionRangeIter, PhantomData<&'a ()>),
 	Sqlite(sqlite::SingleVersionRangeIter),
 }
 
@@ -124,7 +125,7 @@ impl<'a> Iterator for BackendSingleRangeIter<'a> {
 	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
 		match self {
-			BackendSingleRangeIter::Memory(iter) => iter.next(),
+			BackendSingleRangeIter::Memory(iter, _) => iter.next(),
 			BackendSingleRangeIter::Sqlite(iter) => iter.next(),
 		}
 	}
@@ -136,14 +137,14 @@ impl BackendSingleVersionRange for BackendSingle {
 	#[inline]
 	fn range(&self, range: EncodedKeyRange) -> reifydb_type::Result<Self::Range<'_>> {
 		match self {
-			BackendSingle::Memory(backend) => backend.range(range).map(BackendSingleRangeIter::Memory),
+			BackendSingle::Memory(backend) => backend.range(range).map(|iter| BackendSingleRangeIter::Memory(iter, PhantomData)),
 			BackendSingle::Sqlite(backend) => backend.range(range).map(BackendSingleRangeIter::Sqlite),
 		}
 	}
 }
 
 pub enum BackendSingleRangeIterRev<'a> {
-	Memory(memory::SingleVersionRangeRevIter<'a>),
+	Memory(memory::SingleVersionRangeRevIter, PhantomData<&'a ()>),
 	Sqlite(sqlite::SingleVersionRangeRevIter),
 }
 
@@ -153,7 +154,7 @@ impl<'a> Iterator for BackendSingleRangeIterRev<'a> {
 	#[inline]
 	fn next(&mut self) -> Option<Self::Item> {
 		match self {
-			BackendSingleRangeIterRev::Memory(iter) => iter.next(),
+			BackendSingleRangeIterRev::Memory(iter, _) => iter.next(),
 			BackendSingleRangeIterRev::Sqlite(iter) => iter.next(),
 		}
 	}
@@ -166,7 +167,7 @@ impl BackendSingleVersionRangeRev for BackendSingle {
 	fn range_rev(&self, range: EncodedKeyRange) -> reifydb_type::Result<Self::RangeRev<'_>> {
 		match self {
 			BackendSingle::Memory(backend) => {
-				backend.range_rev(range).map(BackendSingleRangeIterRev::Memory)
+				backend.range_rev(range).map(|iter| BackendSingleRangeIterRev::Memory(iter, PhantomData))
 			}
 			BackendSingle::Sqlite(backend) => {
 				backend.range_rev(range).map(BackendSingleRangeIterRev::Sqlite)

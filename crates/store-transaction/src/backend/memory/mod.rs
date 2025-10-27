@@ -2,21 +2,24 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
+	collections::BTreeMap,
 	ops::Deref,
 	sync::{Arc, mpsc},
 };
 
-use crossbeam_skiplist::SkipMap;
+use parking_lot::RwLock;
 use mpsc::Sender;
 use reifydb_core::{
-	CommitVersion, EncodedKey, interface::Cdc, util::MultiVersionContainer, value::encoded::EncodedValues,
+	CommitVersion, EncodedKey, interface::Cdc, value::encoded::EncodedValues,
 };
 
+mod chain;
 mod cdc;
 mod multi;
 mod single;
 mod write;
 
+pub use chain::VersionChain;
 pub use cdc::{CdcRangeIter, CdcScanIter};
 pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
 pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
@@ -27,15 +30,13 @@ use crate::backend::{
 	single::{BackendSingleVersion, BackendSingleVersionRemove, BackendSingleVersionSet},
 };
 
-pub type MultiVersionTransactionContainer = MultiVersionContainer<EncodedValues>;
-
 #[derive(Clone)]
 pub struct MemoryBackend(Arc<MemoryBackendInner>);
 
 pub struct MemoryBackendInner {
-	multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
-	single: Arc<SkipMap<EncodedKey, Option<EncodedValues>>>,
-	cdc: Arc<SkipMap<CommitVersion, Cdc>>,
+	multi: Arc<RwLock<BTreeMap<EncodedKey, VersionChain>>>,
+	single: Arc<RwLock<BTreeMap<EncodedKey, Option<EncodedValues>>>>,
+	cdc: Arc<RwLock<BTreeMap<CommitVersion, Cdc>>>,
 	writer: Sender<WriteCommand>,
 }
 
@@ -61,9 +62,9 @@ impl Default for MemoryBackend {
 
 impl MemoryBackend {
 	pub fn new() -> Self {
-		let multi = Arc::new(SkipMap::new());
-		let single = Arc::new(SkipMap::new());
-		let cdc = Arc::new(SkipMap::new());
+		let multi = Arc::new(RwLock::new(BTreeMap::new()));
+		let single = Arc::new(RwLock::new(BTreeMap::new()));
+		let cdc = Arc::new(RwLock::new(BTreeMap::new()));
 
 		let writer = Writer::spawn(multi.clone(), single.clone(), cdc.clone())
 			.expect("Failed to spawn memory writer thread");

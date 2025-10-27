@@ -1,13 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use core::iter::Rev;
-
-use crossbeam_skiplist::map::Iter as MapIter;
+use std::collections::BTreeMap;
+use parking_lot::RwLockReadGuard;
 use reifydb_core::{CommitVersion, EncodedKey, Result, interface::MultiVersionValues};
 
 use crate::backend::{
-	memory::{MemoryBackend, MultiVersionTransactionContainer},
+	memory::{MemoryBackend, VersionChain},
 	multi::BackendMultiVersionScanRev,
 	result::MultiVersionIterResult,
 };
@@ -16,38 +15,49 @@ impl BackendMultiVersionScanRev for MemoryBackend {
 	type ScanIterRev<'a> = MultiVersionScanRevIter<'a>;
 
 	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>> {
-		let iter = self.multi.iter();
+		let guard = self.multi.read();
+		// Use full range for reverse iteration
+		let iter = unsafe { std::mem::transmute((*guard).range::<EncodedKey, _>(..)) };
 		Ok(MultiVersionScanRevIter {
-			iter: iter.rev(),
+			_guard: guard,
+			iter,
 			version,
 		})
 	}
 }
 
 pub struct MultiVersionScanRevIter<'a> {
-	pub(crate) iter: Rev<MapIter<'a, EncodedKey, MultiVersionTransactionContainer>>,
+	pub(crate) _guard: RwLockReadGuard<'a, BTreeMap<EncodedKey, VersionChain>>,
+	pub(crate) iter: std::collections::btree_map::Range<'a, EncodedKey, VersionChain>,
 	pub(crate) version: CommitVersion,
 }
+
+// SAFETY: We need to manually implement Send for the iterator
+// The guard ensures the map stays valid for the iterator's lifetime
+unsafe impl<'a> Send for MultiVersionScanRevIter<'a> {}
 
 impl Iterator for MultiVersionScanRevIter<'_> {
 	type Item = MultiVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		loop {
-			let item = self.iter.next()?;
-			if let Some(values) = item.value().get_or_tombstone(self.version) {
-				return Some(match values {
-					Some(v) => MultiVersionIterResult::Value(MultiVersionValues {
-						key: item.key().clone(),
+		// Use next_back for reverse iteration
+		while let Some((key, chain)) = self.iter.next_back() {
+			if let Some(values) = chain.get_at(self.version) {
+				return Some(if let Some(vals) = values {
+					MultiVersionIterResult::Value(MultiVersionValues {
+						key: key.clone(),
+						values: vals,
 						version: self.version,
-						values: v,
-					}),
-					None => MultiVersionIterResult::Tombstone {
-						key: item.key().clone(),
+					})
+				} else {
+					// Tombstone
+					MultiVersionIterResult::Tombstone {
+						key: key.clone(),
 						version: self.version,
-					},
+					}
 				});
 			}
 		}
+		None
 	}
 }

@@ -7,10 +7,7 @@ use crate::backend::{memory::MemoryBackend, multi::BackendMultiVersionContains};
 
 impl BackendMultiVersionContains for MemoryBackend {
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool> {
-		let result = match self.multi.get(key) {
-			None => false,
-			Some(values) => values.value().get(version).is_some(),
-		};
-		Ok(result)
+		let multi = self.multi.read();
+		Ok(multi.get(key).map_or(false, |chain| chain.contains_at(version)))
 	}
 }

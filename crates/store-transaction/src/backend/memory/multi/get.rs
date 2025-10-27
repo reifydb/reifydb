@@ -7,12 +7,9 @@ use crate::backend::{memory::MemoryBackend, multi::BackendMultiVersionGet, resul
 
 impl BackendMultiVersionGet for MemoryBackend {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<MultiVersionGetResult> {
-		let item = match self.multi.get(key) {
-			Some(item) => item,
-			None => return Ok(MultiVersionGetResult::NotFound),
-		};
+		let multi = self.multi.read();
 
-		match item.value().get_or_tombstone(version) {
+		match multi.get(key).and_then(|chain| chain.get_at(version)) {
 			Some(Some(values)) => Ok(MultiVersionGetResult::Value(MultiVersionValues {
 				key: key.clone(),
 				values,

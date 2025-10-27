@@ -1,38 +1,52 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use crossbeam_skiplist::map::Iter as MapIter;
 use reifydb_core::{EncodedKey, Result, interface::SingleVersionValues, value::encoded::EncodedValues};
 
 use crate::backend::{memory::MemoryBackend, result::SingleVersionIterResult, single::BackendSingleVersionScan};
 
 impl BackendSingleVersionScan for MemoryBackend {
-	type ScanIter<'a> = SingleVersionScanIter<'a>;
+	type ScanIter<'a> = SingleVersionScanIter;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
-		let iter = self.single.iter();
+		// Collect all items under read lock
+		let single = self.single.read();
+		let items: Vec<(EncodedKey, Option<EncodedValues>)> = single
+			.iter()
+			.map(|(k, v)| (k.clone(), v.clone()))
+			.collect();
+		drop(single); // Release lock early
+
 		Ok(SingleVersionScanIter {
-			iter,
+			items,
+			index: 0,
 		})
 	}
 }
 
-pub struct SingleVersionScanIter<'a> {
-	pub(crate) iter: MapIter<'a, EncodedKey, Option<EncodedValues>>,
+pub struct SingleVersionScanIter {
+	pub(crate) items: Vec<(EncodedKey, Option<EncodedValues>)>,
+	pub(crate) index: usize,
 }
 
-impl Iterator for SingleVersionScanIter<'_> {
+impl Iterator for SingleVersionScanIter {
 	type Item = SingleVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		let item = self.iter.next()?;
-		Some(match item.value().as_ref() {
+		if self.index >= self.items.len() {
+			return None;
+		}
+
+		let (key, values) = &self.items[self.index];
+		self.index += 1;
+
+		Some(match values {
 			Some(v) => SingleVersionIterResult::Value(SingleVersionValues {
-				key: item.key().clone(),
+				key: key.clone(),
 				values: v.clone(),
 			}),
 			None => SingleVersionIterResult::Tombstone {
-				key: item.key().clone(),
+				key: key.clone(),
 			},
 		})
 	}

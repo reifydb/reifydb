@@ -2,12 +2,12 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	collections::HashMap,
+	collections::{BTreeMap, HashMap},
 	sync::{Arc, mpsc},
 	thread,
 };
 
-use crossbeam_skiplist::SkipMap;
+use parking_lot::RwLock;
 use mpsc::{Receiver, Sender};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, TransactionId,
@@ -18,7 +18,7 @@ use reifydb_core::{
 use reifydb_type::{Result, return_error};
 
 use crate::{
-	backend::{commit::CommitBuffer, diagnostic::sequence_exhausted, memory::MultiVersionTransactionContainer},
+	backend::{commit::CommitBuffer, diagnostic::sequence_exhausted, memory::VersionChain},
 	cdc::generate_cdc_change,
 };
 
@@ -39,9 +39,9 @@ pub enum WriteCommand {
 
 pub struct Writer {
 	receiver: Receiver<WriteCommand>,
-	multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
-	single: Arc<SkipMap<EncodedKey, Option<EncodedValues>>>,
-	cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
+	multi: Arc<RwLock<BTreeMap<EncodedKey, VersionChain>>>,
+	single: Arc<RwLock<BTreeMap<EncodedKey, Option<EncodedValues>>>>,
+	cdcs: Arc<RwLock<BTreeMap<CommitVersion, Cdc>>>,
 	commit_buffer: CommitBuffer,
 	// Track pending responses for buffered commits
 	pending_responses: HashMap<CommitVersion, Sender<Result<()>>>,
@@ -49,9 +49,9 @@ pub struct Writer {
 
 impl Writer {
 	pub fn spawn(
-		multi: Arc<SkipMap<EncodedKey, MultiVersionTransactionContainer>>,
-		single: Arc<SkipMap<EncodedKey, Option<EncodedValues>>>,
-		cdcs: Arc<SkipMap<CommitVersion, Cdc>>,
+		multi: Arc<RwLock<BTreeMap<EncodedKey, VersionChain>>>,
+		single: Arc<RwLock<BTreeMap<EncodedKey, Option<EncodedValues>>>>,
+		cdcs: Arc<RwLock<BTreeMap<CommitVersion, Cdc>>>,
 	) -> Result<Sender<WriteCommand>> {
 		let (sender, receiver) = mpsc::channel();
 
@@ -141,69 +141,71 @@ impl Writer {
 	) -> Result<()> {
 		let mut cdc_changes = Vec::new();
 
-		// Apply deltas and collect CDC changes
-		for (idx, delta) in deltas.into_iter().enumerate() {
-			let sequence = match u16::try_from(idx + 1) {
-				Ok(seq) => seq,
-				Err(_) => return_error!(sequence_exhausted()),
-			};
+		// Take write lock once for the entire batch
+		{
+			let mut multi = self.multi.write();
 
-			let pre = self.multi.get(delta.key()).and_then(|entry| {
-				let values = entry.value();
-				values.get_latest()
-			});
+			// Apply deltas and collect CDC changes
+			for (idx, delta) in deltas.into_iter().enumerate() {
+				let sequence = match u16::try_from(idx + 1) {
+					Ok(seq) => seq,
+					Err(_) => return_error!(sequence_exhausted()),
+				};
 
-			// Apply the delta
-			match &delta {
-				Delta::Set {
-					key,
-					values,
-				} => {
-					let item = self
-						.multi
-						.get_or_insert_with(key.clone(), MultiVersionTransactionContainer::new);
-					let val = item.value();
-					val.insert(version, values.clone());
+				// Get pre-value for CDC
+				let pre = multi.get(delta.key())
+					.and_then(|chain| chain.get_latest_value());
+
+				// Apply the delta
+				match &delta {
+					Delta::Set {
+						key,
+						values,
+					} => {
+						multi.entry(key.clone())
+							.or_insert_with(VersionChain::new)
+							.set(version, Some(values.clone()));
+					}
+					Delta::Remove {
+						key,
+					} => {
+						multi.entry(key.clone())
+							.or_insert_with(VersionChain::new)
+							.set(version, None); // Tombstone
+					}
 				}
-				Delta::Remove {
-					key,
-				} => {
-					let item = self
-						.multi
-						.get_or_insert_with(key.clone(), MultiVersionTransactionContainer::new);
-					let val = item.value();
-					val.remove(version);
-				}
+
+				cdc_changes.push(CdcSequencedChange {
+					sequence,
+					change: generate_cdc_change(delta, pre),
+				});
 			}
-
-			cdc_changes.push(CdcSequencedChange {
-				sequence,
-				change: generate_cdc_change(delta, pre),
-			});
-		}
+		} // Release write lock
 
 		// Insert CDC if there are changes
 		if !cdc_changes.is_empty() {
+			let mut cdcs = self.cdcs.write();
 			let cdc = Cdc::new(version, timestamp, transaction, cdc_changes);
-			self.cdcs.insert(version, cdc);
+			cdcs.insert(version, cdc);
 		}
 
 		Ok(())
 	}
 
 	fn handle_single_commit(&self, deltas: CowVec<Delta>) -> Result<()> {
+		let mut single = self.single.write();
 		for delta in deltas {
 			match delta {
 				Delta::Set {
 					key,
 					values,
 				} => {
-					self.single.insert(key, Some(values));
+					single.insert(key, Some(values));
 				}
 				Delta::Remove {
 					key,
 				} => {
-					self.single.insert(key, None);
+					single.insert(key, None);
 				}
 			}
 		}

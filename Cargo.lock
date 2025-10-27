@@ -540,7 +540,7 @@ dependencies = [
 name = "reifydb-store-transaction"
 version = "0.0.1"
 dependencies = [
- "crossbeam-skiplist",
+ "parking_lot",
  "reifydb-core",
  "reifydb-testing",
  "reifydb-type",
