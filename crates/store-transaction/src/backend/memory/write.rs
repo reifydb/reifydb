@@ -10,7 +10,7 @@ use std::{
 use parking_lot::RwLock;
 use mpsc::{Receiver, Sender};
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, TransactionId,
+	CommitVersion, CowVec, EncodedKey,
 	delta::Delta,
 	interface::{Cdc, CdcSequencedChange},
 	value::encoded::EncodedValues,
@@ -26,7 +26,6 @@ pub enum WriteCommand {
 	MultiVersionCommit {
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
-		transaction: TransactionId,
 		timestamp: u64,
 		respond_to: Sender<Result<()>>,
 	},
@@ -76,7 +75,6 @@ impl Writer {
 				WriteCommand::MultiVersionCommit {
 					deltas,
 					version,
-					transaction,
 					timestamp,
 					respond_to,
 				} => {
@@ -84,7 +82,6 @@ impl Writer {
 					self.buffer_and_apply_commit(
 						deltas,
 						version,
-						transaction,
 						timestamp,
 						respond_to,
 					);
@@ -105,7 +102,6 @@ impl Writer {
 		&mut self,
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
-		transaction: TransactionId,
 		timestamp: u64,
 		respond_to: Sender<Result<()>>,
 	) {
@@ -113,7 +109,7 @@ impl Writer {
 		self.pending_responses.insert(version, respond_to);
 
 		// Add to buffer
-		self.commit_buffer.add_commit(version, deltas, transaction, timestamp);
+		self.commit_buffer.add_commit(version, deltas, timestamp);
 
 		// Process all ready commits
 		let ready_commits = self.commit_buffer.drain_ready();
@@ -121,7 +117,6 @@ impl Writer {
 			let result = self.apply_multi_commit(
 				commit.deltas,
 				commit.version,
-				commit.transaction,
 				commit.timestamp,
 			);
 
@@ -136,12 +131,10 @@ impl Writer {
 		&self,
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
-		transaction: TransactionId,
 		timestamp: u64,
 	) -> Result<()> {
 		let mut cdc_changes = Vec::new();
 
-		// Take write lock once for the entire batch
 		{
 			let mut multi = self.multi.write();
 
@@ -156,36 +149,35 @@ impl Writer {
 				let pre = multi.get(delta.key())
 					.and_then(|chain| chain.get_latest_value());
 
+				cdc_changes.push(CdcSequencedChange {
+					sequence,
+					change: generate_cdc_change(delta.clone(), pre),
+				});
+
 				// Apply the delta
-				match &delta {
+				match delta {
 					Delta::Set {
 						key,
 						values,
 					} => {
-						multi.entry(key.clone())
+						multi.entry(key)
 							.or_insert_with(VersionChain::new)
-							.set(version, Some(values.clone()));
+							.set(version, Some(values));
 					}
 					Delta::Remove {
 						key,
 					} => {
-						multi.entry(key.clone())
+						multi.entry(key)
 							.or_insert_with(VersionChain::new)
-							.set(version, None); // Tombstone
+							.set(version, None);
 					}
 				}
-
-				cdc_changes.push(CdcSequencedChange {
-					sequence,
-					change: generate_cdc_change(delta, pre),
-				});
 			}
-		} // Release write lock
+		}
 
-		// Insert CDC if there are changes
 		if !cdc_changes.is_empty() {
 			let mut cdcs = self.cdcs.write();
-			let cdc = Cdc::new(version, timestamp, transaction, cdc_changes);
+			let cdc = Cdc::new(version, timestamp, cdc_changes);
 			cdcs.insert(version, cdc);
 		}
 

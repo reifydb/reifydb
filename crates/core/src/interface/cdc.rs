@@ -3,7 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::{CommitVersion, EncodedKey, interface::transaction::TransactionId, value::encoded::EncodedValues};
+use crate::{CommitVersion, EncodedKey, value::encoded::EncodedValues};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -49,7 +49,6 @@ pub enum CdcChange {
 pub struct Cdc {
 	pub version: CommitVersion,
 	pub timestamp: u64,
-	pub transaction: TransactionId,
 	pub changes: Vec<CdcSequencedChange>,
 }
 
@@ -57,13 +56,11 @@ impl Cdc {
 	pub fn new(
 		version: CommitVersion,
 		timestamp: u64,
-		transaction: TransactionId,
 		changes: Vec<CdcSequencedChange>,
 	) -> Self {
 		Self {
 			version,
 			timestamp,
-			transaction,
 			changes,
 		}
 	}

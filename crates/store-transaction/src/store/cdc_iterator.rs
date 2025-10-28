@@ -132,7 +132,6 @@ mod tests {
 		Cdc::new(
 			CommitVersion::from(version),
 			timestamp,
-			TransactionId::default(),
 			vec![CdcSequencedChange {
 				sequence: 0,
 				change: CdcChange::Insert {

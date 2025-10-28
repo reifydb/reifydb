@@ -46,7 +46,6 @@ impl CommandTransaction {
 	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
 		let mut version: Option<CommitVersion> = None;
 		let mut deltas = CowVec::with_capacity(8);
-		let transaction_id = self.tm.id();
 
 		self.tm.commit(|pending| {
 			for p in pending {
@@ -59,7 +58,7 @@ impl CommandTransaction {
 			}
 
 			if let Some(version) = version {
-				self.engine.store.commit(deltas.clone(), version, transaction_id)?;
+				self.engine.store.commit(deltas.clone(), version)?;
 			}
 			Ok(())
 		})?;

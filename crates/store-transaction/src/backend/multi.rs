@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, TransactionId, delta::Delta};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta};
 use reifydb_type::Result;
 
 use crate::{
@@ -24,10 +24,10 @@ pub enum BackendMulti {
 
 impl BackendMultiVersionCommit for BackendMulti {
 	#[inline]
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		match self {
-			BackendMulti::Memory(backend) => backend.commit(deltas, version, transaction),
-			BackendMulti::Sqlite(backend) => backend.commit(deltas, version, transaction),
+			BackendMulti::Memory(backend) => backend.commit(deltas, version),
+			BackendMulti::Sqlite(backend) => backend.commit(deltas, version),
 		}
 	}
 }
@@ -194,7 +194,7 @@ pub trait BackendMultiVersion:
 }
 
 pub trait BackendMultiVersionCommit {
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()>;
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()>;
 }
 
 pub trait BackendMultiVersionGet {

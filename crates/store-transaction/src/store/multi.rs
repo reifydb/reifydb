@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, TransactionId, delta::Delta, interface::MultiVersionValues,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
 };
 
 use super::StandardTransactionStore;
@@ -60,18 +60,17 @@ impl MultiVersionCommit for StandardTransactionStore {
 		&self,
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
-		transaction: TransactionId,
 	) -> crate::Result<()> {
 		if let Some(hot) = &self.hot {
-			return hot.multi.commit(deltas, version, transaction);
+			return hot.multi.commit(deltas, version);
 		}
 
 		if let Some(warm) = &self.warm {
-			return warm.multi.commit(deltas, version, transaction);
+			return warm.multi.commit(deltas, version);
 		}
 
 		if let Some(cold) = &self.cold {
-			return cold.multi.commit(deltas, version, transaction);
+			return cold.multi.commit(deltas, version);
 		}
 
 		Ok(())

@@ -10,7 +10,7 @@ use std::{
 
 use mpsc::Sender;
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, TransactionId,
+	CommitVersion, CowVec, EncodedKey,
 	delta::Delta,
 	interface::{Cdc, CdcSequencedChange},
 };
@@ -38,7 +38,6 @@ pub enum WriteCommand {
 	MultiVersionCommit {
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
-		transaction: TransactionId,
 		timestamp: u64,
 		respond_to: Sender<Result<()>>,
 	},
@@ -89,7 +88,6 @@ impl Writer {
 				WriteCommand::MultiVersionCommit {
 					deltas,
 					version,
-					transaction,
 					timestamp,
 					respond_to,
 				} => {
@@ -97,7 +95,6 @@ impl Writer {
 					self.buffer_and_apply_commit(
 						deltas,
 						version,
-						transaction,
 						timestamp,
 						respond_to,
 					);
@@ -121,7 +118,6 @@ impl Writer {
 		&mut self,
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
-		transaction: TransactionId,
 		timestamp: u64,
 		respond_to: Sender<Result<()>>,
 	) {
@@ -129,7 +125,7 @@ impl Writer {
 		self.pending_responses.insert(version, respond_to);
 
 		// Add to buffer
-		self.commit_buffer.add_commit(version, deltas, transaction, timestamp);
+		self.commit_buffer.add_commit(version, deltas, timestamp);
 
 		// Process all ready commits
 		let ready_commits = self.commit_buffer.drain_ready();
@@ -137,7 +133,6 @@ impl Writer {
 			let result = self.apply_multi_commit(
 				commit.deltas,
 				commit.version,
-				commit.transaction,
 				commit.timestamp,
 			);
 
@@ -152,7 +147,6 @@ impl Writer {
 		&mut self,
 		deltas: CowVec<Delta>,
 		version: CommitVersion,
-		transaction: TransactionId,
 		timestamp: u64,
 	) -> Result<()> {
 		let mut tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
@@ -160,7 +154,7 @@ impl Writer {
 		let cdc_changes = Self::apply_deltas(&mut tx, &deltas, version, &mut self.ensured_sources)?;
 
 		if !cdc_changes.is_empty() {
-			Self::store_cdc_changes(&tx, version, timestamp, transaction, cdc_changes)?;
+			Self::store_cdc_changes(&tx, version, timestamp, cdc_changes)?;
 		}
 
 		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))?;
@@ -266,10 +260,9 @@ impl Writer {
 		tx: &Transaction,
 		version: CommitVersion,
 		timestamp: u64,
-		transaction: TransactionId,
 		cdc_changes: Vec<CdcSequencedChange>,
 	) -> Result<()> {
-		store_cdc_transaction(tx, Cdc::new(version, timestamp, transaction, cdc_changes))
+		store_cdc_transaction(tx, Cdc::new(version, timestamp, cdc_changes))
 			.map_err(|e| Error(from_rusqlite_error(e)))
 	}
 }

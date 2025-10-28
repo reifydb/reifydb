@@ -19,7 +19,7 @@ pub use cdc::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStore};
 pub use config::{BackendConfig, MergeConfig, RetentionConfig, TransactionStoreConfig};
 pub use multi::*;
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, TransactionId,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 	delta::Delta,
 	interface::{Cdc, MultiVersionValues, SingleVersionValues},
 };
@@ -86,9 +86,9 @@ impl MultiVersionContains for TransactionStore {
 
 impl MultiVersionCommit for TransactionStore {
 	#[inline]
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion, transaction: TransactionId) -> Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> Result<()> {
 		match self {
-			TransactionStore::Standard(store) => store.commit(deltas, version, transaction),
+			TransactionStore::Standard(store) => store.commit(deltas, version),
 		}
 	}
 }

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey,
-	interface::{Cdc, CdcChange, CdcSequencedChange, TransactionId},
+	interface::{Cdc, CdcChange, CdcSequencedChange },
 	return_internal_error,
 	value::encoded::EncodedValues,
 };
@@ -20,11 +20,6 @@ pub(crate) fn encode_cdc_transaction(transaction: &Cdc) -> crate::Result<Encoded
 
 	CDC_TRANSACTION_LAYOUT.set_u64(&mut values, CDC_TX_TIMESTAMP_FIELD, transaction.timestamp);
 
-	CDC_TRANSACTION_LAYOUT.set_blob(
-		&mut values,
-		CDC_TX_TRANSACTION_FIELD,
-		&Blob::from_slice(transaction.transaction.as_bytes()),
-	);
 
 	let mut changes_bytes = Vec::new();
 
@@ -48,9 +43,6 @@ pub(crate) fn encode_cdc_transaction(transaction: &Cdc) -> crate::Result<Encoded
 pub(crate) fn decode_cdc_transaction(values: &EncodedValues) -> crate::Result<Cdc> {
 	let version = CDC_TRANSACTION_LAYOUT.get_u64(values, CDC_TX_VERSION_FIELD);
 	let timestamp = CDC_TRANSACTION_LAYOUT.get_u64(values, CDC_TX_TIMESTAMP_FIELD);
-	let transaction_blob = CDC_TRANSACTION_LAYOUT.get_blob(values, CDC_TX_TRANSACTION_FIELD);
-	let transaction = TransactionId::try_from(transaction_blob.as_bytes())?;
-
 	let changes_blob = CDC_TRANSACTION_LAYOUT.get_blob(values, CDC_TX_CHANGES_FIELD);
 	let changes_bytes = changes_blob.as_bytes();
 
@@ -97,7 +89,7 @@ pub(crate) fn decode_cdc_transaction(values: &EncodedValues) -> crate::Result<Cd
 		});
 	}
 
-	Ok(Cdc::new(CommitVersion(version), timestamp, transaction, changes))
+	Ok(Cdc::new(CommitVersion(version), timestamp, changes))
 }
 
 /// Encode just the CdcChange part (without metadata)

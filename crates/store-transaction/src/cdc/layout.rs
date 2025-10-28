@@ -30,15 +30,13 @@ pub(crate) static CDC_TRANSACTION_LAYOUT: LazyLock<EncodedValuesLayout> = LazyLo
 	EncodedValuesLayout::new(&[
 		Type::Uint8, // version
 		Type::Uint8, // timestamp
-		Type::Blob,  // transaction
 		Type::Blob,  // packed changes array
 	])
 });
 
 pub(crate) const CDC_TX_VERSION_FIELD: usize = 0;
 pub(crate) const CDC_TX_TIMESTAMP_FIELD: usize = 1;
-pub(crate) const CDC_TX_TRANSACTION_FIELD: usize = 2;
-pub(crate) const CDC_TX_CHANGES_FIELD: usize = 3;
+pub(crate) const CDC_TX_CHANGES_FIELD: usize = 2;
 
 // Layout for individual changes (without metadata)
 pub(crate) static CDC_CHANGE_LAYOUT: LazyLock<EncodedValuesLayout> = LazyLock::new(|| {
