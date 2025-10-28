@@ -178,8 +178,7 @@ impl testscript::Runner for Runner {
 							values
 						})
 					],
-					version,
-					TransactionId::default(),
+					version
 				)?;
 				writeln!(output, "ok")?;
 			}
@@ -261,7 +260,7 @@ impl testscript::Runner for Runner {
 				if !self.deltas.is_empty() {
 					let version = self.next_version;
 					let deltas = CowVec::new(std::mem::take(&mut self.deltas));
-					self.store.commit(deltas, version, TransactionId::default())?;
+					self.store.commit(deltas, version)?;
 					self.next_version.0 += 1;
 				}
 				writeln!(output, "ok")?;
@@ -682,7 +681,7 @@ impl testscript::Runner for Runner {
 					});
 				}
 
-				self.store.commit(CowVec::new(deltas), version, TransactionId::default())?;
+				self.store.commit(CowVec::new(deltas), version)?;
 				writeln!(output, "ok")?;
 			}
 

@@ -76,18 +76,10 @@ pub struct CdcSequencedChange {
 impl CdcSequencedChange {
 	pub fn key(&self) -> &EncodedKey {
 		match &self.change {
-			CdcChange::Insert {
-				key,
-				..
-			} => key,
-			CdcChange::Update {
-				key,
-				..
-			} => key,
-			CdcChange::Delete {
-				key,
-				..
-			} => key,
+			CdcChange::Insert { key, .. } => key,
+			CdcChange::Update { key, .. } => key,
+			CdcChange::Delete { key, .. } => key,
 		}
 	}
 }
+

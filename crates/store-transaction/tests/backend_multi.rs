@@ -151,8 +151,7 @@ impl<BMV: BackendMultiVersion> testscript::Runner for Runner<BMV> {
 							values
 						})
 					],
-					version,
-					TransactionId::default(),
+					version
 				)?;
 			}
 
@@ -174,8 +173,7 @@ impl<BMV: BackendMultiVersion> testscript::Runner for Runner<BMV> {
 							key
 						})
 					],
-					version,
-					TransactionId::default(),
+					version
 				)?
 			}
 

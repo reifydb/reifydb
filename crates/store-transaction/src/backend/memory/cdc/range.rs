@@ -1,12 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::BTreeMap, ops::Bound};
+use std::{collections::BTreeMap, ops::Bound, sync::Arc};
 
 use parking_lot::RwLockReadGuard;
 use reifydb_core::{CommitVersion, Result, interface::Cdc};
 
-use crate::{CdcRange, memory::MemoryBackend};
+use crate::{CdcRange, memory::MemoryBackend, cdc::{InternalCdc, converter::CdcConverter}};
 
 impl CdcRange for MemoryBackend {
 	type RangeIter<'a> = CdcRangeIter<'a>;
@@ -16,6 +16,7 @@ impl CdcRange for MemoryBackend {
 		// SAFETY: We extend the lifetime to match the guard, which is held in the iterator
 		let iter = unsafe { std::mem::transmute((*guard).range((start, end))) };
 		Ok(CdcRangeIter {
+			backend: Arc::new(self.clone()),
 			_guard: guard,
 			iter,
 		})
@@ -23,8 +24,9 @@ impl CdcRange for MemoryBackend {
 }
 
 pub struct CdcRangeIter<'a> {
-	_guard: RwLockReadGuard<'a, BTreeMap<CommitVersion, Cdc>>,
-	iter: std::collections::btree_map::Range<'a, CommitVersion, Cdc>,
+	backend: Arc<MemoryBackend>,
+	_guard: RwLockReadGuard<'a, BTreeMap<CommitVersion, InternalCdc>>,
+	iter: std::collections::btree_map::Range<'a, CommitVersion, InternalCdc>,
 }
 
 // SAFETY: We need to manually implement Send for the iterator
@@ -35,6 +37,8 @@ impl<'a> Iterator for CdcRangeIter<'a> {
 	type Item = Cdc;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.iter.next().map(|(_, cdc)| cdc.clone())
+		self.iter.next().and_then(|(_, internal_cdc)| {
+			self.backend.convert(internal_cdc.clone()).ok()
+		})
 	}
 }

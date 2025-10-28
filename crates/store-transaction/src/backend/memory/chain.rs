@@ -68,6 +68,12 @@ impl VersionChain {
             .find_map(|(_, v)| v.as_ref().cloned())
     }
 
+    /// Get the latest version number
+    #[inline]
+    pub fn get_latest_version(&self) -> Option<CommitVersion> {
+        self.entries.first().map(|(v, _)| *v)
+    }
+
     /// Remove versions older than the given version (for future GC)
     pub fn compact(&mut self, oldest_required: CommitVersion) {
         // Keep all versions >= oldest_required

@@ -12,14 +12,13 @@ use mpsc::{Receiver, Sender};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey,
 	delta::Delta,
-	interface::{Cdc, CdcSequencedChange},
 	value::encoded::EncodedValues,
 };
 use reifydb_type::{Result, return_error};
 
 use crate::{
 	backend::{commit::CommitBuffer, diagnostic::sequence_exhausted, memory::VersionChain},
-	cdc::generate_cdc_change,
+	cdc::{generate_internal_cdc_change, InternalCdc, InternalCdcSequencedChange},
 };
 
 pub enum WriteCommand {
@@ -40,7 +39,7 @@ pub struct Writer {
 	receiver: Receiver<WriteCommand>,
 	multi: Arc<RwLock<BTreeMap<EncodedKey, VersionChain>>>,
 	single: Arc<RwLock<BTreeMap<EncodedKey, Option<EncodedValues>>>>,
-	cdcs: Arc<RwLock<BTreeMap<CommitVersion, Cdc>>>,
+	cdcs: Arc<RwLock<BTreeMap<CommitVersion, InternalCdc>>>,
 	commit_buffer: CommitBuffer,
 	// Track pending responses for buffered commits
 	pending_responses: HashMap<CommitVersion, Sender<Result<()>>>,
@@ -50,7 +49,7 @@ impl Writer {
 	pub fn spawn(
 		multi: Arc<RwLock<BTreeMap<EncodedKey, VersionChain>>>,
 		single: Arc<RwLock<BTreeMap<EncodedKey, Option<EncodedValues>>>>,
-		cdcs: Arc<RwLock<BTreeMap<CommitVersion, Cdc>>>,
+		cdcs: Arc<RwLock<BTreeMap<CommitVersion, InternalCdc>>>,
 	) -> Result<Sender<WriteCommand>> {
 		let (sender, receiver) = mpsc::channel();
 
@@ -145,13 +144,13 @@ impl Writer {
 					Err(_) => return_error!(sequence_exhausted()),
 				};
 
-				// Get pre-value for CDC
-				let pre = multi.get(delta.key())
-					.and_then(|chain| chain.get_latest_value());
+				// Get pre-version for CDC (if key exists)
+				let pre_version = multi.get(delta.key())
+					.and_then(|chain| chain.get_latest_version());
 
-				cdc_changes.push(CdcSequencedChange {
+				cdc_changes.push(InternalCdcSequencedChange {
 					sequence,
-					change: generate_cdc_change(delta.clone(), pre),
+					change: generate_internal_cdc_change(delta.clone(), pre_version, version),
 				});
 
 				// Apply the delta
@@ -177,7 +176,7 @@ impl Writer {
 
 		if !cdc_changes.is_empty() {
 			let mut cdcs = self.cdcs.write();
-			let cdc = Cdc::new(version, timestamp, cdc_changes);
+			let cdc = InternalCdc { version, timestamp, changes: cdc_changes };
 			cdcs.insert(version, cdc);
 		}
 

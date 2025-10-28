@@ -3,11 +3,15 @@
 
 use reifydb_core::{CommitVersion, Result, interface::Cdc};
 
-use crate::{CdcGet, backend::memory::MemoryBackend};
+use crate::{CdcGet, backend::memory::MemoryBackend, cdc::converter::CdcConverter};
 
 impl CdcGet for MemoryBackend {
 	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
 		let cdc = self.cdc.read();
-		Ok(cdc.get(&version).cloned())
+		if let Some(internal_cdc) = cdc.get(&version).cloned() {
+			Ok(Some(self.convert(internal_cdc)?))
+		} else {
+			Ok(None)
+		}
 	}
 }

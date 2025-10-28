@@ -168,8 +168,7 @@ impl testscript::Runner for Runner {
 							values
 						})
 					],
-					version,
-					TransactionId::default(),
+					version
 				)?;
 			}
 
@@ -191,8 +190,7 @@ impl testscript::Runner for Runner {
 							key
 						})
 					],
-					version,
-					TransactionId::default(),
+					version
 				)?
 			}
 

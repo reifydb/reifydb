@@ -144,8 +144,7 @@ impl<BMV: BackendMultiVersion + CdcStore> testscript::Runner for Runner<BMV> {
 							values
 						})
 					],
-					version,
-					TransactionId::default(),
+					version
 				)?;
 				writeln!(output, "ok")?;
 			}
@@ -227,7 +226,7 @@ impl<BMV: BackendMultiVersion + CdcStore> testscript::Runner for Runner<BMV> {
 				if !self.deltas.is_empty() {
 					let version = self.next_version;
 					let deltas = CowVec::new(std::mem::take(&mut self.deltas));
-					self.backend.commit(deltas, version, TransactionId::default())?;
+					self.backend.commit(deltas, version)?;
 					self.next_version.0 += 1;
 				}
 				writeln!(output, "ok")?;
@@ -654,7 +653,7 @@ impl<BMV: BackendMultiVersion + CdcStore> testscript::Runner for Runner<BMV> {
 					});
 				}
 
-				self.backend.commit(CowVec::new(deltas), version, TransactionId::default())?;
+				self.backend.commit(CowVec::new(deltas), version)?;
 				writeln!(output, "ok")?;
 			}
 

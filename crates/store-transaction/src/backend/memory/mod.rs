@@ -10,8 +10,10 @@ use std::{
 use parking_lot::RwLock;
 use mpsc::Sender;
 use reifydb_core::{
-	CommitVersion, EncodedKey, interface::Cdc, value::encoded::EncodedValues,
+	CommitVersion, EncodedKey, value::encoded::EncodedValues,
 };
+
+use crate::cdc::InternalCdc;
 
 mod chain;
 mod cdc;
@@ -36,7 +38,7 @@ pub struct MemoryBackend(Arc<MemoryBackendInner>);
 pub struct MemoryBackendInner {
 	multi: Arc<RwLock<BTreeMap<EncodedKey, VersionChain>>>,
 	single: Arc<RwLock<BTreeMap<EncodedKey, Option<EncodedValues>>>>,
-	cdc: Arc<RwLock<BTreeMap<CommitVersion, Cdc>>>,
+	cdc: Arc<RwLock<BTreeMap<CommitVersion, InternalCdc>>>,
 	writer: Sender<WriteCommand>,
 }
 

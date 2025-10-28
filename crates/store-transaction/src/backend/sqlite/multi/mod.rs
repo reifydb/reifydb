@@ -80,6 +80,26 @@ pub(crate) fn source_name_for_range(range: &EncodedKeyRange) -> String {
 	"multi".to_string()
 }
 
+/// Fetch the previous version for a given key
+pub(crate) fn fetch_pre_version(
+	conn: &Connection,
+	key: &[u8],
+	source: &str,
+) -> rusqlite::Result<Option<CommitVersion>> {
+	let query = format!(
+		"SELECT MAX(version) FROM {} WHERE key = ?",
+		source
+	);
+
+	conn.query_row(&query, params![key], |row| {
+		let version: Option<i64> = row.get(0)?;
+		Ok(version.map(|v| CommitVersion(v as u64)))
+	}).or_else(|e| match e {
+		rusqlite::Error::QueryReturnedNoRows => Ok(None),
+		_ => Err(e),
+	})
+}
+
 /// Helper function to build query template and determine parameter count
 pub(crate) fn build_range_query(
 	start_bound: Bound<&EncodedKey>,

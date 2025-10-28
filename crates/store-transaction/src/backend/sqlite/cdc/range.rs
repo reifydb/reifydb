@@ -1,25 +1,26 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::VecDeque, ops::Bound};
+use std::{collections::VecDeque, ops::Bound, sync::Arc};
 
 use reifydb_core::{CommitVersion, CowVec, Result, interface::Cdc, value::encoded::EncodedValues};
 
 use crate::{
 	CdcRange,
 	backend::sqlite::{SqliteBackend, read::Reader},
-	cdc::codec::decode_cdc_transaction,
+	cdc::{codec::decode_internal_cdc, converter::CdcConverter},
 };
 
 impl CdcRange for SqliteBackend {
 	type RangeIter<'a> = CdcRangeIter;
 
 	fn range(&self, start: Bound<CommitVersion>, end: Bound<CommitVersion>) -> Result<Self::RangeIter<'_>> {
-		Ok(CdcRangeIter::new(self.get_reader(), start, end, 1024))
+		Ok(CdcRangeIter::new(Arc::new(self.clone()), self.get_reader(), start, end, 1024))
 	}
 }
 
 pub struct CdcRangeIter {
+	backend: Arc<SqliteBackend>,
 	conn: Reader,
 	start: Bound<CommitVersion>,
 	end: Bound<CommitVersion>,
@@ -30,8 +31,9 @@ pub struct CdcRangeIter {
 }
 
 impl CdcRangeIter {
-	pub fn new(conn: Reader, start: Bound<CommitVersion>, end: Bound<CommitVersion>, batch_size: usize) -> Self {
+	pub fn new(backend: Arc<SqliteBackend>, conn: Reader, start: Bound<CommitVersion>, end: Bound<CommitVersion>, batch_size: usize) -> Self {
 		Self {
+			backend,
 			conn,
 			start,
 			end,
@@ -77,10 +79,13 @@ impl CdcRangeIter {
 		let count = transactions.len();
 
 		for (version, encoded_transaction) in transactions {
-			if let Ok(txn) = decode_cdc_transaction(&encoded_transaction) {
+			if let Ok(internal_cdc) = decode_internal_cdc(&encoded_transaction) {
 				self.last_version = Some(version);
-				// Add the transaction to the buffer
-				self.buffer.push_back(txn);
+
+				// Convert to public CDC using the converter
+				if let Ok(cdc) = self.backend.convert(internal_cdc) {
+					self.buffer.push_back(cdc);
+				}
 			}
 		}
 

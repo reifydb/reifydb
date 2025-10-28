@@ -1,10 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{CowVec, EncodedKey, interface::Cdc, value::encoded::EncodedValues};
-use rusqlite::{Error::ToSqlConversionFailure, OptionalExtension, Transaction, params};
+use rusqlite::{Error::ToSqlConversionFailure, Transaction, params};
 
-use crate::cdc::codec::encode_cdc_transaction;
+use crate::cdc::{InternalCdc, codec::encode_internal_cdc};
 
 mod count;
 mod get;
@@ -14,27 +13,10 @@ mod scan;
 pub use range::CdcRangeIter;
 pub use scan::CdcScanIter;
 
-/// Helper to fetch the current value of a key before it's modified
-pub(crate) fn fetch_pre_value(
-	tx: &Transaction,
-	key: &EncodedKey,
-	source: &str,
-) -> rusqlite::Result<Option<EncodedValues>> {
-	let query = format!("SELECT value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1", source);
-
-	let mut stmt = tx.prepare_cached(&query)?;
-
-	stmt.query_row(params![key.to_vec()], |values| {
-		let value: Vec<u8> = values.get(0)?;
-		Ok(EncodedValues(CowVec::new(value)))
-	})
-	.optional()
-}
-
-/// Store a CDC transaction in the database
-pub(crate) fn store_cdc_transaction(tx: &Transaction, transaction: Cdc) -> rusqlite::Result<()> {
+/// Store an internal CDC transaction in the database
+pub(crate) fn store_internal_cdc(tx: &Transaction, transaction: InternalCdc) -> rusqlite::Result<()> {
 	let encoded_transaction =
-		encode_cdc_transaction(&transaction).map_err(|e| ToSqlConversionFailure(Box::new(e)))?;
+		encode_internal_cdc(&transaction).map_err(|e| ToSqlConversionFailure(Box::new(e)))?;
 
 	tx.execute(
 		"INSERT OR REPLACE INTO cdc (version, value) VALUES (?1, ?2)",

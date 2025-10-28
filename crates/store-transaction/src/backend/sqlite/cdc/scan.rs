@@ -1,25 +1,26 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
 
 use reifydb_core::{CommitVersion, CowVec, Result, interface::Cdc, value::encoded::EncodedValues};
 
 use crate::{
 	CdcScan,
 	backend::sqlite::{SqliteBackend, read::Reader},
-	cdc::codec::decode_cdc_transaction,
+	cdc::{codec::decode_internal_cdc, converter::CdcConverter},
 };
 
 impl CdcScan for SqliteBackend {
 	type ScanIter<'a> = CdcScanIter;
 
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
-		Ok(CdcScanIter::new(self.get_reader(), 1024))
+		Ok(CdcScanIter::new(Arc::new(self.clone()), self.get_reader(), 1024))
 	}
 }
 
 pub struct CdcScanIter {
+	backend: Arc<SqliteBackend>,
 	reader: Reader,
 	buffer: VecDeque<Cdc>,
 	last_version: Option<CommitVersion>,
@@ -28,8 +29,9 @@ pub struct CdcScanIter {
 }
 
 impl CdcScanIter {
-	pub fn new(reader: Reader, batch_size: u64) -> Self {
+	pub fn new(backend: Arc<SqliteBackend>, reader: Reader, batch_size: u64) -> Self {
 		Self {
+			backend,
 			reader,
 			buffer: VecDeque::new(),
 			last_version: None,
@@ -76,10 +78,13 @@ impl CdcScanIter {
 		let count = transactions.len();
 
 		for (version, encoded_transaction) in transactions {
-			if let Ok(txn) = decode_cdc_transaction(&encoded_transaction) {
+			if let Ok(internal_cdc) = decode_internal_cdc(&encoded_transaction) {
 				self.last_version = Some(version);
-				// Add the transaction to the buffer
-				self.buffer.push_back(txn);
+
+				// Convert to public CDC using the converter
+				if let Ok(cdc) = self.backend.convert(internal_cdc) {
+					self.buffer.push_back(cdc);
+				}
 			}
 		}
 

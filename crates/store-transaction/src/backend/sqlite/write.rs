@@ -12,7 +12,6 @@ use mpsc::Sender;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey,
 	delta::Delta,
-	interface::{Cdc, CdcSequencedChange},
 };
 use reifydb_type::{Error, Result, return_error};
 use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
@@ -23,11 +22,11 @@ use crate::{
 		commit::CommitBuffer,
 		diagnostic::{connection_failed, sequence_exhausted},
 		sqlite::{
-			cdc::{fetch_pre_value, store_cdc_transaction},
-			multi::{ensure_source_exists, source_name},
+			cdc::store_internal_cdc,
+			multi::{ensure_source_exists, source_name, fetch_pre_version},
 		},
 	},
-	cdc::generate_cdc_change,
+	cdc::{generate_internal_cdc_change, InternalCdc, InternalCdcSequencedChange},
 };
 
 pub enum WriteCommand {
@@ -167,7 +166,7 @@ impl Writer {
 		deltas: &[Delta],
 		version: CommitVersion,
 		ensured_sources: &mut HashSet<String>,
-	) -> Result<Vec<CdcSequencedChange>> {
+	) -> Result<Vec<InternalCdcSequencedChange>> {
 		let mut result = Vec::with_capacity(deltas.len());
 
 		for (idx, delta) in deltas.iter().enumerate() {
@@ -177,13 +176,14 @@ impl Writer {
 			};
 
 			let source = source_name(delta.key())?;
-			let pre = fetch_pre_value(tx, delta.key(), source).ok().flatten();
+			// Get the previous version for this key (if it exists)
+			let pre_version = fetch_pre_version(tx, delta.key(), source).ok().flatten();
 
 			Self::apply_single_delta(tx, delta, version, ensured_sources)?;
 
-			result.push(CdcSequencedChange {
+			result.push(InternalCdcSequencedChange {
 				sequence,
-				change: generate_cdc_change(delta.clone(), pre),
+				change: generate_internal_cdc_change(delta.clone(), pre_version, version),
 			});
 		}
 
@@ -260,9 +260,9 @@ impl Writer {
 		tx: &Transaction,
 		version: CommitVersion,
 		timestamp: u64,
-		cdc_changes: Vec<CdcSequencedChange>,
+		cdc_changes: Vec<InternalCdcSequencedChange>,
 	) -> Result<()> {
-		store_cdc_transaction(tx, Cdc::new(version, timestamp, cdc_changes))
+		store_internal_cdc(tx, InternalCdc { version, timestamp, changes: cdc_changes })
 			.map_err(|e| Error(from_rusqlite_error(e)))
 	}
 }

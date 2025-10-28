@@ -4,7 +4,7 @@
 use reifydb_core::{CommitVersion, CowVec, Result, value::encoded::EncodedValues};
 use rusqlite::{OptionalExtension, params};
 
-use crate::{CdcCount, cdc::codec::decode_cdc_transaction, sqlite::SqliteBackend};
+use crate::{CdcCount, cdc::codec::decode_internal_cdc, sqlite::SqliteBackend};
 
 impl CdcCount for SqliteBackend {
 	fn count(&self, version: CommitVersion) -> Result<usize> {
@@ -22,7 +22,7 @@ impl CdcCount for SqliteBackend {
 			.unwrap();
 
 		if let Some(encoded_transaction) = result {
-			let transaction = decode_cdc_transaction(&encoded_transaction)?;
+			let transaction = decode_internal_cdc(&encoded_transaction)?;
 			Ok(transaction.changes.len())
 		} else {
 			Ok(0)

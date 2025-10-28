@@ -4,7 +4,11 @@
 use reifydb_core::{CommitVersion, CowVec, Result, interface::Cdc, value::encoded::EncodedValues};
 use rusqlite::{OptionalExtension, params};
 
-use crate::{CdcGet, cdc::codec::decode_cdc_transaction, sqlite::SqliteBackend};
+use crate::{
+    CdcGet,
+    cdc::{codec::decode_internal_cdc, converter::CdcConverter},
+    sqlite::SqliteBackend,
+};
 
 impl CdcGet for SqliteBackend {
 	fn get(&self, version: CommitVersion) -> Result<Option<Cdc>> {
@@ -22,8 +26,12 @@ impl CdcGet for SqliteBackend {
 			.unwrap();
 
 		if let Some(encoded_transaction) = result {
-			let txn = decode_cdc_transaction(&encoded_transaction)?;
-			Ok(Some(txn))
+			// Decode the internal CDC which has version references
+			let internal_cdc = decode_internal_cdc(&encoded_transaction)?;
+
+			// Convert to public CDC using the converter
+			let cdc = self.convert(internal_cdc)?;
+			Ok(Some(cdc))
 		} else {
 			Ok(None)
 		}

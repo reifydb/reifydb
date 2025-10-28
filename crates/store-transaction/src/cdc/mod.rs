@@ -2,12 +2,13 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub(crate) mod codec;
+pub(crate) mod converter;
 mod layout;
 
 use std::collections::Bound;
 
-use reifydb_core::{CommitVersion, interface::Cdc};
-pub(crate) use reifydb_core::{delta::Delta, interface::CdcChange, value::encoded::EncodedValues};
+use reifydb_core::{CommitVersion, EncodedKey, interface::Cdc};
+pub(crate) use reifydb_core::delta::Delta;
 
 pub trait CdcStore: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
 
@@ -39,32 +40,68 @@ pub trait CdcCount: Send + Sync {
 	fn count(&self, version: CommitVersion) -> reifydb_type::Result<usize>;
 }
 
-/// Generate a CDC change from a Delta
-pub(crate) fn generate_cdc_change(delta: Delta, pre: Option<EncodedValues>) -> CdcChange {
+/// Internal representation of CDC change with version references
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum InternalCdcChange {
+	Insert {
+		key: EncodedKey,
+		post_version: CommitVersion,
+	},
+	Update {
+		key: EncodedKey,
+		pre_version: CommitVersion,
+		post_version: CommitVersion,
+	},
+	Delete {
+		key: EncodedKey,
+		pre_version: CommitVersion,
+	},
+}
+
+/// Internal representation of CDC with version references
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct InternalCdc {
+	pub version: CommitVersion,
+	pub timestamp: u64,
+	pub changes: Vec<InternalCdcSequencedChange>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct InternalCdcSequencedChange {
+	pub sequence: u16,
+	pub change: InternalCdcChange,
+}
+
+/// Generate an internal CDC change from a Delta
+pub(crate) fn generate_internal_cdc_change(
+	delta: Delta,
+	pre_version: Option<CommitVersion>,
+	post_version: CommitVersion,
+) -> InternalCdcChange {
 	match delta {
 		Delta::Set {
 			key,
-			values,
+			values: _,
 		} => {
-			if let Some(pre) = pre {
-				CdcChange::Update {
+			if let Some(pre_v) = pre_version {
+				InternalCdcChange::Update {
 					key,
-					pre,
-					post: values,
+					pre_version: pre_v,
+					post_version,
 				}
 			} else {
-				CdcChange::Insert {
+				InternalCdcChange::Insert {
 					key,
-					post: values,
+					post_version,
 				}
 			}
 		}
 
 		Delta::Remove {
 			key,
-		} => CdcChange::Delete {
+		} => InternalCdcChange::Delete {
 			key,
-			pre,
+			pre_version: pre_version.expect("Delete must have pre_version"),
 		},
 	}
 }
