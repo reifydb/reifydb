@@ -127,6 +127,15 @@ pub trait EncodableKeyRange {
 }
 
 impl Key {
+	
+	pub fn kind(key: &EncodedKey) -> Option<KeyKind> {
+		if key.len() < 2 {
+			return None;
+		}
+
+		keycode::deserialize(&key[1..2]).ok()
+	}
+	
 	pub fn decode(key: &EncodedKey) -> Option<Self> {
 		if key.len() < 2 {
 			return None;

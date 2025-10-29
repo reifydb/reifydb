@@ -7,8 +7,10 @@ mod layout;
 
 use std::collections::Bound;
 
-use reifydb_core::{CommitVersion, EncodedKey, interface::Cdc};
 pub(crate) use reifydb_core::delta::Delta;
+use reifydb_core::{interface::Cdc, CommitVersion, EncodedKey};
+use reifydb_core::interface::KeyKind;
+use reifydb_core::key::Key;
 
 pub trait CdcStore: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
 
@@ -72,40 +74,57 @@ pub(crate) struct InternalCdcSequencedChange {
 	pub change: InternalCdcChange,
 }
 
-
 /// Generate an internal CDC change from a Delta
-pub(crate) fn generate_internal_cdc_change(
+fn generate_internal_cdc_change(
 	delta: Delta,
 	pre_version: Option<CommitVersion>,
 	post_version: CommitVersion,
-) -> InternalCdcChange {
+) -> Option<InternalCdcChange> {
 	match delta {
 		Delta::Set {
 			key,
 			values: _,
 		} => {
-			if let Some(pre_v) = pre_version {
-				InternalCdcChange::Update {
-					key,
-					pre_version: pre_v,
-					post_version,
+
+			// operators do not generate cdc events
+			if let Some(kind) = Key::kind(&key) {
+				if kind == KeyKind::FlowNodeState{
+					return None;
 				}
+			}
+
+
+			if let Some(pre_version) = pre_version {
+				Some(InternalCdcChange::Update {
+					key,
+					pre_version,
+					post_version,
+				})
 			} else {
-				InternalCdcChange::Insert {
+				Some(InternalCdcChange::Insert {
 					key,
 					post_version,
-				}
+				})
 			}
 		}
 
 		Delta::Remove {
 			key,
 		} => {
-			// If there's no pre_version, use the post_version (current transaction version)
-			// This happens when a key is inserted and deleted in the same transaction
-			InternalCdcChange::Delete {
-				key,
-				pre_version: pre_version.unwrap_or(post_version),
+			// operators do not produce cdc events
+			if let Some(kind) = Key::kind(&key) {
+				if kind == KeyKind::FlowNodeState{
+					return None;
+				}
+			}
+
+			if let Some(pre_version) = pre_version {
+				Some(InternalCdcChange::Delete {
+					key,
+					pre_version,
+				})
+			} else {
+				None
 			}
 		}
 	}
@@ -156,19 +175,30 @@ where
 
 		// Apply cancellation and coalescing logic
 		match &delta {
-			Delta::Set { .. } => {
+			Delta::Set {
+				..
+			} => {
 				// Check if we need to coalesce with an existing change
 				if let Some(last_change) = changes.last_mut() {
 					match &mut last_change.change {
-						InternalCdcChange::Insert { post_version, .. } => {
+						InternalCdcChange::Insert {
+							post_version,
+							..
+						} => {
 							// Coalesce: Update the Insert's post_version
 							*post_version = version;
 						}
-						InternalCdcChange::Update { post_version, .. } => {
+						InternalCdcChange::Update {
+							post_version,
+							..
+						} => {
 							// Coalesce: Update the Update's post_version
 							*post_version = version;
 						}
-						InternalCdcChange::Delete { pre_version: delete_pre_version, .. } => {
+						InternalCdcChange::Delete {
+							pre_version: delete_pre_version,
+							..
+						} => {
 							// Delete followed by Insert
 							// Check if the Delete is from storage or from this transaction
 							if *delete_pre_version != version {
@@ -205,22 +235,32 @@ where
 					} else {
 						pre_version
 					};
-					let cdc_change = generate_internal_cdc_change(delta, effective_pre_version, version);
-					changes.push(InternalCdcSequencedChange {
-						sequence,
-						change: cdc_change,
-					});
+					if let Some(cdc_change) =
+						generate_internal_cdc_change(delta, effective_pre_version, version)
+					{
+						changes.push(InternalCdcSequencedChange {
+							sequence,
+							change: cdc_change,
+						});
+					}
 				}
 			}
-			Delta::Remove { .. } => {
+			Delta::Remove {
+				..
+			} => {
 				// Check what type of change we have so far
 				if let Some(last_change) = changes.last_mut() {
 					match &last_change.change {
-						InternalCdcChange::Insert { .. } => {
+						InternalCdcChange::Insert {
+							..
+						} => {
 							// Insert + Delete = Complete cancellation
 							changes.clear();
 						}
-						InternalCdcChange::Update { pre_version, .. } => {
+						InternalCdcChange::Update {
+							pre_version,
+							..
+						} => {
 							// Update + Delete = Delete with original pre_version
 							let saved_pre = *pre_version;
 							last_change.change = InternalCdcChange::Delete {
@@ -228,28 +268,30 @@ where
 								pre_version: saved_pre,
 							};
 						}
-						InternalCdcChange::Delete { .. } => {
+						InternalCdcChange::Delete {
+							..
+						} => {
 							// Delete + Delete shouldn't happen, but if it does, keep the first
 							// Do nothing - keep the existing Delete
 						}
 					}
 				} else {
 					// First change for this key is a Delete
-					let cdc_change = generate_internal_cdc_change(delta, pre_version, version);
-					changes.push(InternalCdcSequencedChange {
-						sequence,
-						change: cdc_change,
-					});
+					if let Some(cdc_change) =
+						generate_internal_cdc_change(delta, pre_version, version)
+					{
+						changes.push(InternalCdcSequencedChange {
+							sequence,
+							change: cdc_change,
+						});
+					}
 				}
 			}
 		}
 	}
 
 	// Collect all non-cancelled changes and renumber sequences
-	let mut all_changes: Vec<InternalCdcSequencedChange> = cdc_tracker
-		.into_values()
-		.flatten()
-		.collect();
+	let mut all_changes: Vec<InternalCdcSequencedChange> = cdc_tracker.into_values().flatten().collect();
 	all_changes.sort_by_key(|c| c.sequence);
 
 	// Renumber sequences
