@@ -79,6 +79,8 @@ impl SqliteBackend {
 
 			conn.pragma_update(None, "temp_store", config.temp_store.as_str()).unwrap();
 
+			conn.pragma_update(None, "auto_vacuum", "INCREMENTAL").unwrap();
+
 			conn.execute_batch(
 				"BEGIN;
                  CREATE TABLE IF NOT EXISTS multi (
@@ -185,7 +187,7 @@ impl SqliteBackend {
 			// Path is a directory, ensure it exists and create crates
 			// file inside
 			std::fs::create_dir_all(config_path).ok();
-			config_path.join("reify.crates")
+			config_path.join("reify.db")
 		} else {
 			// Path is a file, ensure parent directory exists
 			if let Some(parent) = config_path.parent() {
@@ -216,8 +218,8 @@ mod tests {
 			// Test with directory path (no extension)
 			let result = SqliteBackend::resolve_db_path(&dir_path);
 
-			// Should append reify.crates to directory
-			assert_eq!(result, dir_path.join("reify.crates"));
+			// Should append reify.db to directory
+			assert_eq!(result, dir_path.join("reify.db"));
 
 			// Directory should be created
 			assert!(dir_path.exists());
@@ -255,8 +257,8 @@ mod tests {
 			// Test with nested directory path
 			let result = SqliteBackend::resolve_db_path(&nested_path);
 
-			// Should create nested directories and append reify.crates
-			assert_eq!(result, nested_path.join("reify.crates"));
+			// Should create nested directories and append reify.db
+			assert_eq!(result, nested_path.join("reify.db"));
 			assert!(nested_path.exists());
 			assert!(nested_path.is_dir());
 
@@ -300,7 +302,7 @@ mod tests {
 
 			// Test with no extension (directory)
 			let no_ext = temp_path.join("testdb");
-			assert_eq!(SqliteBackend::resolve_db_path(&no_ext), no_ext.join("reify.crates"));
+			assert_eq!(SqliteBackend::resolve_db_path(&no_ext), no_ext.join("reify.db"));
 
 			Ok(())
 		})
@@ -358,7 +360,7 @@ mod tests {
 			let conn = storage.get_reader();
 			let _guard = conn.lock().unwrap();
 
-			assert!(db_path.join("reify.crates").exists());
+			assert!(db_path.join("reify.db").exists());
 			Ok(())
 		})
 		.expect("test failed");

@@ -19,7 +19,7 @@ pub use range::MultiVersionRangeIter;
 pub use range_rev::MultiVersionRangeRevIter;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-	interface::{EncodableKeyRange, Key, MultiVersionValues, RowKey, RowKeyRange},
+	interface::{EncodableKeyRange, FlowNodeStateKey, FlowNodeStateKeyRange, Key, MultiVersionValues, RowKey, RowKeyRange},
 	value::encoded::EncodedValues,
 };
 use rusqlite::{Connection, OptionalExtension, Statement, params};
@@ -36,6 +36,16 @@ pub(crate) fn as_row_key(key: &EncodedKey) -> Option<RowKey> {
 		None => None,
 		Some(key) => match key {
 			Key::Row(key) => Some(key),
+			_ => None,
+		},
+	}
+}
+
+pub(crate) fn as_flow_node_state_key(key: &EncodedKey) -> Option<FlowNodeStateKey> {
+	match Key::decode(key) {
+		None => None,
+		Some(key) => match key {
+			Key::FlowNodeState(key) => Some(key),
 			_ => None,
 		},
 	}
@@ -76,6 +86,32 @@ pub(crate) fn source_name_for_range(range: &EncodedKeyRange) -> String {
 	if let (Some(start), _) = RowKeyRange::decode(range) {
 		let internal_id = start.source.as_u64();
 		return format!("source_{}", internal_id);
+	}
+	"multi".to_string()
+}
+
+/// Returns the appropriate operator table name for a given FlowNodeStateKey, with caching
+pub(crate) fn operator_name(key: &EncodedKey) -> crate::Result<&'static str> {
+	if let Some(key) = as_flow_node_state_key(key) {
+		let node_id = key.node.0;
+		let cache = INTERNAL_NAME_CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+		let mut cache_guard = cache.lock().unwrap();
+
+		let operator_name = cache_guard.entry(node_id).or_insert_with(|| format!("operator_{}", node_id));
+
+		// SAFETY: We're returning a reference to a string that's stored
+		// in the static cache The cache is never cleared, so the
+		// reference remains valid for the lifetime of the program
+		unsafe { Ok(std::mem::transmute(operator_name.as_str())) }
+	} else {
+		Ok("multi")
+	}
+}
+
+pub(crate) fn operator_name_for_range(range: &EncodedKeyRange) -> String {
+	if let (Some(start), _) = FlowNodeStateKeyRange::decode(range) {
+		let node_id = start.node.0;
+		return format!("operator_{}", node_id);
 	}
 	"multi".to_string()
 }
@@ -334,7 +370,7 @@ pub(crate) fn execute_batched_range_query(
 pub(crate) fn get_source_names(conn: &ReadConnection) -> Vec<String> {
 	let conn_guard = conn.lock().unwrap();
 	let mut stmt = conn_guard
-		.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='multi' OR name LIKE 'source_%')")
+		.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='multi' OR name LIKE 'source_%' OR name LIKE 'operator_%')")
 		.unwrap();
 
 	stmt.query_map([], |values| Ok(values.get::<_, String>(0)?)).unwrap().map(Result::unwrap).collect()

@@ -23,11 +23,22 @@ use crate::{
 		diagnostic::connection_failed,
 		sqlite::{
 			cdc::store_internal_cdc,
-			multi::{ensure_source_exists, source_name, fetch_pre_version},
+			multi::{as_flow_node_state_key, ensure_source_exists, operator_name, source_name, fetch_pre_version},
 		},
 	},
 	cdc::{process_deltas_for_cdc, InternalCdc, InternalCdcSequencedChange},
 };
+
+/// Helper function to get the appropriate table name for a given key
+fn get_table_name(key: &EncodedKey) -> Result<&'static str> {
+	// Check if it's a FlowNodeStateKey first
+	if as_flow_node_state_key(key).is_some() {
+		operator_name(key)
+	} else {
+		// Use source_name for everything else (RowKey or multi)
+		source_name(key)
+	}
+}
 
 pub enum WriteCommand {
 	SingleVersionCommit {
@@ -172,8 +183,8 @@ impl Writer {
 		for delta in deltas {
 			let key = delta.key();
 			if !pre_versions.contains_key(key) {
-				if let Ok(source) = source_name(key) {
-					if let Ok(Some(pre_version)) = fetch_pre_version(tx, key, source) {
+				if let Ok(table) = get_table_name(key) {
+					if let Ok(Some(pre_version)) = fetch_pre_version(tx, key, table) {
 						pre_versions.insert(key.clone(), pre_version);
 					}
 				}
@@ -221,10 +232,10 @@ impl Writer {
 		ensured_sources: &mut HashSet<String>,
 	) -> Result<()> {
 		let encoded_key = EncodedKey::new(key.to_vec());
-		let source = source_name(&encoded_key)?;
-		Self::ensure_source_if_needed(tx, source, ensured_sources)?;
+		let table = get_table_name(&encoded_key)?;
+		Self::ensure_source_if_needed(tx, table, ensured_sources)?;
 
-		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", source);
+		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", table);
 
 		tx.execute(&query, rusqlite::params![key.to_vec(), version.0, values.to_vec()])
 			.map_err(|e| Error(from_rusqlite_error(e)))?;
@@ -239,10 +250,10 @@ impl Writer {
 		ensured_sources: &mut HashSet<String>,
 	) -> Result<()> {
 		let encoded_key = EncodedKey::new(key.to_vec());
-		let source = source_name(&encoded_key)?;
-		Self::ensure_source_if_needed(tx, source, ensured_sources)?;
+		let table = get_table_name(&encoded_key)?;
+		Self::ensure_source_if_needed(tx, table, ensured_sources)?;
 
-		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, NULL)", source);
+		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, NULL)", table);
 
 		tx.execute(&query, rusqlite::params![key.to_vec(), version.0])
 			.map_err(|e| Error(from_rusqlite_error(e)))?;

@@ -5,12 +5,23 @@ use std::{collections::VecDeque, ops::Bound};
 
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, Result};
 
-use super::{build_range_query, execute_batched_range_query, source_name_for_range};
+use super::{build_range_query, execute_batched_range_query, operator_name_for_range, source_name_for_range};
 use crate::backend::{
 	multi::BackendMultiVersionRangeRev,
 	result::MultiVersionIterResult,
 	sqlite::{SqliteBackend, read::Reader},
 };
+
+/// Helper function to get the appropriate table name for a given range
+fn get_table_name_for_range(range: &EncodedKeyRange) -> String {
+	// Try operator_name_for_range first (for FlowNodeStateKeyRange)
+	let operator_table = operator_name_for_range(range);
+	if operator_table != "multi" {
+		return operator_table;
+	}
+	// Otherwise use source_name_for_range (for RowKeyRange or multi)
+	source_name_for_range(range)
+}
 
 impl BackendMultiVersionRangeRev for SqliteBackend {
 	type RangeIterRev<'a> = MultiVersionRangeRevIter;
@@ -33,7 +44,7 @@ pub struct MultiVersionRangeRevIter {
 
 impl MultiVersionRangeRevIter {
 	pub fn new(reader: Reader, range: EncodedKeyRange, version: CommitVersion, batch_size: usize) -> Self {
-		let source = source_name_for_range(&range).to_string();
+		let source = get_table_name_for_range(&range);
 
 		Self {
 			reader,

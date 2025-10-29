@@ -6,7 +6,7 @@ pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;
 pub use columns::ColumnsKey;
-pub use flow_node_state::FlowNodeStateKey;
+pub use flow_node_state::{FlowNodeStateKey, FlowNodeStateKeyRange};
 pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;

@@ -7,10 +7,21 @@ use reifydb_core::{
 use reifydb_type::Error;
 use rusqlite::{OptionalExtension, params};
 
-use super::source_name;
+use super::{as_flow_node_state_key, operator_name, source_name};
 use crate::backend::{
 	diagnostic::database_error, multi::BackendMultiVersionGet, result::MultiVersionGetResult, sqlite::SqliteBackend,
 };
+
+/// Helper function to get the appropriate table name for a given key
+fn get_table_name(key: &EncodedKey) -> Result<&'static str> {
+	// Check if it's a FlowNodeStateKey first
+	if as_flow_node_state_key(key).is_some() {
+		operator_name(key)
+	} else {
+		// Use source_name for everything else (RowKey or multi)
+		source_name(key)
+	}
+}
 
 impl BackendMultiVersionGet for SqliteBackend {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<MultiVersionGetResult> {
@@ -19,11 +30,11 @@ impl BackendMultiVersionGet for SqliteBackend {
 			.lock()
 			.map_err(|e| Error(database_error(format!("Failed to acquire reader lock: {}", e))))?;
 
-		let source = source_name(key)?;
+		let table = get_table_name(key)?;
 
 		let query = format!(
 			"SELECT key, value, version FROM {} WHERE key = ?1 AND version <= ?2 ORDER BY version DESC LIMIT 1",
-			source
+			table
 		);
 
 		let query_result = guard
