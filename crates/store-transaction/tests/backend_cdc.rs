@@ -8,7 +8,7 @@ use reifydb_core::util::{mock_time_advance, mock_time_set};
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, async_cow_vec,
 	delta::Delta,
-	interface::{Cdc, CdcChange, CdcSequencedChange, TransactionId},
+	interface::{Cdc, CdcChange, CdcSequencedChange},
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };

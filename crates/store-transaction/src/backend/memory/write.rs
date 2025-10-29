@@ -14,11 +14,11 @@ use reifydb_core::{
 	delta::Delta,
 	value::encoded::EncodedValues,
 };
-use reifydb_type::{Result, return_error};
+use reifydb_type::Result;
 
 use crate::{
-	backend::{commit::CommitBuffer, diagnostic::sequence_exhausted, memory::VersionChain},
-	cdc::{generate_internal_cdc_change, InternalCdc, InternalCdcSequencedChange},
+	backend::{commit::CommitBuffer, memory::VersionChain},
+	cdc::{process_deltas_for_cdc, InternalCdc},
 };
 
 pub enum WriteCommand {
@@ -132,47 +132,55 @@ impl Writer {
 		version: CommitVersion,
 		timestamp: u64,
 	) -> Result<()> {
-		let mut cdc_changes = Vec::new();
+		let multi = self.multi.clone();
 
+		// Clone deltas for CDC processing
+		let deltas_for_cdc = deltas.clone();
+
+		// Capture pre-versions BEFORE applying deltas
+		let mut pre_versions = std::collections::HashMap::new();
 		{
-			let mut multi = self.multi.write();
+			let multi_read = multi.read();
+			for delta in deltas.iter() {
+				let key = delta.key();
+				if !pre_versions.contains_key(key) {
+					if let Some(chain) = multi_read.get(key) {
+						if let Some(pre_version) = chain.get_latest_version() {
+							pre_versions.insert(key.clone(), pre_version);
+						}
+					}
+				}
+			}
+		}
 
-			// Apply deltas and collect CDC changes
-			for (idx, delta) in deltas.into_iter().enumerate() {
-				let sequence = match u16::try_from(idx + 1) {
-					Ok(seq) => seq,
-					Err(_) => return_error!(sequence_exhausted()),
-				};
-
-				// Get pre-version for CDC (if key exists)
-				let pre_version = multi.get(delta.key())
-					.and_then(|chain| chain.get_latest_version());
-
-				cdc_changes.push(InternalCdcSequencedChange {
-					sequence,
-					change: generate_internal_cdc_change(delta.clone(), pre_version, version),
-				});
-
-				// Apply the delta
+		// Apply deltas to storage
+		{
+			let mut multi_write = multi.write();
+			for delta in deltas {
 				match delta {
-					Delta::Set {
-						key,
-						values,
-					} => {
-						multi.entry(key)
+					Delta::Set { key, values } => {
+						multi_write.entry(key)
 							.or_insert_with(VersionChain::new)
 							.set(version, Some(values));
 					}
-					Delta::Remove {
-						key,
-					} => {
-						multi.entry(key)
+					Delta::Remove { key } => {
+						multi_write.entry(key)
 							.or_insert_with(VersionChain::new)
 							.set(version, None);
 					}
 				}
 			}
 		}
+
+		// Process CDC changes using the shared function
+		let cdc_changes = process_deltas_for_cdc(
+			deltas_for_cdc,
+			version,
+			|key| {
+				// Return the pre-version we captured before applying deltas
+				pre_versions.get(key).copied()
+			},
+		)?;
 
 		if !cdc_changes.is_empty() {
 			let mut cdcs = self.cdcs.write();

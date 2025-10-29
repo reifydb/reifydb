@@ -13,20 +13,20 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey,
 	delta::Delta,
 };
-use reifydb_type::{Error, Result, return_error};
+use reifydb_type::{Error, Result};
 use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
 
 use super::diagnostic::{from_rusqlite_error, transaction_failed};
 use crate::{
 	backend::{
 		commit::CommitBuffer,
-		diagnostic::{connection_failed, sequence_exhausted},
+		diagnostic::connection_failed,
 		sqlite::{
 			cdc::store_internal_cdc,
 			multi::{ensure_source_exists, source_name, fetch_pre_version},
 		},
 	},
-	cdc::{generate_internal_cdc_change, InternalCdc, InternalCdcSequencedChange},
+	cdc::{process_deltas_for_cdc, InternalCdc, InternalCdcSequencedChange},
 };
 
 pub enum WriteCommand {
@@ -167,27 +167,33 @@ impl Writer {
 		version: CommitVersion,
 		ensured_sources: &mut HashSet<String>,
 	) -> Result<Vec<InternalCdcSequencedChange>> {
-		let mut result = Vec::with_capacity(deltas.len());
-
-		for (idx, delta) in deltas.iter().enumerate() {
-			let sequence = match u16::try_from(idx + 1) {
-				Ok(seq) => seq,
-				Err(_) => return_error!(sequence_exhausted()),
-			};
-
-			let source = source_name(delta.key())?;
-			// Get the previous version for this key (if it exists)
-			let pre_version = fetch_pre_version(tx, delta.key(), source).ok().flatten();
-
-			Self::apply_single_delta(tx, delta, version, ensured_sources)?;
-
-			result.push(InternalCdcSequencedChange {
-				sequence,
-				change: generate_internal_cdc_change(delta.clone(), pre_version, version),
-			});
+		// Capture pre-versions BEFORE applying deltas
+		let mut pre_versions = std::collections::HashMap::new();
+		for delta in deltas {
+			let key = delta.key();
+			if !pre_versions.contains_key(key) {
+				if let Ok(source) = source_name(key) {
+					if let Ok(Some(pre_version)) = fetch_pre_version(tx, key, source) {
+						pre_versions.insert(key.clone(), pre_version);
+					}
+				}
+			}
 		}
 
-		Ok(result)
+		// Apply all deltas to storage
+		for delta in deltas {
+			Self::apply_single_delta(tx, delta, version, ensured_sources)?;
+		}
+
+		// Process CDC changes using the shared function
+		process_deltas_for_cdc(
+			deltas.iter().cloned(),
+			version,
+			|key| {
+				// Return the pre-version we captured before applying deltas
+				pre_versions.get(key).copied()
+			},
+		)
 	}
 
 	fn apply_single_delta(

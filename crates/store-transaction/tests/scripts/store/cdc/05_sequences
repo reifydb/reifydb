@@ -31,26 +31,22 @@ commit
 ---
 ok
 
-# Verify all sequences
+# Verify all sequences (insert+delete of c should be cancelled)
 cdc_get 3 1
 ---
-Change { seq: 1, change: Insert { key: "c", post: "3" } }
+Change { seq: 1, change: Update { key: "a", pre: "1", post: "10" } }
 
 cdc_get 3 2
 ---
-Change { seq: 2, change: Update { key: "a", pre: "1", post: "10" } }
+Change { seq: 2, change: Update { key: "b", pre: "2", post: "20" } }
 
 cdc_get 3 3
 ---
-Change { seq: 3, change: Update { key: "b", pre: "2", post: "20" } }
+Change { seq: 3, change: Insert { key: "d", post: "4" } }
 
 cdc_get 3 4
 ---
-Change { seq: 4, change: Delete { key: "c", pre: "3" } }
-
-cdc_get 3 5
----
-Change { seq: 5, change: Insert { key: "d", post: "4" } }
+None
 
 # Test non-existent sequence
 cdc_get 3 6

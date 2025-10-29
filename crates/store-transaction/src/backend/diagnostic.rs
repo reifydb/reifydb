@@ -90,7 +90,6 @@ pub fn sequence_exhausted() -> Diagnostic {
 		cause: None,
 	}
 }
-
 /// Macro to create an internal storage error with automatic source location
 #[macro_export]
 macro_rules! storage_internal_error {
