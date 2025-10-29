@@ -8,12 +8,11 @@ use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, Result, Row,
 	interface::{
-		Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, MultiVersionQueryTransaction, Params, QueryTransaction, SourceId,
+		Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, QueryTransaction, SourceId,
 	},
 	util::CowVec,
 	value::encoded::EncodedValues,
 };
-use reifydb_type::{Error, diagnostic::internal};
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 use reifydb_rql::flow::Flow;
 use reifydb_type::{RowNumber, Value};

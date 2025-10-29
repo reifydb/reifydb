@@ -132,13 +132,20 @@ where
 		};
 
 		let key = delta.key().clone();
-		let changes_for_key = cdc_tracker.get(&key);
+
+		// Check if we had previous changes and if they were all cancelled
+		let had_cancelled_changes = cdc_tracker.get(&key).map_or(false, |changes| changes.is_empty());
+		let has_existing_changes = cdc_tracker.get(&key).map_or(false, |changes| !changes.is_empty());
 
 		// Check if this key has been modified earlier in this transaction
-		let pre_version = if changes_for_key.is_some() {
-			// Key was modified earlier in this transaction
+		// and still has active changes (not all cancelled out)
+		let pre_version = if has_existing_changes {
+			// Key was modified earlier in this transaction and has active changes
 			// For CDC purposes, use the current version as pre_version
 			Some(version)
+		} else if had_cancelled_changes {
+			// All previous changes were cancelled, check storage
+			get_storage_version(&key)
 		} else {
 			// First time seeing this key in transaction, check storage
 			get_storage_version(&key)
@@ -147,29 +154,87 @@ where
 		// Track CDC change for this key
 		let changes = cdc_tracker.entry(key.clone()).or_insert_with(Vec::new);
 
-		// Apply cancellation logic
+		// Apply cancellation and coalescing logic
 		match &delta {
 			Delta::Set { .. } => {
-				// Add the change
-				let cdc_change = generate_internal_cdc_change(delta, pre_version, version);
-				changes.push(InternalCdcSequencedChange {
-					sequence,
-					change: cdc_change,
-				});
+				// Check if we need to coalesce with an existing change
+				if let Some(last_change) = changes.last_mut() {
+					match &mut last_change.change {
+						InternalCdcChange::Insert { post_version, .. } => {
+							// Coalesce: Update the Insert's post_version
+							*post_version = version;
+						}
+						InternalCdcChange::Update { post_version, .. } => {
+							// Coalesce: Update the Update's post_version
+							*post_version = version;
+						}
+						InternalCdcChange::Delete { pre_version: delete_pre_version, .. } => {
+							// Delete followed by Insert
+							// Check if the Delete is from storage or from this transaction
+							if *delete_pre_version != version {
+								// Delete is from storage (different version), keep both Delete and Insert
+								let cdc_change = InternalCdcChange::Insert {
+									key: key.clone(),
+									post_version: version,
+								};
+								changes.push(InternalCdcSequencedChange {
+									sequence,
+									change: cdc_change,
+								});
+							} else {
+								// Delete is from this transaction (same version)
+								// This means we had Insert+Delete+Insert in same transaction
+								// The Delete cancelled the first Insert, now we have a new Insert
+								let cdc_change = InternalCdcChange::Insert {
+									key: key.clone(),
+									post_version: version,
+								};
+								changes.push(InternalCdcSequencedChange {
+									sequence,
+									change: cdc_change,
+								});
+							}
+						}
+					}
+				} else {
+					// First change for this key or after complete cancellation
+					// Always use None as pre_version after cancellation to ensure Insert
+					let effective_pre_version = if had_cancelled_changes {
+						// After cancellation, treat as new insert
+						None
+					} else {
+						pre_version
+					};
+					let cdc_change = generate_internal_cdc_change(delta, effective_pre_version, version);
+					changes.push(InternalCdcSequencedChange {
+						sequence,
+						change: cdc_change,
+					});
+				}
 			}
 			Delta::Remove { .. } => {
-				// Check if we should cancel with a previous insert
-				let should_cancel = if let Some(first_change) = changes.first() {
-					matches!(&first_change.change, InternalCdcChange::Insert { .. })
+				// Check what type of change we have so far
+				if let Some(last_change) = changes.last_mut() {
+					match &last_change.change {
+						InternalCdcChange::Insert { .. } => {
+							// Insert + Delete = Complete cancellation
+							changes.clear();
+						}
+						InternalCdcChange::Update { pre_version, .. } => {
+							// Update + Delete = Delete with original pre_version
+							let saved_pre = *pre_version;
+							last_change.change = InternalCdcChange::Delete {
+								key: key.clone(),
+								pre_version: saved_pre,
+							};
+						}
+						InternalCdcChange::Delete { .. } => {
+							// Delete + Delete shouldn't happen, but if it does, keep the first
+							// Do nothing - keep the existing Delete
+						}
+					}
 				} else {
-					false
-				};
-
-				if should_cancel {
-					// Cancel out insert + delete
-					changes.clear();
-				} else {
-					// Add the delete
+					// First change for this key is a Delete
 					let cdc_change = generate_internal_cdc_change(delta, pre_version, version);
 					changes.push(InternalCdcSequencedChange {
 						sequence,

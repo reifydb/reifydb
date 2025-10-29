@@ -1,0 +1,90 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test complex sequences of alternating operations on same key
+# Tests state machine transitions and proper coalescing
+
+# Insert, delete, insert again (second insert survives)
+insert 1 key_a=first
+delete 1 key_a
+insert 1 key_a=second
+commit
+---
+ok
+
+# Only second insert remains
+cdc_get 1 1
+---
+Change { seq: 1, change: Insert { key: "key_a", post: "second" } }
+
+cdc_count 1
+---
+count: 1
+
+# Insert, update, delete, insert, update pattern
+insert 2 key_b=v1
+update 2 key_b=v2
+delete 2 key_b
+insert 2 key_b=v3
+update 2 key_b=v4
+commit
+---
+ok
+
+# First insert+update+delete cancel, second insert with final value remains
+cdc_get 2 1
+---
+Change { seq: 1, change: Insert { key: "key_b", post: "v4" } }
+
+cdc_count 2
+---
+count: 1
+
+# Complex pattern with existing key
+insert 3 key_c=initial
+commit
+---
+ok
+
+# Update, delete, insert, update, delete, insert
+update 4 key_c=mod1
+delete 4 key_c
+insert 4 key_c=new1
+update 4 key_c=new2
+delete 4 key_c
+insert 4 key_c=final
+commit
+---
+ok
+
+# Results in: Delete (original), then Insert (final)
+cdc_get 4 1
+---
+Change { seq: 1, change: Insert { key: "key_c", post: "final" } }
+
+cdc_get 4 2
+---
+None
+
+cdc_count 4
+---
+count: 1
+
+# Multiple cycles on non-existent key
+update 5 new_key=v1
+delete 5 new_key
+insert 5 new_key=v2
+delete 5 new_key
+insert 5 new_key=v3
+commit
+---
+ok
+
+# Only final insert survives
+cdc_get 5 1
+---
+Change { seq: 1, change: Insert { key: "new_key", post: "v3" } }
+
+cdc_count 5
+---
+count: 1

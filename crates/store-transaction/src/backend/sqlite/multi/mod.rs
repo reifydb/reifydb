@@ -22,7 +22,7 @@ use reifydb_core::{
 	interface::{EncodableKeyRange, Key, MultiVersionValues, RowKey, RowKeyRange},
 	value::encoded::EncodedValues,
 };
-use rusqlite::{Connection, Statement, params};
+use rusqlite::{Connection, OptionalExtension, Statement, params};
 pub use scan::MultiVersionScanIter;
 pub use scan_rev::MultiVersionScanRevIter;
 
@@ -87,17 +87,18 @@ pub(crate) fn fetch_pre_version(
 	source: &str,
 ) -> rusqlite::Result<Option<CommitVersion>> {
 	let query = format!(
-		"SELECT MAX(version) FROM {} WHERE key = ?",
+		"SELECT version, value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1",
 		source
 	);
 
-	conn.query_row(&query, params![key], |row| {
-		let version: Option<i64> = row.get(0)?;
-		Ok(version.map(|v| CommitVersion(v as u64)))
-	}).or_else(|e| match e {
-		rusqlite::Error::QueryReturnedNoRows => Ok(None),
-		_ => Err(e),
-	})
+	let result: Option<(i64, Option<Vec<u8>>)> = conn.query_row(&query, params![key], |row| {
+		Ok((row.get(0)?, row.get(1)?))
+	}).optional()?;
+
+	// Only return the version if it has a non-NULL value (not a tombstone)
+	Ok(result.and_then(|(version, value)| {
+		value.map(|_| CommitVersion(version as u64))
+	}))
 }
 
 /// Helper function to build query template and determine parameter count

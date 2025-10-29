@@ -1,0 +1,89 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test insert+update+delete cancellation mixed with operations on other keys
+# Verify proper isolation of cancellation per key
+
+# Setup existing data
+insert 1 existing_a=a1
+insert 1 existing_b=b1
+commit
+---
+ok
+
+# Complex mix of operations
+insert 2 cancel_key=c1
+insert 2 new_key=n1
+update 2 cancel_key=c2
+update 2 existing_a=a2
+update 2 cancel_key=c3
+update 2 new_key=n2
+delete 2 cancel_key
+update 2 existing_b=b2
+commit
+---
+ok
+
+# cancel_key should not appear, others should be properly tracked
+cdc_get 2 1
+---
+Change { seq: 1, change: Insert { key: "new_key", post: "n2" } }
+
+cdc_get 2 2
+---
+Change { seq: 2, change: Update { key: "existing_a", pre: "a1", post: "a2" } }
+
+cdc_get 2 3
+---
+Change { seq: 3, change: Update { key: "existing_b", pre: "b1", post: "b2" } }
+
+cdc_count 2
+---
+count: 3
+
+# Multiple cancellations with shared operations
+insert 3 cancel_1=x1
+insert 3 cancel_2=y1
+insert 3 keeper=z1
+update 3 cancel_1=x2
+update 3 cancel_2=y2
+update 3 keeper=z2
+delete 3 cancel_1
+delete 3 cancel_2
+commit
+---
+ok
+
+# Only keeper remains
+cdc_get 3 1
+---
+Change { seq: 1, change: Insert { key: "keeper", post: "z2" } }
+
+cdc_count 3
+---
+count: 1
+
+# Pattern: alternating operations between cancelled and kept keys
+insert 4 c1=cancel1
+insert 4 k1=keep1
+update 4 c1=cancel2
+update 4 k1=keep2
+update 4 c1=cancel3
+insert 4 k2=keep3
+delete 4 c1
+update 4 k2=keep4
+commit
+---
+ok
+
+cdc_get 4 1
+---
+Change { seq: 1, change: Insert { key: "k1", post: "keep2" } }
+
+cdc_get 4 2
+---
+Change { seq: 2, change: Insert { key: "k2", post: "keep4" } }
+
+cdc_count 4
+---
+count: 2

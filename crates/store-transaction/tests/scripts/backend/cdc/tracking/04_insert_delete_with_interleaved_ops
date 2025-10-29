@@ -1,0 +1,74 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test insert+delete cancellation with operations on other keys interleaved
+# Verify correct handling of operation order and sequence numbering
+
+# Setup existing keys
+insert 1 key_b=initial_b
+insert 1 key_c=initial_c
+commit
+---
+ok
+
+# Interleaved operations with cancellation
+insert 2 key_a=will_cancel
+update 2 key_b=updated_b
+delete 2 key_a
+update 2 key_c=updated_c
+insert 2 key_d=new_d
+commit
+---
+ok
+
+# key_a cancelled, others remain in order
+cdc_get 2 1
+---
+Change { seq: 1, change: Update { key: "key_b", pre: "initial_b", post: "updated_b" } }
+
+cdc_get 2 2
+---
+Change { seq: 2, change: Update { key: "key_c", pre: "initial_c", post: "updated_c" } }
+
+cdc_get 2 3
+---
+Change { seq: 3, change: Insert { key: "key_d", post: "new_d" } }
+
+cdc_get 2 4
+---
+None
+
+cdc_count 2
+---
+count: 3
+
+# Complex interleaving pattern
+insert 3 cancel_1=x
+insert 3 keep_1=a
+delete 3 cancel_1
+insert 3 cancel_2=y
+update 3 key_b=b_v3
+delete 3 cancel_2
+insert 3 keep_2=b
+insert 3 cancel_3=z
+delete 3 cancel_3
+commit
+---
+ok
+
+# Three cancellations removed, three operations remain
+cdc_get 3 1
+---
+Change { seq: 1, change: Insert { key: "keep_1", post: "a" } }
+
+cdc_get 3 2
+---
+Change { seq: 2, change: Update { key: "key_b", pre: "updated_b", post: "b_v3" } }
+
+cdc_get 3 3
+---
+Change { seq: 3, change: Insert { key: "keep_2", post: "b" } }
+
+cdc_count 3
+---
+count: 3

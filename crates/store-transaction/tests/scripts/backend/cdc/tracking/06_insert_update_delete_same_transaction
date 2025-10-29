@@ -1,0 +1,60 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test that insert+update+delete in same transaction
+# results in complete cancellation (no CDC entries)
+
+# Simple insert+update+delete cancellation
+insert 1 key_a=initial
+update 1 key_a=updated
+delete 1 key_a
+commit
+---
+ok
+
+# Verify complete cancellation
+cdc_get 1
+---
+None
+
+cdc_count 1
+---
+count: 0
+
+# Mixed with other operations
+insert 2 cancel_me=v1
+update 2 cancel_me=v2
+insert 2 keep_me=persistent
+delete 2 cancel_me
+update 2 keep_me=persistent_updated
+commit
+---
+ok
+
+# Only keep_me operations should appear (as single Insert with final value)
+cdc_get 2 1
+---
+Change { seq: 1, change: Insert { key: "keep_me", post: "persistent_updated" } }
+
+cdc_get 2 2
+---
+None
+
+cdc_count 2
+---
+count: 1
+
+# Multiple update steps before delete
+insert 3 multi_update=v1
+update 3 multi_update=v2
+update 3 multi_update=v3
+update 3 multi_update=v4
+delete 3 multi_update
+commit
+---
+ok
+
+# Should completely cancel
+cdc_count 3
+---
+count: 0

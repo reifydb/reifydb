@@ -1,0 +1,85 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test sequence renumbering after cancellations
+# Sequences should be consecutive without gaps
+
+# Operations with gaps due to cancellations
+insert 1 op1=v1
+insert 1 cancel1=temp
+insert 1 op2=v2
+delete 1 cancel1
+insert 1 op3=v3
+insert 1 cancel2=temp
+insert 1 op4=v4
+delete 1 cancel2
+insert 1 op5=v5
+commit
+---
+ok
+
+# Sequences should be 1,2,3,4,5 without gaps
+cdc_get 1 1
+---
+Change { seq: 1, change: Insert { key: "op1", post: "v1" } }
+
+cdc_get 1 2
+---
+Change { seq: 2, change: Insert { key: "op2", post: "v2" } }
+
+cdc_get 1 3
+---
+Change { seq: 3, change: Insert { key: "op3", post: "v3" } }
+
+cdc_get 1 4
+---
+Change { seq: 4, change: Insert { key: "op4", post: "v4" } }
+
+cdc_get 1 5
+---
+Change { seq: 5, change: Insert { key: "op5", post: "v5" } }
+
+cdc_count 1
+---
+count: 5
+
+# Cancellations at different positions
+insert 2 keep1=a
+insert 2 cancel_early=x
+delete 2 cancel_early
+insert 2 keep2=b
+insert 2 keep3=c
+insert 2 cancel_mid=y
+delete 2 cancel_mid
+insert 2 keep4=d
+insert 2 cancel_late=z
+insert 2 keep5=e
+delete 2 cancel_late
+commit
+---
+ok
+
+# Verify consecutive sequencing
+cdc_get 2 1
+---
+Change { seq: 1, change: Insert { key: "keep1", post: "a" } }
+
+cdc_get 2 2
+---
+Change { seq: 2, change: Insert { key: "keep2", post: "b" } }
+
+cdc_get 2 3
+---
+Change { seq: 3, change: Insert { key: "keep3", post: "c" } }
+
+cdc_get 2 4
+---
+Change { seq: 4, change: Insert { key: "keep4", post: "d" } }
+
+cdc_get 2 5
+---
+Change { seq: 5, change: Insert { key: "keep5", post: "e" } }
+
+cdc_count 2
+---
+count: 5

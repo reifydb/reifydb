@@ -145,8 +145,12 @@ impl Writer {
 				let key = delta.key();
 				if !pre_versions.contains_key(key) {
 					if let Some(chain) = multi_read.get(key) {
+						// Only capture pre-version if the key actually exists (not deleted)
 						if let Some(pre_version) = chain.get_latest_version() {
-							pre_versions.insert(key.clone(), pre_version);
+							// Check if this version contains a value (not a tombstone)
+							if let Some(Some(_)) = chain.get_at(pre_version) {
+								pre_versions.insert(key.clone(), pre_version);
+							}
 						}
 					}
 				}

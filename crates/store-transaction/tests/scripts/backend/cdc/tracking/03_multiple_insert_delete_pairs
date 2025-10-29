@@ -1,0 +1,81 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test multiple insert+delete pairs all cancelling in same transaction
+# Should result in empty CDC
+
+# All operations cancel out
+insert 1 key_a=value_a
+delete 1 key_a
+insert 1 key_b=value_b
+delete 1 key_b
+insert 1 key_c=value_c
+delete 1 key_c
+commit
+---
+ok
+
+# Verify completely empty CDC
+cdc_get 1
+---
+None
+
+cdc_count 1
+---
+count: 0
+
+# Mixed: some cancel, some don't
+insert 2 cancel_1=temp1
+delete 2 cancel_1
+insert 2 keep_1=persist1
+insert 2 cancel_2=temp2
+delete 2 cancel_2
+insert 2 keep_2=persist2
+insert 2 cancel_3=temp3
+delete 2 cancel_3
+commit
+---
+ok
+
+# Only kept keys appear, properly sequenced
+cdc_get 2 1
+---
+Change { seq: 1, change: Insert { key: "keep_1", post: "persist1" } }
+
+cdc_get 2 2
+---
+Change { seq: 2, change: Insert { key: "keep_2", post: "persist2" } }
+
+cdc_get 2 3
+---
+None
+
+cdc_count 2
+---
+count: 2
+
+# Cancellation at different positions
+insert 3 first=1
+insert 3 cancel_mid=temp
+insert 3 middle=2
+delete 3 cancel_mid
+insert 3 last=3
+commit
+---
+ok
+
+cdc_get 3 1
+---
+Change { seq: 1, change: Insert { key: "first", post: "1" } }
+
+cdc_get 3 2
+---
+Change { seq: 2, change: Insert { key: "middle", post: "2" } }
+
+cdc_get 3 3
+---
+Change { seq: 3, change: Insert { key: "last", post: "3" } }
+
+cdc_count 3
+---
+count: 3

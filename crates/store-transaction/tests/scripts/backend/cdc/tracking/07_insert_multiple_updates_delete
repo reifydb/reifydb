@@ -1,0 +1,70 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test that insert + multiple updates + delete all cancel completely
+# No matter how many updates occur between insert and delete
+
+# Two updates between insert and delete
+insert 1 key_a=v1
+update 1 key_a=v2
+update 1 key_a=v3
+delete 1 key_a
+commit
+---
+ok
+
+cdc_count 1
+---
+count: 0
+
+# Many updates between insert and delete
+insert 2 key_b=initial
+update 2 key_b=update1
+update 2 key_b=update2
+update 2 key_b=update3
+update 2 key_b=update4
+update 2 key_b=update5
+delete 2 key_b
+commit
+---
+ok
+
+cdc_count 2
+---
+count: 0
+
+# Interleaved updates on multiple keys with cancellation
+insert 3 cancel_key=c1
+insert 3 keep_key=k1
+update 3 cancel_key=c2
+update 3 keep_key=k2
+update 3 cancel_key=c3
+update 3 keep_key=k3
+delete 3 cancel_key
+commit
+---
+ok
+
+# Only keep_key remains (as Insert with final value)
+cdc_get 3 1
+---
+Change { seq: 1, change: Insert { key: "keep_key", post: "k3" } }
+
+cdc_count 3
+---
+count: 1
+
+# Updates with value changes back and forth
+insert 4 oscillate=a
+update 4 oscillate=b
+update 4 oscillate=a
+update 4 oscillate=b
+update 4 oscillate=a
+delete 4 oscillate
+commit
+---
+ok
+
+cdc_count 4
+---
+count: 0

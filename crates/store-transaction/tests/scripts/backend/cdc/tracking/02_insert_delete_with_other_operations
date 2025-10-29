@@ -1,0 +1,61 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test insert+delete cancellation mixed with other operations
+# Verify proper sequence renumbering after cancellation
+
+# Setup initial data
+insert 1 existing=initial
+commit
+---
+ok
+
+# Mixed operations with cancellation
+insert 2 cancel_me=temp_value
+insert 2 keep_me=persistent
+delete 2 cancel_me
+update 2 existing=updated
+commit
+---
+ok
+
+# Verify cancelled key doesn't appear, others are sequenced correctly
+cdc_get 2 1
+---
+Change { seq: 1, change: Insert { key: "keep_me", post: "persistent" } }
+
+cdc_get 2 2
+---
+Change { seq: 2, change: Update { key: "existing", pre: "initial", post: "updated" } }
+
+cdc_get 2 3
+---
+None
+
+cdc_count 2
+---
+count: 2
+
+# Multiple cancellations interleaved
+insert 3 cancel_1=temp1
+insert 3 keep_1=value1
+delete 3 cancel_1
+insert 3 cancel_2=temp2
+insert 3 keep_2=value2
+delete 3 cancel_2
+commit
+---
+ok
+
+# Only non-cancelled operations remain
+cdc_get 3 1
+---
+Change { seq: 1, change: Insert { key: "keep_1", post: "value1" } }
+
+cdc_get 3 2
+---
+Change { seq: 2, change: Insert { key: "keep_2", post: "value2" } }
+
+cdc_count 3
+---
+count: 2

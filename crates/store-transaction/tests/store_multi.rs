@@ -14,7 +14,7 @@ use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, async_cow_vec,
 	delta::Delta,
-	interface::{MultiVersionValues, TransactionId},
+	interface::MultiVersionValues,
 	util::encoding::{binary::decode_binary, format, format::Formatter},
 	value::encoded::EncodedValues,
 };

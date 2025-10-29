@@ -1,0 +1,90 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Test insert followed by multiple updates in same transaction
+# Should result in single Insert CDC change with final value
+
+# Insert then update in same transaction
+insert 1 new_key=initial
+update 1 new_key=updated
+commit
+---
+ok
+
+# Single Insert with final value
+cdc_get 1 1
+---
+Change { seq: 1, change: Insert { key: "new_key", post: "updated" } }
+
+cdc_count 1
+---
+count: 1
+
+# Insert then multiple updates
+insert 2 another_key=v1
+update 2 another_key=v2
+update 2 another_key=v3
+update 2 another_key=v4
+commit
+---
+ok
+
+# Single Insert with final value
+cdc_get 2 1
+---
+Change { seq: 1, change: Insert { key: "another_key", post: "v4" } }
+
+cdc_count 2
+---
+count: 1
+
+# Multiple inserts each with updates
+insert 3 key_a=a1
+update 3 key_a=a2
+insert 3 key_b=b1
+update 3 key_b=b2
+insert 3 key_c=c1
+update 3 key_c=c2
+commit
+---
+ok
+
+# Each appears as Insert with final value
+cdc_get 3 1
+---
+Change { seq: 1, change: Insert { key: "key_a", post: "a2" } }
+
+cdc_get 3 2
+---
+Change { seq: 2, change: Insert { key: "key_b", post: "b2" } }
+
+cdc_get 3 3
+---
+Change { seq: 3, change: Insert { key: "key_c", post: "c2" } }
+
+cdc_count 3
+---
+count: 3
+
+# Insert, many updates, then more operations
+insert 4 complex_key=start
+update 4 complex_key=mid1
+update 4 complex_key=mid2
+update 4 complex_key=mid3
+insert 4 other_key=value
+update 4 complex_key=final
+commit
+---
+ok
+
+cdc_get 4 1
+---
+Change { seq: 1, change: Insert { key: "complex_key", post: "final" } }
+
+cdc_get 4 2
+---
+Change { seq: 2, change: Insert { key: "other_key", post: "value" } }
+
+cdc_count 4
+---
+count: 2
