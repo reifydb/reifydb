@@ -6,6 +6,7 @@ use reifydb_type::Result;
 
 use crate::{
 	backend::{
+		gc::{BackendGarbageCollect, GcStats},
 		memory,
 		result::{MultiVersionGetResult, MultiVersionIterResult},
 		sqlite,
@@ -245,5 +246,15 @@ pub trait BackendMultiVersionRangeRev {
 
 	fn prefix_rev(&self, prefix: &EncodedKey, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
 		self.range_rev(EncodedKeyRange::prefix(prefix), version)
+	}
+}
+
+impl BackendGarbageCollect for BackendMulti {
+	#[inline]
+	fn compact_operator_states(&self) -> Result<GcStats> {
+		match self {
+			BackendMulti::Memory(backend) => backend.compact_operator_states(),
+			BackendMulti::Sqlite(backend) => backend.compact_operator_states(),
+		}
 	}
 }

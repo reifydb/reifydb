@@ -12,6 +12,7 @@ pub struct TransactionStoreConfig {
 	pub cold: Option<BackendConfig>,
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
+	pub gc: GcConfig,
 }
 
 #[derive(Clone)]
@@ -34,6 +35,23 @@ pub struct MergeConfig {
 	pub enable_auto_eviction: bool,
 }
 
+#[derive(Clone, Debug)]
+pub struct GcConfig {
+	/// Enable automatic garbage collection of old operator state versions
+	pub enabled: bool,
+	/// Interval between GC runs in seconds
+	pub interval_secs: u64,
+}
+
+impl Default for GcConfig {
+	fn default() -> Self {
+		Self {
+			enabled: true,
+			interval_secs: 10,
+		}
+	}
+}
+
 impl Default for TransactionStoreConfig {
 	fn default() -> Self {
 		Self {
@@ -49,6 +67,7 @@ impl Default for TransactionStoreConfig {
 				merge_batch_size: 10_000,
 				enable_auto_eviction: true,
 			},
+			gc: GcConfig::default(),
 		}
 	}
 }

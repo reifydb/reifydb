@@ -4,6 +4,7 @@
 mod cdc;
 mod config;
 mod diagnostic;
+mod gc;
 mod multi;
 mod read;
 mod single;

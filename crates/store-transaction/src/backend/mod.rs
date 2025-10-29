@@ -6,6 +6,7 @@ use crate::backend::{cdc::BackendCdc, multi::BackendMulti, single::BackendSingle
 pub mod cdc;
 pub(crate) mod commit;
 pub(crate) mod diagnostic;
+pub mod gc;
 pub mod memory;
 pub mod multi;
 pub mod result;

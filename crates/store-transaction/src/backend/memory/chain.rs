@@ -80,6 +80,8 @@ impl VersionChain {
         // Since entries are in descending order, we can truncate from the end
         if let Some(pos) = self.entries.iter().position(|(v, _)| *v < oldest_required) {
             self.entries.truncate(pos);
+            // Free unused capacity to actually release memory back to allocator
+            self.entries.shrink_to_fit();
         }
     }
 
