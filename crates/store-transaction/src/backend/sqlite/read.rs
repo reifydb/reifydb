@@ -3,14 +3,14 @@
 
 use std::{
 	ops::Deref,
-	path::{Path, PathBuf},
 	sync::{Arc, Mutex, Weak},
+	time::Duration,
 };
 
-use reifydb_type::{Error, Result};
+use reifydb_type::Result;
 use rusqlite::{Connection, OpenFlags};
 
-use crate::backend::diagnostic::connection_failed;
+use crate::backend::sqlite::{DbPath, connect};
 
 /// Type alias for a shared, thread-safe read connection
 pub type ReadConnection = Arc<Mutex<Connection>>;
@@ -67,32 +67,33 @@ impl Drop for Reader {
 
 pub struct Readers {
 	pool: Arc<Mutex<Vec<ReadConnection>>>,
-	db_path: PathBuf,
+	mode: DbPath,
 	flags: OpenFlags,
 	pool_size: usize,
 }
 
 impl Readers {
-	pub fn new(db_path: &Path, flags: OpenFlags, pool_size: usize) -> Result<Self> {
+	pub fn new(db_path: DbPath, flags: OpenFlags, pool_size: usize) -> Result<Self> {
 		debug_assert!(pool_size > 0);
 
 		let mut readers = Vec::new();
 
 		for _ in 0..pool_size {
-			let conn = Connection::open_with_flags(db_path, flags)
-				.map_err(|e| Error(connection_failed(db_path.display().to_string(), e.to_string())))?;
+			let conn = connect(&db_path, flags)?;
+			// Set a 5-second busy timeout to wait for locks to be released
+			let _ = conn.busy_timeout(Duration::from_secs(5));
 			readers.push(Arc::new(Mutex::new(conn)));
 		}
 
 		Ok(Self {
 			pool: Arc::new(Mutex::new(readers)),
-			db_path: db_path.to_path_buf(),
+			mode: db_path,
 			flags,
 			pool_size,
 		})
 	}
 
-	pub fn get_reader(&self) -> Reader {
+	pub fn get_reader(&self) -> crate::Result<Reader> {
 		let mut pool = self.pool.lock().unwrap();
 
 		// If we have an available connection, use it
@@ -100,13 +101,19 @@ impl Readers {
 			conn
 		} else {
 			// Create a new connection
-			let conn = Connection::open_with_flags(&self.db_path, self.flags)
-				.unwrap_or_else(|e| panic!("Failed to open reader connection: {}", e));
+			let conn = connect(&self.mode, self.flags)?;
 			Arc::new(Mutex::new(conn))
 		};
 
 		// Create a Reader with a weak reference to the pool
-		Reader::new(conn, Arc::downgrade(&self.pool), self.pool_size)
+		Ok(Reader::new(conn, Arc::downgrade(&self.pool), self.pool_size))
+	}
+
+	/// Close all pooled connections
+	/// This ensures all SQLite connections release their file locks
+	pub fn close_all(&self) {
+		let mut pool = self.pool.lock().unwrap();
+		pool.clear();
 	}
 }
 
@@ -120,16 +127,16 @@ mod tests {
 	#[test]
 	fn test_reader_returns_to_pool() {
 		temp_dir(|path| {
-			let path = path.join("test.crates");
+			let path = DbPath::File(path.join("test.db"));
 
 			let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_CREATE;
 
-			let readers = Readers::new(&path, flags, 2).expect("Failed to create readers");
+			let readers = Readers::new(path, flags, 2).expect("Failed to create readers");
 
 			// Get a reader and check pool behavior
 			{
-				let reader1 = readers.get_reader();
-				let reader2 = readers.get_reader();
+				let reader1 = readers.get_reader().unwrap();
+				let reader2 = readers.get_reader().unwrap();
 
 				// Both readers should have connections
 				assert!(reader1.conn().lock().is_ok());
@@ -142,8 +149,8 @@ mod tests {
 			// Now get readers again - they should reuse pooled
 			// connections
 			{
-				let reader3 = readers.get_reader();
-				let reader4 = readers.get_reader();
+				let reader3 = readers.get_reader().unwrap();
+				let reader4 = readers.get_reader().unwrap();
 
 				// These should work, reusing the returned
 				// connections
@@ -154,7 +161,7 @@ mod tests {
 			// Test that connections are properly returned even
 			// after multiple cycles
 			for _ in 0..10 {
-				let reader = readers.get_reader();
+				let reader = readers.get_reader().unwrap();
 				assert!(reader.conn().lock().is_ok());
 				// Reader drops here, returning connection to
 				// pool
@@ -167,14 +174,14 @@ mod tests {
 	#[test]
 	fn test_reader_pool_size_limit() {
 		temp_dir(|path| {
-			let path = path.join("test.crates");
+			let path = DbPath::File(path.join("test.db"));
 
 			let flags = OpenFlags::SQLITE_OPEN_READ_WRITE | { OpenFlags::SQLITE_OPEN_CREATE };
 
-			let readers = Readers::new(&path, flags, 3).expect("Failed to create readers"); // Pool size of 3
+			let readers = Readers::new(path, flags, 3).expect("Failed to create readers"); // Pool size of 3
 
 			// Create readers that will be dropped
-			let readers_vec: Vec<_> = (0..5).map(|_| readers.get_reader()).collect();
+			let readers_vec: Vec<_> = (0..5).map(|_| readers.get_reader().unwrap()).collect();
 
 			// All should have valid connections
 			for reader in &readers_vec {
@@ -186,10 +193,10 @@ mod tests {
 			drop(readers_vec);
 
 			// Get new readers - first 3 should be from pool
-			let _r1 = readers.get_reader();
-			let _r2 = readers.get_reader();
-			let _r3 = readers.get_reader();
-			let _r4 = readers.get_reader(); // This one creates new connection
+			let _r1 = readers.get_reader().unwrap();
+			let _r2 = readers.get_reader().unwrap();
+			let _r3 = readers.get_reader().unwrap();
+			let _r4 = readers.get_reader().unwrap(); // This one creates new connection
 
 			// All should work
 			assert!(_r1.conn().lock().is_ok());

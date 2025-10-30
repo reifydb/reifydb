@@ -546,6 +546,7 @@ dependencies = [
  "reifydb-type",
  "rusqlite",
  "test_each_file",
+ "uuid",
 ]
 
 [[package]]
@@ -651,6 +652,7 @@ version = "0.0.1"
 dependencies = [
  "reifydb-core",
  "test_each_file",
+ "uuid",
 ]
 
 [[package]]

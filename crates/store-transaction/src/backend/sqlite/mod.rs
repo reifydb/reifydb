@@ -12,8 +12,8 @@ mod write;
 
 use std::{
 	ops::Deref,
-	path::{Path, PathBuf},
-	sync::{Arc, mpsc},
+	sync::{Arc, Mutex, mpsc},
+	thread,
 };
 
 pub use cdc::{CdcRangeIter, CdcScanIter};
@@ -39,12 +39,10 @@ use crate::{
 pub struct SqliteBackend(Arc<SqliteBackendInner>);
 
 pub struct SqliteBackendInner {
-	readers: Readers,
 	writer: mpsc::Sender<WriteCommand>,
-	#[allow(dead_code)]
-	flags: rusqlite::OpenFlags,
-	#[allow(dead_code)]
-	config: SqliteConfig,
+	writer_thread: Mutex<Option<thread::JoinHandle<()>>>,
+	readers: Readers,
+	db_path: DbPath,
 }
 
 impl Deref for SqliteBackend {
@@ -58,67 +56,77 @@ impl Drop for SqliteBackendInner {
 	fn drop(&mut self) {
 		// Send shutdown command to writer actor
 		let _ = self.writer.send(WriteCommand::Shutdown);
+
+		// Wait for writer thread to finish and release all locks
+		if let Some(handle) = self.writer_thread.lock().unwrap().take() {
+			let _ = handle.join();
+		}
+
+		// Close all reader connections to release file locks
+		self.readers.close_all();
+
+		// Cleanup tmpfs files for in-memory databases
+		if let DbPath::Tmpfs(path) = &self.db_path {
+			// Remove database file
+			let _ = std::fs::remove_file(path);
+			// Remove WAL file
+			let _ = std::fs::remove_file(format!("{}-wal", path.display()));
+			// Remove shared memory file
+			let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+		}
 	}
 }
 
 impl SqliteBackend {
 	/// Create a new Sqlite storage with the given configuration
 	pub fn new(config: SqliteConfig) -> Self {
-		let db_path = Self::resolve_db_path(&config.path);
+		let db_path = Self::resolve_db_path(config.path);
 		let flags = Self::convert_flags(&config.flags);
 
-		// Create the database and set up sources with a temporary
-		// connection
-		{
-			let conn = Connection::open_with_flags(&db_path, flags)
-				.map_err(|e| Error(connection_failed(db_path.display().to_string(), e.to_string())))
-				.unwrap();
+		let conn = connect(&db_path, flags.clone()).unwrap();
 
-			conn.pragma_update(None, "journal_mode", config.journal_mode.as_str()).unwrap();
+		conn.pragma_update(None, "journal_mode", config.journal_mode.as_str()).unwrap();
+		conn.pragma_update(None, "synchronous", config.synchronous_mode.as_str()).unwrap();
+		conn.pragma_update(None, "temp_store", config.temp_store.as_str()).unwrap();
+		conn.pragma_update(None, "auto_vacuum", "INCREMENTAL").unwrap();
 
-			conn.pragma_update(None, "synchronous", config.synchronous_mode.as_str()).unwrap();
+		conn.execute_batch(
+			"BEGIN;
+             CREATE TABLE IF NOT EXISTS multi (
+                 key     BLOB NOT NULL,
+                 version INTEGER NOT NULL,
+                 value   BLOB,
+                 PRIMARY KEY (key, version)
+             );
 
-			conn.pragma_update(None, "temp_store", config.temp_store.as_str()).unwrap();
+             CREATE TABLE IF NOT EXISTS single (
+                 key     BLOB NOT NULL,
+                 value   BLOB,
+                 PRIMARY KEY (key)
+             );
 
-			conn.pragma_update(None, "auto_vacuum", "INCREMENTAL").unwrap();
+             CREATE TABLE IF NOT EXISTS cdc (
+                 version INTEGER NOT NULL PRIMARY KEY,
+                 value   BLOB NOT NULL
+             );
 
-			conn.execute_batch(
-				"BEGIN;
-                 CREATE TABLE IF NOT EXISTS multi (
-                     key     BLOB NOT NULL,
-                     version INTEGER NOT NULL,
-                     value   BLOB,
-                     PRIMARY KEY (key, version)
-                 );
+             CREATE INDEX IF NOT EXISTS idx_multi_key_version_desc ON multi (key, version DESC);
 
-                 CREATE TABLE IF NOT EXISTS single (
-                     key     BLOB NOT NULL,
-                     value   BLOB,
-                     PRIMARY KEY (key)
-                 );
+             COMMIT;",
+		)
+		.unwrap();
 
-                 CREATE TABLE IF NOT EXISTS cdc (
-                     version INTEGER NOT NULL PRIMARY KEY,
-                     value   BLOB NOT NULL
-                 );
+		// Update SQLite query planner statistics for optimal query plans
+		conn.execute("ANALYZE", []).unwrap();
 
-                 -- Indexes for multi table to optimize multi-version queries
-                 CREATE INDEX IF NOT EXISTS idx_multi_key_version_desc ON multi (key, version DESC);
-                 CREATE INDEX IF NOT EXISTS idx_multi_version_key ON multi (version, key);
-
-                 COMMIT;",
-			)
-			.unwrap();
-
-			// Update SQLite query planner statistics for optimal query plans
-			conn.execute("ANALYZE", []).unwrap();
-		}
+		// Pass the initialization connection to the writer to keep in-memory databases alive
+		let (writer, writer_thread) = Writer::spawn(conn).unwrap();
 
 		Self(Arc::new(SqliteBackendInner {
-			readers: Readers::new(&db_path, flags, 4).unwrap(),
-			writer: Writer::spawn(&db_path, flags).unwrap(),
-			flags,
-			config,
+			writer,
+			writer_thread: Mutex::new(Some(writer_thread)),
+			readers: Readers::new(db_path.clone(), flags, 4).unwrap(),
+			db_path,
 		}))
 	}
 
@@ -157,7 +165,7 @@ impl SqliteBackend {
 
 	/// Get a reader connection for read operations
 	pub(crate) fn get_reader(&self) -> read::Reader {
-		self.readers.get_reader()
+		self.readers.get_reader().unwrap()
 	}
 
 	/// Convert deltas to SQL operations for single storage
@@ -191,19 +199,58 @@ impl SqliteBackend {
 		operations
 	}
 
-	fn resolve_db_path(config_path: &Path) -> PathBuf {
-		if config_path.extension().is_none() {
-			// Path is a directory, ensure it exists and create crates
-			// file inside
-			std::fs::create_dir_all(config_path).ok();
-			config_path.join("reify.db")
-		} else {
-			// Path is a file, ensure parent directory exists
-			if let Some(parent) = config_path.parent() {
-				std::fs::create_dir_all(parent).ok();
+	fn resolve_db_path(db_path: DbPath) -> DbPath {
+		match db_path {
+			DbPath::Tmpfs(path) => {
+				// Ensure parent directory exists for tmpfs paths
+				if let Some(parent) = path.parent() {
+					std::fs::create_dir_all(&parent).ok();
+				}
+				DbPath::Tmpfs(path)
 			}
-			config_path.to_path_buf()
+			DbPath::File(config_path) => {
+				// Check if this is a SQLite URI (contains ':' which indicates URI format)
+				let is_uri = config_path.to_string_lossy().contains(':');
+
+				if is_uri {
+					// URI paths should be preserved as-is
+					DbPath::File(config_path)
+				} else if config_path.extension().is_none() {
+					// Path is a directory, ensure it exists and create database file inside
+					std::fs::create_dir_all(&config_path).ok();
+					DbPath::File(config_path.join("reify.db"))
+				} else {
+					// Path is a file, ensure parent directory exists
+					if let Some(parent) = config_path.parent() {
+						std::fs::create_dir_all(&parent).ok();
+					}
+					DbPath::File(config_path)
+				}
+			}
 		}
+	}
+}
+
+pub(crate) fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> crate::Result<Connection> {
+	match path {
+		DbPath::File(path) => {
+			let path_str = path.to_string_lossy();
+			// Check if this is a URI (contains ':')
+			let is_uri = path_str.contains(':');
+
+			if is_uri {
+				// For URIs, we must pass them as strings with the URI flag
+				let uri_flags = flags | rusqlite::OpenFlags::SQLITE_OPEN_URI;
+				Connection::open_with_flags(path_str.as_ref(), uri_flags)
+					.map_err(|e| Error(connection_failed(path_str.to_string(), e.to_string())))
+			} else {
+				Connection::open_with_flags(path, flags).map_err(|e| {
+					Error(connection_failed(path.display().to_string(), e.to_string()))
+				})
+			}
+		}
+		DbPath::Tmpfs(path) => Connection::open_with_flags(path, flags)
+			.map_err(|e| Error(connection_failed(path.display().to_string(), e.to_string()))),
 	}
 }
 
@@ -215,6 +262,8 @@ impl CdcStore for SqliteBackend {}
 
 #[cfg(test)]
 mod tests {
+	use std::path::PathBuf;
+
 	use reifydb_testing::tempdir::temp_dir;
 
 	use super::*;
@@ -223,12 +272,13 @@ mod tests {
 	fn test_resolve_db_path_with_directory() {
 		temp_dir(|temp_path| {
 			let dir_path = temp_path.join("mydb");
+			let db_path = DbPath::File(dir_path.clone());
 
 			// Test with directory path (no extension)
-			let result = SqliteBackend::resolve_db_path(&dir_path);
+			let result = SqliteBackend::resolve_db_path(db_path);
 
 			// Should append reify.db to directory
-			assert_eq!(result, dir_path.join("reify.db"));
+			assert_eq!(result, DbPath::File(dir_path.join("reify.db")));
 
 			// Directory should be created
 			assert!(dir_path.exists());
@@ -242,13 +292,13 @@ mod tests {
 	#[test]
 	fn test_resolve_db_path_with_file() {
 		temp_dir(|temp_path| {
-			let file_path = temp_path.join("custom.crates");
+			let file_path = temp_path.join("custom.db");
 
 			// Test with file path (has extension)
-			let result = SqliteBackend::resolve_db_path(&file_path);
+			let result = SqliteBackend::resolve_db_path(DbPath::File(file_path.clone()));
 
 			// Should use the exact path provided
-			assert_eq!(result, file_path);
+			assert_eq!(result, DbPath::File(file_path));
 
 			// Parent directory should exist
 			assert!(temp_path.exists());
@@ -264,10 +314,10 @@ mod tests {
 			let nested_path = temp_path.join("level1").join("level2").join("mydb");
 
 			// Test with nested directory path
-			let result = SqliteBackend::resolve_db_path(&nested_path);
+			let result = SqliteBackend::resolve_db_path(DbPath::File(nested_path.clone()));
 
 			// Should create nested directories and append reify.db
-			assert_eq!(result, nested_path.join("reify.db"));
+			assert_eq!(result, DbPath::File(nested_path.join("reify.db")));
 			assert!(nested_path.exists());
 			assert!(nested_path.is_dir());
 
@@ -282,11 +332,11 @@ mod tests {
 			let nested_file = temp_path.join("level1").join("level2").join("database.sqlite");
 
 			// Test with nested file path
-			let result = SqliteBackend::resolve_db_path(&nested_file);
+			let result = SqliteBackend::resolve_db_path(DbPath::File(nested_file.clone()));
 
 			// Should create parent directories and use exact
 			// filename
-			assert_eq!(result, nested_file);
+			assert_eq!(result, DbPath::File(nested_file));
 			assert!(temp_path.join("level1").join("level2").exists());
 
 			Ok(())
@@ -297,21 +347,33 @@ mod tests {
 	#[test]
 	fn test_resolve_db_path_with_various_extensions() {
 		temp_dir(|temp_path| {
-			// Test with .crates extension
-			let db_file = temp_path.join("test.crates");
-			assert_eq!(SqliteBackend::resolve_db_path(&db_file), db_file);
+			// Test with .db extension
+			let db_file = temp_path.join("test.db");
+			assert_eq!(
+				SqliteBackend::resolve_db_path(DbPath::File(db_file.clone())),
+				DbPath::File(db_file)
+			);
 
 			// Test with .sqlite extension
 			let sqlite_file = temp_path.join("test.sqlite");
-			assert_eq!(SqliteBackend::resolve_db_path(&sqlite_file), sqlite_file);
+			assert_eq!(
+				SqliteBackend::resolve_db_path(DbPath::File(sqlite_file.clone())),
+				DbPath::File(sqlite_file)
+			);
 
 			// Test with .reifydb extension
 			let reifydb_file = temp_path.join("test.reifydb");
-			assert_eq!(SqliteBackend::resolve_db_path(&reifydb_file), reifydb_file);
+			assert_eq!(
+				SqliteBackend::resolve_db_path(DbPath::File(reifydb_file.clone())),
+				DbPath::File(reifydb_file)
+			);
 
 			// Test with no extension (directory)
 			let no_ext = temp_path.join("testdb");
-			assert_eq!(SqliteBackend::resolve_db_path(&no_ext), no_ext.join("reify.db"));
+			assert_eq!(
+				SqliteBackend::resolve_db_path(DbPath::File(no_ext.clone())),
+				DbPath::File(no_ext.join("reify.db"))
+			);
 
 			Ok(())
 		})
@@ -436,5 +498,70 @@ mod tests {
 			Ok(())
 		})
 		.expect("test failed");
+	}
+
+	#[test]
+	fn test_in_memory_database() {
+		// Test SqliteConfig::in_memory() creates a working backend
+		let config = SqliteConfig::in_memory();
+		let storage = SqliteBackend::new(config);
+
+		// Verify we can get a reader connection
+		let conn = storage.get_reader();
+		let conn_guard = conn.lock().unwrap();
+
+		// Verify tables are created in the in-memory database
+		let mut stmt = conn_guard
+			.prepare(
+				"SELECT name FROM sqlite_master WHERE type='table' AND name IN ('multi', 'single', 'cdc')",
+			)
+			.unwrap();
+		let table_names: Vec<String> =
+			stmt.query_map([], |row| Ok(row.get(0)?)).unwrap().map(Result::unwrap).collect();
+
+		assert_eq!(table_names.len(), 3);
+		assert!(table_names.contains(&"multi".to_string()));
+		assert!(table_names.contains(&"single".to_string()));
+		assert!(table_names.contains(&"cdc".to_string()));
+	}
+
+	#[test]
+	fn test_in_memory_test_config() {
+		// Test SqliteConfig::test() creates a working backend
+		let config = SqliteConfig::test();
+		let storage = SqliteBackend::new(config);
+
+		// Verify we can get a reader connection
+		let conn = storage.get_reader();
+		let conn_guard = conn.lock().unwrap();
+
+		// Verify tables are created
+		let mut stmt = conn_guard.prepare("SELECT name FROM sqlite_master WHERE type='table'").unwrap();
+		let table_names: Vec<String> =
+			stmt.query_map([], |row| Ok(row.get(0)?)).unwrap().map(Result::unwrap).collect();
+
+		// Should have multi, single, and cdc tables
+		assert!(table_names.len() >= 3);
+		assert!(table_names.contains(&"multi".to_string()));
+		assert!(table_names.contains(&"single".to_string()));
+		assert!(table_names.contains(&"cdc".to_string()));
+	}
+
+	#[test]
+	fn test_uri_path_preserved() {
+		// Test that URI paths are preserved by resolve_db_path
+		let uri = PathBuf::from("file:memdb?mode=memory&cache=shared");
+		let resolved = SqliteBackend::resolve_db_path(DbPath::File(uri.clone()));
+		assert_eq!(resolved, DbPath::File(uri));
+
+		// Test :memory: path
+		let memory = PathBuf::from(":memory:");
+		let resolved_memory = SqliteBackend::resolve_db_path(DbPath::File(memory.clone()));
+		assert_eq!(resolved_memory, DbPath::File(memory));
+
+		// Test regular file path still works
+		let file_path = PathBuf::from("/tmp/test.db");
+		let resolved_file = SqliteBackend::resolve_db_path(DbPath::File(file_path.clone()));
+		assert_eq!(resolved_file, DbPath::File(file_path));
 	}
 }

@@ -149,11 +149,8 @@ impl<C: CdcConsume> PollConsumer<C> {
 
 		while state.running.load(Ordering::Acquire) {
 			match Self::consume_batch(&state, &engine, &consumer) {
-				Ok(Some((processed_version, lag))) => {
-					println!(
-						"[Consumer {:?}] Processed up to version {}, lag: {}",
-						config.consumer_id, processed_version.0, lag
-					);
+				Ok(Some((_processed_version, _lag))) => {
+					// FIXME log this
 				}
 				Ok(None) => {}
 				Err(error) => {

@@ -1,12 +1,21 @@
 // Copyright (c) reifydb.com 2025.
 // This file is licensed under the AGPL-3.0-or-later, see license.md file.
 
-use std::path::{Path, PathBuf};
+use std::{
+	env::temp_dir,
+	path::{Path, PathBuf},
+};
+
+#[derive(Debug, Clone, Eq, PartialEq)]
+pub enum DbPath {
+	File(PathBuf),
+	Tmpfs(PathBuf), // tmpfs-backed file for WAL support + cleanup
+}
 
 /// Configuration for SQLite storage backend
 #[derive(Debug, Clone)]
 pub struct SqliteConfig {
-	pub(crate) path: PathBuf,
+	pub(crate) path: DbPath,
 	pub(crate) flags: OpenFlags,
 	pub(crate) journal_mode: JournalMode,
 	pub(crate) synchronous_mode: SynchronousMode,
@@ -17,7 +26,7 @@ impl SqliteConfig {
 	/// Create a new SqliteConfig with the specified database path
 	pub fn new<P: AsRef<Path>>(path: P) -> Self {
 		Self {
-			path: path.as_ref().to_path_buf(),
+			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Normal,
@@ -32,7 +41,7 @@ impl SqliteConfig {
 	/// - Conservative pool size
 	pub fn safe<P: AsRef<Path>>(path: P) -> Self {
 		Self {
-			path: path.as_ref().to_path_buf(),
+			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Full,
@@ -47,7 +56,7 @@ impl SqliteConfig {
 	/// - Larger pool size for concurrency
 	pub fn fast<P: AsRef<Path>>(path: P) -> Self {
 		Self {
-			path: path.as_ref().to_path_buf(),
+			path: DbPath::File(path.as_ref().to_path_buf()),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Memory,
 			synchronous_mode: SynchronousMode::Off,
@@ -55,14 +64,16 @@ impl SqliteConfig {
 		}
 	}
 
-	/// Create a test configuration optimized for testing
-	/// - WAL journal mode for concurrent test execution
-	/// - Normal synchronous mode for reliability
-	/// - MEMORY temp store for fastest temp operations
-	/// - Small pool size to minimize locking issues
-	pub fn test<P: AsRef<Path>>(path: P) -> Self {
+	/// Create an in-memory configuration for production use
+	/// - tmpfs-backed database with WAL mode for concurrent access
+	/// - Uses /tmp for RAM-backed storage
+	/// - WAL journal mode for concurrent readers + single writer
+	/// - NORMAL synchronous mode (safe for tmpfs)
+	/// - MEMORY temp store
+	/// - Automatic cleanup on drop
+	pub fn in_memory() -> Self {
 		Self {
-			path: path.as_ref().to_path_buf(),
+			path: DbPath::Tmpfs(temp_dir().join(format!("reifydb_mem_{}.db", uuid::Uuid::new_v4()))),
 			flags: OpenFlags::default(),
 			journal_mode: JournalMode::Wal,
 			synchronous_mode: SynchronousMode::Normal,
@@ -70,9 +81,26 @@ impl SqliteConfig {
 		}
 	}
 
+	/// Create a test configuration optimized for testing with in-memory database
+	/// - tmpfs-backed database with WAL mode for concurrent access
+	/// - Uses /tmp for RAM-backed storage
+	/// - WAL journal mode for concurrent readers + single writer
+	/// - FULL synchronous mode for test safety
+	/// - MEMORY temp store for fastest temp operations
+	/// - Automatic cleanup on drop
+	pub fn test() -> Self {
+		Self {
+			path: DbPath::Tmpfs(temp_dir().join(format!("reifydb_test_{}.db", uuid::Uuid::new_v4()))),
+			flags: OpenFlags::default(),
+			journal_mode: JournalMode::Wal,
+			synchronous_mode: SynchronousMode::Full,
+			temp_store: TempStore::Memory,
+		}
+	}
+
 	/// Set the database file path
 	pub fn path<P: AsRef<Path>>(mut self, path: P) -> Self {
-		self.path = path.as_ref().to_path_buf();
+		self.path = DbPath::File(path.as_ref().to_path_buf());
 		self
 	}
 
@@ -275,7 +303,7 @@ mod tests {
 			.temp_store(TempStore::Memory)
 			.flags(OpenFlags::new().read_write(true).create(true).full_mutex(true));
 
-		assert_eq!(config.path, PathBuf::from("/tmp/test.reifydb"));
+		assert_eq!(config.path, DbPath::File(PathBuf::from("/tmp/test.reifydb")));
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
 		assert_eq!(config.temp_store, TempStore::Memory);
@@ -319,7 +347,7 @@ mod tests {
 	#[test]
 	fn test_default_config() {
 		let config = SqliteConfig::default();
-		assert_eq!(config.path, PathBuf::from("reify.reifydb"));
+		assert_eq!(config.path, DbPath::File(PathBuf::from("reify.reifydb")));
 		assert_eq!(config.journal_mode, JournalMode::Wal);
 		assert_eq!(config.synchronous_mode, SynchronousMode::Normal);
 		assert_eq!(config.temp_store, TempStore::Memory);
@@ -331,7 +359,7 @@ mod tests {
 			let db_file = db_path.join("safe.reifydb");
 			let config = SqliteConfig::safe(&db_file);
 
-			assert_eq!(config.path, db_file);
+			assert_eq!(config.path, DbPath::File(db_file));
 			assert_eq!(config.journal_mode, JournalMode::Wal);
 			assert_eq!(config.synchronous_mode, SynchronousMode::Full);
 			assert_eq!(config.temp_store, TempStore::File);
@@ -346,7 +374,7 @@ mod tests {
 			let db_file = db_path.join("fast.reifydb");
 			let config = SqliteConfig::fast(&db_file);
 
-			assert_eq!(config.path, db_file);
+			assert_eq!(config.path, DbPath::File(db_file));
 			assert_eq!(config.journal_mode, JournalMode::Memory);
 			assert_eq!(config.synchronous_mode, SynchronousMode::Off);
 			assert_eq!(config.temp_store, TempStore::Memory);
@@ -419,11 +447,11 @@ mod tests {
 			// Test with file path
 			let file_path = db_path.join("test.reifydb");
 			let config = SqliteConfig::new(&file_path);
-			assert_eq!(config.path, file_path);
+			assert_eq!(config.path, DbPath::File(file_path));
 
 			// Test with directory path
 			let config = SqliteConfig::new(db_path);
-			assert_eq!(config.path, db_path);
+			assert_eq!(config.path, DbPath::File(db_path.to_path_buf()));
 			Ok(())
 		})
 		.expect("test failed");

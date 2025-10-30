@@ -72,7 +72,7 @@ pub(crate) fn source_name(key: &EncodedKey) -> crate::Result<&'static str> {
 	}
 }
 
-pub(crate) fn ensure_source_exists(conn: &Connection, source: &str) {
+pub(crate) fn ensure_source_exists(conn: &Connection, source: &str) -> rusqlite::Result<()> {
 	let create_sql = format!(
 		"CREATE TABLE IF NOT EXISTS {} (
             key     BLOB NOT NULL,
@@ -82,21 +82,18 @@ pub(crate) fn ensure_source_exists(conn: &Connection, source: &str) {
         )",
 		source
 	);
-	conn.execute(&create_sql, []).unwrap();
+	conn.execute(&create_sql, [])?;
 
 	// Create index for latest-version lookups (key, version DESC)
 	// This optimizes queries like: WHERE key = ? AND version <= ? ORDER BY version DESC LIMIT 1
 	let index1_sql =
 		format!("CREATE INDEX IF NOT EXISTS idx_{}_key_version_desc ON {} (key, version DESC)", source, source);
-	conn.execute(&index1_sql, []).unwrap();
-
-	// Create index for version-scoped scans and GROUP BY queries
-	// This optimizes queries like: WHERE version <= ? GROUP BY key or ORDER BY version, key
-	let index2_sql = format!("CREATE INDEX IF NOT EXISTS idx_{}_version_key ON {} (version, key)", source, source);
-	conn.execute(&index2_sql, []).unwrap();
+	conn.execute(&index1_sql, [])?;
 
 	// Update SQLite query planner statistics for optimal query plans
-	conn.execute("ANALYZE", []).unwrap();
+	conn.execute("ANALYZE", [])?;
+
+	Ok(())
 }
 
 pub(crate) fn source_name_for_range(range: &EncodedKeyRange) -> String {
@@ -270,24 +267,25 @@ pub(crate) fn execute_batched_range_query(
 	let mut count = 0;
 	match param_count {
 		1 => {
-			let rows = stmt
-				.query_map(params![version.0, batch_size], |values| {
-					let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
-					let value: Option<Vec<u8>> = values.get(1)?;
-					let version = CommitVersion(values.get(2)?);
-					match value {
-						Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
-							key,
-							values: EncodedValues(CowVec::new(val)),
-							version,
-						})),
-						None => Ok(MultiVersionIterResult::Tombstone {
-							key,
-							version,
-						}), // NULL value means deleted
-					}
-				})
-				.unwrap();
+			let rows = match stmt.query_map(params![version.0, batch_size], |values| {
+				let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
+				let value: Option<Vec<u8>> = values.get(1)?;
+				let version = CommitVersion(values.get(2)?);
+				match value {
+					Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
+						key,
+						values: EncodedValues(CowVec::new(val)),
+						version,
+					})),
+					None => Ok(MultiVersionIterResult::Tombstone {
+						key,
+						version,
+					}), // NULL value means deleted
+				}
+			}) {
+				Ok(rows) => rows,
+				Err(_) => return 0, // Query failed, return 0 entries
+			};
 
 			for result in rows {
 				match result {
@@ -305,24 +303,25 @@ pub(crate) fn execute_batched_range_query(
 				(_, Bound::Included(key)) | (_, Bound::Excluded(key)) => key.to_vec(),
 				_ => unreachable!(),
 			};
-			let rows = stmt
-				.query_map(params![param, version.0, batch_size], |values| {
-					let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
-					let value: Option<Vec<u8>> = values.get(1)?;
-					let version = CommitVersion(values.get(2)?);
-					match value {
-						Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
-							key,
-							values: EncodedValues(CowVec::new(val)),
-							version,
-						})),
-						None => Ok(MultiVersionIterResult::Tombstone {
-							key,
-							version,
-						}), // NULL value means deleted
-					}
-				})
-				.unwrap();
+			let rows = match stmt.query_map(params![param, version.0, batch_size], |values| {
+				let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
+				let value: Option<Vec<u8>> = values.get(1)?;
+				let version = CommitVersion(values.get(2)?);
+				match value {
+					Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
+						key,
+						values: EncodedValues(CowVec::new(val)),
+						version,
+					})),
+					None => Ok(MultiVersionIterResult::Tombstone {
+						key,
+						version,
+					}), // NULL value means deleted
+				}
+			}) {
+				Ok(rows) => rows,
+				Err(_) => return 0, // Query failed, return 0 entries
+			};
 
 			for result in rows {
 				match result {
@@ -343,8 +342,8 @@ pub(crate) fn execute_batched_range_query(
 				Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
 				_ => unreachable!(),
 			};
-			let rows = stmt
-				.query_map(params![start_param, end_param, version.0, batch_size], |values| {
+			let rows =
+				match stmt.query_map(params![start_param, end_param, version.0, batch_size], |values| {
 					let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
 					let value: Option<Vec<u8>> = values.get(1)?;
 					let version = CommitVersion(values.get(2)?);
@@ -359,8 +358,10 @@ pub(crate) fn execute_batched_range_query(
 							version,
 						}), // NULL value means deleted
 					}
-				})
-				.unwrap();
+				}) {
+					Ok(rows) => rows,
+					Err(_) => return 0, // Query failed, return 0 entries
+				};
 
 			for result in rows {
 				match result {
@@ -379,12 +380,24 @@ pub(crate) fn execute_batched_range_query(
 
 /// Helper function to get all source names for iteration
 pub(crate) fn get_source_names(conn: &ReadConnection) -> Vec<String> {
-	let conn_guard = conn.lock().unwrap();
-	let mut stmt = conn_guard
-		.prepare("SELECT name FROM sqlite_master WHERE type='table' AND (name='multi' OR name LIKE 'source_%' OR name LIKE 'operator_%')")
-		.unwrap();
+	let conn_guard = match conn.lock() {
+		Ok(guard) => guard,
+		Err(_) => return Vec::new(), // Lock poisoned, return empty list
+	};
 
-	stmt.query_map([], |values| Ok(values.get::<_, String>(0)?)).unwrap().map(Result::unwrap).collect()
+	let mut stmt = match conn_guard.prepare(
+		"SELECT name FROM sqlite_master WHERE type='table' AND (name='multi' OR name LIKE 'source_%' OR name LIKE 'operator_%')",
+	) {
+		Ok(stmt) => stmt,
+		Err(_) => return Vec::new(), // Failed to prepare statement
+	};
+
+	let rows = match stmt.query_map([], |values| Ok(values.get::<_, String>(0)?)) {
+		Ok(rows) => rows,
+		Err(_) => return Vec::new(), // Query failed
+	};
+
+	rows.filter_map(Result::ok).collect()
 }
 
 /// Helper function to execute batched iteration queries across multiple sources
@@ -461,27 +474,35 @@ pub(crate) fn execute_scan_query(
 			_ => unreachable!(),
 		};
 
-		let conn_guard = conn.lock().unwrap();
-		let mut stmt = conn_guard.prepare(&query).unwrap();
+		let conn_guard = match conn.lock() {
+			Ok(guard) => guard,
+			Err(_) => continue, // Lock poisoned, skip this source
+		};
 
-		let rows = stmt
-			.query_map(rusqlite::params_from_iter(params.iter()), |values| {
-				let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
-				let value: Option<Vec<u8>> = values.get(1)?;
-				let version = CommitVersion(values.get(2)?);
-				match value {
-					Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
-						key,
-						values: EncodedValues(CowVec::new(val)),
-						version,
-					})),
-					None => Ok(MultiVersionIterResult::Tombstone {
-						key,
-						version,
-					}), // NULL value means deleted
-				}
-			})
-			.unwrap();
+		let mut stmt = match conn_guard.prepare(&query) {
+			Ok(stmt) => stmt,
+			Err(_) => continue, // Failed to prepare statement, skip this source
+		};
+
+		let rows = match stmt.query_map(rusqlite::params_from_iter(params.iter()), |values| {
+			let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
+			let value: Option<Vec<u8>> = values.get(1)?;
+			let version = CommitVersion(values.get(2)?);
+			match value {
+				Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
+					key,
+					values: EncodedValues(CowVec::new(val)),
+					version,
+				})),
+				None => Ok(MultiVersionIterResult::Tombstone {
+					key,
+					version,
+				}), // NULL value means deleted
+			}
+		}) {
+			Ok(rows) => rows,
+			Err(_) => continue, // Query failed, skip this source
+		};
 
 		for result in rows {
 			match result {

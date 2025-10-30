@@ -66,21 +66,48 @@ impl CdcRangeIter {
 			format!("SELECT version, value FROM cdc {} ORDER BY version ASC LIMIT ?", where_clause)
 		};
 
-		let conn_guard = self.conn.lock().unwrap();
-		let mut stmt = conn_guard.prepare_cached(&query).unwrap();
+		let conn_guard = match self.conn.lock() {
+			Ok(guard) => guard,
+			Err(_) => {
+				// Lock poisoned, mark as exhausted and return
+				self.exhausted = true;
+				return;
+			}
+		};
+
+		let mut stmt = match conn_guard.prepare_cached(&query) {
+			Ok(stmt) => stmt,
+			Err(_) => {
+				// Failed to prepare statement (possibly due to database shutdown)
+				self.exhausted = true;
+				return;
+			}
+		};
 
 		let mut query_params = params;
 		query_params.push(self.batch_size as i64);
 
-		let transactions: Vec<(CommitVersion, EncodedValues)> = stmt
-			.query_map(rusqlite::params_from_iter(query_params), |values| {
-				let version = CommitVersion(values.get(0)?);
-				let bytes: Vec<u8> = values.get(1)?;
-				Ok((version, EncodedValues(CowVec::new(bytes))))
-			})
-			.unwrap()
-			.collect::<rusqlite::Result<Vec<_>>>()
-			.unwrap();
+		let query_result = stmt.query_map(rusqlite::params_from_iter(query_params), |values| {
+			let version = CommitVersion(values.get(0)?);
+			let bytes: Vec<u8> = values.get(1)?;
+			Ok((version, EncodedValues(CowVec::new(bytes))))
+		});
+
+		let transactions: Vec<(CommitVersion, EncodedValues)> = match query_result {
+			Ok(rows) => match rows.collect::<rusqlite::Result<Vec<_>>>() {
+				Ok(txns) => txns,
+				Err(_) => {
+					// Query execution failed (possibly database locked during shutdown)
+					self.exhausted = true;
+					return;
+				}
+			},
+			Err(_) => {
+				// Query failed to execute
+				self.exhausted = true;
+				return;
+			}
+		};
 
 		let count = transactions.len();
 

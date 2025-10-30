@@ -3,7 +3,6 @@
 
 use std::{
 	collections::{HashMap, HashSet},
-	path::Path,
 	sync::mpsc,
 	thread,
 };
@@ -11,13 +10,12 @@ use std::{
 use mpsc::Sender;
 use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta};
 use reifydb_type::{Error, Result};
-use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
+use rusqlite::{Connection, Transaction, params_from_iter, types::Value};
 
 use super::diagnostic::{from_rusqlite_error, transaction_failed};
 use crate::{
 	backend::{
 		commit::CommitBuffer,
-		diagnostic::connection_failed,
 		gc::GcStats,
 		sqlite::{
 			cdc::store_internal_cdc,
@@ -68,14 +66,11 @@ pub struct Writer {
 }
 
 impl Writer {
-	pub fn spawn(db_path: &Path, flags: OpenFlags) -> Result<Sender<WriteCommand>> {
-		let conn = Connection::open_with_flags(db_path, flags)
-			.map_err(|e| Error(connection_failed(db_path.display().to_string(), e.to_string())))?;
-
+	pub fn spawn(conn: Connection) -> Result<(Sender<WriteCommand>, thread::JoinHandle<()>)> {
 		let (sender, receiver) = mpsc::channel();
 
-		thread::spawn(move || {
-			let mut actor = Writer {
+		let handle = thread::spawn(move || {
+			let actor = Writer {
 				receiver,
 				conn,
 				ensured_sources: HashSet::new(),
@@ -86,10 +81,10 @@ impl Writer {
 			actor.run();
 		});
 
-		Ok(sender)
+		Ok((sender, handle))
 	}
 
-	fn run(&mut self) {
+	fn run(mut self) {
 		while let Ok(cmd) = self.receiver.recv() {
 			match cmd {
 				WriteCommand::SingleVersionCommit {
@@ -119,6 +114,22 @@ impl Writer {
 				WriteCommand::Shutdown => break,
 			}
 		}
+
+		// Cleanup on shutdown: ensure no locks are held
+		self.cleanup_on_shutdown();
+	}
+
+	fn cleanup_on_shutdown(mut self) {
+		// Fail all pending responses that are waiting for commits
+		for (version, sender) in self.pending_responses.drain() {
+			let diagnostic = transaction_failed(format!(
+				"Commit version {} abandoned due to storage shutdown",
+				version.0
+			));
+			let _ = sender.send(Err(Error(diagnostic)));
+		}
+
+		let _ = self.conn.close();
 	}
 
 	fn handle_single_commit(&mut self, operations: Vec<(String, Vec<Value>)>) -> Result<()> {
@@ -291,7 +302,7 @@ impl Writer {
 		ensured_sources: &mut HashSet<String>,
 	) -> Result<()> {
 		if source != "multi" && !ensured_sources.contains(source) {
-			ensure_source_exists(tx, source);
+			ensure_source_exists(tx, source).map_err(|e| Error(from_rusqlite_error(e)))?;
 			ensured_sources.insert(source.to_string());
 		}
 		Ok(())
