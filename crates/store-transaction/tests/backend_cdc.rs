@@ -144,7 +144,7 @@ impl<BMV: BackendMultiVersion + CdcStore> testscript::Runner for Runner<BMV> {
 							values
 						})
 					],
-					version
+					version,
 				)?;
 				writeln!(output, "ok")?;
 			}

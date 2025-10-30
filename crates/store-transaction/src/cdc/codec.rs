@@ -1,11 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey,
-	return_internal_error,
-	value::encoded::EncodedValues,
-};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, return_internal_error, value::encoded::EncodedValues};
 use reifydb_type::Blob;
 
 use super::{InternalCdc, InternalCdcChange, InternalCdcSequencedChange, layout::*};
@@ -18,7 +14,6 @@ pub(crate) fn encode_internal_cdc(transaction: &InternalCdc) -> crate::Result<En
 	CDC_TRANSACTION_LAYOUT.set_u64(&mut values, CDC_TX_VERSION_FIELD, transaction.version);
 
 	CDC_TRANSACTION_LAYOUT.set_u64(&mut values, CDC_TX_TIMESTAMP_FIELD, transaction.timestamp);
-
 
 	let mut changes_bytes = Vec::new();
 

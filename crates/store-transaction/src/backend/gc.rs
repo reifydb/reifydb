@@ -49,10 +49,7 @@ impl GarbageCollector {
 	///
 	/// The GC thread will periodically call `compact_operator_states()` on the backend
 	/// at the specified interval.
-	pub fn spawn<B: BackendGarbageCollect + Clone + 'static>(
-		backend: B,
-		interval: Duration,
-	) -> Self {
+	pub fn spawn<B: BackendGarbageCollect + Clone + 'static>(backend: B, interval: Duration) -> Self {
 		let (shutdown_sender, shutdown_receiver) = mpsc::channel();
 
 		let thread_handle = thread::spawn(move || {
@@ -66,11 +63,7 @@ impl GarbageCollector {
 	}
 
 	/// Main GC loop - runs with smart backoff strategy
-	fn run<B: BackendGarbageCollect>(
-		backend: B,
-		interval: Duration,
-		shutdown_receiver: Receiver<GcCommand>,
-	) {
+	fn run<B: BackendGarbageCollect>(backend: B, interval: Duration, shutdown_receiver: Receiver<GcCommand>) {
 		let mut current_delay = Duration::from_secs(0); // Start immediately
 		let max_delay = interval; // Maximum delay (typically 10 seconds)
 
@@ -86,27 +79,41 @@ impl GarbageCollector {
 						Ok(stats) => {
 							println!(
 								"[GC] Stats: keys_processed={}, versions_removed={}, tables_cleaned={}",
-								stats.keys_processed, stats.versions_removed, stats.tables_cleaned
+								stats.keys_processed,
+								stats.versions_removed,
+								stats.tables_cleaned
 							);
 
 							// Continuous exponential backoff based on work done
 							current_delay = if stats.versions_removed >= 1024 {
-								println!("[GC] Hit batch limit ({}), running again immediately",
-										 stats.versions_removed);
+								println!(
+									"[GC] Hit batch limit ({}), running again immediately",
+									stats.versions_removed
+								);
 								Duration::from_secs(0)
 							} else if stats.versions_removed == 0 {
-								println!("[GC] No work found, backing off to {}s", max_delay.as_secs());
+								println!(
+									"[GC] No work found, backing off to {}s",
+									max_delay.as_secs()
+								);
 								max_delay
 							} else {
 								// Exponential backoff: more work → shorter delay
-								// Formula: delay = max_delay × (1 - (versions_removed / 1024))
+								// Formula: delay = max_delay × (1 - (versions_removed /
+								// 1024))
 								let ratio = stats.versions_removed as f64 / 1024.0;
-								let delay_secs = (max_delay.as_secs() as f64 * (1.0 - ratio)).ceil() as u64;
+								let delay_secs = (max_delay.as_secs() as f64
+									* (1.0 - ratio))
+									.ceil() as u64;
 								let delay_secs = delay_secs.max(1); // Minimum 1 second
 								let delay = Duration::from_secs(delay_secs);
 
-								println!("[GC] Processed {} versions ({:.1}% of batch), backing off to {}s",
-										 stats.versions_removed, ratio * 100.0, delay.as_secs());
+								println!(
+									"[GC] Processed {} versions ({:.1}% of batch), backing off to {}s",
+									stats.versions_removed,
+									ratio * 100.0,
+									delay.as_secs()
+								);
 								delay
 							};
 						}

@@ -8,9 +8,11 @@ mod layout;
 use std::collections::Bound;
 
 pub(crate) use reifydb_core::delta::Delta;
-use reifydb_core::{interface::Cdc, CommitVersion, EncodedKey};
-use reifydb_core::interface::KeyKind;
-use reifydb_core::key::Key;
+use reifydb_core::{
+	CommitVersion, EncodedKey,
+	interface::{Cdc, KeyKind},
+	key::Key,
+};
 
 pub trait CdcStore: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
 
@@ -85,14 +87,12 @@ fn generate_internal_cdc_change(
 			key,
 			values: _,
 		} => {
-
 			// operators do not generate cdc events
 			if let Some(kind) = Key::kind(&key) {
-				if kind == KeyKind::FlowNodeState{
+				if kind == KeyKind::FlowNodeState {
 					return None;
 				}
 			}
-
 
 			if let Some(pre_version) = pre_version {
 				Some(InternalCdcChange::Update {
@@ -113,7 +113,7 @@ fn generate_internal_cdc_change(
 		} => {
 			// operators do not produce cdc events
 			if let Some(kind) = Key::kind(&key) {
-				if kind == KeyKind::FlowNodeState{
+				if kind == KeyKind::FlowNodeState {
 					return None;
 				}
 			}
@@ -202,7 +202,8 @@ where
 							// Delete followed by Insert
 							// Check if the Delete is from storage or from this transaction
 							if *delete_pre_version != version {
-								// Delete is from storage (different version), keep both Delete and Insert
+								// Delete is from storage (different version), keep both
+								// Delete and Insert
 								let cdc_change = InternalCdcChange::Insert {
 									key: key.clone(),
 									post_version: version,
@@ -213,8 +214,9 @@ where
 								});
 							} else {
 								// Delete is from this transaction (same version)
-								// This means we had Insert+Delete+Insert in same transaction
-								// The Delete cancelled the first Insert, now we have a new Insert
+								// This means we had Insert+Delete+Insert in same
+								// transaction The Delete cancelled the first
+								// Insert, now we have a new Insert
 								let cdc_change = InternalCdcChange::Insert {
 									key: key.clone(),
 									post_version: version,
@@ -271,8 +273,8 @@ where
 						InternalCdcChange::Delete {
 							..
 						} => {
-							// Delete + Delete shouldn't happen, but if it does, keep the first
-							// Do nothing - keep the existing Delete
+							// Delete + Delete shouldn't happen, but if it does, keep the
+							// first Do nothing - keep the existing Delete
 						}
 					}
 				} else {

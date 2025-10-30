@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
-};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues};
 
 use super::StandardTransactionStore;
 use crate::{
@@ -56,11 +54,7 @@ impl MultiVersionContains for StandardTransactionStore {
 }
 
 impl MultiVersionCommit for StandardTransactionStore {
-	fn commit(
-		&self,
-		deltas: CowVec<Delta>,
-		version: CommitVersion,
-	) -> crate::Result<()> {
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()> {
 		if let Some(hot) = &self.hot {
 			return hot.multi.commit(deltas, version);
 		}

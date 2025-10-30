@@ -7,7 +7,10 @@ use reifydb_core::{CommitVersion, interface::Key};
 use reifydb_type::Result;
 
 use super::{MemoryBackend, write::WriteCommand};
-use crate::backend::{diagnostic::database_error, gc::{BackendGarbageCollect, GcStats}};
+use crate::backend::{
+	diagnostic::database_error,
+	gc::{BackendGarbageCollect, GcStats},
+};
 
 impl BackendGarbageCollect for MemoryBackend {
 	fn compact_operator_states(&self) -> Result<GcStats> {
@@ -39,8 +42,12 @@ impl BackendGarbageCollect for MemoryBackend {
 							// Get the latest version for this key
 							if let Some(latest_version) = chain.get_latest_version() {
 								// Compact to keep only the latest version
-								// Use a version number higher than latest to keep only latest
-								ops.push((key.clone(), CommitVersion(latest_version.0 + 1)));
+								// Use a version number higher than latest to keep only
+								// latest
+								ops.push((
+									key.clone(),
+									CommitVersion(latest_version.0 + 1),
+								));
 								total_versions_to_remove += versions_for_this_key;
 								keys_queued += 1;
 							}
@@ -52,13 +59,19 @@ impl BackendGarbageCollect for MemoryBackend {
 				}
 			}
 
-			println!("[GC-Memory] Phase 1: Found {} operator keys with multiple versions",
-				keys_with_multiple_versions);
-			println!("[GC-Memory] Phase 1: Batching {} keys (~{} versions to remove, limit={})",
-				keys_queued, total_versions_to_remove, VERSION_LIMIT);
+			println!(
+				"[GC-Memory] Phase 1: Found {} operator keys with multiple versions",
+				keys_with_multiple_versions
+			);
+			println!(
+				"[GC-Memory] Phase 1: Batching {} keys (~{} versions to remove, limit={})",
+				keys_queued, total_versions_to_remove, VERSION_LIMIT
+			);
 			if keys_skipped > 0 {
-				println!("[GC-Memory] Phase 1: Skipped {} keys (would exceed version limit)",
-					keys_skipped);
+				println!(
+					"[GC-Memory] Phase 1: Skipped {} keys (would exceed version limit)",
+					keys_skipped
+				);
 			}
 
 			ops
@@ -80,13 +93,15 @@ impl BackendGarbageCollect for MemoryBackend {
 			.map_err(|_| reifydb_type::Error(database_error("Failed to send GC command".to_string())))?;
 
 		// Wait for completion
-		let result = receiver
-			.recv()
-			.map_err(|_| reifydb_type::Error(database_error("Failed to receive GC response".to_string())))?;
+		let result = receiver.recv().map_err(|_| {
+			reifydb_type::Error(database_error("Failed to receive GC response".to_string()))
+		})?;
 
 		if let Ok(ref stats) = result {
-			println!("[GC-Memory] Phase 2: Compacted {} keys, removed {} versions",
-				stats.keys_processed, stats.versions_removed);
+			println!(
+				"[GC-Memory] Phase 2: Compacted {} keys, removed {} versions",
+				stats.keys_processed, stats.versions_removed
+			);
 		}
 
 		result

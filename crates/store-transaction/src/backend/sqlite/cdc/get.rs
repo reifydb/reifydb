@@ -5,9 +5,9 @@ use reifydb_core::{CommitVersion, CowVec, Result, interface::Cdc, value::encoded
 use rusqlite::{OptionalExtension, params};
 
 use crate::{
-    CdcGet,
-    cdc::{codec::decode_internal_cdc, converter::CdcConverter},
-    sqlite::SqliteBackend,
+	CdcGet,
+	cdc::{codec::decode_internal_cdc, converter::CdcConverter},
+	sqlite::SqliteBackend,
 };
 
 impl CdcGet for SqliteBackend {

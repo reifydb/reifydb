@@ -178,7 +178,7 @@ impl testscript::Runner for Runner {
 							values
 						})
 					],
-					version
+					version,
 				)?;
 				writeln!(output, "ok")?;
 			}

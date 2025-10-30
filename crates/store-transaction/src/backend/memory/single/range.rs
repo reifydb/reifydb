@@ -16,10 +16,8 @@ impl BackendSingleVersionRange for MemoryBackend {
 	fn range(&self, range: EncodedKeyRange) -> Result<Self::Range<'_>> {
 		// Collect items in range under read lock
 		let single = self.single.read();
-		let items: Vec<(EncodedKey, Option<EncodedValues>)> = single
-			.range(range)
-			.map(|(k, v)| (k.clone(), v.clone()))
-			.collect();
+		let items: Vec<(EncodedKey, Option<EncodedValues>)> =
+			single.range(range).map(|(k, v)| (k.clone(), v.clone())).collect();
 		drop(single); // Release lock early
 
 		Ok(SingleVersionRangeIter {

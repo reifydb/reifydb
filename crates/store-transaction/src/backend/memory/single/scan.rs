@@ -11,10 +11,8 @@ impl BackendSingleVersionScan for MemoryBackend {
 	fn scan(&self) -> Result<Self::ScanIter<'_>> {
 		// Collect all items under read lock
 		let single = self.single.read();
-		let items: Vec<(EncodedKey, Option<EncodedValues>)> = single
-			.iter()
-			.map(|(k, v)| (k.clone(), v.clone()))
-			.collect();
+		let items: Vec<(EncodedKey, Option<EncodedValues>)> =
+			single.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
 		drop(single); // Release lock early
 
 		Ok(SingleVersionScanIter {

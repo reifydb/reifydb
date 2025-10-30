@@ -169,7 +169,7 @@ impl testscript::Runner for Runner {
 							values
 						})
 					],
-					version
+					version,
 				)?;
 			}
 
@@ -191,7 +191,7 @@ impl testscript::Runner for Runner {
 							key
 						})
 					],
-					version
+					version,
 				)?
 			}
 

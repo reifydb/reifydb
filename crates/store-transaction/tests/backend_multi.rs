@@ -151,7 +151,7 @@ impl<BMV: BackendMultiVersion> testscript::Runner for Runner<BMV> {
 							values
 						})
 					],
-					version
+					version,
 				)?;
 			}
 
@@ -173,7 +173,7 @@ impl<BMV: BackendMultiVersion> testscript::Runner for Runner<BMV> {
 							key
 						})
 					],
-					version
+					version,
 				)?
 			}
 

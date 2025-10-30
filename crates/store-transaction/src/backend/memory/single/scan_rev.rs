@@ -11,11 +11,8 @@ impl BackendSingleVersionScanRev for MemoryBackend {
 	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
 		// Collect all items under read lock in reverse order
 		let single = self.single.read();
-		let items: Vec<(EncodedKey, Option<EncodedValues>)> = single
-			.iter()
-			.rev()
-			.map(|(k, v)| (k.clone(), v.clone()))
-			.collect();
+		let items: Vec<(EncodedKey, Option<EncodedValues>)> =
+			single.iter().rev().map(|(k, v)| (k.clone(), v.clone())).collect();
 		drop(single); // Release lock early
 
 		Ok(SingleVersionScanRevIter {

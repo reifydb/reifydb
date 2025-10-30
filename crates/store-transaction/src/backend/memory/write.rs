@@ -7,18 +7,14 @@ use std::{
 	thread,
 };
 
-use parking_lot::RwLock;
 use mpsc::{Receiver, Sender};
-use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey,
-	delta::Delta,
-	value::encoded::EncodedValues,
-};
+use parking_lot::RwLock;
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValues};
 use reifydb_type::Result;
 
 use crate::{
 	backend::{commit::CommitBuffer, gc::GcStats, memory::VersionChain},
-	cdc::{process_deltas_for_cdc, InternalCdc},
+	cdc::{InternalCdc, process_deltas_for_cdc},
 };
 
 pub enum WriteCommand {
@@ -82,12 +78,7 @@ impl Writer {
 					respond_to,
 				} => {
 					// Buffer the commit and process any that are ready
-					self.buffer_and_apply_commit(
-						deltas,
-						version,
-						timestamp,
-						respond_to,
-					);
+					self.buffer_and_apply_commit(deltas, version, timestamp, respond_to);
 				}
 				WriteCommand::SingleVersionCommit {
 					deltas,
@@ -124,11 +115,7 @@ impl Writer {
 		// Process all ready commits
 		let ready_commits = self.commit_buffer.drain_ready();
 		for commit in ready_commits {
-			let result = self.apply_multi_commit(
-				commit.deltas,
-				commit.version,
-				commit.timestamp,
-			);
+			let result = self.apply_multi_commit(commit.deltas, commit.version, commit.timestamp);
 
 			// Send response for this commit if we have one pending
 			if let Some(sender) = self.pending_responses.remove(&commit.version) {
@@ -137,12 +124,7 @@ impl Writer {
 		}
 	}
 
-	fn apply_multi_commit(
-		&self,
-		deltas: CowVec<Delta>,
-		version: CommitVersion,
-		timestamp: u64,
-	) -> Result<()> {
+	fn apply_multi_commit(&self, deltas: CowVec<Delta>, version: CommitVersion, timestamp: u64) -> Result<()> {
 		let multi = self.multi.clone();
 
 		// Clone deltas for CDC processing
@@ -173,13 +155,20 @@ impl Writer {
 			let mut multi_write = multi.write();
 			for delta in deltas {
 				match delta {
-					Delta::Set { key, values } => {
-						multi_write.entry(key)
+					Delta::Set {
+						key,
+						values,
+					} => {
+						multi_write
+							.entry(key)
 							.or_insert_with(VersionChain::new)
 							.set(version, Some(values));
 					}
-					Delta::Remove { key } => {
-						multi_write.entry(key)
+					Delta::Remove {
+						key,
+					} => {
+						multi_write
+							.entry(key)
 							.or_insert_with(VersionChain::new)
 							.set(version, None);
 					}
@@ -188,18 +177,18 @@ impl Writer {
 		}
 
 		// Process CDC changes using the shared function
-		let cdc_changes = process_deltas_for_cdc(
-			deltas_for_cdc,
-			version,
-			|key| {
-				// Return the pre-version we captured before applying deltas
-				pre_versions.get(key).copied()
-			},
-		)?;
+		let cdc_changes = process_deltas_for_cdc(deltas_for_cdc, version, |key| {
+			// Return the pre-version we captured before applying deltas
+			pre_versions.get(key).copied()
+		})?;
 
 		if !cdc_changes.is_empty() {
 			let mut cdcs = self.cdcs.write();
-			let cdc = InternalCdc { version, timestamp, changes: cdc_changes };
+			let cdc = InternalCdc {
+				version,
+				timestamp,
+				changes: cdc_changes,
+			};
 			cdcs.insert(version, cdc);
 		}
 
@@ -226,10 +215,7 @@ impl Writer {
 		Ok(())
 	}
 
-	fn handle_garbage_collect(
-		&self,
-		operations: Vec<(EncodedKey, CommitVersion)>,
-	) -> Result<GcStats> {
+	fn handle_garbage_collect(&self, operations: Vec<(EncodedKey, CommitVersion)>) -> Result<GcStats> {
 		let mut stats = GcStats::default();
 
 		// Get write lock (safe because we're in the writer thread)

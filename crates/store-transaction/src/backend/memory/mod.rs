@@ -7,23 +7,21 @@ use std::{
 	sync::{Arc, mpsc},
 };
 
-use parking_lot::RwLock;
 use mpsc::Sender;
-use reifydb_core::{
-	CommitVersion, EncodedKey, value::encoded::EncodedValues,
-};
+use parking_lot::RwLock;
+use reifydb_core::{CommitVersion, EncodedKey, value::encoded::EncodedValues};
 
 use crate::cdc::InternalCdc;
 
-mod chain;
 mod cdc;
+mod chain;
 mod gc;
 mod multi;
 mod single;
 mod write;
 
-pub use chain::VersionChain;
 pub use cdc::{CdcRangeIter, CdcScanIter};
+pub use chain::VersionChain;
 pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
 pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
 use write::{WriteCommand, Writer};

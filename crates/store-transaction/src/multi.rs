@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
-};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues};
 
 pub trait MultiVersionStore:
 	Send
@@ -21,11 +19,7 @@ pub trait MultiVersionStore:
 }
 
 pub trait MultiVersionCommit {
-	fn commit(
-		&self,
-		deltas: CowVec<Delta>,
-		version: CommitVersion,
-	) -> crate::Result<()>;
+	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()>;
 }
 
 pub trait MultiVersionGet {

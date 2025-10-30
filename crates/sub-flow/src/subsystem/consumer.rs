@@ -206,34 +206,30 @@ impl CdcConsume for FlowConsumer {
 							CdcChange::Insert {
 								key: _,
 								post,
-							} => {
-								Change::Insert {
-									_source_id: source_id,
-									row_number: table_row.row,
-									post: post.to_vec(),
-								}
+							} => Change::Insert {
+								_source_id: source_id,
+								row_number: table_row.row,
+								post: post.to_vec(),
 							},
 							CdcChange::Update {
 								key: _,
 								pre,
 								post,
-							} => {
-								Change::Update {
-									_source_id: source_id,
-									row_number: table_row.row,
-									pre: pre.to_vec(),
-									post: post.to_vec(),
-								}
+							} => Change::Update {
+								_source_id: source_id,
+								row_number: table_row.row,
+								pre: pre.to_vec(),
+								post: post.to_vec(),
 							},
 							CdcChange::Delete {
 								key: _,
 								pre,
-							} => {
-								Change::Delete {
-									_source_id: source_id,
-									row_number: table_row.row,
-									pre: pre.as_ref().map(|v| v.to_vec()).unwrap_or_default(),
-								}
+							} => Change::Delete {
+								_source_id: source_id,
+								row_number: table_row.row,
+								pre: pre.as_ref()
+									.map(|v| v.to_vec())
+									.unwrap_or_default(),
 							},
 						};
 						all_changes.push((source_id, change));

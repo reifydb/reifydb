@@ -2,10 +2,15 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{collections::BTreeMap, sync::Arc};
+
 use parking_lot::RwLockReadGuard;
 use reifydb_core::{CommitVersion, Result, interface::Cdc};
 
-use crate::{CdcScan, memory::MemoryBackend, cdc::{InternalCdc, converter::CdcConverter}};
+use crate::{
+	CdcScan,
+	cdc::{InternalCdc, converter::CdcConverter},
+	memory::MemoryBackend,
+};
 
 impl CdcScan for MemoryBackend {
 	type ScanIter<'a> = CdcScanIter<'a>;
@@ -37,8 +42,6 @@ impl<'a> Iterator for CdcScanIter<'a> {
 
 	fn next(&mut self) -> Option<Self::Item> {
 		// Get the next transaction and convert to public format
-		self.iter.next().and_then(|(_, internal_cdc)| {
-			self.backend.convert(internal_cdc.clone()).ok()
-		})
+		self.iter.next().and_then(|(_, internal_cdc)| self.backend.convert(internal_cdc.clone()).ok())
 	}
 }

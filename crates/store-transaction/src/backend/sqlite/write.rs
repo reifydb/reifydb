@@ -9,10 +9,7 @@ use std::{
 };
 
 use mpsc::Sender;
-use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey,
-	delta::Delta,
-};
+use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta};
 use reifydb_type::{Error, Result};
 use rusqlite::{Connection, OpenFlags, Transaction, params_from_iter, types::Value};
 
@@ -24,10 +21,13 @@ use crate::{
 		gc::GcStats,
 		sqlite::{
 			cdc::store_internal_cdc,
-			multi::{as_flow_node_state_key, ensure_source_exists, operator_name, source_name, fetch_pre_version},
+			multi::{
+				as_flow_node_state_key, ensure_source_exists, fetch_pre_version, operator_name,
+				source_name,
+			},
 		},
 	},
-	cdc::{process_deltas_for_cdc, InternalCdc, InternalCdcSequencedChange},
+	cdc::{InternalCdc, InternalCdcSequencedChange, process_deltas_for_cdc},
 };
 
 /// Helper function to get the appropriate table name for a given key
@@ -107,12 +107,7 @@ impl Writer {
 					respond_to,
 				} => {
 					// Buffer the commit and process any that are ready
-					self.buffer_and_apply_commit(
-						deltas,
-						version,
-						timestamp,
-						respond_to,
-					);
+					self.buffer_and_apply_commit(deltas, version, timestamp, respond_to);
 				}
 				WriteCommand::GarbageCollect {
 					deletions,
@@ -136,14 +131,10 @@ impl Writer {
 		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))
 	}
 
-	fn handle_garbage_collect(
-		&mut self,
-		deletions: Vec<(String, EncodedKey, CommitVersion)>,
-	) -> Result<GcStats> {
+	fn handle_garbage_collect(&mut self, deletions: Vec<(String, EncodedKey, CommitVersion)>) -> Result<GcStats> {
 		let mut stats = GcStats::default();
 
-		let tx = self.conn.transaction()
-			.map_err(|e| Error(from_rusqlite_error(e)))?;
+		let tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		// Group deletions by table for efficiency
 		let mut by_table: HashMap<String, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
@@ -154,8 +145,7 @@ impl Writer {
 		// Execute deletions per table
 		for (table, entries) in by_table {
 			let query = format!("DELETE FROM {} WHERE key = ? AND version = ?", table);
-			let mut stmt = tx.prepare(&query)
-				.map_err(|e| Error(from_rusqlite_error(e)))?;
+			let mut stmt = tx.prepare(&query).map_err(|e| Error(from_rusqlite_error(e)))?;
 
 			for (key, version) in entries {
 				stmt.execute(rusqlite::params![key.to_vec(), version.0])
@@ -187,11 +177,7 @@ impl Writer {
 		// Process all ready commits
 		let ready_commits = self.commit_buffer.drain_ready();
 		for commit in ready_commits {
-			let result = self.apply_multi_commit(
-				commit.deltas,
-				commit.version,
-				commit.timestamp,
-			);
+			let result = self.apply_multi_commit(commit.deltas, commit.version, commit.timestamp);
 
 			// Send response for this commit if we have one pending
 			if let Some(sender) = self.pending_responses.remove(&commit.version) {
@@ -200,12 +186,7 @@ impl Writer {
 		}
 	}
 
-	fn apply_multi_commit(
-		&mut self,
-		deltas: CowVec<Delta>,
-		version: CommitVersion,
-		timestamp: u64,
-	) -> Result<()> {
+	fn apply_multi_commit(&mut self, deltas: CowVec<Delta>, version: CommitVersion, timestamp: u64) -> Result<()> {
 		let mut tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		let cdc_changes = Self::apply_deltas(&mut tx, &deltas, version, &mut self.ensured_sources)?;
@@ -244,14 +225,10 @@ impl Writer {
 		}
 
 		// Process CDC changes using the shared function
-		process_deltas_for_cdc(
-			deltas.iter().cloned(),
-			version,
-			|key| {
-				// Return the pre-version we captured before applying deltas
-				pre_versions.get(key).copied()
-			},
-		)
+		process_deltas_for_cdc(deltas.iter().cloned(), version, |key| {
+			// Return the pre-version we captured before applying deltas
+			pre_versions.get(key).copied()
+		})
 	}
 
 	fn apply_single_delta(
@@ -326,7 +303,14 @@ impl Writer {
 		timestamp: u64,
 		cdc_changes: Vec<InternalCdcSequencedChange>,
 	) -> Result<()> {
-		store_internal_cdc(tx, InternalCdc { version, timestamp, changes: cdc_changes })
-			.map_err(|e| Error(from_rusqlite_error(e)))
+		store_internal_cdc(
+			tx,
+			InternalCdc {
+				version,
+				timestamp,
+				changes: cdc_changes,
+			},
+		)
+		.map_err(|e| Error(from_rusqlite_error(e)))
 	}
 }

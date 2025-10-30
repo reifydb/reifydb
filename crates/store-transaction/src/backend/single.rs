@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::marker::PhantomData;
+
 use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, delta::Delta, value::encoded::EncodedValues};
 
 use crate::{
@@ -79,7 +80,9 @@ impl BackendSingleVersionScan for BackendSingle {
 	#[inline]
 	fn scan(&self) -> reifydb_type::Result<Self::ScanIter<'_>> {
 		match self {
-			BackendSingle::Memory(backend) => backend.scan().map(|iter| BackendSingleScanIter::Memory(iter, PhantomData)),
+			BackendSingle::Memory(backend) => {
+				backend.scan().map(|iter| BackendSingleScanIter::Memory(iter, PhantomData))
+			}
 			BackendSingle::Sqlite(backend) => backend.scan().map(BackendSingleScanIter::Sqlite),
 		}
 	}
@@ -108,7 +111,9 @@ impl BackendSingleVersionScanRev for BackendSingle {
 	#[inline]
 	fn scan_rev(&self) -> reifydb_type::Result<Self::ScanIterRev<'_>> {
 		match self {
-			BackendSingle::Memory(backend) => backend.scan_rev().map(|iter| BackendSingleScanIterRev::Memory(iter, PhantomData)),
+			BackendSingle::Memory(backend) => {
+				backend.scan_rev().map(|iter| BackendSingleScanIterRev::Memory(iter, PhantomData))
+			}
 			BackendSingle::Sqlite(backend) => backend.scan_rev().map(BackendSingleScanIterRev::Sqlite),
 		}
 	}
@@ -137,7 +142,9 @@ impl BackendSingleVersionRange for BackendSingle {
 	#[inline]
 	fn range(&self, range: EncodedKeyRange) -> reifydb_type::Result<Self::Range<'_>> {
 		match self {
-			BackendSingle::Memory(backend) => backend.range(range).map(|iter| BackendSingleRangeIter::Memory(iter, PhantomData)),
+			BackendSingle::Memory(backend) => {
+				backend.range(range).map(|iter| BackendSingleRangeIter::Memory(iter, PhantomData))
+			}
 			BackendSingle::Sqlite(backend) => backend.range(range).map(BackendSingleRangeIter::Sqlite),
 		}
 	}
@@ -166,9 +173,9 @@ impl BackendSingleVersionRangeRev for BackendSingle {
 	#[inline]
 	fn range_rev(&self, range: EncodedKeyRange) -> reifydb_type::Result<Self::RangeRev<'_>> {
 		match self {
-			BackendSingle::Memory(backend) => {
-				backend.range_rev(range).map(|iter| BackendSingleRangeIterRev::Memory(iter, PhantomData))
-			}
+			BackendSingle::Memory(backend) => backend
+				.range_rev(range)
+				.map(|iter| BackendSingleRangeIterRev::Memory(iter, PhantomData)),
 			BackendSingle::Sqlite(backend) => {
 				backend.range_rev(range).map(BackendSingleRangeIterRev::Sqlite)
 			}

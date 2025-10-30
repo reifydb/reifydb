@@ -31,7 +31,13 @@ pub struct CdcRangeIter {
 }
 
 impl CdcRangeIter {
-	pub fn new(backend: Arc<SqliteBackend>, conn: Reader, start: Bound<CommitVersion>, end: Bound<CommitVersion>, batch_size: usize) -> Self {
+	pub fn new(
+		backend: Arc<SqliteBackend>,
+		conn: Reader,
+		start: Bound<CommitVersion>,
+		end: Bound<CommitVersion>,
+		batch_size: usize,
+	) -> Self {
 		Self {
 			backend,
 			conn,

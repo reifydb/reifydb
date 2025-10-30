@@ -6,7 +6,11 @@ use std::{collections::BTreeMap, ops::Bound, sync::Arc};
 use parking_lot::RwLockReadGuard;
 use reifydb_core::{CommitVersion, Result, interface::Cdc};
 
-use crate::{CdcRange, memory::MemoryBackend, cdc::{InternalCdc, converter::CdcConverter}};
+use crate::{
+	CdcRange,
+	cdc::{InternalCdc, converter::CdcConverter},
+	memory::MemoryBackend,
+};
 
 impl CdcRange for MemoryBackend {
 	type RangeIter<'a> = CdcRangeIter<'a>;
@@ -37,8 +41,6 @@ impl<'a> Iterator for CdcRangeIter<'a> {
 	type Item = Cdc;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		self.iter.next().and_then(|(_, internal_cdc)| {
-			self.backend.convert(internal_cdc.clone()).ok()
-		})
+		self.iter.next().and_then(|(_, internal_cdc)| self.backend.convert(internal_cdc.clone()).ok())
 	}
 }

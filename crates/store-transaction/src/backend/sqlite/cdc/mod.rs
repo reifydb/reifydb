@@ -15,8 +15,7 @@ pub use scan::CdcScanIter;
 
 /// Store an internal CDC transaction in the database
 pub(crate) fn store_internal_cdc(tx: &Transaction, transaction: InternalCdc) -> rusqlite::Result<()> {
-	let encoded_transaction =
-		encode_internal_cdc(&transaction).map_err(|e| ToSqlConversionFailure(Box::new(e)))?;
+	let encoded_transaction = encode_internal_cdc(&transaction).map_err(|e| ToSqlConversionFailure(Box::new(e)))?;
 
 	tx.execute(
 		"INSERT OR REPLACE INTO cdc (version, value) VALUES (?1, ?2)",

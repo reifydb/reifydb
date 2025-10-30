@@ -132,7 +132,7 @@ mod tests {
 				sequence: 0,
 				change: CdcChange::Insert {
 					key: create_key(key),
-					post: EncodedValues(CowVec::new(value.as_bytes().to_vec())), // Create encoded value for the post data
+					post: EncodedValues(CowVec::new(value.as_bytes().to_vec())), /* Create encoded value for the post data */
 				},
 			}],
 		)

@@ -53,11 +53,7 @@ pub struct Cdc {
 }
 
 impl Cdc {
-	pub fn new(
-		version: CommitVersion,
-		timestamp: u64,
-		changes: Vec<CdcSequencedChange>,
-	) -> Self {
+	pub fn new(version: CommitVersion, timestamp: u64, changes: Vec<CdcSequencedChange>) -> Self {
 		Self {
 			version,
 			timestamp,
@@ -76,10 +72,18 @@ pub struct CdcSequencedChange {
 impl CdcSequencedChange {
 	pub fn key(&self) -> &EncodedKey {
 		match &self.change {
-			CdcChange::Insert { key, .. } => key,
-			CdcChange::Update { key, .. } => key,
-			CdcChange::Delete { key, .. } => key,
+			CdcChange::Insert {
+				key,
+				..
+			} => key,
+			CdcChange::Update {
+				key,
+				..
+			} => key,
+			CdcChange::Delete {
+				key,
+				..
+			} => key,
 		}
 	}
 }
-
