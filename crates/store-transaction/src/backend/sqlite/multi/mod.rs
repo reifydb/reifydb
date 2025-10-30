@@ -19,7 +19,10 @@ pub use range::MultiVersionRangeIter;
 pub use range_rev::MultiVersionRangeRevIter;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
-	interface::{EncodableKeyRange, FlowNodeStateKey, FlowNodeStateKeyRange, Key, MultiVersionValues, RowKey, RowKeyRange},
+	interface::{
+		EncodableKeyRange, FlowNodeStateKey, FlowNodeStateKeyRange, Key, MultiVersionValues, RowKey,
+		RowKeyRange,
+	},
 	value::encoded::EncodedValues,
 };
 use rusqlite::{Connection, OptionalExtension, Statement, params};
@@ -80,6 +83,20 @@ pub(crate) fn ensure_source_exists(conn: &Connection, source: &str) {
 		source
 	);
 	conn.execute(&create_sql, []).unwrap();
+
+	// Create index for latest-version lookups (key, version DESC)
+	// This optimizes queries like: WHERE key = ? AND version <= ? ORDER BY version DESC LIMIT 1
+	let index1_sql =
+		format!("CREATE INDEX IF NOT EXISTS idx_{}_key_version_desc ON {} (key, version DESC)", source, source);
+	conn.execute(&index1_sql, []).unwrap();
+
+	// Create index for version-scoped scans and GROUP BY queries
+	// This optimizes queries like: WHERE version <= ? GROUP BY key or ORDER BY version, key
+	let index2_sql = format!("CREATE INDEX IF NOT EXISTS idx_{}_version_key ON {} (version, key)", source, source);
+	conn.execute(&index2_sql, []).unwrap();
+
+	// Update SQLite query planner statistics for optimal query plans
+	conn.execute("ANALYZE", []).unwrap();
 }
 
 pub(crate) fn source_name_for_range(range: &EncodedKeyRange) -> String {
@@ -122,19 +139,13 @@ pub(crate) fn fetch_pre_version(
 	key: &[u8],
 	source: &str,
 ) -> rusqlite::Result<Option<CommitVersion>> {
-	let query = format!(
-		"SELECT version, value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1",
-		source
-	);
+	let query = format!("SELECT version, value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1", source);
 
-	let result: Option<(i64, Option<Vec<u8>>)> = conn.query_row(&query, params![key], |row| {
-		Ok((row.get(0)?, row.get(1)?))
-	}).optional()?;
+	let result: Option<(i64, Option<Vec<u8>>)> =
+		conn.query_row(&query, params![key], |row| Ok((row.get(0)?, row.get(1)?))).optional()?;
 
 	// Only return the version if it has a non-NULL value (not a tombstone)
-	Ok(result.and_then(|(version, value)| {
-		value.map(|_| CommitVersion(version as u64))
-	}))
+	Ok(result.and_then(|(version, value)| value.map(|_| CommitVersion(version as u64))))
 }
 
 /// Helper function to build query template and determine parameter count

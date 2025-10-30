@@ -101,9 +101,17 @@ impl SqliteBackend {
                      version INTEGER NOT NULL PRIMARY KEY,
                      value   BLOB NOT NULL
                  );
+
+                 -- Indexes for multi table to optimize multi-version queries
+                 CREATE INDEX IF NOT EXISTS idx_multi_key_version_desc ON multi (key, version DESC);
+                 CREATE INDEX IF NOT EXISTS idx_multi_version_key ON multi (version, key);
+
                  COMMIT;",
 			)
 			.unwrap();
+
+			// Update SQLite query planner statistics for optimal query plans
+			conn.execute("ANALYZE", []).unwrap();
 		}
 
 		Self(Arc::new(SqliteBackendInner {
