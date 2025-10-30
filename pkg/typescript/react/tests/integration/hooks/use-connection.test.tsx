@@ -32,12 +32,12 @@ describe.sequential('useConnection Hook', () => {
         await clearConnection();
     });
 
-    it.sequential('should auto-connect on mount without provider', async () => {
+    it.sequential('should connect manually without provider', async () => {
         const {result} = renderHook(() => useConnection());
 
-        // Wait for connection
-        await waitFor(() => {
-            expect(result.current.isConnected || result.current.isConnecting).toBe(true);
+        // Manually connect (no auto-connect)
+        await act(async () => {
+            await result.current.connect();
         });
 
         await waitFor(() => {
@@ -69,6 +69,11 @@ describe.sequential('useConnection Hook', () => {
     it.sequential('should handle manual disconnect', async () => {
         const {result} = renderHook(() => useConnection());
 
+        // Manually connect first
+        await act(async () => {
+            await result.current.connect();
+        });
+
         // Wait for initial connection
         await waitFor(() => expect(result.current.isConnected).toBe(true));
 
@@ -83,6 +88,11 @@ describe.sequential('useConnection Hook', () => {
 
     it.sequential('should handle reconnection', async () => {
         const {result} = renderHook(() => useConnection());
+
+        // Manually connect first
+        await act(async () => {
+            await result.current.connect();
+        });
 
         // Wait for initial connection
         await waitFor(() => expect(result.current.isConnected).toBe(true));
@@ -107,6 +117,11 @@ describe.sequential('useConnection Hook', () => {
 
     it.sequential('should not reconnect if already connected', async () => {
         const {result} = renderHook(() => useConnection());
+
+        // Manually connect first
+        await act(async () => {
+            await result.current.connect();
+        });
 
         // Wait for initial connection
         await waitFor(() => expect(result.current.isConnected).toBe(true));

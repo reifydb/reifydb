@@ -28,7 +28,7 @@ export function useConnection(overrideConfig?: ConnectionConfig) {
         // Get initial state immediately
         const currentState = connection.getState();
         setState(currentState);
-        
+
         // Subscribe to connection state changes
         const unsubscribe = connection.subscribe((newState) => {
             console.log('[useConnection] State update:', {
@@ -44,22 +44,11 @@ export function useConnection(overrideConfig?: ConnectionConfig) {
             });
         });
 
-        // Auto-connect if not connected (only for override configs, context handles its own)
-        if (overrideConfig && !connection.isConnected() && !connection.isConnecting()) {
-            console.log('[useConnection] Initiating auto-connect for override config...');
-            connection.connect().catch(err => {
-                console.error('[useConnection] Failed to connect:', err);
-            });
-        } else if (!contextConnection && !overrideConfig && !connection.isConnected() && !connection.isConnecting()) {
-            // Auto-connect for default connection when no context provider
-            console.log('[useConnection] Initiating auto-connect for default connection...');
-            connection.connect().catch(err => {
-                console.error('[useConnection] Failed to connect:', err);
-            });
-        }
+        // No auto-connect - ConnectionProvider handles all auto-connection
+        // Users must either wrap with ConnectionProvider or manually call connect()
 
         return unsubscribe;
-    }, [connection, overrideConfig, contextConnection]);
+    }, [connection]);
 
     return {
         ...state,

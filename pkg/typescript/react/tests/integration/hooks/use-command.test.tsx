@@ -12,11 +12,13 @@ import {waitForDatabase} from '../setup';
 import React from "react";
 
 describe('useCommand Hooks', () => {
+    // Wrapper to provide ConnectionProvider to all hooks
+    const wrapper = ({children}: { children: React.ReactNode }) => (
+        <ConnectionProvider config={{url: 'ws://127.0.0.1:8090'}} children={children}/>
+    );
+
     beforeAll(async () => {
         await waitForDatabase();
-        // Ensure we're connected before tests
-        const conn = getConnection();
-        await conn.connect();
     }, 30000);
 
     afterEach(async () => {
@@ -36,7 +38,7 @@ describe('useCommand Hooks', () => {
                     `MAP {answer: 42}`,
                     undefined,
                     schema
-                )
+                ), {wrapper}
             );
 
             expect(result.current.isExecuting).toBe(true);
@@ -60,7 +62,7 @@ describe('useCommand Hooks', () => {
                     `MAP {result: $value}`,
                     params,
                     schema
-                )
+                ), {wrapper}
             );
 
             await waitFor(() => {
@@ -74,7 +76,7 @@ describe('useCommand Hooks', () => {
         it('should re-execute when command changes', async () => {
             const {result, rerender} = renderHook(
                 ({command}) => useCommandOne(command, undefined, Schema.object({num: Schema.number()})),
-                {initialProps: {command: `MAP {num: 1}`}}
+                {initialProps: {command: `MAP {num: 1}`}, wrapper}
             );
 
             await waitFor(() => {
@@ -95,7 +97,7 @@ describe('useCommand Hooks', () => {
             const schema = Schema.object({result: Schema.number()});
             const {result, rerender} = renderHook(
                 ({params}) => useCommandOne(`MAP {result: $value}`, params, schema),
-                {initialProps: {params: {value: 10}}}
+                {initialProps: {params: {value: 10}}, wrapper}
             );
 
             await waitFor(() => {
@@ -123,7 +125,7 @@ describe('useCommand Hooks', () => {
                     `MAP {name: 'Alice', age: 30}`,
                     undefined,
                     schema
-                )
+                ), {wrapper}
             );
 
             await waitFor(() => {
@@ -139,7 +141,7 @@ describe('useCommand Hooks', () => {
                 useCommandOne('INVALID COMMAND SYNTAX',
                     undefined,
                     Schema.object({nothing: Schema.boolean()})
-                ),
+                ), {wrapper}
             );
 
             await waitFor(() => {
@@ -153,7 +155,7 @@ describe('useCommand Hooks', () => {
         it('should handle empty results', async () => {
             const {result} = renderHook(() =>
                 useCommandOne(`FROM [{x:1}] FILTER x > 10`, undefined, Schema.object({x: Schema.number()}))
-            );
+            , {wrapper});
 
             await waitFor(() => {
                 expect(result.current.isExecuting).toBe(false);
@@ -179,7 +181,7 @@ describe('useCommand Hooks', () => {
 
             const {result} = renderHook(() =>
                 useCommandMany(queries, undefined, schemas)
-            );
+            , {wrapper});
 
             await waitFor(() => {
                 expect(result.current.isExecuting).toBe(false);
@@ -199,7 +201,7 @@ describe('useCommand Hooks', () => {
                     undefined,
                     [Schema.object({answer: Schema.number()})]
                 )
-            );
+            , {wrapper});
 
             await waitFor(() => {
                 expect(result.current.isExecuting).toBe(false);
@@ -222,7 +224,7 @@ describe('useCommand Hooks', () => {
 
             const {result} = renderHook(() =>
                 useCommandMany(queries, params, schemas)
-            );
+            , {wrapper});
 
             await waitFor(() => {
                 expect(result.current.isExecuting).toBe(false);
@@ -245,7 +247,7 @@ describe('useCommand Hooks', () => {
 
             const {result} = renderHook(() =>
                 useCommandMany(queries, undefined, schemas)
-            );
+            , {wrapper});
 
             await waitFor(() => {
                 expect(result.current.isExecuting).toBe(false);
@@ -258,7 +260,7 @@ describe('useCommand Hooks', () => {
         it('should re-execute when statements change', async () => {
             const {result, rerender} = renderHook(
                 ({queries}) => useCommandMany(queries, undefined, [Schema.object({x: Schema.number()})]),
-                {initialProps: {queries: [`MAP {x: 1}`]}}
+                {initialProps: {queries: [`MAP {x: 1}`]}, wrapper}
             );
 
             await waitFor(() => {
@@ -288,7 +290,7 @@ describe('useCommand Hooks', () => {
             ];
             const {result} = renderHook(() =>
                 useCommandMany(queries, undefined, schemas)
-            );
+            , {wrapper});
 
             await waitFor(() => {
                 expect(result.current.isExecuting).toBe(false);
@@ -313,7 +315,7 @@ describe('useCommand Hooks', () => {
             ];
             const {result} = renderHook(() =>
                 useCommandMany(queries, undefined, schemas)
-            );
+            , {wrapper});
 
             await waitFor(() => {
                 expect(result.current.isExecuting).toBe(false);
@@ -330,7 +332,7 @@ describe('useCommand Hooks', () => {
             const schema1 = Schema.object({value: Schema.number()});
             const {result: result1} = renderHook(() =>
                 useCommandOne(`MAP {value: 100}`, undefined, schema1)
-            );
+            , {wrapper});
 
             const queries2 = [`MAP {x: 200}`, `MAP {y: 300}`];
             const schemas2 = [
@@ -339,7 +341,7 @@ describe('useCommand Hooks', () => {
             ] as const;
             const {result: result2} = renderHook(() =>
                 useCommandMany(queries2, undefined, schemas2)
-            );
+            , {wrapper});
 
             await waitFor(() => {
                 expect(result1.current.isExecuting).toBe(false);
@@ -382,7 +384,7 @@ describe('useCommand Hooks', () => {
                     schema,
                     {connectionConfig: overrideConfig}
                 )
-            );
+            , {wrapper});
 
             await waitFor(() => {
                 expect(result.current.isExecuting).toBe(false);
