@@ -1,51 +1,37 @@
 import { Connection, ConnectionConfig, DEFAULT_CONFIG } from './connection';
 
 /**
- * Connection cache that stores connections by their configuration.
- * This ensures that connections with the same configuration share the same instance.
+ * Singleton default connection instance.
+ * This ensures a single global connection that gets reused and updated.
  */
-const connectionCache = new Map<string, Connection>();
+let defaultConnection: Connection | null = null;
 
 /**
- * Get or create a connection for the given configuration.
- * If a connection with the same config already exists, it will be reused.
+ * Get the singleton connection instance.
+ * If a config is provided, the connection's config will be updated via setConfig().
  * @param config - Optional connection configuration
- * @returns Connection instance for the given configuration
+ * @returns The singleton Connection instance
  */
 export function getConnection(config?: ConnectionConfig): Connection {
     const effectiveConfig = config ? { ...DEFAULT_CONFIG, ...config } : DEFAULT_CONFIG;
-    const key = JSON.stringify(effectiveConfig);
-    
-    if (!connectionCache.has(key)) {
-        connectionCache.set(key, new Connection(effectiveConfig));
+
+    // Create singleton on first call
+    if (!defaultConnection) {
+        defaultConnection = new Connection(effectiveConfig);
+    } else {
+        // Update config on existing connection if provided
+        defaultConnection.setConfig(effectiveConfig);
     }
-    
-    return connectionCache.get(key)!;
+
+    return defaultConnection;
 }
 
 /**
- * Clear a specific connection from the cache
- * @param config - Configuration of the connection to clear
+ * Clear the singleton connection
  */
-export async function clearConnection(config?: ConnectionConfig): Promise<void> {
-    const effectiveConfig = config ? { ...DEFAULT_CONFIG, ...config } : DEFAULT_CONFIG;
-    const key = JSON.stringify(effectiveConfig);
-    
-    const connection = connectionCache.get(key);
-    if (connection) {
-        await connection.disconnect();
-        connectionCache.delete(key);
+export async function clearConnection(): Promise<void> {
+    if (defaultConnection) {
+        await defaultConnection.disconnect();
+        defaultConnection = null;
     }
-}
-
-/**
- * Clear all cached connections
- */
-export async function clearAllConnections(): Promise<void> {
-    const disconnectPromises = [];
-    for (const connection of connectionCache.values()) {
-        disconnectPromises.push(connection.disconnect());
-    }
-    await Promise.all(disconnectPromises);
-    connectionCache.clear();
 }

@@ -11,9 +11,9 @@ import {
     useQueryMany,
     ConnectionProvider,
     getConnection,
-    clearAllConnections,
+    clearConnection,
     Schema,
-    useCommandOne, clearConnection
+    useCommandOne
 } from '../../../src';
 import {waitForDatabase} from '../setup';
 // @ts-ignore
@@ -28,7 +28,7 @@ describe('useQuery Hooks', () => {
     }, 30000);
 
     afterAll(() => {
-        clearAllConnections();
+        clearConnection();
     });
 
     describe('useQueryOne', () => {

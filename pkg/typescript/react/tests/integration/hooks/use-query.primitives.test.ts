@@ -6,7 +6,7 @@
 
 import {afterEach, afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useQueryOne, useQueryMany, getConnection, clearAllConnections, Schema} from '../../../src';
+import {useQueryOne, useQueryMany, getConnection, clearConnection, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe('useQuery with TypeScript Primitive Types', () => {
@@ -17,7 +17,7 @@ describe('useQuery with TypeScript Primitive Types', () => {
     }, 30000);
 
     afterAll(() => {
-        clearAllConnections();
+        clearConnection();
     });
 
     describe('Primitive Type - With Schema Returns JS Primitives', () => {

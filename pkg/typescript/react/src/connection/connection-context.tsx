@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useMemo, ReactNode } from 'react';
+import React, { createContext, useEffect, useRef, ReactNode } from 'react';
 import { Connection, ConnectionConfig } from './connection';
 import { getConnection } from './connection-pool';
 
@@ -10,11 +10,26 @@ export interface ConnectionProviderProps {
 }
 
 export function ConnectionProvider({ config, children }: ConnectionProviderProps) {
-    const connection = useMemo(() => getConnection(config), [JSON.stringify(config)]);
-    
+    // Get the singleton connection - this always returns the same instance
+    // but updates its config via setConfig()
+    const connection = getConnection(config);
+
+    // Track previous config to detect changes
+    const prevConfigRef = useRef<string | undefined>(undefined);
+    const currentConfigStr = JSON.stringify(config);
+
     useEffect(() => {
-        // Auto-connect if not connected
-        if (!connection.isConnected() && !connection.isConnecting()) {
+        const configChanged = prevConfigRef.current !== undefined &&
+                            prevConfigRef.current !== currentConfigStr;
+
+        if (configChanged && connection.isConnected()) {
+            // Config changed while connected - reconnect with new config
+            console.log('[ConnectionProvider] Config changed, reconnecting...');
+            connection.reconnect().catch(err => {
+                console.error('[ConnectionProvider] Failed to reconnect:', err);
+            });
+        } else if (!connection.isConnected() && !connection.isConnecting()) {
+            // Auto-connect if not connected
             console.log('[ConnectionProvider] Initiating auto-connect...');
             connection.connect().catch(err => {
                 console.error('[ConnectionProvider] Failed to connect:', err);
@@ -22,11 +37,15 @@ export function ConnectionProvider({ config, children }: ConnectionProviderProps
         } else {
             console.log('[ConnectionProvider] Skipping auto-connect, current state:', {
                 isConnected: connection.isConnected(),
-                isConnecting: connection.isConnecting()
+                isConnecting: connection.isConnecting(),
+                configChanged
             });
         }
-    }, [connection]);
-    
+
+        // Update previous config reference
+        prevConfigRef.current = currentConfigStr;
+    }, [currentConfigStr, connection]);
+
     return (
         <ConnectionContext.Provider value={connection}>
             {children}

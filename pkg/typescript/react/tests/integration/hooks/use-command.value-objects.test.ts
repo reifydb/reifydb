@@ -6,7 +6,7 @@
 
 import {afterAll, beforeAll, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useCommandOne, useCommandMany, getConnection, clearAllConnections, Schema} from '../../../src';
+import {useCommandOne, useCommandMany, getConnection, clearConnection, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe('useCommand with Value Objects and Schemas', () => {
@@ -17,7 +17,7 @@ describe('useCommand with Value Objects and Schemas', () => {
     }, 30000);
 
     afterAll(() => {
-        clearAllConnections();
+        clearConnection();
     });
 
     describe('Value Objects', () => {

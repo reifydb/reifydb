@@ -8,7 +8,7 @@ import {afterEach, afterAll, beforeAll, beforeEach, describe, expect, it} from '
 import {renderHook, act, waitFor} from '@testing-library/react';
 // @ts-ignore
 import React from 'react';
-import {useConnection, ConnectionProvider, clearAllConnections} from '../../../src';
+import {useConnection, ConnectionProvider, clearConnection} from '../../../src';
 import {waitForDatabase} from '../setup';
 
 describe.sequential('useConnection Hook', () => {
@@ -18,18 +18,18 @@ describe.sequential('useConnection Hook', () => {
 
     beforeEach(async () => {
         // Clear all connections before each test to ensure clean state
-        await clearAllConnections();
+        await clearConnection();
     });
 
     afterEach(async () => {
         // Clear all connections after each test
-        await clearAllConnections();
+        await clearConnection();
         // Small delay to ensure cleanup is complete
         await new Promise(resolve => setTimeout(resolve, 100));
     });
 
     afterAll(async () => {
-        await clearAllConnections();
+        await clearConnection();
     });
 
     it.sequential('should auto-connect on mount without provider', async () => {

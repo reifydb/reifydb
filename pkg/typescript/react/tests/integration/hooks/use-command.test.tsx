@@ -6,7 +6,7 @@
 
 import {afterAll, beforeAll, afterEach, describe, expect, it} from 'vitest';
 import {renderHook, waitFor} from '@testing-library/react';
-import {useCommandOne, useCommandMany, ConnectionProvider, getConnection, clearAllConnections, clearConnection, Schema} from '../../../src';
+import {useCommandOne, useCommandMany, ConnectionProvider, getConnection, clearConnection, clearConnection, Schema} from '../../../src';
 import {waitForDatabase} from '../setup';
 // @ts-ignore
 import React from "react";
@@ -21,11 +21,11 @@ describe('useCommand Hooks', () => {
 
     afterEach(async () => {
         // Clear all connections after each test to prevent interference
-        await clearAllConnections();
+        await clearConnection();
     });
 
     afterAll(async () => {
-        await clearAllConnections();
+        await clearConnection();
     });
 
     describe('useCommandOne', () => {
