@@ -163,14 +163,21 @@ impl DatabaseBuilder {
 
 	pub fn build(mut self) -> crate::Result<Database> {
 		// Add configured or default subsystems
+
 		#[cfg(feature = "sub_logging")]
-		self.subsystems.push(self.logging_factory.unwrap_or_else(|| Box::new(LoggingSubsystemFactory::new())));
+		if let Some(factory) = self.logging_factory {
+			self.subsystems.push(factory);
+		}
 
 		#[cfg(feature = "sub_worker")]
-		self.subsystems.push(self.worker_factory.unwrap_or_else(|| Box::new(WorkerSubsystemFactory::new())));
+		if let Some(factory) = self.worker_factory {
+			self.subsystems.push(factory);
+		}
 
 		#[cfg(feature = "sub_flow")]
-		self.subsystems.push(self.flow_factory.unwrap_or_else(|| Box::new(FlowSubsystemFactory::new())));
+		if let Some(factory) = self.flow_factory {
+			self.subsystems.push(factory);
+		}
 
 		// Collect interceptors from all factories
 		for factory in &self.subsystems {
@@ -250,10 +257,7 @@ impl DatabaseBuilder {
 
 		// Get the scheduler - it must exist when feature is enabled
 		#[cfg(feature = "sub_worker")]
-		let scheduler = subsystems
-			.get::<WorkerSubsystem>()
-			.map(|w| w.get_scheduler())
-			.expect("Worker subsystem should always be created when feature is enabled");
+		let scheduler = subsystems.get::<WorkerSubsystem>().map(|w| w.get_scheduler());
 
 		// Add git hash if available
 		if let Some(git_hash) = option_env!("GIT_HASH") {

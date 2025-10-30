@@ -77,7 +77,7 @@ pub struct Database {
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
 	#[cfg(feature = "sub_worker")]
-	scheduler: Arc<dyn Scheduler>,
+	scheduler: Option<Arc<dyn Scheduler>>,
 }
 
 impl Database {
@@ -98,7 +98,7 @@ impl Database {
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
-		#[cfg(feature = "sub_worker")] scheduler: Arc<dyn Scheduler>,
+		#[cfg(feature = "sub_worker")] scheduler: Option<Arc<dyn Scheduler>>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -238,7 +238,7 @@ impl Database {
 	}
 
 	#[cfg(feature = "sub_worker")]
-	pub fn scheduler(&self) -> Arc<dyn Scheduler> {
+	pub fn scheduler(&self) -> Option<Arc<dyn Scheduler>> {
 		self.scheduler.clone()
 	}
 
@@ -304,7 +304,7 @@ impl Session for Database {
 	}
 
 	#[cfg(feature = "sub_worker")]
-	fn scheduler(&self) -> Arc<dyn Scheduler> {
+	fn scheduler(&self) -> Option<Arc<dyn Scheduler>> {
 		self.scheduler.clone()
 	}
 }
