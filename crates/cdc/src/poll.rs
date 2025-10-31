@@ -34,14 +34,17 @@ pub struct PollConsumerConfig {
 	pub poll_interval: Duration,
 	/// Priority for the polling task in the worker pool
 	pub priority: Priority,
+	/// Maximum batch size for fetching CDC events (None = unbounded)
+	pub max_batch_size: Option<u64>,
 }
 
 impl PollConsumerConfig {
-	pub fn new(consumer_id: CdcConsumerId, poll_interval: Duration) -> Self {
+	pub fn new(consumer_id: CdcConsumerId, poll_interval: Duration, max_batch_size: Option<u64>) -> Self {
 		Self {
 			consumer_id,
 			poll_interval,
 			priority: Priority::Normal,
+			max_batch_size,
 		}
 	}
 
@@ -87,12 +90,13 @@ impl<C: CdcConsume> PollConsumer<C> {
 		state: &ConsumerState,
 		engine: &StandardEngine,
 		consumer: &C,
+		max_batch_size: Option<u64>,
 	) -> Result<Option<(CommitVersion, u64)>> {
 		let mut transaction = engine.begin_command()?;
 
 		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
 
-		let transactions = fetch_cdcs_since(&mut transaction, checkpoint)?;
+		let transactions = fetch_cdcs_since(&mut transaction, checkpoint, max_batch_size)?;
 		if transactions.is_empty() {
 			transaction.rollback()?;
 			return Ok(None);
@@ -148,7 +152,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		);
 
 		while state.running.load(Ordering::Acquire) {
-			match Self::consume_batch(&state, &engine, &consumer) {
+			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size) {
 				Ok(Some((_processed_version, _lag))) => {
 					// FIXME log this
 				}
@@ -206,6 +210,14 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 	}
 }
 
-fn fetch_cdcs_since(txn: &mut impl CommandTransaction, since_version: CommitVersion) -> Result<Vec<Cdc>> {
-	txn.with_cdc_query(|cdc| Ok(cdc.range(Bound::Excluded(since_version), Bound::Unbounded)?.collect::<Vec<_>>()))
+fn fetch_cdcs_since(
+	txn: &mut impl CommandTransaction,
+	since_version: CommitVersion,
+	max_batch_size: Option<u64>,
+) -> Result<Vec<Cdc>> {
+	let upper_bound = match max_batch_size {
+		Some(size) => Bound::Excluded(CommitVersion(since_version.0.saturating_add(size).saturating_add(1))),
+		None => Bound::Unbounded,
+	};
+	txn.with_cdc_query(|cdc| Ok(cdc.range(Bound::Excluded(since_version), upper_bound)?.collect::<Vec<_>>()))
 }

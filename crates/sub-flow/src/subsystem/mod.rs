@@ -32,6 +32,8 @@ pub struct FlowSubsystemConfig {
 	pub priority: Priority,
 	/// Custom operator factories
 	pub operators: Vec<(String, OperatorFactory)>,
+	/// Maximum batch size for CDC polling (None = unbounded)
+	pub max_batch_size: Option<u64>,
 }
 
 pub struct FlowSubsystem {
@@ -42,12 +44,11 @@ pub struct FlowSubsystem {
 impl FlowSubsystem {
 	pub fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-
 		let consumer = FlowConsumer::new(engine.clone(), cfg.operators);
 
 		Ok(Self {
 			consumer: PollConsumer::new(
-				PollConsumerConfig::new(cfg.consumer_id.clone(), cfg.poll_interval),
+				PollConsumerConfig::new(cfg.consumer_id.clone(), cfg.poll_interval, cfg.max_batch_size),
 				engine,
 				consumer,
 			),

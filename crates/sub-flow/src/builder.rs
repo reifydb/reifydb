@@ -20,6 +20,7 @@ pub struct FlowBuilder {
 	poll_interval: Duration,
 	priority: Priority,
 	operators: Vec<(String, OperatorFactory)>,
+	max_batch_size: Option<u64>,
 }
 
 impl Default for FlowBuilder {
@@ -36,6 +37,7 @@ impl FlowBuilder {
 			poll_interval: Duration::from_millis(1),
 			priority: Priority::Normal,
 			operators: Vec::new(),
+			max_batch_size: Some(10),
 		}
 	}
 
@@ -57,6 +59,12 @@ impl FlowBuilder {
 		self
 	}
 
+	/// Set the maximum batch size for CDC polling
+	pub fn max_batch_size(mut self, size: u64) -> Self {
+		self.max_batch_size = Some(size);
+		self
+	}
+
 	/// Register a custom operator factory
 	pub fn register_operator<F>(mut self, name: impl Into<String>, factory: F) -> Self
 	where
@@ -73,6 +81,7 @@ impl FlowBuilder {
 			poll_interval: self.poll_interval,
 			priority: self.priority,
 			operators: self.operators,
+			max_batch_size: self.max_batch_size,
 		}
 	}
 }
