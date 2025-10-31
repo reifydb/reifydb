@@ -323,8 +323,6 @@ export class WsClient {
         const baseDelay = this.options.reconnectDelayMs ?? 1000;
         const delay = baseDelay * Math.pow(2, this.reconnectAttempts - 1);
 
-        console.log(`Attempting reconnection ${this.reconnectAttempts} after ${delay}ms...`);
-
         await new Promise(resolve => setTimeout(resolve, delay));
 
         try {
@@ -355,8 +353,6 @@ export class WsClient {
             this.setupSocketHandlers();
             this.reconnectAttempts = 0;
             this.isReconnecting = false;
-
-            console.log("Reconnection successful");
         } catch (error) {
             console.error("Reconnection attempt failed:", error);
             this.isReconnecting = false;

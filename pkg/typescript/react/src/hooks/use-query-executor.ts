@@ -35,9 +35,6 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
 
     const query = useCallback(
         (statements: string | string[], params?: any, schemas?: readonly SchemaNode[]): void => {
-            console.log('[useQuery] Executing query:', statements);
-            console.log('[useQuery] Client available:', !!client);
-
             // Cancel any ongoing query for THIS instance only
             if (abortControllerRef.current) {
                 abortControllerRef.current.abort();
@@ -57,8 +54,6 @@ export function useQueryExecutor<T = any>(options?: QueryExecutorOptions) {
                 try {
                     // Call client.query which returns FrameResults (array of frames)
                     const frameResults = await client?.query(statements, params || null, schemas || []) || [];
-
-                    console.debug("frameResults", frameResults);
 
                     const executionTime = Date.now() - startTime;
                     

@@ -24,21 +24,13 @@ export function ConnectionProvider({ config, children }: ConnectionProviderProps
 
         if (configChanged && connection.isConnected()) {
             // Config changed while connected - reconnect with new config
-            console.log('[ConnectionProvider] Config changed, reconnecting...');
             connection.reconnect().catch(err => {
                 console.error('[ConnectionProvider] Failed to reconnect:', err);
             });
         } else if (!connection.isConnected() && !connection.isConnecting()) {
             // Auto-connect if not connected
-            console.log('[ConnectionProvider] Initiating auto-connect...');
             connection.connect().catch(err => {
                 console.error('[ConnectionProvider] Failed to connect:', err);
-            });
-        } else {
-            console.log('[ConnectionProvider] Skipping auto-connect, current state:', {
-                isConnected: connection.isConnected(),
-                isConnecting: connection.isConnecting(),
-                configChanged
             });
         }
 

@@ -31,11 +31,6 @@ export function useConnection(overrideConfig?: ConnectionConfig) {
 
         // Subscribe to connection state changes
         const unsubscribe = connection.subscribe((newState) => {
-            console.log('[useConnection] State update:', {
-                isConnected: newState.isConnected,
-                isConnecting: newState.isConnecting,
-                connectionError: newState.connectionError,
-            });
             setState({
                 client: newState.client,
                 isConnected: newState.isConnected,

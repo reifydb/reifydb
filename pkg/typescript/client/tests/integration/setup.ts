@@ -16,7 +16,6 @@ export async function waitForDatabase(maxRetries = 30, delay = 1000): Promise<vo
             // await client.query('MAP 1;');
             return;
         } catch (error) {
-            console.log(`❌ Database connection failed on attempt ${i + 1}: ${error.message}`);
             if (i === maxRetries - 1) {
                 throw new Error(`${url} not ready after ${maxRetries} attempts`);
             }
