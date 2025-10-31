@@ -29,7 +29,7 @@ use crate::{
 	cdc::{InternalCdc, InternalCdcSequencedChange, process_deltas_for_cdc},
 };
 
-const BATCH_SIZE: usize = 10922; // 32766 params / 3 columns (SQLite max)
+const BATCH_SIZE: usize = 333; // 999 params / 3 columns (SQLite max)
 
 /// Helper function to get the appropriate table name for a given key
 fn get_table_name(key: &EncodedKey) -> Result<&'static str> {

@@ -13,7 +13,7 @@ mod scan;
 pub use range::CdcRangeIter;
 pub use scan::CdcScanIter;
 
-const CDC_BATCH_SIZE: usize = 16383; // 32766 params / 2 columns (SQLite max)
+const CDC_BATCH_SIZE: usize = 499; // 999 params / 2 columns (SQLite max)
 
 /// Store multiple internal CDC transactions in a single batched insert
 pub(crate) fn store_cdc_changes(tx: &Transaction, cdc_entries: Vec<InternalCdc>) -> rusqlite::Result<()> {
