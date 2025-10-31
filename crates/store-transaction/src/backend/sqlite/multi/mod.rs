@@ -25,7 +25,7 @@ use reifydb_core::{
 	},
 	value::encoded::EncodedValues,
 };
-use rusqlite::{Connection, OptionalExtension, Statement, params};
+use rusqlite::{Connection, Statement, params, params_from_iter};
 pub use scan::MultiVersionScanIter;
 pub use scan_rev::MultiVersionScanRevIter;
 
@@ -84,15 +84,6 @@ pub(crate) fn ensure_source_exists(conn: &Connection, source: &str) -> rusqlite:
 	);
 	conn.execute(&create_sql, [])?;
 
-	// Create index for latest-version lookups (key, version DESC)
-	// This optimizes queries like: WHERE key = ? AND version <= ? ORDER BY version DESC LIMIT 1
-	let index1_sql =
-		format!("CREATE INDEX IF NOT EXISTS idx_{}_key_version_desc ON {} (key, version DESC)", source, source);
-	conn.execute(&index1_sql, [])?;
-
-	// Update SQLite query planner statistics for optimal query plans
-	conn.execute("ANALYZE", [])?;
-
 	Ok(())
 }
 
@@ -130,19 +121,52 @@ pub(crate) fn operator_name_for_range(range: &EncodedKeyRange) -> String {
 	"multi".to_string()
 }
 
-/// Fetch the previous version for a given key
-pub(crate) fn fetch_pre_version(
+/// Batch fetch previous versions for multiple keys from a specific table
+/// Returns a HashMap of key -> version for all keys that have non-tombstone values
+pub(crate) fn fetch_pre_versions(
 	conn: &Connection,
-	key: &[u8],
+	keys: &[&[u8]],
 	source: &str,
-) -> rusqlite::Result<Option<CommitVersion>> {
-	let query = format!("SELECT version, value FROM {} WHERE key = ? ORDER BY version DESC LIMIT 1", source);
+) -> rusqlite::Result<HashMap<Vec<u8>, CommitVersion>> {
+	if keys.is_empty() {
+		return Ok(HashMap::new());
+	}
 
-	let result: Option<(i64, Option<Vec<u8>>)> =
-		conn.query_row(&query, params![key], |row| Ok((row.get(0)?, row.get(1)?))).optional()?;
+	let mut results = HashMap::new();
 
-	// Only return the version if it has a non-NULL value (not a tombstone)
-	Ok(result.and_then(|(version, value)| value.map(|_| CommitVersion(version as u64))))
+	const MAX_BATCH_SIZE: usize = 999;
+	for chunk in keys.chunks(MAX_BATCH_SIZE) {
+		// Build placeholders for IN clause
+		let placeholders: Vec<String> = (0..chunk.len()).map(|i| format!("?{}", i + 1)).collect();
+
+		let query = format!(
+			"SELECT t1.key, t1.version FROM {} t1
+             INNER JOIN (
+                SELECT key, MAX(version) as max_version
+                FROM {}
+                WHERE key IN ({})
+                GROUP BY key
+             ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
+             WHERE t1.value IS NOT NULL",
+			source,
+			source,
+			placeholders.join(", ")
+		);
+
+		let mut stmt = conn.prepare(&query)?;
+		let params: Vec<&dyn rusqlite::ToSql> = chunk.iter().map(|k| k as &dyn rusqlite::ToSql).collect();
+
+		let rows = stmt.query_map(params_from_iter(params), |row| {
+			Ok((row.get::<_, Vec<u8>>(0)?, CommitVersion(row.get::<_, i64>(1)? as u64)))
+		})?;
+
+		for result in rows {
+			let (key, version) = result?;
+			results.insert(key, version);
+		}
+	}
+
+	Ok(results)
 }
 
 /// Helper function to build query template and determine parameter count

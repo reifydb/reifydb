@@ -94,12 +94,16 @@ impl SqliteBackend {
 
 		let conn = connect(&db_path, flags.clone()).unwrap();
 
+		// Page size must be set BEFORE creating tables
+		conn.pragma_update(None, "page_size", config.page_size).unwrap();
+
 		conn.pragma_update(None, "journal_mode", config.journal_mode.as_str()).unwrap();
 		conn.pragma_update(None, "synchronous", config.synchronous_mode.as_str()).unwrap();
 		conn.pragma_update(None, "temp_store", config.temp_store.as_str()).unwrap();
 		conn.pragma_update(None, "auto_vacuum", "INCREMENTAL").unwrap();
 		conn.pragma_update(None, "cache_size", -(config.cache_size as i32)).unwrap();
 		conn.pragma_update(None, "wal_autocheckpoint", config.wal_autocheckpoint).unwrap();
+		conn.pragma_update(None, "mmap_size", config.mmap_size as i64).unwrap();
 
 		conn.execute_batch(
 			"BEGIN;
@@ -121,16 +125,10 @@ impl SqliteBackend {
                  value   BLOB NOT NULL
              );
 
-             CREATE INDEX IF NOT EXISTS idx_multi_key_version_desc ON multi (key, version DESC);
-
              COMMIT;",
 		)
 		.unwrap();
 
-		// Update SQLite query planner statistics for optimal query plans
-		conn.execute("ANALYZE", []).unwrap();
-
-		// Pass the initialization connection to the writer to keep in-memory databases alive
 		let (writer, writer_thread) = Writer::spawn(conn).unwrap();
 
 		Self(Arc::new(SqliteBackendInner {

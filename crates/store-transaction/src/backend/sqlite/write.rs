@@ -20,7 +20,7 @@ use crate::{
 		sqlite::{
 			cdc::store_cdc_changes,
 			multi::{
-				as_flow_node_state_key, ensure_source_exists, fetch_pre_version, operator_name,
+				as_flow_node_state_key, ensure_source_exists, fetch_pre_versions, operator_name,
 				source_name,
 			},
 		},
@@ -28,7 +28,7 @@ use crate::{
 	cdc::{InternalCdc, InternalCdcSequencedChange, process_deltas_for_cdc},
 };
 
-const BATCH_SIZE: usize = 333; // 999 params / 3 columns
+const BATCH_SIZE: usize = 10922; // 32766 params / 3 columns (SQLite max)
 
 /// Helper function to get the appropriate table name for a given key
 fn get_table_name(key: &EncodedKey) -> Result<&'static str> {
@@ -245,7 +245,6 @@ impl Writer {
 				});
 			}
 		}
-
 		// Batch insert all CDC entries
 		if !all_cdc_entries.is_empty() {
 			store_cdc_changes(&tx, all_cdc_entries).map_err(|e| Error(from_rusqlite_error(e)))?;
@@ -262,15 +261,27 @@ impl Writer {
 		version: CommitVersion,
 		ensured_sources: &mut HashSet<String>,
 	) -> Result<Vec<InternalCdcSequencedChange>> {
-		// Capture pre-versions BEFORE applying deltas
-		let mut pre_versions = HashMap::new();
+		// Group keys by table for batched pre-version fetching
+		let mut keys_by_table: HashMap<&'static str, Vec<&EncodedKey>> = HashMap::new();
+		let mut seen_keys: HashSet<&EncodedKey> = HashSet::new();
+
 		for delta in deltas {
 			let key = delta.key();
-			if !pre_versions.contains_key(key) {
+			if seen_keys.insert(key) {
+				// Only process each unique key once
 				if let Ok(table) = get_table_name(key) {
-					if let Ok(Some(pre_version)) = fetch_pre_version(tx, key, table) {
-						pre_versions.insert(key.clone(), pre_version);
-					}
+					keys_by_table.entry(table).or_default().push(key);
+				}
+			}
+		}
+
+		// Batch fetch pre-versions for each table
+		let mut pre_versions: HashMap<EncodedKey, CommitVersion> = HashMap::new();
+		for (table, keys) in keys_by_table {
+			let key_bytes: Vec<&[u8]> = keys.iter().map(|k| k.as_slice()).collect();
+			if let Ok(table_versions) = fetch_pre_versions(tx, &key_bytes, table) {
+				for (key_bytes, version) in table_versions {
+					pre_versions.insert(EncodedKey(CowVec::new(key_bytes)), version);
 				}
 			}
 		}

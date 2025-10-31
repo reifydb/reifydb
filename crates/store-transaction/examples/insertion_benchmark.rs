@@ -11,7 +11,6 @@ use std::time::Instant;
 use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValues};
 use reifydb_store_transaction::{
 	backend::multi::BackendMultiVersionCommit,
-	memory::MemoryBackend,
 	sqlite::{SqliteBackend, SqliteConfig},
 };
 

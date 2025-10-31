@@ -20,6 +20,8 @@ pub struct SqliteConfig {
 	pub temp_store: TempStore,
 	pub cache_size: u32,
 	pub wal_autocheckpoint: u32,
+	pub page_size: u32, // Page size in bytes (must be power of 2, 512-65536)
+	pub mmap_size: u64, // Memory-mapped I/O size in bytes
 }
 
 impl SqliteConfig {
@@ -33,6 +35,8 @@ impl SqliteConfig {
 			temp_store: TempStore::Memory,
 			cache_size: 20000,
 			wal_autocheckpoint: 1000,
+			page_size: 4096, // SQLite default
+			mmap_size: 0,    // Disabled by default
 		}
 	}
 
@@ -50,6 +54,8 @@ impl SqliteConfig {
 			temp_store: TempStore::File,
 			cache_size: 20000,
 			wal_autocheckpoint: 1000,
+			page_size: 4096, // SQLite default
+			mmap_size: 0,    // Disabled by default
 		}
 	}
 
@@ -67,6 +73,8 @@ impl SqliteConfig {
 			temp_store: TempStore::Memory,
 			cache_size: 50000,
 			wal_autocheckpoint: 10000,
+			page_size: 16384,     // Larger page size for bulk operations
+			mmap_size: 268435456, // 256MB mmap for performance
 		}
 	}
 
@@ -86,6 +94,8 @@ impl SqliteConfig {
 			temp_store: TempStore::Memory,
 			cache_size: 20000,
 			wal_autocheckpoint: 10000,
+			page_size: 16384,     // Larger page size for bulk operations
+			mmap_size: 268435456, // 256MB mmap for RAM-backed storage
 		}
 	}
 
@@ -108,6 +118,8 @@ impl SqliteConfig {
 			temp_store: TempStore::Memory,
 			cache_size: 20000,
 			wal_autocheckpoint: 10000,
+			page_size: 16384,     // Larger page size for bulk operations
+			mmap_size: 268435456, // 256MB mmap for RAM-backed storage
 		}
 	}
 
@@ -130,6 +142,8 @@ impl SqliteConfig {
 			temp_store: TempStore::Memory,
 			cache_size: 10000,
 			wal_autocheckpoint: 10000,
+			page_size: 4096, // Default for tests
+			mmap_size: 0,    // Disabled for tests
 		}
 	}
 
@@ -172,6 +186,21 @@ impl SqliteConfig {
 	/// Set WAL auto-checkpoint threshold in pages (0 = disable)
 	pub fn wal_autocheckpoint(mut self, pages: u32) -> Self {
 		self.wal_autocheckpoint = pages;
+		self
+	}
+
+	/// Set the page size in bytes (must be a power of 2 between 512 and 65536)
+	/// Note: This must be set before the database is created. Changing page size
+	/// on an existing database requires a VACUUM operation.
+	pub fn page_size(mut self, size: u32) -> Self {
+		self.page_size = size;
+		self
+	}
+
+	/// Set the memory-mapped I/O size in bytes (0 = disabled)
+	/// Larger values can improve read performance for in-memory databases
+	pub fn mmap_size(mut self, size: u64) -> Self {
+		self.mmap_size = size;
 		self
 	}
 }
