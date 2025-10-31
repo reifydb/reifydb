@@ -218,7 +218,7 @@ impl Writer {
 		ensured_sources: &mut HashSet<String>,
 	) -> Result<Vec<InternalCdcSequencedChange>> {
 		// Capture pre-versions BEFORE applying deltas
-		let mut pre_versions = std::collections::HashMap::new();
+		let mut pre_versions = HashMap::new();
 		for delta in deltas {
 			let key = delta.key();
 			if !pre_versions.contains_key(key) {
@@ -230,9 +230,18 @@ impl Writer {
 			}
 		}
 
-		// Apply all deltas to storage
+		// Group deltas by table for batched inserts
+		let mut by_table: HashMap<&'static str, Vec<&Delta>> = HashMap::new();
 		for delta in deltas {
-			Self::apply_single_delta(tx, delta, version, ensured_sources)?;
+			let key = delta.key();
+			let table = get_table_name(key)?;
+			by_table.entry(table).or_default().push(delta);
+		}
+
+		// Apply batched deltas for each table
+		for (table, table_deltas) in by_table {
+			Self::ensure_source_if_needed(tx, table, ensured_sources)?;
+			Self::apply_batched_deltas_for_table(tx, table, &table_deltas, version)?;
 		}
 
 		// Process CDC changes using the shared function
@@ -242,56 +251,57 @@ impl Writer {
 		})
 	}
 
-	fn apply_single_delta(
+	fn apply_batched_deltas_for_table(
 		tx: &Transaction,
-		delta: &Delta,
+		table: &str,
+		deltas: &[&Delta],
 		version: CommitVersion,
-		ensured_sources: &mut HashSet<String>,
 	) -> Result<()> {
-		match delta {
-			Delta::Set {
-				key,
-				values,
-			} => Self::apply_delta_set(tx, key, values, version, ensured_sources),
-			Delta::Remove {
-				key,
-			} => Self::apply_delta_remove(tx, key, version, ensured_sources),
+		const BATCH_SIZE: usize = 300; // Stay under SQLite's 999 parameter limit (3 params per row)
+
+		for chunk in deltas.chunks(BATCH_SIZE) {
+			if chunk.is_empty() {
+				continue;
+			}
+
+			// Build the multi-row INSERT statement
+			let placeholders: Vec<String> = (0..chunk.len())
+				.map(|i| {
+					let base = i * 3;
+					format!("(?{}, ?{}, ?{})", base + 1, base + 2, base + 3)
+				})
+				.collect();
+
+			let query = format!(
+				"INSERT OR REPLACE INTO {} (key, version, value) VALUES {}",
+				table,
+				placeholders.join(", ")
+			);
+
+			// Collect all parameters
+			let mut params: Vec<Value> = Vec::with_capacity(chunk.len() * 3);
+			for delta in chunk {
+				match delta {
+					Delta::Set {
+						key,
+						values,
+					} => {
+						params.push(Value::Blob(key.to_vec()));
+						params.push(Value::Integer(version.0 as i64));
+						params.push(Value::Blob(values.to_vec()));
+					}
+					Delta::Remove {
+						key,
+					} => {
+						params.push(Value::Blob(key.to_vec()));
+						params.push(Value::Integer(version.0 as i64));
+						params.push(Value::Null);
+					}
+				}
+			}
+
+			tx.execute(&query, params_from_iter(params)).map_err(|e| Error(from_rusqlite_error(e)))?;
 		}
-	}
-
-	fn apply_delta_set(
-		tx: &Transaction,
-		key: &[u8],
-		values: &[u8],
-		version: CommitVersion,
-		ensured_sources: &mut HashSet<String>,
-	) -> Result<()> {
-		let encoded_key = EncodedKey::new(key.to_vec());
-		let table = get_table_name(&encoded_key)?;
-		Self::ensure_source_if_needed(tx, table, ensured_sources)?;
-
-		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, ?3)", table);
-
-		tx.execute(&query, rusqlite::params![key.to_vec(), version.0, values.to_vec()])
-			.map_err(|e| Error(from_rusqlite_error(e)))?;
-
-		Ok(())
-	}
-
-	fn apply_delta_remove(
-		tx: &Transaction,
-		key: &[u8],
-		version: CommitVersion,
-		ensured_sources: &mut HashSet<String>,
-	) -> Result<()> {
-		let encoded_key = EncodedKey::new(key.to_vec());
-		let table = get_table_name(&encoded_key)?;
-		Self::ensure_source_if_needed(tx, table, ensured_sources)?;
-
-		let query = format!("INSERT OR REPLACE INTO {} (key, version, value) VALUES (?1, ?2, NULL)", table);
-
-		tx.execute(&query, rusqlite::params![key.to_vec(), version.0])
-			.map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		Ok(())
 	}
