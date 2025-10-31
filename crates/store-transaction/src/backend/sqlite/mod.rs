@@ -20,7 +20,6 @@ pub use cdc::{CdcRangeIter, CdcScanIter};
 pub use config::*;
 pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
 use read::Readers;
-use reifydb_core::{CowVec, delta::Delta};
 use reifydb_type::Error;
 use rusqlite::Connection;
 pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
@@ -74,6 +73,16 @@ impl Drop for SqliteBackendInner {
 			// Remove shared memory file
 			let _ = std::fs::remove_file(format!("{}-shm", path.display()));
 		}
+
+		// Cleanup memory files for RAM-only databases
+		if let DbPath::Memory(path) = &self.db_path {
+			// Remove database file
+			let _ = std::fs::remove_file(path);
+			// Remove WAL file
+			let _ = std::fs::remove_file(format!("{}-wal", path.display()));
+			// Remove shared memory file
+			let _ = std::fs::remove_file(format!("{}-shm", path.display()));
+		}
 	}
 }
 
@@ -89,6 +98,8 @@ impl SqliteBackend {
 		conn.pragma_update(None, "synchronous", config.synchronous_mode.as_str()).unwrap();
 		conn.pragma_update(None, "temp_store", config.temp_store.as_str()).unwrap();
 		conn.pragma_update(None, "auto_vacuum", "INCREMENTAL").unwrap();
+		conn.pragma_update(None, "cache_size", -(config.cache_size as i32)).unwrap();
+		conn.pragma_update(None, "wal_autocheckpoint", config.wal_autocheckpoint).unwrap();
 
 		conn.execute_batch(
 			"BEGIN;
@@ -168,37 +179,6 @@ impl SqliteBackend {
 		self.readers.get_reader().unwrap()
 	}
 
-	/// Convert deltas to SQL operations for single storage
-	fn convert_deltas_to_operations(&self, deltas: CowVec<Delta>) -> Vec<(String, Vec<rusqlite::types::Value>)> {
-		let mut operations = Vec::new();
-		for delta in deltas.as_ref() {
-			match delta {
-				Delta::Set {
-					key,
-					values: bytes,
-				} => {
-					operations.push((
-						"INSERT OR REPLACE INTO single (key,value) VALUES (?1, ?2)".to_string(),
-						vec![
-							rusqlite::types::Value::Blob(key.to_vec()),
-							rusqlite::types::Value::Blob(bytes.to_vec()),
-						],
-					));
-				}
-				Delta::Remove {
-					key,
-				} => {
-					operations.push((
-						"INSERT OR REPLACE INTO single (key, value) VALUES (?1, NULL)"
-							.to_string(),
-						vec![rusqlite::types::Value::Blob(key.to_vec())],
-					));
-				}
-			}
-		}
-		operations
-	}
-
 	fn resolve_db_path(db_path: DbPath) -> DbPath {
 		match db_path {
 			DbPath::Tmpfs(path) => {
@@ -207,6 +187,13 @@ impl SqliteBackend {
 					std::fs::create_dir_all(&parent).ok();
 				}
 				DbPath::Tmpfs(path)
+			}
+			DbPath::Memory(path) => {
+				// Ensure parent directory exists for memory paths (/dev/shm should exist)
+				if let Some(parent) = path.parent() {
+					std::fs::create_dir_all(&parent).ok();
+				}
+				DbPath::Memory(path)
 			}
 			DbPath::File(config_path) => {
 				// Check if this is a SQLite URI (contains ':' which indicates URI format)
@@ -250,6 +237,8 @@ pub(crate) fn connect(path: &DbPath, flags: rusqlite::OpenFlags) -> crate::Resul
 			}
 		}
 		DbPath::Tmpfs(path) => Connection::open_with_flags(path, flags)
+			.map_err(|e| Error(connection_failed(path.display().to_string(), e.to_string()))),
+		DbPath::Memory(path) => Connection::open_with_flags(path, flags)
 			.map_err(|e| Error(connection_failed(path.display().to_string(), e.to_string()))),
 	}
 }

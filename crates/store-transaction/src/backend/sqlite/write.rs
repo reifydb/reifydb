@@ -15,10 +15,10 @@ use rusqlite::{Connection, Transaction, params_from_iter, types::Value};
 use super::diagnostic::{from_rusqlite_error, transaction_failed};
 use crate::{
 	backend::{
-		commit::CommitBuffer,
+		commit::{BufferedCommit, CommitBuffer},
 		gc::GcStats,
 		sqlite::{
-			cdc::store_internal_cdc,
+			cdc::store_cdc_changes,
 			multi::{
 				as_flow_node_state_key, ensure_source_exists, fetch_pre_version, operator_name,
 				source_name,
@@ -27,6 +27,8 @@ use crate::{
 	},
 	cdc::{InternalCdc, InternalCdcSequencedChange, process_deltas_for_cdc},
 };
+
+const BATCH_SIZE: usize = 333; // 999 params / 3 columns
 
 /// Helper function to get the appropriate table name for a given key
 fn get_table_name(key: &EncodedKey) -> Result<&'static str> {
@@ -185,25 +187,68 @@ impl Writer {
 		// Add to buffer
 		self.commit_buffer.add_commit(version, deltas, timestamp);
 
-		// Process all ready commits
+		// Process all ready commits in a single batched transaction
 		let ready_commits = self.commit_buffer.drain_ready();
-		for commit in ready_commits {
-			let result = self.apply_multi_commit(commit.deltas, commit.version, commit.timestamp);
+		if ready_commits.is_empty() {
+			return;
+		}
 
-			// Send response for this commit if we have one pending
-			if let Some(sender) = self.pending_responses.remove(&commit.version) {
-				let _ = sender.send(result);
+		// Collect versions for response handling
+		let commit_versions: Vec<CommitVersion> = ready_commits.iter().map(|c| c.version).collect();
+
+		// Apply all commits in a single batched transaction
+		let result = self.apply_multi_commits(ready_commits);
+
+		// Send result to all commits in the batch
+		match result {
+			Ok(()) => {
+				// Send success to all
+				for version in commit_versions {
+					if let Some(sender) = self.pending_responses.remove(&version) {
+						let _ = sender.send(Ok(()));
+					}
+				}
+			}
+			Err(e) => {
+				// Send error to all (recreate error for each sender)
+				for version in commit_versions {
+					if let Some(sender) = self.pending_responses.remove(&version) {
+						let _ = sender.send(Err(Error(transaction_failed(format!(
+							"Batched commit failed: {}",
+							e.0.message
+						)))));
+					}
+				}
 			}
 		}
 	}
 
-	fn apply_multi_commit(&mut self, deltas: CowVec<Delta>, version: CommitVersion, timestamp: u64) -> Result<()> {
+	fn apply_multi_commits(&mut self, commits: Vec<BufferedCommit>) -> Result<()> {
+		if commits.is_empty() {
+			return Ok(());
+		}
+
 		let mut tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
 
-		let cdc_changes = Self::apply_deltas(&mut tx, &deltas, version, &mut self.ensured_sources)?;
+		// Apply all deltas and collect all CDC changes
+		let mut all_cdc_entries = Vec::new();
 
-		if !cdc_changes.is_empty() {
-			Self::store_cdc_changes(&tx, version, timestamp, cdc_changes)?;
+		for commit in commits {
+			let cdc_changes =
+				Self::apply_deltas(&mut tx, &commit.deltas, commit.version, &mut self.ensured_sources)?;
+
+			if !cdc_changes.is_empty() {
+				all_cdc_entries.push(InternalCdc {
+					version: commit.version,
+					timestamp: commit.timestamp,
+					changes: cdc_changes,
+				});
+			}
+		}
+
+		// Batch insert all CDC entries
+		if !all_cdc_entries.is_empty() {
+			store_cdc_changes(&tx, all_cdc_entries).map_err(|e| Error(from_rusqlite_error(e)))?;
 		}
 
 		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))?;
@@ -257,8 +302,6 @@ impl Writer {
 		deltas: &[&Delta],
 		version: CommitVersion,
 	) -> Result<()> {
-		const BATCH_SIZE: usize = 300; // Stay under SQLite's 999 parameter limit (3 params per row)
-
 		for chunk in deltas.chunks(BATCH_SIZE) {
 			if chunk.is_empty() {
 				continue;
@@ -316,22 +359,5 @@ impl Writer {
 			ensured_sources.insert(source.to_string());
 		}
 		Ok(())
-	}
-
-	fn store_cdc_changes(
-		tx: &Transaction,
-		version: CommitVersion,
-		timestamp: u64,
-		cdc_changes: Vec<InternalCdcSequencedChange>,
-	) -> Result<()> {
-		store_internal_cdc(
-			tx,
-			InternalCdc {
-				version,
-				timestamp,
-				changes: cdc_changes,
-			},
-		)
-		.map_err(|e| Error(from_rusqlite_error(e)))
 	}
 }

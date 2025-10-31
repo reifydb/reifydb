@@ -15,7 +15,7 @@ impl BackendSingleVersionCommit for SqliteBackend {
 		let (tx, rx) = mpsc::channel();
 		self.writer
 			.send(WriteCommand::SingleVersionCommit {
-				operations: self.convert_deltas_to_operations(deltas),
+				operations: convert_deltas_to_operations(deltas),
 				response: tx,
 			})
 			.map_err(|_| {
@@ -28,4 +28,34 @@ impl BackendSingleVersionCommit for SqliteBackend {
 			}
 		}
 	}
+}
+
+/// Convert deltas to SQL operations for single storage
+fn convert_deltas_to_operations(deltas: CowVec<Delta>) -> Vec<(String, Vec<rusqlite::types::Value>)> {
+	let mut operations = Vec::new();
+	for delta in deltas.as_ref() {
+		match delta {
+			Delta::Set {
+				key,
+				values: bytes,
+			} => {
+				operations.push((
+					"INSERT OR REPLACE INTO single (key,value) VALUES (?1, ?2)".to_string(),
+					vec![
+						rusqlite::types::Value::Blob(key.to_vec()),
+						rusqlite::types::Value::Blob(bytes.to_vec()),
+					],
+				));
+			}
+			Delta::Remove {
+				key,
+			} => {
+				operations.push((
+					"INSERT OR REPLACE INTO single (key, value) VALUES (?1, NULL)".to_string(),
+					vec![rusqlite::types::Value::Blob(key.to_vec())],
+				));
+			}
+		}
+	}
+	operations
 }
