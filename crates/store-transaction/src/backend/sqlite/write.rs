@@ -16,6 +16,7 @@ use super::diagnostic::{from_rusqlite_error, transaction_failed};
 use crate::{
 	backend::{
 		commit::{BufferedCommit, CommitBuffer},
+		delta_optimizer::optimize_deltas_cow,
 		gc::GcStats,
 		sqlite::{
 			cdc::store_cdc_changes,
@@ -286,22 +287,28 @@ impl Writer {
 			}
 		}
 
-		// Group deltas by table for batched inserts
+		// Optimize deltas BEFORE database writes to skip unnecessary operations
+		let optimized_deltas = optimize_deltas_cow(CowVec::new(deltas.to_vec()), |key| {
+			// Key exists in storage if we have a pre-version for it
+			pre_versions.contains_key(key)
+		});
+
+		// Group optimized deltas by table for batched inserts
 		let mut by_table: HashMap<&'static str, Vec<&Delta>> = HashMap::new();
-		for delta in deltas {
+		for delta in optimized_deltas.iter() {
 			let key = delta.key();
 			let table = get_table_name(key)?;
 			by_table.entry(table).or_default().push(delta);
 		}
 
-		// Apply batched deltas for each table
+		// Apply batched optimized deltas for each table
 		for (table, table_deltas) in by_table {
 			Self::ensure_source_if_needed(tx, table, ensured_sources)?;
 			Self::apply_batched_deltas_for_table(tx, table, &table_deltas, version)?;
 		}
 
-		// Process CDC changes using the shared function
-		process_deltas_for_cdc(deltas.iter().cloned(), version, |key| {
+		// Process CDC changes using the OPTIMIZED deltas (optimization already done at delta level)
+		process_deltas_for_cdc(optimized_deltas, version, |key| {
 			// Return the pre-version we captured before applying deltas
 			pre_versions.get(key).copied()
 		})

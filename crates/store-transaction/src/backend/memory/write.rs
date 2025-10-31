@@ -13,7 +13,7 @@ use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, value::encod
 use reifydb_type::Result;
 
 use crate::{
-	backend::{commit::CommitBuffer, gc::GcStats, memory::VersionChain},
+	backend::{commit::CommitBuffer, delta_optimizer::optimize_deltas_cow, gc::GcStats, memory::VersionChain},
 	cdc::{InternalCdc, process_deltas_for_cdc},
 };
 
@@ -127,9 +127,6 @@ impl Writer {
 	fn apply_multi_commit(&self, deltas: CowVec<Delta>, version: CommitVersion, timestamp: u64) -> Result<()> {
 		let multi = self.multi.clone();
 
-		// Clone deltas for CDC processing
-		let deltas_for_cdc = deltas.clone();
-
 		// Capture pre-versions BEFORE applying deltas
 		let mut pre_versions = std::collections::HashMap::new();
 		{
@@ -150,25 +147,31 @@ impl Writer {
 			}
 		}
 
-		// Apply deltas to storage
+		// Optimize deltas BEFORE applying to storage to skip unnecessary operations
+		let optimized_deltas = optimize_deltas_cow(deltas.clone(), |key| {
+			// Key exists in storage if we have a pre-version for it
+			pre_versions.contains_key(key)
+		});
+
+		// Apply optimized deltas to storage
 		{
 			let mut multi_write = multi.write();
-			for delta in deltas {
+			for delta in optimized_deltas.iter() {
 				match delta {
 					Delta::Set {
 						key,
 						values,
 					} => {
 						multi_write
-							.entry(key)
+							.entry(key.clone())
 							.or_insert_with(VersionChain::new)
-							.set(version, Some(values));
+							.set(version, Some(values.clone()));
 					}
 					Delta::Remove {
 						key,
 					} => {
 						multi_write
-							.entry(key)
+							.entry(key.clone())
 							.or_insert_with(VersionChain::new)
 							.set(version, None);
 					}
@@ -176,8 +179,8 @@ impl Writer {
 			}
 		}
 
-		// Process CDC changes using the shared function
-		let cdc_changes = process_deltas_for_cdc(deltas_for_cdc, version, |key| {
+		// Process CDC changes using the OPTIMIZED deltas (optimization already done at delta level)
+		let cdc_changes = process_deltas_for_cdc(optimized_deltas, version, |key| {
 			// Return the pre-version we captured before applying deltas
 			pre_versions.get(key).copied()
 		})?;
