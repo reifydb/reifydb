@@ -122,11 +122,6 @@ impl SqliteBackend {
                  ON multi(key, version DESC)
                  WHERE is_tombstone = 0;
 
-             -- Covering index for index-only scans (if values are small)
-             CREATE INDEX IF NOT EXISTS multi_cover_idx
-                 ON multi(key, version DESC, value)
-                 WHERE is_tombstone = 0;
-
              -- Single version table
              CREATE TABLE IF NOT EXISTS single (
                  key     BLOB NOT NULL,

@@ -329,8 +329,7 @@ impl Writer {
 		deltas: &[&Delta],
 		version: CommitVersion,
 	) -> Result<()> {
-		// SQLite SQLITE_MAX_VARIABLE_NUMBER is 32766, use 32764 to be safe (divisible by 4)
-		const BATCH_SIZE: usize = 8191; // 32764 params / 4 columns
+		const BATCH_SIZE: usize = 249; // 999 params / 4 columns
 
 		if deltas.is_empty() {
 			return Ok(());

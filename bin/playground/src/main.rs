@@ -38,8 +38,8 @@ fn main() {
 	let insert_start = std::time::Instant::now();
 
 	// Insert 10 million items in batches of 10,000
-	const TOTAL_RECORDS: i32 = 50_000;
-	const BATCH_SIZE: i32 = 1_000;
+	const TOTAL_RECORDS: i32 = 1_000_000;
+	const BATCH_SIZE: i32 = 10_000;
 	const NUM_BATCHES: i32 = TOTAL_RECORDS / BATCH_SIZE;
 
 	for batch in 0..NUM_BATCHES {
