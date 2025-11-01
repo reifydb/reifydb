@@ -28,6 +28,7 @@ pub struct MultiVersionScanRevIter {
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
+	items_returned: usize,
 }
 
 impl MultiVersionScanRevIter {
@@ -42,6 +43,7 @@ impl MultiVersionScanRevIter {
 			last_key: None,
 			batch_size,
 			exhausted: false,
+			items_returned: 0,
 		}
 	}
 
@@ -85,9 +87,18 @@ impl Iterator for MultiVersionScanRevIter {
 	type Item = MultiVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
+		// Check if we've already returned enough items
+		if self.items_returned >= self.batch_size {
+			return None;
+		}
+
 		if self.buffer.is_empty() {
 			self.refill_buffer();
 		}
-		self.buffer.pop_front()
+		let item = self.buffer.pop_front();
+		if item.is_some() {
+			self.items_returned += 1;
+		}
+		item
 	}
 }

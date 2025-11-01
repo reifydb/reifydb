@@ -67,6 +67,7 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		}
 
 		let batch_size = stored_ctx.batch_size;
+
 		let range = RowKeyRange::scan_range(self.table.def().id.into(), self.last_key.as_ref());
 
 		let mut batch_rows = Vec::new();
@@ -75,6 +76,7 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 
 		let multi_rows: Vec<_> =
 			rx.range_batched(range, batch_size)?.into_iter().take(batch_size as usize).collect();
+
 		for multi in multi_rows.into_iter() {
 			if let Some(key) = RowKey::decode(&multi.key) {
 				batch_rows.push(multi.values);
@@ -82,7 +84,6 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 				new_last_key = Some(multi.key);
 			}
 		}
-
 		if batch_rows.is_empty() {
 			self.exhausted = true;
 			return Ok(None);

@@ -33,7 +33,6 @@ impl BackendMultiVersionRange for SqliteBackend {
 		version: CommitVersion,
 		batch_size: u64,
 	) -> Result<Self::RangeIter<'_>> {
-		println!("batch_size = {}", batch_size);
 		Ok(MultiVersionRangeIter::new(self.get_reader(), range, version, batch_size as usize))
 	}
 }
@@ -47,6 +46,7 @@ pub struct MultiVersionRangeIter {
 	last_key: Option<EncodedKey>,
 	batch_size: usize,
 	exhausted: bool,
+	items_returned: usize,
 }
 
 impl MultiVersionRangeIter {
@@ -62,6 +62,7 @@ impl MultiVersionRangeIter {
 			last_key: None,
 			batch_size,
 			exhausted: false,
+			items_returned: 0,
 		}
 	}
 
@@ -85,6 +86,7 @@ impl MultiVersionRangeIter {
 		let (query_template, param_count) = build_range_query(start_bound, end_bound, "ASC");
 
 		let query = query_template.replace("{}", &self.source);
+
 		let conn_guard = self.reader.lock().map_err(|e| {
 			use crate::backend::diagnostic::database_error;
 			reifydb_type::Error(database_error(format!("Failed to acquire reader lock: {}", e)))
@@ -118,6 +120,7 @@ impl MultiVersionRangeIter {
 		if count < self.batch_size {
 			self.exhausted = true;
 		}
+
 		Ok(())
 	}
 }
@@ -126,11 +129,21 @@ impl Iterator for MultiVersionRangeIter {
 	type Item = MultiVersionIterResult;
 
 	fn next(&mut self) -> Option<Self::Item> {
+		// Check if we've already returned enough items
+		if self.items_returned >= self.batch_size {
+			return None;
+		}
+
 		if self.buffer.is_empty() {
 			if let Err(_) = self.refill_buffer() {
 				return None;
 			}
 		}
-		self.buffer.pop_front()
+
+		let item = self.buffer.pop_front();
+		if item.is_some() {
+			self.items_returned += 1;
+		}
+		item
 	}
 }
