@@ -145,9 +145,10 @@ impl CommandTransaction {
 		Ok(TransactionScanRevIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn range(
+	pub fn range_batched(
 		&mut self,
 		range: EncodedKeyRange,
+		batch_size: u64,
 	) -> Result<TransactionRangeIter<'_, TransactionStore>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
@@ -156,14 +157,22 @@ impl CommandTransaction {
 
 		marker.mark_range(range.clone());
 		let pending = pw.range((start, end));
-		let commited = self.engine.store.range(range, version)?;
+		let commited = self.engine.store.range_batched(range, version, batch_size)?;
 
 		Ok(TransactionRangeIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn range_rev(
+	pub fn range(
 		&mut self,
 		range: EncodedKeyRange,
+	) -> Result<TransactionRangeIter<'_, TransactionStore>, reifydb_type::Error> {
+		self.range_batched(range, 1024)
+	}
+
+	pub fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
 	) -> Result<TransactionRangeRevIter<'_, TransactionStore>, reifydb_type::Error> {
 		let version = self.tm.version();
 		let (mut marker, pw) = self.tm.marker_with_pending_writes();
@@ -172,9 +181,16 @@ impl CommandTransaction {
 
 		marker.mark_range(range.clone());
 		let pending = pw.range((start, end));
-		let commited = self.engine.store.range_rev(range, version)?;
+		let commited = self.engine.store.range_rev_batched(range, version, batch_size)?;
 
 		Ok(TransactionRangeRevIter::new(pending.rev(), commited, Some(marker)))
+	}
+
+	pub fn range_rev(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<TransactionRangeRevIter<'_, TransactionStore>, reifydb_type::Error> {
+		self.range_rev_batched(range, 1024)
 	}
 
 	pub fn prefix<'a>(

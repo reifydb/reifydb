@@ -132,13 +132,18 @@ impl BackendMultiVersionRange for BackendMulti {
 	type RangeIter<'a> = BackendMultiRangeIter<'a>;
 
 	#[inline]
-	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIter<'_>> {
+	fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> Result<Self::RangeIter<'_>> {
 		match self {
 			BackendMulti::Memory(backend) => {
-				backend.range(range, version).map(BackendMultiRangeIter::Memory)
+				backend.range_batched(range, version, batch_size).map(BackendMultiRangeIter::Memory)
 			}
 			BackendMulti::Sqlite(backend) => {
-				backend.range(range, version).map(BackendMultiRangeIter::Sqlite)
+				backend.range_batched(range, version, batch_size).map(BackendMultiRangeIter::Sqlite)
 			}
 		}
 	}
@@ -165,14 +170,19 @@ impl BackendMultiVersionRangeRev for BackendMulti {
 	type RangeIterRev<'a> = BackendMultiRangeIterRev<'a>;
 
 	#[inline]
-	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
+	fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> Result<Self::RangeIterRev<'_>> {
 		match self {
-			BackendMulti::Memory(backend) => {
-				backend.range_rev(range, version).map(BackendMultiRangeIterRev::Memory)
-			}
-			BackendMulti::Sqlite(backend) => {
-				backend.range_rev(range, version).map(BackendMultiRangeIterRev::Sqlite)
-			}
+			BackendMulti::Memory(backend) => backend
+				.range_rev_batched(range, version, batch_size)
+				.map(BackendMultiRangeIterRev::Memory),
+			BackendMulti::Sqlite(backend) => backend
+				.range_rev_batched(range, version, batch_size)
+				.map(BackendMultiRangeIterRev::Sqlite),
 		}
 	}
 }
@@ -230,7 +240,16 @@ pub trait BackendMultiVersionRange {
 	where
 		Self: 'a;
 
-	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIter<'_>>;
+	fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> Result<Self::RangeIter<'_>>;
+
+	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIter<'_>> {
+		self.range_batched(range, version, 1024)
+	}
 
 	fn prefix(&self, prefix: &EncodedKey, version: CommitVersion) -> Result<Self::RangeIter<'_>> {
 		self.range(EncodedKeyRange::prefix(prefix), version)
@@ -242,7 +261,16 @@ pub trait BackendMultiVersionRangeRev {
 	where
 		Self: 'a;
 
-	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>>;
+	fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> Result<Self::RangeIterRev<'_>>;
+
+	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
+		self.range_rev_batched(range, version, 1024)
+	}
 
 	fn prefix_rev(&self, prefix: &EncodedKey, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
 		self.range_rev(EncodedKeyRange::prefix(prefix), version)

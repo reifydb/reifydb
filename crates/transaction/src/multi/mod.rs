@@ -126,27 +126,31 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 		}
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
+	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter, Error> {
 		match self {
 			StandardQueryTransaction::Optimistic(q) => {
-				let iter = q.range(range)?;
+				let iter = q.range_batched(range, batch_size)?;
 				Ok(Box::new(iter.into_iter()))
 			}
 			StandardQueryTransaction::Serializable(q) => {
-				let iter = q.range(range)?;
+				let iter = q.range_batched(range, batch_size)?;
 				Ok(Box::new(iter.into_iter()))
 			}
 		}
 	}
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
+	fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter, Error> {
 		match self {
 			StandardQueryTransaction::Optimistic(q) => {
-				let iter = q.range_rev(range)?;
+				let iter = q.range_rev_batched(range, batch_size)?;
 				Ok(Box::new(iter.into_iter()))
 			}
 			StandardQueryTransaction::Serializable(q) => {
-				let iter = q.range_rev(range)?;
+				let iter = q.range_rev_batched(range, batch_size)?;
 				Ok(Box::new(iter.into_iter()))
 			}
 		}
@@ -279,27 +283,31 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 		}
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
+	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter, Error> {
 		match self {
 			StandardCommandTransaction::Optimistic(c) => {
-				let iter = c.range(range)?;
+				let iter = c.range_batched(range, batch_size)?;
 				Ok(Box::new(iter.into_iter().map(|tv| tv.into_multi_version_values())))
 			}
 			StandardCommandTransaction::Serializable(c) => {
-				let iter = c.range(range)?;
+				let iter = c.range_batched(range, batch_size)?;
 				Ok(Box::new(iter.into_iter().map(|tv| tv.into_multi_version_values())))
 			}
 		}
 	}
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
+	fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter, Error> {
 		match self {
 			StandardCommandTransaction::Optimistic(c) => {
-				let iter = c.range_rev(range)?;
+				let iter = c.range_rev_batched(range, batch_size)?;
 				Ok(Box::new(iter.into_iter().map(|tv| tv.into_multi_version_values())))
 			}
 			StandardCommandTransaction::Serializable(c) => {
-				let iter = c.range_rev(range)?;
+				let iter = c.range_rev_batched(range, batch_size)?;
 				Ok(Box::new(iter.into_iter().map(|tv| tv.into_multi_version_values())))
 			}
 		}

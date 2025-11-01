@@ -26,8 +26,13 @@ fn get_table_name_for_range(range: &EncodedKeyRange) -> String {
 impl BackendMultiVersionRangeRev for SqliteBackend {
 	type RangeIterRev<'a> = MultiVersionRangeRevIter;
 
-	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
-		Ok(MultiVersionRangeRevIter::new(self.get_reader(), range, version, 1024))
+	fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> Result<Self::RangeIterRev<'_>> {
+		Ok(MultiVersionRangeRevIter::new(self.get_reader(), range, version, batch_size as usize))
 	}
 }
 

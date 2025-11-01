@@ -141,29 +141,45 @@ impl CommandTransaction {
 		Ok(TransactionScanRevIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn range(&mut self, range: EncodedKeyRange) -> Result<TransactionRangeIter<'_, TransactionStore>, Error> {
+	pub fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<TransactionRangeIter<'_, TransactionStore>, Error> {
 		let version = self.tm.version();
 		let (marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
 		let end = range.end_bound();
 		let pending = pw.range((start, end));
-		let commited = self.engine.store.range(range, version)?;
+		let commited = self.engine.store.range_batched(range, version, batch_size)?;
 
 		Ok(TransactionRangeIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn range_rev(
+	pub fn range(&mut self, range: EncodedKeyRange) -> Result<TransactionRangeIter<'_, TransactionStore>, Error> {
+		self.range_batched(range, 1024)
+	}
+
+	pub fn range_rev_batched(
 		&mut self,
 		range: EncodedKeyRange,
+		batch_size: u64,
 	) -> Result<TransactionRangeRevIter<'_, TransactionStore>, Error> {
 		let version = self.tm.version();
 		let (marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
 		let end = range.end_bound();
 		let pending = pw.range((start, end));
-		let commited = self.engine.store.range_rev(range, version)?;
+		let commited = self.engine.store.range_rev_batched(range, version, batch_size)?;
 
 		Ok(TransactionRangeRevIter::new(pending.rev(), commited, Some(marker)))
+	}
+
+	pub fn range_rev(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<TransactionRangeRevIter<'_, TransactionStore>, Error> {
+		self.range_rev_batched(range, 1024)
 	}
 
 	pub fn prefix<'a>(

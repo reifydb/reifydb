@@ -54,7 +54,16 @@ pub trait MultiVersionRange {
 	where
 		Self: 'a;
 
-	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIter<'_>>;
+	fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> crate::Result<Self::RangeIter<'_>>;
+
+	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIter<'_>> {
+		self.range_batched(range, version, 1024)
+	}
 
 	fn prefix(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<Self::RangeIter<'_>> {
 		self.range(EncodedKeyRange::prefix(prefix), version)
@@ -66,7 +75,16 @@ pub trait MultiVersionRangeRev {
 	where
 		Self: 'a;
 
-	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>>;
+	fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> crate::Result<Self::RangeIterRev<'_>>;
+
+	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>> {
+		self.range_rev_batched(range, version, 1024)
+	}
 
 	fn prefix_rev(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>> {
 		self.range_rev(EncodedKeyRange::prefix(prefix), version)

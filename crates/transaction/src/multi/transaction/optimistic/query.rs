@@ -69,20 +69,36 @@ impl QueryTransaction {
 		Ok(self.engine.scan_rev(version)?)
 	}
 
+	pub fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
+		let version = self.tm.version();
+		Ok(self.engine.range_batched(range, version, batch_size)?)
+	}
+
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
 	) -> crate::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
+		self.range_batched(range, 1024)
+	}
+
+	pub fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
 		let version = self.tm.version();
-		Ok(self.engine.range(range, version)?)
+		Ok(self.engine.range_rev_batched(range, version, batch_size)?)
 	}
 
 	pub fn range_rev(
 		&self,
 		range: EncodedKeyRange,
 	) -> crate::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
-		let version = self.tm.version();
-		Ok(self.engine.range_rev(range, version)?)
+		self.range_rev_batched(range, 1024)
 	}
 
 	pub fn prefix(

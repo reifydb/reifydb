@@ -119,9 +119,16 @@ impl MultiVersionRange for TransactionStore {
 	type RangeIter<'a> = <StandardTransactionStore as MultiVersionRange>::RangeIter<'a>;
 
 	#[inline]
-	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIter<'_>> {
+	fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> Result<Self::RangeIter<'_>> {
 		match self {
-			TransactionStore::Standard(store) => MultiVersionRange::range(store, range, version),
+			TransactionStore::Standard(store) => {
+				MultiVersionRange::range_batched(store, range, version, batch_size)
+			}
 		}
 	}
 }
@@ -130,9 +137,16 @@ impl MultiVersionRangeRev for TransactionStore {
 	type RangeIterRev<'a> = <StandardTransactionStore as MultiVersionRangeRev>::RangeIterRev<'a>;
 
 	#[inline]
-	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
+	fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> Result<Self::RangeIterRev<'_>> {
 		match self {
-			TransactionStore::Standard(store) => MultiVersionRangeRev::range_rev(store, range, version),
+			TransactionStore::Standard(store) => {
+				MultiVersionRangeRev::range_rev_batched(store, range, version, batch_size)
+			}
 		}
 	}
 }

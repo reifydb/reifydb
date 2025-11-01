@@ -68,7 +68,7 @@ pub(crate) trait QueryNode<'a> {
 pub struct ExecutionContext<'a> {
 	pub executor: Executor,
 	pub source: Option<ResolvedSource<'a>>,
-	pub batch_size: usize,
+	pub batch_size: u64,
 	pub params: Params,
 	pub stack: Stack,
 }

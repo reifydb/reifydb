@@ -73,7 +73,8 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 
-		let multi_rows: Vec<_> = rx.range(range)?.into_iter().take(batch_size).collect();
+		let multi_rows: Vec<_> =
+			rx.range_batched(range, batch_size)?.into_iter().take(batch_size as usize).collect();
 		for multi in multi_rows.into_iter() {
 			if let Some(key) = RowKey::decode(&multi.key) {
 				batch_rows.push(multi.values);

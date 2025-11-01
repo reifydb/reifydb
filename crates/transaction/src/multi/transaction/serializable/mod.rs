@@ -126,12 +126,30 @@ impl TransactionSerializable {
 		self.store.scan_rev(version)
 	}
 
+	pub fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
+		self.store.range_batched(range, version, batch_size)
+	}
+
 	pub fn range(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 	) -> reifydb_type::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
-		self.store.range(range, version)
+		self.range_batched(range, version, 1024)
+	}
+
+	pub fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
+		self.store.range_rev_batched(range, version, batch_size)
 	}
 
 	pub fn range_rev(
@@ -139,6 +157,6 @@ impl TransactionSerializable {
 		range: EncodedKeyRange,
 		version: CommitVersion,
 	) -> reifydb_type::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
-		self.store.range_rev(range, version)
+		self.range_rev_batched(range, version, 1024)
 	}
 }

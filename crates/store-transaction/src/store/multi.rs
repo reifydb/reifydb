@@ -133,21 +133,26 @@ impl MultiVersionRange for StandardTransactionStore {
 	where
 		Self: 'a;
 
-	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIter<'_>> {
+	fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> crate::Result<Self::RangeIter<'_>> {
 		let mut iters: Vec<Box<dyn Iterator<Item = MultiVersionIterResult> + Send + '_>> = Vec::new();
 
 		if let Some(hot) = &self.hot {
-			let iter = hot.multi.range(range.clone(), version)?;
+			let iter = hot.multi.range_batched(range.clone(), version, batch_size)?;
 			iters.push(Box::new(iter));
 		}
 
 		if let Some(warm) = &self.warm {
-			let iter = warm.multi.range(range.clone(), version)?;
+			let iter = warm.multi.range_batched(range.clone(), version, batch_size)?;
 			iters.push(Box::new(iter));
 		}
 
 		if let Some(cold) = &self.cold {
-			let iter = cold.multi.range(range, version)?;
+			let iter = cold.multi.range_batched(range, version, batch_size)?;
 			iters.push(Box::new(iter));
 		}
 
@@ -161,21 +166,26 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 	where
 		Self: 'a;
 
-	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>> {
+	fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> crate::Result<Self::RangeIterRev<'_>> {
 		let mut iters: Vec<Box<dyn Iterator<Item = MultiVersionIterResult> + Send + '_>> = Vec::new();
 
 		if let Some(hot) = &self.hot {
-			let iter = hot.multi.range_rev(range.clone(), version)?;
+			let iter = hot.multi.range_rev_batched(range.clone(), version, batch_size)?;
 			iters.push(Box::new(iter));
 		}
 
 		if let Some(warm) = &self.warm {
-			let iter = warm.multi.range_rev(range.clone(), version)?;
+			let iter = warm.multi.range_rev_batched(range.clone(), version, batch_size)?;
 			iters.push(Box::new(iter));
 		}
 
 		if let Some(cold) = &self.cold {
-			let iter = cold.multi.range_rev(range, version)?;
+			let iter = cold.multi.range_rev_batched(range, version, batch_size)?;
 			iters.push(Box::new(iter));
 		}
 

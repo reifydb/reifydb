@@ -18,7 +18,13 @@ impl BackendMultiVersionRangeRev for MemoryBackend {
 	where
 		Self: 'a;
 
-	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> Result<Self::RangeIterRev<'_>> {
+	fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		_batch_size: u64,
+	) -> Result<Self::RangeIterRev<'_>> {
+		// Memory backend doesn't need batching as it's already in memory
 		let guard = self.multi.read();
 		// Convert EncodedKeyRange to range bounds
 		let iter = unsafe { std::mem::transmute((*guard).range(range)) };

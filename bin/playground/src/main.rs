@@ -4,7 +4,7 @@
 use std::{thread::sleep, time::Duration};
 
 use reifydb::{
-	Params, Session, WithSubsystem,
+	Params, Session, SqliteConfig, WithSubsystem,
 	core::interface::logging::LogLevel::Info,
 	embedded,
 	sub_logging::{FormatStyle, LoggingBuilder},
@@ -21,8 +21,8 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 
 fn main() {
 	// let mut db = embedded::sqlite_optimistic(SqliteConfig::new("/tmp/test/test.db"))
-	// let mut db = embedded::sqlite_optimistic(SqliteConfig::in_memory())
-	let mut db = embedded::memory_optimistic()
+	let mut db = embedded::sqlite_optimistic(SqliteConfig::in_memory())
+	// let mut db = embedded::memory_optimistic()
 		.with_logging(logger_configuration)
 		.with_worker(|wp| wp)
 		.with_flow(|f| f)

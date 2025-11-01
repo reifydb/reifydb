@@ -63,13 +63,17 @@ impl MultiVersionQueryTransaction for QueryTransaction {
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = QueryTransaction::range(self, range)?;
+	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = QueryTransaction::range_batched(self, range, batch_size)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = QueryTransaction::range_rev(self, range)?;
+	fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = QueryTransaction::range_rev_batched(self, range, batch_size)?;
 		Ok(Box::new(iter.into_iter()))
 	}
 
@@ -130,8 +134,8 @@ impl MultiVersionQueryTransaction for CommandTransaction {
 		Ok(Box::new(iter))
 	}
 
-	fn range(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.range(range)?.map(|tv| MultiVersionValues {
+	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = self.range_batched(range, batch_size)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
 			values: tv.values().clone(),
 			version: tv.version(),
@@ -140,8 +144,12 @@ impl MultiVersionQueryTransaction for CommandTransaction {
 		Ok(Box::new(iter))
 	}
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.range_rev(range)?.map(|tv| MultiVersionValues {
+	fn range_rev_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter, Error> {
+		let iter = self.range_rev_batched(range, batch_size)?.map(|tv| MultiVersionValues {
 			key: tv.key().clone(),
 			values: tv.values().clone(),
 			version: tv.version(),
