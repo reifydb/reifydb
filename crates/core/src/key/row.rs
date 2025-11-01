@@ -81,6 +81,27 @@ impl RowKeyRange {
 			source,
 		})
 	}
+
+	/// Create a range for scanning rows from a source
+	///
+	/// If `last_key` is provided, creates a range that continues from after that key.
+	/// Otherwise, creates a range that includes all rows for the source.
+	///
+	/// The caller is responsible for limiting the number of results returned.
+	pub fn scan_range(source: SourceId, last_key: Option<&EncodedKey>) -> EncodedKeyRange {
+		let range = RowKeyRange {
+			source,
+		};
+
+		if let Some(last_key) = last_key {
+			EncodedKeyRange::new(Bound::Excluded(last_key.clone()), Bound::Included(range.end().unwrap()))
+		} else {
+			EncodedKeyRange::new(
+				Bound::Included(range.start().unwrap()),
+				Bound::Included(range.end().unwrap()),
+			)
+		}
+	}
 }
 
 impl EncodableKeyRange for RowKeyRange {
