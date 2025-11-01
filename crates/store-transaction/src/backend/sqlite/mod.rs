@@ -6,6 +6,7 @@ mod config;
 mod diagnostic;
 mod gc;
 mod multi;
+mod query_builder;
 mod read;
 mod single;
 mod write;
@@ -107,23 +108,37 @@ impl SqliteBackend {
 
 		conn.execute_batch(
 			"BEGIN;
+             -- Multi-version table with WITHOUT ROWID optimization
              CREATE TABLE IF NOT EXISTS multi (
-                 key     BLOB NOT NULL,
-                 version INTEGER NOT NULL,
-                 value   BLOB,
+                 key          BLOB NOT NULL,
+                 version      INTEGER NOT NULL,
+                 value        BLOB,
+                 is_tombstone INTEGER NOT NULL DEFAULT 0,
                  PRIMARY KEY (key, version)
-             );
+             ) WITHOUT ROWID;
 
+             -- Visibility index for fast 'latest visible version' queries
+             CREATE INDEX IF NOT EXISTS multi_vis_idx
+                 ON multi(key, version DESC)
+                 WHERE is_tombstone = 0;
+
+             -- Covering index for index-only scans (if values are small)
+             CREATE INDEX IF NOT EXISTS multi_cover_idx
+                 ON multi(key, version DESC, value)
+                 WHERE is_tombstone = 0;
+
+             -- Single version table
              CREATE TABLE IF NOT EXISTS single (
                  key     BLOB NOT NULL,
                  value   BLOB,
                  PRIMARY KEY (key)
-             );
+             ) WITHOUT ROWID;
 
+             -- CDC table
              CREATE TABLE IF NOT EXISTS cdc (
                  version INTEGER NOT NULL PRIMARY KEY,
                  value   BLOB NOT NULL
-             );
+             ) WITHOUT ROWID;
 
              COMMIT;",
 		)

@@ -25,7 +25,7 @@ use reifydb_core::{
 	},
 	value::encoded::EncodedValues,
 };
-use rusqlite::{Connection, Statement, params, params_from_iter};
+use rusqlite::{Connection, Statement, params_from_iter};
 pub use scan::MultiVersionScanIter;
 pub use scan_rev::MultiVersionScanRevIter;
 
@@ -73,16 +73,36 @@ pub(crate) fn source_name(key: &EncodedKey) -> crate::Result<&'static str> {
 }
 
 pub(crate) fn ensure_source_exists(conn: &Connection, source: &str) -> rusqlite::Result<()> {
+	// Create table with WITHOUT ROWID optimization
 	let create_sql = format!(
 		"CREATE TABLE IF NOT EXISTS {} (
-            key     BLOB NOT NULL,
-            version INTEGER NOT NULL,
-            value   BLOB,
+            key          BLOB NOT NULL,
+            version      INTEGER NOT NULL,
+            value        BLOB,
+            is_tombstone INTEGER NOT NULL DEFAULT 0,
             PRIMARY KEY (key, version)
-        )",
+        ) WITHOUT ROWID",
 		source
 	);
 	conn.execute(&create_sql, [])?;
+
+	// Create visibility index
+	let vis_idx_sql = format!(
+		"CREATE INDEX IF NOT EXISTS {}_vis_idx
+         ON {}(key, version DESC)
+         WHERE is_tombstone = 0",
+		source, source
+	);
+	conn.execute(&vis_idx_sql, [])?;
+
+	// Create covering index for small values
+	let cover_idx_sql = format!(
+		"CREATE INDEX IF NOT EXISTS {}_cover_idx
+         ON {}(key, version DESC, value)
+         WHERE is_tombstone = 0",
+		source, source
+	);
+	conn.execute(&cover_idx_sql, [])?;
 
 	Ok(())
 }
@@ -123,6 +143,7 @@ pub(crate) fn operator_name_for_range(range: &EncodedKeyRange) -> String {
 
 /// Batch fetch previous versions for multiple keys from a specific table
 /// Returns a HashMap of key -> version for all keys that have non-tombstone values
+/// Now uses window functions for better performance
 pub(crate) fn fetch_pre_versions(
 	conn: &Connection,
 	keys: &[&[u8]],
@@ -133,24 +154,32 @@ pub(crate) fn fetch_pre_versions(
 	}
 
 	let mut results = HashMap::new();
-
 	const MAX_BATCH_SIZE: usize = 999;
-	for chunk in keys.chunks(MAX_BATCH_SIZE) {
-		// Build placeholders for IN clause
-		let placeholders: Vec<String> = (0..chunk.len()).map(|i| format!("?{}", i + 1)).collect();
 
+	for chunk in keys.chunks(MAX_BATCH_SIZE) {
+		// Build VALUES placeholders
+		let values_rows = (0..chunk.len()).map(|_| "(?)").collect::<Vec<_>>().join(",");
+
+		// Let SQLite choose the best index automatically
 		let query = format!(
-			"SELECT t1.key, t1.version FROM {} t1
-             INNER JOIN (
-                SELECT key, MAX(version) as max_version
-                FROM {}
-                WHERE key IN ({})
-                GROUP BY key
-             ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
-             WHERE t1.value IS NOT NULL",
-			source,
-			source,
-			placeholders.join(", ")
+			"WITH keys(k) AS (
+				VALUES {}
+			),
+			ranked AS (
+			  SELECT v.key, v.version,
+					 ROW_NUMBER() OVER (
+						PARTITION BY v.key
+						ORDER BY v.version DESC
+					 ) AS rn
+			  FROM keys k
+			  JOIN {} v
+				ON v.key = k.k
+			   AND v.is_tombstone = 0
+			)
+			SELECT key, version
+			FROM ranked
+			WHERE rn = 1",
+			values_rows, source,
 		);
 
 		let mut stmt = conn.prepare(&query)?;
@@ -169,236 +198,79 @@ pub(crate) fn fetch_pre_versions(
 	Ok(results)
 }
 
-/// Helper function to build query template and determine parameter count
+/// Helper function to build query template
+/// Now uses correlated subquery for better performance
 pub(crate) fn build_range_query(
 	start_bound: Bound<&EncodedKey>,
 	end_bound: Bound<&EncodedKey>,
 	order: &str, // "ASC" or "DESC"
-) -> (&'static str, u8) {
-	match (start_bound, end_bound) {
-		(Bound::Unbounded, Bound::Unbounded) => match order {
-			"ASC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
-				1,
-			),
-			"DESC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
-				1,
-			),
-			_ => unreachable!(),
-		},
-		(Bound::Included(_), Bound::Unbounded) => match order {
-			"ASC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
-				2,
-			),
-			"DESC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
-				2,
-			),
-			_ => unreachable!(),
-		},
-		(Bound::Excluded(_), Bound::Unbounded) => match order {
-			"ASC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
-				2,
-			),
-			"DESC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
-				2,
-			),
-			_ => unreachable!(),
-		},
-		(Bound::Unbounded, Bound::Included(_)) => match order {
-			"ASC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
-				2,
-			),
-			"DESC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
-				2,
-			),
-			_ => unreachable!(),
-		},
-		(Bound::Unbounded, Bound::Excluded(_)) => match order {
-			"ASC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
-				2,
-			),
-			"DESC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
-				2,
-			),
-			_ => unreachable!(),
-		},
-		(Bound::Included(_), Bound::Included(_)) => match order {
-			"ASC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
-				3,
-			),
-			"DESC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
-				3,
-			),
-			_ => unreachable!(),
-		},
-		(Bound::Included(_), Bound::Excluded(_)) => match order {
-			"ASC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
-				3,
-			),
-			"DESC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key >= ? AND key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
-				3,
-			),
-			_ => unreachable!(),
-		},
-		(Bound::Excluded(_), Bound::Included(_)) => match order {
-			"ASC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
-				3,
-			),
-			"DESC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND key <= ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
-				3,
-			),
-			_ => unreachable!(),
-		},
-		(Bound::Excluded(_), Bound::Excluded(_)) => match order {
-			"ASC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key ASC LIMIT ?",
-				3,
-			),
-			"DESC" => (
-				"SELECT t1.key, t1.value, t1.version FROM {} t1 INNER JOIN (SELECT key, MAX(version) as max_version FROM {} WHERE key > ? AND key < ? AND version <= ? GROUP BY key) t2 ON t1.key = t2.key AND t1.version = t2.max_version ORDER BY t1.key DESC LIMIT ?",
-				3,
-			),
-			_ => unreachable!(),
-		},
-	}
+) -> String {
+	use crate::backend::sqlite::query_builder::{SortOrder, build_range_query as build_windowed_query};
+
+	let sort_order = match order {
+		"ASC" => SortOrder::Asc,
+		"DESC" => SortOrder::Desc,
+		_ => SortOrder::Asc,
+	};
+
+	let start = start_bound.map(|k| k.as_ref());
+	let end = end_bound.map(|k| k.as_ref());
+
+	let (sql, _param_count) = build_windowed_query("{}", sort_order, start, end);
+
+	sql
 }
 
-/// Helper function to execute batched range queries
+/// Helper function to execute batched range queries using the new windowed query
 pub(crate) fn execute_batched_range_query(
 	stmt: &mut Statement,
 	start_bound: Bound<&EncodedKey>,
 	end_bound: Bound<&EncodedKey>,
 	version: CommitVersion,
 	batch_size: usize,
-	param_count: u8,
 	buffer: &mut VecDeque<MultiVersionIterResult>,
 ) -> usize {
+	use crate::backend::sqlite::query_builder::bind_range_params;
+
+	// Convert bounds to byte slices
+	let start = start_bound.map(|k| k.as_ref());
+	let end = end_bound.map(|k| k.as_ref());
+
+	// Build parameters in the correct order
+	let params = bind_range_params(start, end, version.0 as i64, batch_size as i64);
+
+	let rows = match stmt.query_map(params_from_iter(params.iter().map(|p| p.as_ref())), |values| {
+		let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
+		let value: Option<Vec<u8>> = values.get(1)?;
+		let version = CommitVersion(values.get::<_, i64>(2)? as u64);
+
+		match value {
+			Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
+				key,
+				values: EncodedValues(CowVec::new(val)),
+				version,
+			})),
+			None => Ok(MultiVersionIterResult::Tombstone {
+				key,
+				version,
+			}), // NULL value means tombstone (should be filtered by query)
+		}
+	}) {
+		Ok(rows) => rows,
+		Err(_) => return 0,
+	};
+
 	let mut count = 0;
-	match param_count {
-		1 => {
-			let rows = match stmt.query_map(params![version.0, batch_size], |values| {
-				let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
-				let value: Option<Vec<u8>> = values.get(1)?;
-				let version = CommitVersion(values.get(2)?);
-				match value {
-					Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
-						key,
-						values: EncodedValues(CowVec::new(val)),
-						version,
-					})),
-					None => Ok(MultiVersionIterResult::Tombstone {
-						key,
-						version,
-					}), // NULL value means deleted
-				}
-			}) {
-				Ok(rows) => rows,
-				Err(_) => return 0, // Query failed, return 0 entries
-			};
-
-			for result in rows {
-				match result {
-					Ok(v) => {
-						buffer.push_back(v);
-						count += 1;
-					}
-					Err(_) => break,
-				}
+	for result in rows {
+		match result {
+			Ok(v) => {
+				buffer.push_back(v);
+				count += 1;
 			}
+			Err(_) => break,
 		}
-		2 => {
-			let param = match (start_bound, end_bound) {
-				(Bound::Included(key), _) | (Bound::Excluded(key), _) => key.to_vec(),
-				(_, Bound::Included(key)) | (_, Bound::Excluded(key)) => key.to_vec(),
-				_ => unreachable!(),
-			};
-			let rows = match stmt.query_map(params![param, version.0, batch_size], |values| {
-				let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
-				let value: Option<Vec<u8>> = values.get(1)?;
-				let version = CommitVersion(values.get(2)?);
-				match value {
-					Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
-						key,
-						values: EncodedValues(CowVec::new(val)),
-						version,
-					})),
-					None => Ok(MultiVersionIterResult::Tombstone {
-						key,
-						version,
-					}), // NULL value means deleted
-				}
-			}) {
-				Ok(rows) => rows,
-				Err(_) => return 0, // Query failed, return 0 entries
-			};
-
-			for result in rows {
-				match result {
-					Ok(v) => {
-						buffer.push_back(v);
-						count += 1;
-					}
-					Err(_) => break,
-				}
-			}
-		}
-		3 => {
-			let start_param = match start_bound {
-				Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
-				_ => unreachable!(),
-			};
-			let end_param = match end_bound {
-				Bound::Included(key) | Bound::Excluded(key) => key.to_vec(),
-				_ => unreachable!(),
-			};
-			let rows =
-				match stmt.query_map(params![start_param, end_param, version.0, batch_size], |values| {
-					let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
-					let value: Option<Vec<u8>> = values.get(1)?;
-					let version = CommitVersion(values.get(2)?);
-					match value {
-						Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
-							key,
-							values: EncodedValues(CowVec::new(val)),
-							version,
-						})),
-						None => Ok(MultiVersionIterResult::Tombstone {
-							key,
-							version,
-						}), // NULL value means deleted
-					}
-				}) {
-					Ok(rows) => rows,
-					Err(_) => return 0, // Query failed, return 0 entries
-				};
-
-			for result in rows {
-				match result {
-					Ok(v) => {
-						buffer.push_back(v);
-						count += 1;
-					}
-					Err(_) => break,
-				}
-			}
-		}
-		_ => unreachable!(),
 	}
+
 	count
 }
 

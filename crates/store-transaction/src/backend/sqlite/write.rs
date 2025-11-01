@@ -29,7 +29,7 @@ use crate::{
 	cdc::{InternalCdc, InternalCdcSequencedChange, process_deltas_for_cdc},
 };
 
-const BATCH_SIZE: usize = 333; // 999 params / 3 columns (SQLite max)
+// Batch size is now defined in apply_batched_deltas_for_table as BATCH_SIZE_NEW
 
 /// Helper function to get the appropriate table name for a given key
 fn get_table_name(key: &EncodedKey) -> Result<&'static str> {
@@ -320,27 +320,27 @@ impl Writer {
 		deltas: &[&Delta],
 		version: CommitVersion,
 	) -> Result<()> {
+		const BATCH_SIZE: usize = 249; // 999 params / 4 columns (SQLite max)
+
 		for chunk in deltas.chunks(BATCH_SIZE) {
 			if chunk.is_empty() {
 				continue;
 			}
 
-			// Build the multi-row INSERT statement
 			let placeholders: Vec<String> = (0..chunk.len())
 				.map(|i| {
-					let base = i * 3;
-					format!("(?{}, ?{}, ?{})", base + 1, base + 2, base + 3)
+					let base = i * 4;
+					format!("(?{}, ?{}, ?{}, ?{})", base + 1, base + 2, base + 3, base + 4)
 				})
 				.collect();
 
 			let query = format!(
-				"INSERT OR REPLACE INTO {} (key, version, value) VALUES {}",
+				"INSERT OR REPLACE INTO {} (key, version, value, is_tombstone) VALUES {}",
 				table,
 				placeholders.join(", ")
 			);
 
-			// Collect all parameters
-			let mut params: Vec<Value> = Vec::with_capacity(chunk.len() * 3);
+			let mut params: Vec<Value> = Vec::with_capacity(chunk.len() * 4);
 			for delta in chunk {
 				match delta {
 					Delta::Set {
@@ -350,13 +350,15 @@ impl Writer {
 						params.push(Value::Blob(key.to_vec()));
 						params.push(Value::Integer(version.0 as i64));
 						params.push(Value::Blob(values.to_vec()));
+						params.push(Value::Integer(0)); // is_tombstone = 0 for Set
 					}
 					Delta::Remove {
 						key,
 					} => {
 						params.push(Value::Blob(key.to_vec()));
 						params.push(Value::Integer(version.0 as i64));
-						params.push(Value::Null);
+						params.push(Value::Null); // NULL value for tombstone
+						params.push(Value::Integer(1)); // is_tombstone = 1 for Remove
 					}
 				}
 			}

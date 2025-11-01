@@ -81,7 +81,7 @@ impl AdminServer {
 		listener.set_nonblocking(true)?;
 
 		let mut poll = Poll::new()?;
-		let mut events = Events::with_capacity(1024);
+		let mut events = Events::with_capacity(16);
 		let mut connections: Slab<MioTcpStream> = Slab::new();
 
 		let mut mio_listener = MioTcpListener::from_std(listener);

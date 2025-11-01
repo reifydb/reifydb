@@ -82,10 +82,8 @@ impl MultiVersionRangeRevIter {
 
 		let start_bound = self.range.start.as_ref();
 
-		// Build query and parameters based on bounds - note DESC order
-		// for reverse
-		let (query_template, param_count) = build_range_query(start_bound, end_bound, "DESC");
-
+		// Build query and parameters based on bounds - note DESC order for reverse
+		let query_template = build_range_query(start_bound, end_bound, "DESC");
 		let query = query_template.replace("{}", &self.source);
 		let conn_guard = self.reader.lock().unwrap();
 		let mut stmt = conn_guard.prepare(&query).unwrap();
@@ -96,7 +94,6 @@ impl MultiVersionRangeRevIter {
 			end_bound,
 			self.version,
 			self.batch_size,
-			param_count,
 			&mut self.buffer,
 		);
 

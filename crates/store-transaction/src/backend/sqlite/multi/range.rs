@@ -81,16 +81,15 @@ impl MultiVersionRangeIter {
 
 		let end_bound = self.range.end.as_ref();
 
-		// Build query and parameters based on bounds - note ASC order
-		// for forward iteration
-		let (query_template, param_count) = build_range_query(start_bound, end_bound, "ASC");
-
+		// Build query and parameters based on bounds - note ASC order for forward iteration
+		let query_template = build_range_query(start_bound, end_bound, "ASC");
 		let query = query_template.replace("{}", &self.source);
 
 		let conn_guard = self.reader.lock().map_err(|e| {
 			use crate::backend::diagnostic::database_error;
 			reifydb_type::Error(database_error(format!("Failed to acquire reader lock: {}", e)))
 		})?;
+
 		let mut stmt = conn_guard
 			.prepare(&query)
 			.map_err(|e| reifydb_type::Error(database_error(format!("Failed to prepare query: {}", e))))?;
@@ -101,7 +100,6 @@ impl MultiVersionRangeIter {
 			end_bound,
 			self.version,
 			self.batch_size,
-			param_count,
 			&mut self.buffer,
 		);
 
