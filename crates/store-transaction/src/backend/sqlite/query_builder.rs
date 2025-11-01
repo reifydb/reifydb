@@ -59,17 +59,21 @@ pub fn build_range_query(
 		SortOrder::Desc => "DESC",
 	};
 
+	// Key logic: We want the latest version of each key, but ONLY if it's not a tombstone
+	// - First subquery finds the absolute latest version (including tombstones)
+	// - We only return rows where latest version = current row AND is_tombstone = 0
+	// - This correctly excludes deleted keys
+	//
 	// Bind order: [start?] [end?] [snapshot_outer] [snapshot_inner] [limit]
 	let sql = format!(
-		"SELECT DISTINCT m1.key, m1.value, m1.version
+		"SELECT m1.key, m1.value, m1.version
         FROM {table} m1
-        WHERE ({where_sql})
+        WHERE {where_sql}
           AND m1.version = (
             SELECT MAX(m2.version)
             FROM {table} m2
             WHERE m2.key = m1.key
               AND m2.version <= ?
-              AND m2.is_tombstone = 0
           )
         ORDER BY m1.key {key_order}
         LIMIT ?",

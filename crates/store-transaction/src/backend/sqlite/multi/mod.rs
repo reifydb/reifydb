@@ -86,7 +86,11 @@ pub(crate) fn ensure_source_exists(conn: &Connection, source: &str) -> rusqlite:
 	);
 	conn.execute(&create_sql, [])?;
 
-	// Create visibility index
+	// Create visibility index - critical for MVCC queries
+	// This partial index is used by:
+	// - Range queries with is_tombstone = 0 filter
+	// - fetch_pre_versions for batch lookups
+	// - Scan queries that need latest non-tombstone version
 	let vis_idx_sql = format!(
 		"CREATE INDEX IF NOT EXISTS {}_vis_idx
          ON {}(key, version DESC)
@@ -94,15 +98,6 @@ pub(crate) fn ensure_source_exists(conn: &Connection, source: &str) -> rusqlite:
 		source, source
 	);
 	conn.execute(&vis_idx_sql, [])?;
-
-	// Create covering index for small values
-	let cover_idx_sql = format!(
-		"CREATE INDEX IF NOT EXISTS {}_cover_idx
-         ON {}(key, version DESC, value)
-         WHERE is_tombstone = 0",
-		source, source
-	);
-	conn.execute(&cover_idx_sql, [])?;
 
 	Ok(())
 }
@@ -142,13 +137,18 @@ pub(crate) fn operator_name_for_range(range: &EncodedKeyRange) -> String {
 }
 
 /// Batch fetch previous versions for multiple keys from a specific table
-/// Returns a HashMap of key -> version for all keys that have non-tombstone values
-/// Now uses window functions for better performance
+/// Returns a HashMap of key -> (version, is_latest_tombstone)
+/// - version: The latest non-tombstone version (for CDC pre-value lookup)
+/// - is_latest_tombstone: True if the absolute latest version is a tombstone
+///
+/// This distinction is critical for CDC:
+/// - If latest is tombstone → key was deleted → next SET is an INSERT
+/// - If latest is not tombstone → key exists → next SET is an UPDATE
 pub(crate) fn fetch_pre_versions(
 	conn: &Connection,
 	keys: &[&[u8]],
 	source: &str,
-) -> rusqlite::Result<HashMap<Vec<u8>, CommitVersion>> {
+) -> rusqlite::Result<HashMap<Vec<u8>, (CommitVersion, bool)>> {
 	if keys.is_empty() {
 		return Ok(HashMap::new());
 	}
@@ -157,41 +157,45 @@ pub(crate) fn fetch_pre_versions(
 	const MAX_BATCH_SIZE: usize = 999;
 
 	for chunk in keys.chunks(MAX_BATCH_SIZE) {
-		// Build VALUES placeholders
-		let values_rows = (0..chunk.len()).map(|_| "(?)").collect::<Vec<_>>().join(",");
+		// Build placeholders for IN clause
+		let placeholders = (0..chunk.len()).map(|_| "?").collect::<Vec<_>>().join(",");
 
-		// Let SQLite choose the best index automatically
+		// Query returns:
+		// - non_tombstone_version: Latest version where is_tombstone=0 (may be NULL)
+		// - latest_version: Absolute latest version regardless of tombstone status
+		// - latest_is_tombstone: Whether the latest version is a tombstone
 		let query = format!(
-			"WITH keys(k) AS (
-				VALUES {}
-			),
-			ranked AS (
-			  SELECT v.key, v.version,
-					 ROW_NUMBER() OVER (
-						PARTITION BY v.key
-						ORDER BY v.version DESC
-					 ) AS rn
-			  FROM keys k
-			  JOIN {} v
-				ON v.key = k.k
-			   AND v.is_tombstone = 0
-			)
-			SELECT key, version
-			FROM ranked
-			WHERE rn = 1",
-			values_rows, source,
+			"SELECT key,
+			        MAX(CASE WHEN is_tombstone = 0 THEN version END) as non_tombstone_version,
+			        MAX(version) as latest_version,
+			        (SELECT is_tombstone FROM {} WHERE key = outer.key ORDER BY version DESC LIMIT 1) as latest_is_tombstone
+			 FROM {} as outer
+			 WHERE key IN ({})
+			 GROUP BY key",
+			source, source, placeholders,
 		);
 
 		let mut stmt = conn.prepare(&query)?;
 		let params: Vec<&dyn rusqlite::ToSql> = chunk.iter().map(|k| k as &dyn rusqlite::ToSql).collect();
 
 		let rows = stmt.query_map(params_from_iter(params), |row| {
-			Ok((row.get::<_, Vec<u8>>(0)?, CommitVersion(row.get::<_, i64>(1)? as u64)))
+			let key = row.get::<_, Vec<u8>>(0)?;
+			let non_tombstone_version: Option<i64> = row.get(1)?;
+			let latest_is_tombstone: i64 = row.get(3)?;
+
+			// If there's a non-tombstone version, use it
+			if let Some(version) = non_tombstone_version {
+				Ok(Some((key, (CommitVersion(version as u64), latest_is_tombstone != 0))))
+			} else {
+				// No non-tombstone version exists (all are tombstones)
+				Ok(None)
+			}
 		})?;
 
 		for result in rows {
-			let (key, version) = result?;
-			results.insert(key, version);
+			if let Some((key, version_info)) = result? {
+				results.insert(key, version_info);
+			}
 		}
 	}
 

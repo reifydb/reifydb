@@ -246,6 +246,7 @@ impl Writer {
 				});
 			}
 		}
+
 		// Batch insert all CDC entries
 		if !all_cdc_entries.is_empty() {
 			store_cdc_changes(&tx, all_cdc_entries).map_err(|e| Error(from_rusqlite_error(e)))?;
@@ -277,12 +278,15 @@ impl Writer {
 		}
 
 		// Batch fetch pre-versions for each table
-		let mut pre_versions: HashMap<EncodedKey, CommitVersion> = HashMap::new();
+		// pre_versions stores: key -> (version, is_latest_tombstone)
+		// - version: latest non-tombstone version (for fetching pre-value)
+		// - is_latest_tombstone: whether the absolute latest version is a tombstone
+		let mut pre_versions: HashMap<EncodedKey, (CommitVersion, bool)> = HashMap::new();
 		for (table, keys) in keys_by_table {
 			let key_bytes: Vec<&[u8]> = keys.iter().map(|k| k.as_slice()).collect();
 			if let Ok(table_versions) = fetch_pre_versions(tx, &key_bytes, table) {
-				for (key_bytes, version) in table_versions {
-					pre_versions.insert(EncodedKey(CowVec::new(key_bytes)), version);
+				for (key_bytes, version_info) in table_versions {
+					pre_versions.insert(EncodedKey(CowVec::new(key_bytes)), version_info);
 				}
 			}
 		}
@@ -309,8 +313,13 @@ impl Writer {
 
 		// Process CDC changes using the OPTIMIZED deltas (optimization already done at delta level)
 		process_deltas_for_cdc(optimized_deltas, version, |key| {
-			// Return the pre-version we captured before applying deltas
-			pre_versions.get(key).copied()
+			// For CDC, we need to determine if there's a "live" pre-version
+			// If the latest version is a tombstone, the key was deleted, so no pre-version
+			// If the latest version is not a tombstone, return the version
+			match pre_versions.get(key) {
+				Some((version, is_tombstone)) if !is_tombstone => Some(*version),
+				_ => None, // Either no version exists, or latest is tombstone (key was deleted)
+			}
 		})
 	}
 
@@ -320,27 +329,40 @@ impl Writer {
 		deltas: &[&Delta],
 		version: CommitVersion,
 	) -> Result<()> {
-		const BATCH_SIZE: usize = 249; // 999 params / 4 columns (SQLite max)
+		// SQLite SQLITE_MAX_VARIABLE_NUMBER is 32766, use 32764 to be safe (divisible by 4)
+		const BATCH_SIZE: usize = 8191; // 32764 params / 4 columns
 
-		for chunk in deltas.chunks(BATCH_SIZE) {
-			if chunk.is_empty() {
-				continue;
-			}
+		if deltas.is_empty() {
+			return Ok(());
+		}
 
-			let placeholders: Vec<String> = (0..chunk.len())
-				.map(|i| {
-					let base = i * 4;
-					format!("(?{}, ?{}, ?{}, ?{})", base + 1, base + 2, base + 3, base + 4)
-				})
-				.collect();
+		// Pre-generate placeholder string for full batches (done once)
+		let full_batch_placeholders: String = (0..BATCH_SIZE)
+			.map(|i| {
+				let base = i * 4;
+				format!("(?{}, ?{}, ?{}, ?{})", base + 1, base + 2, base + 3, base + 4)
+			})
+			.collect::<Vec<_>>()
+			.join(", ");
 
-			let query = format!(
-				"INSERT OR REPLACE INTO {} (key, version, value, is_tombstone) VALUES {}",
-				table,
-				placeholders.join(", ")
-			);
+		// Pre-build query for full batches
+		let full_batch_query = format!(
+			"INSERT OR REPLACE INTO {} (key, version, value, is_tombstone) VALUES {}",
+			table, full_batch_placeholders
+		);
 
-			let mut params: Vec<Value> = Vec::with_capacity(chunk.len() * 4);
+		// Prepare statement once for full batches
+		let mut full_batch_stmt =
+			tx.prepare_cached(&full_batch_query).map_err(|e| Error(from_rusqlite_error(e)))?;
+
+		// Pre-allocate parameter vector with max capacity (reused across batches)
+		let mut params: Vec<Value> = Vec::with_capacity(BATCH_SIZE * 4);
+
+		// Process full batches
+		let mut chunks = deltas.chunks_exact(BATCH_SIZE);
+		for chunk in &mut chunks {
+			params.clear();
+
 			for delta in chunk {
 				match delta {
 					Delta::Set {
@@ -363,7 +385,52 @@ impl Writer {
 				}
 			}
 
-			tx.execute(&query, params_from_iter(params)).map_err(|e| Error(from_rusqlite_error(e)))?;
+			full_batch_stmt
+				.execute(params_from_iter(&params))
+				.map_err(|e| Error(from_rusqlite_error(e)))?;
+		}
+
+		// Handle remainder (if any)
+		let remainder = chunks.remainder();
+		if !remainder.is_empty() {
+			let remainder_placeholders: String = (0..remainder.len())
+				.map(|i| {
+					let base = i * 4;
+					format!("(?{}, ?{}, ?{}, ?{})", base + 1, base + 2, base + 3, base + 4)
+				})
+				.collect::<Vec<_>>()
+				.join(", ");
+
+			let remainder_query = format!(
+				"INSERT OR REPLACE INTO {} (key, version, value, is_tombstone) VALUES {}",
+				table, remainder_placeholders
+			);
+
+			params.clear();
+			for delta in remainder {
+				match delta {
+					Delta::Set {
+						key,
+						values,
+					} => {
+						params.push(Value::Blob(key.to_vec()));
+						params.push(Value::Integer(version.0 as i64));
+						params.push(Value::Blob(values.to_vec()));
+						params.push(Value::Integer(0));
+					}
+					Delta::Remove {
+						key,
+					} => {
+						params.push(Value::Blob(key.to_vec()));
+						params.push(Value::Integer(version.0 as i64));
+						params.push(Value::Null);
+						params.push(Value::Integer(1));
+					}
+				}
+			}
+
+			tx.execute(&remainder_query, params_from_iter(&params))
+				.map_err(|e| Error(from_rusqlite_error(e)))?;
 		}
 
 		Ok(())
