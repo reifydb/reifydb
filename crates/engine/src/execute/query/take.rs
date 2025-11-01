@@ -39,6 +39,10 @@ impl<'a> QueryNode<'a> for TakeNode<'a> {
 	) -> crate::Result<Option<Batch<'a>>> {
 		debug_assert!(self.initialized.is_some(), "TakeNode::next() called before initialize()");
 
+		if self.remaining == 0 {
+			return Ok(None);
+		}
+
 		while let Some(Batch {
 			mut columns,
 		}) = self.input.next(rx, ctx)?
