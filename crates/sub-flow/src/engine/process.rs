@@ -13,21 +13,35 @@ impl FlowEngine {
 	pub fn process(&self, txn: &mut StandardCommandTransaction, change: FlowChange) -> crate::Result<()> {
 		match change.origin {
 			FlowChangeOrigin::External(source) => {
-				if let Some(node_registrations) = self.sources.get(&source) {
+				let sources = self.inner.sources.read();
+				if let Some(node_registrations) = sources.get(&source) {
+					// Clone the node registrations to avoid holding the lock while processing
+					let node_registrations = node_registrations.clone();
+					drop(sources);
+
 					for (flow_id, node_id) in node_registrations {
-						if let Some(flow) = self.flows.get(flow_id) {
-							if let Some(node) = flow.get_node(node_id) {
+						let flows = self.inner.flows.read();
+						if let Some(flow) = flows.get(&flow_id) {
+							if let Some(node) = flow.get_node(&node_id) {
+								let flow = flow.clone();
+								let node = node.clone();
+								drop(flows);
+
 								self.process_change(
 									txn,
-									flow,
-									node,
+									&flow,
+									&node,
 									FlowChange::internal(
-										*node_id,
+										node_id,
 										change.version,
 										change.diffs.clone(),
 									),
 								)?;
+							} else {
+								drop(flows);
 							}
+						} else {
+							drop(flows);
 						}
 					}
 				}
@@ -43,8 +57,8 @@ impl FlowEngine {
 		node: &FlowNode,
 		change: FlowChange,
 	) -> crate::Result<FlowChange> {
-		let operator = self.operators.get(&node.id).unwrap();
-		let result = operator.apply(txn, change, &self.evaluator)?;
+		let operator = self.inner.operators.read().get(&node.id).unwrap().clone();
+		let result = operator.apply(txn, change, &self.inner.evaluator)?;
 		Ok(result)
 	}
 

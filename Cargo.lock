@@ -581,6 +581,7 @@ name = "reifydb-sub-flow"
 version = "0.0.1"
 dependencies = [
  "bincode",
+ "parking_lot",
  "reifydb-catalog",
  "reifydb-cdc",
  "reifydb-core",

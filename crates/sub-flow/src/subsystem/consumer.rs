@@ -122,8 +122,7 @@ impl FlowConsumer {
 			registry.register(name, move |node, exprs| factory(node, exprs));
 		}
 
-		let mut flow_engine =
-			FlowEngine::new(StandardRowEvaluator::default(), self.engine.executor(), registry);
+		let flow_engine = FlowEngine::new(StandardRowEvaluator::default(), self.engine.executor(), registry);
 
 		// Load flows ONCE
 		let flows = self.load_flows(txn)?;
