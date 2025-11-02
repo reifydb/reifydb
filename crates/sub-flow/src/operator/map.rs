@@ -3,8 +3,8 @@
 
 use std::sync::Arc;
 
-use reifydb_core::{CommitVersion, Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
-use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_core::{Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
+use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Params, RowNumber, Type};
 
@@ -12,6 +12,7 @@ use crate::{
 	Operator,
 	flow::{FlowChange, FlowDiff},
 	operator::Operators,
+	transaction::FlowTransaction,
 };
 
 // Static empty params instance for use in RowEvaluationContext
@@ -40,7 +41,7 @@ impl Operator for MapOperator {
 
 	fn apply(
 		&self,
-		_txn: &mut StandardCommandTransaction,
+		_txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -86,13 +87,8 @@ impl Operator for MapOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows, version)
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows)
 	}
 }
 

@@ -4,8 +4,8 @@ use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
-use reifydb_core::{CommitVersion, Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
+use reifydb_engine::StandardRowEvaluator;
 use reifydb_type::{Blob, RowNumber, Type, internal_error};
 use serde::{Deserialize, Serialize};
 
@@ -16,6 +16,7 @@ use crate::{
 		stateful::{RawStatefulOperator, SingleStateful},
 		transform::TransformOperator,
 	},
+	transaction::FlowTransaction,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -50,7 +51,7 @@ impl TakeOperator {
 		}
 	}
 
-	fn load_take_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<TakeState> {
+	fn load_take_state(&self, txn: &mut FlowTransaction) -> crate::Result<TakeState> {
 		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -68,7 +69,7 @@ impl TakeOperator {
 			.map_err(|e| Error(internal_error!("Failed to deserialize TakeState: {}", e)))
 	}
 
-	fn save_take_state(&self, txn: &mut StandardCommandTransaction, state: &TakeState) -> crate::Result<()> {
+	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> crate::Result<()> {
 		let config = standard();
 		let serialized = encode_to_vec(state, config)
 			.map_err(|e| Error(internal_error!("Failed to serialize TakeState: {}", e)))?;
@@ -80,12 +81,7 @@ impl TakeOperator {
 		self.save_state(txn, state_row)
 	}
 
-	fn promote_candidates(
-		&self,
-		state: &mut TakeState,
-		txn: &mut StandardCommandTransaction,
-		version: CommitVersion,
-	) -> crate::Result<Vec<FlowDiff>> {
+	fn promote_candidates(&self, state: &mut TakeState, txn: &mut FlowTransaction) -> crate::Result<Vec<FlowDiff>> {
 		let mut output_diffs = Vec::new();
 
 		while state.active.len() < self.limit && !state.candidates.is_empty() {
@@ -93,7 +89,7 @@ impl TakeOperator {
 				state.candidates.remove(&candidate_row);
 				state.active.insert(candidate_row, count);
 
-				let rows = self.parent.get_rows(txn, &[candidate_row], version)?;
+				let rows = self.parent.get_rows(txn, &[candidate_row])?;
 				if let Some(Some(row)) = rows.first() {
 					output_diffs.push(FlowDiff::Insert {
 						post: row.clone(),
@@ -108,8 +104,7 @@ impl TakeOperator {
 	fn evict_to_candidates(
 		&self,
 		state: &mut TakeState,
-		txn: &mut StandardCommandTransaction,
-		version: CommitVersion,
+		txn: &mut FlowTransaction,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut output_diffs = Vec::new();
 		let candidate_limit = self.limit * 4;
@@ -119,7 +114,7 @@ impl TakeOperator {
 				state.active.remove(&evicted_row);
 				state.candidates.insert(evicted_row, count);
 
-				let rows = self.parent.get_rows(txn, &[evicted_row], version)?;
+				let rows = self.parent.get_rows(txn, &[evicted_row])?;
 				if let Some(Some(row)) = rows.first() {
 					output_diffs.push(FlowDiff::Remove {
 						pre: row.clone(),
@@ -155,7 +150,7 @@ impl Operator for TakeOperator {
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -193,11 +188,9 @@ impl Operator for TakeOperator {
 								if let Some(count) = state.active.remove(&smallest) {
 									state.candidates.insert(smallest, count);
 
-									let rows = self.parent.get_rows(
-										txn,
-										&[smallest],
-										version,
-									)?;
+									let rows = self
+										.parent
+										.get_rows(txn, &[smallest])?;
 									if let Some(Some(row)) = rows.first() {
 										output_diffs.push(FlowDiff::Remove {
 											pre: row.clone(),
@@ -260,8 +253,7 @@ impl Operator for TakeOperator {
 								pre,
 							});
 
-							let promoted =
-								self.promote_candidates(&mut state, txn, version)?;
+							let promoted = self.promote_candidates(&mut state, txn)?;
 							output_diffs.extend(promoted);
 						}
 					} else if let Some(count) = state.candidates.get_mut(&row_number) {
@@ -280,12 +272,7 @@ impl Operator for TakeOperator {
 		Ok(FlowChange::internal(self.node, version, output_diffs))
 	}
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows, version)
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows)
 	}
 }

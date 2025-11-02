@@ -5,7 +5,7 @@
 pub mod test {
 	use reifydb_catalog::MaterializedCatalog;
 	use reifydb_core::{
-		CommitVersion, EncodedKey, Row,
+		EncodedKey, Row,
 		event::EventBus,
 		interceptor::StandardInterceptorFactory,
 		interface::{Engine, FlowNodeId},
@@ -22,6 +22,7 @@ pub mod test {
 	use crate::{
 		flow::FlowChange,
 		operator::{Operator, transform::TransformOperator},
+		transaction::FlowTransaction,
 	};
 
 	/// Create a test engine with memory storage and optimistic transactions
@@ -85,19 +86,14 @@ pub mod test {
 
 		fn apply(
 			&self,
-			txn: &mut StandardCommandTransaction,
+			txn: &mut FlowTransaction,
 			change: FlowChange,
 			evaluator: &StandardRowEvaluator,
 		) -> reifydb_core::Result<FlowChange> {
 			todo!()
 		}
 
-		fn get_rows(
-			&self,
-			txn: &mut StandardCommandTransaction,
-			rows: &[RowNumber],
-			version: CommitVersion,
-		) -> crate::Result<Vec<Option<Row>>> {
+		fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 			unimplemented!()
 		}
 	}

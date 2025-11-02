@@ -10,6 +10,7 @@ pub mod flow;
 #[allow(dead_code, unused_variables)]
 mod operator;
 pub mod subsystem;
+pub mod transaction;
 
 pub use builder::FlowBuilder;
 pub use engine::*;
@@ -19,3 +20,4 @@ pub use operator::{
 };
 pub use reifydb_core::Result;
 pub use subsystem::{FlowSubsystem, FlowSubsystemFactory};
+pub use transaction::{FlowTransaction, FlowTransactionMetrics};

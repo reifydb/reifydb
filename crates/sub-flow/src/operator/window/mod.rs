@@ -8,8 +8,7 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode,
-	WindowType,
+	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
 	interface::FlowNodeId,
 	util::{clock, encoding::keycode::KeySerializer},
 	value::{
@@ -17,10 +16,7 @@ use reifydb_core::{
 		encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 	},
 };
-use reifydb_engine::{
-	ColumnEvaluationContext, RowEvaluationContext, StandardColumnEvaluator, StandardCommandTransaction,
-	StandardRowEvaluator,
-};
+use reifydb_engine::{ColumnEvaluationContext, RowEvaluationContext, StandardColumnEvaluator, StandardRowEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::{Expression, column_name_from_expression};
 use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal_error};
@@ -33,6 +29,7 @@ use crate::{
 		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful},
 		transform::TransformOperator,
 	},
+	transaction::FlowTransaction,
 };
 
 mod rolling;
@@ -304,7 +301,7 @@ impl WindowOperator {
 	/// Apply aggregations to all events in a window
 	pub fn apply_aggregations(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		events: &[WindowEvent],
 		row_evaluator: &StandardRowEvaluator,
@@ -383,7 +380,7 @@ impl WindowOperator {
 	/// Process expired windows and clean up state
 	pub fn process_expired_windows(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		current_timestamp: u64,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let result = Vec::new();
@@ -408,7 +405,7 @@ impl WindowOperator {
 	/// Load window state from storage
 	pub fn load_window_state(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 	) -> crate::Result<WindowState> {
 		let state_row = self.load_state(txn, window_key)?;
@@ -433,7 +430,7 @@ impl WindowOperator {
 	/// Save window state to storage
 	pub fn save_window_state(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		state: &WindowState,
 	) -> crate::Result<()> {
@@ -451,7 +448,7 @@ impl WindowOperator {
 	/// Get and increment global event count for count-based windows
 	pub fn get_and_increment_global_count(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		group_hash: Hash128,
 	) -> crate::Result<u64> {
 		let count_key = self.create_count_key(group_hash);
@@ -511,7 +508,7 @@ impl Operator for WindowOperator {
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -522,12 +519,7 @@ impl Operator for WindowOperator {
 		}
 	}
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>> {
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		todo!()
 	}
 }

@@ -1,10 +1,10 @@
 use reifydb_core::{CommitVersion, JoinType, Row};
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
 use crate::{
 	flow::FlowDiff,
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
+	transaction::FlowTransaction,
 };
 
 mod hash;
@@ -29,7 +29,7 @@ impl JoinStrategy {
 	/// Handle insert operations
 	pub(crate) fn handle_insert(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		post: &Row,
 		side: JoinSide,
 		key_hash: Option<Hash128>,
@@ -50,7 +50,7 @@ impl JoinStrategy {
 	/// Handle remove operations
 	pub(crate) fn handle_remove(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		pre: &Row,
 		side: JoinSide,
 		key_hash: Option<Hash128>,
@@ -71,7 +71,7 @@ impl JoinStrategy {
 	/// Handle update operations
 	pub(crate) fn handle_update(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		pre: &Row,
 		post: &Row,
 		side: JoinSide,

@@ -1,8 +1,8 @@
-use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_core::{Row, interface::FlowNodeId};
+use reifydb_engine::StandardRowEvaluator;
 use reifydb_type::RowNumber;
 
-use crate::{flow::FlowChange, operator::Operator};
+use crate::{flow::FlowChange, operator::Operator, transaction::FlowTransaction};
 
 pub struct UnionOperator {
 	node: FlowNodeId,
@@ -23,7 +23,7 @@ impl Operator for UnionOperator {
 
 	fn apply(
 		&self,
-		_txn: &mut StandardCommandTransaction,
+		_txn: &mut FlowTransaction,
 		change: FlowChange,
 		_evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -32,12 +32,7 @@ impl Operator for UnionOperator {
 		Ok(FlowChange::internal(self.node, change.version, change.diffs))
 	}
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>> {
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		unimplemented!()
 	}
 }

@@ -1,14 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
+	key::{EncodableKey, FlowNodeStateKey},
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
-use reifydb_engine::StandardCommandTransaction;
 
 use super::utils;
-use crate::stateful::RawStatefulOperator;
+use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Window-based state management for time or count-based windowing
 /// Extends TransformOperator directly and uses utility functions for state management
@@ -23,18 +22,14 @@ pub trait WindowStateful: RawStatefulOperator {
 	}
 
 	/// Load state for a window
-	fn load_state(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		window_key: &EncodedKey,
-	) -> crate::Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction, window_key: &EncodedKey) -> crate::Result<EncodedValues> {
 		utils::load_or_create_row(self.id(), txn, window_key, &self.layout())
 	}
 
 	/// Save state for a window
 	fn save_state(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		window_key: &EncodedKey,
 		row: EncodedValues,
 	) -> crate::Result<()> {
@@ -43,16 +38,21 @@ pub trait WindowStateful: RawStatefulOperator {
 
 	/// Expire windows within a given range
 	/// The range should be constructed by the caller based on their window ordering semantics
-	fn expire_range(&self, txn: &mut StandardCommandTransaction, range: EncodedKeyRange) -> crate::Result<u32> {
+	fn expire_range(&self, txn: &mut FlowTransaction, range: EncodedKeyRange) -> crate::Result<u32> {
 		let mut count = 0;
-		let keys_to_remove: Vec<_> = utils::state_range(self.id(), txn, range)?.map(|(key, _)| key).collect();
+
+		// Add the operator state prefix to the range
+		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(self.id(), vec![]).encode());
+
+		// Collect keys to remove (similar pattern to state_clear in utils.rs)
+		let keys_to_remove: Vec<_> = txn.range(prefixed_range)?.map(|multi| multi.key).collect();
 
 		for key in keys_to_remove {
-			utils::state_remove(self.id(), txn, &key)?;
+			txn.remove(&key)?;
 			count += 1;
 		}
 
-		Ok(count)
+		Ok(count as u32)
 	}
 }
 
@@ -60,10 +60,10 @@ pub trait WindowStateful: RawStatefulOperator {
 mod tests {
 	use std::ops::Bound::{Excluded, Unbounded};
 
-	use reifydb_core::{interface::FlowNodeId, util::encoding::keycode::KeySerializer};
+	use reifydb_core::{CommitVersion, interface::FlowNodeId, util::encoding::keycode::KeySerializer};
 
 	use super::*;
-	use crate::operator::stateful::utils_test::test::*;
+	use crate::operator::stateful::test_utils::test::*;
 
 	/// Helper to create window keys from u64 for testing
 	/// Uses inverted encoding for proper ordering (smaller IDs produce larger keys)
@@ -111,6 +111,7 @@ mod tests {
 	#[test]
 	fn test_load_save_window_state() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let window_key = test_window_key(42);
 
@@ -130,6 +131,7 @@ mod tests {
 	#[test]
 	fn test_multiple_windows() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create states for multiple windows
@@ -150,6 +152,7 @@ mod tests {
 	#[test]
 	fn test_expire_before() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 9
@@ -184,6 +187,7 @@ mod tests {
 	#[test]
 	fn test_expire_empty_range() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 5 through 9
@@ -210,6 +214,7 @@ mod tests {
 	#[test]
 	fn test_expire_all() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create windows 0 through 4
@@ -236,6 +241,7 @@ mod tests {
 	#[test]
 	fn test_sliding_window_simulation() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a sliding window maintaining last 3 windows

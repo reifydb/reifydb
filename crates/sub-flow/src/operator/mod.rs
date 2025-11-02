@@ -1,8 +1,8 @@
-use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_core::{Row, interface::FlowNodeId};
+use reifydb_engine::StandardRowEvaluator;
 use reifydb_type::RowNumber;
 
-use crate::flow::FlowChange;
+use crate::{flow::FlowChange, transaction::FlowTransaction};
 
 mod apply;
 mod distinct;
@@ -38,17 +38,12 @@ pub trait Operator: Send + Sync {
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange>;
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>>;
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>>;
 }
 
 pub enum Operators {
@@ -70,7 +65,7 @@ pub enum Operators {
 impl Operators {
 	pub fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -91,26 +86,21 @@ impl Operators {
 		}
 	}
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>> {
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		match self {
-			Operators::Filter(op) => op.get_rows(txn, rows, version),
-			Operators::Map(op) => op.get_rows(txn, rows, version),
-			Operators::Extend(op) => op.get_rows(txn, rows, version),
-			Operators::Join(op) => op.get_rows(txn, rows, version),
-			Operators::Sort(op) => op.get_rows(txn, rows, version),
-			Operators::Take(op) => op.get_rows(txn, rows, version),
-			Operators::Distinct(op) => op.get_rows(txn, rows, version),
-			Operators::Union(op) => op.get_rows(txn, rows, version),
-			Operators::Apply(op) => op.get_rows(txn, rows, version),
-			Operators::SinkView(op) => op.get_rows(txn, rows, version),
-			Operators::Window(op) => op.get_rows(txn, rows, version),
-			Operators::SourceTable(op) => op.get_rows(txn, rows, version),
-			Operators::SourceView(op) => op.get_rows(txn, rows, version),
+			Operators::Filter(op) => op.get_rows(txn, rows),
+			Operators::Map(op) => op.get_rows(txn, rows),
+			Operators::Extend(op) => op.get_rows(txn, rows),
+			Operators::Join(op) => op.get_rows(txn, rows),
+			Operators::Sort(op) => op.get_rows(txn, rows),
+			Operators::Take(op) => op.get_rows(txn, rows),
+			Operators::Distinct(op) => op.get_rows(txn, rows),
+			Operators::Union(op) => op.get_rows(txn, rows),
+			Operators::Apply(op) => op.get_rows(txn, rows),
+			Operators::SinkView(op) => op.get_rows(txn, rows),
+			Operators::Window(op) => op.get_rows(txn, rows),
+			Operators::SourceTable(op) => op.get_rows(txn, rows),
+			Operators::SourceView(op) => op.get_rows(txn, rows),
 		}
 	}
 }

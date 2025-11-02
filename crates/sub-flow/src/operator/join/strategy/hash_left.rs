@@ -1,5 +1,4 @@
 use reifydb_core::Row;
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
 use super::hash::{
@@ -10,6 +9,7 @@ use super::hash::{
 use crate::{
 	flow::FlowDiff,
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
+	transaction::FlowTransaction,
 };
 
 pub(crate) struct LeftHashJoin;
@@ -17,7 +17,7 @@ pub(crate) struct LeftHashJoin;
 impl LeftHashJoin {
 	pub(crate) fn handle_insert(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		post: &Row,
 		side: JoinSide,
 		key_hash: Option<Hash128>,
@@ -72,11 +72,8 @@ impl LeftHashJoin {
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
 						// If first right encoded, remove previously emitted unmatched left rows
 						if is_first {
-							let left_rows = operator.left_parent.get_rows(
-								txn,
-								&left_entry.rows,
-								version,
-							)?;
+							let left_rows =
+								operator.left_parent.get_rows(txn, &left_entry.rows)?;
 
 							for left_row_opt in left_rows {
 								if let Some(left_row) = left_row_opt {
@@ -111,7 +108,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_remove(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		pre: &Row,
 		side: JoinSide,
 		key_hash: Option<Hash128>,
@@ -209,7 +206,7 @@ impl LeftHashJoin {
 
 	pub(crate) fn handle_update(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		pre: &Row,
 		post: &Row,
 		side: JoinSide,

@@ -1,7 +1,6 @@
 use std::sync::Arc;
 
 use reifydb_core::{CommitVersion, Row};
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
 use crate::{
@@ -10,16 +9,17 @@ use crate::{
 		Operators,
 		join::{JoinSideEntry, Store, operator::JoinOperator},
 	},
+	transaction::FlowTransaction,
 };
 
 /// Add a encoded to a state entry (left or right)
 pub(crate) fn add_to_state_entry(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	row: &Row,
 ) -> crate::Result<()> {
-	let mut entry = store.get_or_insert_with::<StandardCommandTransaction, _>(txn, key_hash, || JoinSideEntry {
+	let mut entry = store.get_or_insert_with(txn, key_hash, || JoinSideEntry {
 		rows: Vec::new(),
 	})?;
 	entry.rows.push(row.number);
@@ -29,7 +29,7 @@ pub(crate) fn add_to_state_entry(
 
 /// Remove a encoded from state entry and cleanup if empty
 pub(crate) fn remove_from_state_entry(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	row: &Row,
@@ -51,7 +51,7 @@ pub(crate) fn remove_from_state_entry(
 
 /// Update a encoded in-place within a state entry
 pub(crate) fn update_row_in_entry(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	store: &mut Store,
 	key_hash: &Hash128,
 	old_row: &Row,
@@ -71,7 +71,7 @@ pub(crate) fn update_row_in_entry(
 
 /// Emit joined rows when inserting a left encoded that has right matches
 pub(crate) fn emit_joined_rows_left_to_right(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	left_row: &Row,
 	right_store: &Store,
 	key_hash: &Hash128,
@@ -82,7 +82,7 @@ pub(crate) fn emit_joined_rows_left_to_right(
 	let mut result = Vec::new();
 
 	if let Some(right_entry) = right_store.get(txn, key_hash)? {
-		let right_rows = right_parent.get_rows(txn, &right_entry.rows, version)?;
+		let right_rows = right_parent.get_rows(txn, &right_entry.rows)?;
 
 		for right_row_opt in right_rows {
 			if let Some(right_row) = right_row_opt {
@@ -98,7 +98,7 @@ pub(crate) fn emit_joined_rows_left_to_right(
 
 /// Emit joined rows when inserting a right encoded that has left matches
 pub(crate) fn emit_joined_rows_right_to_left(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	right_row: &Row,
 	left_store: &Store,
 	key_hash: &Hash128,
@@ -109,7 +109,7 @@ pub(crate) fn emit_joined_rows_right_to_left(
 	let mut result = Vec::new();
 
 	if let Some(left_entry) = left_store.get(txn, key_hash)? {
-		let left_rows = left_parent.get_rows(txn, &left_entry.rows, version)?;
+		let left_rows = left_parent.get_rows(txn, &left_entry.rows)?;
 
 		for left_row_opt in left_rows {
 			if let Some(left_row) = left_row_opt {
@@ -125,7 +125,7 @@ pub(crate) fn emit_joined_rows_right_to_left(
 
 /// Emit removal of all joined rows involving a left encoded
 pub(crate) fn emit_remove_joined_rows_left(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	left_row: &Row,
 	right_store: &Store,
 	key_hash: &Hash128,
@@ -136,7 +136,7 @@ pub(crate) fn emit_remove_joined_rows_left(
 	let mut result = Vec::new();
 
 	if let Some(right_entry) = right_store.get(txn, key_hash)? {
-		let right_rows = right_parent.get_rows(txn, &right_entry.rows, version)?;
+		let right_rows = right_parent.get_rows(txn, &right_entry.rows)?;
 
 		for right_row_opt in right_rows {
 			if let Some(right_row) = right_row_opt {
@@ -152,7 +152,7 @@ pub(crate) fn emit_remove_joined_rows_left(
 
 /// Emit removal of all joined rows involving a right encoded
 pub(crate) fn emit_remove_joined_rows_right(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	right_row: &Row,
 	left_store: &Store,
 	key_hash: &Hash128,
@@ -163,7 +163,7 @@ pub(crate) fn emit_remove_joined_rows_right(
 	let mut result = Vec::new();
 
 	if let Some(left_entry) = left_store.get(txn, key_hash)? {
-		let left_rows = left_parent.get_rows(txn, &left_entry.rows, version)?;
+		let left_rows = left_parent.get_rows(txn, &left_entry.rows)?;
 
 		for left_row_opt in left_rows {
 			if let Some(left_row) = left_row_opt {
@@ -179,7 +179,7 @@ pub(crate) fn emit_remove_joined_rows_right(
 
 /// Emit updates for all joined rows when a left encoded is updated
 pub(crate) fn emit_update_joined_rows_left(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	old_left_row: &Row,
 	new_left_row: &Row,
 	right_store: &Store,
@@ -191,7 +191,7 @@ pub(crate) fn emit_update_joined_rows_left(
 	let mut result = Vec::new();
 
 	if let Some(right_entry) = right_store.get(txn, key_hash)? {
-		let right_rows = right_parent.get_rows(txn, &right_entry.rows, version)?;
+		let right_rows = right_parent.get_rows(txn, &right_entry.rows)?;
 
 		for right_row_opt in right_rows {
 			if let Some(right_row) = right_row_opt {
@@ -208,7 +208,7 @@ pub(crate) fn emit_update_joined_rows_left(
 
 /// Emit updates for all joined rows when a right encoded is updated
 pub(crate) fn emit_update_joined_rows_right(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	old_right_row: &Row,
 	new_right_row: &Row,
 	left_store: &Store,
@@ -220,7 +220,7 @@ pub(crate) fn emit_update_joined_rows_right(
 	let mut result = Vec::new();
 
 	if let Some(left_entry) = left_store.get(txn, key_hash)? {
-		let left_rows = left_parent.get_rows(txn, &left_entry.rows, version)?;
+		let left_rows = left_parent.get_rows(txn, &left_entry.rows)?;
 
 		for left_row_opt in left_rows {
 			if let Some(left_row) = left_row_opt {
@@ -237,7 +237,7 @@ pub(crate) fn emit_update_joined_rows_right(
 
 /// Check if a right side has any rows for a given key
 pub(crate) fn has_right_rows(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	right_store: &Store,
 	key_hash: &Hash128,
 ) -> crate::Result<bool> {
@@ -246,7 +246,7 @@ pub(crate) fn has_right_rows(
 
 /// Check if it's the first right encoded being added for a key
 pub(crate) fn is_first_right_row(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	right_store: &Store,
 	key_hash: &Hash128,
 ) -> crate::Result<bool> {
@@ -255,7 +255,7 @@ pub(crate) fn is_first_right_row(
 
 /// Get all left rows for a given key
 pub(crate) fn get_left_rows(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	left_store: &Store,
 	key_hash: &Hash128,
 	left_parent: &Arc<Operators>,
@@ -263,7 +263,7 @@ pub(crate) fn get_left_rows(
 ) -> crate::Result<Vec<Row>> {
 	let mut rows = Vec::new();
 	if let Some(left_entry) = left_store.get(txn, key_hash)? {
-		let left_rows = left_parent.get_rows(txn, &left_entry.rows, version)?;
+		let left_rows = left_parent.get_rows(txn, &left_entry.rows)?;
 
 		for left_row_opt in left_rows {
 			if let Some(left_row) = left_row_opt {
@@ -276,7 +276,7 @@ pub(crate) fn get_left_rows(
 
 /// Get all right rows for a given key
 pub(crate) fn get_right_rows(
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	right_store: &Store,
 	key_hash: &Hash128,
 	right_parent: &Arc<Operators>,
@@ -284,7 +284,7 @@ pub(crate) fn get_right_rows(
 ) -> crate::Result<Vec<Row>> {
 	let mut rows = Vec::new();
 	if let Some(right_entry) = right_store.get(txn, key_hash)? {
-		let right_rows = right_parent.get_rows(txn, &right_entry.rows, version)?;
+		let right_rows = right_parent.get_rows(txn, &right_entry.rows)?;
 
 		for right_row_opt in right_rows {
 			if let Some(right_row) = right_row_opt {

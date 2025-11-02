@@ -25,7 +25,11 @@ use reifydb_core::{
 	return_error,
 	value::encoded::EncodedValues,
 };
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{
+	cdc::TransactionCdc,
+	multi::{TransactionMultiVersion, pending::PendingWrites},
+	single::TransactionSingleVersion,
+};
 
 use crate::transaction::query::StandardQueryTransaction;
 
@@ -34,8 +38,8 @@ use crate::transaction::query::StandardQueryTransaction;
 ///
 /// The transaction will auto-rollback on drop if not explicitly committed.
 pub struct StandardCommandTransaction {
-	pub(crate) multi: TransactionMultiVersion,
-	pub(crate) single: TransactionSingleVersion,
+	pub multi: TransactionMultiVersion,
+	pub single: TransactionSingleVersion,
 	pub(crate) cdc: TransactionCdc,
 	state: TransactionState,
 
@@ -139,6 +143,14 @@ impl StandardCommandTransaction {
 	/// Get access to the CDC transaction interface
 	pub fn cdc(&self) -> &TransactionCdc {
 		&self.cdc
+	}
+
+	/// Get access to the pending writes in this transaction
+	///
+	/// This allows checking for key conflicts when committing FlowTransactions
+	/// to ensure they operate on non-overlapping keyspaces.
+	pub fn pending_writes(&self) -> &PendingWrites {
+		self.cmd.as_ref().unwrap().pending_writes()
 	}
 
 	/// Execute a function with query access to the single transaction.

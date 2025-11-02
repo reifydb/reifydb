@@ -1,11 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-
 use reifydb_core::{WindowSize, WindowType};
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_engine::StandardRowEvaluator;
 
 use super::{WindowEvent, WindowOperator};
-use crate::flow::{FlowChange, FlowDiff};
+use crate::{
+	flow::{FlowChange, FlowDiff},
+	transaction::FlowTransaction,
+};
 
 impl WindowOperator {
 	/// Check if rolling window should evict old events
@@ -53,7 +55,7 @@ impl WindowOperator {
 /// Apply changes for rolling windows
 pub fn apply_rolling_window(
 	operator: &WindowOperator,
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	change: FlowChange,
 	evaluator: &StandardRowEvaluator,
 ) -> crate::Result<FlowChange> {

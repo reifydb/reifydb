@@ -79,6 +79,10 @@ impl CommandTransaction {
 		self.tm.version()
 	}
 
+	pub fn pending_writes(&self) -> &crate::multi::pending::PendingWrites {
+		self.tm.pending_writes()
+	}
+
 	pub fn read_as_of_version_exclusive(&mut self, version: CommitVersion) {
 		self.tm.read_as_of_version_exclusive(version);
 	}

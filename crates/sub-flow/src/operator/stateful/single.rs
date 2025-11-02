@@ -1,14 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-
 use reifydb_core::{
 	EncodedKey,
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
-use reifydb_engine::StandardCommandTransaction;
 
 use super::utils;
-use crate::stateful::RawStatefulOperator;
+use crate::{stateful::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Operator with a single state value (like counters, running sums, etc.)
 /// Extends TransformOperator directly and uses utility functions for state management
@@ -28,19 +26,19 @@ pub trait SingleStateful: RawStatefulOperator {
 	}
 
 	/// Load the operator's single state encoded
-	fn load_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<EncodedValues> {
+	fn load_state(&self, txn: &mut FlowTransaction) -> crate::Result<EncodedValues> {
 		let key = self.key();
 		utils::load_or_create_row(self.id(), txn, &key, &self.layout())
 	}
 
 	/// Save the operator's single state encoded
-	fn save_state(&self, txn: &mut StandardCommandTransaction, row: EncodedValues) -> crate::Result<()> {
+	fn save_state(&self, txn: &mut FlowTransaction, row: EncodedValues) -> crate::Result<()> {
 		let key = self.key();
 		utils::save_row(self.id(), txn, &key, row)
 	}
 
 	/// Update state with a function
-	fn update_state<F>(&self, txn: &mut StandardCommandTransaction, f: F) -> crate::Result<EncodedValues>
+	fn update_state<F>(&self, txn: &mut FlowTransaction, f: F) -> crate::Result<EncodedValues>
 	where
 		F: FnOnce(&EncodedValuesLayout, &mut EncodedValues) -> crate::Result<()>,
 	{
@@ -52,7 +50,7 @@ pub trait SingleStateful: RawStatefulOperator {
 	}
 
 	/// Clear state
-	fn clear_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<()> {
+	fn clear_state(&self, txn: &mut FlowTransaction) -> crate::Result<()> {
 		let key = self.key();
 		utils::state_remove(self.id(), txn, &key)
 	}
@@ -60,10 +58,10 @@ pub trait SingleStateful: RawStatefulOperator {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::FlowNodeId;
+	use reifydb_core::{CommitVersion, interface::FlowNodeId};
 
 	use super::*;
-	use crate::operator::stateful::utils_test::test::*;
+	use crate::operator::stateful::test_utils::test::*;
 
 	// Extend TestOperator to implement SingleStateful
 	impl SingleStateful for TestOperator {
@@ -93,6 +91,7 @@ mod tests {
 	#[test]
 	fn test_load_save_state() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Initially should create new state
@@ -111,6 +110,7 @@ mod tests {
 	#[test]
 	fn test_update_state() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Update state with a function
@@ -131,6 +131,7 @@ mod tests {
 	#[test]
 	fn test_clear_state() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 
 		// Create and modify state
@@ -151,6 +152,7 @@ mod tests {
 	#[test]
 	fn test_multiple_operators_isolated() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator1 = TestOperator::simple(FlowNodeId(1));
 		let operator2 = TestOperator::simple(FlowNodeId(2));
 
@@ -180,6 +182,7 @@ mod tests {
 	#[test]
 	fn test_counter_simulation() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::new(FlowNodeId(1));
 
 		// Simulate a counter incrementing

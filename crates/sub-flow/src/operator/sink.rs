@@ -4,16 +4,17 @@
 use std::sync::Arc;
 
 use reifydb_core::{
-	CommitVersion, Row,
-	interface::{EncodableKey, FlowNodeId, MultiVersionCommandTransaction, ResolvedView, RowKey, SourceId},
+	Row,
+	interface::{EncodableKey, FlowNodeId, ResolvedView, RowKey, SourceId},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_engine::StandardRowEvaluator;
 use reifydb_type::RowNumber;
 
 use crate::{
 	Operator,
 	flow::{FlowChange, FlowDiff},
 	operator::Operators,
+	transaction::FlowTransaction,
 };
 
 pub struct SinkViewOperator {
@@ -39,7 +40,7 @@ impl Operator for SinkViewOperator {
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -105,12 +106,7 @@ impl Operator for SinkViewOperator {
 		Ok(FlowChange::internal(self.node, change.version, Vec::new()))
 	}
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>> {
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		unreachable!()
 	}
 }

@@ -1,5 +1,4 @@
 use reifydb_core::Row;
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_hash::Hash128;
 
 use super::hash::{
@@ -10,6 +9,7 @@ use super::hash::{
 use crate::{
 	flow::FlowDiff,
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
+	transaction::FlowTransaction,
 };
 
 pub(crate) struct InnerHashJoin;
@@ -17,7 +17,7 @@ pub(crate) struct InnerHashJoin;
 impl InnerHashJoin {
 	pub(crate) fn handle_insert(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		post: &Row,
 		side: JoinSide,
 		key_hash: Option<Hash128>,
@@ -70,7 +70,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_remove(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		pre: &Row,
 		side: JoinSide,
 		key_hash: Option<Hash128>,
@@ -128,7 +128,7 @@ impl InnerHashJoin {
 
 	pub(crate) fn handle_update(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		pre: &Row,
 		post: &Row,
 		side: JoinSide,

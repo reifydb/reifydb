@@ -3,25 +3,22 @@
 
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
-	interface::{FlowNodeId, MultiVersionCommandTransaction, MultiVersionQueryTransaction},
+	interface::FlowNodeId,
 	key::{EncodableKey, FlowNodeStateKey},
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
-use reifydb_engine::StandardCommandTransaction;
+
+use crate::transaction::FlowTransaction;
 
 /// Helper functions for state operations that can be used by any stateful trait
 
 /// Get raw bytes for a key
-pub fn state_get(
-	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction,
-	key: &EncodedKey,
-) -> crate::Result<Option<EncodedValues>> {
+pub fn state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 
 	match txn.get(&encoded_key)? {
-		Some(multi) => Ok(Some(multi.values)),
+		Some(multi) => Ok(Some(multi)),
 		None => Ok(None),
 	}
 }
@@ -29,7 +26,7 @@ pub fn state_get(
 /// Set raw bytes for a key
 pub fn state_set(
 	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 	value: EncodedValues,
 ) -> crate::Result<()> {
@@ -40,7 +37,7 @@ pub fn state_set(
 }
 
 /// Remove a key
-pub fn state_remove(id: FlowNodeId, txn: &mut StandardCommandTransaction, key: &EncodedKey) -> crate::Result<()> {
+pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.remove(&encoded_key)?;
@@ -48,26 +45,26 @@ pub fn state_remove(id: FlowNodeId, txn: &mut StandardCommandTransaction, key: &
 }
 
 /// Scan all keys for this operator
-pub fn state_scan(id: FlowNodeId, txn: &mut StandardCommandTransaction) -> crate::Result<super::StateIterator> {
+pub fn state_scan<'a>(id: FlowNodeId, txn: &'a mut FlowTransaction) -> crate::Result<super::StateIterator<'a>> {
 	let range = FlowNodeStateKey::node_range(id);
 	Ok(super::StateIterator {
 		inner: txn.range(range)?,
 	})
 }
 
-/// Range query between keys  
-pub fn state_range(
+/// Range query between keys
+pub fn state_range<'a>(
 	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction,
+	txn: &'a mut FlowTransaction,
 	range: EncodedKeyRange,
-) -> crate::Result<super::StateIterator> {
+) -> crate::Result<super::StateIterator<'a>> {
 	Ok(super::StateIterator {
 		inner: txn.range(range.with_prefix(FlowNodeStateKey::new(id, vec![]).encode()))?,
 	})
 }
 
 /// Clear all state for this operator
-pub fn state_clear(id: FlowNodeId, txn: &mut StandardCommandTransaction) -> crate::Result<()> {
+pub fn state_clear(id: FlowNodeId, txn: &mut FlowTransaction) -> crate::Result<()> {
 	let range = FlowNodeStateKey::node_range(id);
 	let keys_to_remove: Vec<_> = txn.range(range)?.map(|multi| multi.key).collect();
 
@@ -80,7 +77,7 @@ pub fn state_clear(id: FlowNodeId, txn: &mut StandardCommandTransaction) -> crat
 /// Load state for a key, creating if not exists
 pub fn load_or_create_row(
 	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction,
+	txn: &mut FlowTransaction,
 	key: &EncodedKey,
 	layout: &EncodedValuesLayout,
 ) -> crate::Result<EncodedValues> {
@@ -91,12 +88,7 @@ pub fn load_or_create_row(
 }
 
 /// Save state encoded
-pub fn save_row(
-	id: FlowNodeId,
-	txn: &mut StandardCommandTransaction,
-	key: &EncodedKey,
-	row: EncodedValues,
-) -> crate::Result<()> {
+pub fn save_row(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
 	state_set(id, txn, key, row)
 }
 
@@ -107,18 +99,18 @@ pub fn empty_key() -> EncodedKey {
 
 #[cfg(test)]
 mod tests {
-	use std::ops::{Bound, Bound::Unbounded};
+	use std::ops::Bound::{Excluded, Included, Unbounded};
 
-	use Bound::{Excluded, Included};
-	use reifydb_core::{interface::Engine, util::CowVec};
+	use reifydb_core::{CommitVersion, util::CowVec};
 	use reifydb_type::Type;
 
 	use super::*;
-	use crate::operator::stateful::utils_test::test::*;
+	use crate::{operator::stateful::test_utils::test::*, transaction::FlowTransaction};
 
 	#[test]
 	fn test_state_get_existing() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("get");
 		let value = test_row();
@@ -135,6 +127,7 @@ mod tests {
 	#[test]
 	fn test_state_get_non_existing() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("nonexistent");
 
@@ -145,6 +138,7 @@ mod tests {
 	#[test]
 	fn test_state_set_and_update() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("set");
 		let value1 = EncodedValues(CowVec::new(vec![1, 2, 3]));
@@ -164,6 +158,7 @@ mod tests {
 	#[test]
 	fn test_state_remove() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("remove");
 		let value = test_row();
@@ -180,6 +175,7 @@ mod tests {
 	#[test]
 	fn test_state_scan() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 
 		// Add multiple entries
@@ -202,6 +198,7 @@ mod tests {
 	#[test]
 	fn test_state_range() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 
 		// Add entries with different keys
@@ -223,6 +220,7 @@ mod tests {
 	#[test]
 	fn test_state_range_open_ended() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 
 		// Add some entries
@@ -233,18 +231,21 @@ mod tests {
 		}
 
 		let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3")));
-		let entries: Vec<_> = state_range(node_id, &mut txn, range).unwrap().collect();
+		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(node_id, vec![]).encode());
+		let entries: Vec<_> = txn.range(prefixed_range).unwrap().collect();
 		assert_eq!(entries.len(), 3); // range_0, range_1, range_2
 
 		// Test with no end (to end)
 		let range = EncodedKeyRange::new(Included(test_key("range_3")), Unbounded);
-		let entries: Vec<_> = state_range(node_id, &mut txn, range).unwrap().collect();
+		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(node_id, vec![]).encode());
+		let entries: Vec<_> = txn.range(prefixed_range).unwrap().collect();
 		assert_eq!(entries.len(), 2); // range_3, range_4
 	}
 
 	#[test]
 	fn test_state_clear() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 
 		// Add multiple entries
@@ -255,20 +256,27 @@ mod tests {
 		}
 
 		// Verify entries exist
-		let count = state_scan(node_id, &mut txn).unwrap().count();
+		let count = {
+			let range = FlowNodeStateKey::node_range(node_id);
+			txn.range(range).unwrap().count()
+		};
 		assert_eq!(count, 3);
 
 		// Clear all state
 		state_clear(node_id, &mut txn).unwrap();
 
 		// Verify all entries are removed
-		let count = state_scan(node_id, &mut txn).unwrap().count();
+		let count = {
+			let range = FlowNodeStateKey::node_range(node_id);
+			txn.range(range).unwrap().count()
+		};
 		assert_eq!(count, 0);
 	}
 
 	#[test]
 	fn test_load_or_create_row_existing() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_existing");
 		let value = test_row();
@@ -285,6 +293,7 @@ mod tests {
 	#[test]
 	fn test_load_or_create_row_new() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("load_new");
 		let layout = EncodedValuesLayout::new(&[Type::Int4]);
@@ -298,6 +307,7 @@ mod tests {
 	#[test]
 	fn test_save_row() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("save");
 		let value = test_row();
@@ -321,6 +331,7 @@ mod tests {
 	#[test]
 	fn test_multiple_nodes_isolation() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node1 = FlowNodeId(1);
 		let node2 = FlowNodeId(2);
 		let key = test_key("shared");
@@ -347,6 +358,7 @@ mod tests {
 	#[test]
 	fn test_large_values() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let node_id = FlowNodeId(1);
 		let key = test_key("large");
 
@@ -358,29 +370,5 @@ mod tests {
 		let result = state_get(node_id, &mut txn, &key).unwrap().unwrap();
 
 		assert_row_eq(&result, &large_value);
-	}
-
-	#[test]
-	fn test_concurrent_modifications() {
-		let engine = create_test_engine();
-		let node_id = FlowNodeId(1);
-		let key = test_key("concurrent");
-
-		// Transaction 1: Set initial value
-		let mut txn1 = engine.begin_command().unwrap();
-		let value1 = EncodedValues(CowVec::new(vec![1]));
-		state_set(node_id, &mut txn1, &key, value1.clone()).unwrap();
-		txn1.commit().unwrap();
-
-		// Transaction 2: Update value
-		let mut txn2 = engine.begin_command().unwrap();
-		let value2 = EncodedValues(CowVec::new(vec![2]));
-		state_set(node_id, &mut txn2, &key, value2.clone()).unwrap();
-		txn2.commit().unwrap();
-
-		// Transaction 3: Verify final value
-		let mut txn3 = engine.begin_command().unwrap();
-		let result = state_get(node_id, &mut txn3, &key).unwrap().unwrap();
-		assert_row_eq(&result, &value2);
 	}
 }

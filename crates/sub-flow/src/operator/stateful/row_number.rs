@@ -1,16 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
-
 use reifydb_core::{
 	EncodedKey,
 	interface::FlowNodeId,
+	key::{EncodableKey, FlowNodeStateKey},
 	util::{CowVec, encoding::keycode::KeySerializer},
 	value::encoded::{EncodedKeyRange, EncodedValues},
 };
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::RowNumber;
 
-use crate::operator::stateful::RawStatefulOperator;
+use crate::{operator::stateful::RawStatefulOperator, transaction::FlowTransaction};
 
 /// Provides stable encoded numbers for keys with automatic Insert/Update detection
 ///
@@ -38,7 +37,7 @@ impl RowNumberProvider {
 	/// created
 	pub fn get_or_create_row_number<O: RawStatefulOperator>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		operator: &O,
 		key: &EncodedKey,
 	) -> crate::Result<(RowNumber, bool)> {
@@ -72,11 +71,7 @@ impl RowNumberProvider {
 	}
 
 	/// Load the current counter value
-	fn load_counter<O: RawStatefulOperator>(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		operator: &O,
-	) -> crate::Result<u64> {
+	fn load_counter<O: RawStatefulOperator>(&self, txn: &mut FlowTransaction, operator: &O) -> crate::Result<u64> {
 		let key = self.make_counter_key();
 		let encoded_key = EncodedKey::new(key);
 		match operator.state_get(txn, &encoded_key)? {
@@ -99,7 +94,7 @@ impl RowNumberProvider {
 	/// Save the counter value
 	fn save_counter<O: RawStatefulOperator>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		operator: &O,
 		counter: u64,
 	) -> crate::Result<()> {
@@ -131,7 +126,7 @@ impl RowNumberProvider {
 	/// This is useful for cleaning up all join results from a specific left encoded
 	pub fn remove_by_prefix<O: RawStatefulOperator>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		operator: &O,
 		key_prefix: &[u8],
 	) -> crate::Result<()> {
@@ -143,14 +138,15 @@ impl RowNumberProvider {
 		prefix.extend_from_slice(&serializer.finish());
 		prefix.extend_from_slice(key_prefix);
 
-		// Create range for prefix scan
-		let range = EncodedKeyRange::prefix(&prefix);
+		// Create range for prefix scan with the operator state prefix
+		let state_prefix = FlowNodeStateKey::new(operator.id(), prefix.clone());
+		let full_range = EncodedKeyRange::prefix(&state_prefix.encode());
 
-		// Scan and collect keys to remove
-		let keys_to_remove: Vec<_> = operator.state_range(txn, range)?.map(|(key, _row)| key).collect();
+		// Collect keys to remove (similar pattern to state_clear in utils.rs)
+		let keys_to_remove: Vec<_> = txn.range(full_range)?.map(|multi| multi.key).collect();
 
 		for key in keys_to_remove {
-			operator.state_remove(txn, &key)?;
+			txn.remove(&key)?;
 		}
 
 		Ok(())
@@ -159,14 +155,17 @@ impl RowNumberProvider {
 
 #[cfg(test)]
 mod tests {
+	use reifydb_core::CommitVersion;
+
 	use super::*;
-	use crate::operator::stateful::utils_test::test::*;
+	use crate::operator::stateful::test_utils::test::*;
 
 	// TestOperator already implements SimpleStatefulOperator
 
 	#[test]
 	fn test_first_row_number() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -180,6 +179,7 @@ mod tests {
 	#[test]
 	fn test_duplicate_key_same_row_number() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -202,6 +202,7 @@ mod tests {
 	#[test]
 	fn test_sequential_row_numbers() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -218,6 +219,7 @@ mod tests {
 	#[test]
 	fn test_mixed_new_and_existing() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -255,6 +257,7 @@ mod tests {
 	#[test]
 	fn test_multiple_providers_isolated() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator1 = TestOperator::simple(FlowNodeId(1));
 		let operator2 = TestOperator::simple(FlowNodeId(2));
 		let provider1 = RowNumberProvider::new(FlowNodeId(1));
@@ -282,6 +285,7 @@ mod tests {
 	#[test]
 	fn test_counter_persistence() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 
@@ -304,6 +308,7 @@ mod tests {
 	#[test]
 	fn test_large_row_numbers() {
 		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
 		let operator = TestOperator::simple(FlowNodeId(1));
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 

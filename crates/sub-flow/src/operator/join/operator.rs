@@ -2,12 +2,12 @@ use std::{collections::HashSet, sync::Arc};
 
 use bincode::{config::standard, serde::encode_to_vec};
 use reifydb_core::{
-	CommitVersion, EncodedKey, Error, JoinType, Row,
+	EncodedKey, Error, JoinType, Row,
 	interface::FlowNodeId,
 	util::encoding::keycode::KeySerializer,
 	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
 };
-use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator, execute::Executor};
+use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Params, RowNumber, Type, Value, internal_error};
@@ -20,6 +20,7 @@ use crate::{
 		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful},
 		transform::TransformOperator,
 	},
+	transaction::FlowTransaction,
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -129,11 +130,7 @@ impl JoinOperator {
 	}
 
 	/// Generate a encoded number for an unmatched left join encoded
-	pub(crate) fn unmatched_left_row(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		left: &Row,
-	) -> crate::Result<Row> {
+	pub(crate) fn unmatched_left_row(&self, txn: &mut FlowTransaction, left: &Row) -> crate::Result<Row> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L'); // 'L' prefix for left encoded
 		serializer.extend_u64(left.number.0);
@@ -152,11 +149,7 @@ impl JoinOperator {
 
 	/// Clean up all join results for a given left encoded
 	/// This removes both matched and unmatched join results
-	pub(crate) fn cleanup_left_row_joins(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		left_number: u64,
-	) -> crate::Result<()> {
+	pub(crate) fn cleanup_left_row_joins(&self, txn: &mut FlowTransaction, left_number: u64) -> crate::Result<()> {
 		let mut serializer = KeySerializer::new();
 		serializer.extend_u8(b'L');
 		serializer.extend_u64(left_number);
@@ -166,12 +159,7 @@ impl JoinOperator {
 		self.row_number_provider.remove_by_prefix::<JoinOperator>(txn, self, &prefix)
 	}
 
-	pub(crate) fn join_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		left: &Row,
-		right: &Row,
-	) -> crate::Result<Row> {
+	pub(crate) fn join_rows(&self, txn: &mut FlowTransaction, left: &Row, right: &Row) -> crate::Result<Row> {
 		// Combine the two rows into a single encoded
 		// Prefix column names with alias to handle naming conflicts
 
@@ -283,7 +271,7 @@ impl Operator for JoinOperator {
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -386,12 +374,7 @@ impl Operator for JoinOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>> {
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		unimplemented!()
 	}
 }

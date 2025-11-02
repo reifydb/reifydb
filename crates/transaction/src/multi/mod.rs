@@ -13,14 +13,17 @@ use reifydb_core::{
 use reifydb_store_transaction::TransactionStore;
 
 use crate::{
-	multi::transaction::{
-		optimistic::{
-			CommandTransaction as OptimisticCommandTransaction,
-			QueryTransaction as OptimisticQueryTransaction, TransactionOptimistic,
-		},
-		serializable::{
-			CommandTransaction as SerializableCommandTransaction,
-			QueryTransaction as SerializableQueryTransaction, TransactionSerializable,
+	multi::{
+		pending::PendingWrites,
+		transaction::{
+			optimistic::{
+				CommandTransaction as OptimisticCommandTransaction,
+				QueryTransaction as OptimisticQueryTransaction, TransactionOptimistic,
+			},
+			serializable::{
+				CommandTransaction as SerializableCommandTransaction,
+				QueryTransaction as SerializableQueryTransaction, TransactionSerializable,
+			},
 		},
 	},
 	single::TransactionSingleVersion,
@@ -349,6 +352,16 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 				c.read_as_of_version_exclusive(version);
 				Ok(())
 			}
+		}
+	}
+}
+
+impl StandardCommandTransaction {
+	/// Get access to the pending writes in this transaction
+	pub fn pending_writes(&self) -> &PendingWrites {
+		match self {
+			StandardCommandTransaction::Optimistic(c) => c.pending_writes(),
+			StandardCommandTransaction::Serializable(c) => c.pending_writes(),
 		}
 	}
 }

@@ -14,6 +14,7 @@ reifydb-engine = { workspace = true }
 reifydb-hash = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-sub-api = { workspace = true }
+reifydb-transaction = {workspace = true}
 reifydb-type = { workspace = true }
 
 serde = { workspace = true }

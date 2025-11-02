@@ -1,13 +1,14 @@
 use std::sync::Arc;
 
-use reifydb_core::{CommitVersion, Row, interface::FlowNodeId};
-use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_core::{Row, interface::FlowNodeId};
+use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Params, RowNumber, Value, return_internal_error};
 
 use crate::{
 	flow::{FlowChange, FlowDiff},
 	operator::{Operator, Operators},
+	transaction::FlowTransaction,
 };
 
 // Static empty params instance for use in EvaluationContext
@@ -36,7 +37,7 @@ impl Operator for FilterOperator {
 
 	fn apply(
 		&self,
-		_txn: &mut StandardCommandTransaction,
+		_txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -85,13 +86,8 @@ impl Operator for FilterOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows, version)
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows)
 	}
 }
 

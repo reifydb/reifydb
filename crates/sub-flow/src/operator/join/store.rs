@@ -2,17 +2,15 @@ use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
-use reifydb_core::{
-	Error,
-	interface::{CommandTransaction, FlowNodeId},
-	value::encoded::EncodedValuesLayout,
-};
-use reifydb_engine::StandardCommandTransaction;
+use reifydb_core::{Error, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_hash::Hash128;
 use reifydb_type::{Blob, Type, internal_error};
 
 use super::{JoinSide, JoinSideEntry};
-use crate::operator::stateful::{state_get, state_remove, state_set};
+use crate::{
+	operator::stateful::{state_get, state_remove, state_set},
+	transaction::FlowTransaction,
+};
 
 /// A key-value store backed by the stateful storage system
 pub(crate) struct Store {
@@ -40,11 +38,7 @@ impl Store {
 		reifydb_core::EncodedKey::new(key_bytes)
 	}
 
-	pub(crate) fn get(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		hash: &Hash128,
-	) -> crate::Result<Option<JoinSideEntry>> {
+	pub(crate) fn get(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<Option<JoinSideEntry>> {
 		let key = self.make_key(hash);
 		match state_get(self.node_id, txn, &key)? {
 			Some(row) => {
@@ -67,7 +61,7 @@ impl Store {
 
 	pub(crate) fn set(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		hash: &Hash128,
 		entry: &JoinSideEntry,
 	) -> crate::Result<()> {
@@ -88,20 +82,20 @@ impl Store {
 		Ok(())
 	}
 
-	pub(crate) fn contains_key(&self, txn: &mut StandardCommandTransaction, hash: &Hash128) -> crate::Result<bool> {
+	pub(crate) fn contains_key(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<bool> {
 		let key = self.make_key(hash);
 		Ok(state_get(self.node_id, txn, &key)?.is_some())
 	}
 
-	pub(crate) fn remove(&self, txn: &mut StandardCommandTransaction, hash: &Hash128) -> crate::Result<()> {
+	pub(crate) fn remove(&self, txn: &mut FlowTransaction, hash: &Hash128) -> crate::Result<()> {
 		let key = self.make_key(hash);
 		state_remove(self.node_id, txn, &key)?;
 		Ok(())
 	}
 
-	pub(crate) fn get_or_insert_with<T: CommandTransaction, F>(
+	pub(crate) fn get_or_insert_with<F>(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		hash: &Hash128,
 		f: F,
 	) -> crate::Result<JoinSideEntry>
@@ -117,12 +111,7 @@ impl Store {
 		}
 	}
 
-	pub(crate) fn update_entry<T: CommandTransaction, F>(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		hash: &Hash128,
-		f: F,
-	) -> crate::Result<()>
+	pub(crate) fn update_entry<F>(&self, txn: &mut FlowTransaction, hash: &Hash128, f: F) -> crate::Result<()>
 	where
 		F: FnOnce(&mut JoinSideEntry),
 	{

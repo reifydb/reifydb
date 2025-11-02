@@ -8,11 +8,11 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	CommitVersion, CowVec, Error, Row,
+	CowVec, Error, Row,
 	interface::FlowNodeId,
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
-use reifydb_engine::{RowEvaluationContext, StandardCommandTransaction, StandardRowEvaluator};
+use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Blob, Params, RowNumber, Type, internal_error};
@@ -25,6 +25,7 @@ use crate::{
 		stateful::{RawStatefulOperator, SingleStateful},
 		transform::TransformOperator,
 	},
+	transaction::FlowTransaction,
 };
 
 static EMPTY_PARAMS: Params = Params::None;
@@ -172,7 +173,7 @@ impl DistinctOperator {
 		Ok(xxh3_128(&data))
 	}
 
-	fn load_distinct_state(&self, txn: &mut StandardCommandTransaction) -> crate::Result<DistinctState> {
+	fn load_distinct_state(&self, txn: &mut FlowTransaction) -> crate::Result<DistinctState> {
 		let state_row = self.load_state(txn)?;
 
 		if state_row.is_empty() || !state_row.is_defined(0) {
@@ -190,11 +191,7 @@ impl DistinctOperator {
 			.map_err(|e| Error(internal_error!("Failed to deserialize DistinctState: {}", e)))
 	}
 
-	fn save_distinct_state(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		state: &DistinctState,
-	) -> crate::Result<()> {
+	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> crate::Result<()> {
 		let config = standard();
 		let serialized = encode_to_vec(state, config)
 			.map_err(|e| Error(internal_error!("Failed to serialize DistinctState: {}", e)))?;
@@ -224,7 +221,7 @@ impl Operator for DistinctOperator {
 
 	fn apply(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
@@ -344,12 +341,7 @@ impl Operator for DistinctOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
-	fn get_rows(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		rows: &[RowNumber],
-		version: CommitVersion,
-	) -> crate::Result<Vec<Option<Row>>> {
-		self.parent.get_rows(txn, rows, version)
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		self.parent.get_rows(txn, rows)
 	}
 }

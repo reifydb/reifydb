@@ -7,9 +7,9 @@ mod keyed;
 mod raw;
 mod row_number;
 mod single;
-mod utils;
 #[cfg(test)]
-mod utils_test;
+pub mod test_utils;
+mod utils;
 mod window;
 
 pub use keyed::KeyedStateful;

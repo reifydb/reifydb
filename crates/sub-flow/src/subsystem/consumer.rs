@@ -21,6 +21,7 @@ use crate::{
 	engine::FlowEngine,
 	flow::{FlowChange, FlowDiff},
 	operator::TransformOperatorRegistry,
+	transaction::FlowTransaction,
 };
 
 // The table ID for reifydb.flows table
@@ -182,11 +183,19 @@ impl FlowConsumer {
 			changes_by_source.entry(source_id).or_insert_with(Vec::new).push(diff);
 		}
 
-		// Process each source's changes as a batch
+		// Create single FlowTransaction for entire CDC batch
+		// This ensures all source changes share the same transaction context,
+		// allowing joins to see uncommitted writes across sources
+		let mut flow_txn = FlowTransaction::new(txn, version);
+
+		// Process all source changes within the same transaction
 		for (source_id, diffs) in changes_by_source {
 			let change = FlowChange::external(source_id, version, diffs);
-			self.flow_engine.process(txn, change)?;
+			self.flow_engine.process(&mut flow_txn, change)?;
 		}
+
+		// Commit once after all sources processed
+		flow_txn.commit(txn)?;
 
 		Ok(())
 	}

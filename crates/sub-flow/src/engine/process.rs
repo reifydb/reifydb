@@ -1,16 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_engine::StandardCommandTransaction;
 use reifydb_rql::flow::{Flow, FlowNode, FlowNodeType::SourceInlineData};
 
 use crate::{
 	engine::FlowEngine,
 	flow::{FlowChange, FlowChangeOrigin},
+	transaction::FlowTransaction,
 };
 
 impl FlowEngine {
-	pub fn process(&self, txn: &mut StandardCommandTransaction, change: FlowChange) -> crate::Result<()> {
+	pub fn process(&self, txn: &mut FlowTransaction, change: FlowChange) -> crate::Result<()> {
 		match change.origin {
 			FlowChangeOrigin::External(source) => {
 				let sources = self.inner.sources.read();
@@ -51,12 +51,7 @@ impl FlowEngine {
 		Ok(())
 	}
 
-	fn apply(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		node: &FlowNode,
-		change: FlowChange,
-	) -> crate::Result<FlowChange> {
+	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: FlowChange) -> crate::Result<FlowChange> {
 		let operator = self.inner.operators.read().get(&node.id).unwrap().clone();
 		let result = operator.apply(txn, change, &self.inner.evaluator)?;
 		Ok(result)
@@ -64,7 +59,7 @@ impl FlowEngine {
 
 	fn process_change(
 		&self,
-		txn: &mut StandardCommandTransaction,
+		txn: &mut FlowTransaction,
 		flow: &Flow,
 		node: &FlowNode,
 		change: FlowChange,
