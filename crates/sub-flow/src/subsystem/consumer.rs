@@ -7,9 +7,7 @@ use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view}
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, Result, Row,
-	interface::{
-		Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, QueryTransaction, SourceId,
-	},
+	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, SourceId},
 	util::CowVec,
 	value::encoded::EncodedValues,
 };
@@ -32,14 +30,28 @@ const FLOWS_TABLE_ID: u64 = 1025;
 /// Consumer that processes CDC events for Flow subsystem
 pub struct FlowConsumer {
 	engine: StandardEngine,
-	operators: Vec<(String, OperatorFactory)>,
+	flow_engine: FlowEngine,
 }
 
 impl FlowConsumer {
 	pub fn new(engine: StandardEngine, operators: Vec<(String, OperatorFactory)>) -> Self {
+		// Create registry and populate with operators
+		let mut registry = TransformOperatorRegistry::new();
+		for (name, factory) in operators.iter() {
+			let factory = factory.clone();
+			let name = name.clone();
+			registry.register(name, move |node, exprs| factory(node, exprs));
+		}
+
+		// Create flow engine once
+		let flow_engine = FlowEngine::new(StandardRowEvaluator::default(), engine.executor(), registry);
+
+		// Note: Initial flow loading will happen on first CDC batch via flows_changed flag
+		// or could be done here if we had access to a transaction
+
 		Self {
 			engine,
-			operators,
+			flow_engine,
 		}
 	}
 
@@ -79,7 +91,7 @@ impl FlowConsumer {
 	}
 
 	/// Load flows from the catalog
-	fn load_flows(&self, _txn: &impl QueryTransaction) -> Result<Vec<Flow>> {
+	fn load_flows(&self) -> Result<Vec<Flow>> {
 		let mut flows = Vec::new();
 
 		// Query the reifydb.flows table
@@ -107,27 +119,25 @@ impl FlowConsumer {
 		Ok(flows)
 	}
 
+	// FIXME reload_flows flag and reloading everything is not very pretty but good enough for now
 	fn process_all_changes(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		version: CommitVersion,
 		changes: Vec<(SourceId, Change)>,
+		reload_flows: bool,
 	) -> Result<()> {
-		// Create flow engine ONCE
-		let mut registry = TransformOperatorRegistry::new();
+		// Load flows on first run or when flows table changed
+		if reload_flows || !self.flow_engine.has_registered_flows() {
+			// Clear all existing flows before reloading to avoid duplicate registration
+			if reload_flows {
+				self.flow_engine.clear();
+			}
 
-		for (name, factory) in self.operators.iter() {
-			let factory = factory.clone();
-			let name = name.clone();
-			registry.register(name, move |node, exprs| factory(node, exprs));
-		}
-
-		let flow_engine = FlowEngine::new(StandardRowEvaluator::default(), self.engine.executor(), registry);
-
-		// Load flows ONCE
-		let flows = self.load_flows(txn)?;
-		for flow in flows {
-			flow_engine.register(txn, flow)?;
+			let flows = self.load_flows()?;
+			for flow in flows {
+				self.flow_engine.register(txn, flow)?;
+			}
 		}
 
 		// Group changes by source_id for better batching
@@ -175,7 +185,7 @@ impl FlowConsumer {
 		// Process each source's changes as a batch
 		for (source_id, diffs) in changes_by_source {
 			let change = FlowChange::external(source_id, version, diffs);
-			flow_engine.process(txn, change)?;
+			self.flow_engine.process(txn, change)?;
 		}
 
 		Ok(())
@@ -187,6 +197,7 @@ impl CdcConsume for FlowConsumer {
 		// Collect ALL changes first
 		let mut all_changes = Vec::new();
 		let mut version = CommitVersion(0);
+		let mut flows_changed = false;
 
 		for cdc in cdcs {
 			version = version.max(cdc.version);
@@ -195,8 +206,9 @@ impl CdcConsume for FlowConsumer {
 					if let Key::Row(table_row) = decoded_key {
 						let source_id = table_row.source;
 
-						// Skip flow table changes
+						// Detect flow table changes - trigger reload but don't process as data
 						if source_id.as_u64() == FLOWS_TABLE_ID {
+							flows_changed = true;
 							continue;
 						}
 
@@ -237,8 +249,9 @@ impl CdcConsume for FlowConsumer {
 			}
 		}
 
-		if !all_changes.is_empty() {
-			self.process_all_changes(txn, version, all_changes)?;
+		// Process changes, reloading flows if they changed
+		if !all_changes.is_empty() || flows_changed {
+			self.process_all_changes(txn, version, all_changes, flows_changed)?;
 		}
 
 		Ok(())

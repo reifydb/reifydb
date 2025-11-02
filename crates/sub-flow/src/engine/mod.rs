@@ -57,6 +57,15 @@ impl FlowEngine {
 		!self.inner.flows.read().is_empty()
 	}
 
+	/// Clears all registered flows, operators, sources, sinks, and dependency graph
+	pub fn clear(&self) {
+		self.inner.operators.write().clear();
+		self.inner.flows.write().clear();
+		self.inner.sources.write().clear();
+		self.inner.sinks.write().clear();
+		self.inner.analyzer.write().clear();
+	}
+
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {
 		self.inner.analyzer.read().get_dependency_graph().clone()
 	}
