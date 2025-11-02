@@ -14,6 +14,7 @@ use reifydb_store_transaction::{
 		single::BackendSingle,
 		sqlite::{SqliteBackend, SqliteConfig},
 	},
+	config::GcConfig,
 };
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
@@ -39,7 +40,10 @@ pub fn memory() -> (TransactionStore, TransactionSingleVersion, TransactionCdc, 
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
-		gc: Default::default(),
+		gc: GcConfig {
+			enabled: false,
+			interval_secs: 0,
+		},
 	});
 
 	(
@@ -68,7 +72,10 @@ pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingleVersi
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
-		gc: Default::default(),
+		gc: GcConfig {
+			enabled: false,
+			interval_secs: 0,
+		},
 	});
 
 	(
