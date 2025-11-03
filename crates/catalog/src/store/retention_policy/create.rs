@@ -25,7 +25,7 @@ pub(crate) fn create_source_retention_policy(
 }
 
 /// Store a retention policy for an operator (flow node)
-pub(crate) fn create_operator_retention_policy(
+pub(crate) fn _create_operator_retention_policy(
 	txn: &mut impl CommandTransaction,
 	operator: FlowNodeId,
 	retention_policy: &RetentionPolicy,
@@ -120,7 +120,7 @@ mod tests {
 			cleanup_mode: CleanupMode::Delete,
 		};
 
-		create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
 
 		// Verify the policy was stored
 		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator)
@@ -165,11 +165,11 @@ mod tests {
 			count: 3,
 			cleanup_mode: CleanupMode::Delete,
 		};
-		create_operator_retention_policy(&mut txn, operator, &policy1).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy1).unwrap();
 
 		// Overwrite with new policy
 		let policy2 = RetentionPolicy::KeepForever;
-		create_operator_retention_policy(&mut txn, operator, &policy2).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy2).unwrap();
 
 		// Verify the latest policy is stored
 		let retrieved_policy = CatalogStore::find_operator_retention_policy(&mut txn, operator)

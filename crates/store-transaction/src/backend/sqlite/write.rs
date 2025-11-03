@@ -28,9 +28,6 @@ use crate::{
 	cdc::{InternalCdc, InternalCdcSequencedChange, process_deltas_for_cdc},
 };
 
-// Batch size is now defined in apply_batched_deltas_for_table as BATCH_SIZE_NEW
-
-/// Helper function to get the appropriate table name for a given key
 fn get_table_name(key: &EncodedKey) -> Result<&'static str> {
 	// Check if it's a FlowNodeStateKey first
 	if as_flow_node_state_key(key).is_some() {
@@ -53,17 +50,15 @@ pub enum WriteCommand {
 		respond_to: Sender<Result<()>>,
 	},
 	/// Delete mode cleanup - creates tombstones and CDC entries
-	CleanupRetentionDelete {
+	_CleanupRetentionDelete {
 		keys: Vec<EncodedKey>,
 		version: CommitVersion,
-		skip_tombstoned: bool, // Always true - cannot delete already deleted
 		respond_to: Sender<Result<()>>,
 	},
 	/// Drop mode cleanup - silent removal from storage
-	CleanupRetentionDrop {
+	_CleanupRetentionDrop {
 		keys: Vec<EncodedKey>,
 		max_version: CommitVersion,
-		include_tombstones: bool, // Usually true - clean up deletion markers
 		respond_to: Sender<Result<()>>,
 	},
 	Shutdown,
@@ -116,22 +111,20 @@ impl Writer {
 					// Buffer the commit and process any that are ready
 					self.buffer_and_apply_commit(deltas, version, timestamp, respond_to);
 				}
-				WriteCommand::CleanupRetentionDelete {
+				WriteCommand::_CleanupRetentionDelete {
 					keys,
 					version,
-					skip_tombstoned,
 					respond_to,
 				} => {
-					let result = self.handle_retention_delete(keys, version, skip_tombstoned);
+					let result = self.handle_retention_delete(keys, version);
 					let _ = respond_to.send(result);
 				}
-				WriteCommand::CleanupRetentionDrop {
+				WriteCommand::_CleanupRetentionDrop {
 					keys,
 					max_version,
-					include_tombstones,
 					respond_to,
 				} => {
-					let result = self.handle_retention_drop(keys, max_version, include_tombstones);
+					let result = self.handle_retention_drop(keys, max_version);
 					let _ = respond_to.send(result);
 				}
 				WriteCommand::Shutdown => break,
@@ -438,34 +431,23 @@ impl Writer {
 	}
 
 	/// Handle retention delete - creates tombstones and CDC entries
-	fn handle_retention_delete(
-		&mut self,
-		keys: Vec<EncodedKey>,
-		version: CommitVersion,
-		skip_tombstoned: bool,
-	) -> Result<()> {
-		// Start a transaction
+	fn handle_retention_delete(&mut self, keys: Vec<EncodedKey>, version: CommitVersion) -> Result<()> {
 		let tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
 
-		// Filter out already tombstoned keys if requested
 		let mut deletable_keys = Vec::new();
-		if skip_tombstoned {
-			for key in keys {
-				// Check if key is already tombstoned
-				let is_tombstoned: bool = tx
-					.query_row(
-						"SELECT is_tombstone FROM multi WHERE key = ? ORDER BY version DESC LIMIT 1",
-						[&key.as_bytes()],
-						|row| row.get(0),
-					)
-					.unwrap_or(false);
+		for key in keys {
+			// Check if key is already tombstoned
+			let is_tombstoned: bool = tx
+				.query_row(
+					"SELECT is_tombstone FROM multi WHERE key = ? ORDER BY version DESC LIMIT 1",
+					[&key.as_bytes()],
+					|row| row.get(0),
+				)
+				.unwrap_or(false);
 
-				if !is_tombstoned {
-					deletable_keys.push(key);
-				}
+			if !is_tombstoned {
+				deletable_keys.push(key);
 			}
-		} else {
-			deletable_keys = keys;
 		}
 
 		if deletable_keys.is_empty() {
@@ -495,7 +477,6 @@ impl Writer {
 
 		store_cdc_changes(&tx, vec![cdc_entry]).map_err(|e| Error(from_rusqlite_error(e)))?;
 
-		// Insert tombstones
 		for delta in &deltas {
 			if let Delta::Remove {
 				key,
@@ -514,32 +495,14 @@ impl Writer {
 	}
 
 	/// Handle retention drop - silent removal without CDC
-	fn handle_retention_drop(
-		&mut self,
-		keys: Vec<EncodedKey>,
-		max_version: CommitVersion,
-		include_tombstones: bool,
-	) -> Result<()> {
-		// Start a transaction
+	fn handle_retention_drop(&mut self, keys: Vec<EncodedKey>, max_version: CommitVersion) -> Result<()> {
 		let tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
 
 		for key in keys {
-			// Keep at least one version (the latest)
-			// Remove old versions, optionally including tombstones
-			let query = if include_tombstones {
-				// Remove all old versions including tombstones
-				"DELETE FROM multi
+			let query = "DELETE FROM multi
 				 WHERE key = ?
 				   AND version < ?
-				   AND version != (SELECT MAX(version) FROM multi WHERE key = ?)"
-			} else {
-				// Remove only non-tombstoned old versions
-				"DELETE FROM multi
-				 WHERE key = ?
-				   AND version < ?
-				   AND is_tombstone = 0
-				   AND version != (SELECT MAX(version) FROM multi WHERE key = ? AND is_tombstone = 0)"
-			};
+				   AND version != (SELECT MAX(version) FROM multi WHERE key = ?)";
 
 			tx.execute(
 				query,

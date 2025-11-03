@@ -50,7 +50,7 @@ mod tests {
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		create_operator_retention_policy, create_source_retention_policy,
+		_create_operator_retention_policy, create_source_retention_policy,
 	};
 
 	#[test]
@@ -88,7 +88,7 @@ mod tests {
 			cleanup_mode: CleanupMode::Delete,
 		};
 
-		create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
 
 		let retrieved = CatalogStore::get_operator_retention_policy(&mut txn, operator).unwrap();
 		assert_eq!(retrieved, policy);

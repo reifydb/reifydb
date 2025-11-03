@@ -48,7 +48,7 @@ mod tests {
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		create_operator_retention_policy, create_source_retention_policy,
+		_create_operator_retention_policy, create_source_retention_policy,
 	};
 
 	#[test]
@@ -86,7 +86,7 @@ mod tests {
 			cleanup_mode: CleanupMode::Drop,
 		};
 
-		create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy).unwrap();
 
 		let found = CatalogStore::find_operator_retention_policy(&mut txn, operator).unwrap();
 		assert_eq!(found, Some(policy));

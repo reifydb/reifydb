@@ -29,6 +29,12 @@ impl VirtualTableRegistry {
 			PRIMARY_KEYS => Some(SystemCatalog::get_system_primary_keys_table_def()),
 			PRIMARY_KEY_COLUMNS => Some(SystemCatalog::get_system_primary_key_columns_table_def()),
 			VERSIONS => Some(SystemCatalog::get_system_versions_table_def()),
+			SOURCE_RETENTION_POLICIES => {
+				Some(SystemCatalog::get_system_source_retention_policies_table_def())
+			}
+			OPERATOR_RETENTION_POLICIES => {
+				Some(SystemCatalog::get_system_operator_retention_policies_table_def())
+			}
 			_ => None,
 		})
 	}
@@ -46,6 +52,8 @@ impl VirtualTableRegistry {
 			SystemCatalog::get_system_primary_keys_table_def(),
 			SystemCatalog::get_system_primary_key_columns_table_def(),
 			SystemCatalog::get_system_versions_table_def(),
+			SystemCatalog::get_system_source_retention_policies_table_def(),
+			SystemCatalog::get_system_operator_retention_policies_table_def(),
 		])
 	}
 }

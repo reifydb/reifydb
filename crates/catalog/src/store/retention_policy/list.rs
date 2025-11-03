@@ -83,7 +83,7 @@ mod tests {
 
 	use super::*;
 	use crate::store::retention_policy::create::{
-		create_operator_retention_policy, create_source_retention_policy,
+		_create_operator_retention_policy, create_source_retention_policy,
 	};
 
 	#[test]
@@ -148,18 +148,18 @@ mod tests {
 			count: 5,
 			cleanup_mode: CleanupMode::Delete,
 		};
-		create_operator_retention_policy(&mut txn, operator1, &policy1).unwrap();
+		_create_operator_retention_policy(&mut txn, operator1, &policy1).unwrap();
 
 		let operator2 = FlowNodeId(200);
 		let policy2 = RetentionPolicy::KeepForever;
-		create_operator_retention_policy(&mut txn, operator2, &policy2).unwrap();
+		_create_operator_retention_policy(&mut txn, operator2, &policy2).unwrap();
 
 		let operator3 = FlowNodeId(300);
 		let policy3 = RetentionPolicy::KeepVersions {
 			count: 3,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_operator_retention_policy(&mut txn, operator3, &policy3).unwrap();
+		_create_operator_retention_policy(&mut txn, operator3, &policy3).unwrap();
 
 		// List all policies
 		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
@@ -210,7 +210,7 @@ mod tests {
 			count: 3,
 			cleanup_mode: CleanupMode::Delete,
 		};
-		create_operator_retention_policy(&mut txn, operator, &policy1).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy1).unwrap();
 
 		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();
 		assert_eq!(policies.len(), 1);
@@ -218,7 +218,7 @@ mod tests {
 
 		// Update policy
 		let policy2 = RetentionPolicy::KeepForever;
-		create_operator_retention_policy(&mut txn, operator, &policy2).unwrap();
+		_create_operator_retention_policy(&mut txn, operator, &policy2).unwrap();
 
 		// Should still have only 1 entry (updated, not added)
 		let policies = CatalogStore::list_operator_retention_policies(&mut txn).unwrap();

@@ -34,8 +34,8 @@ use crate::{
 	table_virtual::{
 		TableVirtual, TableVirtualContext,
 		system::{
-			ColumnPolicies, ColumnsTable, Namespaces, PrimaryKeyColumns, PrimaryKeys, Sequences, Tables,
-			Versions, Views,
+			ColumnPolicies, ColumnsTable, Namespaces, OperatorRetentionPolicies, PrimaryKeyColumns,
+			PrimaryKeys, Sequences, SourceRetentionPolicies, Tables, Versions, Views,
 		},
 	},
 };
@@ -181,6 +181,8 @@ pub(crate) fn compile<'a>(
 					"primary_key_columns" => Box::new(PrimaryKeyColumns::new()),
 					"column_policies" => Box::new(ColumnPolicies::new()),
 					"versions" => Box::new(Versions::new()),
+					"source_retention_policies" => Box::new(SourceRetentionPolicies::new()),
+					"operator_retention_policies" => Box::new(OperatorRetentionPolicies::new()),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {
