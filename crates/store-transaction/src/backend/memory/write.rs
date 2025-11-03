@@ -34,6 +34,11 @@ pub enum WriteCommand {
 		deltas: CowVec<Delta>,
 		respond_to: Sender<Result<()>>,
 	},
+	/// Drop mode cleanup for operators - keep only 1 version
+	CleanupOperatorRetention {
+		operators: Vec<FlowNodeId>,
+		respond_to: Sender<Result<()>>,
+	},
 	Shutdown,
 }
 
@@ -93,6 +98,19 @@ impl Writer {
 					respond_to,
 				} => {
 					let result = self.handle_single_commit(deltas);
+					let _ = respond_to.send(result);
+				}
+				WriteCommand::CleanupOperatorRetention {
+					operators,
+					respond_to,
+				} => {
+					let mut result = Ok(());
+					for flow_node_id in operators {
+						if let Err(e) = self.handle_operator_retention_cleanup(flow_node_id) {
+							result = Err(e);
+							break;
+						}
+					}
 					let _ = respond_to.send(result);
 				}
 				WriteCommand::Shutdown => break,
@@ -247,6 +265,25 @@ impl Writer {
 				}
 			}
 		}
+		Ok(())
+	}
+
+	/// Handle operator retention cleanup - keep only 1 version (Drop mode)
+	fn handle_operator_retention_cleanup(&self, flow_node_id: FlowNodeId) -> Result<()> {
+		let mut operators_write = self.operators.write();
+
+		if let Some(table) = operators_write.get_mut(&flow_node_id) {
+			for (_key, chain) in table.iter_mut() {
+				if chain.len() > 1 {
+					if let Some(latest_version) = chain.get_latest_version() {
+						// Drop mode: compact to keep only latest version
+						// No CDC, no tombstones - just remove old versions
+						chain.compact(latest_version);
+					}
+				}
+			}
+		}
+
 		Ok(())
 	}
 }
