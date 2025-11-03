@@ -22,7 +22,7 @@ use super::*;
 use crate::multi::{
 	transaction::{
 		TransactionManagerCommand, range::TransactionRangeIter, range_rev::TransactionRangeRevIter,
-		scan::TransactionScanIter, scan_rev::TransactionScanRevIter, version::StandardVersionProvider,
+		version::StandardVersionProvider,
 	},
 	types::TransactionValue,
 };
@@ -125,24 +125,6 @@ impl CommandTransaction {
 
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), Error> {
 		self.tm.remove(key)
-	}
-
-	pub fn scan(&mut self) -> Result<TransactionScanIter<'_, TransactionStore>, Error> {
-		let version = self.tm.version();
-		let (marker, pw) = self.tm.marker_with_pending_writes();
-		let pending = pw.iter();
-		let commited = self.engine.store.scan(version)?;
-
-		Ok(TransactionScanIter::new(pending, commited, Some(marker)))
-	}
-
-	pub fn scan_rev(&mut self) -> Result<TransactionScanRevIter<'_, TransactionStore>, Error> {
-		let version = self.tm.version();
-		let (marker, pw) = self.tm.marker_with_pending_writes();
-		let pending = pw.iter().rev();
-		let commited = self.engine.store.scan_rev(version)?;
-
-		Ok(TransactionScanRevIter::new(pending, commited, Some(marker)))
 	}
 
 	pub fn range_batched(

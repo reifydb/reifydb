@@ -6,8 +6,6 @@ mod contains;
 mod get;
 mod range;
 mod range_rev;
-mod scan;
-mod scan_rev;
 
 use std::{
 	collections::{HashMap, VecDeque},
@@ -26,10 +24,8 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use rusqlite::{Connection, Statement, params_from_iter};
-pub use scan::MultiVersionScanIter;
-pub use scan_rev::MultiVersionScanRevIter;
 
-use crate::backend::{result::MultiVersionIterResult, sqlite::read::ReadConnection};
+use crate::backend::result::MultiVersionIterResult;
 
 /// Cache for source names to avoid repeated string allocations
 static INTERNAL_NAME_CACHE: OnceLock<Mutex<HashMap<u64, String>>> = OnceLock::new();
@@ -257,7 +253,7 @@ pub(crate) fn execute_batched_range_query(
 			None => Ok(MultiVersionIterResult::Tombstone {
 				key,
 				version,
-			}), // NULL value means tombstone (should be filtered by query)
+			}), // NULL value means tombstone
 		}
 	}) {
 		Ok(rows) => rows,
@@ -273,188 +269,6 @@ pub(crate) fn execute_batched_range_query(
 			}
 			Err(_) => break,
 		}
-	}
-
-	count
-}
-
-/// Helper function to get all source names for iteration
-pub(crate) fn get_source_names(conn: &ReadConnection) -> Vec<String> {
-	let conn_guard = match conn.lock() {
-		Ok(guard) => guard,
-		Err(_) => return Vec::new(), // Lock poisoned, return empty list
-	};
-
-	let mut stmt = match conn_guard.prepare(
-		"SELECT name FROM sqlite_master WHERE type='table' AND (name='multi' OR name LIKE 'source_%' OR name LIKE 'operator_%')",
-	) {
-		Ok(stmt) => stmt,
-		Err(_) => return Vec::new(), // Failed to prepare statement
-	};
-
-	let rows = match stmt.query_map([], |values| Ok(values.get::<_, String>(0)?)) {
-		Ok(rows) => rows,
-		Err(_) => return Vec::new(), // Query failed
-	};
-
-	rows.filter_map(Result::ok).collect()
-}
-
-/// Helper function to execute batched iteration queries across multiple sources
-pub(crate) fn execute_scan_query(
-	conn: &ReadConnection,
-	source_names: &[String],
-	version: CommitVersion,
-	batch_size: usize,
-	last_key: Option<&EncodedKey>,
-	order: &str, // "ASC" or "DESC"
-	buffer: &mut VecDeque<MultiVersionIterResult>,
-) -> usize {
-	let mut all_rows = Vec::new();
-
-	// Query each source
-	for source_name in source_names {
-		let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
-			(None, "ASC") => (
-				format!(
-					"SELECT t1.key, t1.value, t1.version FROM {} t1 
-					 INNER JOIN (
-					   SELECT key, MAX(version) as max_version 
-					   FROM {} 
-					   WHERE version <= ? 
-					   GROUP BY key
-					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
-					 ORDER BY t1.key ASC LIMIT ?",
-					source_name, source_name
-				),
-				vec![Box::new(version.0), Box::new(batch_size)],
-			),
-			(None, "DESC") => (
-				format!(
-					"SELECT t1.key, t1.value, t1.version FROM {} t1 
-					 INNER JOIN (
-					   SELECT key, MAX(version) as max_version 
-					   FROM {} 
-					   WHERE version <= ? 
-					   GROUP BY key
-					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
-					 ORDER BY t1.key DESC LIMIT ?",
-					source_name, source_name
-				),
-				vec![Box::new(version.0), Box::new(batch_size)],
-			),
-			(Some(key), "ASC") => (
-				format!(
-					"SELECT t1.key, t1.value, t1.version FROM {} t1 
-					 INNER JOIN (
-					   SELECT key, MAX(version) as max_version 
-					   FROM {} 
-					   WHERE key > ? AND version <= ? 
-					   GROUP BY key
-					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
-					 ORDER BY t1.key ASC LIMIT ?",
-					source_name, source_name
-				),
-				vec![Box::new(key.to_vec()), Box::new(version.0), Box::new(batch_size)],
-			),
-			(Some(key), "DESC") => (
-				format!(
-					"SELECT t1.key, t1.value, t1.version FROM {} t1 
-					 INNER JOIN (
-					   SELECT key, MAX(version) as max_version 
-					   FROM {} 
-					   WHERE key < ? AND version <= ? 
-					   GROUP BY key
-					 ) t2 ON t1.key = t2.key AND t1.version = t2.max_version
-					 ORDER BY t1.key DESC LIMIT ?",
-					source_name, source_name
-				),
-				vec![Box::new(key.to_vec()), Box::new(version.0), Box::new(batch_size)],
-			),
-			_ => unreachable!(),
-		};
-
-		let conn_guard = match conn.lock() {
-			Ok(guard) => guard,
-			Err(_) => continue, // Lock poisoned, skip this source
-		};
-
-		let mut stmt = match conn_guard.prepare(&query) {
-			Ok(stmt) => stmt,
-			Err(_) => continue, // Failed to prepare statement, skip this source
-		};
-
-		let rows = match stmt.query_map(rusqlite::params_from_iter(params.iter()), |values| {
-			let key = EncodedKey(CowVec::new(values.get::<_, Vec<u8>>(0)?));
-			let value: Option<Vec<u8>> = values.get(1)?;
-			let version = CommitVersion(values.get(2)?);
-			match value {
-				Some(val) => Ok(MultiVersionIterResult::Value(MultiVersionValues {
-					key,
-					values: EncodedValues(CowVec::new(val)),
-					version,
-				})),
-				None => Ok(MultiVersionIterResult::Tombstone {
-					key,
-					version,
-				}), // NULL value means deleted
-			}
-		}) {
-			Ok(rows) => rows,
-			Err(_) => continue, // Query failed, skip this source
-		};
-
-		for result in rows {
-			match result {
-				Ok(v) => all_rows.push(v),
-				Err(_) => break,
-			}
-		}
-	}
-
-	// Sort the combined results
-	match order {
-		"ASC" => all_rows.sort_by(|a, b| {
-			let key_a = match a {
-				MultiVersionIterResult::Value(v) => &v.key,
-				MultiVersionIterResult::Tombstone {
-					key,
-					..
-				} => key,
-			};
-			let key_b = match b {
-				MultiVersionIterResult::Value(v) => &v.key,
-				MultiVersionIterResult::Tombstone {
-					key,
-					..
-				} => key,
-			};
-			key_a.cmp(key_b)
-		}),
-		"DESC" => all_rows.sort_by(|a, b| {
-			let key_a = match a {
-				MultiVersionIterResult::Value(v) => &v.key,
-				MultiVersionIterResult::Tombstone {
-					key,
-					..
-				} => key,
-			};
-			let key_b = match b {
-				MultiVersionIterResult::Value(v) => &v.key,
-				MultiVersionIterResult::Tombstone {
-					key,
-					..
-				} => key,
-			};
-			key_b.cmp(key_a)
-		}),
-		_ => unreachable!(),
-	}
-
-	// Take only the requested batch size from the sorted results
-	let count = all_rows.len().min(batch_size);
-	for multi in all_rows.into_iter().take(batch_size) {
-		buffer.push_back(multi);
 	}
 
 	count

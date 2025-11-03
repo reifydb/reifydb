@@ -9,7 +9,7 @@
 // The original Apache License can be found at:
 // http: //www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::EncodedKey;
+use reifydb_core::{EncodedKey, EncodedKeyRange};
 use reifydb_transaction::multi::transaction::optimistic::{CommandTransaction, TransactionOptimistic};
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
@@ -90,7 +90,7 @@ fn test_black_white() {
 
 	let mut white = engine.begin_command().unwrap();
 	let indices = white
-		.scan()
+		.range(EncodedKeyRange::all())
 		.unwrap()
 		.filter_map(|sv| {
 			if *sv.values() == as_values!("black".to_string()) {
@@ -107,7 +107,7 @@ fn test_black_white() {
 
 	let mut black = engine.begin_command().unwrap();
 	let indices = black
-		.scan()
+		.range(EncodedKeyRange::all())
 		.unwrap()
 		.filter_map(|sv| {
 			if *sv.values() == as_values!("white".to_string()) {
@@ -127,7 +127,7 @@ fn test_black_white() {
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().unwrap();
-	let result: Vec<_> = rx.scan().unwrap().collect();
+	let result: Vec<_> = rx.range(EncodedKeyRange::all()).unwrap().collect();
 	assert_eq!(result.len(), 10);
 
 	result.iter().for_each(|sv| {
@@ -186,7 +186,7 @@ fn test_primary_colors() {
 
 	let mut red = engine.begin_command().unwrap();
 	let indices = red
-		.scan()
+		.range(EncodedKeyRange::all())
 		.unwrap()
 		.filter_map(|sv| {
 			if *sv.values() == as_values!("yellow".to_string()) {
@@ -202,7 +202,7 @@ fn test_primary_colors() {
 
 	let mut yellow = engine.begin_command().unwrap();
 	let indices = yellow
-		.scan()
+		.range(EncodedKeyRange::all())
 		.unwrap()
 		.filter_map(|sv| {
 			if *sv.values() == as_values!("blue".to_string()) {
@@ -218,7 +218,7 @@ fn test_primary_colors() {
 
 	let mut red_two = engine.begin_command().unwrap();
 	let indices = red_two
-		.scan()
+		.range(EncodedKeyRange::all())
 		.unwrap()
 		.filter_map(|sv| {
 			if *sv.values() == as_values!("blue".to_string()) {
@@ -240,7 +240,7 @@ fn test_primary_colors() {
 	assert!(err.to_string().contains("conflict"));
 
 	let rx = engine.begin_query().unwrap();
-	let result: Vec<_> = rx.scan().unwrap().collect();
+	let result: Vec<_> = rx.range(EncodedKeyRange::all()).unwrap().collect();
 	assert_eq!(result.len(), 9000);
 
 	let mut red_count = 0;

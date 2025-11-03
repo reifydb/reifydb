@@ -82,9 +82,9 @@ impl<BSV: BackendSingleVersion> testscript::Runner for Runner<BSV> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.backend.scan().unwrap())
+					print(&mut output, self.backend.range(EncodedKeyRange::all()).unwrap())
 				} else {
-					print(&mut output, self.backend.scan_rev().unwrap())
+					print(&mut output, self.backend.range_rev(EncodedKeyRange::all()).unwrap())
 				};
 			}
 			// range RANGE [reverse=BOOL]

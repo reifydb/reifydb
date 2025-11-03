@@ -9,9 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::CommitVersion;
+use reifydb_core::{CommitVersion, EncodedKeyRange};
 use reifydb_transaction::multi::transaction::{
-	scan::TransactionScanIter, scan_rev::TransactionScanRevIter, serializable::TransactionSerializable,
+	range::TransactionRangeIter, range_rev::TransactionRangeRevIter, serializable::TransactionSerializable,
 };
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
@@ -29,7 +29,7 @@ fn test_versions() {
 		assert_eq!(i + 1, engine.version().unwrap());
 	}
 
-	let check_iter = |itr: TransactionScanIter<'_, _>, i: i32| {
+	let check_iter = |itr: TransactionRangeIter<'_, _>, i: i32| {
 		let mut count = 0;
 		for sv in itr {
 			assert_eq!(sv.key(), &k0);
@@ -40,7 +40,7 @@ fn test_versions() {
 		assert_eq!(1, count) // should only loop once.
 	};
 
-	let check_rev_iter = |itr: TransactionScanRevIter<'_, _>, i: i32| {
+	let check_rev_iter = |itr: TransactionRangeRevIter<'_, _>, i: i32| {
 		let mut count = 0;
 		for sv in itr {
 			let value = from_values!(i32, sv.values());
@@ -61,10 +61,10 @@ fn test_versions() {
 		}
 
 		// Try retrieving the latest version forward and reverse.
-		let itr = txn.scan().unwrap();
+		let itr = txn.range(EncodedKeyRange::all()).unwrap();
 		check_iter(itr, idx);
 
-		let itr = txn.scan_rev().unwrap();
+		let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();
 		check_rev_iter(itr, idx);
 	}
 

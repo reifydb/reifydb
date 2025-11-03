@@ -16,8 +16,7 @@ pub use command::CommandTransaction;
 pub use query::QueryTransaction;
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus};
 use reifydb_store_transaction::{
-	MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev, MultiVersionScan,
-	MultiVersionScanRev, TransactionStore,
+	MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev, TransactionStore,
 };
 
 use crate::{
@@ -109,20 +108,6 @@ impl TransactionOptimistic {
 
 	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
 		self.store.contains(key, version)
-	}
-
-	pub fn scan(
-		&self,
-		version: CommitVersion,
-	) -> Result<<TransactionStore as MultiVersionScan>::ScanIter<'_>, reifydb_type::Error> {
-		self.store.scan(version)
-	}
-
-	pub fn scan_rev(
-		&self,
-		version: CommitVersion,
-	) -> Result<<TransactionStore as MultiVersionScanRev>::ScanIterRev<'_>, reifydb_type::Error> {
-		self.store.scan_rev(version)
 	}
 
 	pub fn range_batched(

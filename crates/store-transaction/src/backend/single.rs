@@ -57,68 +57,6 @@ impl BackendSingleVersionSet for BackendSingle {}
 
 impl BackendSingleVersionRemove for BackendSingle {}
 
-pub enum BackendSingleScanIter<'a> {
-	Memory(memory::SingleVersionScanIter, PhantomData<&'a ()>),
-	Sqlite(sqlite::SingleVersionScanIter),
-}
-
-impl<'a> Iterator for BackendSingleScanIter<'a> {
-	type Item = SingleVersionIterResult;
-
-	#[inline]
-	fn next(&mut self) -> Option<Self::Item> {
-		match self {
-			BackendSingleScanIter::Memory(iter, _) => iter.next(),
-			BackendSingleScanIter::Sqlite(iter) => iter.next(),
-		}
-	}
-}
-
-impl BackendSingleVersionScan for BackendSingle {
-	type ScanIter<'a> = BackendSingleScanIter<'a>;
-
-	#[inline]
-	fn scan(&self) -> reifydb_type::Result<Self::ScanIter<'_>> {
-		match self {
-			BackendSingle::Memory(backend) => {
-				backend.scan().map(|iter| BackendSingleScanIter::Memory(iter, PhantomData))
-			}
-			BackendSingle::Sqlite(backend) => backend.scan().map(BackendSingleScanIter::Sqlite),
-		}
-	}
-}
-
-pub enum BackendSingleScanIterRev<'a> {
-	Memory(memory::SingleVersionScanRevIter, PhantomData<&'a ()>),
-	Sqlite(sqlite::SingleVersionScanRevIter),
-}
-
-impl<'a> Iterator for BackendSingleScanIterRev<'a> {
-	type Item = SingleVersionIterResult;
-
-	#[inline]
-	fn next(&mut self) -> Option<Self::Item> {
-		match self {
-			BackendSingleScanIterRev::Memory(iter, _) => iter.next(),
-			BackendSingleScanIterRev::Sqlite(iter) => iter.next(),
-		}
-	}
-}
-
-impl BackendSingleVersionScanRev for BackendSingle {
-	type ScanIterRev<'a> = BackendSingleScanIterRev<'a>;
-
-	#[inline]
-	fn scan_rev(&self) -> reifydb_type::Result<Self::ScanIterRev<'_>> {
-		match self {
-			BackendSingle::Memory(backend) => {
-				backend.scan_rev().map(|iter| BackendSingleScanIterRev::Memory(iter, PhantomData))
-			}
-			BackendSingle::Sqlite(backend) => backend.scan_rev().map(BackendSingleScanIterRev::Sqlite),
-		}
-	}
-}
-
 pub enum BackendSingleRangeIter<'a> {
 	Memory(memory::SingleVersionRangeIter, PhantomData<&'a ()>),
 	Sqlite(sqlite::SingleVersionRangeIter),
@@ -194,8 +132,6 @@ pub trait BackendSingleVersion:
 	+ BackendSingleVersionContains
 	+ BackendSingleVersionSet
 	+ BackendSingleVersionRemove
-	+ BackendSingleVersionScan
-	+ BackendSingleVersionScanRev
 	+ BackendSingleVersionRange
 	+ BackendSingleVersionRangeRev
 	+ 'static
@@ -239,22 +175,6 @@ pub trait BackendSingleVersionRemove: BackendSingleVersionCommit {
 
 pub trait BackendSingleVersionIter: Iterator<Item = SingleVersionIterResult> + Send {}
 impl<T> BackendSingleVersionIter for T where T: Iterator<Item = SingleVersionIterResult> + Send {}
-
-pub trait BackendSingleVersionScan {
-	type ScanIter<'a>: BackendSingleVersionIter
-	where
-		Self: 'a;
-
-	fn scan(&self) -> crate::Result<Self::ScanIter<'_>>;
-}
-
-pub trait BackendSingleVersionScanRev {
-	type ScanIterRev<'a>: BackendSingleVersionIter
-	where
-		Self: 'a;
-
-	fn scan_rev(&self) -> crate::Result<Self::ScanIterRev<'_>>;
-}
 
 pub trait BackendSingleVersionRange {
 	type Range<'a>: BackendSingleVersionIter

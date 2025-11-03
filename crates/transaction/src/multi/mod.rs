@@ -103,32 +103,6 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 		}
 	}
 
-	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		match self {
-			StandardQueryTransaction::Optimistic(q) => {
-				let iter = q.scan()?;
-				Ok(Box::new(iter.into_iter()))
-			}
-			StandardQueryTransaction::Serializable(q) => {
-				let iter = q.scan()?;
-				Ok(Box::new(iter.into_iter()))
-			}
-		}
-	}
-
-	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		match self {
-			StandardQueryTransaction::Optimistic(q) => {
-				let iter = q.scan_rev()?;
-				Ok(Box::new(iter.into_iter()))
-			}
-			StandardQueryTransaction::Serializable(q) => {
-				let iter = q.scan_rev()?;
-				Ok(Box::new(iter.into_iter()))
-			}
-		}
-	}
-
 	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter, Error> {
 		match self {
 			StandardQueryTransaction::Optimistic(q) => {
@@ -257,32 +231,6 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 		match self {
 			StandardCommandTransaction::Optimistic(c) => c.contains_key(key),
 			StandardCommandTransaction::Serializable(c) => c.contains_key(key),
-		}
-	}
-
-	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		match self {
-			StandardCommandTransaction::Optimistic(c) => {
-				let iter = c.scan()?;
-				Ok(Box::new(iter.into_iter().map(|tv| tv.into_multi_version_values())))
-			}
-			StandardCommandTransaction::Serializable(c) => {
-				let iter = c.scan()?;
-				Ok(Box::new(iter.into_iter().map(|tv| tv.into_multi_version_values())))
-			}
-		}
-	}
-
-	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		match self {
-			StandardCommandTransaction::Optimistic(c) => {
-				let iter = c.scan_rev()?;
-				Ok(Box::new(iter.into_iter().map(|tv| tv.into_multi_version_values())))
-			}
-			StandardCommandTransaction::Serializable(c) => {
-				let iter = c.scan_rev()?;
-				Ok(Box::new(iter.into_iter().map(|tv| tv.into_multi_version_values())))
-			}
 		}
 	}
 

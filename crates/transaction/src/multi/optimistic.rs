@@ -53,16 +53,6 @@ impl MultiVersionQueryTransaction for QueryTransaction {
 		QueryTransaction::contains_key(self, key)
 	}
 
-	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = QueryTransaction::scan(self)?;
-		Ok(Box::new(iter.into_iter()))
-	}
-
-	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = QueryTransaction::scan_rev(self)?;
-		Ok(Box::new(iter.into_iter()))
-	}
-
 	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter, Error> {
 		let iter = QueryTransaction::range_batched(self, range, batch_size)?;
 		Ok(Box::new(iter.into_iter()))
@@ -112,26 +102,6 @@ impl MultiVersionQueryTransaction for CommandTransaction {
 
 	fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error> {
 		Ok(CommandTransaction::contains_key(self, key)?)
-	}
-
-	fn scan(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.scan()?.map(|tv| MultiVersionValues {
-			key: tv.key().clone(),
-			values: tv.values().clone(),
-			version: tv.version(),
-		});
-
-		Ok(Box::new(iter))
-	}
-
-	fn scan_rev(&mut self) -> Result<BoxedMultiVersionIter, Error> {
-		let iter = self.scan_rev()?.map(|tv| MultiVersionValues {
-			key: tv.key().clone(),
-			values: tv.values().clone(),
-			version: tv.version(),
-		});
-
-		Ok(Box::new(iter))
 	}
 
 	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter, Error> {

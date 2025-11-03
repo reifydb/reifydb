@@ -61,7 +61,7 @@ impl GeneratorI16 {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		EncodedKey,
+		EncodedKey, EncodedKeyRange,
 		diagnostic::sequence::sequence_exhausted,
 		interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction, SingleVersionValues},
 	};
@@ -79,7 +79,7 @@ mod tests {
 		}
 
 		txn.with_single_query(|tx| {
-			let mut single: Vec<SingleVersionValues> = tx.scan()?.collect();
+			let mut single: Vec<SingleVersionValues> = tx.range(EncodedKeyRange::all())?.collect();
 			assert_eq!(single.len(), 2);
 
 			single.pop().unwrap();

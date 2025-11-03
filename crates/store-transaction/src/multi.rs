@@ -10,8 +10,6 @@ pub trait MultiVersionStore:
 	+ MultiVersionCommit
 	+ MultiVersionGet
 	+ MultiVersionContains
-	+ MultiVersionScan
-	+ MultiVersionScanRev
 	+ MultiVersionRange
 	+ MultiVersionRangeRev
 	+ 'static
@@ -32,22 +30,6 @@ pub trait MultiVersionContains {
 
 pub trait MultiVersionIter: Iterator<Item = MultiVersionValues> + Send {}
 impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionValues> {}
-
-pub trait MultiVersionScan {
-	type ScanIter<'a>: MultiVersionIter
-	where
-		Self: 'a;
-
-	fn scan(&self, version: CommitVersion) -> crate::Result<Self::ScanIter<'_>>;
-}
-
-pub trait MultiVersionScanRev {
-	type ScanIterRev<'a>: MultiVersionIter
-	where
-		Self: 'a;
-
-	fn scan_rev(&self, version: CommitVersion) -> crate::Result<Self::ScanIterRev<'_>>;
-}
 
 pub trait MultiVersionRange {
 	type RangeIter<'a>: MultiVersionIter

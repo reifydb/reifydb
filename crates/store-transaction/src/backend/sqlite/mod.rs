@@ -18,11 +18,11 @@ use std::{
 
 pub use cdc::{CdcRangeIter, CdcScanIter};
 pub use config::*;
-pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
+pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter};
 use read::Readers;
 use reifydb_type::Error;
 use rusqlite::Connection;
-pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
+pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter};
 use write::{WriteCommand, Writer};
 
 use crate::{

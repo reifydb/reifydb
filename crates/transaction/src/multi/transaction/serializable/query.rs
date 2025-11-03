@@ -10,9 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange};
-use reifydb_store_transaction::{
-	MultiVersionRange, MultiVersionRangeRev, MultiVersionScan, MultiVersionScanRev, TransactionStore,
-};
+use reifydb_store_transaction::{MultiVersionRange, MultiVersionRangeRev, TransactionStore};
 
 use crate::multi::{
 	transaction::{
@@ -59,14 +57,12 @@ impl QueryTransaction {
 		Ok(self.engine.contains_key(key, version)?)
 	}
 
-	pub fn scan(&self) -> crate::Result<<TransactionStore as MultiVersionScan>::ScanIter<'_>> {
-		let version = self.tm.version();
-		Ok(self.engine.scan(version)?)
+	pub fn scan(&self) -> crate::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
+		self.range(EncodedKeyRange::all())
 	}
 
-	pub fn scan_rev(&self) -> crate::Result<<TransactionStore as MultiVersionScanRev>::ScanIterRev<'_>> {
-		let version = self.tm.version();
-		Ok(self.engine.scan_rev(version)?)
+	pub fn scan_rev(&self) -> crate::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
+		self.range_rev(EncodedKeyRange::all())
 	}
 
 	pub fn range_batched(

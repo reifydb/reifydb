@@ -93,28 +93,6 @@ impl MultiVersionCommit for TransactionStore {
 	}
 }
 
-impl MultiVersionScan for TransactionStore {
-	type ScanIter<'a> = <StandardTransactionStore as MultiVersionScan>::ScanIter<'a>;
-
-	#[inline]
-	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
-		match self {
-			TransactionStore::Standard(store) => MultiVersionScan::scan(store, version),
-		}
-	}
-}
-
-impl MultiVersionScanRev for TransactionStore {
-	type ScanIterRev<'a> = <StandardTransactionStore as MultiVersionScanRev>::ScanIterRev<'a>;
-
-	#[inline]
-	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>> {
-		match self {
-			TransactionStore::Standard(store) => MultiVersionScanRev::scan_rev(store, version),
-		}
-	}
-}
-
 impl MultiVersionRange for TransactionStore {
 	type RangeIter<'a> = <StandardTransactionStore as MultiVersionRange>::RangeIter<'a>;
 
@@ -179,28 +157,6 @@ impl SingleVersionCommit for TransactionStore {
 	fn commit(&mut self, deltas: CowVec<Delta>) -> Result<()> {
 		match self {
 			TransactionStore::Standard(store) => SingleVersionCommit::commit(store, deltas),
-		}
-	}
-}
-
-impl SingleVersionScan for TransactionStore {
-	type ScanIter<'a> = <StandardTransactionStore as SingleVersionScan>::ScanIter<'a>;
-
-	#[inline]
-	fn scan(&self) -> Result<Self::ScanIter<'_>> {
-		match self {
-			TransactionStore::Standard(store) => SingleVersionScan::scan(store),
-		}
-	}
-}
-
-impl SingleVersionScanRev for TransactionStore {
-	type ScanIterRev<'a> = <StandardTransactionStore as SingleVersionScanRev>::ScanIterRev<'a>;
-
-	#[inline]
-	fn scan_rev(&self) -> Result<Self::ScanIterRev<'_>> {
-		match self {
-			TransactionStore::Standard(store) => SingleVersionScanRev::scan_rev(store),
 		}
 	}
 }

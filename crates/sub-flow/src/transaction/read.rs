@@ -7,7 +7,7 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 
-use super::{FlowTransaction, iter_range::FlowRangeIter, iter_scan::FlowScanIter};
+use super::{FlowTransaction, iter_range::FlowRangeIter};
 
 impl FlowTransaction {
 	/// Get a value by key, checking pending writes first, then querying multi-version store
@@ -49,13 +49,7 @@ impl FlowTransaction {
 
 	/// Scan all keys in the transaction
 	pub fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter> {
-		self.metrics.increment_reads();
-
-		// Merge pending writes with committed results
-		let pending = self.pending.iter_sorted();
-		let committed = self.query.scan()?;
-
-		Ok(Box::new(FlowScanIter::new(pending, committed, self.version)))
+		self.range(EncodedKeyRange::all())
 	}
 
 	/// Range query
@@ -294,7 +288,7 @@ mod tests {
 		let parent = create_test_transaction();
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
-		let mut iter = txn.scan().unwrap();
+		let mut iter = txn.range(EncodedKeyRange::all()).unwrap();
 		assert!(iter.next().is_none());
 	}
 
@@ -307,7 +301,7 @@ mod tests {
 		txn.set(&make_key("a"), make_value("1")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let mut iter = txn.scan().unwrap();
+		let mut iter = txn.range(EncodedKeyRange::all()).unwrap();
 		let items: Vec<_> = iter.by_ref().collect();
 
 		// Should be in sorted order
@@ -326,7 +320,7 @@ mod tests {
 		txn.remove(&make_key("b")).unwrap();
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 
-		let mut iter = txn.scan().unwrap();
+		let mut iter = txn.range(EncodedKeyRange::all()).unwrap();
 		let items: Vec<_> = iter.by_ref().collect();
 
 		// Should only have 2 items (remove filtered out)
@@ -341,7 +335,7 @@ mod tests {
 		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		assert_eq!(txn.metrics().reads, 0);
-		let _ = txn.scan().unwrap();
+		let _ = txn.range(EncodedKeyRange::all()).unwrap();
 		assert_eq!(txn.metrics().reads, 1);
 	}
 
@@ -450,7 +444,7 @@ mod tests {
 
 		txn.get(&make_key("k1")).unwrap();
 		txn.contains_key(&make_key("k2")).unwrap();
-		let _ = txn.scan().unwrap();
+		let _ = txn.range(EncodedKeyRange::all()).unwrap();
 		let range = EncodedKeyRange::start_end(Some(make_key("a")), Some(make_key("z")));
 		let _ = txn.range(range).unwrap();
 

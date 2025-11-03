@@ -6,13 +6,10 @@ use std::{collections::HashMap, mem::take, ops::RangeBounds, sync::RwLockWriteGu
 use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionCommandTransaction, SingleVersionQueryTransaction};
 use reifydb_store_transaction::{
 	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
-	SingleVersionScan, SingleVersionScanRev,
 };
 
 use super::*;
-use crate::single::svl::{
-	range::SvlRangeIter, range_rev::SvlRangeRevIter, scan::SvlScanIter, scan_rev::SvlScanRevIter,
-};
+use crate::single::svl::{range::SvlRangeIter, range_rev::SvlRangeRevIter};
 
 pub struct SvlCommandTransaction<'a> {
 	pending: HashMap<EncodedKey, Delta>,
@@ -56,26 +53,14 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 		self.store.contains(key)
 	}
 
-	fn scan(&mut self) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_scan_data(None, false)?;
-		let iter = SvlScanIter::new(pending_items.into_iter(), committed_items.into_iter());
-		Ok(Box::new(iter))
-	}
-
-	fn scan_rev(&mut self) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_scan_data(None, true)?;
-		let iter = SvlScanRevIter::new(pending_items.into_iter(), committed_items.into_iter());
-		Ok(Box::new(iter))
-	}
-
 	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), false)?;
+		let (pending_items, committed_items) = self.prepare_range_data(range, false)?;
 		let iter = SvlRangeIter::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
 
 	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_scan_data(Some(range.clone()), true)?;
+		let (pending_items, committed_items) = self.prepare_range_data(range, true)?;
 		let iter = SvlRangeRevIter::new(pending_items.into_iter(), committed_items.into_iter());
 		Ok(Box::new(iter))
 	}
@@ -90,23 +75,20 @@ impl<'a> SvlCommandTransaction<'a> {
 		}
 	}
 
-	/// Helper method to prepare scan data by cloning and sorting pending
+	/// Helper method to prepare range data by cloning and sorting pending
 	/// items and collecting committed items from storage.
-	fn prepare_scan_data(
+	fn prepare_range_data(
 		&mut self,
-		range: Option<EncodedKeyRange>,
+		range: EncodedKeyRange,
 		reverse: bool,
 	) -> crate::Result<(Vec<(EncodedKey, Delta)>, Vec<SingleVersionValues>)> {
-		// Clone and optionally filter pending items from the buffer
-		let mut pending_items: Vec<(EncodedKey, Delta)> = match &range {
-			Some(r) => self
-				.pending
-				.iter()
-				.filter(|(k, _)| r.contains(&**k))
-				.map(|(k, v)| (k.clone(), v.clone()))
-				.collect(),
-			None => self.pending.iter().map(|(k, v)| (k.clone(), v.clone())).collect(),
-		};
+		// Clone and filter pending items from the buffer
+		let mut pending_items: Vec<(EncodedKey, Delta)> = self
+			.pending
+			.iter()
+			.filter(|(k, _)| range.contains(&**k))
+			.map(|(k, v)| (k.clone(), v.clone()))
+			.collect();
 
 		// Sort pending items by key (forward or reverse)
 		if reverse {
@@ -117,11 +99,10 @@ impl<'a> SvlCommandTransaction<'a> {
 
 		// Get committed items from storage
 		let committed_items: Vec<SingleVersionValues> = {
-			match (range, reverse) {
-				(Some(r), true) => self.store.range_rev(r)?.collect(),
-				(Some(r), false) => self.store.range(r)?.collect(),
-				(None, true) => self.store.scan_rev()?.collect(),
-				(None, false) => self.store.scan()?.collect(),
+			if reverse {
+				self.store.range_rev(range)?.collect()
+			} else {
+				self.store.range(range)?.collect()
 			}
 		};
 

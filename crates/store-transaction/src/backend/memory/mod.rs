@@ -21,8 +21,8 @@ mod write;
 
 pub use cdc::{CdcRangeIter, CdcScanIter};
 pub use chain::VersionChain;
-pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter, MultiVersionScanIter, MultiVersionScanRevIter};
-pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter, SingleVersionScanIter, SingleVersionScanRevIter};
+pub use multi::{MultiVersionRangeIter, MultiVersionRangeRevIter};
+pub use single::{SingleVersionRangeIter, SingleVersionRangeRevIter};
 use write::{WriteCommand, Writer};
 
 use crate::backend::{

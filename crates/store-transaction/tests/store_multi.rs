@@ -20,7 +20,7 @@ use reifydb_core::{
 };
 use reifydb_store_transaction::{
 	BackendConfig, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange,
-	MultiVersionRangeRev, MultiVersionScan, MultiVersionScanRev, StandardTransactionStore, TransactionStoreConfig,
+	MultiVersionRangeRev, StandardTransactionStore, TransactionStoreConfig,
 	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
 	memory::MemoryBackend,
 	sqlite::{SqliteBackend, SqliteConfig},
@@ -109,9 +109,12 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.scan(version)?)
+					print(&mut output, self.store.range(EncodedKeyRange::all(), version).unwrap())
 				} else {
-					print(&mut output, self.store.scan_rev(version)?)
+					print(
+						&mut output,
+						self.store.range_rev(EncodedKeyRange::all(), version).unwrap(),
+					)
 				};
 			}
 			// range RANGE [reverse=BOOL] [version=VERSION]

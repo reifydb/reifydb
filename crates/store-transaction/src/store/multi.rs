@@ -6,11 +6,11 @@ use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::De
 use super::StandardTransactionStore;
 use crate::{
 	MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionIter, MultiVersionRange,
-	MultiVersionRangeRev, MultiVersionScan, MultiVersionScanRev, MultiVersionStore,
+	MultiVersionRangeRev, MultiVersionStore,
 	backend::{
 		multi::{
 			BackendMultiVersionCommit, BackendMultiVersionGet, BackendMultiVersionRange,
-			BackendMultiVersionRangeRev, BackendMultiVersionScan, BackendMultiVersionScanRev,
+			BackendMultiVersionRangeRev,
 		},
 		result::{MultiVersionGetResult, MultiVersionIterResult},
 	},
@@ -68,62 +68,6 @@ impl MultiVersionCommit for StandardTransactionStore {
 		}
 
 		Ok(())
-	}
-}
-
-impl MultiVersionScan for StandardTransactionStore {
-	type ScanIter<'a>
-		= Box<dyn MultiVersionIter + 'a>
-	where
-		Self: 'a;
-
-	fn scan(&self, version: CommitVersion) -> crate::Result<Self::ScanIter<'_>> {
-		let mut iters: Vec<Box<dyn Iterator<Item = MultiVersionIterResult> + Send + '_>> = Vec::new();
-
-		if let Some(hot) = &self.hot {
-			let iter = hot.multi.scan(version)?;
-			iters.push(Box::new(iter));
-		}
-
-		if let Some(warm) = &self.warm {
-			let iter = warm.multi.scan(version)?;
-			iters.push(Box::new(iter));
-		}
-
-		if let Some(cold) = &self.cold {
-			let iter = cold.multi.scan(version)?;
-			iters.push(Box::new(iter));
-		}
-
-		Ok(Box::new(MultiVersionMergingIterator::new(iters)))
-	}
-}
-
-impl MultiVersionScanRev for StandardTransactionStore {
-	type ScanIterRev<'a>
-		= Box<dyn MultiVersionIter + 'a>
-	where
-		Self: 'a;
-
-	fn scan_rev(&self, version: CommitVersion) -> crate::Result<Self::ScanIterRev<'_>> {
-		let mut iters: Vec<Box<dyn Iterator<Item = MultiVersionIterResult> + Send + '_>> = Vec::new();
-
-		if let Some(hot) = &self.hot {
-			let iter = hot.multi.scan_rev(version)?;
-			iters.push(Box::new(iter));
-		}
-
-		if let Some(warm) = &self.warm {
-			let iter = warm.multi.scan_rev(version)?;
-			iters.push(Box::new(iter));
-		}
-
-		if let Some(cold) = &self.cold {
-			let iter = cold.multi.scan_rev(version)?;
-			iters.push(Box::new(iter));
-		}
-
-		Ok(Box::new(MultiVersionMergingIterator::new(iters)))
 	}
 }
 

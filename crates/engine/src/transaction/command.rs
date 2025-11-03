@@ -257,18 +257,6 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 	}
 
 	#[inline]
-	fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().scan()
-	}
-
-	#[inline]
-	fn scan_rev(&mut self) -> crate::Result<BoxedMultiVersionIter> {
-		self.check_active()?;
-		self.cmd.as_mut().unwrap().scan_rev()
-	}
-
-	#[inline]
 	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<BoxedMultiVersionIter> {
 		self.check_active()?;
 		self.cmd.as_mut().unwrap().range_batched(range, batch_size)

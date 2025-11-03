@@ -52,64 +52,6 @@ impl BackendMultiVersionContains for BackendMulti {
 	}
 }
 
-pub enum BackendMultiScanIter<'a> {
-	Memory(memory::MultiVersionScanIter<'a>),
-	Sqlite(sqlite::MultiVersionScanIter),
-}
-
-impl<'a> Iterator for BackendMultiScanIter<'a> {
-	type Item = MultiVersionIterResult;
-
-	#[inline]
-	fn next(&mut self) -> Option<Self::Item> {
-		match self {
-			BackendMultiScanIter::Memory(iter) => iter.next(),
-			BackendMultiScanIter::Sqlite(iter) => iter.next(),
-		}
-	}
-}
-
-impl BackendMultiVersionScan for BackendMulti {
-	type ScanIter<'a> = BackendMultiScanIter<'a>;
-
-	#[inline]
-	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>> {
-		match self {
-			BackendMulti::Memory(backend) => backend.scan(version).map(BackendMultiScanIter::Memory),
-			BackendMulti::Sqlite(backend) => backend.scan(version).map(BackendMultiScanIter::Sqlite),
-		}
-	}
-}
-
-pub enum BackendMultiScanIterRev<'a> {
-	Memory(memory::MultiVersionScanRevIter<'a>),
-	Sqlite(sqlite::MultiVersionScanRevIter),
-}
-
-impl<'a> Iterator for BackendMultiScanIterRev<'a> {
-	type Item = MultiVersionIterResult;
-
-	#[inline]
-	fn next(&mut self) -> Option<Self::Item> {
-		match self {
-			BackendMultiScanIterRev::Memory(iter) => iter.next(),
-			BackendMultiScanIterRev::Sqlite(iter) => iter.next(),
-		}
-	}
-}
-
-impl BackendMultiVersionScanRev for BackendMulti {
-	type ScanIterRev<'a> = BackendMultiScanIterRev<'a>;
-
-	#[inline]
-	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>> {
-		match self {
-			BackendMulti::Memory(backend) => backend.scan_rev(version).map(BackendMultiScanIterRev::Memory),
-			BackendMulti::Sqlite(backend) => backend.scan_rev(version).map(BackendMultiScanIterRev::Sqlite),
-		}
-	}
-}
-
 pub enum BackendMultiRangeIter<'a> {
 	Memory(memory::MultiVersionRangeIter<'a>),
 	Sqlite(sqlite::MultiVersionRangeIter),
@@ -195,8 +137,6 @@ pub trait BackendMultiVersion:
 	+ BackendMultiVersionCommit
 	+ BackendMultiVersionGet
 	+ BackendMultiVersionContains
-	+ BackendMultiVersionScan
-	+ BackendMultiVersionScanRev
 	+ BackendMultiVersionRange
 	+ BackendMultiVersionRangeRev
 	+ 'static
@@ -217,22 +157,6 @@ pub trait BackendMultiVersionContains {
 
 pub trait BackendMultiVersionIter: Iterator<Item = MultiVersionIterResult> + Send {}
 impl<T: Send> BackendMultiVersionIter for T where T: Iterator<Item = MultiVersionIterResult> {}
-
-pub trait BackendMultiVersionScan {
-	type ScanIter<'a>: BackendMultiVersionIter
-	where
-		Self: 'a;
-
-	fn scan(&self, version: CommitVersion) -> Result<Self::ScanIter<'_>>;
-}
-
-pub trait BackendMultiVersionScanRev {
-	type ScanIterRev<'a>: BackendMultiVersionIter
-	where
-		Self: 'a;
-
-	fn scan_rev(&self, version: CommitVersion) -> Result<Self::ScanIterRev<'_>>;
-}
 
 pub trait BackendMultiVersionRange {
 	type RangeIter<'a>: BackendMultiVersionIter

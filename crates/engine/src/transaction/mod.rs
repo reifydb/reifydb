@@ -84,20 +84,6 @@ impl<'a> MultiVersionQueryTransaction for StandardTransaction<'a> {
 		}
 	}
 
-	fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter> {
-		match self {
-			Self::Command(txn) => txn.scan(),
-			Self::Query(txn) => txn.scan(),
-		}
-	}
-
-	fn scan_rev(&mut self) -> crate::Result<BoxedMultiVersionIter> {
-		match self {
-			Self::Command(txn) => txn.scan_rev(),
-			Self::Query(txn) => txn.scan_rev(),
-		}
-	}
-
 	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<BoxedMultiVersionIter> {
 		match self {
 			Self::Command(txn) => txn.range_batched(range, batch_size),

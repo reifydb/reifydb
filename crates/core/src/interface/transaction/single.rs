@@ -41,10 +41,6 @@ pub trait SingleVersionQueryTransaction {
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
-	fn scan(&mut self) -> crate::Result<BoxedSingleVersionIter>;
-
-	fn scan_rev(&mut self) -> crate::Result<BoxedSingleVersionIter>;
-
 	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter>;
 
 	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter>;

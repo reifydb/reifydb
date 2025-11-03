@@ -6,7 +6,6 @@ use reifydb_engine::StandardCommandTransaction;
 
 mod commit;
 mod iter_range;
-mod iter_scan;
 mod metrics;
 mod pending;
 mod read;

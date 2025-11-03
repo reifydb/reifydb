@@ -19,9 +19,6 @@ use version::VersionProvider;
 
 pub use crate::multi::types::*;
 
-pub mod scan;
-pub mod scan_rev;
-
 mod command;
 pub mod optimistic;
 mod oracle;

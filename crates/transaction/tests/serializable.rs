@@ -230,13 +230,13 @@ impl<'a> testscript::Runner for MvccRunner {
 				let mut kvs = Vec::new();
 				match t {
 					Transaction::Query(rx) => {
-						let iter = rx.scan().unwrap();
+						let iter = rx.range(EncodedKeyRange::all()).unwrap();
 						for multi in iter {
 							kvs.push((multi.key.clone(), multi.values.to_vec()));
 						}
 					}
 					Transaction::Command(tx) => {
-						for item in tx.scan().unwrap().into_iter() {
+						for item in tx.range(EncodedKeyRange::all()).unwrap().into_iter() {
 							kvs.push((item.key().clone(), item.values().to_vec()));
 						}
 					}

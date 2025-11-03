@@ -6,13 +6,12 @@ use reifydb_core::{CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface:
 use super::{StandardTransactionStore, single_iterator::SingleVersionMergingIterator};
 use crate::{
 	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionIter, SingleVersionRange,
-	SingleVersionRangeRev, SingleVersionRemove, SingleVersionScan, SingleVersionScanRev, SingleVersionSet,
-	SingleVersionStore,
+	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
 	backend::{
 		result::{SingleVersionGetResult, SingleVersionIterResult},
 		single::{
 			BackendSingleVersionCommit, BackendSingleVersionGet, BackendSingleVersionRange,
-			BackendSingleVersionRangeRev, BackendSingleVersionScan, BackendSingleVersionScanRev,
+			BackendSingleVersionRangeRev,
 		},
 	},
 };
@@ -73,62 +72,6 @@ impl SingleVersionCommit for StandardTransactionStore {
 
 impl SingleVersionSet for StandardTransactionStore {}
 impl SingleVersionRemove for StandardTransactionStore {}
-
-impl SingleVersionScan for StandardTransactionStore {
-	type ScanIter<'a>
-		= Box<dyn SingleVersionIter + 'a>
-	where
-		Self: 'a;
-
-	fn scan(&self) -> crate::Result<Self::ScanIter<'_>> {
-		let mut iters: Vec<Box<dyn Iterator<Item = SingleVersionIterResult> + Send + '_>> = Vec::new();
-
-		if let Some(hot) = &self.hot {
-			let iter = hot.single.scan()?;
-			iters.push(Box::new(iter));
-		}
-
-		if let Some(warm) = &self.warm {
-			let iter = warm.single.scan()?;
-			iters.push(Box::new(iter));
-		}
-
-		if let Some(cold) = &self.cold {
-			let iter = cold.single.scan()?;
-			iters.push(Box::new(iter));
-		}
-
-		Ok(Box::new(SingleVersionMergingIterator::new(iters)))
-	}
-}
-
-impl SingleVersionScanRev for StandardTransactionStore {
-	type ScanIterRev<'a>
-		= Box<dyn SingleVersionIter + 'a>
-	where
-		Self: 'a;
-
-	fn scan_rev(&self) -> crate::Result<Self::ScanIterRev<'_>> {
-		let mut iters: Vec<Box<dyn Iterator<Item = SingleVersionIterResult> + Send + '_>> = Vec::new();
-
-		if let Some(hot) = &self.hot {
-			let iter = hot.single.scan_rev()?;
-			iters.push(Box::new(iter));
-		}
-
-		if let Some(warm) = &self.warm {
-			let iter = warm.single.scan_rev()?;
-			iters.push(Box::new(iter));
-		}
-
-		if let Some(cold) = &self.cold {
-			let iter = cold.single.scan_rev()?;
-			iters.push(Box::new(iter));
-		}
-
-		Ok(Box::new(SingleVersionMergingIterator::new(iters)))
-	}
-}
 
 impl SingleVersionRange for StandardTransactionStore {
 	type Range<'a>

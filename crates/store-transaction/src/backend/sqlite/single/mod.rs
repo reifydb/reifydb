@@ -6,20 +6,14 @@ use std::{collections::VecDeque, ops::Bound};
 use reifydb_core::{CowVec, EncodedKey, interface::SingleVersionValues, value::encoded::EncodedValues};
 use rusqlite::Statement;
 
-use crate::backend::sqlite::read::ReadConnection;
-
 mod commit;
 mod contains;
 mod get;
 mod range;
 mod range_rev;
-mod scan;
-mod scan_rev;
 
 pub use range::SingleVersionRangeIter;
 pub use range_rev::SingleVersionRangeRevIter;
-pub use scan::SingleVersionScanIter;
-pub use scan_rev::SingleVersionScanRevIter;
 
 use crate::backend::result::SingleVersionIterResult;
 
@@ -206,66 +200,5 @@ pub(crate) fn execute_range_query(
 		}
 		_ => unreachable!(),
 	}
-	count
-}
-
-/// Helper function to execute batched single iteration queries
-pub(crate) fn execute_scan_query(
-	conn: &ReadConnection,
-	batch_size: usize,
-	last_key: Option<&EncodedKey>,
-	order: &str, // "ASC" or "DESC"
-	buffer: &mut VecDeque<SingleVersionIterResult>,
-) -> usize {
-	let (query, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match (last_key, order) {
-		(None, "ASC") => (
-			"SELECT key, value FROM single ORDER BY key ASC LIMIT ?".to_string(),
-			vec![Box::new(batch_size)],
-		),
-		(None, "DESC") => (
-			"SELECT key, value FROM single ORDER BY key DESC LIMIT ?".to_string(),
-			vec![Box::new(batch_size)],
-		),
-		(Some(key), "ASC") => (
-			"SELECT key, value FROM single WHERE key > ? ORDER BY key ASC LIMIT ?".to_string(),
-			vec![Box::new(key.to_vec()), Box::new(batch_size)],
-		),
-		(Some(key), "DESC") => (
-			"SELECT key, value FROM single WHERE key < ? ORDER BY key DESC LIMIT ?".to_string(),
-			vec![Box::new(key.to_vec()), Box::new(batch_size)],
-		),
-		_ => unreachable!(),
-	};
-
-	let conn_guard = conn.lock().unwrap();
-	let mut stmt = conn_guard.prepare(&query).unwrap();
-
-	let rows = stmt
-		.query_map(rusqlite::params_from_iter(params.iter()), |values| {
-			let key = EncodedKey::new(values.get::<_, Vec<u8>>(0)?);
-			let value: Option<Vec<u8>> = values.get(1)?;
-			match value {
-				Some(val) => Ok(SingleVersionIterResult::Value(SingleVersionValues {
-					key,
-					values: EncodedValues(CowVec::new(val)),
-				})),
-				None => Ok(SingleVersionIterResult::Tombstone {
-					key,
-				}), // NULL value means deleted
-			}
-		})
-		.unwrap();
-
-	let mut count = 0;
-	for result in rows {
-		match result {
-			Ok(iter_result) => {
-				buffer.push_back(iter_result);
-				count += 1;
-			}
-			Err(_) => break,
-		}
-	}
-
 	count
 }

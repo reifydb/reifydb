@@ -92,9 +92,12 @@ impl<BMV: BackendMultiVersion> testscript::Runner for Runner<BMV> {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.backend.scan(version)?)
+					print(&mut output, self.backend.range(EncodedKeyRange::parse(".."), version)?)
 				} else {
-					print(&mut output, self.backend.scan_rev(version)?)
+					print(
+						&mut output,
+						self.backend.range_rev(EncodedKeyRange::parse(".."), version)?,
+					)
 				};
 			}
 			// range RANGE [reverse=BOOL] [version=VERSION]

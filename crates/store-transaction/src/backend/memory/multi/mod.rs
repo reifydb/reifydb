@@ -6,10 +6,6 @@ mod contains;
 mod get;
 mod range;
 mod range_rev;
-mod scan;
-mod scan_rev;
 
 pub use range::MultiVersionRangeIter;
 pub use range_rev::MultiVersionRangeRevIter;
-pub use scan::MultiVersionScanIter;
-pub use scan_rev::MultiVersionScanRevIter;

@@ -15,8 +15,6 @@ use reifydb_store_transaction::TransactionStore;
 pub(crate) mod range;
 pub(crate) mod range_rev;
 mod read;
-pub(crate) mod scan;
-pub(crate) mod scan_rev;
 mod write;
 
 pub use read::SvlQueryTransaction;

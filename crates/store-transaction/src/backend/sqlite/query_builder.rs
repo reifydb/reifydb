@@ -47,9 +47,8 @@ pub fn build_range_query(
 		}
 	}
 
-	// Always enforce snapshot and non-tombstone
+	// Always enforce snapshot
 	where_parts.push(Cow::Borrowed("version <= ?"));
-	where_parts.push(Cow::Borrowed("is_tombstone = 0"));
 
 	let where_sql = where_parts.join(" AND ");
 
@@ -59,10 +58,10 @@ pub fn build_range_query(
 		SortOrder::Desc => "DESC",
 	};
 
-	// Key logic: We want the latest version of each key, but ONLY if it's not a tombstone
-	// - First subquery finds the absolute latest version (including tombstones)
-	// - We only return rows where latest version = current row AND is_tombstone = 0
-	// - This correctly excludes deleted keys
+	// Key logic: We want the latest version of each key within the snapshot
+	// - The subquery finds the maximum version for each key within the snapshot
+	// - We return rows where the version matches this maximum
+	// - Tombstones (NULL values) are included to support CDC and multi-version visibility
 	//
 	// Bind order: [start?] [end?] [snapshot_outer] [snapshot_inner] [limit]
 	let sql = format!(

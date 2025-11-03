@@ -9,9 +9,9 @@
 // The original Apache License can be found at:
 //   http://www.apache.org/licenses/LICENSE-2.0
 
-use reifydb_core::CommitVersion;
+use reifydb_core::{CommitVersion, EncodedKeyRange};
 use reifydb_transaction::multi::transaction::{
-	scan::TransactionScanIter, scan_rev::TransactionScanRevIter, serializable::TransactionSerializable,
+	range::TransactionRangeIter, range_rev::TransactionRangeRevIter, serializable::TransactionSerializable,
 };
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
@@ -26,14 +26,14 @@ fn test_iter() {
 	txn.commit().unwrap();
 
 	let txn = engine.begin_query().unwrap();
-	let iter = txn.scan().unwrap();
+	let iter = txn.range(EncodedKeyRange::all()).unwrap();
 
 	for (expected, tv) in (1..=3).rev().zip(iter) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.values, as_values!(expected));
 	}
 
-	let iter = txn.scan_rev().unwrap();
+	let iter = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	for (expected, tv) in (1..=3).zip(iter) {
 		assert_eq!(tv.key, as_key!(expected));
 		assert_eq!(tv.values, as_values!(expected));
@@ -48,14 +48,14 @@ fn test_iter2() {
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
-	let iter = txn.scan().unwrap();
+	let iter = txn.range(EncodedKeyRange::all()).unwrap();
 	for (expected, tv) in (1..=3).rev().zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
 		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 1);
 	}
 
-	let iter = txn.scan_rev().unwrap();
+	let iter = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	for (expected, tv) in (1..=3).zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
 		assert_eq!(tv.values(), &as_values!(expected));
@@ -68,14 +68,14 @@ fn test_iter2() {
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let iter = txn.scan().unwrap();
+	let iter = txn.range(EncodedKeyRange::all()).unwrap();
 	for (expected, tv) in (1..=6).rev().zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
 		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 2);
 	}
 
-	let iter = txn.scan_rev().unwrap();
+	let iter = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	for (expected, tv) in (1..=6).zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
 		assert_eq!(tv.values(), &as_values!(expected));
@@ -91,14 +91,14 @@ fn test_iter3() {
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
 
-	let iter = txn.scan().unwrap();
+	let iter = txn.range(EncodedKeyRange::all()).unwrap();
 	for (expected, tv) in (4..=6).rev().zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
 		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 1);
 	}
 
-	let iter = txn.scan_rev().unwrap();
+	let iter = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	for (expected, tv) in (4..=6).zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
 		assert_eq!(tv.values(), &as_values!(expected));
@@ -112,14 +112,14 @@ fn test_iter3() {
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 
-	let iter = txn.scan().unwrap();
+	let iter = txn.range(EncodedKeyRange::all()).unwrap();
 	for (expected, tv) in (1..=6).rev().zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
 		assert_eq!(tv.values(), &as_values!(expected));
 		assert_eq!(tv.version(), 2);
 	}
 
-	let iter = txn.scan_rev().unwrap();
+	let iter = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	for (expected, tv) in (1..=6).zip(iter) {
 		assert_eq!(tv.key(), &as_key!(expected));
 		assert_eq!(tv.values(), &as_values!(expected));
@@ -177,7 +177,7 @@ fn test_iter_edge_case() {
 		assert_eq!(5, engine.version().unwrap());
 	}
 
-	let check_iter = |itr: TransactionScanIter<'_, _>, expected: &[u64]| {
+	let check_iter = |itr: TransactionRangeIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
 			assert_eq!(expected[i], from_values!(u64, *r.values()), "read_vs={}", r.version());
@@ -186,7 +186,7 @@ fn test_iter_edge_case() {
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |itr: TransactionScanRevIter<'_, _>, expected: &[u64]| {
+	let check_rev_iter = |itr: TransactionRangeRevIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
 			assert_eq!(expected[i], from_values!(u64, *r.values()), "read_vs={}", r.version());
@@ -196,32 +196,32 @@ fn test_iter_edge_case() {
 	};
 
 	let mut txn = engine.begin_command().unwrap();
-	let itr = txn.scan().unwrap();
-	let itr5 = txn4.scan().unwrap();
+	let itr = txn.range(EncodedKeyRange::all()).unwrap();
+	let itr5 = txn4.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[32, 13]);
 	check_iter(itr5, &[24, 13]);
 
-	let itr = txn.scan_rev().unwrap();
-	let itr5 = txn4.scan_rev().unwrap();
+	let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();
+	let itr5 = txn4.range_rev(EncodedKeyRange::all()).unwrap();
 	check_rev_iter(itr, &[13, 32]);
 	check_rev_iter(itr5, &[13, 24]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(4));
-	let itr = txn.scan().unwrap();
+	let itr = txn.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[32, 23, 13]);
-	let itr = txn.scan_rev().unwrap();
+	let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	check_rev_iter(itr, &[13, 23, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(3));
-	let itr = txn.scan().unwrap();
+	let itr = txn.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[32, 12]);
-	let itr = txn.scan_rev().unwrap();
+	let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	check_rev_iter(itr, &[12, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(2));
-	let itr = txn.scan().unwrap();
+	let itr = txn.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[31]);
-	let itr = txn.scan_rev().unwrap();
+	let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	check_rev_iter(itr, &[31]);
 }
 
@@ -268,7 +268,7 @@ fn test_iter_edge_case2() {
 		assert_eq!(5, engine.version().unwrap());
 	}
 
-	let check_iter = |itr: TransactionScanIter<'_, _>, expected: &[u64]| {
+	let check_iter = |itr: TransactionRangeIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
 			assert_eq!(expected[i], from_values!(u64, *r.values()));
@@ -277,7 +277,7 @@ fn test_iter_edge_case2() {
 		assert_eq!(expected.len(), i);
 	};
 
-	let check_rev_iter = |itr: TransactionScanRevIter<'_, _>, expected: &[u64]| {
+	let check_rev_iter = |itr: TransactionRangeRevIter<'_, _>, expected: &[u64]| {
 		let mut i = 0;
 		for r in itr {
 			assert_eq!(expected[i], from_values!(u64, *r.values()));
@@ -287,28 +287,28 @@ fn test_iter_edge_case2() {
 	};
 
 	let mut txn = engine.begin_command().unwrap();
-	let itr = txn.scan().unwrap();
+	let itr = txn.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[32, 13]);
-	let itr = txn.scan_rev().unwrap();
+	let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	check_rev_iter(itr, &[13, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(4));
-	let itr = txn.scan().unwrap();
+	let itr = txn.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[32, 23, 13]);
 
-	let itr = txn.scan_rev().unwrap();
+	let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	check_rev_iter(itr, &[13, 23, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(3));
-	let itr = txn.scan().unwrap();
+	let itr = txn.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[32, 12]);
 
-	let itr = txn.scan_rev().unwrap();
+	let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	check_rev_iter(itr, &[12, 32]);
 
 	txn.read_as_of_version_exclusive(CommitVersion(2));
-	let itr = txn.scan().unwrap();
+	let itr = txn.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[31]);
-	let itr = txn.scan_rev().unwrap();
+	let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();
 	check_rev_iter(itr, &[31]);
 }
