@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod partition;
 mod process;
 mod register;
 
@@ -13,20 +14,20 @@ use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
 
 use crate::operator::{Operators, transform::registry::TransformOperatorRegistry};
 
-struct FlowEngineInner {
-	evaluator: StandardRowEvaluator,
-	executor: Executor,
-	registry: TransformOperatorRegistry,
+pub(crate) struct FlowEngineInner {
+	pub(crate) evaluator: StandardRowEvaluator,
+	pub(crate) executor: Executor,
+	pub(crate) registry: TransformOperatorRegistry,
 
-	operators: RwLock<HashMap<FlowNodeId, Arc<Operators>>>,
-	flows: RwLock<HashMap<FlowId, Flow>>,
-	sources: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
-	sinks: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
-	analyzer: RwLock<FlowGraphAnalyzer>,
+	pub(crate) operators: RwLock<HashMap<FlowNodeId, Arc<Operators>>>,
+	pub(crate) flows: RwLock<HashMap<FlowId, Flow>>,
+	pub(crate) sources: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
+	pub(crate) sinks: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
+	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
 }
 
 pub struct FlowEngine {
-	inner: Arc<FlowEngineInner>,
+	pub(crate) inner: Arc<FlowEngineInner>,
 }
 
 impl Clone for FlowEngine {

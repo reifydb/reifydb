@@ -4,6 +4,7 @@
 // #![cfg_attr(not(debug_assertions), deny(warnings))] // FIXME
 
 pub mod builder;
+mod consumer;
 #[allow(dead_code, unused_variables)]
 mod engine;
 pub mod flow;
@@ -11,6 +12,7 @@ pub mod flow;
 mod operator;
 pub mod subsystem;
 pub mod transaction;
+pub mod worker;
 
 pub use builder::FlowBuilder;
 pub use engine::*;

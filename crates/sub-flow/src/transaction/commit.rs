@@ -11,16 +11,17 @@ impl FlowTransaction {
 	/// Commit all pending writes and removes to the parent transaction
 	///
 	/// Takes the parent transaction as a mutable reference to apply buffered operations.
-	/// This allows multiple FlowTransactions to be committed sequentially to the same parent.
+	/// This allows the FlowTransaction to be reused for subsequent units of work.
+	/// The pending buffer is NOT cleared to maintain read-your-own-writes semantics.
 	///
-	/// Returns the final metrics for this transaction.
+	/// Returns the transaction metrics.
 	///
 	/// # Errors
 	///
 	/// Returns an error if any key in this FlowTransaction overlaps with keys already
 	/// written by another FlowTransaction to the same parent. FlowTransactions must
 	/// operate on non-overlapping keyspaces.
-	pub fn commit(mut self, parent: &mut StandardCommandTransaction) -> crate::Result<FlowTransactionMetrics> {
+	pub fn commit(&mut self, parent: &mut StandardCommandTransaction) -> crate::Result<FlowTransactionMetrics> {
 		// Check for any overlapping keys with the parent's pending writes.
 		// This enforces that FlowTransactions operate on non-overlapping keyspaces.
 		{
@@ -47,10 +48,9 @@ impl FlowTransaction {
 			}
 		}
 
-		// Clear pending buffer
 		self.pending.clear();
 
-		Ok(self.metrics)
+		Ok(self.metrics.clone())
 	}
 }
 
@@ -67,7 +67,7 @@ mod tests {
 	#[test]
 	fn test_commit_empty_pending() {
 		let mut parent = create_test_transaction();
-		let txn = FlowTransaction::new(&parent, CommitVersion(1));
+		let mut txn = FlowTransaction::new(&parent, CommitVersion(1));
 
 		let metrics = txn.commit(&mut parent).unwrap();
 

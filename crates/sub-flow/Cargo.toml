@@ -27,3 +27,4 @@ parking_lot = { workspace = true}
 [dev-dependencies]
 reifydb-store-transaction = { workspace = true}
 reifydb-transaction = { workspace = true}
+rand = { workspace = true}

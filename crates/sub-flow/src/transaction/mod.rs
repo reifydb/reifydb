@@ -149,6 +149,23 @@ impl FlowTransaction {
 		self.version
 	}
 
+	/// Update the transaction to read at a new version
+	///
+	/// This should be called after commit() and before processing the next unit of work.
+	/// The pending writes buffer is expected to be already cleared by the previous commit().
+	pub fn update_version(&mut self, new_version: CommitVersion) -> crate::Result<()> {
+		// Update the version field
+		self.version = new_version;
+
+		// Update the query transaction's read version
+		self.query.read_as_of_version_inclusive(new_version)?;
+
+		// Note: pending is already cleared by commit()
+		// Metrics are kept cumulative across units
+
+		Ok(())
+	}
+
 	/// Get immutable reference to the metrics
 	pub fn metrics(&self) -> &FlowTransactionMetrics {
 		&self.metrics

@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod consumer;
 mod factory;
 pub mod intercept;
 
@@ -20,8 +19,7 @@ use reifydb_core::{
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{HealthStatus, Priority, Subsystem};
 
-use self::consumer::FlowConsumer;
-use crate::builder::OperatorFactory;
+use crate::{builder::OperatorFactory, consumer::FlowConsumer};
 
 pub struct FlowSubsystemConfig {
 	/// Unique identifier for this consumer

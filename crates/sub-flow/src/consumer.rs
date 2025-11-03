@@ -15,13 +15,13 @@ use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEval
 use reifydb_rql::flow::Flow;
 use reifydb_type::{RowNumber, Value};
 
-use super::intercept::Change;
 use crate::{
 	builder::OperatorFactory,
 	engine::FlowEngine,
-	flow::{FlowChange, FlowDiff},
+	flow::FlowDiff,
 	operator::TransformOperatorRegistry,
-	transaction::FlowTransaction,
+	subsystem::intercept::Change,
+	worker::{SameThreadedWorker, WorkerPool},
 };
 
 // The table ID for reifydb.flows table
@@ -36,7 +36,6 @@ pub struct FlowConsumer {
 
 impl FlowConsumer {
 	pub fn new(engine: StandardEngine, operators: Vec<(String, OperatorFactory)>) -> Self {
-		// Create registry and populate with operators
 		let mut registry = TransformOperatorRegistry::new();
 		for (name, factory) in operators.iter() {
 			let factory = factory.clone();
@@ -44,20 +43,26 @@ impl FlowConsumer {
 			registry.register(name, move |node, exprs| factory(node, exprs));
 		}
 
-		// Create flow engine once
 		let flow_engine = FlowEngine::new(StandardRowEvaluator::default(), engine.executor(), registry);
 
-		// Note: Initial flow loading will happen on first CDC batch via flows_changed flag
-		// or could be done here if we had access to a transaction
-
-		Self {
-			engine,
+		let result = Self {
+			engine: engine.clone(),
 			flow_engine,
+		};
+
+		if let Ok(mut txn) = engine.begin_command() {
+			if let Ok(flows) = result.load_flows() {
+				for flow in flows {
+					result.flow_engine.register(&mut txn, flow).unwrap();
+				}
+			}
 		}
+
+		result
 	}
 
 	/// Helper method to convert encoded bytes to Row format
-	fn to_row(
+	fn create_row(
 		txn: &mut StandardCommandTransaction,
 		source: SourceId,
 		row_number: RowNumber,
@@ -119,97 +124,21 @@ impl FlowConsumer {
 
 		Ok(flows)
 	}
-
-	// FIXME reload_flows flag and reloading everything is not very pretty but good enough for now
-	fn process_all_changes(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		version: CommitVersion,
-		changes: Vec<(SourceId, Change)>,
-		reload_flows: bool,
-	) -> Result<()> {
-		// Load flows on first run or when flows table changed
-		if reload_flows || !self.flow_engine.has_registered_flows() {
-			// Clear all existing flows before reloading to avoid duplicate registration
-			if reload_flows {
-				self.flow_engine.clear();
-			}
-
-			let flows = self.load_flows()?;
-			for flow in flows {
-				self.flow_engine.register(txn, flow)?;
-			}
-		}
-
-		// Group changes by source_id for better batching
-		let mut changes_by_source: HashMap<SourceId, Vec<FlowDiff>> = HashMap::new();
-
-		for (source_id, change) in changes {
-			let diff = match change {
-				Change::Insert {
-					row_number,
-					post,
-					..
-				} => {
-					let row = Self::to_row(txn, source_id, row_number, post)?;
-					FlowDiff::Insert {
-						post: row,
-					}
-				}
-				Change::Update {
-					row_number,
-					pre,
-					post,
-					..
-				} => {
-					let pre_row = Self::to_row(txn, source_id, row_number, pre)?;
-					let post_row = Self::to_row(txn, source_id, row_number, post)?;
-					FlowDiff::Update {
-						pre: pre_row,
-						post: post_row,
-					}
-				}
-				Change::Delete {
-					row_number,
-					pre,
-					..
-				} => {
-					let row = Self::to_row(txn, source_id, row_number, pre)?;
-					FlowDiff::Remove {
-						pre: row,
-					}
-				}
-			};
-			changes_by_source.entry(source_id).or_insert_with(Vec::new).push(diff);
-		}
-
-		// Create single FlowTransaction for entire CDC batch
-		// This ensures all source changes share the same transaction context,
-		// allowing joins to see uncommitted writes across sources
-		let mut flow_txn = FlowTransaction::new(txn, version);
-
-		// Process all source changes within the same transaction
-		for (source_id, diffs) in changes_by_source {
-			let change = FlowChange::external(source_id, version, diffs);
-			self.flow_engine.process(&mut flow_txn, change)?;
-		}
-
-		// Commit once after all sources processed
-		flow_txn.commit(txn)?;
-
-		Ok(())
-	}
 }
 
 impl CdcConsume for FlowConsumer {
 	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
-		// Collect ALL changes first
-		let mut all_changes = Vec::new();
-		let mut version = CommitVersion(0);
-		let mut flows_changed = false;
+		if cdcs.is_empty() {
+			return Ok(());
+		}
+
+		// Collect all changes grouped by version
+		let mut changes_by_version: HashMap<CommitVersion, Vec<(SourceId, Change)>> = HashMap::new();
+		let mut flows_changed_at_version: Option<CommitVersion> = None;
 
 		for cdc in cdcs {
-			version = version.max(cdc.version);
+			let version = cdc.version;
+
 			for sequenced_change in cdc.changes {
 				if let Some(decoded_key) = Key::decode(sequenced_change.key()) {
 					if let Key::Row(table_row) = decoded_key {
@@ -217,7 +146,9 @@ impl CdcConsume for FlowConsumer {
 
 						// Detect flow table changes - trigger reload but don't process as data
 						if source_id.as_u64() == FLOWS_TABLE_ID {
-							flows_changed = true;
+							if flows_changed_at_version.is_none() {
+								flows_changed_at_version = Some(version);
+							}
 							continue;
 						}
 
@@ -252,17 +183,88 @@ impl CdcConsume for FlowConsumer {
 									.unwrap_or_default(),
 							},
 						};
-						all_changes.push((source_id, change));
+						changes_by_version
+							.entry(version)
+							.or_insert_with(Vec::new)
+							.push((source_id, change));
 					}
 				}
 			}
 		}
 
-		// Process changes, reloading flows if they changed
-		if !all_changes.is_empty() || flows_changed {
-			self.process_all_changes(txn, version, all_changes, flows_changed)?;
+		// Reload flows if needed (before processing any changes)
+		if flows_changed_at_version.is_some() {
+			self.flow_engine.clear();
+			let flows = self.load_flows()?;
+			for flow in flows {
+				self.flow_engine.register(txn, flow)?;
+			}
 		}
 
-		Ok(())
+		// If no changes to process, we're done
+		if changes_by_version.is_empty() {
+			return Ok(());
+		}
+
+		// Convert raw changes to FlowDiff format
+		let mut diffs_by_version: HashMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>> = HashMap::new();
+
+		for (version, changes) in changes_by_version {
+			// Group changes by source for this version
+			let mut changes_by_source: HashMap<SourceId, Vec<FlowDiff>> = HashMap::new();
+
+			for (source_id, change) in changes {
+				let diff = match change {
+					Change::Insert {
+						row_number,
+						post,
+						..
+					} => {
+						let row = Self::create_row(txn, source_id, row_number, post)?;
+						FlowDiff::Insert {
+							post: row,
+						}
+					}
+					Change::Update {
+						row_number,
+						pre,
+						post,
+						..
+					} => {
+						let pre_row = Self::create_row(txn, source_id, row_number, pre)?;
+						let post_row = Self::create_row(txn, source_id, row_number, post)?;
+						FlowDiff::Update {
+							pre: pre_row,
+							post: post_row,
+						}
+					}
+					Change::Delete {
+						row_number,
+						pre,
+						..
+					} => {
+						let row = Self::create_row(txn, source_id, row_number, pre)?;
+						FlowDiff::Remove {
+							pre: row,
+						}
+					}
+				};
+				changes_by_source.entry(source_id).or_insert_with(Vec::new).push(diff);
+			}
+
+			// Convert to Vec format expected by partition_multi_version
+			let source_diffs: Vec<(SourceId, Vec<FlowDiff>)> = changes_by_source.into_iter().collect();
+			diffs_by_version.insert(version, source_diffs);
+		}
+
+		// Partition all changes across all versions into units of work
+		let units = self.flow_engine.partition_multi_version(diffs_by_version);
+		if units.is_empty() {
+			return Ok(());
+		}
+
+		// Process all flow units through the worker
+		let worker = SameThreadedWorker::new();
+		worker.process(txn, units, &self.flow_engine)
 	}
 }
