@@ -3,7 +3,9 @@
 
 pub mod load;
 mod namespace;
+mod operator_retention_policy;
 mod primary_key;
+mod source_retention_policy;
 mod table;
 mod view;
 
@@ -11,7 +13,11 @@ use std::sync::Arc;
 
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
-	interface::{NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId, TableDef, TableId, ViewDef, ViewId},
+	interface::{
+		FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId, SourceId, TableDef, TableId,
+		ViewDef, ViewId,
+	},
+	retention::RetentionPolicy,
 	util::MultiVersionContainer,
 };
 
@@ -21,6 +27,7 @@ pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
 pub type MultiVersionViewDef = MultiVersionContainer<ViewDef>;
 pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
+pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -49,6 +56,12 @@ pub struct MaterializedCatalogInner {
 
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
+
+	/// MultiVersion source retention policies indexed by source ID
+	pub(crate) source_retention_policies: SkipMap<SourceId, MultiVersionRetentionPolicy>,
+
+	/// MultiVersion operator retention policies indexed by operator ID
+	pub(crate) operator_retention_policies: SkipMap<FlowNodeId, MultiVersionRetentionPolicy>,
 
 	/// System catalog with version information (None until initialized)
 	pub(crate) system_catalog: Option<SystemCatalog>,
@@ -89,6 +102,8 @@ impl MaterializedCatalog {
 			views: SkipMap::new(),
 			views_by_name: SkipMap::new(),
 			primary_keys: SkipMap::new(),
+			source_retention_policies: SkipMap::new(),
+			operator_retention_policies: SkipMap::new(),
 			system_catalog: None,
 		}))
 	}

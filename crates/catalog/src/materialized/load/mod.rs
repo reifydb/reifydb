@@ -2,13 +2,17 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub mod namespace;
+pub mod operator_retention_policy;
 pub mod primary_key;
+pub mod source_retention_policy;
 pub mod table;
 pub mod view;
 
 pub(crate) use namespace::load_namespaces;
+pub(crate) use operator_retention_policy::load_operator_retention_policies;
 pub(crate) use primary_key::load_primary_keys;
 use reifydb_core::interface::QueryTransaction;
+pub(crate) use source_retention_policy::load_source_retention_policies;
 pub(crate) use table::load_tables;
 pub(crate) use view::load_views;
 
@@ -27,6 +31,11 @@ impl MaterializedCatalogLoader {
 
 		load_tables(qt, catalog)?;
 		load_views(qt, catalog)?;
+
+		// Load retention policies
+		load_source_retention_policies(qt, catalog)?;
+		load_operator_retention_policies(qt, catalog)?;
+
 		Ok(())
 	}
 }
