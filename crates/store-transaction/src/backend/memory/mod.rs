@@ -2,14 +2,18 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	collections::BTreeMap,
+	collections::{BTreeMap, HashMap},
 	ops::Deref,
 	sync::{Arc, mpsc},
 };
 
 use mpsc::Sender;
 use parking_lot::RwLock;
-use reifydb_core::{CommitVersion, EncodedKey, value::encoded::EncodedValues};
+use reifydb_core::{
+	CommitVersion, EncodedKey,
+	interface::{FlowNodeId, SourceId},
+	value::encoded::EncodedValues,
+};
 
 use crate::cdc::InternalCdc;
 
@@ -34,6 +38,8 @@ use crate::backend::{
 pub struct MemoryBackend(Arc<MemoryBackendInner>);
 
 pub struct MemoryBackendInner {
+	sources: Arc<RwLock<HashMap<SourceId, BTreeMap<EncodedKey, VersionChain>>>>,
+	operators: Arc<RwLock<HashMap<FlowNodeId, BTreeMap<EncodedKey, VersionChain>>>>,
 	multi: Arc<RwLock<BTreeMap<EncodedKey, VersionChain>>>,
 	single: Arc<RwLock<BTreeMap<EncodedKey, Option<EncodedValues>>>>,
 	cdc: Arc<RwLock<BTreeMap<CommitVersion, InternalCdc>>>,
@@ -62,14 +68,19 @@ impl Default for MemoryBackend {
 
 impl MemoryBackend {
 	pub fn new() -> Self {
+		let sources = Arc::new(RwLock::new(HashMap::new()));
+		let operators = Arc::new(RwLock::new(HashMap::new()));
 		let multi = Arc::new(RwLock::new(BTreeMap::new()));
 		let single = Arc::new(RwLock::new(BTreeMap::new()));
 		let cdc = Arc::new(RwLock::new(BTreeMap::new()));
 
-		let writer = Writer::spawn(multi.clone(), single.clone(), cdc.clone())
-			.expect("Failed to spawn memory writer thread");
+		let writer =
+			Writer::spawn(sources.clone(), operators.clone(), multi.clone(), single.clone(), cdc.clone())
+				.expect("Failed to spawn memory writer thread");
 
 		Self(Arc::new(MemoryBackendInner {
+			sources,
+			operators,
 			multi,
 			single,
 			cdc,

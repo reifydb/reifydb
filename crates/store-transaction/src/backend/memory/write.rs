@@ -9,9 +9,15 @@ use std::{
 
 use mpsc::{Receiver, Sender};
 use parking_lot::RwLock;
-use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValues};
+use reifydb_core::{
+	CommitVersion, CowVec, EncodedKey,
+	delta::Delta,
+	interface::{FlowNodeId, SourceId},
+	value::encoded::EncodedValues,
+};
 use reifydb_type::Result;
 
+use super::multi::{StorageType, classify_key};
 use crate::{
 	backend::{commit::CommitBuffer, delta_optimizer::optimize_deltas_cow, memory::VersionChain},
 	cdc::{InternalCdc, process_deltas_for_cdc},
@@ -33,6 +39,8 @@ pub enum WriteCommand {
 
 pub struct Writer {
 	receiver: Receiver<WriteCommand>,
+	sources: Arc<RwLock<HashMap<SourceId, BTreeMap<EncodedKey, VersionChain>>>>,
+	operators: Arc<RwLock<HashMap<FlowNodeId, BTreeMap<EncodedKey, VersionChain>>>>,
 	multi: Arc<RwLock<BTreeMap<EncodedKey, VersionChain>>>,
 	single: Arc<RwLock<BTreeMap<EncodedKey, Option<EncodedValues>>>>,
 	cdcs: Arc<RwLock<BTreeMap<CommitVersion, InternalCdc>>>,
@@ -43,6 +51,8 @@ pub struct Writer {
 
 impl Writer {
 	pub fn spawn(
+		sources: Arc<RwLock<HashMap<SourceId, BTreeMap<EncodedKey, VersionChain>>>>,
+		operators: Arc<RwLock<HashMap<FlowNodeId, BTreeMap<EncodedKey, VersionChain>>>>,
 		multi: Arc<RwLock<BTreeMap<EncodedKey, VersionChain>>>,
 		single: Arc<RwLock<BTreeMap<EncodedKey, Option<EncodedValues>>>>,
 		cdcs: Arc<RwLock<BTreeMap<CommitVersion, InternalCdc>>>,
@@ -52,6 +62,8 @@ impl Writer {
 		thread::spawn(move || {
 			let mut actor = Writer {
 				receiver,
+				sources,
+				operators,
 				multi,
 				single,
 				cdcs,
@@ -114,16 +126,28 @@ impl Writer {
 	}
 
 	fn apply_multi_commit(&self, deltas: CowVec<Delta>, version: CommitVersion, timestamp: u64) -> Result<()> {
-		let multi = self.multi.clone();
-
 		// Capture pre-versions BEFORE applying deltas
 		let mut pre_versions = std::collections::HashMap::new();
 		{
-			let multi_read = multi.read();
+			let sources_read = self.sources.read();
+			let operators_read = self.operators.read();
+			let multi_read = self.multi.read();
+
 			for delta in deltas.iter() {
 				let key = delta.key();
 				if !pre_versions.contains_key(key) {
-					if let Some(chain) = multi_read.get(key) {
+					// Determine which storage to check based on key type
+					let chain = match classify_key(key) {
+						StorageType::Source(source_id) => {
+							sources_read.get(&source_id).and_then(|table| table.get(key))
+						}
+						StorageType::Operator(flow_node_id) => operators_read
+							.get(&flow_node_id)
+							.and_then(|table| table.get(key)),
+						StorageType::Multi => multi_read.get(key),
+					};
+
+					if let Some(chain) = chain {
 						// Only capture pre-version if the key actually exists (not deleted)
 						if let Some(pre_version) = chain.get_latest_version() {
 							// Check if this version contains a value (not a tombstone)
@@ -142,27 +166,46 @@ impl Writer {
 			pre_versions.contains_key(key)
 		});
 
-		// Apply optimized deltas to storage
+		// Apply optimized deltas to storage, routing to the correct storage based on key type
 		{
-			let mut multi_write = multi.write();
+			let mut sources_write = self.sources.write();
+			let mut operators_write = self.operators.write();
+			let mut multi_write = self.multi.write();
+
 			for delta in optimized_deltas.iter() {
-				match delta {
+				let key = delta.key();
+				let value = match delta {
 					Delta::Set {
-						key,
 						values,
-					} => {
-						multi_write
-							.entry(key.clone())
-							.or_insert_with(VersionChain::new)
-							.set(version, Some(values.clone()));
-					}
+						..
+					} => Some(values.clone()),
 					Delta::Remove {
-						key,
-					} => {
+						..
+					} => None,
+				};
+
+				match classify_key(key) {
+					StorageType::Source(source_id) => {
+						sources_write
+							.entry(source_id)
+							.or_insert_with(BTreeMap::new)
+							.entry(key.clone())
+							.or_insert_with(VersionChain::new)
+							.set(version, value);
+					}
+					StorageType::Operator(flow_node_id) => {
+						operators_write
+							.entry(flow_node_id)
+							.or_insert_with(BTreeMap::new)
+							.entry(key.clone())
+							.or_insert_with(VersionChain::new)
+							.set(version, value);
+					}
+					StorageType::Multi => {
 						multi_write
 							.entry(key.clone())
 							.or_insert_with(VersionChain::new)
-							.set(version, None);
+							.set(version, value);
 					}
 				}
 			}
