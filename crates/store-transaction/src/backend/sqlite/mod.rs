@@ -4,7 +4,6 @@
 mod cdc;
 mod config;
 mod diagnostic;
-mod gc;
 mod multi;
 mod query_builder;
 mod read;

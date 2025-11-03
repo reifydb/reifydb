@@ -15,7 +15,6 @@ use crate::cdc::InternalCdc;
 
 mod cdc;
 mod chain;
-mod gc;
 mod multi;
 mod single;
 mod write;

@@ -17,7 +17,6 @@ use crate::{
 	backend::{
 		commit::{BufferedCommit, CommitBuffer},
 		delta_optimizer::optimize_deltas_cow,
-		gc::GcStats,
 		sqlite::{
 			cdc::store_cdc_changes,
 			multi::{
@@ -52,10 +51,6 @@ pub enum WriteCommand {
 		version: CommitVersion,
 		timestamp: u64,
 		respond_to: Sender<Result<()>>,
-	},
-	GarbageCollect {
-		deletions: Vec<(String, EncodedKey, CommitVersion)>, // (table_name, key, version)
-		respond_to: Sender<Result<GcStats>>,
 	},
 	Shutdown,
 }
@@ -107,13 +102,6 @@ impl Writer {
 					// Buffer the commit and process any that are ready
 					self.buffer_and_apply_commit(deltas, version, timestamp, respond_to);
 				}
-				WriteCommand::GarbageCollect {
-					deletions,
-					respond_to,
-				} => {
-					let result = self.handle_garbage_collect(deletions);
-					let _ = respond_to.send(result);
-				}
 				WriteCommand::Shutdown => break,
 			}
 		}
@@ -143,36 +131,6 @@ impl Writer {
 		}
 
 		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))
-	}
-
-	fn handle_garbage_collect(&mut self, deletions: Vec<(String, EncodedKey, CommitVersion)>) -> Result<GcStats> {
-		let mut stats = GcStats::default();
-
-		let tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
-
-		// Group deletions by table for efficiency
-		let mut by_table: HashMap<String, Vec<(EncodedKey, CommitVersion)>> = HashMap::new();
-		for (table, key, version) in deletions {
-			by_table.entry(table).or_default().push((key, version));
-		}
-
-		// Execute deletions per table
-		for (table, entries) in by_table {
-			let query = format!("DELETE FROM {} WHERE key = ? AND version = ?", table);
-			let mut stmt = tx.prepare(&query).map_err(|e| Error(from_rusqlite_error(e)))?;
-
-			for (key, version) in entries {
-				stmt.execute(rusqlite::params![key.to_vec(), version.0])
-					.map_err(|e| Error(from_rusqlite_error(e)))?;
-				stats.versions_removed += 1;
-			}
-
-			stats.tables_cleaned += 1;
-		}
-
-		tx.commit().map_err(|e| Error(transaction_failed(e.to_string())))?;
-
-		Ok(stats)
 	}
 
 	fn buffer_and_apply_commit(

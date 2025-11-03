@@ -13,7 +13,7 @@ use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, value::encod
 use reifydb_type::Result;
 
 use crate::{
-	backend::{commit::CommitBuffer, delta_optimizer::optimize_deltas_cow, gc::GcStats, memory::VersionChain},
+	backend::{commit::CommitBuffer, delta_optimizer::optimize_deltas_cow, memory::VersionChain},
 	cdc::{InternalCdc, process_deltas_for_cdc},
 };
 
@@ -27,10 +27,6 @@ pub enum WriteCommand {
 	SingleVersionCommit {
 		deltas: CowVec<Delta>,
 		respond_to: Sender<Result<()>>,
-	},
-	GarbageCollect {
-		operations: Vec<(EncodedKey, CommitVersion)>, // (key, compact_from_version)
-		respond_to: Sender<Result<GcStats>>,
 	},
 	Shutdown,
 }
@@ -85,13 +81,6 @@ impl Writer {
 					respond_to,
 				} => {
 					let result = self.handle_single_commit(deltas);
-					let _ = respond_to.send(result);
-				}
-				WriteCommand::GarbageCollect {
-					operations,
-					respond_to,
-				} => {
-					let result = self.handle_garbage_collect(operations);
 					let _ = respond_to.send(result);
 				}
 				WriteCommand::Shutdown => break,
@@ -216,28 +205,5 @@ impl Writer {
 			}
 		}
 		Ok(())
-	}
-
-	fn handle_garbage_collect(&self, operations: Vec<(EncodedKey, CommitVersion)>) -> Result<GcStats> {
-		let mut stats = GcStats::default();
-
-		// Get write lock (safe because we're in the writer thread)
-		let mut multi = self.multi.write();
-
-		stats.keys_processed = operations.len();
-
-		// Compact each operator state key
-		for (key, compact_from_version) in operations {
-			if let Some(chain) = multi.get_mut(&key) {
-				let versions_before = chain.len();
-
-				// Compact the version chain
-				chain.compact(compact_from_version);
-				let versions_after = chain.len();
-				stats.versions_removed += versions_before.saturating_sub(versions_after);
-			}
-		}
-
-		Ok(stats)
 	}
 }

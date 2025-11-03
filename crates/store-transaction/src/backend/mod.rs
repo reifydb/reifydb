@@ -7,7 +7,6 @@ pub mod cdc;
 pub(crate) mod commit;
 pub(crate) mod delta_optimizer;
 pub(crate) mod diagnostic;
-pub mod gc;
 pub mod memory;
 pub mod multi;
 pub mod result;

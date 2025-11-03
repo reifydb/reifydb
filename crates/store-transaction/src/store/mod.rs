@@ -5,7 +5,7 @@ use std::{ops::Deref, sync::Arc, time::Duration};
 
 use crate::{
 	BackendConfig,
-	backend::{Backend, cdc::BackendCdc, gc::GarbageCollector, multi::BackendMulti, single::BackendSingle},
+	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
 	config::TransactionStoreConfig,
 	memory::MemoryBackend,
 };
@@ -24,8 +24,6 @@ pub struct StandardTransactionStoreInner {
 	pub(crate) hot: Option<Backend>,
 	pub(crate) warm: Option<Backend>,
 	pub(crate) cold: Option<Backend>,
-	#[allow(dead_code)] // Held for Drop impl
-	pub(crate) gc: Option<GarbageCollector>,
 }
 
 impl StandardTransactionStore {
@@ -34,24 +32,10 @@ impl StandardTransactionStore {
 		let warm = config.warm.map(|c| c.backend);
 		let cold = config.cold.map(|c| c.backend);
 
-		// Spawn GC thread if enabled and we have at least one backend
-		let gc = if config.gc.enabled {
-			// Use the first available backend for GC
-			let backend = hot.as_ref().or(warm.as_ref()).or(cold.as_ref());
-
-			backend.map(|b| {
-				let interval = Duration::from_secs(config.gc.interval_secs);
-				GarbageCollector::spawn(b.multi.clone(), interval)
-			})
-		} else {
-			None
-		};
-
 		Ok(Self(Arc::new(StandardTransactionStoreInner {
 			hot,
 			warm,
 			cold,
-			gc,
 		})))
 	}
 }
@@ -81,7 +65,6 @@ impl StandardTransactionStore {
 			cold: None,
 			retention: Default::default(),
 			merge_config: Default::default(),
-			gc: Default::default(),
 		})
 		.unwrap()
 	}
