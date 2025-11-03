@@ -7,7 +7,6 @@ use reifydb_sub_api::SubsystemFactory;
 use reifydb_sub_flow::FlowBuilder;
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::LoggingBuilder;
-#[cfg(feature = "sub_worker")]
 use reifydb_sub_worker::WorkerBuilder;
 
 pub trait WithSubsystem: Sized {
@@ -21,7 +20,6 @@ pub trait WithSubsystem: Sized {
 	where
 		F: FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static;
 
-	#[cfg(feature = "sub_worker")]
 	fn with_worker<F>(self, configurator: F) -> Self
 	where
 		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static;

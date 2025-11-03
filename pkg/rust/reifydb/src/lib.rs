@@ -49,7 +49,6 @@ pub use reifydb_sub_flow as sub_flow;
 pub use reifydb_sub_logging as sub_logging;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
-#[cfg(feature = "sub_worker")]
 pub use reifydb_sub_worker as sub_worker;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{

@@ -11,7 +11,6 @@ mod command;
 #[allow(dead_code)]
 mod query;
 
-#[cfg(feature = "sub_worker")]
 use std::sync::Arc;
 
 pub use command::CommandSession;
@@ -21,7 +20,6 @@ use reifydb_core::{
 	interface::{Engine as EngineInterface, Identity, Params},
 };
 use reifydb_engine::StandardEngine;
-#[cfg(feature = "sub_worker")]
 use reifydb_sub_api::Scheduler;
 
 pub trait Session {
@@ -29,7 +27,6 @@ pub trait Session {
 
 	fn query_session(&self, session: impl IntoQuerySession) -> crate::Result<QuerySession>;
 
-	#[cfg(feature = "sub_worker")]
 	fn scheduler(&self) -> Option<Arc<dyn Scheduler>>;
 
 	fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {

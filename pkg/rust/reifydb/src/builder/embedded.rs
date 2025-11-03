@@ -11,7 +11,6 @@ use reifydb_sub_api::SubsystemFactory;
 use reifydb_sub_flow::FlowBuilder;
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::LoggingBuilder;
-#[cfg(feature = "sub_worker")]
 use reifydb_sub_worker::WorkerBuilder;
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
@@ -28,7 +27,6 @@ pub struct EmbeddedBuilder {
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_logging")]
 	logging_configurator: Option<Box<dyn FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static>>,
-	#[cfg(feature = "sub_worker")]
 	worker_configurator: Option<Box<dyn FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_flow")]
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
@@ -51,7 +49,6 @@ impl EmbeddedBuilder {
 			functions_configurator: None,
 			#[cfg(feature = "sub_logging")]
 			logging_configurator: None,
-			#[cfg(feature = "sub_worker")]
 			worker_configurator: None,
 			#[cfg(feature = "sub_flow")]
 			flow_configurator: None,
@@ -91,7 +88,6 @@ impl EmbeddedBuilder {
 			builder = builder.with_logging(configurator);
 		}
 
-		#[cfg(feature = "sub_worker")]
 		if let Some(configurator) = self.worker_configurator {
 			builder = builder.with_worker(configurator);
 		}
@@ -129,7 +125,6 @@ impl WithSubsystem for EmbeddedBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_worker")]
 	fn with_worker<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,

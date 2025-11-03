@@ -29,7 +29,6 @@ use reifydb_sub_api::SubsystemFactory;
 use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_logging")]
 use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
-#[cfg(feature = "sub_worker")]
 use reifydb_sub_worker::{WorkerBuilder, WorkerSubsystem, WorkerSubsystemFactory};
 use reifydb_transaction::{
 	TransactionVersion, cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
@@ -49,7 +48,6 @@ pub struct DatabaseBuilder {
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	#[cfg(feature = "sub_logging")]
 	logging_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
-	#[cfg(feature = "sub_worker")]
 	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
@@ -78,7 +76,6 @@ impl DatabaseBuilder {
 			functions_configurator: None,
 			#[cfg(feature = "sub_logging")]
 			logging_factory: None,
-			#[cfg(feature = "sub_worker")]
 			worker_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
@@ -114,7 +111,6 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_worker")]
 	pub fn with_worker<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
@@ -169,7 +165,6 @@ impl DatabaseBuilder {
 			self.subsystems.push(factory);
 		}
 
-		#[cfg(feature = "sub_worker")]
 		if let Some(factory) = self.worker_factory {
 			self.subsystems.push(factory);
 		}
@@ -256,7 +251,6 @@ impl DatabaseBuilder {
 		}
 
 		// Get the scheduler - it must exist when feature is enabled
-		#[cfg(feature = "sub_worker")]
 		let scheduler = subsystems.get::<WorkerSubsystem>().map(|w| w.get_scheduler());
 
 		// Add git hash if available
@@ -275,14 +269,7 @@ impl DatabaseBuilder {
 		let system_catalog = SystemCatalog::new(all_versions);
 		catalog.set_system_catalog(system_catalog);
 
-		Ok(Database::new(
-			engine,
-			subsystems,
-			self.config,
-			health_monitor,
-			#[cfg(feature = "sub_worker")]
-			scheduler,
-		))
+		Ok(Database::new(engine, subsystems, self.config, health_monitor, scheduler))
 	}
 
 	/// Load the materialized catalog from storage

@@ -677,7 +677,6 @@ name = "reifydb-sub-worker"
 version = "0.0.1"
 dependencies = [
  "reifydb-catalog",
- "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
  "reifydb-store-transaction",

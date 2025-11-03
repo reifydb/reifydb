@@ -15,9 +15,7 @@ use reifydb_core::{
 	log_warn,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::HealthStatus;
-#[cfg(feature = "sub_worker")]
-use reifydb_sub_api::Scheduler;
+use reifydb_sub_api::{HealthStatus, Scheduler};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystem;
 #[cfg(feature = "sub_server")]
@@ -76,7 +74,6 @@ pub struct Database {
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
-	#[cfg(feature = "sub_worker")]
 	scheduler: Option<Arc<dyn Scheduler>>,
 }
 
@@ -98,7 +95,7 @@ impl Database {
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
-		#[cfg(feature = "sub_worker")] scheduler: Option<Arc<dyn Scheduler>>,
+		scheduler: Option<Arc<dyn Scheduler>>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -107,7 +104,6 @@ impl Database {
 			config,
 			health_monitor,
 			running: false,
-			#[cfg(feature = "sub_worker")]
 			scheduler,
 		}
 	}
@@ -237,7 +233,6 @@ impl Database {
 		self.subsystems.get::<S>()
 	}
 
-	#[cfg(feature = "sub_worker")]
 	pub fn scheduler(&self) -> Option<Arc<dyn Scheduler>> {
 		self.scheduler.clone()
 	}
@@ -303,7 +298,6 @@ impl Session for Database {
 		session.into_query_session(self.engine.clone())
 	}
 
-	#[cfg(feature = "sub_worker")]
 	fn scheduler(&self) -> Option<Arc<dyn Scheduler>> {
 		self.scheduler.clone()
 	}

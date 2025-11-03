@@ -15,4 +15,3 @@ reifydb-type = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-store-transaction = { workspace = true }
 reifydb-transaction = { workspace = true }
-reifydb-cdc = { workspace = true }

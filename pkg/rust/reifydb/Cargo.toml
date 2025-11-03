@@ -23,9 +23,9 @@ reifydb-sub-admin = { workspace = true, optional = true }
 reifydb-sub-flow = { workspace = true, optional = true }
 reifydb-sub-logging = { workspace = true, optional = true }
 reifydb-sub-server = { workspace = true, optional = true }
-reifydb-sub-worker = { workspace = true, optional = true }
+reifydb-sub-worker = { workspace = true }
 
-libc = { version = "0.2.175" }
+libc = { workspace = true }
 
 [features]
 default = []
@@ -35,6 +35,5 @@ sub_admin = ["dep:reifydb-sub-admin"]
 sub_flow = ["dep:reifydb-sub-flow"]
 sub_logging = ["dep:reifydb-sub-logging"]
 sub_server = ["dep:reifydb-sub-server"]
-sub_worker = ["dep:reifydb-sub-worker"]
 
 

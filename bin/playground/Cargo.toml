@@ -11,4 +11,4 @@ name = "playground"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true, features = ["sub_flow", "sub_logging", "sub_worker"] }
+reifydb = { workspace = true, features = ["sub_flow", "sub_logging"] }
