@@ -64,6 +64,7 @@ impl testscript::Runner for Runner {
 						table: "users".to_string(),
 						namespace: default_namespace.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();
@@ -75,6 +76,7 @@ impl testscript::Runner for Runner {
 						table: "orders".to_string(),
 						namespace: default_namespace.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();
@@ -97,6 +99,7 @@ impl testscript::Runner for Runner {
 						table: "users".to_string(),
 						namespace: test_ns.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();
@@ -128,6 +131,7 @@ impl testscript::Runner for Runner {
 						table: "users".to_string(),
 						namespace: namespace.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();
@@ -139,6 +143,7 @@ impl testscript::Runner for Runner {
 						table: "orders".to_string(),
 						namespace: namespace.id,
 						columns: vec![],
+						retention_policy: None,
 					},
 				)
 				.unwrap();

@@ -83,6 +83,7 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 					fragment: None,
 				},
 			],
+			retention_policy: None,
 		},
 	)
 	.unwrap();

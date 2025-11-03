@@ -28,6 +28,14 @@ impl EncodedKey {
 	pub fn new(key: impl Into<Vec<u8>>) -> Self {
 		Self(CowVec::new(key.into()))
 	}
+
+	pub fn as_bytes(&self) -> &[u8] {
+		self.0.as_ref()
+	}
+
+	pub fn as_slice(&self) -> &[u8] {
+		self.0.as_ref()
+	}
 }
 
 #[derive(Clone, Debug)]

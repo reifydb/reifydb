@@ -432,6 +432,7 @@ mod tests {
 				table: "test_table2".to_string(),
 				namespace: namespace.id,
 				columns: vec![],
+				retention_policy: None,
 			},
 		)
 		.unwrap();

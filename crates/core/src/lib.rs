@@ -9,6 +9,7 @@ pub mod event;
 pub mod interceptor;
 pub mod interface;
 pub mod key;
+pub mod retention;
 mod row;
 mod sort;
 pub mod util;

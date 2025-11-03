@@ -4,9 +4,10 @@
 use reifydb_core::{
 	diagnostic::catalog::table_already_exists,
 	interface::{
-		ColumnPolicyKind, CommandTransaction, EncodableKey, Key, NamespaceId, NamespaceTableKey, TableDef,
-		TableId, TableKey,
+		ColumnPolicyKind, CommandTransaction, EncodableKey, Key, NamespaceId, NamespaceTableKey, SourceId,
+		TableDef, TableId, TableKey,
 	},
+	retention::RetentionPolicy,
 	return_error,
 };
 use reifydb_type::{OwnedFragment, TypeConstraint};
@@ -15,6 +16,7 @@ use crate::{
 	CatalogStore,
 	store::{
 		column::{ColumnIndex, ColumnToCreate},
+		retention_policy::create::create_source_retention_policy,
 		sequence::SystemSequence,
 		table::layout::{table, table_namespace},
 	},
@@ -35,6 +37,7 @@ pub struct TableToCreate {
 	pub table: String,
 	pub namespace: NamespaceId,
 	pub columns: Vec<TableColumnToCreate>,
+	pub retention_policy: Option<RetentionPolicy>,
 }
 
 impl CatalogStore {
@@ -49,6 +52,10 @@ impl CatalogStore {
 		let table_id = SystemSequence::next_table_id(txn)?;
 		Self::store_table(txn, table_id, namespace_id, &to_create)?;
 		Self::link_table_to_namespace(txn, namespace_id, table_id, &to_create.table)?;
+
+		if let Some(retention_policy) = &to_create.retention_policy {
+			create_source_retention_policy(txn, SourceId::Table(table_id), retention_policy)?;
+		}
 
 		Self::insert_columns(txn, table_id, to_create)?;
 
@@ -154,6 +161,7 @@ mod tests {
 			table: "test_table".to_string(),
 			columns: vec![],
 			fragment: None,
+			retention_policy: None,
 		};
 
 		// First creation should succeed
@@ -176,6 +184,7 @@ mod tests {
 			table: "test_table".to_string(),
 			columns: vec![],
 			fragment: None,
+			retention_policy: None,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();
@@ -185,6 +194,7 @@ mod tests {
 			table: "another_table".to_string(),
 			columns: vec![],
 			fragment: None,
+			retention_policy: None,
 		};
 
 		CatalogStore::create_table(&mut txn, to_create).unwrap();

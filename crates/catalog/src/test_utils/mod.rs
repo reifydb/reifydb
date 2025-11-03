@@ -60,6 +60,7 @@ pub fn create_table(
 			table: table.to_string(),
 			namespace: namespace_def.id,
 			columns: columns.to_vec(),
+			retention_policy: None,
 		},
 	)
 	.unwrap()

@@ -33,6 +33,7 @@ impl Executor {
 			table: plan.table.text().to_string(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
+			retention_policy: None,
 		})?;
 
 		Ok(Columns::single_row([

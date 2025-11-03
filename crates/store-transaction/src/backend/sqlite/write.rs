@@ -52,6 +52,20 @@ pub enum WriteCommand {
 		timestamp: u64,
 		respond_to: Sender<Result<()>>,
 	},
+	/// Delete mode cleanup - creates tombstones and CDC entries
+	CleanupRetentionDelete {
+		keys: Vec<EncodedKey>,
+		version: CommitVersion,
+		skip_tombstoned: bool, // Always true - cannot delete already deleted
+		respond_to: Sender<Result<()>>,
+	},
+	/// Drop mode cleanup - silent removal from storage
+	CleanupRetentionDrop {
+		keys: Vec<EncodedKey>,
+		max_version: CommitVersion,
+		include_tombstones: bool, // Usually true - clean up deletion markers
+		respond_to: Sender<Result<()>>,
+	},
 	Shutdown,
 }
 
@@ -101,6 +115,24 @@ impl Writer {
 				} => {
 					// Buffer the commit and process any that are ready
 					self.buffer_and_apply_commit(deltas, version, timestamp, respond_to);
+				}
+				WriteCommand::CleanupRetentionDelete {
+					keys,
+					version,
+					skip_tombstoned,
+					respond_to,
+				} => {
+					let result = self.handle_retention_delete(keys, version, skip_tombstoned);
+					let _ = respond_to.send(result);
+				}
+				WriteCommand::CleanupRetentionDrop {
+					keys,
+					max_version,
+					include_tombstones,
+					respond_to,
+				} => {
+					let result = self.handle_retention_drop(keys, max_version, include_tombstones);
+					let _ = respond_to.send(result);
 				}
 				WriteCommand::Shutdown => break,
 			}
@@ -402,6 +434,125 @@ impl Writer {
 			ensure_source_exists(tx, source).map_err(|e| Error(from_rusqlite_error(e)))?;
 			ensured_sources.insert(source.to_string());
 		}
+		Ok(())
+	}
+
+	/// Handle retention delete - creates tombstones and CDC entries
+	fn handle_retention_delete(
+		&mut self,
+		keys: Vec<EncodedKey>,
+		version: CommitVersion,
+		skip_tombstoned: bool,
+	) -> Result<()> {
+		// Start a transaction
+		let tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
+
+		// Filter out already tombstoned keys if requested
+		let mut deletable_keys = Vec::new();
+		if skip_tombstoned {
+			for key in keys {
+				// Check if key is already tombstoned
+				let is_tombstoned: bool = tx
+					.query_row(
+						"SELECT is_tombstone FROM multi WHERE key = ? ORDER BY version DESC LIMIT 1",
+						[&key.as_bytes()],
+						|row| row.get(0),
+					)
+					.unwrap_or(false);
+
+				if !is_tombstoned {
+					deletable_keys.push(key);
+				}
+			}
+		} else {
+			deletable_keys = keys;
+		}
+
+		if deletable_keys.is_empty() {
+			return Ok(());
+		}
+
+		// Create deltas for deletion
+		let deltas: Vec<Delta> = deletable_keys
+			.into_iter()
+			.map(|key| Delta::Remove {
+				key,
+			})
+			.collect();
+
+		// Process as CDC changes
+		let cdc_changes = process_deltas_for_cdc(deltas.iter().cloned(), version, |_key| {
+			// For retention deletion, there's no pre-version since we're deleting
+			None
+		})?;
+
+		// Wrap in InternalCdc and store
+		let cdc_entry = InternalCdc {
+			version,
+			timestamp: 0, // TODO: Should we track timestamp for retention deletions?
+			changes: cdc_changes,
+		};
+
+		store_cdc_changes(&tx, vec![cdc_entry]).map_err(|e| Error(from_rusqlite_error(e)))?;
+
+		// Insert tombstones
+		for delta in &deltas {
+			if let Delta::Remove {
+				key,
+			} = delta
+			{
+				tx.execute(
+					"INSERT INTO multi (key, version, value, is_tombstone) VALUES (?, ?, NULL, 1)",
+					params_from_iter([Value::Blob(key.to_vec()), Value::Integer(version.0 as i64)]),
+				)
+				.map_err(|e| Error(from_rusqlite_error(e)))?;
+			}
+		}
+
+		tx.commit().map_err(|e| Error(from_rusqlite_error(e)))?;
+		Ok(())
+	}
+
+	/// Handle retention drop - silent removal without CDC
+	fn handle_retention_drop(
+		&mut self,
+		keys: Vec<EncodedKey>,
+		max_version: CommitVersion,
+		include_tombstones: bool,
+	) -> Result<()> {
+		// Start a transaction
+		let tx = self.conn.transaction().map_err(|e| Error(from_rusqlite_error(e)))?;
+
+		for key in keys {
+			// Keep at least one version (the latest)
+			// Remove old versions, optionally including tombstones
+			let query = if include_tombstones {
+				// Remove all old versions including tombstones
+				"DELETE FROM multi
+				 WHERE key = ?
+				   AND version < ?
+				   AND version != (SELECT MAX(version) FROM multi WHERE key = ?)"
+			} else {
+				// Remove only non-tombstoned old versions
+				"DELETE FROM multi
+				 WHERE key = ?
+				   AND version < ?
+				   AND is_tombstone = 0
+				   AND version != (SELECT MAX(version) FROM multi WHERE key = ? AND is_tombstone = 0)"
+			};
+
+			tx.execute(
+				query,
+				params_from_iter([
+					Value::Blob(key.as_bytes().to_vec()),
+					Value::Integer(max_version.0 as i64),
+					Value::Blob(key.as_bytes().to_vec()),
+				]),
+			)
+			.map_err(|e| Error(from_rusqlite_error(e)))?;
+		}
+
+		tx.commit().map_err(|e| Error(from_rusqlite_error(e)))?;
 		Ok(())
 	}
 }

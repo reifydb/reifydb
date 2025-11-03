@@ -15,6 +15,10 @@ pub use namespace_ring_buffer::NamespaceRingBufferKey;
 pub use namespace_table::NamespaceTableKey;
 pub use namespace_view::NamespaceViewKey;
 pub use primary_key::PrimaryKeyKey;
+pub use retention_policy::{
+	OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, SourceRetentionPolicyKey,
+	SourceRetentionPolicyKeyRange,
+};
 pub use ring_buffer::{RingBufferKey, RingBufferMetadataKey};
 pub use row::{RowKey, RowKeyRange};
 pub use row_sequence::RowSequenceKey;
@@ -40,6 +44,7 @@ mod namespace_ring_buffer;
 mod namespace_table;
 mod namespace_view;
 mod primary_key;
+mod retention_policy;
 mod ring_buffer;
 mod row;
 mod row_sequence;
@@ -73,6 +78,8 @@ pub enum Key {
 	RingBuffer(RingBufferKey),
 	RingBufferMetadata(RingBufferMetadataKey),
 	NamespaceRingBuffer(NamespaceRingBufferKey),
+	SourceRetentionPolicy(SourceRetentionPolicyKey),
+	OperatorRetentionPolicy(OperatorRetentionPolicyKey),
 }
 
 impl Key {
@@ -100,6 +107,8 @@ impl Key {
 			Key::RingBuffer(key) => key.encode(),
 			Key::RingBufferMetadata(key) => key.encode(),
 			Key::NamespaceRingBuffer(key) => key.encode(),
+			Key::SourceRetentionPolicy(key) => key.encode(),
+			Key::OperatorRetentionPolicy(key) => key.encode(),
 		}
 	}
 }
@@ -169,6 +178,12 @@ impl Key {
 			}
 			KeyKind::NamespaceRingBuffer => {
 				NamespaceRingBufferKey::decode(&key).map(Self::NamespaceRingBuffer)
+			}
+			KeyKind::SourceRetentionPolicy => {
+				SourceRetentionPolicyKey::decode(&key).map(Self::SourceRetentionPolicy)
+			}
+			KeyKind::OperatorRetentionPolicy => {
+				OperatorRetentionPolicyKey::decode(&key).map(Self::OperatorRetentionPolicy)
 			}
 		}
 	}
