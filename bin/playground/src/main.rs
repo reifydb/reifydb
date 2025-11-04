@@ -1,10 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{thread::sleep, time::Duration};
+use std::{
+	thread::sleep,
+	time::{Duration, Instant},
+};
 
 use reifydb::{
-	Params, Session, SqliteConfig, WithSubsystem,
+	Params, Session, WithSubsystem,
 	core::interface::logging::LogLevel::Info,
 	embedded,
 	sub_logging::{FormatStyle, LoggingBuilder},
@@ -21,8 +24,8 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 
 fn main() {
 	// let mut db = embedded::sqlite_optimistic(SqliteConfig::new("/tmp/test/test.db"))
-	let mut db = embedded::sqlite_optimistic(SqliteConfig::in_memory())
-	// let mut db = embedded::memory_optimistic()
+	// let mut db = embedded::sqlite_optimistic(SqliteConfig::in_memory())
+	let mut db = embedded::memory_optimistic()
 		.with_logging(logger_configuration)
 		.with_worker(|wp| wp)
 		.with_flow(|f| f)
@@ -35,11 +38,11 @@ fn main() {
 	db.command_as_root(r#"create table test.source { id: int4, name: utf8, age: int4, city: utf8 }"#, Params::None)
 		.unwrap();
 
-	let insert_start = std::time::Instant::now();
+	let insert_start = Instant::now();
 
 	// Insert 10 million items in batches of 10,000
-	const TOTAL_RECORDS: i32 = 1_000_000;
-	const BATCH_SIZE: i32 = 10_000;
+	const TOTAL_RECORDS: i32 = 1_000;
+	const BATCH_SIZE: i32 = 100;
 	const NUM_BATCHES: i32 = TOTAL_RECORDS / BATCH_SIZE;
 
 	for batch in 0..NUM_BATCHES {
@@ -72,7 +75,7 @@ fn main() {
 	sleep(Duration::from_millis(100));
 
 	println!("\nQuerying first 10 records...");
-	let query_start = std::time::Instant::now();
+	let query_start = Instant::now();
 
 	for frame in db
 		.query_as_root(

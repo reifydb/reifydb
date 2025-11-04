@@ -17,7 +17,7 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{HealthStatus, Priority, Subsystem};
+use reifydb_sub_api::{HealthStatus, Priority, SchedulerService, Subsystem};
 
 use crate::{builder::OperatorFactory, consumer::FlowConsumer};
 
@@ -42,12 +42,14 @@ pub struct FlowSubsystem {
 impl FlowSubsystem {
 	pub fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let consumer = FlowConsumer::new(engine.clone(), cfg.operators);
+		let scheduler = ioc.resolve::<SchedulerService>().ok();
+
+		let consumer = FlowConsumer::new(engine.clone(), cfg.operators.clone(), scheduler);
 
 		Ok(Self {
 			consumer: PollConsumer::new(
 				PollConsumerConfig::new(cfg.consumer_id.clone(), cfg.poll_interval, cfg.max_batch_size),
-				engine,
+				engine.clone(),
 				consumer,
 			),
 			running: false,

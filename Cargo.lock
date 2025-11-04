@@ -619,6 +619,7 @@ name = "reifydb-sub-flow"
 version = "0.0.1"
 dependencies = [
  "bincode",
+ "crossbeam-channel",
  "parking_lot",
  "rand",
  "reifydb-catalog",

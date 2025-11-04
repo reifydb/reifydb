@@ -26,11 +26,11 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 pub use reifydb_sub_api::Priority;
-use reifydb_sub_api::{BoxedTask, HealthStatus, Scheduler, Subsystem, TaskHandle};
+use reifydb_sub_api::{BoxedOnceTask, BoxedTask, HealthStatus, Scheduler, Subsystem, TaskHandle};
 
 use crate::{
 	client::{SchedulerClient, SchedulerRequest, SchedulerResponse},
-	scheduler::{SchedulableTaskAdapter, TaskScheduler},
+	scheduler::{OnceTaskAdapter, SchedulableTaskAdapter, TaskScheduler},
 	task::{PoolTask, PrioritizedTask},
 	thread::Thread,
 };
@@ -105,17 +105,13 @@ pub struct WorkerSubsystem {
 
 impl WorkerSubsystem {
 	pub fn with_config_and_engine(config: WorkerConfig, engine: StandardEngine) -> Self {
-		// Create shared state for pending requests and handle
-		// generation
 		let pending_requests = Arc::new(Mutex::new(VecDeque::new()));
 		let next_handle = Arc::new(AtomicU64::new(1));
 		let running = Arc::new(AtomicBool::new(false));
 
-		// Create channel for scheduler requests
 		let (sender, receiver) = mpsc::channel();
 
-		// Create SchedulerClient with access to shared state
-		let scheduler_client = Arc::new(SchedulerClient::with_queue(
+		let scheduler_client = Arc::new(SchedulerClient::new(
 			sender,
 			Arc::clone(&pending_requests),
 			Arc::clone(&next_handle),
@@ -251,6 +247,32 @@ impl WorkerSubsystem {
 								);
 								SchedulerResponse::TaskScheduled(handle)
 							}
+							SchedulerRequest::Submit {
+								task,
+								priority: _,
+							} => {
+								let adapter = Box::new(OnceTaskAdapter::new(
+									task,
+									engine.clone(),
+								));
+								// Submit directly to task queue
+								drop(sched);
+								{
+									let mut queue = task_queue.lock().unwrap();
+									if queue.len() < max_queue_size {
+										queue.push(PrioritizedTask::new(
+											adapter,
+										));
+										stats.tasks_queued.fetch_add(
+											1,
+											Ordering::Relaxed,
+										);
+										task_condvar.notify_one();
+									}
+								}
+								sched = scheduler.lock().unwrap();
+								SchedulerResponse::TaskSubmitted
+							}
 							SchedulerRequest::Cancel {
 								handle,
 							} => {
@@ -292,6 +314,32 @@ impl WorkerSubsystem {
 												priority,
 											);
 										SchedulerResponse::TaskScheduled(handle)
+									}
+									SchedulerRequest::Submit {
+										task,
+										priority: _,
+									} => {
+										let adapter =
+											Box::new(OnceTaskAdapter::new(
+												task,
+												engine.clone(),
+											));
+										drop(sched);
+
+										{
+											let mut queue = task_queue
+												.lock()
+												.unwrap();
+											if queue.len() < max_queue_size
+											{
+												queue.push(PrioritizedTask::new(adapter));
+												stats.tasks_queued.fetch_add(1, Ordering::Relaxed);
+												task_condvar
+													.notify_one();
+											}
+										}
+										sched = scheduler.lock().unwrap();
+										SchedulerResponse::TaskSubmitted
 									}
 									SchedulerRequest::Cancel {
 										handle,
@@ -502,12 +550,18 @@ impl Drop for WorkerSubsystem {
 }
 
 impl Scheduler for WorkerSubsystem {
-	fn schedule_every(&self, interval: Duration, task: BoxedTask) -> reifydb_core::Result<TaskHandle> {
+	fn every(&self, interval: Duration, task: BoxedTask) -> reifydb_core::Result<TaskHandle> {
 		let adapter = Box::new(SchedulableTaskAdapter::new(task, self.engine.clone()));
 		let priority = adapter.priority();
 		self.schedule_every_internal(adapter, interval, priority)
 	}
+
 	fn cancel(&self, handle: TaskHandle) -> Result<()> {
 		self.cancel_task(handle)
+	}
+
+	fn once(&self, task: BoxedOnceTask) -> reifydb_core::Result<()> {
+		let adapter = Box::new(OnceTaskAdapter::new(task, self.engine.clone()));
+		WorkerSubsystem::submit(self, adapter)
 	}
 }

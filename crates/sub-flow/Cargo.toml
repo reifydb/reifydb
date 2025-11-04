@@ -22,6 +22,7 @@ serde_bytes = { workspace = true}
 serde_json = { workspace = true }
 bincode = { workspace = true }
 
+crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true}
 
 [dev-dependencies]

@@ -24,7 +24,7 @@ use reifydb_engine::{
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
 use reifydb_store_transaction::TransactionStoreVersion;
-use reifydb_sub_api::SubsystemFactory;
+use reifydb_sub_api::{SchedulerService, SubsystemFactory};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_logging")]
@@ -43,12 +43,12 @@ use crate::{
 pub struct DatabaseBuilder {
 	config: DatabaseConfig,
 	interceptors: StandardInterceptorBuilder<StandardCommandTransaction>,
-	subsystems: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
+	factories: Vec<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
+	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_logging")]
 	logging_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
-	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 }
@@ -71,7 +71,7 @@ impl DatabaseBuilder {
 		Self {
 			config: DatabaseConfig::default(),
 			interceptors: StandardInterceptorBuilder::new(),
-			subsystems: Vec::new(),
+			factories: Vec::new(),
 			ioc,
 			functions_configurator: None,
 			#[cfg(feature = "sub_logging")]
@@ -102,20 +102,20 @@ impl DatabaseBuilder {
 		self
 	}
 
+	pub fn with_worker<F>(mut self, configurator: F) -> Self
+	where
+		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
+	{
+		self.worker_factory = Some(Box::new(WorkerSubsystemFactory::with_configurator(configurator)));
+		self
+	}
+
 	#[cfg(feature = "sub_logging")]
 	pub fn with_logging<F>(mut self, configurator: F) -> Self
 	where
 		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
 	{
 		self.logging_factory = Some(Box::new(LoggingSubsystemFactory::with_configurator(configurator)));
-		self
-	}
-
-	pub fn with_worker<F>(mut self, configurator: F) -> Self
-	where
-		F: FnOnce(WorkerBuilder) -> WorkerBuilder + Send + 'static,
-	{
-		self.worker_factory = Some(Box::new(WorkerSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 
@@ -129,7 +129,7 @@ impl DatabaseBuilder {
 	}
 
 	pub fn add_subsystem_factory(mut self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self {
-		self.subsystems.push(factory);
+		self.factories.push(factory);
 		self
 	}
 
@@ -154,28 +154,22 @@ impl DatabaseBuilder {
 	}
 
 	pub fn subsystem_count(&self) -> usize {
-		self.subsystems.len()
+		self.factories.len()
 	}
 
 	pub fn build(mut self) -> crate::Result<Database> {
-		// Add configured or default subsystems
-
 		#[cfg(feature = "sub_logging")]
 		if let Some(factory) = self.logging_factory {
-			self.subsystems.push(factory);
-		}
-
-		if let Some(factory) = self.worker_factory {
-			self.subsystems.push(factory);
+			self.factories.push(factory);
 		}
 
 		#[cfg(feature = "sub_flow")]
 		if let Some(factory) = self.flow_factory {
-			self.subsystems.push(factory);
+			self.factories.push(factory);
 		}
 
 		// Collect interceptors from all factories
-		for factory in &self.subsystems {
+		for factory in &self.factories {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
@@ -187,9 +181,7 @@ impl DatabaseBuilder {
 
 		Self::load_materialized_catalog(&multi, &single, &cdc, &catalog)?;
 
-		// Build Functions with default functions plus user configurator
 		let functions = if let Some(configurator) = self.functions_configurator {
-			// Start with default functions and apply user configurator
 			let default_builder = Functions::builder()
 				.register_aggregate("math::sum", math::aggregate::Sum::new)
 				.register_aggregate("math::min", math::aggregate::Min::new)
@@ -205,7 +197,6 @@ impl DatabaseBuilder {
 			None
 		};
 
-		// First create the engine (needed by subsystems)
 		let engine = StandardEngine::with_functions(
 			multi.clone(),
 			single.clone(),
@@ -220,9 +211,6 @@ impl DatabaseBuilder {
 
 		// Collect all versions
 		let mut all_versions = Vec::new();
-
-		// Add core component versions using the version structs from
-		// each crate
 		all_versions.push(SystemVersion {
 			name: "reifydb".to_string(),
 			version: env!("CARGO_PKG_VERSION").to_string(),
@@ -244,14 +232,22 @@ impl DatabaseBuilder {
 		let health_monitor = Arc::new(HealthMonitor::new());
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
-		for factory in self.subsystems {
+		if let Some(factory) = self.worker_factory {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
 		}
 
-		// Get the scheduler - it must exist when feature is enabled
 		let scheduler = subsystems.get::<WorkerSubsystem>().map(|w| w.get_scheduler());
+		if let Some(ref sched) = scheduler {
+			self.ioc = self.ioc.register(SchedulerService(sched.clone()));
+		}
+
+		for factory in self.factories {
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
 
 		// Add git hash if available
 		if let Some(git_hash) = option_env!("GIT_HASH") {

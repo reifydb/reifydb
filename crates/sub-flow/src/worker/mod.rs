@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+pub mod parallel;
 pub mod processor;
 pub mod same;
 
+pub use parallel::ParallelWorkerPool;
 pub use processor::WorkerPool;
 use reifydb_core::{CommitVersion, interface::FlowId};
 pub use same::SameThreadedWorker;

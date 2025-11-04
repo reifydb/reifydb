@@ -52,10 +52,6 @@ impl WorkerPool for SameThreadedWorker {
 		Ok(())
 	}
 
-	fn worker_count(&self) -> usize {
-		1
-	}
-
 	fn name(&self) -> &str {
 		"single-threaded"
 	}

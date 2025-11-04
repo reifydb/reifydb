@@ -13,6 +13,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 use reifydb_rql::flow::Flow;
+use reifydb_sub_api::SchedulerService;
 use reifydb_type::{RowNumber, Value};
 
 use crate::{
@@ -21,7 +22,7 @@ use crate::{
 	flow::FlowDiff,
 	operator::TransformOperatorRegistry,
 	subsystem::intercept::Change,
-	worker::{SameThreadedWorker, WorkerPool},
+	worker::{ParallelWorkerPool, SameThreadedWorker, WorkerPool},
 };
 
 // The table ID for reifydb.flows table
@@ -32,11 +33,17 @@ const FLOWS_TABLE_ID: u64 = 1025;
 pub struct FlowConsumer {
 	engine: StandardEngine,
 	flow_engine: FlowEngine,
+	scheduler: Option<SchedulerService>,
 }
 
 impl FlowConsumer {
-	pub fn new(engine: StandardEngine, operators: Vec<(String, OperatorFactory)>) -> Self {
+	pub fn new(
+		engine: StandardEngine,
+		operators: Vec<(String, OperatorFactory)>,
+		scheduler: Option<SchedulerService>,
+	) -> Self {
 		let mut registry = TransformOperatorRegistry::new();
+
 		for (name, factory) in operators.iter() {
 			let factory = factory.clone();
 			let name = name.clone();
@@ -48,6 +55,7 @@ impl FlowConsumer {
 		let result = Self {
 			engine: engine.clone(),
 			flow_engine,
+			scheduler,
 		};
 
 		if let Ok(mut txn) = engine.begin_command() {
@@ -264,7 +272,12 @@ impl CdcConsume for FlowConsumer {
 		}
 
 		// Process all flow units through the worker
-		let worker = SameThreadedWorker::new();
+		// Use parallel worker pool if scheduler is available, otherwise fall back to single-threaded
+		let worker: Box<dyn WorkerPool> = if let Some(scheduler) = &self.scheduler {
+			Box::new(ParallelWorkerPool::new(scheduler.clone()))
+		} else {
+			Box::new(SameThreadedWorker::new())
+		};
 		worker.process(txn, units, &self.flow_engine)
 	}
 }

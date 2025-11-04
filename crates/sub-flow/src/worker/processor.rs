@@ -27,9 +27,6 @@ pub trait WorkerPool {
 		engine: &FlowEngine,
 	) -> crate::Result<()>;
 
-	/// Get the number of worker threads (for monitoring)
-	fn worker_count(&self) -> usize;
-
 	/// Get a name for this worker implementation (for logging)
 	fn name(&self) -> &str;
 }

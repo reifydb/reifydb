@@ -1,0 +1,110 @@
+// Copyright (c) reifydb.com 2025
+// This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+use crossbeam_channel::bounded;
+use reifydb_engine::StandardCommandTransaction;
+use reifydb_sub_api::{SchedulerService, TaskContext, task_once};
+
+use super::{UnitOfWork, UnitsOfWork, WorkerPool};
+use crate::{engine::FlowEngine, transaction::FlowTransaction};
+
+/// Parallel worker pool that uses the sub-worker thread pool for execution
+///
+/// Each flow's units are submitted as a separate high-priority task to the
+/// worker pool. Different flows can execute in parallel, but each flow's
+/// units are processed sequentially to maintain version ordering.
+pub struct ParallelWorkerPool {
+	scheduler: SchedulerService,
+}
+
+impl ParallelWorkerPool {
+	/// Create a new parallel worker pool
+	pub fn new(scheduler: SchedulerService) -> Self {
+		Self {
+			scheduler,
+		}
+	}
+}
+
+impl WorkerPool for ParallelWorkerPool {
+	fn process(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		units: UnitsOfWork,
+		engine: &FlowEngine,
+	) -> crate::Result<()> {
+		if units.is_empty() {
+			return Ok(());
+		}
+
+		let units_of_work = units.into_inner();
+		let mut txns: Vec<(Vec<UnitOfWork>, FlowTransaction)> = Vec::with_capacity(units_of_work.len());
+
+		for flow_units in units_of_work {
+			if !flow_units.is_empty() {
+				let first_version = flow_units[0].version;
+				let flow_txn = FlowTransaction::new(txn, first_version);
+				txns.push((flow_units, flow_txn));
+			}
+		}
+
+		let (result_tx, result_rx) = bounded(txns.len());
+
+		for (flow_units, mut flow_txn) in txns {
+			let result_tx = result_tx.clone();
+			let engine = engine.clone();
+
+			let task = task_once!(
+				"flow-processing",
+				High,
+				move |_ctx: &TaskContext| -> reifydb_core::Result<()> {
+					process(&mut flow_txn, flow_units, &engine)?;
+					let _ = result_tx.send(Ok(flow_txn));
+					Ok(())
+				}
+			);
+
+			self.scheduler.once(task)?;
+		}
+
+		// Drop our copy of sender so channel closes when all tasks complete
+		drop(result_tx);
+
+		let mut completed = Vec::new();
+		while let Ok(result) = result_rx.recv() {
+			match result {
+				Ok(flow_txn) => completed.push(flow_txn),
+				Err(e) => return e,
+			}
+		}
+
+		// Commit all FlowTransactions sequentially back to parent
+		for mut flow in completed {
+			flow.commit(txn)?;
+		}
+
+		Ok(())
+	}
+
+	fn name(&self) -> &str {
+		"parallel-worker-pool"
+	}
+}
+
+/// Process all units for a single flow in parallel worker, returning completed FlowTransaction
+fn process(flow_txn: &mut FlowTransaction, flow_units: Vec<UnitOfWork>, engine: &FlowEngine) -> crate::Result<()> {
+	// Process all units for this flow sequentially
+	for unit in flow_units {
+		// Update version if needed
+		if flow_txn.version() != unit.version {
+			flow_txn.update_version(unit.version)?;
+		}
+
+		// Process all source changes for this unit
+		for change in unit.source_changes {
+			engine.process(flow_txn, change)?;
+		}
+	}
+
+	Ok(())
+}
