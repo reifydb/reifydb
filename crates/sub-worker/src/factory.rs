@@ -74,7 +74,7 @@ impl SubsystemFactory<StandardCommandTransaction> for WorkerSubsystemFactory {
 
 		// Create subsystem
 		let config = builder.build();
-		let subsystem = WorkerSubsystem::with_config_and_engine(config, engine);
+		let subsystem = WorkerSubsystem::new(config, engine);
 
 		Ok(Box::new(subsystem))
 	}

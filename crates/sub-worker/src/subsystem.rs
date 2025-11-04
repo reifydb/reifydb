@@ -32,7 +32,7 @@ use crate::{
 	client::{SchedulerClient, SchedulerRequest, SchedulerResponse},
 	scheduler::{OnceTaskAdapter, SchedulableTaskAdapter, TaskScheduler},
 	task::{PoolTask, PrioritizedTask},
-	thread::Thread,
+	tracker::TaskTracker,
 };
 
 /// Configuration for the worker pool
@@ -74,12 +74,16 @@ pub struct WorkerSubsystem {
 	running: Arc<AtomicBool>,
 	stats: Arc<PoolStats>,
 
+	// Rayon execution
+	thread_pool: Option<Arc<rayon::ThreadPool>>,
+	dispatcher_handle: Option<JoinHandle<()>>,
+
+	// Task tracking
+	task_tracker: Arc<TaskTracker>,
+
 	// Task priority queue
 	task_queue: Arc<Mutex<BinaryHeap<PrioritizedTask>>>,
 	task_condvar: Arc<Condvar>,
-
-	// Worker threads
-	workers: Vec<Thread>,
 
 	// Scheduler for periodic tasks
 	scheduler: Arc<Mutex<TaskScheduler>>,
@@ -104,7 +108,7 @@ pub struct WorkerSubsystem {
 }
 
 impl WorkerSubsystem {
-	pub fn with_config_and_engine(config: WorkerConfig, engine: StandardEngine) -> Self {
+	pub fn new(config: WorkerConfig, engine: StandardEngine) -> Self {
 		let pending_requests = Arc::new(Mutex::new(VecDeque::new()));
 		let next_handle = Arc::new(AtomicU64::new(1));
 		let running = Arc::new(AtomicBool::new(false));
@@ -123,9 +127,11 @@ impl WorkerSubsystem {
 			config,
 			running,
 			stats: Arc::new(PoolStats::default()),
+			thread_pool: None,
+			dispatcher_handle: None,
+			task_tracker: Arc::new(TaskTracker::new()),
 			task_queue: Arc::new(Mutex::new(BinaryHeap::with_capacity(max_queue_size))),
 			task_condvar: Arc::new(Condvar::new()),
-			workers: Vec::new(),
 			scheduler: Arc::new(Mutex::new(TaskScheduler::new())),
 			scheduler_condvar: Arc::new(Condvar::new()),
 			scheduler_handle: None,
@@ -204,6 +210,148 @@ impl WorkerSubsystem {
 	/// Get number of queued tasks
 	pub fn queued_tasks(&self) -> usize {
 		self.task_queue.lock().unwrap().len()
+	}
+
+	/// Dispatcher thread that bridges priority queue and Rayon
+	fn run_dispatcher(
+		pool: Arc<rayon::ThreadPool>,
+		queue: Arc<Mutex<BinaryHeap<PrioritizedTask>>>,
+		condvar: Arc<Condvar>,
+		tracker: Arc<TaskTracker>,
+		stats: Arc<PoolStats>,
+		running: Arc<AtomicBool>,
+		engine: StandardEngine,
+	) {
+		log_debug!("Dispatcher thread started");
+
+		while running.load(Ordering::Relaxed) {
+			// Wait for tasks in priority queue
+			let task = {
+				let mut queue_guard = queue.lock().unwrap();
+
+				// Wait for tasks or shutdown signal
+				while queue_guard.is_empty() && running.load(Ordering::Relaxed) {
+					let (guard, timeout_result) =
+						condvar.wait_timeout(queue_guard, Duration::from_millis(100)).unwrap();
+					queue_guard = guard;
+
+					// Check state periodically even on timeout
+					if timeout_result.timed_out() {
+						continue;
+					}
+				}
+
+				queue_guard.pop()
+			};
+
+			if let Some(prioritized_task) = task {
+				// Update stats
+				stats.tasks_queued.fetch_sub(1, Ordering::Relaxed);
+
+				// Register task with tracker
+				let (task_id, cancel_token) = tracker.register(None);
+
+				// Submit to Rayon for execution
+				let tracker_clone = Arc::clone(&tracker);
+				let stats_clone = Arc::clone(&stats);
+				let engine_clone = engine.clone();
+
+				pool.spawn(move || {
+					// Check cancellation before starting
+					if cancel_token.is_cancelled() {
+						tracker_clone.complete(task_id);
+						return;
+					}
+
+					// Update stats
+					stats_clone.active_workers.fetch_add(1, Ordering::Relaxed);
+
+					// Create task context
+					let ctx = crate::task::InternalTaskContext {
+						cancel_token: Some(cancel_token.clone()),
+						engine: engine_clone,
+					};
+
+					// Execute task
+					let start = std::time::Instant::now();
+					let result = prioritized_task.task.execute(&ctx);
+					let duration = start.elapsed();
+
+					// Log slow tasks
+					if duration > Duration::from_secs(5) {
+						log_warn!(
+							"Task '{}' took {:?} to execute",
+							prioritized_task.task.name(),
+							duration
+						);
+					}
+
+					// Update stats based on result
+					match result {
+						Ok(_) => {
+							stats_clone.tasks_completed.fetch_add(1, Ordering::Relaxed);
+						}
+						Err(e) => {
+							log_warn!(
+								"Task '{}' failed: {}",
+								prioritized_task.task.name(),
+								e
+							);
+							stats_clone.tasks_failed.fetch_add(1, Ordering::Relaxed);
+						}
+					}
+
+					stats_clone.active_workers.fetch_sub(1, Ordering::Relaxed);
+					tracker_clone.complete(task_id);
+				});
+			}
+		}
+
+		// Drain remaining tasks on shutdown
+		Self::drain_queue(pool, queue, tracker, stats, engine);
+
+		log_debug!("Dispatcher thread stopped");
+	}
+
+	/// Drain queue during shutdown
+	fn drain_queue(
+		pool: Arc<rayon::ThreadPool>,
+		queue: Arc<Mutex<BinaryHeap<PrioritizedTask>>>,
+		tracker: Arc<TaskTracker>,
+		stats: Arc<PoolStats>,
+		engine: StandardEngine,
+	) {
+		log_debug!("Draining task queue during shutdown");
+
+		loop {
+			let task = {
+				let mut queue_guard = queue.lock().unwrap();
+				queue_guard.pop()
+			};
+
+			match task {
+				Some(prioritized_task) => {
+					stats.tasks_queued.fetch_sub(1, Ordering::Relaxed);
+
+					// Still execute tasks during shutdown for graceful completion
+					let (task_id, _) = tracker.register(None);
+					let tracker_clone = Arc::clone(&tracker);
+					let stats_clone = Arc::clone(&stats);
+					let engine_clone = engine.clone();
+
+					pool.spawn(move || {
+						let ctx = crate::task::InternalTaskContext {
+							cancel_token: None,
+							engine: engine_clone,
+						};
+						let _ = prioritized_task.task.execute(&ctx);
+						stats_clone.tasks_completed.fetch_add(1, Ordering::Relaxed);
+						tracker_clone.complete(task_id);
+					});
+				}
+				None => break,
+			}
+		}
 	}
 
 	/// Start the scheduler thread
@@ -436,20 +584,49 @@ impl Subsystem for WorkerSubsystem {
 			return Ok(()); // Already running
 		}
 
+		log_debug!("Starting worker subsystem with {} workers", self.config.num_workers);
+
+		// Create Rayon thread pool
+		let pool = rayon::ThreadPoolBuilder::new()
+			.num_threads(self.config.num_workers)
+			.thread_name(|i| format!("rayon-worker-{}", i))
+			.panic_handler(|panic_info| {
+				log_warn!("Worker thread panicked: {:?}", panic_info);
+			})
+			.build()
+			.map_err(|e| {
+				reifydb_core::error!(reifydb_core::diagnostic::internal(format!(
+					"Failed to create thread pool: {}",
+					e
+				)))
+			})?;
+
+		self.thread_pool = Some(Arc::new(pool));
 		self.running.store(true, Ordering::Relaxed);
 
-		// Start worker threads
-		for i in 0..self.config.num_workers {
-			let mut worker = Thread::new(
-				i,
-				Arc::clone(&self.task_queue),
-				Arc::clone(&self.task_condvar),
-				Arc::clone(&self.running),
-				Arc::clone(&self.stats),
-				self.config.task_timeout_warning,
-			);
-			worker.start();
-			self.workers.push(worker);
+		// Start dispatcher thread
+		{
+			let pool = Arc::clone(self.thread_pool.as_ref().unwrap());
+			let queue = Arc::clone(&self.task_queue);
+			let condvar = Arc::clone(&self.task_condvar);
+			let tracker = Arc::clone(&self.task_tracker);
+			let stats = Arc::clone(&self.stats);
+			let running = Arc::clone(&self.running);
+			let engine = self.engine.clone();
+
+			let handle = thread::Builder::new()
+				.name("worker-dispatcher".to_string())
+				.spawn(move || {
+					Self::run_dispatcher(pool, queue, condvar, tracker, stats, running, engine)
+				})
+				.map_err(|e| {
+					reifydb_core::error!(reifydb_core::diagnostic::internal(format!(
+						"Failed to spawn dispatcher thread: {}",
+						e
+					)))
+				})?;
+
+			self.dispatcher_handle = Some(handle);
 		}
 
 		// Start scheduler thread
@@ -465,29 +642,38 @@ impl Subsystem for WorkerSubsystem {
 			return Ok(()); // Already stopped
 		}
 
-		log_debug!("Shutting down...");
+		log_debug!("Shutting down worker subsystem...");
+
+		// Signal all threads to stop
 		self.running.store(false, Ordering::Relaxed);
 
-		// Wake scheduler so it can exit
+		// Wake up dispatcher
+		self.task_condvar.notify_all();
+
+		// Wake up scheduler
 		self.scheduler_condvar.notify_all();
 
-		// Wake all worker threads repeatedly to ensure they exit
-		// This handles the race condition where a thread might miss the
-		// first notify
-		for _ in 0..3 {
-			self.task_condvar.notify_all();
-			std::thread::sleep(Duration::from_millis(1));
-		}
-
-		// Stop scheduler
+		// Join scheduler thread
 		if let Some(handle) = self.scheduler_handle.take() {
 			let _ = handle.join();
 		}
 
-		// Stop all workers
-		for worker in self.workers.drain(..) {
-			worker.shutdown();
+		// Join dispatcher thread
+		if let Some(handle) = self.dispatcher_handle.take() {
+			let _ = handle.join();
 		}
+
+		// Wait for in-flight tasks to complete
+		let timeout = Duration::from_secs(30);
+		if !self.task_tracker.wait_for_completion(timeout) {
+			log_warn!(
+				"Timeout waiting for tasks to complete. {} tasks still running",
+				self.task_tracker.active_count()
+			);
+		}
+
+		// Rayon thread pool will be dropped automatically
+		self.thread_pool = None;
 
 		log_debug!("Shutdown complete");
 		Ok(())

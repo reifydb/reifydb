@@ -8,7 +8,7 @@ mod scheduler;
 mod subsystem;
 #[allow(dead_code)]
 mod task;
-mod thread;
+mod tracker;
 
 pub use builder::WorkerBuilder;
 pub use client::{SchedulerClient, SchedulerRequest, SchedulerResponse};
@@ -16,6 +16,5 @@ pub use factory::WorkerSubsystemFactory;
 pub use reifydb_type::Result;
 pub use scheduler::TaskScheduler;
 pub use task::{InternalClosureTask, InternalTaskContext, PoolTask, PrioritizedTask};
-pub use thread::Thread;
 
 pub use crate::subsystem::{PoolStats, Priority, WorkerConfig, WorkerSubsystem};

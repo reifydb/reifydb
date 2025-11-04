@@ -41,7 +41,7 @@ fn create_test_engine() -> StandardEngine {
 #[test]
 fn test_schedule_every_basic_interval_execution() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(WorkerConfig::default(), engine);
+	let mut instance = WorkerSubsystem::new(WorkerConfig::default(), engine);
 	assert!(instance.start().is_ok());
 
 	let counter = Arc::new(AtomicUsize::new(0));
@@ -89,7 +89,7 @@ fn test_schedule_every_priority_ordering() {
 	// Tests that high priority intervals get executed before low priority when
 	// ready
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(
+	let mut instance = WorkerSubsystem::new(
 		WorkerConfig {
 			num_workers: 1, // Single worker to ensure strict ordering
 			max_queue_size: 100,
@@ -153,7 +153,7 @@ fn test_schedule_every_priority_ordering() {
 #[test]
 fn test_schedule_every_cancellation() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(WorkerConfig::default(), engine);
+	let mut instance = WorkerSubsystem::new(WorkerConfig::default(), engine);
 	assert!(instance.start().is_ok());
 
 	let counter = Arc::new(AtomicUsize::new(0));
@@ -188,7 +188,7 @@ fn test_schedule_every_cancellation() {
 #[test]
 fn test_schedule_every_multiple_intervals() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(
+	let mut instance = WorkerSubsystem::new(
 		WorkerConfig {
 			num_workers: 2,
 			max_queue_size: 100,
@@ -245,7 +245,7 @@ fn test_schedule_every_multiple_intervals() {
 #[test]
 fn test_schedule_every_task_failure_recovery() {
 	let engine = create_test_engine();
-	let mut instance = WorkerSubsystem::with_config_and_engine(WorkerConfig::default(), engine);
+	let mut instance = WorkerSubsystem::new(WorkerConfig::default(), engine);
 	assert!(instance.start().is_ok());
 
 	let counter = Arc::new(AtomicUsize::new(0));
