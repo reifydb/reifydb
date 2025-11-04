@@ -260,13 +260,13 @@ impl CdcConsume for FlowConsumer {
 				changes_by_source.entry(source_id).or_insert_with(Vec::new).push(diff);
 			}
 
-			// Convert to Vec format expected by partition_multi_version
+			// Convert to Vec format expected by create_partition
 			let source_diffs: Vec<(SourceId, Vec<FlowDiff>)> = changes_by_source.into_iter().collect();
 			diffs_by_version.insert(version, source_diffs);
 		}
 
 		// Partition all changes across all versions into units of work
-		let units = self.flow_engine.partition_multi_version(diffs_by_version);
+		let units = self.flow_engine.create_partition(diffs_by_version);
 		if units.is_empty() {
 			return Ok(());
 		}

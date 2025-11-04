@@ -42,9 +42,38 @@ impl WorkerPool for ParallelWorkerPool {
 
 		for flow_units in units_of_work {
 			if !flow_units.is_empty() {
+				// INVARIANT: Validate that all units in this Vec are for the same flow_id
+				let flow_id = flow_units[0].flow_id;
+				for unit in &flow_units {
+					assert_eq!(
+						unit.flow_id, flow_id,
+						"INVARIANT VIOLATED: Flow units contain mixed flow_ids - expected {:?}, got {:?}. \
+						Each Vec should contain units for exactly one flow.",
+						flow_id, unit.flow_id
+					);
+				}
+
 				let first_version = flow_units[0].version;
 				let flow_txn = FlowTransaction::new(txn, first_version);
 				txns.push((flow_units, flow_txn));
+			}
+		}
+
+		// INVARIANT: Validate that no flow_id appears in multiple tasks
+		// This is critical to prevent keyspace overlap between parallel FlowTransactions
+		{
+			use std::collections::HashSet;
+			let mut flow_ids_in_tasks = HashSet::new();
+
+			for (flow_units, _) in &txns {
+				let flow_id = flow_units[0].flow_id;
+				assert!(
+					!flow_ids_in_tasks.contains(&flow_id),
+					"INVARIANT VIOLATED: flow_id {:?} will be processed by multiple parallel tasks. \
+					This will cause keyspace overlap as multiple FlowTransactions write to the same keys.",
+					flow_id
+				);
+				flow_ids_in_tasks.insert(flow_id);
 			}
 		}
 

@@ -46,7 +46,23 @@ impl FlowEngine {
 					}
 				}
 			}
-			_ => unreachable!(),
+			FlowChangeOrigin::Internal(node_id) => {
+				// Internal changes are already scoped to a specific node
+				// This path is used by the partition logic to directly process a node's changes
+				// Find which flow this node belongs to by checking all registered flows
+				let flows = self.inner.flows.read();
+				for (_flow_id, flow) in flows.iter() {
+					if let Some(node) = flow.get_node(&node_id) {
+						let flow = flow.clone();
+						let node = node.clone();
+						drop(flows);
+
+						self.process_change(txn, &flow, &node, change)?;
+						return Ok(());
+					}
+				}
+				drop(flows);
+			}
 		}
 		Ok(())
 	}

@@ -26,7 +26,7 @@ impl crate::engine::FlowEngine {
 	///
 	/// # Returns
 	/// UnitsOfWork where each flow has its units ordered by version
-	pub fn partition_multi_version(
+	pub fn create_partition(
 		&self,
 		changes_by_version: HashMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>>,
 	) -> UnitsOfWork {
@@ -58,7 +58,41 @@ impl crate::engine::FlowEngine {
 		}
 
 		// Convert the HashMap to UnitsOfWork for the worker
-		UnitsOfWork::new(all_units_by_flow.into_iter().map(|(_, units)| units).collect())
+		let units_vec: Vec<Vec<UnitOfWork>> = all_units_by_flow.into_iter().map(|(_, units)| units).collect();
+
+		// INVARIANT: Validate that each flow_id appears exactly once in the output
+		// and that each inner Vec contains units for only one flow
+		{
+			use std::collections::HashSet;
+			let mut seen_flows = HashSet::new();
+
+			for flow_units in &units_vec {
+				assert!(!flow_units.is_empty(), "INVARIANT VIOLATED: Empty flow units in UnitsOfWork");
+
+				let flow_id = flow_units[0].flow_id;
+				assert!(
+					!seen_flows.contains(&flow_id),
+					"INVARIANT VIOLATED: flow_id {:?} appears multiple times in UnitsOfWork. \
+					This means the same flow will be processed by multiple parallel tasks, \
+					causing keyspace overlap.",
+					flow_id
+				);
+
+				// Validate all units in this Vec are for the same flow
+				for unit in flow_units {
+					assert_eq!(
+						unit.flow_id, flow_id,
+						"INVARIANT VIOLATED: Mixed flow_ids in same Vec - expected {:?}, got {:?}. \
+						All units in a Vec must belong to the same flow.",
+						flow_id, unit.flow_id
+					);
+				}
+
+				seen_flows.insert(flow_id);
+			}
+		}
+
+		UnitsOfWork::new(units_vec)
 	}
 
 	fn partition_into_units_of_work(
@@ -76,9 +110,11 @@ impl crate::engine::FlowEngine {
 		for (source_id, diffs) in changes_by_source {
 			// Find all flows subscribed to this source
 			if let Some(subscriptions) = sources.get(&source_id) {
-				for (flow_id, _node_id) in subscriptions {
-					// Add this source's changes to the flow's unit of work
-					let change = FlowChange::external(source_id, version, diffs.clone());
+				for (flow_id, node_id) in subscriptions {
+					// Create FlowChange scoped to the specific node in this flow
+					// This ensures each flow only processes its own nodes, preventing keyspace
+					// overlap
+					let change = FlowChange::internal(*node_id, version, diffs.clone());
 					flow_changes.entry(*flow_id).or_insert_with(Vec::new).push(change);
 				}
 			}
@@ -122,18 +158,36 @@ mod tests {
 		worker::{UnitOfWork, UnitsOfWork},
 	};
 
+	/// Helper to build sources map with explicit node IDs
+	/// Maps source_id to list of (flow_id, node_id) pairs
+	/// The node_id encodes BOTH the source and flow: source_id*1000 + flow_id
+	/// This ensures unique node IDs across all source subscriptions
+	fn mk_sources(subscriptions: HashMap<SourceId, Vec<FlowId>>) -> HashMap<SourceId, Vec<(FlowId, FlowNodeId)>> {
+		let mut sources_map = HashMap::new();
+		for (source_id, flows) in subscriptions {
+			let source_num = match source_id {
+				SourceId::Table(tid) => tid.0,
+				_ => panic!("Only Table sources supported in tests"),
+			};
+			let subscriptions_with_nodes: Vec<(FlowId, FlowNodeId)> = flows
+				.into_iter()
+				.map(|flow_id| {
+					// Node ID = source * 1000 + flow, ensuring global uniqueness
+					let node_id = FlowNodeId(source_num * 1000 + flow_id.0);
+					(flow_id, node_id)
+				})
+				.collect();
+			sources_map.insert(source_id, subscriptions_with_nodes);
+		}
+		sources_map
+	}
+
 	fn setup_engine(subscriptions: HashMap<SourceId, Vec<FlowId>>) -> FlowEngine {
 		let evaluator = StandardRowEvaluator::default();
 		let executor = Executor::testing();
 		let registry = TransformOperatorRegistry::new();
 
-		// Convert simple subscriptions map to full format with node IDs
-		let mut sources_map: HashMap<SourceId, Vec<(FlowId, FlowNodeId)>> = HashMap::new();
-		for (source_id, flows) in subscriptions {
-			let subscriptions_with_nodes: Vec<(FlowId, FlowNodeId)> =
-				flows.into_iter().map(|flow_id| (flow_id, FlowNodeId(flow_id.0 * 100))).collect();
-			sources_map.insert(source_id, subscriptions_with_nodes);
-		}
+		let sources = mk_sources(subscriptions);
 
 		let inner = FlowEngineInner {
 			evaluator,
@@ -141,7 +195,7 @@ mod tests {
 			registry,
 			operators: parking_lot::RwLock::new(HashMap::new()),
 			flows: parking_lot::RwLock::new(HashMap::new()),
-			sources: parking_lot::RwLock::new(sources_map),
+			sources: parking_lot::RwLock::new(sources),
 			sinks: parking_lot::RwLock::new(HashMap::new()),
 			analyzer: parking_lot::RwLock::new(FlowGraphAnalyzer::new()),
 		};
@@ -184,12 +238,25 @@ mod tests {
 	}
 
 	/// Extract a snapshot of a unit: (version, source_id -> diff_count)
+	/// Note: After the fix, FlowChanges use Internal origin with node_id
+	/// In tests, node_id = source_id * 1000 + flow_id, so we reverse-engineer source_id
 	fn snapshot_unit(unit: &UnitOfWork) -> (CommitVersion, BTreeMap<SourceId, usize>) {
 		let mut sources = BTreeMap::new();
+
 		for change in &unit.source_changes {
-			if let crate::flow::FlowChangeOrigin::External(source_id) = change.origin {
-				let count = change.diffs.len();
-				*sources.entry(source_id).or_insert(0) += count;
+			match change.origin {
+				crate::flow::FlowChangeOrigin::External(source_id) => {
+					let count = change.diffs.len();
+					*sources.entry(source_id).or_insert(0) += count;
+				}
+				crate::flow::FlowChangeOrigin::Internal(node_id) => {
+					// In test setup, node_id = source_id * 1000 + flow_id
+					// So source_id = node_id / 1000
+					let source_num = node_id.0 / 1000;
+					let source_id = SourceId::Table(reifydb_core::interface::TableId(source_num));
+					let count = change.diffs.len();
+					*sources.entry(source_id).or_insert(0) += count;
+				}
 			}
 		}
 		(unit.version, sources)
@@ -246,7 +313,7 @@ mod tests {
 		let engine = setup_engine(HashMap::new());
 		let input = HashMap::new();
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 
 		assert!(result.is_empty(), "Empty input should produce empty output");
 	}
@@ -262,7 +329,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(10), vec![(s(1), vec![mk_diff("d1"), mk_diff("d2")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// Expect F1 has 1 unit at V10 with S1:2 diffs
@@ -286,7 +353,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(1), vec![(s(1), vec![mk_diff("d1")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// Expect F1, F2, F3 each have 1 unit at V1 with S1:1
@@ -313,7 +380,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(7), vec![(s(1), vec![mk_diff("a")]), (s(2), vec![mk_diff("b"), mk_diff("c")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		assert_eq!(normalized.len(), 3);
@@ -355,7 +422,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(3), vec![(s(999), vec![mk_diff("x")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 
 		assert!(result.is_empty(), "Unknown sources should produce no units");
 	}
@@ -374,7 +441,7 @@ mod tests {
 		input.insert(v(10), vec![(s(1), vec![mk_diff("b")])]);
 		input.insert(v(30), vec![(s(2), vec![mk_diff("c")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// F1: units at V10 then V20 (ascending)
@@ -401,7 +468,7 @@ mod tests {
 		input.insert(v(1), vec![(s(1), vec![mk_diff("a")])]);
 		input.insert(v(100), vec![(s(1), vec![mk_diff("b")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// F1 has exactly 2 units at V1 and V100
@@ -422,7 +489,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(5), vec![(s(1), vec![mk_diff("x"), mk_diff("y")]), (s(1), vec![mk_diff("z")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// F1 @V5 should have S1:3 diffs (merged)
@@ -445,7 +512,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(8), vec![(s(1), vec![mk_diff("a")]), (s(2), vec![mk_diff("b"), mk_diff("c")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// F1 @V8 has two sources: S1:1, S2:2
@@ -470,7 +537,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(2), vec![(s(1), vec![mk_diff("a")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// Only F1 should have work
@@ -493,7 +560,7 @@ mod tests {
 		input.insert(v(1), vec![(s(1), vec![mk_diff("a1")]), (s(2), vec![mk_diff("b1")])]);
 		input.insert(v(2), vec![(s(1), vec![mk_diff("a2")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// F1: V1 {S1:1}, V2 {S1:1}
@@ -531,7 +598,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(1), vec![(s(1), diffs)]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 
 		assert!(result.is_empty(), "No subscribers means no units");
 	}
@@ -554,7 +621,7 @@ mod tests {
 			}
 		}
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// F1 should only have 3 units
@@ -584,7 +651,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(1), changes);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// F1 should have 1 unit with exactly 5 sources
@@ -616,7 +683,7 @@ mod tests {
 			for ver in versions {
 				input.insert(ver, vec![(s(1), vec![mk_diff(&format!("d{}", ver.0))])]);
 			}
-			let result = engine.partition_multi_version(input);
+			let result = engine.create_partition(input);
 			results.push(normalize(result));
 		}
 
@@ -644,7 +711,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(1), vec![(s(1), vec![])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// Current behavior: empty diffs still create a unit with 0 count
@@ -668,7 +735,7 @@ mod tests {
 		input.insert(v(1), vec![(s(999), vec![mk_diff("x")])]);
 		input.insert(v(2), vec![(s(888), vec![mk_diff("y")])]);
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 
 		assert!(result.is_empty(), "All unknown sources should produce empty output");
 	}
@@ -684,7 +751,7 @@ mod tests {
 		let mut input = HashMap::new();
 		input.insert(v(1), vec![(s(1), vec![mk_diff("d1")])]);
 
-		let expected = normalize(engine.partition_multi_version(input.clone()));
+		let expected = normalize(engine.create_partition(input.clone()));
 
 		// Test 5 random permutations
 		for _ in 0..5 {
@@ -692,7 +759,7 @@ mod tests {
 			entries.shuffle(&mut rand::rng());
 			let shuffled: HashMap<_, _> = entries.into_iter().collect();
 
-			let result = normalize(engine.partition_multi_version(shuffled));
+			let result = normalize(engine.create_partition(shuffled));
 			assert_normalized_eq(&result, &expected);
 		}
 	}
@@ -712,7 +779,7 @@ mod tests {
 		input.insert(v(1), vec![(s(1), vec![mk_diff("a1")]), (s(2), vec![mk_diff("b1")])]);
 		input.insert(v(2), vec![(s(1), vec![mk_diff("a2")])]);
 
-		let expected = normalize(engine.partition_multi_version(input.clone()));
+		let expected = normalize(engine.create_partition(input.clone()));
 
 		// Test 5 random permutations
 		for _ in 0..5 {
@@ -720,7 +787,7 @@ mod tests {
 			entries.shuffle(&mut rand::rng());
 			let shuffled: HashMap<_, _> = entries.into_iter().collect();
 
-			let result = normalize(engine.partition_multi_version(shuffled));
+			let result = normalize(engine.create_partition(shuffled));
 			assert_normalized_eq(&result, &expected);
 		}
 	}
@@ -749,7 +816,7 @@ mod tests {
 		}
 
 		// Should complete without panic
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// Basic sanity checks
@@ -782,7 +849,7 @@ mod tests {
 			input.insert(v(ver), vec![(s(1), vec![mk_diff(&format!("d{}", ver))])]);
 		}
 
-		let result = engine.partition_multi_version(input);
+		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
 		// F1 should have 100 units in perfect ascending order
