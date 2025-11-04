@@ -72,6 +72,31 @@ pub fn internal(reason: impl Into<String>) -> Diagnostic {
 	internal_with_context(reason, "unknown", 0, 0, "unknown", "unknown")
 }
 
+/// Creates a diagnostic for shutdown-related errors
+/// Used when operations fail because a subsystem is shutting down
+pub fn shutdown(component: impl Into<String>) -> Diagnostic {
+	let component = component.into();
+
+	Diagnostic {
+		code: "SHUTDOWN".to_string(),
+		statement: None,
+		message: format!("{} is shutting down", component),
+		column: None,
+		fragment: OwnedFragment::None,
+		label: Some(format!("{} is no longer accepting requests", component)),
+		help: Some(format!(
+			"This operation failed because {} is shutting down.\n\
+			 This is expected during database shutdown.",
+			component
+		)),
+		notes: vec![
+			"This is not an error - the system is shutting down gracefully".to_string(),
+			"Operations submitted during shutdown will be rejected".to_string(),
+		],
+		cause: None,
+	}
+}
+
 /// Macro to create an internal error with automatic source location capture
 #[macro_export]
 macro_rules! internal_error {

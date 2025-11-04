@@ -17,7 +17,7 @@ pub mod engine;
 pub mod flow;
 pub mod function;
 pub mod internal;
-pub use internal::{internal, internal_with_context};
+pub use internal::{internal, internal_with_context, shutdown};
 
 use crate::{OwnedFragment, Type, fragment::IntoFragment};
 

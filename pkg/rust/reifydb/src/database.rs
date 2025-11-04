@@ -244,17 +244,13 @@ impl Database {
 
 	pub fn await_signal(&self) -> Result<()> {
 		static RUNNING: AtomicBool = AtomicBool::new(true);
+		static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
 
-		extern "C" fn handle_signal(sig: libc::c_int) {
-			let signal_name = match sig {
-				libc::SIGINT => "SIGINT (Ctrl+C)",
-				libc::SIGTERM => "SIGTERM",
-				libc::SIGQUIT => "SIGQUIT",
-				libc::SIGHUP => "SIGHUP",
-				_ => "Unknown signal",
-			};
-			log_debug!("Received {}, signaling shutdown...", signal_name);
+		extern "C" fn handle_signal(_sig: libc::c_int) {
+			// SAFETY: Only async-signal-safe operations are allowed here.
+			// We only use atomic operations, which are signal-safe.
 			RUNNING.store(false, Ordering::SeqCst);
+			SIGNAL_RECEIVED.store(true, Ordering::SeqCst);
 		}
 
 		unsafe {
@@ -267,6 +263,12 @@ impl Database {
 		log_debug!("Waiting for termination signal...");
 		while RUNNING.load(Ordering::SeqCst) {
 			std::thread::sleep(Duration::from_millis(100));
+
+			// Log the signal reception outside the signal handler
+			if SIGNAL_RECEIVED.load(Ordering::SeqCst) {
+				log_debug!("Received termination signal, initiating shutdown...");
+				break;
+			}
 		}
 
 		Ok(())

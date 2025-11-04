@@ -536,8 +536,8 @@ impl WorkerSubsystem {
 							Duration::from_millis(0)
 						}
 					} else {
-						// No scheduled tasks, wait indefinitely
-						Duration::from_secs(3600)
+						// No scheduled tasks, wait briefly to check for shutdown
+						Duration::from_secs(1)
 					};
 
 					drop(sched);
@@ -643,16 +643,24 @@ impl Subsystem for WorkerSubsystem {
 			return Ok(()); // Already stopped
 		}
 
-		log_debug!("Shutting down worker subsystem...");
+		log_debug!("Worker pool shutting down...");
 
-		// Signal all threads to stop
 		self.running.store(false, Ordering::Relaxed);
+		log_debug!("Signaled threads to stop");
 
-		// Wake up dispatcher
 		self.task_condvar.notify_all();
-
-		// Wake up scheduler
 		self.scheduler_condvar.notify_all();
+
+		let cancelled_count = {
+			let mut queue = self.task_queue.lock().unwrap();
+			let count = queue.len();
+			queue.clear();
+			count
+		};
+
+		if cancelled_count > 0 {
+			log_debug!("Cancelled {} queued tasks", cancelled_count);
+		}
 
 		// Join scheduler thread
 		if let Some(handle) = self.scheduler_handle.take() {
@@ -664,19 +672,28 @@ impl Subsystem for WorkerSubsystem {
 			let _ = handle.join();
 		}
 
-		// Wait for in-flight tasks to complete
-		let timeout = Duration::from_secs(30);
-		if !self.task_tracker.wait_for_completion(timeout) {
-			log_warn!(
-				"Timeout waiting for tasks to complete. {} tasks still running",
-				self.task_tracker.active_count()
-			);
+		log_debug!("Scheduler and dispatcher threads stopped");
+
+		let active_count = self.task_tracker.active_count();
+		if active_count > 0 {
+			log_debug!("Waiting for {} active tasks to complete...", active_count);
 		}
 
-		// Rayon thread pool will be dropped automatically
-		self.thread_pool = None;
+		let timeout = Duration::from_secs(10);
+		if !self.task_tracker.wait_for_completion(timeout) {
+			let remaining = self.task_tracker.active_count();
+			log_warn!(
+				"Timeout waiting for tasks to complete. {} tasks still running. Forcing shutdown.",
+				remaining
+			);
 
-		log_debug!("Shutdown complete");
+			self.thread_pool = None;
+			log_warn!("Worker pool shutdown forced with {} tasks still active", remaining);
+		} else {
+			self.thread_pool = None;
+			log_debug!("All tasks completed, worker pool shutdown complete");
+		}
+
 		Ok(())
 	}
 

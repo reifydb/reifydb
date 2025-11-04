@@ -158,17 +158,19 @@ impl DatabaseBuilder {
 	}
 
 	pub fn build(mut self) -> crate::Result<Database> {
+		// Collect interceptors from all factories
+		// Note: We process logging and flow factories separately before adding to self.factories
+
 		#[cfg(feature = "sub_logging")]
-		if let Some(factory) = self.logging_factory {
-			self.factories.push(factory);
+		if let Some(ref factory) = self.logging_factory {
+			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
 		#[cfg(feature = "sub_flow")]
-		if let Some(factory) = self.flow_factory {
-			self.factories.push(factory);
+		if let Some(ref factory) = self.flow_factory {
+			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
-		// Collect interceptors from all factories
 		for factory in &self.factories {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
@@ -229,9 +231,20 @@ impl DatabaseBuilder {
 		all_versions.push(NetworkVersion.version());
 
 		// Create subsystems from factories and collect their versions
+		// IMPORTANT: Order matters for shutdown! Subsystems are stopped in REVERSE order.
+		// Add logging FIRST so it's stopped LAST and can log shutdown messages from other subsystems.
 		let health_monitor = Arc::new(HealthMonitor::new());
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
+		// 1. Add logging subsystem first (stopped last during shutdown)
+		#[cfg(feature = "sub_logging")]
+		if let Some(factory) = self.logging_factory {
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
+		// 2. Add worker subsystem second
 		if let Some(factory) = self.worker_factory {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
@@ -243,6 +256,15 @@ impl DatabaseBuilder {
 			self.ioc = self.ioc.register(sched.clone());
 		}
 
+		// 3. Add flow subsystem third
+		#[cfg(feature = "sub_flow")]
+		if let Some(factory) = self.flow_factory {
+			let subsystem = factory.create(&self.ioc)?;
+			all_versions.push(subsystem.version());
+			subsystems.add_subsystem(subsystem);
+		}
+
+		// 4. Add other custom subsystems last (stopped first during shutdown)
 		for factory in self.factories {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
