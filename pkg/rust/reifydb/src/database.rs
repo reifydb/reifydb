@@ -15,11 +15,12 @@ use reifydb_core::{
 	log_warn,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{HealthStatus, Scheduler};
+use reifydb_sub_api::{HealthStatus, SchedulerService};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystem;
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::ServerSubsystem;
+use reifydb_sub_worker::WorkerSubsystem;
 
 use crate::{
 	boot::Bootloader,
@@ -74,10 +75,14 @@ pub struct Database {
 	subsystems: Subsystems,
 	health_monitor: Arc<HealthMonitor>,
 	running: bool,
-	scheduler: Option<Arc<dyn Scheduler>>,
+	scheduler: Option<SchedulerService>,
 }
 
 impl Database {
+	pub fn sub_worker(&self) -> Option<&WorkerSubsystem> {
+		self.subsystem::<WorkerSubsystem>()
+	}
+
 	#[cfg(feature = "sub_flow")]
 	pub fn sub_flow(&self) -> Option<&FlowSubsystem> {
 		self.subsystem::<FlowSubsystem>()
@@ -95,7 +100,7 @@ impl Database {
 		subsystem_manager: Subsystems,
 		config: DatabaseConfig,
 		health_monitor: Arc<HealthMonitor>,
-		scheduler: Option<Arc<dyn Scheduler>>,
+		scheduler: Option<SchedulerService>,
 	) -> Self {
 		Self {
 			engine: engine.clone(),
@@ -233,7 +238,7 @@ impl Database {
 		self.subsystems.get::<S>()
 	}
 
-	pub fn scheduler(&self) -> Option<Arc<dyn Scheduler>> {
+	pub fn scheduler(&self) -> Option<SchedulerService> {
 		self.scheduler.clone()
 	}
 
@@ -298,7 +303,7 @@ impl Session for Database {
 		session.into_query_session(self.engine.clone())
 	}
 
-	fn scheduler(&self) -> Option<Arc<dyn Scheduler>> {
+	fn scheduler(&self) -> Option<SchedulerService> {
 		self.scheduler.clone()
 	}
 }

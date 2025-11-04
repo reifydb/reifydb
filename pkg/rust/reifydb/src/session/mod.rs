@@ -11,8 +11,6 @@ mod command;
 #[allow(dead_code)]
 mod query;
 
-use std::sync::Arc;
-
 pub use command::CommandSession;
 pub use query::QuerySession;
 use reifydb_core::{
@@ -20,14 +18,14 @@ use reifydb_core::{
 	interface::{Engine as EngineInterface, Identity, Params},
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::Scheduler;
+use reifydb_sub_api::SchedulerService;
 
 pub trait Session {
 	fn command_session(&self, session: impl IntoCommandSession) -> crate::Result<CommandSession>;
 
 	fn query_session(&self, session: impl IntoQuerySession) -> crate::Result<QuerySession>;
 
-	fn scheduler(&self) -> Option<Arc<dyn Scheduler>>;
+	fn scheduler(&self) -> Option<SchedulerService>;
 
 	fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let session = self.command_session(Identity::root())?;

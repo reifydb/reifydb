@@ -26,7 +26,7 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 pub use reifydb_sub_api::Priority;
-use reifydb_sub_api::{BoxedOnceTask, BoxedTask, HealthStatus, Scheduler, Subsystem, TaskHandle};
+use reifydb_sub_api::{BoxedOnceTask, BoxedTask, HealthStatus, Scheduler, SchedulerService, Subsystem, TaskHandle};
 
 use crate::{
 	client::{SchedulerClient, SchedulerRequest, SchedulerResponse},
@@ -144,8 +144,8 @@ impl WorkerSubsystem {
 	}
 
 	/// Get the scheduler client
-	pub fn get_scheduler(&self) -> Arc<dyn Scheduler> {
-		self.scheduler_client.clone()
+	pub fn get_scheduler(&self) -> SchedulerService {
+		SchedulerService(self.scheduler_client.clone())
 	}
 
 	/// Submit a one-time task to the pool
@@ -509,8 +509,9 @@ impl WorkerSubsystem {
 					if sched.task_count() == 0 {
 						// No scheduled tasks, wait for notification with timeout
 						let result = scheduler_condvar
-							.wait_timeout(sched, Duration::from_millis(100))
+							.wait_timeout(sched, Duration::from_millis(1))
 							.unwrap();
+
 						sched = result.0;
 
 						// Check again if we should exit

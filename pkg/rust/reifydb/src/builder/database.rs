@@ -24,7 +24,7 @@ use reifydb_engine::{
 use reifydb_network::NetworkVersion;
 use reifydb_rql::RqlVersion;
 use reifydb_store_transaction::TransactionStoreVersion;
-use reifydb_sub_api::{SchedulerService, SubsystemFactory};
+use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
 #[cfg(feature = "sub_logging")]
@@ -240,7 +240,7 @@ impl DatabaseBuilder {
 
 		let scheduler = subsystems.get::<WorkerSubsystem>().map(|w| w.get_scheduler());
 		if let Some(ref sched) = scheduler {
-			self.ioc = self.ioc.register(SchedulerService(sched.clone()));
+			self.ioc = self.ioc.register(sched.clone());
 		}
 
 		for factory in self.factories {
