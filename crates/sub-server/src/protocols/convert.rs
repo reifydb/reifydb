@@ -2,11 +2,11 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{Frame, interface::Params};
-use reifydb_type::Value;
+use reifydb_type::{Value, util::hex};
 
 use crate::protocols::{
 	ProtocolResult,
-	ws::{WebsocketColumn, WebsocketFrame},
+	ws::{ResponseColumn, ResponseFrame},
 };
 
 /// Convert WebSocket params to engine params
@@ -20,10 +20,10 @@ pub fn convert_params(params: &Option<Params>) -> ProtocolResult<Params> {
 }
 
 /// Convert database result frames to WebSocket frames
-pub fn convert_result_to_frames(result: Vec<Frame>) -> ProtocolResult<Vec<WebsocketFrame>> {
-	let mut ws_frames = Vec::new();
+pub fn convert_frames(frames: Vec<Frame>) -> ProtocolResult<Vec<ResponseFrame>> {
+	let mut result = Vec::new();
 
-	for frame in result {
+	for frame in frames {
 		let row_numbers: Vec<u64> = frame.row_numbers.iter().map(|rn| rn.value()).collect();
 
 		let mut ws_columns = Vec::new();
@@ -34,12 +34,12 @@ pub fn convert_result_to_frames(result: Vec<Frame>) -> ProtocolResult<Vec<Websoc
 				.iter()
 				.map(|value| match value {
 					Value::Undefined => "⟪undefined⟫".to_string(),
-					Value::Blob(b) => reifydb_type::util::hex::encode(&b),
+					Value::Blob(b) => hex::encode(&b),
 					_ => value.to_string(),
 				})
 				.collect();
 
-			ws_columns.push(WebsocketColumn {
+			ws_columns.push(ResponseColumn {
 				namespace: column.namespace.clone(),
 				store: column.source.clone(),
 				name: column.name.clone(),
@@ -48,11 +48,11 @@ pub fn convert_result_to_frames(result: Vec<Frame>) -> ProtocolResult<Vec<Websoc
 			});
 		}
 
-		ws_frames.push(WebsocketFrame {
+		result.push(ResponseFrame {
 			row_numbers,
 			columns: ws_columns,
 		});
 	}
 
-	Ok(ws_frames)
+	Ok(result)
 }

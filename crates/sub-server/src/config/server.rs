@@ -8,10 +8,8 @@ use super::{NetworkConfig, ProtocolConfigs};
 pub struct ServerConfig {
 	/// Bind address and port
 	pub bind_addr: String,
-
 	/// Network and performance configuration
 	pub network: NetworkConfig,
-
 	/// Protocol-specific configurations
 	pub protocols: ProtocolConfigs,
 }
@@ -52,9 +50,9 @@ impl ServerConfig {
 		self
 	}
 
-	/// Get the effective number of workers
-	pub fn effective_workers(&self) -> usize {
-		self.network.workers.unwrap_or_else(|| num_cpus::get_physical().max(1))
+	/// Get the effective number of listeners
+	pub fn effective_listeners(&self) -> usize {
+		self.network.listeners.unwrap_or(1)
 	}
 }
 

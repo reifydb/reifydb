@@ -1,12 +1,24 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{net::SocketAddr, time::Instant};
+use std::{
+	collections::VecDeque,
+	io::Write,
+	net::SocketAddr,
+	sync::mpsc::{self, Receiver},
+	time::Instant,
+};
 
 use mio::{Interest, Token, net::TcpStream};
+use mpsc::TryRecvError;
+use reifydb_core::Result;
 use reifydb_engine::StandardEngine;
+use reifydb_sub_api::SchedulerService;
 
-use crate::protocols::{http::HttpState, ws::WsState};
+use crate::protocols::{
+	http::HttpState,
+	ws::{CommandResponse, ErrorResponse, QueryResponse, Response, WsState},
+};
 
 /// Buffer management for connection buffers
 const INITIAL_BUFFER_SIZE: usize = 8192;
@@ -26,6 +38,34 @@ pub enum ConnectionState {
 	Closed,
 }
 
+/// Type of request being processed
+#[derive(Debug, Clone)]
+pub enum RequestType {
+	HttpCommand,
+	HttpQuery,
+	WebSocketCommand,
+	WebSocketQuery,
+}
+
+/// Protocol-specific response ready to be sent
+#[derive(Debug)]
+pub enum PendingResponse {
+	HttpCommand(CommandResponse),
+	HttpQuery(QueryResponse),
+	HttpCommandError(ErrorResponse),
+	HttpQueryError(ErrorResponse),
+	WebSocketCommand(CommandResponse),
+	WebSocketQuery(QueryResponse),
+	WebSocketCommandError(ErrorResponse),
+	WebSocketQueryError(ErrorResponse),
+}
+
+/// Represents a pending query/command execution
+pub struct PendingQuery {
+	pub receiver: Receiver<Result<Response>>,
+	pub request_type: RequestType,
+}
+
 /// Generic connection wrapper that can handle multiple protocols
 pub struct Connection {
 	stream: TcpStream,
@@ -33,13 +73,24 @@ pub struct Connection {
 	token: Token,
 	state: ConnectionState,
 	engine: StandardEngine,
+	scheduler: SchedulerService,
 	created_at: Instant,
 	last_activity: Instant,
 	buffer: Vec<u8>,
+	// Track pending queries with their response channels
+	pending_queries: VecDeque<PendingQuery>,
+	// Queue of responses ready to be written
+	response_queue: VecDeque<PendingResponse>,
 }
 
 impl Connection {
-	pub fn new(stream: TcpStream, peer: SocketAddr, token: Token, engine: StandardEngine) -> Self {
+	pub fn new(
+		stream: TcpStream,
+		peer: SocketAddr,
+		token: Token,
+		engine: StandardEngine,
+		scheduler: SchedulerService,
+	) -> Self {
 		let now = Instant::now();
 		Self {
 			stream,
@@ -47,9 +98,12 @@ impl Connection {
 			token,
 			state: ConnectionState::Detecting,
 			engine,
+			scheduler,
 			created_at: now,
 			last_activity: now,
 			buffer: Vec::with_capacity(INITIAL_BUFFER_SIZE),
+			pending_queries: VecDeque::new(),
+			response_queue: VecDeque::new(),
 		}
 	}
 
@@ -125,17 +179,10 @@ impl Connection {
 
 	/// Properly close the TCP connection with shutdown
 	pub fn shutdown(&mut self) {
-		use std::io::Write;
-
-		// Flush any remaining data
+		self.cancel_pending_queries();
 		let _ = self.stream.flush();
-
-		// Attempt graceful shutdown of TCP connection
 		let _ = self.stream.shutdown(std::net::Shutdown::Both);
-
-		// Mark connection state as closed
 		self.state = ConnectionState::Closed;
-
 		self.reset_buffer()
 	}
 
@@ -154,5 +201,113 @@ impl Connection {
 
 	pub fn idle_time(&self) -> std::time::Duration {
 		self.last_activity.elapsed()
+	}
+
+	/// Submit a query for async execution
+	pub fn submit_query(&mut self, rx: Receiver<Result<Response>>, request_type: RequestType) {
+		self.pending_queries.push_back(PendingQuery {
+			receiver: rx,
+			request_type,
+		});
+	}
+
+	/// Check for completed queries and move results to response queue
+	pub fn poll_pending_queries(&mut self) -> bool {
+		let mut has_responses = false;
+
+		while let Some(pending) = self.pending_queries.pop_front() {
+			match pending.receiver.try_recv() {
+				Ok(result) => {
+					use crate::protocols::ws::ResponsePayload;
+
+					let response = match result {
+						Ok(response) => match (response.payload, &pending.request_type) {
+							(
+								ResponsePayload::Command(cmd_resp),
+								RequestType::HttpCommand,
+							) => Some(PendingResponse::HttpCommand(cmd_resp)),
+							(
+								ResponsePayload::Query(query_resp),
+								RequestType::HttpQuery,
+							) => Some(PendingResponse::HttpQuery(query_resp)),
+							(
+								ResponsePayload::Command(cmd_resp),
+								RequestType::WebSocketCommand,
+							) => Some(PendingResponse::WebSocketCommand(cmd_resp)),
+							(
+								ResponsePayload::Query(query_resp),
+								RequestType::WebSocketQuery,
+							) => Some(PendingResponse::WebSocketQuery(query_resp)),
+							(ResponsePayload::Err(err_resp), RequestType::HttpCommand) => {
+								Some(PendingResponse::HttpCommandError(err_resp))
+							}
+							(ResponsePayload::Err(err_resp), RequestType::HttpQuery) => {
+								Some(PendingResponse::HttpQueryError(err_resp))
+							}
+							(
+								ResponsePayload::Err(err_resp),
+								RequestType::WebSocketCommand,
+							) => Some(PendingResponse::WebSocketCommandError(err_resp)),
+							(
+								ResponsePayload::Err(err_resp),
+								RequestType::WebSocketQuery,
+							) => Some(PendingResponse::WebSocketQueryError(err_resp)),
+							_ => {
+								eprintln!("Mismatched response type and request type");
+								None
+							}
+						},
+						Err(e) => {
+							// Task execution failed (shouldn't happen as errors are wrapped
+							// in Response)
+							eprintln!("Task execution failed: {}", e);
+							None
+						}
+					};
+
+					if let Some(resp) = response {
+						self.response_queue.push_back(resp);
+						has_responses = true;
+					}
+				}
+				Err(TryRecvError::Empty) => {
+					// Query still pending, put it back
+					self.pending_queries.push_front(pending);
+					break; // Preserve order by stopping here
+				}
+				Err(TryRecvError::Disconnected) => {
+					// Channel disconnected, query was cancelled
+					// This is expected if worker pool is shutting down
+				}
+			}
+		}
+
+		has_responses
+	}
+
+	/// Check if there are responses ready to write
+	pub fn has_pending_responses(&self) -> bool {
+		!self.response_queue.is_empty()
+	}
+
+	/// Get the next response to write
+	pub fn next_response(&mut self) -> Option<PendingResponse> {
+		self.response_queue.pop_front()
+	}
+
+	/// Get the scheduler service
+	pub fn scheduler(&self) -> &SchedulerService {
+		&self.scheduler
+	}
+
+	/// Get the number of pending queries
+	pub fn pending_query_count(&self) -> usize {
+		self.pending_queries.len()
+	}
+
+	/// Cancel all pending queries (for connection close)
+	pub fn cancel_pending_queries(&mut self) {
+		self.pending_queries.clear();
+		self.response_queue.clear();
 	}
 }

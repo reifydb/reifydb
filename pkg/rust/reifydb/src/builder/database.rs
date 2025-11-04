@@ -244,13 +244,13 @@ impl DatabaseBuilder {
 			subsystems.add_subsystem(subsystem);
 		}
 
-		// 2. Add worker subsystem second
-		if let Some(factory) = self.worker_factory {
-			let subsystem = factory.create(&self.ioc)?;
-			all_versions.push(subsystem.version());
-			subsystems.add_subsystem(subsystem);
-		}
+		// 2. Add worker subsystem second (always ensure it exists, use default if not configured)
+		let worker_factory = self.worker_factory.unwrap_or_else(|| Box::new(WorkerSubsystemFactory::default()));
+		let subsystem = worker_factory.create(&self.ioc)?;
+		all_versions.push(subsystem.version());
+		subsystems.add_subsystem(subsystem);
 
+		// Register SchedulerService in IoC for other subsystems to use
 		let scheduler = subsystems.get::<WorkerSubsystem>().map(|w| w.get_scheduler());
 		if let Some(ref sched) = scheduler {
 			self.ioc = self.ioc.register(sched.clone());

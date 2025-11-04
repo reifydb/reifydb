@@ -4,7 +4,7 @@
 #[derive(Debug, Clone)]
 pub struct NetworkConfig {
 	/// Number of worker threads (defaults to number of physical CPU cores)
-	pub workers: Option<usize>,
+	pub listeners: Option<usize>,
 
 	/// Enable SO_REUSEPORT for load balancing across workers
 	pub reuse_port: bool,
@@ -25,7 +25,7 @@ pub struct NetworkConfig {
 impl Default for NetworkConfig {
 	fn default() -> Self {
 		Self {
-			workers: None,
+			listeners: None,
 			reuse_port: true,
 			pin_threads: true,
 			nodelay: true,

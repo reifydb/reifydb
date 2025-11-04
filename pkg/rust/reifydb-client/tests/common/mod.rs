@@ -18,7 +18,7 @@ pub fn create_server_instance(
 	let (multi, single, cdc, eventbus) = input;
 
 	let network_config = NetworkConfig {
-		workers: Some(1), // Limit to 1 worker for tests
+		listeners: Some(1), // Limit to 1 worker for tests
 		..Default::default()
 	};
 	ServerBuilder::new(multi, single, cdc, eventbus)

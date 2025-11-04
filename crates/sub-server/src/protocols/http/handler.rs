@@ -6,12 +6,16 @@ use std::io::{Read, Write};
 use reifydb_core::interface::{Engine, Identity, Params};
 use reifydb_type::diagnostic::Diagnostic;
 
-use super::{HttpConnectionData, HttpState, command::handle_v1_command, query::handle_v1_query};
+use super::{
+	HttpConnectionData, HttpState, ResponseType,
+	command::{CommandHandlerResult, handle_v1_command},
+	query::{QueryHandlerResult, handle_v1_query},
+};
 use crate::{
-	core::Connection,
+	core::{Connection, ConnectionState},
 	protocols::{
 		ProtocolError, ProtocolHandler, ProtocolResult,
-		ws::{CommandRequest, ErrResponse, QueryRequest},
+		ws::{CommandRequest, ErrorResponse, QueryRequest},
 	},
 };
 
@@ -140,16 +144,21 @@ impl ProtocolHandler for HttpHandler {
 	fn handle_connection(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		// Initialize HTTP state
 		let http_state = HttpState::ReadingRequest(HttpConnectionData::new());
-		conn.set_state(crate::core::ConnectionState::Http(http_state));
+		conn.set_state(ConnectionState::Http(http_state));
 		Ok(())
 	}
 
 	fn handle_read(&self, conn: &mut Connection) -> ProtocolResult<()> {
-		if let crate::core::ConnectionState::Http(http_state) = conn.state() {
+		if let ConnectionState::Http(http_state) = conn.state() {
 			match http_state {
 				HttpState::ReadingRequest(_) => self.handle_request_read(conn),
 				HttpState::Processing(_) => {
 					Ok(()) // No additional reading needed during processing
+				}
+				HttpState::ProcessingQuery {
+					..
+				} => {
+					Ok(()) // No additional reading needed while query is processing
 				}
 				HttpState::WritingResponse(_) => {
 					Ok(()) // No reading during response writing
@@ -162,13 +171,18 @@ impl ProtocolHandler for HttpHandler {
 	}
 
 	fn handle_write(&self, conn: &mut Connection) -> ProtocolResult<()> {
-		if let crate::core::ConnectionState::Http(http_state) = conn.state() {
+		if let ConnectionState::Http(http_state) = conn.state() {
 			match http_state {
 				HttpState::ReadingRequest(_) => {
 					Ok(()) // No writing during request reading
 				}
 				HttpState::Processing(_) => {
 					Ok(()) // No writing during processing
+				}
+				HttpState::ProcessingQuery {
+					..
+				} => {
+					Ok(()) // No writing while query is processing
 				}
 				HttpState::WritingResponse(_) => self.handle_response_write(conn),
 				HttpState::Closed => Ok(()),
@@ -188,15 +202,12 @@ impl ProtocolHandler for HttpHandler {
 
 impl HttpHandler {
 	fn handle_request_read(&self, conn: &mut Connection) -> ProtocolResult<()> {
-		println!("HttpHandler: handle_request_read called, buffer has {} bytes", conn.buffer().len());
-
 		// Check if we already found headers and are waiting for body
-		let header_end =
-			if let crate::core::ConnectionState::Http(HttpState::ReadingRequest(data)) = conn.state() {
-				data.header_end
-			} else {
-				None
-			};
+		let header_end = if let ConnectionState::Http(HttpState::ReadingRequest(data)) = conn.state() {
+			data.header_end
+		} else {
+			None
+		};
 
 		// If we haven't found headers yet, look for them
 		let header_end = if header_end.is_none() {
@@ -204,8 +215,7 @@ impl HttpHandler {
 			if !conn.buffer().is_empty() {
 				if let Some(end) = self.find_header_end(conn.buffer()) {
 					// Store the header end position
-					if let crate::core::ConnectionState::Http(HttpState::ReadingRequest(data)) =
-						conn.state_mut()
+					if let ConnectionState::Http(HttpState::ReadingRequest(data)) = conn.state_mut()
 					{
 						data.header_end = Some(end);
 					}
@@ -239,9 +249,8 @@ impl HttpHandler {
 					if header_end.is_none() {
 						if let Some(end) = self.find_header_end(conn.buffer()) {
 							// Store the header end position
-							if let crate::core::ConnectionState::Http(
-								HttpState::ReadingRequest(data),
-							) = conn.state_mut()
+							if let ConnectionState::Http(HttpState::ReadingRequest(data)) =
+								conn.state_mut()
 							{
 								data.header_end = Some(end);
 							}
@@ -262,7 +271,7 @@ impl HttpHandler {
 			// Try to process - this will check if we have enough
 			// body data
 			self.process_http_request(conn, end)?;
-		} else if let crate::core::ConnectionState::Http(HttpState::ReadingRequest(data)) = conn.state() {
+		} else if let ConnectionState::Http(HttpState::ReadingRequest(data)) = conn.state() {
 			// Check again if we have headers after reading
 			if let Some(end) = data.header_end {
 				self.process_http_request(conn, end)?;
@@ -275,7 +284,7 @@ impl HttpHandler {
 	fn handle_response_write(&self, conn: &mut Connection) -> ProtocolResult<()> {
 		// Extract response data to avoid borrowing conflicts
 		let (response_data, bytes_written, keep_alive) =
-			if let crate::core::ConnectionState::Http(HttpState::WritingResponse(data)) = conn.state() {
+			if let ConnectionState::Http(HttpState::WritingResponse(data)) = conn.state() {
 				(data.response_buffer.clone(), data.bytes_written, data.keep_alive)
 			} else {
 				return Ok(());
@@ -289,12 +298,10 @@ impl HttpHandler {
 				if keep_alive {
 					// Reset to reading state for keep-alive
 					let new_data = HttpConnectionData::new();
-					conn.set_state(crate::core::ConnectionState::Http(HttpState::ReadingRequest(
-						new_data,
-					)));
+					conn.set_state(ConnectionState::Http(HttpState::ReadingRequest(new_data)));
 				} else {
 					// Close connection
-					conn.set_state(crate::core::ConnectionState::Http(HttpState::Closed));
+					conn.set_state(ConnectionState::Http(HttpState::Closed));
 				}
 				break;
 			}
@@ -304,7 +311,7 @@ impl HttpHandler {
 				Ok(n) => {
 					total_written += n;
 					// Update bytes written in state
-					if let crate::core::ConnectionState::Http(HttpState::WritingResponse(data)) =
+					if let ConnectionState::Http(HttpState::WritingResponse(data)) =
 						conn.state_mut()
 					{
 						data.bytes_written = total_written;
@@ -376,10 +383,15 @@ impl HttpHandler {
 
 				match serde_json::from_str::<CommandRequest>(&body_str) {
 					Ok(cmd_req) => match handle_v1_command(conn, &cmd_req) {
-						Ok(response) => serde_json::to_string(&response).map_err(|e| {
-							ProtocolError::Custom(format!("Serialization error: {}", e))
-						})?,
-						Err(error_response) => {
+						CommandHandlerResult::Immediate(Ok(response)) => {
+							serde_json::to_string(&response).map_err(|e| {
+								ProtocolError::Custom(format!(
+									"Serialization error: {}",
+									e
+								))
+							})?
+						}
+						CommandHandlerResult::Immediate(Err(error_response)) => {
 							serde_json::to_string(&error_response).map_err(|e| {
 								ProtocolError::Custom(format!(
 									"Serialization error: {}",
@@ -387,9 +399,31 @@ impl HttpHandler {
 								))
 							})?
 						}
+						CommandHandlerResult::Pending => {
+							// Transition to ProcessingQuery state - response will come
+							// later
+							let current_state = if let ConnectionState::Http(
+								HttpState::ReadingRequest(data),
+							) = conn.state()
+							{
+								data.clone()
+							} else {
+								HttpConnectionData::new()
+							};
+
+							conn.set_state(ConnectionState::Http(
+								HttpState::ProcessingQuery {
+									original_request: current_state,
+									response_type: ResponseType::Command,
+								},
+							));
+
+							// Return empty for now - response will be handled in event loop
+							return Ok(());
+						}
 					},
 					Err(e) => {
-						let error_response = ErrResponse {
+						let error_response = ErrorResponse {
 							diagnostic: Diagnostic {
 								code: "INVALID_JSON".to_string(),
 								message: format!("Invalid CommandRequest JSON: {}", e),
@@ -409,10 +443,15 @@ impl HttpHandler {
 
 				match serde_json::from_str::<QueryRequest>(&body_str) {
 					Ok(query_req) => match handle_v1_query(conn, &query_req) {
-						Ok(response) => serde_json::to_string(&response).map_err(|e| {
-							ProtocolError::Custom(format!("Serialization error: {}", e))
-						})?,
-						Err(error_response) => {
+						QueryHandlerResult::Immediate(Ok(response)) => {
+							serde_json::to_string(&response).map_err(|e| {
+								ProtocolError::Custom(format!(
+									"Serialization error: {}",
+									e
+								))
+							})?
+						}
+						QueryHandlerResult::Immediate(Err(error_response)) => {
 							serde_json::to_string(&error_response).map_err(|e| {
 								ProtocolError::Custom(format!(
 									"Serialization error: {}",
@@ -420,9 +459,31 @@ impl HttpHandler {
 								))
 							})?
 						}
+						QueryHandlerResult::Pending => {
+							// Transition to ProcessingQuery state - response will come
+							// later
+							let current_state = if let ConnectionState::Http(
+								HttpState::ReadingRequest(data),
+							) = conn.state()
+							{
+								data.clone()
+							} else {
+								HttpConnectionData::new()
+							};
+
+							conn.set_state(ConnectionState::Http(
+								HttpState::ProcessingQuery {
+									original_request: current_state,
+									response_type: ResponseType::Query,
+								},
+							));
+
+							// Return empty for now - response will be handled in event loop
+							return Ok(());
+						}
 					},
 					Err(e) => {
-						let error_response = ErrResponse {
+						let error_response = ErrorResponse {
 							diagnostic: Diagnostic {
 								code: "INVALID_JSON".to_string(),
 								message: format!("Invalid QueryRequest JSON: {}", e),
@@ -478,7 +539,7 @@ impl HttpHandler {
 		response_data.keep_alive =
 			headers.get("connection").map(|v| v.to_lowercase() == "keep-alive").unwrap_or(false);
 
-		conn.set_state(crate::core::ConnectionState::Http(HttpState::WritingResponse(response_data)));
+		conn.set_state(ConnectionState::Http(HttpState::WritingResponse(response_data)));
 
 		Ok(())
 	}

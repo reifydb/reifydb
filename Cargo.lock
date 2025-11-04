@@ -691,16 +691,12 @@ name = "reifydb-sub-server"
 version = "0.0.1"
 dependencies = [
  "core_affinity",
- "httparse",
  "mio",
- "num-bigint",
- "num_cpus",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-hash",
  "reifydb-network",
  "reifydb-sub-api",
- "reifydb-testing",
+ "reifydb-sub-worker",
  "reifydb-type",
  "serde",
  "serde_json",

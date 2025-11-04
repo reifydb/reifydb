@@ -5,12 +5,15 @@ use std::io::{Read, Write};
 
 use reifydb_core::interface::{Engine, Identity};
 
-use super::{CommandResponse, QueryResponse, Request, Response, ResponsePayload, WebSocketConnectionData, WsState};
+use super::{
+	CommandRequest, CommandResponse, QueryRequest, QueryResponse, Request, Response, ResponsePayload,
+	WebSocketConnectionData, WsState,
+};
 use crate::{
 	core::Connection,
 	protocols::{
 		ProtocolError, ProtocolHandler, ProtocolResult,
-		convert::{convert_params, convert_result_to_frames},
+		convert::{convert_frames, convert_params},
 		utils::{build_ws_frame, build_ws_response, find_header_end, parse_ws_frame},
 	},
 };
@@ -462,7 +465,7 @@ impl WebSocketHandler {
 	fn handle_command_request(
 		&self,
 		conn: &mut Connection,
-		cmd_req: &super::CommandRequest,
+		cmd_req: &CommandRequest,
 	) -> ProtocolResult<ResponsePayload> {
 		// Execute each statement and collect results
 		let mut all_frames = Vec::new();
@@ -479,7 +482,7 @@ impl WebSocketHandler {
 				params,
 			) {
 				Ok(result) => {
-					let frames = convert_result_to_frames(result)?;
+					let frames = convert_frames(result)?;
 					all_frames.extend(frames);
 				}
 				Err(e) => {
@@ -488,7 +491,7 @@ impl WebSocketHandler {
 					let mut diagnostic = e.diagnostic();
 					diagnostic.with_statement(statement.clone());
 
-					return Ok(ResponsePayload::Err(super::ErrResponse {
+					return Ok(ResponsePayload::Err(super::ErrorResponse {
 						diagnostic,
 					}));
 				}
@@ -503,7 +506,7 @@ impl WebSocketHandler {
 	fn handle_query_request(
 		&self,
 		conn: &mut Connection,
-		query_req: &super::QueryRequest,
+		query_req: &QueryRequest,
 	) -> ProtocolResult<ResponsePayload> {
 		// Execute each statement and collect results
 		let mut all_frames = Vec::new();
@@ -520,7 +523,7 @@ impl WebSocketHandler {
 				params,
 			) {
 				Ok(result) => {
-					let frames = convert_result_to_frames(result)?;
+					let frames = convert_frames(result)?;
 					all_frames.extend(frames);
 				}
 				Err(e) => {
@@ -529,7 +532,7 @@ impl WebSocketHandler {
 					let mut diagnostic = e.diagnostic();
 					diagnostic.with_statement(statement.clone());
 
-					return Ok(ResponsePayload::Err(super::ErrResponse {
+					return Ok(ResponsePayload::Err(super::ErrorResponse {
 						diagnostic,
 					}));
 				}

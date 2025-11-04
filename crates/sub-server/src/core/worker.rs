@@ -16,6 +16,7 @@ use mio::{
 	net::{TcpListener, TcpStream},
 };
 use reifydb_engine::StandardEngine;
+use reifydb_sub_api::SchedulerService;
 use slab::Slab;
 
 use super::{Connection, ConnectionState};
@@ -34,6 +35,7 @@ pub struct Worker {
 	config: ServerConfig,
 	shutdown: Arc<AtomicBool>,
 	engine: StandardEngine,
+	scheduler: SchedulerService,
 	websocket_handler: Option<WebSocketHandler>,
 	http_handler: Option<HttpHandler>,
 }
@@ -45,6 +47,7 @@ impl Worker {
 		config: ServerConfig,
 		shutdown: Arc<AtomicBool>,
 		engine: StandardEngine,
+		scheduler: SchedulerService,
 	) -> Self {
 		let listener = TcpListener::from_std(std_listener);
 
@@ -54,6 +57,7 @@ impl Worker {
 			config,
 			shutdown,
 			engine,
+			scheduler,
 			websocket_handler: None,
 			http_handler: None,
 		}
@@ -120,6 +124,9 @@ impl Worker {
 					}
 				}
 			}
+
+			// Poll all connections for completed queries (non-blocking)
+			self.poll_query_responses(&mut connections, &poll);
 
 			// Periodic cleanup every 30 seconds
 			if last_cleanup.elapsed().as_secs() >= 30 {
@@ -246,7 +253,7 @@ impl Worker {
 		// WebSocket connections
 		poll.registry().register(&mut stream, token, Interest::READABLE | Interest::WRITABLE)?;
 
-		let conn = Connection::new(stream, peer, token, self.engine.clone());
+		let conn = Connection::new(stream, peer, token, self.engine.clone(), self.scheduler.clone());
 		entry.insert(conn);
 		Ok(())
 	}
@@ -463,6 +470,91 @@ impl Worker {
 	fn close_connection(&self, connections: &mut Slab<Connection>, key: usize) {
 		if let Some(mut conn) = connections.try_remove(key) {
 			conn.shutdown();
+		}
+	}
+
+	/// Poll all connections for completed query responses
+	fn poll_query_responses(&self, connections: &mut Slab<Connection>, poll: &Poll) {
+		// Iterate through all connections and poll for completed queries
+		let keys: Vec<usize> = connections.iter().map(|(key, _)| key).collect();
+		if !keys.is_empty() {}
+
+		for key in keys {
+			if let Some(conn) = connections.get_mut(key) {
+				// Poll for completed queries
+				if conn.poll_pending_queries() {
+					// We have responses ready, transition to writing state for HTTP
+					if let Some(response) = conn.next_response() {
+						use crate::{
+							core::connection::PendingResponse,
+							protocols::http::{HttpConnectionData, HttpState},
+						};
+
+						match conn.state() {
+							crate::core::ConnectionState::Http(
+								HttpState::ProcessingQuery {
+									..
+								},
+							) => {
+								// Convert the response to JSON bytes for HTTP
+								let response_bytes = match response {
+									PendingResponse::HttpCommand(cmd_resp) => {
+										serde_json::to_vec(&cmd_resp)
+											.unwrap_or_else(|_| Vec::new())
+									}
+									PendingResponse::HttpQuery(query_resp) => {
+										serde_json::to_vec(&query_resp)
+											.unwrap_or_else(|_| Vec::new())
+									}
+									PendingResponse::HttpCommandError(err_resp) => {
+										serde_json::to_vec(&err_resp)
+											.unwrap_or_else(|_| Vec::new())
+									}
+									PendingResponse::HttpQueryError(err_resp) => {
+										serde_json::to_vec(&err_resp)
+											.unwrap_or_else(|_| Vec::new())
+									}
+									_ => Vec::new(),
+								};
+
+								// Build the HTTP response
+								let response_body =
+									String::from_utf8_lossy(&response_bytes);
+								let http_response = format!(
+									"HTTP/1.1 200 OK\r\nContent-Length: {}\r\nContent-Type: application/json\r\nConnection: close\r\n\r\n{}",
+									response_bytes.len(),
+									response_body
+								);
+
+								// Transition to WritingResponse state
+								conn.set_state(crate::core::ConnectionState::Http(HttpState::WritingResponse(
+									HttpConnectionData {
+										request_buffer: Vec::new(),
+										response_buffer: http_response.into_bytes(),
+										bytes_written: 0,
+										method: None,
+										path: None,
+										headers: std::collections::HashMap::new(),
+										body: Vec::new(),
+										keep_alive: false,
+										header_end: None,
+									}
+								)));
+
+								// Register for WRITABLE interest
+								let token = conn.token();
+								let _ = poll.registry().reregister(
+									conn.stream(),
+									token,
+									Interest::WRITABLE,
+								);
+							}
+							// TODO: Handle WebSocket responses
+							_ => {}
+						}
+					}
+				}
+			}
 		}
 	}
 

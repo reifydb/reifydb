@@ -3,7 +3,7 @@
 
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
-use reifydb_sub_api::{Subsystem, SubsystemFactory};
+use reifydb_sub_api::{SchedulerService, Subsystem, SubsystemFactory};
 
 use crate::{config::ServerConfig, subsystem::ServerSubsystem};
 
@@ -24,7 +24,8 @@ impl ServerSubsystemFactory {
 impl SubsystemFactory<StandardCommandTransaction> for ServerSubsystemFactory {
 	fn create(self: Box<Self>, ioc: &IocContainer) -> reifydb_type::Result<Box<dyn Subsystem>> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let subsystem = ServerSubsystem::new(self.config, engine);
+		let scheduler = ioc.resolve::<SchedulerService>()?;
+		let subsystem = ServerSubsystem::new(self.config, engine, scheduler);
 		Ok(Box::new(subsystem))
 	}
 }

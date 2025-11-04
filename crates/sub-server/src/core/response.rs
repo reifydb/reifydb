@@ -15,7 +15,7 @@ pub struct Response {
 #[serde(tag = "type", content = "payload")]
 pub enum ResponsePayload {
 	Auth(AuthResponse),
-	Err(ErrResponse),
+	Err(ErrorResponse),
 	Command(CommandResponse),
 	Query(QueryResponse),
 }
@@ -24,28 +24,28 @@ pub enum ResponsePayload {
 pub struct AuthResponse {}
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct ErrResponse {
+pub struct ErrorResponse {
 	pub diagnostic: Diagnostic,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct CommandResponse {
-	pub frames: Vec<WebsocketFrame>,
+	pub frames: Vec<ResponseFrame>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct QueryResponse {
-	pub frames: Vec<WebsocketFrame>,
+	pub frames: Vec<ResponseFrame>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct WebsocketFrame {
+pub struct ResponseFrame {
 	pub row_numbers: Vec<u64>,
-	pub columns: Vec<WebsocketColumn>,
+	pub columns: Vec<ResponseColumn>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct WebsocketColumn {
+pub struct ResponseColumn {
 	pub namespace: Option<String>,
 	pub store: Option<String>,
 	pub name: String,

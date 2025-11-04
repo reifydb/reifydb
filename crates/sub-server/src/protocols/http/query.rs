@@ -1,59 +1,69 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{Engine, Identity};
+use std::sync::mpsc;
+
+use reifydb_core::interface::Identity;
 use reifydb_type::diagnostic::Diagnostic;
 
 use crate::{
-	core::Connection,
+	core::{Connection, connection::RequestType, request::QueryTask},
 	protocols::{
-		convert::{convert_params, convert_result_to_frames},
-		ws::{ErrResponse, QueryRequest, QueryResponse},
+		convert::convert_params,
+		ws::{ErrorResponse, QueryRequest, QueryResponse},
 	},
 };
 
-/// Handle /v1/query endpoint
-pub fn handle_v1_query(conn: &Connection, query_req: &QueryRequest) -> Result<QueryResponse, ErrResponse> {
-	let mut all_frames = Vec::new();
+/// Result of handling a query - either immediate response or pending
+pub enum QueryHandlerResult {
+	/// Response is ready immediately (sync execution)
+	Immediate(Result<QueryResponse, ErrorResponse>),
+	/// Response will be available later (async execution)
+	Pending,
+}
 
-	for statement in &query_req.statements {
-		let params = convert_params(&query_req.params).map_err(|_| ErrResponse {
+/// Handle /v1/query endpoint
+pub fn handle_v1_query(conn: &mut Connection, query_req: &QueryRequest) -> QueryHandlerResult {
+	// Create a channel for the response
+	let (tx, rx) = mpsc::channel();
+
+	// Concatenate all statements for execution
+	let query = query_req.statements.join("; ");
+
+	// Create the identity
+	let identity = Identity::System {
+		id: 1,
+		name: "root".to_string(),
+	};
+
+	// Convert parameters
+	let params = match convert_params(&query_req.params) {
+		Ok(p) => p,
+		Err(_) => {
+			return QueryHandlerResult::Immediate(Err(ErrorResponse {
+				diagnostic: Diagnostic {
+					code: "PARAM_CONVERSION_ERROR".to_string(),
+					message: "Failed to convert parameters".to_string(),
+					..Default::default()
+				},
+			}));
+		}
+	};
+
+	let task = QueryTask::new("".to_string(), query, identity, params, tx);
+
+	if let Err(e) = conn.scheduler().once(Box::new(task)) {
+		return QueryHandlerResult::Immediate(Err(ErrorResponse {
 			diagnostic: Diagnostic {
-				code: "PARAM_CONVERSION_ERROR".to_string(),
-				message: "Failed to convert parameters".to_string(),
+				code: "SCHEDULER_ERROR".to_string(),
+				message: format!("Failed to submit query to worker pool: {}", e),
 				..Default::default()
 			},
-		})?;
-
-		match conn.engine().query_as(
-			&Identity::System {
-				id: 1,
-				name: "root".to_string(),
-			},
-			statement,
-			params,
-		) {
-			Ok(result) => {
-				let frames = convert_result_to_frames(result).map_err(|_| ErrResponse {
-					diagnostic: Diagnostic {
-						code: "FRAME_CONVERSION_ERROR".to_string(),
-						message: "Failed to convert result frames".to_string(),
-						..Default::default()
-					},
-				})?;
-				all_frames.extend(frames);
-			}
-			Err(e) => {
-				let mut diagnostic = e.diagnostic();
-				diagnostic.with_statement(statement.clone());
-				return Err(ErrResponse {
-					diagnostic,
-				});
-			}
-		}
+		}));
 	}
 
-	Ok(QueryResponse {
-		frames: all_frames,
-	})
+	// Store the receiver in the connection for later polling
+	conn.submit_query(rx, RequestType::HttpQuery);
+
+	QueryHandlerResult::Pending
 }

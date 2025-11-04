@@ -10,13 +10,25 @@ use std::collections::HashMap;
 pub use handler::HttpHandler;
 use mio::Interest;
 
+/// Type of response being processed
+#[derive(Debug, Clone, PartialEq)]
+pub enum ResponseType {
+	Command,
+	Query,
+}
+
 /// HTTP connection state
 #[derive(Debug, Clone, PartialEq)]
 pub enum HttpState {
 	/// Reading HTTP request
 	ReadingRequest(HttpConnectionData),
-	/// Processing request
+	/// Processing request (deprecated - use ProcessingQuery)
 	Processing(HttpConnectionData),
+	/// Query submitted to worker pool, awaiting response
+	ProcessingQuery {
+		original_request: HttpConnectionData,
+		response_type: ResponseType,
+	},
 	/// Writing HTTP response
 	WritingResponse(HttpConnectionData),
 	/// Connection closed
@@ -67,6 +79,9 @@ impl HttpState {
 		match self {
 			HttpState::ReadingRequest(_) => Interest::READABLE,
 			HttpState::Processing(_) => Interest::READABLE,
+			HttpState::ProcessingQuery {
+				..
+			} => Interest::READABLE, // Will be updated to WRITABLE when response ready
 			HttpState::WritingResponse(_) => Interest::WRITABLE,
 			HttpState::Closed => Interest::READABLE,
 		}

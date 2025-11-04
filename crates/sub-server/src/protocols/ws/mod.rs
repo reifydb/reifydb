@@ -3,16 +3,16 @@
 
 pub mod handler;
 pub mod request;
-pub mod response;
 
 use std::collections::VecDeque;
 
 pub use handler::WebSocketHandler;
 use mio::Interest;
 pub use request::{CommandRequest, QueryRequest, Request, RequestPayload};
-pub use response::{
-	AuthResponse, CommandResponse, ErrResponse, QueryResponse, Response, ResponsePayload, WebsocketColumn,
-	WebsocketFrame,
+
+pub use crate::core::response::{
+	AuthResponse, CommandResponse, ErrorResponse, QueryResponse, Response, ResponseColumn, ResponseFrame,
+	ResponsePayload,
 };
 
 /// WebSocket connection state

@@ -1,30 +1,24 @@
 [package]
 name = "reifydb-sub-server"
-version = "0.0.1"
-edition = "2024"
-license = "AGPL-3"
-authors = ["Dominique Chuo <dominique@reifydb.com>"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
 
 [dependencies]
 reifydb-core = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-sub-api = { workspace = true }
+reifydb-sub-worker = { workspace = true }
 reifydb-type = { workspace = true }
-reifydb-hash = { workspace = true }
 reifydb-network = { workspace = true }
 
-num-bigint = { workspace = true }
 mio = { workspace = true }
 slab = { workspace = true }
 socket2 = { workspace = true }
-httparse = { workspace = true }
 urlencoding = { workspace = true }
-num_cpus = { workspace = true }
 core_affinity = { workspace = true }
 
 serde = { workspace = true }
 serde_json = { workspace = true }
-
-[dev-dependencies]
-reifydb-testing = { path = "../testing" }
 

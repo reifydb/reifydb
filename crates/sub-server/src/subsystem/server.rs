@@ -5,7 +5,8 @@ use std::any::Any;
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{HealthStatus, Subsystem};
+use reifydb_sub_api::{HealthStatus, SchedulerService, Subsystem};
+use reifydb_type::{diagnostic::internal::internal, error};
 
 use crate::{config::ServerConfig, core::ProtocolServer};
 
@@ -14,14 +15,16 @@ pub struct ServerSubsystem {
 	config: ServerConfig,
 	server: Option<ProtocolServer>,
 	engine: StandardEngine,
+	scheduler: SchedulerService,
 }
 
 impl ServerSubsystem {
-	pub fn new(config: ServerConfig, engine: StandardEngine) -> Self {
+	pub fn new(config: ServerConfig, engine: StandardEngine, scheduler: SchedulerService) -> Self {
 		Self {
 			config,
 			server: None,
 			engine,
+			scheduler,
 		}
 	}
 
@@ -41,19 +44,9 @@ impl Subsystem for ServerSubsystem {
 			return Ok(());
 		}
 
-		// Starting server
-
-		let mut server = ProtocolServer::new(self.config.clone(), self.engine.clone());
-
-		// Configure protocol handlers
+		let mut server = ProtocolServer::new(self.config.clone(), self.engine.clone(), self.scheduler.clone());
 		server.with_websocket().with_http();
-
-		server.start().map_err(|e| {
-			reifydb_type::error!(reifydb_type::diagnostic::internal::internal(format!(
-				"Failed to start server: {:?}",
-				e
-			)))
-		})?;
+		server.start().map_err(|e| error!(internal(format!("Failed to start server: {:?}", e))))?;
 
 		self.server = Some(server);
 		Ok(())
