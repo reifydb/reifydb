@@ -243,6 +243,13 @@ impl Database {
 	}
 
 	pub fn await_signal(&self) -> Result<()> {
+		self.await_signal_with_shutdown(|| Ok(()))
+	}
+
+	pub fn await_signal_with_shutdown<F>(&self, on_shutdown: F) -> Result<()>
+	where
+		F: FnOnce() -> Result<()>,
+	{
 		static RUNNING: AtomicBool = AtomicBool::new(true);
 		static SIGNAL_RECEIVED: AtomicBool = AtomicBool::new(false);
 
@@ -271,16 +278,28 @@ impl Database {
 			}
 		}
 
+		on_shutdown()?;
+
 		Ok(())
 	}
 
 	pub fn start_and_await_signal(&mut self) -> Result<()> {
+		self.start_and_await_signal_with_shutdown(|| Ok(()))
+	}
+
+	pub fn start_and_await_signal_with_shutdown<F>(&mut self, on_shutdown: F) -> Result<()>
+	where
+		F: FnOnce() -> Result<()>,
+	{
 		self.start()?;
 		log_debug!("Database started, waiting for termination signal...");
 
 		self.await_signal()?;
 
-		log_debug!("Signal received, shutting down database...");
+		log_debug!("Signal received, running shutdown handler...");
+		on_shutdown()?;
+
+		log_debug!("Shutdown handler completed, shutting down database...");
 		self.stop()?;
 
 		Ok(())
