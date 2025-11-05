@@ -7,7 +7,7 @@
 
 use reifydb_core::{
 	CommitVersion,
-	interface::{CdcConsumerKeyRange, QueryTransaction, SingleVersionQueryTransaction},
+	interface::{CdcConsumerKeyRange, QueryTransaction},
 };
 
 /// Computes the consumer watermark by finding the minimum checkpoint version
@@ -36,27 +36,24 @@ use reifydb_core::{
 /// // Now retention can safely cleanup versions < watermark
 /// ```
 pub fn compute_watermark(txn: &mut impl QueryTransaction) -> reifydb_core::Result<CommitVersion> {
-	txn.with_single_query(|single_txn| {
-		let mut min_version: Option<CommitVersion> = None;
+	let mut min_version: Option<CommitVersion> = None;
 
-		// Scan all checkpoint keys using the CDC consumer key range
-		for result in single_txn.range(CdcConsumerKeyRange::full_scan())? {
-			// Checkpoint values are stored as 8-byte big-endian u64
-			if result.values.len() >= 8 {
-				let mut buffer = [0u8; 8];
-				buffer.copy_from_slice(&result.values[0..8]);
-				let version = CommitVersion(u64::from_be_bytes(buffer));
+	for multi in txn.range(CdcConsumerKeyRange::full_scan())? {
+		// Checkpoint values are stored as 8-byte big-endian u64
+		if multi.values.len() >= 8 {
+			let mut buffer = [0u8; 8];
+			buffer.copy_from_slice(&multi.values[0..8]);
+			let version = CommitVersion(u64::from_be_bytes(buffer));
 
-				// Track minimum version across all consumers
-				min_version = Some(match min_version {
-					None => version,
-					Some(current_min) => current_min.min(version),
-				});
-			}
+			// Track minimum version across all consumers
+			min_version = Some(match min_version {
+				None => version,
+				Some(current_min) => current_min.min(version),
+			});
 		}
+	}
 
-		// If no consumers exist, return CommitVersion(1) as safe default
-		// This prevents any cleanup when there are no consumers registered
-		Ok(min_version.unwrap_or(CommitVersion(1)))
-	})
+	// If no consumers exist, return CommitVersion(1) as safe default
+	// This prevents any cleanup when there are no consumers registered
+	Ok(min_version.unwrap_or(CommitVersion(1)))
 }

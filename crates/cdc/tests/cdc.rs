@@ -20,7 +20,7 @@ use reifydb_core::{
 	interceptor::StandardInterceptorFactory,
 	interface::{
 		Cdc, CdcChange, CdcConsumerId, CdcConsumerKey, EncodableKey, Engine as EngineInterface, Key,
-		MultiVersionCommandTransaction, QueryTransaction, SingleVersionQueryTransaction, SourceId, TableId,
+		MultiVersionCommandTransaction, MultiVersionQueryTransaction, SourceId, TableId,
 	},
 	key::RowKey,
 	util::{CowVec, mock_time_set},
@@ -133,8 +133,7 @@ fn test_checkpoint_persistence() {
 	let changes_second_run = consumer2_clone.get_total_changes();
 	assert_eq!(changes_second_run, 2, "Should have processed only 2 new changes");
 
-	let txn = engine.begin_query().expect("Failed to begin transaction");
-	let mut txn = txn.begin_single_query().expect("Failed to begin transaction");
+	let mut txn = engine.begin_query().expect("Failed to begin transaction");
 	let consumer_key = CdcConsumerKey {
 		consumer: consumer_id,
 	}
@@ -253,8 +252,7 @@ fn test_multiple_consumers() {
 	assert_eq!(changes1_after, 5, "Consumer 1 should have processed 5 changes total");
 	assert_eq!(changes2_after, 5, "Consumer 2 should have processed 5 changes total");
 
-	let txn = engine.begin_query().expect("Failed to begin transaction");
-	let mut txn = txn.begin_single_query().unwrap();
+	let mut txn = engine.begin_query().expect("Failed to begin transaction");
 
 	let consumer1_key = CdcConsumerKey {
 		consumer: consumer_id1,
