@@ -6,10 +6,12 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 mod checkpoint;
 mod consumer;
 mod poll;
+mod watermark;
 
 pub use checkpoint::CdcCheckpoint;
 pub use consumer::{CdcConsume, CdcConsumer};
 pub use poll::{PollConsumer, PollConsumerConfig};
+pub use watermark::compute_watermark;
 
 pub struct CdcVersion;
 
