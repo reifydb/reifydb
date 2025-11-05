@@ -577,7 +577,7 @@ impl WorkerSubsystem {
 
 impl Subsystem for WorkerSubsystem {
 	fn name(&self) -> &'static str {
-		"Worker"
+		"sub-worker"
 	}
 
 	fn start(&mut self) -> Result<()> {
@@ -754,7 +754,7 @@ impl Drop for WorkerSubsystem {
 }
 
 impl Scheduler for WorkerSubsystem {
-	fn every(&self, interval: Duration, task: BoxedTask) -> reifydb_core::Result<TaskHandle> {
+	fn every(&self, interval: Duration, task: BoxedTask) -> Result<TaskHandle> {
 		let adapter = Box::new(SchedulableTaskAdapter::new(task, self.engine.clone()));
 		let priority = adapter.priority();
 		self.schedule_every_internal(adapter, interval, priority)
@@ -764,7 +764,7 @@ impl Scheduler for WorkerSubsystem {
 		self.cancel_task(handle)
 	}
 
-	fn once(&self, task: BoxedOnceTask) -> reifydb_core::Result<()> {
+	fn once(&self, task: BoxedOnceTask) -> Result<()> {
 		let adapter = Box::new(OnceTaskAdapter::new(task, self.engine.clone()));
 		WorkerSubsystem::submit(self, adapter)
 	}

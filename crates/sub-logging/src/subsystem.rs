@@ -142,7 +142,7 @@ impl LoggingSubsystem {
 
 impl Subsystem for LoggingSubsystem {
 	fn name(&self) -> &'static str {
-		"Logging"
+		"sub-logging"
 	}
 
 	fn start(&mut self) -> Result<()> {

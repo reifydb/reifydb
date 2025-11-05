@@ -31,7 +31,7 @@ impl AdminSubsystem {
 
 impl Subsystem for AdminSubsystem {
 	fn name(&self) -> &'static str {
-		"admin"
+		"sub-admin"
 	}
 
 	fn start(&mut self) -> reifydb_type::Result<()> {

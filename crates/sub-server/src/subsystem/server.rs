@@ -36,7 +36,7 @@ impl ServerSubsystem {
 
 impl Subsystem for ServerSubsystem {
 	fn name(&self) -> &'static str {
-		"server"
+		"sub-server"
 	}
 
 	fn start(&mut self) -> reifydb_type::Result<()> {

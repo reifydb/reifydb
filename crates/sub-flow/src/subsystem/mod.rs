@@ -65,7 +65,7 @@ impl Drop for FlowSubsystem {
 
 impl Subsystem for FlowSubsystem {
 	fn name(&self) -> &'static str {
-		"Flow"
+		"sub-flow"
 	}
 
 	fn start(&mut self) -> Result<()> {
