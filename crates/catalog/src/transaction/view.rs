@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_type::{
 	IntoFragment,
 	diagnostic::catalog::{view_already_exists, view_not_found},
-	error, internal_error, return_error,
+	error, internal, return_error,
 };
 
 use crate::{
@@ -142,7 +142,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 	fn get_view(&mut self, id: ViewId) -> reifydb_core::Result<ViewDef> {
 		self.find_view(id)?.ok_or_else(|| {
-			error!(internal_error!(
+			error!(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
 			))

@@ -19,5 +19,8 @@ bigdecimal = { workspace = true }
 num-traits = { workspace = true }
 
 [dev-dependencies]
-serde_json = { workspace = true }
-
+reifydb-catalog = {workspace = true}
+reifydb-cdc = {workspace = true}
+reifydb-engine = {workspace = true}
+reifydb-store-transaction = {workspace = true}
+reifydb-transaction = {workspace = true}

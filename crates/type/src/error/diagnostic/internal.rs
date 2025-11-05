@@ -99,7 +99,7 @@ pub fn shutdown(component: impl Into<String>) -> Diagnostic {
 
 /// Macro to create an internal error with automatic source location capture
 #[macro_export]
-macro_rules! internal_error {
+macro_rules! internal {
     ($reason:expr) => {
         $crate::diagnostic::internal_with_context(
             $reason,
@@ -139,12 +139,24 @@ macro_rules! internal_error {
 /// Macro to create an internal error result with automatic source location
 /// capture
 #[macro_export]
-macro_rules! internal_err {
+macro_rules! internal_error {
     ($reason:expr) => {
-        Err($crate::Error($crate::internal_error!($reason)))
+        $crate::Error($crate::internal!($reason))
     };
     ($fmt:expr, $($arg:tt)*) => {
-        Err($crate::Error($crate::internal_error!($fmt, $($arg)*)))
+        $crate::Error($crate::internal!($fmt, $($arg)*))
+    };
+}
+
+/// Macro to create an internal error result with automatic source location
+/// capture
+#[macro_export]
+macro_rules! internal_err {
+    ($reason:expr) => {
+        Err($crate::internal_error!($reason))
+    };
+    ($fmt:expr, $($arg:tt)*) => {
+        Err($crate::internal_error!($fmt, $($arg)*))
     };
 }
 
@@ -153,10 +165,10 @@ macro_rules! internal_err {
 #[macro_export]
 macro_rules! return_internal_error {
     ($reason:expr) => {
-        return Err($crate::Error($crate::internal_error!($reason)))
+        return $crate::internal_err!($reason)
     };
     ($fmt:expr, $($arg:tt)*) => {
-        return Err($crate::Error($crate::internal_error!($fmt, $($arg)*)))
+        return $crate::internal_err!($fmt, $($arg)*)
     };
 }
 
@@ -173,7 +185,7 @@ mod tests {
 
 	#[test]
 	fn test_internal_error_literal_string() {
-		let diagnostic = internal_error!("simple error message");
+		let diagnostic = internal!("simple error message");
 
 		assert_eq!(diagnostic.code, "INTERNAL_ERROR");
 		assert!(diagnostic.message.contains("simple error message"));
@@ -186,7 +198,7 @@ mod tests {
 	fn test_internal_error_with_format() {
 		let value = 42;
 		let name = "test";
-		let diagnostic = internal_error!("Error with value: {} and name: {}", value, name);
+		let diagnostic = internal!("Error with value: {} and name: {}", value, name);
 
 		assert_eq!(diagnostic.code, "INTERNAL_ERROR");
 		assert!(diagnostic.message.contains("Error with value: 42 and name: test"));
@@ -201,7 +213,7 @@ mod tests {
 			name: "test".to_string(),
 		};
 
-		let diagnostic = internal_error!("Test struct: {:?}", test_struct);
+		let diagnostic = internal!("Test struct: {:?}", test_struct);
 
 		assert_eq!(diagnostic.code, "INTERNAL_ERROR");
 		assert!(diagnostic.message.contains("TestStruct"));

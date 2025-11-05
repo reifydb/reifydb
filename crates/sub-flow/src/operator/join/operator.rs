@@ -10,7 +10,7 @@ use reifydb_core::{
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator, execute::Executor};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Params, RowNumber, Type, Value, internal_error};
+use reifydb_type::{Params, RowNumber, Type, Value, internal};
 
 use super::{JoinSide, JoinState, JoinStrategy};
 use crate::{
@@ -120,7 +120,7 @@ impl JoinOperator {
 			}
 
 			let bytes = encode_to_vec(&value, standard())
-				.map_err(|e| Error(internal_error!("Failed to encode value for hash: {}", e)))?;
+				.map_err(|e| Error(internal!("Failed to encode value for hash: {}", e)))?;
 
 			hasher.extend_from_slice(&bytes);
 		}
@@ -291,7 +291,7 @@ impl Operator for JoinOperator {
 		// Determine which side this change is from
 		let side = self
 			.determine_side(&change)
-			.ok_or_else(|| Error(internal_error!("Join operator received change from unknown node")))?;
+			.ok_or_else(|| Error(internal!("Join operator received change from unknown node")))?;
 
 		for diff in change.diffs {
 			match diff {

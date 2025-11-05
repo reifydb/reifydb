@@ -14,7 +14,7 @@ use reifydb_rql::flow::{
 	Flow, FlowNode, FlowNodeType,
 	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union, Window},
 };
-use reifydb_type::internal_error;
+use reifydb_type::internal;
 
 use crate::{
 	engine::FlowEngine,
@@ -79,7 +79,7 @@ impl FlowEngine {
 					.operators
 					.read()
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal_error!("Parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 
 				self.add_sink(flow.id, node.id, SourceId::view(*view));
@@ -100,7 +100,7 @@ impl FlowEngine {
 					.operators
 					.read()
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal_error!("Parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 				self.inner.operators.write().insert(
 					node.id,
@@ -115,7 +115,7 @@ impl FlowEngine {
 					.operators
 					.read()
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal_error!("Parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 				self.inner.operators.write().insert(
 					node.id,
@@ -130,7 +130,7 @@ impl FlowEngine {
 					.operators
 					.read()
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal_error!("Parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 				self.inner.operators.write().insert(
 					node.id,
@@ -145,7 +145,7 @@ impl FlowEngine {
 					.operators
 					.read()
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal_error!("Parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 				self.inner.operators.write().insert(
 					node.id,
@@ -160,7 +160,7 @@ impl FlowEngine {
 					.operators
 					.read()
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal_error!("Parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 				self.inner.operators.write().insert(
 					node.id,
@@ -176,7 +176,7 @@ impl FlowEngine {
 				// Find the left and right node IDs from the flow inputs
 				// The join node should have exactly 2 inputs
 				if node.inputs.len() != 2 {
-					return Err(Error(internal_error!("Join node must have exactly 2 inputs")));
+					return Err(Error(internal!("Join node must have exactly 2 inputs")));
 				}
 
 				let left_node = node.inputs[0];
@@ -185,12 +185,12 @@ impl FlowEngine {
 				let operators = self.inner.operators.read();
 				let left_parent = operators
 					.get(&left_node)
-					.ok_or_else(|| Error(internal_error!("Left parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Left parent operator not found")))?
 					.clone();
 
 				let right_parent = operators
 					.get(&right_node)
-					.ok_or_else(|| Error(internal_error!("Right parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Right parent operator not found")))?
 					.clone();
 				drop(operators);
 
@@ -218,7 +218,7 @@ impl FlowEngine {
 					.operators
 					.read()
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal_error!("Parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 				self.inner.operators.write().insert(
 					node.id,
@@ -240,7 +240,7 @@ impl FlowEngine {
 					.operators
 					.read()
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal_error!("Parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 				let operator = self.inner.registry.create_operator(
 					operator_name.as_str(),
@@ -271,7 +271,7 @@ impl FlowEngine {
 					.operators
 					.read()
 					.get(&node.inputs[0])
-					.ok_or_else(|| Error(internal_error!("Parent operator not found")))?
+					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
 				let operator = WindowOperator::new(
 					parent,

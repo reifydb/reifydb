@@ -1,9 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_type::internal_error;
 use serde::{Deserialize, Serialize};
 
-use crate::{CommitVersion, EncodedKey, value::encoded::EncodedValues};
+use super::{CdcConsumerKeyRange, EncodableKey, QueryTransaction};
+use crate::{CommitVersion, EncodedKey, key::CdcConsumerKey, value::encoded::EncodedValues};
 
 #[repr(transparent)]
 #[derive(Debug, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -86,4 +88,34 @@ impl CdcSequencedChange {
 			} => key,
 		}
 	}
+}
+
+/// Represents the state of a CDC consumer
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ConsumerState {
+	pub consumer_id: CdcConsumerId,
+	pub checkpoint: CommitVersion,
+}
+
+/// Retrieves the state of all CDC consumers
+pub fn get_all_consumer_states<T: QueryTransaction>(txn: &mut T) -> reifydb_type::Result<Vec<ConsumerState>> {
+	let mut states = Vec::new();
+
+	for multi in txn.range(CdcConsumerKeyRange::full_scan())? {
+		let key = CdcConsumerKey::decode(&multi.key)
+			.ok_or_else(|| internal_error!("Unable to decode CdConsumerKey"))?;
+
+		if multi.values.len() >= 8 {
+			let mut buffer = [0u8; 8];
+			buffer.copy_from_slice(&multi.values[0..8]);
+			let checkpoint = CommitVersion(u64::from_be_bytes(buffer));
+
+			states.push(ConsumerState {
+				consumer_id: key.consumer,
+				checkpoint,
+			});
+		}
+	}
+
+	Ok(states)
 }

@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_type::{
 	IntoFragment,
 	diagnostic::catalog::{table_already_exists, table_not_found},
-	error, internal_error, return_error,
+	error, internal, return_error,
 };
 
 use crate::{
@@ -144,7 +144,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 	fn get_table(&mut self, id: TableId) -> reifydb_core::Result<TableDef> {
 		self.find_table(id)?.ok_or_else(|| {
-			error!(internal_error!(
+			error!(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
 			))

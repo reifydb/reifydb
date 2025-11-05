@@ -11,7 +11,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Error, Fragment, Params, ROW_NUMBER_COLUMN_NAME, Type, Value, internal_error};
+use reifydb_type::{Error, Fragment, Params, ROW_NUMBER_COLUMN_NAME, Type, Value, internal};
 
 use crate::evaluate::column::{StandardColumnEvaluator, cast};
 pub(crate) use crate::evaluate::{ColumnEvaluationContext, RowEvaluationContext};
@@ -70,7 +70,7 @@ impl StandardRowEvaluator {
 			data.push_value(value);
 
 			let name = ctx.row.layout.get_name(idx).ok_or_else(|| {
-				Error(internal_error!("EncodedRowNamedLayout missing name for field at index {}", idx))
+				Error(internal!("EncodedRowNamedLayout missing name for field at index {}", idx))
 			})?;
 
 			columns.push(Column {
@@ -110,7 +110,7 @@ impl StandardRowEvaluator {
 			data.push_value(value);
 
 			let name = row.layout.get_name(idx).ok_or_else(|| {
-				Error(internal_error!("EncodedRowNamedLayout missing name for field at index {}", idx))
+				Error(internal!("EncodedRowNamedLayout missing name for field at index {}", idx))
 			})?;
 
 			source_columns.push(Column {

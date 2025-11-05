@@ -35,6 +35,7 @@ impl VirtualTableRegistry {
 			OPERATOR_RETENTION_POLICIES => {
 				Some(SystemCatalog::get_system_operator_retention_policies_table_def())
 			}
+			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table_def()),
 			_ => None,
 		})
 	}
@@ -54,6 +55,7 @@ impl VirtualTableRegistry {
 			SystemCatalog::get_system_versions_table_def(),
 			SystemCatalog::get_system_source_retention_policies_table_def(),
 			SystemCatalog::get_system_operator_retention_policies_table_def(),
+			SystemCatalog::get_system_cdc_consumers_table_def(),
 		])
 	}
 }

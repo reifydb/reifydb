@@ -19,7 +19,7 @@ use reifydb_core::{
 use reifydb_engine::{ColumnEvaluationContext, RowEvaluationContext, StandardColumnEvaluator, StandardRowEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::{Expression, column_name_from_expression};
-use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal_error};
+use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -217,7 +217,7 @@ impl WindowOperator {
 							row.layout.layout().get_i64(&row.encoded, timestamp_index);
 						Ok(timestamp_value as u64)
 					} else {
-						Err(Error(internal_error!(
+						Err(Error(internal!(
 							"Event time column '{}' not found in row with columns: {:?}",
 							column_name,
 							row.layout.names()
@@ -422,7 +422,7 @@ impl WindowOperator {
 		let config = standard();
 		let result: Result<WindowState, _> = decode_from_slice(blob.as_ref(), config)
 			.map(|(state, _): (WindowState, usize)| state)
-			.map_err(|e| Error(internal_error!("Failed to deserialize WindowState: {}", e)));
+			.map_err(|e| Error(internal!("Failed to deserialize WindowState: {}", e)));
 
 		result
 	}
@@ -436,7 +436,7 @@ impl WindowOperator {
 	) -> crate::Result<()> {
 		let config = standard();
 		let serialized = encode_to_vec(state, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize WindowState: {}", e)))?;
+			.map_err(|e| Error(internal!("Failed to serialize WindowState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
@@ -471,7 +471,7 @@ impl WindowOperator {
 		// Save updated count
 		let config = standard();
 		let serialized = encode_to_vec(&new_count, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize count: {}", e)))?;
+			.map_err(|e| Error(internal!("Failed to serialize count: {}", e)))?;
 
 		let mut count_state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);

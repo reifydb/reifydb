@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Blob, Params, RowNumber, Type, internal_error};
+use reifydb_type::{Blob, Params, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -188,13 +188,13 @@ impl DistinctOperator {
 		let config = standard();
 		decode_from_slice(blob.as_ref(), config)
 			.map(|(state, _)| state)
-			.map_err(|e| Error(internal_error!("Failed to deserialize DistinctState: {}", e)))
+			.map_err(|e| Error(internal!("Failed to deserialize DistinctState: {}", e)))
 	}
 
 	fn save_distinct_state(&self, txn: &mut FlowTransaction, state: &DistinctState) -> crate::Result<()> {
 		let config = standard();
 		let serialized = encode_to_vec(state, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize DistinctState: {}", e)))?;
+			.map_err(|e| Error(internal!("Failed to serialize DistinctState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);

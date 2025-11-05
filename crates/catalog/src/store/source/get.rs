@@ -5,7 +5,7 @@ use reifydb_core::{
 	Error,
 	interface::{QueryTransaction, SourceDef, SourceId},
 };
-use reifydb_type::internal_error;
+use reifydb_type::internal;
 
 use crate::CatalogStore;
 
@@ -23,7 +23,7 @@ impl CatalogStore {
 				SourceId::RingBuffer(_) => "RingBuffer",
 			};
 
-			Error(internal_error!(
+			Error(internal!(
 				"{} with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				source_type,
 				source_id

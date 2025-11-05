@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{QueryTransaction, RingBufferDef, RingBufferId, RingBufferMetadata};
-use reifydb_type::{Error, internal_error};
+use reifydb_type::{Error, internal};
 
 use crate::CatalogStore;
 
@@ -12,7 +12,7 @@ impl CatalogStore {
 		ring_buffer: RingBufferId,
 	) -> crate::Result<RingBufferDef> {
 		Self::find_ring_buffer(rx, ring_buffer)?.ok_or_else(|| {
-			Error(internal_error!(
+			Error(internal!(
 				"Ring buffer with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				ring_buffer
 			))
@@ -24,7 +24,7 @@ impl CatalogStore {
 		ring_buffer: RingBufferId,
 	) -> crate::Result<RingBufferMetadata> {
 		Self::find_ring_buffer_metadata(rx, ring_buffer)?.ok_or_else(|| {
-			Error(internal_error!(
+			Error(internal!(
 				"Ring buffer metadata for ID {:?} not found. This indicates a critical catalog inconsistency.",
 				ring_buffer
 			))

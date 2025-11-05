@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::interface::{TableVirtualDef, version::SystemVersion};
 
+mod cdc_consumers;
 mod column_policies;
 mod columns;
 mod namespaces;
@@ -17,6 +18,7 @@ mod tables;
 mod versions;
 mod views;
 
+use cdc_consumers::cdc_consumers;
 use column_policies::column_policies;
 use columns::columns;
 use namespaces::namespaces;
@@ -31,6 +33,15 @@ use views::views;
 
 pub mod ids {
 	pub mod columns {
+		pub mod cdc_consumers {
+			use reifydb_core::interface::ColumnId;
+
+			pub const CONSUMER_ID: ColumnId = ColumnId(1);
+			pub const CHECKPOINT: ColumnId = ColumnId(2);
+
+			pub const ALL: [ColumnId; 2] = [CONSUMER_ID, CHECKPOINT];
+		}
+
 		pub mod sequences {
 			use reifydb_core::interface::ColumnId;
 
@@ -184,8 +195,9 @@ pub mod ids {
 		pub const VERSIONS: TableVirtualId = TableVirtualId(9);
 		pub const SOURCE_RETENTION_POLICIES: TableVirtualId = TableVirtualId(10);
 		pub const OPERATOR_RETENTION_POLICIES: TableVirtualId = TableVirtualId(11);
+		pub const CDC_CONSUMERS: TableVirtualId = TableVirtualId(12);
 
-		pub const ALL: [TableVirtualId; 11] = [
+		pub const ALL: [TableVirtualId; 12] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -197,6 +209,7 @@ pub mod ids {
 			VERSIONS,
 			SOURCE_RETENTION_POLICIES,
 			OPERATOR_RETENTION_POLICIES,
+			CDC_CONSUMERS,
 		];
 	}
 }
@@ -276,5 +289,10 @@ impl SystemCatalog {
 	/// Get the operator_retention_policies virtual table definition
 	pub fn get_system_operator_retention_policies_table_def() -> Arc<TableVirtualDef> {
 		operator_retention_policies()
+	}
+
+	/// Get the cdc_consumers virtual table definition
+	pub fn get_system_cdc_consumers_table_def() -> Arc<TableVirtualDef> {
+		cdc_consumers()
 	}
 }

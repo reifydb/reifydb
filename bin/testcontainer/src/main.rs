@@ -24,6 +24,7 @@ fn main() {
 	let mut db = server::memory_optimistic()
 		.with_config(ServerConfig::default())
 		.with_logging(logger_configuration)
+		.with_flow(|flow| flow)
 		.build()
 		.unwrap();
 

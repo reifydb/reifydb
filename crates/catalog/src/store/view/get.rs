@@ -5,14 +5,14 @@ use reifydb_core::{
 	Error,
 	interface::{QueryTransaction, ViewDef, ViewId},
 };
-use reifydb_type::internal_error;
+use reifydb_type::internal;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub fn get_view(rx: &mut impl QueryTransaction, view: ViewId) -> crate::Result<ViewDef> {
 		CatalogStore::find_view(rx, view)?.ok_or_else(|| {
-			Error(internal_error!(
+			Error(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				view
 			))

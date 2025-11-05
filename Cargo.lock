@@ -544,10 +544,14 @@ dependencies = [
  "num-bigint",
  "num-traits",
  "once_cell",
+ "reifydb-catalog",
+ "reifydb-cdc",
+ "reifydb-engine",
+ "reifydb-store-transaction",
+ "reifydb-transaction",
  "reifydb-type",
  "serde",
  "serde_bytes",
- "serde_json",
  "uuid",
 ]
 
@@ -902,7 +906,6 @@ dependencies = [
 name = "testcontainer"
 version = "0.0.1"
 dependencies = [
- "libc",
  "reifydb",
 ]
 

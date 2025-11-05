@@ -12,7 +12,7 @@ use reifydb_core::{
 use reifydb_type::{
 	IntoFragment,
 	diagnostic::catalog::{namespace_already_exists, namespace_not_found},
-	error, internal_error, return_error,
+	error, internal, return_error,
 };
 
 use crate::{CatalogStore, store::namespace::NamespaceToCreate, transaction::MaterializedCatalogTransaction};
@@ -128,7 +128,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 	fn get_namespace(&mut self, id: NamespaceId) -> reifydb_core::Result<NamespaceDef> {
 		self.find_namespace(id)?.ok_or_else(|| {
-			error!(internal_error!(
+			error!(internal!(
 				"Namespace with ID {} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
 			))

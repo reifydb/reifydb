@@ -11,5 +11,4 @@ name = "testcontainer"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true, features = ["sub_logging", "sub_server"] }
-libc = { workspace = true }
+reifydb = { workspace = true, features = ["sub_logging", "sub_server", "sub_flow"] }

@@ -5,7 +5,7 @@ use reifydb_core::{
 	Error,
 	interface::{ColumnsKey, EncodableKey, QueryTransaction},
 };
-use reifydb_type::{Constraint, Type, TypeConstraint, internal_error};
+use reifydb_type::{Constraint, Type, TypeConstraint, internal};
 
 use crate::store::column::layout::column::LAYOUT;
 
@@ -48,7 +48,7 @@ impl CatalogStore {
 			}
 			.encode())?
 			.ok_or_else(|| {
-				Error(internal_error!(
+				Error(internal!(
 					"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 					column
 				))

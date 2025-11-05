@@ -4,7 +4,7 @@ use bincode::{
 };
 use reifydb_core::{Error, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_hash::Hash128;
-use reifydb_type::{Blob, Type, internal_error};
+use reifydb_type::{Blob, Type, internal};
 
 use super::{JoinSide, JoinSideEntry};
 use crate::{
@@ -50,9 +50,7 @@ impl Store {
 				}
 				let config = standard();
 				let (entry, _): (JoinSideEntry, usize) = decode_from_slice(blob.as_ref(), config)
-					.map_err(|e| {
-						Error(internal_error!("Failed to deserialize JoinSideEntry: {}", e))
-					})?;
+					.map_err(|e| Error(internal!("Failed to deserialize JoinSideEntry: {}", e)))?;
 				Ok(Some(entry))
 			}
 			None => Ok(None),
@@ -70,7 +68,7 @@ impl Store {
 		// Serialize JoinSideEntry
 		let config = standard();
 		let serialized = encode_to_vec(entry, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize JoinSideEntry: {}", e)))?;
+			.map_err(|e| Error(internal!("Failed to serialize JoinSideEntry: {}", e)))?;
 
 		// Store as a blob in an EncodedRow
 		let layout = EncodedValuesLayout::new(&[Type::Blob]);

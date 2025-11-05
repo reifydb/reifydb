@@ -5,14 +5,14 @@ use reifydb_core::{
 	Error,
 	interface::{NamespaceDef, NamespaceId, QueryTransaction},
 };
-use reifydb_type::internal_error;
+use reifydb_type::internal;
 
 use crate::CatalogStore;
 
 impl CatalogStore {
 	pub fn get_namespace(rx: &mut impl QueryTransaction, namespace: NamespaceId) -> crate::Result<NamespaceDef> {
 		CatalogStore::find_namespace(rx, namespace)?.ok_or_else(|| {
-			Error(internal_error!(
+			Error(internal!(
 				"Namespace with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				namespace
 			))

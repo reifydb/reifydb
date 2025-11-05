@@ -6,7 +6,7 @@ use reifydb_core::{
 	interface::{FlowNodeId, QueryTransaction, SourceId},
 	retention::RetentionPolicy,
 };
-use reifydb_type::internal_error;
+use reifydb_type::internal;
 
 use crate::CatalogStore;
 
@@ -18,7 +18,7 @@ impl CatalogStore {
 		source: SourceId,
 	) -> crate::Result<RetentionPolicy> {
 		Self::find_source_retention_policy(txn, source)?.ok_or_else(|| {
-			Error(internal_error!(
+			Error(internal!(
 				"Retention policy for source {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				source
 			))
@@ -32,7 +32,7 @@ impl CatalogStore {
 		operator: FlowNodeId,
 	) -> crate::Result<RetentionPolicy> {
 		Self::find_operator_retention_policy(txn, operator)?.ok_or_else(|| {
-			Error(internal_error!(
+			Error(internal!(
 				"Retention policy for operator {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				operator
 			))

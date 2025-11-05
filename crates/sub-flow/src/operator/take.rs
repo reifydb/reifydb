@@ -6,7 +6,7 @@ use bincode::{
 };
 use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_engine::StandardRowEvaluator;
-use reifydb_type::{Blob, RowNumber, Type, internal_error};
+use reifydb_type::{Blob, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -66,13 +66,13 @@ impl TakeOperator {
 		let config = standard();
 		decode_from_slice(blob.as_ref(), config)
 			.map(|(state, _)| state)
-			.map_err(|e| Error(internal_error!("Failed to deserialize TakeState: {}", e)))
+			.map_err(|e| Error(internal!("Failed to deserialize TakeState: {}", e)))
 	}
 
 	fn save_take_state(&self, txn: &mut FlowTransaction, state: &TakeState) -> crate::Result<()> {
 		let config = standard();
 		let serialized = encode_to_vec(state, config)
-			.map_err(|e| Error(internal_error!("Failed to serialize TakeState: {}", e)))?;
+			.map_err(|e| Error(internal!("Failed to serialize TakeState: {}", e)))?;
 
 		let mut state_row = self.layout.allocate();
 		let blob = Blob::from(serialized);
