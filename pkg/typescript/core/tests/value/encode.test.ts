@@ -188,7 +188,7 @@ describe('Value encode method', () => {
             expect(encoded.value).toBe('PT1H');
 
             const decoded = decode(encoded);
-            expect((decoded as DurationValue).toString()).toBe('PT1H');
+            expect((decoded as DurationValue).toIsoString()).toBe('PT1H');
         });
 
         it('should encode 5 days duration and be parseable', () => {
@@ -199,7 +199,7 @@ describe('Value encode method', () => {
             expect(encoded.value).toBe('P5D');
 
             const decoded = decode(encoded);
-            expect((decoded as DurationValue).toString()).toBe('P5D');
+            expect((decoded as DurationValue).toIsoString()).toBe('P5D');
         });
 
         it('should encode zero duration and be parseable', () => {
@@ -210,7 +210,7 @@ describe('Value encode method', () => {
             expect(encoded.value).toBe('PT0S');
 
             const decoded = decode(encoded);
-            expect((decoded as DurationValue).toString()).toBe('PT0S');
+            expect((decoded as DurationValue).toIsoString()).toBe('PT0S');
         });
     });
 

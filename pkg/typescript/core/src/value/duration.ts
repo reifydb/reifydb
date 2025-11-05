@@ -254,7 +254,7 @@ export class DurationValue implements Value {
     /**
      * Format as ISO 8601 duration string
      */
-    toString(): string {
+    toIsoString(): string {
         if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
             return 'undefined';
         }
@@ -322,6 +322,82 @@ export class DurationValue implements Value {
         }
 
         return result;
+    }
+
+    /**
+     * Format as human-readable duration string
+     * Examples: "1 year 2 mons 3 days 04:05:06.789", "3 days", "00:00:01.5"
+     */
+    toString(): string {
+        if (this.months === undefined || this.days === undefined || this.nanos === undefined) {
+            return 'undefined';
+        }
+
+        // Handle zero duration
+        if (this.months === 0 && this.days === 0 && this.nanos === 0n) {
+            return '00:00:00';
+        }
+
+        const parts: string[] = [];
+
+        // Extract years and months
+        const years = Math.floor(this.months / 12);
+        const months = this.months % 12;
+
+        if (years !== 0) {
+            parts.push(years === 1 ? '1 year' : `${years} years`);
+        }
+
+        if (months !== 0) {
+            parts.push(months === 1 ? '1 mon' : `${months} mons`);
+        }
+
+        // Time components from nanos with normalization
+        const totalSeconds = this.nanos / 1_000_000_000n;
+        const remainingNanos = this.nanos % 1_000_000_000n;
+
+        // Normalize to days if hours >= 24
+        const extraDays = totalSeconds / 86400n; // 24 * 60 * 60
+        const remainingSeconds = totalSeconds % 86400n;
+
+        const displayDays = this.days + Number(extraDays);
+        const hours = remainingSeconds / 3600n;
+        const minutes = (remainingSeconds % 3600n) / 60n;
+        const seconds = remainingSeconds % 60n;
+
+        if (displayDays !== 0) {
+            parts.push(displayDays === 1 ? '1 day' : `${displayDays} days`);
+        }
+
+        // Format time components as HH:MM:SS[.ffffff]
+        if (hours !== 0n || minutes !== 0n || seconds !== 0n || remainingNanos !== 0n || parts.length === 0) {
+            const hoursStr = String(hours).padStart(2, '0');
+            const minutesStr = String(minutes).padStart(2, '0');
+
+            let secondsStr: string;
+            if (remainingNanos !== 0n) {
+                // Format fractional seconds with trailing zeros removed
+                const fractional = Number(remainingNanos) / 1_000_000_000;
+                const totalSecondsFloat = Number(seconds) + fractional;
+                // Format with 9 decimal places then remove trailing zeros
+                const formatted = totalSecondsFloat.toFixed(9).replace(/0+$/, '').replace(/\.$/, '');
+                // Split into whole and fractional parts to pad the whole part correctly
+                const dotIndex = formatted.indexOf('.');
+                if (dotIndex >= 0) {
+                    const wholePart = formatted.substring(0, dotIndex).padStart(2, '0');
+                    const fractionalPart = formatted.substring(dotIndex);
+                    secondsStr = wholePart + fractionalPart;
+                } else {
+                    secondsStr = formatted.padStart(2, '0');
+                }
+            } else {
+                secondsStr = String(seconds).padStart(2, '0');
+            }
+
+            parts.push(`${hoursStr}:${minutesStr}:${secondsStr}`);
+        }
+
+        return parts.join(' ');
     }
 
     valueOf(): { months: number; days: number; nanos: bigint } | undefined {
@@ -421,10 +497,14 @@ export class DurationValue implements Value {
                this.nanos === otherDuration.nanos;
     }
 
+    toJSON(): string {
+        return this.value === undefined ? UNDEFINED_VALUE : this.toIsoString();
+    }
+
     encode(): TypeValuePair {
         return {
             type: this.type,
-            value: this.value === undefined ? UNDEFINED_VALUE : this.toString()
+            value: this.value === undefined ? UNDEFINED_VALUE : this.toIsoString()
         };
     }
 }
