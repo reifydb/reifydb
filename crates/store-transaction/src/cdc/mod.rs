@@ -89,7 +89,7 @@ fn generate_internal_cdc_change(
 		} => {
 			// operators do not generate cdc events
 			if let Some(kind) = Key::kind(&key) {
-				if kind == KeyKind::FlowNodeState {
+				if kind == KeyKind::FlowNodeState || kind == KeyKind::CdcConsumer {
 					return None;
 				}
 			}
@@ -113,7 +113,7 @@ fn generate_internal_cdc_change(
 		} => {
 			// operators do not produce cdc events
 			if let Some(kind) = Key::kind(&key) {
-				if kind == KeyKind::FlowNodeState {
+				if kind == KeyKind::FlowNodeState || kind == KeyKind::CdcConsumer {
 					return None;
 				}
 			}
