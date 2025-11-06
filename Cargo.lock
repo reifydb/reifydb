@@ -752,6 +752,7 @@ name = "reifydb-type"
 version = "0.0.1"
 dependencies = [
  "bigdecimal",
+ "bincode",
  "num-bigint",
  "num-traits",
  "serde",
