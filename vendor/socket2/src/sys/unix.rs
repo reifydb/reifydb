@@ -1807,6 +1807,35 @@ impl crate::Socket {
         }
     }
 
+    /// Get the value of the `TCP_NOTSENT_LOWAT` option on this socket.
+    ///
+    /// For more information about this option, see [`set_tcp_notsent_lowat`].
+    ///
+    /// [`set_tcp_notsent_lowat`]: crate::Socket::set_tcp_notsent_lowat
+    #[cfg(all(feature = "all", any(target_os = "android", target_os = "linux")))]
+    pub fn tcp_notsent_lowat(&self) -> io::Result<u32> {
+        unsafe {
+            getsockopt::<Bool>(self.as_raw(), libc::IPPROTO_TCP, libc::TCP_NOTSENT_LOWAT)
+                .map(|lowat| lowat as u32)
+        }
+    }
+
+    /// Set the value of the `TCP_NOTSENT_LOWAT` option on this socket.
+    ///
+    /// If set the kernel will limit the amount of _unsent_ data in the sendbuffer.
+    /// This differs from `set_send_buffer_size` which limits the sum of unsent and unacknowledged data.
+    #[cfg(all(feature = "all", any(target_os = "android", target_os = "linux")))]
+    pub fn set_tcp_notsent_lowat(&self, lowat: u32) -> io::Result<()> {
+        unsafe {
+            setsockopt(
+                self.as_raw(),
+                libc::IPPROTO_TCP,
+                libc::TCP_NOTSENT_LOWAT,
+                lowat as c_int,
+            )
+        }
+    }
+
     /// Gets the value for the `SO_BINDTODEVICE` option on this socket.
     ///
     /// This value gets the socket binded device's interface name.
@@ -2813,6 +2842,29 @@ impl crate::Socket {
             )
         }
     }
+
+    /// Get the value for the `SO_BUSY_POLL` option on this socket.
+    ///
+    /// On Linux this function requires the `CAP_NET_ADMIN` capability.
+    #[cfg(all(feature = "all", target_os = "linux"))]
+    pub fn busy_poll(&self) -> io::Result<u32> {
+        unsafe { getsockopt(self.as_raw(), libc::SOL_SOCKET, libc::SO_BUSY_POLL) }
+    }
+
+    /// Set the value for the `SO_BUSY_POLL` option on this socket.
+    ///
+    /// On Linux this function requires the `CAP_NET_ADMIN` capability.
+    #[cfg(all(feature = "all", target_os = "linux"))]
+    pub fn set_busy_poll(&self, busy_poll: u32) -> io::Result<()> {
+        unsafe {
+            setsockopt(
+                self.as_raw(),
+                libc::SOL_SOCKET,
+                libc::SO_BUSY_POLL,
+                busy_poll as c_int,
+            )
+        }
+    }
 }
 
 /// Berkeley Packet Filter (BPF).
@@ -2823,10 +2875,8 @@ impl crate::Socket {
 #[cfg(all(feature = "all", any(target_os = "linux", target_os = "android")))]
 #[repr(transparent)]
 pub struct SockFilter {
-    // For some reason Rust 1.70 thinks this field is unused, while it's clearly
-    // used in `SockFilter::new`. This issue seems fixed in later Rust versions,
-    // but we still need to support 1.70, adding allow(dead_code) ignores the
-    // issue.
+    // This field is only read indirectly by transmutes / pointer casts, so
+    // rustc emits a spurious warning saying that the field is never read.
     #[allow(dead_code)]
     filter: libc::sock_filter,
 }
@@ -2834,7 +2884,7 @@ pub struct SockFilter {
 #[cfg(all(feature = "all", any(target_os = "linux", target_os = "android")))]
 impl SockFilter {
     /// Create new `SockFilter`.
-    pub fn new(code: u16, jt: u8, jf: u8, k: u32) -> SockFilter {
+    pub const fn new(code: u16, jt: u8, jf: u8, k: u32) -> SockFilter {
         SockFilter {
             filter: libc::sock_filter { code, jt, jf, k },
         }

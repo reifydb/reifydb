@@ -12,6 +12,7 @@ reifydb-core = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-hash = { workspace = true }
+reifydb-operator-api = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = {workspace = true}
@@ -21,6 +22,7 @@ serde = { workspace = true }
 serde_bytes = { workspace = true}
 serde_json = { workspace = true }
 bincode = { workspace = true }
+libloading = { workspace = true }
 
 crossbeam-channel = { workspace = true }
 parking_lot = { workspace = true}

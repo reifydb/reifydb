@@ -783,17 +783,19 @@ impl Build {
 
     /// Set the `-shared` flag.
     ///
-    /// When enabled, the compiler will produce a shared object which can
-    /// then be linked with other objects to form an executable.
+    /// This will typically be ignored by the compiler when calling [`Self::compile()`] since it only
+    /// produces static libraries.
     ///
     /// # Example
     ///
     /// ```no_run
+    /// // This will create a library named "liblibfoo.so.a"
     /// cc::Build::new()
     ///     .file("src/foo.c")
     ///     .shared_flag(true)
     ///     .compile("libfoo.so");
     /// ```
+    #[deprecated = "cc only creates static libraries, setting this does nothing"]
     pub fn shared_flag(&mut self, shared_flag: bool) -> &mut Build {
         self.shared_flag = Some(shared_flag);
         self
@@ -801,8 +803,8 @@ impl Build {
 
     /// Set the `-static` flag.
     ///
-    /// When enabled on systems that support dynamic linking, this prevents
-    /// linking with the shared libraries.
+    /// This will typically be ignored by the compiler when calling [`Self::compile()`] since it only
+    /// produces static libraries.
     ///
     /// # Example
     ///
@@ -813,6 +815,7 @@ impl Build {
     ///     .static_flag(true)
     ///     .compile("foo");
     /// ```
+    #[deprecated = "cc only creates static libraries, setting this does nothing"]
     pub fn static_flag(&mut self, static_flag: bool) -> &mut Build {
         self.static_flag = Some(static_flag);
         self
@@ -1319,7 +1322,7 @@ impl Build {
     /// always run on every compilation if no rerun cargo metadata is emitted.
     ///
     /// NOTE that cc does not emit metadata to detect changes for `PATH`, since it could
-    /// be changed every comilation yet does not affect the result of compilation
+    /// be changed every compilation yet does not affect the result of compilation
     /// (i.e. rust-analyzer adds temporary directory to `PATH`).
     ///
     /// cc in general, has no way detecting changes to compiler, as there are so many ways to
@@ -1805,7 +1808,7 @@ impl Build {
                 is_arm,
             },
         );
-        // armasm and armasm64 don't requrie -c option
+        // armasm and armasm64 don't require -c option
         if !is_assembler_msvc || !is_arm {
             cmd.arg("-c");
         }
@@ -2248,12 +2251,11 @@ impl Build {
                     // So instead, we pass the deployment target with `-m*-version-min=`, and only
                     // pass it here on visionOS and Mac Catalyst where that option does not exist:
                     // https://github.com/rust-lang/cc-rs/issues/1383
-                    let version =
-                        if target.os == "visionos" || target.get_apple_env() == Some(MacCatalyst) {
-                            Some(self.apple_deployment_target(target))
-                        } else {
-                            None
-                        };
+                    let version = if target.os == "visionos" || target.env == "macabi" {
+                        Some(self.apple_deployment_target(target))
+                    } else {
+                        None
+                    };
 
                     let clang_target =
                         target.llvm_target(&self.get_raw_target()?, version.as_deref());
@@ -2746,9 +2748,7 @@ impl Build {
         // https://github.com/llvm/llvm-project/issues/88271
         // And the workaround to use `-mtargetos=` cannot be used with the `--target` flag that we
         // otherwise specify. So we avoid emitting that, and put the version in `--target` instead.
-        if cmd.is_like_gnu()
-            || !(target.os == "visionos" || target.get_apple_env() == Some(MacCatalyst))
-        {
+        if cmd.is_like_gnu() || !(target.os == "visionos" || target.env == "macabi") {
             let min_version = self.apple_deployment_target(&target);
             cmd.args
                 .push(target.apple_version_flag(&min_version).into());
@@ -2768,7 +2768,7 @@ impl Build {
             cmd.env
                 .push(("SDKROOT".into(), OsStr::new(&sdk_path).to_owned()));
 
-            if target.get_apple_env() == Some(MacCatalyst) {
+            if target.env == "macabi" {
                 // Mac Catalyst uses the macOS SDK, but to compile against and
                 // link to iOS-specific frameworks, we should have the support
                 // library stubs in the include and library search path.
@@ -2811,6 +2811,14 @@ impl Build {
         cmd
     }
 
+    fn prefer_clang(&self) -> bool {
+        if let Some(env) = self.getenv("CARGO_ENCODED_RUSTFLAGS") {
+            env.to_string_lossy().contains("linker-plugin-lto")
+        } else {
+            false
+        }
+    }
+
     fn get_base_compiler(&self) -> Result<Tool, Error> {
         let out_dir = self.get_out_dir().ok();
         let out_dir = out_dir.as_deref();
@@ -2838,14 +2846,19 @@ impl Build {
             ("CC", "gcc", "cc", "clang")
         };
 
-        // On historical Solaris systems, "cc" may have been Sun Studio, which
-        // is not flag-compatible with "gcc".  This history casts a long shadow,
-        // and many modern illumos distributions today ship GCC as "gcc" without
-        // also making it available as "cc".
+        let fallback = Cow::Borrowed(Path::new(traditional));
         let default = if cfg!(target_os = "solaris") || cfg!(target_os = "illumos") {
-            gnu
+            // On historical Solaris systems, "cc" may have been Sun Studio, which
+            // is not flag-compatible with "gcc".  This history casts a long shadow,
+            // and many modern illumos distributions today ship GCC as "gcc" without
+            // also making it available as "cc".
+            Cow::Borrowed(Path::new(gnu))
+        } else if self.prefer_clang() {
+            self.which(Path::new(clang), None)
+                .map(Cow::Owned)
+                .unwrap_or(fallback)
         } else {
-            traditional
+            fallback
         };
 
         let cl_exe = self.find_msvc_tools_find_tool(&target, msvc);
@@ -2901,19 +2914,19 @@ impl Build {
         let tool = match tool_opt {
             Some(t) => t,
             None => {
-                let compiler = if cfg!(windows) && target.os == "windows" {
+                let compiler: PathBuf = if cfg!(windows) && target.os == "windows" {
                     if target.env == "msvc" {
-                        msvc.to_string()
+                        msvc.into()
                     } else {
                         let cc = if target.abi == "llvm" { clang } else { gnu };
-                        format!("{cc}.exe")
+                        format!("{cc}.exe").into()
                     }
                 } else if target.os == "ios"
                     || target.os == "watchos"
                     || target.os == "tvos"
                     || target.os == "visionos"
                 {
-                    clang.to_string()
+                    clang.into()
                 } else if target.os == "android" {
                     autodetect_android_compiler(&raw_target, gnu, clang)
                 } else if target.os == "cloudabi" {
@@ -2921,42 +2934,37 @@ impl Build {
                         "{}-{}-{}-{}",
                         target.full_arch, target.vendor, target.os, traditional
                     )
+                    .into()
+                } else if target.os == "wasi" {
+                    self.autodetect_wasi_compiler(&raw_target, clang)
                 } else if target.arch == "wasm32" || target.arch == "wasm64" {
                     // Compiling WASM is not currently supported by GCC, so
                     // let's default to Clang.
-                    clang.to_string()
+                    clang.into()
                 } else if target.os == "vxworks" {
-                    if self.cpp {
-                        "wr-c++".to_string()
-                    } else {
-                        "wr-cc".to_string()
-                    }
+                    if self.cpp { "wr-c++" } else { "wr-cc" }.into()
                 } else if target.arch == "arm" && target.vendor == "kmc" {
-                    format!("arm-kmc-eabi-{gnu}")
+                    format!("arm-kmc-eabi-{gnu}").into()
                 } else if target.arch == "aarch64" && target.vendor == "kmc" {
-                    format!("aarch64-kmc-elf-{gnu}")
+                    format!("aarch64-kmc-elf-{gnu}").into()
                 } else if target.os == "nto" {
                     // See for details: https://github.com/rust-lang/cc-rs/pull/1319
-                    if self.cpp {
-                        "q++".to_string()
-                    } else {
-                        "qcc".to_string()
-                    }
+                    if self.cpp { "q++" } else { "qcc" }.into()
                 } else if self.get_is_cross_compile()? {
                     let prefix = self.prefix_for_target(&raw_target);
                     match prefix {
                         Some(prefix) => {
                             let cc = if target.abi == "llvm" { clang } else { gnu };
-                            format!("{prefix}-{cc}")
+                            format!("{prefix}-{cc}").into()
                         }
-                        None => default.to_string(),
+                        None => default.into(),
                     }
                 } else {
-                    default.to_string()
+                    default.into()
                 };
 
                 let mut t = Tool::new(
-                    PathBuf::from(compiler),
+                    compiler,
                     &self.build_cache.cached_compiler_family,
                     &self.cargo_output,
                     out_dir,
@@ -3031,6 +3039,23 @@ impl Build {
                     }
                 }
             };
+        }
+
+        // Under cross-compilation scenarios, llvm-mingw's clang executable is just a
+        // wrapper script that calls the actual clang binary with a suitable `--target`
+        // argument, much like the Android NDK case outlined above. Passing a target
+        // argument ourselves in this case will result in an error, as they expect
+        // targets like `x86_64-w64-mingw32`, and we can't always set such a target
+        // string because it is specific to this MinGW cross-compilation toolchain.
+        //
+        // For example, the following command will always fail due to using an unsuitable
+        // `--target` argument we'd otherwise pass:
+        // $ /opt/llvm-mingw-20250613-ucrt-ubuntu-22.04-x86_64/bin/x86_64-w64-mingw32-clang --target=x86_64-pc-windows-gnu dummy.c
+        //
+        // Code reference:
+        // https://github.com/mstorsjo/llvm-mingw/blob/a1f6413e5c21fd74b64137b56167f4fba500d1d8/wrappers/clang-target-wrapper.sh#L31
+        if !cfg!(windows) && target.os == "windows" && is_llvm_mingw_wrapper(&tool.path) {
+            tool.has_internal_target_arg = true;
         }
 
         // If we found `cl.exe` in our environment, the tool we're returning is
@@ -3321,12 +3346,8 @@ impl Build {
                     let compiler = self.get_base_compiler().ok()?;
                     if compiler.is_like_clang() {
                         name = format!("llvm-{tool}").into();
-                        self.search_programs(
-                            &mut self.cmd(&compiler.path),
-                            &name,
-                            &self.cargo_output,
-                        )
-                        .map(|name| self.cmd(name))
+                        self.search_programs(&compiler.path, &name, &self.cargo_output)
+                            .map(|name| self.cmd(name))
                     } else {
                         None
                     }
@@ -3356,23 +3377,30 @@ impl Build {
                     // here.
 
                     let compiler = self.get_base_compiler()?;
-                    let mut lib = String::new();
-                    if compiler.family == (ToolFamily::Msvc { clang_cl: true }) {
-                        // See if there is 'llvm-lib' next to 'clang-cl'
-                        // Another possibility could be to see if there is 'clang'
-                        // next to 'clang-cl' and use 'search_programs()' to locate
-                        // 'llvm-lib'. This is because 'clang-cl' doesn't support
-                        // the -print-search-dirs option.
-                        if let Some(mut cmd) = self.which(&compiler.path, None) {
-                            cmd.pop();
-                            cmd.push("llvm-lib.exe");
-                            if let Some(llvm_lib) = self.which(&cmd, None) {
-                                llvm_lib.to_str().unwrap().clone_into(&mut lib);
+                    let lib = if compiler.family == (ToolFamily::Msvc { clang_cl: true }) {
+                        self.search_programs(
+                            &compiler.path,
+                            Path::new("llvm-lib"),
+                            &self.cargo_output,
+                        )
+                        .or_else(|| {
+                            // See if there is 'llvm-lib' next to 'clang-cl'
+                            if let Some(mut cmd) = self.which(&compiler.path, None) {
+                                cmd.pop();
+                                cmd.push("llvm-lib");
+                                self.which(&cmd, None)
+                            } else {
+                                None
                             }
-                        }
-                    }
+                        })
+                    } else {
+                        None
+                    };
 
-                    if lib.is_empty() {
+                    if let Some(lib) = lib {
+                        name = lib;
+                        self.cmd(&name)
+                    } else {
                         name = PathBuf::from("lib.exe");
                         let mut cmd = match self.find_msvc_tools_find(&target, "lib.exe") {
                             Some(t) => t,
@@ -3382,9 +3410,6 @@ impl Build {
                             cmd.arg("/machine:arm64ec");
                         }
                         cmd
-                    } else {
-                        name = lib.into();
-                        self.cmd(&name)
                     }
                 } else if target.os == "illumos" {
                     // The default 'ar' on illumos uses a non-standard flags,
@@ -3592,6 +3617,12 @@ impl Build {
                         self.find_working_gnu_prefix(&["x86_64-linux-musl", "musl"])
                     }
                     "x86_64-unknown-netbsd" => Some("x86_64--netbsd"),
+                    "xtensa-esp32-espidf"
+                    | "xtensa-esp32-none-elf"
+                    | "xtensa-esp32s2-espidf"
+                    | "xtensa-esp32s2-none-elf"
+                    | "xtensa-esp32s3-espidf"
+                    | "xtensa-esp32s3-none-elf" => Some("xtensa-esp-elf"),
                     _ => None,
                 }
                 .map(Cow::Borrowed)
@@ -4121,15 +4152,15 @@ impl Build {
         }
     }
 
-    /// search for |prog| on 'programs' path in '|cc| -print-search-dirs' output
+    /// search for |prog| on 'programs' path in '|cc| --print-search-dirs' output
     fn search_programs(
         &self,
-        cc: &mut Command,
+        cc: &Path,
         prog: &Path,
         cargo_output: &CargoOutput,
     ) -> Option<PathBuf> {
         let search_dirs = run_output(
-            cc.arg("-print-search-dirs"),
+            self.cmd(cc).arg("--print-search-dirs"),
             // this doesn't concern the compilation so we always want to show warnings.
             cargo_output,
         )
@@ -4165,6 +4196,28 @@ impl Build {
 
         ::find_msvc_tools::find_tool_with_env(target.full_arch, tool, &BuildEnvGetter(self))
             .map(Tool::from_find_msvc_tools)
+    }
+
+    /// Compiling for WASI targets typically uses the [wasi-sdk] project and
+    /// installations of wasi-sdk are typically indicated with the
+    /// `WASI_SDK_PATH` environment variable. Check to see if that environment
+    /// variable exists, and check to see if an appropriate compiler is located
+    /// there. If that all passes then use that compiler by default, but
+    /// otherwise fall back to whatever the clang default is since gcc doesn't
+    /// have support for compiling to wasm.
+    ///
+    /// [wasi-sdk]: https://github.com/WebAssembly/wasi-sdk
+    fn autodetect_wasi_compiler(&self, raw_target: &str, clang: &str) -> PathBuf {
+        if let Some(path) = self.getenv("WASI_SDK_PATH") {
+            let target_clang = Path::new(&path)
+                .join("bin")
+                .join(format!("{raw_target}-clang"));
+            if let Some(path) = self.which(&target_clang, None) {
+                return path;
+            }
+        }
+
+        clang.into()
     }
 }
 
@@ -4208,8 +4261,19 @@ fn android_clang_compiler_uses_target_arg_internally(clang_path: &Path) -> bool 
     false
 }
 
+fn is_llvm_mingw_wrapper(clang_path: &Path) -> bool {
+    if let Some(filename) = clang_path
+        .file_name()
+        .and_then(|file_name| file_name.to_str())
+    {
+        filename.ends_with("-w64-mingw32-clang") || filename.ends_with("-w64-mingw32-clang++")
+    } else {
+        false
+    }
+}
+
 // FIXME: Use parsed target.
-fn autodetect_android_compiler(raw_target: &str, gnu: &str, clang: &str) -> String {
+fn autodetect_android_compiler(raw_target: &str, gnu: &str, clang: &str) -> PathBuf {
     let new_clang_key = match raw_target {
         "aarch64-linux-android" => Some("aarch64"),
         "armv7-linux-androideabi" => Some("armv7a"),
@@ -4254,6 +4318,7 @@ fn autodetect_android_compiler(raw_target: &str, gnu: &str, clang: &str) -> Stri
     } else {
         clang_compiler
     }
+    .into()
 }
 
 // Rust and clang/cc don't agree on how to name the target.
@@ -4326,9 +4391,8 @@ fn is_disabled() -> bool {
         0 => {
             let truth = compute_is_disabled();
             let encoded_truth = if truth { 2u8 } else { 1 };
-            // Might race against another thread, but we'd both be setting the
-            // same value so it should be fine.
-            CACHE.store(encoded_truth, Relaxed);
+            // Use compare_exchange to avoid race condition
+            let _ = CACHE.compare_exchange(0, encoded_truth, Relaxed, Relaxed);
             truth
         }
         _ => unreachable!(),

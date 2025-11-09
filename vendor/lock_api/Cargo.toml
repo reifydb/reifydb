@@ -11,11 +11,11 @@
 
 [package]
 edition = "2021"
-rust-version = "1.64.0"
+rust-version = "1.71.0"
 name = "lock_api"
-version = "0.4.13"
+version = "0.4.14"
 authors = ["Amanieu d'Antras <amanieu@gmail.com>"]
-build = "build.rs"
+build = false
 autolib = false
 autobins = false
 autoexamples = false
@@ -66,6 +66,3 @@ default-features = false
 version = "1.0.126"
 optional = true
 default-features = false
-
-[build-dependencies.autocfg]
-version = "1.1.0"

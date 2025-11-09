@@ -12,7 +12,7 @@
 [package]
 edition = "2015"
 name = "bigdecimal"
-version = "0.4.8"
+version = "0.4.9"
 authors = ["Andrew Kubera"]
 build = "build.rs"
 autolib = false

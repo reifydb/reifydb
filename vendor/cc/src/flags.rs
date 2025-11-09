@@ -20,6 +20,7 @@ pub(crate) struct RustcCodegenFlags<'a> {
     soft_float: Option<bool>,
     dwarf_version: Option<u32>,
     stack_protector: Option<&'a str>,
+    linker_plugin_lto: Option<bool>,
 }
 
 impl<'this> RustcCodegenFlags<'this> {
@@ -139,7 +140,11 @@ impl<'this> RustcCodegenFlags<'this> {
             // https://doc.rust-lang.org/rustc/codegen-options/index.html#control-flow-guard
             "-Ccontrol-flow-guard" => self.control_flow_guard = value.or(Some("true")),
             // https://doc.rust-lang.org/rustc/codegen-options/index.html#lto
+            //
+            // This variable is currently unused, we just keep it in case we need it in future
             "-Clto" => self.lto = value.or(Some("true")),
+            // https://doc.rust-lang.org/rustc/linker-plugin-lto.html
+            "-Clinker-plugin-lto" => self.linker_plugin_lto = Some(true),
             // https://doc.rust-lang.org/rustc/codegen-options/index.html#relocation-model
             "-Crelocation-model" => {
                 self.relocation_model = flag_not_empty(value)?;
@@ -161,7 +166,7 @@ impl<'this> RustcCodegenFlags<'this> {
                 self.branch_protection = flag_not_empty(value)?;
             }
             // https://doc.rust-lang.org/beta/unstable-book/compiler-flags/dwarf-version.html
-            // FIXME: Drop the -Z variant and update the doc link once the option is stablized
+            // FIXME: Drop the -Z variant and update the doc link once the option is stabilized
             "-Zdwarf-version" | "-Cdwarf-version" => {
                 self.dwarf_version = flag_not_empty_generic(flag, value.and_then(arg_to_u32))?;
             }
@@ -316,16 +321,15 @@ impl<'this> RustcCodegenFlags<'this> {
                     push_if_supported(format!("-fembed-bitcode={cc_val}").into());
                 }
 
-                // https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang-flto
-                if let Some(value) = self.lto {
-                    let cc_val = match value {
-                        "y" | "yes" | "on" | "true" | "fat" => Some("full"),
-                        "thin" => Some("thin"),
-                        _ => None,
-                    };
-                    if let Some(cc_val) = cc_val {
-                        push_if_supported(format!("-flto={cc_val}").into());
-                    }
+                // https://doc.rust-lang.org/rustc/linker-plugin-lto.html
+                if self.linker_plugin_lto.unwrap_or(false) {
+                    // https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang-flto
+                    // In order to use linker-plugin-lto to achieve cross-lang lto, cc has to use thin LTO
+                    // to compile the c/c++ libraries because llvm linker plugin/lld uses thin LTO by default.
+                    // And for thin LTO in linker plugin to work, the archive also has to be compiled using thin LTO,
+                    // since thin LTO generates extra information that fat LTO does not generate that
+                    // is required for thin LTO process.
+                    push_if_supported("-flto=thin".into());
                 }
                 // https://clang.llvm.org/docs/ClangCommandLineReference.html#cmdoption-clang-mguard
                 if let Some(value) = self.control_flow_guard {
@@ -513,7 +517,7 @@ mod tests {
             "-Clink-self-contained=yes",
             "-Clinker=lld",
             "-Clinker-flavor=ld.lld",
-            "-Clinker-plugin-lto=yes",
+            "-Clinker-plugin-lto=/path",
             "-Cllvm-args=foo",
             "-Cmetadata=foo",
             "-Cno-prepopulate-passes",
@@ -553,6 +557,7 @@ mod tests {
                 branch_protection: Some("bti,pac-ret,leaf"),
                 dwarf_version: Some(5),
                 stack_protector: Some("strong"),
+                linker_plugin_lto: Some(true),
             },
         );
     }

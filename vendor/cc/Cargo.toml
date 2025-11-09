@@ -13,7 +13,7 @@
 edition = "2018"
 rust-version = "1.63"
 name = "cc"
-version = "1.2.37"
+version = "1.2.45"
 authors = ["Alex Crichton <alex@alexcrichton.com>"]
 build = false
 exclude = [
@@ -51,7 +51,7 @@ name = "cc"
 path = "src/lib.rs"
 
 [dependencies.find-msvc-tools]
-version = "0.1.1"
+version = "0.1.4"
 
 [dependencies.jobserver]
 version = "0.1.30"
@@ -73,3 +73,7 @@ default-features = false
 level = "allow"
 priority = 0
 check-cfg = ["cfg(disable_clang_cl_tests)"]
+
+[profile.release]
+opt-level = 3
+lto = true

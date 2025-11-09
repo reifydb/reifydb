@@ -2,6 +2,7 @@
 use proc_macro2::{Ident, Span, TokenStream};
 use quote::{format_ident, quote};
 use std::collections::{HashMap, HashSet};
+use std::env;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 use syn::parse::{Parse, ParseStream};
@@ -151,7 +152,7 @@ impl Tree {
                     Self::new(entry.as_path(), extensions)?,
                 );
             } else {
-                return Err(format!("Unsupported path: {:#?}.", entry));
+                return Err(format!("Unsupported path: {entry:#?}."));
             }
         }
         Ok(tree)
@@ -294,8 +295,19 @@ fn generate_from_tree(
 fn test_each(input: proc_macro::TokenStream, invocation_type: &Type) -> proc_macro::TokenStream {
     let parsed = parse_macro_input!(input as TestEachArgs);
 
-    if !Path::new(&parsed.path.value()).is_dir() {
-        abort_token_stream!(parsed.path.span(), "Given directory does not exist");
+    let path = parsed.path.value();
+    let path = Path::new(&path);
+    if !path.is_dir() {
+        let abs_path: PathBuf = env::current_dir()
+            .unwrap_or_default()
+            .join(path)
+            // Use components().collect() to normalize path
+            .components()
+            .collect();
+        abort_token_stream!(
+            parsed.path.span(),
+            format!("Given directory does not exist: {abs_path:?}")
+        );
     }
 
     let mut tokens = TokenStream::new();

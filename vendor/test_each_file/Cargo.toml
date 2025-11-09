@@ -12,7 +12,7 @@
 [package]
 edition = "2021"
 name = "test_each_file"
-version = "0.3.5"
+version = "0.3.6"
 authors = [
     "Jonathan Brouwer <jonathantbrouwer@gmail.com>",
     "Julia Dijkstra",

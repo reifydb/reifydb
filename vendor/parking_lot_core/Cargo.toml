@@ -11,9 +11,9 @@
 
 [package]
 edition = "2021"
-rust-version = "1.64.0"
+rust-version = "1.71.0"
 name = "parking_lot_core"
-version = "0.9.11"
+version = "0.9.12"
 authors = ["Amanieu d'Antras <amanieu@gmail.com>"]
 build = "build.rs"
 autolib = false
@@ -40,7 +40,6 @@ rustdoc-args = ["--generate-link-to-definition"]
 [features]
 deadlock_detection = [
     "petgraph",
-    "thread-id",
     "backtrace",
 ]
 nightly = []
@@ -63,15 +62,11 @@ optional = true
 [dependencies.smallvec]
 version = "1.6.1"
 
-[dependencies.thread-id]
-version = "4.0.0"
-optional = true
-
 [target.'cfg(target_os = "redox")'.dependencies.redox_syscall]
 version = "0.5"
 
 [target."cfg(unix)".dependencies.libc]
 version = "0.2.95"
 
-[target."cfg(windows)".dependencies.windows-targets]
-version = "0.52.0"
+[target."cfg(windows)".dependencies.windows-link]
+version = "0.2.0"

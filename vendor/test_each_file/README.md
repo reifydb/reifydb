@@ -30,7 +30,7 @@ Given the following file structure:
 
 The macro expands to:
 
-```rust
+```rust no_run
 #[test]
 fn a() {
     // The macro actually uses an absolute path for `a.txt` behind the scenes

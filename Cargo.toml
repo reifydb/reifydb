@@ -134,6 +134,7 @@ reifydb-sub-server = { path = "crates/sub-server" }
 # External dependencies
 
 libc = { version = "0.2.175" }
+libloading = { version = "0.8" }
 
 once_cell = { version = "1.21.3" }
 uuid = { version = "1.18.1", default-features = false, features = ["v4", "v7", "serde", "std"] }

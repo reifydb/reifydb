@@ -4,8 +4,6 @@
 //! It defines FFI-safe types and function signatures for operators to interact with
 //! the ReifyDB host system.
 
-#![cfg_attr(not(feature = "std"), no_std)]
-
 pub mod types;
 pub mod vtable;
 pub mod callbacks;
