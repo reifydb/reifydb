@@ -13,7 +13,7 @@ pub mod transaction;
 
 // Re-export main types
 pub use arena::Arena;
-pub use callbacks::{create_host_callbacks, HostCallbackContext};
+pub use callbacks::{create_host_callbacks, set_current_arena, clear_current_arena};
 pub use error::{FFIError, FFIResult};
 pub use loader::FFIOperatorLoader;
 pub use marshalling::FFIMarshaller;

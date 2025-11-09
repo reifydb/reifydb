@@ -605,6 +605,18 @@ name = "reifydb-operator-api"
 version = "0.0.1"
 
 [[package]]
+name = "reifydb-operator-sdk"
+version = "0.1.0"
+dependencies = [
+ "bincode",
+ "reifydb-core",
+ "reifydb-operator-api",
+ "reifydb-type",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "reifydb-rql"
 version = "0.0.1"
 dependencies = [

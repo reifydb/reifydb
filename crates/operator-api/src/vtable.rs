@@ -209,6 +209,11 @@ pub struct FFIOperatorDescriptor {
     pub vtable: FFIOperatorVTable,
 }
 
+// SAFETY: FFIOperatorDescriptor contains pointers to static strings and functions
+// which are safe to share across threads
+unsafe impl Send for FFIOperatorDescriptor {}
+unsafe impl Sync for FFIOperatorDescriptor {}
+
 /// Factory function type for creating operator instances
 pub type FFIOperatorCreateFn = extern "C" fn(
     config: *const u8,

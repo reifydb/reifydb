@@ -34,5 +34,13 @@ impl fmt::Display for FFIError {
 
 impl std::error::Error for FFIError {}
 
+/// Convert FFIError to reifydb Error
+impl From<FFIError> for reifydb_core::Error {
+    fn from(err: FFIError) -> Self {
+        use reifydb_type::{Error, internal};
+        Error(internal!(format!("{}", err)))
+    }
+}
+
 /// FFI operation result
 pub type FFIResult<T> = Result<T, FFIError>;
