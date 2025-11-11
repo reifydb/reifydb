@@ -1,7 +1,7 @@
 //! FFI bridge for operators
 
 mod wrapper;
-mod exports;
+pub mod exports;
 
 pub use wrapper::OperatorWrapper;
 pub use exports::{create_descriptor, create_operator_instance};

@@ -14,7 +14,3 @@ serde = { workspace = true, features = ["derive"] }
 bincode = { workspace = true, features = ["serde"] }
 
 [dev-dependencies]
-
-[lib]
-name = "reifydb_operator_sdk"
-path = "src/lib.rs"

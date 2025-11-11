@@ -1,10 +1,12 @@
 //! Stateless operator pattern
 
+use std::collections::HashMap;
 use crate::error::Result;
-use crate::operator::{Operator, OperatorMetadata, FlowChange, FlowDiff};
+use crate::operator::{FFIOperator, FlowChange, FlowDiff};
 use crate::context::OperatorContext;
 use crate::builders::FlowChangeBuilder;
 use reifydb_core::Row;
+use reifydb_type::Value;
 
 /// Trait for stateless operators that process rows independently
 pub trait StatelessOperator: Send + Sync + 'static {
@@ -16,10 +18,7 @@ pub trait StatelessOperator: Send + Sync + 'static {
         true // Accept all rows by default
     }
 
-    /// Metadata for the operator
-    fn metadata(&self) -> OperatorMetadata {
-        OperatorMetadata::default()
-    }
+    // TODO: Metadata needs to be redesigned for static approach
 }
 
 /// Adapter that converts a StatelessOperator to a regular Operator
@@ -34,7 +33,17 @@ impl<T: StatelessOperator> StatelessAdapter<T> {
     }
 }
 
-impl<T: StatelessOperator> Operator for StatelessAdapter<T> {
+impl<T: StatelessOperator> FFIOperator for StatelessAdapter<T> {
+    fn new() -> Self {
+        // TODO: This needs redesign for the new operator model
+        panic!("StatelessAdapter needs redesign for new operator model")
+    }
+
+    fn initialize(&mut self, _config: &HashMap<String, Value>) -> Result<()> {
+        // TODO: Initialize the inner operator
+        Ok(())
+    }
+
     fn apply(&mut self, _ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange> {
         let mut builder = FlowChangeBuilder::new().with_version(input.version);
 
@@ -69,8 +78,9 @@ impl<T: StatelessOperator> Operator for StatelessAdapter<T> {
         Ok(builder.build())
     }
 
-    fn metadata(&self) -> OperatorMetadata {
-        self.inner.metadata()
+    fn get_rows(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[reifydb_type::RowNumber]) -> Result<Vec<Option<Row>>> {
+        // TODO: Implement for stateless pattern
+        Ok(vec![])
     }
 }
 

@@ -1,4 +1,4 @@
-//! Common operator patterns
+//! Common operator variants
 
 mod stateless;
 mod stateful;

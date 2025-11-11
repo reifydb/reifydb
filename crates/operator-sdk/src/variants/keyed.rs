@@ -3,7 +3,7 @@
 use crate::builders::FlowChangeBuilder;
 use crate::context::OperatorContext;
 use crate::error::Result;
-use crate::operator::{FlowChange, FlowDiff, Operator, OperatorMetadata};
+use crate::operator::{FlowChange, FlowDiff, FFIOperator};
 use reifydb_core::Row;
 use reifydb_type::Value;
 use serde::{de::DeserializeOwned, Serialize};
@@ -19,11 +19,6 @@ pub trait KeyedOperator: Send + Sync + 'static {
 
 	/// Process a row with its keyed state
 	fn process_keyed(&mut self, state: &mut Self::State, row: &Row) -> Result<Option<Row>>;
-
-	/// Metadata for the operator
-	fn metadata(&self) -> OperatorMetadata {
-		OperatorMetadata::default()
-	}
 }
 
 /// Adapter that converts a KeyedOperator to a regular Operator
@@ -48,7 +43,12 @@ impl<T: KeyedOperator> KeyedAdapter<T> {
 	}
 }
 
-impl<T: KeyedOperator> Operator for KeyedAdapter<T> {
+impl<T: KeyedOperator> FFIOperator for KeyedAdapter<T> {
+	fn new() -> Self {
+		// TODO: This needs redesign for the new operator model
+		panic!("KeyedAdapter needs redesign for new operator model")
+	}
+
 	fn initialize(&mut self, _config: &HashMap<String, Value>) -> Result<()> {
 		// Load saved states from context if available
 		Ok(())
@@ -103,10 +103,9 @@ impl<T: KeyedOperator> Operator for KeyedAdapter<T> {
 		Ok(builder.build())
 	}
 
-	fn metadata(&self) -> OperatorMetadata {
-		let mut metadata = self.inner.metadata();
-		metadata.capabilities = metadata.capabilities.with_keyed(true);
-		metadata
+	fn get_rows(&mut self, _ctx: &mut OperatorContext, _row_numbers: &[reifydb_type::RowNumber]) -> Result<Vec<Option<Row>>> {
+		// TODO: Implement for keyed pattern
+		Ok(vec![])
 	}
 }
 
@@ -147,14 +146,6 @@ mod examples {
 
 			// Return aggregated row
 			Ok(Some(_row.clone()))
-		}
-
-		fn metadata(&self) -> OperatorMetadata {
-			OperatorMetadata {
-				name: "group_by_aggregator",
-				version: 1,
-				capabilities: Default::default(),
-			}
 		}
 	}
 }

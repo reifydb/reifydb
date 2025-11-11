@@ -9,32 +9,51 @@
 /// use reifydb_operator_sdk::prelude::*;
 ///
 /// struct MyOperator;
-/// impl Operator for MyOperator {
-///     // implementation
-/// }
+/// impl FFIOperatorMetadata for MyOperator { ... }
+/// impl FFIOperator for MyOperator { ... }
 ///
 /// export_operator!(MyOperator);
 /// ```
 #[macro_export]
 macro_rules! export_operator {
     ($operator_type:ty) => {
-        // Generate the FFI exports
-        #[no_mangle]
-        pub extern "C" fn ffi_operator_get_descriptor() -> *const $crate::ffi::FFIOperatorDescriptor {
-            static DESCRIPTOR: ::std::sync::OnceLock<$crate::ffi::FFIOperatorDescriptor> =
-                ::std::sync::OnceLock::new();
+        use std::sync::OnceLock;
 
-            DESCRIPTOR.get_or_init(|| {
-                $crate::ffi::create_descriptor::<$operator_type>()
-            })
+        // Static descriptor that's initialized once
+        static OPERATOR_DESCRIPTOR: OnceLock<reifydb_operator_abi::FFIOperatorDescriptor> = OnceLock::new();
+
+        /// Get the operator descriptor
+        /// This is called by the host to understand what the operator provides
+        #[unsafe(no_mangle)]
+        pub extern "C" fn ffi_operator_get_descriptor() -> *const reifydb_operator_abi::FFIOperatorDescriptor {
+            let descriptor = OPERATOR_DESCRIPTOR.get_or_init(|| {
+                $crate::ffi::exports::create_descriptor::<$operator_type>()
+            });
+            descriptor as *const _
         }
 
-        #[no_mangle]
-        pub extern "C" fn ffi_operator_create(
-            config: *const u8,
+        /// Create a new operator instance
+        ///
+        /// # Safety
+        /// - config_ptr must be valid for config_len bytes, or null
+        /// - node_id is the FlowNodeId for this operator
+        #[unsafe(no_mangle)]
+        pub unsafe extern "C" fn ffi_operator_create(
+            config_ptr: *const u8,
             config_len: usize,
-        ) -> *mut ::std::ffi::c_void {
-            $crate::ffi::create_operator_instance::<$operator_type>(config, config_len)
+            node_id: u64,
+        ) -> *mut std::ffi::c_void {
+            $crate::ffi::exports::create_operator_instance::<$operator_type>(
+                config_ptr,
+                config_len,
+                node_id,
+            )
+        }
+
+        /// Get the API version this operator was built against
+        #[unsafe(no_mangle)]
+        pub extern "C" fn ffi_operator_get_api_version() -> u32 {
+            reifydb_operator_abi::CURRENT_API_VERSION
         }
     };
 }
@@ -45,32 +64,30 @@ macro_rules! export_operator {
 ///
 /// # Example
 /// ```
-/// operator! {
+/// operator_metadata! {
 ///     name: "filter",
 ///     version: 1,
-///     capabilities: [stateful, keyed],
-///     type: FilterOperator
+///     capabilities: [with_state, with_keyed_state]
 /// }
 /// ```
 #[macro_export]
-macro_rules! operator {
+macro_rules! operator_metadata {
     (
-        name: $name:literal,
-        version: $version:literal,
-        capabilities: [$($cap:ident),* $(,)?],
-        type: $operator_type:ty
+        name: $name:expr,
+        version: $version:expr
+        $(, capabilities: [$($cap:ident),*])?
     ) => {
-        impl $crate::operator::Operator for $operator_type {
-            fn metadata(&self) -> $crate::operator::OperatorMetadata {
-                $crate::operator::OperatorMetadata {
-                    name: $name,
-                    version: $version,
-                    capabilities: $crate::operator::Capabilities::new()
-                        $(.$crate::__capability_method!($cap)(true))*,
-                }
-            }
-
-            // User must implement apply() and optionally other methods
+        impl $crate::FFIOperatorMetadata for Self {
+            const NAME: &'static str = $name;
+            const VERSION: u32 = $version;
+            const CAPABILITIES: $crate::Capabilities = {
+                #[allow(unused_mut)]
+                let mut caps = $crate::Capabilities::new();
+                $($(
+                    caps = caps.$cap();
+                )*)?
+                caps
+            };
         }
     };
 }

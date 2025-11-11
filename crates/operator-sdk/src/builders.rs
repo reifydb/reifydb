@@ -4,7 +4,6 @@ use crate::operator::{FlowChange, FlowDiff};
 use reifydb_core::{Row, CowVec, value::encoded::{EncodedValues, EncodedValuesNamedLayout}};
 use reifydb_type::{RowNumber, Type, Value};
 use std::collections::HashMap;
-use std::convert::TryFrom;
 
 /// Builder for constructing FlowChange instances
 #[derive(Default)]
