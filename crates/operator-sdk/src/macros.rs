@@ -230,7 +230,7 @@ macro_rules! test_operator {
         ]
     ) => {{
         let mut operator = $op;
-        let mut ctx = $crate::context::MockContext::new();
+        let mut ctx = $crate::context::TestContext::new();
 
         $(
             let input = $input;

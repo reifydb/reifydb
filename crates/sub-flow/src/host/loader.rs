@@ -1,7 +1,7 @@
 //! FFI operator dynamic library loader
 
 use libloading::{Library, Symbol};
-use reifydb_operator_api::{FFIOperatorDescriptor, FFIOperatorCreateFn};
+use reifydb_operator_abi::{FFIOperatorDescriptor, FFIOperatorCreateFn};
 use std::collections::HashMap;
 use std::ffi::c_void;
 use std::path::{Path, PathBuf};
@@ -82,10 +82,10 @@ impl FFIOperatorLoader {
         };
 
         // Verify API version
-        if descriptor.api_version != reifydb_operator_api::CURRENT_API_VERSION {
+        if descriptor.api_version != reifydb_operator_abi::CURRENT_API_VERSION {
             return Err(FFIError::Other(format!(
                 "API version mismatch: expected {}, got {}",
-                reifydb_operator_api::CURRENT_API_VERSION,
+                reifydb_operator_abi::CURRENT_API_VERSION,
                 descriptor.api_version
             )));
         }

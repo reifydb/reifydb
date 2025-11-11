@@ -1,5 +1,5 @@
 [package]
-name = "reifydb-operator-api"
+name = "reifydb-operator-abi"
 description = "C ABI definitions for ReifyDB FFI operators"
 version.workspace = true
 edition.workspace = true

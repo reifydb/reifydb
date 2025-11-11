@@ -3,7 +3,8 @@
 use crate::error::Result;
 use crate::context::OperatorContext;
 use reifydb_core::Row;
-use reifydb_type::RowNumber;
+use reifydb_type::{RowNumber, Value};
+use std::collections::HashMap;
 
 /// Flow change type (simplified for SDK)
 #[derive(Debug, Clone)]
@@ -23,7 +24,7 @@ pub enum FlowDiff {
 /// Core operator trait that all operators must implement
 pub trait Operator: Send + Sync + 'static {
     /// Initialize the operator with configuration
-    fn initialize(&mut self, _config: &[u8]) -> Result<()> {
+    fn initialize(&mut self, _config: &HashMap<String, Value>) -> Result<()> {
         Ok(()) // Default no-op
     }
 
@@ -108,16 +109,16 @@ impl Capabilities {
     pub fn to_ffi_flags(&self) -> u32 {
         let mut flags = 0;
         if self.stateful {
-            flags |= reifydb_operator_api::CAP_USES_STATE;
+            flags |= reifydb_operator_abi::CAP_USES_STATE;
         }
         if self.keyed {
-            flags |= reifydb_operator_api::CAP_KEYED_STATE;
+            flags |= reifydb_operator_abi::CAP_KEYED_STATE;
         }
         if self.windowed {
-            flags |= reifydb_operator_api::CAP_WINDOWED;
+            flags |= reifydb_operator_abi::CAP_WINDOWED;
         }
         if self.batch {
-            flags |= reifydb_operator_api::CAP_BATCH;
+            flags |= reifydb_operator_abi::CAP_BATCH;
         }
         flags
     }

@@ -7,7 +7,7 @@ use std::sync::Mutex;
 
 use reifydb_core::{interface::FlowNodeId, Row};
 use reifydb_engine::StandardRowEvaluator;
-use reifydb_operator_api::{FFIOperatorDescriptor, FFIOperatorVTable};
+use reifydb_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable};
 use reifydb_type::RowNumber;
 
 use crate::flow::FlowChange;
@@ -54,12 +54,12 @@ impl FFIOperator {
 
 	/// Check if this operator uses state
 	pub fn is_stateful(&self) -> bool {
-		self.descriptor.capabilities & reifydb_operator_api::CAP_USES_STATE != 0
+		self.descriptor.capabilities & reifydb_operator_abi::CAP_USES_STATE != 0
 	}
 
 	/// Check if this operator uses keyed state
 	pub fn is_keyed(&self) -> bool {
-		self.descriptor.capabilities & reifydb_operator_api::CAP_KEYED_STATE != 0
+		self.descriptor.capabilities & reifydb_operator_abi::CAP_KEYED_STATE != 0
 	}
 }
 
@@ -81,11 +81,11 @@ impl Operator for FFIOperator {
 		let ffi_input = marshaller.marshal_flow_change(&change);
 
 		// Create output holder
-		let mut ffi_output = reifydb_operator_api::FlowChangeFFI::empty();
+		let mut ffi_output = reifydb_operator_abi::FlowChangeFFI::empty();
 
 		// Create transaction handle
 		let txn_handle = TransactionHandle::new(txn, self.node_id, create_host_callbacks());
-		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_operator_api::TransactionHandle;
+		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_operator_abi::TransactionHandle;
 
 		// Call FFI apply function
 		let result = unsafe {
@@ -126,14 +126,14 @@ impl Operator for FFIOperator {
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
 
 		// Create output holder
-		let mut ffi_output = reifydb_operator_api::RowsFFI {
+		let mut ffi_output = reifydb_operator_abi::RowsFFI {
 			count: 0,
 			rows: std::ptr::null_mut(),
 		};
 
 		// Create transaction handle
 		let txn_handle = TransactionHandle::new(txn, self.node_id, create_host_callbacks());
-		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_operator_api::TransactionHandle;
+		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_operator_abi::TransactionHandle;
 
 		// Call FFI get_rows function
 		let result = catch_unwind(AssertUnwindSafe(|| {
@@ -211,7 +211,7 @@ mod tests {
 		let descriptor = FFIOperatorDescriptor {
 			api_version: 1,
 			operator_name: std::ptr::null(),
-			capabilities: reifydb_operator_api::CAP_USES_STATE | reifydb_operator_api::CAP_KEYED_STATE,
+			capabilities: reifydb_operator_abi::CAP_USES_STATE | reifydb_operator_abi::CAP_KEYED_STATE,
 			vtable: unsafe { std::mem::zeroed() }, // Don't use in real code
 		};
 

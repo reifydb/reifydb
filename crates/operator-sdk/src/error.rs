@@ -14,9 +14,6 @@ pub enum Error {
     /// Serialization error
     Serialization(String),
 
-    /// JSON error
-    Json(serde_json::Error),
-
     /// FFI error
     FFI(String),
 
@@ -36,20 +33,10 @@ impl fmt::Display for Error {
             Error::Configuration(msg) => write!(f, "Configuration error: {}", msg),
             Error::State(msg) => write!(f, "State error: {}", msg),
             Error::Serialization(msg) => write!(f, "Serialization error: {}", msg),
-            Error::Json(err) => write!(f, "JSON error: {}", err),
             Error::FFI(msg) => write!(f, "FFI error: {}", msg),
             Error::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
             Error::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),
             Error::Other(msg) => write!(f, "{}", msg),
-        }
-    }
-}
-
-impl std::error::Error for Error {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            Error::Json(err) => Some(err),
-            _ => None,
         }
     }
 }
@@ -66,12 +53,6 @@ impl From<bincode::error::EncodeError> for Error {
 impl From<bincode::error::DecodeError> for Error {
     fn from(err: bincode::error::DecodeError) -> Self {
         Error::Serialization(format!("Decode error: {}", err))
-    }
-}
-
-impl From<serde_json::Error> for Error {
-    fn from(err: serde_json::Error) -> Self {
-        Error::Json(err)
     }
 }
 

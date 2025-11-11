@@ -12,7 +12,7 @@ reifydb-core = { workspace = true }
 reifydb-catalog = { workspace = true }
 reifydb-engine = { workspace = true }
 reifydb-hash = { workspace = true }
-reifydb-operator-api = { workspace = true }
+reifydb-operator-abi = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-transaction = {workspace = true}

@@ -5,7 +5,6 @@ use reifydb_core::{Row, CowVec, value::encoded::{EncodedValues, EncodedValuesNam
 use reifydb_type::{RowNumber, Type, Value};
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use serde_json::Value as JsonValue;
 
 /// Builder for constructing FlowChange instances
 #[derive(Default)]
@@ -117,61 +116,23 @@ impl RowBuilder {
         let layout = EncodedValuesNamedLayout::new(layout_fields.into_iter());
 
         // Encode values
-        let mut encoded_bytes = Vec::new();
-        for (_, value) in &self.fields {
-            // Simple encoding: serialize the value as JSON then to bytes
-            // In production, this would use the proper encoding format
-            let json_str = serde_json::to_string(value).unwrap_or_default();
-            let bytes = json_str.as_bytes();
-            encoded_bytes.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
-            encoded_bytes.extend_from_slice(bytes);
-        }
+        // let mut encoded_bytes = Vec::new();
+        // for (_, value) in &self.fields {
+        //     // Simple encoding: serialize the value as JSON then to bytes
+        //     // In production, this would use the proper encoding format
+        //     let json_str = serde_json::to_string(value).unwrap_or_default();
+        //     let bytes = json_str.as_bytes();
+        //     encoded_bytes.extend_from_slice(&(bytes.len() as u32).to_le_bytes());
+        //     encoded_bytes.extend_from_slice(bytes);
+        // }
 
-        Row {
-            number: self.number,
-            encoded: EncodedValues(CowVec::new(encoded_bytes)),
-            layout,
-        }
-    }
+        todo!();
 
-    /// Create a row from JSON
-    pub fn from_json(number: impl Into<RowNumber>, json: JsonValue) -> Row {
-        let mut builder = Self::new(number);
-
-        if let JsonValue::Object(map) = json {
-            for (key, value) in map {
-                builder = builder.field(key, json_to_value(value));
-            }
-        }
-
-        builder.build()
-    }
-}
-
-/// Convert JSON value to ReifyDB Value
-fn json_to_value(json: JsonValue) -> Value {
-    match json {
-        JsonValue::Null => Value::Undefined,
-        JsonValue::Bool(b) => Value::Boolean(b),
-        JsonValue::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                Value::Int8(i)
-            } else if let Some(f) = n.as_f64() {
-                match reifydb_type::OrderedF64::try_from(f) {
-                    Ok(ordered) => Value::Float8(ordered),
-                    Err(_) => Value::Undefined, // NaN becomes undefined
-                }
-            } else {
-                Value::Undefined
-            }
-        }
-        JsonValue::String(s) => Value::Utf8(s),
-        JsonValue::Array(arr) => {
-            Value::Utf8(serde_json::to_string(&arr).unwrap_or_default())
-        }
-        JsonValue::Object(obj) => {
-            Value::Utf8(serde_json::to_string(&obj).unwrap_or_default())
-        }
+        // Row {
+        //     number: self.number,
+        //     encoded: EncodedValues(CowVec::new(encoded_bytes)),
+        //     layout,
+        // }
     }
 }
 

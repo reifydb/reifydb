@@ -2,7 +2,7 @@
 
 use crate::operator::{Operator, FlowChange, FlowDiff};
 use crate::context::OperatorContext;
-use reifydb_operator_api::*;
+use reifydb_operator_abi::*;
 use reifydb_core::{Row, CowVec, interface::FlowNodeId, value::encoded::{EncodedValues, EncodedValuesNamedLayout}};
 use reifydb_type::RowNumber;
 use std::ffi::c_void;
@@ -54,8 +54,8 @@ pub extern "C" fn ffi_apply<O: Operator>(
             // Convert FFI input to SDK types
             let input_change = unmarshal_flow_change(&*input);
 
-            // Create context with FFI handle
-            let mut ctx = OperatorContext::with_ffi_handle(wrapper.node_id, txn);
+            // Create context with transaction handle
+            let mut ctx = OperatorContext::new(wrapper.node_id, txn);
 
             // Call the operator
             let output_change = match operator.apply(&mut ctx, input_change) {
@@ -99,7 +99,7 @@ pub extern "C" fn ffi_get_rows<O: Operator>(
             };
 
             // Create context
-            let mut ctx = OperatorContext::with_ffi_handle(wrapper.node_id, txn);
+            let mut ctx = OperatorContext::new(wrapper.node_id, txn);
 
             // Call the operator
             let _rows = match operator.get_rows(&mut ctx, &numbers) {

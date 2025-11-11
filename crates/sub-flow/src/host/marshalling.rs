@@ -1,6 +1,6 @@
 //! Type marshalling between Rust and FFI types
 
-use reifydb_operator_api::*;
+use reifydb_operator_abi::*;
 use reifydb_core::{
     Row,
     interface::FlowNodeId,
@@ -8,9 +8,10 @@ use reifydb_core::{
     CowVec,
     value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 };
-use reifydb_type::RowNumber;
+use reifydb_type::{RowNumber, Value};
 use crate::flow::{FlowChange, FlowDiff, FlowChangeOrigin};
 use crate::host::Arena;
+use std::collections::HashMap;
 use std::ffi::c_void;
 
 /// Marshaller for converting between Rust and FFI types
@@ -150,6 +151,7 @@ impl FFIMarshaller {
                 encoded: BufferFFI {
                     ptr: encoded_ptr,
                     len: encoded_len,
+                    cap: encoded_len,
                 },
                 layout_handle,
             };

@@ -601,19 +601,18 @@ dependencies = [
 ]
 
 [[package]]
-name = "reifydb-operator-api"
+name = "reifydb-operator-abi"
 version = "0.0.1"
 
 [[package]]
 name = "reifydb-operator-sdk"
-version = "0.1.0"
+version = "0.0.1"
 dependencies = [
  "bincode",
  "reifydb-core",
- "reifydb-operator-api",
+ "reifydb-operator-abi",
  "reifydb-type",
  "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -693,7 +692,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-hash",
- "reifydb-operator-api",
+ "reifydb-operator-abi",
  "reifydb-rql",
  "reifydb-store-transaction",
  "reifydb-sub-api",

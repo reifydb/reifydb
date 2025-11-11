@@ -2,7 +2,7 @@
 
 use crate::transaction::FlowTransaction;
 use reifydb_core::interface::FlowNodeId;
-use reifydb_operator_api::HostCallbacks;
+use reifydb_operator_abi::HostCallbacks;
 
 /// Handle for passing transaction context to FFI operators
 pub struct TransactionHandle {

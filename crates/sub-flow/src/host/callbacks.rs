@@ -1,6 +1,6 @@
 //! Host callback implementations for FFI operators
 
-use reifydb_operator_api::*;
+use reifydb_operator_abi::*;
 use std::ffi::c_void;
 use std::alloc::{alloc, dealloc, realloc as system_realloc, Layout};
 
@@ -167,11 +167,13 @@ extern "C" fn host_create_row(
         BufferFFI {
             ptr: data_ptr,
             len: encoded_len,
+            cap: encoded_len,
         }
     } else {
         BufferFFI {
             ptr: std::ptr::null_mut(),
             len: 0,
+            cap: 0
         }
     };
 

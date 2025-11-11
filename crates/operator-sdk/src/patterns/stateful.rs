@@ -63,7 +63,7 @@ where
 
 /// Example: Running average operator
 #[cfg(test)]
-mod examples {
+mod tests {
     use super::*;
     use std::collections::HashMap;
 

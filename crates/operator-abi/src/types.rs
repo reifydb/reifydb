@@ -10,6 +10,8 @@ pub struct BufferFFI {
     pub ptr: *const u8,
     /// Length of the data
     pub len: usize,
+    /// Capacity of the allocated buffer
+    pub cap: usize,
 }
 
 impl BufferFFI {
@@ -18,6 +20,7 @@ impl BufferFFI {
         Self {
             ptr: core::ptr::null(),
             len: 0,
+            cap: 0,
         }
     }
 
@@ -26,6 +29,7 @@ impl BufferFFI {
         Self {
             ptr: data.as_ptr(),
             len: data.len(),
+            cap: data.len(),
         }
     }
 
