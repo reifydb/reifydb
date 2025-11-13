@@ -1,5 +1,6 @@
 //! FFI operator implementation that bridges FFI operators with ReifyDB
 
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::slice::from_raw_parts;
@@ -7,7 +8,7 @@ use std::sync::Mutex;
 
 use reifydb_core::{interface::FlowNodeId, Row};
 use reifydb_engine::StandardRowEvaluator;
-use reifydb_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable};
+use reifydb_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
 use reifydb_type::RowNumber;
 
 use crate::flow::FlowChange;
@@ -27,11 +28,11 @@ pub struct FFIOperator {
 	/// Pointer to the FFI operator instance
 	instance: *mut c_void,
 
-	/// Node ID for this operator
-	node_id: FlowNodeId,
+	/// ID for this operator
+	operator_id: FlowNodeId,
 
-	/// Marshaller for type conversions (protected by mutex for thread safety)
-	marshaller: Mutex<FFIMarshaller>,
+	/// Marshaller for type conversions
+	marshaller: RefCell<FFIMarshaller>,
 }
 
 // SAFETY: FFIOperator manages an FFI pointer but ensures proper synchronization
@@ -47,25 +48,15 @@ impl FFIOperator {
 			descriptor,
 			vtable,
 			instance,
-			node_id,
-			marshaller: Mutex::new(FFIMarshaller::new()),
+			operator_id: node_id,
+			marshaller: RefCell::new(FFIMarshaller::new()),
 		}
-	}
-
-	/// Check if this operator uses state
-	pub fn is_stateful(&self) -> bool {
-		self.descriptor.capabilities & reifydb_operator_abi::CAP_USES_STATE != 0
-	}
-
-	/// Check if this operator uses keyed state
-	pub fn is_keyed(&self) -> bool {
-		self.descriptor.capabilities & reifydb_operator_abi::CAP_KEYED_STATE != 0
 	}
 }
 
 impl Operator for FFIOperator {
 	fn id(&self) -> FlowNodeId {
-		self.node_id
+		self.operator_id
 	}
 
 	fn apply(
@@ -75,7 +66,7 @@ impl Operator for FFIOperator {
 		_evaluator: &StandardRowEvaluator,
 	) -> Result<FlowChange> {
 		// Lock the marshaller for this operation
-		let mut marshaller = self.marshaller.lock().unwrap();
+		let mut marshaller = self.marshaller.borrow_mut();
 
 		// Marshal the input change
 		let ffi_input = marshaller.marshal_flow_change(&change);
@@ -84,7 +75,7 @@ impl Operator for FFIOperator {
 		let mut ffi_output = reifydb_operator_abi::FlowChangeFFI::empty();
 
 		// Create transaction handle
-		let txn_handle = TransactionHandle::new(txn, self.node_id, create_host_callbacks());
+		let txn_handle = TransactionHandle::new(txn, self.operator_id, create_host_callbacks());
 		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_operator_abi::TransactionHandle;
 
 		// Call FFI apply function
@@ -120,19 +111,19 @@ impl Operator for FFIOperator {
 
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {
 		// Lock the marshaller for this operation
-		let mut marshaller = self.marshaller.lock().unwrap();
+		let mut marshaller = self.marshaller.borrow_mut();
 
 		// Convert row numbers to u64 array
 		let row_numbers: Vec<u64> = rows.iter().map(|r| (*r).into()).collect();
 
 		// Create output holder
-		let mut ffi_output = reifydb_operator_abi::RowsFFI {
+		let mut ffi_output = RowsFFI {
 			count: 0,
 			rows: std::ptr::null_mut(),
 		};
 
 		// Create transaction handle
-		let txn_handle = TransactionHandle::new(txn, self.node_id, create_host_callbacks());
+		let txn_handle = TransactionHandle::new(txn, self.operator_id, create_host_callbacks());
 		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_operator_abi::TransactionHandle;
 
 		// Call FFI get_rows function
@@ -198,27 +189,5 @@ impl Drop for FFIOperator {
 				(self.vtable.destroy)(self.instance);
 			}));
 		}
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_ffi_operator_capabilities() {
-		// Create a mock descriptor
-		let descriptor = FFIOperatorDescriptor {
-			api_version: 1,
-			operator_name: std::ptr::null(),
-			capabilities: reifydb_operator_abi::CAP_USES_STATE | reifydb_operator_abi::CAP_KEYED_STATE,
-			vtable: unsafe { std::mem::zeroed() }, // Don't use in real code
-		};
-
-		let operator = FFIOperator::new(descriptor, std::ptr::null_mut(), FlowNodeId(42));
-
-		assert_eq!(operator.id(), FlowNodeId(42));
-		assert!(operator.is_stateful());
-		assert!(operator.is_keyed());
 	}
 }

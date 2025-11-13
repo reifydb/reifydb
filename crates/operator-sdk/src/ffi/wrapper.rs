@@ -3,9 +3,9 @@
 use crate::context::OperatorContext;
 use crate::operator::{FFIOperator, FlowChange, FlowDiff};
 use reifydb_core::{
-    interface::FlowNodeId, value::encoded::{EncodedValues, EncodedValuesNamedLayout},
-    CowVec,
-    Row,
+	interface::FlowNodeId, value::encoded::{EncodedValues, EncodedValuesNamedLayout},
+	CowVec,
+	Row,
 };
 use reifydb_operator_abi::*;
 use reifydb_type::RowNumber;
@@ -55,21 +55,15 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 				Err(_) => return -1,
 			};
 
-			// Convert FFI input to SDK types
 			let input_change = unmarshal_flow_change(&*input);
-
-			// Create context with transaction handle
 			let mut ctx = OperatorContext::new(wrapper.node_id, txn);
 
-			// Call the operator
 			let output_change = match operator.apply(&mut ctx, input_change) {
 				Ok(change) => change,
 				Err(_) => return -2,
 			};
 
-			// Marshal output
 			*output = marshal_flow_change(&output_change);
-
 			0 // Success
 		}
 	}));
@@ -135,71 +129,6 @@ pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 	}
 }
 
-// State method stubs (operators handle state through context)
-
-pub extern "C" fn ffi_state_get(
-	_instance: *mut c_void,
-	_txn: *mut TransactionHandle,
-	_key: *const u8,
-	_key_len: usize,
-	_output: *mut BufferFFI,
-) -> i32 {
-	-1 // Not directly exposed, use context.state()
-}
-
-pub extern "C" fn ffi_state_set(
-	_instance: *mut c_void,
-	_txn: *mut TransactionHandle,
-	_key: *const u8,
-	_key_len: usize,
-	_value: *const u8,
-	_value_len: usize,
-) -> i32 {
-	-1 // Not directly exposed, use context.state()
-}
-
-pub extern "C" fn ffi_state_remove(
-	_instance: *mut c_void,
-	_txn: *mut TransactionHandle,
-	_key: *const u8,
-	_key_len: usize,
-) -> i32 {
-	-1 // Not directly exposed, use context.state()
-}
-
-pub extern "C" fn ffi_state_scan(
-	_instance: *mut c_void,
-	_txn: *mut TransactionHandle,
-	_iterator_out: *mut *mut StateIteratorFFI,
-) -> i32 {
-	-1 // Not directly exposed, use context.state()
-}
-
-pub extern "C" fn ffi_state_range(
-	_instance: *mut c_void,
-	_txn: *mut TransactionHandle,
-	_start_key: *const u8,
-	_start_len: usize,
-	_end_key: *const u8,
-	_end_len: usize,
-	_iterator_out: *mut *mut StateIteratorFFI,
-) -> i32 {
-	-1 // Not directly exposed, use context.state()
-}
-
-pub extern "C" fn ffi_state_clear(_instance: *mut c_void, _txn: *mut TransactionHandle) -> i32 {
-	-1 // Not directly exposed, use context.state()
-}
-
-pub extern "C" fn ffi_state_encode_key(
-	_instance: *mut c_void,
-	_values: *const ValueFFI,
-	_value_count: usize,
-	_output: *mut BufferFFI,
-) -> i32 {
-	-1 // Not directly exposed, use context.state()
-}
-
 // Marshalling helpers
 
 fn unmarshal_flow_change(ffi: &FlowChangeFFI) -> FlowChange {
@@ -246,7 +175,7 @@ unsafe fn unmarshal_row(ffi: &RowFFI) -> Row {
 	Row {
 		number: RowNumber::from(ffi.number),
 		encoded,
-		layout: EncodedValuesNamedLayout::new(std::iter::empty()), // Simplified
+		layout: EncodedValuesNamedLayout::new(std::iter::empty()),
 	}
 }
 
@@ -266,12 +195,5 @@ pub fn create_vtable<O: FFIOperator>() -> FFIOperatorVTable {
 		apply: ffi_apply::<O>,
 		get_rows: ffi_get_rows::<O>,
 		destroy: ffi_destroy::<O>,
-		state_get: ffi_state_get,
-		state_set: ffi_state_set,
-		state_remove: ffi_state_remove,
-		state_scan: ffi_state_scan,
-		state_range: ffi_state_range,
-		state_clear: ffi_state_clear,
-		state_encode_key: ffi_state_encode_key,
 	}
 }

@@ -326,39 +326,6 @@ pub struct StateIteratorFFI {
     _opaque: [u8; 0],
 }
 
-/// Result codes for FFI operations
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FFIResult {
-    /// Operation succeeded
-    Success = 0,
-    /// Generic error
-    Error = -1,
-    /// Invalid input parameters
-    InvalidInput = -2,
-    /// State access error
-    StateError = -3,
-    /// Memory allocation error
-    MemoryError = -4,
-    /// Operation timeout
-    Timeout = -5,
-    /// Not found (for state operations)
-    NotFound = -6,
-    /// Operation not supported
-    NotSupported = -7,
-}
-
-impl FFIResult {
-    /// Check if the result indicates success
-    pub fn is_success(&self) -> bool {
-        *self == FFIResult::Success
-    }
-
-    /// Check if the result indicates an error
-    pub fn is_error(&self) -> bool {
-        !self.is_success()
-    }
-}
 
 /// FFI-safe array of values
 #[repr(C)]

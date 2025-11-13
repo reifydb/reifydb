@@ -6,14 +6,13 @@ pub mod error;
 pub mod ffi;
 pub mod macros;
 pub mod operator;
-pub mod variants;
 pub mod state;
 
 // Re-export commonly used types
 pub use builders::{FlowChangeBuilder, FlowChangeExt, RowBuilder};
 pub use context::OperatorContext;
 pub use error::{Error, Result};
-pub use operator::{Capabilities, FlowChange, FlowDiff, FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata};
+pub use operator::{Capabilities, FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowDiff};
 pub use state::State;
 
 // Prelude module for convenient imports
@@ -25,8 +24,9 @@ pub mod prelude {
     pub use crate::builders::{FlowChangeBuilder, FlowChangeExt, RowBuilder};
     pub use crate::context::OperatorContext;
     pub use crate::error::{Error, Result};
-    pub use crate::operator::{Capabilities, FlowChange, FlowDiff, FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata};
-    pub use crate::variants::{stateless, StatelessOperator};
+    pub use crate::operator::{
+        Capabilities, FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowDiff,
+    };
     pub use crate::state::State;
 
     pub use reifydb_core::Row;
