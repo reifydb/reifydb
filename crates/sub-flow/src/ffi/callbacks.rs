@@ -4,7 +4,7 @@ use reifydb_operator_abi::*;
 use std::ffi::c_void;
 use std::alloc::{alloc, dealloc, realloc as system_realloc, Layout};
 
-use crate::host::Arena;
+use crate::ffi::Arena;
 
 /// Thread-local storage for the current arena
 /// All allocations during an FFI operation will use this arena

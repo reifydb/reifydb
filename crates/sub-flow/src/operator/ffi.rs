@@ -12,7 +12,7 @@ use reifydb_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
 use reifydb_type::RowNumber;
 
 use crate::flow::FlowChange;
-use crate::host::{create_host_callbacks, FFIMarshaller, TransactionHandle};
+use crate::ffi::{create_host_callbacks, FFIMarshaller, TransactionHandle};
 use crate::operator::Operator;
 use crate::transaction::FlowTransaction;
 use crate::Result;
@@ -89,7 +89,7 @@ impl Operator for FFIOperator {
 		let result_code = match result {
 			Ok(code) => code,
 			Err(_) => {
-				return Err(crate::host::FFIError::Other(
+				return Err(crate::ffi::FFIError::Other(
 					"FFI operator panicked during apply".to_string(),
 				)
 				.into());
@@ -98,7 +98,7 @@ impl Operator for FFIOperator {
 
 		// Check result code
 		if result_code != 0 {
-			return Err(crate::host::FFIError::Other(format!(
+			return Err(crate::ffi::FFIError::Other(format!(
 				"FFI operator apply failed with code: {}",
 				result_code
 			))
@@ -141,7 +141,7 @@ impl Operator for FFIOperator {
 		let result_code = match result {
 			Ok(code) => code,
 			Err(_) => {
-				return Err(crate::host::FFIError::Other(
+				return Err(crate::ffi::FFIError::Other(
 					"FFI operator panicked during get_rows".to_string(),
 				)
 				.into());
@@ -150,7 +150,7 @@ impl Operator for FFIOperator {
 
 		// Check result code
 		if result_code != 0 {
-			return Err(crate::host::FFIError::Other(format!(
+			return Err(crate::ffi::FFIError::Other(format!(
 				"FFI operator get_rows failed with code: {}",
 				result_code
 			))

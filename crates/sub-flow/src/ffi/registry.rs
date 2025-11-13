@@ -1,6 +1,6 @@
 //! Registry for FFI operators
 
-use crate::host::FFIOperatorLoader;
+use crate::ffi::FFIOperatorLoader;
 use std::collections::HashSet;
 
 /// Registry for FFI operators

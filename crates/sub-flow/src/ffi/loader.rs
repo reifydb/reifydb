@@ -5,7 +5,7 @@ use reifydb_operator_abi::{FFIOperatorCreateFn, FFIOperatorDescriptor};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use crate::host::{FFIError, FFIResult};
+use crate::ffi::{FFIError, FFIResult};
 use crate::operator::FFIOperator;
 use reifydb_core::interface::FlowNodeId;
 

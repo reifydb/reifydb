@@ -8,7 +8,7 @@ mod consumer;
 #[allow(dead_code, unused_variables)]
 mod engine;
 pub mod flow;
-pub mod host;
+pub mod ffi;
 #[allow(dead_code, unused_variables)]
 mod operator;
 pub mod subsystem;

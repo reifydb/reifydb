@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_type::{RowNumber, Value};
 use crate::flow::{FlowChange, FlowDiff, FlowChangeOrigin};
-use crate::host::Arena;
+use crate::ffi::Arena;
 use std::collections::HashMap;
 use std::ffi::c_void;
 
@@ -102,7 +102,7 @@ impl FFIMarshaller {
         match ffi.diff_type {
             FlowDiffType::Insert => {
                 if ffi.post_row.is_null() {
-                    return Err(crate::host::FFIError::InvalidInput("Insert diff missing post row".to_string()).into());
+                    return Err(crate::ffi::FFIError::InvalidInput("Insert diff missing post row".to_string()).into());
                 }
 
                 let post = unsafe { self.unmarshal_row(&*ffi.post_row) };
@@ -110,7 +110,7 @@ impl FFIMarshaller {
             }
             FlowDiffType::Update => {
                 if ffi.pre_row.is_null() || ffi.post_row.is_null() {
-                    return Err(crate::host::FFIError::InvalidInput("Update diff missing pre or post row".to_string()).into());
+                    return Err(crate::ffi::FFIError::InvalidInput("Update diff missing pre or post row".to_string()).into());
                 }
 
                 let pre = unsafe { self.unmarshal_row(&*ffi.pre_row) };
@@ -119,7 +119,7 @@ impl FFIMarshaller {
             }
             FlowDiffType::Remove => {
                 if ffi.pre_row.is_null() {
-                    return Err(crate::host::FFIError::InvalidInput("Remove diff missing pre row".to_string()).into());
+                    return Err(crate::ffi::FFIError::InvalidInput("Remove diff missing pre row".to_string()).into());
                 }
 
                 let pre = unsafe { self.unmarshal_row(&*ffi.pre_row) };
