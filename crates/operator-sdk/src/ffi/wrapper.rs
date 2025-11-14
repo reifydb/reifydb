@@ -1,14 +1,12 @@
 //! Wrapper that bridges Rust operators to FFI interface
 
 use crate::context::OperatorContext;
-use crate::operator::{FFIOperator, FlowChange, FlowDiff};
-use reifydb_core::{
-	interface::FlowNodeId, value::encoded::{EncodedValues, EncodedValuesNamedLayout},
-	CowVec,
-	Row,
-};
+use crate::operator::{FFIOperator, FlowChange};
+use super::marshaller::FFIMarshaller;
+use reifydb_core::interface::FlowNodeId;
 use reifydb_operator_abi::*;
 use reifydb_type::RowNumber;
+use std::cell::RefCell;
 use std::ffi::c_void;
 use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::sync::Mutex;
@@ -17,6 +15,7 @@ use std::sync::Mutex;
 pub struct OperatorWrapper<O: FFIOperator> {
 	operator: Mutex<O>,
 	node_id: FlowNodeId,
+	marshaller: RefCell<FFIMarshaller>,
 }
 
 impl<O: FFIOperator> OperatorWrapper<O> {
@@ -25,6 +24,7 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 		Self {
 			operator: Mutex::new(operator),
 			node_id,
+			marshaller: RefCell::new(FFIMarshaller::new()),
 		}
 	}
 
@@ -55,15 +55,22 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 				Err(_) => return -1,
 			};
 
-			let input_change = unmarshal_flow_change(&*input);
-			let mut ctx = OperatorContext::new(wrapper.node_id, txn);
+			// Unmarshal input using the marshaller
+			let mut marshaller = wrapper.marshaller.borrow_mut();
+			let input_change = match marshaller.unmarshal_flow_change(&*input) {
+				Ok(change) => change,
+				Err(_) => return -3,
+			};
 
+			// Create context and apply operator
+			let mut ctx = OperatorContext::new(wrapper.node_id, txn);
 			let output_change = match operator.apply(&mut ctx, input_change) {
 				Ok(change) => change,
 				Err(_) => return -2,
 			};
 
-			*output = marshal_flow_change(&output_change);
+			// Marshal output
+			*output = marshaller.marshal_flow_change(&output_change);
 			0 // Success
 		}
 	}));
@@ -100,16 +107,14 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 			let mut ctx = OperatorContext::new(wrapper.node_id, txn);
 
 			// Call the operator
-			let _rows = match operator.get_rows(&mut ctx, &numbers) {
+			let rows = match operator.get_rows(&mut ctx, &numbers) {
 				Ok(rows) => rows,
 				Err(_) => return -2,
 			};
 
-			// Marshal output
-			// For simplicity, we'll return empty rows for now
-			// In a real implementation, we'd marshal the actual rows
-			(*output).count = 0;
-			(*output).rows = std::ptr::null_mut();
+			// Marshal output using the marshaller
+			let mut marshaller = wrapper.marshaller.borrow_mut();
+			*output = marshaller.marshal_rows(&rows);
 
 			0 // Success
 		}
@@ -129,65 +134,6 @@ pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 	}
 }
 
-// Marshalling helpers
-
-fn unmarshal_flow_change(ffi: &FlowChangeFFI) -> FlowChange {
-	let mut diffs = Vec::new();
-
-	if !ffi.diffs.is_null() && ffi.diff_count > 0 {
-		unsafe {
-			let diffs_slice = std::slice::from_raw_parts(ffi.diffs, ffi.diff_count);
-			for diff_ffi in diffs_slice {
-				diffs.push(unmarshal_flow_diff(diff_ffi));
-			}
-		}
-	}
-
-	FlowChange {
-		diffs,
-		version: ffi.version,
-	}
-}
-
-fn unmarshal_flow_diff(ffi: &FlowDiffFFI) -> FlowDiff {
-	match ffi.diff_type {
-		FlowDiffType::Insert => FlowDiff::Insert {
-			post: unsafe { unmarshal_row(&*ffi.post_row) },
-		},
-		FlowDiffType::Update => FlowDiff::Update {
-			pre: unsafe { unmarshal_row(&*ffi.pre_row) },
-			post: unsafe { unmarshal_row(&*ffi.post_row) },
-		},
-		FlowDiffType::Remove => FlowDiff::Remove {
-			pre: unsafe { unmarshal_row(&*ffi.pre_row) },
-		},
-	}
-}
-
-unsafe fn unmarshal_row(ffi: &RowFFI) -> Row {
-	let encoded = if !ffi.encoded.ptr.is_null() && ffi.encoded.len > 0 {
-		let slice = std::slice::from_raw_parts(ffi.encoded.ptr, ffi.encoded.len);
-		EncodedValues(CowVec::new(slice.to_vec()))
-	} else {
-		EncodedValues(CowVec::new(Vec::new()))
-	};
-
-	Row {
-		number: RowNumber::from(ffi.number),
-		encoded,
-		layout: EncodedValuesNamedLayout::new(std::iter::empty()),
-	}
-}
-
-fn marshal_flow_change(change: &FlowChange) -> FlowChangeFFI {
-	// For now, return an empty change
-	// In a real implementation, we'd allocate memory and marshal properly
-	FlowChangeFFI {
-		diff_count: 0,
-		diffs: std::ptr::null_mut(),
-		version: change.version,
-	}
-}
 
 /// Create the vtable for an operator type
 pub fn create_vtable<O: FFIOperator>() -> FFIOperatorVTable {

@@ -693,6 +693,7 @@ dependencies = [
  "reifydb-engine",
  "reifydb-hash",
  "reifydb-operator-abi",
+ "reifydb-operator-sdk",
  "reifydb-rql",
  "reifydb-store-transaction",
  "reifydb-sub-api",

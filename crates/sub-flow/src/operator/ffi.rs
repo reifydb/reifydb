@@ -11,11 +11,12 @@ use reifydb_engine::StandardRowEvaluator;
 use reifydb_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
 use reifydb_type::RowNumber;
 
-use crate::flow::FlowChange;
-use crate::ffi::{create_host_callbacks, FFIMarshaller, TransactionHandle};
+use crate::flow::{FlowChange, FlowChangeOrigin};
+use crate::ffi::{create_host_callbacks, TransactionHandle};
 use crate::operator::Operator;
 use crate::transaction::FlowTransaction;
 use crate::Result;
+use reifydb_operator_sdk::ffi::FFIMarshaller;
 
 /// FFI operator that wraps an external operator implementation
 pub struct FFIOperator {
@@ -68,8 +69,9 @@ impl Operator for FFIOperator {
 		// Lock the marshaller for this operation
 		let mut marshaller = self.marshaller.borrow_mut();
 
-		// Marshal the input change
-		let ffi_input = marshaller.marshal_flow_change(&change);
+		// Convert to operator-sdk FlowChange and marshal
+		let operator_sdk_change = crate::ffi::to_operator_sdk_change(&change);
+		let ffi_input = marshaller.marshal_flow_change(&operator_sdk_change);
 
 		// Create output holder
 		let mut ffi_output = reifydb_operator_abi::FlowChangeFFI::empty();
@@ -105,8 +107,15 @@ impl Operator for FFIOperator {
 			.into());
 		}
 
-		// Unmarshal the output
-		marshaller.unmarshal_flow_change(&ffi_output)
+		// Unmarshal the output and convert back to sub-flow FlowChange
+		let operator_sdk_change = marshaller.unmarshal_flow_change(&ffi_output)
+			.map_err(|e| crate::ffi::FFIError::Other(e))?;
+
+		// Convert back with Internal origin since this came from an FFI operator
+		Ok(crate::ffi::from_operator_sdk_change(
+			operator_sdk_change,
+			FlowChangeOrigin::Internal(self.operator_id),
+		))
 	}
 
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {

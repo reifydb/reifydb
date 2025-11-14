@@ -3,15 +3,12 @@
 use reifydb_operator_abi::*;
 use reifydb_core::{
     Row,
-    interface::FlowNodeId,
-    CommitVersion,
     CowVec,
     value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 };
-use reifydb_type::{RowNumber, Value};
-use crate::flow::{FlowChange, FlowDiff, FlowChangeOrigin};
-use crate::ffi::Arena;
-use std::collections::HashMap;
+use reifydb_type::RowNumber;
+use crate::operator::{FlowChange, FlowDiff};
+use super::arena::Arena;
 use std::ffi::c_void;
 
 /// Marshaller for converting between Rust and FFI types
@@ -51,7 +48,7 @@ impl FFIMarshaller {
         FlowChangeFFI {
             diff_count: diffs_count,
             diffs: diffs_ptr,
-            version: change.version.into(),
+            version: change.version,
         }
     }
 
@@ -77,7 +74,7 @@ impl FFIMarshaller {
     }
 
     /// Unmarshal a flow change from FFI representation
-    pub fn unmarshal_flow_change(&self, ffi: &FlowChangeFFI) -> crate::Result<FlowChange> {
+    pub fn unmarshal_flow_change(&self, ffi: &FlowChangeFFI) -> Result<FlowChange, String> {
         let mut diffs = Vec::with_capacity(ffi.diff_count);
 
         if !ffi.diffs.is_null() && ffi.diff_count > 0 {
@@ -91,18 +88,17 @@ impl FFIMarshaller {
         }
 
         Ok(FlowChange {
-            origin: FlowChangeOrigin::Internal(FlowNodeId(0)), // TODO: Properly track origin
             diffs,
-            version: CommitVersion::from(ffi.version),
+            version: ffi.version,
         })
     }
 
     /// Unmarshal a single flow diff
-    fn unmarshal_flow_diff(&self, ffi: &FlowDiffFFI) -> crate::Result<FlowDiff> {
+    fn unmarshal_flow_diff(&self, ffi: &FlowDiffFFI) -> Result<FlowDiff, String> {
         match ffi.diff_type {
             FlowDiffType::Insert => {
                 if ffi.post_row.is_null() {
-                    return Err(crate::ffi::FFIError::InvalidInput("Insert diff missing post row".to_string()).into());
+                    return Err("Insert diff missing post row".to_string());
                 }
 
                 let post = unsafe { self.unmarshal_row(&*ffi.post_row) };
@@ -110,7 +106,7 @@ impl FFIMarshaller {
             }
             FlowDiffType::Update => {
                 if ffi.pre_row.is_null() || ffi.post_row.is_null() {
-                    return Err(crate::ffi::FFIError::InvalidInput("Update diff missing pre or post row".to_string()).into());
+                    return Err("Update diff missing pre or post row".to_string());
                 }
 
                 let pre = unsafe { self.unmarshal_row(&*ffi.pre_row) };
@@ -119,7 +115,7 @@ impl FFIMarshaller {
             }
             FlowDiffType::Remove => {
                 if ffi.pre_row.is_null() {
-                    return Err(crate::ffi::FFIError::InvalidInput("Remove diff missing pre row".to_string()).into());
+                    return Err("Remove diff missing pre row".to_string());
                 }
 
                 let pre = unsafe { self.unmarshal_row(&*ffi.pre_row) };
@@ -189,6 +185,44 @@ impl FFIMarshaller {
             number: RowNumber::from(ffi.number),
             encoded,
             layout,
+        }
+    }
+
+    /// Marshal rows to FFI representation
+    pub fn marshal_rows(&mut self, rows: &[Option<Row>]) -> RowsFFI {
+        let count = rows.len();
+
+        if count == 0 {
+            return RowsFFI {
+                count: 0,
+                rows: std::ptr::null_mut(),
+            };
+        }
+
+        // Allocate array of row pointers
+        let rows_array = self.arena.alloc(count * size_of::<*const RowFFI>()) as *mut *const RowFFI;
+
+        if rows_array.is_null() {
+            return RowsFFI {
+                count: 0,
+                rows: std::ptr::null_mut(),
+            };
+        }
+
+        unsafe {
+            let rows_slice = std::slice::from_raw_parts_mut(rows_array, count);
+
+            for (i, row_opt) in rows.iter().enumerate() {
+                rows_slice[i] = match row_opt {
+                    Some(row) => self.marshal_row(row),
+                    None => std::ptr::null(),
+                };
+            }
+        }
+
+        RowsFFI {
+            count,
+            rows: rows_array,
         }
     }
 

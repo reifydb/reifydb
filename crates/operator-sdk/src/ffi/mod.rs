@@ -1,8 +1,12 @@
 //! FFI bridge for operators
 
+mod arena;
+mod marshaller;
 mod wrapper;
 pub mod exports;
 
+pub use arena::Arena;
+pub use marshaller::FFIMarshaller;
 pub use wrapper::OperatorWrapper;
 pub use exports::{create_descriptor, create_operator_instance};
 
