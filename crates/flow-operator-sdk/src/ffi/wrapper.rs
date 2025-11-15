@@ -11,17 +11,13 @@ use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::*;
 use reifydb_type::RowNumber;
 
-use super::marshaller::FFIMarshaller;
-use crate::{
-	context::OperatorContext,
-	operator::{FFIOperator, FlowChange},
-};
+use crate::{context::OperatorContext, marshal::Marshaller, operator::FFIOperator};
 
 /// Wrapper that adapts a Rust operator to the FFI interface
 pub struct OperatorWrapper<O: FFIOperator> {
 	operator: Mutex<O>,
 	node_id: FlowNodeId,
-	marshaller: RefCell<FFIMarshaller>,
+	marshaller: RefCell<Marshaller>,
 }
 
 impl<O: FFIOperator> OperatorWrapper<O> {
@@ -30,7 +26,7 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 		Self {
 			operator: Mutex::new(operator),
 			node_id,
-			marshaller: RefCell::new(FFIMarshaller::new()),
+			marshaller: RefCell::new(Marshaller::new()),
 		}
 	}
 

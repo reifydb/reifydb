@@ -5,18 +5,22 @@ use std::{
 	ffi::c_void,
 	panic::{AssertUnwindSafe, catch_unwind},
 	slice::from_raw_parts,
-	sync::Mutex,
 };
 
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
-use reifydb_flow_operator_sdk::ffi::FFIMarshaller;
+use reifydb_flow_operator_sdk::marshal::Marshaller;
 use reifydb_type::RowNumber;
 
 use crate::{
 	Result,
-	ffi::{TransactionHandle, create_host_callbacks},
+	ffi::{
+		callbacks::create_host_callbacks,
+		conversion::{from_operator_sdk_change, to_operator_sdk_change},
+		error::FFIError,
+		transaction::TransactionHandle,
+	},
 	flow::{FlowChange, FlowChangeOrigin},
 	operator::Operator,
 	transaction::FlowTransaction,
@@ -37,7 +41,7 @@ pub struct FFIOperator {
 	operator_id: FlowNodeId,
 
 	/// Marshaller for type conversions
-	marshaller: RefCell<FFIMarshaller>,
+	marshaller: RefCell<Marshaller>,
 }
 
 // SAFETY: FFIOperator manages an FFI pointer but ensures proper synchronization
@@ -54,7 +58,7 @@ impl FFIOperator {
 			vtable,
 			instance,
 			operator_id: node_id,
-			marshaller: RefCell::new(FFIMarshaller::new()),
+			marshaller: RefCell::new(Marshaller::new()),
 		}
 	}
 }
@@ -74,7 +78,7 @@ impl Operator for FFIOperator {
 		let mut marshaller = self.marshaller.borrow_mut();
 
 		// Convert to operator-sdk FlowChange and marshal
-		let operator_sdk_change = crate::ffi::to_operator_sdk_change(&change);
+		let operator_sdk_change = to_operator_sdk_change(&change);
 		let ffi_input = marshaller.marshal_flow_change(&operator_sdk_change);
 
 		// Create output holder
@@ -84,42 +88,31 @@ impl Operator for FFIOperator {
 		let txn_handle = TransactionHandle::new(txn, self.operator_id, create_host_callbacks());
 		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_flow_operator_abi::TransactionHandle;
 
-		// Call FFI apply function
-		let result = unsafe {
-			catch_unwind(AssertUnwindSafe(|| {
-				(self.vtable.apply)(self.instance, txn_handle_ptr, &ffi_input, &mut ffi_output)
-			}))
-		};
+		let result = catch_unwind(AssertUnwindSafe(|| {
+			(self.vtable.apply)(self.instance, txn_handle_ptr, &ffi_input, &mut ffi_output)
+		}));
 
 		// Handle panics from FFI code
 		let result_code = match result {
 			Ok(code) => code,
 			Err(_) => {
-				return Err(crate::ffi::FFIError::Other(
-					"FFI operator panicked during apply".to_string(),
-				)
-				.into());
+				return Err(FFIError::Other("FFI operator panicked during apply".to_string()).into());
 			}
 		};
 
 		// Check result code
 		if result_code != 0 {
-			return Err(crate::ffi::FFIError::Other(format!(
-				"FFI operator apply failed with code: {}",
-				result_code
-			))
-			.into());
+			return Err(
+				FFIError::Other(format!("FFI operator apply failed with code: {}", result_code)).into()
+			);
 		}
 
 		// Unmarshal the output and convert back to sub-flow FlowChange
 		let operator_sdk_change =
-			marshaller.unmarshal_flow_change(&ffi_output).map_err(|e| crate::ffi::FFIError::Other(e))?;
+			marshaller.unmarshal_flow_change(&ffi_output).map_err(|e| FFIError::Other(e))?;
 
 		// Convert back with Internal origin since this came from an FFI operator
-		Ok(crate::ffi::from_operator_sdk_change(
-			operator_sdk_change,
-			FlowChangeOrigin::Internal(self.operator_id),
-		))
+		Ok(from_operator_sdk_change(operator_sdk_change, FlowChangeOrigin::Internal(self.operator_id)))
 	}
 
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {
@@ -154,16 +147,13 @@ impl Operator for FFIOperator {
 		let result_code = match result {
 			Ok(code) => code,
 			Err(_) => {
-				return Err(crate::ffi::FFIError::Other(
-					"FFI operator panicked during get_rows".to_string(),
-				)
-				.into());
+				return Err(FFIError::Other("FFI operator panicked during get_rows".to_string()).into());
 			}
 		};
 
 		// Check result code
 		if result_code != 0 {
-			return Err(crate::ffi::FFIError::Other(format!(
+			return Err(FFIError::Other(format!(
 				"FFI operator get_rows failed with code: {}",
 				result_code
 			))

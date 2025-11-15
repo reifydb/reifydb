@@ -4,7 +4,7 @@ pub mod builders;
 pub mod context;
 pub mod error;
 pub mod ffi;
-pub mod macros;
+pub mod marshal;
 pub mod operator;
 pub mod state;
 
@@ -12,7 +12,7 @@ pub mod state;
 pub use builders::{FlowChangeBuilder, FlowChangeExt, RowBuilder};
 pub use context::OperatorContext;
 pub use error::{Error, Result};
-pub use operator::{Capabilities, FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowDiff};
+pub use operator::{FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowDiff};
 pub use state::State;
 
 // Prelude module for convenient imports
@@ -21,16 +21,11 @@ pub mod prelude {
 	pub use reifydb_type::{RowNumber, Value};
 
 	pub use crate::{
-		__capability_method, assert_flow_change_eq,
+		FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowDiff,
 		builders::{FlowChangeBuilder, FlowChangeExt, RowBuilder},
 		context::OperatorContext,
 		error::{Error, Result},
-		export_operator, flow_change, operator,
-		operator::{
-			Capabilities, FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowDiff,
-		},
-		row,
+		operator,
 		state::State,
-		test_operator,
 	};
 }

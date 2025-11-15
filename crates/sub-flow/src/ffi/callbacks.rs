@@ -1,13 +1,9 @@
 //! Host callback implementations for FFI operators
 
-use std::{
-	alloc::{Layout, alloc, dealloc, realloc as system_realloc},
-	ffi::c_void,
-};
+use std::alloc::{Layout, alloc, dealloc, realloc as system_realloc};
 
 use reifydb_flow_operator_abi::*;
-
-use crate::ffi::Arena;
+use reifydb_flow_operator_sdk::ffi::Arena;
 
 /// Thread-local storage for the current arena
 /// All allocations during an FFI operation will use this arena
@@ -147,7 +143,7 @@ extern "C" fn host_create_row(
 	row_number: u64,
 	encoded: *const u8,
 	encoded_len: usize,
-	layout_handle: *const c_void,
+	layout: *const LayoutFFI,
 ) -> *mut RowFFI {
 	// Allocate a RowFFI structure
 	let row_size = std::mem::size_of::<RowFFI>();
@@ -183,7 +179,7 @@ extern "C" fn host_create_row(
 		*row_ptr = RowFFI {
 			number: row_number,
 			encoded: encoded_copy,
-			layout_handle,
+			layout,
 		};
 	}
 
@@ -197,7 +193,7 @@ extern "C" fn host_clone_row(row: *const RowFFI) -> *mut RowFFI {
 
 	unsafe {
 		let src_row = &*row;
-		host_create_row(src_row.number, src_row.encoded.ptr, src_row.encoded.len, src_row.layout_handle)
+		host_create_row(src_row.number, src_row.encoded.ptr, src_row.encoded.len, src_row.layout)
 	}
 }
 

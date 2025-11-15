@@ -1,7 +1,5 @@
 //! Host callback definitions for FFI operators
 
-use core::ffi::c_void;
-
 use crate::types::*;
 
 /// Host-provided callbacks for FFI operators
@@ -57,7 +55,7 @@ pub struct HostCallbacks {
 	/// - `row_number`: Row number identifier
 	/// - `encoded`: Encoded row bytes
 	/// - `encoded_len`: Length of encoded bytes
-	/// - `layout_handle`: Layout handle for row structure
+	/// - `layout`: Layout metadata for row structure
 	///
 	/// # Returns
 	/// - Pointer to created row, or null on failure
@@ -65,7 +63,7 @@ pub struct HostCallbacks {
 		row_number: u64,
 		encoded: *const u8,
 		encoded_len: usize,
-		layout_handle: *const c_void,
+		layout: *const LayoutFFI,
 	) -> *mut RowFFI,
 
 	/// Clone an existing row

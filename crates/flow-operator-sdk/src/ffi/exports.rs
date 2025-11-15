@@ -21,7 +21,6 @@ pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor 
 	FFIOperatorDescriptor {
 		api_version: CURRENT_API_VERSION,
 		operator_name: name_ptr,
-		capabilities: O::CAPABILITIES.to_ffi_flags(),
 		vtable: create_vtable::<O>(),
 	}
 }
@@ -39,7 +38,6 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 	// Parse configuration if provided
 	let config = HashMap::new();
 
-	// Create operator using new() - no Default required!
 	let mut operator = O::new();
 
 	// Initialize with configuration

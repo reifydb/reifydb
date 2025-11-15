@@ -10,7 +10,7 @@ use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{FFIOperatorCreateFn, FFIOperatorDescriptor};
 
 use crate::{
-	ffi::{FFIError, FFIResult},
+	ffi::error::{FFIError, FFIResult},
 	operator::FFIOperator,
 };
 
@@ -70,7 +70,6 @@ impl FFIOperatorLoader {
 			FFIOperatorDescriptor {
 				api_version: (*descriptor_ptr).api_version,
 				operator_name: (*descriptor_ptr).operator_name,
-				capabilities: (*descriptor_ptr).capabilities,
 				vtable: (*descriptor_ptr).vtable,
 			}
 		};

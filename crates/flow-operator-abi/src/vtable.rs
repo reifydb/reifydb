@@ -67,10 +67,6 @@ pub struct FFIOperatorDescriptor {
 	/// Operator name (null-terminated C string)
 	pub operator_name: *const c_char,
 
-	/// Capability flags (informational, not restrictive)
-	/// These help the host optimize and debug but don't limit functionality
-	pub capabilities: u32,
-
 	/// Virtual function table with all operator methods
 	pub vtable: FFIOperatorVTable,
 }
