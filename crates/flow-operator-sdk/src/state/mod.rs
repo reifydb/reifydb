@@ -1,5 +1,7 @@
 //! State management utilities for operators
 
+mod raw;
+
 use std::collections::HashMap;
 
 use bincode::{config::standard, decode_from_slice, encode_to_vec, serde::Compat};
@@ -22,10 +24,10 @@ impl<'a> State<'a> {
 
 	/// Get a value from state
 	pub fn get<T: DeserializeOwned>(&self, key: impl AsRef<str>) -> Result<Option<T>> {
-		let bytes = self.ctx.raw_state_get(key.as_ref())?;
+		let bytes = raw::raw_state_get(self.ctx, key.as_ref())?;
 		bytes.map(|b| {
 			let compat_result: (Compat<T>, _) = decode_from_slice(&b, standard())?;
-			Ok::<T, crate::error::Error>(compat_result.0.0)
+			Ok::<T, crate::error::FFIError>(compat_result.0.0)
 		})
 		.transpose()
 		.map_err(Into::into)
@@ -35,12 +37,12 @@ impl<'a> State<'a> {
 	pub fn set<T: Serialize>(&mut self, key: impl AsRef<str>, value: &T) -> Result<()> {
 		let compat = Compat(value);
 		let bytes = encode_to_vec(&compat, standard())?;
-		self.ctx.raw_state_set(key.as_ref(), &bytes)
+		raw::raw_state_set(self.ctx, key.as_ref(), &bytes)
 	}
 
 	/// Remove a value from state
 	pub fn remove(&mut self, key: impl AsRef<str>) -> Result<()> {
-		self.ctx.raw_state_remove(key.as_ref())
+		raw::raw_state_remove(self.ctx, key.as_ref())
 	}
 
 	/// Update a value in state
@@ -56,17 +58,17 @@ impl<'a> State<'a> {
 
 	/// Check if a key exists
 	pub fn contains(&self, key: impl AsRef<str>) -> Result<bool> {
-		Ok(self.ctx.raw_state_get(key.as_ref())?.is_some())
+		Ok(raw::raw_state_get(self.ctx, key.as_ref())?.is_some())
 	}
 
 	/// Clear all state
 	pub fn clear(&mut self) -> Result<()> {
-		self.ctx.raw_state_clear()
+		raw::raw_state_clear(self.ctx)
 	}
 
 	/// Scan state entries with a prefix
 	pub fn scan_prefix(&self, prefix: impl AsRef<str>) -> Result<Vec<(String, Vec<u8>)>> {
-		self.ctx.raw_state_scan(prefix.as_ref())
+		raw::raw_state_prefix(self.ctx, prefix.as_ref())
 	}
 
 	/// Get all keys with a prefix

@@ -1,11 +1,17 @@
 //! Flow change marshalling between Rust and FFI types
 
+use std::{
+	ptr::null,
+	slice::{from_raw_parts, from_raw_parts_mut},
+};
+
+use reifydb_core::{
+	CommitVersion,
+	interface::{FlowNodeId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId},
+};
 use reifydb_flow_operator_abi::*;
 
-use crate::{
-	marshal::Marshaller,
-	operator::{FlowChange, FlowDiff},
-};
+use crate::{FlowChange, FlowChangeOrigin, FlowDiff, marshal::Marshaller};
 
 impl Marshaller {
 	/// Marshal a flow change to FFI representation
@@ -17,8 +23,7 @@ impl Marshaller {
 
 			// Marshal each diff
 			unsafe {
-				let diffs_slice = std::slice::from_raw_parts_mut(diffs_array, diffs_count);
-
+				let diffs_slice = from_raw_parts_mut(diffs_array, diffs_count);
 				for (i, diff) in change.diffs.iter().enumerate() {
 					diffs_slice[i] = self.marshal_flow_diff(diff);
 				}
@@ -30,9 +35,38 @@ impl Marshaller {
 		};
 
 		FlowChangeFFI {
+			origin: Self::marshal_origin(&change.origin),
 			diff_count: diffs_count,
 			diffs: diffs_ptr,
-			version: change.version,
+			version: change.version.0,
+		}
+	}
+
+	/// Marshal a flow change origin to FFI representation
+	fn marshal_origin(origin: &FlowChangeOrigin) -> FlowOriginFFI {
+		match origin {
+			FlowChangeOrigin::Internal(node_id) => FlowOriginFFI {
+				origin_type: 0,
+				id: node_id.0,
+			},
+			FlowChangeOrigin::External(source_id) => match source_id {
+				SourceId::Table(id) => FlowOriginFFI {
+					origin_type: 1,
+					id: id.0,
+				},
+				SourceId::View(id) => FlowOriginFFI {
+					origin_type: 2,
+					id: id.0,
+				},
+				SourceId::TableVirtual(id) => FlowOriginFFI {
+					origin_type: 3,
+					id: id.0,
+				},
+				SourceId::RingBuffer(id) => FlowOriginFFI {
+					origin_type: 4,
+					id: id.0,
+				},
+			},
 		}
 	}
 
@@ -43,7 +77,7 @@ impl Marshaller {
 				post,
 			} => FlowDiffFFI {
 				diff_type: FlowDiffType::Insert,
-				pre_row: std::ptr::null(),
+				pre_row: null(),
 				post_row: self.marshal_row(post),
 			},
 			FlowDiff::Update {
@@ -59,7 +93,7 @@ impl Marshaller {
 			} => FlowDiffFFI {
 				diff_type: FlowDiffType::Remove,
 				pre_row: self.marshal_row(pre),
-				post_row: std::ptr::null(),
+				post_row: null(),
 			},
 		}
 	}
@@ -70,7 +104,7 @@ impl Marshaller {
 
 		if !ffi.diffs.is_null() && ffi.diff_count > 0 {
 			unsafe {
-				let diffs_slice = std::slice::from_raw_parts(ffi.diffs, ffi.diff_count);
+				let diffs_slice = from_raw_parts(ffi.diffs, ffi.diff_count);
 
 				for diff_ffi in diffs_slice {
 					diffs.push(self.unmarshal_flow_diff(diff_ffi)?);
@@ -79,9 +113,22 @@ impl Marshaller {
 		}
 
 		Ok(FlowChange {
+			origin: Self::unmarshal_origin(&ffi.origin)?,
 			diffs,
-			version: ffi.version,
+			version: CommitVersion(ffi.version),
 		})
+	}
+
+	/// Unmarshal a flow change origin from FFI representation
+	fn unmarshal_origin(ffi: &FlowOriginFFI) -> Result<FlowChangeOrigin, String> {
+		match ffi.origin_type {
+			0 => Ok(FlowChangeOrigin::Internal(FlowNodeId(ffi.id))),
+			1 => Ok(FlowChangeOrigin::External(SourceId::Table(TableId(ffi.id)))),
+			2 => Ok(FlowChangeOrigin::External(SourceId::View(ViewId(ffi.id)))),
+			3 => Ok(FlowChangeOrigin::External(SourceId::TableVirtual(TableVirtualId(ffi.id)))),
+			4 => Ok(FlowChangeOrigin::External(SourceId::RingBuffer(RingBufferId(ffi.id)))),
+			_ => Err(format!("Invalid origin_type: {}", ffi.origin_type)),
+		}
 	}
 
 	/// Unmarshal a single flow diff

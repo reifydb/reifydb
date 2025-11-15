@@ -3,24 +3,47 @@
 use std::collections::HashMap;
 
 use reifydb_core::{
-	CowVec, Row,
-	value::encoded::{EncodedValues, EncodedValuesNamedLayout},
+	CommitVersion, Row,
+	interface::{FlowNodeId, SourceId},
+	value::encoded::EncodedValuesNamedLayout,
 };
 use reifydb_type::{RowNumber, Type, Value};
 
-use crate::operator::{FlowChange, FlowDiff};
+use crate::{FlowChange, FlowChangeOrigin, FlowDiff};
 
 /// Builder for constructing FlowChange instances
-#[derive(Default)]
 pub struct FlowChangeBuilder {
 	diffs: Vec<FlowDiff>,
-	version: u64,
+	origin: Option<FlowChangeOrigin>,
+	version: Option<CommitVersion>,
 }
 
 impl FlowChangeBuilder {
 	/// Create a new FlowChangeBuilder
 	pub fn new() -> Self {
-		Self::default()
+		Self {
+			diffs: Vec::new(),
+			origin: None,
+			version: None,
+		}
+	}
+
+	/// Create a builder for an external flow change
+	pub fn external(source: SourceId, version: CommitVersion) -> Self {
+		Self {
+			diffs: Vec::new(),
+			origin: Some(FlowChangeOrigin::External(source)),
+			version: Some(version),
+		}
+	}
+
+	/// Create a builder for an internal flow change
+	pub fn internal(from: FlowNodeId, version: CommitVersion) -> Self {
+		Self {
+			diffs: Vec::new(),
+			origin: Some(FlowChangeOrigin::Internal(from)),
+			version: Some(version),
+		}
 	}
 
 	/// Add an insert diff
@@ -60,25 +83,26 @@ impl FlowChangeBuilder {
 		self
 	}
 
+	/// Set the origin
+	pub fn with_origin(mut self, origin: FlowChangeOrigin) -> Self {
+		self.origin = Some(origin);
+		self
+	}
+
 	/// Set the version
-	pub fn with_version(mut self, version: u64) -> Self {
-		self.version = version;
+	pub fn with_version(mut self, version: CommitVersion) -> Self {
+		self.version = Some(version);
 		self
 	}
 
 	/// Build the FlowChange
 	pub fn build(self) -> FlowChange {
 		FlowChange {
+			origin: self
+				.origin
+				.expect("FlowChange requires an origin - use with_origin(), external(), or internal()"),
 			diffs: self.diffs,
-			version: self.version,
-		}
-	}
-
-	/// Create an empty FlowChange
-	pub fn empty() -> FlowChange {
-		FlowChange {
-			diffs: Vec::new(),
-			version: 0,
+			version: self.version.unwrap_or(CommitVersion(0)),
 		}
 	}
 }
@@ -143,114 +167,4 @@ impl RowBuilder {
 		//     layout,
 		// }
 	}
-}
-
-/// Extension trait for FlowChange manipulation
-pub trait FlowChangeExt {
-	/// Filter rows based on a predicate
-	fn filter_rows<F>(&self, predicate: F) -> FlowChange
-	where
-		F: Fn(&Row) -> bool;
-
-	/// Map rows through a transformation
-	fn map_rows<F>(&self, f: F) -> FlowChange
-	where
-		F: Fn(&Row) -> Row;
-
-	/// Count the number of diffs
-	fn diff_count(&self) -> usize;
-
-	/// Check if empty
-	fn is_empty(&self) -> bool;
-}
-
-impl FlowChangeExt for FlowChange {
-	fn filter_rows<F>(&self, predicate: F) -> FlowChange
-	where
-		F: Fn(&Row) -> bool,
-	{
-		let mut builder = FlowChangeBuilder::new().with_version(self.version);
-
-		for diff in &self.diffs {
-			match diff {
-				FlowDiff::Insert {
-					post,
-				} => {
-					if predicate(post) {
-						builder = builder.insert(post.clone());
-					}
-				}
-				FlowDiff::Update {
-					pre,
-					post,
-				} => {
-					if predicate(post) {
-						builder = builder.update(pre.clone(), post.clone());
-					}
-				}
-				FlowDiff::Remove {
-					pre,
-				} => {
-					if predicate(pre) {
-						builder = builder.remove(pre.clone());
-					}
-				}
-			}
-		}
-
-		builder.build()
-	}
-
-	fn map_rows<F>(&self, f: F) -> FlowChange
-	where
-		F: Fn(&Row) -> Row,
-	{
-		let mut builder = FlowChangeBuilder::new().with_version(self.version);
-
-		for diff in &self.diffs {
-			match diff {
-				FlowDiff::Insert {
-					post,
-				} => {
-					builder = builder.insert(f(post));
-				}
-				FlowDiff::Update {
-					pre,
-					post,
-				} => {
-					builder = builder.update(f(pre), f(post));
-				}
-				FlowDiff::Remove {
-					pre,
-				} => {
-					builder = builder.remove(f(pre));
-				}
-			}
-		}
-
-		builder.build()
-	}
-
-	fn diff_count(&self) -> usize {
-		self.diffs.len()
-	}
-
-	fn is_empty(&self) -> bool {
-		self.diffs.is_empty()
-	}
-}
-
-/// Helper to create a FlowChange with a single insert
-pub fn insert_change(row: Row) -> FlowChange {
-	FlowChangeBuilder::new().insert(row).build()
-}
-
-/// Helper to create a FlowChange with a single update
-pub fn update_change(pre: Row, post: Row) -> FlowChange {
-	FlowChangeBuilder::new().update(pre, post).build()
-}
-
-/// Helper to create a FlowChange with a single remove
-pub fn remove_change(row: Row) -> FlowChange {
-	FlowChangeBuilder::new().remove(row).build()
 }

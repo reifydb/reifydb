@@ -4,8 +4,6 @@
 //! including type marshalling, memory management, and callback implementations.
 
 pub mod callbacks;
-pub mod conversion;
-pub mod error;
+pub mod context;
 pub mod loader;
 pub mod registry;
-pub mod transaction;

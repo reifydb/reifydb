@@ -2,62 +2,79 @@
 
 use std::fmt;
 
-/// Operator SDK error type
+/// FFI operator error type
 #[derive(Debug)]
-pub enum Error {
+pub enum FFIError {
 	/// Configuration error
 	Configuration(String),
 
 	/// State operation error
-	State(String),
+	StateError(String),
 
 	/// Serialization error
 	Serialization(String),
 
-	/// FFI error
-	FFI(String),
-
-	/// Invalid input
+	/// Invalid input parameters
 	InvalidInput(String),
 
-	/// Not implemented
+	/// Memory allocation error
+	MemoryError(String),
+
+	/// Operation timeout
+	Timeout,
+
+	/// Operation not implemented or not supported
 	NotImplemented(String),
 
-	/// Other error
+	/// Generic error
 	Other(String),
 }
 
-impl fmt::Display for Error {
+impl fmt::Display for FFIError {
 	fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
 		match self {
-			Error::Configuration(msg) => write!(f, "Configuration error: {}", msg),
-			Error::State(msg) => write!(f, "State error: {}", msg),
-			Error::Serialization(msg) => write!(f, "Serialization error: {}", msg),
-			Error::FFI(msg) => write!(f, "FFI error: {}", msg),
-			Error::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
-			Error::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),
-			Error::Other(msg) => write!(f, "{}", msg),
+			FFIError::Configuration(msg) => write!(f, "Configuration error: {}", msg),
+			FFIError::StateError(msg) => write!(f, "State error: {}", msg),
+			FFIError::Serialization(msg) => write!(f, "Serialization error: {}", msg),
+			FFIError::InvalidInput(msg) => write!(f, "Invalid input: {}", msg),
+			FFIError::MemoryError(msg) => write!(f, "Memory error: {}", msg),
+			FFIError::Timeout => write!(f, "Operation timeout"),
+			FFIError::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),
+			FFIError::Other(msg) => write!(f, "{}", msg),
 		}
 	}
 }
 
-/// Result type alias
-pub type Result<T, E = Error> = std::result::Result<T, E>;
+impl std::error::Error for FFIError {}
 
-impl From<bincode::error::EncodeError> for Error {
-	fn from(err: bincode::error::EncodeError) -> Self {
-		Error::Serialization(format!("Encode error: {}", err))
+/// Convert FFIError to reifydb_core::Error
+impl From<FFIError> for reifydb_core::Error {
+	fn from(err: FFIError) -> Self {
+		use reifydb_type::{Error, internal};
+		Error(internal!(format!("{}", err)))
 	}
 }
 
-impl From<bincode::error::DecodeError> for Error {
-	fn from(err: bincode::error::DecodeError) -> Self {
-		Error::Serialization(format!("Decode error: {}", err))
-	}
-}
-
-impl From<reifydb_core::Error> for Error {
+/// Convert reifydb_core::Error to FFIError
+impl From<reifydb_core::Error> for FFIError {
 	fn from(err: reifydb_core::Error) -> Self {
-		Error::Other(err.to_string())
+		FFIError::Other(err.to_string())
 	}
 }
+
+/// Convert bincode encode errors to FFIError
+impl From<bincode::error::EncodeError> for FFIError {
+	fn from(err: bincode::error::EncodeError) -> Self {
+		FFIError::Serialization(format!("Encode error: {}", err))
+	}
+}
+
+/// Convert bincode decode errors to FFIError
+impl From<bincode::error::DecodeError> for FFIError {
+	fn from(err: bincode::error::DecodeError) -> Self {
+		FFIError::Serialization(format!("Decode error: {}", err))
+	}
+}
+
+/// Result type alias for FFI operations
+pub type Result<T, E = FFIError> = std::result::Result<T, E>;

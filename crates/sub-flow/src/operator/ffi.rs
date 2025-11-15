@@ -10,18 +10,13 @@ use std::{
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
-use reifydb_flow_operator_sdk::marshal::Marshaller;
+use reifydb_flow_operator_sdk::{FFIError, marshal::Marshaller};
 use reifydb_type::RowNumber;
 
 use crate::{
 	Result,
-	ffi::{
-		callbacks::create_host_callbacks,
-		conversion::{from_operator_sdk_change, to_operator_sdk_change},
-		error::FFIError,
-		transaction::{TransactionHandle, TransactionHandleExt},
-	},
-	flow::{FlowChange, FlowChangeOrigin},
+	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
+	flow::FlowChange,
 	operator::Operator,
 	transaction::FlowTransaction,
 };
@@ -50,14 +45,14 @@ unsafe impl Sync for FFIOperator {}
 
 impl FFIOperator {
 	/// Create a new FFI operator
-	pub fn new(descriptor: FFIOperatorDescriptor, instance: *mut c_void, node_id: FlowNodeId) -> Self {
+	pub fn new(descriptor: FFIOperatorDescriptor, instance: *mut c_void, operator_id: FlowNodeId) -> Self {
 		let vtable = descriptor.vtable;
 
 		Self {
 			descriptor,
 			vtable,
 			instance,
-			operator_id: node_id,
+			operator_id,
 			marshaller: RefCell::new(Marshaller::new()),
 		}
 	}
@@ -82,19 +77,18 @@ impl Operator for FFIOperator {
 		// Lock the marshaller for this operation
 		let mut marshaller = self.marshaller.borrow_mut();
 
-		// Convert to operator-sdk FlowChange and marshal
-		let operator_sdk_change = to_operator_sdk_change(&change);
-		let ffi_input = marshaller.marshal_flow_change(&operator_sdk_change);
+		// Marshal the flow change
+		let ffi_input = marshaller.marshal_flow_change(&change);
 
 		// Create output holder
 		let mut ffi_output = reifydb_flow_operator_abi::FlowChangeFFI::empty();
 
-		// Create transaction handle
-		let txn_handle = TransactionHandle::new(txn, self.operator_id, create_host_callbacks());
-		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_flow_operator_abi::TransactionHandle;
+		// Create FFI context
+		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
+		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_flow_operator_abi::FFIContext;
 
 		let result = catch_unwind(AssertUnwindSafe(|| {
-			(self.vtable.apply)(self.instance, txn_handle_ptr, &ffi_input, &mut ffi_output)
+			(self.vtable.apply)(self.instance, ffi_ctx_ptr, &ffi_input, &mut ffi_output)
 		}));
 
 		// Handle panics from FFI code
@@ -112,12 +106,10 @@ impl Operator for FFIOperator {
 			);
 		}
 
-		// Unmarshal the output and convert back to sub-flow FlowChange
-		let operator_sdk_change =
-			marshaller.unmarshal_flow_change(&ffi_output).map_err(|e| FFIError::Other(e))?;
+		// Unmarshal the output
+		let output_change = marshaller.unmarshal_flow_change(&ffi_output).map_err(|e| FFIError::Other(e))?;
 
-		// Convert back with Internal origin since this came from an FFI operator
-		Ok(from_operator_sdk_change(operator_sdk_change, FlowChangeOrigin::Internal(self.operator_id)))
+		Ok(output_change)
 	}
 
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> Result<Vec<Option<Row>>> {
@@ -133,15 +125,15 @@ impl Operator for FFIOperator {
 			rows: std::ptr::null_mut(),
 		};
 
-		// Create transaction handle
-		let txn_handle = TransactionHandle::new(txn, self.operator_id, create_host_callbacks());
-		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_flow_operator_abi::TransactionHandle;
+		// Create FFI context
+		let ffi_ctx = new_ffi_context(txn, self.operator_id, create_host_callbacks());
+		let ffi_ctx_ptr = &ffi_ctx as *const _ as *mut reifydb_flow_operator_abi::FFIContext;
 
 		// Call FFI get_rows function
 		let result = catch_unwind(AssertUnwindSafe(|| {
 			(self.vtable.get_rows)(
 				self.instance,
-				txn_handle_ptr,
+				ffi_ctx_ptr,
 				row_numbers.as_ptr(),
 				row_numbers.len(),
 				&mut ffi_output,

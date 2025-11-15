@@ -10,7 +10,7 @@ use std::{
 use reifydb_flow_operator_abi::*;
 use reifydb_type::RowNumber;
 
-use crate::{context::OperatorContext, marshal::Marshaller, operator::FFIOperator};
+use crate::{FFIOperator, context::OperatorContext, marshal::Marshaller};
 
 /// Wrapper that adapts a Rust operator to the FFI interface
 pub struct OperatorWrapper<O: FFIOperator> {
@@ -42,7 +42,7 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 
 pub extern "C" fn ffi_apply<O: FFIOperator>(
 	instance: *mut c_void,
-	txn: *mut TransactionHandle,
+	ctx: *mut FFIContext,
 	input: *const FlowChangeFFI,
 	output: *mut FlowChangeFFI,
 ) -> i32 {
@@ -62,16 +62,8 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 			};
 
 			// Create context and apply operator
-			// Extract callbacks from the transaction handle
-			let callbacks = if !txn.is_null() {
-				(*txn).callbacks
-			} else {
-				return -4; // Null transaction handle error
-			};
-
-			let operator_id = operator.operator_id();
-			let mut ctx = OperatorContext::new(operator_id, txn, callbacks);
-			let output_change = match operator.apply(&mut ctx, input_change) {
+			let mut op_ctx = OperatorContext::new(ctx);
+			let output_change = match operator.apply(&mut op_ctx, input_change) {
 				Ok(change) => change,
 				Err(_) => return -2,
 			};
@@ -87,7 +79,7 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 
 pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 	instance: *mut c_void,
-	txn: *mut TransactionHandle,
+	ctx: *mut FFIContext,
 	row_numbers: *const u64,
 	count: usize,
 	output: *mut RowsFFI,
@@ -111,18 +103,10 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 			};
 
 			// Create context
-			// Extract callbacks from the transaction handle
-			let callbacks = if !txn.is_null() {
-				(*txn).callbacks
-			} else {
-				return -4; // Null transaction handle error
-			};
-
-			let operator_id = operator.operator_id();
-			let mut ctx = OperatorContext::new(operator_id, txn, callbacks);
+			let mut op_ctx = OperatorContext::new(ctx);
 
 			// Call the operator
-			let rows = match operator.get_rows(&mut ctx, &numbers) {
+			let rows = match operator.get_rows(&mut op_ctx, &numbers) {
 				Ok(rows) => rows,
 				Err(_) => return -2,
 			};

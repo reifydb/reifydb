@@ -8,11 +8,9 @@ use std::{
 use libloading::{Library, Symbol};
 use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{FFIOperatorCreateFn, FFIOperatorDescriptor};
+use reifydb_flow_operator_sdk::{FFIError, Result as FFIResult};
 
-use crate::{
-	ffi::error::{FFIError, FFIResult},
-	operator::FFIOperator,
-};
+use crate::operator::FFIOperator;
 
 /// FFI operator loader for dynamic libraries
 pub struct FFIOperatorLoader {
@@ -119,8 +117,8 @@ impl FFIOperatorLoader {
 		_config: &[u8],
 	) -> Result<Box<dyn crate::operator::Operator>, FFIError> {
 		// This would look up the operator type in a registry
-		// For now, return not supported
-		Err(FFIError::NotSupported)
+		// For now, return not implemented
+		Err(FFIError::NotImplemented("Operator registry lookup not yet implemented".to_string()))
 	}
 
 	/// Unload a library

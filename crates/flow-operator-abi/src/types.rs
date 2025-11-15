@@ -185,10 +185,25 @@ pub struct FlowDiffFFI {
 	pub post_row: *const RowFFI,
 }
 
+/// FFI-safe representation of flow change origin
+///
+/// Encodes both Internal and External origins:
+/// - origin_type: 0 = Internal, 1 = External.Table, 2 = External.View, 3 = External.TableVirtual, 4 =
+///   External.RingBuffer
+/// - id: For Internal, this is the FlowNodeId. For External, this is the source ID (TableId, ViewId, etc.)
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FlowOriginFFI {
+	pub origin_type: u8,
+	pub id: u64,
+}
+
 /// FFI-safe flow change containing multiple diffs
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FlowChangeFFI {
+	/// Origin of this change
+	pub origin: FlowOriginFFI,
 	/// Number of diffs in the change
 	pub diff_count: usize,
 	/// Pointer to array of diffs
@@ -198,9 +213,13 @@ pub struct FlowChangeFFI {
 }
 
 impl FlowChangeFFI {
-	/// Create an empty flow change
+	/// Create an empty flow change with Internal origin 0
 	pub const fn empty() -> Self {
 		Self {
+			origin: FlowOriginFFI {
+				origin_type: 0,
+				id: 0,
+			},
 			diff_count: 0,
 			diffs: core::ptr::null(),
 			version: 0,
@@ -405,10 +424,10 @@ use core::ffi::c_void;
 
 use crate::HostCallbacks;
 
-/// Handle to a transaction with host callbacks
-/// This struct is shared between the host and operators to pass transaction context
+/// FFI context passed to operators containing transaction, operator ID, and callbacks
+/// This struct is shared between the host and operators to provide complete execution context
 #[repr(C)]
-pub struct TransactionHandle {
+pub struct FFIContext {
 	/// Opaque pointer to the host's transaction data
 	pub txn_ptr: *mut c_void,
 	/// Operator ID for this operation

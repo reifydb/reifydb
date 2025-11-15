@@ -10,8 +10,8 @@ use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{CURRENT_API_VERSION, FFIOperatorDescriptor};
 
 use crate::{
+	FFIOperatorWithMetadata,
 	ffi::wrapper::{OperatorWrapper, create_vtable},
-	operator::FFIOperatorWithMetadata,
 };
 
 pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor {

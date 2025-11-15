@@ -16,7 +16,7 @@ pub struct FFIOperatorVTable {
 	///
 	/// # Parameters
 	/// - `instance`: The operator instance pointer
-	/// - `txn`: Transaction handle for this operation
+	/// - `ctx`: FFI context for this operation
 	/// - `input`: Input flow change
 	/// - `output`: Output flow change (to be filled by operator)
 	///
@@ -24,7 +24,7 @@ pub struct FFIOperatorVTable {
 	/// - 0 on success, negative error code on failure
 	pub apply: extern "C" fn(
 		instance: *mut c_void,
-		txn: *mut TransactionHandle,
+		ctx: *mut FFIContext,
 		input: *const FlowChangeFFI,
 		output: *mut FlowChangeFFI,
 	) -> i32,
@@ -33,7 +33,7 @@ pub struct FFIOperatorVTable {
 	///
 	/// # Parameters
 	/// - `instance`: The operator instance pointer
-	/// - `txn`: Transaction handle for this operation
+	/// - `ctx`: FFI context for this operation
 	/// - `row_numbers`: Array of row numbers to fetch
 	/// - `count`: Number of row numbers
 	/// - `output`: Output rows structure (to be filled)
@@ -42,7 +42,7 @@ pub struct FFIOperatorVTable {
 	/// - 0 on success, negative error code on failure
 	pub get_rows: extern "C" fn(
 		instance: *mut c_void,
-		txn: *mut TransactionHandle,
+		ctx: *mut FFIContext,
 		row_numbers: *const u64,
 		count: usize,
 		output: *mut RowsFFI,
