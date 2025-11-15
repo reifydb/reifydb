@@ -7,7 +7,6 @@ use std::{
 	sync::Mutex,
 };
 
-use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::*;
 use reifydb_type::RowNumber;
 
@@ -16,16 +15,14 @@ use crate::{context::OperatorContext, marshal::Marshaller, operator::FFIOperator
 /// Wrapper that adapts a Rust operator to the FFI interface
 pub struct OperatorWrapper<O: FFIOperator> {
 	operator: Mutex<O>,
-	node_id: FlowNodeId,
 	marshaller: RefCell<Marshaller>,
 }
 
 impl<O: FFIOperator> OperatorWrapper<O> {
 	/// Create a new operator wrapper
-	pub fn new(operator: O, node_id: FlowNodeId) -> Self {
+	pub fn new(operator: O) -> Self {
 		Self {
 			operator: Mutex::new(operator),
-			node_id,
 			marshaller: RefCell::new(Marshaller::new()),
 		}
 	}
@@ -65,7 +62,15 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 			};
 
 			// Create context and apply operator
-			let mut ctx = OperatorContext::new(wrapper.node_id, txn);
+			// Extract callbacks from the transaction handle
+			let callbacks = if !txn.is_null() {
+				(*txn).callbacks
+			} else {
+				return -4; // Null transaction handle error
+			};
+
+			let operator_id = operator.operator_id();
+			let mut ctx = OperatorContext::new(operator_id, txn, callbacks);
 			let output_change = match operator.apply(&mut ctx, input_change) {
 				Ok(change) => change,
 				Err(_) => return -2,
@@ -106,7 +111,15 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 			};
 
 			// Create context
-			let mut ctx = OperatorContext::new(wrapper.node_id, txn);
+			// Extract callbacks from the transaction handle
+			let callbacks = if !txn.is_null() {
+				(*txn).callbacks
+			} else {
+				return -4; // Null transaction handle error
+			};
+
+			let operator_id = operator.operator_id();
+			let mut ctx = OperatorContext::new(operator_id, txn, callbacks);
 
 			// Call the operator
 			let rows = match operator.get_rows(&mut ctx, &numbers) {

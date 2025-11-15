@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
+use std::{collections::HashMap, path::PathBuf};
 
 use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view};
 use reifydb_cdc::CdcConsume;
@@ -40,6 +40,7 @@ impl FlowConsumer {
 	pub fn new(
 		engine: StandardEngine,
 		operators: Vec<(String, OperatorFactory)>,
+		operators_dir: Option<PathBuf>,
 		scheduler: Option<SchedulerService>,
 	) -> Self {
 		let mut registry = TransformOperatorRegistry::new();
@@ -50,7 +51,8 @@ impl FlowConsumer {
 			registry.register(name, move |node, exprs| factory(node, exprs));
 		}
 
-		let flow_engine = FlowEngine::new(StandardRowEvaluator::default(), engine.executor(), registry);
+		let flow_engine =
+			FlowEngine::new(StandardRowEvaluator::default(), engine.executor(), registry, operators_dir);
 
 		let result = Self {
 			engine: engine.clone(),

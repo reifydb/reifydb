@@ -2,8 +2,15 @@
 
 use std::alloc::{Layout, alloc, dealloc, realloc as system_realloc};
 
+use reifydb_core::{
+	interface::FlowNodeId,
+	util::CowVec,
+	value::encoded::{EncodedKey, EncodedValues},
+};
 use reifydb_flow_operator_abi::*;
 use reifydb_flow_operator_sdk::ffi::Arena;
+
+use crate::ffi::transaction::{TransactionHandle, TransactionHandleExt};
 
 /// Thread-local storage for the current arena
 /// All allocations during an FFI operation will use this arena
@@ -40,6 +47,11 @@ pub fn create_host_callbacks() -> HostCallbacks {
 		state_iterator_next: host_state_iterator_next,
 		state_iterator_free: host_state_iterator_free,
 		log_message: host_log_message,
+		state_get: host_state_get,
+		state_set: host_state_set,
+		state_remove: host_state_remove,
+		state_clear: host_state_clear,
+		state_prefix: host_state_prefix,
 	}
 }
 
@@ -267,6 +279,147 @@ extern "C" fn host_free_value(value: *mut ValueFFI) {
 
 	// Free the value structure
 	host_dealloc(value as *mut u8, std::mem::size_of::<ValueFFI>());
+}
+
+// ==================== State Operations ====================
+
+/// Get state value for a specific node and key
+#[unsafe(no_mangle)]
+pub extern "C" fn host_state_get(
+	node_id: u64,
+	txn: *mut TransactionHandle,
+	key_ptr: *const u8,
+	key_len: usize,
+	output: *mut BufferFFI,
+) -> i32 {
+	if txn.is_null() || key_ptr.is_null() || output.is_null() {
+		return -1;
+	}
+
+	unsafe {
+		let txn_handle = &mut *txn;
+		let flow_txn = txn_handle.get_transaction_mut();
+
+		// Convert raw bytes to EncodedKey
+		let key_bytes = std::slice::from_raw_parts(key_ptr, key_len);
+		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+
+		// Get state from transaction
+		match flow_txn.state_get(FlowNodeId(node_id), &key) {
+			Ok(Some(value)) => {
+				// Copy value to output buffer
+				let value_bytes = value.as_ref();
+				let value_ptr = host_alloc(value_bytes.len());
+				if value_ptr.is_null() {
+					return -2; // Allocation failed
+				}
+
+				std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
+
+				(*output).ptr = value_ptr;
+				(*output).len = value_bytes.len();
+				(*output).cap = value_bytes.len();
+
+				0 // Success, value found
+			}
+			Ok(None) => 1, // Key not found
+			Err(_) => -1,  // Error
+		}
+	}
+}
+
+/// Set state value for a specific node and key
+#[unsafe(no_mangle)]
+pub extern "C" fn host_state_set(
+	node_id: u64,
+	txn: *mut TransactionHandle,
+	key_ptr: *const u8,
+	key_len: usize,
+	value_ptr: *const u8,
+	value_len: usize,
+) -> i32 {
+	if txn.is_null() || key_ptr.is_null() || value_ptr.is_null() {
+		return -1;
+	}
+
+	unsafe {
+		let txn_handle = &mut *txn;
+		let flow_txn = txn_handle.get_transaction_mut();
+
+		// Convert raw bytes to EncodedKey and EncodedValues
+		let key_bytes = std::slice::from_raw_parts(key_ptr, key_len);
+		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+
+		let value_bytes = std::slice::from_raw_parts(value_ptr, value_len);
+		let value = EncodedValues(CowVec::new(value_bytes.to_vec()));
+
+		// Set state in transaction
+		match flow_txn.state_set(FlowNodeId(node_id), &key, value) {
+			Ok(_) => 0,   // Success
+			Err(_) => -1, // Error
+		}
+	}
+}
+
+/// Remove state value for a specific node and key
+#[unsafe(no_mangle)]
+pub extern "C" fn host_state_remove(
+	node_id: u64,
+	txn: *mut TransactionHandle,
+	key_ptr: *const u8,
+	key_len: usize,
+) -> i32 {
+	if txn.is_null() || key_ptr.is_null() {
+		return -1;
+	}
+
+	unsafe {
+		let txn_handle = &mut *txn;
+		let flow_txn = txn_handle.get_transaction_mut();
+
+		// Convert raw bytes to EncodedKey
+		let key_bytes = std::slice::from_raw_parts(key_ptr, key_len);
+		let key = EncodedKey(CowVec::new(key_bytes.to_vec()));
+
+		// Remove state from transaction
+		match flow_txn.state_remove(FlowNodeId(node_id), &key) {
+			Ok(_) => 0,   // Success
+			Err(_) => -1, // Error
+		}
+	}
+}
+
+/// Clear all state for a specific node
+#[unsafe(no_mangle)]
+pub extern "C" fn host_state_clear(node_id: u64, txn: *mut TransactionHandle) -> i32 {
+	if txn.is_null() {
+		return -1;
+	}
+
+	unsafe {
+		let txn_handle = &mut *txn;
+		let flow_txn = txn_handle.get_transaction_mut();
+
+		// Clear all state for this node
+		match flow_txn.state_clear(FlowNodeId(node_id)) {
+			Ok(_) => 0,   // Success
+			Err(_) => -1, // Error
+		}
+	}
+}
+
+/// Create an iterator for state with a specific prefix
+#[unsafe(no_mangle)]
+pub extern "C" fn host_state_prefix(
+	_node_id: u64,
+	_txn: *mut TransactionHandle,
+	_prefix_ptr: *const u8,
+	_prefix_len: usize,
+	_iterator_out: *mut *mut StateIteratorFFI,
+) -> i32 {
+	// TODO: Implement prefix scan iterator
+	// For now, return not supported
+	-1
 }
 
 // ==================== Iterator Operations ====================

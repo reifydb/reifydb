@@ -19,7 +19,7 @@ use crate::{
 		callbacks::create_host_callbacks,
 		conversion::{from_operator_sdk_change, to_operator_sdk_change},
 		error::FFIError,
-		transaction::TransactionHandle,
+		transaction::{TransactionHandle, TransactionHandleExt},
 	},
 	flow::{FlowChange, FlowChangeOrigin},
 	operator::Operator,
@@ -60,6 +60,11 @@ impl FFIOperator {
 			operator_id: node_id,
 			marshaller: RefCell::new(Marshaller::new()),
 		}
+	}
+
+	/// Get the operator descriptor
+	pub(crate) fn descriptor(&self) -> &FFIOperatorDescriptor {
+		&self.descriptor
 	}
 }
 

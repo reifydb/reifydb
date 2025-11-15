@@ -1,59 +1,12 @@
 //! Operator context providing access to state and resources
 
 use reifydb_core::interface::FlowNodeId;
-use reifydb_flow_operator_abi::{BufferFFI, StateIteratorFFI, TransactionHandle};
+use reifydb_flow_operator_abi::{BufferFFI, HostCallbacks, StateIteratorFFI, TransactionHandle};
 
 use crate::{
 	error::{Error, Result},
 	state::State,
 };
-
-// Extern functions provided by the host for state operations
-unsafe extern "C" {
-	/// Get state value for a key
-	fn host_state_get(
-		node_id: u64,
-		txn: *mut TransactionHandle,
-		key: *const u8,
-		key_len: usize,
-		output: *mut BufferFFI,
-	) -> i32;
-
-	/// Set state value for a key
-	fn host_state_set(
-		node_id: u64,
-		txn: *mut TransactionHandle,
-		key: *const u8,
-		key_len: usize,
-		value: *const u8,
-		value_len: usize,
-	) -> i32;
-
-	/// Remove state value for a key
-	fn host_state_remove(node_id: u64, txn: *mut TransactionHandle, key: *const u8, key_len: usize) -> i32;
-
-	/// Scan state entries with a prefix
-	fn host_state_prefix(
-		node_id: u64,
-		txn: *mut TransactionHandle,
-		prefix: *const u8,
-		prefix_len: usize,
-		iterator_out: *mut *mut StateIteratorFFI,
-	) -> i32;
-
-	/// Clear all state for the node
-	fn host_state_clear(node_id: u64, txn: *mut TransactionHandle) -> i32;
-
-	/// Get next item from state iterator
-	fn host_state_iterator_next(
-		iterator: *mut StateIteratorFFI,
-		key_out: *mut BufferFFI,
-		value_out: *mut BufferFFI,
-	) -> i32;
-
-	/// Free state iterator
-	fn host_state_iterator_free(iterator: *mut StateIteratorFFI);
-}
 
 /// Operator context providing access to state and other resources
 pub struct OperatorContext {
@@ -61,14 +14,17 @@ pub struct OperatorContext {
 	operator_id: FlowNodeId,
 	/// FFI transaction handle for state operations
 	tx_handle: *mut TransactionHandle,
+	/// Host callbacks for state and other operations
+	callbacks: HostCallbacks,
 }
 
 impl OperatorContext {
-	/// Create a new operator context with transaction handle
-	pub fn new(node_id: FlowNodeId, tx_handle: *mut TransactionHandle) -> Self {
+	/// Create a new operator context with transaction handle and callbacks
+	pub fn new(node_id: FlowNodeId, tx_handle: *mut TransactionHandle, callbacks: HostCallbacks) -> Self {
 		Self {
 			operator_id: node_id,
 			tx_handle,
+			callbacks,
 		}
 	}
 
@@ -92,7 +48,7 @@ impl OperatorContext {
 		};
 
 		unsafe {
-			let result = host_state_get(
+			let result = (self.callbacks.state_get)(
 				self.operator_id.0,
 				self.tx_handle,
 				key_bytes.as_ptr(),
@@ -109,8 +65,8 @@ impl OperatorContext {
 					// TODO: Free the buffer using host dealloc
 					Ok(Some(value))
 				}
-			} else if result == -6 {
-				// NotFound error code
+			} else if result == 1 {
+				// Key not found
 				Ok(None)
 			} else {
 				Err(Error::FFI(format!("host_state_get failed with code {}", result)))
@@ -122,7 +78,7 @@ impl OperatorContext {
 		let key_bytes = key.as_bytes();
 
 		unsafe {
-			let result = host_state_set(
+			let result = (self.callbacks.state_set)(
 				self.operator_id.0,
 				self.tx_handle,
 				key_bytes.as_ptr(),
@@ -143,7 +99,7 @@ impl OperatorContext {
 		let key_bytes = key.as_bytes();
 
 		unsafe {
-			let result = host_state_remove(
+			let result = (self.callbacks.state_remove)(
 				self.operator_id.0,
 				self.tx_handle,
 				key_bytes.as_ptr(),
@@ -163,7 +119,7 @@ impl OperatorContext {
 		let mut iterator: *mut StateIteratorFFI = std::ptr::null_mut();
 
 		unsafe {
-			let result = host_state_prefix(
+			let result = (self.callbacks.state_prefix)(
 				self.operator_id.0,
 				self.tx_handle,
 				prefix_bytes.as_ptr(),
@@ -193,13 +149,14 @@ impl OperatorContext {
 					cap: 0,
 				};
 
-				let next_result = host_state_iterator_next(iterator, &mut key_buf, &mut value_buf);
+				let next_result =
+					(self.callbacks.state_iterator_next)(iterator, &mut key_buf, &mut value_buf);
 
 				if next_result == 1 {
 					// End of iteration
 					break;
 				} else if next_result != 0 {
-					host_state_iterator_free(iterator);
+					(self.callbacks.state_iterator_free)(iterator);
 					return Err(Error::FFI(format!(
 						"host_state_iterator_next failed with code {}",
 						next_result
@@ -222,14 +179,14 @@ impl OperatorContext {
 				}
 			}
 
-			host_state_iterator_free(iterator);
+			(self.callbacks.state_iterator_free)(iterator);
 			Ok(results)
 		}
 	}
 
 	pub(crate) fn raw_state_clear(&mut self) -> Result<()> {
 		unsafe {
-			let result = host_state_clear(self.operator_id.0, self.tx_handle);
+			let result = (self.callbacks.state_clear)(self.operator_id.0, self.tx_handle);
 
 			if result == 0 {
 				Ok(())

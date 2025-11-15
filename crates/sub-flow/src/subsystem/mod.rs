@@ -4,7 +4,7 @@
 mod factory;
 pub mod intercept;
 
-use std::{any::Any, time::Duration};
+use std::{any::Any, path::PathBuf, time::Duration};
 
 pub use factory::FlowSubsystemFactory;
 use reifydb_cdc::{CdcConsumer, PollConsumer, PollConsumerConfig};
@@ -32,6 +32,8 @@ pub struct FlowSubsystemConfig {
 	pub operators: Vec<(String, OperatorFactory)>,
 	/// Maximum batch size for CDC polling (None = unbounded)
 	pub max_batch_size: Option<u64>,
+	/// Directory to scan for FFI operator shared libraries
+	pub operators_dir: Option<PathBuf>,
 }
 
 pub struct FlowSubsystem {
@@ -44,7 +46,7 @@ impl FlowSubsystem {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let scheduler = ioc.resolve::<SchedulerService>().ok();
 
-		let consumer = FlowConsumer::new(engine.clone(), cfg.operators.clone(), scheduler);
+		let consumer = FlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir, scheduler);
 
 		Ok(Self {
 			consumer: PollConsumer::new(

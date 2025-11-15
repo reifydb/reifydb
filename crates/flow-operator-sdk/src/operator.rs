@@ -2,7 +2,7 @@
 
 use std::collections::HashMap;
 
-use reifydb_core::Row;
+use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_type::{RowNumber, Value};
 
 use crate::{context::OperatorContext, error::Result};
@@ -49,15 +49,13 @@ pub trait FFIOperatorMetadata {
 /// Runtime operator behavior
 /// Operators must be Send + Sync for thread safety
 pub trait FFIOperator: Send + Sync + 'static {
-	/// Create a new, uninitialized instance
-	/// Configuration will be provided via initialize()
-	fn new() -> Self
+	/// Create a new operator instance with the operator ID and configuration
+	fn new(operator_id: FlowNodeId, config: &HashMap<String, Value>) -> Result<Self>
 	where
 		Self: Sized;
 
-	/// Initialize the operator with configuration
-	/// This is called once after new() with the actual config
-	fn initialize(&mut self, config: &HashMap<String, Value>) -> Result<()>;
+	/// Get the operator ID for this instance
+	fn operator_id(&self) -> FlowNodeId;
 
 	/// Process a flow change (inserts, updates, removes)
 	fn apply(&mut self, ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange>;

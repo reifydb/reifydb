@@ -1,10 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{
-	thread::sleep,
-	time::{Duration, Instant},
-};
+use std::{path::PathBuf, str::FromStr, thread::sleep, time::Duration};
 
 use reifydb::{
 	Params, Session, WithSubsystem,
@@ -28,70 +25,117 @@ fn main() {
 	let mut db = embedded::memory_optimistic()
 		.with_logging(logger_configuration)
 		.with_worker(|wp| wp)
-		.with_flow(|f| f)
+		.with_flow(|f| {
+			f.operators_dir(PathBuf::from_str("/home/ddymke/Workspace/red/testsuite/target/debug").unwrap())
+		})
 		.build()
 		.unwrap();
 
 	db.start().unwrap();
 
+	// Create namespace and table
 	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
-	db.command_as_root(r#"create table test.source { id: int4, name: utf8, age: int4, city: utf8 }"#, Params::None)
-		.unwrap();
+	db.command_as_root(r#"create table test.source { id: int4, name: utf8, status: utf8 }"#, Params::None).unwrap();
 
-	let insert_start = Instant::now();
+	println!("Created namespace and table");
 
-	// Insert 10 million items in batches of 10,000
-	const TOTAL_RECORDS: i32 = 1_000;
-	const BATCH_SIZE: i32 = 100;
-	const NUM_BATCHES: i32 = TOTAL_RECORDS / BATCH_SIZE;
-
-	for batch in 0..NUM_BATCHES {
-		let start_id = batch * BATCH_SIZE;
-		let mut records = Vec::new();
-
-		for i in 0..BATCH_SIZE {
-			let id = start_id + i;
-			let name_idx = i % 4;
-			let (name, age, city) = match name_idx {
-				0 => ("Alice", 30, "NYC"),
-				1 => ("Bob", 25, "LA"),
-				2 => ("Charlie", 35, "Chicago"),
-				_ => ("Diana", 28, "Boston"),
-			};
-			records.push(format!(r#"{{id: {}, name: "{}", age: {}, city: "{}"}}"#, id, name, age, city));
-		}
-
-		let query = format!(r#"from [{}] insert test.source"#, records.join(", "));
-		db.command_as_root(&query, Params::None).unwrap();
-
-		if (batch + 1) % 100 == 0 {
-			println!("Inserted {} records...", (batch + 1) * BATCH_SIZE);
-		}
-	}
-
-	let insert_duration = insert_start.elapsed();
-	println!("Insertion complete in {:.2}s", insert_duration.as_secs_f64());
-
-	sleep(Duration::from_millis(100));
-
-	println!("\nQuerying first 10 records...");
-	let query_start = Instant::now();
-
-	for frame in db
-		.query_as_root(
-			r#"
-from test.source
-take 10
+	// Create deferred view with counter operator
+	db.command_as_root(
+		r#"
+create deferred view test.counter_view {
+    insert: uint1,
+    update: uint1,
+    delete: uint1
+} as {
+    from test.source
+    apply counter{}
+}
 	"#,
-			Params::None,
-		)
-		.unwrap()
-	{
+		Params::None,
+	)
+	.unwrap();
+
+	println!("Created counter view");
+
+	// Wait for view to be ready
+	sleep(Duration::from_millis(500));
+
+	// Query the counter view
+	println!("\nQuerying counter view (initial):");
+	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	let query_duration = query_start.elapsed();
-	println!("\nQuery completed in {:.6}s ({:.2}ms)", query_duration.as_secs_f64(), query_duration.as_millis());
+	// Insert some records
+	println!("\nInserting 10 records...");
+	db.command_as_root(
+		r#"
+from [
+    {id: 1, name: "Alice", status: "active"},
+    {id: 2, name: "Bob", status: "active"},
+    {id: 3, name: "Charlie", status: "inactive"},
+    {id: 4, name: "Diana", status: "active"},
+    {id: 5, name: "Eve", status: "active"},
+    {id: 6, name: "Frank", status: "inactive"},
+    {id: 7, name: "Grace", status: "active"},
+    {id: 8, name: "Hank", status: "active"},
+    {id: 9, name: "Ivy", status: "inactive"},
+    {id: 10, name: "Jack", status: "active"}
+]
+insert test.source
+	"#,
+		Params::None,
+	)
+	.unwrap();
 
-	sleep(Duration::from_millis(100));
+	sleep(Duration::from_millis(500));
+
+	// Query the counter view again
+	println!("\nQuerying counter view after inserts:");
+	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
+
+	// Update some records
+	println!("\nUpdating 3 records...");
+	db.command_as_root(
+		r#"
+from test.source
+filter id == 2 OR id == 5 or id == 8
+map {id, name,  status: "suspended" }
+update test.source
+	"#,
+		Params::None,
+	)
+	.unwrap();
+
+	sleep(Duration::from_millis(500));
+
+	// Query the counter view again
+	println!("\nQuerying counter view after updates:");
+	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
+
+	// Delete some records
+	println!("\nDeleting 2 records...");
+	db.command_as_root(
+		r#"
+from test.source
+filter id == 3 or id == 9
+delete test.source
+	"#,
+		Params::None,
+	)
+	.unwrap();
+
+	sleep(Duration::from_millis(500));
+
+	// Query the counter view final time
+	println!("\nQuerying counter view after deletes:");
+	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
+
+	println!("\nExpected counts: insert_count=10, update_count=3, delete_count=2");
 }

@@ -16,7 +16,8 @@ use crate::{
 
 pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor {
 	let name_cstring = CString::new(O::NAME).unwrap_or_else(|_| CString::new("unknown").unwrap());
-	let name_ptr = Box::into_raw(Box::new(name_cstring)) as *const c_char;
+	// Leak the CString and get a pointer to its internal C string data
+	let name_ptr = Box::leak(Box::new(name_cstring)).as_ptr();
 
 	FFIOperatorDescriptor {
 		api_version: CURRENT_API_VERSION,
@@ -38,15 +39,16 @@ pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
 	// Parse configuration if provided
 	let config = HashMap::new();
 
-	let mut operator = O::new();
+	// Create operator with ID and config
+	let operator = match O::new(FlowNodeId(operator_id), &config) {
+		Ok(op) => op,
+		Err(e) => {
+			eprintln!("Failed to create operator: {}", e);
+			return ptr::null_mut();
+		}
+	};
 
-	// Initialize with configuration
-	if let Err(e) = operator.initialize(&config) {
-		eprintln!("Failed to initialize operator: {}", e);
-		return ptr::null_mut();
-	}
-
-	// Wrap in FFI wrapper with proper node_id
-	let wrapper = Box::new(OperatorWrapper::new(operator, FlowNodeId(operator_id)));
+	// Wrap in FFI wrapper
+	let wrapper = Box::new(OperatorWrapper::new(operator));
 	Box::into_raw(wrapper) as *mut c_void
 }

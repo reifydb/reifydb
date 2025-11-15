@@ -129,4 +129,87 @@ pub struct HostCallbacks {
 	/// - `level`: Log level (0=trace, 1=debug, 2=info, 3=warn, 4=error)
 	/// - `message`: Null-terminated message string
 	pub log_message: extern "C" fn(level: u32, message: *const u8),
+
+	// ==================== State Operations ====================
+	/// Get a value from operator state
+	///
+	/// # Parameters
+	/// - `node_id`: Operator node ID for namespacing
+	/// - `txn`: Transaction handle
+	/// - `key`: Key bytes
+	/// - `key_len`: Length of key
+	/// - `output`: Buffer to receive value
+	///
+	/// # Returns
+	/// - 0 if value exists and retrieved, 1 if key not found, negative on error
+	pub state_get: extern "C" fn(
+		node_id: u64,
+		txn: *mut TransactionHandle,
+		key: *const u8,
+		key_len: usize,
+		output: *mut BufferFFI,
+	) -> i32,
+
+	/// Set a value in operator state
+	///
+	/// # Parameters
+	/// - `node_id`: Operator node ID for namespacing
+	/// - `txn`: Transaction handle
+	/// - `key`: Key bytes
+	/// - `key_len`: Length of key
+	/// - `value`: Value bytes
+	/// - `value_len`: Length of value
+	///
+	/// # Returns
+	/// - 0 on success, negative error code on failure
+	pub state_set: extern "C" fn(
+		node_id: u64,
+		txn: *mut TransactionHandle,
+		key: *const u8,
+		key_len: usize,
+		value: *const u8,
+		value_len: usize,
+	) -> i32,
+
+	/// Remove a value from operator state
+	///
+	/// # Parameters
+	/// - `node_id`: Operator node ID for namespacing
+	/// - `txn`: Transaction handle
+	/// - `key`: Key bytes
+	/// - `key_len`: Length of key
+	///
+	/// # Returns
+	/// - 0 on success, negative error code on failure
+	pub state_remove:
+		extern "C" fn(node_id: u64, txn: *mut TransactionHandle, key: *const u8, key_len: usize) -> i32,
+
+	/// Clear all state for an operator
+	///
+	/// # Parameters
+	/// - `node_id`: Operator node ID for namespacing
+	/// - `txn`: Transaction handle
+	///
+	/// # Returns
+	/// - 0 on success, negative error code on failure
+	pub state_clear: extern "C" fn(node_id: u64, txn: *mut TransactionHandle) -> i32,
+
+	/// Create an iterator for state keys with a given prefix
+	///
+	/// # Parameters
+	/// - `node_id`: Operator node ID for namespacing
+	/// - `txn`: Transaction handle
+	/// - `prefix`: Prefix bytes
+	/// - `prefix_len`: Length of prefix
+	/// - `iterator_out`: Pointer to receive iterator handle
+	///
+	/// # Returns
+	/// - 0 on success, negative error code on failure
+	pub state_prefix: extern "C" fn(
+		node_id: u64,
+		txn: *mut TransactionHandle,
+		prefix: *const u8,
+		prefix_len: usize,
+		iterator_out: *mut *mut StateIteratorFFI,
+	) -> i32,
 }

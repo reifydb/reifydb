@@ -140,6 +140,7 @@ mod tests {
 		sync::Arc,
 	};
 
+	use parking_lot::RwLock;
 	use rand::{rng, seq::SliceRandom};
 	use reifydb_core::{
 		CommitVersion, Row,
@@ -153,6 +154,7 @@ mod tests {
 
 	use crate::{
 		engine::{FlowEngine, FlowEngineInner},
+		ffi::loader::FFIOperatorLoader,
 		flow::FlowDiff,
 		operator::transform::registry::TransformOperatorRegistry,
 		worker::{UnitOfWork, UnitsOfWork},
@@ -182,7 +184,7 @@ mod tests {
 		sources_map
 	}
 
-	fn setup_engine(subscriptions: HashMap<SourceId, Vec<FlowId>>) -> FlowEngine {
+	fn setup_test_engine(subscriptions: HashMap<SourceId, Vec<FlowId>>) -> FlowEngine {
 		let evaluator = StandardRowEvaluator::default();
 		let executor = Executor::testing();
 		let registry = TransformOperatorRegistry::new();
@@ -193,11 +195,12 @@ mod tests {
 			evaluator,
 			executor,
 			registry,
-			operators: parking_lot::RwLock::new(HashMap::new()),
-			flows: parking_lot::RwLock::new(HashMap::new()),
-			sources: parking_lot::RwLock::new(sources),
-			sinks: parking_lot::RwLock::new(HashMap::new()),
-			analyzer: parking_lot::RwLock::new(FlowGraphAnalyzer::new()),
+			operators: RwLock::new(HashMap::new()),
+			flows: RwLock::new(HashMap::new()),
+			sources: RwLock::new(sources),
+			sinks: RwLock::new(HashMap::new()),
+			analyzer: RwLock::new(FlowGraphAnalyzer::new()),
+			loader: RwLock::new(FFIOperatorLoader::new()),
 		};
 
 		FlowEngine {
@@ -310,7 +313,7 @@ mod tests {
 
 	#[test]
 	fn test_empty_input() {
-		let engine = setup_engine(HashMap::new());
+		let engine = setup_test_engine(HashMap::new());
 		let input = HashMap::new();
 
 		let result = engine.create_partition(input);
@@ -323,7 +326,7 @@ mod tests {
 		// S1 -> F1
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V10: S1[d1, d2]
 		let mut input = HashMap::new();
@@ -347,7 +350,7 @@ mod tests {
 		// S1 -> [F1, F2, F3]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2), f(3)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V1: S1[d1]
 		let mut input = HashMap::new();
@@ -374,7 +377,7 @@ mod tests {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
 		subscriptions.insert(s(2), vec![f(2), f(3)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V7: S1[a], S2[b,c]
 		let mut input = HashMap::new();
@@ -416,7 +419,7 @@ mod tests {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V3: S999[x] (unknown source)
 		let mut input = HashMap::new();
@@ -433,7 +436,7 @@ mod tests {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		subscriptions.insert(s(2), vec![f(2)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// Input versions intentionally unsorted: V20, V10, V30
 		let mut input = HashMap::new();
@@ -461,7 +464,7 @@ mod tests {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V1, V100 (non-contiguous)
 		let mut input = HashMap::new();
@@ -483,7 +486,7 @@ mod tests {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V5: S1[x,y], S1[z] (duplicate source entries)
 		let mut input = HashMap::new();
@@ -506,7 +509,7 @@ mod tests {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		subscriptions.insert(s(2), vec![f(1)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V8: S1[a], S2[b,c]
 		let mut input = HashMap::new();
@@ -531,7 +534,7 @@ mod tests {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		subscriptions.insert(s(2), vec![f(2)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V2: S1[a] only
 		let mut input = HashMap::new();
@@ -552,7 +555,7 @@ mod tests {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
 		subscriptions.insert(s(2), vec![f(2)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V1: S1[a1], S2[b1]
 		// V2: S1[a2]
@@ -591,7 +594,7 @@ mod tests {
 
 	#[test]
 	fn test_large_diffs_zero_subscribers() {
-		let engine = setup_engine(HashMap::new());
+		let engine = setup_test_engine(HashMap::new());
 
 		// Many diffs but no subscribers
 		let diffs: Vec<FlowDiff> = (0..1000).map(|i| mk_diff(&format!("d{}", i))).collect();
@@ -608,7 +611,7 @@ mod tests {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// 100 versions, but flow only affected by versions 10, 50, 90
 		let mut input = HashMap::new();
@@ -641,7 +644,7 @@ mod tests {
 				subscriptions.insert(s(i), vec![f(1)]);
 			}
 		}
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// All 50 sources change
 		let mut changes = vec![];
@@ -671,7 +674,7 @@ mod tests {
 		// S1 -> [F1, F2]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// Create input with versions in different orders
 		let test_versions =
@@ -705,7 +708,7 @@ mod tests {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// V1: S1 with empty diff vec
 		let mut input = HashMap::new();
@@ -728,7 +731,7 @@ mod tests {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// All input sources are unknown
 		let mut input = HashMap::new();
@@ -745,7 +748,7 @@ mod tests {
 		// S1 -> [F1, F2, F3]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2), f(3)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// Original input
 		let mut input = HashMap::new();
@@ -772,7 +775,7 @@ mod tests {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
 		subscriptions.insert(s(2), vec![f(2)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// Original input
 		let mut input = HashMap::new();
@@ -803,7 +806,7 @@ mod tests {
 				subscriptions.entry(source_id).or_insert_with(Vec::new).push(f(flow_i));
 			}
 		}
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// 1000 versions, each with 5 random sources changing
 		let mut input = HashMap::new();
@@ -835,7 +838,7 @@ mod tests {
 		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
-		let engine = setup_engine(subscriptions);
+		let engine = setup_test_engine(subscriptions);
 
 		// 100 versions in completely scrambled order
 		let mut rng = rng();

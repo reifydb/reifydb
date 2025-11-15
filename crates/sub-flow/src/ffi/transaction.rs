@@ -5,29 +5,27 @@ use reifydb_flow_operator_abi::HostCallbacks;
 
 use crate::transaction::FlowTransaction;
 
-/// Handle for passing transaction context to FFI operators
-pub struct TransactionHandle {
-	pub(crate) txn_ptr: *mut FlowTransaction,
-	pub(crate) operator_id: FlowNodeId,
-	pub(crate) callbacks: HostCallbacks,
+/// Alias for the ABI TransactionHandle
+pub type TransactionHandle = reifydb_flow_operator_abi::TransactionHandle;
+
+/// Helper functions for TransactionHandle
+pub trait TransactionHandleExt {
+	/// Create a new transaction handle
+	fn new(txn: &mut FlowTransaction, operator_id: FlowNodeId, callbacks: HostCallbacks) -> Self;
+	/// Get mutable reference to the transaction (unsafe - caller must ensure validity)
+	unsafe fn get_transaction_mut(&mut self) -> &mut FlowTransaction;
 }
 
-// SAFETY: TransactionHandle is used only within single-threaded FFI calls
-unsafe impl Send for TransactionHandle {}
-unsafe impl Sync for TransactionHandle {}
-
-impl TransactionHandle {
-	/// Create a new transaction handle
-	pub fn new(txn: &mut FlowTransaction, operator_id: FlowNodeId, callbacks: HostCallbacks) -> Self {
+impl TransactionHandleExt for TransactionHandle {
+	fn new(txn: &mut FlowTransaction, operator_id: FlowNodeId, callbacks: HostCallbacks) -> Self {
 		Self {
-			txn_ptr: txn as *mut FlowTransaction,
-			operator_id,
+			txn_ptr: txn as *mut _ as *mut core::ffi::c_void,
+			operator_id: operator_id.0,
 			callbacks,
 		}
 	}
 
-	/// Get the operator ID
-	pub fn operator_id(&self) -> FlowNodeId {
-		self.operator_id
+	unsafe fn get_transaction_mut(&mut self) -> &mut FlowTransaction {
+		unsafe { &mut *(self.txn_ptr as *mut FlowTransaction) }
 	}
 }

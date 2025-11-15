@@ -2,6 +2,7 @@
 
 use std::collections::HashMap;
 
+use bincode::{config::standard, decode_from_slice, encode_to_vec, serde::Compat};
 use serde::{Serialize, de::DeserializeOwned};
 
 use crate::{context::OperatorContext, error::Result};
@@ -23,8 +24,7 @@ impl<'a> State<'a> {
 	pub fn get<T: DeserializeOwned>(&self, key: impl AsRef<str>) -> Result<Option<T>> {
 		let bytes = self.ctx.raw_state_get(key.as_ref())?;
 		bytes.map(|b| {
-			let compat_result: (bincode::serde::Compat<T>, _) =
-				bincode::decode_from_slice(&b, bincode::config::standard())?;
+			let compat_result: (Compat<T>, _) = decode_from_slice(&b, standard())?;
 			Ok::<T, crate::error::Error>(compat_result.0.0)
 		})
 		.transpose()
@@ -33,8 +33,8 @@ impl<'a> State<'a> {
 
 	/// Set a value in state
 	pub fn set<T: Serialize>(&mut self, key: impl AsRef<str>, value: &T) -> Result<()> {
-		let compat = bincode::serde::Compat(value);
-		let bytes = bincode::encode_to_vec(&compat, bincode::config::standard())?;
+		let compat = Compat(value);
+		let bytes = encode_to_vec(&compat, standard())?;
 		self.ctx.raw_state_set(key.as_ref(), &bytes)
 	}
 

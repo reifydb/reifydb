@@ -33,12 +33,12 @@ impl FFIOperatorLoader {
 	/// # Arguments
 	/// * `path` - Path to the shared library file
 	/// * `config` - Operator configuration data
-	/// * `node_id` - Node ID for this operator instance
+	/// * `operator_id` - ID for this operator instance
 	///
 	/// # Returns
 	/// * `Ok(FFIOperator)` - Successfully loaded operator
 	/// * `Err(FFIError)` - Loading or initialization failed
-	pub fn load_operator(&mut self, path: &Path, config: &[u8], node_id: FlowNodeId) -> FFIResult<FFIOperator> {
+	pub fn load_operator(&mut self, path: &Path, config: &[u8], operator_id: FlowNodeId) -> FFIResult<FFIOperator> {
 		// Load the library if not already loaded
 		let library = if let Some(lib) = self.loaded_libraries.get(path) {
 			lib
@@ -93,13 +93,13 @@ impl FFIOperatorLoader {
 		};
 
 		// Create the operator instance
-		let instance = create_fn(config.as_ptr(), config.len());
+		let instance = create_fn(config.as_ptr(), config.len(), operator_id.0);
 		if instance.is_null() {
 			return Err(FFIError::Other("Failed to create operator instance".to_string()));
 		}
 
 		// Create the FFI operator wrapper
-		Ok(FFIOperator::new(descriptor, instance, node_id))
+		Ok(FFIOperator::new(descriptor, instance, operator_id))
 	}
 
 	/// Create an operator instance from an already loaded library

@@ -5,14 +5,23 @@ mod partition;
 mod process;
 mod register;
 
-use std::{collections::HashMap, sync::Arc};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use parking_lot::RwLock;
-use reifydb_core::interface::{FlowId, FlowNodeId, SourceId, TableId, ViewId};
+use reifydb_core::{
+	interface::{FlowId, FlowNodeId, SourceId, TableId, ViewId},
+	log_error,
+};
 use reifydb_engine::{StandardRowEvaluator, execute::Executor};
-use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
+use reifydb_rql::{
+	expression::Expression,
+	flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer},
+};
 
-use crate::operator::{Operators, transform::registry::TransformOperatorRegistry};
+use crate::{
+	ffi::loader::FFIOperatorLoader,
+	operator::{Operator, Operators, transform::registry::TransformOperatorRegistry},
+};
 
 pub(crate) struct FlowEngineInner {
 	pub(crate) evaluator: StandardRowEvaluator,
@@ -24,6 +33,7 @@ pub(crate) struct FlowEngineInner {
 	pub(crate) sources: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) sinks: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
+	pub(crate) loader: RwLock<FFIOperatorLoader>,
 }
 
 pub struct FlowEngine {
@@ -39,7 +49,25 @@ impl Clone for FlowEngine {
 }
 
 impl FlowEngine {
-	pub fn new(evaluator: StandardRowEvaluator, executor: Executor, registry: TransformOperatorRegistry) -> Self {
+	pub fn new(
+		evaluator: StandardRowEvaluator,
+		executor: Executor,
+		mut registry: TransformOperatorRegistry,
+		operators_dir: Option<PathBuf>,
+	) -> Self {
+		// Load FFI operators if directory specified
+		let ffi_loader = if let Some(dir) = operators_dir {
+			match Self::load_ffi_operators(&dir, &mut registry) {
+				Ok(loader) => loader,
+				Err(e) => {
+					log_error!("Failed to load FFI operators from {:?}: {}", dir, e);
+					FFIOperatorLoader::new()
+				}
+			}
+		} else {
+			FFIOperatorLoader::new()
+		};
+
 		Self {
 			inner: Arc::new(FlowEngineInner {
 				evaluator,
@@ -50,8 +78,62 @@ impl FlowEngine {
 				sources: RwLock::new(HashMap::new()),
 				sinks: RwLock::new(HashMap::new()),
 				analyzer: RwLock::new(FlowGraphAnalyzer::new()),
+				loader: RwLock::new(ffi_loader),
 			}),
 		}
+	}
+
+	/// Load FFI operators from a directory
+	fn load_ffi_operators(
+		dir: &PathBuf,
+		registry: &mut TransformOperatorRegistry,
+	) -> reifydb_core::Result<FFIOperatorLoader> {
+		use std::ffi::CStr;
+
+		let mut loader = FFIOperatorLoader::new();
+
+		// Scan directory for shared libraries
+		let entries = std::fs::read_dir(dir).unwrap();
+
+		for entry in entries {
+			let entry = entry.unwrap();
+			let path = entry.path();
+
+			if !path.is_file() {
+				continue;
+			}
+
+			let is_shared_lib = path.extension().map_or(false, |ext| ext == "so" || ext == "dylib");
+
+			if !is_shared_lib {
+				continue;
+			}
+
+			// Load the operator to get its descriptor
+			// Use a temporary node ID just to extract the name
+			let temp_operator = loader.load_operator(&path, &[], FlowNodeId(0)).unwrap();
+
+			// Extract operator name from descriptor
+			let name_cstr = unsafe { CStr::from_ptr(temp_operator.descriptor().operator_name) };
+			let operator_name = name_cstr.to_str().unwrap().to_string();
+
+			// Create factory closure for this operator
+			let path_clone = path.clone();
+			let factory = move |node_id: FlowNodeId, _exprs: &[Expression<'static>]| {
+				// Load a fresh instance for this node
+				let mut loader = FFIOperatorLoader::new();
+				let operator = loader.load_operator(&path_clone, &[], node_id).unwrap();
+
+				Ok(Box::new(operator) as Box<dyn Operator>)
+			};
+
+			// Register the factory
+			registry.register(operator_name.clone(), factory);
+
+			println!("Registered FFI operator: {} from {:?}", operator_name, path);
+		}
+
+		Ok(loader)
 	}
 
 	pub fn has_registered_flows(&self) -> bool {

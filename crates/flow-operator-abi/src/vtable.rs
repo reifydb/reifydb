@@ -77,4 +77,4 @@ unsafe impl Send for FFIOperatorDescriptor {}
 unsafe impl Sync for FFIOperatorDescriptor {}
 
 /// Factory function type for creating operator instances
-pub type FFIOperatorCreateFn = extern "C" fn(config: *const u8, config_len: usize) -> *mut c_void;
+pub type FFIOperatorCreateFn = extern "C" fn(config: *const u8, config_len: usize, operator_id: u64) -> *mut c_void;

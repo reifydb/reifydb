@@ -3,7 +3,7 @@
 
 //! Builder pattern for configuring the flow subsystem
 
-use std::{sync::Arc, time::Duration};
+use std::{path::PathBuf, sync::Arc, time::Duration};
 
 use reifydb_core::interface::{CdcConsumerId, FlowNodeId};
 use reifydb_rql::expression::Expression;
@@ -21,6 +21,7 @@ pub struct FlowBuilder {
 	priority: Priority,
 	operators: Vec<(String, OperatorFactory)>,
 	max_batch_size: Option<u64>,
+	operators_dir: Option<PathBuf>,
 }
 
 impl Default for FlowBuilder {
@@ -38,6 +39,7 @@ impl FlowBuilder {
 			priority: Priority::Normal,
 			operators: Vec::new(),
 			max_batch_size: Some(10),
+			operators_dir: None,
 		}
 	}
 
@@ -65,6 +67,12 @@ impl FlowBuilder {
 		self
 	}
 
+	/// Set the directory to scan for FFI operator shared libraries
+	pub fn operators_dir(mut self, path: PathBuf) -> Self {
+		self.operators_dir = Some(path);
+		self
+	}
+
 	/// Register a custom operator factory
 	pub fn register_operator<F>(mut self, name: impl Into<String>, factory: F) -> Self
 	where
@@ -82,6 +90,7 @@ impl FlowBuilder {
 			priority: self.priority,
 			operators: self.operators,
 			max_batch_size: self.max_batch_size,
+			operators_dir: self.operators_dir,
 		}
 	}
 }

@@ -401,10 +401,20 @@ impl ValueFFI {
 	}
 }
 
-/// Opaque handle to a transaction (managed by host)
+use core::ffi::c_void;
+
+use crate::HostCallbacks;
+
+/// Handle to a transaction with host callbacks
+/// This struct is shared between the host and operators to pass transaction context
 #[repr(C)]
 pub struct TransactionHandle {
-	_opaque: [u8; 0],
+	/// Opaque pointer to the host's transaction data
+	pub txn_ptr: *mut c_void,
+	/// Operator ID for this operation
+	pub operator_id: u64,
+	/// Host callbacks for state and other operations
+	pub callbacks: HostCallbacks,
 }
 
 /// Opaque handle to an expression (managed by host)
