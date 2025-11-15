@@ -582,6 +582,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "reifydb-flow-operator-abi"
+version = "0.0.1"
+
+[[package]]
+name = "reifydb-flow-operator-sdk"
+version = "0.0.1"
+dependencies = [
+ "bincode",
+ "reifydb-core",
+ "reifydb-flow-operator-abi",
+ "reifydb-type",
+ "serde",
+]
+
+[[package]]
 name = "reifydb-hash"
 version = "0.0.1"
 dependencies = [
@@ -598,21 +613,6 @@ dependencies = [
  "reifydb-core",
  "reifydb-hash",
  "reifydb-type",
-]
-
-[[package]]
-name = "reifydb-operator-abi"
-version = "0.0.1"
-
-[[package]]
-name = "reifydb-operator-sdk"
-version = "0.0.1"
-dependencies = [
- "bincode",
- "reifydb-core",
- "reifydb-operator-abi",
- "reifydb-type",
- "serde",
 ]
 
 [[package]]
@@ -691,9 +691,9 @@ dependencies = [
  "reifydb-cdc",
  "reifydb-core",
  "reifydb-engine",
+ "reifydb-flow-operator-abi",
+ "reifydb-flow-operator-sdk",
  "reifydb-hash",
- "reifydb-operator-abi",
- "reifydb-operator-sdk",
  "reifydb-rql",
  "reifydb-store-transaction",
  "reifydb-sub-api",

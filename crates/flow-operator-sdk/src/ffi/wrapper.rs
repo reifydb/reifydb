@@ -1,15 +1,21 @@
 //! Wrapper that bridges Rust operators to FFI interface
 
-use crate::context::OperatorContext;
-use crate::operator::{FFIOperator, FlowChange};
-use super::marshaller::FFIMarshaller;
+use std::{
+	cell::RefCell,
+	ffi::c_void,
+	panic::{AssertUnwindSafe, catch_unwind},
+	sync::Mutex,
+};
+
 use reifydb_core::interface::FlowNodeId;
-use reifydb_operator_abi::*;
+use reifydb_flow_operator_abi::*;
 use reifydb_type::RowNumber;
-use std::cell::RefCell;
-use std::ffi::c_void;
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::Mutex;
+
+use super::marshaller::FFIMarshaller;
+use crate::{
+	context::OperatorContext,
+	operator::{FFIOperator, FlowChange},
+};
 
 /// Wrapper that adapts a Rust operator to the FFI interface
 pub struct OperatorWrapper<O: FFIOperator> {
@@ -133,7 +139,6 @@ pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
 		}
 	}
 }
-
 
 /// Create the vtable for an operator type
 pub fn create_vtable<O: FFIOperator>() -> FFIOperatorVTable {

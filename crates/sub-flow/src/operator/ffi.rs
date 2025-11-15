@@ -1,22 +1,26 @@
 //! FFI operator implementation that bridges FFI operators with ReifyDB
 
-use std::cell::RefCell;
-use std::ffi::c_void;
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::slice::from_raw_parts;
-use std::sync::Mutex;
+use std::{
+	cell::RefCell,
+	ffi::c_void,
+	panic::{AssertUnwindSafe, catch_unwind},
+	slice::from_raw_parts,
+	sync::Mutex,
+};
 
-use reifydb_core::{interface::FlowNodeId, Row};
+use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
-use reifydb_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
+use reifydb_flow_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
+use reifydb_flow_operator_sdk::ffi::FFIMarshaller;
 use reifydb_type::RowNumber;
 
-use crate::flow::{FlowChange, FlowChangeOrigin};
-use crate::ffi::{create_host_callbacks, TransactionHandle};
-use crate::operator::Operator;
-use crate::transaction::FlowTransaction;
-use crate::Result;
-use reifydb_operator_sdk::ffi::FFIMarshaller;
+use crate::{
+	Result,
+	ffi::{TransactionHandle, create_host_callbacks},
+	flow::{FlowChange, FlowChangeOrigin},
+	operator::Operator,
+	transaction::FlowTransaction,
+};
 
 /// FFI operator that wraps an external operator implementation
 pub struct FFIOperator {
@@ -74,11 +78,11 @@ impl Operator for FFIOperator {
 		let ffi_input = marshaller.marshal_flow_change(&operator_sdk_change);
 
 		// Create output holder
-		let mut ffi_output = reifydb_operator_abi::FlowChangeFFI::empty();
+		let mut ffi_output = reifydb_flow_operator_abi::FlowChangeFFI::empty();
 
 		// Create transaction handle
 		let txn_handle = TransactionHandle::new(txn, self.operator_id, create_host_callbacks());
-		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_operator_abi::TransactionHandle;
+		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_flow_operator_abi::TransactionHandle;
 
 		// Call FFI apply function
 		let result = unsafe {
@@ -108,8 +112,8 @@ impl Operator for FFIOperator {
 		}
 
 		// Unmarshal the output and convert back to sub-flow FlowChange
-		let operator_sdk_change = marshaller.unmarshal_flow_change(&ffi_output)
-			.map_err(|e| crate::ffi::FFIError::Other(e))?;
+		let operator_sdk_change =
+			marshaller.unmarshal_flow_change(&ffi_output).map_err(|e| crate::ffi::FFIError::Other(e))?;
 
 		// Convert back with Internal origin since this came from an FFI operator
 		Ok(crate::ffi::from_operator_sdk_change(
@@ -133,7 +137,7 @@ impl Operator for FFIOperator {
 
 		// Create transaction handle
 		let txn_handle = TransactionHandle::new(txn, self.operator_id, create_host_callbacks());
-		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_operator_abi::TransactionHandle;
+		let txn_handle_ptr = &txn_handle as *const _ as *mut reifydb_flow_operator_abi::TransactionHandle;
 
 		// Call FFI get_rows function
 		let result = catch_unwind(AssertUnwindSafe(|| {

@@ -1,13 +1,18 @@
 //! FFI operator dynamic library loader
 
-use libloading::{Library, Symbol};
-use reifydb_operator_abi::{FFIOperatorCreateFn, FFIOperatorDescriptor};
-use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::{
+	collections::HashMap,
+	path::{Path, PathBuf},
+};
 
-use crate::ffi::{FFIError, FFIResult};
-use crate::operator::FFIOperator;
+use libloading::{Library, Symbol};
 use reifydb_core::interface::FlowNodeId;
+use reifydb_flow_operator_abi::{FFIOperatorCreateFn, FFIOperatorDescriptor};
+
+use crate::{
+	ffi::{FFIError, FFIResult},
+	operator::FFIOperator,
+};
 
 /// FFI operator loader for dynamic libraries
 pub struct FFIOperatorLoader {
@@ -71,10 +76,10 @@ impl FFIOperatorLoader {
 		};
 
 		// Verify API version
-		if descriptor.api_version != reifydb_operator_abi::CURRENT_API_VERSION {
+		if descriptor.api_version != reifydb_flow_operator_abi::CURRENT_API_VERSION {
 			return Err(FFIError::Other(format!(
 				"API version mismatch: expected {}, got {}",
-				reifydb_operator_abi::CURRENT_API_VERSION,
+				reifydb_flow_operator_abi::CURRENT_API_VERSION,
 				descriptor.api_version
 			)));
 		}

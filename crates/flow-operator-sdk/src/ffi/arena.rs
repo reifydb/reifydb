@@ -3,8 +3,10 @@
 //! Provides a simple arena allocator that is automatically cleaned up
 //! after each FFI operator invocation.
 
-use std::alloc::{alloc, dealloc, Layout};
-use std::ptr;
+use std::{
+	alloc::{Layout, alloc, dealloc},
+	ptr,
+};
 
 /// Memory arena for FFI allocations
 ///
@@ -127,9 +129,9 @@ impl Drop for Arena {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+	use super::*;
 
-    #[test]
+	#[test]
 	fn test_arena_basic() {
 		let mut arena = Arena::new();
 

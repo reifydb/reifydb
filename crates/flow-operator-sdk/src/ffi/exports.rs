@@ -1,14 +1,18 @@
 // Redesigned FFI exports that work with static metadata
 
-use std::collections::HashMap;
-use std::ffi::{c_char, c_void, CString};
-use std::ptr;
+use std::{
+	collections::HashMap,
+	ffi::{CString, c_char, c_void},
+	ptr,
+};
 
 use reifydb_core::interface::FlowNodeId;
-use reifydb_operator_abi::{FFIOperatorDescriptor, CURRENT_API_VERSION};
+use reifydb_flow_operator_abi::{CURRENT_API_VERSION, FFIOperatorDescriptor};
 
-use crate::ffi::wrapper::{create_vtable, OperatorWrapper};
-use crate::operator::FFIOperatorWithMetadata;
+use crate::{
+	ffi::wrapper::{OperatorWrapper, create_vtable},
+	operator::FFIOperatorWithMetadata,
+};
 
 pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor {
 	let name_cstring = CString::new(O::NAME).unwrap_or_else(|_| CString::new("unknown").unwrap());

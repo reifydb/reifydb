@@ -16,46 +16,45 @@
 /// ```
 #[macro_export]
 macro_rules! export_operator {
-    ($operator_type:ty) => {
-        use std::sync::OnceLock;
+	($operator_type:ty) => {
+		use std::sync::OnceLock;
 
-        // Static descriptor that's initialized once
-        static OPERATOR_DESCRIPTOR: OnceLock<reifydb_operator_abi::FFIOperatorDescriptor> = OnceLock::new();
+		// Static descriptor that's initialized once
+		static OPERATOR_DESCRIPTOR: OnceLock<reifydb_flow_operator_abi::FFIOperatorDescriptor> =
+			OnceLock::new();
 
-        /// Get the operator descriptor
-        /// This is called by the host to understand what the operator provides
-        #[unsafe(no_mangle)]
-        pub extern "C" fn ffi_operator_get_descriptor() -> *const reifydb_operator_abi::FFIOperatorDescriptor {
-            let descriptor = OPERATOR_DESCRIPTOR.get_or_init(|| {
-                $crate::ffi::exports::create_descriptor::<$operator_type>()
-            });
-            descriptor as *const _
-        }
+		/// Get the operator descriptor
+		/// This is called by the host to understand what the operator provides
+		#[unsafe(no_mangle)]
+		pub extern "C" fn ffi_operator_get_descriptor()
+		-> *const reifydb_flow_operator_abi::FFIOperatorDescriptor {
+			let descriptor = OPERATOR_DESCRIPTOR
+				.get_or_init(|| $crate::ffi::exports::create_descriptor::<$operator_type>());
+			descriptor as *const _
+		}
 
-        /// Create a new operator instance
-        ///
-        /// # Safety
-        /// - config_ptr must be valid for config_len bytes, or null
-        /// - node_id is the FlowNodeId for this operator
-        #[unsafe(no_mangle)]
-        pub unsafe extern "C" fn ffi_operator_create(
-            config_ptr: *const u8,
-            config_len: usize,
-            node_id: u64,
-        ) -> *mut std::ffi::c_void {
-            $crate::ffi::exports::create_operator_instance::<$operator_type>(
-                config_ptr,
-                config_len,
-                node_id,
-            )
-        }
+		/// Create a new operator instance
+		///
+		/// # Safety
+		/// - config_ptr must be valid for config_len bytes, or null
+		/// - node_id is the FlowNodeId for this operator
+		#[unsafe(no_mangle)]
+		pub unsafe extern "C" fn ffi_operator_create(
+			config_ptr: *const u8,
+			config_len: usize,
+			node_id: u64,
+		) -> *mut std::ffi::c_void {
+			$crate::ffi::exports::create_operator_instance::<$operator_type>(
+				config_ptr, config_len, node_id,
+			)
+		}
 
-        /// Get the API version this operator was built against
-        #[unsafe(no_mangle)]
-        pub extern "C" fn ffi_operator_get_api_version() -> u32 {
-            reifydb_operator_abi::CURRENT_API_VERSION
-        }
-    };
+		/// Get the API version this operator was built against
+		#[unsafe(no_mangle)]
+		pub extern "C" fn ffi_operator_get_api_version() -> u32 {
+			reifydb_flow_operator_abi::CURRENT_API_VERSION
+		}
+	};
 }
 
 /// Define operator metadata
@@ -96,10 +95,18 @@ macro_rules! operator_metadata {
 #[doc(hidden)]
 #[macro_export]
 macro_rules! __capability_method {
-    (stateful) => { with_stateful };
-    (keyed) => { with_keyed };
-    (windowed) => { with_windowed };
-    (batch) => { with_batch };
+	(stateful) => {
+		with_stateful
+	};
+	(keyed) => {
+		with_keyed
+	};
+	(windowed) => {
+		with_windowed
+	};
+	(batch) => {
+		with_batch
+	};
 }
 
 /// Create a flow change from a JSON value
@@ -179,14 +186,10 @@ macro_rules! flow_change {
 /// ```
 #[macro_export]
 macro_rules! row {
-    (number: $number:expr, data: $json:tt) => {{
-        $crate::builders::RowBuilder::from_json($number, serde_json::json!($json))
-    }};
+	(number: $number:expr, data: $json:tt) => {{ $crate::builders::RowBuilder::from_json($number, serde_json::json!($json)) }};
 
-    // Default row number to 0
-    ($json:tt) => {{
-        $crate::builders::RowBuilder::from_json(0u64, serde_json::json!($json))
-    }};
+	// Default row number to 0
+	($json:tt) => {{ $crate::builders::RowBuilder::from_json(0u64, serde_json::json!($json)) }};
 }
 
 /// Assert flow changes are equal (for testing)
@@ -197,26 +200,25 @@ macro_rules! row {
 /// ```
 #[macro_export]
 macro_rules! assert_flow_change_eq {
-    ($actual:expr, $expected:expr) => {{
-        let actual = &$actual;
-        let expected = &$expected;
-        assert_eq!(
-            actual.version, expected.version,
-            "Flow change versions don't match: {} != {}",
-            actual.version, expected.version
-        );
-        assert_eq!(
-            actual.diffs.len(), expected.diffs.len(),
-            "Flow change diff counts don't match: {} != {}",
-            actual.diffs.len(), expected.diffs.len()
-        );
-        for (i, (actual_diff, expected_diff)) in actual.diffs.iter().zip(expected.diffs.iter()).enumerate() {
-            assert_eq!(
-                actual_diff, expected_diff,
-                "Diff {} doesn't match", i
-            );
-        }
-    }};
+	($actual:expr, $expected:expr) => {{
+		let actual = &$actual;
+		let expected = &$expected;
+		assert_eq!(
+			actual.version, expected.version,
+			"Flow change versions don't match: {} != {}",
+			actual.version, expected.version
+		);
+		assert_eq!(
+			actual.diffs.len(),
+			expected.diffs.len(),
+			"Flow change diff counts don't match: {} != {}",
+			actual.diffs.len(),
+			expected.diffs.len()
+		);
+		for (i, (actual_diff, expected_diff)) in actual.diffs.iter().zip(expected.diffs.iter()).enumerate() {
+			assert_eq!(actual_diff, expected_diff, "Diff {} doesn't match", i);
+		}
+	}};
 }
 
 /// Test an operator with input/output pairs
@@ -226,10 +228,10 @@ macro_rules! assert_flow_change_eq {
 /// test_operator! {
 ///     operator: MyOperator::new(),
 ///     tests: [
-///         {
-///             input: flow_change! { insert: { "value": 1 } },
-///             output: flow_change! { insert: { "value": 2 } },
-///         },
+/// 	{
+/// 	    input: flow_change! { insert: { "value": 1 } },
+/// 	    output: flow_change! { insert: { "value": 2 } },
+/// 	},
 ///     ]
 /// }
 /// ```

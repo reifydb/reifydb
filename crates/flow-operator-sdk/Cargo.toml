@@ -1,11 +1,11 @@
 [package]
-name = "reifydb-operator-sdk"
+name = "reifydb-flow-operator-sdk"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
 [dependencies]
-reifydb-operator-abi = { path = "../operator-abi" }
+reifydb-flow-operator-abi = { path = "../flow-operator-abi" }
 reifydb-core = { path = "../core" }
 reifydb-type = { path = "../type" }
 
