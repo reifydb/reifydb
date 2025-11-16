@@ -32,7 +32,7 @@ pub struct FlowToCreate {
 	pub fragment: Option<OwnedFragment>,
 	pub name: String,
 	pub namespace: NamespaceId,
-	pub query: String,
+	pub query: reifydb_type::Blob,
 	pub columns: Vec<FlowColumnToCreate>,
 	pub status: FlowStatus,
 }
@@ -65,7 +65,7 @@ impl CatalogStore {
 		flow::LAYOUT.set_u64(&mut row, flow::ID, flow);
 		flow::LAYOUT.set_u64(&mut row, flow::NAMESPACE, namespace);
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &to_create.name);
-		flow::LAYOUT.set_utf8(&mut row, flow::QUERY, &to_create.query);
+		flow::LAYOUT.set_blob(&mut row, flow::QUERY, &to_create.query);
 		flow::LAYOUT.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
 
 		txn.set(
@@ -157,7 +157,7 @@ mod tests {
 			fragment: None,
 			name: "test_flow".to_string(),
 			namespace: test_namespace.id,
-			query: "FROM test_table".to_string(),
+			query: reifydb_type::Blob::from(b"FROM test_table".as_slice()),
 			columns: vec![],
 			status: FlowStatus::Active,
 		};
@@ -167,7 +167,7 @@ mod tests {
 		assert_eq!(result.id, FlowId(1));
 		assert_eq!(result.namespace, NamespaceId(1025));
 		assert_eq!(result.name, "test_flow");
-		assert_eq!(result.query, "FROM test_table");
+		assert_eq!(result.query.as_ref(), b"FROM test_table");
 		assert_eq!(result.status, FlowStatus::Active);
 
 		// Second creation should fail with duplicate error
@@ -185,7 +185,7 @@ mod tests {
 			fragment: None,
 			name: "flow_one".to_string(),
 			namespace: test_namespace.id,
-			query: "MAP 1".to_string(),
+			query: reifydb_type::Blob::from(b"MAP 1".as_slice()),
 			columns: vec![],
 			status: FlowStatus::Active,
 		};
@@ -195,7 +195,7 @@ mod tests {
 			fragment: None,
 			name: "flow_two".to_string(),
 			namespace: test_namespace.id,
-			query: "MAP 2".to_string(),
+			query: reifydb_type::Blob::from(b"MAP 2".as_slice()),
 			columns: vec![],
 			status: FlowStatus::Paused,
 		};
@@ -240,7 +240,7 @@ mod tests {
 			fragment: None,
 			name: "flow_with_columns".to_string(),
 			namespace: test_namespace.id,
-			query: "FROM users MAP id, name".to_string(),
+			query: reifydb_type::Blob::from(b"FROM users MAP id, name".as_slice()),
 			columns: vec![
 				FlowColumnToCreate {
 					name: "id".to_string(),
@@ -275,7 +275,7 @@ mod tests {
 			fragment: None,
 			name: "shared_name".to_string(),
 			namespace: namespace_one.id,
-			query: "MAP 1".to_string(),
+			query: reifydb_type::Blob::from(b"MAP 1".as_slice()),
 			columns: vec![],
 			status: FlowStatus::Active,
 		};
@@ -286,7 +286,7 @@ mod tests {
 			fragment: None,
 			name: "shared_name".to_string(),
 			namespace: namespace_two.id,
-			query: "MAP 2".to_string(),
+			query: reifydb_type::Blob::from(b"MAP 2".as_slice()),
 			columns: vec![],
 			status: FlowStatus::Active,
 		};

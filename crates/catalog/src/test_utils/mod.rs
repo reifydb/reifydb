@@ -183,7 +183,7 @@ pub fn create_flow(
 	txn: &mut impl CommandTransaction,
 	namespace: &str,
 	flow: &str,
-	query: &str,
+	query: impl Into<reifydb_type::Blob>,
 	columns: &[crate::store::flow::create::FlowColumnToCreate],
 ) -> FlowDef {
 	// First look up the namespace to get its ID
@@ -195,7 +195,7 @@ pub fn create_flow(
 			fragment: None,
 			name: flow.to_string(),
 			namespace: namespace_def.id,
-			query: query.to_string(),
+			query: query.into(),
 			columns: columns.to_vec(),
 			status: FlowStatus::Active,
 		},
@@ -209,5 +209,5 @@ pub fn ensure_test_flow(txn: &mut impl CommandTransaction) -> FlowDef {
 	if let Some(result) = CatalogStore::find_flow_by_name(txn, namespace.id, "test_flow").unwrap() {
 		return result;
 	}
-	create_flow(txn, "test_namespace", "test_flow", "SELECT * FROM x", &[])
+	create_flow(txn, "test_namespace", "test_flow", b"SELECT * FROM x".as_slice(), &[])
 }

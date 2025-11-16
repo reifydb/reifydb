@@ -25,7 +25,7 @@ impl CatalogStore {
 		let id = FlowId(flow::LAYOUT.get_u64(&row, flow::ID));
 		let namespace = NamespaceId(flow::LAYOUT.get_u64(&row, flow::NAMESPACE));
 		let name = flow::LAYOUT.get_utf8(&row, flow::NAME).to_string();
-		let query = flow::LAYOUT.get_utf8(&row, flow::QUERY).to_string();
+		let query = flow::LAYOUT.get_blob(&row, flow::QUERY).clone();
 		let status_u8 = flow::LAYOUT.get_u8(&row, flow::STATUS);
 		let status = FlowStatus::from_u8(status_u8);
 
@@ -79,13 +79,13 @@ mod tests {
 		let _namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		create_flow(&mut txn, "namespace_one", "flow_one", "MAP 1", &[]);
-		create_flow(&mut txn, "namespace_two", "flow_two", "MAP 2", &[]);
+		create_flow(&mut txn, "namespace_one", "flow_one", b"MAP 1".as_slice(), &[]);
+		create_flow(&mut txn, "namespace_two", "flow_two", b"MAP 2".as_slice(), &[]);
 
 		let result = CatalogStore::find_flow_by_name(&mut txn, namespace_two.id, "flow_two").unwrap().unwrap();
 		assert_eq!(result.name, "flow_two");
 		assert_eq!(result.namespace, namespace_two.id);
-		assert_eq!(result.query, "MAP 2");
+		assert_eq!(result.query.as_ref(), b"MAP 2");
 	}
 
 	#[test]
@@ -102,8 +102,8 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
-		create_flow(&mut txn, "test_namespace", "flow_one", "MAP 1", &[]);
-		create_flow(&mut txn, "test_namespace", "flow_two", "MAP 2", &[]);
+		create_flow(&mut txn, "test_namespace", "flow_one", b"MAP 1".as_slice(), &[]);
+		create_flow(&mut txn, "test_namespace", "flow_two", b"MAP 2".as_slice(), &[]);
 
 		let result = CatalogStore::find_flow_by_name(&mut txn, test_namespace.id, "flow_three").unwrap();
 		assert!(result.is_none());
@@ -115,7 +115,7 @@ mod tests {
 		let _namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		create_flow(&mut txn, "namespace_one", "my_flow", "MAP 1", &[]);
+		create_flow(&mut txn, "namespace_one", "my_flow", b"MAP 1".as_slice(), &[]);
 
 		// Flow exists in namespace_one but not in namespace_two
 		let result = CatalogStore::find_flow_by_name(&mut txn, namespace_two.id, "my_flow").unwrap();
@@ -127,7 +127,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let test_namespace = ensure_test_namespace(&mut txn);
 
-		create_flow(&mut txn, "test_namespace", "MyFlow", "MAP 1", &[]);
+		create_flow(&mut txn, "test_namespace", "MyFlow", b"MAP 1".as_slice(), &[]);
 
 		// Flow names are case-sensitive
 		let result = CatalogStore::find_flow_by_name(&mut txn, test_namespace.id, "myflow").unwrap();
@@ -142,12 +142,12 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		ensure_test_namespace(&mut txn);
 
-		let flow = create_flow(&mut txn, "test_namespace", "test_flow", "SELECT 42", &[]);
+		let flow = create_flow(&mut txn, "test_namespace", "test_flow", b"SELECT 42".as_slice(), &[]);
 
 		let result = CatalogStore::find_flow(&mut txn, flow.id).unwrap().unwrap();
 		assert_eq!(result.id, flow.id);
 		assert_eq!(result.name, "test_flow");
-		assert_eq!(result.query, "SELECT 42");
+		assert_eq!(result.query.as_ref(), b"SELECT 42");
 	}
 
 	#[test]

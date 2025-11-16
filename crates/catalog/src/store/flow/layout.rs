@@ -17,7 +17,7 @@ pub(crate) mod flow {
 			Type::Uint8, // id
 			Type::Uint8, // namespace id
 			Type::Utf8,  // name
-			Type::Utf8,  // query
+			Type::Blob,  // query
 			Type::Uint1, // status (0 = Active, 1 = Paused, 2 = Failed)
 		])
 	});
