@@ -1,7 +1,7 @@
 {
   "name": "reifydb",
   "private": true,
-  "version": "0.0.1",
+  "version": "0.1.0",
   "scripts": {
     "build": "pnpm -r build",
     "clean": "rm -rf node_modules core/node_modules core/dist client/node_modules client/dist react/node_modules react/dist coverage core/coverage client/coverage react/coverage .turbo core/.turbo client/.turbo react/.turbo pnpm-lock.yaml",

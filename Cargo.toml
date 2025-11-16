@@ -84,7 +84,7 @@ repository = "https://github.com/reifydb/reifydb"
 readme = "readme.md"
 license = "AGPL-3"
 
-version = "0.0.1"
+version = "0.1.0"
 rust-version = "1.85.1"
 edition = "2024"
 
