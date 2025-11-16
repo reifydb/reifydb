@@ -181,13 +181,3 @@ impl Operator for FFIOperator {
 		Ok(result_rows)
 	}
 }
-
-impl Drop for FFIOperator {
-	fn drop(&mut self) {
-		if !self.instance.is_null() {
-			let _ = catch_unwind(AssertUnwindSafe(|| {
-				(self.vtable.destroy)(self.instance);
-			}));
-		}
-	}
-}

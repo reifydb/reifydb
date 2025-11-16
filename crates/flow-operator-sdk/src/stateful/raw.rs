@@ -5,6 +5,10 @@
 
 use std::{ptr::null_mut, slice::from_raw_parts};
 
+use reifydb_core::{
+	CowVec,
+	value::encoded::{EncodedKey, EncodedValues},
+};
 use reifydb_flow_operator_abi::{BufferFFI, StateIteratorFFI};
 
 use crate::{
@@ -13,7 +17,7 @@ use crate::{
 };
 
 /// Get a value from state by key
-pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &str) -> Result<Option<Vec<u8>>> {
+pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
 		ptr: null_mut(),
@@ -35,9 +39,10 @@ pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &str) -> Result<Option<V
 			if output.ptr.is_null() || output.len == 0 {
 				Ok(None)
 			} else {
-				let value = from_raw_parts(output.ptr, output.len).to_vec();
-				// TODO: Free the buffer using host dealloc
-				Ok(Some(value))
+				let value_bytes = from_raw_parts(output.ptr, output.len).to_vec();
+				// Free the buffer allocated by host
+				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
+				Ok(Some(EncodedValues(CowVec::new(value_bytes))))
 			}
 		} else if result == 1 {
 			// Key not found
@@ -49,8 +54,9 @@ pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &str) -> Result<Option<V
 }
 
 /// Set a value in state by key
-pub(crate) fn raw_state_set(ctx: &mut OperatorContext, key: &str, value: &[u8]) -> Result<()> {
+pub(crate) fn raw_state_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedValues) -> Result<()> {
 	let key_bytes = key.as_bytes();
+	let value_bytes = value.as_ref();
 
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.set)(
@@ -58,8 +64,8 @@ pub(crate) fn raw_state_set(ctx: &mut OperatorContext, key: &str, value: &[u8]) 
 			ctx.ctx,
 			key_bytes.as_ptr(),
 			key_bytes.len(),
-			value.as_ptr(),
-			value.len(),
+			value_bytes.as_ptr(),
+			value_bytes.len(),
 		);
 
 		if result == 0 {
@@ -71,7 +77,7 @@ pub(crate) fn raw_state_set(ctx: &mut OperatorContext, key: &str, value: &[u8]) 
 }
 
 /// Remove a value from state by key
-pub(crate) fn raw_state_remove(ctx: &mut OperatorContext, key: &str) -> Result<()> {
+pub(crate) fn raw_state_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
 
 	unsafe {
@@ -91,7 +97,7 @@ pub(crate) fn raw_state_remove(ctx: &mut OperatorContext, key: &str) -> Result<(
 }
 
 /// Scan all keys with a given prefix
-pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &str) -> Result<Vec<(String, Vec<u8>)>> {
+pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StateIteratorFFI = null_mut();
 
@@ -142,17 +148,23 @@ pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &str) -> Result<Ve
 
 			// Convert buffers to owned data
 			if !key_buf.ptr.is_null() && key_buf.len > 0 {
-				let key_slice = from_raw_parts(key_buf.ptr, key_buf.len);
-				let key = String::from_utf8_lossy(key_slice).to_string();
+				let key_bytes = from_raw_parts(key_buf.ptr, key_buf.len).to_vec();
+				let key = EncodedKey(CowVec::new(key_bytes));
 
 				let value = if !value_buf.ptr.is_null() && value_buf.len > 0 {
-					from_raw_parts(value_buf.ptr, value_buf.len).to_vec()
+					let value_bytes = from_raw_parts(value_buf.ptr, value_buf.len).to_vec();
+					EncodedValues(CowVec::new(value_bytes))
 				} else {
-					Vec::new()
+					EncodedValues(CowVec::new(Vec::new()))
 				};
 
+				// Free buffers allocated by host
+				((*ctx.ctx).callbacks.memory.free)(key_buf.ptr as *mut u8, key_buf.len);
+				if !value_buf.ptr.is_null() && value_buf.len > 0 {
+					((*ctx.ctx).callbacks.memory.free)(value_buf.ptr as *mut u8, value_buf.len);
+				}
+
 				results.push((key, value));
-				// TODO: Free key_buf and value_buf using host dealloc
 			}
 		}
 

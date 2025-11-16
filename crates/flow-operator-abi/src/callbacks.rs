@@ -15,12 +15,12 @@ pub struct MemoryCallbacks {
 	/// - Pointer to allocated memory, or null on failure
 	pub alloc: extern "C" fn(size: usize) -> *mut u8,
 
-	/// Deallocate memory previously allocated by alloc
+	/// Free memory previously allocated by alloc
 	///
 	/// # Parameters
-	/// - `ptr`: Pointer to memory to deallocate
+	/// - `ptr`: Pointer to memory to free
 	/// - `size`: Size of allocation (must match original alloc size)
-	pub dealloc: extern "C" fn(ptr: *mut u8, size: usize),
+	pub free: extern "C" fn(ptr: *mut u8, size: usize),
 
 	/// Reallocate memory
 	///

@@ -9,8 +9,4 @@ reifydb-flow-operator-abi = { path = "../flow-operator-abi" }
 reifydb-core = { path = "../core" }
 reifydb-type = { path = "../type" }
 
-# Serialization
-serde = { workspace = true, features = ["derive"] }
-bincode = { workspace = true, features = ["serde"] }
-
 [dev-dependencies]

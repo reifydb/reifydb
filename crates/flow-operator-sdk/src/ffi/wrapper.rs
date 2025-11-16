@@ -122,22 +122,10 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 	result.unwrap_or(-99)
 }
 
-pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
-	unsafe {
-		if !instance.is_null() {
-			let wrapper = Box::from_raw(instance as *mut OperatorWrapper<O>);
-			if let Ok(mut operator) = wrapper.operator.into_inner() {
-				operator.destroy();
-			}
-		}
-	}
-}
-
 /// Create the vtable for an operator type
 pub fn create_vtable<O: FFIOperator>() -> FFIOperatorVTable {
 	FFIOperatorVTable {
 		apply: ffi_apply::<O>,
 		get_rows: ffi_get_rows::<O>,
-		destroy: ffi_destroy::<O>,
 	}
 }

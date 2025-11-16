@@ -3,7 +3,7 @@
 use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::FFIContext;
 
-use crate::state::State;
+use crate::stateful::State;
 
 /// Operator context providing access to state and other resources
 pub struct OperatorContext {

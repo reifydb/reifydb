@@ -51,9 +51,9 @@ pub(super) extern "C" fn host_alloc(size: usize) -> *mut u8 {
 	})
 }
 
-/// Deallocate memory (no-op for arena memory, system dealloc otherwise)
+/// Free memory (no-op for arena memory, system free otherwise)
 #[unsafe(no_mangle)]
-pub(super) extern "C" fn host_dealloc(ptr: *mut u8, size: usize) {
+pub(super) extern "C" fn host_free(ptr: *mut u8, size: usize) {
 	if ptr.is_null() || size == 0 {
 		return;
 	}
@@ -83,7 +83,7 @@ pub(super) extern "C" fn host_realloc(ptr: *mut u8, old_size: usize, new_size: u
 	}
 
 	if new_size == 0 {
-		host_dealloc(ptr, old_size);
+		host_free(ptr, old_size);
 		return std::ptr::null_mut();
 	}
 

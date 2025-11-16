@@ -13,13 +13,18 @@ pub mod context;
 pub mod error;
 pub mod ffi;
 pub mod marshal;
-pub mod state;
+pub mod stateful;
 
 // Re-export commonly used types
 pub use builders::{FlowChangeBuilder, RowBuilder};
 pub use context::OperatorContext;
 pub use error::{FFIError, Result};
-pub use state::State;
+pub use reifydb_core::{
+	CowVec,
+	key::EncodableKey,
+	value::encoded::{EncodedKey, EncodedValues},
+};
+pub use stateful::State;
 
 /// Origin of a flow change
 #[derive(Debug, Clone)]
@@ -100,32 +105,23 @@ pub trait FFIOperator: Send + Sync + 'static {
 	where
 		Self: Sized;
 
-	/// Get the operator ID for this instance
-	fn operator_id(&self) -> FlowNodeId;
-
 	/// Process a flow change (inserts, updates, removes)
 	fn apply(&mut self, ctx: &mut OperatorContext, input: FlowChange) -> Result<FlowChange>;
 
 	/// Get specific rows by row number
 	fn get_rows(&mut self, ctx: &mut OperatorContext, row_numbers: &[RowNumber]) -> Result<Vec<Option<Row>>>;
-
-	/// Clean up resources before the operator is destroyed
-	/// Default implementation does nothing
-	fn destroy(&mut self) {
-		// Optional cleanup
-	}
 }
 
-/// Combined trait for FFI-exportable operators
-/// Implement both FFIOperatorMetadata and FFIOperator to make an operator exportable
 pub trait FFIOperatorWithMetadata: FFIOperator + FFIOperatorMetadata {}
-
-// Blanket implementation - any type implementing both traits is FFI-exportable
 impl<T> FFIOperatorWithMetadata for T where T: FFIOperator + FFIOperatorMetadata {}
 
 // Prelude module for convenient imports
 pub mod prelude {
-	pub use reifydb_core::Row;
+	pub use reifydb_core::{
+		CowVec, Row,
+		key::EncodableKey,
+		value::encoded::{EncodedKey, EncodedValues},
+	};
 	pub use reifydb_type::{RowNumber, Value};
 
 	pub use crate::{
@@ -133,6 +129,6 @@ pub mod prelude {
 		builders::{FlowChangeBuilder, RowBuilder},
 		context::OperatorContext,
 		error::{FFIError, Result},
-		state::State,
+		stateful::State,
 	};
 }

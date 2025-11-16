@@ -589,11 +589,9 @@ version = "0.0.1"
 name = "reifydb-flow-operator-sdk"
 version = "0.0.1"
 dependencies = [
- "bincode",
  "reifydb-core",
  "reifydb-flow-operator-abi",
  "reifydb-type",
- "serde",
 ]
 
 [[package]]

@@ -62,19 +62,5 @@ impl From<reifydb_core::Error> for FFIError {
 	}
 }
 
-/// Convert bincode encode errors to FFIError
-impl From<bincode::error::EncodeError> for FFIError {
-	fn from(err: bincode::error::EncodeError) -> Self {
-		FFIError::Serialization(format!("Encode error: {}", err))
-	}
-}
-
-/// Convert bincode decode errors to FFIError
-impl From<bincode::error::DecodeError> for FFIError {
-	fn from(err: bincode::error::DecodeError) -> Self {
-		FFIError::Serialization(format!("Decode error: {}", err))
-	}
-}
-
 /// Result type alias for FFI operations
 pub type Result<T, E = FFIError> = std::result::Result<T, E>;

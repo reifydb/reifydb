@@ -47,12 +47,6 @@ pub struct FFIOperatorVTable {
 		count: usize,
 		output: *mut RowsFFI,
 	) -> i32,
-
-	/// Destroy the operator instance and free its resources
-	///
-	/// # Parameters
-	/// - `instance`: The operator instance pointer to destroy
-	pub destroy: extern "C" fn(instance: *mut c_void),
 }
 
 /// Descriptor for an FFI operator

@@ -9,6 +9,7 @@
 pub mod logging;
 pub mod memory;
 pub mod state;
+pub mod state_iterator;
 
 // Re-export commonly used functions for arena management
 pub use memory::{clear_current_arena, set_current_arena};
@@ -23,7 +24,7 @@ pub fn create_host_callbacks() -> HostCallbacks {
 	HostCallbacks {
 		memory: MemoryCallbacks {
 			alloc: memory::host_alloc,
-			dealloc: memory::host_dealloc,
+			free: memory::host_free,
 			realloc: memory::host_realloc,
 		},
 		state: StateCallbacks {
