@@ -78,6 +78,7 @@ impl FlowEngine {
 		let loader = ffi_operator_loader();
 
 		// Scan directory for shared libraries
+		println!("Loading FFI operators from {:?}", dir);
 		let entries = read_dir(dir).unwrap();
 
 		for entry in entries {
