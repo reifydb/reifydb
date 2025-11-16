@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use Keyword::{Create, Namespace};
+use Keyword::{Create, Exists, Flow, If, Namespace, Replace};
 use Operator::Colon;
 
 use crate::ast::{
@@ -13,6 +13,8 @@ use crate::ast::{
 		Keyword,
 		Keyword::{Buffer, Deferred, Ring, Series, Table, Transactional, View},
 		Operator,
+		Operator::{Not, Or},
+		Separator,
 		Separator::Comma,
 		Token, TokenKind,
 	},
@@ -21,6 +23,27 @@ use crate::ast::{
 impl<'a> Parser<'a> {
 	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate<'a>> {
 		let token = self.consume_keyword(Create)?;
+
+		// Check for CREATE OR REPLACE
+		let or_replace = if (self.consume_if(TokenKind::Operator(Or))?).is_some() {
+			self.consume_keyword(Replace)?;
+			true
+		} else {
+			false
+		};
+
+		// Check for CREATE FLOW
+		if (self.consume_if(TokenKind::Keyword(Flow))?).is_some() {
+			return self.parse_flow(token, or_replace);
+		}
+
+		// CREATE OR REPLACE is only valid for FLOW currently
+		if or_replace {
+			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
+				"FLOW after CREATE OR REPLACE",
+				self.current()?.fragment.clone(),
+			)));
+		}
 
 		if (self.consume_if(TokenKind::Keyword(Namespace))?).is_some() {
 			return self.parse_namespace(token);
@@ -325,6 +348,107 @@ impl<'a> Parser<'a> {
 			policies,
 			auto_increment,
 		})
+	}
+
+	fn parse_flow(&mut self, token: Token<'a>, or_replace: bool) -> crate::Result<AstCreate<'a>> {
+		use crate::ast::identifier::MaybeQualifiedFlowIdentifier;
+
+		// Check for IF NOT EXISTS
+		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
+			self.consume_operator(Not)?;
+			self.consume_keyword(Exists)?;
+			true
+		} else {
+			false
+		};
+
+		// Parse the flow identifier (namespace.name or just name)
+		let first_token = self.consume(TokenKind::Identifier)?;
+
+		let flow = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
+			// namespace.name format
+			let second_token = self.consume(TokenKind::Identifier)?;
+			MaybeQualifiedFlowIdentifier::new(second_token.fragment.clone())
+				.with_namespace(first_token.fragment.clone())
+		} else {
+			// just name format
+			MaybeQualifiedFlowIdentifier::new(first_token.fragment.clone())
+		};
+
+		// Parse optional column definitions
+		let columns = if self.current()?.kind == TokenKind::Operator(Operator::OpenCurly) {
+			Some(self.parse_columns()?)
+		} else {
+			None
+		};
+
+		// Parse required AS clause
+		self.consume_operator(Operator::As)?;
+
+		// The AS clause can be either:
+		// 1. Curly brace syntax: AS { FROM ... }
+		// 2. Direct syntax: AS FROM ...
+		let as_clause = if self.current()?.kind == TokenKind::Operator(Operator::OpenCurly) {
+			// Curly brace syntax
+			self.consume_operator(Operator::OpenCurly)?;
+
+			let mut query_nodes = Vec::new();
+
+			// Parse statements until we hit the closing brace
+			loop {
+				if self.is_eof() || self.current()?.kind == TokenKind::Operator(Operator::CloseCurly) {
+					break;
+				}
+
+				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				query_nodes.push(node);
+			}
+
+			self.consume_operator(Operator::CloseCurly)?;
+
+			crate::ast::AstStatement {
+				nodes: query_nodes,
+				has_pipes: false,
+			}
+		} else {
+			// Direct syntax - parse until semicolon or EOF
+			let mut query_nodes = Vec::new();
+
+			// Parse nodes until we hit a terminator
+			loop {
+				if self.is_eof() {
+					break;
+				}
+
+				// Check for statement terminators
+				if self.current()?.kind == TokenKind::Separator(Separator::Semicolon) {
+					break;
+				}
+
+				let node = self.parse_node(crate::ast::parse::Precedence::None)?;
+				query_nodes.push(node);
+
+				// Check if we've consumed everything up to a terminator
+				if self.is_eof() || self.current()?.kind == TokenKind::Separator(Separator::Semicolon) {
+					break;
+				}
+			}
+
+			crate::ast::AstStatement {
+				nodes: query_nodes,
+				has_pipes: false,
+			}
+		};
+
+		use crate::ast::ast::AstCreateFlow;
+		Ok(AstCreate::Flow(AstCreateFlow {
+			token,
+			or_replace,
+			if_not_exists,
+			flow,
+			columns,
+			as_clause,
+		}))
 	}
 }
 
@@ -752,6 +876,163 @@ mod tests {
 					// nodes
 					assert!(as_statement.len() > 0);
 				}
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_flow_basic() {
+		let tokens = tokenize("CREATE FLOW my_flow AS FROM orders WHERE status = 'pending'").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Flow(flow) => {
+				assert!(!flow.or_replace);
+				assert!(!flow.if_not_exists);
+				assert_eq!(flow.flow.name.text(), "my_flow");
+				assert!(flow.flow.namespace.is_none());
+				assert!(flow.columns.is_none());
+				assert!(flow.as_clause.len() > 0);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_flow_with_schema() {
+		let tokens =
+			tokenize(r#"CREATE FLOW my_flow {customer_id: int8, total: float8} AS FROM orders"#).unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Flow(flow) => {
+				assert_eq!(flow.flow.name.text(), "my_flow");
+				assert!(flow.columns.is_some());
+				let columns = flow.columns.as_ref().unwrap();
+				assert_eq!(columns.len(), 2);
+				assert_eq!(columns[0].name.text(), "customer_id");
+				assert_eq!(columns[1].name.text(), "total");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_flow_or_replace() {
+		let tokens = tokenize("CREATE OR REPLACE FLOW my_flow AS FROM orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Flow(flow) => {
+				assert!(flow.or_replace);
+				assert!(!flow.if_not_exists);
+				assert_eq!(flow.flow.name.text(), "my_flow");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_flow_if_not_exists() {
+		let tokens = tokenize("CREATE FLOW IF NOT EXISTS my_flow AS FROM orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Flow(flow) => {
+				assert!(!flow.or_replace);
+				assert!(flow.if_not_exists);
+				assert_eq!(flow.flow.name.text(), "my_flow");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_flow_qualified_name() {
+		let tokens = tokenize("CREATE FLOW analytics.sales_flow AS FROM sales.orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Flow(flow) => {
+				assert_eq!(flow.flow.namespace.as_ref().unwrap().text(), "analytics");
+				assert_eq!(flow.flow.name.text(), "sales_flow");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_flow_complex_query() {
+		let tokens = tokenize(
+			r#"
+			CREATE FLOW aggregated AS {
+				FROM raw_events
+				WHERE event_type = 'purchase'
+				AGGREGATE BY user_id
+				SELECT { user_id, SUM(amount) as total }
+			}
+		"#,
+		)
+		.unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Flow(flow) => {
+				assert_eq!(flow.flow.name.text(), "aggregated");
+				// The AS clause should have multiple query nodes
+				assert!(flow.as_clause.len() >= 4); // FROM, WHERE, AGGREGATE, SELECT
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_or_replace_flow_if_not_exists() {
+		let tokens = tokenize("CREATE OR REPLACE FLOW IF NOT EXISTS test.my_flow AS FROM orders").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Flow(flow) => {
+				assert!(flow.or_replace);
+				assert!(flow.if_not_exists);
+				assert_eq!(flow.flow.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(flow.flow.name.text(), "my_flow");
 			}
 			_ => unreachable!(),
 		}

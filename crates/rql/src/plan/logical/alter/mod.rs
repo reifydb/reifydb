@@ -24,6 +24,10 @@ impl Compiler {
 			AstAlter::Sequence(node) => Self::compile_alter_sequence(node, tx),
 			AstAlter::Table(node) => Self::compile_alter_table(node, tx),
 			AstAlter::View(node) => Self::compile_alter_view(node, tx),
+			AstAlter::Flow(_) => {
+				// TODO: Implement ALTER FLOW compilation
+				todo!("ALTER FLOW compilation not yet implemented")
+			}
 		}
 	}
 }

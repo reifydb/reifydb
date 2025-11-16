@@ -153,9 +153,6 @@ mod tests {
 		let mut parser = Parser::new(tokens);
 		let filter = parser.parse_filter().unwrap();
 
-		// Should parse as: (active == true and price > 100) or premium
-		// == true Due to precedence, AND has higher precedence than
-		// OR
 		let node = filter.node.as_infix();
 		assert!(matches!(node.operator, InfixOperator::Or(_)));
 

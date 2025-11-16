@@ -24,6 +24,10 @@ impl Compiler {
 		match ast {
 			AstCreate::DeferredView(node) => Self::compile_deferred_view(node, tx),
 			AstCreate::TransactionalView(node) => Self::compile_transactional_view(node, tx),
+			AstCreate::Flow(_) => {
+				// TODO: Implement CREATE FLOW compilation
+				todo!("CREATE FLOW compilation not yet implemented")
+			}
 			AstCreate::Namespace(node) => Self::compile_create_namespace(node, tx),
 			AstCreate::Series(node) => Self::compile_create_series(node, tx),
 			AstCreate::Table(node) => Self::compile_create_table(node, tx),

@@ -54,6 +54,7 @@ impl<'a> Parser<'a> {
 					Keyword::Cast => Ok(Ast::Cast(self.parse_cast()?)),
 					Keyword::Create => Ok(Ast::Create(self.parse_create()?)),
 					Keyword::Alter => Ok(Ast::Alter(self.parse_alter()?)),
+					Keyword::Drop => Ok(Ast::Drop(self.parse_drop()?)),
 					Keyword::Delete => Ok(Ast::Delete(self.parse_delete()?)),
 					Keyword::Insert => Ok(Ast::Insert(self.parse_insert()?)),
 					Keyword::Update => Ok(Ast::Update(self.parse_update()?)),

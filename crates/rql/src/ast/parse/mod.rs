@@ -12,6 +12,7 @@ mod create_index;
 mod delete;
 mod describe;
 mod distinct;
+mod drop;
 mod extend;
 mod filter;
 mod from;

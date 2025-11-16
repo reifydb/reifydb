@@ -8,10 +8,10 @@ use reifydb_type::Fragment;
 
 use crate::ast::{
 	identifier::{
-		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedFunctionIdentifier,
-		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
-		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
-		UnresolvedSourceIdentifier,
+		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedFlowIdentifier,
+		MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier,
+		MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
+		MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier, UnresolvedSourceIdentifier,
 	},
 	tokenize::{Literal, Token, TokenKind},
 };
@@ -63,6 +63,7 @@ pub enum Ast<'a> {
 	Cast(AstCast<'a>),
 	Create(AstCreate<'a>),
 	Alter(AstAlter<'a>),
+	Drop(AstDrop<'a>),
 	Describe(AstDescribe<'a>),
 	Distinct(AstDistinct<'a>),
 	Filter(AstFilter<'a>),
@@ -113,6 +114,7 @@ impl<'a> Ast<'a> {
 			Ast::Cast(node) => &node.token,
 			Ast::Create(node) => node.token(),
 			Ast::Alter(node) => node.token(),
+			Ast::Drop(node) => node.token(),
 			Ast::Describe(node) => match node {
 				AstDescribe::Query {
 					token,
@@ -679,6 +681,7 @@ impl<'a> Index<usize> for AstInline<'a> {
 pub enum AstCreate<'a> {
 	DeferredView(AstCreateDeferredView<'a>),
 	TransactionalView(AstCreateTransactionalView<'a>),
+	Flow(AstCreateFlow<'a>),
 	Namespace(AstCreateNamespace<'a>),
 	Series(AstCreateSeries<'a>),
 	Table(AstCreateTable<'a>),
@@ -691,6 +694,21 @@ pub enum AstAlter<'a> {
 	Sequence(AstAlterSequence<'a>),
 	Table(AstAlterTable<'a>),
 	View(AstAlterView<'a>),
+	Flow(AstAlterFlow<'a>),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstDrop<'a> {
+	Flow(AstDropFlow<'a>),
+	// Future: Table, View, Namespace, etc.
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstDropFlow<'a> {
+	pub token: Token<'a>,
+	pub if_exists: bool,
+	pub flow: MaybeQualifiedFlowIdentifier<'a>,
+	pub cascade: bool, // CASCADE or RESTRICT (false = RESTRICT)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -742,6 +760,25 @@ pub enum AstAlterViewOperation<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstAlterFlow<'a> {
+	pub token: Token<'a>,
+	pub flow: MaybeQualifiedFlowIdentifier<'a>,
+	pub action: AstAlterFlowAction<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstAlterFlowAction<'a> {
+	Rename {
+		new_name: Fragment<'a>,
+	},
+	SetQuery {
+		query: AstStatement<'a>,
+	},
+	Pause,
+	Resume,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateDeferredView<'a> {
 	pub token: Token<'a>,
 	pub view: MaybeQualifiedDeferredViewIdentifier<'a>,
@@ -755,6 +792,16 @@ pub struct AstCreateTransactionalView<'a> {
 	pub view: MaybeQualifiedTransactionalViewIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateFlow<'a> {
+	pub token: Token<'a>,
+	pub or_replace: bool,
+	pub if_not_exists: bool,
+	pub flow: MaybeQualifiedFlowIdentifier<'a>,
+	pub columns: Option<Vec<AstColumnToCreate<'a>>>,
+	pub as_clause: AstStatement<'a>, // Required, not optional like views
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -837,6 +884,10 @@ impl<'a> AstCreate<'a> {
 				token,
 				..
 			}) => token,
+			AstCreate::Flow(AstCreateFlow {
+				token,
+				..
+			}) => token,
 			AstCreate::Namespace(AstCreateNamespace {
 				token,
 				..
@@ -873,6 +924,21 @@ impl<'a> AstAlter<'a> {
 				..
 			}) => token,
 			AstAlter::View(AstAlterView {
+				token,
+				..
+			}) => token,
+			AstAlter::Flow(AstAlterFlow {
+				token,
+				..
+			}) => token,
+		}
+	}
+}
+
+impl<'a> AstDrop<'a> {
+	pub fn token(&self) -> &Token<'a> {
+		match self {
+			AstDrop::Flow(AstDropFlow {
 				token,
 				..
 			}) => token,

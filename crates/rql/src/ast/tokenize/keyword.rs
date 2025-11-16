@@ -93,6 +93,7 @@ Create     => "CREATE",
 Alter      => "ALTER",
 Drop       => "DROP",
 Filter     => "FILTER",
+Flow       => "FLOW",
 Window     => "WINDOW",
 
 
@@ -121,7 +122,17 @@ Asc => "ASC",
 Desc => "DESC",
 Auto => "AUTO",
 Increment => "INCREMENT",
-Value => "VALUE"}
+Value => "VALUE",
+
+Exists => "EXISTS",
+Replace => "REPLACE",
+Cascade => "CASCADE",
+Restrict => "RESTRICT",
+To => "TO",
+Pause => "PAUSE",
+Resume => "RESUME",
+Query => "QUERY",
+Rename => "RENAME"}
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
 	let mut map = HashMap::new();
@@ -169,6 +180,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("ALTER", Keyword::Alter);
 	map.insert("DROP", Keyword::Drop);
 	map.insert("FILTER", Keyword::Filter);
+	map.insert("FLOW", Keyword::Flow);
 	map.insert("WINDOW", Keyword::Window);
 	map.insert("IN", Keyword::In);
 	map.insert("BETWEEN", Keyword::Between);
@@ -194,6 +206,15 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("AUTO", Keyword::Auto);
 	map.insert("INCREMENT", Keyword::Increment);
 	map.insert("VALUE", Keyword::Value);
+	map.insert("EXISTS", Keyword::Exists);
+	map.insert("REPLACE", Keyword::Replace);
+	map.insert("CASCADE", Keyword::Cascade);
+	map.insert("RESTRICT", Keyword::Restrict);
+	map.insert("TO", Keyword::To);
+	map.insert("PAUSE", Keyword::Pause);
+	map.insert("RESUME", Keyword::Resume);
+	map.insert("QUERY", Keyword::Query);
+	map.insert("RENAME", Keyword::Rename);
 	map
 });
 
@@ -350,7 +371,17 @@ mod tests {
 	test_keyword_increment => (Increment, "INCREMENT"),
 	test_keyword_sequence => (Sequence, "SEQUENCE"),
 	test_keyword_alter => (Alter, "ALTER"),
-	test_keyword_value => (Value, "VALUE")}
+	test_keyword_value => (Value, "VALUE"),
+	test_keyword_flow => (Flow, "FLOW"),
+	test_keyword_exists => (Exists, "EXISTS"),
+	test_keyword_replace => (Replace, "REPLACE"),
+	test_keyword_cascade => (Cascade, "CASCADE"),
+	test_keyword_restrict => (Restrict, "RESTRICT"),
+	test_keyword_to => (To, "TO"),
+	test_keyword_pause => (Pause, "PAUSE"),
+	test_keyword_resume => (Resume, "RESUME"),
+	test_keyword_query => (Query, "QUERY"),
+	test_keyword_rename => (Rename, "RENAME")}
 
 	fn check_no_keyword(repr: &str) {
 		// Test that keywords with additional characters are not parsed
@@ -470,5 +501,15 @@ mod tests {
 	test_not_keyword_increment => ( "increment"),
 	test_not_keyword_sequence => ( "sequence"),
 	test_not_keyword_alter => ( "alter"),
-	test_not_keyword_value => ( "value")}
+	test_not_keyword_value => ( "value"),
+	test_not_keyword_flow => ( "flow"),
+	test_not_keyword_exists => ( "exists"),
+	test_not_keyword_replace => ( "replace"),
+	test_not_keyword_cascade => ( "cascade"),
+	test_not_keyword_restrict => ( "restrict"),
+	test_not_keyword_to => ( "to"),
+	test_not_keyword_pause => ( "pause"),
+	test_not_keyword_resume => ( "resume"),
+	test_not_keyword_query => ( "query"),
+	test_not_keyword_rename => ( "rename")}
 }

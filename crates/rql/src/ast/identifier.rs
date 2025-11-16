@@ -228,6 +228,37 @@ impl<'a> MaybeQualifiedViewIdentifier<'a> {
 	}
 }
 
+/// Maybe-qualified flow identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedFlowIdentifier<'a> {
+	/// Namespace containing this flow (optional in user input)
+	pub namespace: Option<Fragment<'a>>,
+	/// Flow name
+	pub name: Fragment<'a>,
+	/// Alias for this flow in query context
+	pub alias: Option<Fragment<'a>>,
+}
+
+impl<'a> MaybeQualifiedFlowIdentifier<'a> {
+	pub fn new(name: Fragment<'a>) -> Self {
+		Self {
+			namespace: None,
+			name,
+			alias: None,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Fragment<'a>) -> Self {
+		self.namespace = Some(namespace);
+		self
+	}
+
+	pub fn with_alias(mut self, alias: Fragment<'a>) -> Self {
+		self.alias = Some(alias);
+		self
+	}
+}
+
 /// Maybe-qualified ring buffer identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedRingBufferIdentifier<'a> {
