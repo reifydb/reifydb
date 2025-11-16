@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use reifydb_core::interface::FlowNodeId;
 use reifydb_rql::expression::Expression;
 
-use crate::operator::{BoxedOperator, Operator};
+use crate::operator::BoxedOperator;
 
 type OperatorFactoryFn = Box<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<BoxedOperator> + Send + Sync>;
 

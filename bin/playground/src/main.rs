@@ -26,7 +26,9 @@ fn main() {
 		.with_logging(logger_configuration)
 		.with_worker(|wp| wp)
 		.with_flow(|f| {
-			f.operators_dir(PathBuf::from_str("/home/ddymke/Workspace/red/testsuite/target/debug").unwrap())
+			f.operators_dir(
+				PathBuf::from_str("/home/ddymke/Workspace/red/testsuite/fixture/target/debug").unwrap(),
+			)
 		})
 		.build()
 		.unwrap();

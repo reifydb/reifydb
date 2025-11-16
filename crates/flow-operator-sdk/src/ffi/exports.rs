@@ -2,7 +2,7 @@
 
 use std::{
 	collections::HashMap,
-	ffi::{CString, c_char, c_void},
+	ffi::{CString, c_void},
 	ptr,
 };
 

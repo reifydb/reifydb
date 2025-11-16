@@ -2,6 +2,7 @@
 
 use std::{
 	collections::HashMap,
+	ffi::CStr,
 	path::{Path, PathBuf},
 	sync::OnceLock,
 };
@@ -54,7 +55,7 @@ impl FFIOperatorLoader {
 	/// * `Err(FFIError)` - Loading or initialization failed
 	pub fn load_operator(&mut self, path: &Path, config: &[u8], operator_id: FlowNodeId) -> FFIResult<FFIOperator> {
 		// Load the library if not already loaded
-		let library = if !self.loaded_libraries.contains_key(path) {
+		if !self.loaded_libraries.contains_key(path) {
 			// Load the library
 			let lib = unsafe {
 				Library::new(path).map_err(|e| {
@@ -88,8 +89,7 @@ impl FFIOperatorLoader {
 		};
 
 		// Store operator name -> path mapping
-		let operator_name =
-			unsafe { std::ffi::CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string() };
+		let operator_name = unsafe { CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string() };
 		self.operator_paths.insert(operator_name.clone(), path.to_path_buf());
 
 		// Verify API version

@@ -19,7 +19,7 @@ use reifydb_type::internal;
 
 use crate::{
 	ffi::loader::ffi_operator_loader,
-	operator::{BoxedOperator, Operator, Operators, transform::registry::TransformOperatorRegistry},
+	operator::{BoxedOperator, Operators, transform::registry::TransformOperatorRegistry},
 };
 
 pub(crate) struct FlowEngineInner {

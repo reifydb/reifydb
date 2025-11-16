@@ -41,7 +41,8 @@ impl BufferFFI {
 		if self.is_empty() {
 			&[]
 		} else {
-			core::slice::from_raw_parts(self.ptr, self.len)
+			// SAFETY: Caller must ensure pointer validity and lifetime
+			unsafe { core::slice::from_raw_parts(self.ptr, self.len) }
 		}
 	}
 }
@@ -114,14 +115,15 @@ impl LayoutFFI {
 	/// Get a field by index
 	pub unsafe fn get_field(&self, index: usize) -> Option<&FieldFFI> {
 		if index < self.field_count && !self.fields.is_null() {
-			Some(&*self.fields.add(index))
+			// SAFETY: Caller must ensure fields pointer is valid and index is in bounds
+			unsafe { Some(&*self.fields.add(index)) }
 		} else {
 			None
 		}
 	}
 
 	/// Check if a field is defined in the encoded data
-	pub unsafe fn is_defined(&self, encoded: &BufferFFI, index: usize) -> bool {
+	pub fn is_defined(&self, encoded: &BufferFFI, index: usize) -> bool {
 		if index >= self.field_count || encoded.is_empty() {
 			return false;
 		}
@@ -134,7 +136,7 @@ impl LayoutFFI {
 		}
 
 		let bitvec_ptr = encoded.ptr;
-		let byte = *bitvec_ptr.add(byte_index);
+		let byte = unsafe { *bitvec_ptr.add(byte_index) };
 		(byte & (1 << bit_index)) != 0
 	}
 

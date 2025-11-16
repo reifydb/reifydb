@@ -33,12 +33,10 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	}
 
 	/// Create from a raw pointer
-	pub unsafe fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
-		&mut *(ptr as *mut Self)
+	pub fn from_ptr(ptr: *mut c_void) -> &'static mut Self {
+		unsafe { &mut *(ptr as *mut Self) }
 	}
 }
-
-// FFI callback implementations
 
 pub extern "C" fn ffi_apply<O: FFIOperator>(
 	instance: *mut c_void,
@@ -54,8 +52,10 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 				Err(_) => return -1,
 			};
 
-			// Unmarshal input using the marshaller
 			let mut marshaller = wrapper.marshaller.borrow_mut();
+			marshaller.clear();
+
+			// Unmarshal input using the marshaller
 			let input_change = match marshaller.unmarshal_flow_change(&*input) {
 				Ok(change) => change,
 				Err(_) => return -3,
@@ -68,12 +68,7 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 				Err(_) => return -2,
 			};
 
-			// Marshal output
 			*output = marshaller.marshal_flow_change(&output_change);
-
-			// Clear arena to prevent stale allocations in next call
-			marshaller.clear();
-
 			0 // Success
 		}
 	}));
@@ -96,6 +91,9 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 				Err(_) => return -1,
 			};
 
+			let mut marshaller = wrapper.marshaller.borrow_mut();
+			marshaller.clear();
+
 			// Convert row numbers
 			let numbers: Vec<RowNumber> = if !row_numbers.is_null() && count > 0 {
 				std::slice::from_raw_parts(row_numbers, count)
@@ -115,12 +113,7 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 				Err(_) => return -2,
 			};
 
-			// Marshal output using the marshaller
-			let mut marshaller = wrapper.marshaller.borrow_mut();
 			*output = marshaller.marshal_rows(&rows);
-
-			// Clear arena to prevent stale allocations in next call
-			marshaller.clear();
 
 			0 // Success
 		}
@@ -129,10 +122,27 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 	result.unwrap_or(-99)
 }
 
+pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {
+	if instance.is_null() {
+		return;
+	}
+
+	let result = catch_unwind(AssertUnwindSafe(|| unsafe {
+		// Reconstruct the Box from the raw pointer and let it drop
+		let _wrapper = Box::from_raw(instance as *mut OperatorWrapper<O>);
+		// Wrapper will be dropped here, cleaning up the operator
+	}));
+
+	if result.is_err() {
+		eprintln!("FFI operator panicked during destroy");
+	}
+}
+
 /// Create the vtable for an operator type
 pub fn create_vtable<O: FFIOperator>() -> FFIOperatorVTable {
 	FFIOperatorVTable {
 		apply: ffi_apply::<O>,
 		get_rows: ffi_get_rows::<O>,
+		destroy: ffi_destroy::<O>,
 	}
 }

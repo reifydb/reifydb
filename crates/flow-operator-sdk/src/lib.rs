@@ -8,15 +8,14 @@ use reifydb_core::{
 };
 use reifydb_type::{RowNumber, Value};
 
-pub mod builders;
+pub mod change;
 pub mod context;
 pub mod error;
 pub mod ffi;
 pub mod marshal;
 pub mod stateful;
 
-// Re-export commonly used types
-pub use builders::{FlowChangeBuilder, RowBuilder};
+pub use change::FlowChangeBuilder;
 pub use context::OperatorContext;
 pub use error::{FFIError, Result};
 pub use reifydb_core::{
@@ -125,8 +124,8 @@ pub mod prelude {
 	pub use reifydb_type::{RowNumber, Value};
 
 	pub use crate::{
-		FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowChangeOrigin, FlowDiff,
-		builders::{FlowChangeBuilder, RowBuilder},
+		FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowChangeBuilder,
+		FlowChangeOrigin, FlowDiff,
 		context::OperatorContext,
 		error::{FFIError, Result},
 		stateful::State,

@@ -9,10 +9,7 @@ use reifydb_core::interface::{CdcConsumerId, FlowNodeId};
 use reifydb_rql::expression::Expression;
 use reifydb_sub_api::Priority;
 
-use crate::{
-	operator::{BoxedOperator, Operator},
-	subsystem::FlowSubsystemConfig,
-};
+use crate::{operator::BoxedOperator, subsystem::FlowSubsystemConfig};
 
 /// Type alias for operator factory functions
 pub type OperatorFactory =

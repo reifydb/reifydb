@@ -7,7 +7,7 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion,
-	interface::{FlowNodeId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId},
+	interface::{FlowId, FlowNodeId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId},
 };
 use reifydb_flow_operator_abi::*;
 
@@ -64,6 +64,10 @@ impl Marshaller {
 				},
 				SourceId::RingBuffer(id) => FlowOriginFFI {
 					origin_type: 4,
+					id: id.0,
+				},
+				&SourceId::Flow(id) => FlowOriginFFI {
+					origin_type: 5,
 					id: id.0,
 				},
 			},
@@ -127,6 +131,7 @@ impl Marshaller {
 			2 => Ok(FlowChangeOrigin::External(SourceId::View(ViewId(ffi.id)))),
 			3 => Ok(FlowChangeOrigin::External(SourceId::TableVirtual(TableVirtualId(ffi.id)))),
 			4 => Ok(FlowChangeOrigin::External(SourceId::RingBuffer(RingBufferId(ffi.id)))),
+			5 => Ok(FlowChangeOrigin::External(SourceId::Flow(FlowId(ffi.id)))),
 			_ => Err(format!("Invalid origin_type: {}", ffi.origin_type)),
 		}
 	}

@@ -9,8 +9,8 @@ use std::{
 
 use reifydb_flow_operator_sdk::ffi::Arena;
 
-/// Thread-local storage for the current arena
-/// All allocations during an FFI operation will use this arena
+// Thread-local storage for the current arena
+// All allocations during an FFI operation will use this arena
 thread_local! {
 	static CURRENT_ARENA: RefCell<Option<*mut Arena>> = RefCell::new(None);
 }

@@ -63,6 +63,15 @@ impl FFIOperator {
 	}
 }
 
+impl Drop for FFIOperator {
+	fn drop(&mut self) {
+		// Call the destroy function from the vtable to clean up the FFI operator instance
+		if !self.instance.is_null() {
+			(self.vtable.destroy)(self.instance);
+		}
+	}
+}
+
 impl Operator for FFIOperator {
 	fn id(&self) -> FlowNodeId {
 		self.operator_id
@@ -108,6 +117,9 @@ impl Operator for FFIOperator {
 
 		// Unmarshal the output
 		let output_change = marshaller.unmarshal_flow_change(&ffi_output).map_err(|e| FFIError::Other(e))?;
+
+		// Clear the marshaller's arena after operation
+		marshaller.clear();
 
 		Ok(output_change)
 	}
