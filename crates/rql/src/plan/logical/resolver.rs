@@ -7,8 +7,8 @@ use reifydb_core::{
 	interface::{
 		TableVirtualDef, ViewKind,
 		resolved::{
-			ResolvedDeferredView, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource, ResolvedTable,
-			ResolvedTableVirtual, ResolvedTransactionalView,
+			ResolvedDeferredView, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource,
+			ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 		},
 	},
 };
@@ -74,6 +74,13 @@ pub fn resolve_unresolved_source(
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedSource::RingBuffer(ResolvedRingBuffer::new(name_fragment, namespace, ring_buffer)));
+	}
+
+	// Try flows
+	if let Some(flow) = tx.find_flow_by_name(ns_def.id, name_str)? {
+		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
+		// For now, just create without alias
+		return Ok(ResolvedSource::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));
 	}
 
 	// Try views

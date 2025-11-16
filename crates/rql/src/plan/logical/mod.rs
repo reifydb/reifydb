@@ -29,14 +29,14 @@ use crate::{
 		InfixOperator, Token, TokenKind,
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-			MaybeQualifiedIndexIdentifier, MaybeQualifiedRingBufferIdentifier,
-			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
-			MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedFlowIdentifier, MaybeQualifiedIndexIdentifier,
+			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
+			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
 		},
 		tokenize::{Keyword, Literal, Operator},
 	},
 	expression::{AliasExpression, Expression},
-	plan::logical::alter::{AlterTableNode, AlterViewNode},
+	plan::logical::alter::{AlterFlowNode, AlterTableNode, AlterViewNode},
 };
 
 struct Compiler {}
@@ -461,11 +461,13 @@ pub enum LogicalPlan<'a> {
 	CreateSequence(CreateSequenceNode<'a>),
 	CreateTable(CreateTableNode<'a>),
 	CreateRingBuffer(CreateRingBufferNode<'a>),
+	CreateFlow(CreateFlowNode<'a>),
 	CreateIndex(CreateIndexNode<'a>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'a>),
 	AlterTable(AlterTableNode<'a>),
 	AlterView(AlterViewNode<'a>),
+	AlterFlow(AlterFlowNode<'a>),
 	// Mutate
 	DeleteTable(DeleteTableNode<'a>),
 	DeleteRingBuffer(DeleteRingBufferNode<'a>),
@@ -611,6 +613,14 @@ pub struct CreateRingBufferNode<'a> {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+}
+
+#[derive(Debug)]
+pub struct CreateFlowNode<'a> {
+	pub flow: MaybeQualifiedFlowIdentifier<'a>,
+	pub if_not_exists: bool,
+	pub columns: Vec<ViewColumnToCreate>,
+	pub with: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]

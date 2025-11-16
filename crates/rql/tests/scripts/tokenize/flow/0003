@@ -1,0 +1,17 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+tokenize 'CREATE FLOW IF NOT EXISTS my_flow AS from users'
+---
+> Line 1:
+>   [  0] Keyword(Create)
+>   [  1] Keyword(Flow)
+>   [  2] Keyword(If)
+>   [  3] Operator(Not)
+>   [  4] Keyword(Exists)
+>   [  5] Identifier("my_flow")
+>   [  6] Operator(As)
+>   [  7] Keyword(From)
+>   [  8] Identifier("users")
+> 
+> 

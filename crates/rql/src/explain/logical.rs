@@ -789,5 +789,82 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 			);
 			render_logical_plan_inner(&scalarize.input, &child_prefix, true, output);
 		}
+		LogicalPlan::CreateFlow(create_flow) => {
+			let flow_name = if let Some(ns) = &create_flow.flow.namespace {
+				format!("{}.{}", ns.text(), create_flow.flow.name.text())
+			} else {
+				create_flow.flow.name.text().to_string()
+			};
+
+			output.push_str(&format!("{}{} CreateFlow: {}", prefix, branch, flow_name));
+
+			if create_flow.if_not_exists {
+				output.push_str(" (IF NOT EXISTS)");
+			}
+
+			if !create_flow.columns.is_empty() {
+				output.push_str(&format!(" [{} columns]", create_flow.columns.len()));
+			}
+
+			output.push_str("\n");
+
+			// Render the WITH query as a child
+			if !create_flow.with.is_empty() {
+				for (i, plan) in create_flow.with.iter().enumerate() {
+					let is_last = i == create_flow.with.len() - 1;
+					let new_prefix = format!(
+						"{}{}",
+						prefix,
+						if is_last {
+							"    "
+						} else {
+							"│   "
+						}
+					);
+					render_logical_plan_inner(plan, &new_prefix, is_last, output);
+				}
+			}
+		}
+		LogicalPlan::AlterFlow(alter_flow) => {
+			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {
+				format!("{}.{}", ns.text(), alter_flow.flow.name.text())
+			} else {
+				alter_flow.flow.name.text().to_string()
+			};
+
+			use crate::plan::logical::alter::AlterFlowAction;
+			let action_str = match &alter_flow.action {
+				AlterFlowAction::Rename {
+					new_name,
+				} => format!("RENAME TO {}", new_name.text()),
+				AlterFlowAction::SetQuery {
+					..
+				} => "SET QUERY".to_string(),
+				AlterFlowAction::Pause => "PAUSE".to_string(),
+				AlterFlowAction::Resume => "RESUME".to_string(),
+			};
+
+			output.push_str(&format!("{}{} AlterFlow: {} ({})\n", prefix, branch, flow_name, action_str));
+
+			// Render the SetQuery child plan if present
+			if let AlterFlowAction::SetQuery {
+				query,
+			} = &alter_flow.action
+			{
+				for (i, plan) in query.iter().enumerate() {
+					let is_last = i == query.len() - 1;
+					let new_prefix = format!(
+						"{}{}",
+						prefix,
+						if is_last {
+							"    "
+						} else {
+							"│   "
+						}
+					);
+					render_logical_plan_inner(plan, &new_prefix, is_last, output);
+				}
+			}
+		}
 	}
 }

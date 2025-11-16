@@ -166,6 +166,11 @@ pub(crate) fn compile<'a>(
 			ExecutionPlan::RingBufferScan(RingBufferScan::new(node.source.clone(), context).unwrap())
 		}
 
+		PhysicalPlan::FlowScan(_node) => {
+			// TODO: Implement FlowScan execution
+			unimplemented!("FlowScan execution not yet implemented")
+		}
+
 		PhysicalPlan::TableVirtualScan(node) => {
 			// Create the appropriate virtual table implementation
 			let namespace = node.source.namespace().def();
@@ -232,11 +237,13 @@ pub(crate) fn compile<'a>(
 		PhysicalPlan::AlterSequence(_)
 		| PhysicalPlan::AlterTable(_)
 		| PhysicalPlan::AlterView(_)
+		| PhysicalPlan::AlterFlow(_)
 		| PhysicalPlan::CreateDeferredView(_)
 		| PhysicalPlan::CreateTransactionalView(_)
 		| PhysicalPlan::CreateNamespace(_)
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::CreateRingBuffer(_)
+		| PhysicalPlan::CreateFlow(_)
 		| PhysicalPlan::Delete(_)
 		| PhysicalPlan::DeleteRingBuffer(_)
 		| PhysicalPlan::InsertTable(_)

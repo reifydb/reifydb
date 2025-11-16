@@ -4,7 +4,7 @@
 mod alter;
 mod create;
 
-pub use alter::{AlterTableNode, AlterViewNode};
+pub use alter::{AlterFlowAction, AlterFlowNode, AlterTableNode, AlterViewNode};
 use reifydb_catalog::{
 	CatalogStore,
 	store::{ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
@@ -15,8 +15,8 @@ use reifydb_core::{
 		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
 		catalog::ColumnIndex,
 		resolved::{
-			ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence, ResolvedSource,
-			ResolvedTable, ResolvedTableVirtual, ResolvedView,
+			ResolvedColumn, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence,
+			ResolvedSource, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
 };
@@ -80,6 +80,10 @@ impl Compiler {
 					stack.push(Self::compile_create_ring_buffer(rx, create)?);
 				}
 
+				LogicalPlan::CreateFlow(create) => {
+					stack.push(Self::compile_create_flow(rx, create)?);
+				}
+
 				LogicalPlan::CreateDeferredView(create) => {
 					stack.push(Self::compile_create_deferred(rx, create)?);
 				}
@@ -98,6 +102,10 @@ impl Compiler {
 
 				LogicalPlan::AlterView(alter) => {
 					stack.push(Self::compile_alter_view(rx, alter)?);
+				}
+
+				LogicalPlan::AlterFlow(alter) => {
+					stack.push(Self::compile_alter_flow(rx, alter)?);
 				}
 
 				LogicalPlan::Filter(filter) => {
@@ -652,6 +660,15 @@ impl Compiler {
 								source: resolved_ring_buffer.clone(),
 							}));
 						}
+						ResolvedSource::Flow(resolved_flow) => {
+							// Flows cannot use index directives
+							if scan.index.is_some() {
+								unimplemented!("flows do not support indexes yet");
+							}
+							stack.push(PhysicalPlan::FlowScan(FlowScanNode {
+								source: resolved_flow.clone(),
+							}));
+						}
 					}
 				}
 
@@ -846,10 +863,12 @@ pub enum PhysicalPlan<'a> {
 	CreateNamespace(CreateNamespaceNode<'a>),
 	CreateTable(CreateTableNode<'a>),
 	CreateRingBuffer(CreateRingBufferNode<'a>),
+	CreateFlow(CreateFlowNode<'a>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'a>),
 	AlterTable(AlterTableNode<'a>),
 	AlterView(AlterViewNode<'a>),
+	AlterFlow(AlterFlowNode<'a>),
 	// Mutate
 	Delete(DeleteTableNode<'a>),
 	DeleteRingBuffer(DeleteRingBufferNode<'a>),
@@ -884,6 +903,7 @@ pub enum PhysicalPlan<'a> {
 	TableVirtualScan(TableVirtualScanNode<'a>),
 	ViewScan(ViewScanNode<'a>),
 	RingBufferScan(RingBufferScanNode<'a>),
+	FlowScan(FlowScanNode<'a>),
 	Generator(GeneratorNode<'a>),
 	Window(WindowNode<'a>),
 	// Auto-scalarization for 1x1 frames
@@ -894,6 +914,15 @@ pub enum PhysicalPlan<'a> {
 pub struct CreateDeferredViewNode<'a> {
 	pub namespace: NamespaceDef, // FIXME REsolvedNamespace
 	pub view: Fragment<'a>,
+	pub if_not_exists: bool,
+	pub columns: Vec<ViewColumnToCreate>,
+	pub with: Box<PhysicalPlan<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateFlowNode<'a> {
+	pub namespace: NamespaceDef,
+	pub flow: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
@@ -1137,6 +1166,11 @@ pub struct ViewScanNode<'a> {
 #[derive(Debug, Clone)]
 pub struct RingBufferScanNode<'a> {
 	pub source: ResolvedRingBuffer<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct FlowScanNode<'a> {
+	pub source: ResolvedFlow<'a>,
 }
 
 #[derive(Debug, Clone)]

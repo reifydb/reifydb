@@ -377,6 +377,7 @@ impl Executor {
 			| PhysicalPlan::UpdateRingBuffer(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::FlowScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Variable(_)
@@ -394,11 +395,13 @@ impl Executor {
 			PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
 			| PhysicalPlan::AlterView(_)
+			| PhysicalPlan::AlterFlow(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::CreateRingBuffer(_)
+			| PhysicalPlan::CreateFlow(_)
 			| PhysicalPlan::Distinct(_)
 			| PhysicalPlan::Apply(_) => {
 				// Apply operator requires flow engine for mod
@@ -433,6 +436,10 @@ impl Executor {
 			PhysicalPlan::CreateNamespace(plan) => Ok(Some(self.create_namespace(txn, plan)?)),
 			PhysicalPlan::CreateTable(plan) => Ok(Some(self.create_table(txn, plan)?)),
 			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ring_buffer(txn, plan)?)),
+			PhysicalPlan::CreateFlow(_plan) => {
+				// TODO: Implement create_flow
+				unimplemented!("CREATE FLOW not yet implemented")
+			}
 			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params)?)),
 			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ring_buffer(txn, plan, params)?)),
 			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack)?)),
@@ -454,6 +461,7 @@ impl Executor {
 			| PhysicalPlan::Generator(_)
 			| PhysicalPlan::TableScan(_)
 			| PhysicalPlan::ViewScan(_)
+			| PhysicalPlan::FlowScan(_)
 			| PhysicalPlan::TableVirtualScan(_)
 			| PhysicalPlan::RingBufferScan(_)
 			| PhysicalPlan::Distinct(_)
@@ -477,6 +485,10 @@ impl Executor {
 
 			PhysicalPlan::AlterTable(plan) => Ok(Some(self.alter_table(txn, plan)?)),
 			PhysicalPlan::AlterView(plan) => Ok(Some(self.execute_alter_view(txn, plan)?)),
+			PhysicalPlan::AlterFlow(_plan) => {
+				// TODO: Implement alter_flow
+				unimplemented!("ALTER FLOW not yet implemented")
+			}
 		}
 	}
 

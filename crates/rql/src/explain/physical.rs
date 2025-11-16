@@ -70,6 +70,25 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::CreateNamespace(_) => unimplemented!(),
 		PhysicalPlan::CreateTable(_) => unimplemented!(),
 		PhysicalPlan::CreateRingBuffer(_) => unimplemented!(),
+		PhysicalPlan::CreateFlow(create_flow) => {
+			let mut label =
+				format!("CreateFlow {}.{}", create_flow.namespace.name, create_flow.flow.text());
+
+			if create_flow.if_not_exists {
+				label.push_str(" (IF NOT EXISTS)");
+			}
+
+			if !create_flow.columns.is_empty() {
+				label.push_str(&format!(" [{} columns]", create_flow.columns.len()));
+			}
+
+			write_node_header(output, prefix, is_last, &label);
+
+			// Render the WITH query as a child
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				render_physical_plan_inner(&create_flow.with, child_prefix, true, output);
+			});
+		}
 		PhysicalPlan::AlterSequence(physical::AlterSequenceNode {
 			sequence,
 			column,
@@ -288,6 +307,10 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			let label = format!("RingBufferScan {}.{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
+		PhysicalPlan::FlowScan(node) => {
+			let label = format!("FlowScan {}.{}", node.source.namespace().name(), node.source.name());
+			write_node_header(output, prefix, is_last, &label);
+		}
 
 		PhysicalPlan::Apply(physical::ApplyNode {
 			operator: operator_name,
@@ -338,6 +361,39 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		}
 		PhysicalPlan::AlterView(_) => {
 			write_node_header(output, prefix, is_last, "AlterView");
+		}
+		PhysicalPlan::AlterFlow(alter_flow) => {
+			use crate::plan::physical::AlterFlowAction;
+
+			let flow_name = if let Some(ns) = &alter_flow.flow.namespace {
+				format!("{}.{}", ns.text(), alter_flow.flow.name.text())
+			} else {
+				alter_flow.flow.name.text().to_string()
+			};
+
+			let action_str = match &alter_flow.action {
+				AlterFlowAction::Rename {
+					new_name,
+				} => format!("RENAME TO {}", new_name.text()),
+				AlterFlowAction::SetQuery {
+					..
+				} => "SET QUERY".to_string(),
+				AlterFlowAction::Pause => "PAUSE".to_string(),
+				AlterFlowAction::Resume => "RESUME".to_string(),
+			};
+
+			let label = format!("AlterFlow {} ({})", flow_name, action_str);
+			write_node_header(output, prefix, is_last, &label);
+
+			// Render the SetQuery child plan if present
+			if let AlterFlowAction::SetQuery {
+				query,
+			} = &alter_flow.action
+			{
+				with_child_prefix(prefix, is_last, |child_prefix| {
+					render_physical_plan_inner(query, child_prefix, true, output);
+				});
+			}
 		}
 		PhysicalPlan::TableVirtualScan(node) => {
 			let label = format!("VirtualScan: {}.{}", node.source.namespace().name(), node.source.name());

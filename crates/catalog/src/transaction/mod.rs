@@ -5,6 +5,7 @@ use reifydb_core::interface::{
 	CommandTransaction, QueryTransaction, TransactionalChanges, interceptor::WithInterceptors,
 };
 
+mod flow;
 mod namespace;
 mod ring_buffer;
 mod source;
@@ -33,7 +34,8 @@ pub trait CatalogTrackChangeOperations:
 }
 
 pub trait CatalogQueryTransaction:
-	CatalogNamespaceQueryOperations
+	CatalogFlowQueryOperations
+	+ CatalogNamespaceQueryOperations
 	+ CatalogRingBufferQueryOperations
 	+ CatalogSourceQueryOperations
 	+ CatalogTableQueryOperations
@@ -53,6 +55,7 @@ impl<
 {
 }
 
+pub use flow::CatalogFlowQueryOperations;
 pub use namespace::{
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogTrackNamespaceChangeOperations,
 };

@@ -123,9 +123,11 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::CreateRingBuffer(_)
+			| PhysicalPlan::CreateFlow(_)
 			| PhysicalPlan::AlterSequence(_)
 			| PhysicalPlan::AlterTable(_)
 			| PhysicalPlan::AlterView(_)
+			| PhysicalPlan::AlterFlow(_)
 			| PhysicalPlan::CreateDeferredView(_)
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::InsertTable(_)
@@ -135,6 +137,10 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			| PhysicalPlan::Delete(_)
 			| PhysicalPlan::DeleteRingBuffer(_) => {
 				unreachable!()
+			}
+			PhysicalPlan::FlowScan(_flow_scan) => {
+				// TODO: Implement FlowScanCompiler for flow
+				unimplemented!("FlowScan compilation not yet implemented for flow")
 			}
 			PhysicalPlan::TableVirtualScan(_scan) => {
 				// TODO: Implement VirtualScanCompiler

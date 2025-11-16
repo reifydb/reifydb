@@ -1,0 +1,16 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+tokenize 'ALTER FLOW my_flow SET QUERY AS from orders'
+---
+> Line 1:
+>   [  0] Keyword(Alter)
+>   [  1] Keyword(Flow)
+>   [  2] Identifier("my_flow")
+>   [  3] Keyword(Set)
+>   [  4] Keyword(Query)
+>   [  5] Operator(As)
+>   [  6] Keyword(From)
+>   [  7] Identifier("orders")
+> 
+> 
