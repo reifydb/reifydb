@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod flow;
 pub mod load;
 mod namespace;
 mod operator_retention_policy;
@@ -14,8 +15,8 @@ use std::sync::Arc;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	interface::{
-		FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId, SourceId, TableDef, TableId,
-		ViewDef, ViewId,
+		FlowDef, FlowId, FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId, SourceId,
+		TableDef, TableId, ViewDef, ViewId,
 	},
 	retention::RetentionPolicy,
 	util::MultiVersionContainer,
@@ -26,6 +27,7 @@ use crate::system::SystemCatalog;
 pub type MultiVersionNamespaceDef = MultiVersionContainer<NamespaceDef>;
 pub type MultiVersionTableDef = MultiVersionContainer<TableDef>;
 pub type MultiVersionViewDef = MultiVersionContainer<ViewDef>;
+pub type MultiVersionFlowDef = MultiVersionContainer<FlowDef>;
 pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
 
@@ -53,6 +55,12 @@ pub struct MaterializedCatalogInner {
 	/// Index from (namespace_id, view_name) to view ID for fast name
 	/// lookups
 	pub(crate) views_by_name: SkipMap<(NamespaceId, String), ViewId>,
+
+	/// MultiVersion flow definitions indexed by flow ID
+	pub(crate) flows: SkipMap<FlowId, MultiVersionFlowDef>,
+	/// Index from (namespace_id, flow_name) to flow ID for fast name
+	/// lookups
+	pub(crate) flows_by_name: SkipMap<(NamespaceId, String), FlowId>,
 
 	/// MultiVersion primary key definitions indexed by primary key ID
 	pub(crate) primary_keys: SkipMap<PrimaryKeyId, MultiVersionPrimaryKeyDef>,
@@ -101,6 +109,8 @@ impl MaterializedCatalog {
 			tables_by_name: SkipMap::new(),
 			views: SkipMap::new(),
 			views_by_name: SkipMap::new(),
+			flows: SkipMap::new(),
+			flows_by_name: SkipMap::new(),
 			primary_keys: SkipMap::new(),
 			source_retention_policies: SkipMap::new(),
 			operator_retention_policies: SkipMap::new(),
