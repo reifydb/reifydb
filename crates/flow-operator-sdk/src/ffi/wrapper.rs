@@ -70,6 +70,10 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 
 			// Marshal output
 			*output = marshaller.marshal_flow_change(&output_change);
+
+			// Clear arena to prevent stale allocations in next call
+			marshaller.clear();
+
 			0 // Success
 		}
 	}));
@@ -114,6 +118,9 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 			// Marshal output using the marshaller
 			let mut marshaller = wrapper.marshaller.borrow_mut();
 			*output = marshaller.marshal_rows(&rows);
+
+			// Clear arena to prevent stale allocations in next call
+			marshaller.clear();
 
 			0 // Success
 		}

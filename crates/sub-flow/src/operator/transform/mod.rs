@@ -4,7 +4,7 @@
 use reifydb_core::interface::FlowNodeId;
 use reifydb_rql::expression::Expression;
 
-use crate::operator::Operator;
+use crate::operator::{BoxedOperator, Operator};
 
 pub mod registry;
 
@@ -14,7 +14,7 @@ pub trait TransformOperatorFactory: Send + Sync {
 	fn create_from_expressions(
 		node: FlowNodeId,
 		expressions: &[Expression<'static>],
-	) -> crate::Result<Box<dyn Operator>>;
+	) -> crate::Result<BoxedOperator>;
 }
 
 pub mod extract {

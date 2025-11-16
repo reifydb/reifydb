@@ -242,11 +242,19 @@ impl FlowEngine {
 					.get(&node.inputs[0])
 					.ok_or_else(|| Error(internal!("Parent operator not found")))?
 					.clone();
-				let operator = self.inner.registry.create_operator(
-					operator_name.as_str(),
-					node.id,
-					expressions.as_slice(),
-				)?;
+
+				// Check if this is an FFI operator and use the appropriate creation method
+				let operator = if self.is_ffi_operator(operator_name.as_str()) {
+					// Use the shared loader to prevent library unloading
+					self.create_ffi_operator(operator_name.as_str(), node.id)?
+				} else {
+					// Use registry for non-FFI operators
+					self.inner.registry.create_operator(
+						operator_name.as_str(),
+						node.id,
+						expressions.as_slice(),
+					)?
+				};
 
 				self.inner.operators.write().insert(
 					node.id,

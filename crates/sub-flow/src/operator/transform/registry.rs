@@ -6,10 +6,9 @@ use std::collections::HashMap;
 use reifydb_core::interface::FlowNodeId;
 use reifydb_rql::expression::Expression;
 
-use crate::operator::Operator;
+use crate::operator::{BoxedOperator, Operator};
 
-type OperatorFactoryFn =
-	Box<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator>> + Send + Sync>;
+type OperatorFactoryFn = Box<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<BoxedOperator> + Send + Sync>;
 
 pub struct TransformOperatorRegistry {
 	factories: HashMap<String, OperatorFactoryFn>,
@@ -24,7 +23,7 @@ impl TransformOperatorRegistry {
 
 	pub fn register<F>(&mut self, name: String, factory: F)
 	where
-		F: Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator>> + Send + Sync + 'static,
+		F: Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<BoxedOperator> + Send + Sync + 'static,
 	{
 		self.factories.insert(name, Box::new(factory));
 	}
@@ -34,7 +33,7 @@ impl TransformOperatorRegistry {
 		name: &str,
 		node: FlowNodeId,
 		expressions: &[Expression<'static>],
-	) -> crate::Result<Box<dyn Operator>> {
+	) -> crate::Result<BoxedOperator> {
 		let factory = self.factories.get(name).unwrap_or_else(|| panic!("Unknown operator: {}", name));
 
 		factory(node, expressions)

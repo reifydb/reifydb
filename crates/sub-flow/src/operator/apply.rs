@@ -6,18 +6,18 @@ use reifydb_type::RowNumber;
 
 use crate::{
 	flow::FlowChange,
-	operator::{Operator, Operators},
+	operator::{BoxedOperator, Operator, Operators},
 	transaction::FlowTransaction,
 };
 
 pub struct ApplyOperator {
 	parent: Arc<Operators>,
 	node: FlowNodeId,
-	inner: Box<dyn Operator>,
+	inner: BoxedOperator,
 }
 
 impl ApplyOperator {
-	pub fn new(parent: Arc<Operators>, node: FlowNodeId, inner: Box<dyn Operator>) -> Self {
+	pub fn new(parent: Arc<Operators>, node: FlowNodeId, inner: BoxedOperator) -> Self {
 		Self {
 			parent,
 			node,

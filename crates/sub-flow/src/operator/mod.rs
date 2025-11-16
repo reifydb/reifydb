@@ -48,6 +48,8 @@ pub trait Operator: Send + Sync {
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>>;
 }
 
+pub type BoxedOperator = Box<dyn Operator>;
+
 pub enum Operators {
 	SourceTable(SourceTableOperator),
 	SourceView(SourceViewOperator),

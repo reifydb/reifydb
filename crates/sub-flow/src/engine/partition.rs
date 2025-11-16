@@ -154,7 +154,6 @@ mod tests {
 
 	use crate::{
 		engine::{FlowEngine, FlowEngineInner},
-		ffi::loader::FFIOperatorLoader,
 		flow::FlowDiff,
 		operator::transform::registry::TransformOperatorRegistry,
 		worker::{UnitOfWork, UnitsOfWork},
@@ -200,7 +199,6 @@ mod tests {
 			sources: RwLock::new(sources),
 			sinks: RwLock::new(HashMap::new()),
 			analyzer: RwLock::new(FlowGraphAnalyzer::new()),
-			loader: RwLock::new(FFIOperatorLoader::new()),
 		};
 
 		FlowEngine {

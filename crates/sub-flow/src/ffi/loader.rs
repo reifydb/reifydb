@@ -3,26 +3,42 @@
 use std::{
 	collections::HashMap,
 	path::{Path, PathBuf},
+	sync::OnceLock,
 };
 
 use libloading::{Library, Symbol};
+use parking_lot::RwLock;
 use reifydb_core::interface::FlowNodeId;
-use reifydb_flow_operator_abi::{FFIOperatorCreateFn, FFIOperatorDescriptor};
+use reifydb_flow_operator_abi::{CURRENT_API_VERSION, FFIOperatorCreateFn, FFIOperatorDescriptor};
 use reifydb_flow_operator_sdk::{FFIError, Result as FFIResult};
 
 use crate::operator::FFIOperator;
 
+/// Global singleton FFI operator loader
+/// Ensures libraries stay loaded for the entire process lifetime
+static GLOBAL_FFI_OPERATOR_LOADER: OnceLock<RwLock<FFIOperatorLoader>> = OnceLock::new();
+
+/// Get the global FFI operator loader
+pub fn ffi_operator_loader() -> &'static RwLock<FFIOperatorLoader> {
+	GLOBAL_FFI_OPERATOR_LOADER.get_or_init(|| RwLock::new(FFIOperatorLoader::new()))
+}
+
 /// FFI operator loader for dynamic libraries
+/// This is meant to be used as a singleton via get_global_loader()
 pub struct FFIOperatorLoader {
 	/// Loaded libraries mapped by path
 	loaded_libraries: HashMap<PathBuf, Library>,
+
+	/// Map of operator names to library paths for quick lookup
+	operator_paths: HashMap<String, PathBuf>,
 }
 
 impl FFIOperatorLoader {
 	/// Create a new FFI operator loader
-	pub fn new() -> Self {
+	fn new() -> Self {
 		Self {
 			loaded_libraries: HashMap::new(),
+			operator_paths: HashMap::new(),
 		}
 	}
 
@@ -38,9 +54,7 @@ impl FFIOperatorLoader {
 	/// * `Err(FFIError)` - Loading or initialization failed
 	pub fn load_operator(&mut self, path: &Path, config: &[u8], operator_id: FlowNodeId) -> FFIResult<FFIOperator> {
 		// Load the library if not already loaded
-		let library = if let Some(lib) = self.loaded_libraries.get(path) {
-			lib
-		} else {
+		let library = if !self.loaded_libraries.contains_key(path) {
 			// Load the library
 			let lib = unsafe {
 				Library::new(path).map_err(|e| {
@@ -49,8 +63,9 @@ impl FFIOperatorLoader {
 			};
 
 			self.loaded_libraries.insert(path.to_path_buf(), lib);
-			self.loaded_libraries.get(path).unwrap()
 		};
+
+		let library = self.loaded_libraries.get(path).unwrap();
 
 		// Get the operator descriptor
 		let descriptor = unsafe {
@@ -72,12 +87,16 @@ impl FFIOperatorLoader {
 			}
 		};
 
+		// Store operator name -> path mapping
+		let operator_name =
+			unsafe { std::ffi::CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string() };
+		self.operator_paths.insert(operator_name.clone(), path.to_path_buf());
+
 		// Verify API version
-		if descriptor.api_version != reifydb_flow_operator_abi::CURRENT_API_VERSION {
+		if descriptor.api_version != CURRENT_API_VERSION {
 			return Err(FFIError::Other(format!(
 				"API version mismatch: expected {}, got {}",
-				reifydb_flow_operator_abi::CURRENT_API_VERSION,
-				descriptor.api_version
+				CURRENT_API_VERSION, descriptor.api_version
 			)));
 		}
 
@@ -97,28 +116,40 @@ impl FFIOperatorLoader {
 		}
 
 		// Create the FFI operator wrapper
+		// Library stays loaded via global cache and loader reference
 		Ok(FFIOperator::new(descriptor, instance, operator_id))
 	}
 
-	/// Create an operator instance from an already loaded library
+	/// Create an operator instance from an already loaded library by name
 	///
 	/// # Arguments
-	/// * `operator_type` - Name of the operator type
+	/// * `operator_name` - Name of the operator type
 	/// * `operator_id` - Node ID for this operator instance
 	/// * `config` - Configuration data for the operator
 	///
 	/// # Returns
-	/// * `Ok(Box<dyn Operator>)` - Successfully created operator
+	/// * `Ok(FFIOperator)` - Successfully created operator
 	/// * `Err(FFIError)` - Creation failed
-	pub fn create_operator(
-		&self,
-		_operator_type: &str,
-		_operator_id: FlowNodeId,
-		_config: &[u8],
-	) -> Result<Box<dyn crate::operator::Operator>, FFIError> {
-		// This would look up the operator type in a registry
-		// For now, return not implemented
-		Err(FFIError::NotImplemented("Operator registry lookup not yet implemented".to_string()))
+	pub fn create_operator_by_name(
+		&mut self,
+		operator_name: &str,
+		operator_id: FlowNodeId,
+		config: &[u8],
+	) -> FFIResult<FFIOperator> {
+		// Look up the path for this operator
+		let path = self
+			.operator_paths
+			.get(operator_name)
+			.ok_or_else(|| FFIError::Other(format!("Operator not found: {}", operator_name)))?
+			.clone();
+
+		// Load operator from the known path
+		self.load_operator(&path, config, operator_id)
+	}
+
+	/// Check if an operator name is registered
+	pub fn has_operator(&self, operator_name: &str) -> bool {
+		self.operator_paths.contains_key(operator_name)
 	}
 
 	/// Unload a library

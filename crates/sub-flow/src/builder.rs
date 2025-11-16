@@ -9,11 +9,14 @@ use reifydb_core::interface::{CdcConsumerId, FlowNodeId};
 use reifydb_rql::expression::Expression;
 use reifydb_sub_api::Priority;
 
-use crate::{operator::Operator, subsystem::FlowSubsystemConfig};
+use crate::{
+	operator::{BoxedOperator, Operator},
+	subsystem::FlowSubsystemConfig,
+};
 
 /// Type alias for operator factory functions
 pub type OperatorFactory =
-	Arc<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator>> + Send + Sync>;
+	Arc<dyn Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<BoxedOperator> + Send + Sync>;
 
 pub struct FlowBuilder {
 	consumer_id: CdcConsumerId,
@@ -76,7 +79,7 @@ impl FlowBuilder {
 	/// Register a custom operator factory
 	pub fn register_operator<F>(mut self, name: impl Into<String>, factory: F) -> Self
 	where
-		F: Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<Box<dyn Operator>> + Send + Sync + 'static,
+		F: Fn(FlowNodeId, &[Expression<'static>]) -> crate::Result<BoxedOperator> + Send + Sync + 'static,
 	{
 		self.operators.push((name.into(), Arc::new(factory)));
 		self
