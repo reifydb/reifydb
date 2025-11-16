@@ -144,6 +144,7 @@ mod tests {
 	use rand::{rng, seq::SliceRandom};
 	use reifydb_core::{
 		CommitVersion, Row,
+		event::EventBus,
 		interface::{FlowId, FlowNodeId, SourceId, TableId},
 		util::CowVec,
 		value::encoded::{EncodedValues, EncodedValuesNamedLayout},
@@ -199,6 +200,7 @@ mod tests {
 			sources: RwLock::new(sources),
 			sinks: RwLock::new(HashMap::new()),
 			analyzer: RwLock::new(FlowGraphAnalyzer::new()),
+			event_bus: EventBus::new(),
 		};
 
 		FlowEngine {

@@ -177,6 +177,41 @@ impl FFIOperatorLoader {
 	pub fn is_loaded(&self, path: &Path) -> bool {
 		self.loaded_libraries.contains_key(path)
 	}
+
+	/// List all loaded operators with their metadata
+	///
+	/// Returns a vector of tuples containing:
+	/// - Operator name
+	/// - Library path
+	/// - API version
+	pub fn list_loaded_operators(&self) -> Vec<(String, PathBuf, u32)> {
+		let mut operators = Vec::new();
+
+		for (path, library) in &self.loaded_libraries {
+			// Get the operator descriptor from the library
+			unsafe {
+				let get_descriptor: Result<Symbol<extern "C" fn() -> *const FFIOperatorDescriptor>, _> =
+					library.get(b"ffi_operator_get_descriptor\0");
+
+				if let Ok(get_descriptor) = get_descriptor {
+					let descriptor_ptr = get_descriptor();
+					if !descriptor_ptr.is_null() {
+						let descriptor = &*descriptor_ptr;
+
+						// Extract operator name
+						let operator_name = CStr::from_ptr(descriptor.operator_name)
+							.to_str()
+							.unwrap_or("<invalid UTF-8>")
+							.to_string();
+
+						operators.push((operator_name, path.clone(), descriptor.api_version));
+					}
+				}
+			}
+		}
+
+		operators
+	}
 }
 
 impl Default for FFIOperatorLoader {

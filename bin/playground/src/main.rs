@@ -140,4 +140,8 @@ delete test.source
 	}
 
 	println!("\nExpected counts: insert_count=10, update_count=3, delete_count=2");
+
+	for frame in db.query_as_root(r#"from system.flow_operators"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
 }

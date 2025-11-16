@@ -34,8 +34,9 @@ use crate::{
 	table_virtual::{
 		TableVirtual, TableVirtualContext,
 		system::{
-			CdcConsumers, ColumnPolicies, ColumnsTable, Namespaces, OperatorRetentionPolicies,
-			PrimaryKeyColumns, PrimaryKeys, Sequences, SourceRetentionPolicies, Tables, Versions, Views,
+			CdcConsumers, ColumnPolicies, ColumnsTable, FlowOperators, Namespaces,
+			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, Sequences, SourceRetentionPolicies,
+			Tables, Versions, Views,
 		},
 	},
 };
@@ -189,6 +190,9 @@ pub(crate) fn compile<'a>(
 					"source_retention_policies" => Box::new(SourceRetentionPolicies::new()),
 					"operator_retention_policies" => Box::new(OperatorRetentionPolicies::new()),
 					"cdc_consumers" => Box::new(CdcConsumers::new()),
+					"flow_operators" => Box::new(FlowOperators::new(
+						context.executor.flow_operator_store.clone(),
+					)),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

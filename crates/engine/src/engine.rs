@@ -19,6 +19,7 @@ use crate::{
 	execute::Executor,
 	function::{Functions, generator, math},
 	interceptor::materialized_catalog::MaterializedCatalogInterceptor,
+	table_virtual::system::{FlowOperatorEventListener, FlowOperatorStore},
 	transaction::{StandardCommandTransaction, StandardQueryTransaction},
 };
 
@@ -122,6 +123,7 @@ pub struct EngineInner {
 	executor: Executor,
 	interceptors: Box<dyn InterceptorFactory<StandardCommandTransaction>>,
 	catalog: MaterializedCatalog,
+	flow_operator_store: FlowOperatorStore,
 }
 
 impl StandardEngine {
@@ -158,14 +160,20 @@ impl StandardEngine {
 				.build()
 		});
 
+		// Create the flow operator store and register the event listener
+		let flow_operator_store = FlowOperatorStore::new();
+		let listener = FlowOperatorEventListener::new(flow_operator_store.clone());
+		event_bus.register(listener);
+
 		Self(Arc::new(EngineInner {
 			multi,
 			single,
 			cdc,
 			event_bus,
-			executor: Executor::new(functions),
+			executor: Executor::new(functions, flow_operator_store.clone()),
 			interceptors,
 			catalog,
+			flow_operator_store,
 		}))
 	}
 
@@ -207,6 +215,11 @@ impl StandardEngine {
 	#[inline]
 	pub fn catalog(&self) -> &MaterializedCatalog {
 		&self.catalog
+	}
+
+	#[inline]
+	pub fn flow_operator_store(&self) -> &FlowOperatorStore {
+		&self.flow_operator_store
 	}
 
 	#[inline]

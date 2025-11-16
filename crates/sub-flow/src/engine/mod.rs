@@ -10,6 +10,7 @@ use std::{collections::HashMap, ffi::CStr, fs::read_dir, path::PathBuf, sync::Ar
 use parking_lot::RwLock;
 use reifydb_core::{
 	Error,
+	event::{EventBus, flow::FlowOperatorLoadedEvent},
 	interface::{FlowId, FlowNodeId, SourceId, TableId, ViewId},
 	log_debug, log_error,
 };
@@ -31,6 +32,7 @@ pub(crate) struct FlowEngineInner {
 	pub(crate) sources: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) sinks: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
+	pub(crate) event_bus: EventBus,
 }
 
 pub struct FlowEngine {
@@ -50,11 +52,12 @@ impl FlowEngine {
 		evaluator: StandardRowEvaluator,
 		executor: Executor,
 		registry: TransformOperatorRegistry,
+		event_bus: EventBus,
 		operators_dir: Option<PathBuf>,
 	) -> Self {
 		// Load FFI operators if directory specified
 		if let Some(dir) = operators_dir {
-			if let Err(e) = Self::load_ffi_operators(&dir) {
+			if let Err(e) = Self::load_ffi_operators(&dir, &event_bus) {
 				log_error!("Failed to load FFI operators from {:?}: {}", dir, e);
 			}
 		}
@@ -69,16 +72,16 @@ impl FlowEngine {
 				sources: RwLock::new(HashMap::new()),
 				sinks: RwLock::new(HashMap::new()),
 				analyzer: RwLock::new(FlowGraphAnalyzer::new()),
+				event_bus,
 			}),
 		}
 	}
 
 	/// Load FFI operators from a directory into the global loader
-	fn load_ffi_operators(dir: &PathBuf) -> reifydb_core::Result<()> {
+	fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_core::Result<()> {
 		let loader = ffi_operator_loader();
 
 		// Scan directory for shared libraries
-		println!("Loading FFI operators from {:?}", dir);
 		let entries = read_dir(dir).unwrap();
 
 		for entry in entries {
@@ -99,12 +102,20 @@ impl FlowEngine {
 			let mut guard = loader.write();
 			let temp_operator = guard.load_operator(&path, &[], FlowNodeId(0))?;
 
-			// Extract operator name from descriptor
-			let operator_name = unsafe {
-				CStr::from_ptr(temp_operator.descriptor().operator_name).to_str().unwrap().to_string()
-			};
+			// Extract operator name and API version from descriptor
+			let descriptor = temp_operator.descriptor();
+			let operator_name =
+				unsafe { CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string() };
+			let api_version = descriptor.api_version;
 
 			log_debug!("Registered FFI operator: {} from {:?}", operator_name, path);
+
+			// Emit event for loaded operator
+			event_bus.emit(FlowOperatorLoadedEvent {
+				operator_name: operator_name.clone(),
+				library_path: path.clone(),
+				api_version,
+			});
 		}
 
 		Ok(())

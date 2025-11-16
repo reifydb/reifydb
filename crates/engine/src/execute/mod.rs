@@ -39,6 +39,7 @@ use crate::{
 	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
 	function::{Functions, generator, math},
 	stack::{Stack, Variable},
+	table_virtual::system::FlowOperatorStore,
 };
 
 mod catalog;
@@ -221,6 +222,7 @@ pub struct Executor(Arc<ExecutorInner>);
 
 pub struct ExecutorInner {
 	pub functions: Functions,
+	pub flow_operator_store: FlowOperatorStore,
 }
 
 impl Clone for Executor {
@@ -238,9 +240,10 @@ impl std::ops::Deref for Executor {
 }
 
 impl Executor {
-	pub fn new(functions: Functions) -> Self {
+	pub fn new(functions: Functions, flow_operator_store: FlowOperatorStore) -> Self {
 		Self(Arc::new(ExecutorInner {
 			functions,
+			flow_operator_store,
 		}))
 	}
 
@@ -257,6 +260,7 @@ impl Executor {
 				.register_scalar("math::avg", math::scalar::Avg::new)
 				.register_generator("generate_series", generator::GenerateSeries::new)
 				.build(),
+			FlowOperatorStore::new(),
 		)
 	}
 }

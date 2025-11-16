@@ -7,7 +7,7 @@ use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view}
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, Result, Row,
-	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, SourceId},
+	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, SourceId, WithEventBus},
 	util::CowVec,
 	value::encoded::EncodedValues,
 };
@@ -51,8 +51,13 @@ impl FlowConsumer {
 			registry.register(name, move |node, exprs| factory(node, exprs));
 		}
 
-		let flow_engine =
-			FlowEngine::new(StandardRowEvaluator::default(), engine.executor(), registry, operators_dir);
+		let flow_engine = FlowEngine::new(
+			StandardRowEvaluator::default(),
+			engine.executor(),
+			registry,
+			engine.event_bus().clone(),
+			operators_dir,
+		);
 
 		let result = Self {
 			engine: engine.clone(),

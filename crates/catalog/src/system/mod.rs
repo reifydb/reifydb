@@ -8,6 +8,7 @@ use reifydb_core::interface::{TableVirtualDef, version::SystemVersion};
 mod cdc_consumers;
 mod column_policies;
 mod columns;
+mod flow_operators;
 mod flows;
 mod namespaces;
 mod operator_retention_policies;
@@ -22,6 +23,7 @@ mod views;
 use cdc_consumers::cdc_consumers;
 use column_policies::column_policies;
 use columns::columns;
+use flow_operators::flow_operators;
 use flows::flows;
 use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
@@ -177,6 +179,16 @@ pub mod ids {
 
 			pub const ALL: [ColumnId; 4] = [OPERATOR_ID, POLICY_TYPE, CLEANUP_MODE, VALUE];
 		}
+
+		pub mod flow_operators {
+			use reifydb_core::interface::ColumnId;
+
+			pub const OPERATOR_NAME: ColumnId = ColumnId(1);
+			pub const LIBRARY_PATH: ColumnId = ColumnId(2);
+			pub const API_VERSION: ColumnId = ColumnId(3);
+
+			pub const ALL: [ColumnId; 3] = [OPERATOR_NAME, LIBRARY_PATH, API_VERSION];
+		}
 	}
 
 	pub mod sequences {
@@ -211,8 +223,9 @@ pub mod ids {
 		pub const SOURCE_RETENTION_POLICIES: TableVirtualId = TableVirtualId(10);
 		pub const OPERATOR_RETENTION_POLICIES: TableVirtualId = TableVirtualId(11);
 		pub const CDC_CONSUMERS: TableVirtualId = TableVirtualId(12);
+		pub const FLOW_OPERATORS: TableVirtualId = TableVirtualId(14);
 
-		pub const ALL: [TableVirtualId; 13] = [
+		pub const ALL: [TableVirtualId; 14] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -226,6 +239,7 @@ pub mod ids {
 			SOURCE_RETENTION_POLICIES,
 			OPERATOR_RETENTION_POLICIES,
 			CDC_CONSUMERS,
+			FLOW_OPERATORS,
 		];
 	}
 }
@@ -315,5 +329,10 @@ impl SystemCatalog {
 	/// Get the cdc_consumers virtual table definition
 	pub fn get_system_cdc_consumers_table_def() -> Arc<TableVirtualDef> {
 		cdc_consumers()
+	}
+
+	/// Get the flow_operators virtual table definition
+	pub fn get_system_flow_operators_table_def() -> Arc<TableVirtualDef> {
+		flow_operators()
 	}
 }

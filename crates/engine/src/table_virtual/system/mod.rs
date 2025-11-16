@@ -4,6 +4,8 @@
 mod cdc_consumers;
 mod column_policies;
 mod columns;
+mod flow_operator_store;
+mod flow_operators;
 mod namespaces;
 mod operator_retention_policies;
 mod primary_key_columns;
@@ -17,6 +19,8 @@ mod views;
 pub use cdc_consumers::*;
 pub use column_policies::*;
 pub use columns::*;
+pub use flow_operator_store::*;
+pub use flow_operators::*;
 pub use namespaces::*;
 pub use operator_retention_policies::*;
 pub use primary_key_columns::*;

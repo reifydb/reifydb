@@ -569,6 +569,7 @@ name = "reifydb-engine"
 version = "0.0.1"
 dependencies = [
  "once_cell",
+ "parking_lot",
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
