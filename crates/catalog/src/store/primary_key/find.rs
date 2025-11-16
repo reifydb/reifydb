@@ -30,6 +30,10 @@ impl CatalogStore {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
+			SourceId::Flow(_) => {
+				// Flows don't have primary keys
+				return Ok(None);
+			}
 			SourceId::TableVirtual(_) => {
 				// Virtual tables don't have primary keys
 				return Ok(None);

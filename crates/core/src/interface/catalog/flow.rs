@@ -9,6 +9,8 @@ use std::{
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
+use crate::interface::{ColumnDef, NamespaceId, SourceId};
+
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
 pub struct FlowId(pub u64);
@@ -205,4 +207,43 @@ impl<'de> Deserialize<'de> for FlowEdgeId {
 
 		deserializer.deserialize_u64(U64Visitor)
 	}
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+pub enum FlowStatus {
+	Active,
+	Paused,
+	Failed,
+}
+
+impl FlowStatus {
+	/// Convert FlowStatus to u8 for storage
+	pub fn to_u8(self) -> u8 {
+		match self {
+			FlowStatus::Active => 0,
+			FlowStatus::Paused => 1,
+			FlowStatus::Failed => 2,
+		}
+	}
+
+	/// Create FlowStatus from u8, defaulting to Failed for unknown values
+	pub fn from_u8(value: u8) -> Self {
+		match value {
+			0 => FlowStatus::Active,
+			1 => FlowStatus::Paused,
+			2 => FlowStatus::Failed,
+			_ => FlowStatus::Failed, // Default to Failed for unknown statuses
+		}
+	}
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct FlowDef {
+	pub id: FlowId,
+	pub namespace: NamespaceId,
+	pub name: String,
+	pub columns: Vec<ColumnDef>, // Output schema
+	pub query: String,
+	pub dependencies: Vec<SourceId>, // Source tables/views/flows
+	pub status: FlowStatus,
 }

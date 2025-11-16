@@ -3,6 +3,7 @@
 
 pub mod column;
 pub mod column_policy;
+pub mod flow;
 pub mod namespace;
 pub mod primary_key;
 pub mod retention_policy;

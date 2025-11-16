@@ -70,6 +70,12 @@ impl CatalogStore {
 			SourceId::View(view_id) => {
 				Self::set_view_primary_key(txn, view_id, id)?;
 			}
+			SourceId::Flow(_) => {
+				// Flows don't support primary keys
+				return_internal_error!(
+					"Cannot create primary key for flow. Flows do not support primary keys."
+				);
+			}
 			SourceId::TableVirtual(_) => {
 				// Virtual tables don't support primary keys
 				return_internal_error!(

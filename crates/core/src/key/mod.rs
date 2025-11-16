@@ -6,11 +6,13 @@ pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;
 pub use columns::ColumnsKey;
+pub use flow::FlowKey;
 pub use flow_node_state::{FlowNodeStateKey, FlowNodeStateKeyRange};
 pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
 pub use namespace::NamespaceKey;
+pub use namespace_flow::NamespaceFlowKey;
 pub use namespace_ring_buffer::NamespaceRingBufferKey;
 pub use namespace_table::NamespaceTableKey;
 pub use namespace_view::NamespaceViewKey;
@@ -35,11 +37,13 @@ mod column;
 mod column_policy;
 mod column_sequence;
 mod columns;
+mod flow;
 mod flow_node_state;
 mod index;
 mod index_entry;
 mod kind;
 mod namespace;
+mod namespace_flow;
 mod namespace_ring_buffer;
 mod namespace_table;
 mod namespace_view;
@@ -60,8 +64,10 @@ pub enum Key {
 	Namespace(NamespaceKey),
 	NamespaceTable(NamespaceTableKey),
 	NamespaceView(NamespaceViewKey),
+	NamespaceFlow(NamespaceFlowKey),
 	SystemSequence(SystemSequenceKey),
 	Table(TableKey),
+	Flow(FlowKey),
 	Column(ColumnKey),
 	Columns(ColumnsKey),
 	Index(IndexKey),
@@ -89,7 +95,9 @@ impl Key {
 			Key::Namespace(key) => key.encode(),
 			Key::NamespaceTable(key) => key.encode(),
 			Key::NamespaceView(key) => key.encode(),
+			Key::NamespaceFlow(key) => key.encode(),
 			Key::Table(key) => key.encode(),
+			Key::Flow(key) => key.encode(),
 			Key::Column(key) => key.encode(),
 			Key::Columns(key) => key.encode(),
 			Key::TableColumnPolicy(key) => key.encode(),
@@ -157,7 +165,9 @@ impl Key {
 			KeyKind::Namespace => NamespaceKey::decode(&key).map(Self::Namespace),
 			KeyKind::NamespaceTable => NamespaceTableKey::decode(&key).map(Self::NamespaceTable),
 			KeyKind::NamespaceView => NamespaceViewKey::decode(&key).map(Self::NamespaceView),
+			KeyKind::NamespaceFlow => NamespaceFlowKey::decode(&key).map(Self::NamespaceFlow),
 			KeyKind::Table => TableKey::decode(&key).map(Self::Table),
+			KeyKind::Flow => FlowKey::decode(&key).map(Self::Flow),
 			KeyKind::Column => ColumnKey::decode(&key).map(Self::Column),
 			KeyKind::Index => IndexKey::decode(&key).map(Self::Index),
 			KeyKind::IndexEntry => IndexEntryKey::decode(&key).map(Self::IndexEntry),

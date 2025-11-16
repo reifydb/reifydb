@@ -8,6 +8,7 @@ use reifydb_core::interface::{TableVirtualDef, version::SystemVersion};
 mod cdc_consumers;
 mod column_policies;
 mod columns;
+mod flows;
 mod namespaces;
 mod operator_retention_policies;
 mod primary_key_columns;
@@ -21,6 +22,7 @@ mod views;
 use cdc_consumers::cdc_consumers;
 use column_policies::column_policies;
 use columns::columns;
+use flows::flows;
 use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
@@ -83,6 +85,18 @@ pub mod ids {
 			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(5);
 
 			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, KIND, PRIMARY_KEY_ID];
+		}
+
+		pub mod flows {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const STATUS: ColumnId = ColumnId(4);
+			pub const QUERY: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, STATUS, QUERY];
 		}
 
 		pub mod columns {
@@ -188,6 +202,7 @@ pub mod ids {
 		pub const NAMESPACES: TableVirtualId = TableVirtualId(2);
 		pub const TABLES: TableVirtualId = TableVirtualId(3);
 		pub const VIEWS: TableVirtualId = TableVirtualId(4);
+		pub const FLOWS: TableVirtualId = TableVirtualId(13);
 		pub const COLUMNS: TableVirtualId = TableVirtualId(5);
 		pub const COLUMN_POLICIES: TableVirtualId = TableVirtualId(6);
 		pub const PRIMARY_KEYS: TableVirtualId = TableVirtualId(7);
@@ -197,11 +212,12 @@ pub mod ids {
 		pub const OPERATOR_RETENTION_POLICIES: TableVirtualId = TableVirtualId(11);
 		pub const CDC_CONSUMERS: TableVirtualId = TableVirtualId(12);
 
-		pub const ALL: [TableVirtualId; 12] = [
+		pub const ALL: [TableVirtualId; 13] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
 			VIEWS,
+			FLOWS,
 			COLUMNS,
 			COLUMN_POLICIES,
 			PRIMARY_KEYS,
@@ -254,6 +270,11 @@ impl SystemCatalog {
 	/// Get the views virtual table definition
 	pub fn get_system_views_table_def() -> Arc<TableVirtualDef> {
 		views()
+	}
+
+	/// Get the flows virtual table definition
+	pub fn get_system_flows_table_def() -> Arc<TableVirtualDef> {
+		flows()
 	}
 
 	/// Get the columns virtual table definition

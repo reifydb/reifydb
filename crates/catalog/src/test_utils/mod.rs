@@ -2,7 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ColumnPolicyKind, CommandTransaction, NamespaceDef, RingBufferDef, RingBufferId, TableDef, TableId, ViewDef,
+	ColumnPolicyKind, CommandTransaction, FlowDef, FlowStatus, NamespaceDef, RingBufferDef, RingBufferId, TableDef,
+	TableId, ViewDef,
 };
 use reifydb_type::TypeConstraint;
 
@@ -10,6 +11,7 @@ use crate::{
 	CatalogStore,
 	store::{
 		column::{ColumnIndex, ColumnToCreate},
+		flow::create::FlowToCreate,
 		namespace::NamespaceToCreate,
 		ring_buffer::create::{RingBufferColumnToCreate, RingBufferToCreate},
 		table::TableToCreate,
@@ -175,4 +177,37 @@ pub fn create_test_ring_buffer_column(
 		},
 	)
 	.unwrap();
+}
+
+pub fn create_flow(
+	txn: &mut impl CommandTransaction,
+	namespace: &str,
+	flow: &str,
+	query: &str,
+	columns: &[crate::store::flow::create::FlowColumnToCreate],
+) -> FlowDef {
+	// First look up the namespace to get its ID
+	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+
+	CatalogStore::create_flow(
+		txn,
+		FlowToCreate {
+			fragment: None,
+			name: flow.to_string(),
+			namespace: namespace_def.id,
+			query: query.to_string(),
+			columns: columns.to_vec(),
+			status: FlowStatus::Active,
+		},
+	)
+	.unwrap()
+}
+
+pub fn ensure_test_flow(txn: &mut impl CommandTransaction) -> FlowDef {
+	let namespace = ensure_test_namespace(txn);
+
+	if let Some(result) = CatalogStore::find_flow_by_name(txn, namespace.id, "test_flow").unwrap() {
+		return result;
+	}
+	create_flow(txn, "test_namespace", "test_flow", "SELECT * FROM x", &[])
 }

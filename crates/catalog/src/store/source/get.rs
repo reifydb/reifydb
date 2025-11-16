@@ -19,6 +19,7 @@ impl CatalogStore {
 			let source_type = match source_id {
 				SourceId::Table(_) => "Table",
 				SourceId::View(_) => "View",
+				SourceId::Flow(_) => "Flow",
 				SourceId::TableVirtual(_) => "TableVirtual",
 				SourceId::RingBuffer(_) => "RingBuffer",
 			};

@@ -44,8 +44,8 @@ use crate::{
 pub struct ColumnToCreate<'a> {
 	pub fragment: Option<OwnedFragment>,
 	pub namespace_name: &'a str,
-	pub table: TableId,
-	pub table_name: &'a str,
+	pub table: TableId,      // FIXME refactor to source: SourceId
+	pub table_name: &'a str, // FIXME refactor to source_name
 	pub column: String,
 	pub constraint: TypeConstraint,
 	pub if_not_exists: bool,

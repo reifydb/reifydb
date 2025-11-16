@@ -32,6 +32,8 @@ pub enum KeyKind {
 	RingBufferMetadata = 0x16,
 	SourceRetentionPolicy = 0x17,
 	OperatorRetentionPolicy = 0x18,
+	Flow = 0x19,
+	NamespaceFlow = 0x1A,
 }
 
 impl From<KeyKind> for u8 {
@@ -68,6 +70,8 @@ impl TryFrom<u8> for KeyKind {
 			0x16 => Ok(Self::RingBufferMetadata),
 			0x17 => Ok(Self::SourceRetentionPolicy),
 			0x18 => Ok(Self::OperatorRetentionPolicy),
+			0x19 => Ok(Self::Flow),
+			0x1A => Ok(Self::NamespaceFlow),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

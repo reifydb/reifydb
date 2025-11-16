@@ -49,6 +49,37 @@ pub fn table_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str
 	}
 }
 
+pub fn flow_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, flow: &str) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_030".to_string(),
+		statement: None,
+		message: format!("flow `{}.{}` already exists", namespace, flow),
+		fragment,
+		label: Some("duplicate flow definition".to_string()),
+		help: Some("choose a different name, drop the existing flow or create flow in a different namespace"
+			.to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn flow_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, flow: &str) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_031".to_string(),
+		statement: None,
+		message: format!("flow `{}.{}` not found", namespace, flow),
+		fragment,
+		label: Some("unknown flow reference".to_string()),
+		help: Some("ensure the flow exists or create it first using `CREATE FLOW`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
 pub fn view_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, view: &str) -> Diagnostic {
 	let fragment = fragment.into_fragment().into_owned();
 	Diagnostic {

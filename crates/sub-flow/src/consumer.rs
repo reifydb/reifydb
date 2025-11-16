@@ -88,6 +88,9 @@ impl FlowConsumer {
 				let resolved_view = resolve_view(txn, view_id)?;
 				resolved_view.def().get_named_layout()
 			}
+			SourceId::Flow(_) => {
+				unimplemented!("Flow sources not supported in flows")
+			}
 			SourceId::TableVirtual(_) => {
 				// Virtual tables not supported in flows yet
 				unimplemented!("Virtual table sources not supported in flows")

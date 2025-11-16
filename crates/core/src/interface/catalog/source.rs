@@ -4,12 +4,15 @@
 use reifydb_type::return_internal_error;
 use serde::{Deserialize, Serialize};
 
-use crate::interface::{RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId};
+use crate::interface::{
+	FlowDef, FlowId, RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId,
+};
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
 pub enum SourceId {
 	Table(TableId),
 	View(ViewId),
+	Flow(FlowId),
 	TableVirtual(TableVirtualId),
 	RingBuffer(RingBufferId),
 }
@@ -19,6 +22,7 @@ impl std::fmt::Display for SourceId {
 		match self {
 			SourceId::Table(id) => write!(f, "{}", id.0),
 			SourceId::View(id) => write!(f, "{}", id.0),
+			SourceId::Flow(id) => write!(f, "{}", id.0),
 			SourceId::TableVirtual(id) => write!(f, "{}", id.0),
 			SourceId::RingBuffer(id) => write!(f, "{}", id.0),
 		}
@@ -32,6 +36,10 @@ impl SourceId {
 
 	pub fn view(id: impl Into<ViewId>) -> Self {
 		Self::View(id.into())
+	}
+
+	pub fn flow(id: impl Into<FlowId>) -> Self {
+		Self::Flow(id.into())
 	}
 
 	pub fn table_virtual(id: impl Into<TableVirtualId>) -> Self {
@@ -55,6 +63,12 @@ impl From<ViewId> for SourceId {
 	}
 }
 
+impl From<FlowId> for SourceId {
+	fn from(id: FlowId) -> Self {
+		SourceId::Flow(id)
+	}
+}
+
 impl From<TableVirtualId> for SourceId {
 	fn from(id: TableVirtualId) -> Self {
 		SourceId::TableVirtual(id)
@@ -72,6 +86,7 @@ impl PartialEq<u64> for SourceId {
 		match self {
 			SourceId::Table(id) => id.0.eq(other),
 			SourceId::View(id) => id.0.eq(other),
+			SourceId::Flow(id) => id.0.eq(other),
 			SourceId::TableVirtual(id) => id.0.eq(other),
 			SourceId::RingBuffer(id) => id.0.eq(other),
 		}
@@ -91,6 +106,15 @@ impl PartialEq<ViewId> for SourceId {
 	fn eq(&self, other: &ViewId) -> bool {
 		match self {
 			SourceId::View(id) => id.0 == other.0,
+			_ => false,
+		}
+	}
+}
+
+impl PartialEq<FlowId> for SourceId {
+	fn eq(&self, other: &FlowId) -> bool {
+		match self {
+			SourceId::Flow(id) => id.0 == other.0,
 			_ => false,
 		}
 	}
@@ -126,6 +150,7 @@ impl SourceId {
 		match self {
 			SourceId::Table(id) => id.0,
 			SourceId::View(id) => id.0,
+			SourceId::Flow(id) => id.0,
 			SourceId::TableVirtual(id) => id.0,
 			SourceId::RingBuffer(id) => id.0,
 		}
@@ -136,6 +161,7 @@ impl SourceId {
 		match self {
 			SourceId::Table(table) => SourceId::table(table.0 + 1),
 			SourceId::View(view) => SourceId::view(view.0 + 1),
+			SourceId::Flow(flow) => SourceId::flow(flow.0 + 1),
 			SourceId::TableVirtual(table_virtual) => SourceId::table_virtual(table_virtual.0 + 1),
 			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0 + 1),
 		}
@@ -149,6 +175,7 @@ impl SourceId {
 		match self {
 			SourceId::Table(table) => SourceId::table(table.0.wrapping_sub(1)),
 			SourceId::View(view) => SourceId::view(view.0.wrapping_sub(1)),
+			SourceId::Flow(flow) => SourceId::flow(flow.0.wrapping_sub(1)),
 			SourceId::TableVirtual(table_virtual) => {
 				SourceId::table_virtual(table_virtual.0.wrapping_sub(1))
 			}
@@ -177,6 +204,19 @@ impl SourceId {
 				"Data inconsistency: Expected SourceId::View but found {:?}. \
 				This indicates a critical catalog inconsistency where a non-view source ID \
 				was used in a context that requires a view ID.",
+				self
+			)
+		}
+	}
+
+	pub fn to_flow_id(self) -> crate::Result<FlowId> {
+		if let SourceId::Flow(flow) = self {
+			Ok(flow)
+		} else {
+			return_internal_error!(
+				"Data inconsistency: Expected SourceId::Flow but found {:?}. \
+				This indicates a critical catalog inconsistency where a non-flow source ID \
+				was used in a context that requires a flow ID.",
 				self
 			)
 		}
@@ -213,6 +253,7 @@ impl SourceId {
 pub enum SourceDef {
 	Table(TableDef),
 	View(ViewDef),
+	Flow(FlowDef),
 	TableVirtual(TableVirtualDef),
 }
 
@@ -221,6 +262,7 @@ impl SourceDef {
 		match self {
 			SourceDef::Table(table) => table.id.into(),
 			SourceDef::View(view) => view.id.into(),
+			SourceDef::Flow(flow) => flow.id.into(),
 			SourceDef::TableVirtual(table_virtual) => table_virtual.id.into(),
 		}
 	}
@@ -229,6 +271,7 @@ impl SourceDef {
 		match self {
 			SourceDef::Table(table) => SourceId::Table(table.id),
 			SourceDef::View(view) => SourceId::View(view.id),
+			SourceDef::Flow(flow) => SourceId::Flow(flow.id),
 			SourceDef::TableVirtual(table_virtual) => SourceId::TableVirtual(table_virtual.id),
 		}
 	}

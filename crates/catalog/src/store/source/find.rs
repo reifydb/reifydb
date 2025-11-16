@@ -31,6 +31,13 @@ impl CatalogStore {
 					Ok(None)
 				}
 			}
+			SourceId::Flow(flow_id) => {
+				if let Some(flow) = Self::find_flow(rx, flow_id)? {
+					Ok(Some(SourceDef::Flow(flow)))
+				} else {
+					Ok(None)
+				}
+			}
 			SourceId::TableVirtual(table_virtual_id) => {
 				if let Some(table_virtual) =
 					VirtualTableRegistry::find_table_virtual(rx, table_virtual_id)?
