@@ -10,7 +10,7 @@ use std::{
 use reifydb_type::Blob;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
-use crate::interface::{ColumnDef, NamespaceId, SourceId};
+use crate::interface::{NamespaceId, SourceId};
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -243,7 +243,6 @@ pub struct FlowDef {
 	pub id: FlowId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub columns: Vec<ColumnDef>, // Output schema
 	pub query: Blob,
 	pub dependencies: Vec<SourceId>, // Source tables/views/flows
 	pub status: FlowStatus,

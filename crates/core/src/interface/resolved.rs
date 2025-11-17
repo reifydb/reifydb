@@ -275,16 +275,6 @@ impl<'a> ResolvedFlow<'a> {
 		format!("{}.{}", self.0.namespace.name(), self.name())
 	}
 
-	/// Get columns
-	pub fn columns(&self) -> &[ColumnDef] {
-		&self.0.def.columns
-	}
-
-	/// Find a column by name
-	pub fn find_column(&self, name: &str) -> Option<&ColumnDef> {
-		self.0.def.columns.iter().find(|c| c.name == name)
-	}
-
 	/// Convert to owned version with 'static lifetime
 	pub fn to_static(&self) -> ResolvedFlow<'static> {
 		ResolvedFlow(Arc::new(ResolvedFlowInner {
@@ -600,7 +590,7 @@ impl<'a> ResolvedSource<'a> {
 			Self::DeferredView(v) => v.columns(),
 			Self::TransactionalView(v) => v.columns(),
 			Self::RingBuffer(r) => r.columns(),
-			Self::Flow(f) => f.columns(),
+			Self::Flow(_f) => unreachable!(),
 		}
 	}
 

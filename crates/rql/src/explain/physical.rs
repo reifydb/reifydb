@@ -78,10 +78,6 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 				label.push_str(" (IF NOT EXISTS)");
 			}
 
-			if !create_flow.columns.is_empty() {
-				label.push_str(&format!(" [{} columns]", create_flow.columns.len()));
-			}
-
 			write_node_header(output, prefix, is_last, &label);
 
 			// Render the WITH query as a child

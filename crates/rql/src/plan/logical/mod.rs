@@ -619,7 +619,6 @@ pub struct CreateRingBufferNode<'a> {
 pub struct CreateFlowNode<'a> {
 	pub flow: MaybeQualifiedFlowIdentifier<'a>,
 	pub if_not_exists: bool,
-	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Vec<LogicalPlan<'a>>,
 }
 

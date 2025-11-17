@@ -800,8 +800,7 @@ pub struct AstCreateFlow<'a> {
 	pub or_replace: bool,
 	pub if_not_exists: bool,
 	pub flow: MaybeQualifiedFlowIdentifier<'a>,
-	pub columns: Option<Vec<AstColumnToCreate<'a>>>,
-	pub as_clause: AstStatement<'a>, // Required, not optional like views
+	pub as_clause: AstStatement<'a>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

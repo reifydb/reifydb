@@ -40,7 +40,7 @@ impl Executor {
 			},
 		)?;
 
-		self.create_flow(txn, &result, plan.with)?;
+		self.create_deferred_view_flow(txn, &result, plan.with)?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),

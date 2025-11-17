@@ -41,7 +41,6 @@ fn convert_flow(multi: MultiVersionValues) -> FlowDef {
 		id,
 		namespace,
 		name,
-		columns: vec![],
 		query,
 		dependencies: vec![],
 		status,

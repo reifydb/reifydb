@@ -26,13 +26,10 @@ impl CatalogStore {
 					let status_u8 = flow::LAYOUT.get_u8(&entry.values, flow::STATUS);
 					let status = FlowStatus::from_u8(status_u8);
 
-					let columns = Self::list_columns(rx, flow_id)?;
-
 					let flow_def = FlowDef {
 						id: flow_id,
 						namespace: namespace_id,
 						name,
-						columns,
 						query,
 						dependencies: vec![], // TODO: Implement dependency tracking
 						status,
@@ -63,9 +60,9 @@ mod tests {
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		create_flow(&mut txn, "namespace_one", "flow_one", b"MAP 1".as_slice(), &[]);
-		create_flow(&mut txn, "namespace_one", "flow_two", b"MAP 2".as_slice(), &[]);
-		create_flow(&mut txn, "namespace_two", "flow_three", b"SELECT 3".as_slice(), &[]);
+		create_flow(&mut txn, "namespace_one", "flow_one", b"MAP 1".as_slice());
+		create_flow(&mut txn, "namespace_one", "flow_two", b"MAP 2".as_slice());
+		create_flow(&mut txn, "namespace_two", "flow_three", b"SELECT 3".as_slice());
 
 		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
 		assert_eq!(result.len(), 3);
@@ -111,7 +108,7 @@ mod tests {
 		create_namespace(&mut txn, "test_namespace");
 
 		// Create flows with different statuses
-		create_flow(&mut txn, "test_namespace", "active_flow", b"MAP 1".as_slice(), &[]);
+		create_flow(&mut txn, "test_namespace", "active_flow", b"MAP 1".as_slice());
 
 		// Create a paused flow by directly using CatalogStore
 		use crate::store::flow::create::FlowToCreate;
@@ -123,7 +120,6 @@ mod tests {
 				name: "paused_flow".to_string(),
 				namespace: namespace.id,
 				query: reifydb_type::Blob::from(b"MAP 2".as_slice()),
-				columns: vec![],
 				status: FlowStatus::Paused,
 			},
 		)
@@ -140,46 +136,5 @@ mod tests {
 				_ => panic!("Unexpected flow name: {}", flow.name),
 			}
 		}
-	}
-
-	#[test]
-	fn test_list_flows_includes_columns() {
-		let mut txn = create_test_command_transaction();
-		create_namespace(&mut txn, "test_namespace");
-
-		use reifydb_type::{Type, TypeConstraint};
-
-		use crate::store::flow::create::{FlowColumnToCreate, FlowToCreate};
-
-		let namespace = CatalogStore::find_namespace_by_name(&mut txn, "test_namespace").unwrap().unwrap();
-		CatalogStore::create_flow(
-			&mut txn,
-			FlowToCreate {
-				fragment: None,
-				name: "flow_with_cols".to_string(),
-				namespace: namespace.id,
-				query: reifydb_type::Blob::from(b"SELECT id, name".as_slice()),
-				columns: vec![
-					FlowColumnToCreate {
-						name: "id".to_string(),
-						constraint: TypeConstraint::unconstrained(Type::Uint8),
-						fragment: None,
-					},
-					FlowColumnToCreate {
-						name: "name".to_string(),
-						constraint: TypeConstraint::unconstrained(Type::Utf8),
-						fragment: None,
-					},
-				],
-				status: FlowStatus::Active,
-			},
-		)
-		.unwrap();
-
-		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
-		assert_eq!(result.len(), 1);
-		assert_eq!(result[0].columns.len(), 2);
-		assert_eq!(result[0].columns[0].name, "id");
-		assert_eq!(result[0].columns[1].name, "name");
 	}
 }

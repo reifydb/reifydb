@@ -375,13 +375,6 @@ impl<'a> Parser<'a> {
 			MaybeQualifiedFlowIdentifier::new(first_token.fragment.clone())
 		};
 
-		// Parse optional column definitions
-		let columns = if self.current()?.kind == TokenKind::Operator(Operator::OpenCurly) {
-			Some(self.parse_columns()?)
-		} else {
-			None
-		};
-
 		// Parse required AS clause
 		self.consume_operator(Operator::As)?;
 
@@ -446,7 +439,6 @@ impl<'a> Parser<'a> {
 			or_replace,
 			if_not_exists,
 			flow,
-			columns,
 			as_clause,
 		}))
 	}
@@ -897,32 +889,7 @@ mod tests {
 				assert!(!flow.if_not_exists);
 				assert_eq!(flow.flow.name.text(), "my_flow");
 				assert!(flow.flow.namespace.is_none());
-				assert!(flow.columns.is_none());
 				assert!(flow.as_clause.len() > 0);
-			}
-			_ => unreachable!(),
-		}
-	}
-
-	#[test]
-	fn test_create_flow_with_schema() {
-		let tokens =
-			tokenize(r#"CREATE FLOW my_flow {customer_id: int8, total: float8} AS FROM orders"#).unwrap();
-		let mut parser = Parser::new(tokens);
-		let mut result = parser.parse().unwrap();
-		assert_eq!(result.len(), 1);
-
-		let result = result.pop().unwrap();
-		let create = result.first_unchecked().as_create();
-
-		match create {
-			AstCreate::Flow(flow) => {
-				assert_eq!(flow.flow.name.text(), "my_flow");
-				assert!(flow.columns.is_some());
-				let columns = flow.columns.as_ref().unwrap();
-				assert_eq!(columns.len(), 2);
-				assert_eq!(columns[0].name.text(), "customer_id");
-				assert_eq!(columns[1].name.text(), "total");
 			}
 			_ => unreachable!(),
 		}

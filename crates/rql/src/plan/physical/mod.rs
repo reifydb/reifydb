@@ -924,7 +924,6 @@ pub struct CreateFlowNode<'a> {
 	pub namespace: NamespaceDef,
 	pub flow: Fragment<'a>,
 	pub if_not_exists: bool,
-	pub columns: Vec<ViewColumnToCreate>,
 	pub with: Box<PhysicalPlan<'a>>,
 }
 

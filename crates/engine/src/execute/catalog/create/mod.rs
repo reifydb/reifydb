@@ -8,6 +8,7 @@ use crate::{StandardCommandTransaction, execute::Executor};
 
 #[allow(dead_code)] // FIXME
 mod deferred;
+mod flow;
 mod namespace;
 mod ring_buffer;
 mod table;
@@ -15,8 +16,8 @@ mod table;
 mod transactional;
 
 impl Executor {
-	// FIXME
-	pub(crate) fn create_flow(
+	// FIXME: This creates the internal flow representation for deferred views
+	pub(crate) fn create_deferred_view_flow(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		view: &ViewDef,

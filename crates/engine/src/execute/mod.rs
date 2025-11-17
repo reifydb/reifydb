@@ -440,10 +440,7 @@ impl Executor {
 			PhysicalPlan::CreateNamespace(plan) => Ok(Some(self.create_namespace(txn, plan)?)),
 			PhysicalPlan::CreateTable(plan) => Ok(Some(self.create_table(txn, plan)?)),
 			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ring_buffer(txn, plan)?)),
-			PhysicalPlan::CreateFlow(_plan) => {
-				// TODO: Implement create_flow
-				unimplemented!("CREATE FLOW not yet implemented")
-			}
+			PhysicalPlan::CreateFlow(plan) => Ok(Some(self.create_flow(txn, plan)?)),
 			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params)?)),
 			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ring_buffer(txn, plan, params)?)),
 			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack)?)),
@@ -489,10 +486,7 @@ impl Executor {
 
 			PhysicalPlan::AlterTable(plan) => Ok(Some(self.alter_table(txn, plan)?)),
 			PhysicalPlan::AlterView(plan) => Ok(Some(self.execute_alter_view(txn, plan)?)),
-			PhysicalPlan::AlterFlow(_plan) => {
-				// TODO: Implement alter_flow
-				unimplemented!("ALTER FLOW not yet implemented")
-			}
+			PhysicalPlan::AlterFlow(plan) => Ok(Some(self.execute_alter_flow(txn, plan)?)),
 		}
 	}
 

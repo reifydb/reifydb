@@ -45,8 +45,8 @@ impl MaterializedCatalog {
 
 #[cfg(test)]
 mod tests {
-	use reifydb_core::interface::{ColumnDef, ColumnId, ColumnIndex, FlowStatus};
-	use reifydb_type::{Type, TypeConstraint, blob::Blob};
+	use reifydb_core::interface::FlowStatus;
+	use reifydb_type::blob::Blob;
 
 	use super::*;
 
@@ -55,24 +55,6 @@ mod tests {
 			id,
 			namespace,
 			name: name.to_string(),
-			columns: vec![
-				ColumnDef {
-					id: ColumnId(1),
-					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Int4),
-					policies: vec![],
-					index: ColumnIndex(0),
-					auto_increment: false,
-				},
-				ColumnDef {
-					id: ColumnId(2),
-					name: "data".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
-					policies: vec![],
-					index: ColumnIndex(1),
-					auto_increment: false,
-				},
-			],
 			query: Blob::new(vec![]),
 			dependencies: vec![],
 			status: FlowStatus::Active,

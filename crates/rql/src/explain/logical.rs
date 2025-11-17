@@ -802,10 +802,6 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				output.push_str(" (IF NOT EXISTS)");
 			}
 
-			if !create_flow.columns.is_empty() {
-				output.push_str(&format!(" [{} columns]", create_flow.columns.len()));
-			}
-
 			output.push_str("\n");
 
 			// Render the WITH query as a child

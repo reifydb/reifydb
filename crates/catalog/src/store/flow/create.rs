@@ -5,27 +5,19 @@ use reifydb_core::{
 	diagnostic::catalog::flow_already_exists,
 	interface::{
 		CommandTransaction, EncodableKey, FlowDef, FlowId, FlowKey, FlowStatus, Key, NamespaceFlowKey,
-		NamespaceId, SourceId,
+		NamespaceId,
 	},
 	return_error,
 };
-use reifydb_type::{OwnedFragment, TypeConstraint};
+use reifydb_type::OwnedFragment;
 
 use crate::{
 	CatalogStore,
 	store::{
-		column::{ColumnIndex, ColumnToCreate},
 		flow::layout::{flow, flow_namespace},
 		sequence::flow::next_flow_id,
 	},
 };
-
-#[derive(Debug, Clone)]
-pub struct FlowColumnToCreate {
-	pub name: String,
-	pub constraint: TypeConstraint,
-	pub fragment: Option<OwnedFragment>,
-}
 
 #[derive(Debug, Clone)]
 pub struct FlowToCreate {
@@ -33,7 +25,6 @@ pub struct FlowToCreate {
 	pub name: String,
 	pub namespace: NamespaceId,
 	pub query: reifydb_type::Blob,
-	pub columns: Vec<FlowColumnToCreate>,
 	pub status: FlowStatus,
 }
 
@@ -50,7 +41,6 @@ impl CatalogStore {
 		let flow_id = next_flow_id(txn)?;
 		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
 		Self::link_flow_to_namespace(txn, namespace_id, flow_id, &to_create.name)?;
-		Self::insert_flow_columns(txn, flow_id, to_create)?;
 
 		Ok(Self::get_flow(txn, flow_id)?)
 	}
@@ -98,37 +88,6 @@ impl CatalogStore {
 		)?;
 		Ok(())
 	}
-
-	fn insert_flow_columns(
-		txn: &mut impl CommandTransaction,
-		flow: FlowId,
-		to_create: FlowToCreate,
-	) -> crate::Result<()> {
-		// Look up namespace name for error messages
-		let namespace_name = Self::find_namespace(txn, to_create.namespace)?
-			.map(|s| s.name)
-			.unwrap_or_else(|| format!("namespace_{}", to_create.namespace));
-
-		for (idx, column_to_create) in to_create.columns.into_iter().enumerate() {
-			Self::create_column(
-				txn,
-				SourceId::Flow(flow),
-				ColumnToCreate {
-					fragment: column_to_create.fragment.clone(),
-					namespace_name: &namespace_name,
-					table: flow.0.into(),
-					table_name: &to_create.name,
-					column: column_to_create.name,
-					constraint: column_to_create.constraint.clone(),
-					if_not_exists: false,
-					policies: vec![],
-					index: ColumnIndex(idx as u16),
-					auto_increment: false,
-				},
-			)?;
-		}
-		Ok(())
-	}
 }
 
 #[cfg(test)]
@@ -137,14 +96,10 @@ mod tests {
 		FlowId, FlowStatus, MultiVersionQueryTransaction, NamespaceFlowKey, NamespaceId,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::{Type, TypeConstraint};
 
 	use crate::{
 		CatalogStore,
-		store::flow::{
-			create::{FlowColumnToCreate, FlowToCreate},
-			layout::flow_namespace,
-		},
+		store::flow::{create::FlowToCreate, layout::flow_namespace},
 		test_utils::{create_namespace, ensure_test_namespace},
 	};
 
@@ -158,7 +113,6 @@ mod tests {
 			name: "test_flow".to_string(),
 			namespace: test_namespace.id,
 			query: reifydb_type::Blob::from(b"FROM test_table".as_slice()),
-			columns: vec![],
 			status: FlowStatus::Active,
 		};
 
@@ -186,7 +140,6 @@ mod tests {
 			name: "flow_one".to_string(),
 			namespace: test_namespace.id,
 			query: reifydb_type::Blob::from(b"MAP 1".as_slice()),
-			columns: vec![],
 			status: FlowStatus::Active,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -196,7 +149,6 @@ mod tests {
 			name: "flow_two".to_string(),
 			namespace: test_namespace.id,
 			query: reifydb_type::Blob::from(b"MAP 2".as_slice()),
-			columns: vec![],
 			status: FlowStatus::Paused,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -232,39 +184,6 @@ mod tests {
 	}
 
 	#[test]
-	fn test_create_flow_with_columns() {
-		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
-
-		let to_create = FlowToCreate {
-			fragment: None,
-			name: "flow_with_columns".to_string(),
-			namespace: test_namespace.id,
-			query: reifydb_type::Blob::from(b"FROM users MAP id, name".as_slice()),
-			columns: vec![
-				FlowColumnToCreate {
-					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint8),
-					fragment: None,
-				},
-				FlowColumnToCreate {
-					name: "name".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
-					fragment: None,
-				},
-			],
-			status: FlowStatus::Active,
-		};
-
-		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();
-		assert_eq!(result.columns.len(), 2);
-		assert_eq!(result.columns[0].name, "id");
-		assert_eq!(result.columns[0].constraint.get_type(), Type::Uint8);
-		assert_eq!(result.columns[1].name, "name");
-		assert_eq!(result.columns[1].constraint.get_type(), Type::Utf8);
-	}
-
-	#[test]
 	fn test_create_flow_multiple_namespaces() {
 		let mut txn = create_test_command_transaction();
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
@@ -276,7 +195,6 @@ mod tests {
 			name: "shared_name".to_string(),
 			namespace: namespace_one.id,
 			query: reifydb_type::Blob::from(b"MAP 1".as_slice()),
-			columns: vec![],
 			status: FlowStatus::Active,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -287,7 +205,6 @@ mod tests {
 			name: "shared_name".to_string(),
 			namespace: namespace_two.id,
 			query: reifydb_type::Blob::from(b"MAP 2".as_slice()),
-			columns: vec![],
 			status: FlowStatus::Active,
 		};
 		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();
