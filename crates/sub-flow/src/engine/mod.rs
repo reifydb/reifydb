@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod eval;
 mod partition;
 mod process;
 mod register;
@@ -16,7 +17,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardRowEvaluator, execute::Executor};
 use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
-use reifydb_type::internal;
+use reifydb_type::{Value, internal};
 
 use crate::{
 	ffi::loader::ffi_operator_loader,
@@ -126,12 +127,17 @@ impl FlowEngine {
 		&self,
 		operator_name: &str,
 		node_id: FlowNodeId,
+		config: &HashMap<String, Value>,
 	) -> crate::Result<BoxedOperator> {
 		let loader = ffi_operator_loader();
 		let mut loader_write = loader.write();
 
+		// Serialize config to bincode
+		let config_bytes = bincode::serde::encode_to_vec(config, bincode::config::standard())
+			.map_err(|e| Error(internal!("Failed to serialize operator config: {:?}", e)))?;
+
 		let operator = loader_write
-			.create_operator_by_name(operator_name, node_id, &[])
+			.create_operator_by_name(operator_name, node_id, &config_bytes)
 			.map_err(|e| Error(internal!("Failed to create FFI operator: {:?}", e)))?;
 
 		Ok(Box::new(operator))

@@ -16,6 +16,7 @@ use reifydb_rql::flow::{
 };
 use reifydb_type::internal;
 
+use super::eval::evaluate_operator_config;
 use crate::{
 	engine::FlowEngine,
 	operator::{
@@ -245,8 +246,11 @@ impl FlowEngine {
 
 				// Check if this is an FFI operator and use the appropriate creation method
 				let operator = if self.is_ffi_operator(operator_name.as_str()) {
-					// Use the shared loader to prevent library unloading
-					self.create_ffi_operator(operator_name.as_str(), node.id)?
+					let config = evaluate_operator_config(
+						expressions.as_slice(),
+						&self.inner.evaluator,
+					)?;
+					self.create_ffi_operator(operator_name.as_str(), node.id, &config)?
 				} else {
 					// Use registry for non-FFI operators
 					self.inner.registry.create_operator(

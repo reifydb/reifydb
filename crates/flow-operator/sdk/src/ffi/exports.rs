@@ -3,11 +3,12 @@
 use std::{
 	collections::HashMap,
 	ffi::{CString, c_void},
-	ptr,
+	ptr, slice,
 };
 
 use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{CURRENT_API_VERSION, FFIOperatorDescriptor};
+use reifydb_type::Value;
 
 use crate::{
 	FFIOperatorWithMetadata,
@@ -32,12 +33,31 @@ pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor 
 /// - config_ptr must be valid for config_len bytes or null
 /// - The returned pointer must be freed by calling the destroy function
 pub unsafe extern "C" fn create_operator_instance<O: FFIOperatorWithMetadata>(
-	_config_ptr: *const u8,
-	_config_len: usize,
+	config_ptr: *const u8,
+	config_len: usize,
 	operator_id: u64,
 ) -> *mut c_void {
-	// Parse configuration if provided
-	let config = HashMap::new();
+	// Deserialize configuration from bincode if provided
+	let config = if config_ptr.is_null() || config_len == 0 {
+		// No configuration provided, use empty HashMap
+		HashMap::new()
+	} else {
+		// SAFETY: caller guarantees config_ptr is valid for config_len bytes
+		let config_bytes = unsafe { slice::from_raw_parts(config_ptr, config_len) };
+
+		match bincode::serde::decode_from_slice::<HashMap<String, Value>, _>(
+			config_bytes,
+			bincode::config::standard(),
+		) {
+			Ok((decoded_config, _bytes_read)) => decoded_config,
+			Err(e) => {
+				panic!(
+					"Failed to deserialize operator config for operator {}: {}. Using empty config.",
+					operator_id, e
+				);
+			}
+		}
+	};
 
 	// Create operator with ID and config
 	let operator = match O::new(FlowNodeId(operator_id), &config) {
