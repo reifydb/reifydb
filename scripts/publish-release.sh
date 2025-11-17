@@ -75,6 +75,18 @@ run_cmd() {
     fi
 }
 
+# Function to restore cargo config (called on exit)
+restore_cargo_config() {
+    if [ -f "$ROOT_DIR/.cargo/config.toml.disabled" ]; then
+        echo -e "${BLUE}Restoring .cargo/config.toml...${NC}"
+        mv "$ROOT_DIR/.cargo/config.toml.disabled" "$ROOT_DIR/.cargo/config.toml"
+        echo -e "${GREEN}✓ Cargo config restored${NC}"
+    fi
+}
+
+# Set up cleanup trap to always restore config
+trap restore_cargo_config EXIT
+
 echo -e "${BLUE}Publishing ReifyDB version ${VERSION}${NC}"
 echo ""
 
@@ -106,16 +118,23 @@ if [ $SKIP_CRATES -eq 0 ]; then
 
     cd "$ROOT_DIR"
 
+    # Temporarily disable .cargo/config.toml to allow publishing to crates.io
+    if [ -f "$ROOT_DIR/.cargo/config.toml" ]; then
+        echo -e "${BLUE}  Temporarily disabling .cargo/config.toml for publishing...${NC}"
+        mv "$ROOT_DIR/.cargo/config.toml" "$ROOT_DIR/.cargo/config.toml.disabled"
+        echo -e "${GREEN}  ✓ Cargo config disabled${NC}"
+    fi
+
     # Show publishing order
     echo -e "${BLUE}  Publishing order (automatically calculated):${NC}"
     cargo workspaces list | sed 's/^/    /'
     echo ""
 
     # Build cargo-workspaces command
-    # Note: --registry crates-io is required to explicitly target crates.io
-    # --publish-as-is uses current version from Cargo.toml (0.1.0)
-    # --allow-branch main allows publishing from main branch
-    CARGO_WS_ARGS="publish --publish-as-is --allow-branch main --publish-interval 10 --no-verify --registry crates-io"
+    # --publish-as-is uses current version from Cargo.toml
+    # --allow-branch release restricts publishing to release branch only
+    # Note: --registry crates-io removed as it causes issues with cargo-workspaces
+    CARGO_WS_ARGS="publish --publish-as-is --allow-branch release --publish-interval 10 --no-verify"
 
     if [ $DRY_RUN -eq 1 ]; then
         CARGO_WS_ARGS="$CARGO_WS_ARGS --dry-run"

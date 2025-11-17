@@ -36,15 +36,8 @@ echo ""
 update_file() {
     local file=$1
     local pattern=$2
-    local replacement=$3
 
-    if [[ "$OSTYPE" == "darwin"* ]]; then
-        # macOS
-        sed -i '' "$pattern" "$file"
-    else
-        # Linux
-        sed -i "$pattern" "$file"
-    fi
+    sed -i "$pattern" "$file"
 }
 
 # Step 1: Update Rust workspace version in root Cargo.toml
@@ -59,6 +52,15 @@ if grep -q '^\[workspace\.package\]' Cargo.toml; then
 else
     echo -e "${RED}Warning: [workspace.package] section not found in Cargo.toml${NC}"
 fi
+
+# Update workspace dependencies versions (all internal reifydb-* packages)
+if grep -q '^\[workspace\.dependencies\]' Cargo.toml; then
+    update_file Cargo.toml "/^\[workspace\.dependencies\]/,/^\[/ s/^\(reifydb[a-z-]* = { version = \)\"[^\"]*\"/\1\"$NEW_VERSION\"/"
+    echo -e "${GREEN}✓ Updated workspace dependencies versions in Cargo.toml${NC}"
+else
+    echo -e "${RED}Warning: [workspace.dependencies] section not found in Cargo.toml${NC}"
+fi
+echo ""
 
 # Step 2: Update Cargo.lock to reflect new version
 echo -e "${YELLOW}[2/4] Updating Cargo.lock...${NC}"

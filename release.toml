@@ -3,7 +3,7 @@
 
 [publish]
 # Whether to publish Rust crates to crates.io
-crates_io = false
+crates_io = true
 
 # Whether to publish TypeScript packages to npm
-npm_registry = false
+npm_registry = true
