@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
+description = "A modern, real-time database with streaming and analytical capabilities"
 
 [dependencies]
 reifydb-auth = { path = "../../../crates/auth" }

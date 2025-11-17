@@ -4,6 +4,7 @@ version = "0.0.1"
 edition = "2024"
 license = "AGPL-3"
 authors = ["Dominique Chuo <dominique@reifydb.com>"]
+description = "Admin subsystem for web-based administration"
 
 [dependencies]
 reifydb-core = { workspace = true }

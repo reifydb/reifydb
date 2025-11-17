@@ -5,6 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license = "MIT"
 repository.workspace = true
+description = "Official Rust client library for ReifyDB"
 
 [[example]]
 name = "blocking_session"

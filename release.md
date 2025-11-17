@@ -12,8 +12,9 @@ Before releasing, ensure you have:
 
 1. **Git** configured with push access to the repository
 2. **Cargo** with crates.io publishing credentials (`cargo login`)
-3. **npm** with registry credentials (`npm login`)
-4. **pnpm** installed for TypeScript package management
+3. **cargo-workspaces** for automated workspace publishing (`cargo install cargo-workspaces`)
+4. **npm** with registry credentials (`npm login`)
+5. **pnpm** installed for TypeScript package management
 
 ## Quick Release Commands
 
@@ -63,14 +64,14 @@ The `make release` command orchestrates the entire release process:
 
 ### 5. Package Publishing
 
-Publishing happens in a configured dependency order:
+Publishing happens automatically in topological dependency order using `cargo-workspaces`:
 
 #### Rust Crates (crates.io)
-1. Core libraries (compression, hash, type, core)
-2. Storage and infrastructure (storage, cdc, catalog, etc.)
-3. Subsystems (sub-flow, sub-admin, sub-api, etc.)
-4. Client libraries (reifydb-client)
-5. Main library (reifydb)
+- Automatically calculates dependency order from workspace graph
+- Publishes in topological order (dependencies before dependents)
+- Waits 10 seconds between publishes for crates.io indexing
+- Skips binary and test crates (marked with `publish = false`)
+- Typical order: Core libraries → Infrastructure → Subsystems → Client → Main library
 
 #### TypeScript Packages (npm)
 1. @reifydb/core
@@ -224,6 +225,29 @@ make release-dry-run VERSION=1.0.0
 # Dry run publishing only
 scripts/publish-release.sh 1.0.0 --dry-run
 ```
+
+### Using cargo-workspaces Directly
+
+You can also use cargo-workspaces directly for more control:
+
+```bash
+# List all publishable crates in dependency order
+cargo workspaces list
+
+# Publish with custom interval (note: --registry crates-io required with vendored deps)
+cargo workspaces publish --from-git --publish-interval 15 --registry crates-io
+
+# Publish to custom registry
+cargo workspaces publish --from-git --registry my-registry
+
+# See all options
+cargo workspaces publish --help
+```
+
+**Important Notes:**
+- Binary and test crates are automatically excluded via `publish = false` in their Cargo.toml files
+- When using vendored dependencies, you **must** include `--registry crates-io` to bypass the vendor source replacement
+- The publish script automatically includes this flag
 
 ### Custom Configuration
 

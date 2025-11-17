@@ -96,70 +96,48 @@ fi
 if [ $SKIP_CRATES -eq 0 ]; then
     echo -e "${YELLOW}[Phase 1/2] Publishing Rust crates to crates.io${NC}"
 
-    # Use configured publishing order based on known dependencies
-    echo -e "${BLUE}  Using configured publishing order...${NC}"
-    PUBLISH_ORDER="reifydb-compression reifydb-hash reifydb-type reifydb-core reifydb-storage reifydb-cdc reifydb-catalog reifydb-auth reifydb-network reifydb-rql reifydb-transaction reifydb-store-transaction reifydb-store-column reifydb-flow-operator-abi reifydb-flow-operator-sdk reifydb-sub-flow reifydb-engine reifydb-testing reifydb-sub-logging reifydb-sub-api reifydb-sub-admin reifydb-sub-worker reifydb-sub-server reifydb-client reifydb"
+    # Check if cargo-workspaces is installed
+    if ! command -v cargo-workspaces &> /dev/null; then
+        echo -e "${RED}  Error: cargo-workspaces not installed${NC}"
+        echo -e "${YELLOW}  Install with: cargo install cargo-workspaces${NC}"
+        echo -e "${YELLOW}  Or temporarily use CARGO_NET_OFFLINE=false cargo install cargo-workspaces${NC}"
+        exit 1
+    fi
 
-    TOTAL_CRATES=$(echo "$PUBLISH_ORDER" | wc -w)
-    CURRENT_CRATE=0
+    cd "$ROOT_DIR"
 
-    for crate in $PUBLISH_ORDER; do
-        CURRENT_CRATE=$((CURRENT_CRATE + 1))
-        echo -e "${BLUE}  [$CURRENT_CRATE/$TOTAL_CRATES] Publishing $crate...${NC}"
+    # Show publishing order
+    echo -e "${BLUE}  Publishing order (automatically calculated):${NC}"
+    cargo workspaces list | sed 's/^/    /'
+    echo ""
 
-        # Check if already published in a previous run
-        if was_published "crate:$crate"; then
-            echo -e "${GREEN}    ✓ Already published (from previous run)${NC}"
-            continue
-        fi
+    # Build cargo-workspaces command
+    # Note: --registry crates-io is required because .cargo/config.toml replaces crates-io with vendored sources
+    CARGO_WS_ARGS="publish --from-git --publish-interval 10 --no-verify --registry crates-io"
 
-        # Find the crate directory
-        CRATE_DIR=""
-        for dir in "$ROOT_DIR/crates" "$ROOT_DIR/bin" "$ROOT_DIR/pkg/rust"; do
-            if [ -d "$dir/$crate" ]; then
-                CRATE_DIR="$dir/$crate"
-                break
-            elif [ -d "$dir/$(echo $crate | sed 's/reifydb-//')" ]; then
-                CRATE_DIR="$dir/$(echo $crate | sed 's/reifydb-//')"
-                break
-            fi
-        done
+    if [ $DRY_RUN -eq 1 ]; then
+        CARGO_WS_ARGS="$CARGO_WS_ARGS --dry-run"
+        echo -e "${BLUE}  Running cargo-workspaces in dry-run mode...${NC}"
+    fi
 
-        if [ -z "$CRATE_DIR" ] || [ ! -f "$CRATE_DIR/Cargo.toml" ]; then
-            # Try the main reifydb package
-            if [ "$crate" = "reifydb" ] && [ -f "$ROOT_DIR/pkg/rust/reifydb/Cargo.toml" ]; then
-                CRATE_DIR="$ROOT_DIR/pkg/rust/reifydb"
-            else
-                echo -e "${YELLOW}    ⚠ Skipping $crate (directory not found)${NC}"
-                continue
-            fi
-        fi
+    # Set token if available
+    if [ -n "${CRATES_TOKEN:-}" ]; then
+        CARGO_WS_ARGS="$CARGO_WS_ARGS --token ${CRATES_TOKEN}"
+    elif [ -n "${CARGO_REGISTRY_TOKEN:-}" ]; then
+        CARGO_WS_ARGS="$CARGO_WS_ARGS --token ${CARGO_REGISTRY_TOKEN}"
+    fi
 
-        # Check if crate should be published
-        if grep -q 'publish = false' "$CRATE_DIR/Cargo.toml"; then
-            echo -e "${YELLOW}    ⚠ Skipping $crate (publish = false)${NC}"
-            continue
-        fi
-
-        # Publish the crate
-        cd "$CRATE_DIR"
-        if run_cmd "cargo publish --no-verify"; then
-            log_publish "crate:$crate" "SUCCESS"
-            echo -e "${GREEN}    ✓ Published $crate${NC}"
-
-            # Wait a bit to ensure crates.io has indexed the package
-            if [ $DRY_RUN -eq 0 ]; then
-                echo -e "${BLUE}    Waiting for crates.io to index...${NC}"
-                sleep 10
-            fi
-        else
-            log_publish "crate:$crate" "FAILED"
-            echo -e "${RED}    ✗ Failed to publish $crate${NC}"
-            FAILED_PACKAGES="$FAILED_PACKAGES crate:$crate"
-            # Don't exit on failure, try to publish what we can
-        fi
-        cd "$ROOT_DIR"
-    done
+    # Publish all crates using cargo-workspaces
+    echo -e "${BLUE}  Publishing Rust crates...${NC}"
+    if cargo workspaces $CARGO_WS_ARGS; then
+        log_publish "crates:all" "SUCCESS"
+        echo -e "${GREEN}  ✓ All Rust crates published successfully${NC}"
+    else
+        log_publish "crates:all" "FAILED"
+        echo -e "${RED}  ✗ Failed to publish Rust crates${NC}"
+        FAILED_PACKAGES="$FAILED_PACKAGES crates:workspace"
+        # Continue to Phase 2 (NPM) even if Rust publishing fails
+    fi
 else
     echo -e "${YELLOW}[Phase 1/2] Skipping Rust crates (--skip-crates)${NC}"
 fi

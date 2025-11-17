@@ -3,6 +3,7 @@ name = "reifydb-flow-operator-sdk"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+description = "SDK for building flow operators in ReifyDB"
 
 [dependencies]
 reifydb-flow-operator-abi = { path = "../flow-operator-abi" }
