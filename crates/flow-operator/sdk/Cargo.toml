@@ -5,8 +5,8 @@ edition.workspace = true
 license.workspace = true
 
 [dependencies]
-reifydb-flow-operator-abi = { path = "../flow-operator-abi" }
-reifydb-core = { path = "../core" }
-reifydb-type = { path = "../type" }
+reifydb-flow-operator-abi = { workspace = true }
+reifydb-core = { workspace = true}
+reifydb-type = { workspace = true }
 
 [dev-dependencies]

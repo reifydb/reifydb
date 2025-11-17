@@ -11,8 +11,8 @@ members = [
     "crates/engine",
     "crates/hash",
     "crates/network",
-    "crates/flow-operator-abi",
-    "crates/flow-operator-sdk",
+    "crates/flow-operator/abi",
+    "crates/flow-operator/sdk",
     "crates/rql",
     "crates/store-column",
     "crates/store-transaction",
@@ -49,8 +49,8 @@ default-members = [
     "crates/engine",
     "crates/hash",
     "crates/network",
-    "crates/flow-operator-abi",
-    "crates/flow-operator-sdk",
+    "crates/flow-operator/abi",
+    "crates/flow-operator/sdk",
     "crates/rql",
     "crates/store-column",
     "crates/store-transaction",
@@ -88,24 +88,24 @@ version = "0.1.0"
 rust-version = "1.85.1"
 edition = "2024"
 
-#[profile.dev]
-#opt-level = 0
-#debug = true
-#debug-assertions = true
-#overflow-checks = true
-#incremental = true
-#lto = false
-#codegen-units = 256
-#panic = "unwind"
-#
-#[profile.test]
-#opt-level = 0
-#debug = true
-#lto = false
-#codegen-units = 256
-#incremental = true
-#debug-assertions = true
-#overflow-checks = true
+[profile.dev]
+opt-level = 0
+debug = true
+debug-assertions = true
+overflow-checks = true
+incremental = true
+lto = false
+codegen-units = 256
+panic = "unwind"
+
+[profile.test]
+opt-level = 0
+debug = true
+lto = false
+codegen-units = 256
+incremental = true
+debug-assertions = true
+overflow-checks = true
 
 [workspace.dependencies]
 reifydb = { path = "pkg/rust/reifydb" }
@@ -118,8 +118,8 @@ reifydb-core = { path = "crates/core" }
 reifydb-engine = { path = "crates/engine" }
 reifydb-hash = { path = "crates/hash" }
 reifydb-network = { path = "crates/network" }
-reifydb-flow-operator-abi = { path = "crates/flow-operator-abi" }
-reifydb-flow-operator-sdk = { path = "crates/flow-operator-sdk" }
+reifydb-flow-operator-abi = { path = "crates/flow-operator/abi" }
+reifydb-flow-operator-sdk = { path = "crates/flow-operator/sdk" }
 reifydb-rql = { path = "crates/rql" }
 reifydb-store-transaction = { path = "crates/store-transaction" }
 reifydb-testing = { path = "crates/testing" }
