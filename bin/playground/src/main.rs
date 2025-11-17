@@ -1,7 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{path::PathBuf, str::FromStr, thread::sleep, time::Duration};
+//! Simple Flow-to-Flow Communication Example
+//!
+//! This example demonstrates:
+//! - Flow A: Filters data from a table (value > 5)
+//! - Flow B: Consumes from Flow A via deferred view and transforms it (doubles values)
+//! - Result: Materialized view showing filtered and transformed data
+
+use std::{thread::sleep, time::Duration};
 
 use reifydb::{
 	Params, Session, WithSubsystem,
@@ -20,128 +27,88 @@ fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
 }
 
 fn main() {
-	// let mut db = embedded::sqlite_optimistic(SqliteConfig::new("/tmp/test/test.db"))
-	// let mut db = embedded::sqlite_optimistic(SqliteConfig::in_memory())
-	let mut db = embedded::memory_optimistic()
-		.with_logging(logger_configuration)
-		.with_worker(|wp| wp)
-		.with_flow(|f| {
-			f.operators_dir(
-				PathBuf::from_str("/home/ddymke/Workspace/red/testsuite/fixture/target/debug").unwrap(),
-			)
-		})
-		.build()
-		.unwrap();
+	let mut db = embedded::memory_optimistic().with_logging(logger_configuration).build().unwrap();
 
 	db.start().unwrap();
 
-	// Create namespace and table
-	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
-	db.command_as_root(r#"create table test.source { id: int4, name: utf8, status: utf8 }"#, Params::None).unwrap();
+	println!("\n=== Flow-to-Flow Communication Example ===\n");
 
-	println!("Created namespace and table");
+	// Create namespace
+	println!("1. Creating namespace...");
+	db.command_as_root(r#"create namespace test"#, Params::None).unwrap();
 
-	// Create deferred view with counter operator
+	// Create source table
+	println!("2. Creating source table...");
 	db.command_as_root(
-		r#"
-create deferred view test.counter_view {
-    insert: uint1,
-    update: uint1,
-    delete: uint1
-} as {
-    from test.source
-    apply counter{}
-}
-	"#,
+		r#"create table test.numbers {
+    id: int4,
+    value: int4
+}"#,
 		Params::None,
 	)
 	.unwrap();
 
-	println!("Created counter view");
-
-	// Wait for view to be ready
-	sleep(Duration::from_millis(500));
-
-	// Query the counter view
-	println!("\nQuerying counter view (initial):");
-	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
-
-	// Insert some records
-	println!("\nInserting 10 records...");
+	// Create Flow A: filters data (value > 5)
+	println!("3. Creating Flow A (filters values > 5)...");
 	db.command_as_root(
-		r#"
-from [
-    {id: 1, name: "Alice", status: "active"},
-    {id: 2, name: "Bob", status: "active"},
-    {id: 3, name: "Charlie", status: "inactive"},
-    {id: 4, name: "Diana", status: "active"},
-    {id: 5, name: "Eve", status: "active"},
-    {id: 6, name: "Frank", status: "inactive"},
-    {id: 7, name: "Grace", status: "active"},
-    {id: 8, name: "Hank", status: "active"},
-    {id: 9, name: "Ivy", status: "inactive"},
-    {id: 10, name: "Jack", status: "active"}
-]
-insert test.source
-	"#,
+		r#"create flow test.flow_a as {
+    		from test.numbers
+    		filter { value > 5 }
+    }"#,
 		Params::None,
 	)
 	.unwrap();
 
-	sleep(Duration::from_millis(500));
-
-	// Query the counter view again
-	println!("\nQuerying counter view after inserts:");
-	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
-
-	// Update some records
-	println!("\nUpdating 3 records...");
+	// Create deferred view that consumes from Flow A
+	println!("4. Creating deferred view (consumes from Flow A, doubles values)...");
 	db.command_as_root(
-		r#"
-from test.source
-filter id == 2 OR id == 5 or id == 8
-map {id, name,  status: "suspended" }
-update test.source
-	"#,
+		r#"create deferred view test.result {
+			id: int4,
+			value: int4,
+			doubled: int4
+		} as {
+			from test.flow_a
+			extend { doubled: value * 2 }
+    	}"#,
 		Params::None,
 	)
 	.unwrap();
 
-	sleep(Duration::from_millis(500));
-
-	// Query the counter view again
-	println!("\nQuerying counter view after updates:");
-	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
+	// Show flow information
+	for frame in db.query_as_root(r#"from system.flows map {id, name}"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	// Delete some records
-	println!("\nDeleting 2 records...");
-	db.command_as_root(
-		r#"
-from test.source
-filter id == 3 or id == 9
-delete test.source
-	"#,
-		Params::None,
-	)
-	.unwrap();
-
-	sleep(Duration::from_millis(500));
-
-	// Query the counter view final time
-	println!("\nQuerying counter view after deletes:");
-	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
-
-	println!("\nExpected counts: insert_count=10, update_count=3, delete_count=2");
-
-	for frame in db.query_as_root(r#"from system.flow_operators"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
+	// 	// Wait for view to be ready
+	// 	sleep(Duration::from_millis(500));
+	//
+	// 	// Insert test data
+	// 	println!("\n5. Inserting test data...");
+	// 	db.command_as_root(
+	// 		r#"from [
+	//     {id: 1, value: 3},
+	//     {id: 2, value: 10},
+	//     {id: 3, value: 7},
+	//     {id: 4, value: 2},
+	//     {id: 5, value: 15}
+	// ]
+	// insert test.numbers"#,
+	// 		Params::None,
+	// 	)
+	// 	.unwrap();
+	//
+	// 	sleep(Duration::from_millis(500));
+	//
+	// 	// Query the result
+	// 	println!("\n6. Querying result (should only show values > 5, doubled):\n");
+	// 	for frame in db.query_as_root(r#"from test.result"#, Params::None).unwrap() {
+	// 		println!("{}", frame);
+	// 	}
+	//
+	// 	println!("\n=== Expected Output ===");
+	// 	println!("Only rows where value > 5 should appear:");
+	// 	println!("  - id: 2, value: 10, doubled: 20");
+	// 	println!("  - id: 3, value: 7, doubled: 14");
+	// 	println!("  - id: 5, value: 15, doubled: 30");
+	// 	println!("\n=== Flow Info ===");
 }

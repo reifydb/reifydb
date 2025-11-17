@@ -34,7 +34,7 @@ use crate::{
 	table_virtual::{
 		TableVirtual, TableVirtualContext,
 		system::{
-			CdcConsumers, ColumnPolicies, ColumnsTable, FlowOperators, Namespaces,
+			CdcConsumers, ColumnPolicies, ColumnsTable, FlowOperators, Flows, Namespaces,
 			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, Sequences, SourceRetentionPolicies,
 			Tables, Versions, Views,
 		},
@@ -182,6 +182,7 @@ pub(crate) fn compile<'a>(
 					"namespaces" => Box::new(Namespaces::new()),
 					"tables" => Box::new(Tables::new()),
 					"views" => Box::new(Views::new()),
+					"flows" => Box::new(Flows::new()),
 					"columns" => Box::new(ColumnsTable::new()),
 					"primary_keys" => Box::new(PrimaryKeys::new()),
 					"primary_key_columns" => Box::new(PrimaryKeyColumns::new()),

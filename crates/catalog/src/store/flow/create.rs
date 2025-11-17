@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
-use reifydb_type::OwnedFragment;
+use reifydb_type::{Blob, OwnedFragment};
 
 use crate::{
 	CatalogStore,
@@ -24,7 +24,7 @@ pub struct FlowToCreate {
 	pub fragment: Option<OwnedFragment>,
 	pub name: String,
 	pub namespace: NamespaceId,
-	pub query: reifydb_type::Blob,
+	pub query: Blob,
 	pub status: FlowStatus,
 }
 
@@ -96,6 +96,7 @@ mod tests {
 		FlowId, FlowStatus, MultiVersionQueryTransaction, NamespaceFlowKey, NamespaceId,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
+	use reifydb_type::Blob;
 
 	use crate::{
 		CatalogStore,
@@ -112,7 +113,7 @@ mod tests {
 			fragment: None,
 			name: "test_flow".to_string(),
 			namespace: test_namespace.id,
-			query: reifydb_type::Blob::from(b"FROM test_table".as_slice()),
+			query: Blob::from(b"FROM test_table".as_slice()),
 			status: FlowStatus::Active,
 		};
 
@@ -139,7 +140,7 @@ mod tests {
 			fragment: None,
 			name: "flow_one".to_string(),
 			namespace: test_namespace.id,
-			query: reifydb_type::Blob::from(b"MAP 1".as_slice()),
+			query: Blob::from(b"MAP 1".as_slice()),
 			status: FlowStatus::Active,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -148,7 +149,7 @@ mod tests {
 			fragment: None,
 			name: "flow_two".to_string(),
 			namespace: test_namespace.id,
-			query: reifydb_type::Blob::from(b"MAP 2".as_slice()),
+			query: Blob::from(b"MAP 2".as_slice()),
 			status: FlowStatus::Paused,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -194,7 +195,7 @@ mod tests {
 			fragment: None,
 			name: "shared_name".to_string(),
 			namespace: namespace_one.id,
-			query: reifydb_type::Blob::from(b"MAP 1".as_slice()),
+			query: Blob::from(b"MAP 1".as_slice()),
 			status: FlowStatus::Active,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -204,7 +205,7 @@ mod tests {
 			fragment: None,
 			name: "shared_name".to_string(),
 			namespace: namespace_two.id,
-			query: reifydb_type::Blob::from(b"MAP 2".as_slice()),
+			query: Blob::from(b"MAP 2".as_slice()),
 			status: FlowStatus::Active,
 		};
 		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();

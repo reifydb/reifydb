@@ -349,6 +349,12 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			max_window_count: node.max_window_count,
 			max_window_age: node.max_window_age,
 		}),
+		PhysicalPlan::FlowScan(node) => {
+			// For FlowScan, convert the resolved flow to owned
+			PhysicalPlan::FlowScan(crate::plan::physical::FlowScanNode {
+				source: node.source.to_static(),
+			})
+		}
 		_ => unimplemented!("Implement conversion for remaining PhysicalPlan variants"),
 	}
 }
