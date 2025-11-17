@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Row,
-	interface::{FlowNodeId, SourceId, TableDef, ViewDef},
+	interface::{FlowDef, FlowNodeId, SourceId, TableDef, ViewDef},
 	key::{EncodableKey, RowKey},
 };
 use reifydb_engine::StandardRowEvaluator;
@@ -102,5 +102,53 @@ impl Operator for SourceViewOperator {
 				}));
 		}
 		Ok(result)
+	}
+}
+
+pub struct SourceFlowOperator {
+	node: FlowNodeId,
+	flow: FlowDef,
+}
+
+impl SourceFlowOperator {
+	pub fn new(node: FlowNodeId, flow: FlowDef) -> Self {
+		Self {
+			node,
+			flow,
+		}
+	}
+}
+
+impl Operator for SourceFlowOperator {
+	fn id(&self) -> FlowNodeId {
+		self.node
+	}
+
+	fn apply(
+		&self,
+		_txn: &mut FlowTransaction,
+		change: FlowChange,
+		_evaluator: &StandardRowEvaluator,
+	) -> crate::Result<FlowChange> {
+		Ok(change)
+	}
+
+	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+		// let mut result = Vec::with_capacity(rows.len());
+		// for row in rows {
+		// 	result.push(txn
+		// 		.get(&RowKey {
+		// 			source: SourceId::flow(self.flow.id),
+		// 			row: *row,
+		// 		}
+		// 		.encode())?
+		// 		.map(|encoded| Row {
+		// 			number: *row,
+		// 			encoded,
+		// 			layout: (&self.flow).into(),
+		// 		}));
+		// }
+		// Ok(result)
+		unimplemented!()
 	}
 }

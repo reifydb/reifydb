@@ -29,7 +29,7 @@ pub use join::JoinOperator;
 pub use map::MapOperator;
 pub use sink::SinkViewOperator;
 pub use sort::SortOperator;
-pub use source::{SourceTableOperator, SourceViewOperator};
+pub use source::{SourceFlowOperator, SourceTableOperator, SourceViewOperator};
 pub use take::TakeOperator;
 pub use transform::registry::TransformOperatorRegistry;
 pub use union::UnionOperator;
@@ -53,6 +53,7 @@ pub type BoxedOperator = Box<dyn Operator>;
 pub enum Operators {
 	SourceTable(SourceTableOperator),
 	SourceView(SourceViewOperator),
+	SourceFlow(SourceFlowOperator),
 	Filter(FilterOperator),
 	Map(MapOperator),
 	Extend(ExtendOperator),
@@ -87,6 +88,7 @@ impl Operators {
 			Operators::Window(op) => op.apply(txn, change, evaluator),
 			Operators::SourceTable(op) => op.apply(txn, change, evaluator),
 			Operators::SourceView(op) => op.apply(txn, change, evaluator),
+			Operators::SourceFlow(op) => op.apply(txn, change, evaluator),
 		}
 	}
 
@@ -105,6 +107,7 @@ impl Operators {
 			Operators::Window(op) => op.get_rows(txn, rows),
 			Operators::SourceTable(op) => op.get_rows(txn, rows),
 			Operators::SourceView(op) => op.get_rows(txn, rows),
+			Operators::SourceFlow(op) => op.get_rows(txn, rows),
 		}
 	}
 }

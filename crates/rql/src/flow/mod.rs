@@ -26,7 +26,10 @@ use self::{
 		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, sort::SortCompiler, take::TakeCompiler,
 		window::WindowCompiler,
 	},
-	source::{inline_data::InlineDataCompiler, table_scan::TableScanCompiler, view_scan::ViewScanCompiler},
+	source::{
+		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
+		view_scan::ViewScanCompiler,
+	},
 };
 use crate::plan::physical::PhysicalPlan;
 
@@ -145,10 +148,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			| PhysicalPlan::DeleteRingBuffer(_) => {
 				unreachable!()
 			}
-			PhysicalPlan::FlowScan(_flow_scan) => {
-				// TODO: Implement FlowScanCompiler for flow
-				unimplemented!("FlowScan compilation not yet implemented for flow")
-			}
+			PhysicalPlan::FlowScan(flow_scan) => FlowScanCompiler::from(flow_scan).compile(self),
 			PhysicalPlan::TableVirtualScan(_scan) => {
 				// TODO: Implement VirtualScanCompiler
 				// For now, return a placeholder

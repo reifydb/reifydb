@@ -3,8 +3,11 @@
 
 use std::sync::Arc;
 
-use FlowNodeType::{Aggregate, SinkView, SourceInlineData, SourceTable, SourceView};
-use reifydb_catalog::{CatalogTableQueryOperations, CatalogViewQueryOperations, resolve::resolve_view};
+use FlowNodeType::{Aggregate, SinkView, SourceFlow, SourceInlineData, SourceTable, SourceView};
+use reifydb_catalog::{
+	CatalogTableQueryOperations, CatalogViewQueryOperations, resolve::resolve_view,
+	transaction::CatalogFlowQueryOperations,
+};
 use reifydb_core::{
 	Error,
 	interface::{FlowId, FlowNodeId, SourceId},
@@ -21,7 +24,8 @@ use crate::{
 	engine::FlowEngine,
 	operator::{
 		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, Operators,
-		SinkViewOperator, SortOperator, SourceTableOperator, SourceViewOperator, TakeOperator, WindowOperator,
+		SinkViewOperator, SortOperator, SourceFlowOperator, SourceTableOperator, SourceViewOperator,
+		TakeOperator, WindowOperator,
 	},
 };
 
@@ -70,6 +74,19 @@ impl FlowEngine {
 				self.inner.operators.write().insert(
 					node.id,
 					Arc::new(Operators::SourceView(SourceViewOperator::new(node.id, view))),
+				);
+			}
+			SourceFlow {
+				flow: source_flow,
+			} => {
+				let source_flow_def = txn.get_flow(source_flow)?;
+				self.add_source(flow.id, node.id, SourceId::flow(source_flow_def.id));
+				self.inner.operators.write().insert(
+					node.id,
+					Arc::new(Operators::SourceFlow(SourceFlowOperator::new(
+						node.id,
+						source_flow_def,
+					))),
 				);
 			}
 			SinkView {

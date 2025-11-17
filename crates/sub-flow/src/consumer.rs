@@ -93,7 +93,9 @@ impl FlowConsumer {
 				let resolved_view = resolve_view(txn, view_id)?;
 				resolved_view.def().get_named_layout()
 			}
-			SourceId::Flow(_) => {
+			SourceId::Flow(flow_id) => {
+				// let resolved_flow = resolve_flow(txn, flow_id)?;
+				// resolved_flow
 				unimplemented!("Flow sources not supported in flows")
 			}
 			SourceId::TableVirtual(_) => {

@@ -1,6 +1,6 @@
 use reifydb_core::{
 	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
-	interface::{FlowEdgeId, FlowNodeId, TableId, ViewId},
+	interface::{FlowEdgeId, FlowId, FlowNodeId, TableId, ViewId},
 };
 use serde::{Deserialize, Serialize};
 
@@ -14,6 +14,9 @@ pub enum FlowNodeType {
 	},
 	SourceView {
 		view: ViewId,
+	},
+	SourceFlow {
+		flow: FlowId,
 	},
 	Filter {
 		conditions: Vec<Expression<'static>>,
