@@ -1,9 +1,9 @@
 [package]
 name = "reifydb-sub-admin"
-version = "0.0.1"
-edition = "2024"
-license = "AGPL-3"
-authors = ["Dominique Chuo <dominique@reifydb.com>"]
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
 description = "Admin subsystem for web-based administration"
 
 [dependencies]

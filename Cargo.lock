@@ -575,7 +575,6 @@ dependencies = [
  "reifydb-core",
  "reifydb-rql",
  "reifydb-store-transaction",
- "reifydb-testing",
  "reifydb-transaction",
  "reifydb-type",
  "serde",
@@ -605,7 +604,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-network"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "httparse",
  "mio",
@@ -646,13 +645,12 @@ dependencies = [
  "reifydb-testing",
  "reifydb-type",
  "rusqlite",
- "test_each_file",
  "uuid",
 ]
 
 [[package]]
 name = "reifydb-sub-admin"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "mio",
  "reifydb-core",

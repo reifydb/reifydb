@@ -3,7 +3,7 @@ name = "reifydb-py"
 authors = ["Dev <dominique@reifydb.com>"]
 homepage = "https://reifydb.com"
 repository = "https://github.com/reifydb/reifydb"
-license = "AGPL-3"
+license.workspace = true
 
 version.workspace = true
 rust-version.workspace = true

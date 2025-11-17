@@ -112,8 +112,10 @@ if [ $SKIP_CRATES -eq 0 ]; then
     echo ""
 
     # Build cargo-workspaces command
-    # Note: --registry crates-io is required because .cargo/config.toml replaces crates-io with vendored sources
-    CARGO_WS_ARGS="publish --from-git --publish-interval 10 --no-verify --registry crates-io"
+    # Note: --registry crates-io is required to explicitly target crates.io
+    # --publish-as-is uses current version from Cargo.toml (0.1.0)
+    # --allow-branch main allows publishing from main branch
+    CARGO_WS_ARGS="publish --publish-as-is --allow-branch main --publish-interval 10 --no-verify --registry crates-io"
 
     if [ $DRY_RUN -eq 1 ]; then
         CARGO_WS_ARGS="$CARGO_WS_ARGS --dry-run"

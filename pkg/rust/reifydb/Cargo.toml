@@ -8,16 +8,16 @@ repository.workspace = true
 description = "A modern, real-time database with streaming and analytical capabilities"
 
 [dependencies]
-reifydb-auth = { path = "../../../crates/auth" }
-reifydb-catalog = { path = "../../../crates/catalog" }
-reifydb-cdc = { path = "../../../crates/cdc" }
-reifydb-core = { path = "../../../crates/core" }
-reifydb-engine = { path = "../../../crates/engine" }
-reifydb-network = { path = "../../../crates/network" }
+reifydb-auth = { workspace = true }
+reifydb-catalog = { workspace = true }
+reifydb-cdc = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-network = { workspace = true }
 reifydb-store-transaction = { workspace = true }
-reifydb-rql = { path = "../../../crates/rql" }
-reifydb-transaction = { path = "../../../crates/transaction" }
-reifydb-type = { path = "../../../crates/type" }
+reifydb-rql = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-type = { workspace = true }
 
 reifydb-sub-api = { workspace = true }
 reifydb-sub-admin = { workspace = true, optional = true }
