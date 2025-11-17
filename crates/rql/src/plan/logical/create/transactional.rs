@@ -50,7 +50,7 @@ impl Compiler {
 			view,
 			if_not_exists: false,
 			columns,
-			with,
+			as_clause: with,
 		}))
 	}
 }

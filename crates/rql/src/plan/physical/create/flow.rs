@@ -30,7 +30,7 @@ impl Compiler {
 			namespace,
 			flow: create.flow.name.clone(), // Extract just the name Fragment
 			if_not_exists: create.if_not_exists,
-			with: Self::compile(rx, create.with)?.map(Box::new).unwrap(), // FIXME
+			as_clause: Self::compile(rx, create.as_clause)?.map(Box::new).unwrap(), // FIXME
 		}))
 	}
 }

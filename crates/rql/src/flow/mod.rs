@@ -31,7 +31,11 @@ use self::{
 use crate::plan::physical::PhysicalPlan;
 
 /// Public API for compiling logical plans to Flows
-pub fn compile_flow(txn: &mut impl CommandTransaction, plan: PhysicalPlan, sink: &ViewDef) -> crate::Result<Flow> {
+pub fn compile_flow(
+	txn: &mut impl CommandTransaction,
+	plan: PhysicalPlan,
+	sink: Option<&ViewDef>,
+) -> crate::Result<Flow> {
 	// Convert PhysicalPlan<'_> to PhysicalPlan<'static> at the boundary
 	let owned_plan = to_owned_physical_plan(plan);
 	let compiler = FlowCompiler::new(txn)?;
@@ -82,16 +86,19 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	}
 
 	/// Compiles a physical plan into a FlowGraph
-	pub(crate) fn compile(mut self, plan: PhysicalPlan, sink: &ViewDef) -> crate::Result<Flow> {
-		// Store sink view for terminal nodes
-		self.sink = Some(sink.clone());
+	pub(crate) fn compile(mut self, plan: PhysicalPlan, sink: Option<&ViewDef>) -> crate::Result<Flow> {
+		// Store sink view for terminal nodes (if provided)
+		self.sink = sink.cloned();
 		let root_node_id = self.compile_plan(plan)?;
 
-		let result_node = self.add_node(FlowNodeType::SinkView {
-			view: sink.id,
-		})?;
+		// Only add SinkView node if sink is provided
+		if let Some(sink_view) = sink {
+			let result_node = self.add_node(FlowNodeType::SinkView {
+				view: sink_view.id,
+			})?;
 
-		self.add_edge(&root_node_id, &result_node)?;
+			self.add_edge(&root_node_id, &result_node)?;
+		}
 
 		Ok(self.builder.build())
 	}

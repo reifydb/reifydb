@@ -31,7 +31,7 @@ impl Executor {
 			columns: plan.columns,
 		})?;
 
-		self.create_deferred_view_flow(txn, &result, plan.with)?;
+		self.create_deferred_view_flow(txn, &result, plan.as_clause)?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),
@@ -68,7 +68,7 @@ mod tests {
 			view: Fragment::owned_internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
-			with: Box::new(InlineData(InlineDataNode {
+			as_clause: Box::new(InlineData(InlineDataNode {
 				rows: vec![],
 			})),
 		};
@@ -136,7 +136,7 @@ mod tests {
 			view: Fragment::owned_internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
-			with: Box::new(InlineData(InlineDataNode {
+			as_clause: Box::new(InlineData(InlineDataNode {
 				rows: vec![],
 			})),
 		};
@@ -163,7 +163,7 @@ mod tests {
 			view: Fragment::owned_internal("test_view"),
 			if_not_exists: false,
 			columns: vec![],
-			with: Box::new(InlineData(InlineDataNode {
+			as_clause: Box::new(InlineData(InlineDataNode {
 				rows: vec![],
 			})),
 		};
@@ -195,7 +195,7 @@ mod tests {
 			view: Fragment::owned_internal("my_view"),
 			if_not_exists: false,
 			columns: vec![],
-			with: Box::new(InlineData(InlineDataNode {
+			as_clause: Box::new(InlineData(InlineDataNode {
 				rows: vec![],
 			})),
 		};

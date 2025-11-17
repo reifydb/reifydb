@@ -82,7 +82,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 
 			// Render the WITH query as a child
 			with_child_prefix(prefix, is_last, |child_prefix| {
-				render_physical_plan_inner(&create_flow.with, child_prefix, true, output);
+				render_physical_plan_inner(&create_flow.as_clause, child_prefix, true, output);
 			});
 		}
 		PhysicalPlan::AlterSequence(physical::AlterSequenceNode {

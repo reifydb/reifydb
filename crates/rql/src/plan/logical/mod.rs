@@ -577,7 +577,7 @@ pub struct CreateDeferredViewNode<'a> {
 	pub view: MaybeQualifiedDeferredViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Vec<LogicalPlan<'a>>,
+	pub as_clause: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]
@@ -585,7 +585,7 @@ pub struct CreateTransactionalViewNode<'a> {
 	pub view: MaybeQualifiedTransactionalViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Vec<LogicalPlan<'a>>,
+	pub as_clause: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]
@@ -619,7 +619,7 @@ pub struct CreateRingBufferNode<'a> {
 pub struct CreateFlowNode<'a> {
 	pub flow: MaybeQualifiedFlowIdentifier<'a>,
 	pub if_not_exists: bool,
-	pub with: Vec<LogicalPlan<'a>>,
+	pub as_clause: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]

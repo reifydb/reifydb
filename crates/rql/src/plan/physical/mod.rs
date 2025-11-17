@@ -916,7 +916,7 @@ pub struct CreateDeferredViewNode<'a> {
 	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Box<PhysicalPlan<'a>>,
+	pub as_clause: Box<PhysicalPlan<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -924,7 +924,7 @@ pub struct CreateFlowNode<'a> {
 	pub namespace: NamespaceDef,
 	pub flow: Fragment<'a>,
 	pub if_not_exists: bool,
-	pub with: Box<PhysicalPlan<'a>>,
+	pub as_clause: Box<PhysicalPlan<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -933,7 +933,7 @@ pub struct CreateTransactionalViewNode<'a> {
 	pub view: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
-	pub with: Box<PhysicalPlan<'a>>,
+	pub as_clause: Box<PhysicalPlan<'a>>,
 }
 
 #[derive(Debug, Clone)]

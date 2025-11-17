@@ -31,7 +31,7 @@ impl Compiler {
 			view: create.view.name.clone(), // Extract just the name Fragment
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
-			with: Self::compile(rx, create.with)?.map(Box::new).unwrap(), // FIXME
+			as_clause: Self::compile(rx, create.as_clause)?.map(Box::new).unwrap(), // FIXME
 		}))
 	}
 }

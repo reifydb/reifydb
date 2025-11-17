@@ -22,7 +22,7 @@ impl Compiler {
 		Ok(LogicalPlan::CreateFlow(CreateFlowNode {
 			flow,
 			if_not_exists: ast.if_not_exists,
-			with,
+			as_clause: with,
 		}))
 	}
 }

@@ -23,7 +23,7 @@ impl Executor {
 		view: &ViewDef,
 		plan: Box<PhysicalPlan>,
 	) -> crate::Result<()> {
-		let flow = compile_flow(txn, *plan, view).unwrap();
+		let flow = compile_flow(txn, *plan, Some(view)).unwrap();
 		let rql = r#"
 		         from[{data: blob::utf8('$REPLACE')}]
 		         insert reifydb.flows

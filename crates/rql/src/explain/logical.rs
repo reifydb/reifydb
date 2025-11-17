@@ -804,10 +804,10 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 
 			output.push_str("\n");
 
-			// Render the WITH query as a child
-			if !create_flow.with.is_empty() {
-				for (i, plan) in create_flow.with.iter().enumerate() {
-					let is_last = i == create_flow.with.len() - 1;
+			// Render the AS query as a child
+			if !create_flow.as_clause.is_empty() {
+				for (i, plan) in create_flow.as_clause.iter().enumerate() {
+					let is_last = i == create_flow.as_clause.len() - 1;
 					let new_prefix = format!(
 						"{}{}",
 						prefix,

@@ -3,8 +3,8 @@
 
 use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate, transaction::CatalogFlowQueryOperations};
 use reifydb_core::{interface::FlowStatus, value::column::Columns};
-use reifydb_rql::plan::physical::CreateFlowNode;
-use reifydb_type::Value;
+use reifydb_rql::{flow::compile_flow, plan::physical::CreateFlowNode};
+use reifydb_type::{Blob, Value};
 
 use crate::{StandardCommandTransaction, execute::Executor};
 
@@ -14,7 +14,6 @@ impl Executor {
 		txn: &mut StandardCommandTransaction,
 		plan: CreateFlowNode,
 	) -> crate::Result<Columns<'a>> {
-		// Check if flow already exists using the transaction's catalog operations
 		if let Some(_) = txn.find_flow_by_name(plan.namespace.id, plan.flow.text())? {
 			if plan.if_not_exists {
 				return Ok(Columns::single_row([
@@ -23,14 +22,12 @@ impl Executor {
 					("created", Value::Boolean(false)),
 				]));
 			}
-			// The error will be returned by create_flow if the flow exists
 		}
 
-		// TODO: Properly serialize the physical plan
-		// For now, store a placeholder. The actual flow graph compilation
-		// will happen when the flow is started.
-		let query_placeholder = format!("FLOW: {}", plan.flow.text());
-		let query_blob = reifydb_type::Blob::from(query_placeholder.as_bytes());
+		let flow = compile_flow(txn, *plan.as_clause, None)?;
+
+		let flow_json = serde_json::to_string(&flow).unwrap();
+		let query = Blob::from(flow_json.as_bytes());
 
 		CatalogStore::create_flow(
 			txn,
@@ -38,7 +35,7 @@ impl Executor {
 				fragment: Some(plan.flow.clone().into_owned()),
 				name: plan.flow.text().to_string(),
 				namespace: plan.namespace.id,
-				query: query_blob,
+				query,
 				status: FlowStatus::Active,
 			},
 		)?;
