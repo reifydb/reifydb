@@ -123,6 +123,15 @@ release:
 	echo "$(YELLOW)=====================================$(NC)"; \
 	echo "$(YELLOW)        RELEASE PROCESS$(NC)"; \
 	echo "$(YELLOW)=====================================$(NC)"; \
+	CURRENT_BRANCH=$$(git branch --show-current); \
+	if [ "$$CURRENT_BRANCH" != "release" ]; then \
+		echo "$(RED)Error: Releases can only be created from the 'release' branch$(NC)"; \
+		echo "$(RED)Current branch: $$CURRENT_BRANCH$(NC)"; \
+		echo "$(YELLOW)Please switch to the release branch: git checkout release$(NC)"; \
+		exit 1; \
+	fi; \
+	echo "$(GREEN)✓ On release branch$(NC)"; \
+	echo ""; \
 	if [ -z "$(VERSION)" ]; then \
 		echo "$(BLUE)No VERSION specified, auto-incrementing patch version$(NC)"; \
 		NEW_VERSION=$$(echo $(CURRENT_VERSION) | awk -F. '{print $$1"."$$2"."$$3+1}'); \
@@ -131,30 +140,34 @@ release:
 	fi; \
 	echo "$(GREEN)Releasing version: $$NEW_VERSION$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[1/6] Checking if version already exists...$(NC)"; \
+	echo "$(YELLOW)[1/7] Checking if version already exists...$(NC)"; \
 	make check-version-exists "VERSION=$$NEW_VERSION" || exit 1; \
 	echo "$(GREEN)✓ Version $$NEW_VERSION is available$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[2/6] Validating release readiness...$(NC)"; \
+	echo "$(YELLOW)[2/7] Running full test suite and validation (make all)...$(NC)"; \
+	$(MAKE) all || exit 1; \
+	echo "$(GREEN)✓ All tests passed and containers built$(NC)"; \
+	echo ""; \
+	echo "$(YELLOW)[3/7] Validating release readiness...$(NC)"; \
 	make validate-release "VERSION=$$NEW_VERSION" || exit 1; \
 	echo "$(GREEN)✓ Validation passed$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[3/6] Updating all package versions...$(NC)"; \
+	echo "$(YELLOW)[4/7] Updating all package versions...$(NC)"; \
 	make set-version "VERSION=$$NEW_VERSION" || exit 1; \
 	echo "$(GREEN)✓ Versions updated$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[4/6] Creating git commit and tag...$(NC)"; \
+	echo "$(YELLOW)[5/7] Creating git commit and tag...$(NC)"; \
 	if [ ! -f "$(SCRIPTS_DIR)/git-release.sh" ]; then echo "$(RED)Error: Required script $(SCRIPTS_DIR)/git-release.sh not found$(NC)"; exit 1; fi; \
 	$(SCRIPTS_DIR)/git-release.sh $$NEW_VERSION || exit 1; \
 	echo "$(GREEN)✓ Git operations completed$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[5/6] Publishing packages...$(NC)"; \
+	echo "$(YELLOW)[6/7] Publishing packages...$(NC)"; \
 	if [ ! -f "$(SCRIPTS_DIR)/publish-release.sh" ]; then echo "$(RED)Error: Required script $(SCRIPTS_DIR)/publish-release.sh not found$(NC)"; exit 1; fi; \
 	$(SCRIPTS_DIR)/publish-release.sh $$NEW_VERSION || exit 1; \
 	echo "$(GREEN)✓ All packages published$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[6/6] Pushing to remote...$(NC)"; \
-	git push origin main --follow-tags || exit 1; \
+	echo "$(YELLOW)[7/7] Pushing to remote...$(NC)"; \
+	git push origin release --follow-tags || exit 1; \
 	echo "$(GREEN)✓ Pushed to remote$(NC)"; \
 	echo ""; \
 	echo "$(GREEN)=====================================$(NC)"; \
