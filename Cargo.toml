@@ -11,8 +11,8 @@ members = [
     "crates/engine",
     "crates/hash",
     "crates/network",
-    "crates/flow-operator-abi",
-    "crates/flow-operator-sdk",
+    "crates/flow-operator/abi",
+    "crates/flow-operator/sdk",
     "crates/rql",
     "crates/store-column",
     "crates/store-transaction",
@@ -49,8 +49,8 @@ default-members = [
     "crates/engine",
     "crates/hash",
     "crates/network",
-    "crates/flow-operator-abi",
-    "crates/flow-operator-sdk",
+    "crates/flow-operator/abi",
+    "crates/flow-operator/sdk",
     "crates/rql",
     "crates/store-column",
     "crates/store-transaction",
@@ -88,24 +88,24 @@ version = "0.1.0"
 rust-version = "1.85.1"
 edition = "2024"
 
-#[profile.dev]
-#opt-level = 0
-#debug = true
-#debug-assertions = true
-#overflow-checks = true
-#incremental = true
-#lto = false
-#codegen-units = 256
-#panic = "unwind"
-#
-#[profile.test]
-#opt-level = 0
-#debug = true
-#lto = false
-#codegen-units = 256
-#incremental = true
-#debug-assertions = true
-#overflow-checks = true
+[profile.dev]
+opt-level = 0
+debug = true
+debug-assertions = true
+overflow-checks = true
+incremental = true
+lto = false
+codegen-units = 256
+panic = "unwind"
+
+[profile.test]
+opt-level = 0
+debug = true
+lto = false
+codegen-units = 256
+incremental = true
+debug-assertions = true
+overflow-checks = true
 
 [workspace.dependencies]
 reifydb = { version = "0.1.0", path = "pkg/rust/reifydb" }
@@ -120,8 +120,8 @@ reifydb-core = { version = "0.1.0", path = "crates/core" }
 reifydb-engine = { version = "0.1.0", path = "crates/engine" }
 reifydb-hash = { version = "0.1.0", path = "crates/hash" }
 reifydb-network = { version = "0.1.0", path = "crates/network" }
-reifydb-flow-operator-abi = { version = "0.1.0", path = "crates/flow-operator-abi" }
-reifydb-flow-operator-sdk = { version = "0.1.0", path = "crates/flow-operator-sdk" }
+reifydb-flow-operator-abi = { version = "0.1.0", path = "crates/flow-operator/abi" }
+reifydb-flow-operator-sdk = { version = "0.1.0", path = "crates/flow-operator/sdk" }
 reifydb-rql = { version = "0.1.0", path = "crates/rql" }
 reifydb-store-column = { version = "0.1.0", path = "crates/store-column" }
 reifydb-store-transaction = { version = "0.1.0", path = "crates/store-transaction" }
