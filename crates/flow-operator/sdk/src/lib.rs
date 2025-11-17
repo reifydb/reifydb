@@ -14,6 +14,7 @@ pub mod error;
 pub mod ffi;
 pub mod marshal;
 pub mod stateful;
+pub mod testing;
 
 pub use change::FlowChangeBuilder;
 pub use context::OperatorContext;
