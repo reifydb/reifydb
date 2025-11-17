@@ -148,14 +148,37 @@ if [ $SKIP_CRATES -eq 0 ]; then
         CARGO_WS_ARGS="$CARGO_WS_ARGS --token ${CARGO_REGISTRY_TOKEN}"
     fi
 
-    # Publish all crates using cargo-workspaces
+    # Publish all crates using cargo-workspaces with retry logic
     echo -e "${BLUE}  Publishing Rust crates...${NC}"
-    if cargo workspaces $CARGO_WS_ARGS; then
+
+    MAX_RETRIES=10
+    RETRY_COUNT=0
+    SUCCESS=false
+
+    while [ $RETRY_COUNT -lt $MAX_RETRIES ]; do
+        if cargo workspaces $CARGO_WS_ARGS; then
+            SUCCESS=true
+            break
+        else
+            RETRY_COUNT=$((RETRY_COUNT + 1))
+            if [ $RETRY_COUNT -lt $MAX_RETRIES ]; then
+                # Exponential backoff: 1s, 2s, 4s, 8s, 10s (capped at 10s)
+                WAIT_TIME=$((2 ** (RETRY_COUNT - 1)))
+                if [ $WAIT_TIME -gt 10 ]; then
+                    WAIT_TIME=10
+                fi
+                echo -e "${YELLOW}  Retry $RETRY_COUNT/$MAX_RETRIES after ${WAIT_TIME}s (transient error)...${NC}"
+                sleep $WAIT_TIME
+            fi
+        fi
+    done
+
+    if [ "$SUCCESS" = true ]; then
         log_publish "crates:all" "SUCCESS"
         echo -e "${GREEN}  ✓ All Rust crates published successfully${NC}"
     else
         log_publish "crates:all" "FAILED"
-        echo -e "${RED}  ✗ Failed to publish Rust crates${NC}"
+        echo -e "${RED}  ✗ Failed to publish Rust crates after $MAX_RETRIES attempts${NC}"
         FAILED_PACKAGES="$FAILED_PACKAGES crates:workspace"
         # Continue to Phase 2 (NPM) even if Rust publishing fails
     fi

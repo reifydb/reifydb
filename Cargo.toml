@@ -84,7 +84,7 @@ repository = "https://github.com/reifydb/reifydb"
 readme = "readme.md"
 license = "AGPL-3.0-or-later"
 
-version = "0.1.2"
+version = "0.1.3"
 rust-version = "1.85.1"
 edition = "2024"
 
@@ -108,34 +108,34 @@ debug-assertions = true
 overflow-checks = true
 
 [workspace.dependencies]
-reifydb = { version = "0.1.2", path = "pkg/rust/reifydb" }
-reifydb-client = { version = "0.1.2", path = "pkg/rust/reifydb-client" }
+reifydb = { version = "0.1.3", path = "pkg/rust/reifydb" }
+reifydb-client = { version = "0.1.3", path = "pkg/rust/reifydb-client" }
 
 # Internal crates
-reifydb-auth = { version = "0.1.2", path = "crates/auth" }
-reifydb-catalog = { version = "0.1.2", path = "crates/catalog" }
-reifydb-cdc = { version = "0.1.2", path = "crates/cdc" }
-reifydb-compression = { version = "0.1.2", path = "crates/compression" }
-reifydb-core = { version = "0.1.2", path = "crates/core" }
-reifydb-engine = { version = "0.1.2", path = "crates/engine" }
-reifydb-hash = { version = "0.1.2", path = "crates/hash" }
-reifydb-network = { version = "0.1.2", path = "crates/network" }
-reifydb-flow-operator-abi = { version = "0.1.2", path = "crates/flow-operator/abi" }
-reifydb-flow-operator-sdk = { version = "0.1.2", path = "crates/flow-operator/sdk" }
-reifydb-rql = { version = "0.1.2", path = "crates/rql" }
-reifydb-store-column = { version = "0.1.2", path = "crates/store-column" }
-reifydb-store-transaction = { version = "0.1.2", path = "crates/store-transaction" }
-reifydb-testing = { version = "0.1.2", path = "crates/testing" }
-reifydb-transaction = { version = "0.1.2", path = "crates/transaction" }
-reifydb-type = { version = "0.1.2", path = "crates/type" }
+reifydb-auth = { version = "0.1.3", path = "crates/auth" }
+reifydb-catalog = { version = "0.1.3", path = "crates/catalog" }
+reifydb-cdc = { version = "0.1.3", path = "crates/cdc" }
+reifydb-compression = { version = "0.1.3", path = "crates/compression" }
+reifydb-core = { version = "0.1.3", path = "crates/core" }
+reifydb-engine = { version = "0.1.3", path = "crates/engine" }
+reifydb-hash = { version = "0.1.3", path = "crates/hash" }
+reifydb-network = { version = "0.1.3", path = "crates/network" }
+reifydb-flow-operator-abi = { version = "0.1.3", path = "crates/flow-operator/abi" }
+reifydb-flow-operator-sdk = { version = "0.1.3", path = "crates/flow-operator/sdk" }
+reifydb-rql = { version = "0.1.3", path = "crates/rql" }
+reifydb-store-column = { version = "0.1.3", path = "crates/store-column" }
+reifydb-store-transaction = { version = "0.1.3", path = "crates/store-transaction" }
+reifydb-testing = { version = "0.1.3", path = "crates/testing" }
+reifydb-transaction = { version = "0.1.3", path = "crates/transaction" }
+reifydb-type = { version = "0.1.3", path = "crates/type" }
 
 # Subsystems
-reifydb-sub-api = { version = "0.1.2", path = "crates/sub-api" }
-reifydb-sub-admin = { version = "0.1.2", path = "crates/sub-admin" }
-reifydb-sub-flow = { version = "0.1.2", path = "crates/sub-flow" }
-reifydb-sub-logging = { version = "0.1.2", path = "crates/sub-logging" }
-reifydb-sub-worker = { version = "0.1.2", path = "crates/sub-worker" }
-reifydb-sub-server = { version = "0.1.2", path = "crates/sub-server" }
+reifydb-sub-api = { version = "0.1.3", path = "crates/sub-api" }
+reifydb-sub-admin = { version = "0.1.3", path = "crates/sub-admin" }
+reifydb-sub-flow = { version = "0.1.3", path = "crates/sub-flow" }
+reifydb-sub-logging = { version = "0.1.3", path = "crates/sub-logging" }
+reifydb-sub-worker = { version = "0.1.3", path = "crates/sub-worker" }
+reifydb-sub-server = { version = "0.1.3", path = "crates/sub-server" }
 
 # External dependencies
 

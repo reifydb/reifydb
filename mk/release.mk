@@ -5,6 +5,8 @@
 RELEASE_CONFIG ?= release.toml
 SCRIPTS_DIR := scripts
 VERSION_FILE := .version
+SKIP_TESTS ?= 0
+FORCE ?= 0
 
 # Colors for output
 RED := \033[0;31m
@@ -140,13 +142,23 @@ release:
 	fi; \
 	echo "$(GREEN)Releasing version: $$NEW_VERSION$(NC)"; \
 	echo ""; \
-	echo "$(YELLOW)[1/7] Checking if version already exists...$(NC)"; \
-	make check-version-exists "VERSION=$$NEW_VERSION" || exit 1; \
-	echo "$(GREEN)✓ Version $$NEW_VERSION is available$(NC)"; \
+	if [ "$(FORCE)" = "1" ]; then \
+		echo "$(YELLOW)[1/7] Skipping version check (FORCE=1)...$(NC)"; \
+		echo "$(RED)⚠ WARNING: Forcing release of existing version!$(NC)"; \
+	else \
+		echo "$(YELLOW)[1/7] Checking if version already exists...$(NC)"; \
+		make check-version-exists "VERSION=$$NEW_VERSION" || exit 1; \
+		echo "$(GREEN)✓ Version $$NEW_VERSION is available$(NC)"; \
+	fi; \
 	echo ""; \
-	echo "$(YELLOW)[2/7] Running full test suite and validation (make all)...$(NC)"; \
-	$(MAKE) all || exit 1; \
-	echo "$(GREEN)✓ All tests passed and containers built$(NC)"; \
+	if [ "$(SKIP_TESTS)" = "1" ]; then \
+		echo "$(YELLOW)[2/7] Skipping full test suite (SKIP_TESTS=1)...$(NC)"; \
+		echo "$(RED)⚠ WARNING: Releasing without running tests!$(NC)"; \
+	else \
+		echo "$(YELLOW)[2/7] Running full test suite and validation (make all)...$(NC)"; \
+		$(MAKE) all || exit 1; \
+		echo "$(GREEN)✓ All tests passed and containers built$(NC)"; \
+	fi; \
 	echo ""; \
 	echo "$(YELLOW)[3/7] Validating release readiness...$(NC)"; \
 	make validate-release "VERSION=$$NEW_VERSION" || exit 1; \
@@ -229,6 +241,8 @@ help-release:
 	@echo "$(BLUE)Release Commands:$(NC)"
 	@echo "  make release               - Release with auto-increment patch"
 	@echo "  make release VERSION=x.y.z - Release specific version"
+	@echo "  make release FORCE=1       - Force release (skip version check, resume failed release)"
+	@echo "  make release SKIP_TESTS=1  - Release without running tests (not recommended)"
 	@echo "  make release-patch         - Quick patch release"
 	@echo "  make release-minor         - Quick minor release"
 	@echo "  make release-major         - Quick major release"

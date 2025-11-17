@@ -134,13 +134,42 @@ fi
 # Final result
 echo ""
 if [ $VERSION_EXISTS -eq 1 ]; then
-    echo -e "${RED}=====================================${NC}"
-    echo -e "${RED}ERROR: Version ${VERSION} already exists!${NC}"
-    echo -e "${RED}=====================================${NC}"
-    echo ""
-    echo -e "${YELLOW}You cannot release a version that already exists.${NC}"
-    echo -e "${YELLOW}Please choose a different version number.${NC}"
-    exit 1
+    # Check if this is a resumable state (partial publish)
+    if [ $NPM_FOUND -gt 0 ] && [ $CRATES_FOUND -eq 0 ]; then
+        echo -e "${YELLOW}=====================================${NC}"
+        echo -e "${YELLOW}PARTIAL RELEASE DETECTED${NC}"
+        echo -e "${YELLOW}=====================================${NC}"
+        echo ""
+        echo -e "${BLUE}NPM packages are published, but Rust crates are not.${NC}"
+        echo -e "${BLUE}You can resume this release with:${NC}"
+        echo -e "${GREEN}  make release VERSION=${VERSION} FORCE=1 SKIP_TESTS=1${NC}"
+        echo ""
+        echo -e "${RED}Or choose a different version number.${NC}"
+        exit 1
+    elif [ $TAG_EXISTS -eq 1 ] && [ $CRATES_FOUND -eq 0 ] && [ $NPM_FOUND -eq 0 ]; then
+        echo -e "${YELLOW}=====================================${NC}"
+        echo -e "${YELLOW}GIT TAG EXISTS BUT PACKAGES NOT PUBLISHED${NC}"
+        echo -e "${YELLOW}=====================================${NC}"
+        echo ""
+        echo -e "${BLUE}Git tag exists, but packages are not published.${NC}"
+        echo -e "${BLUE}You can resume this release with:${NC}"
+        echo -e "${GREEN}  make release VERSION=${VERSION} FORCE=1${NC}"
+        echo ""
+        echo -e "${RED}Or delete the tag and choose a different version:${NC}"
+        echo -e "${YELLOW}  git tag -d v${VERSION}${NC}"
+        exit 1
+    else
+        echo -e "${RED}=====================================${NC}"
+        echo -e "${RED}ERROR: Version ${VERSION} already exists!${NC}"
+        echo -e "${RED}=====================================${NC}"
+        echo ""
+        echo -e "${YELLOW}You cannot release a version that already exists.${NC}"
+        echo -e "${YELLOW}Please choose a different version number.${NC}"
+        echo ""
+        echo -e "${BLUE}Or force the release with:${NC}"
+        echo -e "${GREEN}  make release VERSION=${VERSION} FORCE=1${NC}"
+        exit 1
+    fi
 else
     echo -e "${GREEN}=====================================${NC}"
     echo -e "${GREEN}Version ${VERSION} is available for release${NC}"

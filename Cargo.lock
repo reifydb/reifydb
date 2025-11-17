@@ -72,7 +72,7 @@ checksum = "9330f8b2ff13f34540b44e946ef35111825727b38d33286ef986142615121801"
 
 [[package]]
 name = "cli"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "core_affinity"
@@ -137,7 +137,7 @@ checksum = "48c757948c5ede0e46177b7add2e67155f70e33c07fea8284df6576da70b3719"
 
 [[package]]
 name = "examples"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb",
 ]
@@ -366,7 +366,7 @@ checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
 
 [[package]]
 name = "playground"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb",
 ]
@@ -464,7 +464,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "libc",
  "reifydb-auth",
@@ -487,7 +487,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-auth"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb-core",
  "reifydb-type",
@@ -495,7 +495,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-catalog"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crossbeam-skiplist",
  "once_cell",
@@ -509,7 +509,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-cdc"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb-catalog",
  "reifydb-core",
@@ -522,7 +522,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-client"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "num-bigint",
  "reifydb",
@@ -536,7 +536,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-compression"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bincode",
  "reifydb-core",
@@ -545,7 +545,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-core"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bigdecimal",
  "crossbeam-channel",
@@ -566,7 +566,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-engine"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "once_cell",
  "parking_lot",
@@ -583,11 +583,11 @@ dependencies = [
 
 [[package]]
 name = "reifydb-flow-operator-abi"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "reifydb-flow-operator-sdk"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bincode",
  "reifydb-core",
@@ -597,7 +597,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-hash"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "cc",
  "serde",
@@ -605,7 +605,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-network"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "httparse",
  "mio",
@@ -616,7 +616,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-rql"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb-catalog",
  "reifydb-core",
@@ -629,7 +629,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-column"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crossbeam-skiplist",
  "reifydb-compression",
@@ -639,7 +639,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-store-transaction"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "parking_lot",
  "reifydb-core",
@@ -652,7 +652,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-admin"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "mio",
  "reifydb-core",
@@ -668,7 +668,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-api"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb-core",
  "reifydb-engine",
@@ -679,7 +679,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-flow"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bincode",
  "crossbeam-channel",
@@ -705,7 +705,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-logging"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crossbeam-channel",
  "parking_lot",
@@ -718,7 +718,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-server"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "core_affinity",
  "mio",
@@ -737,7 +737,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-sub-worker"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crossbeam-skiplist",
  "rayon",
@@ -752,7 +752,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-testing"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb-core",
  "test_each_file",
@@ -761,7 +761,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-transaction"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "crossbeam-channel",
  "parking_lot",
@@ -775,7 +775,7 @@ dependencies = [
 
 [[package]]
 name = "reifydb-type"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "bigdecimal",
  "bincode",
@@ -873,7 +873,7 @@ dependencies = [
 
 [[package]]
 name = "server"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb",
 ]
@@ -931,14 +931,14 @@ dependencies = [
 
 [[package]]
 name = "testcontainer"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb",
 ]
 
 [[package]]
 name = "tests-limit"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb",
  "reifydb-testing",
@@ -947,7 +947,7 @@ dependencies = [
 
 [[package]]
 name = "tests-regression"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "reifydb",
  "reifydb-client",
