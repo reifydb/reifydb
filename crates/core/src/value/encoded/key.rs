@@ -11,7 +11,10 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::util::{CowVec, encoding::binary::decode_binary};
+use crate::util::{
+	CowVec,
+	encoding::{binary::decode_binary, keycode::KeySerializer},
+};
 
 #[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EncodedKey(pub CowVec<u8>);
@@ -35,6 +38,118 @@ impl EncodedKey {
 
 	pub fn as_slice(&self) -> &[u8] {
 		self.0.as_ref()
+	}
+}
+
+/// Trait for types that can be converted into an EncodedKey.
+/// Provides convenient conversions from common types to EncodedKey using proper order-preserving encoding.
+pub trait IntoEncodedKey {
+	fn into_encoded_key(self) -> EncodedKey;
+}
+
+// Direct passthrough for EncodedKey
+impl IntoEncodedKey for EncodedKey {
+	fn into_encoded_key(self) -> EncodedKey {
+		self
+	}
+}
+
+// String types - using extend_str for proper encoding
+impl IntoEncodedKey for &str {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for String {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_str(&self);
+		serializer.to_encoded_key()
+	}
+}
+
+// Byte arrays - using extend_bytes for escaped encoding
+impl IntoEncodedKey for Vec<u8> {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_bytes(&self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for &[u8] {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_bytes(self);
+		serializer.to_encoded_key()
+	}
+}
+
+// Numeric types - using proper encoding for order preservation
+impl IntoEncodedKey for u64 {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(8);
+		serializer.extend_u64(self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for i64 {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(8);
+		serializer.extend_i64(self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for u32 {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(4);
+		serializer.extend_u32(self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for i32 {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(4);
+		serializer.extend_i32(self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for u16 {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_u16(self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for i16 {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(2);
+		serializer.extend_i16(self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for u8 {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_u8(self);
+		serializer.to_encoded_key()
+	}
+}
+
+impl IntoEncodedKey for i8 {
+	fn into_encoded_key(self) -> EncodedKey {
+		let mut serializer = KeySerializer::with_capacity(1);
+		serializer.extend_i8(self);
+		serializer.to_encoded_key()
 	}
 }
 

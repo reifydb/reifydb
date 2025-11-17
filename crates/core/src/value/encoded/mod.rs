@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub use encoded::{EncodedValues, EncodedValuesIter, EncodedValuesIterator};
-pub use key::{EncodedKey, EncodedKeyRange};
+pub use key::{EncodedKey, EncodedKeyRange, IntoEncodedKey};
 pub use layout::{EncodedValuesLayout, EncodedValuesLayoutInner, Field};
 pub use named::EncodedValuesNamedLayout;
 mod blob;

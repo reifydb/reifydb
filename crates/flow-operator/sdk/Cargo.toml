@@ -7,7 +7,7 @@ description = "SDK for building flow operators in ReifyDB"
 
 [dependencies]
 reifydb-flow-operator-abi = { workspace = true }
-reifydb-core = { workspace = true }
+reifydb-core = { workspace = true}
 reifydb-type = { workspace = true }
 
 [dev-dependencies]

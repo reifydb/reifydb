@@ -15,3 +15,7 @@ parking_lot = { workspace = true }
 
 rusqlite = { workspace = true, features = ["bundled"] }
 uuid = { workspace = true }
+
+[dev-dependencies]
+test_each_file = { workspace = true }
+reifydb-testing = { workspace = true }
