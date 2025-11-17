@@ -58,7 +58,7 @@ impl FlowEdgeKey {
 
 	fn end() -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(2);
-		serializer.extend_u8(VERSION).extend_u8((Self::KIND as u8) + 1);
+		serializer.extend_u8(VERSION).extend_u8((Self::KIND as u8) - 1);
 		serializer.to_encoded_key()
 	}
 }

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{Frame, interface::Params};
-use reifydb_type::{Value, util::hex};
+use reifydb_type::Value;
 
 use crate::protocols::{
 	ProtocolResult,
@@ -34,7 +34,7 @@ pub fn convert_frames(frames: Vec<Frame>) -> ProtocolResult<Vec<ResponseFrame>> 
 				.iter()
 				.map(|value| match value {
 					Value::Undefined => "⟪undefined⟫".to_string(),
-					Value::Blob(b) => hex::encode(&b),
+					Value::Blob(b) => b.to_hex(),
 					_ => value.to_string(),
 				})
 				.collect();

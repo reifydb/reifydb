@@ -8,6 +8,8 @@ use reifydb_core::interface::{TableVirtualDef, version::SystemVersion};
 mod cdc_consumers;
 mod column_policies;
 mod columns;
+mod flow_edges;
+mod flow_nodes;
 mod flow_operators;
 mod flows;
 mod namespaces;
@@ -23,6 +25,8 @@ mod views;
 use cdc_consumers::cdc_consumers;
 use column_policies::column_policies;
 use columns::columns;
+use flow_edges::flow_edges;
+use flow_nodes::flow_nodes;
 use flow_operators::flow_operators;
 use flows::flows;
 use namespaces::namespaces;
@@ -98,6 +102,28 @@ pub mod ids {
 			pub const STATUS: ColumnId = ColumnId(4);
 
 			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, STATUS];
+		}
+
+		pub mod flow_nodes {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const FLOW_ID: ColumnId = ColumnId(2);
+			pub const NODE_TYPE: ColumnId = ColumnId(3);
+			pub const DATA: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [ID, FLOW_ID, NODE_TYPE, DATA];
+		}
+
+		pub mod flow_edges {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const FLOW_ID: ColumnId = ColumnId(2);
+			pub const SOURCE: ColumnId = ColumnId(3);
+			pub const TARGET: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [ID, FLOW_ID, SOURCE, TARGET];
 		}
 
 		pub mod columns {
@@ -223,8 +249,10 @@ pub mod ids {
 		pub const OPERATOR_RETENTION_POLICIES: TableVirtualId = TableVirtualId(11);
 		pub const CDC_CONSUMERS: TableVirtualId = TableVirtualId(12);
 		pub const FLOW_OPERATORS: TableVirtualId = TableVirtualId(14);
+		pub const FLOW_NODES: TableVirtualId = TableVirtualId(15);
+		pub const FLOW_EDGES: TableVirtualId = TableVirtualId(16);
 
-		pub const ALL: [TableVirtualId; 14] = [
+		pub const ALL: [TableVirtualId; 16] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -239,6 +267,8 @@ pub mod ids {
 			OPERATOR_RETENTION_POLICIES,
 			CDC_CONSUMERS,
 			FLOW_OPERATORS,
+			FLOW_NODES,
+			FLOW_EDGES,
 		];
 	}
 }
@@ -333,5 +363,15 @@ impl SystemCatalog {
 	/// Get the flow_operators virtual table definition
 	pub fn get_system_flow_operators_table_def() -> Arc<TableVirtualDef> {
 		flow_operators()
+	}
+
+	/// Get the flow_nodes virtual table definition
+	pub fn get_system_flow_nodes_table_def() -> Arc<TableVirtualDef> {
+		flow_nodes()
+	}
+
+	/// Get the flow_edges virtual table definition
+	pub fn get_system_flow_edges_table_def() -> Arc<TableVirtualDef> {
+		flow_edges()
 	}
 }

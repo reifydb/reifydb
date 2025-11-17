@@ -79,6 +79,14 @@ fn main() {
 		println!("{}", frame);
 	}
 
+	for frame in db.query_as_root(r#"from system.flow_nodes"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
+
+	for frame in db.query_as_root(r#"from system.flow_edges"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
+
 	// 	// Wait for view to be ready
 	// 	sleep(Duration::from_millis(500));
 	//
