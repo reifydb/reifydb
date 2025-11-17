@@ -7,6 +7,8 @@ pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;
 pub use columns::ColumnsKey;
 pub use flow::FlowKey;
+pub use flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey};
+pub use flow_node::{FlowNodeByFlowKey, FlowNodeKey};
 pub use flow_node_state::{FlowNodeStateKey, FlowNodeStateKeyRange};
 pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
@@ -38,6 +40,8 @@ mod column_policy;
 mod column_sequence;
 mod columns;
 mod flow;
+mod flow_edge;
+mod flow_node;
 mod flow_node_state;
 mod index;
 mod index_entry;
@@ -194,6 +198,10 @@ impl Key {
 			}
 			KeyKind::OperatorRetentionPolicy => {
 				OperatorRetentionPolicyKey::decode(&key).map(Self::OperatorRetentionPolicy)
+			}
+			KeyKind::FlowNode | KeyKind::FlowNodeByFlow | KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow => {
+				// These keys are used directly via EncodableKey trait, not through Key enum
+				None
 			}
 		}
 	}

@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{CommandTransaction, EncodableKey, FlowId, FlowKey, FlowStatus};
-use reifydb_type::Blob;
 
 use crate::{CatalogStore, store::flow::layout::flow};
 
@@ -21,28 +20,6 @@ impl CatalogStore {
 		flow::LAYOUT.set_u64(&mut row, flow::ID, flow_id.0);
 		flow::LAYOUT.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &new_name);
-		flow::LAYOUT.set_blob(&mut row, flow::QUERY, &flow.query);
-		flow::LAYOUT.set_u8(&mut row, flow::STATUS, flow.status as u8);
-
-		let key = FlowKey {
-			flow: flow_id,
-		};
-		txn.set(&key.encode(), row)?;
-
-		Ok(())
-	}
-
-	/// Update the query of a flow
-	pub fn update_flow_query(txn: &mut impl CommandTransaction, flow_id: FlowId, query: Blob) -> crate::Result<()> {
-		// Get the existing flow
-		let flow = Self::get_flow(txn, flow_id)?;
-
-		// Update the query field
-		let mut row = flow::LAYOUT.allocate();
-		flow::LAYOUT.set_u64(&mut row, flow::ID, flow_id.0);
-		flow::LAYOUT.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
-		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &flow.name);
-		flow::LAYOUT.set_blob(&mut row, flow::QUERY, &query);
 		flow::LAYOUT.set_u8(&mut row, flow::STATUS, flow.status as u8);
 
 		let key = FlowKey {
@@ -67,7 +44,6 @@ impl CatalogStore {
 		flow::LAYOUT.set_u64(&mut row, flow::ID, flow_id.0);
 		flow::LAYOUT.set_u64(&mut row, flow::NAMESPACE, flow.namespace.0);
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &flow.name);
-		flow::LAYOUT.set_blob(&mut row, flow::QUERY, &flow.query);
 		flow::LAYOUT.set_u8(&mut row, flow::STATUS, status as u8);
 
 		let key = FlowKey {
@@ -83,7 +59,6 @@ impl CatalogStore {
 mod tests {
 	use reifydb_core::interface::FlowStatus;
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Blob;
 
 	use super::*;
 	use crate::test_utils::ensure_test_flow;
@@ -100,22 +75,6 @@ mod tests {
 		let updated = CatalogStore::get_flow(&mut txn, flow.id).unwrap();
 		assert_eq!(updated.name, "new_flow_name");
 		assert_eq!(updated.namespace, flow.namespace);
-		assert_eq!(updated.status, flow.status);
-	}
-
-	#[test]
-	fn test_update_flow_query() {
-		let mut txn = create_test_command_transaction();
-		let flow = ensure_test_flow(&mut txn);
-
-		// Update the query
-		let new_query = Blob::from(b"NEW QUERY".as_ref());
-		CatalogStore::update_flow_query(&mut txn, flow.id, new_query.clone()).unwrap();
-
-		// Verify update
-		let updated = CatalogStore::get_flow(&mut txn, flow.id).unwrap();
-		assert_eq!(updated.query, new_query);
-		assert_eq!(updated.name, flow.name);
 		assert_eq!(updated.status, flow.status);
 	}
 

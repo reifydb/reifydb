@@ -10,7 +10,7 @@ use std::{
 use reifydb_type::Blob;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
-use crate::interface::{NamespaceId, SourceId};
+use crate::interface::NamespaceId;
 
 #[repr(transparent)]
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash)]
@@ -243,7 +243,24 @@ pub struct FlowDef {
 	pub id: FlowId,
 	pub namespace: NamespaceId,
 	pub name: String,
-	pub query: Blob,
-	pub dependencies: Vec<SourceId>, // Source tables/views/flows
 	pub status: FlowStatus,
+}
+
+/// Catalog definition for a flow node
+/// The node type and its data are stored as a type discriminator and serialized blob
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowNodeDef {
+	pub id: FlowNodeId,
+	pub flow: FlowId,
+	pub node_type: u8, // FlowNodeType discriminator
+	pub data: Blob,    // Serialized FlowNodeType data
+}
+
+/// Catalog definition for a flow edge
+#[derive(Debug, Clone, PartialEq)]
+pub struct FlowEdgeDef {
+	pub id: FlowEdgeId,
+	pub flow: FlowId,
+	pub source: FlowNodeId,
+	pub target: FlowNodeId,
 }

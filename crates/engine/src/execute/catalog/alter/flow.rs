@@ -50,13 +50,7 @@ impl Executor {
 			AlterFlowAction::SetQuery {
 				query: _query,
 			} => {
-				// TODO: Properly serialize the physical plan
-				// For now, use the same placeholder approach as CREATE FLOW
-				let query_placeholder = format!("FLOW QUERY: {}", flow_name);
-				let query_blob = reifydb_type::Blob::from(query_placeholder.as_bytes());
-
-				CatalogStore::update_flow_query(txn, flow.id, query_blob)?;
-				("SET QUERY", Value::Utf8("Query updated".to_string()))
+				unimplemented!();
 			}
 			AlterFlowAction::Pause => {
 				CatalogStore::update_flow_status(txn, flow.id, FlowStatus::Paused)?;

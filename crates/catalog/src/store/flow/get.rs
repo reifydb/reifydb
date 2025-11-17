@@ -53,14 +53,13 @@ mod tests {
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
 		let _namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		create_flow(&mut txn, "namespace_one", "flow_one", b"MAP 1".as_slice());
-		create_flow(&mut txn, "namespace_two", "flow_two", b"MAP 2".as_slice());
+		create_flow(&mut txn, "namespace_one", "flow_one");
+		create_flow(&mut txn, "namespace_two", "flow_two");
 
 		let result = CatalogStore::get_flow(&mut txn, FlowId(1)).unwrap();
 		assert_eq!(result.id, FlowId(1));
 		assert_eq!(result.name, "flow_one");
 		assert_eq!(result.namespace, namespace_one.id);
-		assert_eq!(result.query.as_ref(), b"MAP 1");
 	}
 
 	#[test]
@@ -79,13 +78,12 @@ mod tests {
 		let _namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		create_flow(&mut txn, "namespace_one", "flow_one", b"MAP 1".as_slice());
-		create_flow(&mut txn, "namespace_two", "flow_two", b"MAP 2".as_slice());
+		create_flow(&mut txn, "namespace_one", "flow_one");
+		create_flow(&mut txn, "namespace_two", "flow_two");
 
 		let result = CatalogStore::get_flow_by_name(&mut txn, namespace_two.id, "flow_two").unwrap();
 		assert_eq!(result.name, "flow_two");
 		assert_eq!(result.namespace, namespace_two.id);
-		assert_eq!(result.query.as_ref(), b"MAP 2");
 	}
 
 	#[test]
@@ -93,7 +91,7 @@ mod tests {
 		let mut txn = create_test_command_transaction();
 		let namespace = create_namespace(&mut txn, "test_namespace");
 
-		create_flow(&mut txn, "test_namespace", "flow_one", b"MAP 1".as_slice());
+		create_flow(&mut txn, "test_namespace", "flow_one");
 
 		let err = CatalogStore::get_flow_by_name(&mut txn, namespace.id, "flow_two").unwrap_err();
 		let diagnostic = err.diagnostic();
@@ -108,7 +106,7 @@ mod tests {
 		let _namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		create_flow(&mut txn, "namespace_one", "my_flow", b"MAP 1".as_slice());
+		create_flow(&mut txn, "namespace_one", "my_flow");
 
 		// Flow exists in namespace_one but we're looking in namespace_two
 		let err = CatalogStore::get_flow_by_name(&mut txn, namespace_two.id, "my_flow").unwrap_err();

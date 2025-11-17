@@ -9,7 +9,7 @@ use reifydb_core::{
 	},
 	return_error,
 };
-use reifydb_type::{Blob, OwnedFragment};
+use reifydb_type::OwnedFragment;
 
 use crate::{
 	CatalogStore,
@@ -24,7 +24,6 @@ pub struct FlowToCreate {
 	pub fragment: Option<OwnedFragment>,
 	pub name: String,
 	pub namespace: NamespaceId,
-	pub query: Blob,
 	pub status: FlowStatus,
 }
 
@@ -55,7 +54,6 @@ impl CatalogStore {
 		flow::LAYOUT.set_u64(&mut row, flow::ID, flow);
 		flow::LAYOUT.set_u64(&mut row, flow::NAMESPACE, namespace);
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &to_create.name);
-		flow::LAYOUT.set_blob(&mut row, flow::QUERY, &to_create.query);
 		flow::LAYOUT.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
 
 		txn.set(
@@ -96,7 +94,6 @@ mod tests {
 		FlowId, FlowStatus, MultiVersionQueryTransaction, NamespaceFlowKey, NamespaceId,
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
-	use reifydb_type::Blob;
 
 	use crate::{
 		CatalogStore,
@@ -113,7 +110,6 @@ mod tests {
 			fragment: None,
 			name: "test_flow".to_string(),
 			namespace: test_namespace.id,
-			query: Blob::from(b"FROM test_table".as_slice()),
 			status: FlowStatus::Active,
 		};
 
@@ -122,7 +118,6 @@ mod tests {
 		assert_eq!(result.id, FlowId(1));
 		assert_eq!(result.namespace, NamespaceId(1025));
 		assert_eq!(result.name, "test_flow");
-		assert_eq!(result.query.as_ref(), b"FROM test_table");
 		assert_eq!(result.status, FlowStatus::Active);
 
 		// Second creation should fail with duplicate error
@@ -140,7 +135,6 @@ mod tests {
 			fragment: None,
 			name: "flow_one".to_string(),
 			namespace: test_namespace.id,
-			query: Blob::from(b"MAP 1".as_slice()),
 			status: FlowStatus::Active,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -149,7 +143,6 @@ mod tests {
 			fragment: None,
 			name: "flow_two".to_string(),
 			namespace: test_namespace.id,
-			query: Blob::from(b"MAP 2".as_slice()),
 			status: FlowStatus::Paused,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -195,7 +188,6 @@ mod tests {
 			fragment: None,
 			name: "shared_name".to_string(),
 			namespace: namespace_one.id,
-			query: Blob::from(b"MAP 1".as_slice()),
 			status: FlowStatus::Active,
 		};
 		CatalogStore::create_flow(&mut txn, to_create).unwrap();
@@ -205,7 +197,6 @@ mod tests {
 			fragment: None,
 			name: "shared_name".to_string(),
 			namespace: namespace_two.id,
-			query: Blob::from(b"MAP 2".as_slice()),
 			status: FlowStatus::Active,
 		};
 		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();

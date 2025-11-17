@@ -49,7 +49,6 @@ impl<'a> TableVirtual<'a> for Flows {
 		let mut namespaces = ColumnData::uint8_with_capacity(flows.len());
 		let mut names = ColumnData::utf8_with_capacity(flows.len());
 		let mut statuses = ColumnData::utf8_with_capacity(flows.len());
-		let mut queries = ColumnData::blob_with_capacity(flows.len());
 
 		for flow in flows {
 			ids.push(flow.id.0);
@@ -63,9 +62,6 @@ impl<'a> TableVirtual<'a> for Flows {
 				FlowStatus::Failed => "Failed",
 			};
 			statuses.push(status_str);
-
-			// Keep query as Blob
-			queries.push(flow.query);
 		}
 
 		let columns = vec![
@@ -84,10 +80,6 @@ impl<'a> TableVirtual<'a> for Flows {
 			Column {
 				name: Fragment::owned_internal("status"),
 				data: statuses,
-			},
-			Column {
-				name: Fragment::owned_internal("query"),
-				data: queries,
 			},
 		];
 

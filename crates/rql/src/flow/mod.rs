@@ -12,12 +12,18 @@ mod builder;
 mod conversion;
 pub mod flow;
 pub mod graph;
+pub mod loader;
 pub mod node;
 mod operator;
 mod source;
 
-use reifydb_catalog::store::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id};
-use reifydb_core::interface::{CommandTransaction, FlowEdgeId, FlowNodeId, ViewDef};
+use bincode::{config::standard, serde::encode_to_vec};
+use reifydb_catalog::{
+	CatalogStore,
+	store::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id},
+};
+use reifydb_core::interface::{CommandTransaction, FlowEdgeDef, FlowEdgeId, FlowNodeDef, FlowNodeId, ViewDef};
+use reifydb_type::Blob;
 
 use self::{
 	conversion::to_owned_physical_plan,
@@ -78,12 +84,45 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	/// Adds an edge between two nodes
 	fn add_edge(&mut self, from: &FlowNodeId, to: &FlowNodeId) -> crate::Result<()> {
 		let edge_id = self.next_edge_id()?;
+		let flow_id = self.builder.id();
+
+		// Create the catalog entry
+		let edge_def = FlowEdgeDef {
+			id: edge_id,
+			flow: flow_id,
+			source: *from,
+			target: *to,
+		};
+
+		// Persist to catalog
+		unsafe { CatalogStore::create_flow_edge(&mut *self.txn, &edge_def)? };
+
+		// Add to in-memory builder
 		self.builder.add_edge(FlowEdge::new(edge_id, from, to))
 	}
 
 	/// Adds a operator to the flow graph
 	fn add_node(&mut self, node_type: FlowNodeType) -> crate::Result<FlowNodeId> {
 		let node_id = self.next_node_id()?;
+		let flow_id = self.builder.id();
+
+		// Serialize the node type to blob
+		let data = encode_to_vec(&node_type, standard()).map_err(|e| {
+			reifydb_core::Error(reifydb_type::internal!("Failed to serialize FlowNodeType: {}", e))
+		})?;
+
+		// Create the catalog entry
+		let node_def = FlowNodeDef {
+			id: node_id,
+			flow: flow_id,
+			node_type: node_type.discriminator(),
+			data: Blob::from(data),
+		};
+
+		// Persist to catalog
+		unsafe { CatalogStore::create_flow_node(&mut *self.txn, &node_def)? };
+
+		// Add to in-memory builder
 		let flow_node_id = self.builder.add_node(FlowNode::new(node_id, node_type));
 		Ok(flow_node_id)
 	}
@@ -290,5 +329,6 @@ pub use self::{
 		FlowDependency, FlowDependencyGraph, FlowGraphAnalyzer, FlowSummary, SinkReference, SourceReference,
 	},
 	flow::{Flow, FlowBuilder},
+	loader::load_flow,
 	node::{FlowEdge, FlowNode, FlowNodeType},
 };

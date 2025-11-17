@@ -53,14 +53,6 @@ pub fn flows() -> Arc<TableVirtualDef> {
 					index: ColumnIndex(3),
 					auto_increment: false,
 				},
-				ColumnDef {
-					id: QUERY,
-					name: "query".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8), // Serialized query AST
-					policies: vec![],
-					index: ColumnIndex(4),
-					auto_increment: false,
-				},
 			],
 		})
 	})

@@ -9,7 +9,7 @@ use crate::{
 	MaterializedCatalog,
 	store::flow::layout::{
 		flow,
-		flow::{ID, NAME, NAMESPACE, QUERY, STATUS},
+		flow::{ID, NAME, NAMESPACE, STATUS},
 	},
 };
 
@@ -34,15 +34,12 @@ fn convert_flow(multi: MultiVersionValues) -> FlowDef {
 	let id = FlowId(flow::LAYOUT.get_u64(&row, ID));
 	let namespace = NamespaceId(flow::LAYOUT.get_u64(&row, NAMESPACE));
 	let name = flow::LAYOUT.get_utf8(&row, NAME).to_string();
-	let query = flow::LAYOUT.get_blob(&row, QUERY);
 	let status = FlowStatus::from_u8(flow::LAYOUT.get_u8(&row, STATUS));
 
 	FlowDef {
 		id,
 		namespace,
 		name,
-		query,
-		dependencies: vec![],
 		status,
 	}
 }

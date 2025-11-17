@@ -21,8 +21,6 @@ impl CatalogStore {
 
 					let name = flow::LAYOUT.get_utf8(&entry.values, flow::NAME).to_string();
 
-					let query = flow::LAYOUT.get_blob(&entry.values, flow::QUERY).clone();
-
 					let status_u8 = flow::LAYOUT.get_u8(&entry.values, flow::STATUS);
 					let status = FlowStatus::from_u8(status_u8);
 
@@ -30,8 +28,6 @@ impl CatalogStore {
 						id: flow_id,
 						namespace: namespace_id,
 						name,
-						query,
-						dependencies: vec![], // TODO: Implement dependency tracking
 						status,
 					};
 
@@ -60,9 +56,9 @@ mod tests {
 		let namespace_one = create_namespace(&mut txn, "namespace_one");
 		let namespace_two = create_namespace(&mut txn, "namespace_two");
 
-		create_flow(&mut txn, "namespace_one", "flow_one", b"MAP 1".as_slice());
-		create_flow(&mut txn, "namespace_one", "flow_two", b"MAP 2".as_slice());
-		create_flow(&mut txn, "namespace_two", "flow_three", b"SELECT 3".as_slice());
+		create_flow(&mut txn, "namespace_one", "flow_one");
+		create_flow(&mut txn, "namespace_one", "flow_two");
+		create_flow(&mut txn, "namespace_two", "flow_three");
 
 		let result = CatalogStore::list_flows_all(&mut txn).unwrap();
 		assert_eq!(result.len(), 3);
@@ -73,21 +69,18 @@ mod tests {
 		assert!(flow_names.contains(&"flow_two"));
 		assert!(flow_names.contains(&"flow_three"));
 
-		// Verify queries and namespaces for each flow
+		// Verify namespaces and status for each flow
 		for flow in &result {
 			match flow.name.as_str() {
 				"flow_one" => {
 					assert_eq!(flow.namespace, namespace_one.id);
-					assert_eq!(flow.query.as_ref(), b"MAP 1");
 					assert_eq!(flow.status, FlowStatus::Active);
 				}
 				"flow_two" => {
 					assert_eq!(flow.namespace, namespace_one.id);
-					assert_eq!(flow.query.as_ref(), b"MAP 2");
 				}
 				"flow_three" => {
 					assert_eq!(flow.namespace, namespace_two.id);
-					assert_eq!(flow.query.as_ref(), b"SELECT 3");
 				}
 				_ => panic!("Unexpected flow name: {}", flow.name),
 			}
@@ -108,7 +101,7 @@ mod tests {
 		create_namespace(&mut txn, "test_namespace");
 
 		// Create flows with different statuses
-		create_flow(&mut txn, "test_namespace", "active_flow", b"MAP 1".as_slice());
+		create_flow(&mut txn, "test_namespace", "active_flow");
 
 		// Create a paused flow by directly using CatalogStore
 		use crate::store::flow::create::FlowToCreate;
@@ -119,7 +112,6 @@ mod tests {
 				fragment: None,
 				name: "paused_flow".to_string(),
 				namespace: namespace.id,
-				query: reifydb_type::Blob::from(b"MAP 2".as_slice()),
 				status: FlowStatus::Paused,
 			},
 		)

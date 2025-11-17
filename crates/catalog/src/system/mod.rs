@@ -96,9 +96,8 @@ pub mod ids {
 			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
 			pub const NAME: ColumnId = ColumnId(3);
 			pub const STATUS: ColumnId = ColumnId(4);
-			pub const QUERY: ColumnId = ColumnId(5);
 
-			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, STATUS, QUERY];
+			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, STATUS];
 		}
 
 		pub mod columns {

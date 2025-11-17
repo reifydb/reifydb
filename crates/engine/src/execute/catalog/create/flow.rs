@@ -4,7 +4,7 @@
 use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate, transaction::CatalogFlowQueryOperations};
 use reifydb_core::{interface::FlowStatus, value::column::Columns};
 use reifydb_rql::{flow::compile_flow, plan::physical::CreateFlowNode};
-use reifydb_type::{Blob, Value};
+use reifydb_type::Value;
 
 use crate::{StandardCommandTransaction, execute::Executor};
 
@@ -24,10 +24,8 @@ impl Executor {
 			}
 		}
 
-		let flow = compile_flow(txn, *plan.as_clause, None)?;
-
-		let flow_json = serde_json::to_string(&flow).unwrap();
-		let query = Blob::from(flow_json.as_bytes());
+		// Compile flow - nodes and edges are persisted by the compiler
+		let _flow = compile_flow(txn, *plan.as_clause, None)?;
 
 		CatalogStore::create_flow(
 			txn,
@@ -35,7 +33,6 @@ impl Executor {
 				fragment: Some(plan.flow.clone().into_owned()),
 				name: plan.flow.text().to_string(),
 				namespace: plan.namespace.id,
-				query,
 				status: FlowStatus::Active,
 			},
 		)?;

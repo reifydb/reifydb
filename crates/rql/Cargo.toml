@@ -12,6 +12,7 @@ reifydb-core = {workspace = true}
 reifydb-catalog = { workspace = true }
 reifydb-type = { workspace = true }
 serde = { workspace = true }
+bincode = { workspace = true }
 
 [dev-dependencies]
 reifydb-testing = { workspace = true }

@@ -179,12 +179,7 @@ pub fn create_test_ring_buffer_column(
 	.unwrap();
 }
 
-pub fn create_flow(
-	txn: &mut impl CommandTransaction,
-	namespace: &str,
-	flow: &str,
-	query: impl Into<reifydb_type::Blob>,
-) -> FlowDef {
+pub fn create_flow(txn: &mut impl CommandTransaction, namespace: &str, flow: &str) -> FlowDef {
 	// First look up the namespace to get its ID
 	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
 
@@ -194,7 +189,6 @@ pub fn create_flow(
 			fragment: None,
 			name: flow.to_string(),
 			namespace: namespace_def.id,
-			query: query.into(),
 			status: FlowStatus::Active,
 		},
 	)
@@ -207,5 +201,5 @@ pub fn ensure_test_flow(txn: &mut impl CommandTransaction) -> FlowDef {
 	if let Some(result) = CatalogStore::find_flow_by_name(txn, namespace.id, "test_flow").unwrap() {
 		return result;
 	}
-	create_flow(txn, "test_namespace", "test_flow", b"FROM x".as_slice())
+	create_flow(txn, "test_namespace", "test_flow")
 }

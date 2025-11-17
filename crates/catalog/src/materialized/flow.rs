@@ -46,7 +46,6 @@ impl MaterializedCatalog {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::FlowStatus;
-	use reifydb_type::blob::Blob;
 
 	use super::*;
 
@@ -55,8 +54,6 @@ mod tests {
 			id,
 			namespace,
 			name: name.to_string(),
-			query: Blob::new(vec![]),
-			dependencies: vec![],
 			status: FlowStatus::Active,
 		}
 	}

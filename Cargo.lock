@@ -618,6 +618,7 @@ dependencies = [
 name = "reifydb-rql"
 version = "0.1.3"
 dependencies = [
+ "bincode",
  "reifydb-catalog",
  "reifydb-core",
  "reifydb-engine",

@@ -43,6 +43,11 @@ impl FlowBuilder {
 		}
 	}
 
+	/// Get the flow ID
+	pub fn id(&self) -> FlowId {
+		self.id
+	}
+
 	/// Add a node to the flow during construction
 	pub fn add_node(&mut self, node: FlowNode) -> FlowNodeId {
 		let node_id = node.id.clone();

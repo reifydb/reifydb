@@ -66,6 +66,60 @@ pub enum FlowNodeType {
 	},
 }
 
+impl FlowNodeType {
+	/// Returns a discriminator value for this node type variant
+	pub fn discriminator(&self) -> u8 {
+		match self {
+			FlowNodeType::SourceInlineData {
+				..
+			} => 0,
+			FlowNodeType::SourceTable {
+				..
+			} => 1,
+			FlowNodeType::SourceView {
+				..
+			} => 2,
+			FlowNodeType::SourceFlow {
+				..
+			} => 3,
+			FlowNodeType::Filter {
+				..
+			} => 4,
+			FlowNodeType::Map {
+				..
+			} => 5,
+			FlowNodeType::Extend {
+				..
+			} => 6,
+			FlowNodeType::Join {
+				..
+			} => 7,
+			FlowNodeType::Aggregate {
+				..
+			} => 8,
+			FlowNodeType::Union => 9,
+			FlowNodeType::Sort {
+				..
+			} => 10,
+			FlowNodeType::Take {
+				..
+			} => 11,
+			FlowNodeType::Distinct {
+				..
+			} => 12,
+			FlowNodeType::Apply {
+				..
+			} => 13,
+			FlowNodeType::SinkView {
+				..
+			} => 14,
+			FlowNodeType::Window {
+				..
+			} => 15,
+		}
+	}
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FlowNode {
 	pub id: FlowNodeId,

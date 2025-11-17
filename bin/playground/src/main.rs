@@ -8,7 +8,7 @@
 //! - Flow B: Consumes from Flow A via deferred view and transforms it (doubles values)
 //! - Result: Materialized view showing filtered and transformed data
 
-use std::{thread::sleep, time::Duration};
+use std::time::Duration;
 
 use reifydb::{
 	Params, Session, WithSubsystem,

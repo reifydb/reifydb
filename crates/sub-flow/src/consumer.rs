@@ -7,14 +7,14 @@ use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view}
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, Result, Row,
-	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, SourceId, WithEventBus},
+	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Key, SourceId, WithEventBus},
 	util::CowVec,
 	value::encoded::EncodedValues,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
-use reifydb_rql::flow::Flow;
+use reifydb_rql::flow::{Flow, load_flow};
 use reifydb_sub_api::SchedulerService;
-use reifydb_type::{RowNumber, Value};
+use reifydb_type::RowNumber;
 
 use crate::{
 	builder::OperatorFactory,
@@ -119,25 +119,18 @@ impl FlowConsumer {
 	/// Load flows from the catalog
 	fn load_flows(&self) -> Result<Vec<Flow>> {
 		let mut flows = Vec::new();
+		let mut txn = self.engine.begin_query()?;
 
-		// Query the reifydb.flows table
-		let frames = self.engine.query_as(
-			&Identity::root(),
-			"FROM reifydb.flows map { cast(data, utf8) }",
-			Params::None,
-		)?;
+		// Get all flows from the catalog
+		let flow_defs = reifydb_catalog::CatalogStore::list_flows_all(&mut txn)?;
 
-		for frame in frames {
-			// Process all rows in the frame
-			if !frame.is_empty() {
-				let column = &frame[0];
-				for row_idx in 0..column.data.len() {
-					let value = column.get_value(row_idx);
-					if !matches!(value, Value::Undefined) {
-						if let Ok(flow) = serde_json::from_str::<Flow>(&value.to_string()) {
-							flows.push(flow);
-						}
-					}
+		// Load each flow by reconstructing from nodes and edges
+		for flow_def in flow_defs {
+			match load_flow(&mut txn, flow_def.id) {
+				Ok(flow) => flows.push(flow),
+				Err(e) => {
+					// Log error but continue loading other flows
+					eprintln!("Failed to load flow {}: {}", flow_def.name, e);
 				}
 			}
 		}
