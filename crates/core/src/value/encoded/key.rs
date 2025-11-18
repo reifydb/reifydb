@@ -9,11 +9,17 @@ use std::{
 	ops::{Deref, RangeBounds},
 };
 
+use reifydb_type::{
+	Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, RowNumber, Time, Uint, Uuid4, Uuid7, Value,
+};
 use serde::{Deserialize, Serialize};
 
-use crate::util::{
-	CowVec,
-	encoding::{binary::decode_binary, keycode::KeySerializer},
+use crate::{
+	interface::{IndexId, SourceId},
+	util::{
+		CowVec,
+		encoding::{binary::decode_binary, keycode::KeySerializer},
+	},
 };
 
 #[derive(Debug, Clone, PartialOrd, Ord, Hash, PartialEq, Eq, Serialize, Deserialize)]
@@ -32,12 +38,261 @@ impl EncodedKey {
 		Self(CowVec::new(key.into()))
 	}
 
+	/// Create a new builder for constructing an EncodedKey
+	pub fn builder() -> EncodedKeyBuilder {
+		EncodedKeyBuilder::new()
+	}
+
 	pub fn as_bytes(&self) -> &[u8] {
 		self.0.as_ref()
 	}
 
 	pub fn as_slice(&self) -> &[u8] {
 		self.0.as_ref()
+	}
+}
+
+/// A builder for constructing EncodedKey values using keycode encoding
+///
+/// This provides a fluent API for building composite keys with proper order-preserving encoding.
+///
+/// # Example
+///
+/// ```
+/// use reifydb_core::EncodedKey;
+///
+/// let key = EncodedKey::builder().str("user").u64(42).build();
+/// ```
+pub struct EncodedKeyBuilder {
+	serializer: KeySerializer,
+}
+
+impl EncodedKeyBuilder {
+	/// Create a new builder
+	pub fn new() -> Self {
+		Self {
+			serializer: KeySerializer::new(),
+		}
+	}
+
+	/// Create a builder with pre-allocated capacity
+	pub fn with_capacity(capacity: usize) -> Self {
+		Self {
+			serializer: KeySerializer::with_capacity(capacity),
+		}
+	}
+
+	/// Build the EncodedKey
+	pub fn build(self) -> EncodedKey {
+		self.serializer.to_encoded_key()
+	}
+
+	/// Extend with bool value
+	pub fn bool(mut self, value: bool) -> Self {
+		self.serializer.extend_bool(value);
+		self
+	}
+
+	/// Extend with f32 value
+	pub fn f32(mut self, value: f32) -> Self {
+		self.serializer.extend_f32(value);
+		self
+	}
+
+	/// Extend with f64 value
+	pub fn f64(mut self, value: f64) -> Self {
+		self.serializer.extend_f64(value);
+		self
+	}
+
+	/// Extend with i8 value
+	pub fn i8<T: Into<i8>>(mut self, value: T) -> Self {
+		self.serializer.extend_i8(value);
+		self
+	}
+
+	/// Extend with i16 value
+	pub fn i16<T: Into<i16>>(mut self, value: T) -> Self {
+		self.serializer.extend_i16(value);
+		self
+	}
+
+	/// Extend with i32 value
+	pub fn i32<T: Into<i32>>(mut self, value: T) -> Self {
+		self.serializer.extend_i32(value);
+		self
+	}
+
+	/// Extend with i64 value
+	pub fn i64<T: Into<i64>>(mut self, value: T) -> Self {
+		self.serializer.extend_i64(value);
+		self
+	}
+
+	/// Extend with i128 value
+	pub fn i128<T: Into<i128>>(mut self, value: T) -> Self {
+		self.serializer.extend_i128(value);
+		self
+	}
+
+	/// Extend with u8 value
+	pub fn u8<T: Into<u8>>(mut self, value: T) -> Self {
+		self.serializer.extend_u8(value);
+		self
+	}
+
+	/// Extend with u16 value
+	pub fn u16<T: Into<u16>>(mut self, value: T) -> Self {
+		self.serializer.extend_u16(value);
+		self
+	}
+
+	/// Extend with u32 value
+	pub fn u32<T: Into<u32>>(mut self, value: T) -> Self {
+		self.serializer.extend_u32(value);
+		self
+	}
+
+	/// Extend with u64 value
+	pub fn u64<T: Into<u64>>(mut self, value: T) -> Self {
+		self.serializer.extend_u64(value);
+		self
+	}
+
+	/// Extend with u128 value
+	pub fn u128<T: Into<u128>>(mut self, value: T) -> Self {
+		self.serializer.extend_u128(value);
+		self
+	}
+
+	/// Extend with raw bytes (with encoding)
+	pub fn bytes<T: AsRef<[u8]>>(mut self, bytes: T) -> Self {
+		self.serializer.extend_bytes(bytes);
+		self
+	}
+
+	/// Extend with string (UTF-8 bytes)
+	pub fn str<T: AsRef<str>>(mut self, s: T) -> Self {
+		self.serializer.extend_str(s);
+		self
+	}
+
+	/// Extend with a SourceId value
+	pub fn source_id(mut self, source: impl Into<SourceId>) -> Self {
+		self.serializer.extend_source_id(source);
+		self
+	}
+
+	/// Extend with an IndexId value
+	pub fn index_id(mut self, index: impl Into<IndexId>) -> Self {
+		self.serializer.extend_index_id(index);
+		self
+	}
+
+	/// Extend with a serializable value using keycode encoding
+	pub fn serialize<T: Serialize>(mut self, value: &T) -> Self {
+		self.serializer.extend_serialize(value);
+		self
+	}
+
+	/// Extend with raw bytes (no encoding)
+	pub fn raw(mut self, bytes: &[u8]) -> Self {
+		self.serializer.extend_raw(bytes);
+		self
+	}
+
+	/// Get current buffer length
+	pub fn len(&self) -> usize {
+		self.serializer.len()
+	}
+
+	/// Check if buffer is empty
+	pub fn is_empty(&self) -> bool {
+		self.serializer.is_empty()
+	}
+
+	/// Extend with Date value
+	pub fn date(mut self, date: &Date) -> Self {
+		self.serializer.extend_date(date);
+		self
+	}
+
+	/// Extend with DateTime value
+	pub fn datetime(mut self, datetime: &DateTime) -> Self {
+		self.serializer.extend_datetime(datetime);
+		self
+	}
+
+	/// Extend with Time value
+	pub fn time(mut self, time: &Time) -> Self {
+		self.serializer.extend_time(time);
+		self
+	}
+
+	/// Extend with Duration value
+	pub fn duration(mut self, duration: &Duration) -> Self {
+		self.serializer.extend_duration(duration);
+		self
+	}
+
+	/// Extend with RowNumber value
+	pub fn row_number(mut self, row_number: &RowNumber) -> Self {
+		self.serializer.extend_row_number(row_number);
+		self
+	}
+
+	/// Extend with IdentityId value
+	pub fn identity_id(mut self, id: &IdentityId) -> Self {
+		self.serializer.extend_identity_id(id);
+		self
+	}
+
+	/// Extend with Uuid4 value
+	pub fn uuid4(mut self, uuid: &Uuid4) -> Self {
+		self.serializer.extend_uuid4(uuid);
+		self
+	}
+
+	/// Extend with Uuid7 value
+	pub fn uuid7(mut self, uuid: &Uuid7) -> Self {
+		self.serializer.extend_uuid7(uuid);
+		self
+	}
+
+	/// Extend with Blob value
+	pub fn blob(mut self, blob: &Blob) -> Self {
+		self.serializer.extend_blob(blob);
+		self
+	}
+
+	/// Extend with arbitrary precision Int value
+	pub fn int(mut self, int: &Int) -> Self {
+		self.serializer.extend_int(int);
+		self
+	}
+
+	/// Extend with arbitrary precision Uint value
+	pub fn uint(mut self, uint: &Uint) -> Self {
+		self.serializer.extend_uint(uint);
+		self
+	}
+
+	/// Extend with Decimal value
+	pub fn decimal(mut self, decimal: &Decimal) -> Self {
+		self.serializer.extend_decimal(decimal);
+		self
+	}
+
+	/// Extend with a Value based on its type
+	pub fn value(mut self, value: &Value) -> Self {
+		self.serializer.extend_value(value);
+		self
+	}
+}
+
+impl Default for EncodedKeyBuilder {
+	fn default() -> Self {
+		Self::new()
 	}
 }
 
