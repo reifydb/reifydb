@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub mod create;
+pub mod delete;
 pub mod find;
 pub mod get;
 pub(crate) mod layout;

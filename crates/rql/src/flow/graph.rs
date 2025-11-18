@@ -1,11 +1,10 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use reifydb_core::interface::{FlowEdgeId, FlowNodeId};
-use serde::{Deserialize, Serialize};
 
 use super::node::FlowEdge;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone)]
 pub struct DirectedGraph<NodeData> {
 	nodes: HashMap<FlowNodeId, NodeData>,
 	edges: Vec<FlowEdge>,
@@ -236,7 +235,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 	}
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy)]
 pub enum EdgeDirection {
 	Incoming,
 	Outgoing,
