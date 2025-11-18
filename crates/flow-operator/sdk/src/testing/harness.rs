@@ -310,7 +310,7 @@ mod tests {
 				if let Some(row) = post_row {
 					let row_key = format!("row_{}", row.number.0);
 
-					let first_value = row.layout.get_value(&row.encoded, 0);
+					let first_value = row.layout.get_value_by_idx(&row.encoded, 0);
 
 					// Encode the value and store in state
 					let layout = EncodedValuesLayout::new(&[Type::Int8]);

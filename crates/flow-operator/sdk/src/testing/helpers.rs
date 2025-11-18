@@ -15,7 +15,7 @@ pub fn get_values(layout: &EncodedValuesLayout, row: &EncodedValues) -> Vec<Valu
 
 /// Get all values from an encoded row using a named layout
 pub fn get_values_named(layout: &EncodedValuesNamedLayout, row: &EncodedValues) -> Vec<Value> {
-	(0..layout.names().len()).map(|i| layout.get_value(row, i)).collect()
+	(0..layout.names().len()).map(|i| layout.get_value_by_idx(row, i)).collect()
 }
 
 /// Helper to encode a key using IntoEncodedKey

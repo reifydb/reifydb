@@ -78,7 +78,7 @@ impl DistinctLayout {
 	/// Update the layout with a new encoded, keeping the most defined types
 	fn update_from_row(&mut self, row: &Row) {
 		let names = row.layout.names();
-		let types: Vec<Type> = row.layout.fields.iter().map(|f| f.r#type).collect();
+		let types: Vec<Type> = row.layout.fields().fields.iter().map(|f| f.r#type).collect();
 
 		if self.names.is_empty() {
 			self.names = names.to_vec();

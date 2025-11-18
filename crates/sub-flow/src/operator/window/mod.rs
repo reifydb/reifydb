@@ -61,12 +61,12 @@ pub struct WindowEvent {
 impl WindowEvent {
 	pub fn from_row(row: &Row, timestamp: u64) -> Self {
 		let names = row.layout.names().to_vec();
-		let types: Vec<Type> = row.layout.fields.iter().map(|f| f.r#type).collect();
+		let types: Vec<Type> = row.layout.fields().fields.iter().map(|f| f.r#type).collect();
 
 		// Debug: Extract and log the actual values being stored
 		let mut stored_values = Vec::new();
-		for (i, field) in row.layout.fields.iter().enumerate() {
-			let value = row.layout.get_value(&row.encoded, i);
+		for (i, field) in row.layout.fields().fields.iter().enumerate() {
+			let value = row.layout.get_value_by_idx(&row.encoded, i);
 			stored_values.push(format!("{:?}", value));
 		}
 
@@ -285,7 +285,7 @@ impl WindowOperator {
 			// Collect values from all events for this column
 			for (_event_idx, event) in events.iter().enumerate() {
 				let row = event.to_row();
-				let value = row.layout.get_value(&row.encoded, field_idx);
+				let value = row.layout.get_value_by_idx(&row.encoded, field_idx);
 				column_data.push_value(value);
 			}
 
@@ -361,7 +361,7 @@ impl WindowOperator {
 		// Create result row with aggregated values
 		let layout =
 			EncodedValuesNamedLayout::new(result_names.iter().cloned().zip(result_types.iter().cloned()));
-		let mut encoded = layout.allocate_row();
+		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &result_values);
 
 		// Use RowNumberProvider to get unique, stable row number for this window

@@ -114,10 +114,9 @@ impl MapOperator {
 					if let Expression::AccessSource(access_expr) = expr {
 						let col_name = access_expr.column.name.text();
 
-						// Find the column by name in the encoded
-						let names = row.layout.names();
-						if let Some(col_idx) = names.iter().position(|n| n == col_name) {
-							row.layout.get_value(&row.encoded, col_idx)
+						// Get the column by name using the new API
+						if let Some(value) = row.layout.get_value(&row.encoded, col_name) {
+							value
 						} else {
 							return Err(e);
 						}
@@ -126,11 +125,11 @@ impl MapOperator {
 						if let Expression::AccessSource(access_expr) = &*alias_expr.expression {
 							let col_name = access_expr.column.name.text();
 
-							// Find the column by name in the encoded
-							let names = row.layout.names();
-							if let Some(col_idx) = names.iter().position(|n| n == col_name)
+							// Get the column by name using the new API
+							if let Some(value) =
+								row.layout.get_value(&row.encoded, col_name)
 							{
-								row.layout.get_value(&row.encoded, col_idx)
+								value
 							} else {
 								return Err(e);
 							}
@@ -162,7 +161,7 @@ impl MapOperator {
 		let layout = EncodedValuesNamedLayout::new(fields);
 
 		// Allocate and populate the new encoded
-		let mut encoded_row = layout.allocate_row();
+		let mut encoded_row = layout.allocate();
 		layout.set_values(&mut encoded_row, &values);
 
 		Ok(Row {

@@ -44,8 +44,8 @@ impl StandardRowEvaluator {
 		};
 		columns.push(row_number_column);
 
-		for (idx, field) in ctx.row.layout.fields.iter().enumerate() {
-			let value = ctx.row.layout.get_value(&ctx.row.encoded, idx);
+		for (idx, field) in ctx.row.layout.fields().fields.iter().enumerate() {
+			let value = ctx.row.layout.get_value_by_idx(&ctx.row.encoded, idx);
 			// FIXME maybe some auto conversion needs to happen here
 			// Allow undefined values in any field type
 			debug_assert!(
@@ -99,8 +99,8 @@ impl StandardRowEvaluator {
 	pub fn coerce(&self, row: &Row, target_columns: &[ColumnDef]) -> crate::Result<Row> {
 		let mut source_columns = Vec::new();
 
-		for (idx, field) in row.layout.fields.iter().enumerate() {
-			let value = row.layout.get_value(&row.encoded, idx);
+		for (idx, field) in row.layout.fields().fields.iter().enumerate() {
+			let value = row.layout.get_value_by_idx(&row.encoded, idx);
 
 			let mut data = if field.r#type == Type::Undefined {
 				ColumnData::undefined(0)
@@ -149,7 +149,7 @@ impl StandardRowEvaluator {
 		}
 
 		let layout = EncodedValuesNamedLayout::new(names.into_iter().zip(types.into_iter()));
-		let mut encoded = layout.allocate_row();
+		let mut encoded = layout.allocate();
 		layout.set_values(&mut encoded, &values);
 
 		Ok(Row {

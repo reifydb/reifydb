@@ -92,15 +92,8 @@ impl JoinOperator {
 					// Get the column name without the source
 					let col_name = access_source.column.name.as_ref();
 
-					// Find the column in the encoded by name
-					let names = row.layout.names();
-					let col_index = names.iter().position(|n| n == col_name);
-
-					if let Some(idx) = col_index {
-						row.layout.get_value(&row.encoded, idx)
-					} else {
-						Value::Undefined
-					}
+					// Use the new name-based API to get the value
+					row.layout.get_value(&row.encoded, col_name).unwrap_or(Value::Undefined)
 				}
 				_ => {
 					// For other expressions, use the evaluator
@@ -164,20 +157,20 @@ impl JoinOperator {
 		// Prefix column names with alias to handle naming conflicts
 
 		// Pre-calculate total capacity to avoid reallocations
-		let total_fields = left.layout.fields.len() + right.layout.fields.len();
+		let total_fields = left.layout.fields().fields.len() + right.layout.fields().fields.len();
 		let mut combined_values = Vec::with_capacity(total_fields);
 		let mut combined_names = Vec::with_capacity(total_fields);
 		let mut combined_types = Vec::with_capacity(total_fields);
 
 		// Add left side columns - never prefixed
 		let left_names = left.layout.names();
-		for i in 0..left.layout.fields.len() {
-			let value = left.layout.get_value(&left.encoded, i);
+		for i in 0..left.layout.fields().fields.len() {
+			let value = left.layout.get_value_by_idx(&left.encoded, i);
 			combined_values.push(value);
 			if i < left_names.len() {
 				combined_names.push(left_names[i].clone());
 			}
-			combined_types.push(left.layout.fields[i].r#type);
+			combined_types.push(left.layout.fields().fields[i].r#type);
 		}
 
 		// Collect left names into a set for conflict detection
@@ -186,8 +179,8 @@ impl JoinOperator {
 
 		// Add right side columns - prefix with alias when there's a conflict
 		let right_names = right.layout.names();
-		for i in 0..right.layout.fields.len() {
-			let value = right.layout.get_value(&right.encoded, i);
+		for i in 0..right.layout.fields().fields.len() {
+			let value = right.layout.get_value_by_idx(&right.encoded, i);
 			combined_values.push(value);
 			if i < right_names.len() {
 				let col_name = &right_names[i];
@@ -207,7 +200,7 @@ impl JoinOperator {
 				};
 				combined_names.push(final_name);
 			}
-			combined_types.push(right.layout.fields[i].r#type);
+			combined_types.push(right.layout.fields().fields[i].r#type);
 		}
 
 		// Create combined layout
@@ -215,7 +208,7 @@ impl JoinOperator {
 		let layout = EncodedValuesNamedLayout::new(fields);
 
 		// Allocate and populate the new encoded
-		let mut encoded_row = layout.allocate_row();
+		let mut encoded_row = layout.allocate();
 		layout.set_values(&mut encoded_row, &combined_values);
 
 		// Use RowNumberProvider to get a stable encoded number for this join result

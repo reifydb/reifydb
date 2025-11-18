@@ -59,7 +59,7 @@ impl TestRowBuilder {
 	pub fn build(self) -> Row {
 		if let Some(named_layout) = self.named_layout {
 			// Use named layout
-			let mut encoded = named_layout.allocate_row();
+			let mut encoded = named_layout.allocate();
 			named_layout.set_values(&mut encoded, &self.values);
 
 			return Row {
@@ -81,7 +81,7 @@ impl TestRowBuilder {
 			types.iter().enumerate().map(|(i, t)| (format!("field{}", i), *t)).collect();
 
 		let named_layout = EncodedValuesNamedLayout::new(fields);
-		let mut encoded = named_layout.allocate_row();
+		let mut encoded = named_layout.allocate();
 		named_layout.set_values(&mut encoded, &self.values);
 
 		Row {
@@ -110,13 +110,13 @@ impl TestFlowChangeBuilder {
 	}
 
 	/// Set the origin as an external source
-	pub fn from_source(mut self, source: SourceId) -> Self {
+	pub fn changed_by_source(mut self, source: SourceId) -> Self {
 		self.origin = FlowChangeOrigin::External(source);
 		self
 	}
 
 	/// Set the origin as an internal node
-	pub fn from_node(mut self, node: FlowNodeId) -> Self {
+	pub fn changed_by_node(mut self, node: FlowNodeId) -> Self {
 		self.origin = FlowChangeOrigin::Internal(node);
 		self
 	}
@@ -305,7 +305,7 @@ mod tests {
 	#[test]
 	fn test_flow_change_builder() {
 		let change = TestFlowChangeBuilder::new()
-			.from_source(SourceId::table(100))
+			.changed_by_source(SourceId::table(100))
 			.with_version(CommitVersion(5))
 			.insert_row(1, vec![Value::Int8(42i64)])
 			.update_row(2, vec![Value::Int8(10i64)], vec![Value::Int8(20i64)])
@@ -334,7 +334,7 @@ mod tests {
 			.add_field("name", Type::Utf8)
 			.build_named();
 
-		assert_eq!(named.fields.len(), 2);
+		assert_eq!(named.fields().fields.len(), 2);
 		assert_eq!(named.names()[0].as_str(), "count");
 		assert_eq!(named.names()[1].as_str(), "name");
 	}
