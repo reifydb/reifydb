@@ -101,7 +101,13 @@ impl FlowEngine {
 			// Load the operator to register it in the global loader
 			// Use a temporary node ID just to extract the name
 			let mut guard = loader.write();
-			let temp_operator = guard.load_operator(&path, &[], FlowNodeId(0))?;
+			let temp_operator = match guard.load_operator(&path, &[], FlowNodeId(0))? {
+				Some(op) => op,
+				None => {
+					// Not a valid FFI operator, skip silently
+					continue;
+				}
+			};
 
 			// Extract operator name and API version from descriptor
 			let descriptor = temp_operator.descriptor();

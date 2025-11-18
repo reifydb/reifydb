@@ -10,7 +10,9 @@ use std::{
 use libloading::{Library, Symbol};
 use parking_lot::RwLock;
 use reifydb_core::interface::FlowNodeId;
-use reifydb_flow_operator_abi::{CURRENT_API_VERSION, FFIOperatorCreateFn, FFIOperatorDescriptor};
+use reifydb_flow_operator_abi::{
+	CURRENT_API_VERSION, FFIOperatorCreateFn, FFIOperatorDescriptor, FFIOperatorMagicFn, OPERATOR_MAGIC,
+};
 use reifydb_flow_operator_sdk::{FFIError, Result as FFIResult};
 
 use crate::operator::FFIOperator;
@@ -43,6 +45,48 @@ impl FFIOperatorLoader {
 		}
 	}
 
+	/// Check if a library is a valid FFI operator
+	///
+	/// This checks for the presence of the `ffi_operator_magic` symbol and verifies
+	/// the magic number matches.
+	///
+	/// # Arguments
+	/// * `path` - Path to the shared library file
+	///
+	/// # Returns
+	/// * `Ok(true)` - Library is a valid FFI operator
+	/// * `Ok(false)` - Library is not an FFI operator (missing or wrong magic)
+	/// * `Err(FFIError)` - Failed to load the library
+	pub fn is_operator_library(&mut self, path: &Path) -> FFIResult<bool> {
+		// Load the library if not already loaded
+		if !self.loaded_libraries.contains_key(path) {
+			let lib = unsafe {
+				Library::new(path).map_err(|e| {
+					FFIError::Other(format!("Failed to load library {}: {}", path.display(), e))
+				})?
+			};
+			self.loaded_libraries.insert(path.to_path_buf(), lib);
+		}
+
+		let library = self.loaded_libraries.get(path).unwrap();
+
+		// Check for magic symbol
+		let magic_result: Result<Symbol<FFIOperatorMagicFn>, _> =
+			unsafe { library.get(b"ffi_operator_magic\0") };
+
+		match magic_result {
+			Ok(magic_fn) => {
+				let magic = magic_fn();
+				Ok(magic == OPERATOR_MAGIC)
+			}
+			Err(_) => {
+				// Symbol not found - not an operator, remove from cache
+				self.loaded_libraries.remove(path);
+				Ok(false)
+			}
+		}
+	}
+
 	/// Load an operator from a dynamic library
 	///
 	/// # Arguments
@@ -51,20 +95,19 @@ impl FFIOperatorLoader {
 	/// * `operator_id` - ID for this operator instance
 	///
 	/// # Returns
-	/// * `Ok(FFIOperator)` - Successfully loaded operator
+	/// * `Ok(Some(FFIOperator))` - Successfully loaded operator
+	/// * `Ok(None)` - Library is not a valid FFI operator (silently skipped)
 	/// * `Err(FFIError)` - Loading or initialization failed
-	pub fn load_operator(&mut self, path: &Path, config: &[u8], operator_id: FlowNodeId) -> FFIResult<FFIOperator> {
-		// Load the library if not already loaded
-		if !self.loaded_libraries.contains_key(path) {
-			// Load the library
-			let lib = unsafe {
-				Library::new(path).map_err(|e| {
-					FFIError::Other(format!("Failed to load library {}: {}", path.display(), e))
-				})?
-			};
-
-			self.loaded_libraries.insert(path.to_path_buf(), lib);
-		};
+	pub fn load_operator(
+		&mut self,
+		path: &Path,
+		config: &[u8],
+		operator_id: FlowNodeId,
+	) -> FFIResult<Option<FFIOperator>> {
+		// First check if this is a valid operator library
+		if !self.is_operator_library(path)? {
+			return Ok(None);
+		}
 
 		let library = self.loaded_libraries.get(path).unwrap();
 
@@ -117,7 +160,7 @@ impl FFIOperatorLoader {
 
 		// Create the FFI operator wrapper
 		// Library stays loaded via global cache and loader reference
-		Ok(FFIOperator::new(descriptor, instance, operator_id))
+		Ok(Some(FFIOperator::new(descriptor, instance, operator_id)))
 	}
 
 	/// Create an operator instance from an already loaded library by name
@@ -144,7 +187,9 @@ impl FFIOperatorLoader {
 			.clone();
 
 		// Load operator from the known path
-		self.load_operator(&path, config, operator_id)
+		// Since this operator was previously registered, it should always be valid
+		self.load_operator(&path, config, operator_id)?
+			.ok_or_else(|| FFIError::Other(format!("Operator library no longer valid: {}", operator_name)))
 	}
 
 	/// Check if an operator name is registered
