@@ -61,3 +61,100 @@ impl CatalogStore {
 		Ok(result)
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use reifydb_engine::test_utils::create_test_command_transaction;
+
+	use crate::{
+		CatalogStore,
+		test_utils::{create_flow, create_flow_node, create_namespace, ensure_test_flow},
+	};
+
+	#[test]
+	fn test_list_flow_nodes_by_flow() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
+
+		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
+
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		assert_eq!(nodes.len(), 1);
+		assert_eq!(nodes[0].id, node.id);
+	}
+
+	#[test]
+	fn test_list_flow_nodes_by_flow_empty() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
+
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		assert!(nodes.is_empty());
+	}
+
+	#[test]
+	fn test_list_flow_nodes_by_flow_multiple() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
+
+		let node1 = create_flow_node(&mut txn, flow.id, 1, &[0x01]);
+		let node2 = create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+		let node3 = create_flow_node(&mut txn, flow.id, 5, &[0x03]);
+
+		let nodes = CatalogStore::list_flow_nodes_by_flow(&mut txn, flow.id).unwrap();
+		assert_eq!(nodes.len(), 3);
+
+		// Verify all nodes are present
+		let ids: Vec<_> = nodes.iter().map(|n| n.id).collect();
+		assert!(ids.contains(&node1.id));
+		assert!(ids.contains(&node2.id));
+		assert!(ids.contains(&node3.id));
+	}
+
+	#[test]
+	fn test_list_flow_nodes_all() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
+
+		create_flow_node(&mut txn, flow.id, 1, &[0x01]);
+		create_flow_node(&mut txn, flow.id, 4, &[0x02]);
+
+		let nodes = CatalogStore::list_flow_nodes_all(&mut txn).unwrap();
+		assert_eq!(nodes.len(), 2);
+	}
+
+	#[test]
+	fn test_list_flow_nodes_all_empty() {
+		let mut txn = create_test_command_transaction();
+
+		let nodes = CatalogStore::list_flow_nodes_all(&mut txn).unwrap();
+		assert!(nodes.is_empty());
+	}
+
+	#[test]
+	fn test_list_flow_nodes_all_multiple_flows() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+
+		let flow1 = create_flow(&mut txn, "test_namespace", "flow_one");
+		let flow2 = create_flow(&mut txn, "test_namespace", "flow_two");
+
+		create_flow_node(&mut txn, flow1.id, 1, &[0x01]);
+		create_flow_node(&mut txn, flow1.id, 4, &[0x02]);
+		create_flow_node(&mut txn, flow2.id, 1, &[0x03]);
+
+		let all_nodes = CatalogStore::list_flow_nodes_all(&mut txn).unwrap();
+		assert_eq!(all_nodes.len(), 3);
+
+		// Verify nodes are from correct flows
+		let flow1_nodes: Vec<_> = all_nodes.iter().filter(|n| n.flow == flow1.id).collect();
+		let flow2_nodes: Vec<_> = all_nodes.iter().filter(|n| n.flow == flow2.id).collect();
+
+		assert_eq!(flow1_nodes.len(), 2);
+		assert_eq!(flow2_nodes.len(), 1);
+	}
+}

@@ -33,3 +33,38 @@ impl CatalogStore {
 		}))
 	}
 }
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::interface::FlowNodeId;
+	use reifydb_engine::test_utils::create_test_command_transaction;
+
+	use crate::{
+		CatalogStore,
+		test_utils::{create_flow_node, create_namespace, ensure_test_flow},
+	};
+
+	#[test]
+	fn test_find_flow_node_ok() {
+		let mut txn = create_test_command_transaction();
+		let _namespace = create_namespace(&mut txn, "test_namespace");
+		let flow = ensure_test_flow(&mut txn);
+
+		let node = create_flow_node(&mut txn, flow.id, 1, &[0x01, 0x02, 0x03]);
+
+		let result = CatalogStore::find_flow_node(&mut txn, node.id).unwrap();
+		assert!(result.is_some());
+		let found = result.unwrap();
+		assert_eq!(found.id, node.id);
+		assert_eq!(found.flow, flow.id);
+		assert_eq!(found.node_type, 1);
+	}
+
+	#[test]
+	fn test_find_flow_node_not_found() {
+		let mut txn = create_test_command_transaction();
+
+		let result = CatalogStore::find_flow_node(&mut txn, FlowNodeId(999)).unwrap();
+		assert!(result.is_none());
+	}
+}

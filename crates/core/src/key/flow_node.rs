@@ -114,7 +114,7 @@ impl FlowNodeByFlowKey {
 
 	fn end(flow: FlowId) -> EncodedKey {
 		let mut serializer = KeySerializer::with_capacity(10);
-		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(FlowId(flow.0 + 1));
+		serializer.extend_u8(VERSION).extend_u8(Self::KIND as u8).extend_u64(FlowId(flow.0 - 1));
 		serializer.to_encoded_key()
 	}
 }

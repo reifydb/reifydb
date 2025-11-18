@@ -2,10 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	ColumnPolicyKind, CommandTransaction, FlowDef, FlowStatus, NamespaceDef, RingBufferDef, RingBufferId, TableDef,
-	TableId, ViewDef,
+	ColumnPolicyKind, CommandTransaction, FlowDef, FlowEdgeDef, FlowId, FlowNodeDef, FlowNodeId, FlowStatus,
+	NamespaceDef, RingBufferDef, RingBufferId, TableDef, TableId, ViewDef,
 };
-use reifydb_type::TypeConstraint;
+use reifydb_type::{Blob, TypeConstraint};
 
 use crate::{
 	CatalogStore,
@@ -202,4 +202,39 @@ pub fn ensure_test_flow(txn: &mut impl CommandTransaction) -> FlowDef {
 		return result;
 	}
 	create_flow(txn, "test_namespace", "test_flow")
+}
+
+pub fn create_flow_node(txn: &mut impl CommandTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> FlowNodeDef {
+	use crate::store::sequence::flow::next_flow_node_id;
+
+	let node_id = next_flow_node_id(txn).unwrap();
+	let node_def = FlowNodeDef {
+		id: node_id,
+		flow: flow_id,
+		node_type,
+		data: Blob::from(data),
+	};
+
+	CatalogStore::create_flow_node(txn, &node_def).unwrap();
+	node_def
+}
+
+pub fn create_flow_edge(
+	txn: &mut impl CommandTransaction,
+	flow_id: FlowId,
+	source: FlowNodeId,
+	target: FlowNodeId,
+) -> FlowEdgeDef {
+	use crate::store::sequence::flow::next_flow_edge_id;
+
+	let edge_id = next_flow_edge_id(txn).unwrap();
+	let edge_def = FlowEdgeDef {
+		id: edge_id,
+		flow: flow_id,
+		source,
+		target,
+	};
+
+	CatalogStore::create_flow_edge(txn, &edge_def).unwrap();
+	edge_def
 }
