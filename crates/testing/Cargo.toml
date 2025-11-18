@@ -3,6 +3,7 @@ name = "reifydb-testing"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+authors.workspace = true
 repository.workspace = true
 description = "Testing utilities and helpers for ReifyDB"
 
