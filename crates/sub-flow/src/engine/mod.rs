@@ -6,7 +6,7 @@ mod partition;
 mod process;
 mod register;
 
-use std::{collections::HashMap, ffi::CStr, fs::read_dir, path::PathBuf, sync::Arc};
+use std::{collections::HashMap, fs::read_dir, path::PathBuf, sync::Arc};
 
 use parking_lot::RwLock;
 use reifydb_core::{
@@ -98,22 +98,15 @@ impl FlowEngine {
 				continue;
 			}
 
-			// Load the operator to register it in the global loader
-			// Use a temporary node ID just to extract the name
+			// Register the operator without instantiating it
 			let mut guard = loader.write();
-			let temp_operator = match guard.load_operator(&path, &[], FlowNodeId(0))? {
-				Some(op) => op,
+			let (operator_name, api_version) = match guard.register_operator(&path)? {
+				Some(info) => info,
 				None => {
 					// Not a valid FFI operator, skip silently
 					continue;
 				}
 			};
-
-			// Extract operator name and API version from descriptor
-			let descriptor = temp_operator.descriptor();
-			let operator_name =
-				unsafe { CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string() };
-			let api_version = descriptor.api_version;
 
 			log_debug!("Registered FFI operator: {} from {:?}", operator_name, path);
 

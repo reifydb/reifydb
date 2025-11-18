@@ -87,6 +87,58 @@ impl FFIOperatorLoader {
 		}
 	}
 
+	/// Register an operator library without instantiating it
+	///
+	/// This loads the library, validates it as an operator, and extracts metadata
+	/// without creating an operator instance. Use this for discovery/registration.
+	///
+	/// # Arguments
+	/// * `path` - Path to the shared library file
+	///
+	/// # Returns
+	/// * `Ok(Some((name, api_version)))` - Successfully registered operator
+	/// * `Ok(None)` - Library is not a valid FFI operator (silently skipped)
+	/// * `Err(FFIError)` - Loading or validation failed
+	pub fn register_operator(&mut self, path: &Path) -> FFIResult<Option<(String, u32)>> {
+		// First check if this is a valid operator library
+		if !self.is_operator_library(path)? {
+			return Ok(None);
+		}
+
+		let library = self.loaded_libraries.get(path).unwrap();
+
+		// Get the operator descriptor
+		let (operator_name, api_version) = unsafe {
+			let get_descriptor: Symbol<extern "C" fn() -> *const FFIOperatorDescriptor> =
+				library.get(b"ffi_operator_get_descriptor\0").map_err(|e| {
+					FFIError::Other(format!("Failed to find ffi_operator_get_descriptor: {}", e))
+				})?;
+
+			let descriptor_ptr = get_descriptor();
+			if descriptor_ptr.is_null() {
+				return Err(FFIError::Other("Descriptor is null".to_string()));
+			}
+
+			let name = CStr::from_ptr((*descriptor_ptr).operator_name).to_str().unwrap().to_string();
+			let version = (*descriptor_ptr).api_version;
+
+			(name, version)
+		};
+
+		// Verify API version
+		if api_version != CURRENT_API_VERSION {
+			return Err(FFIError::Other(format!(
+				"API version mismatch: expected {}, got {}",
+				CURRENT_API_VERSION, api_version
+			)));
+		}
+
+		// Store operator name -> path mapping
+		self.operator_paths.insert(operator_name.clone(), path.to_path_buf());
+
+		Ok(Some((operator_name, api_version)))
+	}
+
 	/// Load an operator from a dynamic library
 	///
 	/// # Arguments
