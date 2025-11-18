@@ -38,7 +38,14 @@ impl FlowEngine {
 		}
 
 		log_trace!("[Backfill] Found {} source nodes", source_nodes.len());
-		for source_node in source_nodes {
+
+		// Phase 1: Load all source data and apply through source operators
+		// This populates JOIN state for all sides before any propagation
+		let snapshot_version = txn.version();
+		let mut flow_txn = FlowTransaction::new(txn, snapshot_version);
+		let mut source_changes: Vec<(FlowNodeId, FlowChange)> = Vec::new();
+
+		for source_node in &source_nodes {
 			let source_id = match &source_node.ty {
 				FlowNodeType::SourceTable {
 					table,
@@ -48,54 +55,62 @@ impl FlowEngine {
 				} => SourceId::view(*view),
 				_ => continue,
 			};
-			self.load_source_data(txn, flow, source_node.id, source_id)?;
+
+			let source_def = txn.get_source(source_id)?;
+			let rows = self.scan_all_rows(txn, &source_def)?;
+			if rows.is_empty() {
+				continue;
+			}
+
+			let (namespace, name) = match &source_def {
+				SourceDef::Table(t) => (&t.namespace, &t.name),
+				SourceDef::View(v) => (&v.namespace, &v.name),
+				_ => unreachable!("Only Table and View sources are supported for backfill"),
+			};
+
+			log_info!("[INITIAL_LOAD] Processing {} rows from source {}.{}", rows.len(), namespace, name);
+
+			let diffs: Vec<FlowDiff> = rows
+				.into_iter()
+				.map(|row| FlowDiff::Insert {
+					post: row,
+				})
+				.collect();
+
+			let change = FlowChange {
+				origin: FlowChangeOrigin::Internal(source_node.id),
+				version: snapshot_version,
+				diffs,
+			};
+
+			// Apply through source operator to get transformed change
+			let operators = self.inner.operators.read();
+			let source_operator = operators
+				.get(&source_node.id)
+				.ok_or_else(|| Error(internal!("Source operator not found")))?
+				.clone();
+			drop(operators);
+
+			let result_change = source_operator.apply(&mut flow_txn, change, &self.inner.evaluator)?;
+			if !result_change.diffs.is_empty() {
+				source_changes.push((source_node.id, result_change));
+			}
 		}
+
+		// Phase 2: Propagate all source changes through downstream operators
+		// Now all JOIN sides have their data in state
+		for (source_node_id, change) in source_changes {
+			log_trace!(
+				"[Backfill] Propagating {} diffs from source {:?}",
+				change.diffs.len(),
+				source_node_id
+			);
+			self.propagate_initial_change(&mut flow_txn, flow, source_node_id, change)?;
+		}
+
+		flow_txn.commit(txn)?;
 
 		log_trace!("[Backfill] Initial data load complete for flow {:?}", flow.id);
-		Ok(())
-	}
-
-	fn load_source_data(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		flow: &Flow,
-		source_node_id: FlowNodeId,
-		source_id: SourceId,
-	) -> crate::Result<()> {
-		let source_def = txn.get_source(source_id)?;
-
-		let (namespace, name) = match &source_def {
-			SourceDef::Table(t) => (&t.namespace, &t.name),
-			SourceDef::View(v) => (&v.namespace, &v.name),
-			_ => unreachable!("Only Table and View sources are supported for backfill"),
-		};
-
-		log_trace!("[Backfill] Loading source {:?} ({})", namespace, name);
-
-		let snapshot_version = txn.version();
-
-		let rows = self.scan_all_rows(txn, &source_def)?;
-		if rows.is_empty() {
-			log_trace!("[Backfill] Source {} has no rows", name);
-			return Ok(());
-		}
-
-		log_info!("[INITIAL_LOAD] Processing {} rows from source {}", rows.len(), name);
-
-		let diffs: Vec<FlowDiff> = rows
-			.into_iter()
-			.map(|row| FlowDiff::Insert {
-				post: row,
-			})
-			.collect();
-
-		let change = FlowChange {
-			origin: FlowChangeOrigin::Internal(source_node_id),
-			version: snapshot_version,
-			diffs,
-		};
-
-		self.process_initial_change(txn, flow, source_node_id, change)?;
 		Ok(())
 	}
 
@@ -157,35 +172,6 @@ impl FlowEngine {
 					self.propagate_initial_change(flow_txn, flow, downstream_node_id, result)?;
 				}
 			}
-		}
-
-		Ok(())
-	}
-
-	fn process_initial_change(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		flow: &Flow,
-		source_node_id: FlowNodeId,
-		change: FlowChange,
-	) -> crate::Result<()> {
-		log_trace!("[Backfill] Processing {} diffs through node {:?}", change.diffs.len(), source_node_id);
-
-		let operators = self.inner.operators.read();
-		let source_operator = operators
-			.get(&source_node_id)
-			.ok_or_else(|| Error(internal!("Source operator not found")))?
-			.clone();
-		drop(operators);
-
-		let mut flow_txn = FlowTransaction::new(txn, change.version);
-
-		let result_change = source_operator.apply(&mut flow_txn, change, &self.inner.evaluator)?;
-
-		log_trace!("[Backfill] Source operator produced {} diffs", result_change.diffs.len());
-
-		if !result_change.diffs.is_empty() {
-			self.propagate_initial_change(&mut flow_txn, flow, source_node_id, result_change)?;
 		}
 
 		Ok(())

@@ -212,11 +212,15 @@ impl CdcConsume for FlowConsumer {
 		}
 
 		// Reload flows if needed (before processing any changes)
+		// Only skip backfill for flows that already existed (they already have data)
+		// New flows need backfill to get initial data from source tables
 		if flows_changed_at_version.is_some() {
+			let existing_flow_ids = self.flow_engine.flow_ids();
 			self.flow_engine.clear();
 			let flows = self.load_flows()?;
 			for flow in flows {
-				self.flow_engine.register(txn, flow)?;
+				let skip_backfill = existing_flow_ids.contains(&flow.id);
+				self.flow_engine.register_with_options(txn, flow, skip_backfill)?;
 			}
 		}
 

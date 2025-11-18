@@ -7,7 +7,12 @@ mod partition;
 mod process;
 mod register;
 
-use std::{collections::HashMap, fs::read_dir, path::PathBuf, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	fs::read_dir,
+	path::PathBuf,
+	sync::Arc,
+};
 
 use parking_lot::RwLock;
 use reifydb_core::{
@@ -152,6 +157,11 @@ impl FlowEngine {
 
 	pub fn has_registered_flows(&self) -> bool {
 		!self.inner.flows.read().is_empty()
+	}
+
+	/// Returns a set of all currently registered flow IDs
+	pub fn flow_ids(&self) -> HashSet<FlowId> {
+		self.inner.flows.read().keys().copied().collect()
 	}
 
 	/// Clears all registered flows, operators, sources, sinks, and dependency graph

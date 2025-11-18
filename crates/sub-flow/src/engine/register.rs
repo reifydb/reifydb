@@ -27,6 +27,15 @@ use crate::{
 
 impl FlowEngine {
 	pub fn register(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
+		self.register_with_options(txn, flow, false)
+	}
+
+	pub fn register_with_options(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		flow: Flow,
+		skip_backfill: bool,
+	) -> crate::Result<()> {
 		debug_assert!(!self.inner.flows.read().contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
@@ -34,8 +43,10 @@ impl FlowEngine {
 			self.add(txn, &flow, node)?;
 		}
 
-		// NEW: Load initial data from source tables
-		self.load_initial_data(txn, &flow)?;
+		// Load initial data from source tables (skip during CDC-triggered reloads)
+		if !skip_backfill {
+			self.load_initial_data(txn, &flow)?;
+		}
 
 		// Add flow to analyzer for dependency tracking
 		self.inner.analyzer.write().add(flow.clone());
