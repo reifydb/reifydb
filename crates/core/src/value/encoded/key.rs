@@ -55,14 +55,6 @@ impl EncodedKey {
 /// A builder for constructing EncodedKey values using keycode encoding
 ///
 /// This provides a fluent API for building composite keys with proper order-preserving encoding.
-///
-/// # Example
-///
-/// ```
-/// use reifydb_core::EncodedKey;
-///
-/// let key = EncodedKey::builder().str("user").u64(42).build();
-/// ```
 pub struct EncodedKeyBuilder {
 	serializer: KeySerializer,
 }
