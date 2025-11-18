@@ -70,6 +70,7 @@ impl FlowConsumer {
 				for flow in flows {
 					result.flow_engine.register(&mut txn, flow).unwrap();
 				}
+				txn.commit().unwrap();
 			}
 		}
 

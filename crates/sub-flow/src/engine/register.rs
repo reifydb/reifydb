@@ -34,6 +34,9 @@ impl FlowEngine {
 			self.add(txn, &flow, node)?;
 		}
 
+		// NEW: Load initial data from source tables
+		self.load_initial_data(txn, &flow)?;
+
 		// Add flow to analyzer for dependency tracking
 		self.inner.analyzer.write().add(flow.clone());
 		self.inner.flows.write().insert(flow.id, flow);

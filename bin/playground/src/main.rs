@@ -35,113 +35,146 @@ fn main() {
 
 	db.start().unwrap();
 
-	// Create namespace and table
-	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
-	db.command_as_root(r#"create table test.source { id: int4, name: utf8, status: utf8 }"#, Params::None).unwrap();
+	// Create namespaces
+	println!("Creating namespaces...");
+	db.command_as_root(r#"create namespace decoded;"#, Params::None).unwrap();
+	db.command_as_root(r#"create namespace solana;"#, Params::None).unwrap();
+	db.command_as_root(r#"create namespace jupiter;"#, Params::None).unwrap();
 
-	println!("Created namespace and table");
-
-	// Create deferred view with counter operator
+	// Create tables
+	println!("Creating tables...");
 	db.command_as_root(
-		r#"
-create deferred view test.counter_view {
-    insert: uint1,
-    update: uint1,
-    delete: uint1
-} as {
-    from test.source
-    apply counter{}
-}
-	"#,
+		r#"create table decoded.jupiter_swaps { signature: utf8, slot: uint8, timestamp: uint8, input_mint: utf8, input_amount: uint8, output_mint: utf8, output_amount: uint8 }"#,
 		Params::None,
 	)
 	.unwrap();
+	db.command_as_root(r#"create table solana.token { id: uint2, mint: utf8, decimals: uint1 }"#, Params::None)
+		.unwrap();
 
-	println!("Created counter view");
-
-	// Wait for view to be ready
-	sleep(Duration::from_millis(500));
-
-	// Query the counter view
-	println!("\nQuerying counter view (initial):");
-	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
-
-	// Insert some records
-	println!("\nInserting 10 records...");
+	// Insert tokens FIRST (before creating view)
+	println!("Inserting tokens...");
 	db.command_as_root(
 		r#"
 from [
-    {id: 1, name: "Alice", status: "active"},
-    {id: 2, name: "Bob", status: "active"},
-    {id: 3, name: "Charlie", status: "inactive"},
-    {id: 4, name: "Diana", status: "active"},
-    {id: 5, name: "Eve", status: "active"},
-    {id: 6, name: "Frank", status: "inactive"},
-    {id: 7, name: "Grace", status: "active"},
-    {id: 8, name: "Hank", status: "active"},
-    {id: 9, name: "Ivy", status: "inactive"},
-    {id: 10, name: "Jack", status: "active"}
-]
-insert test.source
-	"#,
+  {id: 0, mint: "So11111111111111111111111111111111111111112", decimals: 9},
+  {id: 1, mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", decimals: 6},
+  {id: 2, mint: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB", decimals: 6}
+] insert solana.token
+"#,
 		Params::None,
 	)
 	.unwrap();
 
-	sleep(Duration::from_millis(500));
-
-	// Query the counter view again
-	println!("\nQuerying counter view after inserts:");
-	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
+	// Verify tokens exist
+	println!("\nVerifying tokens:");
+	for frame in db.query_as_root(r#"from solana.token"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	// Update some records
-	println!("\nUpdating 3 records...");
+	// Create deferred view with double LEFT JOIN
+	println!("\nCreating deferred view with double LEFT JOIN...");
 	db.command_as_root(
 		r#"
-from test.source
-filter id == 2 OR id == 5 or id == 8
-map {id, name,  status: "suspended" }
-update test.source
-	"#,
+create deferred view jupiter.normalized_swaps {
+  signature: utf8,
+  slot: uint8,
+  timestamp: uint8,
+  input_mint: utf8,
+  input_amount: uint8,
+  input_decimals: uint1,
+  output_mint: utf8,
+  output_amount: uint8,
+  output_decimals: uint1
+} as {
+  from decoded.jupiter_swaps
+  left join { from solana.token } token1 on input_mint == token1.mint
+  map {
+      signature,
+      slot,
+      timestamp,
+      input_mint,
+      input_amount,
+      input_decimals: decimals,
+      output_mint,
+      output_amount
+  }
+  left join { from solana.token } token2 on output_mint == token2.mint
+  map {
+      signature,
+      slot,
+      timestamp,
+      input_mint,
+      input_amount,
+      input_decimals,
+      output_mint,
+      output_amount,
+      output_decimals: decimals
+  }
+}
+"#,
 		Params::None,
 	)
 	.unwrap();
 
-	sleep(Duration::from_millis(500));
+	println!("Created deferred view");
 
-	// Query the counter view again
-	println!("\nQuerying counter view after updates:");
-	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
-
-	// Delete some records
-	println!("\nDeleting 2 records...");
+	// Insert swap data (SOL to USDC)
+	println!("\nInserting swap data...");
 	db.command_as_root(
 		r#"
-from test.source
-filter id == 3 or id == 9
-delete test.source
-	"#,
+from [
+  {
+      signature: "5Feqr3pDV3YpBtHQdJAYeNbEoKfCAwXVJe8PRccJZvmJRFmem287anU7VLbkVCvEAuXahMi5kZUz5UuEZm77akSB",
+      slot: 377679661,
+      timestamp: 1762184460,
+      input_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      input_amount: 4010000,
+      output_mint: "So11111111111111111111111111111111111111112",
+      output_amount: 156000000
+  },
+  {
+      signature: "4GxhoyPfxuhFrAuDLVVGf9zp9PqCX48wTkc6YtFnsna2PLfSEBMSSrUBKYhHFtSNsygp24QKCjwxT1H6k6jZqPBf",
+      slot: 377679644,
+      timestamp: 1762184453,
+      input_mint: "So11111111111111111111111111111111111111112",
+      input_amount: 100000000,
+      output_mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v",
+      output_amount: 2540000
+  }
+] insert decoded.jupiter_swaps
+"#,
 		Params::None,
 	)
 	.unwrap();
 
+	// Wait for view to process data
 	sleep(Duration::from_millis(500));
 
-	// Query the counter view final time
-	println!("\nQuerying counter view after deletes:");
-	for frame in db.query_as_root(r#"from test.counter_view"#, Params::None).unwrap() {
+	// Test 1: Direct query (should work)
+	println!("\n=== Test 1: Direct query (should show decimals correctly) ===");
+	for frame in db
+		.query_as_root(
+			r#"
+from decoded.jupiter_swaps
+left join { from solana.token } token1 on input_mint == token1.mint
+map {
+  signature,
+  input_mint,
+  input_decimals: decimals
+}
+"#,
+			Params::None,
+		)
+		.unwrap()
+	{
 		println!("{}", frame);
 	}
 
-	println!("\nExpected counts: insert_count=10, update_count=3, delete_count=2");
-
-	for frame in db.query_as_root(r#"from system.flow_operators"#, Params::None).unwrap() {
+	// Test 2: Query the deferred view (this is where the bug occurs)
+	println!("\n=== Test 2: Deferred view query (decimals show as Undefined - BUG) ===");
+	for frame in db.query_as_root(r#"from jupiter.normalized_swaps"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
+
+	println!("\n=== Expected: input_decimals and output_decimals should show 6 or 9, not Undefined ===");
 }
