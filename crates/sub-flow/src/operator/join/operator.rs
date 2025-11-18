@@ -8,13 +8,13 @@ use reifydb_core::{
 	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator, execute::Executor};
+use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Params, RowNumber, Type, Value, internal};
 
 use super::{JoinSide, JoinState, JoinStrategy};
 use crate::{
-	flow::{FlowChange, FlowChangeOrigin, FlowDiff},
 	operator::{
 		Operator, Operators,
 		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful},
@@ -301,15 +301,8 @@ impl Operator for JoinOperator {
 						}
 					};
 
-					let diffs = self.strategy.handle_insert(
-						txn,
-						&post,
-						side,
-						key,
-						&mut state,
-						self,
-						change.version,
-					)?;
+					let diffs =
+						self.strategy.handle_insert(txn, &post, side, key, &mut state, self)?;
 					result.extend(diffs);
 				}
 				FlowDiff::Remove {

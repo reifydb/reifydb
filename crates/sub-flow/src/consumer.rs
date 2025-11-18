@@ -12,6 +12,7 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
+use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_rql::flow::Flow;
 use reifydb_sub_api::SchedulerService;
 use reifydb_type::{RowNumber, Value};
@@ -19,7 +20,6 @@ use reifydb_type::{RowNumber, Value};
 use crate::{
 	builder::OperatorFactory,
 	engine::FlowEngine,
-	flow::FlowDiff,
 	operator::TransformOperatorRegistry,
 	subsystem::intercept::Change,
 	worker::{ParallelWorkerPool, SameThreadedWorker, WorkerPool},

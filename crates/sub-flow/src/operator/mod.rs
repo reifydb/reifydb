@@ -2,7 +2,7 @@ use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_type::RowNumber;
 
-use crate::{flow::FlowChange, transaction::FlowTransaction};
+use crate::transaction::FlowTransaction;
 
 mod apply;
 mod distinct;
@@ -27,6 +27,7 @@ pub use ffi::FFIOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
 pub use map::MapOperator;
+use reifydb_flow_operator_sdk::FlowChange;
 pub use sink::SinkViewOperator;
 pub use sort::SortOperator;
 pub use source::{SourceTableOperator, SourceViewOperator};

@@ -13,13 +13,13 @@ use reifydb_core::{
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Blob, Params, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	flow::{FlowChange, FlowDiff},
 	operator::{
 		Operator, Operators,
 		stateful::{RawStatefulOperator, SingleStateful},

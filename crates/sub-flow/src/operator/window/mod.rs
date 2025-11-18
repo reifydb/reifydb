@@ -23,7 +23,6 @@ use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	flow::{FlowChange, FlowDiff},
 	operator::{
 		Operator, Operators,
 		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful},
@@ -45,6 +44,8 @@ static EMPTY_PARAMS: Params = Params::None;
 use std::sync::LazyLock;
 
 use reifydb_engine::stack::Stack;
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+
 static EMPTY_STACK: LazyLock<Stack> = LazyLock::new(|| Stack::new());
 
 /// A single event stored within a window

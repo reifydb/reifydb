@@ -13,6 +13,7 @@ pub mod test {
 		value::encoded::{EncodedValues, EncodedValuesLayout},
 	};
 	use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
+	use reifydb_flow_operator_sdk::FlowChange;
 	use reifydb_store_transaction::TransactionStore;
 	use reifydb_transaction::{
 		cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
@@ -20,7 +21,6 @@ pub mod test {
 	use reifydb_type::{RowNumber, Type, Value};
 
 	use crate::{
-		flow::FlowChange,
 		operator::{Operator, transform::TransformOperator},
 		transaction::FlowTransaction,
 	};

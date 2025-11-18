@@ -8,9 +8,8 @@ pub mod same;
 pub use parallel::ParallelWorkerPool;
 pub use processor::WorkerPool;
 use reifydb_core::{CommitVersion, interface::FlowId};
+use reifydb_flow_operator_sdk::FlowChange;
 pub use same::SameThreadedWorker;
-
-use crate::flow::FlowChange;
 
 /// A unit of work representing a flow and all its source changes
 #[derive(Debug, Clone)]

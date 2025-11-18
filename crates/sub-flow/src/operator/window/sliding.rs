@@ -2,12 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 use reifydb_core::{WindowSize, WindowSlide, WindowType};
 use reifydb_engine::StandardRowEvaluator;
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 
 use super::{WindowEvent, WindowOperator};
-use crate::{
-	flow::{FlowChange, FlowDiff},
-	transaction::FlowTransaction,
-};
+use crate::transaction::FlowTransaction;
 
 impl WindowOperator {
 	/// Determine which windows an event belongs to for sliding windows

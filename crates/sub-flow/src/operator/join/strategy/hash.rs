@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use reifydb_core::{CommitVersion, Row};
+use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
 
 use crate::{
-	flow::FlowDiff,
 	operator::{
 		Operators,
 		join::{JoinSideEntry, Store, operator::JoinOperator},
@@ -77,7 +77,6 @@ pub(crate) fn emit_joined_rows_left_to_right(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	right_parent: &Arc<Operators>,
-	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 
@@ -104,7 +103,6 @@ pub(crate) fn emit_joined_rows_right_to_left(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	left_parent: &Arc<Operators>,
-	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 
@@ -131,7 +129,6 @@ pub(crate) fn emit_remove_joined_rows_left(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	right_parent: &Arc<Operators>,
-	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 
@@ -158,7 +155,6 @@ pub(crate) fn emit_remove_joined_rows_right(
 	key_hash: &Hash128,
 	operator: &JoinOperator,
 	left_parent: &Arc<Operators>,
-	version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
 	let mut result = Vec::new();
 

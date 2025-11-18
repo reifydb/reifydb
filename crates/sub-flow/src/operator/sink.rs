@@ -8,14 +8,10 @@ use reifydb_core::{
 	interface::{EncodableKey, FlowNodeId, ResolvedView, RowKey, SourceId},
 };
 use reifydb_engine::StandardRowEvaluator;
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_type::RowNumber;
 
-use crate::{
-	Operator,
-	flow::{FlowChange, FlowDiff},
-	operator::Operators,
-	transaction::FlowTransaction,
-};
+use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
 pub struct SinkViewOperator {
 	parent: Arc<Operators>,

@@ -6,11 +6,11 @@ use bincode::{
 };
 use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_engine::StandardRowEvaluator;
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_type::{Blob, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	flow::{FlowChange, FlowDiff},
 	operator::{
 		Operator, Operators,
 		stateful::{RawStatefulOperator, SingleStateful},

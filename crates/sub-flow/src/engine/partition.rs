@@ -7,11 +7,9 @@ use reifydb_core::{
 	CommitVersion,
 	interface::{FlowId, SourceId},
 };
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 
-use crate::{
-	flow::{FlowChange, FlowDiff},
-	worker::{UnitOfWork, UnitsOfWork},
-};
+use crate::worker::{UnitOfWork, UnitsOfWork};
 
 impl crate::engine::FlowEngine {
 	/// Partition changes from multiple versions into units of work grouped by flow
@@ -150,12 +148,12 @@ mod tests {
 		value::encoded::{EncodedValues, EncodedValuesNamedLayout},
 	};
 	use reifydb_engine::{StandardRowEvaluator, execute::Executor};
+	use reifydb_flow_operator_sdk::{FlowChangeOrigin, FlowDiff};
 	use reifydb_rql::flow::FlowGraphAnalyzer;
 	use reifydb_type::{RowNumber, Type};
 
 	use crate::{
 		engine::{FlowEngine, FlowEngineInner},
-		flow::FlowDiff,
 		operator::transform::registry::TransformOperatorRegistry,
 		worker::{UnitOfWork, UnitsOfWork},
 	};
@@ -248,11 +246,11 @@ mod tests {
 
 		for change in &unit.source_changes {
 			match change.origin {
-				crate::flow::FlowChangeOrigin::External(source_id) => {
+				FlowChangeOrigin::External(source_id) => {
 					let count = change.diffs.len();
 					*sources.entry(source_id).or_insert(0) += count;
 				}
-				crate::flow::FlowChangeOrigin::Internal(node_id) => {
+				FlowChangeOrigin::Internal(node_id) => {
 					// In test setup, node_id = source_id * 1000 + flow_id
 					// So source_id = node_id / 1000
 					let source_num = node_id.0 / 1000;
