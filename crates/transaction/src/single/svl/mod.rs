@@ -4,7 +4,7 @@
 use std::sync::{Arc, RwLock};
 
 use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange,
+	CowVec, EncodedKey,
 	delta::Delta,
 	event::EventBus,
 	interface::{SingleVersionTransaction, SingleVersionValues, WithEventBus},
@@ -12,8 +12,6 @@ use reifydb_core::{
 };
 use reifydb_store_transaction::TransactionStore;
 
-pub(crate) mod range;
-pub(crate) mod range_rev;
 mod read;
 mod write;
 

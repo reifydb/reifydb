@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crate::{
-	EncodedKey, EncodedKeyRange,
+	EncodedKey,
 	interface::{SingleVersionValues, WithEventBus},
 	value::encoded::EncodedValues,
 };
@@ -40,18 +40,6 @@ pub trait SingleVersionQueryTransaction {
 	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>>;
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
-
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter>;
-
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter>;
-
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedSingleVersionIter> {
-		self.range(EncodedKeyRange::prefix(prefix))
-	}
-
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedSingleVersionIter> {
-		self.range_rev(EncodedKeyRange::prefix(prefix))
-	}
 }
 
 pub trait SingleVersionCommandTransaction: SingleVersionQueryTransaction {

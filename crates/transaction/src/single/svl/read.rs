@@ -3,8 +3,8 @@
 
 use std::sync::RwLockReadGuard;
 
-use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionQueryTransaction};
-use reifydb_store_transaction::{SingleVersionContains, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev};
+use reifydb_core::interface::SingleVersionQueryTransaction;
+use reifydb_store_transaction::{SingleVersionContains, SingleVersionGet};
 
 use super::*;
 
@@ -19,25 +19,5 @@ impl SingleVersionQueryTransaction for SvlQueryTransaction<'_> {
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.store.contains(key)
-	}
-
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
-		let iter = self.store.range(range)?;
-		Ok(Box::new(iter.into_iter()))
-	}
-
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
-		let iter = self.store.range_rev(range)?;
-		Ok(Box::new(iter.into_iter()))
-	}
-
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedSingleVersionIter> {
-		let iter = self.store.prefix(prefix)?;
-		Ok(Box::new(iter.into_iter()))
-	}
-
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedSingleVersionIter> {
-		let iter = self.store.prefix_rev(prefix)?;
-		Ok(Box::new(iter.into_iter()))
 	}
 }

@@ -1,19 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{mem::take, ops::RangeBounds, sync::RwLockWriteGuard};
+use std::{mem::take, sync::RwLockWriteGuard};
 
 use indexmap::IndexMap;
-use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionCommandTransaction, SingleVersionQueryTransaction};
-use reifydb_store_transaction::{
-	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
-};
+use reifydb_core::interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction};
+use reifydb_store_transaction::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
 
 use super::*;
-use crate::single::svl::{range::SvlRangeIter, range_rev::SvlRangeRevIter};
 
 pub struct SvlCommandTransaction<'a> {
-	/// Pending deltas using IndexMap to preserve insertion order for CDC
 	pending: IndexMap<EncodedKey, Delta>,
 	completed: bool,
 	store: RwLockWriteGuard<'a, TransactionStore>,
@@ -54,18 +50,6 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 		// Then check storage
 		self.store.contains(key)
 	}
-
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_range_data(range, false)?;
-		let iter = SvlRangeIter::new(pending_items.into_iter(), committed_items.into_iter());
-		Ok(Box::new(iter))
-	}
-
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedSingleVersionIter> {
-		let (pending_items, committed_items) = self.prepare_range_data(range, true)?;
-		let iter = SvlRangeRevIter::new(pending_items.into_iter(), committed_items.into_iter());
-		Ok(Box::new(iter))
-	}
 }
 
 impl<'a> SvlCommandTransaction<'a> {
@@ -75,40 +59,6 @@ impl<'a> SvlCommandTransaction<'a> {
 			completed: false,
 			store,
 		}
-	}
-
-	/// Helper method to prepare range data by cloning and sorting pending
-	/// items and collecting committed items from storage.
-	fn prepare_range_data(
-		&mut self,
-		range: EncodedKeyRange,
-		reverse: bool,
-	) -> crate::Result<(Vec<(EncodedKey, Delta)>, Vec<SingleVersionValues>)> {
-		// Clone and filter pending items from the buffer
-		let mut pending_items: Vec<(EncodedKey, Delta)> = self
-			.pending
-			.iter()
-			.filter(|(k, _)| range.contains(&**k))
-			.map(|(k, v)| (k.clone(), v.clone()))
-			.collect();
-
-		// Sort pending items by key (forward or reverse)
-		if reverse {
-			pending_items.sort_by(|(l, _), (r, _)| r.cmp(l));
-		} else {
-			pending_items.sort_by(|(l, _), (r, _)| l.cmp(r));
-		}
-
-		// Get committed items from storage
-		let committed_items: Vec<SingleVersionValues> = {
-			if reverse {
-				self.store.range_rev(range)?.collect()
-			} else {
-				self.store.range(range)?.collect()
-			}
-		};
-
-		Ok((pending_items, committed_items))
 	}
 }
 

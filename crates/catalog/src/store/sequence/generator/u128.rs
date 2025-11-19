@@ -61,9 +61,9 @@ impl GeneratorU128 {
 #[cfg(test)]
 mod tests {
 	use reifydb_core::{
-		EncodedKey, EncodedKeyRange,
+		EncodedKey,
 		diagnostic::sequence::sequence_exhausted,
-		interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction, SingleVersionValues},
+		interface::{SingleVersionCommandTransaction, SingleVersionQueryTransaction},
 	};
 	use reifydb_engine::test_utils::create_test_command_transaction;
 	use reifydb_type::Type;
@@ -79,14 +79,8 @@ mod tests {
 		}
 
 		txn.with_single_query(|tx| {
-			let mut single: Vec<SingleVersionValues> = tx.range(EncodedKeyRange::all())?.collect();
-			assert_eq!(single.len(), 2);
-
-			single.pop().unwrap();
-			let single = single.pop().unwrap();
-			assert_eq!(single.key, EncodedKey::new("sequence"));
+			let single = tx.get(&EncodedKey::new("sequence"))?.unwrap();
 			assert_eq!(LAYOUT.get_u128(&single.values, 0), 999);
-
 			Ok(())
 		})
 		.unwrap();
