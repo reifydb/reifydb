@@ -4,15 +4,12 @@
 use std::time::Duration;
 
 use reifydb::{
-	WithSubsystem,
-	core::interface::logging::LogLevel,
-	server,
-	sub_logging::{FormatStyle, LoggingBuilder},
+	WithSubsystem, core::interface::logging::LogLevel, server, sub_logging::LoggingBuilder,
 	sub_server::ServerConfig,
 };
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
-	logging.with_console(|console| console.color(true).stderr_for_errors(true).format_style(FormatStyle::Timeline))
+	logging.with_console(|console| console.color(true).stderr_for_errors(true))
 		.buffer_capacity(20000)
 		.batch_size(2000)
 		.flush_interval(Duration::from_millis(50))

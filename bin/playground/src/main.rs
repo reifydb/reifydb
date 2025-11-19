@@ -4,19 +4,17 @@
 use std::{path::PathBuf, str::FromStr, thread::sleep, time::Duration};
 
 use reifydb::{
-	Params, Session, WithSubsystem,
-	core::interface::logging::LogLevel::Trace,
-	embedded,
-	sub_logging::{FormatStyle, LoggingBuilder},
+	Params, Session, WithSubsystem, core::interface::logging::LogLevel::Debug, embedded,
+	sub_logging::LoggingBuilder,
 };
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
-	logging.with_console(|console| console.color(true).stderr_for_errors(true).format_style(FormatStyle::Timeline))
+	logging.with_console(|console| console.color(true).stderr_for_errors(true))
 		.buffer_capacity(20000)
 		.batch_size(2000)
 		.flush_interval(Duration::from_millis(50))
 		.immediate_on_error(true)
-		.level(Trace)
+		.level(Debug)
 }
 
 fn main() {
