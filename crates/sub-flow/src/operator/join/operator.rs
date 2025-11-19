@@ -479,6 +479,12 @@ impl Operator for JoinOperator {
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
+	// FIXME #244 The issue is that when we need to reconstruct an unmatched left row, we need the right side's
+	// schema to create the combined layout To make that work it requires schema / layout information of the right
+	// side this should unlock the test:
+	// testsuite/flow/tests/scripts/backfill/18_multiple_joins_same_table.skip
+	// testsuite/flow/tests/scripts/backfill/19_complex_multi_table.skip
+	// testsuite/flow/tests/scripts/backfill/21_backfill_with_distinct.skip
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		log_trace!(
 			"[JOIN] get_rows called on node={:?}, requested rows={:?}, left_node={:?}, right_node={:?}",
@@ -487,6 +493,101 @@ impl Operator for JoinOperator {
 			self.left_node,
 			self.right_node
 		);
-		Ok(vec![None; rows.len()])
+
+		let mut result = Vec::with_capacity(rows.len());
+
+		for &row_number in rows {
+			// Get the composite key for this row number (reverse lookup)
+			if let Some(key) = self.row_number_provider.get_key_for_row_number(txn, self, row_number)? {
+				// Decode left and right row numbers from composite key
+				// Format: 'L' (1 byte) + left_row_number (8 bytes) + optional right_row_number (8
+				// bytes)
+				let key_bytes = key.as_ref();
+
+				// Note: 'L' is encoded with keycode's extend_u8 which inverts the byte
+				if key_bytes.len() >= 9 && key_bytes[0] == !b'L' {
+					// Decode u64 from keycode format (big-endian with bits flipped)
+					let left_bytes: [u8; 8] = [
+						!key_bytes[1],
+						!key_bytes[2],
+						!key_bytes[3],
+						!key_bytes[4],
+						!key_bytes[5],
+						!key_bytes[6],
+						!key_bytes[7],
+						!key_bytes[8],
+					];
+					let left_num = u64::from_be_bytes(left_bytes);
+					let left_row_number = RowNumber(left_num);
+
+					// Get left row from parent
+					let left_rows = self.left_parent.get_rows(txn, &[left_row_number])?;
+
+					if let Some(Some(left_row)) = left_rows.into_iter().next() {
+						if key_bytes.len() >= 17 {
+							// Matched join - has right row number
+							let right_bytes: [u8; 8] = [
+								!key_bytes[9],
+								!key_bytes[10],
+								!key_bytes[11],
+								!key_bytes[12],
+								!key_bytes[13],
+								!key_bytes[14],
+								!key_bytes[15],
+								!key_bytes[16],
+							];
+							let right_num = u64::from_be_bytes(right_bytes);
+							let right_row_number = RowNumber(right_num);
+
+							// Get right row from parent
+							let right_rows =
+								self.right_parent.get_rows(txn, &[right_row_number])?;
+
+							if let Some(Some(right_row)) = right_rows.into_iter().next() {
+								// Reconstruct the joined row
+								let joined =
+									self.join_rows(txn, &left_row, &right_row)?;
+								result.push(Some(Row {
+									number: row_number,
+									encoded: joined.encoded,
+									layout: joined.layout,
+								}));
+							} else {
+								log_trace!(
+									"[JOIN] get_rows: right row not found for row_number={}",
+									row_number.0
+								);
+								result.push(None);
+							}
+						} else {
+							// Unmatched left row
+							let unmatched = self.unmatched_left_row(txn, &left_row)?;
+							result.push(Some(Row {
+								number: row_number,
+								encoded: unmatched.encoded,
+								layout: unmatched.layout,
+							}));
+						}
+					} else {
+						log_trace!(
+							"[JOIN] get_rows: left row not found for row_number={}",
+							row_number.0
+						);
+						result.push(None);
+					}
+				} else {
+					log_trace!(
+						"[JOIN] get_rows: invalid key format for row_number={}",
+						row_number.0
+					);
+					result.push(None);
+				}
+			} else {
+				log_trace!("[JOIN] get_rows: no key found for row_number={}", row_number.0);
+				result.push(None);
+			}
+		}
+
+		Ok(result)
 	}
 }

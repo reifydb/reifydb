@@ -40,9 +40,7 @@ pub(crate) struct FlowEngineInner {
 	pub(crate) sinks: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
 	pub(crate) event_bus: EventBus,
-	/// Tracks the version at which each flow was backfilled.
-	/// CDC events with version <= backfill_version should be skipped to avoid duplicate processing.
-	pub(crate) backfill_versions: RwLock<HashMap<FlowId, CommitVersion>>,
+	pub(crate) flow_creation_versions: RwLock<HashMap<FlowId, CommitVersion>>,
 }
 
 pub struct FlowEngine {
@@ -83,7 +81,7 @@ impl FlowEngine {
 				sinks: RwLock::new(HashMap::new()),
 				analyzer: RwLock::new(FlowGraphAnalyzer::new()),
 				event_bus,
-				backfill_versions: RwLock::new(HashMap::new()),
+				flow_creation_versions: RwLock::new(HashMap::new()),
 			}),
 		}
 	}
@@ -175,7 +173,7 @@ impl FlowEngine {
 		self.inner.sources.write().clear();
 		self.inner.sinks.write().clear();
 		self.inner.analyzer.write().clear();
-		self.inner.backfill_versions.write().clear();
+		self.inner.flow_creation_versions.write().clear();
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {

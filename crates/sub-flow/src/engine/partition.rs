@@ -112,7 +112,7 @@ impl crate::engine::FlowEngine {
 
 		// Read source subscriptions and backfill versions
 		let sources = self.inner.sources.read();
-		let backfill_versions = self.inner.backfill_versions.read();
+		let flow_creation_version = self.inner.flow_creation_versions.read();
 
 		// For each source that changed
 		for (source_id, diffs) in changes_by_source {
@@ -120,9 +120,8 @@ impl crate::engine::FlowEngine {
 			if let Some(subscriptions) = sources.get(&source_id) {
 				for (flow_id, node_id) in subscriptions {
 					// Skip CDC events that were already included in the backfill
-					// This prevents duplicate processing of data
-					if let Some(&backfill_version) = backfill_versions.get(flow_id) {
-						if version <= backfill_version {
+					if let Some(&flow_creation_version) = flow_creation_version.get(flow_id) {
+						if version < flow_creation_version {
 							continue;
 						}
 					}
@@ -215,7 +214,7 @@ mod tests {
 			sinks: RwLock::new(HashMap::new()),
 			analyzer: RwLock::new(FlowGraphAnalyzer::new()),
 			event_bus: EventBus::new(),
-			backfill_versions: RwLock::new(HashMap::new()),
+			flow_creation_versions: RwLock::new(HashMap::new()),
 		};
 
 		FlowEngine {
@@ -271,7 +270,7 @@ mod tests {
 					// In test setup, node_id = source_id * 1000 + flow_id
 					// So source_id = node_id / 1000
 					let source_num = node_id.0 / 1000;
-					let source_id = SourceId::Table(reifydb_core::interface::TableId(source_num));
+					let source_id = SourceId::Table(TableId(source_num));
 					let count = change.diffs.len();
 					*sources.entry(source_id).or_insert(0) += count;
 				}
@@ -850,12 +849,10 @@ mod tests {
 
 	#[test]
 	fn test_version_ordering_maintained_under_stress() {
-		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);
 
-		// 100 versions in completely scrambled order
 		let mut rng = rng();
 		let mut versions: Vec<u64> = (1..=100).collect();
 		for _ in 0..10 {
@@ -870,7 +867,6 @@ mod tests {
 		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
-		// F1 should have 100 units in perfect ascending order
 		let f1_units = &normalized[&f(1)];
 		assert_eq!(f1_units.len(), 100);
 
@@ -880,18 +876,13 @@ mod tests {
 	}
 
 	#[test]
-	fn test_backfill_version_filtering() {
-		// S1 -> [F1]
+	fn test_version_filtering() {
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);
 
-		// Set backfill version for F1 to V50
-		// This means CDC events with version <= 50 should be skipped
-		engine.inner.backfill_versions.write().insert(f(1), v(50));
+		engine.inner.flow_creation_versions.write().insert(f(1), v(50));
 
-		// Send versions 40, 50, 51, 60, 70
-		// Only 51, 60, 70 should be processed (versions > 50)
 		let mut input = BTreeMap::new();
 		input.insert(v(40), vec![(s(1), vec![mk_diff("d40")])]);
 		input.insert(v(50), vec![(s(1), vec![mk_diff("d50")])]);
@@ -902,27 +893,23 @@ mod tests {
 		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
-		// F1 should only have 3 units at V51, V60, V70
 		let f1_units = &normalized[&f(1)];
-		assert_eq!(f1_units.len(), 3);
-		assert_eq!(f1_units[0].version, v(51));
-		assert_eq!(f1_units[1].version, v(60));
-		assert_eq!(f1_units[2].version, v(70));
+		assert_eq!(f1_units.len(), 4);
+		assert_eq!(f1_units[0].version, v(50));
+		assert_eq!(f1_units[1].version, v(51));
+		assert_eq!(f1_units[2].version, v(60));
+		assert_eq!(f1_units[3].version, v(70));
 	}
 
 	#[test]
 	fn test_backfill_version_per_flow_isolation() {
-		// S1 -> [F1, F2]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1), f(2)]);
 		let engine = setup_test_engine(subscriptions);
 
-		// Set different backfill versions for each flow
-		// F1 backfilled at V30, F2 backfilled at V50
-		engine.inner.backfill_versions.write().insert(f(1), v(30));
-		engine.inner.backfill_versions.write().insert(f(2), v(50));
+		engine.inner.flow_creation_versions.write().insert(f(1), v(30));
+		engine.inner.flow_creation_versions.write().insert(f(2), v(50));
 
-		// Send versions 20, 40, 60
 		let mut input = BTreeMap::new();
 		input.insert(v(20), vec![(s(1), vec![mk_diff("d20")])]);
 		input.insert(v(40), vec![(s(1), vec![mk_diff("d40")])]);
@@ -931,13 +918,11 @@ mod tests {
 		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
-		// F1 (backfill at V30): should have V40 and V60
 		let f1_units = &normalized[&f(1)];
 		assert_eq!(f1_units.len(), 2);
 		assert_eq!(f1_units[0].version, v(40));
 		assert_eq!(f1_units[1].version, v(60));
 
-		// F2 (backfill at V50): should only have V60
 		let f2_units = &normalized[&f(2)];
 		assert_eq!(f2_units.len(), 1);
 		assert_eq!(f2_units[0].version, v(60));
@@ -945,12 +930,9 @@ mod tests {
 
 	#[test]
 	fn test_no_backfill_version_processes_all() {
-		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);
-
-		// No backfill version set - all events should be processed
 
 		let mut input = BTreeMap::new();
 		input.insert(v(10), vec![(s(1), vec![mk_diff("d10")])]);
@@ -960,22 +942,18 @@ mod tests {
 		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
-		// All 3 versions should be present
 		let f1_units = &normalized[&f(1)];
 		assert_eq!(f1_units.len(), 3);
 	}
 
 	#[test]
 	fn test_backfill_version_exact_boundary() {
-		// S1 -> [F1]
 		let mut subscriptions = HashMap::new();
 		subscriptions.insert(s(1), vec![f(1)]);
 		let engine = setup_test_engine(subscriptions);
 
-		// Backfill at exactly V100
-		engine.inner.backfill_versions.write().insert(f(1), v(100));
+		engine.inner.flow_creation_versions.write().insert(f(1), v(100));
 
-		// Test boundary: V99, V100, V101
 		let mut input = BTreeMap::new();
 		input.insert(v(99), vec![(s(1), vec![mk_diff("d99")])]);
 		input.insert(v(100), vec![(s(1), vec![mk_diff("d100")])]);
@@ -984,9 +962,9 @@ mod tests {
 		let result = engine.create_partition(input);
 		let normalized = normalize(result);
 
-		// Only V101 should pass (> 100)
 		let f1_units = &normalized[&f(1)];
-		assert_eq!(f1_units.len(), 1);
-		assert_eq!(f1_units[0].version, v(101));
+		assert_eq!(f1_units.len(), 2);
+		assert_eq!(f1_units[0].version, v(100));
+		assert_eq!(f1_units[1].version, v(101));
 	}
 }

@@ -37,106 +37,79 @@ fn main() {
 	println!("Creating namespace...");
 	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
 
-	// Create tables
+	// Create tables - messages with multiple lookups to same table
 	println!("Creating tables...");
 	db.command_as_root(
-		r#"create table test.sales { id: int4, product_id: int4, quantity: int4, region_id: int4 }"#,
+		r#"create table test.messages { id: int4, sender_id: int4, receiver_id: int4, channel_id: int4, content: utf8 }"#,
 		Params::None,
 	)
 	.unwrap();
-	db.command_as_root(r#"create table test.products { id: int4, product_name: utf8 }"#, Params::None).unwrap();
-	db.command_as_root(r#"create table test.regions { id: int4, region_name: utf8 }"#, Params::None).unwrap();
+	db.command_as_root(r#"create table test.users { id: int4, username: utf8 }"#, Params::None).unwrap();
+	db.command_as_root(r#"create table test.channels { id: int4, channel_name: utf8 }"#, Params::None).unwrap();
 
 	// Insert all data BEFORE creating the view
-	println!("Inserting products...");
+	println!("Inserting users...");
 	db.command_as_root(
 		r#"
 from [
-    {id: 1, product_name: "Laptop"},
-    {id: 2, product_name: "Phone"},
-    {id: 3, product_name: "Tablet"},
-    {id: 4, product_name: "Monitor"},
-    {id: 5, product_name: "Keyboard"}
-] insert test.products
+    {id: 1, username: "alice"},
+    {id: 2, username: "bob"},
+    {id: 3, username: "charlie"}
+] insert test.users
 "#,
 		Params::None,
 	)
 	.unwrap();
 
-	println!("Inserting regions...");
+	println!("Inserting channels...");
 	db.command_as_root(
 		r#"
 from [
-    {id: 1, region_name: "North"},
-    {id: 2, region_name: "South"},
-    {id: 3, region_name: "East"},
-    {id: 4, region_name: "West"},
-    {id: 5, region_name: "Central"},
-    {id: 6, region_name: "Northeast"}
-] insert test.regions
+    {id: 10, channel_name: "general"},
+    {id: 20, channel_name: "random"},
+    {id: 30, channel_name: "announcements"}
+] insert test.channels
 "#,
 		Params::None,
 	)
 	.unwrap();
 
-	println!("Inserting sales (30 rows)...");
+	println!("Inserting messages...");
 	db.command_as_root(
 		r#"
 from [
-    {id: 1, product_id: 1, quantity: 10, region_id: 1},
-    {id: 2, product_id: 2, quantity: 25, region_id: 2},
-    {id: 3, product_id: 3, quantity: 15, region_id: 3},
-    {id: 4, product_id: 4, quantity: 8, region_id: 4},
-    {id: 5, product_id: 5, quantity: 50, region_id: 5},
-    {id: 6, product_id: 1, quantity: 12, region_id: 6},
-    {id: 7, product_id: 2, quantity: 30, region_id: 1},
-    {id: 8, product_id: 3, quantity: 20, region_id: 2},
-    {id: 9, product_id: 4, quantity: 5, region_id: 3},
-    {id: 10, product_id: 5, quantity: 45, region_id: 4},
-    {id: 11, product_id: 1, quantity: 18, region_id: 5},
-    {id: 12, product_id: 2, quantity: 22, region_id: 6},
-    {id: 13, product_id: 3, quantity: 13, region_id: 1},
-    {id: 14, product_id: 4, quantity: 7, region_id: 2},
-    {id: 15, product_id: 5, quantity: 60, region_id: 3},
-    {id: 16, product_id: 1, quantity: 9, region_id: 4},
-    {id: 17, product_id: 2, quantity: 35, region_id: 5},
-    {id: 18, product_id: 3, quantity: 17, region_id: 6},
-    {id: 19, product_id: 4, quantity: 6, region_id: 1},
-    {id: 20, product_id: 5, quantity: 55, region_id: 2},
-    {id: 21, product_id: 1, quantity: 14, region_id: 3},
-    {id: 22, product_id: 2, quantity: 28, region_id: 4},
-    {id: 23, product_id: 3, quantity: 19, region_id: 5},
-    {id: 24, product_id: 4, quantity: 4, region_id: 6},
-    {id: 25, product_id: 5, quantity: 40, region_id: 1},
-    {id: 26, product_id: 1, quantity: 11, region_id: 2},
-    {id: 27, product_id: 2, quantity: 33, region_id: 3},
-    {id: 28, product_id: 3, quantity: 16, region_id: 4},
-    {id: 29, product_id: 4, quantity: 9, region_id: 5},
-    {id: 30, product_id: 5, quantity: 48, region_id: 6}
-] insert test.sales
+    {id: 1, sender_id: 1, receiver_id: 2, channel_id: 10, content: "Hello Bob"},
+    {id: 2, sender_id: 2, receiver_id: 1, channel_id: 10, content: "Hi Alice"},
+    {id: 3, sender_id: 3, receiver_id: 1, channel_id: 20, content: "Hey there"},
+    {id: 4, sender_id: 1, receiver_id: 3, channel_id: 30, content: "Announcement"},
+    {id: 5, sender_id: 4, receiver_id: 2, channel_id: 10, content: "Unknown user"}
+] insert test.messages
 "#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Now create the view - it should backfill with all 30 sales
-	println!("\nCreating deferred view with double LEFT JOINs...");
+	// Now create the view with multiple lookups (two to same table)
+	println!("\nCreating deferred view with multiple lookups to same table...");
 	db.command_as_root(
 		r#"
-create deferred view test.sales_report {
-    sale_id: int4,
-    product: utf8,
-    region: utf8,
-    quantity: int4
+create deferred view test.message_log {
+    msg_id: int4,
+    sender: utf8,
+    receiver: utf8,
+    channel: utf8,
+    content: utf8
 } as {
-    from test.sales
-    left join { from test.products } products on product_id == products.id
-    left join { from test.regions } regions on region_id == regions.id
+    from test.messages
+    left join { from test.users } sender on sender_id == sender.id
+    left join { from test.users } receiver on receiver_id == receiver.id
+    left join { from test.channels } channels on channel_id == channels.id
     map {
-        sale_id: id,
-        product: product_name,
-        region: region_name,
-        quantity: quantity
+        msg_id: id,
+        sender: username,
+        receiver: receiver_username,
+        channel: channel_name,
+        content: content
     }
 }
 "#,
@@ -149,11 +122,12 @@ create deferred view test.sales_report {
 	// Wait for view to process data
 	sleep(Duration::from_millis(500));
 
-	// Query the deferred view - should have backfilled with all 30 sales
-	println!("\n=== Deferred view query (should show all 30 sales with joined data) ===");
-	for frame in db.query_as_root(r#"from test.sales_report sort sale_id asc"#, Params::None).unwrap() {
+	// Query the deferred view - should have complete info from all lookups
+	println!("\n=== Deferred view query (should show all 5 messages with joined data) ===");
+	for frame in db.query_as_root(r#"from test.message_log sort msg_id asc"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	println!("\n=== Expected: sale_id, product, region, quantity for all 30 sales ===");
+	println!("\n=== Expected: msg_id, sender, receiver, channel, content for all 5 messages ===");
+	println!("Note: Message 5 should have Undefined sender (user 4 doesn't exist)");
 }

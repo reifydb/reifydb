@@ -53,10 +53,10 @@ impl FlowEngine {
 		}
 
 		if let Some(flow_creation_version) = flow_creation_version {
-			self.inner.backfill_versions.write().insert(flow.id, flow_creation_version);
+			self.inner.flow_creation_versions.write().insert(flow.id, flow_creation_version);
 
 			if let Err(e) = self.load_initial_data(txn, &flow, flow_creation_version) {
-				self.inner.backfill_versions.write().remove(&flow.id);
+				self.inner.flow_creation_versions.write().remove(&flow.id);
 				return Err(e);
 			}
 		}
