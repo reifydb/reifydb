@@ -4,5 +4,4 @@
 pub mod console;
 pub mod console_builder;
 
-pub use console::FormatStyle;
 pub use console_builder::ConsoleBuilder;

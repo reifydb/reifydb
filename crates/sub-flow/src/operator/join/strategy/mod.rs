@@ -1,8 +1,8 @@
 use reifydb_core::{CommitVersion, JoinType, Row};
+use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
 
 use crate::{
-	flow::FlowDiff,
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
 	transaction::FlowTransaction,
 };
@@ -35,14 +35,13 @@ impl JoinStrategy {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
 			JoinStrategy::LeftHash(join_type) => {
-				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
+				join_type.handle_insert(txn, post, side, key_hash, state, operator)
 			}
 			JoinStrategy::InnerHash(join_type) => {
-				join_type.handle_insert(txn, post, side, key_hash, state, operator, version)
+				join_type.handle_insert(txn, post, side, key_hash, state, operator)
 			}
 		}
 	}

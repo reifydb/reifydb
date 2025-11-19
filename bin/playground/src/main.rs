@@ -1,122 +1,131 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Simple Flow-to-Flow Communication Example
-//!
-//! This example demonstrates:
-//! - Flow A: Filters data from a table (value > 5)
-//! - Flow B: Consumes from Flow A via deferred view and transforms it (doubles values)
-//! - Result: Materialized view showing filtered and transformed data
-
-use std::time::Duration;
+use std::{path::PathBuf, str::FromStr, thread::sleep, time::Duration};
 
 use reifydb::{
-	Params, Session, WithSubsystem,
-	core::interface::logging::LogLevel::Info,
-	embedded,
-	sub_logging::{FormatStyle, LoggingBuilder},
+	Params, Session, WithSubsystem, core::interface::logging::LogLevel::Debug, embedded,
+	sub_logging::LoggingBuilder,
 };
 
 fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
-	logging.with_console(|console| console.color(true).stderr_for_errors(true).format_style(FormatStyle::Timeline))
+	logging.with_console(|console| console.color(true).stderr_for_errors(true))
 		.buffer_capacity(20000)
 		.batch_size(2000)
 		.flush_interval(Duration::from_millis(50))
 		.immediate_on_error(true)
-		.level(Info)
+		.level(Debug)
 }
 
 fn main() {
-	let mut db = embedded::memory_optimistic().with_logging(logger_configuration).build().unwrap();
+	let mut db = embedded::memory_optimistic()
+		.with_logging(logger_configuration)
+		.with_worker(|wp| wp)
+		.with_flow(|f| {
+			f.operators_dir(
+				PathBuf::from_str("/home/ddymke/Workspace/red/testsuite/fixture/target/debug").unwrap(),
+			)
+		})
+		.build()
+		.unwrap();
 
 	db.start().unwrap();
 
-	println!("\n=== Flow-to-Flow Communication Example ===\n");
-
 	// Create namespace
-	println!("1. Creating namespace...");
-	db.command_as_root(r#"create namespace test"#, Params::None).unwrap();
+	println!("Creating namespace...");
+	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
 
-	// Create source table
-	println!("2. Creating source table...");
+	// Create tables - messages with multiple lookups to same table
+	println!("Creating tables...");
 	db.command_as_root(
-		r#"create table test.numbers {
-    id: int4,
-    value: int4
-}"#,
+		r#"create table test.messages { id: int4, sender_id: int4, receiver_id: int4, channel_id: int4, content: utf8 }"#,
+		Params::None,
+	)
+	.unwrap();
+	db.command_as_root(r#"create table test.users { id: int4, username: utf8 }"#, Params::None).unwrap();
+	db.command_as_root(r#"create table test.channels { id: int4, channel_name: utf8 }"#, Params::None).unwrap();
+
+	// Insert all data BEFORE creating the view
+	println!("Inserting users...");
+	db.command_as_root(
+		r#"
+from [
+    {id: 1, username: "alice"},
+    {id: 2, username: "bob"},
+    {id: 3, username: "charlie"}
+] insert test.users
+"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Create Flow A: filters data (value > 5)
-	println!("3. Creating Flow A (filters values > 5)...");
+	println!("Inserting channels...");
 	db.command_as_root(
-		r#"create flow test.flow_a as {
-    		from test.numbers
-    		filter { value > 5 }
-    }"#,
+		r#"
+from [
+    {id: 10, channel_name: "general"},
+    {id: 20, channel_name: "random"},
+    {id: 30, channel_name: "announcements"}
+] insert test.channels
+"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Create deferred view that consumes from Flow A
-	println!("4. Creating deferred view (consumes from Flow A, doubles values)...");
+	println!("Inserting messages...");
 	db.command_as_root(
-		r#"create deferred view test.result {
-			id: int4,
-			value: int4,
-			doubled: int4
-		} as {
-			from test.flow_a
-			extend { doubled: value * 2 }
-    	}"#,
+		r#"
+from [
+    {id: 1, sender_id: 1, receiver_id: 2, channel_id: 10, content: "Hello Bob"},
+    {id: 2, sender_id: 2, receiver_id: 1, channel_id: 10, content: "Hi Alice"},
+    {id: 3, sender_id: 3, receiver_id: 1, channel_id: 20, content: "Hey there"},
+    {id: 4, sender_id: 1, receiver_id: 3, channel_id: 30, content: "Announcement"},
+    {id: 5, sender_id: 4, receiver_id: 2, channel_id: 10, content: "Unknown user"}
+] insert test.messages
+"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Show flow information
-	for frame in db.query_as_root(r#"from system.flows map {id, name}"#, Params::None).unwrap() {
+	// Now create the view with multiple lookups (two to same table)
+	println!("\nCreating deferred view with multiple lookups to same table...");
+	db.command_as_root(
+		r#"
+create deferred view test.message_log {
+    msg_id: int4,
+    sender: utf8,
+    receiver: utf8,
+    channel: utf8,
+    content: utf8
+} as {
+    from test.messages
+    left join { from test.users } sender on sender_id == sender.id
+    left join { from test.users } receiver on receiver_id == receiver.id
+    left join { from test.channels } channels on channel_id == channels.id
+    map {
+        msg_id: id,
+        sender: username,
+        receiver: receiver_username,
+        channel: channel_name,
+        content: content
+    }
+}
+"#,
+		Params::None,
+	)
+	.unwrap();
+
+	println!("Created deferred view");
+
+	// Wait for view to process data
+	sleep(Duration::from_millis(500));
+
+	// Query the deferred view - should have complete info from all lookups
+	println!("\n=== Deferred view query (should show all 5 messages with joined data) ===");
+	for frame in db.query_as_root(r#"from test.message_log sort msg_id asc"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	for frame in db.query_as_root(r#"from system.flow_nodes"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
-
-	for frame in db.query_as_root(r#"from system.flow_edges"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
-
-	// 	// Wait for view to be ready
-	// 	sleep(Duration::from_millis(500));
-	//
-	// 	// Insert test data
-	// 	println!("\n5. Inserting test data...");
-	// 	db.command_as_root(
-	// 		r#"from [
-	//     {id: 1, value: 3},
-	//     {id: 2, value: 10},
-	//     {id: 3, value: 7},
-	//     {id: 4, value: 2},
-	//     {id: 5, value: 15}
-	// ]
-	// insert test.numbers"#,
-	// 		Params::None,
-	// 	)
-	// 	.unwrap();
-	//
-	// 	sleep(Duration::from_millis(500));
-	//
-	// 	// Query the result
-	// 	println!("\n6. Querying result (should only show values > 5, doubled):\n");
-	// 	for frame in db.query_as_root(r#"from test.result"#, Params::None).unwrap() {
-	// 		println!("{}", frame);
-	// 	}
-	//
-	// 	println!("\n=== Expected Output ===");
-	// 	println!("Only rows where value > 5 should appear:");
-	// 	println!("  - id: 2, value: 10, doubled: 20");
-	// 	println!("  - id: 3, value: 7, doubled: 14");
-	// 	println!("  - id: 5, value: 15, doubled: 30");
-	// 	println!("\n=== Flow Info ===");
+	println!("\n=== Expected: msg_id, sender, receiver, channel, content for all 5 messages ===");
+	println!("Note: Message 5 should have Undefined sender (user 4 doesn't exist)");
 }

@@ -2,6 +2,7 @@
 
 pub mod keyed;
 mod raw;
+pub mod row;
 pub mod single;
 pub mod utils;
 pub mod window;
@@ -9,6 +10,7 @@ pub mod window;
 // Re-export traits
 pub use keyed::FFIKeyedStateful;
 use reifydb_core::value::encoded::{EncodedKey, EncodedValues};
+pub use row::RowNumberProvider;
 pub use single::FFISingleStateful;
 pub use utils::*;
 pub use window::FFIWindowStateful;

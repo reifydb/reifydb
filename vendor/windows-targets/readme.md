@@ -1,8 +1,6 @@
 ## Import libs for Windows
 
-The [windows-targets](https://crates.io/crates/windows-targets) crate includes import libs, supports semantic versioning, and optional support for raw-dylib. 
-
-Note: As of Rust 1.71, the [windows-link](https://crates.io/crates/windows-link) crate should be preferred.
+The [windows-targets](https://crates.io/crates/windows-targets) crate includes import libs, supports semantic versioning, and optional support for raw-dylib.
 
 * [Getting started](https://kennykerr.ca/rust-getting-started/)
 * [Samples](https://github.com/microsoft/windows-rs/tree/master/crates/samples)

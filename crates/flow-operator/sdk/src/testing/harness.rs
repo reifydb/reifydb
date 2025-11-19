@@ -116,12 +116,35 @@ impl<T: FFIOperator> OperatorTestHarness<T> {
 		Ok(())
 	}
 
-	// Private helper to create an operator context
-	//
-	// Creates an OperatorContext wrapping the harness's FFIContext.
-	// The FFIContext contains test-specific callbacks that interact with TestContext.
-	fn create_operator_context(&mut self) -> OperatorContext {
+	/// Create an operator context for direct access
+	///
+	/// This is useful for testing components that need an OperatorContext
+	/// without going through the apply() or get_rows() methods.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// let mut harness = TestHarnessBuilder::<MyOperator>::new().build()?;
+	/// let mut ctx = harness.create_operator_context();
+	/// let (row_num, is_new) = ctx.get_or_create_row_number(harness.operator(), &key)?;
+	/// ```
+	pub fn create_operator_context(&mut self) -> OperatorContext {
 		OperatorContext::new(&mut *self.ffi_context as *mut FFIContext)
+	}
+
+	/// Get a reference to the operator
+	pub fn operator(&self) -> &T {
+		&self.operator
+	}
+
+	/// Get a mutable reference to the operator
+	pub fn operator_mut(&mut self) -> &mut T {
+		&mut self.operator
+	}
+
+	/// Get the node ID
+	pub fn node_id(&self) -> FlowNodeId {
+		self.node_id
 	}
 }
 

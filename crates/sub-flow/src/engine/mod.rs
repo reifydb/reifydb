@@ -1,16 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod backfill;
 mod eval;
 mod partition;
 mod process;
 mod register;
 
-use std::{collections::HashMap, ffi::CStr, fs::read_dir, path::PathBuf, sync::Arc};
+use std::{
+	collections::{HashMap, HashSet},
+	fs::read_dir,
+	path::PathBuf,
+	sync::Arc,
+};
 
 use parking_lot::RwLock;
 use reifydb_core::{
-	Error,
+	CommitVersion, Error,
 	event::{EventBus, flow::FlowOperatorLoadedEvent},
 	interface::{FlowId, FlowNodeId, SourceId, TableId, ViewId},
 	log_debug, log_error,
@@ -34,6 +40,7 @@ pub(crate) struct FlowEngineInner {
 	pub(crate) sinks: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
 	pub(crate) event_bus: EventBus,
+	pub(crate) flow_creation_versions: RwLock<HashMap<FlowId, CommitVersion>>,
 }
 
 pub struct FlowEngine {
@@ -74,6 +81,7 @@ impl FlowEngine {
 				sinks: RwLock::new(HashMap::new()),
 				analyzer: RwLock::new(FlowGraphAnalyzer::new()),
 				event_bus,
+				flow_creation_versions: RwLock::new(HashMap::new()),
 			}),
 		}
 	}
@@ -98,16 +106,15 @@ impl FlowEngine {
 				continue;
 			}
 
-			// Load the operator to register it in the global loader
-			// Use a temporary node ID just to extract the name
+			// Register the operator without instantiating it
 			let mut guard = loader.write();
-			let temp_operator = guard.load_operator(&path, &[], FlowNodeId(0))?;
-
-			// Extract operator name and API version from descriptor
-			let descriptor = temp_operator.descriptor();
-			let operator_name =
-				unsafe { CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string() };
-			let api_version = descriptor.api_version;
+			let (operator_name, api_version) = match guard.register_operator(&path)? {
+				Some(info) => info,
+				None => {
+					// Not a valid FFI operator, skip silently
+					continue;
+				}
+			};
 
 			log_debug!("Registered FFI operator: {} from {:?}", operator_name, path);
 
@@ -154,13 +161,19 @@ impl FlowEngine {
 		!self.inner.flows.read().is_empty()
 	}
 
-	/// Clears all registered flows, operators, sources, sinks, and dependency graph
+	/// Returns a set of all currently registered flow IDs
+	pub fn flow_ids(&self) -> HashSet<FlowId> {
+		self.inner.flows.read().keys().copied().collect()
+	}
+
+	/// Clears all registered flows, operators, sources, sinks, dependency graph, and backfill versions
 	pub fn clear(&self) {
 		self.inner.operators.write().clear();
 		self.inner.flows.write().clear();
 		self.inner.sources.write().clear();
 		self.inner.sinks.write().clear();
 		self.inner.analyzer.write().clear();
+		self.inner.flow_creation_versions.write().clear();
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {

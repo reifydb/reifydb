@@ -9,7 +9,7 @@ use reifydb_catalog::{
 	transaction::CatalogFlowQueryOperations,
 };
 use reifydb_core::{
-	Error,
+	CommitVersion, Error,
 	interface::{FlowId, FlowNodeId, SourceId},
 };
 use reifydb_engine::StandardCommandTransaction;
@@ -30,12 +30,39 @@ use crate::{
 };
 
 impl FlowEngine {
-	pub fn register(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
+	pub fn register_without_backfill(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
+		self.register(txn, flow, None)
+	}
+
+	pub fn register_with_backfill(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		flow: Flow,
+		flow_creation_version: CommitVersion,
+	) -> crate::Result<()> {
+		self.register(txn, flow, Some(flow_creation_version))
+	}
+
+	fn register(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		flow: Flow,
+		flow_creation_version: Option<CommitVersion>,
+	) -> crate::Result<()> {
 		debug_assert!(!self.inner.flows.read().contains_key(&flow.id), "Flow already registered");
 
 		for node_id in flow.topological_order()? {
 			let node = flow.get_node(&node_id).unwrap();
 			self.add(txn, &flow, node)?;
+		}
+
+		if let Some(flow_creation_version) = flow_creation_version {
+			self.inner.flow_creation_versions.write().insert(flow.id, flow_creation_version);
+
+			if let Err(e) = self.load_initial_data(txn, &flow, flow_creation_version) {
+				self.inner.flow_creation_versions.write().remove(&flow.id);
+				return Err(e);
+			}
 		}
 
 		// Add flow to analyzer for dependency tracking

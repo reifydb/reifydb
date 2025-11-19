@@ -67,7 +67,29 @@ impl RowNumberProvider {
 		let row_num_bytes = counter.to_be_bytes().to_vec();
 		operator.state_set(txn, &encoded_map_key, EncodedValues(CowVec::new(row_num_bytes)))?;
 
+		// Save the reverse mapping from row_number to key
+		let reverse_key = self.make_reverse_map_key(new_row_number);
+		let encoded_reverse_key = EncodedKey::new(reverse_key);
+		operator.state_set(txn, &encoded_reverse_key, EncodedValues(CowVec::new(key.as_ref().to_vec())))?;
+
 		Ok((new_row_number, true))
+	}
+
+	/// Get the original key for a given row number (reverse lookup)
+	pub fn get_key_for_row_number<O: RawStatefulOperator>(
+		&self,
+		txn: &mut FlowTransaction,
+		operator: &O,
+		row_number: RowNumber,
+	) -> crate::Result<Option<EncodedKey>> {
+		let reverse_key = self.make_reverse_map_key(row_number);
+		let encoded_reverse_key = EncodedKey::new(reverse_key);
+
+		if let Some(key_bytes) = operator.state_get(txn, &encoded_reverse_key)? {
+			Ok(Some(EncodedKey::new(key_bytes.as_ref().to_vec())))
+		} else {
+			Ok(None)
+		}
 	}
 
 	/// Load the current counter value
@@ -119,6 +141,15 @@ impl RowNumberProvider {
 		serializer.extend_u64(self.node.0);
 		serializer.extend_u8(b'M'); // 'M' for mapping
 		serializer.extend_bytes(key.as_ref());
+		serializer.finish()
+	}
+
+	/// Create a reverse mapping key for a given row number, including node_id
+	fn make_reverse_map_key(&self, row_number: RowNumber) -> Vec<u8> {
+		let mut serializer = KeySerializer::new();
+		serializer.extend_u64(self.node.0);
+		serializer.extend_u8(b'R'); // 'R' for reverse mapping
+		serializer.extend_u64(row_number.0);
 		serializer.finish()
 	}
 

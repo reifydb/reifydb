@@ -1,25 +1,27 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, sync::Arc};
+use std::sync::Arc;
 
 use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
+use indexmap::IndexMap;
 use reifydb_core::{
 	CowVec, Error, Row,
 	interface::FlowNodeId,
+	log_trace,
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Blob, Params, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	flow::{FlowChange, FlowDiff},
 	operator::{
 		Operator, Operators,
 		stateful::{RawStatefulOperator, SingleStateful},
@@ -119,7 +121,8 @@ struct DistinctEntry {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DistinctState {
 	/// Map from hash of distinct expressions to entry
-	entries: HashMap<Hash128, DistinctEntry>,
+	/// Using IndexMap to preserve insertion order for "first occurrence" semantics
+	entries: IndexMap<Hash128, DistinctEntry>,
 	/// Shared layout information
 	layout: DistinctLayout,
 }
@@ -127,7 +130,7 @@ struct DistinctState {
 impl Default for DistinctState {
 	fn default() -> Self {
 		Self {
-			entries: HashMap::new(),
+			entries: IndexMap::new(),
 			layout: DistinctLayout::new(),
 		}
 	}
@@ -228,6 +231,29 @@ impl Operator for DistinctOperator {
 		let mut state = self.load_distinct_state(txn)?;
 		let mut result = Vec::new();
 
+		let input_rows: Vec<_> = change
+			.diffs
+			.iter()
+			.map(|d| match d {
+				FlowDiff::Insert {
+					post,
+				} => format!("I{}", post.number.0),
+				FlowDiff::Update {
+					pre,
+					post,
+				} => format!("U{}>{}", pre.number.0, post.number.0),
+				FlowDiff::Remove {
+					pre,
+				} => format!("R{}", pre.number.0),
+			})
+			.collect();
+		log_trace!(
+			"[DISTINCT] node={:?} version={} IN rows=[{}]",
+			self.node,
+			change.version.0,
+			input_rows.join(",")
+		);
+
 		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
@@ -286,7 +312,7 @@ impl Operator for DistinctOperator {
 								entry.count -= 1;
 							} else {
 								// Last instance - remove from state
-								state.entries.remove(&pre_hash);
+								state.entries.shift_remove(&pre_hash);
 								result.push(FlowDiff::Remove {
 									pre,
 								});
@@ -323,7 +349,7 @@ impl Operator for DistinctOperator {
 						if entry.count > 1 {
 							entry.count -= 1;
 						} else {
-							let removed_entry = state.entries.remove(&hash);
+							let removed_entry = state.entries.shift_remove(&hash);
 							if let Some(entry) = removed_entry {
 								let stored_row = entry.first_row.to_row(&state.layout);
 								result.push(FlowDiff::Remove {
@@ -337,6 +363,28 @@ impl Operator for DistinctOperator {
 		}
 
 		self.save_distinct_state(txn, &state)?;
+
+		let output_rows: Vec<_> = result
+			.iter()
+			.map(|d| match d {
+				FlowDiff::Insert {
+					post,
+				} => format!("I{}", post.number.0),
+				FlowDiff::Update {
+					pre,
+					post,
+				} => format!("U{}>{}", pre.number.0, post.number.0),
+				FlowDiff::Remove {
+					pre,
+				} => format!("R{}", pre.number.0),
+			})
+			.collect();
+		log_trace!(
+			"[DISTINCT] node={:?} version={} OUT rows=[{}]",
+			self.node,
+			change.version.0,
+			output_rows.join(",")
+		);
 
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}

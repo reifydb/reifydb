@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, mem::take, ops::RangeBounds, sync::RwLockWriteGuard};
+use std::{mem::take, ops::RangeBounds, sync::RwLockWriteGuard};
 
+use indexmap::IndexMap;
 use reifydb_core::interface::{BoxedSingleVersionIter, SingleVersionCommandTransaction, SingleVersionQueryTransaction};
 use reifydb_store_transaction::{
 	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange, SingleVersionRangeRev,
@@ -12,7 +13,8 @@ use super::*;
 use crate::single::svl::{range::SvlRangeIter, range_rev::SvlRangeRevIter};
 
 pub struct SvlCommandTransaction<'a> {
-	pending: HashMap<EncodedKey, Delta>,
+	/// Pending deltas using IndexMap to preserve insertion order for CDC
+	pending: IndexMap<EncodedKey, Delta>,
 	completed: bool,
 	store: RwLockWriteGuard<'a, TransactionStore>,
 }
@@ -69,7 +71,7 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 impl<'a> SvlCommandTransaction<'a> {
 	pub(super) fn new(store: RwLockWriteGuard<'a, TransactionStore>) -> Self {
 		Self {
-			pending: HashMap::new(),
+			pending: IndexMap::new(),
 			completed: false,
 			store,
 		}

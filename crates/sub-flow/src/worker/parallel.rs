@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crossbeam_channel::bounded;
+use reifydb_core::{interface::FlowId, log_trace};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{SchedulerService, TaskContext, task_once};
 
@@ -79,16 +80,20 @@ impl WorkerPool for ParallelWorkerPool {
 
 		let (result_tx, result_rx) = bounded(txns.len());
 
-		for (flow_units, mut flow_txn) in txns {
+		for (seq, (flow_units, mut flow_txn)) in txns.into_iter().enumerate() {
 			let result_tx = result_tx.clone();
 			let engine = engine.clone();
+			let flow_id = flow_units[0].flow_id;
+			let versions: Vec<_> = flow_units.iter().map(|u| u.version.0).collect();
+
+			log_trace!("[PARALLEL] SUBMIT seq={} flow={:?} versions={:?}", seq, flow_id, versions);
 
 			let task = task_once!(
 				"flow-processing",
 				High,
 				move |_ctx: &TaskContext| -> reifydb_core::Result<()> {
 					process(&mut flow_txn, flow_units, &engine)?;
-					let _ = result_tx.send(Ok(flow_txn));
+					let _ = result_tx.send(Ok((flow_id, flow_txn)));
 					Ok(())
 				}
 			);
@@ -99,16 +104,25 @@ impl WorkerPool for ParallelWorkerPool {
 		// Drop our copy of sender so channel closes when all tasks complete
 		drop(result_tx);
 
-		let mut completed = Vec::new();
+		let mut completed: Vec<(FlowId, FlowTransaction)> = Vec::new();
+		let mut recv_seq = 0;
 		while let Ok(result) = result_rx.recv() {
 			match result {
-				Ok(flow_txn) => completed.push(flow_txn),
+				Ok((flow_id, flow_txn)) => {
+					log_trace!("[PARALLEL] RECV seq={} flow={:?}", recv_seq, flow_id);
+					recv_seq += 1;
+					completed.push((flow_id, flow_txn));
+				}
 				Err(e) => return e,
 			}
 		}
 
+		// Sort by flow_id for deterministic commit order regardless of task completion order
+		completed.sort_by_key(|(flow_id, _)| *flow_id);
+
 		// Commit all FlowTransactions sequentially back to parent
-		for mut flow in completed {
+		for (seq, (flow_id, mut flow)) in completed.into_iter().enumerate() {
+			log_trace!("[PARALLEL] COMMIT seq={} flow={:?}", seq, flow_id);
 			flow.commit(txn)?;
 		}
 

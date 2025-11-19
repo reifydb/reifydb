@@ -13,9 +13,10 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
+	event::cdc::CdcCheckpointAdvancedEvent,
 	interface::{
 		Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, CommandTransaction, Engine as EngineInterface, Key,
-		MultiVersionCommandTransaction,
+		MultiVersionCommandTransaction, WithEventBus,
 	},
 	key::{CdcConsumerKey, EncodableKey},
 	log_debug, log_error,
@@ -90,6 +91,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		state: &ConsumerState,
 		engine: &StandardEngine,
 		consumer: &C,
+		consumer_id: &CdcConsumerId,
 		max_batch_size: Option<u64>,
 	) -> Result<Option<(CommitVersion, u64)>> {
 		let mut transaction = engine.begin_command()?;
@@ -134,6 +136,11 @@ impl<C: CdcConsume> PollConsumer<C> {
 		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;
 		let current_version = transaction.commit()?;
 
+		engine.event_bus().emit(CdcCheckpointAdvancedEvent {
+			consumer_id: consumer_id.clone(),
+			version: latest_version,
+		});
+
 		let lag = current_version.0.saturating_sub(latest_version.0);
 
 		Ok(Some((latest_version, lag)))
@@ -152,7 +159,13 @@ impl<C: CdcConsume> PollConsumer<C> {
 		);
 
 		while state.running.load(Ordering::Acquire) {
-			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size) {
+			match Self::consume_batch(
+				&state,
+				&engine,
+				&consumer,
+				&config.consumer_id,
+				config.max_batch_size,
+			) {
 				Ok(Some((_processed_version, _lag))) => {
 					// FIXME log this
 				}

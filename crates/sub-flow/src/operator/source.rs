@@ -7,9 +7,10 @@ use reifydb_core::{
 	key::{EncodableKey, RowKey},
 };
 use reifydb_engine::StandardRowEvaluator;
+use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_type::RowNumber;
 
-use crate::{Operator, flow::FlowChange, transaction::FlowTransaction};
+use crate::{Operator, transaction::FlowTransaction};
 
 pub struct SourceTableOperator {
 	node: FlowNodeId,

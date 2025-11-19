@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
+use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_type::RowNumber;
 
 use crate::{
-	flow::FlowChange,
 	operator::{BoxedOperator, Operator, Operators},
 	transaction::FlowTransaction,
 };

@@ -10,13 +10,12 @@ use std::{
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_abi::{FFIOperatorDescriptor, FFIOperatorVTable, RowsFFI};
-use reifydb_flow_operator_sdk::{FFIError, marshal::Marshaller};
+use reifydb_flow_operator_sdk::{FFIError, FlowChange, marshal::Marshaller};
 use reifydb_type::RowNumber;
 
 use crate::{
 	Result,
 	ffi::{callbacks::create_host_callbacks, context::new_ffi_context},
-	flow::FlowChange,
 	operator::Operator,
 	transaction::FlowTransaction,
 };

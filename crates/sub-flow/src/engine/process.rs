@@ -1,13 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin};
 use reifydb_rql::flow::{Flow, FlowNode, FlowNodeType::SourceInlineData};
 
-use crate::{
-	engine::FlowEngine,
-	flow::{FlowChange, FlowChangeOrigin},
-	transaction::FlowTransaction,
-};
+use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
 impl FlowEngine {
 	pub fn process(&self, txn: &mut FlowTransaction, change: FlowChange) -> crate::Result<()> {

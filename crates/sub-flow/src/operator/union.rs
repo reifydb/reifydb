@@ -1,8 +1,9 @@
 use reifydb_core::{Row, interface::FlowNodeId};
 use reifydb_engine::StandardRowEvaluator;
+use reifydb_flow_operator_sdk::FlowChange;
 use reifydb_type::RowNumber;
 
-use crate::{flow::FlowChange, operator::Operator, transaction::FlowTransaction};
+use crate::{operator::Operator, transaction::FlowTransaction};
 
 pub struct UnionOperator {
 	node: FlowNodeId,

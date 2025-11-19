@@ -3,14 +3,13 @@
 
 //! Builder for configuring console logging backend
 
-use super::console::{ConsoleBackend, FormatStyle};
+use super::console::ConsoleBackend;
 
 /// Builder for configuring console logging backend with fluent API
 #[derive(Debug, Clone)]
 pub struct ConsoleBuilder {
 	use_color: bool,
 	stderr_for_errors: bool,
-	format_style: FormatStyle,
 }
 
 impl ConsoleBuilder {
@@ -19,7 +18,6 @@ impl ConsoleBuilder {
 		Self {
 			use_color: true,
 			stderr_for_errors: true,
-			format_style: FormatStyle::Timeline,
 		}
 	}
 
@@ -53,27 +51,9 @@ impl ConsoleBuilder {
 		self
 	}
 
-	/// Set the format style for log output
-	///
-	/// # Arguments
-	/// * `style` - The format style to use (Box or Timeline)
-	///
-	/// # Example
-	/// ```
-	/// # use reifydb_sub_logging::{ConsoleBuilder, FormatStyle};
-	/// ConsoleBuilder::new().format_style(FormatStyle::Timeline);
-	/// ```
-	pub fn format_style(mut self, style: FormatStyle) -> Self {
-		self.format_style = style;
-		self
-	}
-
 	/// Build the console backend with the configured settings
 	pub(crate) fn build(self) -> ConsoleBackend {
-		ConsoleBackend::new()
-			.with_color(self.use_color)
-			.with_stderr_for_errors(self.stderr_for_errors)
-			.with_format_style(self.format_style)
+		ConsoleBackend::new().with_color(self.use_color).with_stderr_for_errors(self.stderr_for_errors)
 	}
 }
 

@@ -10,6 +10,7 @@ use std::{
 use crate::log_error;
 
 pub mod catalog;
+pub mod cdc;
 pub mod flow;
 pub mod lifecycle;
 pub mod transaction;

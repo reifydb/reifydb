@@ -1,9 +1,10 @@
 //! Operator context providing access to state and resources
 
-use reifydb_core::interface::FlowNodeId;
+use reifydb_core::{EncodedKey, interface::FlowNodeId};
 use reifydb_flow_operator_abi::FFIContext;
+use reifydb_type::RowNumber;
 
-use crate::stateful::State;
+use crate::stateful::{FFIRawStatefulOperator, RowNumberProvider, State};
 
 /// Operator context providing access to state and other resources
 pub struct OperatorContext {
@@ -30,5 +31,22 @@ impl OperatorContext {
 	/// Get a state manager
 	pub fn state(&mut self) -> State<'_> {
 		State::new(self)
+	}
+
+	/// Get or create a row number for a given key
+	///
+	/// This is a convenience method that creates a RowNumberProvider and
+	/// delegates to its `get_or_create_row_number` method.
+	///
+	/// Returns `(RowNumber, is_new)` where `is_new` indicates if this is
+	/// a newly created row number.
+	/// ```
+	pub fn get_or_create_row_number<O: FFIRawStatefulOperator>(
+		&mut self,
+		operator: &O,
+		key: &EncodedKey,
+	) -> crate::Result<(RowNumber, bool)> {
+		let provider = RowNumberProvider::new(self.operator_id());
+		provider.get_or_create_row_number(self, operator, key)
 	}
 }

@@ -1,4 +1,5 @@
-use reifydb_core::Row;
+use reifydb_core::{CommitVersion, Row, log_trace};
+use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
 
 use super::hash::{
@@ -7,7 +8,6 @@ use super::hash::{
 	emit_update_joined_rows_right, get_left_rows, is_first_right_row, remove_from_state_entry, update_row_in_entry,
 };
 use crate::{
-	flow::FlowDiff,
 	operator::join::{JoinSide, JoinState, operator::JoinOperator},
 	transaction::FlowTransaction,
 };
@@ -23,12 +23,19 @@ impl LeftHashJoin {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-		version: reifydb_core::CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
+		log_trace!(
+			"[LEFT_JOIN] handle_insert: side={:?}, key_hash={:?}, post_row={}",
+			side,
+			key_hash,
+			post.number.0
+		);
+
 		let mut result = Vec::new();
 
 		match side {
 			JoinSide::Left => {
+				log_trace!("[LEFT_JOIN] handle_insert: processing Left side");
 				if let Some(key_hash) = key_hash {
 					// Add to left entries
 					add_to_state_entry(txn, &mut state.left, &key_hash, post)?;
@@ -41,20 +48,34 @@ impl LeftHashJoin {
 						&key_hash,
 						operator,
 						&operator.right_parent,
-						version,
 					)?;
+
+					log_trace!(
+						"[LEFT_JOIN] handle_insert: Left joined_rows count={}",
+						joined_rows.len()
+					);
 
 					if !joined_rows.is_empty() {
 						result.extend(joined_rows);
 					} else {
 						// Left join: emit left encoded even without match
+						log_trace!(
+							"[LEFT_JOIN] handle_insert: Left no matches, emitting unmatched_left_row"
+						);
 						let unmatched_row = operator.unmatched_left_row(txn, post)?;
+						log_trace!(
+							"[LEFT_JOIN] handle_insert: unmatched_row layout={:?}",
+							unmatched_row.layout.names()
+						);
 						result.push(FlowDiff::Insert {
 							post: unmatched_row,
 						});
 					}
 				} else {
 					// Undefined key in left join still emits the encoded
+					log_trace!(
+						"[LEFT_JOIN] handle_insert: Left undefined key, emitting unmatched_left_row"
+					);
 					let unmatched_row = operator.unmatched_left_row(txn, post)?;
 					result.push(FlowDiff::Insert {
 						post: unmatched_row,
@@ -62,16 +83,26 @@ impl LeftHashJoin {
 				}
 			}
 			JoinSide::Right => {
+				log_trace!("[LEFT_JOIN] handle_insert: processing Right side");
 				if let Some(key_hash) = key_hash {
 					let is_first = is_first_right_row(txn, &state.right, &key_hash)?;
+					log_trace!("[LEFT_JOIN] handle_insert: Right is_first={}", is_first);
 
 					// Add to right entries
 					add_to_state_entry(txn, &mut state.right, &key_hash, post)?;
 
 					// Join with matching left rows
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
+						log_trace!(
+							"[LEFT_JOIN] handle_insert: Right found {} left rows to join",
+							left_entry.rows.len()
+						);
+
 						// If first right encoded, remove previously emitted unmatched left rows
 						if is_first {
+							log_trace!(
+								"[LEFT_JOIN] handle_insert: Right first match, removing unmatched lefts"
+							);
 							let left_rows =
 								operator.left_parent.get_rows(txn, &left_entry.rows)?;
 
@@ -79,6 +110,10 @@ impl LeftHashJoin {
 								if let Some(left_row) = left_row_opt {
 									let unmatched_row = operator
 										.unmatched_left_row(txn, &left_row)?;
+									log_trace!(
+										"[LEFT_JOIN] handle_insert: Removing unmatched left row={}",
+										unmatched_row.number.0
+									);
 									result.push(FlowDiff::Remove {
 										pre: unmatched_row,
 									});
@@ -94,15 +129,21 @@ impl LeftHashJoin {
 							&key_hash,
 							operator,
 							&operator.left_parent,
-							version,
 						)?;
+						log_trace!(
+							"[LEFT_JOIN] handle_insert: Right emitting {} joined rows",
+							joined_rows.len()
+						);
 						result.extend(joined_rows);
+					} else {
+						log_trace!("[LEFT_JOIN] handle_insert: Right no matching left entries");
 					}
 				}
 				// Right side inserts with undefined keys don't produce output
 			}
 		}
 
+		log_trace!("[LEFT_JOIN] handle_insert: returning {} diffs", result.len());
 		Ok(result)
 	}
 
@@ -114,12 +155,20 @@ impl LeftHashJoin {
 		key_hash: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-		version: reifydb_core::CommitVersion,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
+		log_trace!(
+			"[LEFT_JOIN] handle_remove: side={:?}, key_hash={:?}, pre_row={}",
+			side,
+			key_hash,
+			pre.number.0
+		);
+
 		let mut result = Vec::new();
 
 		match side {
 			JoinSide::Left => {
+				log_trace!("[LEFT_JOIN] handle_remove: processing Left side");
 				if let Some(key_hash) = key_hash {
 					// Check if left entry exists
 					if state.left.contains_key(txn, &key_hash)? {
@@ -133,13 +182,20 @@ impl LeftHashJoin {
 							&key_hash,
 							operator,
 							&operator.right_parent,
-							version,
 						)?;
+
+						log_trace!(
+							"[LEFT_JOIN] handle_remove: Left removed_joins count={}",
+							removed_joins.len()
+						);
 
 						if !removed_joins.is_empty() {
 							result.extend(removed_joins);
 						} else {
 							// Remove the unmatched left join encoded
+							log_trace!(
+								"[LEFT_JOIN] handle_remove: Left no joins, removing unmatched"
+							);
 							let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 							result.push(FlowDiff::Remove {
 								pre: unmatched_row,
@@ -151,6 +207,7 @@ impl LeftHashJoin {
 					}
 				} else {
 					// Undefined key - remove the unmatched encoded
+					log_trace!("[LEFT_JOIN] handle_remove: Left undefined key, removing unmatched");
 					let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 					result.push(FlowDiff::Remove {
 						pre: unmatched_row,
@@ -160,6 +217,7 @@ impl LeftHashJoin {
 				}
 			}
 			JoinSide::Right => {
+				log_trace!("[LEFT_JOIN] handle_remove: processing Right side");
 				if let Some(key_hash) = key_hash {
 					// Check if right entry exists
 					if state.right.contains_key(txn, &key_hash)? {
@@ -171,16 +229,27 @@ impl LeftHashJoin {
 							&key_hash,
 							operator,
 							&operator.left_parent,
-							version,
 						)?;
+						log_trace!(
+							"[LEFT_JOIN] handle_remove: Right removed_joins count={}",
+							removed_joins.len()
+						);
 						result.extend(removed_joins);
 
 						// Remove from right entries
 						let became_empty =
 							remove_from_state_entry(txn, &mut state.right, &key_hash, pre)?;
 
+						log_trace!(
+							"[LEFT_JOIN] handle_remove: Right became_empty={}",
+							became_empty
+						);
+
 						// If this was the last right encoded, re-emit left rows as unmatched
 						if became_empty {
+							log_trace!(
+								"[LEFT_JOIN] handle_remove: Right last row removed, re-emitting unmatched lefts"
+							);
 							let left_rows = get_left_rows(
 								txn,
 								&state.left,
@@ -191,6 +260,10 @@ impl LeftHashJoin {
 							for left_row in &left_rows {
 								let unmatched_row =
 									operator.unmatched_left_row(txn, &left_row)?;
+								log_trace!(
+									"[LEFT_JOIN] handle_remove: Re-emitting unmatched left row={}",
+									unmatched_row.number.0
+								);
 								result.push(FlowDiff::Insert {
 									post: unmatched_row,
 								});
@@ -201,6 +274,7 @@ impl LeftHashJoin {
 			}
 		}
 
+		log_trace!("[LEFT_JOIN] handle_remove: returning {} diffs", result.len());
 		Ok(result)
 	}
 
@@ -214,7 +288,7 @@ impl LeftHashJoin {
 		new_key: Option<Hash128>,
 		state: &mut JoinState,
 		operator: &JoinOperator,
-		version: reifydb_core::CommitVersion,
+		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		let mut result = Vec::new();
 
@@ -287,7 +361,7 @@ impl LeftHashJoin {
 			let remove_diffs = self.handle_remove(txn, pre, side, old_key, state, operator, version)?;
 			result.extend(remove_diffs);
 
-			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator, version)?;
+			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator)?;
 			result.extend(insert_diffs);
 		}
 

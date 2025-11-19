@@ -1,8 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
-
+use indexmap::IndexMap;
 use reifydb_core::{CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValues};
 
 /// Represents the optimized state of a key after all operations in a transaction
@@ -35,7 +34,8 @@ where
 	F: FnMut(&EncodedKey) -> bool,
 {
 	// Track the optimized state for each key
-	let mut key_states: HashMap<EncodedKey, (OptimizedDeltaState, usize)> = HashMap::new();
+	// Using IndexMap to preserve insertion order for deterministic CDC sequencing
+	let mut key_states: IndexMap<EncodedKey, (OptimizedDeltaState, usize)> = IndexMap::new();
 
 	for (idx, delta) in deltas.into_iter().enumerate() {
 		match delta {
@@ -46,7 +46,7 @@ where
 				// Check if this key has been seen before in this transaction
 				let entry = key_states.entry(key.clone());
 				match entry {
-					std::collections::hash_map::Entry::Occupied(mut occ) => {
+					indexmap::map::Entry::Occupied(mut occ) => {
 						// Key was already modified in this transaction
 						let (state, _) = occ.get_mut();
 						match state {
@@ -87,7 +87,7 @@ where
 						}
 						// Keep the first index - don't update it
 					}
-					std::collections::hash_map::Entry::Vacant(vac) => {
+					indexmap::map::Entry::Vacant(vac) => {
 						// First time seeing this key in transaction
 						vac.insert((
 							OptimizedDeltaState::Set {
@@ -104,7 +104,7 @@ where
 				// Check if this key has been seen before in this transaction
 				let entry = key_states.entry(key.clone());
 				match entry {
-					std::collections::hash_map::Entry::Occupied(mut occ) => {
+					indexmap::map::Entry::Occupied(mut occ) => {
 						// Key was already modified in this transaction
 						let (state, _) = occ.get_mut();
 						match state {
@@ -140,7 +140,7 @@ where
 						}
 						// Keep the first index - don't update it
 					}
-					std::collections::hash_map::Entry::Vacant(vac) => {
+					indexmap::map::Entry::Vacant(vac) => {
 						// First time seeing this key in transaction - it's a delete
 						vac.insert((OptimizedDeltaState::Remove, idx));
 					}

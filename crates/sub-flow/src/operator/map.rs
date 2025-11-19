@@ -5,15 +5,11 @@ use std::sync::Arc;
 
 use reifydb_core::{Row, interface::FlowNodeId, value::encoded::EncodedValuesNamedLayout};
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
+use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Params, RowNumber, Type};
 
-use crate::{
-	Operator,
-	flow::{FlowChange, FlowDiff},
-	operator::Operators,
-	transaction::FlowTransaction,
-};
+use crate::{Operator, operator::Operators, transaction::FlowTransaction};
 
 // Static empty params instance for use in RowEvaluationContext
 static EMPTY_PARAMS: Params = Params::None;

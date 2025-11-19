@@ -1,17 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::HashMap, path::PathBuf};
+use std::{collections::BTreeMap, path::PathBuf};
 
+use indexmap::IndexMap;
 use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view};
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, Result, Row,
 	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Key, SourceId, WithEventBus},
+	log_trace,
 	util::CowVec,
 	value::encoded::EncodedValues,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
+use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_rql::flow::{Flow, load_flow};
 use reifydb_sub_api::SchedulerService;
 use reifydb_type::RowNumber;
@@ -19,7 +22,6 @@ use reifydb_type::RowNumber;
 use crate::{
 	builder::OperatorFactory,
 	engine::FlowEngine,
-	flow::FlowDiff,
 	operator::TransformOperatorRegistry,
 	subsystem::intercept::Change,
 	worker::{ParallelWorkerPool, SameThreadedWorker, WorkerPool},
@@ -68,8 +70,9 @@ impl FlowConsumer {
 		if let Ok(mut txn) = engine.begin_command() {
 			if let Ok(flows) = result.load_flows() {
 				for flow in flows {
-					result.flow_engine.register(&mut txn, flow).unwrap();
+					result.flow_engine.register_without_backfill(&mut txn, flow).unwrap();
 				}
+				txn.commit().unwrap();
 			}
 		}
 
@@ -146,11 +149,16 @@ impl CdcConsume for FlowConsumer {
 		}
 
 		// Collect all changes grouped by version
-		let mut changes_by_version: HashMap<CommitVersion, Vec<(SourceId, Change)>> = HashMap::new();
+		let mut changes_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Change)>> = BTreeMap::new();
 		let mut flows_changed_at_version: Option<CommitVersion> = None;
 
 		for cdc in cdcs {
 			let version = cdc.version;
+			log_trace!(
+				"[CONSUMER] Processing CDC version={} with {} changes",
+				version.0,
+				cdc.changes.len()
+			);
 
 			for sequenced_change in cdc.changes {
 				if let Some(decoded_key) = Key::decode(sequenced_change.key()) {
@@ -160,6 +168,10 @@ impl CdcConsume for FlowConsumer {
 						// Detect flow table changes - trigger reload but don't process as data
 						if source_id.as_u64() == FLOWS_TABLE_ID {
 							if flows_changed_at_version.is_none() {
+								log_trace!(
+									"[CONSUMER] Flow table changed at version={}, will reload flows",
+									version.0
+								);
 								flows_changed_at_version = Some(version);
 							}
 							continue;
@@ -205,12 +217,63 @@ impl CdcConsume for FlowConsumer {
 			}
 		}
 
+		// Log CDC changes collected
+		for (version, changes) in &changes_by_version {
+			let rows: Vec<_> = changes
+				.iter()
+				.map(|(src, ch)| {
+					let row = match ch {
+						Change::Insert {
+							row_number,
+							..
+						} => format!("I{}", row_number.0),
+						Change::Update {
+							row_number,
+							..
+						} => format!("U{}", row_number.0),
+						Change::Delete {
+							row_number,
+							..
+						} => format!("R{}", row_number.0),
+					};
+					format!("{}:{}", src.as_u64(), row)
+				})
+				.collect();
+			log_trace!("[CONSUMER] CDC_IN version={} changes=[{}]", version.0, rows.join(","));
+		}
+
 		// Reload flows if needed (before processing any changes)
-		if flows_changed_at_version.is_some() {
+		// Only skip backfill for flows that already existed (they already have data)
+		// New flows need backfill to get initial data from source tables
+		if let Some(flow_creation_version) = flows_changed_at_version {
+			let existing_flow_ids = self.flow_engine.flow_ids();
+			log_trace!(
+				"[Consumer] Reloading flows at version {:?}, existing_flow_ids={:?}",
+				flow_creation_version,
+				existing_flow_ids
+			);
 			self.flow_engine.clear();
 			let flows = self.load_flows()?;
+			log_trace!("[Consumer] Loaded {} flows from catalog", flows.len());
 			for flow in flows {
-				self.flow_engine.register(txn, flow)?;
+				// For new flows: do backfill at this version
+				// For existing flows: skip backfill (data already present)
+				let is_existing = existing_flow_ids.contains(&flow.id);
+				log_trace!(
+					"[Consumer] Registering flow {:?}, is_existing={}, backfill_version={:?}",
+					flow.id,
+					is_existing,
+					if is_existing {
+						None
+					} else {
+						Some(flow_creation_version)
+					}
+				);
+				if is_existing {
+					self.flow_engine.register_without_backfill(txn, flow)?;
+				} else {
+					self.flow_engine.register_with_backfill(txn, flow, flow_creation_version)?;
+				};
 			}
 		}
 
@@ -220,11 +283,12 @@ impl CdcConsume for FlowConsumer {
 		}
 
 		// Convert raw changes to FlowDiff format
-		let mut diffs_by_version: HashMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>> = HashMap::new();
+		let mut diffs_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>> = BTreeMap::new();
 
 		for (version, changes) in changes_by_version {
 			// Group changes by source for this version
-			let mut changes_by_source: HashMap<SourceId, Vec<FlowDiff>> = HashMap::new();
+			// Using IndexMap to preserve CDC insertion order within the version
+			let mut changes_by_source: IndexMap<SourceId, Vec<FlowDiff>> = IndexMap::new();
 
 			for (source_id, change) in changes {
 				let diff = match change {
