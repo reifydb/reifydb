@@ -3,7 +3,7 @@
 
 use reifydb_catalog::CatalogSourceQueryOperations;
 use reifydb_core::{
-	Error, Row,
+	CommitVersion, Error, Row,
 	interface::{EncodableKey, FlowNodeId, MultiVersionQueryTransaction, RowKey, RowKeyRange, SourceDef, SourceId},
 	log_info, log_trace,
 	value::encoded::EncodedValuesNamedLayout,
@@ -16,7 +16,12 @@ use reifydb_type::internal;
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
 impl FlowEngine {
-	pub(crate) fn load_initial_data(&self, txn: &mut StandardCommandTransaction, flow: &Flow) -> crate::Result<()> {
+	pub(crate) fn load_initial_data(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		flow: &Flow,
+		backfill_version: CommitVersion,
+	) -> crate::Result<()> {
 		log_trace!("[Backfill] Starting initial data load for flow {:?}", flow.id);
 
 		// Collect all source nodes in topological order
@@ -37,12 +42,18 @@ impl FlowEngine {
 			}
 		}
 
-		log_trace!("[Backfill] Found {} source nodes", source_nodes.len());
+		log_trace!(
+			"[Backfill] Found {} source nodes: {:?}",
+			source_nodes.len(),
+			source_nodes.iter().map(|n| n.id).collect::<Vec<_>>()
+		);
 
 		// Phase 1: Load all source data and apply through source operators
 		// This populates JOIN state for all sides before any propagation
-		let snapshot_version = txn.version();
-		let mut flow_txn = FlowTransaction::new(txn, snapshot_version);
+		// Read data at the backfill version to ensure we only see data that existed
+		// when the flow was created, not data inserted afterward
+		log_trace!("[Backfill] Using snapshot_version={:?}", backfill_version);
+		let mut flow_txn = FlowTransaction::new(txn, backfill_version);
 		let mut source_changes: Vec<(FlowNodeId, FlowChange)> = Vec::new();
 
 		for source_node in &source_nodes {
@@ -79,7 +90,7 @@ impl FlowEngine {
 
 			let change = FlowChange {
 				origin: FlowChangeOrigin::Internal(source_node.id),
-				version: snapshot_version,
+				version: backfill_version,
 				diffs,
 			};
 
@@ -156,9 +167,10 @@ impl FlowEngine {
 			.collect::<Vec<_>>();
 
 		log_trace!(
-			"[Backfill] Propagating from {:?} to {} downstream nodes",
+			"[Backfill] Propagating from {:?} to {} downstream nodes: {:?}",
 			from_node_id,
-			downstream_nodes.len()
+			downstream_nodes.len(),
+			downstream_nodes
 		);
 
 		for downstream_node_id in downstream_nodes {
@@ -167,7 +179,19 @@ impl FlowEngine {
 				let operator = operator.clone();
 				drop(operators);
 
+				log_trace!(
+					"[Backfill] Applying change to downstream node {:?} (from {:?}), diffs={}",
+					downstream_node_id,
+					from_node_id,
+					change.diffs.len()
+				);
+
 				let result = operator.apply(flow_txn, change.clone(), &self.inner.evaluator)?;
+				log_trace!(
+					"[Backfill] Downstream node {:?} produced {} result diffs",
+					downstream_node_id,
+					result.diffs.len()
+				);
 				if !result.diffs.is_empty() {
 					self.propagate_initial_change(flow_txn, flow, downstream_node_id, result)?;
 				}

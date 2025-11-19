@@ -480,6 +480,13 @@ impl Operator for JoinOperator {
 	}
 
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		unimplemented!()
+		log_trace!(
+			"[JOIN] get_rows called on node={:?}, requested rows={:?}, left_node={:?}, right_node={:?}",
+			self.node,
+			rows,
+			self.left_node,
+			self.right_node
+		);
+		Ok(vec![None; rows.len()])
 	}
 }

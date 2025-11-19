@@ -16,7 +16,7 @@ use std::{
 
 use parking_lot::RwLock;
 use reifydb_core::{
-	Error,
+	CommitVersion, Error,
 	event::{EventBus, flow::FlowOperatorLoadedEvent},
 	interface::{FlowId, FlowNodeId, SourceId, TableId, ViewId},
 	log_debug, log_error,
@@ -40,6 +40,9 @@ pub(crate) struct FlowEngineInner {
 	pub(crate) sinks: RwLock<HashMap<SourceId, Vec<(FlowId, FlowNodeId)>>>,
 	pub(crate) analyzer: RwLock<FlowGraphAnalyzer>,
 	pub(crate) event_bus: EventBus,
+	/// Tracks the version at which each flow was backfilled.
+	/// CDC events with version <= backfill_version should be skipped to avoid duplicate processing.
+	pub(crate) backfill_versions: RwLock<HashMap<FlowId, CommitVersion>>,
 }
 
 pub struct FlowEngine {
@@ -80,6 +83,7 @@ impl FlowEngine {
 				sinks: RwLock::new(HashMap::new()),
 				analyzer: RwLock::new(FlowGraphAnalyzer::new()),
 				event_bus,
+				backfill_versions: RwLock::new(HashMap::new()),
 			}),
 		}
 	}
@@ -164,13 +168,14 @@ impl FlowEngine {
 		self.inner.flows.read().keys().copied().collect()
 	}
 
-	/// Clears all registered flows, operators, sources, sinks, and dependency graph
+	/// Clears all registered flows, operators, sources, sinks, dependency graph, and backfill versions
 	pub fn clear(&self) {
 		self.inner.operators.write().clear();
 		self.inner.flows.write().clear();
 		self.inner.sources.write().clear();
 		self.inner.sinks.write().clear();
 		self.inner.analyzer.write().clear();
+		self.inner.backfill_versions.write().clear();
 	}
 
 	pub fn get_dependency_graph(&self) -> FlowDependencyGraph {

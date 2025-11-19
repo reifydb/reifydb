@@ -8,6 +8,7 @@ use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, Result, Row,
 	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, SourceId, WithEventBus},
+	log_trace,
 	util::CowVec,
 	value::encoded::EncodedValues,
 };
@@ -68,7 +69,7 @@ impl FlowConsumer {
 		if let Ok(mut txn) = engine.begin_command() {
 			if let Ok(flows) = result.load_flows() {
 				for flow in flows {
-					result.flow_engine.register(&mut txn, flow).unwrap();
+					result.flow_engine.register_without_backfill(&mut txn, flow).unwrap();
 				}
 				txn.commit().unwrap();
 			}
@@ -214,13 +215,35 @@ impl CdcConsume for FlowConsumer {
 		// Reload flows if needed (before processing any changes)
 		// Only skip backfill for flows that already existed (they already have data)
 		// New flows need backfill to get initial data from source tables
-		if flows_changed_at_version.is_some() {
+		if let Some(version) = flows_changed_at_version {
 			let existing_flow_ids = self.flow_engine.flow_ids();
+			log_trace!(
+				"[Consumer] Reloading flows at version {:?}, existing_flow_ids={:?}",
+				version,
+				existing_flow_ids
+			);
 			self.flow_engine.clear();
 			let flows = self.load_flows()?;
+			log_trace!("[Consumer] Loaded {} flows from catalog", flows.len());
 			for flow in flows {
-				let skip_backfill = existing_flow_ids.contains(&flow.id);
-				self.flow_engine.register_with_options(txn, flow, skip_backfill)?;
+				// For new flows: do backfill at this version
+				// For existing flows: skip backfill (data already present)
+				let is_existing = existing_flow_ids.contains(&flow.id);
+				log_trace!(
+					"[Consumer] Registering flow {:?}, is_existing={}, backfill_version={:?}",
+					flow.id,
+					is_existing,
+					if is_existing {
+						None
+					} else {
+						Some(version)
+					}
+				);
+				if is_existing {
+					self.flow_engine.register_without_backfill(txn, flow)?;
+				} else {
+					self.flow_engine.register_with_backfill(txn, flow, version)?;
+				};
 			}
 		}
 

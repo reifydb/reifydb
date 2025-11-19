@@ -6,7 +6,7 @@ use std::sync::Arc;
 use FlowNodeType::{Aggregate, SinkView, SourceInlineData, SourceTable, SourceView};
 use reifydb_catalog::{CatalogTableQueryOperations, CatalogViewQueryOperations, resolve::resolve_view};
 use reifydb_core::{
-	Error,
+	CommitVersion, Error,
 	interface::{FlowId, FlowNodeId, SourceId},
 };
 use reifydb_engine::StandardCommandTransaction;
@@ -26,15 +26,24 @@ use crate::{
 };
 
 impl FlowEngine {
-	pub fn register(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
-		self.register_with_options(txn, flow, false)
+	pub fn register_without_backfill(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
+		self.register(txn, flow, None)
 	}
 
-	pub fn register_with_options(
+	pub fn register_with_backfill(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow: Flow,
-		skip_backfill: bool,
+		backfill_version: CommitVersion,
+	) -> crate::Result<()> {
+		self.register(txn, flow, Some(backfill_version))
+	}
+
+	fn register(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		flow: Flow,
+		backfill_version: Option<CommitVersion>,
 	) -> crate::Result<()> {
 		debug_assert!(!self.inner.flows.read().contains_key(&flow.id), "Flow already registered");
 
@@ -44,8 +53,17 @@ impl FlowEngine {
 		}
 
 		// Load initial data from source tables (skip during CDC-triggered reloads)
-		if !skip_backfill {
-			self.load_initial_data(txn, &flow)?;
+		// Record the backfill version to prevent duplicate processing of CDC events
+		if let Some(backfill_version) = backfill_version {
+			// Store the backfill version FIRST so CDC filtering is active during backfill.
+			// This prevents race conditions where CDC events are processed before backfill completes.
+			self.inner.backfill_versions.write().insert(flow.id, backfill_version);
+
+			// If backfill fails, remove the version entry to avoid permanently blocking CDC events
+			if let Err(e) = self.load_initial_data(txn, &flow, backfill_version) {
+				self.inner.backfill_versions.write().remove(&flow.id);
+				return Err(e);
+			}
 		}
 
 		// Add flow to analyzer for dependency tracking
