@@ -4,7 +4,7 @@ use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
-use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
+use reifydb_core::{Error, Row, interface::FlowNodeId, log_trace, value::encoded::EncodedValuesLayout};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_type::{Blob, RowNumber, Type, internal};
@@ -158,6 +158,24 @@ impl Operator for TakeOperator {
 		let mut output_diffs = Vec::new();
 		let version = change.version;
 
+		let input_rows: Vec<_> = change
+			.diffs
+			.iter()
+			.map(|d| match d {
+				FlowDiff::Insert {
+					post,
+				} => format!("I{}", post.number.0),
+				FlowDiff::Update {
+					pre,
+					post,
+				} => format!("U{}>{}", pre.number.0, post.number.0),
+				FlowDiff::Remove {
+					pre,
+				} => format!("R{}", pre.number.0),
+			})
+			.collect();
+		log_trace!("[TAKE] node={:?} version={} IN rows=[{}]", self.node, version.0, input_rows.join(","));
+
 		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
@@ -268,6 +286,23 @@ impl Operator for TakeOperator {
 		}
 
 		self.save_take_state(txn, &state)?;
+
+		let output_rows: Vec<_> = output_diffs
+			.iter()
+			.map(|d| match d {
+				FlowDiff::Insert {
+					post,
+				} => format!("I{}", post.number.0),
+				FlowDiff::Update {
+					pre,
+					post,
+				} => format!("U{}>{}", pre.number.0, post.number.0),
+				FlowDiff::Remove {
+					pre,
+				} => format!("R{}", pre.number.0),
+			})
+			.collect();
+		log_trace!("[TAKE] node={:?} version={} OUT rows=[{}]", self.node, version.0, output_rows.join(","));
 
 		Ok(FlowChange::internal(self.node, version, output_diffs))
 	}

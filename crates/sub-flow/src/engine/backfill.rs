@@ -4,7 +4,7 @@
 use reifydb_catalog::CatalogSourceQueryOperations;
 use reifydb_core::{
 	CommitVersion, Error, Row,
-	interface::{EncodableKey, FlowNodeId, MultiVersionQueryTransaction, RowKey, RowKeyRange, SourceDef, SourceId},
+	interface::{EncodableKey, FlowNodeId, RowKey, RowKeyRange, SourceDef, SourceId},
 	log_info, log_trace,
 	value::encoded::EncodedValuesNamedLayout,
 };
@@ -20,7 +20,7 @@ impl FlowEngine {
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow: &Flow,
-		backfill_version: CommitVersion,
+		flow_creation_version: CommitVersion,
 	) -> crate::Result<()> {
 		log_trace!("[Backfill] Starting initial data load for flow {:?}", flow.id);
 
@@ -48,11 +48,12 @@ impl FlowEngine {
 			source_nodes.iter().map(|n| n.id).collect::<Vec<_>>()
 		);
 
-		// Phase 1: Load all source data and apply through source operators
-		// This populates JOIN state for all sides before any propagation
-		// Read data at the backfill version to ensure we only see data that existed
-		// when the flow was created, not data inserted afterward
-		log_trace!("[Backfill] Using snapshot_version={:?}", backfill_version);
+		let backfill_version = CommitVersion(flow_creation_version.0.saturating_sub(1));
+		log_trace!(
+			"[Backfill] Using snapshot_version={:?} (creation_version={:?})",
+			backfill_version,
+			flow_creation_version
+		);
 		let mut flow_txn = FlowTransaction::new(txn, backfill_version);
 		let mut source_changes: Vec<(FlowNodeId, FlowChange)> = Vec::new();
 
@@ -68,7 +69,7 @@ impl FlowEngine {
 			};
 
 			let source_def = txn.get_source(source_id)?;
-			let rows = self.scan_all_rows(txn, &source_def)?;
+			let rows = self.scan_all_rows(&mut flow_txn, &source_def)?;
 			if rows.is_empty() {
 				continue;
 			}
@@ -90,7 +91,7 @@ impl FlowEngine {
 
 			let change = FlowChange {
 				origin: FlowChangeOrigin::Internal(source_node.id),
-				version: backfill_version,
+				version: flow_creation_version,
 				diffs,
 			};
 
@@ -126,7 +127,7 @@ impl FlowEngine {
 	}
 
 	// FIXME this can be streamed without loading everything into memory first
-	fn scan_all_rows(&self, txn: &mut StandardCommandTransaction, source: &SourceDef) -> crate::Result<Vec<Row>> {
+	fn scan_all_rows(&self, flow_txn: &mut FlowTransaction, source: &SourceDef) -> crate::Result<Vec<Row>> {
 		let mut rows = Vec::new();
 
 		let layout: EncodedValuesNamedLayout = match source {
@@ -137,7 +138,7 @@ impl FlowEngine {
 		let range = RowKeyRange::scan_range(source.id(), None);
 
 		const BATCH_SIZE: u64 = 10000;
-		let multi_rows: Vec<_> = txn.range_batched(range, BATCH_SIZE)?.into_iter().collect();
+		let multi_rows: Vec<_> = flow_txn.range_batched(range.into(), BATCH_SIZE)?.into_iter().collect();
 
 		for multi in multi_rows {
 			if let Some(key) = RowKey::decode(&multi.key) {
@@ -148,6 +149,9 @@ impl FlowEngine {
 				});
 			}
 		}
+
+		// Sort by row number to ensure deterministic ordering for "first occurrence" semantics
+		rows.sort_by_key(|row| row.number);
 
 		Ok(rows)
 	}

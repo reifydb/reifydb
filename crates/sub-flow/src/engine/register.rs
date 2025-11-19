@@ -34,16 +34,16 @@ impl FlowEngine {
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow: Flow,
-		backfill_version: CommitVersion,
+		flow_creation_version: CommitVersion,
 	) -> crate::Result<()> {
-		self.register(txn, flow, Some(backfill_version))
+		self.register(txn, flow, Some(flow_creation_version))
 	}
 
 	fn register(
 		&self,
 		txn: &mut StandardCommandTransaction,
 		flow: Flow,
-		backfill_version: Option<CommitVersion>,
+		flow_creation_version: Option<CommitVersion>,
 	) -> crate::Result<()> {
 		debug_assert!(!self.inner.flows.read().contains_key(&flow.id), "Flow already registered");
 
@@ -52,15 +52,10 @@ impl FlowEngine {
 			self.add(txn, &flow, node)?;
 		}
 
-		// Load initial data from source tables (skip during CDC-triggered reloads)
-		// Record the backfill version to prevent duplicate processing of CDC events
-		if let Some(backfill_version) = backfill_version {
-			// Store the backfill version FIRST so CDC filtering is active during backfill.
-			// This prevents race conditions where CDC events are processed before backfill completes.
-			self.inner.backfill_versions.write().insert(flow.id, backfill_version);
+		if let Some(flow_creation_version) = flow_creation_version {
+			self.inner.backfill_versions.write().insert(flow.id, flow_creation_version);
 
-			// If backfill fails, remove the version entry to avoid permanently blocking CDC events
-			if let Err(e) = self.load_initial_data(txn, &flow, backfill_version) {
+			if let Err(e) = self.load_initial_data(txn, &flow, flow_creation_version) {
 				self.inner.backfill_versions.write().remove(&flow.id);
 				return Err(e);
 			}

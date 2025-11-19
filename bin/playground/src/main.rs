@@ -40,81 +40,103 @@ fn main() {
 	// Create tables
 	println!("Creating tables...");
 	db.command_as_root(
-		r#"create table test.transfers { id: int4, from_token_id: int4, to_token_id: int4, amount: int4 }"#,
+		r#"create table test.sales { id: int4, product_id: int4, quantity: int4, region_id: int4 }"#,
 		Params::None,
 	)
 	.unwrap();
-	db.command_as_root(r#"create table test.tokens { id: int4, symbol: utf8, decimals: int4 }"#, Params::None)
-		.unwrap();
+	db.command_as_root(r#"create table test.products { id: int4, product_name: utf8 }"#, Params::None).unwrap();
+	db.command_as_root(r#"create table test.regions { id: int4, region_name: utf8 }"#, Params::None).unwrap();
 
 	// Insert all data BEFORE creating the view
-	println!("Inserting tokens...");
+	println!("Inserting products...");
 	db.command_as_root(
 		r#"
 from [
-    {id: 1, symbol: "BTC", decimals: 8},
-    {id: 2, symbol: "ETH", decimals: 18},
-    {id: 3, symbol: "USDC", decimals: 6}
-] insert test.tokens
+    {id: 1, product_name: "Laptop"},
+    {id: 2, product_name: "Phone"},
+    {id: 3, product_name: "Tablet"},
+    {id: 4, product_name: "Monitor"},
+    {id: 5, product_name: "Keyboard"}
+] insert test.products
 "#,
 		Params::None,
 	)
 	.unwrap();
 
-	println!("Inserting transfers...");
+	println!("Inserting regions...");
 	db.command_as_root(
 		r#"
 from [
-    {id: 1, from_token_id: 1, to_token_id: 2, amount: 1000},
-    {id: 2, from_token_id: 2, to_token_id: 3, amount: 500},
-    {id: 3, from_token_id: 3, to_token_id: 1, amount: 10000},
-    {id: 4, from_token_id: 1, to_token_id: 3, amount: 250},
-    {id: 5, from_token_id: 4, to_token_id: 2, amount: 100}
-] insert test.transfers
+    {id: 1, region_name: "North"},
+    {id: 2, region_name: "South"},
+    {id: 3, region_name: "East"},
+    {id: 4, region_name: "West"},
+    {id: 5, region_name: "Central"},
+    {id: 6, region_name: "Northeast"}
+] insert test.regions
 "#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Verify data exists
-	println!("\nVerifying tokens:");
-	for frame in db.query_as_root(r#"from test.tokens"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
-
-	println!("\nVerifying transfers:");
-	for frame in db.query_as_root(r#"from test.transfers"#, Params::None).unwrap() {
-		println!("{}", frame);
-	}
-
-	// Now create the view with double join to same table
-	println!("\nCreating deferred view with double LEFT JOIN...");
+	println!("Inserting sales (30 rows)...");
 	db.command_as_root(
 		r#"
-create deferred view test.transfer_details {
-    transfer_id: int4,
-    from_symbol: utf8,
-    from_decimals: int4,
-    to_symbol: utf8,
-    to_decimals: int4,
-    amount: int4
+from [
+    {id: 1, product_id: 1, quantity: 10, region_id: 1},
+    {id: 2, product_id: 2, quantity: 25, region_id: 2},
+    {id: 3, product_id: 3, quantity: 15, region_id: 3},
+    {id: 4, product_id: 4, quantity: 8, region_id: 4},
+    {id: 5, product_id: 5, quantity: 50, region_id: 5},
+    {id: 6, product_id: 1, quantity: 12, region_id: 6},
+    {id: 7, product_id: 2, quantity: 30, region_id: 1},
+    {id: 8, product_id: 3, quantity: 20, region_id: 2},
+    {id: 9, product_id: 4, quantity: 5, region_id: 3},
+    {id: 10, product_id: 5, quantity: 45, region_id: 4},
+    {id: 11, product_id: 1, quantity: 18, region_id: 5},
+    {id: 12, product_id: 2, quantity: 22, region_id: 6},
+    {id: 13, product_id: 3, quantity: 13, region_id: 1},
+    {id: 14, product_id: 4, quantity: 7, region_id: 2},
+    {id: 15, product_id: 5, quantity: 60, region_id: 3},
+    {id: 16, product_id: 1, quantity: 9, region_id: 4},
+    {id: 17, product_id: 2, quantity: 35, region_id: 5},
+    {id: 18, product_id: 3, quantity: 17, region_id: 6},
+    {id: 19, product_id: 4, quantity: 6, region_id: 1},
+    {id: 20, product_id: 5, quantity: 55, region_id: 2},
+    {id: 21, product_id: 1, quantity: 14, region_id: 3},
+    {id: 22, product_id: 2, quantity: 28, region_id: 4},
+    {id: 23, product_id: 3, quantity: 19, region_id: 5},
+    {id: 24, product_id: 4, quantity: 4, region_id: 6},
+    {id: 25, product_id: 5, quantity: 40, region_id: 1},
+    {id: 26, product_id: 1, quantity: 11, region_id: 2},
+    {id: 27, product_id: 2, quantity: 33, region_id: 3},
+    {id: 28, product_id: 3, quantity: 16, region_id: 4},
+    {id: 29, product_id: 4, quantity: 9, region_id: 5},
+    {id: 30, product_id: 5, quantity: 48, region_id: 6}
+] insert test.sales
+"#,
+		Params::None,
+	)
+	.unwrap();
+
+	// Now create the view - it should backfill with all 30 sales
+	println!("\nCreating deferred view with double LEFT JOINs...");
+	db.command_as_root(
+		r#"
+create deferred view test.sales_report {
+    sale_id: int4,
+    product: utf8,
+    region: utf8,
+    quantity: int4
 } as {
-    from test.transfers
-    left join { from test.tokens } from_token on from_token_id == from_token.id
-        map {
-        transfer_id: id,
-        from_symbol: symbol,
-        from_decimals: decimals,
-        amount: amount
-    }
-    left join { from test.tokens } to_token on to_token_id == to_token.id
+    from test.sales
+    left join { from test.products } products on product_id == products.id
+    left join { from test.regions } regions on region_id == regions.id
     map {
-        transfer_id,
-        from_symbol,
-        from_decimals,
-        to_symbol: symbol,
-        to_decimals: decimals,
-        amount
+        sale_id: id,
+        product: product_name,
+        region: region_name,
+        quantity: quantity
     }
 }
 "#,
@@ -127,12 +149,11 @@ create deferred view test.transfer_details {
 	// Wait for view to process data
 	sleep(Duration::from_millis(500));
 
-	// Query the deferred view
-	println!("\n=== Deferred view query (should show token info from both joins) ===");
-	for frame in db.query_as_root(r#"from test.transfer_details sort transfer_id asc"#, Params::None).unwrap() {
+	// Query the deferred view - should have backfilled with all 30 sales
+	println!("\n=== Deferred view query (should show all 30 sales with joined data) ===");
+	for frame in db.query_as_root(r#"from test.sales_report sort sale_id asc"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	println!("\n=== Expected: from_symbol/from_decimals and to_symbol/to_decimals should show token info ===");
-	println!("=== Row 5 should have Undefined for from_symbol/from_decimals (no token_id=4) ===");
+	println!("\n=== Expected: sale_id, product, region, quantity for all 30 sales ===");
 }

@@ -1,11 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 
+use indexmap::IndexMap;
 use reifydb_core::{
 	CommitVersion,
 	interface::{FlowId, SourceId},
+	log_trace,
 };
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 
@@ -26,19 +28,17 @@ impl crate::engine::FlowEngine {
 	/// UnitsOfWork where each flow has its units ordered by version
 	pub fn create_partition(
 		&self,
-		changes_by_version: HashMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>>,
+		changes_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>>,
 	) -> UnitsOfWork {
-		let mut all_units_by_flow: HashMap<FlowId, Vec<UnitOfWork>> = HashMap::new();
+		let mut all_units_by_flow: BTreeMap<FlowId, Vec<UnitOfWork>> = BTreeMap::new();
 
-		// Sort versions to maintain ordering
-		let mut versions: Vec<_> = changes_by_version.keys().copied().collect();
-		versions.sort();
-
-		for version in versions {
-			let changes = changes_by_version.get(&version).unwrap();
+		// BTreeMap is already sorted by key, so we iterate in version order
+		for (version, changes) in &changes_by_version {
+			let version = *version;
 
 			// Group changes by source for this version
-			let mut changes_by_source: HashMap<SourceId, Vec<FlowDiff>> = HashMap::new();
+			// Using IndexMap to preserve CDC insertion order within the version
+			let mut changes_by_source: IndexMap<SourceId, Vec<FlowDiff>> = IndexMap::new();
 			for (source_id, diffs) in changes {
 				changes_by_source.entry(*source_id).or_insert_with(Vec::new).extend(diffs.clone());
 			}
@@ -57,6 +57,15 @@ impl crate::engine::FlowEngine {
 
 		// Convert the HashMap to UnitsOfWork for the worker
 		let units_vec: Vec<Vec<UnitOfWork>> = all_units_by_flow.into_iter().map(|(_, units)| units).collect();
+
+		// Log partition output
+		for (seq, flow_units) in units_vec.iter().enumerate() {
+			if !flow_units.is_empty() {
+				let flow_id = flow_units[0].flow_id;
+				let versions: Vec<_> = flow_units.iter().map(|u| u.version.0).collect();
+				log_trace!("[PARTITION] OUT seq={} flow={:?} versions={:?}", seq, flow_id, versions);
+			}
+		}
 
 		// INVARIANT: Validate that each flow_id appears exactly once in the output
 		// and that each inner Vec contains units for only one flow
@@ -95,11 +104,11 @@ impl crate::engine::FlowEngine {
 
 	fn partition_into_units_of_work(
 		&self,
-		changes_by_source: HashMap<SourceId, Vec<FlowDiff>>,
+		changes_by_source: IndexMap<SourceId, Vec<FlowDiff>>,
 		version: CommitVersion,
 	) -> UnitsOfWork {
 		// Map to collect all source changes per flow
-		let mut flow_changes: HashMap<FlowId, Vec<FlowChange>> = HashMap::new();
+		let mut flow_changes: BTreeMap<FlowId, Vec<FlowChange>> = BTreeMap::new();
 
 		// Read source subscriptions and backfill versions
 		let sources = self.inner.sources.read();
@@ -126,9 +135,6 @@ impl crate::engine::FlowEngine {
 				}
 			}
 		}
-
-		drop(sources);
-		drop(backfill_versions);
 
 		// Group all units at this version into a single UnitsOfWork
 		// Since all units are at the same version, each flow gets exactly one unit
@@ -323,7 +329,7 @@ mod tests {
 	#[test]
 	fn test_empty_input() {
 		let engine = setup_test_engine(HashMap::new());
-		let input = HashMap::new();
+		let input = BTreeMap::new();
 
 		let result = engine.create_partition(input);
 
@@ -338,7 +344,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// V10: S1[d1, d2]
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(10), vec![(s(1), vec![mk_diff("d1"), mk_diff("d2")])]);
 
 		let result = engine.create_partition(input);
@@ -362,7 +368,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// V1: S1[d1]
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), vec![mk_diff("d1")])]);
 
 		let result = engine.create_partition(input);
@@ -389,7 +395,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// V7: S1[a], S2[b,c]
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(7), vec![(s(1), vec![mk_diff("a")]), (s(2), vec![mk_diff("b"), mk_diff("c")])]);
 
 		let result = engine.create_partition(input);
@@ -431,7 +437,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// V3: S999[x] (unknown source)
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(3), vec![(s(999), vec![mk_diff("x")])]);
 
 		let result = engine.create_partition(input);
@@ -448,7 +454,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// Input versions intentionally unsorted: V20, V10, V30
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(20), vec![(s(1), vec![mk_diff("a")])]);
 		input.insert(v(10), vec![(s(1), vec![mk_diff("b")])]);
 		input.insert(v(30), vec![(s(2), vec![mk_diff("c")])]);
@@ -476,7 +482,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// V1, V100 (non-contiguous)
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), vec![mk_diff("a")])]);
 		input.insert(v(100), vec![(s(1), vec![mk_diff("b")])]);
 
@@ -498,7 +504,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// V5: S1[x,y], S1[z] (duplicate source entries)
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(5), vec![(s(1), vec![mk_diff("x"), mk_diff("y")]), (s(1), vec![mk_diff("z")])]);
 
 		let result = engine.create_partition(input);
@@ -521,7 +527,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// V8: S1[a], S2[b,c]
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(8), vec![(s(1), vec![mk_diff("a")]), (s(2), vec![mk_diff("b"), mk_diff("c")])]);
 
 		let result = engine.create_partition(input);
@@ -546,7 +552,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// V2: S1[a] only
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(2), vec![(s(1), vec![mk_diff("a")])]);
 
 		let result = engine.create_partition(input);
@@ -568,7 +574,7 @@ mod tests {
 
 		// V1: S1[a1], S2[b1]
 		// V2: S1[a2]
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), vec![mk_diff("a1")]), (s(2), vec![mk_diff("b1")])]);
 		input.insert(v(2), vec![(s(1), vec![mk_diff("a2")])]);
 
@@ -607,7 +613,7 @@ mod tests {
 
 		// Many diffs but no subscribers
 		let diffs: Vec<FlowDiff> = (0..1000).map(|i| mk_diff(&format!("d{}", i))).collect();
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), diffs)]);
 
 		let result = engine.create_partition(input);
@@ -623,7 +629,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// 100 versions, but flow only affected by versions 10, 50, 90
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		for i in 1..=100 {
 			if i == 10 || i == 50 || i == 90 {
 				input.insert(v(i), vec![(s(1), vec![mk_diff(&format!("d{}", i))])]);
@@ -660,7 +666,7 @@ mod tests {
 		for i in 1..=50 {
 			changes.push((s(i), vec![mk_diff(&format!("d{}", i))]));
 		}
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(1), changes);
 
 		let result = engine.create_partition(input);
@@ -691,7 +697,7 @@ mod tests {
 
 		let mut results = vec![];
 		for versions in test_versions {
-			let mut input = HashMap::new();
+			let mut input = BTreeMap::new();
 			for ver in versions {
 				input.insert(ver, vec![(s(1), vec![mk_diff(&format!("d{}", ver.0))])]);
 			}
@@ -720,7 +726,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// V1: S1 with empty diff vec
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), vec![])]);
 
 		let result = engine.create_partition(input);
@@ -743,7 +749,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// All input sources are unknown
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(999), vec![mk_diff("x")])]);
 		input.insert(v(2), vec![(s(888), vec![mk_diff("y")])]);
 
@@ -760,7 +766,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// Original input
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), vec![mk_diff("d1")])]);
 
 		let expected = normalize(engine.create_partition(input.clone()));
@@ -769,7 +775,7 @@ mod tests {
 		for _ in 0..5 {
 			let mut entries: Vec<_> = input.clone().into_iter().collect();
 			entries.shuffle(&mut rand::rng());
-			let shuffled: HashMap<_, _> = entries.into_iter().collect();
+			let shuffled: BTreeMap<_, _> = entries.into_iter().collect();
 
 			let result = normalize(engine.create_partition(shuffled));
 			assert_normalized_eq(&result, &expected);
@@ -787,7 +793,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// Original input
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(1), vec![(s(1), vec![mk_diff("a1")]), (s(2), vec![mk_diff("b1")])]);
 		input.insert(v(2), vec![(s(1), vec![mk_diff("a2")])]);
 
@@ -797,7 +803,7 @@ mod tests {
 		for _ in 0..5 {
 			let mut entries: Vec<_> = input.clone().into_iter().collect();
 			entries.shuffle(&mut rand::rng());
-			let shuffled: HashMap<_, _> = entries.into_iter().collect();
+			let shuffled: BTreeMap<_, _> = entries.into_iter().collect();
 
 			let result = normalize(engine.create_partition(shuffled));
 			assert_normalized_eq(&result, &expected);
@@ -818,7 +824,7 @@ mod tests {
 		let engine = setup_test_engine(subscriptions);
 
 		// 1000 versions, each with 5 random sources changing
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		for ver_i in 1..=1000 {
 			let mut changes = vec![];
 			for source_i in 1..=5 {
@@ -856,7 +862,7 @@ mod tests {
 			versions.shuffle(&mut rng);
 		}
 
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		for ver in versions {
 			input.insert(v(ver), vec![(s(1), vec![mk_diff(&format!("d{}", ver))])]);
 		}
@@ -886,7 +892,7 @@ mod tests {
 
 		// Send versions 40, 50, 51, 60, 70
 		// Only 51, 60, 70 should be processed (versions > 50)
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(40), vec![(s(1), vec![mk_diff("d40")])]);
 		input.insert(v(50), vec![(s(1), vec![mk_diff("d50")])]);
 		input.insert(v(51), vec![(s(1), vec![mk_diff("d51")])]);
@@ -917,7 +923,7 @@ mod tests {
 		engine.inner.backfill_versions.write().insert(f(2), v(50));
 
 		// Send versions 20, 40, 60
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(20), vec![(s(1), vec![mk_diff("d20")])]);
 		input.insert(v(40), vec![(s(1), vec![mk_diff("d40")])]);
 		input.insert(v(60), vec![(s(1), vec![mk_diff("d60")])]);
@@ -946,7 +952,7 @@ mod tests {
 
 		// No backfill version set - all events should be processed
 
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(10), vec![(s(1), vec![mk_diff("d10")])]);
 		input.insert(v(20), vec![(s(1), vec![mk_diff("d20")])]);
 		input.insert(v(30), vec![(s(1), vec![mk_diff("d30")])]);
@@ -970,7 +976,7 @@ mod tests {
 		engine.inner.backfill_versions.write().insert(f(1), v(100));
 
 		// Test boundary: V99, V100, V101
-		let mut input = HashMap::new();
+		let mut input = BTreeMap::new();
 		input.insert(v(99), vec![(s(1), vec![mk_diff("d99")])]);
 		input.insert(v(100), vec![(s(1), vec![mk_diff("d100")])]);
 		input.insert(v(101), vec![(s(1), vec![mk_diff("d101")])]);

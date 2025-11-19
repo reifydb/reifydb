@@ -27,6 +27,7 @@ bincode = { workspace = true }
 libloading = { workspace = true }
 
 crossbeam-channel = { workspace = true }
+indexmap = { workspace = true }
 parking_lot = { workspace = true}
 
 [dev-dependencies]
