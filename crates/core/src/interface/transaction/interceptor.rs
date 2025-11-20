@@ -25,7 +25,7 @@ use crate::{
 
 pub trait TableInterceptor<CT: CommandTransaction> {
 	/// Intercept table pre-insert operations
-	fn pre_insert(&mut self, table: &TableDef, row: &EncodedValues) -> crate::Result<()>;
+	fn pre_insert(&mut self, table: &TableDef, rn: RowNumber, row: &EncodedValues) -> crate::Result<()>;
 
 	/// Intercept table post-insert operations
 	fn post_insert(&mut self, table: &TableDef, id: RowNumber, row: &EncodedValues) -> crate::Result<()>;

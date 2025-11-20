@@ -76,7 +76,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 		table_pre_insert_interceptors,
 		TablePreInsertInterceptor,
 		TablePreInsertContext,
-		(table: &TableDef, row: &EncodedValues)
+		(table: &TableDef, rn: RowNumber, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(

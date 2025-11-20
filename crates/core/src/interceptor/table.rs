@@ -14,6 +14,7 @@ define_interceptor!(
 	fields: {
 		txn: &'a mut T,
 		table: &'a TableDef,
+		rn: RowNumber,
 		row: &'a EncodedValues}
 );
 

@@ -20,4 +20,31 @@ impl RowSequence {
 		)
 		.map(RowNumber)
 	}
+
+	/// Allocates a batch of contiguous row numbers for a table.
+	/// Returns a vector containing all allocated row numbers.
+	pub fn next_row_number_batch(
+		txn: &mut impl CommandTransaction,
+		table: TableId,
+		count: u64,
+	) -> crate::Result<Vec<RowNumber>> {
+		let last_row_number = GeneratorU64::next_batched(
+			txn,
+			&RowSequenceKey {
+				source: SourceId::from(table),
+			}
+			.encode(),
+			None,
+			count,
+		)?;
+
+		// Calculate the first row number in the batch
+		// next_batched returns the last allocated ID
+		let first_row_number = last_row_number.saturating_sub(count - 1);
+
+		// Generate all row numbers in the allocated range
+		let row_numbers = (0..count).map(|offset| RowNumber(first_row_number + offset)).collect();
+
+		Ok(row_numbers)
+	}
 }

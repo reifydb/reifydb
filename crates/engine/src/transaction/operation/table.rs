@@ -1,7 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::sequence::RowSequence;
 use reifydb_core::{
 	Row,
 	event::catalog::TableInsertedEvent,
@@ -16,7 +15,12 @@ use reifydb_type::RowNumber;
 use crate::StandardCommandTransaction;
 
 pub(crate) trait TableOperations {
-	fn insert_into_table(&mut self, table: TableDef, row: EncodedValues) -> crate::Result<RowNumber>;
+	fn insert_into_table(
+		&mut self,
+		table: TableDef,
+		row: EncodedValues,
+		row_number: RowNumber,
+	) -> crate::Result<()>;
 
 	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()>;
 
@@ -24,10 +28,13 @@ pub(crate) trait TableOperations {
 }
 
 impl TableOperations for StandardCommandTransaction {
-	fn insert_into_table(&mut self, table: TableDef, row: EncodedValues) -> crate::Result<RowNumber> {
-		let row_number = RowSequence::next_row_number(self, table.id)?;
-
-		TableInterceptor::pre_insert(self, &table, &row)?;
+	fn insert_into_table(
+		&mut self,
+		table: TableDef,
+		row: EncodedValues,
+		row_number: RowNumber,
+	) -> crate::Result<()> {
+		TableInterceptor::pre_insert(self, &table, row_number, &row)?;
 
 		self.set(
 			&RowKey {
@@ -51,7 +58,7 @@ impl TableOperations for StandardCommandTransaction {
 			},
 		});
 
-		Ok(row_number)
+		Ok(())
 	}
 
 	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()> {
