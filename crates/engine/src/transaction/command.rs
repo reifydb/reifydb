@@ -154,21 +154,23 @@ impl StandardCommandTransaction {
 	}
 
 	/// Execute a function with query access to the single transaction.
-	pub fn with_single_query<F, R>(&self, f: F) -> crate::Result<R>
+	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
+		I: IntoIterator<Item = &'a EncodedKey>,
 		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
 	{
 		self.check_active()?;
-		self.single.with_query(f)
+		self.single.with_query(keys, f)
 	}
 
 	/// Execute a function with query access to the single transaction.
-	pub fn with_single_command<F, R>(&self, f: F) -> crate::Result<R>
+	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
+		I: IntoIterator<Item = &'a EncodedKey>,
 		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Command<'_>) -> crate::Result<R>,
 	{
 		self.check_active()?;
-		self.single.with_command(f)
+		self.single.with_command(keys, f)
 	}
 
 	/// Execute a function with a query transaction view.
@@ -330,9 +332,12 @@ impl QueryTransaction for StandardCommandTransaction {
 
 	type CdcQuery<'a> = <TransactionCdc as CdcTransaction>::Query<'a>;
 
-	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
+	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
 		self.check_active()?;
-		self.single.begin_query()
+		self.single.begin_query(keys)
 	}
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
@@ -344,9 +349,12 @@ impl QueryTransaction for StandardCommandTransaction {
 impl CommandTransaction for StandardCommandTransaction {
 	type SingleVersionCommand<'a> = <TransactionSingleVersion as SingleVersionTransaction>::Command<'a>;
 
-	fn begin_single_command(&self) -> crate::Result<Self::SingleVersionCommand<'_>> {
+	fn begin_single_command<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionCommand<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
 		self.check_active()?;
-		self.single.begin_command()
+		self.single.begin_command(keys)
 	}
 
 	fn get_changes(&self) -> &TransactionalDefChanges {

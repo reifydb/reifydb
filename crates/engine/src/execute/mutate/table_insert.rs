@@ -3,14 +3,20 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::{CatalogStore, sequence::ColumnSequence};
+use reifydb_catalog::{
+	CatalogStore,
+	sequence::{ColumnSequence, RowSequence},
+};
 use reifydb_core::{
 	interface::{
 		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, Params, ResolvedColumn,
 		ResolvedNamespace, ResolvedSource, ResolvedTable,
 	},
 	return_error,
-	value::{column::Columns, encoded::EncodedValuesLayout},
+	value::{
+		column::Columns,
+		encoded::{EncodedValues, EncodedValuesLayout},
+	},
 };
 use reifydb_rql::plan::physical::InsertTableNode;
 use reifydb_type::{Fragment, Type, Value, diagnostic::catalog::table_not_found};
@@ -65,13 +71,14 @@ impl Executor {
 		let mut std_txn = StandardTransaction::from(txn);
 		let mut input_node = compile(*plan.input, &mut std_txn, execution_context.clone());
 
-		let mut inserted_count = 0;
-
 		// Initialize the operator before execution
 		input_node.initialize(&mut std_txn, &execution_context)?;
 
-		// Process all input batches using volcano iterator pattern
+		// PASS 1: Validate and encode all rows first, before allocating any row numbers
+		// This ensures we only allocate row numbers for valid rows (fail-fast on validation errors)
+		let mut validated_rows: Vec<EncodedValues> = Vec::new();
 		let mut mutable_context = (*execution_context).clone();
+
 		while let Some(Batch {
 			columns,
 		}) = input_node.next(&mut std_txn, &mut mutable_context)?
@@ -81,8 +88,7 @@ impl Executor {
 			for row_numberx in 0..row_count {
 				let mut row = layout.allocate();
 
-				// For each table column, find if it exists in
-				// the input columns
+				// For each table column, find if it exists in the input columns
 				for (table_idx, table_column) in table.columns.iter().enumerate() {
 					let mut value = if let Some(input_column) =
 						columns.iter().find(|col| col.name() == table_column.name)
@@ -116,8 +122,7 @@ impl Executor {
 						&execution_context,
 					)?;
 
-					// Validate the value against the
-					// column's constraint
+					// Validate the value against the column's constraint
 					if let Err(e) = table_column.constraint.validate(&value) {
 						return Err(e);
 					}
@@ -154,54 +159,45 @@ impl Executor {
 					}
 				}
 
-				// 	// Insert the encoded into the database
-				// 	let row_number =
-				// TableRowSequence::next_row_number( 		txn,
-				// table.id, 	)?;
-				// 	txn.set(
-				// 		&TableRowKey {
-				// 			table: table.id,
-				// 			encoded: row_number,
-				// 		}
-				// 		.encode(),
-				// 		encoded.clone(),
-				// 	)
-				// 	.unwrap();
-				//
-				// 	// Add to pending changes for flow
-				// processing
-				// txn.add_pending(Pending::InsertIntoTable {
-				// 		table: table.clone(),
-				// 		row_number,
-				// 		encoded: encoded.clone(),
-				// 	});
-				//
-				// txn.insert_into_table(table, key, encoded)
+				// Store the validated and encoded row for later insertion
+				validated_rows.push(row);
+			}
+		}
 
-				let row_number = std_txn.command_mut().insert_into_table(table.clone(), row.clone())?;
+		// BATCH ALLOCATION: Now that all rows are validated, allocate row numbers in one batch
+		let total_rows = validated_rows.len();
+		if total_rows == 0 {
+			// No rows to insert, return early
+			return Ok(Columns::single_row([
+				("namespace", Value::Utf8(namespace.name)),
+				("table", Value::Utf8(table.name)),
+				("inserted", Value::Uint8(0)),
+			]));
+		}
 
-				// Store primary key index entry if table has
-				// one
-				if let Some(pk_def) = primary_key::get_primary_key(std_txn.command_mut(), &table)? {
-					let index_key =
-						primary_key::encode_primary_key(&pk_def, &row, &table, &layout)?;
+		let row_numbers =
+			RowSequence::next_row_number_batch(std_txn.command_mut(), table.id, total_rows as u64)?;
 
-					// Store the index entry with the encoded
-					// number as value For now, we
-					// encode the encoded number as a simple
-					// EncodedRow with u64
-					let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
-					let mut row_number_encoded = row_number_layout.allocate();
-					row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+		assert_eq!(row_numbers.len(), validated_rows.len());
 
-					std_txn.command_mut().set(
-						&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key)
-							.encode(),
-						row_number_encoded,
-					)?;
-				}
+		// PASS 2: Insert all validated rows using the pre-allocated row numbers
+		for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
+			// Insert the row directly into storage
+			std_txn.command_mut().insert_into_table(table.clone(), row.clone(), row_number)?;
 
-				inserted_count += 1;
+			// Store primary key index entry if table has one
+			if let Some(pk_def) = primary_key::get_primary_key(std_txn.command_mut(), &table)? {
+				let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &layout)?;
+
+				// Store the index entry with the row number as value
+				let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
+				let mut row_number_encoded = row_number_layout.allocate();
+				row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
+
+				std_txn.command_mut().set(
+					&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode(),
+					row_number_encoded,
+				)?;
 			}
 		}
 
@@ -209,7 +205,7 @@ impl Executor {
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(namespace.name)),
 			("table", Value::Utf8(table.name)),
-			("inserted", Value::Uint8(inserted_count as u64)),
+			("inserted", Value::Uint8(total_rows as u64)),
 		]))
 	}
 }

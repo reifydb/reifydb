@@ -17,8 +17,10 @@ reifydb-store-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
 crossbeam-channel = { workspace = true }
+crossbeam-skiplist = { workspace = true }
 indexmap = { workspace = true }
 parking_lot = { workspace = true }
+self_cell = { workspace = true }
 
 
 [dev-dependencies]
