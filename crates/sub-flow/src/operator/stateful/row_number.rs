@@ -32,6 +32,68 @@ impl RowNumberProvider {
 		}
 	}
 
+	/// Get or create RowNumbers for a batch of keys
+	/// Returns Vec<(RowNumber, is_new)> in the same order as input keys
+	/// where is_new indicates if the row number was newly created
+	pub fn get_or_create_row_numbers_batch<'a, O, I>(
+		&self,
+		txn: &mut FlowTransaction,
+		operator: &O,
+		keys: I,
+	) -> crate::Result<Vec<(RowNumber, bool)>>
+	where
+		O: RawStatefulOperator,
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
+		let mut results = Vec::new();
+		let mut counter = self.load_counter::<O>(txn, operator)?;
+		let initial_counter = counter;
+
+		for key in keys {
+			// Check if we already have a encoded number for this key
+			let map_key = self.make_map_key(key);
+			let encoded_map_key = EncodedKey::new(map_key.clone());
+
+			if let Some(existing_row) = operator.state_get(txn, &encoded_map_key)? {
+				// Key exists, return existing encoded number
+				let bytes = existing_row.as_ref();
+				if bytes.len() >= 8 {
+					let row_num = u64::from_be_bytes([
+						bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6],
+						bytes[7],
+					]);
+					results.push((RowNumber(row_num), false));
+					continue;
+				}
+			}
+
+			let new_row_number = RowNumber(counter);
+
+			// Save the mapping from key to encoded number
+			let row_num_bytes = counter.to_be_bytes().to_vec();
+			operator.state_set(txn, &encoded_map_key, EncodedValues(CowVec::new(row_num_bytes)))?;
+
+			// Save the reverse mapping from row_number to key
+			let reverse_key = self.make_reverse_map_key(new_row_number);
+			let encoded_reverse_key = EncodedKey::new(reverse_key);
+			operator.state_set(
+				txn,
+				&encoded_reverse_key,
+				EncodedValues(CowVec::new(key.as_ref().to_vec())),
+			)?;
+
+			results.push((new_row_number, true));
+			counter += 1;
+		}
+
+		// Save the updated counter if we allocated any new row numbers
+		if counter != initial_counter {
+			self.save_counter::<O>(txn, operator, counter)?;
+		}
+
+		Ok(results)
+	}
+
 	/// Get or create a RowNumber for a given key
 	/// Returns (RowNumber, is_new) where is_new indicates if it was newly
 	/// created
@@ -41,38 +103,10 @@ impl RowNumberProvider {
 		operator: &O,
 		key: &EncodedKey,
 	) -> crate::Result<(RowNumber, bool)> {
-		// Check if we already have a encoded number for this key
-		let map_key = self.make_map_key(key);
-		let encoded_map_key = EncodedKey::new(map_key.clone());
-
-		if let Some(existing_row) = operator.state_get(txn, &encoded_map_key)? {
-			// Key exists, return existing encoded number
-			let bytes = existing_row.as_ref();
-			if bytes.len() >= 8 {
-				let row_num = u64::from_be_bytes([
-					bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-				]);
-				return Ok((RowNumber(row_num), false));
-			}
-		}
-
-		// Key doesn't exist, generate a new encoded number
-		let counter = self.load_counter::<O>(txn, operator)?;
-		let new_row_number = RowNumber(counter);
-
-		// Save the new counter value
-		self.save_counter::<O>(txn, operator, counter + 1)?;
-
-		// Save the mapping from key to encoded number
-		let row_num_bytes = counter.to_be_bytes().to_vec();
-		operator.state_set(txn, &encoded_map_key, EncodedValues(CowVec::new(row_num_bytes)))?;
-
-		// Save the reverse mapping from row_number to key
-		let reverse_key = self.make_reverse_map_key(new_row_number);
-		let encoded_reverse_key = EncodedKey::new(reverse_key);
-		operator.state_set(txn, &encoded_reverse_key, EncodedValues(CowVec::new(key.as_ref().to_vec())))?;
-
-		Ok((new_row_number, true))
+		Ok(self.get_or_create_row_numbers_batch(txn, operator, std::iter::once(key))?
+			.into_iter()
+			.next()
+			.unwrap())
 	}
 
 	/// Get the original key for a given row number (reverse lookup)
@@ -190,8 +224,6 @@ mod tests {
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::*;
-
-	// TestOperator already implements SimpleStatefulOperator
 
 	#[test]
 	fn test_first_row_number() {
@@ -362,5 +394,90 @@ mod tests {
 		let (rn, is_new) = provider.get_or_create_row_number(&mut txn, &operator, &key).unwrap();
 		assert_eq!(rn.0, 1001);
 		assert!(is_new);
+	}
+
+	#[test]
+	fn test_batch_mixed_existing_and_new_keys() {
+		let mut txn = create_test_transaction();
+		let mut txn = FlowTransaction::new(&mut txn, CommitVersion(1));
+		let operator = TestOperator::simple(FlowNodeId(1));
+		let provider = RowNumberProvider::new(FlowNodeId(1));
+
+		// Create 3 initial keys to establish existing row numbers
+		let key1 = test_key("batch_key_1");
+		let key2 = test_key("batch_key_2");
+		let key3 = test_key("batch_key_3");
+
+		let (rn1, _) = provider.get_or_create_row_number(&mut txn, &operator, &key1).unwrap();
+		assert_eq!(rn1.0, 1);
+
+		let (rn2, _) = provider.get_or_create_row_number(&mut txn, &operator, &key2).unwrap();
+		assert_eq!(rn2.0, 2);
+
+		let (rn3, _) = provider.get_or_create_row_number(&mut txn, &operator, &key3).unwrap();
+		assert_eq!(rn3.0, 3);
+
+		// Now test batch with mix of existing and new keys
+		let key4 = test_key("batch_key_4");
+		let key5 = test_key("batch_key_5");
+
+		// Batch: [existing key2, new key4, existing key1, new key5, existing key3]
+		let batch_keys = vec![&key2, &key4, &key1, &key5, &key3];
+
+		let results =
+			provider.get_or_create_row_numbers_batch(&mut txn, &operator, batch_keys.into_iter()).unwrap();
+
+		// Verify results are in correct order and have correct values
+		assert_eq!(results.len(), 5);
+
+		// key2 (existing) -> row number 2, not new
+		assert_eq!(results[0].0.0, 2);
+		assert!(!results[0].1);
+
+		// key4 (new) -> row number 4, is new
+		assert_eq!(results[1].0.0, 4);
+		assert!(results[1].1);
+
+		// key1 (existing) -> row number 1, not new
+		assert_eq!(results[2].0.0, 1);
+		assert!(!results[2].1);
+
+		// key5 (new) -> row number 5, is new
+		assert_eq!(results[3].0.0, 5);
+		assert!(results[3].1);
+
+		// key3 (existing) -> row number 3, not new
+		assert_eq!(results[4].0.0, 3);
+		assert!(!results[4].1);
+
+		// Verify that counter was only incremented by 2 (for key4 and key5)
+		// by checking that the next new key gets row number 6
+		let key6 = test_key("batch_key_6");
+		let (rn6, is_new6) = provider.get_or_create_row_number(&mut txn, &operator, &key6).unwrap();
+		assert_eq!(rn6.0, 6);
+		assert!(is_new6);
+
+		// Verify all mappings are still correct by retrieving them individually
+		let (check_rn4, is_new4) = provider.get_or_create_row_number(&mut txn, &operator, &key4).unwrap();
+		assert_eq!(check_rn4.0, 4);
+		assert!(!is_new4);
+
+		let (check_rn5, is_new5) = provider.get_or_create_row_number(&mut txn, &operator, &key5).unwrap();
+		assert_eq!(check_rn5.0, 5);
+		assert!(!is_new5);
+
+		// Verify reverse mappings exist for the new keys created in batch
+		let reverse_key4 = provider.get_key_for_row_number(&mut txn, &operator, RowNumber(4)).unwrap();
+		assert_eq!(reverse_key4, Some(key4));
+
+		let reverse_key5 = provider.get_key_for_row_number(&mut txn, &operator, RowNumber(5)).unwrap();
+		assert_eq!(reverse_key5, Some(key5));
+
+		// Verify reverse mappings also exist for keys created before batch
+		let reverse_key1 = provider.get_key_for_row_number(&mut txn, &operator, RowNumber(1)).unwrap();
+		assert_eq!(reverse_key1, Some(key1));
+
+		let reverse_key2 = provider.get_key_for_row_number(&mut txn, &operator, RowNumber(2)).unwrap();
+		assert_eq!(reverse_key2, Some(key2));
 	}
 }
