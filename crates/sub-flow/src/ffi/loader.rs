@@ -11,7 +11,7 @@ use libloading::{Library, Symbol};
 use parking_lot::RwLock;
 use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{
-	CURRENT_API_VERSION, FFIOperatorCreateFn, FFIOperatorDescriptor, FFIOperatorMagicFn, OPERATOR_MAGIC,
+	FFIOperatorCreateFn, FFIOperatorDescriptor, FFIOperatorMagicFn, CURRENT_API_VERSION, OPERATOR_MAGIC,
 };
 use reifydb_flow_operator_sdk::{FFIError, Result as FFIResult};
 
@@ -45,19 +45,7 @@ impl FFIOperatorLoader {
 		}
 	}
 
-	/// Check if a library is a valid FFI operator
-	///
-	/// This checks for the presence of the `ffi_operator_magic` symbol and verifies
-	/// the magic number matches.
-	///
-	/// # Arguments
-	/// * `path` - Path to the shared library file
-	///
-	/// # Returns
-	/// * `Ok(true)` - Library is a valid FFI operator
-	/// * `Ok(false)` - Library is not an FFI operator (missing or wrong magic)
-	/// * `Err(FFIError)` - Failed to load the library
-	pub fn is_operator_library(&mut self, path: &Path) -> FFIResult<bool> {
+	pub fn load_operator_library(&mut self, path: &Path) -> FFIResult<bool> {
 		// Load the library if not already loaded
 		if !self.loaded_libraries.contains_key(path) {
 			let lib = unsafe {
@@ -87,6 +75,50 @@ impl FFIOperatorLoader {
 		}
 	}
 
+	/// Get the operator descriptor from a loaded library
+	fn get_descriptor(&self, library: &Library) -> FFIResult<FFIOperatorDescriptor> {
+		unsafe {
+			let get_descriptor: Symbol<extern "C" fn() -> *const FFIOperatorDescriptor> =
+				library.get(b"ffi_operator_get_descriptor\0").map_err(|e| {
+					FFIError::Other(format!("Failed to find ffi_operator_get_descriptor: {}", e))
+				})?;
+
+			let descriptor_ptr = get_descriptor();
+			if descriptor_ptr.is_null() {
+				return Err(FFIError::Other("Descriptor is null".to_string()));
+			}
+
+			// Copy the descriptor fields
+			Ok(FFIOperatorDescriptor {
+				api_version: (*descriptor_ptr).api_version,
+				operator_name: (*descriptor_ptr).operator_name,
+				vtable: (*descriptor_ptr).vtable,
+			})
+		}
+	}
+
+	/// Validate descriptor and register operator name mapping
+	/// Returns the operator name and API version
+	fn validate_and_register(&mut self, descriptor: &FFIOperatorDescriptor, path: &Path) -> FFIResult<(String, u32)> {
+		// Verify API version
+		if descriptor.api_version != CURRENT_API_VERSION {
+			return Err(FFIError::Other(format!(
+				"API version mismatch: expected {}, got {}",
+				CURRENT_API_VERSION, descriptor.api_version
+			)));
+		}
+
+		// Extract operator name
+		let operator_name = unsafe {
+			CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string()
+		};
+
+		// Store operator name -> path mapping
+		self.operator_paths.insert(operator_name.clone(), path.to_path_buf());
+
+		Ok((operator_name, descriptor.api_version))
+	}
+
 	/// Register an operator library without instantiating it
 	///
 	/// This loads the library, validates it as an operator, and extracts metadata
@@ -100,41 +132,13 @@ impl FFIOperatorLoader {
 	/// * `Ok(None)` - Library is not a valid FFI operator (silently skipped)
 	/// * `Err(FFIError)` - Loading or validation failed
 	pub fn register_operator(&mut self, path: &Path) -> FFIResult<Option<(String, u32)>> {
-		// First check if this is a valid operator library
-		if !self.is_operator_library(path)? {
+		if !self.load_operator_library(path)? {
 			return Ok(None);
 		}
 
 		let library = self.loaded_libraries.get(path).unwrap();
-
-		// Get the operator descriptor
-		let (operator_name, api_version) = unsafe {
-			let get_descriptor: Symbol<extern "C" fn() -> *const FFIOperatorDescriptor> =
-				library.get(b"ffi_operator_get_descriptor\0").map_err(|e| {
-					FFIError::Other(format!("Failed to find ffi_operator_get_descriptor: {}", e))
-				})?;
-
-			let descriptor_ptr = get_descriptor();
-			if descriptor_ptr.is_null() {
-				return Err(FFIError::Other("Descriptor is null".to_string()));
-			}
-
-			let name = CStr::from_ptr((*descriptor_ptr).operator_name).to_str().unwrap().to_string();
-			let version = (*descriptor_ptr).api_version;
-
-			(name, version)
-		};
-
-		// Verify API version
-		if api_version != CURRENT_API_VERSION {
-			return Err(FFIError::Other(format!(
-				"API version mismatch: expected {}, got {}",
-				CURRENT_API_VERSION, api_version
-			)));
-		}
-
-		// Store operator name -> path mapping
-		self.operator_paths.insert(operator_name.clone(), path.to_path_buf());
+		let descriptor = self.get_descriptor(library)?;
+		let (operator_name, api_version) = self.validate_and_register(&descriptor, path)?;
 
 		Ok(Some((operator_name, api_version)))
 	}
@@ -156,46 +160,20 @@ impl FFIOperatorLoader {
 		config: &[u8],
 		operator_id: FlowNodeId,
 	) -> FFIResult<Option<FFIOperator>> {
-		// First check if this is a valid operator library
-		if !self.is_operator_library(path)? {
+		if !self.load_operator_library(path)? {
 			return Ok(None);
 		}
 
-		let library = self.loaded_libraries.get(path).unwrap();
-
-		// Get the operator descriptor
-		let descriptor = unsafe {
-			let get_descriptor: Symbol<extern "C" fn() -> *const FFIOperatorDescriptor> =
-				library.get(b"ffi_operator_get_descriptor\0").map_err(|e| {
-					FFIError::Other(format!("Failed to find ffi_operator_get_descriptor: {}", e))
-				})?;
-
-			let descriptor_ptr = get_descriptor();
-			if descriptor_ptr.is_null() {
-				return Err(FFIError::Other("Descriptor is null".to_string()));
-			}
-
-			// Copy the descriptor fields
-			FFIOperatorDescriptor {
-				api_version: (*descriptor_ptr).api_version,
-				operator_name: (*descriptor_ptr).operator_name,
-				vtable: (*descriptor_ptr).vtable,
-			}
+		// Get descriptor and validate - done in separate scope to avoid borrow conflicts
+		let descriptor = {
+			let library = self.loaded_libraries.get(path).unwrap();
+			self.get_descriptor(library)?
 		};
 
-		// Store operator name -> path mapping
-		let operator_name = unsafe { CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string() };
-		self.operator_paths.insert(operator_name.clone(), path.to_path_buf());
+		self.validate_and_register(&descriptor, path)?;
 
-		// Verify API version
-		if descriptor.api_version != CURRENT_API_VERSION {
-			return Err(FFIError::Other(format!(
-				"API version mismatch: expected {}, got {}",
-				CURRENT_API_VERSION, descriptor.api_version
-			)));
-		}
-
-		// Get the create function
+		// Get the create function and instantiate operator
+		let library = self.loaded_libraries.get(path).unwrap();
 		let create_fn: FFIOperatorCreateFn = unsafe {
 			let create_symbol: Symbol<FFIOperatorCreateFn> = library
 				.get(b"ffi_operator_create\0")
@@ -231,7 +209,7 @@ impl FFIOperatorLoader {
 		operator_id: FlowNodeId,
 		config: &[u8],
 	) -> FFIResult<FFIOperator> {
-		// Look up the path for this operator
+
 		let path = self
 			.operator_paths
 			.get(operator_name)
