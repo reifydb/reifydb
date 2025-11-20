@@ -39,7 +39,7 @@ impl EventListener<OnStartEvent> for StartEventListener {
 			}
 			.encode();
 
-			let created = self.single.with_command(|tx| match tx.get(&key)? {
+			let created = self.single.with_command([&key], |tx| match tx.get(&key)? {
 				None => {
 					let mut row = layout.allocate();
 					layout.set_u8(&mut row, 0, CURRENT_STORAGE_VERSION);

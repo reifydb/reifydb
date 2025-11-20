@@ -44,11 +44,12 @@ impl StandardQueryTransaction {
 	}
 
 	/// Execute a function with query access to the single transaction.
-	pub fn with_single_query<F, R>(&self, f: F) -> crate::Result<R>
+	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
+		I: IntoIterator<Item = &'a EncodedKey>,
 		F: FnOnce(&mut <TransactionSingleVersion as SingleVersionTransaction>::Query<'_>) -> crate::Result<R>,
 	{
-		self.single.with_query(f)
+		self.single.with_query(keys, f)
 	}
 
 	/// Execute a function with access to the multi query transaction.
@@ -124,8 +125,11 @@ impl QueryTransaction for StandardQueryTransaction {
 	where
 		Self: 'a;
 
-	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
-		self.single.begin_query()
+	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	where
+		I: IntoIterator<Item = &'a EncodedKey>,
+	{
+		self.single.begin_query(keys)
 	}
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {

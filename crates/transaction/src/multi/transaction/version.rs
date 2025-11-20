@@ -77,7 +77,7 @@ impl StandardVersionProvider {
 		let layout = EncodedValuesLayout::new(&[Type::Uint8]);
 		let key = TransactionVersionKey {}.encode();
 
-		single.with_query(|tx| match tx.get(&key)? {
+		single.with_query([&key], |tx| match tx.get(&key)? {
 			None => Ok(0),
 			Some(single) => Ok(layout.get_u64(&single.values, 0)),
 		})
@@ -89,7 +89,7 @@ impl StandardVersionProvider {
 		let mut values = layout.allocate();
 		layout.set_u64(&mut values, 0, version);
 
-		single.with_command(|tx| {
+		single.with_command([&key], |tx| {
 			tx.set(&key, values)?;
 			Ok(())
 		})
@@ -283,7 +283,7 @@ mod tests {
 		let key = TransactionVersionKey {}.encode();
 		let mut values = layout.allocate();
 		layout.set_u64(&mut values, 0, 500u64);
-		single.with_command(|tx| {
+		single.with_command([&key], |tx| {
 			tx.set(&key, values)?;
 			Ok(())
 		})

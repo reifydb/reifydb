@@ -21,7 +21,7 @@ impl GeneratorI16 {
 		key: &EncodedKey,
 		default: Option<i16>,
 	) -> crate::Result<i16> {
-		txn.with_single_command(|tx| match tx.get(key)? {
+		txn.with_single_command([key], |tx| match tx.get(key)? {
 			Some(row) => {
 				let mut row = row.values;
 				let current_value = LAYOUT.get_i16(&row, 0);
@@ -46,7 +46,7 @@ impl GeneratorI16 {
 	}
 
 	pub(crate) fn set(txn: &mut impl CommandTransaction, key: &EncodedKey, value: i16) -> crate::Result<()> {
-		txn.with_single_command(|tx| {
+		txn.with_single_command([key], |tx| {
 			let mut row = match tx.get(key)? {
 				Some(row) => row.values,
 				None => LAYOUT.allocate(),
@@ -78,8 +78,9 @@ mod tests {
 			assert_eq!(got, expected);
 		}
 
-		txn.with_single_query(|tx| {
-			let single = tx.get(&EncodedKey::new("sequence"))?.unwrap();
+		let key = EncodedKey::new("sequence");
+		txn.with_single_query([&key], |tx| {
+			let single = tx.get(&key)?.unwrap();
 			assert_eq!(LAYOUT.get_i16(&single.values, 0), 999);
 			Ok(())
 		})
@@ -93,7 +94,8 @@ mod tests {
 		let mut row = LAYOUT.allocate();
 		LAYOUT.set_i16(&mut row, 0, i16::MAX);
 
-		txn.with_single_command(|tx| tx.set(&EncodedKey::new("sequence"), row)).unwrap();
+		let key = EncodedKey::new("sequence");
+		txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
 
 		let err = GeneratorI16::next(&mut txn, &EncodedKey::new("sequence"), None).unwrap_err();
 		assert_eq!(err.diagnostic(), sequence_exhausted(Type::Int2));

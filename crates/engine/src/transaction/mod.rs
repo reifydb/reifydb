@@ -40,10 +40,13 @@ impl<'a> QueryTransaction for StandardTransaction<'a> {
 	where
 		Self: 'b;
 
-	fn begin_single_query(&self) -> crate::Result<Self::SingleVersionQuery<'_>> {
+	fn begin_single_query<'k, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	where
+		I: IntoIterator<Item = &'k EncodedKey>,
+	{
 		match self {
-			Self::Command(txn) => txn.begin_single_query(),
-			Self::Query(txn) => txn.begin_single_query(),
+			Self::Command(txn) => txn.begin_single_query(keys),
+			Self::Query(txn) => txn.begin_single_query(keys),
 		}
 	}
 
