@@ -21,11 +21,20 @@ impl GeneratorU64 {
 		key: &EncodedKey,
 		default: Option<u64>,
 	) -> crate::Result<u64> {
+		Self::next_batched(txn, key, default, 1)
+	}
+
+	pub(crate) fn next_batched(
+		txn: &mut impl CommandTransaction,
+		key: &EncodedKey,
+		default: Option<u64>,
+		incr: u64,
+	) -> crate::Result<u64> {
 		txn.with_single_command([key], |tx| match tx.get(key)? {
 			Some(row) => {
 				let mut row = row.values;
 				let current_value = LAYOUT.get_u64(&row, 0);
-				let next_value = current_value.saturating_add(1);
+				let next_value = current_value.saturating_add(incr);
 
 				if current_value == next_value {
 					return_error!(sequence_exhausted(Type::Uint8));
@@ -112,5 +121,82 @@ mod tests {
 		let got =
 			GeneratorU64::next(&mut txn, &EncodedKey::new("sequence_with_default"), Some(999u64)).unwrap();
 		assert_eq!(got, 101);
+	}
+
+	#[test]
+	fn test_batched_ok() {
+		let mut txn = create_test_command_transaction();
+
+		// Test incrementing by 5000
+		for i in 0..20 {
+			let expected = 1 + (i * 5000);
+			let got =
+				GeneratorU64::next_batched(&mut txn, &EncodedKey::new("sequence_by_5000"), None, 5000)
+					.unwrap();
+			assert_eq!(got, expected);
+		}
+
+		let key = EncodedKey::new("sequence_by_5000");
+		txn.with_single_query([&key], |tx| {
+			let single = tx.get(&key)?.unwrap();
+			assert_eq!(LAYOUT.get_u64(&single.values, 0), 95001);
+			Ok(())
+		})
+		.unwrap();
+
+		// Test incrementing by 10000
+		for i in 0..10 {
+			let expected = 1 + (i * 10000);
+			let got = GeneratorU64::next_batched(
+				&mut txn,
+				&EncodedKey::new("sequence_by_10000"),
+				None,
+				10000,
+			)
+			.unwrap();
+			assert_eq!(got, expected);
+		}
+	}
+
+	#[test]
+	fn test_batched_exhaustion() {
+		let mut txn = create_test_command_transaction();
+
+		let mut row = LAYOUT.allocate();
+		LAYOUT.set_u64(&mut row, 0, u64::MAX - 2000);
+
+		let key = EncodedKey::new("sequence");
+		txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
+
+		// This should succeed (MAX - 2000 + 5000 saturates to MAX)
+		let result = GeneratorU64::next_batched(&mut txn, &EncodedKey::new("sequence"), None, 5000).unwrap();
+		assert_eq!(result, u64::MAX);
+
+		// This should fail (already at MAX)
+		let err = GeneratorU64::next_batched(&mut txn, &EncodedKey::new("sequence"), None, 5000).unwrap_err();
+		assert_eq!(err.diagnostic(), sequence_exhausted(Type::Uint8));
+	}
+
+	#[test]
+	fn test_batched_default() {
+		let mut txn = create_test_command_transaction();
+
+		let got = GeneratorU64::next_batched(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(100u64),
+			5000,
+		)
+		.unwrap();
+		assert_eq!(got, 100);
+
+		let got = GeneratorU64::next_batched(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(999u64),
+			5000,
+		)
+		.unwrap();
+		assert_eq!(got, 5100);
 	}
 }

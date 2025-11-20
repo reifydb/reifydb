@@ -21,11 +21,20 @@ impl GeneratorI128 {
 		key: &EncodedKey,
 		default: Option<i128>,
 	) -> crate::Result<i128> {
+		Self::next_batched(txn, key, default, 1)
+	}
+
+	pub(crate) fn next_batched(
+		txn: &mut impl CommandTransaction,
+		key: &EncodedKey,
+		default: Option<i128>,
+		incr: i128,
+	) -> crate::Result<i128> {
 		txn.with_single_command([key], |tx| match tx.get(key)? {
 			Some(row) => {
 				let mut row = row.values;
 				let current_value = LAYOUT.get_i128(&row, 0);
-				let next_value = current_value.saturating_add(1);
+				let next_value = current_value.saturating_add(incr);
 
 				if current_value == next_value {
 					return_error!(sequence_exhausted(Type::Int16));
@@ -112,5 +121,86 @@ mod tests {
 		let got = GeneratorI128::next(&mut txn, &EncodedKey::new("sequence_with_default"), Some(999i128))
 			.unwrap();
 		assert_eq!(got, 101);
+	}
+
+	#[test]
+	fn test_batched_ok() {
+		let mut txn = create_test_command_transaction();
+
+		// Test incrementing by 50000
+		for i in 0..20 {
+			let expected = 1 + (i * 50000);
+			let got = GeneratorI128::next_batched(
+				&mut txn,
+				&EncodedKey::new("sequence_by_50000"),
+				None,
+				50000,
+			)
+			.unwrap();
+			assert_eq!(got, expected);
+		}
+
+		let key = EncodedKey::new("sequence_by_50000");
+		txn.with_single_query([&key], |tx| {
+			let single = tx.get(&key)?.unwrap();
+			assert_eq!(LAYOUT.get_i128(&single.values, 0), 950001);
+			Ok(())
+		})
+		.unwrap();
+
+		// Test incrementing by 100000
+		for i in 0..10 {
+			let expected = 1 + (i * 100000);
+			let got = GeneratorI128::next_batched(
+				&mut txn,
+				&EncodedKey::new("sequence_by_100000"),
+				None,
+				100000,
+			)
+			.unwrap();
+			assert_eq!(got, expected);
+		}
+	}
+
+	#[test]
+	fn test_batched_exhaustion() {
+		let mut txn = create_test_command_transaction();
+
+		let mut row = LAYOUT.allocate();
+		LAYOUT.set_i128(&mut row, 0, i128::MAX - 20000);
+
+		let key = EncodedKey::new("sequence");
+		txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
+
+		// This should succeed (MAX - 20000 + 50000 saturates to MAX)
+		let result = GeneratorI128::next_batched(&mut txn, &EncodedKey::new("sequence"), None, 50000).unwrap();
+		assert_eq!(result, i128::MAX);
+
+		// This should fail (already at MAX)
+		let err = GeneratorI128::next_batched(&mut txn, &EncodedKey::new("sequence"), None, 50000).unwrap_err();
+		assert_eq!(err.diagnostic(), sequence_exhausted(Type::Int16));
+	}
+
+	#[test]
+	fn test_batched_default() {
+		let mut txn = create_test_command_transaction();
+
+		let got = GeneratorI128::next_batched(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(100i128),
+			50000,
+		)
+		.unwrap();
+		assert_eq!(got, 100);
+
+		let got = GeneratorI128::next_batched(
+			&mut txn,
+			&EncodedKey::new("sequence_with_default"),
+			Some(999i128),
+			50000,
+		)
+		.unwrap();
+		assert_eq!(got, 50100);
 	}
 }
