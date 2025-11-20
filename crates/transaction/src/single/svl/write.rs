@@ -12,14 +12,12 @@ use self_cell::self_cell;
 
 use super::*;
 
-// Type alias for the write guard
 type WriteGuard<'a> = ParkingRwLockWriteGuard<'a, ()>;
 
 // Safe self-referential struct that owns both the Arc and the write guard borrowing from it
 self_cell! {
 	pub struct KeyWriteLock {
 		owner: Arc<ParkingRwLock<()>>,
-
 		#[covariant]
 		dependent: WriteGuard,
 	}

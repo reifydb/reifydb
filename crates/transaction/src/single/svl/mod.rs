@@ -74,13 +74,16 @@ impl SingleVersionTransaction for TransactionSvl {
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		let keys_vec: Vec<EncodedKey> = keys.into_iter().cloned().collect();
+		let mut keys_vec: Vec<EncodedKey> = keys.into_iter().cloned().collect();
 		assert!(
 			!keys_vec.is_empty(),
 			"SVL transactions must declare keys upfront - empty keysets are not allowed"
 		);
 
-		// Acquire read locks on all keys
+		// Sort keys to establish consistent lock ordering and prevent deadlocks
+		keys_vec.sort();
+
+		// Acquire read locks on all keys in sorted order
 		let mut locks = Vec::new();
 		for key in &keys_vec {
 			let arc = self.inner.get_or_create_lock(key);
@@ -102,13 +105,16 @@ impl SingleVersionTransaction for TransactionSvl {
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		let keys_vec: Vec<EncodedKey> = keys.into_iter().cloned().collect();
+		let mut keys_vec: Vec<EncodedKey> = keys.into_iter().cloned().collect();
 		assert!(
 			!keys_vec.is_empty(),
 			"SVL transactions must declare keys upfront - empty keysets are not allowed"
 		);
 
-		// Acquire write locks on all keys
+		// Sort keys to establish consistent lock ordering and prevent deadlocks
+		keys_vec.sort();
+
+		// Acquire write locks on all keys in sorted order
 		let mut locks = Vec::new();
 		for key in &keys_vec {
 			let arc = self.inner.get_or_create_lock(key);
@@ -597,5 +603,229 @@ mod tests {
 		for handle in handles {
 			handle.join().unwrap();
 		}
+	}
+
+	#[test]
+	fn test_overlapping_keys_different_order() {
+		use std::{
+			sync::{Arc, Barrier},
+			thread,
+			time::Duration,
+		};
+
+		let svl = Arc::new(create_test_svl());
+		let key1 = make_key("deadlock_key1");
+		let key2 = make_key("deadlock_key2");
+		let barrier = Arc::new(Barrier::new(2));
+
+		// Thread 1: locks [key1, key2]
+		let svl1 = Arc::clone(&svl);
+		let key1_clone = key1.clone();
+		let key2_clone = key2.clone();
+		let barrier1 = Arc::clone(&barrier);
+		let handle1 = thread::spawn(move || {
+			barrier1.wait();
+			let mut tx = svl1.begin_command(vec![&key1_clone, &key2_clone]).unwrap();
+			tx.set(&key1_clone, make_value("from_thread1")).unwrap();
+			thread::sleep(Duration::from_millis(10)); // Hold locks briefly
+			tx.commit().unwrap();
+		});
+
+		// Thread 2: locks [key2, key1] - REVERSED ORDER
+		// With sorted locking, this should not deadlock
+		let svl2 = Arc::clone(&svl);
+		let key1_clone2 = key1.clone();
+		let key2_clone2 = key2.clone();
+		let barrier2 = Arc::clone(&barrier);
+		let handle2 = thread::spawn(move || {
+			barrier2.wait();
+			let mut tx = svl2.begin_command(vec![&key2_clone2, &key1_clone2]).unwrap();
+			tx.set(&key2_clone2, make_value("from_thread2")).unwrap();
+			thread::sleep(Duration::from_millis(10)); // Hold locks briefly
+			tx.commit().unwrap();
+		});
+
+		// Both threads should complete without deadlock
+		handle1.join().unwrap();
+		handle2.join().unwrap();
+
+		// Verify both commits succeeded
+		let mut tx = svl.begin_query(vec![&key1, &key2]).unwrap();
+		let result1 = tx.get(&key1).unwrap();
+		let result2 = tx.get(&key2).unwrap();
+		assert!(result1.is_some());
+		assert!(result2.is_some());
+	}
+
+	#[test]
+	fn test_circular_dependency_three_transactions() {
+		use std::{
+			sync::{Arc, Barrier},
+			thread,
+			time::Duration,
+		};
+
+		let svl = Arc::new(create_test_svl());
+		let key1 = make_key("circular_key1");
+		let key2 = make_key("circular_key2");
+		let key3 = make_key("circular_key3");
+		let barrier = Arc::new(Barrier::new(3));
+
+		// Thread 1: locks [key1, key2]
+		let svl1 = Arc::clone(&svl);
+		let k1_1 = key1.clone();
+		let k2_1 = key2.clone();
+		let barrier1 = Arc::clone(&barrier);
+		let handle1 = thread::spawn(move || {
+			barrier1.wait();
+			let mut tx = svl1.begin_command(vec![&k1_1, &k2_1]).unwrap();
+			tx.set(&k1_1, make_value("t1")).unwrap();
+			thread::sleep(Duration::from_millis(10));
+			tx.commit().unwrap();
+		});
+
+		// Thread 2: locks [key2, key3]
+		let svl2 = Arc::clone(&svl);
+		let k2_2 = key2.clone();
+		let k3_2 = key3.clone();
+		let barrier2 = Arc::clone(&barrier);
+		let handle2 = thread::spawn(move || {
+			barrier2.wait();
+			let mut tx = svl2.begin_command(vec![&k2_2, &k3_2]).unwrap();
+			tx.set(&k2_2, make_value("t2")).unwrap();
+			thread::sleep(Duration::from_millis(10));
+			tx.commit().unwrap();
+		});
+
+		// Thread 3: locks [key3, key1] - completes the potential cycle
+		// With sorted locking, this should not create a circular dependency
+		let svl3 = Arc::clone(&svl);
+		let barrier3 = Arc::clone(&barrier);
+		let handle3 = thread::spawn(move || {
+			barrier3.wait();
+			let mut tx = svl3.begin_command(vec![&key3, &key1]).unwrap();
+			tx.set(&key3, make_value("t3")).unwrap();
+			thread::sleep(Duration::from_millis(10));
+			tx.commit().unwrap();
+		});
+
+		// All threads should complete without circular deadlock
+		handle1.join().unwrap();
+		handle2.join().unwrap();
+		handle3.join().unwrap();
+	}
+
+	#[test]
+	fn test_locks_released_on_drop() {
+		use std::{sync::Arc, thread, time::Duration};
+
+		let svl = Arc::new(create_test_svl());
+		let key = make_key("drop_test_key");
+
+		// Thread 1: Acquire lock and drop without commit
+		let svl1 = Arc::clone(&svl);
+		let key_clone = key.clone();
+		let handle1 = thread::spawn(move || {
+			let mut tx = svl1.begin_command(vec![&key_clone]).unwrap();
+			tx.set(&key_clone, make_value("dropped")).unwrap();
+			// Transaction dropped here without commit
+		});
+
+		handle1.join().unwrap();
+
+		// Small delay to ensure drop completes
+		thread::sleep(Duration::from_millis(10));
+
+		// Thread 2: Should be able to acquire the lock immediately
+		// If locks weren't released on drop, this would block indefinitely
+		let svl2 = Arc::clone(&svl);
+		let key_clone2 = key.clone();
+		let handle2 = thread::spawn(move || {
+			let mut tx = svl2.begin_command(vec![&key_clone2]).unwrap();
+			tx.set(&key_clone2, make_value("success")).unwrap();
+			tx.commit().unwrap();
+		});
+
+		// This should complete quickly if locks are released properly
+		handle2.join().unwrap();
+
+		// Verify the second transaction succeeded
+		let mut tx = svl.begin_query(vec![&key]).unwrap();
+		let result = tx.get(&key).unwrap();
+		assert!(result.is_some());
+		assert_eq!(result.unwrap().values, make_value("success"));
+	}
+
+	#[test]
+	fn test_read_locks_released_on_panic_unwinding() {
+		use std::{
+			panic::{AssertUnwindSafe, catch_unwind},
+			sync::Arc,
+		};
+
+		let svl = Arc::new(create_test_svl());
+		let key = make_key("panic_read_test");
+
+		// First write a value to read
+		{
+			let mut tx = svl.begin_command(vec![&key]).unwrap();
+			tx.set(&key, make_value("initial")).unwrap();
+			tx.commit().unwrap();
+		}
+
+		// Panic while holding read lock
+		let svl_clone = Arc::clone(&svl);
+		let key_clone = key.clone();
+		let result = catch_unwind(AssertUnwindSafe(move || {
+			let mut tx = svl_clone.begin_query(vec![&key_clone]).unwrap();
+			let _value = tx.get(&key_clone).unwrap();
+			panic!("Intentional panic during read transaction");
+		}));
+
+		assert!(result.is_err(), "Should have panicked");
+
+		// Read lock should be released, subsequent write transaction should succeed
+		let mut tx = svl.begin_command(vec![&key]).unwrap();
+		tx.set(&key, make_value("after_read_panic")).unwrap();
+		tx.commit().unwrap();
+
+		// Verify the value was updated
+		let mut tx = svl.begin_query(vec![&key]).unwrap();
+		let result = tx.get(&key).unwrap();
+		assert!(result.is_some());
+		assert_eq!(result.unwrap().values, make_value("after_read_panic"));
+	}
+
+	#[test]
+	fn test_write_locks_released_on_panic_unwinding() {
+		use std::{
+			panic::{AssertUnwindSafe, catch_unwind},
+			sync::Arc,
+		};
+
+		let svl = Arc::new(create_test_svl());
+		let key = make_key("panic_write_test");
+
+		// Panic while holding write lock
+		let svl_clone = Arc::clone(&svl);
+		let key_clone = key.clone();
+		let result = catch_unwind(AssertUnwindSafe(move || {
+			let mut tx = svl_clone.begin_command(vec![&key_clone]).unwrap();
+			tx.set(&key_clone, make_value("will_panic")).unwrap();
+			panic!("Intentional panic during write transaction");
+		}));
+
+		assert!(result.is_err(), "Should have panicked");
+
+		// Write lock should be released, subsequent transaction should succeed
+		let mut tx = svl.begin_command(vec![&key]).unwrap();
+		tx.set(&key, make_value("after_write_panic")).unwrap();
+		tx.commit().unwrap();
+
+		// Verify the value (panic rolled back, so this is the first commit)
+		let mut tx = svl.begin_query(vec![&key]).unwrap();
+		let result = tx.get(&key).unwrap();
+		assert!(result.is_some());
+		assert_eq!(result.unwrap().values, make_value("after_write_panic"));
 	}
 }

@@ -10,14 +10,12 @@ use self_cell::self_cell;
 
 use super::*;
 
-// Type alias for the read guard
 type ReadGuard<'a> = ParkingRwLockReadGuard<'a, ()>;
 
 // Safe self-referential struct that owns both the Arc and the guard borrowing from it
 self_cell! {
 	pub struct KeyReadLock {
 		owner: Arc<ParkingRwLock<()>>,
-
 		#[covariant]
 		dependent: ReadGuard,
 	}
