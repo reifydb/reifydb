@@ -7,6 +7,7 @@ pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;
 pub use columns::ColumnsKey;
 pub use flow::FlowKey;
+pub use flow_node_internal_state::{FlowNodeInternalStateKey, FlowNodeInternalStateKeyRange};
 pub use flow_node_state::{FlowNodeStateKey, FlowNodeStateKeyRange};
 pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
@@ -38,6 +39,7 @@ mod column_policy;
 mod column_sequence;
 mod columns;
 mod flow;
+mod flow_node_internal_state;
 mod flow_node_state;
 mod index;
 mod index_entry;
@@ -73,6 +75,7 @@ pub enum Key {
 	Index(IndexKey),
 	IndexEntry(IndexEntryKey),
 	FlowNodeState(FlowNodeStateKey),
+	FlowNodeInternalState(FlowNodeInternalStateKey),
 	PrimaryKey(PrimaryKeyKey),
 	Row(RowKey),
 	RowSequence(RowSequenceKey),
@@ -104,6 +107,7 @@ impl Key {
 			Key::Index(key) => key.encode(),
 			Key::IndexEntry(key) => key.encode(),
 			Key::FlowNodeState(key) => key.encode(),
+			Key::FlowNodeInternalState(key) => key.encode(),
 			Key::PrimaryKey(key) => key.encode(),
 			Key::Row(key) => key.encode(),
 			Key::RowSequence(key) => key.encode(),
@@ -172,6 +176,9 @@ impl Key {
 			KeyKind::Index => IndexKey::decode(&key).map(Self::Index),
 			KeyKind::IndexEntry => IndexEntryKey::decode(&key).map(Self::IndexEntry),
 			KeyKind::FlowNodeState => FlowNodeStateKey::decode(&key).map(Self::FlowNodeState),
+			KeyKind::FlowNodeInternalState => {
+				FlowNodeInternalStateKey::decode(&key).map(Self::FlowNodeInternalState)
+			}
 			KeyKind::Row => RowKey::decode(&key).map(Self::Row),
 			KeyKind::RowSequence => RowSequenceKey::decode(&key).map(Self::RowSequence),
 			KeyKind::ColumnSequence => ColumnSequenceKey::decode(&key).map(Self::TableColumnSequence),

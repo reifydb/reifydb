@@ -11,7 +11,7 @@ use libloading::{Library, Symbol};
 use parking_lot::RwLock;
 use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{
-	FFIOperatorCreateFn, FFIOperatorDescriptor, FFIOperatorMagicFn, CURRENT_API_VERSION, OPERATOR_MAGIC,
+	CURRENT_API_VERSION, FFIOperatorCreateFn, FFIOperatorDescriptor, FFIOperatorMagicFn, OPERATOR_MAGIC,
 };
 use reifydb_flow_operator_sdk::{FFIError, Result as FFIResult};
 
@@ -99,7 +99,11 @@ impl FFIOperatorLoader {
 
 	/// Validate descriptor and register operator name mapping
 	/// Returns the operator name and API version
-	fn validate_and_register(&mut self, descriptor: &FFIOperatorDescriptor, path: &Path) -> FFIResult<(String, u32)> {
+	fn validate_and_register(
+		&mut self,
+		descriptor: &FFIOperatorDescriptor,
+		path: &Path,
+	) -> FFIResult<(String, u32)> {
 		// Verify API version
 		if descriptor.api_version != CURRENT_API_VERSION {
 			return Err(FFIError::Other(format!(
@@ -109,9 +113,7 @@ impl FFIOperatorLoader {
 		}
 
 		// Extract operator name
-		let operator_name = unsafe {
-			CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string()
-		};
+		let operator_name = unsafe { CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string() };
 
 		// Store operator name -> path mapping
 		self.operator_paths.insert(operator_name.clone(), path.to_path_buf());
@@ -209,7 +211,6 @@ impl FFIOperatorLoader {
 		operator_id: FlowNodeId,
 		config: &[u8],
 	) -> FFIResult<FFIOperator> {
-
 		let path = self
 			.operator_paths
 			.get(operator_name)

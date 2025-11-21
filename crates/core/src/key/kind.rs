@@ -34,6 +34,7 @@ pub enum KeyKind {
 	OperatorRetentionPolicy = 0x18,
 	Flow = 0x19,
 	NamespaceFlow = 0x1A,
+	FlowNodeInternalState = 0x1B,
 }
 
 impl From<KeyKind> for u8 {
@@ -72,6 +73,7 @@ impl TryFrom<u8> for KeyKind {
 			0x18 => Ok(Self::OperatorRetentionPolicy),
 			0x19 => Ok(Self::Flow),
 			0x1A => Ok(Self::NamespaceFlow),
+			0x1B => Ok(Self::FlowNodeInternalState),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}
