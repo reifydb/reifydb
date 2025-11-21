@@ -2,24 +2,24 @@ use std::{collections::HashSet, sync::Arc};
 
 use bincode::{config::standard, serde::encode_to_vec};
 use reifydb_core::{
-	EncodedKey, Error, JoinType, Row,
-	interface::FlowNodeId,
-	log_trace,
-	util::encoding::keycode::KeySerializer,
-	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
+	interface::FlowNodeId, log_trace, util::encoding::keycode::KeySerializer, value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
+	EncodedKey,
+	Error,
+	JoinType,
+	Row,
 };
-use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator, execute::Executor};
+use reifydb_engine::{execute::Executor, RowEvaluationContext, StandardRowEvaluator};
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
-use reifydb_hash::{Hash128, xxh3_128};
+use reifydb_hash::{xxh3_128, Hash128};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{Params, RowNumber, Type, Value, internal};
+use reifydb_type::{internal, Params, RowNumber, Type, Value};
 
 use super::{JoinSide, JoinState, JoinStrategy};
 use crate::{
 	operator::{
-		Operator, Operators,
-		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful},
-		transform::TransformOperator,
+		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful}, transform::TransformOperator,
+		Operator,
+		Operators,
 	},
 	transaction::FlowTransaction,
 };
@@ -171,7 +171,7 @@ impl JoinOperator {
 
 		// Get or create a unique encoded number for this unmatched encoded
 		let (result_row_number, _is_new) =
-			self.row_number_provider.get_or_create_row_number::<JoinOperator>(txn, self, &composite_key)?;
+			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
 
 		let result = Row {
 			number: result_row_number,
@@ -197,7 +197,7 @@ impl JoinOperator {
 		let prefix = serializer.finish();
 
 		// Remove all mappings with this prefix
-		self.row_number_provider.remove_by_prefix::<JoinOperator>(txn, self, &prefix)
+		self.row_number_provider.remove_by_prefix(txn, &prefix)
 	}
 
 	pub(crate) fn join_rows(&self, txn: &mut FlowTransaction, left: &Row, right: &Row) -> crate::Result<Row> {
@@ -286,7 +286,7 @@ impl JoinOperator {
 		// Get or create a unique encoded number for this join result
 		let composite_key = EncodedKey::new(serializer.finish());
 		let (result_row_number, _is_new) =
-			self.row_number_provider.get_or_create_row_number(txn, self, &composite_key)?;
+			self.row_number_provider.get_or_create_row_number(txn, &composite_key)?;
 
 		let result = Row {
 			number: result_row_number,
@@ -498,7 +498,7 @@ impl Operator for JoinOperator {
 
 		for &row_number in rows {
 			// Get the composite key for this row number (reverse lookup)
-			if let Some(key) = self.row_number_provider.get_key_for_row_number(txn, self, row_number)? {
+			if let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number)? {
 				// Decode left and right row numbers from composite key
 				// Format: 'L' (1 byte) + left_row_number (8 bytes) + optional right_row_number (8
 				// bytes)

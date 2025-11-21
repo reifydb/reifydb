@@ -8,25 +8,25 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
-	interface::FlowNodeId,
-	util::{clock, encoding::keycode::KeySerializer},
-	value::{
+	interface::FlowNodeId, util::{clock, encoding::keycode::KeySerializer}, value::{
 		column::{Column, ColumnData, Columns},
 		encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
-	},
+	}, CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize,
+	WindowSlide,
+	WindowTimeMode,
+	WindowType,
 };
 use reifydb_engine::{ColumnEvaluationContext, RowEvaluationContext, StandardColumnEvaluator, StandardRowEvaluator};
-use reifydb_hash::{Hash128, xxh3_128};
-use reifydb_rql::expression::{Expression, column_name_from_expression};
-use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal};
+use reifydb_hash::{xxh3_128, Hash128};
+use reifydb_rql::expression::{column_name_from_expression, Expression};
+use reifydb_type::{internal, Blob, Fragment, Params, RowNumber, Type, Value};
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	operator::{
-		Operator, Operators,
-		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful},
-		transform::TransformOperator,
+		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful}, transform::TransformOperator,
+		Operator,
+		Operators,
 	},
 	transaction::FlowTransaction,
 };
@@ -314,7 +314,7 @@ impl WindowOperator {
 		if self.aggregations.is_empty() {
 			// No aggregations configured, return first event as result
 			let (result_row_number, is_new) =
-				self.row_number_provider.get_or_create_row_number(txn, self, window_key)?;
+				self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 			let mut result_row = events[0].to_row();
 			result_row.number = result_row_number;
 			return Ok(Some((result_row, is_new)));
@@ -366,8 +366,7 @@ impl WindowOperator {
 		layout.set_values(&mut encoded, &result_values);
 
 		// Use RowNumberProvider to get unique, stable row number for this window
-		let (result_row_number, is_new) =
-			self.row_number_provider.get_or_create_row_number(txn, self, window_key)?;
+		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 
 		let result_row = Row {
 			number: result_row_number,
@@ -520,7 +519,7 @@ impl Operator for WindowOperator {
 		}
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	fn get_rows(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		todo!()
 	}
 }
