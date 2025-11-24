@@ -168,7 +168,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 			) {
 				Ok(Some((_processed_version, _lag))) => {
 					// FIXME log this
-					// println!("processed {} with lag {}", _processed_version, _lag)
+					println!("processed {} with lag {}", _processed_version, _lag)
 				}
 				Ok(None) => {}
 				Err(error) => {
