@@ -7,10 +7,10 @@ use indexmap::IndexMap;
 use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view};
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
-	CommitVersion, Result, Row,
-	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Key, SourceId, WithEventBus},
+	CommitVersion, CowVec, Result, Row,
+	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, SourceId, WithEventBus},
+	key::Key,
 	log_trace,
-	util::CowVec,
 	value::encoded::EncodedValues,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
@@ -282,7 +282,6 @@ impl CdcConsume for FlowConsumer {
 			return Ok(());
 		}
 
-		// Convert raw changes to FlowDiff format
 		let mut diffs_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>> = BTreeMap::new();
 
 		for (version, changes) in changes_by_version {
@@ -347,6 +346,7 @@ impl CdcConsume for FlowConsumer {
 		} else {
 			Box::new(SameThreadedWorker::new())
 		};
+		// let worker = Box::new(SameThreadedWorker::new());
 		worker.process(txn, units, &self.flow_engine)
 	}
 }

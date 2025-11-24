@@ -1,9 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::ops::Bound::{Excluded, Included, Unbounded};
+
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
-	interface::{BoxedMultiVersionIter, MultiVersionQueryTransaction},
+	interface::{BoxedMultiVersionIter, Key, MultiVersionQueryTransaction},
+	key::KeyKind,
 	value::encoded::EncodedValues,
 };
 
@@ -14,17 +17,21 @@ impl FlowTransaction {
 	pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
 		self.metrics.increment_reads();
 
-		// Check if key is marked for removal
 		if self.pending.is_removed(key) {
 			return Ok(None);
 		}
 
-		// Check pending writes
 		if let Some(value) = self.pending.get(key) {
 			return Ok(Some(value.clone()));
 		}
 
-		match self.query.get(key)? {
+		let query = if Self::is_flow_state_key(key) {
+			&mut self.state_query
+		} else {
+			&mut self.source_query
+		};
+
+		match query.get(key)? {
 			Some(multi) => Ok(Some(multi.values)),
 			None => Ok(None),
 		}
@@ -34,31 +41,40 @@ impl FlowTransaction {
 	pub fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.metrics.increment_reads();
 
-		// Check if key is marked for removal
 		if self.pending.is_removed(key) {
 			return Ok(false);
 		}
 
-		// Check pending writes
 		if self.pending.get(key).is_some() {
 			return Ok(true);
 		}
 
-		self.query.contains_key(key)
-	}
+		let query = if Self::is_flow_state_key(key) {
+			&mut self.state_query
+		} else {
+			&mut self.source_query
+		};
 
-	/// Scan all keys in the transaction
-	pub fn scan(&mut self) -> crate::Result<BoxedMultiVersionIter> {
-		self.range(EncodedKeyRange::all())
+		query.contains_key(key)
 	}
 
 	/// Range query
 	pub fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
 		self.metrics.increment_reads();
 
-		// Merge pending writes with committed results for the range
 		let pending = self.pending.range((range.start.as_ref(), range.end.as_ref()));
-		let committed = self.query.range(range)?;
+
+		let query = match range.start.as_ref() {
+			Included(start) | Excluded(start) => {
+				if Self::is_flow_state_key(start) {
+					&mut self.state_query
+				} else {
+					&mut self.source_query
+				}
+			}
+			Unbounded => &mut self.source_query,
+		};
+		let committed = query.range(range)?;
 
 		Ok(Box::new(FlowRangeIter::new(pending, committed, self.version)))
 	}
@@ -71,9 +87,19 @@ impl FlowTransaction {
 	) -> crate::Result<BoxedMultiVersionIter> {
 		self.metrics.increment_reads();
 
-		// Merge pending writes with committed results for the range
 		let pending = self.pending.range((range.start.as_ref(), range.end.as_ref()));
-		let committed = self.query.range_batched(range, batch_size)?;
+
+		let query = match range.start.as_ref() {
+			Included(start) | Excluded(start) => {
+				if Self::is_flow_state_key(start) {
+					&mut self.state_query
+				} else {
+					&mut self.source_query
+				}
+			}
+			Unbounded => &mut self.source_query,
+		};
+		let committed = query.range_batched(range, batch_size)?;
 
 		Ok(Box::new(FlowRangeIter::new(pending, committed, self.version)))
 	}
@@ -82,19 +108,33 @@ impl FlowTransaction {
 	pub fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
 		self.metrics.increment_reads();
 
-		// Merge pending writes with committed results for the prefix
 		let range = EncodedKeyRange::prefix(prefix);
 		let pending = self.pending.range((range.start.as_ref(), range.end.as_ref()));
-		let committed = self.query.prefix(prefix)?;
+
+		let query = if Self::is_flow_state_key(prefix) {
+			&mut self.state_query
+		} else {
+			&mut self.source_query
+		};
+		let committed = query.prefix(prefix)?;
 
 		Ok(Box::new(FlowRangeIter::new(pending, committed, self.version)))
+	}
+
+	fn is_flow_state_key(key: &EncodedKey) -> bool {
+		match Key::kind(&key) {
+			None => false,
+			Some(kind) => match kind {
+				KeyKind::FlowNodeState => true,
+				KeyKind::FlowNodeInternalState => true,
+				_ => false,
+			},
+		}
 	}
 }
 
 #[cfg(test)]
 mod tests {
-	use std::collections::Bound;
-
 	use reifydb_core::{
 		CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
 		interface::{Engine, MultiVersionCommandTransaction, MultiVersionQueryTransaction},
@@ -359,7 +399,7 @@ mod tests {
 		txn.set(&make_key("c"), make_value("3")).unwrap();
 		txn.set(&make_key("d"), make_value("4")).unwrap();
 
-		let range = EncodedKeyRange::new(Bound::Included(make_key("b")), Bound::Excluded(make_key("d")));
+		let range = EncodedKeyRange::new(Included(make_key("b")), Excluded(make_key("d")));
 		let mut iter = txn.range(range).unwrap();
 		let items: Vec<_> = iter.by_ref().collect();
 

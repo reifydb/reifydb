@@ -6,12 +6,13 @@
 use reifydb_core::{
 	EncodedKey,
 	interface::FlowNodeId,
+	key::{EncodableKey, FlowNodeInternalStateKey},
 	util::{CowVec, encoding::keycode::KeySerializer},
 	value::encoded::EncodedValues,
 };
 use reifydb_type::RowNumber;
 
-use crate::{context::OperatorContext, error::Result, stateful::FFIRawStatefulOperator};
+use crate::{context::OperatorContext, error::Result};
 
 /// Provides stable row numbers for keys with automatic Insert/Update detection
 ///
@@ -36,26 +37,24 @@ impl RowNumberProvider {
 	/// Get or create RowNumbers for a batch of keys
 	/// Returns Vec<(RowNumber, is_new)> in the same order as input keys
 	/// where is_new indicates if the row number was newly created
-	pub fn get_or_create_row_numbers_batch<'a, O, I>(
+	pub fn get_or_create_row_numbers_batch<'a, I>(
 		&self,
 		ctx: &mut OperatorContext,
-		operator: &O,
 		keys: I,
 	) -> Result<Vec<(RowNumber, bool)>>
 	where
-		O: FFIRawStatefulOperator,
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
 		let mut results = Vec::new();
-		let mut counter = self.load_counter(ctx, operator)?;
+		let mut counter = self.load_counter(ctx)?;
 		let initial_counter = counter;
 
 		for key in keys {
 			// Check if we already have a row number for this key
 			let map_key = self.make_map_key(key);
-			let encoded_map_key = EncodedKey::new(map_key);
+			let internal_key = FlowNodeInternalStateKey::new(self.node, map_key.as_ref().to_vec());
 
-			if let Some(existing_row) = operator.state_get(ctx, &encoded_map_key)? {
+			if let Some(existing_row) = ctx.state().get(&internal_key.encode())? {
 				// Key exists, return existing row number
 				let bytes = existing_row.as_ref();
 				if bytes.len() >= 8 {
@@ -73,7 +72,7 @@ impl RowNumberProvider {
 
 			// Save the mapping from key to row number
 			let row_num_bytes = counter.to_be_bytes().to_vec();
-			operator.state_set(ctx, &encoded_map_key, &EncodedValues(CowVec::new(row_num_bytes)))?;
+			ctx.state().set(&internal_key.encode(), &EncodedValues(CowVec::new(row_num_bytes)))?;
 
 			results.push((new_row_number, true));
 			counter += 1;
@@ -81,7 +80,7 @@ impl RowNumberProvider {
 
 		// Save the updated counter if we allocated any new row numbers
 		if counter != initial_counter {
-			self.save_counter(ctx, operator, counter)?;
+			self.save_counter(ctx, counter)?;
 		}
 
 		Ok(results)
@@ -89,23 +88,19 @@ impl RowNumberProvider {
 
 	/// Get or create a RowNumber for a given key
 	/// Returns (RowNumber, is_new) where is_new indicates if it was newly created
-	pub fn get_or_create_row_number<O: FFIRawStatefulOperator>(
+	pub fn get_or_create_row_number(
 		&self,
 		ctx: &mut OperatorContext,
-		operator: &O,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
-		Ok(self.get_or_create_row_numbers_batch(ctx, operator, std::iter::once(key))?
-			.into_iter()
-			.next()
-			.unwrap())
+		Ok(self.get_or_create_row_numbers_batch(ctx, std::iter::once(key))?.into_iter().next().unwrap())
 	}
 
 	/// Load the current counter value
-	fn load_counter<O: FFIRawStatefulOperator>(&self, ctx: &mut OperatorContext, operator: &O) -> Result<u64> {
+	fn load_counter(&self, ctx: &mut OperatorContext) -> Result<u64> {
 		let key = self.make_counter_key();
-		let encoded_key = EncodedKey::new(key);
-		match operator.state_get(ctx, &encoded_key)? {
+		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
+		match ctx.state().get(&internal_key.encode())? {
 			None => Ok(1), // First time, start at 1
 			Some(state_row) => {
 				// Parse the stored counter
@@ -123,58 +118,46 @@ impl RowNumberProvider {
 	}
 
 	/// Save the counter value
-	fn save_counter<O: FFIRawStatefulOperator>(
-		&self,
-		ctx: &mut OperatorContext,
-		operator: &O,
-		counter: u64,
-	) -> Result<()> {
+	fn save_counter(&self, ctx: &mut OperatorContext, counter: u64) -> Result<()> {
 		let key = self.make_counter_key();
-		let encoded_key = EncodedKey::new(key);
+		let internal_key = FlowNodeInternalStateKey::new(self.node, key.as_ref().to_vec());
 		let value = EncodedValues(CowVec::new(counter.to_be_bytes().to_vec()));
-		operator.state_set(ctx, &encoded_key, &value)?;
+		ctx.state().set(&internal_key.encode(), &value)?;
 		Ok(())
 	}
 
-	/// Create a key for the counter, including node_id
-	fn make_counter_key(&self) -> Vec<u8> {
+	/// Create a key for the counter (node_id added by FlowNodeInternalStateKey wrapper)
+	fn make_counter_key(&self) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u64(self.node.0);
 		serializer.extend_u8(b'C'); // 'C' for counter
-		serializer.finish()
+		EncodedKey::new(serializer.finish())
 	}
 
-	/// Create a mapping key for a given encoded key, including node_id
-	fn make_map_key(&self, key: &EncodedKey) -> Vec<u8> {
+	/// Create a mapping key for a given encoded key (node_id added by FlowNodeInternalStateKey wrapper)
+	fn make_map_key(&self, key: &EncodedKey) -> EncodedKey {
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u64(self.node.0);
 		serializer.extend_u8(b'M'); // 'M' for mapping
 		serializer.extend_bytes(key.as_ref());
-		serializer.finish()
+		EncodedKey::new(serializer.finish())
 	}
 
 	/// Remove all row number mappings with the given prefix
 	/// This is useful for cleaning up all join results from a specific left row
-	pub fn remove_by_prefix<O: FFIRawStatefulOperator>(
-		&self,
-		ctx: &mut OperatorContext,
-		operator: &O,
-		key_prefix: &[u8],
-	) -> Result<()> {
-		// Create the prefix for scanning
+	pub fn remove_by_prefix(&self, ctx: &mut OperatorContext, key_prefix: &[u8]) -> Result<()> {
+		// Create the prefix for scanning (node_id added by FlowNodeInternalStateKey wrapper)
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
-		serializer.extend_u64(self.node.0);
 		serializer.extend_u8(b'M'); // 'M' for mapping
 		prefix.extend_from_slice(&serializer.finish());
 		prefix.extend_from_slice(key_prefix);
 
-		// Scan for all keys with this prefix and remove them
-		let prefix_key = EncodedKey::new(prefix);
-		let entries = operator.state_scan_prefix(ctx, &prefix_key)?;
+		// Wrap with FlowNodeInternalStateKey and scan for all keys with this prefix
+		let internal_prefix = FlowNodeInternalStateKey::new(self.node, prefix);
+		let prefix_key = internal_prefix.encode();
+		let entries = ctx.state().scan_prefix(&prefix_key)?;
 
 		for (key, _) in entries {
-			operator.state_remove(ctx, &key)?;
+			ctx.state().remove(&key)?;
 		}
 
 		Ok(())
@@ -185,7 +168,11 @@ impl RowNumberProvider {
 mod tests {
 	use std::collections::HashMap;
 
-	use reifydb_core::{EncodedKey, Row, interface::FlowNodeId};
+	use reifydb_core::{
+		EncodedKey, Row,
+		interface::FlowNodeId,
+		key::{EncodableKey, FlowNodeInternalStateKey},
+	};
 	use reifydb_type::{RowNumber, Value};
 
 	use crate::{
@@ -233,7 +220,7 @@ mod tests {
 
 		let key = encode_key("test_key");
 		let mut ctx = harness.create_operator_context();
-		let (row_num, is_new) = ctx.get_or_create_row_number(harness.operator(), &key).unwrap();
+		let (row_num, is_new) = ctx.get_or_create_row_number(&key).unwrap();
 
 		assert_eq!(row_num.0, 1);
 		assert!(is_new);
@@ -249,10 +236,10 @@ mod tests {
 		let key = encode_key("test_key");
 
 		let mut ctx = harness.create_operator_context();
-		let (row_num1, is_new1) = ctx.get_or_create_row_number(harness.operator(), &key).unwrap();
+		let (row_num1, is_new1) = ctx.get_or_create_row_number(&key).unwrap();
 
 		let mut ctx = harness.create_operator_context();
-		let (row_num2, is_new2) = ctx.get_or_create_row_number(harness.operator(), &key).unwrap();
+		let (row_num2, is_new2) = ctx.get_or_create_row_number(&key).unwrap();
 
 		assert_eq!(row_num1.0, row_num2.0);
 		assert!(is_new1);
@@ -271,13 +258,13 @@ mod tests {
 		let key3 = encode_key("key3");
 
 		let mut ctx = harness.create_operator_context();
-		let (row_num1, _) = ctx.get_or_create_row_number(harness.operator(), &key1).unwrap();
+		let (row_num1, _) = ctx.get_or_create_row_number(&key1).unwrap();
 
 		let mut ctx = harness.create_operator_context();
-		let (row_num2, _) = ctx.get_or_create_row_number(harness.operator(), &key2).unwrap();
+		let (row_num2, _) = ctx.get_or_create_row_number(&key2).unwrap();
 
 		let mut ctx = harness.create_operator_context();
-		let (row_num3, _) = ctx.get_or_create_row_number(harness.operator(), &key3).unwrap();
+		let (row_num3, _) = ctx.get_or_create_row_number(&key3).unwrap();
 
 		assert_eq!(row_num1.0, 1);
 		assert_eq!(row_num2.0, 2);
@@ -300,10 +287,10 @@ mod tests {
 		let key = encode_key("same_key");
 
 		let mut ctx1 = harness1.create_operator_context();
-		let (row_num1, is_new1) = ctx1.get_or_create_row_number(harness1.operator(), &key).unwrap();
+		let (row_num1, is_new1) = ctx1.get_or_create_row_number(&key).unwrap();
 
 		let mut ctx2 = harness2.create_operator_context();
-		let (row_num2, is_new2) = ctx2.get_or_create_row_number(harness2.operator(), &key).unwrap();
+		let (row_num2, is_new2) = ctx2.get_or_create_row_number(&key).unwrap();
 
 		// Both should be new because they're from different operators
 		assert!(is_new1);
@@ -325,22 +312,22 @@ mod tests {
 		let key2 = encode_key("key2");
 
 		let mut ctx = harness.create_operator_context();
-		ctx.get_or_create_row_number(harness.operator(), &key1).unwrap();
+		ctx.get_or_create_row_number(&key1).unwrap();
 
 		let mut ctx = harness.create_operator_context();
-		ctx.get_or_create_row_number(harness.operator(), &key2).unwrap();
+		ctx.get_or_create_row_number(&key2).unwrap();
 
 		// New key should continue from where we left off
 		let key3 = encode_key("key3");
 		let mut ctx = harness.create_operator_context();
-		let (row_num3, is_new3) = ctx.get_or_create_row_number(harness.operator(), &key3).unwrap();
+		let (row_num3, is_new3) = ctx.get_or_create_row_number(&key3).unwrap();
 
 		assert!(is_new3);
 		assert_eq!(row_num3.0, 3);
 
 		// Old keys should still return their original row numbers
 		let mut ctx = harness.create_operator_context();
-		let (row_num1, is_new1) = ctx.get_or_create_row_number(harness.operator(), &key1).unwrap();
+		let (row_num1, is_new1) = ctx.get_or_create_row_number(&key1).unwrap();
 		assert!(!is_new1);
 		assert_eq!(row_num1.0, 1);
 	}
@@ -356,7 +343,7 @@ mod tests {
 		for i in 0..1000 {
 			let key = encode_key(format!("key_{}", i));
 			let mut ctx = harness.create_operator_context();
-			let (row_num, is_new) = ctx.get_or_create_row_number(harness.operator(), &key).unwrap();
+			let (row_num, is_new) = ctx.get_or_create_row_number(&key).unwrap();
 			assert!(is_new);
 			assert_eq!(row_num.0, i + 1);
 		}
@@ -364,7 +351,7 @@ mod tests {
 		// Verify a random sample still works correctly
 		let key_500 = encode_key("key_500");
 		let mut ctx = harness.create_operator_context();
-		let (row_num, is_new) = ctx.get_or_create_row_number(harness.operator(), &key_500).unwrap();
+		let (row_num, is_new) = ctx.get_or_create_row_number(&key_500).unwrap();
 		assert!(!is_new);
 		assert_eq!(row_num.0, 501);
 	}
@@ -382,25 +369,25 @@ mod tests {
 		let key_b1 = encode_key("prefix_b_1");
 
 		let mut ctx = harness.create_operator_context();
-		ctx.get_or_create_row_number(harness.operator(), &key_a1).unwrap();
+		ctx.get_or_create_row_number(&key_a1).unwrap();
 
 		let mut ctx = harness.create_operator_context();
-		ctx.get_or_create_row_number(harness.operator(), &key_a2).unwrap();
+		ctx.get_or_create_row_number(&key_a2).unwrap();
 
 		let mut ctx = harness.create_operator_context();
-		ctx.get_or_create_row_number(harness.operator(), &key_b1).unwrap();
+		ctx.get_or_create_row_number(&key_b1).unwrap();
 
 		// Remove all keys with prefix "prefix_a"
 		let provider = RowNumberProvider::new(FlowNodeId(1));
 		let mut ctx = harness.create_operator_context();
-		provider.remove_by_prefix(&mut ctx, harness.operator(), b"prefix_a").unwrap();
+		provider.remove_by_prefix(&mut ctx, b"prefix_a").unwrap();
 
 		// Keys with prefix_a should be new again
 		let mut ctx = harness.create_operator_context();
-		let (_, is_new_a1) = ctx.get_or_create_row_number(harness.operator(), &key_a1).unwrap();
+		let (_, is_new_a1) = ctx.get_or_create_row_number(&key_a1).unwrap();
 
 		let mut ctx = harness.create_operator_context();
-		let (_, is_new_a2) = ctx.get_or_create_row_number(harness.operator(), &key_a2).unwrap();
+		let (_, is_new_a2) = ctx.get_or_create_row_number(&key_a2).unwrap();
 
 		// But they'll get new row numbers (continuing from counter)
 		assert!(is_new_a1);
@@ -408,7 +395,7 @@ mod tests {
 
 		// Key with prefix_b should still be known
 		let mut ctx = harness.create_operator_context();
-		let (_, is_new_b1) = ctx.get_or_create_row_number(harness.operator(), &key_b1).unwrap();
+		let (_, is_new_b1) = ctx.get_or_create_row_number(&key_b1).unwrap();
 		assert!(!is_new_b1);
 	}
 
@@ -422,13 +409,13 @@ mod tests {
 		let empty_key = encode_key("");
 
 		let mut ctx = harness.create_operator_context();
-		let (row_num, is_new) = ctx.get_or_create_row_number(harness.operator(), &empty_key).unwrap();
+		let (row_num, is_new) = ctx.get_or_create_row_number(&empty_key).unwrap();
 		assert!(is_new);
 		assert_eq!(row_num.0, 1);
 
 		// Should work for duplicate empty keys too
 		let mut ctx = harness.create_operator_context();
-		let (row_num2, is_new2) = ctx.get_or_create_row_number(harness.operator(), &empty_key).unwrap();
+		let (row_num2, is_new2) = ctx.get_or_create_row_number(&empty_key).unwrap();
 		assert!(!is_new2);
 		assert_eq!(row_num2.0, 1);
 	}
@@ -444,12 +431,12 @@ mod tests {
 		let binary_key = EncodedKey::new(vec![0x00, 0xFF, 0x00, 0xAB, 0xCD]);
 
 		let mut ctx = harness.create_operator_context();
-		let (row_num, is_new) = ctx.get_or_create_row_number(harness.operator(), &binary_key).unwrap();
+		let (row_num, is_new) = ctx.get_or_create_row_number(&binary_key).unwrap();
 		assert!(is_new);
 		assert_eq!(row_num.0, 1);
 
 		let mut ctx = harness.create_operator_context();
-		let (row_num2, is_new2) = ctx.get_or_create_row_number(harness.operator(), &binary_key).unwrap();
+		let (row_num2, is_new2) = ctx.get_or_create_row_number(&binary_key).unwrap();
 		assert!(!is_new2);
 		assert_eq!(row_num2.0, 1);
 	}
@@ -466,39 +453,48 @@ mod tests {
 
 		// First access key1
 		let mut ctx = harness.create_operator_context();
-		let (row_num1_first, _) = ctx.get_or_create_row_number(harness.operator(), &key1).unwrap();
+		let (row_num1_first, _) = ctx.get_or_create_row_number(&key1).unwrap();
 		assert_eq!(row_num1_first.0, 1);
 
 		// First access key2
 		let mut ctx = harness.create_operator_context();
-		let (row_num2_first, _) = ctx.get_or_create_row_number(harness.operator(), &key2).unwrap();
+		let (row_num2_first, _) = ctx.get_or_create_row_number(&key2).unwrap();
 		assert_eq!(row_num2_first.0, 2);
 
 		// Second access key1 - should return same number
 		let mut ctx = harness.create_operator_context();
-		let (row_num1_second, is_new1) = ctx.get_or_create_row_number(harness.operator(), &key1).unwrap();
+		let (row_num1_second, is_new1) = ctx.get_or_create_row_number(&key1).unwrap();
 		assert!(!is_new1);
 		assert_eq!(row_num1_second.0, 1);
 
 		// Second access key2 - should return same number
 		let mut ctx = harness.create_operator_context();
-		let (row_num2_second, is_new2) = ctx.get_or_create_row_number(harness.operator(), &key2).unwrap();
+		let (row_num2_second, is_new2) = ctx.get_or_create_row_number(&key2).unwrap();
 		assert!(!is_new2);
 		assert_eq!(row_num2_second.0, 2);
 	}
 
 	#[test]
 	fn test_counter_key_uniqueness_per_node() {
-		// Counter keys for different nodes should be different
+		// Counter keys for different nodes should be different after wrapping with FlowNodeInternalStateKey
 		let provider1 = RowNumberProvider::new(FlowNodeId(1));
 		let provider2 = RowNumberProvider::new(FlowNodeId(2));
 
-		let key1 = provider1.make_counter_key();
-		let key2 = provider2.make_counter_key();
+		let internal_key1 = provider1.make_counter_key();
+		let internal_key2 = provider2.make_counter_key();
 
-		assert!(!key1.is_empty());
-		assert!(!key2.is_empty());
-		assert_ne!(key1, key2);
+		// Internal keys are the same (node_id is added by wrapper)
+		assert_eq!(internal_key1, internal_key2);
+
+		// But after wrapping with FlowNodeInternalStateKey, they should be different
+		let final_key1 =
+			FlowNodeInternalStateKey::new(provider1.node, internal_key1.as_ref().to_vec()).encode();
+		let final_key2 =
+			FlowNodeInternalStateKey::new(provider2.node, internal_key2.as_ref().to_vec()).encode();
+
+		assert!(!final_key1.is_empty());
+		assert!(!final_key2.is_empty());
+		assert_ne!(final_key1, final_key2);
 	}
 
 	#[test]
@@ -547,15 +543,15 @@ mod tests {
 		let key3 = encode_key("batch_key_3");
 
 		let mut ctx = harness.create_operator_context();
-		let (rn1, _) = provider.get_or_create_row_number(&mut ctx, harness.operator(), &key1).unwrap();
+		let (rn1, _) = provider.get_or_create_row_number(&mut ctx, &key1).unwrap();
 		assert_eq!(rn1.0, 1);
 
 		let mut ctx = harness.create_operator_context();
-		let (rn2, _) = provider.get_or_create_row_number(&mut ctx, harness.operator(), &key2).unwrap();
+		let (rn2, _) = provider.get_or_create_row_number(&mut ctx, &key2).unwrap();
 		assert_eq!(rn2.0, 2);
 
 		let mut ctx = harness.create_operator_context();
-		let (rn3, _) = provider.get_or_create_row_number(&mut ctx, harness.operator(), &key3).unwrap();
+		let (rn3, _) = provider.get_or_create_row_number(&mut ctx, &key3).unwrap();
 		assert_eq!(rn3.0, 3);
 
 		// Now test batch with mix of existing and new keys
@@ -566,9 +562,7 @@ mod tests {
 		let batch_keys = vec![&key2, &key4, &key1, &key5, &key3];
 
 		let mut ctx = harness.create_operator_context();
-		let results = provider
-			.get_or_create_row_numbers_batch(&mut ctx, harness.operator(), batch_keys.into_iter())
-			.unwrap();
+		let results = provider.get_or_create_row_numbers_batch(&mut ctx, batch_keys.into_iter()).unwrap();
 
 		// Verify results are in correct order and have correct values
 		assert_eq!(results.len(), 5);
@@ -597,20 +591,18 @@ mod tests {
 		// by checking that the next new key gets row number 6
 		let key6 = encode_key("batch_key_6");
 		let mut ctx = harness.create_operator_context();
-		let (rn6, is_new6) = provider.get_or_create_row_number(&mut ctx, harness.operator(), &key6).unwrap();
+		let (rn6, is_new6) = provider.get_or_create_row_number(&mut ctx, &key6).unwrap();
 		assert_eq!(rn6.0, 6);
 		assert!(is_new6);
 
 		// Verify all mappings are still correct by retrieving them individually
 		let mut ctx = harness.create_operator_context();
-		let (check_rn4, is_new4) =
-			provider.get_or_create_row_number(&mut ctx, harness.operator(), &key4).unwrap();
+		let (check_rn4, is_new4) = provider.get_or_create_row_number(&mut ctx, &key4).unwrap();
 		assert_eq!(check_rn4.0, 4);
 		assert!(!is_new4);
 
 		let mut ctx = harness.create_operator_context();
-		let (check_rn5, is_new5) =
-			provider.get_or_create_row_number(&mut ctx, harness.operator(), &key5).unwrap();
+		let (check_rn5, is_new5) = provider.get_or_create_row_number(&mut ctx, &key5).unwrap();
 		assert_eq!(check_rn5.0, 5);
 		assert!(!is_new5);
 	}

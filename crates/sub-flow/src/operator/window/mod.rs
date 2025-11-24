@@ -314,7 +314,7 @@ impl WindowOperator {
 		if self.aggregations.is_empty() {
 			// No aggregations configured, return first event as result
 			let (result_row_number, is_new) =
-				self.row_number_provider.get_or_create_row_number(txn, self, window_key)?;
+				self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 			let mut result_row = events[0].to_row();
 			result_row.number = result_row_number;
 			return Ok(Some((result_row, is_new)));
@@ -366,8 +366,7 @@ impl WindowOperator {
 		layout.set_values(&mut encoded, &result_values);
 
 		// Use RowNumberProvider to get unique, stable row number for this window
-		let (result_row_number, is_new) =
-			self.row_number_provider.get_or_create_row_number(txn, self, window_key)?;
+		let (result_row_number, is_new) = self.row_number_provider.get_or_create_row_number(txn, window_key)?;
 
 		let result_row = Row {
 			number: result_row_number,
@@ -520,7 +519,7 @@ impl Operator for WindowOperator {
 		}
 	}
 
-	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
+	fn get_rows(&self, _txn: &mut FlowTransaction, _rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
 		todo!()
 	}
 }

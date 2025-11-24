@@ -3,7 +3,8 @@ use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
 
 use super::hash::{
-	add_to_state_entry, emit_joined_rows_left_to_right, emit_joined_rows_right_to_left,
+	add_to_state_entry, emit_joined_rows_batch_left, emit_joined_rows_batch_right, emit_joined_rows_left_to_right,
+	emit_joined_rows_right_to_left, emit_remove_joined_rows_batch_left, emit_remove_joined_rows_batch_right,
 	emit_remove_joined_rows_left, emit_remove_joined_rows_right, emit_update_joined_rows_left,
 	emit_update_joined_rows_right, get_left_rows, is_first_right_row, remove_from_state_entry, update_row_in_entry,
 };
@@ -363,6 +364,186 @@ impl LeftHashJoin {
 
 			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator)?;
 			result.extend(insert_diffs);
+		}
+
+		Ok(result)
+	}
+
+	pub(crate) fn handle_insert_batch(
+		&self,
+		txn: &mut FlowTransaction,
+		rows: &[Row],
+		side: JoinSide,
+		key_hash: &Hash128,
+		state: &mut JoinState,
+		operator: &JoinOperator,
+	) -> crate::Result<Vec<FlowDiff>> {
+		if rows.is_empty() {
+			return Ok(Vec::new());
+		}
+
+		let mut result = Vec::new();
+
+		match side {
+			JoinSide::Left => {
+				// Add all rows to state first
+				for row in rows {
+					add_to_state_entry(txn, &mut state.left, key_hash, row)?;
+				}
+
+				// Check if there are matching right rows
+				let joined_rows = emit_joined_rows_batch_left(
+					txn,
+					rows,
+					&state.right,
+					key_hash,
+					operator,
+					&operator.right_parent,
+				)?;
+
+				if !joined_rows.is_empty() {
+					result.extend(joined_rows);
+				} else {
+					// No matches - emit unmatched left rows for all
+					for row in rows {
+						let unmatched_row = operator.unmatched_left_row(txn, row)?;
+						result.push(FlowDiff::Insert {
+							post: unmatched_row,
+						});
+					}
+				}
+			}
+			JoinSide::Right => {
+				let is_first = is_first_right_row(txn, &state.right, key_hash)?;
+
+				// Add all rows to state first
+				for row in rows {
+					add_to_state_entry(txn, &mut state.right, key_hash, row)?;
+				}
+
+				// If first right row(s), remove previously emitted unmatched left rows
+				if is_first {
+					if let Some(left_entry) = state.left.get(txn, key_hash)? {
+						let left_rows = operator.left_parent.get_rows(txn, &left_entry.rows)?;
+						for left_row_opt in left_rows {
+							if let Some(left_row) = left_row_opt {
+								let unmatched_row =
+									operator.unmatched_left_row(txn, &left_row)?;
+								result.push(FlowDiff::Remove {
+									pre: unmatched_row,
+								});
+							}
+						}
+					}
+				}
+
+				// Emit all joined rows in one batch
+				let joined_rows = emit_joined_rows_batch_right(
+					txn,
+					rows,
+					&state.left,
+					key_hash,
+					operator,
+					&operator.left_parent,
+				)?;
+				result.extend(joined_rows);
+			}
+		}
+
+		Ok(result)
+	}
+
+	pub(crate) fn handle_remove_batch(
+		&self,
+		txn: &mut FlowTransaction,
+		rows: &[Row],
+		side: JoinSide,
+		key_hash: &Hash128,
+		state: &mut JoinState,
+		operator: &JoinOperator,
+		version: CommitVersion,
+	) -> crate::Result<Vec<FlowDiff>> {
+		if rows.is_empty() {
+			return Ok(Vec::new());
+		}
+
+		let mut result = Vec::new();
+
+		match side {
+			JoinSide::Left => {
+				// Clean up row number mappings for all left rows
+				for row in rows {
+					operator.cleanup_left_row_joins(txn, row.number.0)?;
+				}
+
+				// First emit all remove diffs in one batch
+				let removed_joins = emit_remove_joined_rows_batch_left(
+					txn,
+					rows,
+					&state.right,
+					key_hash,
+					operator,
+					&operator.right_parent,
+				)?;
+
+				if !removed_joins.is_empty() {
+					result.extend(removed_joins);
+				} else {
+					// No joined rows to remove - remove unmatched left rows
+					for row in rows {
+						let unmatched_row = operator.unmatched_left_row(txn, row)?;
+						result.push(FlowDiff::Remove {
+							pre: unmatched_row,
+						});
+					}
+				}
+
+				// Then remove all rows from state
+				for row in rows {
+					remove_from_state_entry(txn, &mut state.left, key_hash, row)?;
+				}
+			}
+			JoinSide::Right => {
+				// First emit all remove diffs in one batch
+				let removed_joins = emit_remove_joined_rows_batch_right(
+					txn,
+					rows,
+					&state.left,
+					key_hash,
+					operator,
+					&operator.left_parent,
+				)?;
+				result.extend(removed_joins);
+
+				// Check if this will make right entries empty
+				let will_become_empty = if let Some(entry) = state.right.get(txn, key_hash)? {
+					entry.rows.len() <= rows.len()
+				} else {
+					false
+				};
+
+				// Remove all rows from state
+				for row in rows {
+					remove_from_state_entry(txn, &mut state.right, key_hash, row)?;
+				}
+
+				// If right side became empty, re-emit left rows as unmatched
+				if will_become_empty && !state.right.contains_key(txn, key_hash)? {
+					let left_rows = get_left_rows(
+						txn,
+						&state.left,
+						key_hash,
+						&operator.left_parent,
+						version,
+					)?;
+					for left_row in &left_rows {
+						let unmatched_row = operator.unmatched_left_row(txn, left_row)?;
+						result.push(FlowDiff::Insert {
+							post: unmatched_row,
+						});
+					}
+				}
+			}
 		}
 
 		Ok(result)

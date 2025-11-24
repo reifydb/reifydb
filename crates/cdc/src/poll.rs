@@ -168,6 +168,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 			) {
 				Ok(Some((_processed_version, _lag))) => {
 					// FIXME log this
+					println!("processed {} with lag {}", _processed_version, _lag)
 				}
 				Ok(None) => {}
 				Err(error) => {
@@ -229,7 +230,7 @@ fn fetch_cdcs_since(
 	max_batch_size: Option<u64>,
 ) -> Result<Vec<Cdc>> {
 	let upper_bound = match max_batch_size {
-		Some(size) => Bound::Excluded(CommitVersion(since_version.0.saturating_add(size).saturating_add(1))),
+		Some(size) => Bound::Included(CommitVersion(since_version.0.saturating_add(size))),
 		None => Bound::Unbounded,
 	};
 	txn.with_cdc_query(|cdc| Ok(cdc.range(Bound::Excluded(since_version), upper_bound)?.collect::<Vec<_>>()))

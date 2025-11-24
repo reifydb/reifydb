@@ -3,7 +3,8 @@ use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
 
 use super::hash::{
-	add_to_state_entry, emit_joined_rows_left_to_right, emit_joined_rows_right_to_left,
+	add_to_state_entry, emit_joined_rows_batch_left, emit_joined_rows_batch_right, emit_joined_rows_left_to_right,
+	emit_joined_rows_right_to_left, emit_remove_joined_rows_batch_left, emit_remove_joined_rows_batch_right,
 	emit_remove_joined_rows_left, emit_remove_joined_rows_right, emit_update_joined_rows_left,
 	emit_update_joined_rows_right, remove_from_state_entry, update_row_in_entry,
 };
@@ -182,6 +183,108 @@ impl InnerHashJoin {
 
 			let insert_diffs = self.handle_insert(txn, post, side, new_key, state, operator)?;
 			result.extend(insert_diffs);
+		}
+
+		Ok(result)
+	}
+
+	pub(crate) fn handle_insert_batch(
+		&self,
+		txn: &mut FlowTransaction,
+		rows: &[Row],
+		side: JoinSide,
+		key_hash: &Hash128,
+		state: &mut JoinState,
+		operator: &JoinOperator,
+	) -> crate::Result<Vec<FlowDiff>> {
+		if rows.is_empty() {
+			return Ok(Vec::new());
+		}
+
+		// Add all rows to state first
+		for row in rows {
+			match side {
+				JoinSide::Left => {
+					add_to_state_entry(txn, &mut state.left, key_hash, row)?;
+				}
+				JoinSide::Right => {
+					add_to_state_entry(txn, &mut state.right, key_hash, row)?;
+				}
+			}
+		}
+
+		// Then emit all joined rows in one batch
+		match side {
+			JoinSide::Left => emit_joined_rows_batch_left(
+				txn,
+				rows,
+				&state.right,
+				key_hash,
+				operator,
+				&operator.right_parent,
+			),
+			JoinSide::Right => emit_joined_rows_batch_right(
+				txn,
+				rows,
+				&state.left,
+				key_hash,
+				operator,
+				&operator.left_parent,
+			),
+		}
+	}
+
+	pub(crate) fn handle_remove_batch(
+		&self,
+		txn: &mut FlowTransaction,
+		rows: &[Row],
+		side: JoinSide,
+		key_hash: &Hash128,
+		state: &mut JoinState,
+		operator: &JoinOperator,
+		_version: CommitVersion,
+	) -> crate::Result<Vec<FlowDiff>> {
+		if rows.is_empty() {
+			return Ok(Vec::new());
+		}
+
+		// First emit all remove diffs in one batch
+		let result = match side {
+			JoinSide::Left => {
+				// Clean up row number mappings for all left rows
+				for row in rows {
+					operator.cleanup_left_row_joins(txn, row.number.0)?;
+				}
+
+				emit_remove_joined_rows_batch_left(
+					txn,
+					rows,
+					&state.right,
+					key_hash,
+					operator,
+					&operator.right_parent,
+				)?
+			}
+			JoinSide::Right => emit_remove_joined_rows_batch_right(
+				txn,
+				rows,
+				&state.left,
+				key_hash,
+				operator,
+				&operator.left_parent,
+			)?,
+		};
+
+		// Then remove all rows from state
+		for row in rows {
+			match side {
+				JoinSide::Left => {
+					remove_from_state_entry(txn, &mut state.left, key_hash, row)?;
+				}
+				JoinSide::Right => {
+					remove_from_state_entry(txn, &mut state.right, key_hash, row)?;
+				}
+			}
 		}
 
 		Ok(result)

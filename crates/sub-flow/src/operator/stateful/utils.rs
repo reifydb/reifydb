@@ -4,7 +4,7 @@
 use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::FlowNodeId,
-	key::{EncodableKey, FlowNodeStateKey},
+	key::{EncodableKey, FlowNodeInternalStateKey, FlowNodeStateKey},
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
 
@@ -39,6 +39,42 @@ pub fn state_set(
 /// Remove a key
 pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<()> {
 	let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
+	let encoded_key = state_key.encode();
+	txn.remove(&encoded_key)?;
+	Ok(())
+}
+
+/// Get raw bytes for a key from internal state (not subject to retention policies)
+pub fn internal_state_get(
+	id: FlowNodeId,
+	txn: &mut FlowTransaction,
+	key: &EncodedKey,
+) -> crate::Result<Option<EncodedValues>> {
+	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
+	let encoded_key = state_key.encode();
+
+	match txn.get(&encoded_key)? {
+		Some(multi) => Ok(Some(multi)),
+		None => Ok(None),
+	}
+}
+
+/// Set raw bytes for a key in internal state (not subject to retention policies)
+pub fn internal_state_set(
+	id: FlowNodeId,
+	txn: &mut FlowTransaction,
+	key: &EncodedKey,
+	value: EncodedValues,
+) -> crate::Result<()> {
+	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
+	let encoded_key = state_key.encode();
+	txn.set(&encoded_key, value)?;
+	Ok(())
+}
+
+/// Remove a key from internal state
+pub fn internal_state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<()> {
+	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 	txn.remove(&encoded_key)?;
 	Ok(())

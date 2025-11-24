@@ -4,7 +4,7 @@ use reifydb_core::{EncodedKey, interface::FlowNodeId};
 use reifydb_flow_operator_abi::FFIContext;
 use reifydb_type::RowNumber;
 
-use crate::stateful::{FFIRawStatefulOperator, RowNumberProvider, State};
+use crate::stateful::{RowNumberProvider, State};
 
 /// Operator context providing access to state and other resources
 pub struct OperatorContext {
@@ -41,12 +41,8 @@ impl OperatorContext {
 	/// Returns `(RowNumber, is_new)` where `is_new` indicates if this is
 	/// a newly created row number.
 	/// ```
-	pub fn get_or_create_row_number<O: FFIRawStatefulOperator>(
-		&mut self,
-		operator: &O,
-		key: &EncodedKey,
-	) -> crate::Result<(RowNumber, bool)> {
+	pub fn get_or_create_row_number(&mut self, key: &EncodedKey) -> crate::Result<(RowNumber, bool)> {
 		let provider = RowNumberProvider::new(self.operator_id());
-		provider.get_or_create_row_number(self, operator, key)
+		provider.get_or_create_row_number(self, key)
 	}
 }

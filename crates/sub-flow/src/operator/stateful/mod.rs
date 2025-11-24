@@ -5,7 +5,7 @@ use reifydb_core::{EncodedKey, interface::BoxedMultiVersionIter, value::encoded:
 
 mod keyed;
 mod raw;
-mod row_number;
+mod row;
 mod single;
 #[cfg(test)]
 pub mod test_utils;
@@ -15,7 +15,7 @@ mod window;
 pub use keyed::KeyedStateful;
 pub use raw::RawStatefulOperator;
 use reifydb_core::key::{EncodableKey, FlowNodeStateKey};
-pub use row_number::RowNumberProvider;
+pub use row::RowNumberProvider;
 pub use single::SingleStateful;
 pub use utils::*;
 pub use window::WindowStateful;

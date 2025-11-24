@@ -2,14 +2,40 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 pub mod parallel;
-pub mod processor;
 pub mod same;
 
 pub use parallel::ParallelWorkerPool;
-pub use processor::WorkerPool;
 use reifydb_core::{CommitVersion, interface::FlowId};
+use reifydb_engine::StandardCommandTransaction;
 use reifydb_flow_operator_sdk::FlowChange;
 pub use same::SameThreadedWorker;
+
+use crate::FlowEngine;
+
+/// Trait for different worker pool implementations
+pub trait WorkerPool {
+	/// Process a batch of units of work grouped by flow
+	///
+	/// Each flow's units are ordered by version and must be processed sequentially.
+	/// Different flows can be processed in parallel.
+	///
+	/// # Arguments
+	/// * `txn` - Parent transaction for creating FlowTransactions
+	/// * `units` - Units of work grouped by flow
+	/// * `engine` - Engine for processing flows
+	///
+	/// # Returns
+	/// Ok(()) if all units processed successfully, Err if any failed
+	fn process(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		units: UnitsOfWork,
+		engine: &FlowEngine,
+	) -> crate::Result<()>;
+
+	/// Get a name for this worker implementation (for logging)
+	fn name(&self) -> &str;
+}
 
 /// A unit of work representing a flow and all its source changes
 #[derive(Debug, Clone)]

@@ -11,7 +11,7 @@ mod pending;
 mod read;
 mod state;
 #[cfg(test)]
-mod test_utils;
+mod utils;
 mod write;
 
 pub use metrics::FlowTransactionMetrics;
@@ -91,7 +91,7 @@ pub struct FlowTransaction {
 	/// CDC event version for snapshot isolation.
 	///
 	/// This is the version at which the CDC event was generated, NOT the parent transaction version.
-	/// All reads through the query transaction see the database state as of this CDC version.
+	/// Source data reads see the database state as of this CDC version.
 	/// This guarantees proper snapshot isolation - the flow processes data as it existed when
 	/// the CDC event was created, regardless of concurrent modifications.
 	version: CommitVersion,
@@ -105,23 +105,19 @@ pub struct FlowTransaction {
 	/// Performance metrics tracking reads, writes, and other operations.
 	metrics: FlowTransactionMetrics,
 
-	/// Read-only query transaction for accessing multi-version storage.
+	/// Read-only query transaction for accessing source data at CDC snapshot version.
 	///
-	/// Provides snapshot reads at `version`. This is the primary read path for data
-	/// not in the `pending` buffer. The query transaction is configured at construction
-	/// time to read at a specific version and cannot be modified.
-	query: StandardQueryTransaction,
-}
+	/// Provides snapshot reads at `version`. Used for reading source tables/views
+	/// to ensure consistent view of the data being processed by the flow.
+	source_query: StandardQueryTransaction,
 
-// SAFETY: FlowTransaction can be sent across threads because:
-// - version: CommitVersion is Copy (u64 wrapper)
-// - query: StandardQueryTransaction wraps Arc-based multi-version storage (Send + Sync)
-// - pending: PendingWrites is a BTreeMap owned by this transaction (Send)
-// - metrics: FlowTransactionMetrics contains primitive counters (Send)
-//
-// This enables parallel flow processing where each FlowTransaction is moved to a
-// worker thread via rayon or similar thread pool.
-unsafe impl Send for FlowTransaction {}
+	/// Read-only query transaction for accessing flow state at latest version.
+	///
+	/// Reads at the latest committed version. Used for reading flow state
+	/// (join tables, distinct values, counters) that must be visible across
+	/// all CDC versions to maintain continuity.
+	state_query: StandardQueryTransaction,
+}
 
 impl FlowTransaction {
 	/// Create a new FlowTransaction from a parent transaction at a specific CDC version
@@ -133,14 +129,16 @@ impl FlowTransaction {
 	/// * `parent` - The parent command transaction to derive from
 	/// * `version` - The CDC event version for snapshot isolation (NOT parent.version())
 	pub fn new(parent: &StandardCommandTransaction, version: CommitVersion) -> Self {
-		let mut query = parent.multi.begin_query().unwrap();
-		query.read_as_of_version_inclusive(version).unwrap();
+		let mut source_query = parent.multi.begin_query().unwrap();
+		source_query.read_as_of_version_inclusive(version).unwrap();
 
+		let state_query = parent.multi.begin_query().unwrap();
 		Self {
 			version,
 			pending: PendingWrites::new(),
 			metrics: FlowTransactionMetrics::new(),
-			query,
+			source_query,
+			state_query,
 		}
 	}
 
@@ -150,19 +148,9 @@ impl FlowTransaction {
 	}
 
 	/// Update the transaction to read at a new version
-	///
-	/// This should be called after commit() and before processing the next unit of work.
-	/// The pending writes buffer is expected to be already cleared by the previous commit().
 	pub fn update_version(&mut self, new_version: CommitVersion) -> crate::Result<()> {
-		// Update the version field
 		self.version = new_version;
-
-		// Update the query transaction's read version
-		self.query.read_as_of_version_inclusive(new_version)?;
-
-		// Note: pending is already cleared by commit()
-		// Metrics are kept cumulative across units
-
+		self.source_query.read_as_of_version_inclusive(new_version)?;
 		Ok(())
 	}
 
