@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use diagnostic::flow::flow_transaction_keyspace_overlap;
 use reifydb_core::interface::MultiVersionCommandTransaction;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::{diagnostic, return_error, util::hex};
@@ -29,9 +30,7 @@ impl FlowTransaction {
 			for (key, _) in self.pending.iter_sorted() {
 				// Check if key exists in parent
 				if parent_pending.contains_key(key) {
-					return_error!(diagnostic::flow::flow_transaction_keyspace_overlap(
-						hex::encode(key.as_ref())
-					));
+					return_error!(flow_transaction_keyspace_overlap(hex::encode(key.as_ref())));
 				}
 			}
 		}
@@ -49,7 +48,6 @@ impl FlowTransaction {
 		}
 
 		self.pending.clear();
-
 		Ok(self.metrics.clone())
 	}
 }
@@ -61,7 +59,7 @@ mod tests {
 	use super::*;
 	use crate::{
 		operator::stateful::test_utils::test::create_test_transaction,
-		transaction::test_utils::test::{from_store, make_key, make_value},
+		transaction::utils::test::{from_store, make_key, make_value},
 	};
 
 	#[test]

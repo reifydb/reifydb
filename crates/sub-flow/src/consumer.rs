@@ -1,23 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::BTreeMap, path::PathBuf};
-
 use indexmap::IndexMap;
 use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view};
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
-	CommitVersion, Result, Row,
-	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, SourceId, WithEventBus},
-	log_trace,
-	util::CowVec,
+	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, Identity, Key, Params, SourceId, WithEventBus}, log_trace, util::CowVec,
 	value::encoded::EncodedValues,
+	CommitVersion,
+	Result,
+	Row,
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_rql::flow::Flow;
 use reifydb_sub_api::SchedulerService;
 use reifydb_type::{RowNumber, Value};
+use std::{collections::BTreeMap, path::PathBuf};
 
 use crate::{
 	builder::OperatorFactory,
@@ -287,7 +286,6 @@ impl CdcConsume for FlowConsumer {
 			return Ok(());
 		}
 
-		// Convert raw changes to FlowDiff format
 		let mut diffs_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>> = BTreeMap::new();
 
 		for (version, changes) in changes_by_version {
@@ -352,6 +350,7 @@ impl CdcConsume for FlowConsumer {
 		} else {
 			Box::new(SameThreadedWorker::new())
 		};
+		// let worker = Box::new(SameThreadedWorker::new());
 		worker.process(txn, units, &self.flow_engine)
 	}
 }

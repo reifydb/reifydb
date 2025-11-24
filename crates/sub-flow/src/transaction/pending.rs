@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::{value::encoded::EncodedValues, EncodedKey};
+use std::collections::btree_map::{Iter, Range};
 use std::collections::BTreeMap;
-
-use reifydb_core::{EncodedKey, value::encoded::EncodedValues};
+use std::ops::RangeBounds;
 
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]
@@ -94,14 +95,14 @@ impl PendingWrites {
 	}
 
 	/// Iterate over all pending operations in sorted key order
-	pub fn iter_sorted(&self) -> std::collections::btree_map::Iter<'_, EncodedKey, Pending> {
+	pub fn iter_sorted(&self) -> Iter<'_, EncodedKey, Pending> {
 		self.writes.iter()
 	}
 
 	/// Range query over pending operations in sorted key order
-	pub fn range<R>(&self, range: R) -> std::collections::btree_map::Range<'_, EncodedKey, Pending>
+	pub fn range<R>(&self, range: R) -> Range<'_, EncodedKey, Pending>
 	where
-		R: std::ops::RangeBounds<EncodedKey>,
+		R: RangeBounds<EncodedKey>,
 	{
 		self.writes.range(range)
 	}
