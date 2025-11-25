@@ -35,7 +35,7 @@ impl EncodedValuesLayout {
 	}
 
 	pub fn try_get_uuid7(&self, row: &EncodedValues, index: usize) -> Option<Uuid7> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::Uuid7 {
 			Some(self.get_uuid7(row, index))
 		} else {
 			None
@@ -278,5 +278,15 @@ mod tests {
 
 		// The second UUID should be "greater" due to timestamp ordering
 		assert!(retrieved2.as_bytes() > retrieved1.as_bytes());
+	}
+
+	#[test]
+	fn test_try_get_uuid7_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_uuid7(&row, 0), None);
 	}
 }

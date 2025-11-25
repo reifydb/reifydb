@@ -37,7 +37,7 @@ impl EncodedValuesLayout {
 	}
 
 	pub fn try_get_datetime(&self, row: &EncodedValues, index: usize) -> Option<DateTime> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::DateTime {
 			Some(self.get_datetime(row, index))
 		} else {
 			None
@@ -212,5 +212,15 @@ mod tests {
 		let microsecond_precision = DateTime::new(2024, 6, 15, 14, 30, 25, 123456000).unwrap();
 		layout.set_datetime(&mut row, 0, microsecond_precision.clone());
 		assert_eq!(layout.get_datetime(&row, 0), microsecond_precision);
+	}
+
+	#[test]
+	fn test_try_get_datetime_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_datetime(&row, 0), None);
 	}
 }
