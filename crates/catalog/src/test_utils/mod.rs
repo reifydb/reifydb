@@ -90,7 +90,7 @@ pub fn create_test_column(
 			constraint,
 			if_not_exists: false,
 			policies,
-			index: ColumnIndex(columns.len() as u16),
+			index: ColumnIndex(columns.len() as u8),
 			auto_increment: false,
 		},
 	)
@@ -165,14 +165,13 @@ pub fn create_test_ring_buffer_column(
 		ColumnToCreate {
 			fragment: None,
 			namespace_name: "test_namespace",
-			table: TableId(0), /* Not used - source is passed
-			                    * separately */
+			table: TableId(0),
 			table_name: "test_ring_buffer",
 			column: name.to_string(),
 			constraint,
 			if_not_exists: false,
 			policies,
-			index: ColumnIndex(columns.len() as u16),
+			index: ColumnIndex(columns.len() as u8),
 			auto_increment: false,
 		},
 	)

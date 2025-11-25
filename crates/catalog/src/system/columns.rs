@@ -38,7 +38,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: SOURCE_TYPE,
 					name: "source_type".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8), // "table" or "view"
+					constraint: TypeConstraint::unconstrained(Type::Uint1),
 					policies: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
@@ -54,7 +54,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: TYPE,
 					name: "type".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					constraint: TypeConstraint::unconstrained(Type::Uint1),
 					policies: vec![],
 					index: ColumnIndex(4),
 					auto_increment: false,
@@ -62,7 +62,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 				ColumnDef {
 					id: POSITION,
 					name: "position".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Uint4),
+					constraint: TypeConstraint::unconstrained(Type::Uint1),
 					policies: vec![],
 					index: ColumnIndex(5),
 					auto_increment: false,

@@ -5,7 +5,7 @@ use reifydb_core::interface::{ColumnKey, QueryTransaction, SourceId};
 
 use crate::{
 	CatalogStore,
-	store::column::{ColumnDef, ColumnId, layout::table_column},
+	store::column::{ColumnDef, ColumnId, layout::source_column},
 };
 
 /// Extended column information for system catalogs
@@ -27,7 +27,7 @@ impl CatalogStore {
 			.range(ColumnKey::full_scan(source))?
 			.map(|multi| {
 				let row = multi.values;
-				ColumnId(table_column::LAYOUT.get_u64(&row, table_column::ID))
+				ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID))
 			})
 			.collect::<Vec<_>>();
 

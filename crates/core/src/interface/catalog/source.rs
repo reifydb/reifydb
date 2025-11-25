@@ -145,6 +145,17 @@ impl From<SourceId> for u64 {
 }
 
 impl SourceId {
+	/// Returns the type discriminant as a u8 value
+	pub fn to_type_u8(&self) -> u8 {
+		match self {
+			SourceId::Table(_) => 1,
+			SourceId::View(_) => 2,
+			SourceId::Flow(_) => 3,
+			SourceId::TableVirtual(_) => 4,
+			SourceId::RingBuffer(_) => 5,
+		}
+	}
+
 	/// Returns the raw u64 value regardless of the source type
 	pub fn as_u64(&self) -> u64 {
 		match self {
