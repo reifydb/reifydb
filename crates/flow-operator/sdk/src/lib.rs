@@ -14,6 +14,7 @@ pub mod error;
 pub mod ffi;
 pub mod marshal;
 pub mod stateful;
+pub mod store;
 pub mod testing;
 
 pub use change::FlowChangeBuilder;
@@ -25,6 +26,7 @@ pub use reifydb_core::{
 	value::encoded::{EncodedKey, EncodedValues},
 };
 pub use stateful::State;
+pub use store::Store;
 
 /// Origin of a flow change
 #[derive(Debug, Clone)]
@@ -130,5 +132,6 @@ pub mod prelude {
 		context::OperatorContext,
 		error::{FFIError, Result},
 		stateful::State,
+		store::Store,
 	};
 }

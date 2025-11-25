@@ -4,7 +4,10 @@ use reifydb_core::{EncodedKey, interface::FlowNodeId};
 use reifydb_flow_operator_abi::FFIContext;
 use reifydb_type::RowNumber;
 
-use crate::stateful::{RowNumberProvider, State};
+use crate::{
+	stateful::{RowNumberProvider, State},
+	store::Store,
+};
 
 /// Operator context providing access to state and other resources
 pub struct OperatorContext {
@@ -31,6 +34,11 @@ impl OperatorContext {
 	/// Get a state manager
 	pub fn state(&mut self) -> State<'_> {
 		State::new(self)
+	}
+
+	/// Get read-only access to the underlying store
+	pub fn store(&mut self) -> Store<'_> {
+		Store::new(self)
 	}
 
 	/// Get or create a row number for a given key
