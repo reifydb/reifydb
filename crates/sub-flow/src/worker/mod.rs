@@ -4,12 +4,13 @@
 pub mod parallel;
 pub mod same;
 
-use crate::FlowEngine;
 pub use parallel::ParallelWorkerPool;
-use reifydb_core::{interface::FlowId, CommitVersion};
+use reifydb_core::{CommitVersion, interface::FlowId};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_flow_operator_sdk::FlowChange;
 pub use same::SameThreadedWorker;
+
+use crate::FlowEngine;
 
 /// Trait for different worker pool implementations
 pub trait WorkerPool {

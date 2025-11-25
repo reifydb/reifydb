@@ -1,28 +1,23 @@
 use std::sync::Arc;
 
-use indexmap::IndexMap;
-
 use bincode::{config::standard, serde::encode_to_vec};
+use indexmap::IndexMap;
 use reifydb_core::{
-	interface::FlowNodeId, log_trace, util::encoding::keycode::KeySerializer, value::encoded::EncodedValuesLayout,
-	EncodedKey,
-	Error,
-	JoinType,
-	Row,
+	EncodedKey, Error, JoinType, Row, interface::FlowNodeId, log_trace, util::encoding::keycode::KeySerializer,
+	value::encoded::EncodedValuesLayout,
 };
-use reifydb_engine::{execute::Executor, RowEvaluationContext, StandardRowEvaluator};
+use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator, execute::Executor};
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
-use reifydb_hash::{xxh3_128, Hash128};
+use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
-use reifydb_type::{internal, Params, RowNumber, Type, Value};
+use reifydb_type::{Params, RowNumber, Type, Value, internal};
 
-use super::{JoinSide, JoinState, JoinStrategy};
-use super::layout::JoinedLayoutBuilder;
+use super::{JoinSide, JoinState, JoinStrategy, layout::JoinedLayoutBuilder};
 use crate::{
 	operator::{
-		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful}, transform::TransformOperator,
-		Operator,
-		Operators,
+		Operator, Operators,
+		stateful::{RawStatefulOperator, RowNumberProvider, SingleStateful},
+		transform::TransformOperator,
 	},
 	transaction::FlowTransaction,
 };
@@ -255,10 +250,8 @@ impl JoinOperator {
 	/// Decode a u64 from keycode format (big-endian with bits flipped).
 	/// The keycode format inverts all bits for proper byte-order sorting.
 	fn decode_row_number_from_keycode(bytes: &[u8]) -> u64 {
-		let arr: [u8; 8] = [
-			!bytes[0], !bytes[1], !bytes[2], !bytes[3],
-			!bytes[4], !bytes[5], !bytes[6], !bytes[7],
-		];
+		let arr: [u8; 8] =
+			[!bytes[0], !bytes[1], !bytes[2], !bytes[3], !bytes[4], !bytes[5], !bytes[6], !bytes[7]];
 		u64::from_be_bytes(arr)
 	}
 
@@ -297,15 +290,12 @@ impl JoinOperator {
 		let builder = JoinedLayoutBuilder::new(left, &right_rows[0], &self.alias);
 
 		// Build all composite keys upfront
-		let composite_keys: Vec<EncodedKey> = right_rows
-			.iter()
-			.map(|right| Self::make_composite_key(left.number, right.number))
-			.collect();
+		let composite_keys: Vec<EncodedKey> =
+			right_rows.iter().map(|right| Self::make_composite_key(left.number, right.number)).collect();
 
 		// Batch call to get_or_create_row_numbers
-		let row_numbers = self
-			.row_number_provider
-			.get_or_create_row_numbers_batch(txn, composite_keys.iter())?;
+		let row_numbers =
+			self.row_number_provider.get_or_create_row_numbers_batch(txn, composite_keys.iter())?;
 
 		// Build all result rows
 		let results = right_rows
@@ -332,15 +322,12 @@ impl JoinOperator {
 		let builder = JoinedLayoutBuilder::new(&left_rows[0], right, &self.alias);
 
 		// Build all composite keys upfront
-		let composite_keys: Vec<EncodedKey> = left_rows
-			.iter()
-			.map(|left| Self::make_composite_key(left.number, right.number))
-			.collect();
+		let composite_keys: Vec<EncodedKey> =
+			left_rows.iter().map(|left| Self::make_composite_key(left.number, right.number)).collect();
 
 		// Batch call to get_or_create_row_numbers
-		let row_numbers = self
-			.row_number_provider
-			.get_or_create_row_numbers_batch(txn, composite_keys.iter())?;
+		let row_numbers =
+			self.row_number_provider.get_or_create_row_numbers_batch(txn, composite_keys.iter())?;
 
 		// Build all result rows
 		let results = left_rows
@@ -380,9 +367,8 @@ impl JoinOperator {
 		}
 
 		// Single batch call to get_or_create_row_numbers for all results
-		let row_numbers = self
-			.row_number_provider
-			.get_or_create_row_numbers_batch(txn, composite_keys.iter())?;
+		let row_numbers =
+			self.row_number_provider.get_or_create_row_numbers_batch(txn, composite_keys.iter())?;
 
 		// Build all result rows
 		let results = pairs
@@ -471,10 +457,16 @@ impl Operator for JoinOperator {
 		// Phase 1: Compute keys and group diffs
 		for diff in change.diffs {
 			match diff {
-				FlowDiff::Insert { post } => {
+				FlowDiff::Insert {
+					post,
+				} => {
 					let key = match side {
-						JoinSide::Left => self.compute_join_key(&post, &self.left_exprs, evaluator)?,
-						JoinSide::Right => self.compute_join_key(&post, &self.right_exprs, evaluator)?,
+						JoinSide::Left => {
+							self.compute_join_key(&post, &self.left_exprs, evaluator)?
+						}
+						JoinSide::Right => {
+							self.compute_join_key(&post, &self.right_exprs, evaluator)?
+						}
 					};
 					if let Some(key_hash) = key {
 						inserts_by_key.entry(key_hash).or_default().push(post);
@@ -482,10 +474,16 @@ impl Operator for JoinOperator {
 						inserts_undefined.push(post);
 					}
 				}
-				FlowDiff::Remove { pre } => {
+				FlowDiff::Remove {
+					pre,
+				} => {
 					let key = match side {
-						JoinSide::Left => self.compute_join_key(&pre, &self.left_exprs, evaluator)?,
-						JoinSide::Right => self.compute_join_key(&pre, &self.right_exprs, evaluator)?,
+						JoinSide::Left => {
+							self.compute_join_key(&pre, &self.left_exprs, evaluator)?
+						}
+						JoinSide::Right => {
+							self.compute_join_key(&pre, &self.right_exprs, evaluator)?
+						}
 					};
 					if let Some(key_hash) = key {
 						removes_by_key.entry(key_hash).or_default().push(pre);
@@ -493,7 +491,10 @@ impl Operator for JoinOperator {
 						removes_undefined.push(pre);
 					}
 				}
-				FlowDiff::Update { pre, post } => {
+				FlowDiff::Update {
+					pre,
+					post,
+				} => {
 					let (old_key, new_key) = match side {
 						JoinSide::Left => (
 							self.compute_join_key(&pre, &self.left_exprs, evaluator)?,
@@ -526,14 +527,23 @@ impl Operator for JoinOperator {
 		// Phase 3: Process batched removes
 		for (key_hash, rows) in removes_by_key {
 			log_trace!("[JOIN] apply: batch remove {} rows for key={:?}", rows.len(), key_hash);
-			let diffs = self.strategy.handle_remove_batch(txn, &rows, side, &key_hash, &mut state, self, change.version)?;
+			let diffs = self.strategy.handle_remove_batch(
+				txn,
+				&rows,
+				side,
+				&key_hash,
+				&mut state,
+				self,
+				change.version,
+			)?;
 			log_trace!("[JOIN] apply: batch remove produced {} diffs", diffs.len());
 			result.extend(diffs);
 		}
 
 		// Process removes with undefined keys individually
 		for pre in removes_undefined {
-			let diffs = self.strategy.handle_remove(txn, &pre, side, None, &mut state, self, change.version)?;
+			let diffs =
+				self.strategy.handle_remove(txn, &pre, side, None, &mut state, self, change.version)?;
 			result.extend(diffs);
 		}
 
@@ -611,7 +621,10 @@ impl Operator for JoinOperator {
 						layout: joined.layout,
 					}));
 				} else {
-					log_trace!("[JOIN] get_rows: right row not found for row_number={}", row_number.0);
+					log_trace!(
+						"[JOIN] get_rows: right row not found for row_number={}",
+						row_number.0
+					);
 					result.push(None);
 				}
 			} else {

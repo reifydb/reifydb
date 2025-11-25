@@ -1,15 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use super::{iter_range::FlowRangeIter, FlowTransaction};
-use reifydb_core::interface::Key;
-use reifydb_core::key::KeyKind;
-use reifydb_core::{
-    interface::{BoxedMultiVersionIter, MultiVersionQueryTransaction}, value::encoded::EncodedValues,
-    EncodedKey,
-    EncodedKeyRange,
-};
 use std::ops::Bound::{Excluded, Included, Unbounded};
+
+use reifydb_core::{
+	EncodedKey, EncodedKeyRange,
+	interface::{BoxedMultiVersionIter, Key, MultiVersionQueryTransaction},
+	key::KeyKind,
+	value::encoded::EncodedValues,
+};
+
+use super::{FlowTransaction, iter_range::FlowRangeIter};
 
 impl FlowTransaction {
 	/// Get a value by key, checking pending writes first, then querying multi-version store
@@ -71,9 +72,7 @@ impl FlowTransaction {
 					&mut self.source_query
 				}
 			}
-			Unbounded => {
-				&mut self.source_query
-			}
+			Unbounded => &mut self.source_query,
 		};
 		let committed = query.range(range)?;
 
@@ -98,9 +97,7 @@ impl FlowTransaction {
 					&mut self.source_query
 				}
 			}
-			Unbounded => {
-				&mut self.source_query
-			}
+			Unbounded => &mut self.source_query,
 		};
 		let committed = query.range_batched(range, batch_size)?;
 
@@ -138,16 +135,16 @@ impl FlowTransaction {
 
 #[cfg(test)]
 mod tests {
-    use reifydb_core::{
-        interface::{Engine, MultiVersionCommandTransaction, MultiVersionQueryTransaction}, value::encoded::EncodedValues, CommitVersion, CowVec,
-        EncodedKey,
-        EncodedKeyRange,
-    };
+	use reifydb_core::{
+		CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
+		interface::{Engine, MultiVersionCommandTransaction, MultiVersionQueryTransaction},
+		value::encoded::EncodedValues,
+	};
 
-    use super::*;
-    use crate::operator::stateful::test_utils::test::create_test_transaction;
+	use super::*;
+	use crate::operator::stateful::test_utils::test::create_test_transaction;
 
-    fn make_key(s: &str) -> EncodedKey {
+	fn make_key(s: &str) -> EncodedKey {
 		EncodedKey::new(s.as_bytes().to_vec())
 	}
 

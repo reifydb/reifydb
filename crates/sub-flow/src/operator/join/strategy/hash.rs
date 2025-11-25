@@ -90,7 +90,12 @@ pub(crate) fn emit_joined_rows(
 		JoinSide::Right => operator.join_rows_batch_right(txn, &opposite_rows, primary_row)?,
 	};
 
-	Ok(joined_rows.into_iter().map(|post| FlowDiff::Insert { post }).collect())
+	Ok(joined_rows
+		.into_iter()
+		.map(|post| FlowDiff::Insert {
+			post,
+		})
+		.collect())
 }
 
 /// Emit joined rows when inserting a left row that has right matches
@@ -138,7 +143,12 @@ pub(crate) fn emit_remove_joined_rows(
 		JoinSide::Right => operator.join_rows_batch_right(txn, &opposite_rows, primary_row)?,
 	};
 
-	Ok(joined_rows.into_iter().map(|pre| FlowDiff::Remove { pre }).collect())
+	Ok(joined_rows
+		.into_iter()
+		.map(|pre| FlowDiff::Remove {
+			pre,
+		})
+		.collect())
 }
 
 /// Emit removal of all joined rows involving a left row
@@ -193,7 +203,14 @@ pub(crate) fn emit_update_joined_rows(
 		),
 	};
 
-	Ok(pre_rows.into_iter().zip(post_rows).map(|(pre, post)| FlowDiff::Update { pre, post }).collect())
+	Ok(pre_rows
+		.into_iter()
+		.zip(post_rows)
+		.map(|(pre, post)| FlowDiff::Update {
+			pre,
+			post,
+		})
+		.collect())
 }
 
 /// Emit updates for all joined rows when a left row is updated
@@ -207,7 +224,16 @@ pub(crate) fn emit_update_joined_rows_left(
 	right_parent: &Arc<Operators>,
 	_version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
-	emit_update_joined_rows(txn, old_left_row, new_left_row, JoinSide::Left, right_store, key_hash, operator, right_parent)
+	emit_update_joined_rows(
+		txn,
+		old_left_row,
+		new_left_row,
+		JoinSide::Left,
+		right_store,
+		key_hash,
+		operator,
+		right_parent,
+	)
 }
 
 /// Emit updates for all joined rows when a right row is updated
@@ -221,7 +247,16 @@ pub(crate) fn emit_update_joined_rows_right(
 	left_parent: &Arc<Operators>,
 	_version: CommitVersion,
 ) -> crate::Result<Vec<FlowDiff>> {
-	emit_update_joined_rows(txn, old_right_row, new_right_row, JoinSide::Right, left_store, key_hash, operator, left_parent)
+	emit_update_joined_rows(
+		txn,
+		old_right_row,
+		new_right_row,
+		JoinSide::Right,
+		left_store,
+		key_hash,
+		operator,
+		left_parent,
+	)
 }
 
 /// Check if a right side has any rows for a given key
@@ -279,7 +314,6 @@ pub(crate) fn get_right_rows(
 	get_rows_from_store(txn, right_store, key_hash, right_parent)
 }
 
-
 /// Batch emit joined rows for multiple inserts with the same key.
 /// Unified function that handles both left and right batch inserts.
 pub(crate) fn emit_joined_rows_batch(
@@ -306,7 +340,12 @@ pub(crate) fn emit_joined_rows_batch(
 		JoinSide::Right => operator.join_rows_batch_full(txn, &opposite_rows, primary_rows)?,
 	};
 
-	Ok(joined_rows.into_iter().map(|post| FlowDiff::Insert { post }).collect())
+	Ok(joined_rows
+		.into_iter()
+		.map(|post| FlowDiff::Insert {
+			post,
+		})
+		.collect())
 }
 
 /// Batch emit joined rows for multiple left inserts with the same key
@@ -358,7 +397,12 @@ pub(crate) fn emit_remove_joined_rows_batch(
 		JoinSide::Right => operator.join_rows_batch_full(txn, &opposite_rows, primary_rows)?,
 	};
 
-	Ok(joined_rows.into_iter().map(|pre| FlowDiff::Remove { pre }).collect())
+	Ok(joined_rows
+		.into_iter()
+		.map(|pre| FlowDiff::Remove {
+			pre,
+		})
+		.collect())
 }
 
 /// Batch emit removals for multiple left removes with the same key

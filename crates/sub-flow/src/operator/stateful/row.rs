@@ -1,14 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
+use std::iter::once;
+
 use reifydb_core::{
+	EncodedKey,
 	interface::FlowNodeId,
 	key::{EncodableKey, FlowNodeInternalStateKey},
-	util::{encoding::keycode::KeySerializer, CowVec},
+	util::{CowVec, encoding::keycode::KeySerializer},
 	value::encoded::{EncodedKeyRange, EncodedValues},
-	EncodedKey,
 };
 use reifydb_type::RowNumber;
-use std::iter::once;
 
 use crate::{
 	operator::stateful::utils::{internal_state_get, internal_state_set},

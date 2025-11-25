@@ -20,6 +20,7 @@ use std::{
 use reifydb_core::{CowVec, value::encoded::EncodedKey};
 use reifydb_flow_operator_abi::{
 	BufferFFI, FFIContext, HostCallbacks, LogCallbacks, MemoryCallbacks, StateCallbacks, StateIteratorFFI,
+	StoreCallbacks, StoreIteratorFFI,
 };
 
 use super::TestContext;
@@ -339,31 +340,65 @@ extern "C" fn test_state_iterator_free(iterator: *mut StateIteratorFFI) {
 
 /// Capture log message to TestContext
 #[unsafe(no_mangle)]
-extern "C" fn test_log_message(_operator_id: u64, level: u32, message: *const u8, message_len: usize) {
-	if message.is_null() {
-		return;
-	}
+extern "C" fn test_log_message(_operator_id: u64, _level: u32, _message: *const u8, _message_len: usize) {
+	unimplemented!()
+}
 
-	// Convert message to string
-	let msg_str = unsafe {
-		let bytes = from_raw_parts(message, message_len);
-		String::from_utf8_lossy(bytes).to_string()
-	};
+// ============================================================================
+// Store Callbacks (Stub - not available in tests)
+// ============================================================================
 
-	// Format with log level prefix
-	let formatted = match level {
-		0 => format!("[TRACE] {}", msg_str),
-		1 => format!("[DEBUG] {}", msg_str),
-		2 => format!("[INFO] {}", msg_str),
-		3 => format!("[WARN] {}", msg_str),
-		4 => format!("[ERROR] {}", msg_str),
-		_ => format!("[UNKNOWN] {}", msg_str),
-	};
+/// Store get - returns not found (store not available in tests)
+extern "C" fn test_store_get(_ctx: *mut FFIContext, _key: *const u8, _key_len: usize, _output: *mut BufferFFI) -> i32 {
+	unimplemented!()
+}
 
-	// Note: We can't access TestContext here without passing it through
-	// For now, log messages are effectively discarded in tests
-	// TODO: Find a way to capture logs to TestContext
-	eprintln!("{}", formatted);
+/// Store contains_key - returns false (store not available in tests)
+extern "C" fn test_store_contains_key(
+	_ctx: *mut FFIContext,
+	_key: *const u8,
+	_key_len: usize,
+	_result: *mut u8,
+) -> i32 {
+	unimplemented!()
+}
+
+/// Store prefix - returns empty iterator (store not available in tests)
+extern "C" fn test_store_prefix(
+	_ctx: *mut FFIContext,
+	_prefix: *const u8,
+	_prefix_len: usize,
+	_iterator_out: *mut *mut StoreIteratorFFI,
+) -> i32 {
+	unimplemented!()
+}
+
+/// Store range - returns empty iterator (store not available in tests)
+extern "C" fn test_store_range(
+	_ctx: *mut FFIContext,
+	_start: *const u8,
+	_start_len: usize,
+	_start_bound_type: u8,
+	_end: *const u8,
+	_end_len: usize,
+	_end_bound_type: u8,
+	_iterator_out: *mut *mut StoreIteratorFFI,
+) -> i32 {
+	unimplemented!()
+}
+
+/// Store iterator next - no-op (no iterators created)
+extern "C" fn test_store_iterator_next(
+	_iterator: *mut StoreIteratorFFI,
+	_key_out: *mut BufferFFI,
+	_value_out: *mut BufferFFI,
+) -> i32 {
+	unimplemented!()
+}
+
+/// Store iterator free - no-op
+extern "C" fn test_store_iterator_free(_iterator: *mut StoreIteratorFFI) {
+	unimplemented!()
 }
 
 // ============================================================================
@@ -389,6 +424,14 @@ pub fn create_test_callbacks() -> HostCallbacks {
 		},
 		log: LogCallbacks {
 			message: test_log_message,
+		},
+		store: StoreCallbacks {
+			get: test_store_get,
+			contains_key: test_store_contains_key,
+			prefix: test_store_prefix,
+			range: test_store_range,
+			iterator_next: test_store_iterator_next,
+			iterator_free: test_store_iterator_free,
 		},
 	}
 }

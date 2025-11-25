@@ -8,25 +8,25 @@ use bincode::{
 	serde::{decode_from_slice, encode_to_vec},
 };
 use reifydb_core::{
-	interface::FlowNodeId, util::{clock, encoding::keycode::KeySerializer}, value::{
+	CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize, WindowSlide, WindowTimeMode, WindowType,
+	interface::FlowNodeId,
+	util::{clock, encoding::keycode::KeySerializer},
+	value::{
 		column::{Column, ColumnData, Columns},
 		encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
-	}, CowVec, EncodedKey, EncodedKeyRange, Error, Row, WindowSize,
-	WindowSlide,
-	WindowTimeMode,
-	WindowType,
+	},
 };
 use reifydb_engine::{ColumnEvaluationContext, RowEvaluationContext, StandardColumnEvaluator, StandardRowEvaluator};
-use reifydb_hash::{xxh3_128, Hash128};
-use reifydb_rql::expression::{column_name_from_expression, Expression};
-use reifydb_type::{internal, Blob, Fragment, Params, RowNumber, Type, Value};
+use reifydb_hash::{Hash128, xxh3_128};
+use reifydb_rql::expression::{Expression, column_name_from_expression};
+use reifydb_type::{Blob, Fragment, Params, RowNumber, Type, Value, internal};
 use serde::{Deserialize, Serialize};
 
 use crate::{
 	operator::{
-		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful}, transform::TransformOperator,
-		Operator,
-		Operators,
+		Operator, Operators,
+		stateful::{RawStatefulOperator, RowNumberProvider, WindowStateful},
+		transform::TransformOperator,
 	},
 	transaction::FlowTransaction,
 };

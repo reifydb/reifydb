@@ -52,8 +52,12 @@ impl JoinStrategy {
 		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_remove(txn, pre, side, key_hash, state, operator, version),
-			JoinStrategy::InnerHash(s) => s.handle_remove(txn, pre, side, key_hash, state, operator, version),
+			JoinStrategy::LeftHash(s) => {
+				s.handle_remove(txn, pre, side, key_hash, state, operator, version)
+			}
+			JoinStrategy::InnerHash(s) => {
+				s.handle_remove(txn, pre, side, key_hash, state, operator, version)
+			}
 		}
 	}
 
@@ -70,8 +74,12 @@ impl JoinStrategy {
 		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
-			JoinStrategy::InnerHash(s) => s.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version),
+			JoinStrategy::LeftHash(s) => {
+				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version)
+			}
+			JoinStrategy::InnerHash(s) => {
+				s.handle_update(txn, pre, post, side, old_key, new_key, state, operator, version)
+			}
 		}
 	}
 
@@ -101,8 +109,12 @@ impl JoinStrategy {
 		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
 		match self {
-			JoinStrategy::LeftHash(s) => s.handle_remove_batch(txn, rows, side, key_hash, state, operator, version),
-			JoinStrategy::InnerHash(s) => s.handle_remove_batch(txn, rows, side, key_hash, state, operator, version),
+			JoinStrategy::LeftHash(s) => {
+				s.handle_remove_batch(txn, rows, side, key_hash, state, operator, version)
+			}
+			JoinStrategy::InnerHash(s) => {
+				s.handle_remove_batch(txn, rows, side, key_hash, state, operator, version)
+			}
 		}
 	}
 }

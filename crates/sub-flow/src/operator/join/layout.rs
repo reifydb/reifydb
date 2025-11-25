@@ -1,6 +1,6 @@
 use std::collections::HashSet;
 
-use reifydb_core::{value::encoded::EncodedValuesNamedLayout, Row};
+use reifydb_core::{Row, value::encoded::EncodedValuesNamedLayout};
 use reifydb_type::{RowNumber, Type, Value};
 
 /// Builder for creating combined layouts when joining left and right rows.
@@ -54,8 +54,7 @@ impl JoinedLayoutBuilder {
 			combined_types.push(right.layout.fields().fields[i].r#type);
 		}
 
-		let fields: Vec<(String, Type)> =
-			combined_names.into_iter().zip(combined_types.into_iter()).collect();
+		let fields: Vec<(String, Type)> = combined_names.into_iter().zip(combined_types.into_iter()).collect();
 		let layout = EncodedValuesNamedLayout::new(fields);
 
 		Self {

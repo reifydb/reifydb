@@ -3,9 +3,8 @@ use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
 
 use super::hash::{
-	add_to_state_entry, emit_joined_rows_batch_left, emit_joined_rows_batch_right,
-	emit_joined_rows_left_to_right, emit_joined_rows_right_to_left,
-	emit_remove_joined_rows_batch_left, emit_remove_joined_rows_batch_right,
+	add_to_state_entry, emit_joined_rows_batch_left, emit_joined_rows_batch_right, emit_joined_rows_left_to_right,
+	emit_joined_rows_right_to_left, emit_remove_joined_rows_batch_left, emit_remove_joined_rows_batch_right,
 	emit_remove_joined_rows_left, emit_remove_joined_rows_right, emit_update_joined_rows_left,
 	emit_update_joined_rows_right, remove_from_state_entry, update_row_in_entry,
 };
@@ -17,7 +16,6 @@ use crate::{
 pub(crate) struct InnerHashJoin;
 
 impl InnerHashJoin {
-
 	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -217,26 +215,22 @@ impl InnerHashJoin {
 
 		// Then emit all joined rows in one batch
 		match side {
-			JoinSide::Left => {
-				emit_joined_rows_batch_left(
-					txn,
-					rows,
-					&state.right,
-					key_hash,
-					operator,
-					&operator.right_parent,
-				)
-			}
-			JoinSide::Right => {
-				emit_joined_rows_batch_right(
-					txn,
-					rows,
-					&state.left,
-					key_hash,
-					operator,
-					&operator.left_parent,
-				)
-			}
+			JoinSide::Left => emit_joined_rows_batch_left(
+				txn,
+				rows,
+				&state.right,
+				key_hash,
+				operator,
+				&operator.right_parent,
+			),
+			JoinSide::Right => emit_joined_rows_batch_right(
+				txn,
+				rows,
+				&state.left,
+				key_hash,
+				operator,
+				&operator.left_parent,
+			),
 		}
 	}
 
@@ -271,16 +265,14 @@ impl InnerHashJoin {
 					&operator.right_parent,
 				)?
 			}
-			JoinSide::Right => {
-				emit_remove_joined_rows_batch_right(
-					txn,
-					rows,
-					&state.left,
-					key_hash,
-					operator,
-					&operator.left_parent,
-				)?
-			}
+			JoinSide::Right => emit_remove_joined_rows_batch_right(
+				txn,
+				rows,
+				&state.left,
+				key_hash,
+				operator,
+				&operator.left_parent,
+			)?,
 		};
 
 		// Then remove all rows from state

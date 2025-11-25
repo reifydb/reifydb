@@ -45,7 +45,11 @@ pub fn state_remove(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey)
 }
 
 /// Get raw bytes for a key from internal state (not subject to retention policies)
-pub fn internal_state_get(id: FlowNodeId, txn: &mut FlowTransaction, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
+pub fn internal_state_get(
+	id: FlowNodeId,
+	txn: &mut FlowTransaction,
+	key: &EncodedKey,
+) -> crate::Result<Option<EncodedValues>> {
 	let state_key = FlowNodeInternalStateKey::new(id, key.as_ref().to_vec());
 	let encoded_key = state_key.encode();
 

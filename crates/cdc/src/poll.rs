@@ -2,24 +2,24 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-    ops::Bound,
-    sync::{
-        atomic::{AtomicBool, Ordering},
-        Arc,
-    },
-    thread::{self, JoinHandle},
-    time::Duration,
+	ops::Bound,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+	thread::{self, JoinHandle},
+	time::Duration,
 };
 
 use reifydb_core::{
-    event::cdc::CdcCheckpointAdvancedEvent, interface::{
-        Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, CommandTransaction, Engine as EngineInterface, Key,
-        MultiVersionCommandTransaction, WithEventBus,
-    }, key::{CdcConsumerKey, EncodableKey},
-    log_debug,
-    log_error,
-    CommitVersion,
-    EncodedKey, Result,
+	CommitVersion, EncodedKey, Result,
+	event::cdc::CdcCheckpointAdvancedEvent,
+	interface::{
+		Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, CommandTransaction, Engine as EngineInterface, Key,
+		MultiVersionCommandTransaction, WithEventBus,
+	},
+	key::{CdcConsumerKey, EncodableKey},
+	log_debug, log_error,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::Priority;

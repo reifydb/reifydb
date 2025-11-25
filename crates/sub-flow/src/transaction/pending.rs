@@ -1,10 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{value::encoded::EncodedValues, EncodedKey};
-use std::collections::btree_map::{Iter, Range};
-use std::collections::BTreeMap;
-use std::ops::RangeBounds;
+use std::{
+	collections::{
+		BTreeMap,
+		btree_map::{Iter, Range},
+	},
+	ops::RangeBounds,
+};
+
+use reifydb_core::{EncodedKey, value::encoded::EncodedValues};
 
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]

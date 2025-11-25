@@ -93,10 +93,7 @@ impl RowNumberProvider {
 		ctx: &mut OperatorContext,
 		key: &EncodedKey,
 	) -> Result<(RowNumber, bool)> {
-		Ok(self.get_or_create_row_numbers_batch(ctx, std::iter::once(key))?
-			.into_iter()
-			.next()
-			.unwrap())
+		Ok(self.get_or_create_row_numbers_batch(ctx, std::iter::once(key))?.into_iter().next().unwrap())
 	}
 
 	/// Load the current counter value
@@ -146,11 +143,7 @@ impl RowNumberProvider {
 
 	/// Remove all row number mappings with the given prefix
 	/// This is useful for cleaning up all join results from a specific left row
-	pub fn remove_by_prefix(
-		&self,
-		ctx: &mut OperatorContext,
-		key_prefix: &[u8],
-	) -> Result<()> {
+	pub fn remove_by_prefix(&self, ctx: &mut OperatorContext, key_prefix: &[u8]) -> Result<()> {
 		// Create the prefix for scanning (node_id added by FlowNodeInternalStateKey wrapper)
 		let mut prefix = Vec::new();
 		let mut serializer = KeySerializer::new();
@@ -175,7 +168,11 @@ impl RowNumberProvider {
 mod tests {
 	use std::collections::HashMap;
 
-	use reifydb_core::{EncodedKey, Row, interface::FlowNodeId, key::{EncodableKey, FlowNodeInternalStateKey}};
+	use reifydb_core::{
+		EncodedKey, Row,
+		interface::FlowNodeId,
+		key::{EncodableKey, FlowNodeInternalStateKey},
+	};
 	use reifydb_type::{RowNumber, Value};
 
 	use crate::{
@@ -490,8 +487,10 @@ mod tests {
 		assert_eq!(internal_key1, internal_key2);
 
 		// But after wrapping with FlowNodeInternalStateKey, they should be different
-		let final_key1 = FlowNodeInternalStateKey::new(provider1.node, internal_key1.as_ref().to_vec()).encode();
-		let final_key2 = FlowNodeInternalStateKey::new(provider2.node, internal_key2.as_ref().to_vec()).encode();
+		let final_key1 =
+			FlowNodeInternalStateKey::new(provider1.node, internal_key1.as_ref().to_vec()).encode();
+		let final_key2 =
+			FlowNodeInternalStateKey::new(provider2.node, internal_key2.as_ref().to_vec()).encode();
 
 		assert!(!final_key1.is_empty());
 		assert!(!final_key2.is_empty());
@@ -563,9 +562,7 @@ mod tests {
 		let batch_keys = vec![&key2, &key4, &key1, &key5, &key3];
 
 		let mut ctx = harness.create_operator_context();
-		let results = provider
-			.get_or_create_row_numbers_batch(&mut ctx, batch_keys.into_iter())
-			.unwrap();
+		let results = provider.get_or_create_row_numbers_batch(&mut ctx, batch_keys.into_iter()).unwrap();
 
 		// Verify results are in correct order and have correct values
 		assert_eq!(results.len(), 5);
@@ -600,14 +597,12 @@ mod tests {
 
 		// Verify all mappings are still correct by retrieving them individually
 		let mut ctx = harness.create_operator_context();
-		let (check_rn4, is_new4) =
-			provider.get_or_create_row_number(&mut ctx, &key4).unwrap();
+		let (check_rn4, is_new4) = provider.get_or_create_row_number(&mut ctx, &key4).unwrap();
 		assert_eq!(check_rn4.0, 4);
 		assert!(!is_new4);
 
 		let mut ctx = harness.create_operator_context();
-		let (check_rn5, is_new5) =
-			provider.get_or_create_row_number(&mut ctx, &key5).unwrap();
+		let (check_rn5, is_new5) = provider.get_or_create_row_number(&mut ctx, &key5).unwrap();
 		assert_eq!(check_rn5.0, 5);
 		assert!(!is_new5);
 	}

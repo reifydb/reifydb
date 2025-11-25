@@ -3,9 +3,8 @@ use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
 
 use super::hash::{
-	add_to_state_entry, emit_joined_rows_batch_left, emit_joined_rows_batch_right,
-	emit_joined_rows_left_to_right, emit_joined_rows_right_to_left,
-	emit_remove_joined_rows_batch_left, emit_remove_joined_rows_batch_right,
+	add_to_state_entry, emit_joined_rows_batch_left, emit_joined_rows_batch_right, emit_joined_rows_left_to_right,
+	emit_joined_rows_right_to_left, emit_remove_joined_rows_batch_left, emit_remove_joined_rows_batch_right,
 	emit_remove_joined_rows_left, emit_remove_joined_rows_right, emit_update_joined_rows_left,
 	emit_update_joined_rows_right, get_left_rows, is_first_right_row, remove_from_state_entry, update_row_in_entry,
 };
@@ -17,7 +16,6 @@ use crate::{
 pub(crate) struct LeftHashJoin;
 
 impl LeftHashJoin {
-
 	pub(crate) fn handle_insert(
 		&self,
 		txn: &mut FlowTransaction,
@@ -409,7 +407,9 @@ impl LeftHashJoin {
 					// No matches - emit unmatched left rows for all
 					for row in rows {
 						let unmatched_row = operator.unmatched_left_row(txn, row)?;
-						result.push(FlowDiff::Insert { post: unmatched_row });
+						result.push(FlowDiff::Insert {
+							post: unmatched_row,
+						});
 					}
 				}
 			}
@@ -427,8 +427,11 @@ impl LeftHashJoin {
 						let left_rows = operator.left_parent.get_rows(txn, &left_entry.rows)?;
 						for left_row_opt in left_rows {
 							if let Some(left_row) = left_row_opt {
-								let unmatched_row = operator.unmatched_left_row(txn, &left_row)?;
-								result.push(FlowDiff::Remove { pre: unmatched_row });
+								let unmatched_row =
+									operator.unmatched_left_row(txn, &left_row)?;
+								result.push(FlowDiff::Remove {
+									pre: unmatched_row,
+								});
 							}
 						}
 					}
@@ -489,7 +492,9 @@ impl LeftHashJoin {
 					// No joined rows to remove - remove unmatched left rows
 					for row in rows {
 						let unmatched_row = operator.unmatched_left_row(txn, row)?;
-						result.push(FlowDiff::Remove { pre: unmatched_row });
+						result.push(FlowDiff::Remove {
+							pre: unmatched_row,
+						});
 					}
 				}
 
@@ -533,7 +538,9 @@ impl LeftHashJoin {
 					)?;
 					for left_row in &left_rows {
 						let unmatched_row = operator.unmatched_left_row(txn, left_row)?;
-						result.push(FlowDiff::Insert { post: unmatched_row });
+						result.push(FlowDiff::Insert {
+							post: unmatched_row,
+						});
 					}
 				}
 			}
