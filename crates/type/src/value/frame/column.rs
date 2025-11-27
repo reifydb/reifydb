@@ -5,19 +5,18 @@ use std::ops::Deref;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{Type, Value};
+use super::data::FrameColumnData;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct FrameColumn {
 	pub namespace: Option<String>,
-	pub store: Option<String>,
+	pub source: Option<String>,
 	pub name: String,
-	pub r#type: Type,
-	pub data: Vec<Value>,
+	pub data: FrameColumnData,
 }
 
 impl Deref for FrameColumn {
-	type Target = Vec<Value>;
+	type Target = FrameColumnData;
 
 	fn deref(&self) -> &Self::Target {
 		&self.data
@@ -26,7 +25,7 @@ impl Deref for FrameColumn {
 
 impl FrameColumn {
 	pub fn qualified_name(&self) -> String {
-		match (&self.namespace, &self.store) {
+		match (&self.namespace, &self.source) {
 			(Some(namespace), Some(table)) => {
 				format!("{}.{}.{}", namespace, table, self.name)
 			}

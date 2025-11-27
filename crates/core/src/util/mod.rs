@@ -1,11 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-pub mod bitvec;
 pub mod bloom;
 pub mod clock;
 pub mod colored;
-pub mod cowvec;
 pub mod either;
 pub mod encoding;
 pub mod ioc;
@@ -14,7 +12,7 @@ mod multi;
 pub mod retry;
 pub mod wait_group;
 
-pub use bitvec::BitVec;
+// Re-export from reifydb-type
 #[cfg(debug_assertions)]
 pub use clock::{
 	MockTimeControl, MockTimeGuard, mock_time_advance, mock_time_advance_micros, mock_time_advance_millis,
@@ -24,9 +22,9 @@ pub use clock::{
 	mock_time_with, mock_time_with_control, mock_time_with_micros, mock_time_with_millis, mock_time_with_nanos,
 };
 pub use clock::{now, now_micros, now_millis, now_nanos};
-pub use cowvec::CowVec;
 pub use either::Either;
 pub use lru::LruCache;
 pub use multi::MultiVersionContainer;
+pub use reifydb_type::{BitVec, CowVec};
 pub use retry::{RetryError, retry};
 pub use wait_group::WaitGroup;

@@ -1,5 +1,5 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// This file is licensed under the MIT, see license.md file
 
 use std::{fmt, ops::Deref, sync::Arc};
 
@@ -448,7 +448,7 @@ impl<'de> Deserialize<'de> for BitVec {
 #[cfg(test)]
 mod tests {
 	mod new {
-		use crate::util::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_all_false() {
@@ -470,7 +470,7 @@ mod tests {
 	}
 
 	mod get_and_set {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_ok() {
@@ -502,7 +502,7 @@ mod tests {
 	}
 
 	mod from_fn {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_ok() {
@@ -514,7 +514,7 @@ mod tests {
 	}
 
 	mod iter {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_ok() {
@@ -532,7 +532,7 @@ mod tests {
 	}
 
 	mod and {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_ok() {
@@ -547,7 +547,7 @@ mod tests {
 	}
 
 	mod from_slice {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_empty_slice() {
@@ -599,7 +599,7 @@ mod tests {
 	}
 
 	mod from_array {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_from_array_1() {
@@ -646,7 +646,7 @@ mod tests {
 	}
 
 	mod from_vec {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_from_vec_empty() {
@@ -675,7 +675,7 @@ mod tests {
 	}
 
 	mod empty {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_empty() {
@@ -706,7 +706,7 @@ mod tests {
 	}
 
 	mod take {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_take_empty() {
@@ -763,7 +763,7 @@ mod tests {
 	}
 
 	mod extend {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_extend_empty_to_empty() {
@@ -835,7 +835,7 @@ mod tests {
 	}
 
 	mod push {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_push_to_empty() {
@@ -883,7 +883,7 @@ mod tests {
 	}
 
 	mod reorder {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_reorder_identity() {
@@ -939,7 +939,7 @@ mod tests {
 	}
 
 	mod count_ones {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_count_ones_empty() {
@@ -980,7 +980,7 @@ mod tests {
 	}
 
 	mod any_none {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_any_none_empty() {
@@ -1026,7 +1026,7 @@ mod tests {
 	}
 
 	mod to_vec {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_to_vec_empty() {
@@ -1056,7 +1056,7 @@ mod tests {
 	}
 
 	mod display {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_display_empty() {
@@ -1090,7 +1090,7 @@ mod tests {
 	}
 
 	mod and_operation {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_and_empty() {
@@ -1156,7 +1156,7 @@ mod tests {
 	}
 
 	mod edge_cases {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_single_bit_operations() {
@@ -1216,7 +1216,7 @@ mod tests {
 	}
 
 	mod cow_behavior {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_is_owned() {
@@ -1329,7 +1329,7 @@ mod tests {
 	}
 
 	mod stress_tests {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_large_bitvec_operations() {
@@ -1431,7 +1431,7 @@ mod tests {
 	}
 
 	mod property_based_tests {
-		use crate::BitVec;
+		use super::super::BitVec;
 
 		#[test]
 		fn test_roundtrip_conversions() {

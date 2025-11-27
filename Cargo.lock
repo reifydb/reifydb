@@ -550,6 +550,7 @@ version = "0.1.3"
 dependencies = [
  "num-bigint",
  "reifydb",
+ "reifydb-derive",
  "reifydb-hash",
  "reifydb-testing",
  "reifydb-type",
@@ -586,6 +587,13 @@ dependencies = [
  "serde",
  "serde_bytes",
  "uuid",
+]
+
+[[package]]
+name = "reifydb-derive"
+version = "0.1.3"
+dependencies = [
+ "reifydb-type",
 ]
 
 [[package]]

@@ -1,5 +1,5 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// This file is licensed under the MIT, see license.md file
 
 use std::{
 	any::TypeId,
@@ -8,13 +8,12 @@ use std::{
 	ops::Deref,
 };
 
-use reifydb_type::{
-	Decimal, Int, IsNumber, OrderedF32, OrderedF64, Uint, Value,
-	Value::{Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16, Undefined},
-};
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec};
+use crate::{
+	BitVec, CowVec, Decimal, Int, IsNumber, OrderedF32, OrderedF64, Uint, Value,
+	Value::{Int1, Int2, Int4, Int8, Int16, Uint1, Uint2, Uint4, Uint8, Uint16, Undefined},
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct NumberContainer<T>

@@ -1,29 +1,28 @@
 // Copyright (c) reifydb.com 2025
-// This file is licensed under the AGPL-3.0-or-later, see license.md file
+// This file is licensed under the MIT, see license.md file
 
 use std::ops::Deref;
 
-use reifydb_type::{RowNumber, Value};
 use serde::{Deserialize, Serialize};
 
-use crate::{BitVec, CowVec};
+use crate::{BitVec, Blob, CowVec, Value};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RowNumberContainer {
-	data: CowVec<RowNumber>,
+pub struct BlobContainer {
+	data: CowVec<Blob>,
 	bitvec: BitVec,
 }
 
-impl Deref for RowNumberContainer {
-	type Target = [RowNumber];
+impl Deref for BlobContainer {
+	type Target = [Blob];
 
 	fn deref(&self) -> &Self::Target {
 		self.data.as_slice()
 	}
 }
 
-impl RowNumberContainer {
-	pub fn new(data: Vec<RowNumber>, bitvec: BitVec) -> Self {
+impl BlobContainer {
+	pub fn new(data: Vec<Blob>, bitvec: BitVec) -> Self {
 		debug_assert_eq!(data.len(), bitvec.len());
 		Self {
 			data: CowVec::new(data),
@@ -38,7 +37,7 @@ impl RowNumberContainer {
 		}
 	}
 
-	pub fn from_vec(data: Vec<RowNumber>) -> Self {
+	pub fn from_vec(data: Vec<Blob>) -> Self {
 		let len = data.len();
 		Self {
 			data: CowVec::new(data),
@@ -60,17 +59,17 @@ impl RowNumberContainer {
 		self.data.is_empty()
 	}
 
-	pub fn push(&mut self, value: RowNumber) {
+	pub fn push(&mut self, value: Blob) {
 		self.data.push(value);
 		self.bitvec.push(true);
 	}
 
 	pub fn push_undefined(&mut self) {
-		self.data.push(RowNumber::default());
+		self.data.push(Blob::new(vec![]));
 		self.bitvec.push(false);
 	}
 
-	pub fn get(&self, index: usize) -> Option<&RowNumber> {
+	pub fn get(&self, index: usize) -> Option<&Blob> {
 		if index < self.len() && self.is_defined(index) {
 			self.data.get(index)
 		} else {
@@ -90,11 +89,11 @@ impl RowNumberContainer {
 		idx < self.len() && self.bitvec.get(idx)
 	}
 
-	pub fn data(&self) -> &CowVec<RowNumber> {
+	pub fn data(&self) -> &CowVec<Blob> {
 		&self.data
 	}
 
-	pub fn data_mut(&mut self) -> &mut CowVec<RowNumber> {
+	pub fn data_mut(&mut self) -> &mut CowVec<Blob> {
 		&mut self.data
 	}
 
@@ -108,7 +107,7 @@ impl RowNumberContainer {
 
 	pub fn get_value(&self, index: usize) -> Value {
 		if index < self.len() && self.is_defined(index) {
-			Value::RowNumber(self.data[index])
+			Value::Blob(self.data[index].clone())
 		} else {
 			Value::Undefined
 		}
@@ -121,12 +120,12 @@ impl RowNumberContainer {
 	}
 
 	pub fn extend_from_undefined(&mut self, len: usize) {
-		self.data.extend(std::iter::repeat(RowNumber::default()).take(len));
+		self.data.extend(std::iter::repeat(Blob::new(vec![])).take(len));
 		self.bitvec.extend(&BitVec::repeat(len, false));
 	}
 
-	pub fn iter(&self) -> impl Iterator<Item = Option<RowNumber>> + '_ {
-		self.data.iter().zip(self.bitvec.iter()).map(|(&v, defined)| {
+	pub fn iter(&self) -> impl Iterator<Item = Option<&Blob>> + '_ {
+		self.data.iter().zip(self.bitvec.iter()).map(|(v, defined)| {
 			if defined {
 				Some(v)
 			} else {
@@ -136,7 +135,7 @@ impl RowNumberContainer {
 	}
 
 	pub fn slice(&self, start: usize, end: usize) -> Self {
-		let new_data: Vec<RowNumber> = self.data.iter().skip(start).take(end - start).cloned().collect();
+		let new_data: Vec<Blob> = self.data.iter().skip(start).take(end - start).cloned().collect();
 		let new_bitvec: Vec<bool> = self.bitvec.iter().skip(start).take(end - start).collect();
 		Self {
 			data: CowVec::new(new_data),
@@ -168,7 +167,7 @@ impl RowNumberContainer {
 				new_data.push(self.data[idx].clone());
 				new_bitvec.push(self.bitvec.get(idx));
 			} else {
-				new_data.push(RowNumber::default());
+				new_data.push(Blob::new(vec![]));
 				new_bitvec.push(false);
 			}
 		}
@@ -185,7 +184,7 @@ impl RowNumberContainer {
 	}
 }
 
-impl Default for RowNumberContainer {
+impl Default for BlobContainer {
 	fn default() -> Self {
 		Self::with_capacity(0)
 	}
@@ -194,39 +193,41 @@ impl Default for RowNumberContainer {
 #[cfg(test)]
 mod tests {
 	use super::*;
+	use crate::BitVec;
 
 	#[test]
 	fn test_new() {
-		let row_number1 = RowNumber::new(1);
-		let row_number2 = RowNumber::new(2);
-		let row_numbers = vec![row_number1, row_number2];
+		let blob1 = Blob::new(vec![1, 2, 3]);
+		let blob2 = Blob::new(vec![4, 5, 6]);
+		let blobs = vec![blob1.clone(), blob2.clone()];
 		let bitvec = BitVec::from_slice(&[true, true]);
-		let container = RowNumberContainer::new(row_numbers.clone(), bitvec);
+		let container = BlobContainer::new(blobs, bitvec);
 
 		assert_eq!(container.len(), 2);
-		assert_eq!(container.get(0), Some(&row_numbers[0]));
-		assert_eq!(container.get(1), Some(&row_numbers[1]));
+		assert_eq!(container.get(0), Some(&blob1));
+		assert_eq!(container.get(1), Some(&blob2));
 	}
 
 	#[test]
 	fn test_from_vec() {
-		let row_numbers = vec![RowNumber::new(10), RowNumber::new(20), RowNumber::new(30)];
-		let container = RowNumberContainer::from_vec(row_numbers.clone());
+		let blob1 = Blob::new(vec![10, 20, 30]);
+		let blob2 = Blob::new(vec![40, 50]);
+		let blobs = vec![blob1.clone(), blob2.clone()];
+		let container = BlobContainer::from_vec(blobs);
 
-		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&row_numbers[0]));
-		assert_eq!(container.get(1), Some(&row_numbers[1]));
-		assert_eq!(container.get(2), Some(&row_numbers[2]));
+		assert_eq!(container.len(), 2);
+		assert_eq!(container.get(0), Some(&blob1));
+		assert_eq!(container.get(1), Some(&blob2));
 
 		// All should be defined
-		for i in 0..3 {
+		for i in 0..2 {
 			assert!(container.is_defined(i));
 		}
 	}
 
 	#[test]
 	fn test_with_capacity() {
-		let container = RowNumberContainer::with_capacity(10);
+		let container = BlobContainer::with_capacity(10);
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());
 		assert!(container.capacity() >= 10);
@@ -234,18 +235,18 @@ mod tests {
 
 	#[test]
 	fn test_push_with_undefined() {
-		let mut container = RowNumberContainer::with_capacity(3);
-		let row_number1 = RowNumber::new(100);
-		let row_number2 = RowNumber::new(200);
+		let mut container = BlobContainer::with_capacity(3);
+		let blob1 = Blob::new(vec![1, 2, 3]);
+		let blob2 = Blob::new(vec![7, 8, 9]);
 
-		container.push(row_number1);
+		container.push(blob1.clone());
 		container.push_undefined();
-		container.push(row_number2);
+		container.push(blob2.clone());
 
 		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&row_number1));
+		assert_eq!(container.get(0), Some(&blob1));
 		assert_eq!(container.get(1), None); // undefined
-		assert_eq!(container.get(2), Some(&row_number2));
+		assert_eq!(container.get(2), Some(&blob2));
 
 		assert!(container.is_defined(0));
 		assert!(!container.is_defined(1));
@@ -254,124 +255,119 @@ mod tests {
 
 	#[test]
 	fn test_extend() {
-		let row_number1 = RowNumber::new(1);
-		let row_number2 = RowNumber::new(2);
-		let row_number3 = RowNumber::new(3);
+		let blob1 = Blob::new(vec![1, 2]);
+		let blob2 = Blob::new(vec![3, 4]);
+		let blob3 = Blob::new(vec![5, 6]);
 
-		let mut container1 = RowNumberContainer::from_vec(vec![row_number1, row_number2]);
-		let container2 = RowNumberContainer::from_vec(vec![row_number3]);
+		let mut container1 = BlobContainer::from_vec(vec![blob1.clone(), blob2.clone()]);
+		let container2 = BlobContainer::from_vec(vec![blob3.clone()]);
 
 		container1.extend(&container2).unwrap();
 
 		assert_eq!(container1.len(), 3);
-		assert_eq!(container1.get(0), Some(&row_number1));
-		assert_eq!(container1.get(1), Some(&row_number2));
-		assert_eq!(container1.get(2), Some(&row_number3));
+		assert_eq!(container1.get(0), Some(&blob1));
+		assert_eq!(container1.get(1), Some(&blob2));
+		assert_eq!(container1.get(2), Some(&blob3));
 	}
 
 	#[test]
 	fn test_extend_from_undefined() {
-		let row_number = RowNumber::new(42);
-		let mut container = RowNumberContainer::from_vec(vec![row_number]);
+		let blob = Blob::new(vec![100, 200]);
+		let mut container = BlobContainer::from_vec(vec![blob.clone()]);
 		container.extend_from_undefined(2);
 
 		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&row_number));
+		assert_eq!(container.get(0), Some(&blob));
 		assert_eq!(container.get(1), None); // undefined
 		assert_eq!(container.get(2), None); // undefined
 	}
 
 	#[test]
 	fn test_iter() {
-		let row_number1 = RowNumber::new(10);
-		let row_number2 = RowNumber::new(20);
-		let row_number3 = RowNumber::new(30);
-		let row_numbers = vec![row_number1, row_number2, row_number3];
+		let blob1 = Blob::new(vec![1]);
+		let blob2 = Blob::new(vec![2]);
+		let blob3 = Blob::new(vec![3]);
+		let blobs = vec![blob1.clone(), blob2, blob3.clone()];
 		let bitvec = BitVec::from_slice(&[true, false, true]); // middle value undefined
-		let container = RowNumberContainer::new(row_numbers.clone(), bitvec);
+		let container = BlobContainer::new(blobs, bitvec);
 
-		let collected: Vec<Option<RowNumber>> = container.iter().collect();
-		assert_eq!(collected, vec![Some(row_numbers[0]), None, Some(row_numbers[2])]);
+		let collected: Vec<Option<&Blob>> = container.iter().collect();
+		assert_eq!(collected, vec![Some(&blob1), None, Some(&blob3)]);
 	}
 
 	#[test]
 	fn test_slice() {
-		let container = RowNumberContainer::from_vec(vec![
-			RowNumber::new(1),
-			RowNumber::new(2),
-			RowNumber::new(3),
-			RowNumber::new(4),
-		]);
+		let blobs = vec![Blob::new(vec![1]), Blob::new(vec![2]), Blob::new(vec![3]), Blob::new(vec![4])];
+		let container = BlobContainer::from_vec(blobs.clone());
 		let sliced = container.slice(1, 3);
 
 		assert_eq!(sliced.len(), 2);
-		assert_eq!(sliced.get(0), Some(&RowNumber::new(2)));
-		assert_eq!(sliced.get(1), Some(&RowNumber::new(3)));
+		assert_eq!(sliced.get(0), Some(&blobs[1]));
+		assert_eq!(sliced.get(1), Some(&blobs[2]));
 	}
 
 	#[test]
 	fn test_filter() {
-		let mut container = RowNumberContainer::from_vec(vec![
-			RowNumber::new(1),
-			RowNumber::new(2),
-			RowNumber::new(3),
-			RowNumber::new(4),
-		]);
+		let blobs = vec![Blob::new(vec![1]), Blob::new(vec![2]), Blob::new(vec![3]), Blob::new(vec![4])];
+		let mut container = BlobContainer::from_vec(blobs.clone());
 		let mask = BitVec::from_slice(&[true, false, true, false]);
 
 		container.filter(&mask);
 
 		assert_eq!(container.len(), 2);
-		assert_eq!(container.get(0), Some(&RowNumber::new(1)));
-		assert_eq!(container.get(1), Some(&RowNumber::new(3)));
+		assert_eq!(container.get(0), Some(&blobs[0]));
+		assert_eq!(container.get(1), Some(&blobs[2]));
 	}
 
 	#[test]
 	fn test_reorder() {
-		let mut container =
-			RowNumberContainer::from_vec(vec![RowNumber::new(10), RowNumber::new(20), RowNumber::new(30)]);
+		let blobs = vec![Blob::new(vec![10]), Blob::new(vec![20]), Blob::new(vec![30])];
+		let mut container = BlobContainer::from_vec(blobs.clone());
 		let indices = [2, 0, 1];
 
 		container.reorder(&indices);
 
 		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&RowNumber::new(30))); // was index 2
-		assert_eq!(container.get(1), Some(&RowNumber::new(10))); // was index 0
-		assert_eq!(container.get(2), Some(&RowNumber::new(20))); // was index 1
+		assert_eq!(container.get(0), Some(&blobs[2])); // was index 2
+		assert_eq!(container.get(1), Some(&blobs[0])); // was index 0
+		assert_eq!(container.get(2), Some(&blobs[1])); // was index 1
 	}
 
 	#[test]
 	fn test_reorder_with_out_of_bounds() {
-		let mut container = RowNumberContainer::from_vec(vec![RowNumber::new(1), RowNumber::new(2)]);
+		let blobs = vec![Blob::new(vec![1]), Blob::new(vec![2])];
+		let mut container = BlobContainer::from_vec(blobs.clone());
 		let indices = [1, 5, 0]; // index 5 is out of bounds
 
 		container.reorder(&indices);
 
 		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(0), Some(&RowNumber::new(2))); // was index 1
+		assert_eq!(container.get(0), Some(&blobs[1])); // was index 1
 		assert_eq!(container.get(1), None); // out of bounds -> undefined
-		assert_eq!(container.get(2), Some(&RowNumber::new(1))); // was index 0
+		assert_eq!(container.get(2), Some(&blobs[0])); // was index 0
+	}
+
+	#[test]
+	fn test_empty_blobs() {
+		let mut container = BlobContainer::with_capacity(2);
+		let empty_blob = Blob::new(vec![]);
+		let data_blob = Blob::new(vec![1, 2, 3]);
+
+		container.push(empty_blob.clone());
+		container.push(data_blob.clone());
+
+		assert_eq!(container.len(), 2);
+		assert_eq!(container.get(0), Some(&empty_blob));
+		assert_eq!(container.get(1), Some(&data_blob));
+
+		assert!(container.is_defined(0));
+		assert!(container.is_defined(1));
 	}
 
 	#[test]
 	fn test_default() {
-		let container = RowNumberContainer::default();
+		let container = BlobContainer::default();
 		assert_eq!(container.len(), 0);
 		assert!(container.is_empty());
-	}
-
-	#[test]
-	fn test_data_access() {
-		let mut container = RowNumberContainer::from_vec(vec![RowNumber::new(1), RowNumber::new(2)]);
-
-		// Test immutable access
-		assert_eq!(container.data().len(), 2);
-
-		// Test mutable access
-		container.data_mut().push(RowNumber::new(3));
-		container.bitvec_mut().push(true);
-
-		assert_eq!(container.len(), 3);
-		assert_eq!(container.get(2), Some(&RowNumber::new(3)));
 	}
 }

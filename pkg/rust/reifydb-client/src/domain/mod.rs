@@ -3,4 +3,4 @@
 
 mod frame;
 
-pub use frame::{Frame, FrameColumn};
+pub use frame::{Frame, FrameColumn, FrameColumnData, FrameError, FrameRow, FrameRows, FromFrame, FromFrameError};

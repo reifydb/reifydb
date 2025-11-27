@@ -1,0 +1,16 @@
+[package]
+name = "reifydb-derive"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license = "MIT"
+repository.workspace = true
+description = "Derive macros for ReifyDB"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+
+[dev-dependencies]
+reifydb-type = { path = "../type" }
