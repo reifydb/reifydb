@@ -1,36 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-//! Derive macros for ReifyDB.
+//! Derive macros for ReifyDB client that generate code using `reifydb_client` crate paths.
 //!
-//! This crate provides the `#[derive(FromFrame)]` macro for ergonomic
-//! deserialization of Frame data into Rust structs.
-//!
-//! # Example
-//!
-//! ```ignore
-//! use reifydb_type::FromFrame;
-//!
-//! #[derive(FromFrame)]
-//! struct User {
-//!     id: i64,
-//!     name: String,
-//!     #[frame(column = "created_at")]
-//!     timestamp: i64,
-//!     #[frame(optional)]
-//!     email: Option<String>,
-//! }
-//!
-//! let users: Vec<User> = frame.try_into()?;
-//! ```
-
-mod from_frame;
-mod generate;
-mod parse;
+//! This crate is re-exported by the `reifydb-client` crate, so users typically don't
+//! need to depend on it directly.
 
 use proc_macro::TokenStream;
 
 /// Derives `FromFrame` for a struct, enabling deserialization from a Frame.
+///
+/// Generated code references types from the `reifydb_client` crate.
 ///
 /// # Attributes
 ///
@@ -40,8 +20,5 @@ use proc_macro::TokenStream;
 /// - `#[frame(skip)]` - Skip this field (must implement Default)
 #[proc_macro_derive(FromFrame, attributes(frame))]
 pub fn derive_from_frame(input: TokenStream) -> TokenStream {
-	match parse::parse_struct(input) {
-		Ok(parsed) => from_frame::expand(parsed),
-		Err(err) => err,
-	}
+	reifydb_macro_impl::derive_from_frame_with_crate(input.into(), "reifydb_client").into()
 }

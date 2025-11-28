@@ -3,7 +3,7 @@
 
 //! Token generation helpers for building TokenStreams without external dependencies.
 
-use proc_macro::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, Literal, Punct, Spacing, Span, TokenStream, TokenTree};
 
 /// Creates an identifier token.
 pub fn ident(name: &str) -> TokenTree {

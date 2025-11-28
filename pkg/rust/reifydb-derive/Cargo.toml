@@ -11,6 +11,4 @@ description = "Derive macros for ReifyDB"
 proc-macro = true
 
 [dependencies]
-
-[dev-dependencies]
-reifydb-type = { path = "../type" }
+reifydb-macro-impl = { workspace = true }

@@ -10,6 +10,8 @@ members = [
     "crates/core",
     "crates/engine",
     "crates/hash",
+    "crates/macro",
+    "crates/macro-impl",
     "crates/network",
     "crates/flow-operator/abi",
     "crates/flow-operator/sdk",
@@ -19,7 +21,6 @@ members = [
     "crates/testing",
     "crates/transaction",
     "crates/type",
-    "crates/derive",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-admin",
@@ -35,6 +36,8 @@ members = [
     # Package/library projects
     "pkg/rust/reifydb",
     "pkg/rust/reifydb-client",
+    "pkg/rust/reifydb-derive",
+    "pkg/rust/reifydb-client-derive",
     "pkg/rust/examples",
     "pkg/rust/tests/limit",
     "pkg/rust/tests/regression",
@@ -49,6 +52,8 @@ default-members = [
     "crates/core",
     "crates/engine",
     "crates/hash",
+    "crates/macro",
+    "crates/macro-impl",
     "crates/network",
     "crates/flow-operator/abi",
     "crates/flow-operator/sdk",
@@ -58,7 +63,6 @@ default-members = [
     "crates/testing",
     "crates/transaction",
     "crates/type",
-    "crates/derive",
     # Subsystem crates
     "crates/sub-api",
     "crates/sub-admin",
@@ -111,7 +115,10 @@ overflow-checks = true
 
 [workspace.dependencies]
 reifydb = { version = "0.1.3", path = "pkg/rust/reifydb" }
+reifydb-derive = { version = "0.1.3", path = "pkg/rust/reifydb-derive" }
+
 reifydb-client = { version = "0.1.3", path = "pkg/rust/reifydb-client" }
+reifydb-client-derive = { version = "0.1.3", path = "pkg/rust/reifydb-client-derive" }
 
 # Internal crates
 reifydb-auth = { version = "0.1.3", path = "crates/auth" }
@@ -130,7 +137,8 @@ reifydb-store-transaction = { version = "0.1.3", path = "crates/store-transactio
 reifydb-testing = { version = "0.1.3", path = "crates/testing" }
 reifydb-transaction = { version = "0.1.3", path = "crates/transaction" }
 reifydb-type = { version = "0.1.3", path = "crates/type" }
-reifydb-derive = { version = "0.1.3", path = "crates/derive" }
+reifydb-macro = { version = "0.1.3", path = "crates/macro" }
+reifydb-macro-impl = { version = "0.1.3", path = "crates/macro-impl" }
 
 # Subsystems
 reifydb-sub-api = { version = "0.1.3", path = "crates/sub-api" }
@@ -180,3 +188,6 @@ bincode = { version = "2.0.1", features = ["serde"] }
 
 # testing
 test_each_file = { version = "0.3.5" }
+
+# proc-macro
+proc-macro2 = { version = "1.0" }

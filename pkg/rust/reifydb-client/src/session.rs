@@ -2,8 +2,8 @@
 // This file is licensed under the MIT
 
 use reifydb_type::{
-	BitVec, Blob, Date, DateTime, Error, IdentityId, OwnedFragment, RowNumber, Time, Uuid7, err, parse_datetime,
-	parse_uuid4, parse_uuid7,
+	BitVec, Blob, Date, DateTime, Error, Frame, FrameColumn, FrameColumnData, IdentityId, OwnedFragment, RowNumber,
+	Time, Uuid7, err, parse_datetime, parse_uuid4, parse_uuid7,
 	util::hex,
 	value::container::{
 		BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, RowNumberContainer,
@@ -11,10 +11,7 @@ use reifydb_type::{
 	},
 };
 
-use crate::{
-	Type,
-	domain::{Frame, FrameColumn, FrameColumnData},
-};
+use crate::Type;
 
 /// Result type for command operations
 #[derive(Debug)]

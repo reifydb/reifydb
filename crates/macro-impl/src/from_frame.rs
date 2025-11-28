@@ -3,7 +3,7 @@
 
 //! Code generation for the FromFrame derive macro.
 
-use proc_macro::{TokenStream, TokenTree};
+use proc_macro2::{TokenStream, TokenTree};
 
 use crate::{
 	generate::{
@@ -17,17 +17,18 @@ use crate::{
 pub fn expand(parsed: ParsedStruct) -> TokenStream {
 	let struct_name = parsed.name.to_string();
 	let struct_name_lit = literal_str(&struct_name);
+	let crate_path = &parsed.crate_path;
 
 	let mut tokens = Vec::new();
 
-	// impl ::reifydb_type::FromFrame for StructName
+	// impl ::crate_path::FromFrame for StructName
 	tokens.push(ident("impl"));
-	tokens.extend(path(&["", "reifydb_type", "FromFrame"]));
+	tokens.extend(path(&["", crate_path, "FromFrame"]));
 	tokens.push(ident("for"));
 	tokens.push(TokenTree::Ident(parsed.name.clone()));
 
 	// Implementation body
-	let impl_body = generate_from_frame_impl(&parsed.fields, &struct_name_lit);
+	let impl_body = generate_from_frame_impl(&parsed.fields, &struct_name_lit, crate_path);
 	tokens.push(braces(impl_body));
 
 	// Note: TryFrom<&Frame> impl is NOT generated because it would violate orphan rules
@@ -37,17 +38,15 @@ pub fn expand(parsed: ParsedStruct) -> TokenStream {
 }
 
 /// Generate the FromFrame::from_frame method body.
-fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree) -> Vec<TokenTree> {
+fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree, crate_path: &str) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 
-	// fn from_frame(frame: &::reifydb_type::Frame) -> Result<Vec<Self>, ::reifydb_type::FromFrameError>
+	// fn from_frame(frame: &::crate_path::Frame) -> Result<Vec<Self>, ::crate_path::FromFrameError>
 	tokens.push(ident("fn"));
 	tokens.push(ident("from_frame"));
-	tokens.push(parens([ident("frame"), punct(':'), punct('&')].into_iter().chain(path(&[
-		"",
-		"reifydb_type",
-		"Frame",
-	]))));
+	tokens.push(parens([ident("frame"), punct(':'), punct('&')]
+		.into_iter()
+		.chain(path(&["", crate_path, "Frame"]))));
 	tokens.extend(arrow());
 	tokens.push(ident("Result"));
 	tokens.push(punct('<'));
@@ -56,7 +55,7 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree)
 	tokens.push(ident("Self"));
 	tokens.push(punct('>'));
 	tokens.push(punct(','));
-	tokens.extend(path(&["", "reifydb_type", "FromFrameError"]));
+	tokens.extend(path(&["", crate_path, "FromFrameError"]));
 	tokens.push(punct('>'));
 
 	// Method body
@@ -67,7 +66,7 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree)
 		if field.attrs.skip {
 			continue;
 		}
-		body.extend(generate_column_lookup(field, struct_name_lit));
+		body.extend(generate_column_lookup(field, struct_name_lit, crate_path));
 	}
 
 	// Row count
@@ -103,7 +102,7 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree)
 		if field.attrs.skip {
 			continue;
 		}
-		body.extend(generate_field_extraction(field));
+		body.extend(generate_field_extraction(field, crate_path));
 	}
 
 	// Result construction
@@ -167,7 +166,7 @@ fn generate_from_frame_impl(fields: &[ParsedField], struct_name_lit: &TokenTree)
 }
 
 /// Generate column lookup for a field.
-fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree) -> Vec<TokenTree> {
+fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree, crate_path: &str) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 	let column_name = field.column_name();
 	let col_var = format!("col_{}", field.safe_name());
@@ -177,11 +176,11 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree) -> V
 	tokens.push(punct(':'));
 
 	if field.attrs.optional {
-		// Option<&::reifydb_type::FrameColumn>
+		// Option<&::crate_path::FrameColumn>
 		tokens.push(ident("Option"));
 		tokens.push(punct('<'));
 		tokens.push(punct('&'));
-		tokens.extend(path(&["", "reifydb_type", "FrameColumn"]));
+		tokens.extend(path(&["", crate_path, "FrameColumn"]));
 		tokens.push(punct('>'));
 		tokens.push(punct('='));
 		tokens.push(ident("frame"));
@@ -204,9 +203,9 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree) -> V
 			literal_str(&column_name),
 		]));
 	} else {
-		// &::reifydb_type::FrameColumn
+		// &::crate_path::FrameColumn
 		tokens.push(punct('&'));
-		tokens.extend(path(&["", "reifydb_type", "FrameColumn"]));
+		tokens.extend(path(&["", crate_path, "FrameColumn"]));
 		tokens.push(punct('='));
 		tokens.push(ident("frame"));
 		tokens.push(punct('.'));
@@ -230,10 +229,10 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree) -> V
 		tokens.push(punct('.'));
 		tokens.push(ident("ok_or_else"));
 
-		// || ::reifydb_type::FromFrameError::MissingColumn { ... }
+		// || ::crate_path::FromFrameError::MissingColumn { ... }
 		let mut error_closure = Vec::new();
 		error_closure.extend([punct('|'), punct('|')]);
-		error_closure.extend(path(&["", "reifydb_type", "FromFrameError", "MissingColumn"]));
+		error_closure.extend(path(&["", crate_path, "FromFrameError", "MissingColumn"]));
 		error_closure.push(braces([
 			ident("column"),
 			punct(':'),
@@ -256,7 +255,7 @@ fn generate_column_lookup(field: &ParsedField, struct_name_lit: &TokenTree) -> V
 }
 
 /// Generate field extraction for a field.
-fn generate_field_extraction(field: &ParsedField) -> Vec<TokenTree> {
+fn generate_field_extraction(field: &ParsedField, crate_path: &str) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 	let column_name = field.column_name();
 	let col_var = format!("col_{}", field.safe_name());
@@ -311,17 +310,22 @@ fn generate_field_extraction(field: &ParsedField) -> Vec<TokenTree> {
 		some_body.push(parens([]));
 		some_body.push(punct('.'));
 		some_body.push(ident("map"));
-		some_body.push(parens(generate_optional_map_closure(trait_name, method_name, &column_name)));
+		some_body.push(parens(generate_optional_map_closure(
+			trait_name,
+			method_name,
+			&column_name,
+			crate_path,
+		)));
 		some_body.push(punct('.'));
 		some_body.push(ident("collect"));
-		// ::<Result<_, ::reifydb_type::FromFrameError>>
+		// ::<Result<_, ::crate_path::FromFrameError>>
 		some_body.extend(path_sep());
 		some_body.push(punct('<'));
 		some_body.push(ident("Result"));
 		some_body.push(punct('<'));
 		some_body.push(underscore());
 		some_body.push(punct(','));
-		some_body.extend(path(&["", "reifydb_type", "FromFrameError"]));
+		some_body.extend(path(&["", crate_path, "FromFrameError"]));
 		some_body.push(punct('>'));
 		some_body.push(punct('>'));
 		some_body.push(parens([]));
@@ -354,17 +358,23 @@ fn generate_field_extraction(field: &ParsedField) -> Vec<TokenTree> {
 		tokens.push(parens([]));
 		tokens.push(punct('.'));
 		tokens.push(ident("map"));
-		tokens.push(parens(generate_required_map_closure(trait_name, method_name, &column_name, &field.ty)));
+		tokens.push(parens(generate_required_map_closure(
+			trait_name,
+			method_name,
+			&column_name,
+			&field.ty,
+			crate_path,
+		)));
 		tokens.push(punct('.'));
 		tokens.push(ident("collect"));
-		// ::<Result<_, ::reifydb_type::FromFrameError>>
+		// ::<Result<_, ::crate_path::FromFrameError>>
 		tokens.extend(path_sep());
 		tokens.push(punct('<'));
 		tokens.push(ident("Result"));
 		tokens.push(punct('<'));
 		tokens.push(underscore());
 		tokens.push(punct(','));
-		tokens.extend(path(&["", "reifydb_type", "FromFrameError"]));
+		tokens.extend(path(&["", crate_path, "FromFrameError"]));
 		tokens.push(punct('>'));
 		tokens.push(punct('>'));
 		tokens.push(parens([]));
@@ -376,7 +386,12 @@ fn generate_field_extraction(field: &ParsedField) -> Vec<TokenTree> {
 }
 
 /// Generate the map closure for optional fields.
-fn generate_optional_map_closure(trait_name: &str, method_name: &str, column_name: &str) -> Vec<TokenTree> {
+fn generate_optional_map_closure(
+	trait_name: &str,
+	method_name: &str,
+	column_name: &str,
+	crate_path: &str,
+) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 
 	// |(row, v)| { if matches!(v, ...) { Ok(None) } else { ... } }
@@ -386,16 +401,11 @@ fn generate_optional_map_closure(trait_name: &str, method_name: &str, column_nam
 
 	let mut body = Vec::new();
 
-	// if matches!(v, ::reifydb_type::Value::Undefined)
+	// if matches!(v, ::crate_path::Value::Undefined)
 	body.push(ident("if"));
 	body.push(ident("matches"));
 	body.push(punct('!'));
-	body.push(parens([ident("v"), punct(',')].into_iter().chain(path(&[
-		"",
-		"reifydb_type",
-		"Value",
-		"Undefined",
-	]))));
+	body.push(parens([ident("v"), punct(',')].into_iter().chain(path(&["", crate_path, "Value", "Undefined"]))));
 
 	// { Ok(None) }
 	body.push(braces([ident("Ok"), parens([ident("None")])]));
@@ -407,7 +417,7 @@ fn generate_optional_map_closure(trait_name: &str, method_name: &str, column_nam
 	else_body.push(punct('<'));
 	else_body.push(underscore());
 	else_body.push(ident("as"));
-	else_body.extend(path(&["", "reifydb_type", trait_name]));
+	else_body.extend(path(&["", crate_path, trait_name]));
 	else_body.push(punct('>'));
 	else_body.extend(path_sep());
 	else_body.push(ident(method_name));
@@ -417,7 +427,7 @@ fn generate_optional_map_closure(trait_name: &str, method_name: &str, column_nam
 	else_body.push(parens([ident("Some")]));
 	else_body.push(punct('.'));
 	else_body.push(ident("map_err"));
-	else_body.push(parens(generate_error_closure(column_name)));
+	else_body.push(parens(generate_error_closure(column_name, crate_path)));
 
 	body.push(braces(else_body));
 
@@ -431,6 +441,7 @@ fn generate_required_map_closure(
 	method_name: &str,
 	column_name: &str,
 	field_ty: &[TokenTree],
+	crate_path: &str,
 ) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 
@@ -443,28 +454,28 @@ fn generate_required_map_closure(
 	body.push(punct('<'));
 	body.extend(field_ty.iter().cloned());
 	body.push(ident("as"));
-	body.extend(path(&["", "reifydb_type", trait_name]));
+	body.extend(path(&["", crate_path, trait_name]));
 	body.push(punct('>'));
 	body.extend(path_sep());
 	body.push(ident(method_name));
 	body.push(parens([punct('&'), ident("v")]));
 	body.push(punct('.'));
 	body.push(ident("map_err"));
-	body.push(parens(generate_error_closure(column_name)));
+	body.push(parens(generate_error_closure(column_name, crate_path)));
 
 	tokens.push(braces(body));
 	tokens
 }
 
 /// Generate the error closure for map_err.
-fn generate_error_closure(column_name: &str) -> Vec<TokenTree> {
+fn generate_error_closure(column_name: &str, crate_path: &str) -> Vec<TokenTree> {
 	let mut tokens = Vec::new();
 
-	// |e| ::reifydb_type::FromFrameError::ValueError { column: "...", row, error: e }
+	// |e| ::crate_path::FromFrameError::ValueError { column: "...", row, error: e }
 	tokens.push(punct('|'));
 	tokens.push(ident("e"));
 	tokens.push(punct('|'));
-	tokens.extend(path(&["", "reifydb_type", "FromFrameError", "ValueError"]));
+	tokens.extend(path(&["", crate_path, "FromFrameError", "ValueError"]));
 	tokens.push(braces([
 		ident("column"),
 		punct(':'),

@@ -6,8 +6,8 @@
 mod common;
 
 use common::*;
-use reifydb_derive::FromFrame;
-use reifydb_type::{Date, DateTime, FromFrame as FromFrameTrait, FromFrameError, Time, Uuid4, Uuid7};
+use reifydb_macro::FromFrame;
+use reifydb_type::{Date, DateTime, FromFrame, FromFrameError, Time, Uuid4, Uuid7};
 
 // ============================================================================
 // 1. Basic Struct Derivation

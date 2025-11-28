@@ -3,7 +3,7 @@
 
 //! Token parsing for derive macro input.
 
-use proc_macro::{Delimiter, Group, Ident, TokenStream, TokenTree};
+use proc_macro2::{Delimiter, Group, Ident, TokenStream, TokenTree};
 
 use crate::generate::compile_error;
 
@@ -11,6 +11,7 @@ use crate::generate::compile_error;
 pub struct ParsedStruct {
 	pub name: Ident,
 	pub fields: Vec<ParsedField>,
+	pub crate_path: String,
 }
 
 /// Parsed field information.
@@ -31,8 +32,14 @@ pub struct FieldAttrs {
 
 /// Parse a derive macro input into a ParsedStruct.
 pub fn parse_struct(input: TokenStream) -> Result<ParsedStruct, TokenStream> {
+	parse_struct_with_crate(input, "reifydb_type")
+}
+
+/// Parse a derive macro input into a ParsedStruct with a specific crate path.
+pub fn parse_struct_with_crate(input: TokenStream, crate_path: &str) -> Result<ParsedStruct, TokenStream> {
 	let tokens: Vec<TokenTree> = input.into_iter().collect();
 	let mut iter = tokens.iter().peekable();
+	let crate_path = crate_path.to_string();
 
 	// Skip attributes on the struct itself
 	while let Some(TokenTree::Punct(p)) = iter.peek() {
@@ -127,6 +134,7 @@ pub fn parse_struct(input: TokenStream) -> Result<ParsedStruct, TokenStream> {
 	Ok(ParsedStruct {
 		name,
 		fields,
+		crate_path,
 	})
 }
 

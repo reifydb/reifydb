@@ -47,12 +47,12 @@ impl std::error::Error for FromFrameError {}
 /// Trait for types that can be deserialized from a Frame.
 ///
 /// This trait is typically derived using `#[derive(FromFrame)]` from the
-/// `reifydb-derive` crate.
+/// `reifydb` or `reifydb_client` crates.
 ///
 /// # Example
 ///
 /// ```ignore
-/// use reifydb_derive::FromFrame;
+/// use reifydb::FromFrame;  // or reifydb_client::FromFrame
 ///
 /// #[derive(FromFrame)]
 /// struct User {

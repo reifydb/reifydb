@@ -2,18 +2,20 @@
 // This file is licensed under the MIT
 
 mod client;
-mod domain;
 pub mod http;
 pub mod session;
 mod utils;
 pub mod ws;
 
 pub use client::Client;
-pub use domain::{Frame, FrameColumn, FrameColumnData, FrameError, FrameRow, FrameRows, FromFrame, FromFrameError};
 pub use http::{HttpBlockingSession, HttpCallbackSession, HttpChannelSession, HttpClient, HttpResponseMessage};
-pub use reifydb_derive::FromFrame;
+pub use reifydb_client_derive::FromFrame;
+pub use reifydb_type as r#type;
 use reifydb_type::diagnostic::Diagnostic;
-pub use reifydb_type::{FromValueError, OrderedF32, OrderedF64, Params, TryFromValue, TryFromValueCoerce, Type, Value};
+pub use reifydb_type::{
+	Frame, FrameColumn, FrameColumnData, FrameError, FrameRow, FrameRows, FromFrameError, FromValueError,
+	OrderedF32, OrderedF64, Params, TryFromValue, TryFromValueCoerce, Type, Value,
+};
 use serde::{Deserialize, Serialize};
 pub use session::{CommandResult, QueryResult};
 pub use ws::{
