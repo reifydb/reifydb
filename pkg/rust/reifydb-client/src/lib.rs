@@ -11,9 +11,7 @@ pub mod ws;
 pub use client::Client;
 pub use domain::{Frame, FrameColumn, FrameColumnData, FrameError, FrameRow, FrameRows, FromFrame, FromFrameError};
 pub use http::{HttpBlockingSession, HttpCallbackSession, HttpChannelSession, HttpClient, HttpResponseMessage};
-// Re-export derive macro when feature is enabled
-#[cfg(feature = "derive")]
-pub use reifydb_derive::FromFrame as DeriveFromFrame;
+pub use reifydb_derive::FromFrame;
 use reifydb_type::diagnostic::Diagnostic;
 pub use reifydb_type::{FromValueError, OrderedF32, OrderedF64, Params, TryFromValue, TryFromValueCoerce, Type, Value};
 use serde::{Deserialize, Serialize};
