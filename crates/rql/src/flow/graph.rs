@@ -81,8 +81,11 @@ impl<NodeData> DirectedGraph<NodeData> {
 	}
 
 	pub fn topological_sort(&self) -> Vec<FlowNodeId> {
+		use std::{cmp::Reverse, collections::BinaryHeap};
+
 		let mut in_degree = HashMap::new();
-		let mut queue = VecDeque::new();
+		// Use a min-heap (via Reverse) to ensure deterministic ordering by node ID
+		let mut heap: BinaryHeap<Reverse<FlowNodeId>> = BinaryHeap::new();
 		let mut result = Vec::new();
 
 		// Calculate in-degrees
@@ -94,15 +97,15 @@ impl<NodeData> DirectedGraph<NodeData> {
 			*in_degree.get_mut(&edge.target).unwrap() += 1;
 		}
 
-		// Add nodes with no incoming edges to queue
+		// Add nodes with no incoming edges to heap (sorted by node ID)
 		for (node_id, &degree) in &in_degree {
 			if degree == 0 {
-				queue.push_back(node_id.clone());
+				heap.push(Reverse(node_id.clone()));
 			}
 		}
 
-		// Process nodes
-		while let Some(node_id) = queue.pop_front() {
+		// Process nodes in deterministic order (smallest node ID first)
+		while let Some(Reverse(node_id)) = heap.pop() {
 			result.push(node_id.clone());
 
 			// Update in-degrees of neighbors
@@ -111,7 +114,7 @@ impl<NodeData> DirectedGraph<NodeData> {
 					let degree = in_degree.get_mut(neighbor).unwrap();
 					*degree -= 1;
 					if *degree == 0 {
-						queue.push_back(neighbor.clone());
+						heap.push(Reverse(neighbor.clone()));
 					}
 				}
 			}

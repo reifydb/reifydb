@@ -16,7 +16,7 @@ use reifydb_core::{
 	event::cdc::CdcCheckpointAdvancedEvent,
 	interface::{
 		Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, CommandTransaction, Engine as EngineInterface, Key,
-		MultiVersionCommandTransaction, WithEventBus,
+		KeyKind, MultiVersionCommandTransaction, WithEventBus,
 	},
 	key::{CdcConsumerKey, EncodableKey},
 	log_debug, log_error,
@@ -106,8 +106,8 @@ impl<C: CdcConsume> PollConsumer<C> {
 
 		let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
 
-		// Filter transactions to only those with Row or Flow changes
-		// Flow changes are needed to detect new flow definitions
+		// Filter transactions to only those with Row or Flow-related changes
+		// Flow-related changes are needed to detect new flow definitions
 		let relevant_transactions = transactions
 			.into_iter()
 			.filter(|tx| {
@@ -124,7 +124,17 @@ impl<C: CdcConsume> PollConsumer<C> {
 						key,
 						..
 					} => {
-						matches!(Key::decode(key), Some(Key::Row(_) | Key::Flow(_)))
+						if let Some(kind) = Key::kind(key) {
+							matches!(
+								kind,
+								KeyKind::Row
+									| KeyKind::Flow | KeyKind::FlowNode
+									| KeyKind::FlowNodeByFlow | KeyKind::FlowEdge
+									| KeyKind::FlowEdgeByFlow | KeyKind::NamespaceFlow
+							)
+						} else {
+							false
+						}
 					}
 				})
 			})

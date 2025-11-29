@@ -8,7 +8,7 @@ use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view}
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, CowVec, Result, Row,
-	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, SourceId, WithEventBus},
+	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, KeyKind, SourceId, WithEventBus},
 	key::Key,
 	log_trace,
 	value::encoded::EncodedValues,
@@ -157,19 +157,29 @@ impl CdcConsume for FlowConsumer {
 			);
 
 			for sequenced_change in cdc.changes {
-				if let Some(decoded_key) = Key::decode(sequenced_change.key()) {
-					// Detect flow definition changes - trigger reload but don't process as data
-					if let Key::Flow(_) = decoded_key {
+				// Check key kind first to detect flow-related changes
+				if let Some(kind) = Key::kind(sequenced_change.key()) {
+					// Detect any flow definition changes - trigger reload
+					if matches!(
+						kind,
+						KeyKind::Flow
+							| KeyKind::FlowNode | KeyKind::FlowNodeByFlow | KeyKind::FlowEdge
+							| KeyKind::FlowEdgeByFlow | KeyKind::NamespaceFlow
+					) {
 						if flows_changed_at_version.is_none() {
 							log_trace!(
-								"[CONSUMER] Flow definition changed at version={}, will reload flows",
+								"[CONSUMER] Flow-related change (kind={:?}) at version={}, will reload flows",
+								kind,
 								version.0
 							);
 							flows_changed_at_version = Some(version);
 						}
 						continue;
 					}
+				}
 
+				// Then try to decode as Key::Row for data changes
+				if let Some(decoded_key) = Key::decode(sequenced_change.key()) {
 					if let Key::Row(table_row) = decoded_key {
 						let source_id = table_row.source;
 

@@ -30,6 +30,9 @@ impl CatalogStore {
 			}
 		}
 
+		// Sort by edge_id to ensure consistent ordering (edges are stored in descending order)
+		edges.sort_by_key(|e| e.id);
+
 		Ok(edges)
 	}
 
