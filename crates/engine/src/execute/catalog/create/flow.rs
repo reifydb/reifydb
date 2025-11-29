@@ -24,10 +24,8 @@ impl Executor {
 			}
 		}
 
-		// Compile flow - nodes and edges are persisted by the compiler
-		let _flow = compile_flow(txn, *plan.as_clause, None)?;
-
-		CatalogStore::create_flow(
+		// Create the flow entry first to get a FlowId
+		let flow_def = CatalogStore::create_flow(
 			txn,
 			FlowToCreate {
 				fragment: Some(plan.flow.clone().into_owned()),
@@ -36,6 +34,9 @@ impl Executor {
 				status: FlowStatus::Active,
 			},
 		)?;
+
+		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
+		let _flow = compile_flow(txn, *plan.as_clause, None, flow_def.id)?;
 
 		Ok(Columns::single_row([
 			("namespace", Value::Utf8(plan.namespace.name.to_string())),

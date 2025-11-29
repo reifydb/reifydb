@@ -16,8 +16,10 @@ mod table;
 mod transactional;
 
 impl Executor {
-	// FIXME: This creates the internal flow representation for deferred views
-	// TODO: Fix flow_id mismatch - compile_flow generates one ID, create_flow generates another
+	/// Creates a flow for a deferred view.
+	///
+	/// The flow entry is created first to obtain a FlowId, then the flow nodes
+	/// and edges are compiled and persisted with that same FlowId.
 	pub(crate) fn create_deferred_view_flow(
 		&self,
 		txn: &mut StandardCommandTransaction,
@@ -27,12 +29,9 @@ impl Executor {
 		use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate};
 		use reifydb_core::interface::FlowStatus;
 
-		// Compile flow - nodes and edges are persisted by the compiler
-		let _flow = compile_flow(txn, *plan, Some(view))?;
-
-		// Create the flow entry in the catalog
+		// Create the flow entry first to get a FlowId
 		// Use the view name with "_flow" suffix as the flow name
-		CatalogStore::create_flow(
+		let flow_def = CatalogStore::create_flow(
 			txn,
 			FlowToCreate {
 				fragment: None,
@@ -41,6 +40,9 @@ impl Executor {
 				status: FlowStatus::Active,
 			},
 		)?;
+
+		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
+		let _flow = compile_flow(txn, *plan, Some(view), flow_def.id)?;
 
 		Ok(())
 	}

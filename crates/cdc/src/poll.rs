@@ -106,8 +106,9 @@ impl<C: CdcConsume> PollConsumer<C> {
 
 		let latest_version = transactions.iter().map(|tx| tx.version).max().unwrap_or(checkpoint);
 
-		// Filter transactions to only those with Row changes
-		let row_transactions = transactions
+		// Filter transactions to only those with Row or Flow changes
+		// Flow changes are needed to detect new flow definitions
+		let relevant_transactions = transactions
 			.into_iter()
 			.filter(|tx| {
 				tx.changes.iter().any(|change| match &change.change {
@@ -123,14 +124,14 @@ impl<C: CdcConsume> PollConsumer<C> {
 						key,
 						..
 					} => {
-						matches!(Key::decode(key), Some(Key::Row(_)))
+						matches!(Key::decode(key), Some(Key::Row(_) | Key::Flow(_)))
 					}
 				})
 			})
 			.collect::<Vec<_>>();
 
-		if !row_transactions.is_empty() {
-			consumer.consume(&mut transaction, row_transactions)?;
+		if !relevant_transactions.is_empty() {
+			consumer.consume(&mut transaction, relevant_transactions)?;
 		}
 
 		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;

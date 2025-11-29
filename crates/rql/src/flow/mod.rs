@@ -22,7 +22,7 @@ use reifydb_catalog::{
 	CatalogStore,
 	store::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id},
 };
-use reifydb_core::interface::{CommandTransaction, FlowEdgeDef, FlowEdgeId, FlowNodeDef, FlowNodeId, ViewDef};
+use reifydb_core::interface::{CommandTransaction, FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId, ViewDef};
 use reifydb_type::Blob;
 
 use self::{
@@ -39,15 +39,16 @@ use self::{
 };
 use crate::plan::physical::PhysicalPlan;
 
-/// Public API for compiling logical plans to Flows
+/// Public API for compiling logical plans to Flows with an existing flow ID.
 pub fn compile_flow(
 	txn: &mut impl CommandTransaction,
 	plan: PhysicalPlan,
 	sink: Option<&ViewDef>,
+	flow_id: FlowId,
 ) -> crate::Result<Flow> {
 	// Convert PhysicalPlan<'_> to PhysicalPlan<'static> at the boundary
 	let owned_plan = to_owned_physical_plan(plan);
-	let compiler = FlowCompiler::new(txn)?;
+	let compiler = FlowCompiler::with_flow_id(txn, flow_id);
 	compiler.compile(owned_plan, sink)
 }
 
@@ -62,13 +63,22 @@ pub(crate) struct FlowCompiler<T: CommandTransaction> {
 }
 
 impl<T: CommandTransaction> FlowCompiler<T> {
-	/// Creates a new FlowCompiler instance
+	/// Creates a new FlowCompiler instance with a new flow ID
 	pub fn new(txn: &mut T) -> crate::Result<Self> {
 		Ok(Self {
 			builder: Flow::builder(next_flow_id(txn)?),
 			txn: txn as *mut T,
 			sink: None,
 		})
+	}
+
+	/// Creates a new FlowCompiler instance with an existing flow ID
+	pub fn with_flow_id(txn: &mut T, flow_id: FlowId) -> Self {
+		Self {
+			builder: Flow::builder(flow_id),
+			txn: txn as *mut T,
+			sink: None,
+		}
 	}
 
 	/// Gets the next available operator ID

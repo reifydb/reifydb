@@ -27,10 +27,6 @@ use crate::{
 	worker::{ParallelWorkerPool, SameThreadedWorker, WorkerPool},
 };
 
-// The table ID for reifydb.flows table
-// This is where flow definitions are stored
-const FLOWS_TABLE_ID: u64 = 1025;
-
 /// Consumer that processes CDC events for Flow subsystem
 pub struct FlowConsumer {
 	engine: StandardEngine,
@@ -162,20 +158,20 @@ impl CdcConsume for FlowConsumer {
 
 			for sequenced_change in cdc.changes {
 				if let Some(decoded_key) = Key::decode(sequenced_change.key()) {
+					// Detect flow definition changes - trigger reload but don't process as data
+					if let Key::Flow(_) = decoded_key {
+						if flows_changed_at_version.is_none() {
+							log_trace!(
+								"[CONSUMER] Flow definition changed at version={}, will reload flows",
+								version.0
+							);
+							flows_changed_at_version = Some(version);
+						}
+						continue;
+					}
+
 					if let Key::Row(table_row) = decoded_key {
 						let source_id = table_row.source;
-
-						// Detect flow table changes - trigger reload but don't process as data
-						if source_id.as_u64() == FLOWS_TABLE_ID {
-							if flows_changed_at_version.is_none() {
-								log_trace!(
-									"[CONSUMER] Flow table changed at version={}, will reload flows",
-									version.0
-								);
-								flows_changed_at_version = Some(version);
-							}
-							continue;
-						}
 
 						// CDC now returns resolved values directly
 						let change = match &sequenced_change.change {
