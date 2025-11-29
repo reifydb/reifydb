@@ -33,8 +33,8 @@ use crate::{
 			ColumnDef, ColumnIndex,
 			layout::{
 				column,
-				column::{AUTO_INCREMENT, CONSTRAINT, ID, INDEX, NAME, TABLE, VALUE},
-				table_column,
+				column::{AUTO_INCREMENT, CONSTRAINT, ID, INDEX, NAME, SOURCE, VALUE},
+				source_column,
 			},
 		},
 		sequence::SystemSequence,
@@ -96,10 +96,10 @@ impl CatalogStore {
 
 		let mut row = column::LAYOUT.allocate();
 		column::LAYOUT.set_u64(&mut row, ID, id);
-		column::LAYOUT.set_u64(&mut row, TABLE, source);
+		column::LAYOUT.set_u64(&mut row, SOURCE, source);
 		column::LAYOUT.set_utf8(&mut row, NAME, &column_to_create.column);
 		column::LAYOUT.set_u8(&mut row, VALUE, column_to_create.constraint.get_type().to_u8());
-		column::LAYOUT.set_u16(&mut row, INDEX, column_to_create.index);
+		column::LAYOUT.set_u8(&mut row, INDEX, column_to_create.index);
 		column::LAYOUT.set_bool(&mut row, AUTO_INCREMENT, column_to_create.auto_increment);
 
 		// Store constraint as encoded blob
@@ -115,10 +115,10 @@ impl CatalogStore {
 			row,
 		)?;
 
-		let mut row = table_column::LAYOUT.allocate();
-		table_column::LAYOUT.set_u64(&mut row, table_column::ID, id);
-		table_column::LAYOUT.set_utf8(&mut row, table_column::NAME, &column_to_create.column);
-		table_column::LAYOUT.set_u16(&mut row, table_column::INDEX, column_to_create.index);
+		let mut row = source_column::LAYOUT.allocate();
+		source_column::LAYOUT.set_u64(&mut row, source_column::ID, id);
+		source_column::LAYOUT.set_utf8(&mut row, source_column::NAME, &column_to_create.column);
+		source_column::LAYOUT.set_u8(&mut row, source_column::INDEX, column_to_create.index);
 		txn.set(
 			&ColumnKey {
 				source,

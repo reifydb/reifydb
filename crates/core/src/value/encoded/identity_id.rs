@@ -37,7 +37,7 @@ impl EncodedValuesLayout {
 	}
 
 	pub fn try_get_identity_id(&self, row: &EncodedValues, index: usize) -> Option<IdentityId> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::IdentityId {
 			Some(self.get_identity_id(row, index))
 		} else {
 			None
@@ -307,5 +307,15 @@ mod tests {
 
 		// Verify that the primary key is suitable for ordering/indexing
 		assert_eq!(primary_key.get_version_num(), 7);
+	}
+
+	#[test]
+	fn test_try_get_identity_id_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
+		assert_eq!(layout.try_get_identity_id(&row, 0), None);
 	}
 }

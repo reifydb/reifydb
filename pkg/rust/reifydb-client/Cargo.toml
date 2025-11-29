@@ -25,6 +25,7 @@ default = []
 [dependencies]
 reifydb-type = { workspace = true }
 reifydb-hash = { workspace = true }
+reifydb-client-derive = { workspace = true }
 
 num-bigint = { version = "0.4.6", features = ["serde"] }
 serde = { version = "1.0.219", features = ["derive"] }

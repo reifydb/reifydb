@@ -24,7 +24,7 @@ use reifydb_sub_worker::WorkerSubsystem;
 
 use crate::{
 	boot::Bootloader,
-	defaults::{GRACEFUL_SHSVTDOWN_TIMEOSVT, HEALTH_CHECK_INTERVAL, MAX_STARTUP_TIME},
+	defaults::{GRACEFUL_SHUTDOWN_TIMEOUT, HEALTH_CHECK_INTERVAL, MAX_STARTUP_TIME},
 	health::{ComponentHealth, HealthMonitor},
 	session::{CommandSession, IntoCommandSession, IntoQuerySession, QuerySession, Session},
 	subsystem::Subsystems,
@@ -40,7 +40,7 @@ pub struct DatabaseConfig {
 impl DatabaseConfig {
 	pub fn new() -> Self {
 		Self {
-			graceful_shutdown_timeout: GRACEFUL_SHSVTDOWN_TIMEOSVT,
+			graceful_shutdown_timeout: GRACEFUL_SHUTDOWN_TIMEOUT,
 			health_check_interval: HEALTH_CHECK_INTERVAL,
 			max_startup_time: MAX_STARTUP_TIME,
 		}

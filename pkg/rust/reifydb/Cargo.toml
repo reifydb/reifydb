@@ -18,6 +18,7 @@ reifydb-store-transaction = { workspace = true }
 reifydb-rql = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
+reifydb-derive = { workspace = true }
 
 reifydb-sub-api = { workspace = true }
 reifydb-sub-admin = { workspace = true, optional = true }

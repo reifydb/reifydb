@@ -139,7 +139,7 @@ impl CatalogStore {
 					constraint: col.constraint,
 					if_not_exists: false,
 					policies: col.policies,
-					index: ColumnIndex(idx as u16),
+					index: ColumnIndex(idx as u8),
 					auto_increment: col.auto_increment,
 				},
 			)?;

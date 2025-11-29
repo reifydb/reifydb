@@ -12,3 +12,4 @@ export {useQueryExecutor, type QueryResult, type QueryState, type QueryExecutorO
 export {useQueryOne, useQueryMany, type QueryOptions} from './hooks/use-query';
 export {useCommandExecutor, type CommandResult, type CommandState, type CommandExecutorOptions} from './hooks/use-command-executor';
 export {useCommandOne, useCommandMany, type CommandOptions} from './hooks/use-command';
+export {useSchema, type TableInfo, type ColumnInfo} from './hooks/use-schema';

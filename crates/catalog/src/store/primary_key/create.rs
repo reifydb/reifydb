@@ -248,7 +248,7 @@ mod tests {
 					constraint: TypeConstraint::unconstrained(Type::Uint8),
 					if_not_exists: false,
 					policies: vec![],
-					index: ColumnIndex(i as u16),
+					index: ColumnIndex(i as u8),
 					auto_increment: false,
 				},
 			)

@@ -24,7 +24,7 @@ impl EncodedValuesLayout {
 	}
 
 	pub fn try_get_f64(&self, row: &EncodedValues, index: usize) -> Option<f64> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::Float8 {
 			Some(self.get_f64(row, index))
 		} else {
 			None
@@ -145,6 +145,16 @@ mod tests {
 		assert_eq!(layout.try_get_f64(&row, 1), None);
 
 		layout.set_undefined(&mut row, 0);
+		assert_eq!(layout.try_get_f64(&row, 0), None);
+	}
+
+	#[test]
+	fn test_try_get_f64_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Boolean]);
+		let mut row = layout.allocate();
+
+		layout.set_bool(&mut row, 0, true);
+
 		assert_eq!(layout.try_get_f64(&row, 0), None);
 	}
 }

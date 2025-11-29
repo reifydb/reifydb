@@ -59,7 +59,7 @@ impl CatalogStore {
 		let id = ColumnId(LAYOUT.get_u64(&row, ID));
 		let name = LAYOUT.get_utf8(&row, NAME).to_string();
 		let base_type = Type::from_u8(LAYOUT.get_u8(&row, VALUE));
-		let index = ColumnIndex(LAYOUT.get_u16(&row, INDEX));
+		let index = ColumnIndex(LAYOUT.get_u8(&row, INDEX));
 		let auto_increment = LAYOUT.get_bool(&row, AUTO_INCREMENT);
 
 		// Reconstruct constraint from stored blob

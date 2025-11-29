@@ -1,0 +1,17 @@
+[package]
+name = "reifydb-macro"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license = "MIT"
+repository.workspace = true
+description = "Macros for ReifyDB"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+reifydb-macro-impl = { workspace = true }
+
+[dev-dependencies]
+reifydb-type = { path = "../type" }

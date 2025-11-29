@@ -26,7 +26,7 @@ impl EncodedValuesLayout {
 	}
 
 	pub fn try_get_bool(&self, row: &EncodedValues, index: usize) -> Option<bool> {
-		if row.is_defined(index) {
+		if row.is_defined(index) && self.fields[index].r#type == Type::Boolean {
 			Some(self.get_bool(row, index))
 		} else {
 			None
@@ -93,6 +93,16 @@ mod tests {
 		assert_eq!(layout.try_get_bool(&row, 1), None);
 
 		layout.set_undefined(&mut row, 0);
+		assert_eq!(layout.try_get_bool(&row, 0), None);
+	}
+
+	#[test]
+	fn test_try_get_bool_wrong_type() {
+		let layout = EncodedValuesLayout::new(&[Type::Int1]);
+		let mut row = layout.allocate();
+
+		layout.set_i8(&mut row, 0, 42);
+
 		assert_eq!(layout.try_get_bool(&row, 0), None);
 	}
 }

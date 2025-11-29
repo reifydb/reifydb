@@ -130,7 +130,7 @@ impl CatalogStore {
 					constraint: column_to_create.constraint.clone(),
 					if_not_exists: false,
 					policies: column_to_create.policies.clone(),
-					index: ColumnIndex(idx as u16),
+					index: ColumnIndex(idx as u8),
 					auto_increment: column_to_create.auto_increment,
 				},
 			)?;
