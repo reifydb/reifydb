@@ -6,7 +6,7 @@ use std::cmp::min;
 use reifydb_core::value::column::{Column, ColumnData};
 use reifydb_rql::expression::ColumnExpression;
 use reifydb_type::{
-	Date, DateTime, Decimal, Duration, RowNumber, Time, Type, Uint, Value,
+	Date, DateTime, Decimal, Duration, ROW_NUMBER_COLUMN_NAME, RowNumber, Time, Type, Uint, Value,
 	value::{Blob, IdentityId, Uuid4, Uuid7},
 };
 
@@ -19,6 +19,15 @@ impl StandardColumnEvaluator {
 		column: &ColumnExpression<'a>,
 	) -> crate::Result<Column<'a>> {
 		let name = column.0.name.text();
+
+		// Check for rownum pseudo-column first
+		if name == ROW_NUMBER_COLUMN_NAME && !ctx.columns.row_numbers.is_empty() {
+			let row_numbers: Vec<RowNumber> = ctx.columns.row_numbers.iter().copied().collect();
+			return Ok(Column::new(
+				ROW_NUMBER_COLUMN_NAME.to_string(),
+				ColumnData::row_number(row_numbers),
+			));
+		}
 
 		if let Some(col) = ctx.columns.iter().find(|c| c.name() == name) {
 			return self.extract_column_data(col, ctx);
