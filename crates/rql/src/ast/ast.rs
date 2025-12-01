@@ -8,10 +8,11 @@ use reifydb_type::Fragment;
 
 use crate::ast::{
 	identifier::{
-		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier, MaybeQualifiedFlowIdentifier,
-		MaybeQualifiedFunctionIdentifier, MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier,
-		MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
-		MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier, UnresolvedSourceIdentifier,
+		MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
+		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier, MaybeQualifiedFunctionIdentifier,
+		MaybeQualifiedIndexIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
+		MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier, UnqualifiedIdentifier,
+		UnresolvedSourceIdentifier,
 	},
 	tokenize::{Literal, Token, TokenKind},
 };
@@ -700,6 +701,7 @@ pub enum AstCreate<'a> {
 	Series(AstCreateSeries<'a>),
 	Table(AstCreateTable<'a>),
 	RingBuffer(AstCreateRingBuffer<'a>),
+	Dictionary(AstCreateDictionary<'a>),
 	Index(AstCreateIndex<'a>),
 }
 
@@ -846,6 +848,15 @@ pub struct AstCreateRingBuffer<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct AstCreateDictionary<'a> {
+	pub token: Token<'a>,
+	pub if_not_exists: bool,
+	pub dictionary: MaybeQualifiedDictionaryIdentifier<'a>,
+	pub value_type: AstDataType<'a>,
+	pub id_type: AstDataType<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum AstDescribe<'a> {
 	Query {
 		token: Token<'a>,
@@ -914,6 +925,10 @@ impl<'a> AstCreate<'a> {
 				..
 			}) => token,
 			AstCreate::RingBuffer(AstCreateRingBuffer {
+				token,
+				..
+			}) => token,
+			AstCreate::Dictionary(AstCreateDictionary {
 				token,
 				..
 			}) => token,

@@ -70,6 +70,10 @@ impl Marshaller {
 					origin_type: 5,
 					id: id.0,
 				},
+				SourceId::Dictionary(id) => FlowOriginFFI {
+					origin_type: 6,
+					id: id.0,
+				},
 			},
 		}
 	}

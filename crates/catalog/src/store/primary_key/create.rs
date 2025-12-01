@@ -85,6 +85,12 @@ impl CatalogStore {
 			SourceId::RingBuffer(ring_buffer_id) => {
 				Self::set_ring_buffer_primary_key(txn, ring_buffer_id, id)?;
 			}
+			SourceId::Dictionary(_) => {
+				// Dictionaries don't support traditional primary keys
+				return_internal_error!(
+					"Cannot create primary key for dictionary. Dictionaries have their own key structure."
+				);
+			}
 		}
 
 		Ok(id)

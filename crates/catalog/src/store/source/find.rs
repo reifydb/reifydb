@@ -56,6 +56,12 @@ impl CatalogStore {
 				// buffers are not yet queryable
 				Ok(None)
 			}
+			SourceId::Dictionary(_dictionary_id) => {
+				// TODO: Implement find_dictionary when dictionary
+				// catalog is ready For now, dictionaries return
+				// None as they use a different retrieval mechanism
+				Ok(None)
+			}
 		}
 	}
 }

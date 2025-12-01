@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::{EncodableKey, KeyKind};
 use crate::{
 	EncodedKey, EncodedKeyRange,
-	interface::{FlowId, FlowNodeId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId},
+	interface::{DictionaryId, FlowId, FlowNodeId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId},
 	util::encoding::keycode::{KeyDeserializer, KeySerializer},
 };
 
@@ -39,6 +39,9 @@ impl EncodableKey for SourceRetentionPolicyKey {
 			SourceId::RingBuffer(id) => {
 				serializer.extend_u8(0x04).extend_u64(id.0);
 			}
+			SourceId::Dictionary(id) => {
+				serializer.extend_u8(0x06).extend_u64(id.0);
+			}
 		}
 
 		serializer.to_encoded_key()
@@ -66,6 +69,7 @@ impl EncodableKey for SourceRetentionPolicyKey {
 			0x03 => SourceId::TableVirtual(TableVirtualId(id)),
 			0x04 => SourceId::RingBuffer(RingBufferId(id)),
 			0x05 => SourceId::Flow(FlowId(id)),
+			0x06 => SourceId::Dictionary(DictionaryId(id)),
 			_ => return None,
 		};
 

@@ -4,13 +4,31 @@
 use reifydb_type::IntoFragment;
 
 use crate::interface::{
-	NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef, RingBufferId, TableDef, TableId,
-	TransactionId, ViewDef, ViewId,
+	DictionaryDef, DictionaryId, NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef, RingBufferId,
+	TableDef, TableId, TransactionId, ViewDef, ViewId,
 };
 
 pub trait TransactionalChanges:
-	TransactionalNamespaceChanges + TransactionalRingBufferChanges + TransactionalTableChanges + TransactionalViewChanges
+	TransactionalDictionaryChanges
+	+ TransactionalNamespaceChanges
+	+ TransactionalRingBufferChanges
+	+ TransactionalTableChanges
+	+ TransactionalViewChanges
 {
+}
+
+pub trait TransactionalDictionaryChanges {
+	fn find_dictionary(&self, id: DictionaryId) -> Option<&DictionaryDef>;
+
+	fn find_dictionary_by_name<'a>(
+		&self,
+		namespace: NamespaceId,
+		name: impl IntoFragment<'a>,
+	) -> Option<&DictionaryDef>;
+
+	fn is_dictionary_deleted(&self, id: DictionaryId) -> bool;
+
+	fn is_dictionary_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
 }
 
 pub trait TransactionalNamespaceChanges {
@@ -61,6 +79,8 @@ pub trait TransactionalViewChanges {
 pub struct TransactionalDefChanges {
 	/// Transaction ID this change set belongs to
 	pub txn_id: TransactionId,
+	/// All dictionary definition changes in order (no coalescing)
+	pub dictionary_def: Vec<Change<DictionaryDef>>,
 	/// All namespace definition changes in order (no coalescing)
 	pub namespace_def: Vec<Change<NamespaceDef>>,
 	/// All ring buffer definition changes in order (no coalescing)
@@ -74,6 +94,21 @@ pub struct TransactionalDefChanges {
 }
 
 impl TransactionalDefChanges {
+	pub fn add_dictionary_def_change(&mut self, change: Change<DictionaryDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|d| d.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.dictionary_def.push(change);
+		self.log.push(Operation::Dictionary {
+			id,
+			op,
+		});
+	}
+
 	pub fn add_namespace_def_change(&mut self, change: Change<NamespaceDef>) {
 		let id = change
 			.post
@@ -158,6 +193,10 @@ pub enum OperationType {
 /// Log entry for operation ordering
 #[derive(Debug, Clone)]
 pub enum Operation {
+	Dictionary {
+		id: DictionaryId,
+		op: OperationType,
+	},
 	Namespace {
 		id: NamespaceId,
 		op: OperationType,
@@ -180,6 +219,7 @@ impl TransactionalDefChanges {
 	pub fn new(txn_id: TransactionId) -> Self {
 		Self {
 			txn_id,
+			dictionary_def: Vec::new(),
 			namespace_def: Vec::new(),
 			ring_buffer_def: Vec::new(),
 			table_def: Vec::new(),
@@ -261,7 +301,9 @@ impl TransactionalDefChanges {
 
 	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
+		self.dictionary_def.clear();
 		self.namespace_def.clear();
+		self.ring_buffer_def.clear();
 		self.table_def.clear();
 		self.view_def.clear();
 		self.log.clear();

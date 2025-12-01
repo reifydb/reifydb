@@ -35,8 +35,8 @@ use crate::{
 	table_virtual::{
 		TableVirtual, TableVirtualContext,
 		system::{
-			CdcConsumers, ColumnPolicies, ColumnsTable, FlowEdges, FlowNodes, FlowOperators, Flows,
-			Namespaces, OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, Sequences,
+			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, FlowEdges, FlowNodes, FlowOperators,
+			Flows, Namespaces, OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, Sequences,
 			SourceRetentionPolicies, Tables, Versions, Views,
 		},
 	},
@@ -197,6 +197,7 @@ pub(crate) fn compile<'a>(
 					"flow_operators" => Box::new(FlowOperators::new(
 						context.executor.flow_operator_store.clone(),
 					)),
+					"dictionaries" => Box::new(Dictionaries::new()),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {
@@ -252,6 +253,7 @@ pub(crate) fn compile<'a>(
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::CreateRingBuffer(_)
 		| PhysicalPlan::CreateFlow(_)
+		| PhysicalPlan::CreateDictionary(_)
 		| PhysicalPlan::Delete(_)
 		| PhysicalPlan::DeleteRingBuffer(_)
 		| PhysicalPlan::InsertTable(_)

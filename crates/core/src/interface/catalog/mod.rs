@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod column;
+mod dictionary;
 mod flow;
 mod id;
 mod key;
@@ -15,6 +16,7 @@ mod table_virtual;
 mod view;
 
 pub use column::*;
+pub use dictionary::*;
 pub use flow::*;
 pub use id::*;
 pub use key::*;

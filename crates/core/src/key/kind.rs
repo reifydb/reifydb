@@ -39,6 +39,11 @@ pub enum KeyKind {
 	FlowEdge = 0x1D,
 	FlowEdgeByFlow = 0x1E,
 	FlowNodeInternalState = 0x1F,
+	Dictionary = 0x20,
+	DictionaryEntry = 0x21,
+	DictionaryEntryIndex = 0x22,
+	NamespaceDictionary = 0x23,
+	DictionarySequence = 0x24,
 }
 
 impl From<KeyKind> for u8 {
@@ -82,6 +87,11 @@ impl TryFrom<u8> for KeyKind {
 			0x1D => Ok(Self::FlowEdge),
 			0x1E => Ok(Self::FlowEdgeByFlow),
 			0x1F => Ok(Self::FlowNodeInternalState),
+			0x20 => Ok(Self::Dictionary),
+			0x21 => Ok(Self::DictionaryEntry),
+			0x22 => Ok(Self::DictionaryEntryIndex),
+			0x23 => Ok(Self::NamespaceDictionary),
+			0x24 => Ok(Self::DictionarySequence),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

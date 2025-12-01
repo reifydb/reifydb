@@ -26,13 +26,14 @@ use reifydb_type::{Fragment, diagnostic::ast::unsupported_ast_node};
 
 use crate::{
 	ast::{
-		Ast, AstInfix, AstLiteral, AstLiteralText, AstMap, AstPolicy, AstPolicyKind, AstStatement,
+		Ast, AstDataType, AstInfix, AstLiteral, AstLiteralText, AstMap, AstPolicy, AstPolicyKind, AstStatement,
 		InfixOperator, Token, TokenKind,
 		identifier::{
 			MaybeQualifiedColumnIdentifier, MaybeQualifiedDeferredViewIdentifier,
-			MaybeQualifiedFlowIdentifier, MaybeQualifiedIndexIdentifier,
-			MaybeQualifiedRingBufferIdentifier, MaybeQualifiedSequenceIdentifier,
-			MaybeQualifiedTableIdentifier, MaybeQualifiedTransactionalViewIdentifier,
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedFlowIdentifier,
+			MaybeQualifiedIndexIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedSequenceIdentifier, MaybeQualifiedTableIdentifier,
+			MaybeQualifiedTransactionalViewIdentifier,
 		},
 		tokenize::{Keyword, Literal, Operator},
 	},
@@ -463,6 +464,7 @@ pub enum LogicalPlan<'a> {
 	CreateSequence(CreateSequenceNode<'a>),
 	CreateTable(CreateTableNode<'a>),
 	CreateRingBuffer(CreateRingBufferNode<'a>),
+	CreateDictionary(CreateDictionaryNode<'a>),
 	CreateFlow(CreateFlowNode<'a>),
 	CreateIndex(CreateIndexNode<'a>),
 	// Alter
@@ -615,6 +617,14 @@ pub struct CreateRingBufferNode<'a> {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+}
+
+#[derive(Debug)]
+pub struct CreateDictionaryNode<'a> {
+	pub dictionary: MaybeQualifiedDictionaryIdentifier<'a>,
+	pub if_not_exists: bool,
+	pub value_type: AstDataType<'a>,
+	pub id_type: AstDataType<'a>,
 }
 
 #[derive(Debug)]

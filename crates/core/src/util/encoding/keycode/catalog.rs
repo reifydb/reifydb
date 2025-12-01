@@ -3,7 +3,9 @@
 
 use reifydb_type::return_internal_error;
 
-use crate::interface::{FlowId, IndexId, PrimaryKeyId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId};
+use crate::interface::{
+	DictionaryId, FlowId, IndexId, PrimaryKeyId, RingBufferId, SourceId, TableId, TableVirtualId, ViewId,
+};
 
 /// Serialize a SourceId for use in database keys
 /// Returns [type_byte, ...id_bytes] where type_byte is 0x01 for Table, 0x02 for
@@ -31,6 +33,10 @@ pub fn serialize_source_id(source: &SourceId) -> Vec<u8> {
 			result.push(0x05);
 			result.extend(&super::serialize(id));
 		}
+		SourceId::Dictionary(DictionaryId(id)) => {
+			result.push(0x06);
+			result.extend(&super::serialize(id));
+		}
 	}
 	result
 }
@@ -52,6 +58,7 @@ pub fn deserialize_source_id(bytes: &[u8]) -> crate::Result<SourceId> {
 		0x03 => Ok(SourceId::TableVirtual(TableVirtualId(id))),
 		0x04 => Ok(SourceId::RingBuffer(RingBufferId(id))),
 		0x05 => Ok(SourceId::Flow(FlowId(id))),
+		0x06 => Ok(SourceId::Dictionary(DictionaryId(id))),
 		_ => return_internal_error!("Invalid SourceId type byte: 0x{:02x}.", type_byte),
 	}
 }

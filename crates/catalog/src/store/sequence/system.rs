@@ -5,8 +5,8 @@ use once_cell::sync::Lazy;
 use reifydb_core::{
 	EncodedKey,
 	interface::{
-		ColumnId, ColumnPolicyId, CommandTransaction, EncodableKey, NamespaceId, PrimaryKeyId, RingBufferId,
-		SystemSequenceKey, TableId, ViewId,
+		ColumnId, ColumnPolicyId, CommandTransaction, DictionaryId, EncodableKey, NamespaceId, PrimaryKeyId,
+		RingBufferId, SystemSequenceKey, TableId, ViewId,
 	},
 };
 
@@ -100,5 +100,9 @@ impl SystemSequence {
 
 	pub(crate) fn next_ring_buffer_id(txn: &mut impl CommandTransaction) -> crate::Result<RingBufferId> {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(RingBufferId)
+	}
+
+	pub(crate) fn next_dictionary_id(txn: &mut impl CommandTransaction) -> crate::Result<DictionaryId> {
+		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(DictionaryId)
 	}
 }

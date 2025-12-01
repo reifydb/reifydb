@@ -5,6 +5,7 @@ use reifydb_core::interface::{
 	CommandTransaction, QueryTransaction, TransactionalChanges, interceptor::WithInterceptors,
 };
 
+mod dictionary;
 mod flow;
 mod namespace;
 mod ring_buffer;
@@ -18,6 +19,7 @@ pub trait MaterializedCatalogTransaction {
 
 pub trait CatalogCommandTransaction:
 	CatalogQueryTransaction
+	+ CatalogDictionaryCommandOperations
 	+ CatalogNamespaceCommandOperations
 	+ CatalogRingBufferCommandOperations
 	+ CatalogTableCommandOperations
@@ -26,7 +28,8 @@ pub trait CatalogCommandTransaction:
 }
 
 pub trait CatalogTrackChangeOperations:
-	CatalogTrackNamespaceChangeOperations
+	CatalogTrackDictionaryChangeOperations
+	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackTableChangeOperations
 	+ CatalogTrackViewChangeOperations
@@ -34,7 +37,8 @@ pub trait CatalogTrackChangeOperations:
 }
 
 pub trait CatalogQueryTransaction:
-	CatalogFlowQueryOperations
+	CatalogDictionaryQueryOperations
+	+ CatalogFlowQueryOperations
 	+ CatalogNamespaceQueryOperations
 	+ CatalogRingBufferQueryOperations
 	+ CatalogSourceQueryOperations
@@ -55,6 +59,9 @@ impl<
 {
 }
 
+pub use dictionary::{
+	CatalogDictionaryCommandOperations, CatalogDictionaryQueryOperations, CatalogTrackDictionaryChangeOperations,
+};
 pub use flow::CatalogFlowQueryOperations;
 pub use namespace::{
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogTrackNamespaceChangeOperations,

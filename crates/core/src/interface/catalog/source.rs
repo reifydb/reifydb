@@ -5,7 +5,8 @@ use reifydb_type::return_internal_error;
 use serde::{Deserialize, Serialize};
 
 use crate::interface::{
-	FlowDef, FlowId, RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef, ViewId,
+	DictionaryId, FlowDef, FlowId, RingBufferId, TableDef, TableId, TableVirtualDef, TableVirtualId, ViewDef,
+	ViewId,
 };
 
 #[derive(Debug, Copy, Clone, PartialOrd, PartialEq, Ord, Eq, Hash, Serialize, Deserialize)]
@@ -15,6 +16,7 @@ pub enum SourceId {
 	Flow(FlowId),
 	TableVirtual(TableVirtualId),
 	RingBuffer(RingBufferId),
+	Dictionary(DictionaryId),
 }
 
 impl std::fmt::Display for SourceId {
@@ -25,6 +27,7 @@ impl std::fmt::Display for SourceId {
 			SourceId::Flow(id) => write!(f, "{}", id.0),
 			SourceId::TableVirtual(id) => write!(f, "{}", id.0),
 			SourceId::RingBuffer(id) => write!(f, "{}", id.0),
+			SourceId::Dictionary(id) => write!(f, "{}", id.0),
 		}
 	}
 }
@@ -48,6 +51,10 @@ impl SourceId {
 
 	pub fn ring_buffer(id: impl Into<RingBufferId>) -> Self {
 		Self::RingBuffer(id.into())
+	}
+
+	pub fn dictionary(id: impl Into<DictionaryId>) -> Self {
+		Self::Dictionary(id.into())
 	}
 }
 
@@ -81,6 +88,12 @@ impl From<RingBufferId> for SourceId {
 	}
 }
 
+impl From<DictionaryId> for SourceId {
+	fn from(id: DictionaryId) -> Self {
+		SourceId::Dictionary(id)
+	}
+}
+
 impl PartialEq<u64> for SourceId {
 	fn eq(&self, other: &u64) -> bool {
 		match self {
@@ -89,6 +102,7 @@ impl PartialEq<u64> for SourceId {
 			SourceId::Flow(id) => id.0.eq(other),
 			SourceId::TableVirtual(id) => id.0.eq(other),
 			SourceId::RingBuffer(id) => id.0.eq(other),
+			SourceId::Dictionary(id) => id.0.eq(other),
 		}
 	}
 }
@@ -138,6 +152,15 @@ impl PartialEq<RingBufferId> for SourceId {
 	}
 }
 
+impl PartialEq<DictionaryId> for SourceId {
+	fn eq(&self, other: &DictionaryId) -> bool {
+		match self {
+			SourceId::Dictionary(id) => id.0 == other.0,
+			_ => false,
+		}
+	}
+}
+
 impl From<SourceId> for u64 {
 	fn from(source: SourceId) -> u64 {
 		source.as_u64()
@@ -153,6 +176,7 @@ impl SourceId {
 			SourceId::Flow(_) => 3,
 			SourceId::TableVirtual(_) => 4,
 			SourceId::RingBuffer(_) => 5,
+			SourceId::Dictionary(_) => 6,
 		}
 	}
 
@@ -164,6 +188,7 @@ impl SourceId {
 			SourceId::Flow(id) => id.0,
 			SourceId::TableVirtual(id) => id.0,
 			SourceId::RingBuffer(id) => id.0,
+			SourceId::Dictionary(id) => id.0,
 		}
 	}
 
@@ -175,6 +200,7 @@ impl SourceId {
 			SourceId::Flow(flow) => SourceId::flow(flow.0 + 1),
 			SourceId::TableVirtual(table_virtual) => SourceId::table_virtual(table_virtual.0 + 1),
 			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0 + 1),
+			SourceId::Dictionary(dictionary) => SourceId::dictionary(dictionary.0 + 1),
 		}
 	}
 
@@ -191,6 +217,7 @@ impl SourceId {
 				SourceId::table_virtual(table_virtual.0.wrapping_sub(1))
 			}
 			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0.wrapping_sub(1)),
+			SourceId::Dictionary(dictionary) => SourceId::dictionary(dictionary.0.wrapping_sub(1)),
 		}
 	}
 
@@ -254,6 +281,19 @@ impl SourceId {
 				"Data inconsistency: Expected SourceId::RingBuffer but found {:?}. \
 				This indicates a critical catalog inconsistency where a non-ring-buffer source ID \
 				was used in a context that requires a ring buffer ID.",
+				self
+			)
+		}
+	}
+
+	pub fn to_dictionary_id(self) -> crate::Result<DictionaryId> {
+		if let SourceId::Dictionary(dictionary) = self {
+			Ok(dictionary)
+		} else {
+			return_internal_error!(
+				"Data inconsistency: Expected SourceId::Dictionary but found {:?}. \
+				This indicates a critical catalog inconsistency where a non-dictionary source ID \
+				was used in a context that requires a dictionary ID.",
 				self
 			)
 		}

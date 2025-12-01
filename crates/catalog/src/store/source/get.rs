@@ -22,6 +22,7 @@ impl CatalogStore {
 				SourceId::Flow(_) => "Flow",
 				SourceId::TableVirtual(_) => "TableVirtual",
 				SourceId::RingBuffer(_) => "RingBuffer",
+				SourceId::Dictionary(_) => "Dictionary",
 			};
 
 			Error(internal!(

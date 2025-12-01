@@ -290,6 +290,29 @@ impl<'a> MaybeQualifiedRingBufferIdentifier<'a> {
 	}
 }
 
+/// Maybe-qualified dictionary identifier - namespace is optional
+#[derive(Debug, Clone, PartialEq)]
+pub struct MaybeQualifiedDictionaryIdentifier<'a> {
+	/// Namespace containing this dictionary (optional in user input)
+	pub namespace: Option<Fragment<'a>>,
+	/// Dictionary name
+	pub name: Fragment<'a>,
+}
+
+impl<'a> MaybeQualifiedDictionaryIdentifier<'a> {
+	pub fn new(name: Fragment<'a>) -> Self {
+		Self {
+			namespace: None,
+			name,
+		}
+	}
+
+	pub fn with_namespace(mut self, namespace: Fragment<'a>) -> Self {
+		self.namespace = Some(namespace);
+		self
+	}
+}
+
 /// Maybe-qualified sequence identifier - namespace is optional
 #[derive(Debug, Clone, PartialEq)]
 pub struct MaybeQualifiedSequenceIdentifier<'a> {

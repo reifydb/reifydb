@@ -8,6 +8,7 @@ use reifydb_core::interface::{TableVirtualDef, version::SystemVersion};
 mod cdc_consumers;
 mod column_policies;
 mod columns;
+mod dictionaries;
 mod flow_edges;
 mod flow_nodes;
 mod flow_operators;
@@ -25,6 +26,7 @@ mod views;
 use cdc_consumers::cdc_consumers;
 use column_policies::column_policies;
 use columns::columns;
+use dictionaries::dictionaries;
 use flow_edges::flow_edges;
 use flow_nodes::flow_nodes;
 use flow_operators::flow_operators;
@@ -141,6 +143,18 @@ pub mod ids {
 				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT];
 		}
 
+		pub mod dictionaries {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const VALUE_TYPE: ColumnId = ColumnId(4);
+			pub const ID_TYPE: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, VALUE_TYPE, ID_TYPE];
+		}
+
 		pub mod primary_keys {
 			use reifydb_core::interface::ColumnId;
 
@@ -251,8 +265,9 @@ pub mod ids {
 		pub const FLOW_OPERATORS: TableVirtualId = TableVirtualId(14);
 		pub const FLOW_NODES: TableVirtualId = TableVirtualId(15);
 		pub const FLOW_EDGES: TableVirtualId = TableVirtualId(16);
+		pub const DICTIONARIES: TableVirtualId = TableVirtualId(17);
 
-		pub const ALL: [TableVirtualId; 16] = [
+		pub const ALL: [TableVirtualId; 17] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -269,6 +284,7 @@ pub mod ids {
 			FLOW_OPERATORS,
 			FLOW_NODES,
 			FLOW_EDGES,
+			DICTIONARIES,
 		];
 	}
 }
@@ -373,5 +389,10 @@ impl SystemCatalog {
 	/// Get the flow_edges virtual table definition
 	pub fn get_system_flow_edges_table_def() -> Arc<TableVirtualDef> {
 		flow_edges()
+	}
+
+	/// Get the dictionaries virtual table definition
+	pub fn get_system_dictionaries_table_def() -> Arc<TableVirtualDef> {
+		dictionaries()
 	}
 }

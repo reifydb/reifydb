@@ -4,6 +4,7 @@
 mod cdc_consumers;
 mod column_policies;
 mod columns;
+mod dictionaries;
 mod flow_edges;
 mod flow_nodes;
 mod flow_operator_store;
@@ -22,6 +23,7 @@ mod views;
 pub use cdc_consumers::*;
 pub use column_policies::*;
 pub use columns::*;
+pub use dictionaries::*;
 pub use flow_edges::*;
 pub use flow_nodes::*;
 pub use flow_operator_store::*;

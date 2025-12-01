@@ -423,6 +423,7 @@ impl Executor {
 			| PhysicalPlan::CreateTable(_)
 			| PhysicalPlan::CreateRingBuffer(_)
 			| PhysicalPlan::CreateFlow(_)
+			| PhysicalPlan::CreateDictionary(_)
 			| PhysicalPlan::Distinct(_)
 			| PhysicalPlan::Apply(_) => {
 				// Apply operator requires flow engine for mod
@@ -458,6 +459,7 @@ impl Executor {
 			PhysicalPlan::CreateTable(plan) => Ok(Some(self.create_table(txn, plan)?)),
 			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ring_buffer(txn, plan)?)),
 			PhysicalPlan::CreateFlow(plan) => Ok(Some(self.create_flow(txn, plan)?)),
+			PhysicalPlan::CreateDictionary(plan) => Ok(Some(self.create_dictionary(txn, plan)?)),
 			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params)?)),
 			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ring_buffer(txn, plan, params)?)),
 			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack)?)),
