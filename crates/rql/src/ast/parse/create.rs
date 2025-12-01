@@ -277,6 +277,15 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_dictionary(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+		// Check for IF NOT EXISTS
+		let if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
+			self.consume_operator(Not)?;
+			self.consume_keyword(Exists)?;
+			true
+		} else {
+			false
+		};
+
 		// Parse dictionary name: [namespace.]name
 		let first_token = self.consume(TokenKind::Identifier)?;
 
@@ -300,6 +309,7 @@ impl<'a> Parser<'a> {
 
 		Ok(AstCreate::Dictionary(AstCreateDictionary {
 			token,
+			if_not_exists,
 			dictionary,
 			value_type,
 			id_type,
@@ -1141,6 +1151,34 @@ mod tests {
 				}
 				match &dict.id_type {
 					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint8"),
+					_ => panic!("Expected unconstrained type"),
+				}
+			}
+			_ => unreachable!("Expected Dictionary create"),
+		}
+	}
+
+	#[test]
+	fn test_create_dictionary_if_not_exists() {
+		let tokens = tokenize("CREATE DICTIONARY IF NOT EXISTS token_mints FOR Utf8 AS Uint4").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Dictionary(dict) => {
+				assert!(dict.if_not_exists);
+				assert!(dict.dictionary.namespace.is_none());
+				assert_eq!(dict.dictionary.name.text(), "token_mints");
+				match &dict.value_type {
+					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
+					_ => panic!("Expected unconstrained type"),
+				}
+				match &dict.id_type {
+					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint4"),
 					_ => panic!("Expected unconstrained type"),
 				}
 			}

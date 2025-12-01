@@ -836,6 +836,7 @@ pub struct AstCreateRingBuffer<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateDictionary<'a> {
 	pub token: Token<'a>,
+	pub if_not_exists: bool,
 	pub dictionary: MaybeQualifiedDictionaryIdentifier<'a>,
 	pub value_type: AstDataType<'a>,
 	pub id_type: AstDataType<'a>,

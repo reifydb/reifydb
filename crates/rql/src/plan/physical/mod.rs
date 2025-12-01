@@ -92,6 +92,10 @@ impl Compiler {
 					stack.push(Self::compile_create_transactional(rx, create)?);
 				}
 
+				LogicalPlan::CreateDictionary(create) => {
+					stack.push(Self::compile_create_dictionary(rx, create)?);
+				}
+
 				LogicalPlan::AlterSequence(alter) => {
 					stack.push(Self::compile_alter_sequence(rx, alter)?);
 				}
@@ -864,6 +868,7 @@ pub enum PhysicalPlan<'a> {
 	CreateTable(CreateTableNode<'a>),
 	CreateRingBuffer(CreateRingBufferNode<'a>),
 	CreateFlow(CreateFlowNode<'a>),
+	CreateDictionary(CreateDictionaryNode<'a>),
 	// Alter
 	AlterSequence(AlterSequenceNode<'a>),
 	AlterTable(AlterTableNode<'a>),
@@ -957,6 +962,15 @@ pub struct CreateRingBufferNode<'a> {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct CreateDictionaryNode<'a> {
+	pub namespace: NamespaceDef,
+	pub dictionary: Fragment<'a>,
+	pub if_not_exists: bool,
+	pub value_type: Type,
+	pub id_type: Type,
 }
 
 #[derive(Debug, Clone)]

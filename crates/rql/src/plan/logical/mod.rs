@@ -620,6 +620,7 @@ pub struct CreateRingBufferNode<'a> {
 #[derive(Debug)]
 pub struct CreateDictionaryNode<'a> {
 	pub dictionary: MaybeQualifiedDictionaryIdentifier<'a>,
+	pub if_not_exists: bool,
 	pub value_type: AstDataType<'a>,
 	pub id_type: AstDataType<'a>,
 }

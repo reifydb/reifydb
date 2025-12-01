@@ -8,6 +8,7 @@ use crate::{StandardCommandTransaction, execute::Executor};
 
 #[allow(dead_code)] // FIXME
 mod deferred;
+mod dictionary;
 mod flow;
 mod namespace;
 mod ring_buffer;

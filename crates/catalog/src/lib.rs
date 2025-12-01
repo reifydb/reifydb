@@ -19,10 +19,10 @@ pub use materialized::{MaterializedCatalog, load::MaterializedCatalogLoader};
 pub use store::column;
 pub use store::{column_policy, namespace, primary_key, ring_buffer, sequence, source, table, view};
 pub use transaction::{
-	CatalogCommandTransaction, CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations,
-	CatalogQueryTransaction, CatalogSourceQueryOperations, CatalogTableCommandOperations,
-	CatalogTableQueryOperations, CatalogTrackChangeOperations, CatalogViewCommandOperations,
-	CatalogViewQueryOperations,
+	CatalogCommandTransaction, CatalogDictionaryCommandOperations, CatalogDictionaryQueryOperations,
+	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogQueryTransaction,
+	CatalogSourceQueryOperations, CatalogTableCommandOperations, CatalogTableQueryOperations,
+	CatalogTrackChangeOperations, CatalogViewCommandOperations, CatalogViewQueryOperations,
 };
 
 pub struct CatalogStore;

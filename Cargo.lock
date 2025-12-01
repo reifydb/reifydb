@@ -608,11 +608,13 @@ dependencies = [
 name = "reifydb-engine"
 version = "0.1.3"
 dependencies = [
+ "bincode",
  "once_cell",
  "parking_lot",
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
+ "reifydb-hash",
  "reifydb-rql",
  "reifydb-store-transaction",
  "reifydb-transaction",

@@ -251,6 +251,7 @@ pub(crate) fn compile<'a>(
 		| PhysicalPlan::CreateTable(_)
 		| PhysicalPlan::CreateRingBuffer(_)
 		| PhysicalPlan::CreateFlow(_)
+		| PhysicalPlan::CreateDictionary(_)
 		| PhysicalPlan::Delete(_)
 		| PhysicalPlan::DeleteRingBuffer(_)
 		| PhysicalPlan::InsertTable(_)

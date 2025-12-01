@@ -15,6 +15,7 @@ impl Compiler {
 	) -> crate::Result<LogicalPlan<'a>> {
 		Ok(LogicalPlan::CreateDictionary(CreateDictionaryNode {
 			dictionary: ast.dictionary,
+			if_not_exists: ast.if_not_exists,
 			value_type: ast.value_type,
 			id_type: ast.id_type,
 		}))

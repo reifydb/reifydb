@@ -13,6 +13,7 @@ pub mod cast;
 pub mod catalog;
 pub mod constraint;
 pub mod conversion;
+pub mod dictionary;
 pub mod engine;
 pub mod flow;
 pub mod function;
