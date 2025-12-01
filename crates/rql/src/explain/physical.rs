@@ -489,5 +489,81 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::Environment(_) => {
 			write_node_header(output, prefix, is_last, "Environment");
 		}
+
+		PhysicalPlan::RowPointLookup(lookup) => {
+			let source_name = match &lookup.source {
+				reifydb_core::interface::resolved::ResolvedSource::Table(t) => {
+					t.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::View(v) => {
+					v.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::RingBuffer(rb) => {
+					rb.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::Flow(f) => {
+					f.identifier().text().to_string()
+				}
+				_ => "unknown".to_string(),
+			};
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("RowPointLookup (source: {}, row: {})", source_name, lookup.row_number),
+			);
+		}
+
+		PhysicalPlan::RowListLookup(lookup) => {
+			let source_name = match &lookup.source {
+				reifydb_core::interface::resolved::ResolvedSource::Table(t) => {
+					t.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::View(v) => {
+					v.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::RingBuffer(rb) => {
+					rb.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::Flow(f) => {
+					f.identifier().text().to_string()
+				}
+				_ => "unknown".to_string(),
+			};
+			let rows_str = lookup.row_numbers.iter().map(|n| n.to_string()).collect::<Vec<_>>().join(", ");
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!("RowListLookup (source: {}, rows: [{}])", source_name, rows_str),
+			);
+		}
+
+		PhysicalPlan::RowRangeScan(scan) => {
+			let source_name = match &scan.source {
+				reifydb_core::interface::resolved::ResolvedSource::Table(t) => {
+					t.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::View(v) => {
+					v.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::RingBuffer(rb) => {
+					rb.identifier().text().to_string()
+				}
+				reifydb_core::interface::resolved::ResolvedSource::Flow(f) => {
+					f.identifier().text().to_string()
+				}
+				_ => "unknown".to_string(),
+			};
+			write_node_header(
+				output,
+				prefix,
+				is_last,
+				&format!(
+					"RowRangeScan (source: {}, range: {}..={})",
+					source_name, scan.start, scan.end
+				),
+			);
+		}
 	}
 }

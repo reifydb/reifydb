@@ -132,7 +132,8 @@ To => "TO",
 Pause => "PAUSE",
 Resume => "RESUME",
 Query => "QUERY",
-Rename => "RENAME"}
+Rename => "RENAME",
+Rownum => "ROWNUM"}
 
 static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| {
 	let mut map = HashMap::new();
@@ -215,6 +216,7 @@ static KEYWORD_MAP: LazyLock<HashMap<&'static str, Keyword>> = LazyLock::new(|| 
 	map.insert("RESUME", Keyword::Resume);
 	map.insert("QUERY", Keyword::Query);
 	map.insert("RENAME", Keyword::Rename);
+	map.insert("ROWNUM", Keyword::Rownum);
 	map
 });
 
@@ -381,7 +383,8 @@ mod tests {
 	test_keyword_pause => (Pause, "PAUSE"),
 	test_keyword_resume => (Resume, "RESUME"),
 	test_keyword_query => (Query, "QUERY"),
-	test_keyword_rename => (Rename, "RENAME")}
+	test_keyword_rename => (Rename, "RENAME"),
+	test_keyword_rownum => (Rownum, "ROWNUM")}
 
 	fn check_no_keyword(repr: &str) {
 		// Test that keywords with additional characters are not parsed
@@ -511,5 +514,6 @@ mod tests {
 	test_not_keyword_pause => ( "pause"),
 	test_not_keyword_resume => ( "resume"),
 	test_not_keyword_query => ( "query"),
-	test_not_keyword_rename => ( "rename")}
+	test_not_keyword_rename => ( "rename"),
+	test_not_keyword_rownum => ( "rownum")}
 }

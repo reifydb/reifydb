@@ -11,9 +11,9 @@ use crate::{
 		AccessSourceExpression, AddExpression, AliasExpression, AndExpression, BetweenExpression,
 		CallExpression, CastExpression, ColumnExpression, ConstantExpression, DivExpression, ElseIfExpression,
 		EqExpression, Expression, ExtendExpression, GreaterThanEqExpression, GreaterThanExpression,
-		IdentExpression, IfExpression, LessThanEqExpression, LessThanExpression, MapExpression, MulExpression,
-		NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator, RemExpression,
-		SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
+		IdentExpression, IfExpression, InExpression, LessThanEqExpression, LessThanExpression, MapExpression,
+		MulExpression, NotEqExpression, OrExpression, ParameterExpression, PrefixExpression, PrefixOperator,
+		RemExpression, SubExpression, TupleExpression, TypeExpression, VariableExpression, XorExpression,
 	},
 	plan::physical::PhysicalPlan,
 };
@@ -133,6 +133,11 @@ pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
 		Expression::If(if_expr) => Expression::If(to_owned_if_expression(if_expr)),
 		Expression::Map(map_expr) => Expression::Map(to_owned_map_expression(map_expr)),
 		Expression::Extend(extend_expr) => Expression::Extend(to_owned_extend_expression(extend_expr)),
+		Expression::In(in_expr) => Expression::In(InExpression {
+			value: Box::new(to_owned_expression(*in_expr.value)),
+			list: Box::new(to_owned_expression(*in_expr.list)),
+			fragment: Fragment::Owned(in_expr.fragment.into_owned()),
+		}),
 	}
 }
 
@@ -353,6 +358,25 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			// For FlowScan, convert the resolved flow to owned
 			PhysicalPlan::FlowScan(crate::plan::physical::FlowScanNode {
 				source: node.source.to_static(),
+			})
+		}
+		PhysicalPlan::RowPointLookup(node) => {
+			PhysicalPlan::RowPointLookup(crate::plan::physical::RowPointLookupNode {
+				source: node.source.to_static(),
+				row_number: node.row_number,
+			})
+		}
+		PhysicalPlan::RowListLookup(node) => {
+			PhysicalPlan::RowListLookup(crate::plan::physical::RowListLookupNode {
+				source: node.source.to_static(),
+				row_numbers: node.row_numbers,
+			})
+		}
+		PhysicalPlan::RowRangeScan(node) => {
+			PhysicalPlan::RowRangeScan(crate::plan::physical::RowRangeScanNode {
+				source: node.source.to_static(),
+				start: node.start,
+				end: node.end,
 			})
 		}
 		_ => unimplemented!("Implement conversion for remaining PhysicalPlan variants"),

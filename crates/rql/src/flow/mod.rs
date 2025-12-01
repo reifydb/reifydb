@@ -235,6 +235,21 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::Environment(_) => {
 				panic!("Environment operations are not supported in flow graphs");
 			}
+
+			PhysicalPlan::RowPointLookup(_) => {
+				// TODO: Implement optimized row point lookup for flow graphs
+				unimplemented!("RowPointLookup compilation not yet implemented for flow")
+			}
+
+			PhysicalPlan::RowListLookup(_) => {
+				// TODO: Implement optimized row list lookup for flow graphs
+				unimplemented!("RowListLookup compilation not yet implemented for flow")
+			}
+
+			PhysicalPlan::RowRangeScan(_) => {
+				// TODO: Implement optimized row range scan for flow graphs
+				unimplemented!("RowRangeScan compilation not yet implemented for flow")
+			}
 		}
 	}
 }

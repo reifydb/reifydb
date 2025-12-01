@@ -66,6 +66,7 @@ fn render_ast_tree_inner(ast: Ast, prefix: &str, is_last: bool, output: &mut Str
 		Ast::Window(_) => "Window",
 		Ast::StatementExpression(_) => "StatementExpression",
 		Ast::Environment(_) => "Environment",
+		Ast::Rownum(_) => "Rownum",
 	};
 
 	let branch = if is_last {

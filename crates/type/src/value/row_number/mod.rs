@@ -6,7 +6,7 @@ use std::{fmt, ops::Deref};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de::Visitor};
 
 /// Standard column name for RowNumber columns
-pub static ROW_NUMBER_COLUMN_NAME: &str = "__ROW__NUMBER__";
+pub static ROW_NUMBER_COLUMN_NAME: &str = "rownum";
 
 /// A encoded number - a unique 64-bit unsigned integer for a table encoded
 #[repr(transparent)]

@@ -95,6 +95,7 @@ pub enum Ast<'a> {
 	Wildcard(AstWildcard<'a>),
 	Window(AstWindow<'a>),
 	StatementExpression(AstStatementExpression<'a>),
+	Rownum(AstRownum<'a>),
 }
 
 impl<'a> Default for Ast<'a> {
@@ -170,6 +171,7 @@ impl<'a> Ast<'a> {
 			Ast::Window(node) => &node.token,
 			Ast::StatementExpression(node) => node.expression.token(),
 			Ast::Environment(node) => &node.token,
+			Ast::Rownum(node) => &node.token,
 		}
 	}
 
@@ -622,6 +624,18 @@ impl<'a> Ast<'a> {
 			panic!("not statement expression")
 		}
 	}
+
+	pub fn is_rownum(&self) -> bool {
+		matches!(self, Ast::Rownum(_))
+	}
+
+	pub fn as_rownum(&self) -> &AstRownum<'a> {
+		if let Ast::Rownum(result) = self {
+			result
+		} else {
+			panic!("not rownum")
+		}
+	}
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1072,6 +1086,7 @@ pub enum InfixOperator<'a> {
 	And(Token<'a>),
 	Or(Token<'a>),
 	Xor(Token<'a>),
+	In(Token<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1331,6 +1346,11 @@ pub struct AstWildcard<'a>(pub Token<'a>);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstVariable<'a> {
+	pub token: Token<'a>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstRownum<'a> {
 	pub token: Token<'a>,
 }
 

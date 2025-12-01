@@ -17,6 +17,7 @@ use query::{
 	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
 	ring_buffer_scan::RingBufferScan,
+	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	sort::SortNode,
 	table_scan::TableScanNode,
@@ -104,6 +105,10 @@ pub(crate) enum ExecutionPlan<'a> {
 	Assign(AssignNode<'a>),
 	Conditional(query::conditional::ConditionalNode<'a>),
 	Scalarize(ScalarizeNode<'a>),
+	// Row-number optimized access
+	RowPointLookup(RowPointLookupNode<'a>),
+	RowListLookup(RowListLookupNode<'a>),
+	RowRangeScan(RowRangeScanNode<'a>),
 }
 
 // Implement QueryNode for Box<ExecutionPlan> to allow chaining
@@ -152,6 +157,9 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Assign(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Conditional(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Scalarize(node) => node.initialize(rx, ctx),
+			ExecutionPlan::RowPointLookup(node) => node.initialize(rx, ctx),
+			ExecutionPlan::RowListLookup(node) => node.initialize(rx, ctx),
+			ExecutionPlan::RowRangeScan(node) => node.initialize(rx, ctx),
 		}
 	}
 
@@ -185,6 +193,9 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Assign(node) => node.next(rx, ctx),
 			ExecutionPlan::Conditional(node) => node.next(rx, ctx),
 			ExecutionPlan::Scalarize(node) => node.next(rx, ctx),
+			ExecutionPlan::RowPointLookup(node) => node.next(rx, ctx),
+			ExecutionPlan::RowListLookup(node) => node.next(rx, ctx),
+			ExecutionPlan::RowRangeScan(node) => node.next(rx, ctx),
 		}
 	}
 
@@ -214,6 +225,9 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 			ExecutionPlan::Assign(node) => node.headers(),
 			ExecutionPlan::Conditional(node) => node.headers(),
 			ExecutionPlan::Scalarize(node) => node.headers(),
+			ExecutionPlan::RowPointLookup(node) => node.headers(),
+			ExecutionPlan::RowListLookup(node) => node.headers(),
+			ExecutionPlan::RowRangeScan(node) => node.headers(),
 		}
 	}
 }
@@ -387,7 +401,10 @@ impl Executor {
 			| PhysicalPlan::Variable(_)
 			| PhysicalPlan::Environment(_)
 			| PhysicalPlan::Conditional(_)
-			| PhysicalPlan::Scalarize(_) => {
+			| PhysicalPlan::Scalarize(_)
+			| PhysicalPlan::RowPointLookup(_)
+			| PhysicalPlan::RowListLookup(_)
+			| PhysicalPlan::RowRangeScan(_) => {
 				let mut std_txn = StandardTransaction::from(rx);
 				self.query(&mut std_txn, plan, params, stack)
 			}
@@ -470,7 +487,10 @@ impl Executor {
 			| PhysicalPlan::Environment(_)
 			| PhysicalPlan::Apply(_)
 			| PhysicalPlan::Conditional(_)
-			| PhysicalPlan::Scalarize(_) => {
+			| PhysicalPlan::Scalarize(_)
+			| PhysicalPlan::RowPointLookup(_)
+			| PhysicalPlan::RowListLookup(_)
+			| PhysicalPlan::RowRangeScan(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}

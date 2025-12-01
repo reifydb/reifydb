@@ -4,7 +4,7 @@
 use reifydb_core::{diagnostic::ast, return_error};
 
 use crate::ast::{
-	Ast, AstEnvironment, AstFrom, AstVariable, AstWildcard,
+	Ast, AstEnvironment, AstFrom, AstRownum, AstVariable, AstWildcard,
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -72,6 +72,12 @@ impl<'a> Parser<'a> {
 					Keyword::Policy => Ok(Ast::PolicyBlock(self.parse_policy_block()?)),
 					Keyword::Describe => Ok(Ast::Describe(self.parse_describe()?)),
 					Keyword::Window => Ok(Ast::Window(self.parse_window()?)),
+					Keyword::Rownum => {
+						let token = self.advance()?;
+						Ok(Ast::Rownum(AstRownum {
+							token,
+						}))
+					}
 					_ => {
 						// Try to parse as statement keyword first, if that fails, treat as
 						// identifier

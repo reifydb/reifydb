@@ -183,16 +183,26 @@ impl<'a> Parser<'a> {
 			}
 
 			// Check token type before consuming
-			let is_between = if let Ok(current) = self.current() {
-				matches!(current.kind, TokenKind::Keyword(Keyword::Between))
+			let current_keyword = if let Ok(current) = self.current() {
+				match current.kind {
+					TokenKind::Keyword(Keyword::Between) => Some(Keyword::Between),
+					TokenKind::Keyword(Keyword::In) => Some(Keyword::In),
+					_ => None,
+				}
 			} else {
 				break;
 			};
 
-			if is_between {
-				left = Ast::Between(self.parse_between(left)?);
-			} else {
-				left = Ast::Infix(self.parse_infix(left)?);
+			match current_keyword {
+				Some(Keyword::Between) => {
+					left = Ast::Between(self.parse_between(left)?);
+				}
+				Some(Keyword::In) => {
+					left = Ast::Infix(self.parse_in(left)?);
+				}
+				_ => {
+					left = Ast::Infix(self.parse_infix(left)?);
+				}
 			}
 		}
 		Ok(left)
@@ -290,6 +300,7 @@ impl<'a> Parser<'a> {
 		match current.kind {
 			TokenKind::Operator(operator) => Ok(get_precedence_for_operator(operator)),
 			TokenKind::Keyword(Keyword::Between) => Ok(Precedence::Comparison),
+			TokenKind::Keyword(Keyword::In) => Ok(Precedence::Comparison),
 			_ => Ok(Precedence::None),
 		}
 	}
@@ -333,6 +344,19 @@ impl<'a> Parser<'a> {
 			value: Box::new(value),
 			lower,
 			upper,
+		})
+	}
+
+	/// Parse an IN expression: `value IN [list]` or `value IN (list)`
+	pub(crate) fn parse_in(&mut self, value: Ast<'a>) -> crate::Result<AstInfix<'a>> {
+		let in_token = self.consume_keyword(Keyword::In)?;
+		let right = self.parse_node(Precedence::Comparison)?;
+
+		Ok(AstInfix {
+			token: value.token().clone(),
+			left: Box::new(value),
+			operator: InfixOperator::In(in_token),
+			right: Box::new(right),
 		})
 	}
 

@@ -33,7 +33,10 @@ use crate::{
 	expression::{AliasExpression, Expression, VariableExpression},
 	plan::{
 		logical,
-		logical::LogicalPlan,
+		logical::{
+			LogicalPlan,
+			row_predicate::{RowPredicate, extract_row_predicate},
+		},
 		physical::PhysicalPlan::{IndexScan, TableScan, ViewScan},
 	},
 };
@@ -110,6 +113,61 @@ impl Compiler {
 
 				LogicalPlan::Filter(filter) => {
 					let input = stack.pop().unwrap(); // FIXME
+
+					// Try to optimize rownum predicates for O(1)/O(k) access
+					if let Some(predicate) = extract_row_predicate(&filter.condition) {
+						// Check if input is a scan node we can optimize
+						let source = match &input {
+							PhysicalPlan::TableScan(scan) => {
+								Some(ResolvedSource::Table(scan.source.clone()))
+							}
+							PhysicalPlan::ViewScan(scan) => {
+								Some(ResolvedSource::View(scan.source.clone()))
+							}
+							PhysicalPlan::RingBufferScan(scan) => {
+								Some(ResolvedSource::RingBuffer(scan.source.clone()))
+							}
+							_ => None,
+						};
+
+						if let Some(source) = source {
+							match predicate {
+								RowPredicate::Point(row_number) => {
+									stack.push(PhysicalPlan::RowPointLookup(
+										RowPointLookupNode {
+											source,
+											row_number,
+										},
+									));
+									continue;
+								}
+								RowPredicate::List(row_numbers) => {
+									stack.push(PhysicalPlan::RowListLookup(
+										RowListLookupNode {
+											source,
+											row_numbers,
+										},
+									));
+									continue;
+								}
+								RowPredicate::Range {
+									start,
+									end,
+								} => {
+									stack.push(PhysicalPlan::RowRangeScan(
+										RowRangeScanNode {
+											source,
+											start,
+											end,
+										},
+									));
+									continue;
+								}
+							}
+						}
+					}
+
+					// Default: generic filter
 					stack.push(PhysicalPlan::Filter(FilterNode {
 						conditions: vec![filter.condition],
 						input: Box::new(input),
@@ -890,6 +948,10 @@ pub enum PhysicalPlan<'a> {
 	Distinct(DistinctNode<'a>),
 	Filter(FilterNode<'a>),
 	IndexScan(IndexScanNode<'a>),
+	// Row-number optimized access
+	RowPointLookup(RowPointLookupNode<'a>),
+	RowListLookup(RowListLookupNode<'a>),
+	RowRangeScan(RowRangeScanNode<'a>),
 	JoinInner(JoinInnerNode<'a>),
 	JoinLeft(JoinLeftNode<'a>),
 	JoinNatural(JoinNaturalNode<'a>),
@@ -1209,4 +1271,33 @@ pub struct WindowNode<'a> {
 	pub min_events: usize,
 	pub max_window_count: Option<usize>,
 	pub max_window_age: Option<std::time::Duration>,
+}
+
+/// O(1) point lookup by row number: `filter rownum == N`
+#[derive(Debug, Clone)]
+pub struct RowPointLookupNode<'a> {
+	/// The source to look up in (table, ring buffer, etc.)
+	pub source: ResolvedSource<'a>,
+	/// The row number to fetch
+	pub row_number: u64,
+}
+
+/// O(k) list lookup by row numbers: `filter rownum in [a, b, c]`
+#[derive(Debug, Clone)]
+pub struct RowListLookupNode<'a> {
+	/// The source to look up in
+	pub source: ResolvedSource<'a>,
+	/// The row numbers to fetch
+	pub row_numbers: Vec<u64>,
+}
+
+/// Range scan by row numbers: `filter rownum between X and Y`
+#[derive(Debug, Clone)]
+pub struct RowRangeScanNode<'a> {
+	/// The source to scan
+	pub source: ResolvedSource<'a>,
+	/// Start of the range (inclusive)
+	pub start: u64,
+	/// End of the range (inclusive)
+	pub end: u64,
 }

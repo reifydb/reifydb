@@ -15,6 +15,7 @@ pub mod inline;
 pub mod join;
 pub mod map;
 pub mod ring_buffer_scan;
+pub mod row_lookup;
 pub mod scalarize;
 pub mod sort;
 pub mod table_scan;

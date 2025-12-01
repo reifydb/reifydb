@@ -63,7 +63,7 @@ impl Display for Frame {
 
 		// Row number column width
 		if has_row_numbers {
-			let header_width = "__ROW__NUMBER__".width();
+			let header_width = "rownum".width();
 			let max_val_width = self.row_numbers.iter().map(|rn| rn.to_string().width()).max().unwrap_or(0);
 			col_widths.push(header_width.max(max_val_width));
 		}
@@ -96,7 +96,7 @@ impl Display for Frame {
 		let mut header_parts = Vec::new();
 		let mut col_idx = 0;
 		if has_row_numbers {
-			let name = "__ROW__NUMBER__";
+			let name = "rownum";
 			let w = col_widths[col_idx];
 			let pad = w - name.width();
 			let l = pad / 2;

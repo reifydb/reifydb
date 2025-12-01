@@ -6,6 +6,7 @@ mod create;
 mod mutate;
 pub mod query;
 pub mod resolver;
+pub mod row_predicate;
 mod variable;
 
 use query::window::WindowNode;
@@ -313,7 +314,8 @@ impl Compiler {
 					| InfixOperator::Xor(_)
 					| InfixOperator::Call(_)
 					| InfixOperator::As(_)
-					| InfixOperator::TypeAscription(_) => {
+					| InfixOperator::TypeAscription(_)
+					| InfixOperator::In(_) => {
 						let wrapped_map = Self::wrap_scalar_in_map(node);
 						Self::compile_map(wrapped_map, tx)
 					}

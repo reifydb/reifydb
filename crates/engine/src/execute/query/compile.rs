@@ -23,6 +23,7 @@ use crate::{
 			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 			map::{MapNode, MapWithoutInputNode},
 			ring_buffer_scan::RingBufferScan,
+			row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 			scalarize::ScalarizeNode,
 			sort::SortNode,
 			table_scan::TableScanNode,
@@ -266,6 +267,39 @@ pub(crate) fn compile<'a>(
 		PhysicalPlan::Window(_) => {
 			unimplemented!(
 				"Window operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+			)
+		}
+
+		// Row-number optimized access nodes
+		PhysicalPlan::RowPointLookup(physical::RowPointLookupNode {
+			source,
+			row_number,
+		}) => {
+			let resolved_source = reifydb_core::interface::ResolvedSource::from(source);
+			ExecutionPlan::RowPointLookup(
+				RowPointLookupNode::new(resolved_source, row_number, context)
+					.expect("Failed to create RowPointLookupNode"),
+			)
+		}
+		PhysicalPlan::RowListLookup(physical::RowListLookupNode {
+			source,
+			row_numbers,
+		}) => {
+			let resolved_source = reifydb_core::interface::ResolvedSource::from(source);
+			ExecutionPlan::RowListLookup(
+				RowListLookupNode::new(resolved_source, row_numbers, context)
+					.expect("Failed to create RowListLookupNode"),
+			)
+		}
+		PhysicalPlan::RowRangeScan(physical::RowRangeScanNode {
+			source,
+			start,
+			end,
+		}) => {
+			let resolved_source = reifydb_core::interface::ResolvedSource::from(source);
+			ExecutionPlan::RowRangeScan(
+				RowRangeScanNode::new(resolved_source, start, end, context)
+					.expect("Failed to create RowRangeScanNode"),
 			)
 		}
 	}
