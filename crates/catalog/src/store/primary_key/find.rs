@@ -44,6 +44,10 @@ impl CatalogStore {
 					None => return Ok(None),
 				}
 			}
+			SourceId::Dictionary(_) => {
+				// Dictionaries don't have traditional primary keys
+				return Ok(None);
+			}
 		};
 
 		// Fetch the primary key details

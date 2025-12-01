@@ -6,6 +6,9 @@ pub use column::ColumnKey;
 pub use column_policy::ColumnPolicyKey;
 pub use column_sequence::ColumnSequenceKey;
 pub use columns::ColumnsKey;
+pub use dictionary::{
+	DictionaryEntryIndexKey, DictionaryEntryIndexKeyRange, DictionaryEntryKey, DictionaryKey, DictionarySequenceKey,
+};
 pub use flow::FlowKey;
 pub use flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey};
 pub use flow_node::{FlowNodeByFlowKey, FlowNodeKey};
@@ -15,6 +18,7 @@ pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
 pub use namespace::NamespaceKey;
+pub use namespace_dictionary::NamespaceDictionaryKey;
 pub use namespace_flow::NamespaceFlowKey;
 pub use namespace_ring_buffer::NamespaceRingBufferKey;
 pub use namespace_table::NamespaceTableKey;
@@ -40,6 +44,7 @@ mod column;
 mod column_policy;
 mod column_sequence;
 mod columns;
+mod dictionary;
 mod flow;
 mod flow_edge;
 mod flow_node;
@@ -49,6 +54,7 @@ mod index;
 mod index_entry;
 mod kind;
 mod namespace;
+mod namespace_dictionary;
 mod namespace_flow;
 mod namespace_ring_buffer;
 mod namespace_table;
@@ -93,6 +99,11 @@ pub enum Key {
 	NamespaceRingBuffer(NamespaceRingBufferKey),
 	SourceRetentionPolicy(SourceRetentionPolicyKey),
 	OperatorRetentionPolicy(OperatorRetentionPolicyKey),
+	Dictionary(DictionaryKey),
+	DictionaryEntry(DictionaryEntryKey),
+	DictionaryEntryIndex(DictionaryEntryIndexKey),
+	DictionarySequence(DictionarySequenceKey),
+	NamespaceDictionary(NamespaceDictionaryKey),
 }
 
 impl Key {
@@ -125,6 +136,11 @@ impl Key {
 			Key::NamespaceRingBuffer(key) => key.encode(),
 			Key::SourceRetentionPolicy(key) => key.encode(),
 			Key::OperatorRetentionPolicy(key) => key.encode(),
+			Key::Dictionary(key) => key.encode(),
+			Key::DictionaryEntry(key) => key.encode(),
+			Key::DictionaryEntryIndex(key) => key.encode(),
+			Key::DictionarySequence(key) => key.encode(),
+			Key::NamespaceDictionary(key) => key.encode(),
 		}
 	}
 }
@@ -209,6 +225,17 @@ impl Key {
 			KeyKind::FlowNode | KeyKind::FlowNodeByFlow | KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow => {
 				// These keys are used directly via EncodableKey trait, not through Key enum
 				None
+			}
+			KeyKind::Dictionary => DictionaryKey::decode(&key).map(Self::Dictionary),
+			KeyKind::DictionaryEntry => DictionaryEntryKey::decode(&key).map(Self::DictionaryEntry),
+			KeyKind::DictionaryEntryIndex => {
+				DictionaryEntryIndexKey::decode(&key).map(Self::DictionaryEntryIndex)
+			}
+			KeyKind::DictionarySequence => {
+				DictionarySequenceKey::decode(&key).map(Self::DictionarySequence)
+			}
+			KeyKind::NamespaceDictionary => {
+				NamespaceDictionaryKey::decode(&key).map(Self::NamespaceDictionary)
 			}
 		}
 	}

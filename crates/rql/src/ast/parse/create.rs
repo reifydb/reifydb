@@ -1,13 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use Keyword::{Create, Exists, Flow, If, Namespace, Replace};
+use Keyword::{Create, Dictionary, Exists, Flow, For, If, Namespace, Replace};
 use Operator::Colon;
 
 use crate::ast::{
-	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateNamespace, AstCreateRingBuffer, AstCreateSeries,
-	AstCreateTable, AstCreateTransactionalView, AstDataType,
-	identifier::{MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier},
+	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
+	AstCreateRingBuffer, AstCreateSeries, AstCreateTable, AstCreateTransactionalView, AstDataType,
+	identifier::{
+		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
+	},
 	parse::Parser,
 	tokenize::{
 		Keyword,
@@ -70,6 +72,10 @@ impl<'a> Parser<'a> {
 		if (self.consume_if(TokenKind::Keyword(Ring))?).is_some() {
 			self.consume_keyword(Buffer)?;
 			return self.parse_ring_buffer(token);
+		}
+
+		if (self.consume_if(TokenKind::Keyword(Dictionary))?).is_some() {
+			return self.parse_dictionary(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Series))?).is_some() {
@@ -268,6 +274,63 @@ impl<'a> Parser<'a> {
 			columns,
 			capacity,
 		}))
+	}
+
+	fn parse_dictionary(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+		// Parse dictionary name: [namespace.]name
+		let first_token = self.consume(TokenKind::Identifier)?;
+
+		let dictionary = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
+			// namespace.name format
+			let name_token = self.consume(TokenKind::Identifier)?;
+			MaybeQualifiedDictionaryIdentifier::new(name_token.fragment.clone())
+				.with_namespace(first_token.fragment.clone())
+		} else {
+			// just name format
+			MaybeQualifiedDictionaryIdentifier::new(first_token.fragment.clone())
+		};
+
+		// Parse FOR <value_type>
+		self.consume_keyword(For)?;
+		let value_type = self.parse_type()?;
+
+		// Parse AS <id_type>
+		self.consume_operator(Operator::As)?;
+		let id_type = self.parse_type()?;
+
+		Ok(AstCreate::Dictionary(AstCreateDictionary {
+			token,
+			dictionary,
+			value_type,
+			id_type,
+		}))
+	}
+
+	fn parse_type(&mut self) -> crate::Result<AstDataType<'a>> {
+		let ty_token = self.consume(TokenKind::Identifier)?;
+
+		// Check for type with parameters like DECIMAL(10,2)
+		if !self.is_eof() && self.current()?.is_operator(Operator::OpenParen) {
+			self.consume_operator(Operator::OpenParen)?;
+			let mut params = Vec::new();
+
+			// Parse first parameter
+			params.push(self.parse_literal_number()?);
+
+			// Parse additional parameters if comma-separated
+			while self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				params.push(self.parse_literal_number()?);
+			}
+
+			self.consume_operator(Operator::CloseParen)?;
+
+			Ok(AstDataType::Constrained {
+				name: ty_token.fragment,
+				params,
+			})
+		} else {
+			Ok(AstDataType::Unconstrained(ty_token.fragment))
+		}
 	}
 
 	fn parse_columns(&mut self) -> crate::Result<Vec<AstColumnToCreate<'a>>> {
@@ -1002,6 +1065,86 @@ mod tests {
 				assert_eq!(flow.flow.name.text(), "my_flow");
 			}
 			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_dictionary_basic() {
+		let tokens = tokenize("CREATE DICTIONARY token_mints FOR Utf8 AS Uint2").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Dictionary(dict) => {
+				assert!(dict.dictionary.namespace.is_none());
+				assert_eq!(dict.dictionary.name.text(), "token_mints");
+				match &dict.value_type {
+					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
+					_ => panic!("Expected unconstrained type"),
+				}
+				match &dict.id_type {
+					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint2"),
+					_ => panic!("Expected unconstrained type"),
+				}
+			}
+			_ => unreachable!("Expected Dictionary create"),
+		}
+	}
+
+	#[test]
+	fn test_create_dictionary_qualified() {
+		let tokens = tokenize("CREATE DICTIONARY analytics.token_mints FOR Utf8 AS Uint4").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Dictionary(dict) => {
+				assert_eq!(dict.dictionary.namespace.as_ref().unwrap().text(), "analytics");
+				assert_eq!(dict.dictionary.name.text(), "token_mints");
+				match &dict.value_type {
+					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Utf8"),
+					_ => panic!("Expected unconstrained type"),
+				}
+				match &dict.id_type {
+					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint4"),
+					_ => panic!("Expected unconstrained type"),
+				}
+			}
+			_ => unreachable!("Expected Dictionary create"),
+		}
+	}
+
+	#[test]
+	fn test_create_dictionary_blob_value() {
+		let tokens = tokenize("CREATE DICTIONARY hashes FOR Blob AS Uint8").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Dictionary(dict) => {
+				assert_eq!(dict.dictionary.name.text(), "hashes");
+				match &dict.value_type {
+					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Blob"),
+					_ => panic!("Expected unconstrained type"),
+				}
+				match &dict.id_type {
+					AstDataType::Unconstrained(ty) => assert_eq!(ty.text(), "Uint8"),
+					_ => panic!("Expected unconstrained type"),
+				}
+			}
+			_ => unreachable!("Expected Dictionary create"),
 		}
 	}
 }

@@ -144,6 +144,36 @@ pub fn ring_buffer_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &st
 	}
 }
 
+pub fn dictionary_already_exists<'a>(fragment: impl IntoFragment<'a>, namespace: &str, dictionary: &str) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_006".to_string(),
+		statement: None,
+		message: format!("dictionary `{}.{}` already exists", namespace, dictionary),
+		fragment,
+		label: Some("duplicate dictionary definition".to_string()),
+		help: Some("choose a different name, drop the existing dictionary or create dictionary in a different namespace".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn dictionary_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str, dictionary: &str) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_007".to_string(),
+		statement: None,
+		message: format!("dictionary `{}.{}` not found", namespace, dictionary),
+		fragment,
+		label: Some("unknown dictionary reference".to_string()),
+		help: Some("ensure the dictionary exists or create it first using `CREATE DICTIONARY`".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
 pub fn table_column_already_exists<'a>(
 	fragment: impl IntoFragment<'a>,
 	namespace: &str,

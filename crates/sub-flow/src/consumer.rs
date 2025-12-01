@@ -105,6 +105,10 @@ impl FlowConsumer {
 				let resolved_ring_buffer = resolve_ring_buffer(txn, ring_buffer_id)?;
 				resolved_ring_buffer.def().get_named_layout()
 			}
+			SourceId::Dictionary(_) => {
+				// Dictionaries not supported in flows yet
+				unimplemented!("Dictionary sources not supported in flows")
+			}
 		};
 
 		let encoded = EncodedValues(CowVec::new(row_bytes));

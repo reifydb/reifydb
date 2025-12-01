@@ -3,6 +3,7 @@
 
 pub mod column;
 pub mod column_policy;
+pub mod dictionary;
 pub mod flow;
 pub mod flow_edge;
 pub mod flow_node;

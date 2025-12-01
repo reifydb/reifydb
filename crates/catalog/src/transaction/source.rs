@@ -47,6 +47,7 @@ impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperati
 			SourceId::Flow(_) => unimplemented!(),
 			SourceId::TableVirtual(_) => unimplemented!(),
 			SourceId::RingBuffer(_) => unimplemented!(),
+			SourceId::Dictionary(_) => unimplemented!(),
 		}
 	}
 
