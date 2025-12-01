@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+mod dictionary;
 mod flow;
 pub mod load;
 mod namespace;
@@ -15,8 +16,8 @@ use std::sync::Arc;
 use crossbeam_skiplist::SkipMap;
 use reifydb_core::{
 	interface::{
-		FlowDef, FlowId, FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef, PrimaryKeyId, SourceId,
-		TableDef, TableId, ViewDef, ViewId,
+		DictionaryDef, DictionaryId, FlowDef, FlowId, FlowNodeId, NamespaceDef, NamespaceId, PrimaryKeyDef,
+		PrimaryKeyId, SourceId, TableDef, TableId, ViewDef, ViewId,
 	},
 	retention::RetentionPolicy,
 	util::MultiVersionContainer,
@@ -30,6 +31,7 @@ pub type MultiVersionViewDef = MultiVersionContainer<ViewDef>;
 pub type MultiVersionFlowDef = MultiVersionContainer<FlowDef>;
 pub type MultiVersionPrimaryKeyDef = MultiVersionContainer<PrimaryKeyDef>;
 pub type MultiVersionRetentionPolicy = MultiVersionContainer<RetentionPolicy>;
+pub type MultiVersionDictionaryDef = MultiVersionContainer<DictionaryDef>;
 
 /// A materialized catalog that stores multi namespace, store::table, and view
 /// definitions. This provides fast O(1) lookups for catalog metadata without
@@ -70,6 +72,12 @@ pub struct MaterializedCatalogInner {
 
 	/// MultiVersion operator retention policies indexed by operator ID
 	pub(crate) operator_retention_policies: SkipMap<FlowNodeId, MultiVersionRetentionPolicy>,
+
+	/// MultiVersion dictionary definitions indexed by dictionary ID
+	pub(crate) dictionaries: SkipMap<DictionaryId, MultiVersionDictionaryDef>,
+
+	/// Index from (namespace_id, dictionary_name) to dictionary ID for fast name lookups
+	pub(crate) dictionaries_by_name: SkipMap<(NamespaceId, String), DictionaryId>,
 
 	/// System catalog with version information (None until initialized)
 	pub(crate) system_catalog: Option<SystemCatalog>,
@@ -114,6 +122,8 @@ impl MaterializedCatalog {
 			primary_keys: SkipMap::new(),
 			source_retention_policies: SkipMap::new(),
 			operator_retention_policies: SkipMap::new(),
+			dictionaries: SkipMap::new(),
+			dictionaries_by_name: SkipMap::new(),
 			system_catalog: None,
 		}))
 	}
