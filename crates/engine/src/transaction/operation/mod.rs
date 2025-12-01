@@ -5,6 +5,7 @@ mod dictionary;
 mod ring_buffer;
 mod table;
 
+#[allow(unused_imports)]
 pub(crate) use dictionary::*;
 pub(crate) use ring_buffer::*;
 pub(crate) use table::*;
