@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use indexmap::IndexMap;
-use reifydb_core::{CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValues};
+use reifydb_core::{EncodedKey, delta::Delta, value::encoded::EncodedValues};
 
 /// Represents the optimized state of a key after all operations in a transaction
 #[derive(Debug, Clone)]
@@ -205,18 +205,9 @@ where
 	result.into_iter().map(|(_, delta)| delta).collect()
 }
 
-/// Convenience wrapper that takes CowVec and returns CowVec
-pub(crate) fn optimize_deltas_cow<F>(deltas: CowVec<Delta>, key_exists_in_storage: F) -> CowVec<Delta>
-where
-	F: FnMut(&EncodedKey) -> bool,
-{
-	let optimized = optimize_deltas(deltas, key_exists_in_storage);
-	CowVec::new(optimized)
-}
-
 #[cfg(test)]
 mod tests {
-	use reifydb_core::value::encoded::EncodedValues;
+	use reifydb_core::{CowVec, value::encoded::EncodedValues};
 
 	use super::*;
 

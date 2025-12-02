@@ -14,6 +14,12 @@ pub struct MultiVersionMergingIterator<'a> {
 	buffers: Vec<Option<MultiVersionIterResult>>,
 }
 
+/// Reverse version of the merging iterator - yields keys in descending order
+pub struct MultiVersionMergingRevIterator<'a> {
+	iters: Vec<Box<dyn Iterator<Item = MultiVersionIterResult> + Send + 'a>>,
+	buffers: Vec<Option<MultiVersionIterResult>>,
+}
+
 impl<'a> MultiVersionMergingIterator<'a> {
 	pub fn new(mut iters: Vec<Box<dyn Iterator<Item = MultiVersionIterResult> + Send + 'a>>) -> Self {
 		let mut buffers = Vec::with_capacity(iters.len());
@@ -96,6 +102,103 @@ impl<'a> Iterator for MultiVersionMergingIterator<'a> {
 
 		// Refill buffers for iterators that had the minimum key
 		for &idx in &indices_with_min_key {
+			self.buffers[idx] = self.iters[idx].next();
+		}
+
+		// Convert result to Option<MultiVersionValues>, filtering out tombstones
+		match best_item? {
+			MultiVersionIterResult::Value(values) => Some(values),
+			MultiVersionIterResult::Tombstone {
+				..
+			} => {
+				// Tombstone found - continue to next iteration
+				self.next()
+			}
+		}
+	}
+}
+
+impl<'a> MultiVersionMergingRevIterator<'a> {
+	pub fn new(mut iters: Vec<Box<dyn Iterator<Item = MultiVersionIterResult> + Send + 'a>>) -> Self {
+		let mut buffers = Vec::with_capacity(iters.len());
+		for iter in iters.iter_mut() {
+			buffers.push(iter.next());
+		}
+
+		Self {
+			iters,
+			buffers,
+		}
+	}
+}
+
+impl<'a> Iterator for MultiVersionMergingRevIterator<'a> {
+	type Item = MultiVersionValues;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		// Find the maximum key across all buffers (for reverse order)
+		let mut max_key: Option<&EncodedKey> = None;
+		let mut indices_with_max_key = Vec::new();
+
+		for (idx, buffer) in self.buffers.iter().enumerate() {
+			if let Some(item_result) = buffer {
+				// Extract key from either Value or Tombstone
+				let key = match item_result {
+					MultiVersionIterResult::Value(v) => &v.key,
+					MultiVersionIterResult::Tombstone {
+						key,
+						..
+					} => key,
+				};
+
+				match max_key {
+					None => {
+						max_key = Some(key);
+						indices_with_max_key.clear();
+						indices_with_max_key.push(idx);
+					}
+					Some(current_max) => match key.cmp(current_max) {
+						Greater => {
+							max_key = Some(key);
+							indices_with_max_key.clear();
+							indices_with_max_key.push(idx);
+						}
+						Equal => {
+							indices_with_max_key.push(idx);
+						}
+						Less => {}
+					},
+				}
+			}
+		}
+
+		if indices_with_max_key.is_empty() {
+			return None;
+		}
+
+		// Find the highest version among all items with the maximum key
+		let mut best_item: Option<MultiVersionIterResult> = None;
+		let mut best_version = CommitVersion(0);
+
+		for &idx in &indices_with_max_key {
+			if let Some(item_result) = self.buffers[idx].take() {
+				let version = match &item_result {
+					MultiVersionIterResult::Value(v) => v.version,
+					MultiVersionIterResult::Tombstone {
+						version,
+						..
+					} => *version,
+				};
+
+				if best_item.is_none() || version > best_version {
+					best_item = Some(item_result);
+					best_version = version;
+				}
+			}
+		}
+
+		// Refill buffers for iterators that had the maximum key
+		for &idx in &indices_with_max_key {
 			self.buffers[idx] = self.iters[idx].next();
 		}
 

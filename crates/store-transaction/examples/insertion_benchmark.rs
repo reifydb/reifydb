@@ -6,12 +6,11 @@
 //! Measures write performance with different batch sizes and value sizes.
 //! Run with: cargo run --example insertion_benchmark --release
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use reifydb_core::{CommitVersion, CowVec, EncodedKey, delta::Delta, value::encoded::EncodedValues};
 use reifydb_store_transaction::{
-	backend::multi::BackendMultiVersionCommit,
-	sqlite::{SqliteBackend, SqliteConfig},
+	BackendConfig, MultiVersionCommit, StandardTransactionStore, TransactionStoreConfig, backend::BackendStorage,
 };
 
 fn main() {
@@ -37,16 +36,25 @@ fn main() {
 }
 
 fn run_benchmark(value_size: usize, batch_size: usize, total_rows: usize, warmup_rows: usize) {
-	// Create a new tmpfs-backed database for each test
-	let backend = SqliteBackend::new(SqliteConfig::in_memory());
-	// let backend = MemoryBackend::new();
+	// Create a new in-memory store for each test
+	let store = StandardTransactionStore::new(TransactionStoreConfig {
+		hot: Some(BackendConfig {
+			storage: BackendStorage::sqlite_in_memory(),
+			retention_period: Duration::from_secs(3600),
+		}),
+		warm: None,
+		cold: None,
+		retention: Default::default(),
+		merge_config: Default::default(),
+	})
+	.unwrap();
 
 	// Warmup
 	let mut version = CommitVersion(0);
 	for _ in 0..(warmup_rows / batch_size) {
 		version.0 += 1;
 		let deltas = generate_batch(batch_size, value_size, version.0 * batch_size as u64);
-		backend.commit(deltas, version).unwrap();
+		store.commit(deltas, version).unwrap();
 	}
 
 	// Actual benchmark
@@ -56,7 +64,7 @@ fn run_benchmark(value_size: usize, batch_size: usize, total_rows: usize, warmup
 	for _ in 0..num_batches {
 		version.0 += 1;
 		let deltas = generate_batch(batch_size, value_size, version.0 * batch_size as u64);
-		backend.commit(deltas, version).unwrap();
+		store.commit(deltas, version).unwrap();
 	}
 
 	let elapsed = start.elapsed();

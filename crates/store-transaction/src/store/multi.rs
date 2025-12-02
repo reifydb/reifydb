@@ -1,46 +1,84 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues};
+use std::ops::{Bound, RangeBounds};
 
-use super::StandardTransactionStore;
+use reifydb_core::{
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
+	util::clock::now_millis, value::encoded::EncodedValues,
+};
+
+use super::{
+	StandardTransactionStore,
+	router::classify_key,
+	version_manager::{
+		VersionedGetResult, encode_versioned_key, get_at_version, get_latest_version, put_at_version,
+	},
+};
 use crate::{
 	MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionIter, MultiVersionRange,
 	MultiVersionRangeRev, MultiVersionStore,
-	backend::{
-		multi::{
-			BackendMultiVersionCommit, BackendMultiVersionGet, BackendMultiVersionRange,
-			BackendMultiVersionRangeRev,
-		},
-		result::{MultiVersionGetResult, MultiVersionIterResult},
-	},
-	store::multi_iterator::MultiVersionMergingIterator,
+	backend::{PrimitiveStorage, TableId, delta_optimizer::optimize_deltas, result::MultiVersionIterResult},
+	cdc::{InternalCdc, codec::encode_internal_cdc, process_deltas_for_cdc},
+	store::multi_iterator::{MultiVersionMergingIterator, MultiVersionMergingRevIterator},
 };
 
 impl MultiVersionGet for StandardTransactionStore {
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
+		let table = classify_key(key);
+
+		// Try hot tier first
 		if let Some(hot) = &self.hot {
-			match hot.multi.get(key, version)? {
-				MultiVersionGetResult::Value(v) => return Ok(Some(v)),
-				MultiVersionGetResult::Tombstone {
-					..
-				} => return Ok(None),
-				MultiVersionGetResult::NotFound => {}
+			match get_at_version(hot, table, key.as_ref(), version)? {
+				VersionedGetResult::Value {
+					value,
+					version: v,
+				} => {
+					return Ok(Some(MultiVersionValues {
+						key: key.clone(),
+						values: EncodedValues(CowVec::new(value)),
+						version: v,
+					}));
+				}
+				VersionedGetResult::Tombstone => return Ok(None),
+				VersionedGetResult::NotFound => {}
 			}
 		}
 
+		// Try warm tier
 		if let Some(warm) = &self.warm {
-			match warm.multi.get(key, version)? {
-				MultiVersionGetResult::Value(v) => return Ok(Some(v)),
-				MultiVersionGetResult::Tombstone {
-					..
-				} => return Ok(None),
-				MultiVersionGetResult::NotFound => {}
+			match get_at_version(warm, table, key.as_ref(), version)? {
+				VersionedGetResult::Value {
+					value,
+					version: v,
+				} => {
+					return Ok(Some(MultiVersionValues {
+						key: key.clone(),
+						values: EncodedValues(CowVec::new(value)),
+						version: v,
+					}));
+				}
+				VersionedGetResult::Tombstone => return Ok(None),
+				VersionedGetResult::NotFound => {}
 			}
 		}
 
+		// Try cold tier
 		if let Some(cold) = &self.cold {
-			return Ok(cold.multi.get(key, version)?.into());
+			match get_at_version(cold, table, key.as_ref(), version)? {
+				VersionedGetResult::Value {
+					value,
+					version: v,
+				} => {
+					return Ok(Some(MultiVersionValues {
+						key: key.clone(),
+						values: EncodedValues(CowVec::new(value)),
+						version: v,
+					}));
+				}
+				VersionedGetResult::Tombstone => return Ok(None),
+				VersionedGetResult::NotFound => {}
+			}
 		}
 
 		Ok(None)
@@ -55,19 +93,184 @@ impl MultiVersionContains for StandardTransactionStore {
 
 impl MultiVersionCommit for StandardTransactionStore {
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()> {
-		if let Some(hot) = &self.hot {
-			return hot.multi.commit(deltas, version);
+		// Get the first available storage tier
+		let storage = if let Some(hot) = &self.hot {
+			hot
+		} else if let Some(warm) = &self.warm {
+			warm
+		} else if let Some(cold) = &self.cold {
+			cold
+		} else {
+			return Ok(());
+		};
+
+		// Helper to check if key exists in storage
+		let key_exists = |key: &EncodedKey| -> bool {
+			let table = classify_key(key);
+			if let Some(hot) = &self.hot {
+				if let Ok(Some(_)) = get_latest_version(hot, table, key.as_ref()) {
+					return true;
+				}
+			}
+			if let Some(warm) = &self.warm {
+				if let Ok(Some(_)) = get_latest_version(warm, table, key.as_ref()) {
+					return true;
+				}
+			}
+			if let Some(cold) = &self.cold {
+				if let Ok(Some(_)) = get_latest_version(cold, table, key.as_ref()) {
+					return true;
+				}
+			}
+			false
+		};
+
+		// Optimize deltas first (cancel insert+delete pairs, coalesce updates)
+		let optimized_deltas = optimize_deltas(deltas.iter().cloned(), key_exists);
+
+		// Generate CDC changes from optimized deltas
+		let cdc_changes = process_deltas_for_cdc(optimized_deltas.iter().cloned(), version, |key| {
+			let table = classify_key(key);
+			// Look up existing version in all tiers
+			if let Some(hot) = &self.hot {
+				if let Ok(Some(v)) = get_latest_version(hot, table, key.as_ref()) {
+					return Some(v);
+				}
+			}
+			if let Some(warm) = &self.warm {
+				if let Ok(Some(v)) = get_latest_version(warm, table, key.as_ref()) {
+					return Some(v);
+				}
+			}
+			if let Some(cold) = &self.cold {
+				if let Ok(Some(v)) = get_latest_version(cold, table, key.as_ref()) {
+					return Some(v);
+				}
+			}
+			None
+		})?;
+
+		// Process each optimized delta and store in primitive storage
+		for delta in optimized_deltas.iter() {
+			let table = classify_key(delta.key());
+
+			match delta {
+				Delta::Set {
+					key,
+					values,
+				} => {
+					put_at_version(storage, table, key.as_ref(), version, Some(values.as_ref()))?;
+				}
+				Delta::Remove {
+					key,
+				} => {
+					put_at_version(storage, table, key.as_ref(), version, None)?;
+				}
+			}
 		}
 
-		if let Some(warm) = &self.warm {
-			return warm.multi.commit(deltas, version);
-		}
+		// Store CDC if there are any changes
+		if !cdc_changes.is_empty() {
+			let internal_cdc = InternalCdc {
+				version,
+				timestamp: now_millis(),
+				changes: cdc_changes,
+			};
 
-		if let Some(cold) = &self.cold {
-			return cold.multi.commit(deltas, version);
+			let encoded = encode_internal_cdc(&internal_cdc)?;
+			let cdc_key = version.0.to_be_bytes();
+			storage.put(TableId::Cdc, &cdc_key, Some(encoded.as_ref()))?;
 		}
 
 		Ok(())
+	}
+}
+
+use std::collections::BTreeMap;
+
+use crate::backend::BackendStorage;
+
+/// Iterator over multi-version range results from primitive storage.
+/// Collects all entries, deduplicates by key (keeping latest version per key),
+/// then sorts by original key for proper ordering.
+/// Also filters keys to ensure they fall within the requested range.
+pub struct PrimitiveMultiVersionRangeIter<'a> {
+	/// Collected and sorted entries (original key -> (version, value))
+	entries: std::vec::IntoIter<(Vec<u8>, CommitVersion, Option<Vec<u8>>)>,
+	_phantom: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> PrimitiveMultiVersionRangeIter<'a> {
+	fn new(
+		iter: <BackendStorage as PrimitiveStorage>::RangeIter<'a>,
+		version: CommitVersion,
+		key_range: &EncodedKeyRange,
+	) -> Self {
+		use super::version_manager::{extract_key, extract_version};
+
+		// Collect all entries and find latest version for each key
+		let mut key_map: BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)> = BTreeMap::new();
+
+		for entry_result in iter {
+			if let Ok(entry) = entry_result {
+				if let (Some(original_key), Some(entry_version)) =
+					(extract_key(&entry.key), extract_version(&entry.key))
+				{
+					// Skip if version is greater than requested
+					if entry_version > version {
+						continue;
+					}
+
+					// Skip if key is not within the requested range
+					// This is necessary because versioned key encoding can cause
+					// keys with different lengths to interleave incorrectly
+					let original_key_encoded = EncodedKey(CowVec::new(original_key.to_vec()));
+					if !key_range.contains(&original_key_encoded) {
+						continue;
+					}
+
+					// Update if no entry exists or this is a higher version
+					let should_update = match key_map.get(original_key) {
+						None => true,
+						Some((existing_version, _)) => entry_version > *existing_version,
+					};
+
+					if should_update {
+						key_map.insert(original_key.to_vec(), (entry_version, entry.value));
+					}
+				}
+			}
+		}
+
+		// Convert to sorted vector
+		let entries: Vec<_> =
+			key_map.into_iter().map(|(key, (version, value))| (key, version, value)).collect();
+
+		Self {
+			entries: entries.into_iter(),
+			_phantom: std::marker::PhantomData,
+		}
+	}
+}
+
+impl<'a> Iterator for PrimitiveMultiVersionRangeIter<'a> {
+	type Item = MultiVersionIterResult;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let (key_bytes, version, value) = self.entries.next()?;
+		let key = EncodedKey(CowVec::new(key_bytes));
+
+		Some(match value {
+			Some(v) => MultiVersionIterResult::Value(MultiVersionValues {
+				key,
+				values: EncodedValues(CowVec::new(v)),
+				version,
+			}),
+			None => MultiVersionIterResult::Tombstone {
+				key,
+				version,
+			},
+		})
 	}
 }
 
@@ -85,22 +288,127 @@ impl MultiVersionRange for StandardTransactionStore {
 	) -> crate::Result<Self::RangeIter<'_>> {
 		let mut iters: Vec<Box<dyn Iterator<Item = MultiVersionIterResult> + Send + '_>> = Vec::new();
 
+		// For each tier, we need to scan all versions up to the requested version
+		// and filter to get the latest version per key
+
 		if let Some(hot) = &self.hot {
-			let iter = hot.multi.range_batched(range.clone(), version, batch_size)?;
-			iters.push(Box::new(iter));
+			let table = classify_key_range(&range);
+			let (start, end) = make_versioned_range_bounds(&range, version);
+			let iter = hot.range(
+				table,
+				Bound::Included(start.as_slice()),
+				Bound::Included(end.as_slice()),
+				batch_size as usize,
+			)?;
+			iters.push(Box::new(PrimitiveMultiVersionRangeIter::new(iter, version, &range)));
 		}
 
 		if let Some(warm) = &self.warm {
-			let iter = warm.multi.range_batched(range.clone(), version, batch_size)?;
-			iters.push(Box::new(iter));
+			let table = classify_key_range(&range);
+			let (start, end) = make_versioned_range_bounds(&range, version);
+			let iter = warm.range(
+				table,
+				Bound::Included(start.as_slice()),
+				Bound::Included(end.as_slice()),
+				batch_size as usize,
+			)?;
+			iters.push(Box::new(PrimitiveMultiVersionRangeIter::new(iter, version, &range)));
 		}
 
 		if let Some(cold) = &self.cold {
-			let iter = cold.multi.range_batched(range, version, batch_size)?;
-			iters.push(Box::new(iter));
+			let table = classify_key_range(&range);
+			let (start, end) = make_versioned_range_bounds(&range, version);
+			let iter = cold.range(
+				table,
+				Bound::Included(start.as_slice()),
+				Bound::Included(end.as_slice()),
+				batch_size as usize,
+			)?;
+			iters.push(Box::new(PrimitiveMultiVersionRangeIter::new(iter, version, &range)));
 		}
 
 		Ok(Box::new(MultiVersionMergingIterator::new(iters)))
+	}
+}
+
+/// Iterator over multi-version range results in reverse order.
+/// Collects all entries, deduplicates by key (keeping latest version per key),
+/// then sorts by original key in reverse order.
+pub struct PrimitiveMultiVersionRangeRevIter<'a> {
+	/// Collected and reverse-sorted entries
+	entries: std::vec::IntoIter<(Vec<u8>, CommitVersion, Option<Vec<u8>>)>,
+	_phantom: std::marker::PhantomData<&'a ()>,
+}
+
+impl<'a> PrimitiveMultiVersionRangeRevIter<'a> {
+	fn new(
+		iter: <BackendStorage as PrimitiveStorage>::RangeRevIter<'a>,
+		version: CommitVersion,
+		key_range: &EncodedKeyRange,
+	) -> Self {
+		use super::version_manager::{extract_key, extract_version};
+
+		// Collect all entries and find latest version for each key
+		let mut key_map: BTreeMap<Vec<u8>, (CommitVersion, Option<Vec<u8>>)> = BTreeMap::new();
+
+		for entry_result in iter {
+			if let Ok(entry) = entry_result {
+				if let (Some(original_key), Some(entry_version)) =
+					(extract_key(&entry.key), extract_version(&entry.key))
+				{
+					// Skip if version is greater than requested
+					if entry_version > version {
+						continue;
+					}
+
+					// Skip if key is not within the requested range
+					let original_key_encoded = EncodedKey(CowVec::new(original_key.to_vec()));
+					if !key_range.contains(&original_key_encoded) {
+						continue;
+					}
+
+					// Update if no entry exists or this is a higher version
+					let should_update = match key_map.get(original_key) {
+						None => true,
+						Some((existing_version, _)) => entry_version > *existing_version,
+					};
+
+					if should_update {
+						key_map.insert(original_key.to_vec(), (entry_version, entry.value));
+					}
+				}
+			}
+		}
+
+		// Convert to vector and reverse for descending order
+		let entries: Vec<_> =
+			key_map.into_iter().rev().map(|(key, (version, value))| (key, version, value)).collect();
+
+		Self {
+			entries: entries.into_iter(),
+			_phantom: std::marker::PhantomData,
+		}
+	}
+}
+
+impl<'a> Iterator for PrimitiveMultiVersionRangeRevIter<'a> {
+	type Item = MultiVersionIterResult;
+
+	fn next(&mut self) -> Option<Self::Item> {
+		let (key_bytes, version, value) = self.entries.next()?;
+		let key = EncodedKey(CowVec::new(key_bytes));
+
+		Some(match value {
+			Some(v) => MultiVersionIterResult::Value(MultiVersionValues {
+				key,
+				values: EncodedValues(CowVec::new(v)),
+				version,
+			}),
+			None => MultiVersionIterResult::Tombstone {
+				key,
+				version,
+			},
+		})
 	}
 }
 
@@ -118,23 +426,74 @@ impl MultiVersionRangeRev for StandardTransactionStore {
 	) -> crate::Result<Self::RangeIterRev<'_>> {
 		let mut iters: Vec<Box<dyn Iterator<Item = MultiVersionIterResult> + Send + '_>> = Vec::new();
 
+		// For reverse iteration, scan in reverse order
 		if let Some(hot) = &self.hot {
-			let iter = hot.multi.range_rev_batched(range.clone(), version, batch_size)?;
-			iters.push(Box::new(iter));
+			let table = classify_key_range(&range);
+			let (start, end) = make_versioned_range_bounds(&range, version);
+			let iter = hot.range_rev(
+				table,
+				Bound::Included(start.as_slice()),
+				Bound::Included(end.as_slice()),
+				batch_size as usize,
+			)?;
+			iters.push(Box::new(PrimitiveMultiVersionRangeRevIter::new(iter, version, &range)));
 		}
 
 		if let Some(warm) = &self.warm {
-			let iter = warm.multi.range_rev_batched(range.clone(), version, batch_size)?;
-			iters.push(Box::new(iter));
+			let table = classify_key_range(&range);
+			let (start, end) = make_versioned_range_bounds(&range, version);
+			let iter = warm.range_rev(
+				table,
+				Bound::Included(start.as_slice()),
+				Bound::Included(end.as_slice()),
+				batch_size as usize,
+			)?;
+			iters.push(Box::new(PrimitiveMultiVersionRangeRevIter::new(iter, version, &range)));
 		}
 
 		if let Some(cold) = &self.cold {
-			let iter = cold.multi.range_rev_batched(range, version, batch_size)?;
-			iters.push(Box::new(iter));
+			let table = classify_key_range(&range);
+			let (start, end) = make_versioned_range_bounds(&range, version);
+			let iter = cold.range_rev(
+				table,
+				Bound::Included(start.as_slice()),
+				Bound::Included(end.as_slice()),
+				batch_size as usize,
+			)?;
+			iters.push(Box::new(PrimitiveMultiVersionRangeRevIter::new(iter, version, &range)));
 		}
 
-		Ok(Box::new(MultiVersionMergingIterator::new(iters)))
+		Ok(Box::new(MultiVersionMergingRevIterator::new(iters)))
 	}
 }
 
 impl MultiVersionStore for StandardTransactionStore {}
+
+/// Classify a range to determine which table it belongs to.
+/// Falls back to Multi table if range spans multiple tables.
+fn classify_key_range(range: &EncodedKeyRange) -> crate::backend::TableId {
+	use super::router::classify_range;
+
+	classify_range(range).unwrap_or(crate::backend::TableId::Multi)
+}
+
+/// Create versioned range bounds for primitive storage query.
+///
+/// For a key range [start, end] at version V, we want to scan:
+/// - From: start with version 0
+/// - To: end with version V
+fn make_versioned_range_bounds(range: &EncodedKeyRange, version: CommitVersion) -> (Vec<u8>, Vec<u8>) {
+	let start = match &range.start {
+		Bound::Included(key) => encode_versioned_key(key.as_ref(), CommitVersion(0)),
+		Bound::Excluded(key) => encode_versioned_key(key.as_ref(), CommitVersion(u64::MAX)),
+		Bound::Unbounded => encode_versioned_key(&[], CommitVersion(0)),
+	};
+
+	let end = match &range.end {
+		Bound::Included(key) => encode_versioned_key(key.as_ref(), version),
+		Bound::Excluded(key) => encode_versioned_key(key.as_ref(), CommitVersion(0)),
+		Bound::Unbounded => encode_versioned_key(&[0xFFu8; 256], version),
+	};
+
+	(start, end)
+}

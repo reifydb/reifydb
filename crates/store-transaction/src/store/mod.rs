@@ -3,34 +3,31 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
-use crate::{
-	BackendConfig,
-	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
-	config::TransactionStoreConfig,
-	memory::MemoryBackend,
-};
+use crate::{BackendConfig, backend::BackendStorage, config::TransactionStoreConfig};
 
 mod cdc;
 mod cdc_iterator;
 mod multi;
 mod multi_iterator;
+pub mod router;
 mod single;
 mod single_iterator;
+pub mod version_manager;
 
 #[derive(Clone)]
 pub struct StandardTransactionStore(Arc<StandardTransactionStoreInner>);
 
 pub struct StandardTransactionStoreInner {
-	pub(crate) hot: Option<Backend>,
-	pub(crate) warm: Option<Backend>,
-	pub(crate) cold: Option<Backend>,
+	pub(crate) hot: Option<BackendStorage>,
+	pub(crate) warm: Option<BackendStorage>,
+	pub(crate) cold: Option<BackendStorage>,
 }
 
 impl StandardTransactionStore {
 	pub fn new(config: TransactionStoreConfig) -> crate::Result<Self> {
-		let hot = config.hot.map(|c| c.backend);
-		let warm = config.warm.map(|c| c.backend);
-		let cold = config.cold.map(|c| c.backend);
+		let hot = config.hot.map(|c| c.storage);
+		let warm = config.warm.map(|c| c.storage);
+		let cold = config.cold.map(|c| c.storage);
 
 		Ok(Self(Arc::new(StandardTransactionStoreInner {
 			hot,
@@ -50,15 +47,9 @@ impl Deref for StandardTransactionStore {
 
 impl StandardTransactionStore {
 	pub fn testing_memory() -> Self {
-		let memory = MemoryBackend::new();
-
 		Self::new(TransactionStoreConfig {
 			hot: Some(BackendConfig {
-				backend: Backend {
-					multi: BackendMulti::Memory(memory.clone()),
-					single: BackendSingle::Memory(memory.clone()),
-					cdc: BackendCdc::Memory(memory),
-				},
+				storage: BackendStorage::memory(),
 				retention_period: Duration::from_millis(100),
 			}),
 			warm: None,

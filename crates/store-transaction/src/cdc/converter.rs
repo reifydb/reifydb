@@ -8,7 +8,7 @@ use reifydb_core::{
 };
 
 use crate::{
-	backend::{multi::BackendMultiVersionGet, result::MultiVersionGetResult},
+	MultiVersionGet,
 	cdc::{InternalCdc, InternalCdcChange},
 };
 
@@ -18,11 +18,8 @@ pub trait CdcConverter {
 	fn convert(&self, internal: InternalCdc) -> Result<Cdc>;
 }
 
-/// Implementation for any type that supports multi-version get operations
-impl<T> CdcConverter for T
-where
-	T: BackendMultiVersionGet,
-{
+/// Implementation for StandardTransactionStore which uses MultiVersionGet
+impl CdcConverter for crate::store::StandardTransactionStore {
 	fn convert(&self, internal: InternalCdc) -> Result<Cdc> {
 		let mut changes = Vec::with_capacity(internal.changes.len());
 
@@ -33,10 +30,9 @@ where
 					post_version,
 				} => {
 					// Fetch the post value at the given version
-					let post_result = self.get(key, *post_version)?;
-					let post = match post_result {
-						MultiVersionGetResult::Value(mv) => mv.values,
-						_ => EncodedValues(CowVec::new(vec![])), // Handle tombstone/not found
+					let post = match MultiVersionGet::get(self, key, *post_version)? {
+						Some(mv) => mv.values,
+						None => EncodedValues(CowVec::new(vec![])),
 					};
 					CdcChange::Insert {
 						key: key.clone(),
@@ -49,16 +45,14 @@ where
 					post_version,
 				} => {
 					// Fetch both pre and post values
-					let pre_result = self.get(key, *pre_version)?;
-					let pre = match pre_result {
-						MultiVersionGetResult::Value(mv) => mv.values,
-						_ => EncodedValues(CowVec::new(vec![])),
+					let pre = match MultiVersionGet::get(self, key, *pre_version)? {
+						Some(mv) => mv.values,
+						None => EncodedValues(CowVec::new(vec![])),
 					};
 
-					let post_result = self.get(key, *post_version)?;
-					let post = match post_result {
-						MultiVersionGetResult::Value(mv) => mv.values,
-						_ => EncodedValues(CowVec::new(vec![])),
+					let post = match MultiVersionGet::get(self, key, *post_version)? {
+						Some(mv) => mv.values,
+						None => EncodedValues(CowVec::new(vec![])),
 					};
 
 					CdcChange::Update {
@@ -72,11 +66,7 @@ where
 					pre_version,
 				} => {
 					// Fetch the pre value
-					let pre_result = self.get(key, *pre_version)?;
-					let pre = match pre_result {
-						MultiVersionGetResult::Value(mv) => Some(mv.values),
-						_ => None,
-					};
+					let pre = MultiVersionGet::get(self, key, *pre_version)?.map(|mv| mv.values);
 					CdcChange::Delete {
 						key: key.clone(),
 						pre,

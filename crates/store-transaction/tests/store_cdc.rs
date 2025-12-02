@@ -14,10 +14,7 @@ use reifydb_core::{
 };
 use reifydb_store_transaction::{
 	BackendConfig, CdcCount, CdcGet, CdcRange, CdcScan, MultiVersionCommit, StandardTransactionStore,
-	TransactionStoreConfig,
-	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
-	memory::MemoryBackend,
-	sqlite::{SqliteBackend, SqliteConfig},
+	TransactionStoreConfig, backend::BackendStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
@@ -29,15 +26,9 @@ fn test_memory(path: &Path) {
 	#[cfg(debug_assertions)]
 	mock_time_set(1000);
 
-	let backend = MemoryBackend::default();
-
 	let config = TransactionStoreConfig {
 		hot: Some(BackendConfig {
-			backend: Backend {
-				multi: BackendMulti::Memory(backend.clone()),
-				single: BackendSingle::Memory(backend.clone()),
-				cdc: BackendCdc::Memory(backend),
-			},
+			storage: BackendStorage::memory(),
 			retention_period: Duration::from_secs(300),
 		}),
 		warm: None,
@@ -50,19 +41,13 @@ fn test_memory(path: &Path) {
 }
 
 fn test_sqlite(path: &Path) {
-	temp_dir(|db_path| {
+	temp_dir(|_db_path| {
 		#[cfg(debug_assertions)]
 		mock_time_set(1000);
 
-		let backend = SqliteBackend::new(SqliteConfig::fast(db_path));
-
 		let config = TransactionStoreConfig {
 			hot: Some(BackendConfig {
-				backend: Backend {
-					multi: BackendMulti::Sqlite(backend.clone()),
-					single: BackendSingle::Sqlite(backend.clone()),
-					cdc: BackendCdc::Sqlite(backend),
-				},
+				storage: BackendStorage::sqlite_in_memory(),
 				retention_period: Duration::from_secs(86400),
 			}),
 			warm: None,

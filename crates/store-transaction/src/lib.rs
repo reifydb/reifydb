@@ -28,10 +28,10 @@ pub use single::*;
 pub use store::StandardTransactionStore;
 
 pub mod memory {
-	pub use crate::backend::memory::MemoryBackend;
+	pub use crate::backend::memory::MemoryPrimitiveStorage;
 }
 pub mod sqlite {
-	pub use crate::backend::sqlite::{SqliteBackend, SqliteConfig};
+	pub use crate::backend::sqlite::{SqliteConfig, SqlitePrimitiveStorage};
 }
 
 pub struct TransactionStoreVersion;

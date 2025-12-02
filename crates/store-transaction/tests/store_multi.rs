@@ -20,10 +20,7 @@ use reifydb_core::{
 };
 use reifydb_store_transaction::{
 	BackendConfig, MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange,
-	MultiVersionRangeRev, StandardTransactionStore, TransactionStoreConfig,
-	backend::{Backend, cdc::BackendCdc, multi::BackendMulti, single::BackendSingle},
-	memory::MemoryBackend,
-	sqlite::{SqliteBackend, SqliteConfig},
+	MultiVersionRangeRev, StandardTransactionStore, TransactionStoreConfig, backend::BackendStorage,
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
@@ -32,18 +29,12 @@ test_each_path! { in "crates/store-transaction/tests/scripts/store/multi" as sto
 test_each_path! { in "crates/store-transaction/tests/scripts/store/multi" as store_multi_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	testscript::run_path(&mut Runner::new(BackendMulti::Memory(MemoryBackend::default())), path)
-		.expect("test failed")
+	testscript::run_path(&mut Runner::new(BackendStorage::memory()), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
-	temp_dir(|db_path| {
-		testscript::run_path(
-			&mut Runner::new(BackendMulti::Sqlite(SqliteBackend::new(SqliteConfig::fast(db_path)))),
-			path,
-		)
-	})
-	.expect("test failed")
+	temp_dir(|_db_path| testscript::run_path(&mut Runner::new(BackendStorage::sqlite_in_memory()), path))
+		.expect("test failed")
 }
 
 /// Runs engine tests.
@@ -53,15 +44,11 @@ pub struct Runner {
 }
 
 impl Runner {
-	fn new(backend: BackendMulti) -> Self {
+	fn new(storage: BackendStorage) -> Self {
 		Self {
 			store: StandardTransactionStore::new(TransactionStoreConfig {
 				hot: Some(BackendConfig {
-					backend: Backend {
-						multi: backend,
-						single: BackendSingle::Memory(MemoryBackend::default()),
-						cdc: BackendCdc::Memory(MemoryBackend::default()),
-					},
+					storage,
 					retention_period: Duration::from_millis(200),
 				}),
 				warm: None,

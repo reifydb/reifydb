@@ -3,7 +3,7 @@
 
 use std::time::Duration;
 
-use crate::backend::Backend;
+use crate::backend::BackendStorage;
 
 #[derive(Clone)]
 pub struct TransactionStoreConfig {
@@ -16,7 +16,7 @@ pub struct TransactionStoreConfig {
 
 #[derive(Clone)]
 pub struct BackendConfig {
-	pub backend: Backend,
+	pub storage: BackendStorage,
 	pub retention_period: Duration,
 }
 

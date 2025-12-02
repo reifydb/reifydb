@@ -13,6 +13,7 @@ use reifydb_core::{
 	interface::{Cdc, KeyKind},
 	key::Key,
 };
+use reifydb_type::diagnostic::internal::internal;
 
 pub trait CdcStore: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
 
@@ -149,7 +150,7 @@ where
 	for (idx, delta) in deltas.into_iter().enumerate() {
 		let sequence = match u16::try_from(idx + 1) {
 			Ok(seq) => seq,
-			Err(_) => return Err(reifydb_type::Error(crate::backend::diagnostic::sequence_exhausted())),
+			Err(_) => return Err(reifydb_type::error!(internal("CDC sequence number exhausted"))),
 		};
 
 		let key = delta.key().clone();

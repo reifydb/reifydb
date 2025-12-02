@@ -38,10 +38,7 @@ pub use reifydb_engine as engine;
 pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_store_transaction as storage;
-pub use reifydb_store_transaction::backend::{
-	memory::MemoryBackend,
-	sqlite::{SqliteBackend, SqliteConfig},
-};
+pub use reifydb_store_transaction::{backend::BackendStorage, sqlite::SqliteConfig};
 #[cfg(feature = "sub_admin")]
 pub use reifydb_sub_admin as sub_admin;
 pub use reifydb_sub_api as sub;
