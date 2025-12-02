@@ -138,9 +138,10 @@ pub mod ids {
 			pub const TYPE: ColumnId = ColumnId(5);
 			pub const POSITION: ColumnId = ColumnId(6);
 			pub const AUTO_INCREMENT: ColumnId = ColumnId(7);
+			pub const DICTIONARY_ID: ColumnId = ColumnId(8);
 
-			pub const ALL: [ColumnId; 7] =
-				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT];
+			pub const ALL: [ColumnId; 8] =
+				[ID, SOURCE_ID, SOURCE_TYPE, NAME, TYPE, POSITION, AUTO_INCREMENT, DICTIONARY_ID];
 		}
 
 		pub mod dictionaries {

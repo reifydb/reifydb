@@ -99,6 +99,7 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		PhysicalPlan::DeleteRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::InsertTable(_) => unimplemented!(),
 		PhysicalPlan::InsertRingBuffer(_) => unimplemented!(),
+		PhysicalPlan::InsertDictionary(_) => unimplemented!(),
 		PhysicalPlan::Update(_) => unimplemented!(),
 		PhysicalPlan::UpdateRingBuffer(_) => unimplemented!(),
 		PhysicalPlan::Aggregate(physical::AggregateNode {
@@ -306,6 +307,11 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		}
 		PhysicalPlan::FlowScan(node) => {
 			let label = format!("FlowScan {}.{}", node.source.namespace().name(), node.source.name());
+			write_node_header(output, prefix, is_last, &label);
+		}
+
+		PhysicalPlan::DictionaryScan(node) => {
+			let label = format!("DictionaryScan {}.{}", node.source.namespace().name(), node.source.name());
 			write_node_header(output, prefix, is_last, &label);
 		}
 

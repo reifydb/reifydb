@@ -19,7 +19,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_rql::plan::physical::InsertTableNode;
-use reifydb_type::{Fragment, Type, Value, diagnostic::catalog::table_not_found};
+use reifydb_type::{Fragment, Type, Value, diagnostic::catalog::table_not_found, internal_error};
 
 use super::primary_key;
 use crate::{
@@ -29,7 +29,7 @@ use crate::{
 		query::compile::compile,
 	},
 	stack::Stack,
-	transaction::operation::TableOperations,
+	transaction::operation::{DictionaryOperations, TableOperations},
 };
 
 impl Executor {
@@ -49,7 +49,24 @@ impl Executor {
 			return_error!(table_not_found(fragment.clone(), namespace_name, table_name,));
 		};
 
-		let table_types: Vec<Type> = table.columns.iter().map(|c| c.constraint.get_type()).collect();
+		// Build storage layout types - use dictionary ID type for dictionary-encoded columns
+		let table_types: Vec<Type> = table
+			.columns
+			.iter()
+			.map(|c| {
+				if let Some(dict_id) = c.dictionary_id {
+					// For dictionary columns, we store the dictionary ID, not the original value
+					// Look up the dictionary to get its ID type
+					CatalogStore::find_dictionary(txn, dict_id)
+						.ok()
+						.flatten()
+						.map(|d| d.id_type)
+						.unwrap_or_else(|| c.constraint.get_type())
+				} else {
+					c.constraint.get_type()
+				}
+			})
+			.collect();
 		let layout = EncodedValuesLayout::new(&table_types);
 
 		// Create resolved source for the table
@@ -126,6 +143,25 @@ impl Executor {
 					if let Err(e) = table_column.constraint.validate(&value) {
 						return Err(e);
 					}
+
+					// Dictionary encoding: if column has a dictionary binding, encode the value
+					let value = if let Some(dict_id) = table_column.dictionary_id {
+						let dictionary =
+							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)?
+								.ok_or_else(|| {
+									internal_error!(
+										"Dictionary {:?} not found for column {}",
+										dict_id,
+										table_column.name
+									)
+								})?;
+						let entry_id = std_txn
+							.command_mut()
+							.insert_into_dictionary(&dictionary, &value)?;
+						entry_id.to_value()
+					} else {
+						value
+					};
 
 					match value {
 						Value::Boolean(v) => layout.set_bool(&mut row, table_idx, v),

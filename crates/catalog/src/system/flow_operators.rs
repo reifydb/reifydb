@@ -26,6 +26,7 @@ pub fn flow_operators() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: LIBRARY_PATH,
@@ -34,6 +35,7 @@ pub fn flow_operators() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: API_VERSION,
@@ -42,6 +44,7 @@ pub fn flow_operators() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 			],
 		})

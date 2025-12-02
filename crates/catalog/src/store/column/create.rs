@@ -4,7 +4,8 @@
 use reifydb_core::{
 	diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
 	interface::{
-		ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, EncodableKey, Key, SourceId, TableId,
+		ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, DictionaryId, EncodableKey, Key, SourceId,
+		TableId,
 	},
 	return_error,
 };
@@ -33,7 +34,7 @@ use crate::{
 			ColumnDef, ColumnIndex,
 			layout::{
 				column,
-				column::{AUTO_INCREMENT, CONSTRAINT, ID, INDEX, NAME, SOURCE, VALUE},
+				column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, SOURCE, VALUE},
 				source_column,
 			},
 		},
@@ -52,6 +53,7 @@ pub struct ColumnToCreate<'a> {
 	pub policies: Vec<ColumnPolicyKind>,
 	pub index: ColumnIndex,
 	pub auto_increment: bool,
+	pub dictionary_id: Option<DictionaryId>,
 }
 
 impl CatalogStore {
@@ -107,6 +109,10 @@ impl CatalogStore {
 		let blob = reifydb_type::Blob::from(constraint_bytes);
 		column::LAYOUT.set_blob(&mut row, CONSTRAINT, &blob);
 
+		// Store dictionary_id (0 means no dictionary)
+		let dict_id_value = column_to_create.dictionary_id.map(|id| u64::from(id)).unwrap_or(0);
+		column::LAYOUT.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
+
 		txn.set(
 			&Key::Columns(ColumnsKey {
 				column: id,
@@ -139,6 +145,7 @@ impl CatalogStore {
 			index: column_to_create.index,
 			policies: Self::list_column_policies(txn, id)?,
 			auto_increment: column_to_create.auto_increment,
+			dictionary_id: column_to_create.dictionary_id,
 		})
 	}
 }
@@ -170,6 +177,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -188,6 +196,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -226,6 +235,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -259,6 +269,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap_err();
@@ -282,6 +293,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap_err();
@@ -303,6 +315,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap_err();
@@ -329,6 +342,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -348,6 +362,7 @@ mod test {
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap_err();

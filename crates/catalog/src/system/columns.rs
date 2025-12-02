@@ -26,6 +26,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: SOURCE_ID,
@@ -34,6 +35,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: SOURCE_TYPE,
@@ -42,6 +44,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: NAME,
@@ -50,6 +53,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: TYPE,
@@ -58,6 +62,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(4),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: POSITION,
@@ -66,6 +71,7 @@ pub fn columns() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(5),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: AUTO_INCREMENT,
@@ -74,6 +80,16 @@ pub fn columns() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(6),
 					auto_increment: false,
+					dictionary_id: None,
+				},
+				ColumnDef {
+					id: DICTIONARY_ID,
+					name: "dictionary_id".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::Uint8),
+					policies: vec![],
+					index: ColumnIndex(7),
+					auto_increment: false,
+					dictionary_id: None,
 				},
 			],
 		})

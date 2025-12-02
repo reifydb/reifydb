@@ -68,6 +68,7 @@ mod tests {
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: true,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: ColumnId(2),
@@ -76,6 +77,7 @@ mod tests {
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 			],
 			primary_key: None,

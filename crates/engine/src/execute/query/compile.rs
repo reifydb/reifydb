@@ -15,6 +15,7 @@ use crate::{
 			assign::AssignNode,
 			conditional::ConditionalNode,
 			declare::DeclareNode,
+			dictionary_scan::DictionaryScan,
 			extend::{ExtendNode, ExtendWithoutInputNode},
 			filter::FilterNode,
 			generator::GeneratorNode,
@@ -157,7 +158,7 @@ pub(crate) fn compile<'a>(
 		}
 
 		PhysicalPlan::TableScan(node) => {
-			ExecutionPlan::TableScan(TableScanNode::new(node.source.clone(), context).unwrap())
+			ExecutionPlan::TableScan(TableScanNode::new(node.source.clone(), context, rx).unwrap())
 		}
 
 		PhysicalPlan::ViewScan(node) => {
@@ -165,12 +166,16 @@ pub(crate) fn compile<'a>(
 		}
 
 		PhysicalPlan::RingBufferScan(node) => {
-			ExecutionPlan::RingBufferScan(RingBufferScan::new(node.source.clone(), context).unwrap())
+			ExecutionPlan::RingBufferScan(RingBufferScan::new(node.source.clone(), context, rx).unwrap())
 		}
 
 		PhysicalPlan::FlowScan(_node) => {
 			// TODO: Implement FlowScan execution
 			unimplemented!("FlowScan execution not yet implemented")
+		}
+
+		PhysicalPlan::DictionaryScan(node) => {
+			ExecutionPlan::DictionaryScan(DictionaryScan::new(node.source.clone(), context).unwrap())
 		}
 
 		PhysicalPlan::TableVirtualScan(node) => {
@@ -258,6 +263,7 @@ pub(crate) fn compile<'a>(
 		| PhysicalPlan::DeleteRingBuffer(_)
 		| PhysicalPlan::InsertTable(_)
 		| PhysicalPlan::InsertRingBuffer(_)
+		| PhysicalPlan::InsertDictionary(_)
 		| PhysicalPlan::Update(_)
 		| PhysicalPlan::UpdateRingBuffer(_)
 		| PhysicalPlan::Distinct(_) => unreachable!(),

@@ -147,6 +147,7 @@ impl CatalogStore {
 					policies: vec![],
 					index: ColumnIndex(idx as u8),
 					auto_increment: false,
+					dictionary_id: None, // Views don't support dictionaries yet
 				},
 			)?;
 		}

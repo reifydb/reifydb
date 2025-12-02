@@ -8,6 +8,7 @@ use query::{
 	assign::AssignNode,
 	compile::compile,
 	declare::DeclareNode,
+	dictionary_scan::DictionaryScan,
 	environment::EnvironmentNode,
 	extend::{ExtendNode, ExtendWithoutInputNode},
 	filter::FilterNode,
@@ -82,6 +83,7 @@ pub struct Batch<'a> {
 
 pub(crate) enum ExecutionPlan<'a> {
 	Aggregate(AggregateNode<'a>),
+	DictionaryScan(DictionaryScan<'a>),
 	Filter(FilterNode<'a>),
 	IndexScan(IndexScanNode<'a>),
 	InlineData(InlineDataNode<'a>),
@@ -134,6 +136,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.initialize(rx, ctx),
+			ExecutionPlan::DictionaryScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::Filter(node) => node.initialize(rx, ctx),
 			ExecutionPlan::IndexScan(node) => node.initialize(rx, ctx),
 			ExecutionPlan::InlineData(node) => node.initialize(rx, ctx),
@@ -170,6 +173,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 	) -> crate::Result<Option<Batch<'a>>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.next(rx, ctx),
+			ExecutionPlan::DictionaryScan(node) => node.next(rx, ctx),
 			ExecutionPlan::Filter(node) => node.next(rx, ctx),
 			ExecutionPlan::IndexScan(node) => node.next(rx, ctx),
 			ExecutionPlan::InlineData(node) => node.next(rx, ctx),
@@ -202,6 +206,7 @@ impl<'a> QueryNode<'a> for ExecutionPlan<'a> {
 	fn headers(&self) -> Option<ColumnHeaders<'a>> {
 		match self {
 			ExecutionPlan::Aggregate(node) => node.headers(),
+			ExecutionPlan::DictionaryScan(node) => node.headers(),
 			ExecutionPlan::Filter(node) => node.headers(),
 			ExecutionPlan::IndexScan(node) => node.headers(),
 			ExecutionPlan::InlineData(node) => node.headers(),
@@ -376,6 +381,7 @@ impl Executor {
 		match plan {
 			// Query
 			PhysicalPlan::Aggregate(_)
+			| PhysicalPlan::DictionaryScan(_)
 			| PhysicalPlan::Filter(_)
 			| PhysicalPlan::IndexScan(_)
 			| PhysicalPlan::JoinInner(_)
@@ -391,6 +397,7 @@ impl Executor {
 			| PhysicalPlan::DeleteRingBuffer(_)
 			| PhysicalPlan::InsertTable(_)
 			| PhysicalPlan::InsertRingBuffer(_)
+			| PhysicalPlan::InsertDictionary(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::UpdateRingBuffer(_)
 			| PhysicalPlan::TableScan(_)
@@ -464,10 +471,12 @@ impl Executor {
 			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ring_buffer(txn, plan, params)?)),
 			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack)?)),
 			PhysicalPlan::InsertRingBuffer(plan) => Ok(Some(self.insert_ring_buffer(txn, plan, params)?)),
+			PhysicalPlan::InsertDictionary(plan) => Ok(Some(self.insert_dictionary(txn, plan, stack)?)),
 			PhysicalPlan::Update(plan) => Ok(Some(self.update_table(txn, plan, params)?)),
 			PhysicalPlan::UpdateRingBuffer(plan) => Ok(Some(self.update_ring_buffer(txn, plan, params)?)),
 
 			PhysicalPlan::Aggregate(_)
+			| PhysicalPlan::DictionaryScan(_)
 			| PhysicalPlan::Filter(_)
 			| PhysicalPlan::IndexScan(_)
 			| PhysicalPlan::JoinInner(_)

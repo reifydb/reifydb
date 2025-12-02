@@ -74,6 +74,7 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 					policies: vec![],
 					auto_increment: true,
 					fragment: None,
+					dictionary_id: None,
 				},
 				TableColumnToCreate {
 					name: "data".to_string(),
@@ -81,6 +82,7 @@ pub fn create_test_command_transaction_with_internal_schema() -> StandardCommand
 					policies: vec![],
 					auto_increment: false,
 					fragment: None,
+					dictionary_id: None,
 				},
 			],
 			retention_policy: None,

@@ -1,17 +1,20 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_catalog::CatalogSourceQueryOperations;
+use reifydb_catalog::{CatalogSourceQueryOperations, CatalogStore};
 use reifydb_core::{
 	CommitVersion, Error, Row,
-	interface::{EncodableKey, FlowNodeId, RowKey, RowKeyRange, SourceDef, SourceId},
+	interface::{
+		ColumnDef, DictionaryDef, EncodableKey, FlowNodeId, MultiVersionQueryTransaction, RowKey, RowKeyRange,
+		SourceDef, SourceId,
+	},
 	log_info, log_trace,
-	value::encoded::EncodedValuesNamedLayout,
+	value::encoded::{EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_rql::flow::{Flow, FlowNodeType};
-use reifydb_type::internal;
+use reifydb_type::{DictionaryEntryId, Value, internal};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
@@ -69,7 +72,7 @@ impl FlowEngine {
 			};
 
 			let source_def = txn.get_source(source_id)?;
-			let rows = self.scan_all_rows(&mut flow_txn, &source_def)?;
+			let rows = self.scan_all_rows(txn, &mut flow_txn, &source_def)?;
 			if rows.is_empty() {
 				continue;
 			}
@@ -127,14 +130,50 @@ impl FlowEngine {
 	}
 
 	// FIXME this can be streamed without loading everything into memory first
-	fn scan_all_rows(&self, flow_txn: &mut FlowTransaction, source: &SourceDef) -> crate::Result<Vec<Row>> {
+	fn scan_all_rows(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		flow_txn: &mut FlowTransaction,
+		source: &SourceDef,
+	) -> crate::Result<Vec<Row>> {
 		let mut rows = Vec::new();
 
-		let layout: EncodedValuesNamedLayout = match source {
-			SourceDef::Table(t) => t.into(),
-			SourceDef::View(v) => v.into(),
+		// Get column definitions from the source
+		let columns: &[ColumnDef] = match source {
+			SourceDef::Table(t) => &t.columns,
+			SourceDef::View(v) => &v.columns,
 			_ => unreachable!("Only Table and View sources are supported for backfill"),
 		};
+
+		// Build storage types and dictionary info for each column
+		let mut storage_types = Vec::with_capacity(columns.len());
+		let mut value_types = Vec::with_capacity(columns.len());
+		let mut dictionaries: Vec<Option<DictionaryDef>> = Vec::with_capacity(columns.len());
+
+		for col in columns {
+			if let Some(dict_id) = col.dictionary_id {
+				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id)? {
+					storage_types.push(dict.id_type);
+					value_types.push((col.name.clone(), dict.value_type));
+					dictionaries.push(Some(dict));
+				} else {
+					// Dictionary not found, fall back to constraint type
+					storage_types.push(col.constraint.get_type());
+					value_types.push((col.name.clone(), col.constraint.get_type()));
+					dictionaries.push(None);
+				}
+			} else {
+				storage_types.push(col.constraint.get_type());
+				value_types.push((col.name.clone(), col.constraint.get_type()));
+				dictionaries.push(None);
+			}
+		}
+
+		// Layout for reading raw storage (with dictionary ID types)
+		let storage_layout = EncodedValuesLayout::new(&storage_types);
+		// Layout for the decoded row (with actual value types)
+		let value_layout = EncodedValuesNamedLayout::new(value_types);
+
 		let range = RowKeyRange::scan_range(source.id(), None);
 
 		const BATCH_SIZE: u64 = 10000;
@@ -142,10 +181,19 @@ impl FlowEngine {
 
 		for multi in multi_rows {
 			if let Some(key) = RowKey::decode(&multi.key) {
+				// Decode dictionary columns and re-encode with value types
+				let decoded_encoded = self.decode_dictionary_row(
+					txn,
+					&multi.values,
+					&storage_layout,
+					&value_layout,
+					&dictionaries,
+				)?;
+
 				rows.push(Row {
 					number: key.row,
-					encoded: multi.values,
-					layout: layout.clone(),
+					encoded: decoded_encoded,
+					layout: value_layout.clone(),
 				});
 			}
 		}
@@ -154,6 +202,67 @@ impl FlowEngine {
 		rows.sort_by_key(|row| row.number);
 
 		Ok(rows)
+	}
+
+	/// Decode dictionary columns in a row by looking up dictionary values
+	fn decode_dictionary_row(
+		&self,
+		txn: &mut StandardCommandTransaction,
+		raw_encoded: &reifydb_core::value::encoded::EncodedValues,
+		storage_layout: &EncodedValuesLayout,
+		value_layout: &EncodedValuesNamedLayout,
+		dictionaries: &[Option<DictionaryDef>],
+	) -> crate::Result<reifydb_core::value::encoded::EncodedValues> {
+		// Extract values using storage layout
+		let mut values: Vec<Value> = Vec::with_capacity(dictionaries.len());
+
+		for (idx, dict_opt) in dictionaries.iter().enumerate() {
+			let raw_value = storage_layout.get_value(raw_encoded, idx);
+
+			if let Some(dictionary) = dict_opt {
+				// This is a dictionary column - decode the ID to the actual value
+				if let Some(entry_id) = DictionaryEntryId::from_value(&raw_value) {
+					// Look up the value in the dictionary
+					let index_key = reifydb_core::key::DictionaryEntryIndexKey::new(
+						dictionary.id,
+						entry_id.to_u128() as u64,
+					)
+					.encode();
+					match txn.get(&index_key)? {
+						Some(v) => {
+							let (decoded_value, _): (Value, _) =
+								bincode::serde::decode_from_slice(
+									&v.values,
+									bincode::config::standard(),
+								)
+								.map_err(|e| {
+									Error(internal!(
+										"Failed to deserialize dictionary value: {}",
+										e
+									))
+								})?;
+							values.push(decoded_value);
+						}
+						None => {
+							// ID not found in dictionary, use undefined
+							values.push(Value::Undefined);
+						}
+					}
+				} else {
+					// Not a valid dictionary ID (e.g., undefined), keep as-is
+					values.push(raw_value);
+				}
+			} else {
+				// Not a dictionary column, keep the raw value
+				values.push(raw_value);
+			}
+		}
+
+		// Re-encode with value layout
+		let mut encoded = value_layout.allocate();
+		value_layout.set_values(&mut encoded, &values);
+
+		Ok(encoded)
 	}
 
 	fn propagate_initial_change(

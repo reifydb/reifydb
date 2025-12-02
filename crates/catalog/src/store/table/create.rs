@@ -4,8 +4,8 @@
 use reifydb_core::{
 	diagnostic::catalog::table_already_exists,
 	interface::{
-		ColumnPolicyKind, CommandTransaction, EncodableKey, Key, NamespaceId, NamespaceTableKey, SourceId,
-		TableDef, TableId, TableKey,
+		ColumnPolicyKind, CommandTransaction, DictionaryId, EncodableKey, Key, NamespaceId, NamespaceTableKey,
+		SourceId, TableDef, TableId, TableKey,
 	},
 	retention::RetentionPolicy,
 	return_error,
@@ -29,6 +29,7 @@ pub struct TableColumnToCreate {
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
 	pub fragment: Option<OwnedFragment>,
+	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
@@ -132,6 +133,7 @@ impl CatalogStore {
 					policies: column_to_create.policies.clone(),
 					index: ColumnIndex(idx as u8),
 					auto_increment: column_to_create.auto_increment,
+					dictionary_id: column_to_create.dictionary_id,
 				},
 			)?;
 		}

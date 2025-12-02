@@ -127,6 +127,65 @@ impl DictionaryOperations for StandardCommandTransaction {
 	}
 }
 
+/// Implementation for StandardTransaction (both Command and Query)
+/// This provides read-only access to dictionaries for query operations.
+impl DictionaryOperations for crate::StandardTransaction<'_> {
+	fn insert_into_dictionary(
+		&mut self,
+		dictionary: &DictionaryDef,
+		value: &Value,
+	) -> crate::Result<DictionaryEntryId> {
+		// Only command transactions can insert
+		match self {
+			crate::StandardTransaction::Command(cmd) => cmd.insert_into_dictionary(dictionary, value),
+			crate::StandardTransaction::Query(_) => {
+				Err(internal_error!("Cannot insert into dictionary during a query transaction").into())
+			}
+		}
+	}
+
+	fn get_from_dictionary(
+		&mut self,
+		dictionary: &DictionaryDef,
+		id: DictionaryEntryId,
+	) -> crate::Result<Option<Value>> {
+		// Both command and query transactions can read
+		use reifydb_core::interface::{EncodableKey, MultiVersionQueryTransaction};
+		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
+		match MultiVersionQueryTransaction::get(self, &index_key)? {
+			Some(v) => {
+				let (value, _): (Value, _) =
+					bincode::serde::decode_from_slice(&v.values, bincode::config::standard())
+						.map_err(|e| internal_error!("Failed to deserialize value: {}", e))?;
+				Ok(Some(value))
+			}
+			None => Ok(None),
+		}
+	}
+
+	fn find_in_dictionary(
+		&mut self,
+		dictionary: &DictionaryDef,
+		value: &Value,
+	) -> crate::Result<Option<DictionaryEntryId>> {
+		// Both command and query transactions can read
+		use reifydb_core::interface::{EncodableKey, MultiVersionQueryTransaction};
+		let value_bytes = bincode::serde::encode_to_vec(value, bincode::config::standard())
+			.map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
+		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
+
+		let entry_key = DictionaryEntryKey::new(dictionary.id, hash).encode();
+		match MultiVersionQueryTransaction::get(self, &entry_key)? {
+			Some(v) => {
+				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
+				let entry_id = DictionaryEntryId::from_u128(id, dictionary.id_type)?;
+				Ok(Some(entry_id))
+			}
+			None => Ok(None),
+		}
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use reifydb_core::interface::{DictionaryDef, DictionaryId, NamespaceId};

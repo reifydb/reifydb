@@ -26,6 +26,7 @@ pub fn operator_retention_policies() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: POLICY_TYPE,
@@ -34,6 +35,7 @@ pub fn operator_retention_policies() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: CLEANUP_MODE,
@@ -42,6 +44,7 @@ pub fn operator_retention_policies() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: VALUE,
@@ -50,6 +53,7 @@ pub fn operator_retention_policies() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 			],
 		})

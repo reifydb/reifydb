@@ -192,6 +192,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			| PhysicalPlan::CreateTransactionalView(_)
 			| PhysicalPlan::InsertTable(_)
 			| PhysicalPlan::InsertRingBuffer(_)
+			| PhysicalPlan::InsertDictionary(_)
 			| PhysicalPlan::Update(_)
 			| PhysicalPlan::UpdateRingBuffer(_)
 			| PhysicalPlan::Delete(_)
@@ -250,6 +251,11 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::RowRangeScan(_) => {
 				// TODO: Implement optimized row range scan for flow graphs
 				unimplemented!("RowRangeScan compilation not yet implemented for flow")
+			}
+
+			PhysicalPlan::DictionaryScan(_) => {
+				// TODO: Implement DictionaryScan for flow graphs
+				unimplemented!("DictionaryScan compilation not yet implemented for flow")
 			}
 		}
 	}

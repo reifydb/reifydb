@@ -7,8 +7,8 @@ use reifydb_core::{
 	interface::{
 		TableVirtualDef, ViewKind,
 		resolved::{
-			ResolvedDeferredView, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource,
-			ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
+			ResolvedDeferredView, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer,
+			ResolvedSource, ResolvedTable, ResolvedTableVirtual, ResolvedTransactionalView,
 		},
 	},
 };
@@ -81,6 +81,11 @@ pub fn resolve_unresolved_source(
 		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedSource::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));
+	}
+
+	// Try dictionaries
+	if let Some(dictionary) = tx.find_dictionary_by_name(ns_def.id, name_str)? {
+		return Ok(ResolvedSource::Dictionary(ResolvedDictionary::new(name_fragment, namespace, dictionary)));
 	}
 
 	// Try views

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use Keyword::{Create, Dictionary, Exists, Flow, For, If, Namespace, Replace};
-use Operator::Colon;
+use Operator::{Colon, Dot};
 
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
@@ -409,6 +409,25 @@ impl<'a> Parser<'a> {
 			false
 		};
 
+		// Parse optional DICTIONARY clause
+		let dictionary = if self.current()?.is_keyword(Keyword::Dictionary) {
+			self.consume_keyword(Keyword::Dictionary)?;
+			// Parse dictionary identifier (may be qualified: namespace.dict_name)
+			let dict_name = self.consume(TokenKind::Identifier)?;
+			let dict_ident = if self.consume_if(TokenKind::Operator(Dot))?.is_some() {
+				// Qualified: namespace.dict_name
+				let qualified_name = self.consume(TokenKind::Identifier)?;
+				MaybeQualifiedDictionaryIdentifier::new(qualified_name.fragment)
+					.with_namespace(dict_name.fragment)
+			} else {
+				// Unqualified: dict_name
+				MaybeQualifiedDictionaryIdentifier::new(dict_name.fragment)
+			};
+			Some(dict_ident)
+		} else {
+			None
+		};
+
 		let policies = if self.current()?.is_keyword(Keyword::Policy) {
 			Some(self.parse_policy_block()?)
 		} else {
@@ -420,6 +439,7 @@ impl<'a> Parser<'a> {
 			ty,
 			policies,
 			auto_increment,
+			dictionary,
 		})
 	}
 

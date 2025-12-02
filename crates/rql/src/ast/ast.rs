@@ -879,6 +879,7 @@ pub struct AstColumnToCreate<'a> {
 	pub ty: AstDataType<'a>,
 	pub policies: Option<AstPolicyBlock<'a>>,
 	pub auto_increment: bool,
+	pub dictionary: Option<MaybeQualifiedDictionaryIdentifier<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -174,6 +174,33 @@ pub fn dictionary_not_found<'a>(fragment: impl IntoFragment<'a>, namespace: &str
 	}
 }
 
+pub fn dictionary_type_mismatch<'a>(
+	fragment: impl IntoFragment<'a>,
+	column: &str,
+	column_type: crate::Type,
+	dictionary: &str,
+	dictionary_value_type: crate::Type,
+) -> Diagnostic {
+	let fragment = fragment.into_fragment().into_owned();
+	Diagnostic {
+		code: "CA_008".to_string(),
+		statement: None,
+		message: format!(
+			"column `{}` type `{}` does not match dictionary `{}` value type `{}`",
+			column, column_type, dictionary, dictionary_value_type
+		),
+		fragment,
+		label: Some("type mismatch".to_string()),
+		help: Some(format!(
+			"change the column type to `{}` to match the dictionary value type",
+			dictionary_value_type
+		)),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
 pub fn table_column_already_exists<'a>(
 	fragment: impl IntoFragment<'a>,
 	namespace: &str,

@@ -6,18 +6,20 @@ use std::sync::Arc;
 use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	interface::{
-		EncodableKey, MultiVersionQueryTransaction, RingBufferMetadata, RowKey, resolved::ResolvedRingBuffer,
+		DictionaryDef, EncodableKey, MultiVersionQueryTransaction, RingBufferMetadata, RowKey,
+		resolved::ResolvedRingBuffer,
 	},
 	value::{
-		column::{Columns, headers::ColumnHeaders},
+		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
 	},
 };
-use reifydb_type::{Fragment, RowNumber, Type};
+use reifydb_type::{DictionaryEntryId, Fragment, RowNumber, Type};
 
 use crate::{
 	StandardTransaction,
 	execute::{Batch, ExecutionContext, QueryNode},
+	transaction::operation::DictionaryOperations,
 };
 
 pub struct RingBufferScan<'a> {
@@ -25,6 +27,10 @@ pub struct RingBufferScan<'a> {
 	metadata: Option<RingBufferMetadata>,
 	headers: ColumnHeaders<'a>,
 	row_layout: EncodedValuesLayout,
+	/// Storage types for each column (dictionary ID types for dictionary columns)
+	storage_types: Vec<Type>,
+	/// Dictionary definitions for columns that need decoding (None for non-dictionary columns)
+	dictionaries: Vec<Option<DictionaryDef>>,
 	current_position: u64,
 	rows_returned: u64,
 	context: Option<Arc<ExecutionContext<'a>>>,
@@ -32,10 +38,32 @@ pub struct RingBufferScan<'a> {
 }
 
 impl<'a> RingBufferScan<'a> {
-	pub fn new(ring_buffer: ResolvedRingBuffer<'a>, context: Arc<ExecutionContext<'a>>) -> crate::Result<Self> {
-		// Create encoded headers based on column types
-		let types: Vec<Type> = ring_buffer.columns().iter().map(|c| c.constraint.get_type()).collect();
-		let row_layout = EncodedValuesLayout::new(&types);
+	pub fn new<Rx: MultiVersionQueryTransaction + reifydb_core::interface::QueryTransaction>(
+		ring_buffer: ResolvedRingBuffer<'a>,
+		context: Arc<ExecutionContext<'a>>,
+		rx: &mut Rx,
+	) -> crate::Result<Self> {
+		// Look up dictionaries and build storage types
+		let mut storage_types = Vec::with_capacity(ring_buffer.columns().len());
+		let mut dictionaries = Vec::with_capacity(ring_buffer.columns().len());
+
+		for col in ring_buffer.columns() {
+			if let Some(dict_id) = col.dictionary_id {
+				if let Some(dict) = CatalogStore::find_dictionary(rx, dict_id)? {
+					storage_types.push(dict.id_type);
+					dictionaries.push(Some(dict));
+				} else {
+					// Dictionary not found, fall back to constraint type
+					storage_types.push(col.constraint.get_type());
+					dictionaries.push(None);
+				}
+			} else {
+				storage_types.push(col.constraint.get_type());
+				dictionaries.push(None);
+			}
+		}
+
+		let row_layout = EncodedValuesLayout::new(&storage_types);
 
 		// Create columns headers
 		let headers = ColumnHeaders {
@@ -47,6 +75,8 @@ impl<'a> RingBufferScan<'a> {
 			metadata: None,
 			headers,
 			row_layout,
+			storage_types,
+			dictionaries,
 			current_position: 0,
 			rows_returned: 0,
 			context: Some(context),
@@ -138,8 +168,26 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 		if batch_rows.is_empty() {
 			Ok(None)
 		} else {
-			let mut columns = Columns::from_ring_buffer(&self.ring_buffer);
-			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers)?;
+			// Create columns with storage types (dictionary ID types for dictionary columns)
+			let storage_columns: Vec<Column> = self
+				.ring_buffer
+				.columns()
+				.iter()
+				.enumerate()
+				.map(|(idx, col)| Column {
+					name: Fragment::owned_internal(&col.name),
+					data: ColumnData::with_capacity(self.storage_types[idx], 0),
+				})
+				.collect();
+
+			let mut columns = Columns::with_row_numbers(storage_columns, Vec::new());
+			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
+
+			// Decode dictionary columns
+			self.decode_dictionary_columns(&mut columns, txn)?;
+
+			// Restore row numbers
+			columns.row_numbers = reifydb_core::util::CowVec::new(row_numbers);
 
 			Ok(Some(Batch {
 				columns,
@@ -149,5 +197,48 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 
 	fn headers(&self) -> Option<ColumnHeaders<'a>> {
 		Some(self.headers.clone())
+	}
+}
+
+impl<'a> RingBufferScan<'a> {
+	/// Decode dictionary columns by replacing dictionary IDs with actual values
+	fn decode_dictionary_columns(
+		&self,
+		columns: &mut Columns<'a>,
+		txn: &mut StandardTransaction<'a>,
+	) -> crate::Result<()> {
+		for (col_idx, dict_opt) in self.dictionaries.iter().enumerate() {
+			if let Some(dictionary) = dict_opt {
+				let col = &columns[col_idx];
+				let row_count = col.data().len();
+
+				// Create new column data with the original value type
+				let mut new_data = ColumnData::with_capacity(dictionary.value_type, row_count);
+
+				// Decode each value
+				for row_idx in 0..row_count {
+					let id_value = col.data().get_value(row_idx);
+					if let Some(entry_id) = DictionaryEntryId::from_value(&id_value) {
+						if let Some(decoded_value) =
+							txn.get_from_dictionary(dictionary, entry_id)?
+						{
+							new_data.push_value(decoded_value);
+						} else {
+							new_data.push_value(reifydb_type::Value::Undefined);
+						}
+					} else {
+						new_data.push_value(reifydb_type::Value::Undefined);
+					}
+				}
+
+				// Replace the column data
+				let col_name = columns[col_idx].name().clone();
+				columns.columns.make_mut()[col_idx] = Column {
+					name: col_name,
+					data: new_data,
+				};
+			}
+		}
+		Ok(())
 	}
 }

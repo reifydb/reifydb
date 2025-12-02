@@ -82,6 +82,7 @@ mod tests {
 				policies: vec![Saturation(Undefined)],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();

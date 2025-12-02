@@ -68,6 +68,7 @@ impl CatalogStore {
 							policies: column_def.policies,
 							index: column_def.index,
 							auto_increment: column_def.auto_increment,
+							dictionary_id: None,
 						});
 					}
 

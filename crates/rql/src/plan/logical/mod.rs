@@ -477,6 +477,7 @@ pub enum LogicalPlan<'a> {
 	DeleteRingBuffer(DeleteRingBufferNode<'a>),
 	InsertTable(InsertTableNode<'a>),
 	InsertRingBuffer(InsertRingBufferNode<'a>),
+	InsertDictionary(InsertDictionaryNode<'a>),
 	Update(UpdateTableNode<'a>),
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
 	// Variable assignment
@@ -676,6 +677,11 @@ pub struct InsertTableNode<'a> {
 #[derive(Debug)]
 pub struct InsertRingBufferNode<'a> {
 	pub target: MaybeQualifiedRingBufferIdentifier<'a>,
+}
+
+#[derive(Debug)]
+pub struct InsertDictionaryNode<'a> {
+	pub target: MaybeQualifiedDictionaryIdentifier<'a>,
 }
 
 #[derive(Debug)]

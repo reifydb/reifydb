@@ -13,6 +13,7 @@ pub(crate) mod column {
 	pub(crate) const INDEX: usize = 4;
 	pub(crate) const AUTO_INCREMENT: usize = 5;
 	pub(crate) const CONSTRAINT: usize = 6;
+	pub(crate) const DICTIONARY_ID: usize = 7; // 0 = no dictionary, else dictionary_id
 
 	pub(crate) static LAYOUT: Lazy<EncodedValuesLayout> = Lazy::new(|| {
 		EncodedValuesLayout::new(&[
@@ -23,6 +24,7 @@ pub(crate) mod column {
 			Type::Uint1,   // index
 			Type::Boolean, // auto_increment
 			Type::Blob,    // constraint
+			Type::Uint8,   // dictionary_id (0 = no dictionary)
 		])
 	});
 }

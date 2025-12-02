@@ -26,6 +26,7 @@ pub fn tables() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(0),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: NAMESPACE_ID,
@@ -34,6 +35,7 @@ pub fn tables() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(1),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: NAME,
@@ -42,6 +44,7 @@ pub fn tables() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(2),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				ColumnDef {
 					id: PRIMARY_KEY_ID,
@@ -50,6 +53,7 @@ pub fn tables() -> Arc<TableVirtualDef> {
 					policies: vec![],
 					index: ColumnIndex(3),
 					auto_increment: false,
+					dictionary_id: None,
 				},
 			],
 		})

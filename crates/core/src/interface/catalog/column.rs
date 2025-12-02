@@ -7,7 +7,7 @@ use reifydb_type::TypeConstraint;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-	interface::{ColumnId, ColumnPolicy},
+	interface::{ColumnId, ColumnPolicy, DictionaryId},
 	value::encoded::EncodedValuesNamedLayout,
 };
 
@@ -19,6 +19,7 @@ pub struct ColumnDef {
 	pub policies: Vec<ColumnPolicy>,
 	pub index: ColumnIndex,
 	pub auto_increment: bool,
+	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[repr(transparent)]

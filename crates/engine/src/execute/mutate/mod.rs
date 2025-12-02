@@ -2,6 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod coerce;
+mod dictionary_insert;
 mod primary_key;
 mod ring_buffer_delete;
 mod ring_buffer_insert;

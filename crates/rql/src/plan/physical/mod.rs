@@ -15,15 +15,15 @@ use reifydb_core::{
 		ColumnDef, ColumnId, NamespaceDef, NamespaceId, QueryTransaction, TableDef, TableId,
 		catalog::ColumnIndex,
 		resolved::{
-			ResolvedColumn, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer, ResolvedSequence,
-			ResolvedSource, ResolvedTable, ResolvedTableVirtual, ResolvedView,
+			ResolvedColumn, ResolvedDictionary, ResolvedFlow, ResolvedNamespace, ResolvedRingBuffer,
+			ResolvedSequence, ResolvedSource, ResolvedTable, ResolvedTableVirtual, ResolvedView,
 		},
 	},
 };
 use reifydb_type::{
 	Fragment, Type, TypeConstraint,
 	diagnostic::{
-		catalog::{ring_buffer_not_found, table_not_found},
+		catalog::{dictionary_not_found, ring_buffer_not_found, table_not_found},
 		function::internal_error,
 	},
 	return_error,
@@ -394,6 +394,45 @@ impl Compiler {
 					}))
 				}
 
+				LogicalPlan::InsertDictionary(insert_dict) => {
+					let input = stack.pop().unwrap();
+
+					// Resolve the dictionary
+					let dictionary_id = insert_dict.target.clone();
+					let namespace_name =
+						dictionary_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
+					let namespace_def =
+						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
+					let Some(dictionary_def) = CatalogStore::find_dictionary_by_name(
+						rx,
+						namespace_def.id,
+						dictionary_id.name.text(),
+					)?
+					else {
+						return_error!(dictionary_not_found(
+							dictionary_id.name.clone().into_owned(),
+							&namespace_def.name,
+							dictionary_id.name.text()
+						));
+					};
+
+					let namespace_id = dictionary_id.namespace.clone().unwrap_or_else(|| {
+						use reifydb_type::Fragment;
+						Fragment::owned_internal(namespace_def.name.clone())
+					});
+					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
+					let target = ResolvedDictionary::new(
+						dictionary_id.name.clone(),
+						resolved_namespace,
+						dictionary_def,
+					);
+
+					stack.push(PhysicalPlan::InsertDictionary(InsertDictionaryNode {
+						input: Box::new(input),
+						target,
+					}))
+				}
+
 				LogicalPlan::Update(update) => {
 					// If update has its own input, compile
 					// it first Otherwise, pop from
@@ -595,6 +634,7 @@ impl Compiler {
 								policies: vec![],
 								index: ColumnIndex(0),
 								auto_increment: false,
+								dictionary_id: None,
 							};
 
 							ResolvedColumn::new(col.name, resolved_source, column_def)
@@ -729,6 +769,15 @@ impl Compiler {
 							}
 							stack.push(PhysicalPlan::FlowScan(FlowScanNode {
 								source: resolved_flow.clone(),
+							}));
+						}
+						ResolvedSource::Dictionary(resolved_dictionary) => {
+							// Dictionaries cannot use index directives
+							if scan.index.is_some() {
+								unimplemented!("dictionaries do not support indexes");
+							}
+							stack.push(PhysicalPlan::DictionaryScan(DictionaryScanNode {
+								source: resolved_dictionary.clone(),
 							}));
 						}
 					}
@@ -937,6 +986,7 @@ pub enum PhysicalPlan<'a> {
 	DeleteRingBuffer(DeleteRingBufferNode<'a>),
 	InsertTable(InsertTableNode<'a>),
 	InsertRingBuffer(InsertRingBufferNode<'a>),
+	InsertDictionary(InsertDictionaryNode<'a>),
 	Update(UpdateTableNode<'a>),
 	UpdateRingBuffer(UpdateRingBufferNode<'a>),
 	// Variable assignment
@@ -971,6 +1021,7 @@ pub enum PhysicalPlan<'a> {
 	ViewScan(ViewScanNode<'a>),
 	RingBufferScan(RingBufferScanNode<'a>),
 	FlowScan(FlowScanNode<'a>),
+	DictionaryScan(DictionaryScanNode<'a>),
 	Generator(GeneratorNode<'a>),
 	Window(WindowNode<'a>),
 	// Auto-scalarization for 1x1 frames
@@ -1151,6 +1202,12 @@ pub struct InsertRingBufferNode<'a> {
 }
 
 #[derive(Debug, Clone)]
+pub struct InsertDictionaryNode<'a> {
+	pub input: Box<PhysicalPlan<'a>>,
+	pub target: ResolvedDictionary<'a>,
+}
+
+#[derive(Debug, Clone)]
 pub struct UpdateTableNode<'a> {
 	pub input: Box<PhysicalPlan<'a>>,
 	pub target: Option<ResolvedTable<'a>>,
@@ -1246,6 +1303,11 @@ pub struct RingBufferScanNode<'a> {
 #[derive(Debug, Clone)]
 pub struct FlowScanNode<'a> {
 	pub source: ResolvedFlow<'a>,
+}
+
+#[derive(Debug, Clone)]
+pub struct DictionaryScanNode<'a> {
+	pub source: ResolvedDictionary<'a>,
 }
 
 #[derive(Debug, Clone)]

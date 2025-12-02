@@ -103,6 +103,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();

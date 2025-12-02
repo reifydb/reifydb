@@ -141,6 +141,7 @@ impl CatalogStore {
 					policies: col.policies,
 					index: ColumnIndex(idx as u8),
 					auto_increment: col.auto_increment,
+					dictionary_id: None, // Ring buffers don't support dictionaries yet
 				},
 			)?;
 		}

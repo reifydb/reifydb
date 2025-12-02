@@ -47,6 +47,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: true,
+				dictionary_id: None,
 			}],
 		}
 	}
@@ -92,6 +93,7 @@ mod tests {
 			policies: vec![],
 			index: ColumnIndex(1),
 			auto_increment: false,
+			dictionary_id: None,
 		});
 		catalog.set_primary_key(pk_id, CommitVersion(2), Some(pk_v2.clone()));
 

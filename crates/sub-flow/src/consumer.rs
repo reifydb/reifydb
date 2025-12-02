@@ -4,20 +4,26 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 use indexmap::IndexMap;
-use reifydb_catalog::resolve::{resolve_ring_buffer, resolve_table, resolve_view};
+use reifydb_catalog::{
+	CatalogStore,
+	resolve::{resolve_ring_buffer, resolve_table, resolve_view},
+};
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
-	CommitVersion, CowVec, Result, Row,
-	interface::{Cdc, CdcChange, Engine, GetEncodedRowNamedLayout, KeyKind, SourceId, WithEventBus},
-	key::Key,
+	CommitVersion, CowVec, Error, Result, Row,
+	interface::{
+		Cdc, CdcChange, ColumnDef, DictionaryDef, EncodableKey, Engine, KeyKind, MultiVersionQueryTransaction,
+		SourceId, WithEventBus,
+	},
+	key::{DictionaryEntryIndexKey, Key},
 	log_trace,
-	value::encoded::EncodedValues,
+	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_rql::flow::{Flow, load_flow};
 use reifydb_sub_api::SchedulerService;
-use reifydb_type::RowNumber;
+use reifydb_type::{DictionaryEntryId, RowNumber, Value, internal};
 
 use crate::{
 	builder::OperatorFactory,
@@ -75,47 +81,125 @@ impl FlowConsumer {
 		result
 	}
 
-	/// Helper method to convert encoded bytes to Row format
+	/// Helper method to convert encoded bytes to Row format with dictionary decoding
 	fn create_row(
 		txn: &mut StandardCommandTransaction,
 		source: SourceId,
 		row_number: RowNumber,
 		row_bytes: Vec<u8>,
 	) -> Result<Row> {
-		// Get source metadata from catalog
-		let layout = match source {
+		// Get source metadata and columns from catalog
+		let columns: Vec<ColumnDef> = match source {
 			SourceId::Table(table_id) => {
 				let resolved_table = resolve_table(txn, table_id)?;
-				resolved_table.def().get_named_layout()
+				resolved_table.def().columns.clone()
 			}
 			SourceId::View(view_id) => {
 				let resolved_view = resolve_view(txn, view_id)?;
-				resolved_view.def().get_named_layout()
+				resolved_view.def().columns.clone()
 			}
 			SourceId::Flow(_flow_id) => {
-				// let resolved_flow = resolve_flow(txn, flow_id)?;
-				// resolved_flow
 				unimplemented!("Flow sources not supported in flows")
 			}
 			SourceId::TableVirtual(_) => {
-				// Virtual tables not supported in flows yet
 				unimplemented!("Virtual table sources not supported in flows")
 			}
 			SourceId::RingBuffer(ring_buffer_id) => {
 				let resolved_ring_buffer = resolve_ring_buffer(txn, ring_buffer_id)?;
-				resolved_ring_buffer.def().get_named_layout()
+				resolved_ring_buffer.def().columns.clone()
 			}
 			SourceId::Dictionary(_) => {
-				// Dictionaries not supported in flows yet
 				unimplemented!("Dictionary sources not supported in flows")
 			}
 		};
 
-		let encoded = EncodedValues(CowVec::new(row_bytes));
+		// Build storage types and dictionary info for each column
+		let mut storage_types = Vec::with_capacity(columns.len());
+		let mut value_types = Vec::with_capacity(columns.len());
+		let mut dictionaries: Vec<Option<DictionaryDef>> = Vec::with_capacity(columns.len());
+		let mut has_dictionary_columns = false;
+
+		for col in &columns {
+			if let Some(dict_id) = col.dictionary_id {
+				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id)? {
+					storage_types.push(dict.id_type);
+					value_types.push((col.name.clone(), dict.value_type));
+					dictionaries.push(Some(dict));
+					has_dictionary_columns = true;
+				} else {
+					// Dictionary not found, fall back to constraint type
+					storage_types.push(col.constraint.get_type());
+					value_types.push((col.name.clone(), col.constraint.get_type()));
+					dictionaries.push(None);
+				}
+			} else {
+				storage_types.push(col.constraint.get_type());
+				value_types.push((col.name.clone(), col.constraint.get_type()));
+				dictionaries.push(None);
+			}
+		}
+
+		let raw_encoded = EncodedValues(CowVec::new(row_bytes));
+
+		// If no dictionary columns, return directly with value layout
+		if !has_dictionary_columns {
+			let layout = EncodedValuesNamedLayout::new(value_types);
+			return Ok(Row {
+				number: row_number,
+				encoded: raw_encoded,
+				layout,
+			});
+		}
+
+		// Decode dictionary columns
+		let storage_layout = EncodedValuesLayout::new(&storage_types);
+		let value_layout = EncodedValuesNamedLayout::new(value_types);
+
+		let mut values: Vec<Value> = Vec::with_capacity(dictionaries.len());
+		for (idx, dict_opt) in dictionaries.iter().enumerate() {
+			let raw_value = storage_layout.get_value(&raw_encoded, idx);
+
+			if let Some(dictionary) = dict_opt {
+				// Decode dictionary ID to actual value
+				if let Some(entry_id) = DictionaryEntryId::from_value(&raw_value) {
+					let index_key =
+						DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128() as u64)
+							.encode();
+					match txn.get(&index_key)? {
+						Some(v) => {
+							let (decoded_value, _): (Value, _) =
+								bincode::serde::decode_from_slice(
+									&v.values,
+									bincode::config::standard(),
+								)
+								.map_err(|e| {
+									Error(internal!(
+										"Failed to deserialize dictionary value: {}",
+										e
+									))
+								})?;
+							values.push(decoded_value);
+						}
+						None => {
+							values.push(Value::Undefined);
+						}
+					}
+				} else {
+					values.push(raw_value);
+				}
+			} else {
+				values.push(raw_value);
+			}
+		}
+
+		// Re-encode with value layout
+		let mut encoded = value_layout.allocate();
+		value_layout.set_values(&mut encoded, &values);
+
 		Ok(Row {
 			number: row_number,
 			encoded,
-			layout,
+			layout: value_layout,
 		})
 	}
 

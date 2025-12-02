@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Error,
-	interface::{ColumnsKey, EncodableKey, QueryTransaction},
+	interface::{ColumnsKey, DictionaryId, EncodableKey, QueryTransaction},
 };
 use reifydb_type::{Constraint, Type, TypeConstraint, internal};
 
@@ -36,7 +36,7 @@ use crate::{
 	CatalogStore,
 	store::column::{
 		ColumnDef, ColumnId, ColumnIndex,
-		layout::column::{AUTO_INCREMENT, CONSTRAINT, ID, INDEX, NAME, VALUE},
+		layout::column::{AUTO_INCREMENT, CONSTRAINT, DICTIONARY_ID, ID, INDEX, NAME, VALUE},
 	},
 };
 
@@ -69,6 +69,14 @@ impl CatalogStore {
 			None => TypeConstraint::unconstrained(base_type),
 		};
 
+		// Read dictionary_id (0 means no dictionary)
+		let dict_id_raw = LAYOUT.get_u64(&row, DICTIONARY_ID);
+		let dictionary_id = if dict_id_raw == 0 {
+			None
+		} else {
+			Some(DictionaryId(dict_id_raw))
+		};
+
 		let policies = Self::list_column_policies(rx, id)?;
 
 		Ok(ColumnDef {
@@ -78,6 +86,7 @@ impl CatalogStore {
 			index,
 			policies,
 			auto_increment,
+			dictionary_id,
 		})
 	}
 }

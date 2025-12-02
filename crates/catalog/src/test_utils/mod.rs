@@ -92,6 +92,7 @@ pub fn create_test_column(
 			policies,
 			index: ColumnIndex(columns.len() as u8),
 			auto_increment: false,
+			dictionary_id: None,
 		},
 	)
 	.unwrap();
@@ -173,6 +174,7 @@ pub fn create_test_ring_buffer_column(
 			policies,
 			index: ColumnIndex(columns.len() as u8),
 			auto_increment: false,
+			dictionary_id: None,
 		},
 	)
 	.unwrap();

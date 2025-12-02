@@ -6,9 +6,12 @@ use reifydb_catalog::CatalogQueryTransaction;
 use crate::{
 	ast::{
 		AstInsert,
-		identifier::{MaybeQualifiedRingBufferIdentifier, MaybeQualifiedTableIdentifier},
+		identifier::{
+			MaybeQualifiedDictionaryIdentifier, MaybeQualifiedRingBufferIdentifier,
+			MaybeQualifiedTableIdentifier,
+		},
 	},
-	plan::logical::{Compiler, InsertRingBufferNode, InsertTableNode, LogicalPlan},
+	plan::logical::{Compiler, InsertDictionaryNode, InsertRingBufferNode, InsertTableNode, LogicalPlan},
 };
 
 impl Compiler {
@@ -46,18 +49,29 @@ impl Compiler {
 			if let Some(ns) = unresolved_target.namespace.clone() {
 				target = target.with_namespace(ns);
 			}
-			Ok(LogicalPlan::InsertRingBuffer(InsertRingBufferNode {
+			return Ok(LogicalPlan::InsertRingBuffer(InsertRingBufferNode {
 				target,
-			}))
-		} else {
-			// Assume it's a table (will error during physical plan if not found)
-			let mut target = MaybeQualifiedTableIdentifier::new(unresolved_target.name.clone());
+			}));
+		}
+
+		// Check if it's a dictionary
+		if tx.find_dictionary_by_name(namespace_id, target_name)?.is_some() {
+			let mut target = MaybeQualifiedDictionaryIdentifier::new(unresolved_target.name.clone());
 			if let Some(ns) = unresolved_target.namespace.clone() {
 				target = target.with_namespace(ns);
 			}
-			Ok(LogicalPlan::InsertTable(InsertTableNode {
+			return Ok(LogicalPlan::InsertDictionary(InsertDictionaryNode {
 				target,
-			}))
+			}));
 		}
+
+		// Assume it's a table (will error during physical plan if not found)
+		let mut target = MaybeQualifiedTableIdentifier::new(unresolved_target.name.clone());
+		if let Some(ns) = unresolved_target.namespace.clone() {
+			target = target.with_namespace(ns);
+		}
+		Ok(LogicalPlan::InsertTable(InsertTableNode {
+			target,
+		}))
 	}
 }

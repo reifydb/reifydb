@@ -12,7 +12,7 @@ use reifydb_rql::plan::physical::UpdateRingBufferNode;
 use reifydb_type::{
 	Fragment, IntoFragment, Type, Value,
 	diagnostic::{catalog::ring_buffer_not_found, engine},
-	return_error,
+	internal_error, return_error,
 };
 
 use super::coerce::coerce_value_to_column_type;
@@ -20,6 +20,7 @@ use crate::{
 	StandardCommandTransaction, StandardTransaction,
 	execute::{Batch, ExecutionContext, Executor, QueryNode, query::compile::compile},
 	stack::Stack,
+	transaction::operation::DictionaryOperations,
 };
 
 impl Executor {
@@ -45,8 +46,22 @@ impl Executor {
 			return_error!(ring_buffer_not_found(fragment, namespace_name, ring_buffer_name));
 		};
 
-		let ring_buffer_types: Vec<Type> =
-			ring_buffer.columns.iter().map(|c| c.constraint.get_type()).collect();
+		// Build storage layout types - use dictionary ID type for dictionary-encoded columns
+		let ring_buffer_types: Vec<Type> = ring_buffer
+			.columns
+			.iter()
+			.map(|c| {
+				if let Some(dict_id) = c.dictionary_id {
+					CatalogStore::find_dictionary(txn, dict_id)
+						.ok()
+						.flatten()
+						.map(|d| d.id_type)
+						.unwrap_or_else(|| c.constraint.get_type())
+				} else {
+					c.constraint.get_type()
+				}
+			})
+			.collect();
 		let layout = EncodedValuesLayout::new(&ring_buffer_types);
 
 		// Create resolved source for the ring buffer
@@ -124,6 +139,28 @@ impl Executor {
 						if let Err(e) = rb_column.constraint.validate(&value) {
 							return Err(e);
 						}
+
+						// Dictionary encoding: if column has a dictionary binding, encode the
+						// value
+						let value = if let Some(dict_id) = rb_column.dictionary_id {
+							let dictionary = CatalogStore::find_dictionary(
+								wrapped_txn.command_mut(),
+								dict_id,
+							)?
+							.ok_or_else(|| {
+								internal_error!(
+									"Dictionary {:?} not found for column {}",
+									dict_id,
+									rb_column.name
+								)
+							})?;
+							let entry_id = wrapped_txn
+								.command_mut()
+								.insert_into_dictionary(&dictionary, &value)?;
+							entry_id.to_value()
+						} else {
+							value
+						};
 
 						match value {
 							Value::Boolean(v) => layout.set_bool(&mut row, rb_idx, v),

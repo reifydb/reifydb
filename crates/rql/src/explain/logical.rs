@@ -180,6 +180,7 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 		}
 		LogicalPlan::InsertTable(_) => unimplemented!(),
 		LogicalPlan::InsertRingBuffer(_) => unimplemented!(),
+		LogicalPlan::InsertDictionary(_) => unimplemented!(),
 		LogicalPlan::Update(update) => {
 			output.push_str(&format!("{}{} Update\n", prefix, branch));
 

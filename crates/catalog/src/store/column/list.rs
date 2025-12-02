@@ -105,6 +105,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(1),
 				auto_increment: true,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();
@@ -123,6 +124,7 @@ mod tests {
 				policies: vec![],
 				index: ColumnIndex(0),
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		)
 		.unwrap();

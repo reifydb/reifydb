@@ -92,6 +92,30 @@ impl DictionaryEntryId {
 			Self::U16(_) => Type::Uint16,
 		}
 	}
+
+	/// Convert this DictionaryEntryId to a Value.
+	pub fn to_value(self) -> super::Value {
+		match self {
+			Self::U1(v) => super::Value::Uint1(v),
+			Self::U2(v) => super::Value::Uint2(v),
+			Self::U4(v) => super::Value::Uint4(v),
+			Self::U8(v) => super::Value::Uint8(v),
+			Self::U16(v) => super::Value::Uint16(v),
+		}
+	}
+
+	/// Create a DictionaryEntryId from a Value.
+	/// Returns None if the Value is not an unsigned integer type.
+	pub fn from_value(value: &super::Value) -> Option<Self> {
+		match value {
+			super::Value::Uint1(v) => Some(Self::U1(*v)),
+			super::Value::Uint2(v) => Some(Self::U2(*v)),
+			super::Value::Uint4(v) => Some(Self::U4(*v)),
+			super::Value::Uint8(v) => Some(Self::U8(*v)),
+			super::Value::Uint16(v) => Some(Self::U16(*v)),
+			_ => None,
+		}
+	}
 }
 
 impl std::fmt::Display for DictionaryEntryId {
