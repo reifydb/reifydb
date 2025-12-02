@@ -44,21 +44,26 @@ pub fn resolve_unresolved_source(
 	let name_fragment = Fragment::owned_internal(name_str.to_string());
 	let _alias_fragment = unresolved.alias.as_ref().map(|a| Fragment::owned_internal(a.text()));
 
-	// Check if it's a system table
-	// FIXME this is broken
+	// Check for user-defined virtual tables first (in any namespace)
+	if let Some(virtual_def) = tx.find_table_virtual_user_by_name(ns_def.id, name_str) {
+		return Ok(ResolvedSource::TableVirtual(ResolvedTableVirtual::new(
+			name_fragment,
+			namespace,
+			(*virtual_def).clone(),
+		)));
+	}
+
+	// Check if it's a system table (namespace = "system")
+	// TODO: This should use proper system table definitions from the catalog
 	if namespace_str == "system" {
-		// For system tables, we use a placeholder TableVirtualDef
-		// In a real implementation, this would come from the system catalog
 		use reifydb_core::interface::{NamespaceId, TableVirtualId};
 		let def = TableVirtualDef {
-			id: TableVirtualId(0),     // Placeholder ID
-			namespace: NamespaceId(0), // System namespace ID
+			id: TableVirtualId(0),     // Placeholder ID - compile.rs handles actual lookup
+			namespace: NamespaceId(1), // System namespace ID
 			name: name_str.to_string(),
-			columns: vec![], // Would be populated with actual columns
+			columns: vec![], // Columns are populated at execution time
 		};
 
-		// ResolvedTableVirtual doesn't support aliases, so we'll need to handle this differently
-		// For now, just create without alias
 		return Ok(ResolvedSource::TableVirtual(ResolvedTableVirtual::new(name_fragment, namespace, def)));
 	}
 

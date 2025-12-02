@@ -41,7 +41,7 @@ use crate::{
 	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
 	function::{Functions, generator, math},
 	stack::{Stack, Variable},
-	table_virtual::system::FlowOperatorStore,
+	table_virtual::{TableVirtualUserRegistry, system::FlowOperatorStore},
 };
 
 mod catalog;
@@ -242,6 +242,7 @@ pub struct Executor(Arc<ExecutorInner>);
 pub struct ExecutorInner {
 	pub functions: Functions,
 	pub flow_operator_store: FlowOperatorStore,
+	pub virtual_table_registry: TableVirtualUserRegistry,
 }
 
 impl Clone for Executor {
@@ -263,6 +264,19 @@ impl Executor {
 		Self(Arc::new(ExecutorInner {
 			functions,
 			flow_operator_store,
+			virtual_table_registry: TableVirtualUserRegistry::new(),
+		}))
+	}
+
+	pub fn with_virtual_table_registry(
+		functions: Functions,
+		flow_operator_store: FlowOperatorStore,
+		virtual_table_registry: TableVirtualUserRegistry,
+	) -> Self {
+		Self(Arc::new(ExecutorInner {
+			functions,
+			flow_operator_store,
+			virtual_table_registry,
 		}))
 	}
 

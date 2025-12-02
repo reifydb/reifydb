@@ -11,6 +11,7 @@ mod namespace;
 mod ring_buffer;
 mod source;
 mod table;
+mod table_virtual_user;
 mod view;
 
 pub trait MaterializedCatalogTransaction {
@@ -43,6 +44,7 @@ pub trait CatalogQueryTransaction:
 	+ CatalogRingBufferQueryOperations
 	+ CatalogSourceQueryOperations
 	+ CatalogTableQueryOperations
+	+ CatalogTableVirtualUserQueryOperations
 	+ CatalogViewQueryOperations
 {
 }
@@ -71,6 +73,7 @@ pub use ring_buffer::{
 };
 pub use source::CatalogSourceQueryOperations;
 pub use table::{CatalogTableCommandOperations, CatalogTableQueryOperations, CatalogTrackTableChangeOperations};
+pub use table_virtual_user::CatalogTableVirtualUserQueryOperations;
 pub use view::{CatalogTrackViewChangeOperations, CatalogViewCommandOperations, CatalogViewQueryOperations};
 
 use crate::MaterializedCatalog;

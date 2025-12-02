@@ -17,6 +17,7 @@ mod primary_keys;
 mod sequences;
 mod source_retention_policies;
 mod tables;
+mod tables_virtual;
 mod versions;
 mod views;
 
@@ -36,5 +37,6 @@ pub use primary_keys::*;
 pub use sequences::*;
 pub use source_retention_policies::*;
 pub use tables::*;
+pub use tables_virtual::*;
 pub use versions::*;
 pub use views::*;

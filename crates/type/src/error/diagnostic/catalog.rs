@@ -537,3 +537,31 @@ pub fn primary_key_column_not_found<'a>(fragment: impl IntoFragment<'a>, column_
 		cause: None,
 	}
 }
+
+pub fn virtual_table_already_exists(namespace: &str, name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_022".to_string(),
+		statement: None,
+		message: format!("virtual table `{}.{}` already exists", namespace, name),
+		fragment: OwnedFragment::None,
+		label: Some("duplicate virtual table definition".to_string()),
+		help: Some("choose a different name or unregister the existing virtual table first".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}
+
+pub fn virtual_table_not_found(namespace: &str, name: &str) -> Diagnostic {
+	Diagnostic {
+		code: "CA_023".to_string(),
+		statement: None,
+		message: format!("virtual table `{}.{}` not found", namespace, name),
+		fragment: OwnedFragment::None,
+		label: Some("unknown virtual table reference".to_string()),
+		help: Some("ensure the virtual table is registered before using it".to_string()),
+		column: None,
+		notes: vec![],
+		cause: None,
+	}
+}

@@ -38,7 +38,7 @@ use crate::{
 		system::{
 			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, FlowEdges, FlowNodes, FlowOperators,
 			Flows, Namespaces, OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, Sequences,
-			SourceRetentionPolicies, Tables, Versions, Views,
+			SourceRetentionPolicies, Tables, TablesVirtual, Versions, Views,
 		},
 	},
 };
@@ -182,7 +182,15 @@ pub(crate) fn compile<'a>(
 			// Create the appropriate virtual table implementation
 			let namespace = node.source.namespace().def();
 			let table = node.source.def();
-			let virtual_table_impl: Box<dyn TableVirtual> = if namespace.id == NamespaceId(1) {
+
+			// First check user-defined virtual tables
+			let virtual_table_impl: Box<dyn TableVirtual> = if let Some(factory) =
+				context.executor.virtual_table_registry.find_by_name(namespace.id, &table.name)
+			{
+				// User-defined virtual table
+				crate::table_virtual::extend_virtual_table_lifetime(factory.create_boxed())
+			} else if namespace.id == NamespaceId(1) {
+				// Built-in system virtual tables
 				match table.name.as_str() {
 					"sequences" => Box::new(Sequences::new()),
 					"namespaces" => Box::new(Namespaces::new()),
@@ -203,10 +211,11 @@ pub(crate) fn compile<'a>(
 						context.executor.flow_operator_store.clone(),
 					)),
 					"dictionaries" => Box::new(Dictionaries::new()),
+					"virtual_tables" => Box::new(TablesVirtual::new()),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {
-				panic!("Unknown virtual table type: {}", table.name)
+				panic!("Unknown virtual table type: {}.{}", namespace.name, table.name)
 			};
 
 			let virtual_context = node
