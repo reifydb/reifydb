@@ -235,8 +235,9 @@ impl<'a> Parser<'a> {
 		let name_token = self.advance()?;
 		let columns = self.parse_columns()?;
 
-		// Parse WITH clause for capacity
+		// Parse WITH clause for options: with { capacity: N }
 		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
 
 		// Parse capacity option
 		let capacity_ident = self.consume(TokenKind::Identifier)?;
@@ -247,8 +248,10 @@ impl<'a> Parser<'a> {
 			)));
 		}
 
-		self.consume_operator(Operator::Equal)?;
+		self.consume_operator(Operator::Colon)?;
 		let capacity_token = self.consume(TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
+
+		self.consume_operator(Operator::CloseCurly)?;
 
 		// Parse capacity value
 		let capacity = match capacity_token.fragment.text().parse::<u64>() {
@@ -876,7 +879,7 @@ mod tests {
 	fn test_create_ring_buffer() {
 		let tokens = tokenize(
 			r#"
-        create ring buffer test.events { id: int4, data: utf8 } with capacity = 10
+        create ring buffer test.events { id: int4, data: utf8 } with { capacity: 10 }
     "#,
 		)
 		.unwrap();

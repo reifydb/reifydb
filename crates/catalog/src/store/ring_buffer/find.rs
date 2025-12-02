@@ -166,6 +166,7 @@ mod tests {
 				fragment: None,
 				policies: vec![],
 				auto_increment: false,
+				dictionary_id: None,
 			}],
 			fragment: None,
 		};
@@ -248,6 +249,7 @@ mod tests {
 					fragment: None,
 					policies: vec![],
 					auto_increment: true,
+					dictionary_id: None,
 				},
 				RingBufferColumnToCreate {
 					name: "value".to_string(),
@@ -255,6 +257,7 @@ mod tests {
 					fragment: None,
 					policies: vec![],
 					auto_increment: false,
+					dictionary_id: None,
 				},
 			],
 			fragment: None,

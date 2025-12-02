@@ -4,7 +4,8 @@
 use reifydb_core::{
 	diagnostic::catalog::ring_buffer_already_exists,
 	interface::{
-		ColumnIndex, ColumnPolicyKind, CommandTransaction, NamespaceId, RingBufferDef, RingBufferId, TableId,
+		ColumnIndex, ColumnPolicyKind, CommandTransaction, DictionaryId, NamespaceId, RingBufferDef,
+		RingBufferId, TableId,
 	},
 	return_error,
 };
@@ -19,6 +20,7 @@ pub struct RingBufferColumnToCreate {
 	pub policies: Vec<ColumnPolicyKind>,
 	pub auto_increment: bool,
 	pub fragment: Option<OwnedFragment>,
+	pub dictionary_id: Option<DictionaryId>,
 }
 
 #[derive(Debug, Clone)]
@@ -141,7 +143,7 @@ impl CatalogStore {
 					policies: col.policies,
 					index: ColumnIndex(idx as u8),
 					auto_increment: col.auto_increment,
-					dictionary_id: None, // Ring buffers don't support dictionaries yet
+					dictionary_id: col.dictionary_id,
 				},
 			)?;
 		}
@@ -197,6 +199,7 @@ mod tests {
 					fragment: None,
 					policies: vec![],
 					auto_increment: false,
+					dictionary_id: None,
 				},
 				RingBufferColumnToCreate {
 					name: "price".to_string(),
@@ -204,6 +207,7 @@ mod tests {
 					fragment: None,
 					policies: vec![],
 					auto_increment: false,
+					dictionary_id: None,
 				},
 			],
 			fragment: None,
@@ -395,6 +399,7 @@ mod tests {
 				fragment: None,
 				policies: vec![],
 				auto_increment: false,
+				dictionary_id: None,
 			},
 			RingBufferColumnToCreate {
 				name: "second".to_string(),
@@ -402,6 +407,7 @@ mod tests {
 				fragment: None,
 				policies: vec![],
 				auto_increment: false,
+				dictionary_id: None,
 			},
 			RingBufferColumnToCreate {
 				name: "third".to_string(),
@@ -409,6 +415,7 @@ mod tests {
 				fragment: None,
 				policies: vec![],
 				auto_increment: false,
+				dictionary_id: None,
 			},
 		];
 
