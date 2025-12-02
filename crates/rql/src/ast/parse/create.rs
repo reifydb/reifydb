@@ -13,7 +13,7 @@ use crate::ast::{
 	parse::Parser,
 	tokenize::{
 		Keyword,
-		Keyword::{Buffer, Deferred, Ring, Series, Table, Transactional, View},
+		Keyword::{Deferred, Ringbuffer, Series, Table, Transactional, View},
 		Operator,
 		Operator::{Not, Or},
 		Separator,
@@ -69,8 +69,7 @@ impl<'a> Parser<'a> {
 			return self.parse_table(token);
 		}
 
-		if (self.consume_if(TokenKind::Keyword(Ring))?).is_some() {
-			self.consume_keyword(Buffer)?;
+		if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
 			return self.parse_ring_buffer(token);
 		}
 
@@ -879,7 +878,7 @@ mod tests {
 	fn test_create_ring_buffer() {
 		let tokens = tokenize(
 			r#"
-        create ring buffer test.events { id: int4, data: utf8 } with { capacity: 10 }
+        create ringbuffer test.events { id: int4, data: utf8 } with { capacity: 10 }
     "#,
 		)
 		.unwrap();
