@@ -216,13 +216,13 @@ if [ $SKIP_PNPM -eq 0 ]; then
         # Build the package first
         if [ -f "package.json" ] && grep -q '"build"' package.json; then
             echo -e "${BLUE}    Building package...${NC}"
-            if ! run_cmd "ppnpm run build"; then
+            if ! run_cmd "pnpm run build"; then
                 echo -e "${YELLOW}    ⚠ Build failed, attempting to publish anyway${NC}"
             fi
         fi
 
         # Publish to pnpm (without any tag, just semantic version)
-        if run_cmd "ppnpm publish --access public"; then
+        if run_cmd "pnpm publish --access public"; then
             log_publish "pnpm:$PACKAGE_NAME" "SUCCESS"
             echo -e "${GREEN}    ✓ Published $PACKAGE_NAME${NC}"
         else

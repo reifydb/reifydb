@@ -90,7 +90,7 @@ repository = "https://github.com/reifydb/reifydb"
 readme = "readme.md"
 license = "AGPL-3.0-or-later"
 
-version = "0.1.4"
+version = "0.1.5"
 rust-version = "1.85.1"
 edition = "2024"
 
@@ -114,39 +114,39 @@ debug-assertions = true
 overflow-checks = true
 
 [workspace.dependencies]
-reifydb = { version = "0.1.4", path = "pkg/rust/reifydb" }
-reifydb-derive = { version = "0.1.4", path = "pkg/rust/reifydb-derive" }
+reifydb = { version = "0.1.5", path = "pkg/rust/reifydb" }
+reifydb-derive = { version = "0.1.5", path = "pkg/rust/reifydb-derive" }
 
-reifydb-client = { version = "0.1.4", path = "pkg/rust/reifydb-client" }
-reifydb-client-derive = { version = "0.1.4", path = "pkg/rust/reifydb-client-derive" }
+reifydb-client = { version = "0.1.5", path = "pkg/rust/reifydb-client" }
+reifydb-client-derive = { version = "0.1.5", path = "pkg/rust/reifydb-client-derive" }
 
 # Internal crates
-reifydb-auth = { version = "0.1.4", path = "crates/auth" }
-reifydb-catalog = { version = "0.1.4", path = "crates/catalog" }
-reifydb-cdc = { version = "0.1.4", path = "crates/cdc" }
-reifydb-compression = { version = "0.1.4", path = "crates/compression" }
-reifydb-core = { version = "0.1.4", path = "crates/core" }
-reifydb-engine = { version = "0.1.4", path = "crates/engine" }
-reifydb-hash = { version = "0.1.4", path = "crates/hash" }
-reifydb-network = { version = "0.1.4", path = "crates/network" }
-reifydb-flow-operator-abi = { version = "0.1.4", path = "crates/flow-operator/abi" }
-reifydb-flow-operator-sdk = { version = "0.1.4", path = "crates/flow-operator/sdk" }
-reifydb-rql = { version = "0.1.4", path = "crates/rql" }
-reifydb-store-column = { version = "0.1.4", path = "crates/store-column" }
-reifydb-store-transaction = { version = "0.1.4", path = "crates/store-transaction" }
-reifydb-testing = { version = "0.1.4", path = "crates/testing" }
-reifydb-transaction = { version = "0.1.4", path = "crates/transaction" }
-reifydb-type = { version = "0.1.4", path = "crates/type" }
-reifydb-macro = { version = "0.1.4", path = "crates/macro" }
-reifydb-macro-impl = { version = "0.1.4", path = "crates/macro-impl" }
+reifydb-auth = { version = "0.1.5", path = "crates/auth" }
+reifydb-catalog = { version = "0.1.5", path = "crates/catalog" }
+reifydb-cdc = { version = "0.1.5", path = "crates/cdc" }
+reifydb-compression = { version = "0.1.5", path = "crates/compression" }
+reifydb-core = { version = "0.1.5", path = "crates/core" }
+reifydb-engine = { version = "0.1.5", path = "crates/engine" }
+reifydb-hash = { version = "0.1.5", path = "crates/hash" }
+reifydb-network = { version = "0.1.5", path = "crates/network" }
+reifydb-flow-operator-abi = { version = "0.1.5", path = "crates/flow-operator/abi" }
+reifydb-flow-operator-sdk = { version = "0.1.5", path = "crates/flow-operator/sdk" }
+reifydb-rql = { version = "0.1.5", path = "crates/rql" }
+reifydb-store-column = { version = "0.1.5", path = "crates/store-column" }
+reifydb-store-transaction = { version = "0.1.5", path = "crates/store-transaction" }
+reifydb-testing = { version = "0.1.5", path = "crates/testing" }
+reifydb-transaction = { version = "0.1.5", path = "crates/transaction" }
+reifydb-type = { version = "0.1.5", path = "crates/type" }
+reifydb-macro = { version = "0.1.5", path = "crates/macro" }
+reifydb-macro-impl = { version = "0.1.5", path = "crates/macro-impl" }
 
 # Subsystems
-reifydb-sub-api = { version = "0.1.4", path = "crates/sub-api" }
-reifydb-sub-admin = { version = "0.1.4", path = "crates/sub-admin" }
-reifydb-sub-flow = { version = "0.1.4", path = "crates/sub-flow" }
-reifydb-sub-logging = { version = "0.1.4", path = "crates/sub-logging" }
-reifydb-sub-worker = { version = "0.1.4", path = "crates/sub-worker" }
-reifydb-sub-server = { version = "0.1.4", path = "crates/sub-server" }
+reifydb-sub-api = { version = "0.1.5", path = "crates/sub-api" }
+reifydb-sub-admin = { version = "0.1.5", path = "crates/sub-admin" }
+reifydb-sub-flow = { version = "0.1.5", path = "crates/sub-flow" }
+reifydb-sub-logging = { version = "0.1.5", path = "crates/sub-logging" }
+reifydb-sub-worker = { version = "0.1.5", path = "crates/sub-worker" }
+reifydb-sub-server = { version = "0.1.5", path = "crates/sub-server" }
 
 # External dependencies
 
