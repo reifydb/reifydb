@@ -13,6 +13,7 @@
     "test:integration:coverage": "vitest run --coverage --config vitest.config.ts",
     "test:coverage": "pnpm test:integration:coverage",
     "pretest:integration": "pnpm build",
+    "prepublishOnly": "pnpm build",
     "publish:npm": "pnpm publish --access public"
   },
   "dependencies": {
@@ -45,7 +46,8 @@
     "license.md"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "linkWorkspacePackages": false
   },
   "license": "MIT"
 }

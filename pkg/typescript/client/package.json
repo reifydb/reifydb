@@ -44,7 +44,8 @@
     "license.md"
   ],
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "linkWorkspacePackages": false
   },
   "license": "MIT",
   "repository": {
