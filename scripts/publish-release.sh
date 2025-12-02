@@ -22,7 +22,7 @@ fi
 VERSION=$1
 DRY_RUN=0
 SKIP_CRATES=0
-SKIP_NPM=0
+SKIP_PNPM=0
 
 # Parse additional arguments
 for arg in "${@:2}"; do
@@ -34,8 +34,8 @@ for arg in "${@:2}"; do
         --skip-crates)
             SKIP_CRATES=1
             ;;
-        --skip-npm)
-            SKIP_NPM=1
+        --skip-pnpm)
+            SKIP_PNPM=1
             ;;
     esac
 done
@@ -98,9 +98,9 @@ if [ -f "$ROOT_DIR/release.toml" ]; then
         SKIP_CRATES=1
         echo -e "${YELLOW}  Skipping crates.io publishing (disabled in config)${NC}"
     fi
-    if grep -q "npm_registry = false" "$ROOT_DIR/release.toml"; then
-        SKIP_NPM=1
-        echo -e "${YELLOW}  Skipping npm publishing (disabled in config)${NC}"
+    if grep -q "pnpm_registry = false" "$ROOT_DIR/release.toml"; then
+        SKIP_PNPM=1
+        echo -e "${YELLOW}  Skipping pnpm publishing (disabled in config)${NC}"
     fi
 fi
 
@@ -180,28 +180,28 @@ if [ $SKIP_CRATES -eq 0 ]; then
         log_publish "crates:all" "FAILED"
         echo -e "${RED}  ✗ Failed to publish Rust crates after $MAX_RETRIES attempts${NC}"
         FAILED_PACKAGES="$FAILED_PACKAGES crates:workspace"
-        # Continue to Phase 2 (NPM) even if Rust publishing fails
+        # Continue to Phase 2 (PNPM) even if Rust publishing fails
     fi
 else
     echo -e "${YELLOW}[Phase 1/2] Skipping Rust crates (--skip-crates)${NC}"
 fi
 
-# Phase 2: Publish TypeScript packages to npm
-if [ $SKIP_NPM -eq 0 ]; then
+# Phase 2: Publish TypeScript packages to pnpm
+if [ $SKIP_PNPM -eq 0 ]; then
     echo ""
-    echo -e "${YELLOW}[Phase 2/2] Publishing TypeScript packages to npm${NC}"
+    echo -e "${YELLOW}[Phase 2/2] Publishing TypeScript packages to pnpm${NC}"
 
     # Order matters: core -> client -> react
-    NPM_PACKAGES=("core" "client" "react")
+    PNPM_PACKAGES=("core" "client" "react")
 
-    for package in "${NPM_PACKAGES[@]}"; do
+    for package in "${PNPM_PACKAGES[@]}"; do
         PACKAGE_DIR="$ROOT_DIR/pkg/typescript/$package"
         PACKAGE_NAME="@reifydb/$package"
 
         echo -e "${BLUE}  Publishing $PACKAGE_NAME...${NC}"
 
         # Check if already published
-        if was_published "npm:$PACKAGE_NAME"; then
+        if was_published "pnpm:$PACKAGE_NAME"; then
             echo -e "${GREEN}    ✓ Already published (from previous run)${NC}"
             continue
         fi
@@ -216,25 +216,25 @@ if [ $SKIP_NPM -eq 0 ]; then
         # Build the package first
         if [ -f "package.json" ] && grep -q '"build"' package.json; then
             echo -e "${BLUE}    Building package...${NC}"
-            if ! run_cmd "pnpm run build"; then
+            if ! run_cmd "ppnpm run build"; then
                 echo -e "${YELLOW}    ⚠ Build failed, attempting to publish anyway${NC}"
             fi
         fi
 
-        # Publish to npm (without any tag, just semantic version)
-        if run_cmd "npm publish --access public"; then
-            log_publish "npm:$PACKAGE_NAME" "SUCCESS"
+        # Publish to pnpm (without any tag, just semantic version)
+        if run_cmd "ppnpm publish --access public"; then
+            log_publish "pnpm:$PACKAGE_NAME" "SUCCESS"
             echo -e "${GREEN}    ✓ Published $PACKAGE_NAME${NC}"
         else
-            log_publish "npm:$PACKAGE_NAME" "FAILED"
+            log_publish "pnpm:$PACKAGE_NAME" "FAILED"
             echo -e "${RED}    ✗ Failed to publish $PACKAGE_NAME${NC}"
-            FAILED_PACKAGES="$FAILED_PACKAGES npm:$PACKAGE_NAME"
+            FAILED_PACKAGES="$FAILED_PACKAGES pnpm:$PACKAGE_NAME"
         fi
 
         cd "$ROOT_DIR"
     done
 else
-    echo -e "${YELLOW}[Phase 2/2] Skipping npm packages (--skip-npm)${NC}"
+    echo -e "${YELLOW}[Phase 2/2] Skipping pnpm packages (--skip-pnpm)${NC}"
 fi
 
 # Summary
@@ -269,8 +269,8 @@ else
         if [ $SKIP_CRATES -eq 0 ]; then
             echo -e "${GREEN}  ✓ crates.io (Rust packages)${NC}"
         fi
-        if [ $SKIP_NPM -eq 0 ]; then
-            echo -e "${GREEN}  ✓ npm registry (TypeScript packages)${NC}"
+        if [ $SKIP_PNPM -eq 0 ]; then
+            echo -e "${GREEN}  ✓ pnpm registry (TypeScript packages)${NC}"
         fi
 
         # Clean up status log on success
