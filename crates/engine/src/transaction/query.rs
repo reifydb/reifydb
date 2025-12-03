@@ -12,6 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use tracing::instrument;
 
 use crate::transaction::TransactionCdc;
 
@@ -28,6 +29,7 @@ pub struct StandardQueryTransaction {
 
 impl StandardQueryTransaction {
 	/// Creates a new active query transaction
+	#[instrument(level = "debug", skip_all)]
 	pub fn new(
 		multi: <TransactionMultiVersion as MultiVersionTransaction>::Query,
 		single: TransactionSingleVersion,
@@ -44,6 +46,7 @@ impl StandardQueryTransaction {
 	}
 
 	/// Execute a function with query access to the single transaction.
+	#[instrument(level = "trace", skip(self, keys, f))]
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -54,6 +57,7 @@ impl StandardQueryTransaction {
 
 	/// Execute a function with access to the multi query transaction.
 	/// This operates within the same transaction context.
+	#[instrument(level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&mut self, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut <TransactionMultiVersion as MultiVersionTransaction>::Query) -> crate::Result<R>,
@@ -62,6 +66,7 @@ impl StandardQueryTransaction {
 	}
 
 	/// Get access to the CDC transaction interface
+	#[instrument(level = "trace", skip(self))]
 	pub fn cdc(&self) -> &TransactionCdc {
 		&self.cdc
 	}

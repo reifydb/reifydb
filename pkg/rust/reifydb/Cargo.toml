@@ -20,10 +20,11 @@ reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 reifydb-derive = { workspace = true }
 
+tracing = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-sub-admin = { workspace = true, optional = true }
 reifydb-sub-flow = { workspace = true, optional = true }
-reifydb-sub-logging = { workspace = true, optional = true }
+reifydb-sub-tracing = { workspace = true, optional = true }
 reifydb-sub-server = { workspace = true, optional = true }
 reifydb-sub-worker = { workspace = true }
 
@@ -35,7 +36,7 @@ default = []
 # Subsystem features
 sub_admin = ["dep:reifydb-sub-admin"]
 sub_flow = ["dep:reifydb-sub-flow"]
-sub_logging = ["dep:reifydb-sub-logging"]
+sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_server = ["dep:reifydb-sub-server"]
 
 

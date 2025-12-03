@@ -10,11 +10,11 @@ use reifydb_core::{
 		EncodableKey, SingleVersionCommandTransaction, SingleVersionQueryTransaction, SingleVersionTransaction,
 		SystemVersion, SystemVersionKey, WithEventBus,
 	},
-	log_error,
 	value::encoded::EncodedValuesLayout,
 };
 use reifydb_transaction::single::TransactionSingleVersion;
 use reifydb_type::Type;
+use tracing::error;
 
 pub(crate) struct StartEventListener {
 	single: TransactionSingleVersion,
@@ -60,7 +60,7 @@ impl EventListener<OnStartEvent> for StartEventListener {
 				Ok(())
 			}
 		})() {
-			log_error!("Failed to handle OnStart event: {}", e);
+			error!("Failed to handle OnStart event: {}", e);
 		}
 	}
 }

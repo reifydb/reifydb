@@ -10,11 +10,11 @@ use reifydb_core::{
 	delta::Delta,
 	event::EventBus,
 	interface::{SingleVersionTransaction, SingleVersionValues, WithEventBus},
-	log_timed_trace,
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::TransactionStore;
 use reifydb_type::util::hex;
+use tracing::trace;
 
 mod read;
 mod write;
@@ -88,9 +88,8 @@ impl SingleVersionTransaction for TransactionSvl {
 		for key in &keys_vec {
 			let arc = self.inner.get_or_create_lock(key);
 			let key_hex = hex::encode(&key);
-			let lock = log_timed_trace!("SVL read lock acquisition for key {key_hex}", {
-				read::KeyReadLock::new(arc, |arc_ref| arc_ref.read())
-			});
+			trace!("SVL read lock acquisition for key {key_hex}");
+			let lock = read::KeyReadLock::new(arc, |arc_ref| arc_ref.read());
 			locks.push(lock);
 		}
 
@@ -119,9 +118,8 @@ impl SingleVersionTransaction for TransactionSvl {
 		for key in &keys_vec {
 			let arc = self.inner.get_or_create_lock(key);
 			let key_hex = hex::encode(&key);
-			let lock = log_timed_trace!("SVL write lock acquisition for key {key_hex}", {
-				KeyWriteLock::new(arc, |arc_ref| arc_ref.write())
-			});
+			trace!("SVL write lock acquisition for key {key_hex}");
+			let lock = KeyWriteLock::new(arc, |arc_ref| arc_ref.write());
 			locks.push(lock);
 		}
 

@@ -19,6 +19,7 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::SchedulerService;
+use tracing::instrument;
 
 pub trait Session {
 	fn command_session(&self, session: impl IntoCommandSession) -> crate::Result<CommandSession>;
@@ -39,6 +40,7 @@ pub trait Session {
 }
 
 impl CommandSession {
+	#[instrument(level = "debug", skip_all)]
 	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
 		Self {
 			engine,
@@ -46,6 +48,7 @@ impl CommandSession {
 		}
 	}
 
+	#[instrument(level = "info", skip(self, params), fields(rql = %rql))]
 	pub fn command(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let rql = rql.to_string();
 		let params = params.into();
@@ -57,6 +60,7 @@ impl CommandSession {
 }
 
 impl QuerySession {
+	#[instrument(level = "debug", skip_all)]
 	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
 		Self {
 			engine,
@@ -64,6 +68,7 @@ impl QuerySession {
 		}
 	}
 
+	#[instrument(level = "info", skip(self, params), fields(rql = %rql))]
 	pub fn query(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let rql = rql.to_string();
 		let params = params.into();

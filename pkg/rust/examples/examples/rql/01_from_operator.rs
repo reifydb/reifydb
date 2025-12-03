@@ -7,8 +7,9 @@
 //!
 //! Run with: `make rql-from` or `cargo run --bin rql-from`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
@@ -16,10 +17,10 @@ fn main() {
 	db.start().unwrap();
 
 	// Example 1: FROM with inline data (single encoded)
-	log_info!("Example 1: FROM with single inline encoded");
+	info!("Example 1: FROM with single inline encoded");
 	log_query(r#"from [{ name: "Alice", age: 30 }]"#);
 	for frame in db.query_as_root(r#"from [{ name: "Alice", age: 30 }]"#, Params::None).unwrap() {
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +--------+-------+
 		// |  name  |  age  |
@@ -29,7 +30,7 @@ fn main() {
 	}
 
 	// Example 2: FROM with inline data (multiple rows)
-	log_info!("\nExample 2: FROM with multiple inline rows");
+	info!("\nExample 2: FROM with multiple inline rows");
 	log_query(
 		r#"from [
   { name: "Bob", age: 25 },
@@ -50,7 +51,7 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +--------+-------+
 		// |  name  |  age  |
@@ -62,7 +63,7 @@ fn main() {
 	}
 
 	// Example 3: FROM with different data types
-	log_info!("\nExample 3: FROM with various data types");
+	info!("\nExample 3: FROM with various data types");
 	log_query(r#"from [{ id: 1, active: true, price: 19.99, description: "Product A" }]"#);
 	for frame in db
 		.query_as_root(
@@ -78,7 +79,7 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +------+----------+---------+---------------+
 		// |  id  |  active  |  price  |  description  |
@@ -88,10 +89,10 @@ fn main() {
 	}
 
 	// Example 4: FROM with tables (after creating a table)
-	log_info!("\nExample 4: FROM with tables");
+	info!("\nExample 4: FROM with tables");
 
 	// First create a namespace and table
-	log_info!("Creating namespace and table...");
+	info!("Creating namespace and table...");
 	db.command_as_root(r#"create namespace demo"#, Params::None).unwrap();
 
 	db.command_as_root(
@@ -108,7 +109,7 @@ fn main() {
 	.unwrap();
 
 	// Insert some data
-	log_info!("Inserting sample data...");
+	info!("Inserting sample data...");
 	db.command_as_root(
 		r#"
 		from [
@@ -125,7 +126,7 @@ fn main() {
 	// Now query from the table
 	log_query(r#"from demo.users"#);
 	for frame in db.query_as_root(r#"from demo.users"#, Params::None).unwrap() {
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output:
 		// +------+------------+----------------------+-------------+
 		// |  id  |  username  |        email         |  is_active  |
@@ -137,10 +138,10 @@ fn main() {
 	}
 
 	// Example 5: FROM with empty array
-	log_info!("\nExample 5: FROM with empty array");
+	info!("\nExample 5: FROM with empty array");
 	log_query(r#"from []"#);
 	for frame in db.query_as_root(r#"from []"#, Params::None).unwrap() {
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Output: (empty result set)
 	}
 }

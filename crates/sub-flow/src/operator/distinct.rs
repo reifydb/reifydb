@@ -11,7 +11,6 @@ use indexmap::IndexMap;
 use reifydb_core::{
 	CowVec, Error, Row,
 	interface::FlowNodeId,
-	log_trace,
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
 };
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator};
@@ -20,6 +19,7 @@ use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Blob, Params, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
+use tracing::trace;
 
 use crate::{
 	operator::{
@@ -247,7 +247,7 @@ impl Operator for DistinctOperator {
 				} => format!("R{}", pre.number.0),
 			})
 			.collect();
-		log_trace!(
+		trace!(
 			"[DISTINCT] node={:?} version={} IN rows=[{}]",
 			self.node,
 			change.version.0,
@@ -379,7 +379,7 @@ impl Operator for DistinctOperator {
 				} => format!("R{}", pre.number.0),
 			})
 			.collect();
-		log_trace!(
+		trace!(
 			"[DISTINCT] node={:?} version={} OUT rows=[{}]",
 			self.node,
 			change.version.0,

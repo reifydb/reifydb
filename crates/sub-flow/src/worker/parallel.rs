@@ -2,9 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use crossbeam_channel::bounded;
-use reifydb_core::{interface::FlowId, log_trace};
+use reifydb_core::interface::FlowId;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{SchedulerService, TaskContext, task_once};
+use tracing::trace;
 
 use super::{UnitOfWork, UnitsOfWork, WorkerPool};
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -86,7 +87,7 @@ impl WorkerPool for ParallelWorkerPool {
 			let flow_id = flow_units[0].flow_id;
 			let versions: Vec<_> = flow_units.iter().map(|u| u.version.0).collect();
 
-			log_trace!("[PARALLEL] SUBMIT seq={} flow={:?} versions={:?}", seq, flow_id, versions);
+			trace!("[PARALLEL] SUBMIT seq={} flow={:?} versions={:?}", seq, flow_id, versions);
 
 			let task = task_once!(
 				"flow-processing",
@@ -109,7 +110,7 @@ impl WorkerPool for ParallelWorkerPool {
 		while let Ok(result) = result_rx.recv() {
 			match result {
 				Ok((flow_id, flow_txn)) => {
-					log_trace!("[PARALLEL] RECV seq={} flow={:?}", recv_seq, flow_id);
+					trace!("[PARALLEL] RECV seq={} flow={:?}", recv_seq, flow_id);
 					recv_seq += 1;
 					completed.push((flow_id, flow_txn));
 				}
@@ -122,7 +123,7 @@ impl WorkerPool for ParallelWorkerPool {
 
 		// Commit all FlowTransactions sequentially back to parent
 		for (seq, (flow_id, mut flow)) in completed.into_iter().enumerate() {
-			log_trace!("[PARALLEL] COMMIT seq={} flow={:?}", seq, flow_id);
+			trace!("[PARALLEL] COMMIT seq={} flow={:?}", seq, flow_id);
 			flow.commit(txn)?;
 		}
 

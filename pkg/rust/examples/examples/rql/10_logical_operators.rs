@@ -10,8 +10,9 @@
 //!
 //! Run with: `make rql-logical` or `cargo run --bin rql-logical`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
@@ -19,7 +20,7 @@ fn main() {
 	db.start().unwrap();
 
 	// Example 1: Basic logical operations
-	log_info!("Example 1: Basic logical operations");
+	info!("Example 1: Basic logical operations");
 	log_query(
 		r#"map {
   true and true as and_true,
@@ -50,7 +51,7 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Set up sample data
@@ -91,7 +92,7 @@ fn main() {
 	.unwrap();
 
 	// Example 2: AND operator in filters
-	log_info!("\nExample 2: AND operator - products in stock AND on sale");
+	info!("\nExample 2: AND operator - products in stock AND on sale");
 	log_query(
 		r#"from inventory.products
 filter in_stock == true and on_sale == true"#,
@@ -106,11 +107,11 @@ filter in_stock == true and on_sale == true"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 3: OR operator in filters
-	log_info!("\nExample 3: OR operator - featured OR on sale");
+	info!("\nExample 3: OR operator - featured OR on sale");
 	log_query(
 		r#"from inventory.products
 filter featured == true or on_sale == true"#,
@@ -125,11 +126,11 @@ filter featured == true or on_sale == true"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 4: NOT operator
-	log_info!("\nExample 4: NOT operator - products NOT in stock");
+	info!("\nExample 4: NOT operator - products NOT in stock");
 	log_query(
 		r#"from inventory.products
 filter not in_stock"#,
@@ -144,11 +145,11 @@ filter not in_stock"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 5: Comptokenize logical expression with parentheses
-	log_info!("\nExample 5: Comptokenize expression - (Electronics OR Toys) AND on_sale");
+	info!("\nExample 5: Comptokenize expression - (Electronics OR Toys) AND on_sale");
 	log_query(
 		r#"from inventory.products
 filter (category == "Electronics" or category == "Toys")
@@ -165,11 +166,11 @@ filter (category == "Electronics" or category == "Toys")
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 6: XOR operator
-	log_info!("\nExample 6: XOR operator - either featured OR on_sale (but not both)");
+	info!("\nExample 6: XOR operator - either featured OR on_sale (but not both)");
 	log_query(
 		r#"from inventory.products
 filter featured xor on_sale"#,
@@ -184,11 +185,11 @@ filter featured xor on_sale"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 7: Multiple AND conditions
-	log_info!("\nExample 7: Multiple AND conditions");
+	info!("\nExample 7: Multiple AND conditions");
 	log_query(
 		r#"from inventory.products
 filter category == "Toys" and in_stock == true and price < 30"#,
@@ -203,12 +204,12 @@ filter category == "Toys" and in_stock == true and price < 30"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 8: Operator precedence (AND before OR)
-	log_info!("\nExample 8: Operator precedence demonstration");
-	log_info!("Without parentheses (AND has higher precedence):");
+	info!("\nExample 8: Operator precedence demonstration");
+	info!("Without parentheses (AND has higher precedence):");
 	log_query(
 		r#"from inventory.products
 filter on_sale == true or featured == true and category == "Electronics""#,
@@ -223,10 +224,10 @@ filter on_sale == true or featured == true and category == "Electronics""#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
-	log_info!("\nWith parentheses (changing precedence):");
+	info!("\nWith parentheses (changing precedence):");
 	log_query(
 		r#"from inventory.products
 filter (on_sale == true or featured == true) and category == "Electronics""#,
@@ -241,11 +242,11 @@ filter (on_sale == true or featured == true) and category == "Electronics""#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 9: Logical operators in computed fields
-	log_info!("\nExample 9: Logical operators in computed fields");
+	info!("\nExample 9: Logical operators in computed fields");
 	log_query(
 		r#"from inventory.products
 map {
@@ -272,11 +273,11 @@ map {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 10: Comptokenize nested logical expressions
-	log_info!("\nExample 10: Comptokenize nested logical expression");
+	info!("\nExample 10: Comptokenize nested logical expression");
 	log_query(
 		r#"from inventory.products
 filter ((category == "Toys" and min_age >= 5) or
@@ -295,6 +296,6 @@ filter ((category == "Toys" and min_age >= 5) or
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

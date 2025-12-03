@@ -18,6 +18,7 @@ use reifydb_core::{
 };
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{HealthStatus, Priority, SchedulerService, Subsystem};
+use tracing::instrument;
 
 use crate::{builder::OperatorFactory, consumer::FlowConsumer};
 
@@ -42,6 +43,7 @@ pub struct FlowSubsystem {
 }
 
 impl FlowSubsystem {
+	#[instrument(level = "debug", skip(cfg, ioc))]
 	pub fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine>()?;
 		let scheduler = ioc.resolve::<SchedulerService>().ok();
@@ -70,6 +72,7 @@ impl Subsystem for FlowSubsystem {
 		"sub-flow"
 	}
 
+	#[instrument(level = "info", skip(self))]
 	fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(());
@@ -81,6 +84,7 @@ impl Subsystem for FlowSubsystem {
 		Ok(())
 	}
 
+	#[instrument(level = "info", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(());
@@ -91,10 +95,12 @@ impl Subsystem for FlowSubsystem {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip(self))]
 	fn is_running(&self) -> bool {
 		self.running
 	}
 
+	#[instrument(level = "debug", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if self.is_running() {
 			HealthStatus::Healthy

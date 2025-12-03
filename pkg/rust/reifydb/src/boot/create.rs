@@ -4,9 +4,9 @@
 use reifydb_core::{
 	event::{EventListener, lifecycle::OnCreateEvent},
 	interface::{Engine as EngineInterface, Identity, Params},
-	log_error,
 };
 use reifydb_engine::StandardEngine;
+use tracing::error;
 
 pub(crate) struct CreateEventListener {
 	engine: StandardEngine,
@@ -36,7 +36,7 @@ create table reifydb.flows{
 "#,
 			Params::None,
 		) {
-			log_error!("Failed to create initial database namespace: {}", e);
+			error!("Failed to create initial database namespace: {}", e);
 		}
 	}
 }

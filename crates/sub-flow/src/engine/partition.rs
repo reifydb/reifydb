@@ -7,9 +7,9 @@ use indexmap::IndexMap;
 use reifydb_core::{
 	CommitVersion,
 	interface::{FlowId, SourceId},
-	log_trace,
 };
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
+use tracing::trace;
 
 use crate::worker::{UnitOfWork, UnitsOfWork};
 
@@ -63,7 +63,7 @@ impl crate::engine::FlowEngine {
 			if !flow_units.is_empty() {
 				let flow_id = flow_units[0].flow_id;
 				let versions: Vec<_> = flow_units.iter().map(|u| u.version.0).collect();
-				log_trace!("[PARTITION] OUT seq={} flow={:?} versions={:?}", seq, flow_id, versions);
+				trace!("[PARTITION] OUT seq={} flow={:?} versions={:?}", seq, flow_id, versions);
 			}
 		}
 

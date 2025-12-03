@@ -7,28 +7,29 @@
 //!
 //! Run with: `cargo run --bin storage-memory`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
-	log_info!("=== Memory Storage Example ===\n");
+	info!("=== Memory Storage Example ===\n");
 
 	// Create an in-memory database
-	log_info!("Creating in-memory database...");
+	info!("Creating in-memory database...");
 	let mut db = embedded::memory_optimistic().build().unwrap();
 	db.start().unwrap();
-	log_info!("✓ Database created and started\n");
+	info!("✓ Database created and started\n");
 
 	// Create a namespace
-	log_info!("Creating namespace 'app'...");
+	info!("Creating namespace 'app'...");
 	let result = db.command_as_root("create namespace app", Params::None).unwrap();
 	for frame in result {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
-	log_info!("✓ Namespace created\n");
+	info!("✓ Namespace created\n");
 
 	// Create a table
-	log_info!("Creating table 'users'...");
+	info!("Creating table 'users'...");
 	let result = db
 		.command_as_root(
 			r#"
@@ -43,12 +44,12 @@ fn main() {
 		)
 		.unwrap();
 	for frame in result {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
-	log_info!("✓ Table created\n");
+	info!("✓ Table created\n");
 
 	// Insert data
-	log_info!("Inserting data...");
+	info!("Inserting data...");
 	log_query(
 		r#"from [
   { id: 1, name: "Alice", email: "alice@example.com", active: true },
@@ -72,28 +73,28 @@ insert app.users"#,
 		)
 		.unwrap();
 	for frame in result {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
-	log_info!("✓ Data inserted\n");
+	info!("✓ Data inserted\n");
 
 	// Query all data
-	log_info!("Querying all users:");
+	info!("Querying all users:");
 	log_query("from app.users");
 
 	for frame in db.query_as_root("from app.users", Params::None).unwrap() {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Query with filter
-	log_info!("\nQuerying active users:");
+	info!("\nQuerying active users:");
 	log_query("from app.users filter active == true");
 
 	for frame in db.query_as_root("from app.users filter active == true", Params::None).unwrap() {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Add more data
-	log_info!("\nAdding another user:");
+	info!("\nAdding another user:");
 	log_query(
 		r#"from [{ id: 4, name: "Diana", email: "diana@example.com", active: true }]
 insert app.users"#,
@@ -109,15 +110,15 @@ insert app.users"#,
 		)
 		.unwrap();
 	for frame in result {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
-	log_info!("✓ User added\n");
+	info!("✓ User added\n");
 
 	// Query updated data
-	log_info!("Querying all users after update:");
+	info!("Querying all users after update:");
 	log_query("from app.users sort id");
 
 	for frame in db.query_as_root("from app.users sort id", Params::None).unwrap() {
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

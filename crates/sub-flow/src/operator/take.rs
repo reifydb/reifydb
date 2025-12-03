@@ -4,11 +4,12 @@ use bincode::{
 	config::standard,
 	serde::{decode_from_slice, encode_to_vec},
 };
-use reifydb_core::{Error, Row, interface::FlowNodeId, log_trace, value::encoded::EncodedValuesLayout};
+use reifydb_core::{Error, Row, interface::FlowNodeId, value::encoded::EncodedValuesLayout};
 use reifydb_engine::StandardRowEvaluator;
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
 use reifydb_type::{Blob, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
+use tracing::trace;
 
 use crate::{
 	operator::{
@@ -174,7 +175,7 @@ impl Operator for TakeOperator {
 				} => format!("R{}", pre.number.0),
 			})
 			.collect();
-		log_trace!("[TAKE] node={:?} version={} IN rows=[{}]", self.node, version.0, input_rows.join(","));
+		trace!("[TAKE] node={:?} version={} IN rows=[{}]", self.node, version.0, input_rows.join(","));
 
 		for diff in change.diffs {
 			match diff {
@@ -302,7 +303,7 @@ impl Operator for TakeOperator {
 				} => format!("R{}", pre.number.0),
 			})
 			.collect();
-		log_trace!("[TAKE] node={:?} version={} OUT rows=[{}]", self.node, version.0, output_rows.join(","));
+		trace!("[TAKE] node={:?} version={} OUT rows=[{}]", self.node, version.0, output_rows.join(","));
 
 		Ok(FlowChange::internal(self.node, version, output_diffs))
 	}

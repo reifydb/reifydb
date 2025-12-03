@@ -22,11 +22,11 @@ use std::{
 use reifydb_core::{
 	Result,
 	interface::version::{ComponentType, HasVersion, SystemVersion},
-	log_debug, log_warn,
 };
 use reifydb_engine::StandardEngine;
 pub use reifydb_sub_api::Priority;
 use reifydb_sub_api::{BoxedOnceTask, BoxedTask, HealthStatus, Scheduler, SchedulerService, Subsystem, TaskHandle};
+use tracing::{debug, instrument, warn};
 
 use crate::{
 	client::{SchedulerClient, SchedulerRequest, SchedulerResponse},
@@ -108,6 +108,7 @@ pub struct WorkerSubsystem {
 }
 
 impl WorkerSubsystem {
+	#[instrument(level = "debug", skip(engine))]
 	pub fn new(config: WorkerConfig, engine: StandardEngine) -> Self {
 		let pending_requests = Arc::new(Mutex::new(VecDeque::new()));
 		let next_handle = Arc::new(AtomicU64::new(1));
@@ -144,11 +145,13 @@ impl WorkerSubsystem {
 	}
 
 	/// Get the scheduler client
+	#[instrument(level = "trace", skip(self))]
 	pub fn get_scheduler(&self) -> SchedulerService {
 		SchedulerService(self.scheduler_client.clone())
 	}
 
 	/// Submit a one-time task to the pool
+	#[instrument(level = "debug", skip(self, task))]
 	pub fn submit(&self, task: Box<dyn PoolTask>) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			panic!("Worker pool is not running");
@@ -191,6 +194,7 @@ impl WorkerSubsystem {
 	}
 
 	/// Cancel a scheduled task
+	#[instrument(level = "debug", skip(self))]
 	pub fn cancel_task(&self, handle: TaskHandle) -> Result<()> {
 		let mut scheduler = self.scheduler.lock().unwrap();
 		scheduler.cancel(handle);
@@ -198,16 +202,19 @@ impl WorkerSubsystem {
 	}
 
 	/// Get current pool statistics
+	#[instrument(level = "trace", skip(self))]
 	pub fn stats(&self) -> &PoolStats {
 		&self.stats
 	}
 
 	/// Get number of active workers
+	#[instrument(level = "trace", skip(self))]
 	pub fn active_workers(&self) -> usize {
 		self.stats.active_workers.load(Ordering::Relaxed)
 	}
 
 	/// Get number of queued tasks
+	#[instrument(level = "trace", skip(self))]
 	pub fn queued_tasks(&self) -> usize {
 		self.task_queue.lock().unwrap().len()
 	}
@@ -222,7 +229,7 @@ impl WorkerSubsystem {
 		running: Arc<AtomicBool>,
 		engine: StandardEngine,
 	) {
-		log_debug!("Dispatcher thread started");
+		debug!("Dispatcher thread started");
 
 		while running.load(Ordering::Relaxed) {
 			// Wait for tasks in priority queue
@@ -279,7 +286,7 @@ impl WorkerSubsystem {
 
 					// Log slow tasks
 					if duration > Duration::from_secs(5) {
-						log_warn!(
+						warn!(
 							"Task '{}' took {:?} to execute",
 							prioritized_task.task.name(),
 							duration
@@ -292,11 +299,7 @@ impl WorkerSubsystem {
 							stats_clone.tasks_completed.fetch_add(1, Ordering::Relaxed);
 						}
 						Err(e) => {
-							log_warn!(
-								"Task '{}' failed: {}",
-								prioritized_task.task.name(),
-								e
-							);
+							warn!("Task '{}' failed: {}", prioritized_task.task.name(), e);
 							stats_clone.tasks_failed.fetch_add(1, Ordering::Relaxed);
 						}
 					}
@@ -310,7 +313,7 @@ impl WorkerSubsystem {
 		// Drain remaining tasks on shutdown
 		Self::drain_queue(pool, queue, tracker, stats, engine);
 
-		log_debug!("Dispatcher thread stopped");
+		debug!("Dispatcher thread stopped");
 	}
 
 	/// Drain queue during shutdown
@@ -321,7 +324,7 @@ impl WorkerSubsystem {
 		stats: Arc<PoolStats>,
 		engine: StandardEngine,
 	) {
-		log_debug!("Draining task queue during shutdown");
+		debug!("Draining task queue during shutdown");
 
 		loop {
 			let task = {
@@ -548,9 +551,7 @@ impl WorkerSubsystem {
 
 						for task in ready_tasks {
 							if queue.len() >= max_queue_size {
-								log_warn!(
-									"Scheduler: Queue full, dropping scheduled task"
-								);
+								warn!("Scheduler: Queue full, dropping scheduled task");
 								break;
 							}
 
@@ -580,19 +581,20 @@ impl Subsystem for WorkerSubsystem {
 		"sub-worker"
 	}
 
+	#[instrument(level = "info", skip(self))]
 	fn start(&mut self) -> Result<()> {
 		if self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already running
 		}
 
-		log_debug!("Starting worker subsystem with {} workers", self.config.num_workers);
+		debug!("Starting worker subsystem with {} workers", self.config.num_workers);
 
 		// Create Rayon thread pool
 		let pool = rayon::ThreadPoolBuilder::new()
 			.num_threads(self.config.num_workers)
 			.thread_name(|i| format!("rayon-worker-{}", i))
 			.panic_handler(|panic_info| {
-				log_warn!("Worker thread panicked: {:?}", panic_info);
+				warn!("Worker thread panicked: {:?}", panic_info);
 			})
 			.build()
 			.map_err(|e| {
@@ -633,20 +635,21 @@ impl Subsystem for WorkerSubsystem {
 		// Start scheduler thread
 		self.start_scheduler();
 
-		log_debug!("Started with {} workers", self.config.num_workers);
+		debug!("Started with {} workers", self.config.num_workers);
 
 		Ok(())
 	}
 
+	#[instrument(level = "info", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
 		}
 
-		log_debug!("Worker pool shutting down...");
+		debug!("Worker pool shutting down...");
 
 		self.running.store(false, Ordering::Relaxed);
-		log_debug!("Signaled threads to stop");
+		debug!("Signaled threads to stop");
 
 		self.task_condvar.notify_all();
 		self.scheduler_condvar.notify_all();
@@ -659,7 +662,7 @@ impl Subsystem for WorkerSubsystem {
 		};
 
 		if cancelled_count > 0 {
-			log_debug!("Cancelled {} queued tasks", cancelled_count);
+			debug!("Cancelled {} queued tasks", cancelled_count);
 		}
 
 		// Join scheduler thread
@@ -672,35 +675,37 @@ impl Subsystem for WorkerSubsystem {
 			let _ = handle.join();
 		}
 
-		log_debug!("Scheduler and dispatcher threads stopped");
+		debug!("Scheduler and dispatcher threads stopped");
 
 		let active_count = self.task_tracker.active_count();
 		if active_count > 0 {
-			log_debug!("Waiting for {} active tasks to complete...", active_count);
+			debug!("Waiting for {} active tasks to complete...", active_count);
 		}
 
 		let timeout = Duration::from_secs(10);
 		if !self.task_tracker.wait_for_completion(timeout) {
 			let remaining = self.task_tracker.active_count();
-			log_warn!(
+			warn!(
 				"Timeout waiting for tasks to complete. {} tasks still running. Forcing shutdown.",
 				remaining
 			);
 
 			self.thread_pool = None;
-			log_warn!("Worker pool shutdown forced with {} tasks still active", remaining);
+			warn!("Worker pool shutdown forced with {} tasks still active", remaining);
 		} else {
 			self.thread_pool = None;
-			log_debug!("All tasks completed, worker pool shutdown complete");
+			debug!("All tasks completed, worker pool shutdown complete");
 		}
 
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip(self))]
 	fn is_running(&self) -> bool {
 		self.running.load(Ordering::Relaxed)
 	}
 
+	#[instrument(level = "debug", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if !self.is_running() {
 			return HealthStatus::Unknown;

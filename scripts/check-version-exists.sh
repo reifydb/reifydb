@@ -63,7 +63,7 @@ RUST_CRATES=(
     "reifydb-sub-admin"
     "reifydb-sub-api"
     "reifydb-sub-flow"
-    "reifydb-sub-logging"
+    "reifydb-sub-tracing"
     "reifydb-sub-server"
     "reifydb-sub-worker"
     "reifydb-testing"

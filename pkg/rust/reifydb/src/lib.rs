@@ -29,8 +29,6 @@ pub use reifydb_core::{
 	Error, Result,
 	event::EventBus,
 	interface::{Identity, MultiVersionTransaction, Params, SingleVersionTransaction},
-	log, log_critical, log_debug, log_error, log_info, log_timed_critical, log_timed_debug, log_timed_error,
-	log_timed_info, log_timed_trace, log_timed_warn, log_trace, log_warn,
 };
 pub use reifydb_derive as derive;
 pub use reifydb_derive::FromFrame;
@@ -44,10 +42,10 @@ pub use reifydb_sub_admin as sub_admin;
 pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
-#[cfg(feature = "sub_logging")]
-pub use reifydb_sub_logging as sub_logging;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
+#[cfg(feature = "sub_tracing")]
+pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_sub_worker as sub_worker;
 pub use reifydb_transaction as transaction;
 pub use reifydb_transaction::{

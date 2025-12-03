@@ -3,7 +3,7 @@ use std::sync::Arc;
 use bincode::{config::standard, serde::encode_to_vec};
 use indexmap::IndexMap;
 use reifydb_core::{
-	EncodedKey, Error, JoinType, Row, interface::FlowNodeId, log_trace, util::encoding::keycode::KeySerializer,
+	EncodedKey, Error, JoinType, Row, interface::FlowNodeId, util::encoding::keycode::KeySerializer,
 	value::encoded::EncodedValuesLayout,
 };
 use reifydb_engine::{RowEvaluationContext, StandardRowEvaluator, execute::Executor};
@@ -11,6 +11,7 @@ use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Params, RowNumber, Type, Value, internal};
+use tracing::trace;
 
 use super::{JoinSide, JoinState, JoinStrategy, layout::JoinedLayoutBuilder};
 use crate::{
@@ -82,11 +83,7 @@ impl JoinOperator {
 		exprs: &[Expression<'static>],
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<Option<Hash128>> {
-		log_trace!(
-			"[JOIN] compute_join_key: row_number={}, layout_names={:?}",
-			row.number.0,
-			row.layout.names()
-		);
+		trace!("[JOIN] compute_join_key: row_number={}, layout_names={:?}", row.number.0, row.layout.names());
 
 		// Pre-allocate with reasonable capacity
 		let mut hasher = Vec::with_capacity(256);
@@ -102,11 +99,9 @@ impl JoinOperator {
 						.layout
 						.get_value(&row.encoded, col_name)
 						.unwrap_or(Value::Undefined);
-					log_trace!(
+					trace!(
 						"[JOIN] compute_join_key: expr[{}] AccessSource col='{}' -> value={:?}",
-						expr_idx,
-						col_name,
-						val
+						expr_idx, col_name, val
 					);
 					val
 				}
@@ -119,10 +114,9 @@ impl JoinOperator {
 						params: &EMPTY_PARAMS,
 					};
 					let val = evaluator.evaluate(&ctx, expr)?;
-					log_trace!(
+					trace!(
 						"[JOIN] compute_join_key: expr[{}] evaluated -> value={:?}",
-						expr_idx,
-						val
+						expr_idx, val
 					);
 					val
 				}
@@ -130,7 +124,7 @@ impl JoinOperator {
 
 			// Check if the value is undefined - undefined values should never match in joins
 			if matches!(value, Value::Undefined) {
-				log_trace!(
+				trace!(
 					"[JOIN] compute_join_key: returning None due to Undefined value at expr[{}]",
 					expr_idx
 				);
@@ -144,13 +138,13 @@ impl JoinOperator {
 		}
 
 		let hash = xxh3_128(&hasher);
-		log_trace!("[JOIN] compute_join_key: hash={:?}", hash);
+		trace!("[JOIN] compute_join_key: hash={:?}", hash);
 		Ok(Some(hash))
 	}
 
 	/// Generate a row for an unmatched left join result
 	pub(crate) fn unmatched_left_row(&self, txn: &mut FlowTransaction, left: &Row) -> crate::Result<Row> {
-		log_trace!(
+		trace!(
 			"[JOIN] unmatched_left_row: input row_number={}, layout_names={:?}",
 			left.number.0,
 			left.layout.names()
@@ -159,7 +153,7 @@ impl JoinOperator {
 		// Log all values in the input row
 		for (idx, name) in left.layout.names().iter().enumerate() {
 			let value = left.layout.get_value_by_idx(&left.encoded, idx);
-			log_trace!("[JOIN] unmatched_left_row: input col[{}] '{}' = {:?}", idx, name, value);
+			trace!("[JOIN] unmatched_left_row: input col[{}] '{}' = {:?}", idx, name, value);
 		}
 
 		let mut serializer = KeySerializer::new();
@@ -177,7 +171,7 @@ impl JoinOperator {
 			layout: left.layout.clone(),
 		};
 
-		log_trace!(
+		trace!(
 			"[JOIN] unmatched_left_row: output row_number={}, layout_names={:?}",
 			result.number.0,
 			result.layout.names()
@@ -199,20 +193,20 @@ impl JoinOperator {
 	}
 
 	pub(crate) fn join_rows(&self, txn: &mut FlowTransaction, left: &Row, right: &Row) -> crate::Result<Row> {
-		log_trace!("[JOIN] join_rows: left row_number={}, right row_number={}", left.number.0, right.number.0);
-		log_trace!("[JOIN] join_rows: left layout_names={:?}", left.layout.names());
-		log_trace!("[JOIN] join_rows: right layout_names={:?}", right.layout.names());
+		trace!("[JOIN] join_rows: left row_number={}, right row_number={}", left.number.0, right.number.0);
+		trace!("[JOIN] join_rows: left layout_names={:?}", left.layout.names());
+		trace!("[JOIN] join_rows: right layout_names={:?}", right.layout.names());
 
 		// Log left row values
 		for (idx, name) in left.layout.names().iter().enumerate() {
 			let value = left.layout.get_value_by_idx(&left.encoded, idx);
-			log_trace!("[JOIN] join_rows: left col[{}] '{}' = {:?}", idx, name, value);
+			trace!("[JOIN] join_rows: left col[{}] '{}' = {:?}", idx, name, value);
 		}
 
 		// Log right row values
 		for (idx, name) in right.layout.names().iter().enumerate() {
 			let value = right.layout.get_value_by_idx(&right.encoded, idx);
-			log_trace!("[JOIN] join_rows: right col[{}] '{}' = {:?}", idx, name, value);
+			trace!("[JOIN] join_rows: right col[{}] '{}' = {:?}", idx, name, value);
 		}
 
 		// Build the combined layout and get a stable row number
@@ -223,7 +217,7 @@ impl JoinOperator {
 
 		let result = builder.build_row(result_row_number, left, right);
 
-		log_trace!(
+		trace!(
 			"[JOIN] join_rows: output row_number={}, layout_names={:?}",
 			result.number.0,
 			result.layout.names()
@@ -232,7 +226,7 @@ impl JoinOperator {
 		// Log output row values
 		for (idx, name) in result.layout.names().iter().enumerate() {
 			let value = result.layout.get_value_by_idx(&result.encoded, idx);
-			log_trace!("[JOIN] join_rows: output col[{}] '{}' = {:?}", idx, name, value);
+			trace!("[JOIN] join_rows: output col[{}] '{}' = {:?}", idx, name, value);
 		}
 
 		Ok(result)
@@ -417,7 +411,7 @@ impl Operator for JoinOperator {
 		change: FlowChange,
 		evaluator: &StandardRowEvaluator,
 	) -> crate::Result<FlowChange> {
-		log_trace!(
+		trace!(
 			"[JOIN] apply: node={:?}, change.origin={:?}, diffs_count={}",
 			self.node,
 			change.origin,
@@ -427,7 +421,7 @@ impl Operator for JoinOperator {
 		// Check for self-referential calls (should never happen)
 		if let FlowChangeOrigin::Internal(from_node) = &change.origin {
 			if *from_node == self.node {
-				log_trace!("[JOIN] apply: self-referential call, returning empty");
+				trace!("[JOIN] apply: self-referential call, returning empty");
 				return Ok(FlowChange::internal(self.node, change.version, Vec::new()));
 			}
 		}
@@ -443,7 +437,7 @@ impl Operator for JoinOperator {
 			.determine_side(&change)
 			.ok_or_else(|| Error(internal!("Join operator received change from unknown node")))?;
 
-		log_trace!("[JOIN] apply: side={:?}", side);
+		trace!("[JOIN] apply: side={:?}", side);
 
 		// Group diffs by key_hash for batch processing
 		// We use IndexMap to preserve insertion order while still batching
@@ -512,9 +506,9 @@ impl Operator for JoinOperator {
 
 		// Phase 2: Process batched inserts
 		for (key_hash, rows) in inserts_by_key {
-			log_trace!("[JOIN] apply: batch insert {} rows for key={:?}", rows.len(), key_hash);
+			trace!("[JOIN] apply: batch insert {} rows for key={:?}", rows.len(), key_hash);
 			let diffs = self.strategy.handle_insert_batch(txn, &rows, side, &key_hash, &mut state, self)?;
-			log_trace!("[JOIN] apply: batch insert produced {} diffs", diffs.len());
+			trace!("[JOIN] apply: batch insert produced {} diffs", diffs.len());
 			result.extend(diffs);
 		}
 
@@ -526,7 +520,7 @@ impl Operator for JoinOperator {
 
 		// Phase 3: Process batched removes
 		for (key_hash, rows) in removes_by_key {
-			log_trace!("[JOIN] apply: batch remove {} rows for key={:?}", rows.len(), key_hash);
+			trace!("[JOIN] apply: batch remove {} rows for key={:?}", rows.len(), key_hash);
 			let diffs = self.strategy.handle_remove_batch(
 				txn,
 				&rows,
@@ -536,7 +530,7 @@ impl Operator for JoinOperator {
 				self,
 				change.version,
 			)?;
-			log_trace!("[JOIN] apply: batch remove produced {} diffs", diffs.len());
+			trace!("[JOIN] apply: batch remove produced {} diffs", diffs.len());
 			result.extend(diffs);
 		}
 
@@ -549,7 +543,7 @@ impl Operator for JoinOperator {
 
 		// Phase 4: Process updates individually (key change complexity requires this)
 		for (pre, post, old_key, new_key) in updates {
-			log_trace!("[JOIN] apply: Update old_key={:?}, new_key={:?}", old_key, new_key);
+			trace!("[JOIN] apply: Update old_key={:?}, new_key={:?}", old_key, new_key);
 			let diffs = self.strategy.handle_update(
 				txn,
 				&pre,
@@ -561,11 +555,11 @@ impl Operator for JoinOperator {
 				self,
 				change.version,
 			)?;
-			log_trace!("[JOIN] apply: Update produced {} diffs", diffs.len());
+			trace!("[JOIN] apply: Update produced {} diffs", diffs.len());
 			result.extend(diffs);
 		}
 
-		log_trace!("[JOIN] apply: total result diffs={}", result.len());
+		trace!("[JOIN] apply: total result diffs={}", result.len());
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}
 
@@ -576,12 +570,9 @@ impl Operator for JoinOperator {
 	// testsuite/flow/tests/scripts/backfill/19_complex_multi_table.skip
 	// testsuite/flow/tests/scripts/backfill/21_backfill_with_distinct.skip
 	fn get_rows(&self, txn: &mut FlowTransaction, rows: &[RowNumber]) -> crate::Result<Vec<Option<Row>>> {
-		log_trace!(
+		trace!(
 			"[JOIN] get_rows called on node={:?}, requested rows={:?}, left_node={:?}, right_node={:?}",
-			self.node,
-			rows,
-			self.left_node,
-			self.right_node
+			self.node, rows, self.left_node, self.right_node
 		);
 
 		let mut result = Vec::with_capacity(rows.len());
@@ -589,14 +580,14 @@ impl Operator for JoinOperator {
 		for &row_number in rows {
 			// Get the composite key for this row number (reverse lookup)
 			let Some(key) = self.row_number_provider.get_key_for_row_number(txn, row_number)? else {
-				log_trace!("[JOIN] get_rows: no key found for row_number={}", row_number.0);
+				trace!("[JOIN] get_rows: no key found for row_number={}", row_number.0);
 				result.push(None);
 				continue;
 			};
 
 			// Parse the composite key to extract left and optional right row numbers
 			let Some((left_row_number, right_row_number)) = Self::parse_composite_key(key.as_ref()) else {
-				log_trace!("[JOIN] get_rows: invalid key format for row_number={}", row_number.0);
+				trace!("[JOIN] get_rows: invalid key format for row_number={}", row_number.0);
 				result.push(None);
 				continue;
 			};
@@ -604,7 +595,7 @@ impl Operator for JoinOperator {
 			// Get left row from parent
 			let left_rows = self.left_parent.get_rows(txn, &[left_row_number])?;
 			let Some(Some(left_row)) = left_rows.into_iter().next() else {
-				log_trace!("[JOIN] get_rows: left row not found for row_number={}", row_number.0);
+				trace!("[JOIN] get_rows: left row not found for row_number={}", row_number.0);
 				result.push(None);
 				continue;
 			};
@@ -621,10 +612,7 @@ impl Operator for JoinOperator {
 						layout: joined.layout,
 					}));
 				} else {
-					log_trace!(
-						"[JOIN] get_rows: right row not found for row_number={}",
-						row_number.0
-					);
+					trace!("[JOIN] get_rows: right row not found for row_number={}", row_number.0);
 					result.push(None);
 				}
 			} else {

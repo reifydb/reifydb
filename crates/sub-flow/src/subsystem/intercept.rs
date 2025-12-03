@@ -146,7 +146,7 @@ impl<CT: CommandTransaction> PreCommitInterceptor<CT> for TransactionalFlowInter
 			// TODO: Convert FlowChange to flow engine Change format
 			// and process through flow engine
 			// for change in changes.drain(..) {
-			// 	log_debug!("Intercepted change: {:?}", change);
+			// 	debug!("Intercepted change: {:?}", change);
 			// 	// The flow engine will be accessed via the
 			// engine/subsystem 	// This interceptor collects
 			// changes for the flow engine }

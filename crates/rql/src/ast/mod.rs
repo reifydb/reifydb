@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use tracing::instrument;
+
 pub use crate::ast::{
 	ast::*,
 	tokenize::{Token, TokenKind},
@@ -12,6 +14,7 @@ pub(crate) mod tokenize;
 pub use parse::parse;
 pub use tokenize::tokenize;
 
+#[instrument(level = "trace", skip(str))]
 pub fn parse_str(str: &str) -> crate::Result<Vec<AstStatement>> {
 	let tokens = tokenize(str)?;
 	let statements = parse::parse(tokens)?;

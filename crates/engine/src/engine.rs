@@ -14,6 +14,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use tracing::instrument;
 
 use crate::{
 	execute::Executor,
@@ -35,6 +36,7 @@ impl EngineInterface for StandardEngine {
 	type Command = StandardCommandTransaction;
 	type Query = StandardQueryTransaction;
 
+	#[instrument(level = "debug", skip(self))]
 	fn begin_command(&self) -> crate::Result<Self::Command> {
 		let mut interceptors = self.interceptors.create();
 
@@ -50,6 +52,7 @@ impl EngineInterface for StandardEngine {
 		)
 	}
 
+	#[instrument(level = "debug", skip(self))]
 	fn begin_query(&self) -> crate::Result<Self::Query> {
 		Ok(StandardQueryTransaction::new(
 			self.multi.begin_query()?,
@@ -59,6 +62,7 @@ impl EngineInterface for StandardEngine {
 		))
 	}
 
+	#[instrument(level = "info", skip(self, params), fields(rql = %rql))]
 	fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
 		let mut txn = self.begin_command()?;
 		let result = self.execute_command(
@@ -73,6 +77,7 @@ impl EngineInterface for StandardEngine {
 		Ok(result)
 	}
 
+	#[instrument(level = "info", skip(self, params), fields(rql = %rql))]
 	fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
 		let mut txn = self.begin_query()?;
 		let result = self.execute_query(

@@ -12,7 +12,8 @@ name = "reifydb_examples"
 path = "src/lib.rs"
 
 [dependencies]
-reifydb = { path = "../reifydb", features = ["sub_logging"] }
+reifydb = { path = "../reifydb", features = ["sub_tracing"] }
+tracing = { workspace = true }
 
 # Basic examples (no special features required)
 [[bin]]

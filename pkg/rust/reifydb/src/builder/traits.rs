@@ -5,15 +5,15 @@ use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
-#[cfg(feature = "sub_logging")]
-use reifydb_sub_logging::LoggingBuilder;
+#[cfg(feature = "sub_tracing")]
+use reifydb_sub_tracing::TracingBuilder;
 use reifydb_sub_worker::WorkerBuilder;
 
 pub trait WithSubsystem: Sized {
-	#[cfg(feature = "sub_logging")]
-	fn with_logging<F>(self, configurator: F) -> Self
+	#[cfg(feature = "sub_tracing")]
+	fn with_tracing<F>(self, configurator: F) -> Self
 	where
-		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static;
+		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static;
 
 	#[cfg(feature = "sub_flow")]
 	fn with_flow<F>(self, configurator: F) -> Self

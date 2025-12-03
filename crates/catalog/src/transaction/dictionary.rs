@@ -1,18 +1,16 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{
-	interface::{
-		CommandTransaction, DictionaryDef, DictionaryId, NamespaceId, QueryTransaction, TransactionalChanges,
-		TransactionalDictionaryChanges, interceptor::WithInterceptors,
-	},
-	log_warn,
+use reifydb_core::interface::{
+	CommandTransaction, DictionaryDef, DictionaryId, NamespaceId, QueryTransaction, TransactionalChanges,
+	TransactionalDictionaryChanges, interceptor::WithInterceptors,
 };
 use reifydb_type::{
 	IntoFragment,
 	diagnostic::catalog::{dictionary_already_exists, dictionary_not_found},
 	error, internal, return_error,
 };
+use tracing::{instrument, warn};
 
 use crate::{
 	CatalogNamespaceQueryOperations, CatalogStore, store::dictionary::create::DictionaryToCreate,
@@ -57,6 +55,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogDictionaryCommandOperations for CT
 {
+	#[instrument(level = "debug", skip(self, to_create))]
 	fn create_dictionary(&mut self, to_create: DictionaryToCreate) -> reifydb_core::Result<DictionaryDef> {
 		if let Some(dictionary) = self.find_dictionary_by_name(to_create.namespace, &to_create.dictionary)? {
 			let namespace = self.get_namespace(to_create.namespace)?;
@@ -71,6 +70,7 @@ impl<
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogDictionaryQueryOperations
 	for QT
 {
+	#[instrument(level = "trace", skip(self))]
 	fn find_dictionary(&mut self, id: DictionaryId) -> reifydb_core::Result<Option<DictionaryDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
@@ -91,13 +91,14 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 		// 4. Fall back to storage as defensive measure
 		if let Some(dictionary) = CatalogStore::find_dictionary(self, id)? {
-			log_warn!("Dictionary with ID {:?} found in storage but not in MaterializedCatalog", id);
+			warn!("Dictionary with ID {:?} found in storage but not in MaterializedCatalog", id);
 			return Ok(Some(dictionary));
 		}
 
 		Ok(None)
 	}
 
+	#[instrument(level = "trace", skip(self, name))]
 	fn find_dictionary_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -127,7 +128,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 
 		// 4. Fall back to storage as defensive measure
 		if let Some(dictionary) = CatalogStore::find_dictionary_by_name(self, namespace, name.text())? {
-			log_warn!(
+			warn!(
 				"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 				name.text(),
 				namespace
@@ -138,6 +139,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
+	#[instrument(level = "trace", skip(self))]
 	fn get_dictionary(&mut self, id: DictionaryId) -> reifydb_core::Result<DictionaryDef> {
 		self.find_dictionary(id)?.ok_or_else(|| {
 			error!(internal!(
@@ -147,6 +149,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		})
 	}
 
+	#[instrument(level = "trace", skip(self, name))]
 	fn get_dictionary_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,

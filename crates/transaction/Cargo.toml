@@ -21,6 +21,7 @@ crossbeam-skiplist = { workspace = true }
 indexmap = { workspace = true }
 parking_lot = { workspace = true }
 self_cell = { workspace = true }
+tracing = { workspace = true }
 
 
 [dev-dependencies]

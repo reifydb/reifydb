@@ -8,8 +8,9 @@
 //!
 //! Run with: `make rql-filter` or `cargo run --bin rql-filter`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
@@ -17,7 +18,7 @@ fn main() {
 	db.start().unwrap();
 
 	// Set up sample data
-	log_info!("Setting up sample employee data...");
+	info!("Setting up sample employee data...");
 	db.command_as_root("create namespace hr", Params::None).unwrap();
 	db.command_as_root(
 		r#"
@@ -53,7 +54,7 @@ fn main() {
 	.unwrap();
 
 	// Example 1: Simple equality filter
-	log_info!("\nExample 1: Filter by exact match (equality)");
+	info!("\nExample 1: Filter by exact match (equality)");
 	log_query(r#"from hr.employees filter department == "Engineering""#);
 	for frame in db
 		.query_as_root(
@@ -65,12 +66,12 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows only Engineering department employees
 	}
 
 	// Example 2: Not equal filter
-	log_info!("\nExample 2: Filter by not equal");
+	info!("\nExample 2: Filter by not equal");
 	log_query(r#"from hr.employees filter department != "Engineering""#);
 	for frame in db
 		.query_as_root(
@@ -82,12 +83,12 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows all non-Engineering employees
 	}
 
 	// Example 3: Greater than filter
-	log_info!("\nExample 3: Filter by greater than");
+	info!("\nExample 3: Filter by greater than");
 	log_query(r#"from hr.employees filter salary > 100000"#);
 	for frame in db
 		.query_as_root(
@@ -99,12 +100,12 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows employees with salary > 100000
 	}
 
 	// Example 4: Less than or equal filter
-	log_info!("\nExample 4: Filter by less than or equal");
+	info!("\nExample 4: Filter by less than or equal");
 	log_query(r#"from hr.employees filter years_experience <= 5"#);
 	for frame in db
 		.query_as_root(
@@ -116,12 +117,12 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows employees with 5 or fewer years experience
 	}
 
 	// Example 5: Boolean filter
-	log_info!("\nExample 5: Filter by boolean value");
+	info!("\nExample 5: Filter by boolean value");
 	log_query(r#"from hr.employees filter is_manager == true"#);
 	for frame in db
 		.query_as_root(
@@ -133,12 +134,12 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows only managers
 	}
 
 	// Example 6: AND operator
-	log_info!("\nExample 6: Filter with AND operator");
+	info!("\nExample 6: Filter with AND operator");
 	log_query(
 		r#"from hr.employees
 filter department == "Engineering" and salary > 100000"#,
@@ -153,12 +154,12 @@ filter department == "Engineering" and salary > 100000"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows Engineering employees earning > 100000
 	}
 
 	// Example 7: OR operator
-	log_info!("\nExample 7: Filter with OR operator");
+	info!("\nExample 7: Filter with OR operator");
 	log_query(
 		r#"from hr.employees
 filter department == "Sales" or department == "Marketing""#,
@@ -173,12 +174,12 @@ filter department == "Sales" or department == "Marketing""#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows Sales or Marketing employees
 	}
 
 	// Example 8: Comptokenize filter with parentheses
-	log_info!("\nExample 8: Comptokenize filter with parentheses");
+	info!("\nExample 8: Comptokenize filter with parentheses");
 	log_query(
 		r#"from hr.employees
 filter (department == "Engineering" or department == "Sales")
@@ -195,12 +196,12 @@ filter (department == "Engineering" or department == "Sales")
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows Engineering or Sales employees earning >= 100000
 	}
 
 	// Example 9: Filter on inline data
-	log_info!("\nExample 9: Filter on inline data");
+	info!("\nExample 9: Filter on inline data");
 	log_query(
 		r#"from [
   { score: 85, grade: "B" },
@@ -225,12 +226,12 @@ filter score >= 90"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows only scores >= 90
 	}
 
 	// Example 10: Multiple filters in sequence
-	log_info!("\nExample 10: Multiple filters in sequence");
+	info!("\nExample 10: Multiple filters in sequence");
 	log_query(
 		r#"from hr.employees
 filter salary > 80000
@@ -247,12 +248,12 @@ filter is_manager == false"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows non-managers earning > 80000
 	}
 
 	// Example 11: BETWEEN operator
-	log_info!("\nExample 11: Filter with BETWEEN operator");
+	info!("\nExample 11: Filter with BETWEEN operator");
 	log_query(
 		r#"from hr.employees
 filter salary between 90000 and 110000"#,
@@ -267,7 +268,7 @@ filter salary between 90000 and 110000"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 		// Shows employees with salary between 90000 and 110000
 		// (inclusive)
 	}

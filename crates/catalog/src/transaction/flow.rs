@@ -6,6 +6,7 @@ use reifydb_core::{
 	return_error,
 };
 use reifydb_type::{IntoFragment, diagnostic::catalog::flow_not_found};
+use tracing::instrument;
 
 use crate::{CatalogStore, transaction::MaterializedCatalogTransaction};
 
@@ -28,10 +29,12 @@ pub trait CatalogFlowQueryOperations {
 }
 
 impl<QT: QueryTransaction + MaterializedCatalogTransaction> CatalogFlowQueryOperations for QT {
+	#[instrument(level = "trace", skip(self))]
 	fn find_flow(&mut self, id: FlowId) -> crate::Result<Option<FlowDef>> {
 		CatalogStore::find_flow(self, id)
 	}
 
+	#[instrument(level = "trace", skip(self, name))]
 	fn find_flow_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -41,10 +44,12 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction> CatalogFlowQueryOper
 		CatalogStore::find_flow_by_name(self, namespace, name.text())
 	}
 
+	#[instrument(level = "trace", skip(self))]
 	fn get_flow(&mut self, id: FlowId) -> crate::Result<FlowDef> {
 		CatalogStore::get_flow(self, id)
 	}
 
+	#[instrument(level = "trace", skip(self, name))]
 	fn get_flow_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,

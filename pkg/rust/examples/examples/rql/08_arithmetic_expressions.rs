@@ -8,15 +8,16 @@
 //!
 //! Run with: `make rql-arithmetic` or `cargo run --bin rql-arithmetic`
 
-use reifydb::{Params, Session, embedded, log_info};
+use reifydb::{Params, Session, embedded};
 use reifydb_examples::log_query;
+use tracing::info;
 
 fn main() {
 	let mut db = embedded::memory_optimistic().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: Basic arithmetic operations
-	log_info!("Example 1: Basic arithmetic operations");
+	info!("Example 1: Basic arithmetic operations");
 	log_query(
 		r#"map {
   10 + 5 as addition,
@@ -41,11 +42,11 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 2: Operator precedence
-	log_info!("\nExample 2: Operator precedence (multiplication before addition)");
+	info!("\nExample 2: Operator precedence (multiplication before addition)");
 	log_query(
 		r#"map {
   2 + 3 * 4 as without_parens,
@@ -64,11 +65,11 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 3: Arithmetic with floating point
-	log_info!("\nExample 3: Floating point arithmetic");
+	info!("\nExample 3: Floating point arithmetic");
 	log_query(
 		r#"map {
   3.14 * 2.0 as pi_times_two,
@@ -89,7 +90,7 @@ fn main() {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Set up sample data for more comptokenize examples
@@ -124,7 +125,7 @@ fn main() {
 	.unwrap();
 
 	// Example 4: Arithmetic on table columns
-	log_info!("\nExample 4: Calculate total price (price * quantity)");
+	info!("\nExample 4: Calculate total price (price * quantity)");
 	log_query(
 		r#"from shop.products
 map { name, price, quantity, price * quantity as total }"#,
@@ -139,11 +140,11 @@ map { name, price, quantity, price * quantity as total }"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 5: Comptokenize calculations with discounts
-	log_info!("\nExample 5: Calculate discount amount and final price");
+	info!("\nExample 5: Calculate discount amount and final price");
 	log_query(
 		r#"from shop.products
 map {
@@ -170,11 +171,11 @@ map {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 6: Tax calculations
-	log_info!("\nExample 6: Calculate price with tax");
+	info!("\nExample 6: Calculate price with tax");
 	log_query(
 		r#"from shop.products
 map {
@@ -201,11 +202,11 @@ map {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 7: Arithmetic in filter conditions
-	log_info!("\nExample 7: Filter using arithmetic expression");
+	info!("\nExample 7: Filter using arithmetic expression");
 	log_query(
 		r#"from shop.products
 filter price * quantity > 100"#,
@@ -220,11 +221,11 @@ filter price * quantity > 100"#,
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 
 	// Example 8: Comptokenize nested calculations
-	log_info!("\nExample 8: Complete order calculation");
+	info!("\nExample 8: Complete order calculation");
 	log_query(
 		r#"from shop.products
 map {
@@ -255,6 +256,6 @@ map {
 		)
 		.unwrap()
 	{
-		log_info!("{}", frame);
+		info!("{}", frame);
 	}
 }

@@ -3,6 +3,7 @@
 
 use reifydb_catalog::CatalogQueryTransaction;
 use reifydb_core::interface::QueryTransaction;
+use tracing::instrument;
 
 use crate::{
 	ast::AstStatement,
@@ -18,6 +19,7 @@ pub mod physical;
 
 pub type RowToInsert = Vec<Expression<'static>>;
 
+#[instrument(level = "trace", skip(rx, statement))]
 pub fn plan<'a, T>(rx: &mut T, statement: AstStatement<'a>) -> crate::Result<Option<PhysicalPlan<'a>>>
 where
 	T: QueryTransaction + CatalogQueryTransaction,

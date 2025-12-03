@@ -11,6 +11,7 @@ description = "ReifyDB Query Language (RQL) parser and AST"
 reifydb-core = {workspace = true}
 reifydb-catalog = { workspace = true }
 reifydb-type = { workspace = true }
+tracing = { workspace = true }
 serde = { workspace = true }
 bincode = { workspace = true }
 

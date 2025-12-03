@@ -36,6 +36,7 @@ use reifydb_rql::{
 	ast,
 	plan::{physical::PhysicalPlan, plan},
 };
+use tracing::instrument;
 
 use crate::{
 	StandardCommandTransaction, StandardQueryTransaction, StandardTransaction,
@@ -285,6 +286,7 @@ impl Executor {
 }
 
 impl ExecuteCommand<StandardCommandTransaction> for Executor {
+	#[instrument(level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
 	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(cmd.rql)?;
@@ -327,6 +329,7 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 }
 
 impl ExecuteQuery<StandardQueryTransaction> for Executor {
+	#[instrument(level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
 	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(qry.rql)?;

@@ -19,10 +19,10 @@ use reifydb_core::{
 		KeyKind, MultiVersionCommandTransaction, WithEventBus,
 	},
 	key::{CdcConsumerKey, EncodableKey},
-	log_debug, log_error,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::Priority;
+use tracing::{debug, error};
 
 use crate::{CdcCheckpoint, CdcConsume, CdcConsumer};
 
@@ -163,11 +163,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 		consumer: Box<C>,
 		state: Arc<ConsumerState>,
 	) {
-		log_debug!(
-			"[Consumer {:?}] Started polling with interval {:?}",
-			config.consumer_id,
-			config.poll_interval
-		);
+		debug!("[Consumer {:?}] Started polling with interval {:?}", config.consumer_id, config.poll_interval);
 
 		while state.running.load(Ordering::Acquire) {
 			match Self::consume_batch(
@@ -183,16 +179,12 @@ impl<C: CdcConsume> PollConsumer<C> {
 				}
 				Ok(None) => {}
 				Err(error) => {
-					log_error!(
-						"[Consumer {:?}] Error consuming events: {}",
-						config.consumer_id,
-						error
-					);
+					error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
 				}
 			}
 		}
 
-		log_debug!("[Consumer {:?}] Stopped", config.consumer_id);
+		debug!("[Consumer {:?}] Stopped", config.consumer_id);
 	}
 }
 

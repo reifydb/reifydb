@@ -7,6 +7,7 @@ use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion}
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{HealthStatus, SchedulerService, Subsystem};
 use reifydb_type::{diagnostic::internal::internal, error};
+use tracing::instrument;
 
 use crate::{config::ServerConfig, core::ProtocolServer};
 
@@ -19,6 +20,7 @@ pub struct ServerSubsystem {
 }
 
 impl ServerSubsystem {
+	#[instrument(level = "debug", skip(engine, scheduler))]
 	pub fn new(config: ServerConfig, engine: StandardEngine, scheduler: SchedulerService) -> Self {
 		Self {
 			config,
@@ -29,6 +31,7 @@ impl ServerSubsystem {
 	}
 
 	/// Get the actual bound port of the server
+	#[instrument(level = "trace", skip(self))]
 	pub fn port(&self) -> Option<u16> {
 		self.server.as_ref().and_then(|s| s.port())
 	}
@@ -39,6 +42,7 @@ impl Subsystem for ServerSubsystem {
 		"sub-server"
 	}
 
+	#[instrument(level = "info", skip(self))]
 	fn start(&mut self) -> reifydb_type::Result<()> {
 		if self.server.is_some() {
 			return Ok(());
@@ -52,6 +56,7 @@ impl Subsystem for ServerSubsystem {
 		Ok(())
 	}
 
+	#[instrument(level = "info", skip(self))]
 	fn shutdown(&mut self) -> reifydb_type::Result<()> {
 		if let Some(mut server) = self.server.take() {
 			// Stopping server
@@ -60,10 +65,12 @@ impl Subsystem for ServerSubsystem {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip(self))]
 	fn is_running(&self) -> bool {
 		self.server.as_ref().map_or(false, |s| s.is_running())
 	}
 
+	#[instrument(level = "debug", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if self.is_running() {
 			HealthStatus::Healthy

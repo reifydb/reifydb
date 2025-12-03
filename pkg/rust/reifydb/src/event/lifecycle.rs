@@ -7,9 +7,9 @@ use reifydb_core::{
 	Frame,
 	event::{EventListener, lifecycle::OnCreateEvent},
 	interface::{Engine as _, Identity, Params},
-	log_error,
 };
 use reifydb_engine::StandardEngine;
+use tracing::error;
 
 /// Context provided to on_create eventbus
 pub struct OnCreateContext {
@@ -75,7 +75,7 @@ where
 	fn on(&self, _hook: &OnCreateEvent) {
 		let context = OnCreateContext::new(self.engine.clone());
 		if let Err(e) = (self.callback)(&context) {
-			log_error!("Failed to handle OnCreate event: {}", e);
+			error!("Failed to handle OnCreate event: {}", e);
 		}
 	}
 }

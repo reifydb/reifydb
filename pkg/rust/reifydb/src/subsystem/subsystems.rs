@@ -11,8 +11,9 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{Result, log_debug, log_error, log_warn};
+use reifydb_core::Result;
 use reifydb_sub_api::{HealthStatus, Subsystem};
+use tracing::{debug, error, warn};
 
 use crate::health::HealthMonitor;
 
@@ -58,20 +59,20 @@ impl Subsystems {
 			return Ok(()); // Already running
 		}
 
-		log_debug!("Starting {} subsystems...", self.subsystems.len());
+		debug!("Starting {} subsystems...", self.subsystems.len());
 
 		let start_time = std::time::Instant::now();
 		let mut started_subsystems = Vec::new();
 
 		for subsystem in &mut self.subsystems {
 			if start_time.elapsed() > startup_timeout {
-				log_error!("Startup timeout exceeded");
+				error!("Startup timeout exceeded");
 				self.stop_started_subsystems(&started_subsystems)?;
 				panic!("Startup timeout exceeded");
 			}
 
 			let name = subsystem.name().to_string();
-			log_debug!("Starting subsystem: {}", name);
+			debug!("Starting subsystem: {}", name);
 
 			match subsystem.start() {
 				Ok(()) => {
@@ -81,10 +82,10 @@ impl Subsystems {
 						subsystem.is_running(),
 					);
 					started_subsystems.push(name.clone());
-					log_debug!("Successfully started: {}", name);
+					debug!("Successfully started: {}", name);
 				}
 				Err(e) => {
-					log_error!("Failed to start subsystem '{}': {}", name, e);
+					error!("Failed to start subsystem '{}': {}", name, e);
 					self.health_monitor.update_component_health(
 						name.clone(),
 						HealthStatus::Failed {
@@ -99,7 +100,7 @@ impl Subsystems {
 		}
 
 		self.running.store(true, Ordering::Relaxed);
-		log_debug!("All {} subsystems started successfully", started_subsystems.len());
+		debug!("All {} subsystems started successfully", started_subsystems.len());
 		Ok(())
 	}
 
@@ -108,10 +109,10 @@ impl Subsystems {
 			return Ok(()); // Already stopped
 		}
 
-		log_debug!("Stopping {} subsystems...", self.subsystems.len());
+		debug!("Stopping {} subsystems...", self.subsystems.len());
 
 		for subsystem in self.subsystems.iter().rev() {
-			log_debug!("Stopping subsystem: {}", subsystem.name());
+			debug!("Stopping subsystem: {}", subsystem.name());
 		}
 
 		let start_time = std::time::Instant::now();
@@ -119,7 +120,7 @@ impl Subsystems {
 
 		for subsystem in self.subsystems.iter_mut().rev() {
 			if start_time.elapsed() > shutdown_timeout {
-				log_warn!("Shutdown timeout exceeded");
+				warn!("Shutdown timeout exceeded");
 				break;
 			}
 
@@ -133,10 +134,10 @@ impl Subsystems {
 						subsystem.health_status(),
 						subsystem.is_running(),
 					);
-					log_debug!("Successfully stopped: {}", name);
+					debug!("Successfully stopped: {}", name);
 				}
 				Err(e) => {
-					log_error!("Error stopping subsystem '{}': {}", name, e);
+					error!("Error stopping subsystem '{}': {}", name, e);
 					self.health_monitor.update_component_health(
 						name.clone(),
 						HealthStatus::Failed {
@@ -152,12 +153,12 @@ impl Subsystems {
 		self.running.store(false, Ordering::Relaxed);
 
 		if errors.is_empty() {
-			log_debug!("All subsystems stopped successfully");
+			debug!("All subsystems stopped successfully");
 			Ok(())
 		} else {
 			let error_msg =
 				format!("Errors occurred while stopping {} subsystems: {:?}", errors.len(), errors);
-			log_error!("{}", error_msg);
+			error!("{}", error_msg);
 			panic!("Errors occurred during shutdown: {:?}", errors)
 		}
 	}
@@ -198,7 +199,7 @@ impl Subsystems {
 			for subsystem in &mut self.subsystems {
 				if subsystem.name() == name {
 					if let Err(e) = subsystem.shutdown() {
-						log_error!("Error stopping '{}' during rollback: {}", name, e);
+						error!("Error stopping '{}' during rollback: {}", name, e);
 						errors.push((name.clone(), e));
 					}
 					// Update health monitoring

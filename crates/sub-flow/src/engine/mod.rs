@@ -19,11 +19,11 @@ use reifydb_core::{
 	CommitVersion, Error,
 	event::{EventBus, flow::FlowOperatorLoadedEvent},
 	interface::{FlowId, FlowNodeId, SourceId, TableId, ViewId},
-	log_debug, log_error,
 };
 use reifydb_engine::{StandardRowEvaluator, execute::Executor};
 use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
 use reifydb_type::{Value, internal};
+use tracing::{debug, error};
 
 use crate::{
 	ffi::loader::ffi_operator_loader,
@@ -66,7 +66,7 @@ impl FlowEngine {
 		// Load FFI operators if directory specified
 		if let Some(dir) = operators_dir {
 			if let Err(e) = Self::load_ffi_operators(&dir, &event_bus) {
-				log_error!("Failed to load FFI operators from {:?}: {}", dir, e);
+				error!("Failed to load FFI operators from {:?}: {}", dir, e);
 			}
 		}
 
@@ -116,7 +116,7 @@ impl FlowEngine {
 				}
 			};
 
-			log_debug!("Registered FFI operator: {} from {:?}", operator_name, path);
+			debug!("Registered FFI operator: {} from {:?}", operator_name, path);
 
 			// Emit event for loaded operator
 			event_bus.emit(FlowOperatorLoadedEvent {

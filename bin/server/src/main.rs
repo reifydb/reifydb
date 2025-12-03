@@ -3,18 +3,10 @@
 
 use std::time::Duration;
 
-use reifydb::{
-	WithSubsystem, core::interface::logging::LogLevel, server, sub_admin::AdminConfig, sub_logging::LoggingBuilder,
-	sub_server::ServerConfig,
-};
+use reifydb::{WithSubsystem, server, sub_admin::AdminConfig, sub_server::ServerConfig, sub_tracing::TracingBuilder};
 
-fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
-	logging.with_console(|console| console.color(true).stderr_for_errors(true))
-		.buffer_capacity(20000)
-		.batch_size(2000)
-		.flush_interval(Duration::from_millis(50))
-		.immediate_on_error(true)
-		.level(LogLevel::Trace)
+fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
+	tracing.with_console(|console| console.color(true).stderr_for_errors(true)).with_filter("debug,reifydb=trace")
 }
 
 fn main() {
@@ -25,7 +17,7 @@ fn main() {
 			protocols: Default::default(),
 		})
 		.with_admin(AdminConfig::default().with_port(9092))
-		.with_logging(logger_configuration)
+		.with_tracing(tracing_configuration)
 		.build()
 		.unwrap();
 

@@ -12,6 +12,7 @@ use reifydb_type::{
 	IntoFragment,
 	diagnostic::catalog::{ring_buffer_already_exists, ring_buffer_not_found},
 };
+use tracing::instrument;
 
 use crate::{
 	CatalogStore, store::ring_buffer::create::RingBufferToCreate, transaction::MaterializedCatalogTransaction,
@@ -36,10 +37,12 @@ pub trait CatalogRingBufferQueryOperations {
 }
 
 impl<QT: QueryTransaction + MaterializedCatalogTransaction> CatalogRingBufferQueryOperations for QT {
+	#[instrument(level = "trace", skip(self))]
 	fn find_ring_buffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>> {
 		CatalogStore::find_ring_buffer(self, id)
 	}
 
+	#[instrument(level = "trace", skip(self, name))]
 	fn find_ring_buffer_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -49,10 +52,12 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction> CatalogRingBufferQue
 		CatalogStore::find_ring_buffer_by_name(self, namespace, name.text())
 	}
 
+	#[instrument(level = "trace", skip(self))]
 	fn get_ring_buffer(&mut self, id: RingBufferId) -> crate::Result<RingBufferDef> {
 		CatalogStore::get_ring_buffer(self, id)
 	}
 
+	#[instrument(level = "trace", skip(self, name))]
 	fn get_ring_buffer_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -92,6 +97,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogRingBufferCommandOperations for CT
 {
+	#[instrument(level = "debug", skip(self, to_create))]
 	fn create_ring_buffer(&mut self, to_create: RingBufferToCreate) -> crate::Result<RingBufferDef> {
 		if let Some(_ring_buffer) =
 			self.find_ring_buffer_by_name(to_create.namespace, &to_create.ring_buffer)?

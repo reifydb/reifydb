@@ -7,7 +7,6 @@ mod cdc;
 mod engine;
 mod execute;
 pub mod identifier;
-pub mod logging;
 pub mod resolved;
 mod store;
 mod transaction;

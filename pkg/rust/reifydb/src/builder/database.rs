@@ -15,7 +15,6 @@ use reifydb_core::{
 		version::{ComponentType, HasVersion, SystemVersion},
 	},
 	ioc::IocContainer,
-	log_timed_debug,
 };
 use reifydb_engine::{
 	EngineVersion, StandardCommandTransaction, StandardEngine, StandardQueryTransaction,
@@ -27,12 +26,13 @@ use reifydb_store_transaction::TransactionStoreVersion;
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::{FlowBuilder, FlowSubsystemFactory};
-#[cfg(feature = "sub_logging")]
-use reifydb_sub_logging::{LoggingBuilder, LoggingSubsystemFactory};
+#[cfg(feature = "sub_tracing")]
+use reifydb_sub_tracing::{TracingBuilder, TracingSubsystemFactory};
 use reifydb_sub_worker::{WorkerBuilder, WorkerSubsystem, WorkerSubsystemFactory};
 use reifydb_transaction::{
 	TransactionVersion, cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
 };
+use tracing::debug;
 
 use crate::{
 	database::{Database, DatabaseConfig},
@@ -47,8 +47,8 @@ pub struct DatabaseBuilder {
 	ioc: IocContainer,
 	functions_configurator: Option<Box<dyn FnOnce(FunctionsBuilder) -> FunctionsBuilder + Send + 'static>>,
 	worker_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
-	#[cfg(feature = "sub_logging")]
-	logging_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
+	#[cfg(feature = "sub_tracing")]
+	tracing_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 	#[cfg(feature = "sub_flow")]
 	flow_factory: Option<Box<dyn SubsystemFactory<StandardCommandTransaction>>>,
 }
@@ -74,8 +74,8 @@ impl DatabaseBuilder {
 			factories: Vec::new(),
 			ioc,
 			functions_configurator: None,
-			#[cfg(feature = "sub_logging")]
-			logging_factory: None,
+			#[cfg(feature = "sub_tracing")]
+			tracing_factory: None,
 			worker_factory: None,
 			#[cfg(feature = "sub_flow")]
 			flow_factory: None,
@@ -110,12 +110,12 @@ impl DatabaseBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_logging")]
-	pub fn with_logging<F>(mut self, configurator: F) -> Self
+	#[cfg(feature = "sub_tracing")]
+	pub fn with_tracing<F>(mut self, configurator: F) -> Self
 	where
-		F: FnOnce(LoggingBuilder) -> LoggingBuilder + Send + 'static,
+		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
 	{
-		self.logging_factory = Some(Box::new(LoggingSubsystemFactory::with_configurator(configurator)));
+		self.tracing_factory = Some(Box::new(TracingSubsystemFactory::with_configurator(configurator)));
 		self
 	}
 
@@ -161,8 +161,8 @@ impl DatabaseBuilder {
 		// Collect interceptors from all factories
 		// Note: We process logging and flow factories separately before adding to self.factories
 
-		#[cfg(feature = "sub_logging")]
-		if let Some(ref factory) = self.logging_factory {
+		#[cfg(feature = "sub_tracing")]
+		if let Some(ref factory) = self.tracing_factory {
 			self.interceptors = factory.provide_interceptors(self.interceptors, &self.ioc);
 		}
 
@@ -236,9 +236,9 @@ impl DatabaseBuilder {
 		let health_monitor = Arc::new(HealthMonitor::new());
 		let mut subsystems = Subsystems::new(Arc::clone(&health_monitor));
 
-		// 1. Add logging subsystem first (stopped last during shutdown)
-		#[cfg(feature = "sub_logging")]
-		if let Some(factory) = self.logging_factory {
+		// 1. Add tracing subsystem first (stopped last during shutdown)
+		#[cfg(feature = "sub_tracing")]
+		if let Some(factory) = self.tracing_factory {
 			let subsystem = factory.create(&self.ioc)?;
 			all_versions.push(subsystem.version());
 			subsystems.add_subsystem(subsystem);
@@ -304,9 +304,8 @@ impl DatabaseBuilder {
 			catalog.clone(),
 		);
 
-		log_timed_debug!("Loading materialized catalog", {
-			MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
-		});
+		debug!("Loading materialized catalog");
+		MaterializedCatalogLoader::load_all(&mut qt, catalog)?;
 
 		Ok(())
 	}

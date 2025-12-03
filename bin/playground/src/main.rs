@@ -3,23 +3,23 @@
 
 use std::{path::PathBuf, str::FromStr, thread::sleep, time::Duration};
 
-use reifydb::{
-	Params, Session, WithSubsystem, core::interface::logging::LogLevel::Debug, embedded,
-	sub_logging::LoggingBuilder,
-};
+use reifydb::{Params, Session, WithSubsystem, embedded, sub_tracing::TracingBuilder};
+use tracing_subscriber::{EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
 
-fn logger_configuration(logging: LoggingBuilder) -> LoggingBuilder {
-	logging.with_console(|console| console.color(true).stderr_for_errors(true))
-		.buffer_capacity(20000)
-		.batch_size(2000)
-		.flush_interval(Duration::from_millis(50))
-		.immediate_on_error(true)
-		.level(Debug)
+fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
+	tracing.with_console(|console| console.color(true).stderr_for_errors(true)).with_filter("debug")
 }
 
 fn main() {
+	tracing_subscriber::registry()
+		.with(fmt::layer()
+			.with_span_events(FmtSpan::CLOSE)
+		)
+		.with(EnvFilter::from_default_env()) // RUST_LOG=debug
+		.init();
+
 	let mut db = embedded::memory_optimistic()
-		.with_logging(logger_configuration)
+		.with_tracing(tracing_configuration)
 		.with_worker(|wp| wp)
 		.with_flow(|f| {
 			f.operators_dir(

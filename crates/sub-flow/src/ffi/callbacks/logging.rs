@@ -2,7 +2,7 @@
 //!
 //! Allows FFI operators to emit log messages at various severity levels.
 
-use reifydb_core::{log_debug, log_error, log_info, log_trace, log_warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// Log a message from an FFI operator
 ///
@@ -25,11 +25,11 @@ pub(super) extern "C" fn host_log_message(operator_id: u64, level: u32, message:
 
 	// Log based on level
 	match level {
-		0 => log_trace!("FFI Operator[{}]: {}", operator_id, msg_str),
-		1 => log_debug!("FFI Operator[{}]: {}", operator_id, msg_str),
-		2 => log_info!("FFI Operator[{}]: {}", operator_id, msg_str),
-		3 => log_warn!("FFI Operator[{}]: {}", operator_id, msg_str),
-		4 => log_error!("FFI Operator[{}]: {}", operator_id, msg_str),
-		_ => log_info!("FFI Operator[{}]: {}", operator_id, msg_str),
+		0 => trace!("FFI Operator[{}]: {}", operator_id, msg_str),
+		1 => debug!("FFI Operator[{}]: {}", operator_id, msg_str),
+		2 => info!("FFI Operator[{}]: {}", operator_id, msg_str),
+		3 => warn!("FFI Operator[{}]: {}", operator_id, msg_str),
+		4 => error!("FFI Operator[{}]: {}", operator_id, msg_str),
+		_ => info!("FFI Operator[{}]: {}", operator_id, msg_str),
 	}
 }

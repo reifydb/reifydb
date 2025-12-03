@@ -10,10 +10,7 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{
-	Result, event::lifecycle::OnStartEvent, interface::WithEventBus, log_debug, log_error, log_timed_trace,
-	log_warn,
-};
+use reifydb_core::{Result, event::lifecycle::OnStartEvent, interface::WithEventBus};
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{HealthStatus, SchedulerService};
 #[cfg(feature = "sub_flow")]
@@ -21,6 +18,7 @@ use reifydb_sub_flow::FlowSubsystem;
 #[cfg(feature = "sub_server")]
 use reifydb_sub_server::ServerSubsystem;
 use reifydb_sub_worker::WorkerSubsystem;
+use tracing::{debug, error, instrument, trace, warn};
 
 use crate::{
 	boot::Bootloader,
@@ -129,32 +127,31 @@ impl Database {
 		self.subsystems.subsystem_count()
 	}
 
+	#[instrument(level = "info", skip(self))]
 	pub fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(()); // Already running
 		}
 
-		log_timed_trace!("Bootloader setup", { self.bootloader.load()? });
+		trace!("Bootloader setup");
+		self.bootloader.load()?;
 
-		log_debug!("Starting system with {} subsystems", self.subsystem_count());
+		debug!("Starting system with {} subsystems", self.subsystem_count());
 
-		log_timed_trace!("Database initialization", {
-			self.engine.event_bus().emit(OnStartEvent {});
-		});
+		trace!("Database initialization");
+		self.engine.event_bus().emit(OnStartEvent {});
 
 		// Start all subsystems
-		match log_timed_trace!("Starting all subsystems", {
-			let result = self.subsystems.start_all(self.config.max_startup_time);
-			result
-		}) {
+		trace!("Starting all subsystems");
+		match self.subsystems.start_all(self.config.max_startup_time) {
 			Ok(()) => {
 				self.running = true;
-				log_debug!("System started successfully");
+				debug!("System started successfully");
 				self.update_health_monitoring();
 				Ok(())
 			}
 			Err(e) => {
-				log_error!("System startup failed: {}", e);
+				error!("System startup failed: {}", e);
 				// Update system health to reflect failure
 				self.health_monitor.update_component_health(
 					"system".to_string(),
@@ -168,12 +165,13 @@ impl Database {
 		}
 	}
 
+	#[instrument(level = "info", skip(self))]
 	pub fn stop(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(()); // Already stopped
 		}
 
-		log_debug!("Stopping system gracefully");
+		debug!("Stopping system gracefully");
 
 		// Stop all subsystems
 		let result = self.subsystems.stop_all(self.config.graceful_shutdown_timeout);
@@ -182,7 +180,7 @@ impl Database {
 
 		match result {
 			Ok(()) => {
-				log_debug!("System stopped successfully");
+				debug!("System stopped successfully");
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Healthy,
@@ -191,7 +189,7 @@ impl Database {
 				Ok(())
 			}
 			Err(e) => {
-				log_warn!("System shutdown completed with errors: {}", e);
+				warn!("System shutdown completed with errors: {}", e);
 				self.health_monitor.update_component_health(
 					"system".to_string(),
 					HealthStatus::Warning {
@@ -267,13 +265,13 @@ impl Database {
 			libc::signal(libc::SIGHUP, handle_signal as libc::sighandler_t);
 		}
 
-		log_debug!("Waiting for termination signal...");
+		debug!("Waiting for termination signal...");
 		while RUNNING.load(Ordering::SeqCst) {
 			std::thread::sleep(Duration::from_millis(100));
 
 			// Log the signal reception outside the signal handler
 			if SIGNAL_RECEIVED.load(Ordering::SeqCst) {
-				log_debug!("Received termination signal, initiating shutdown...");
+				debug!("Received termination signal, initiating shutdown...");
 				break;
 			}
 		}
@@ -292,14 +290,14 @@ impl Database {
 		F: FnOnce() -> Result<()>,
 	{
 		self.start()?;
-		log_debug!("Database started, waiting for termination signal...");
+		debug!("Database started, waiting for termination signal...");
 
 		self.await_signal()?;
 
-		log_debug!("Signal received, running shutdown handler...");
+		debug!("Signal received, running shutdown handler...");
 		on_shutdown()?;
 
-		log_debug!("Shutdown handler completed, shutting down database...");
+		debug!("Shutdown handler completed, shutting down database...");
 		self.stop()?;
 
 		Ok(())
@@ -309,7 +307,7 @@ impl Database {
 impl Drop for Database {
 	fn drop(&mut self) {
 		if self.running {
-			log_warn!("System being dropped while running, attempting graceful shutdown");
+			warn!("System being dropped while running, attempting graceful shutdown");
 			let _ = self.stop();
 		}
 	}
