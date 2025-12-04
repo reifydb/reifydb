@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_core::interface::FlowId;
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin};
 use reifydb_rql::flow::{Flow, FlowNode, FlowNodeType::SourceInlineData};
 use tracing::instrument;
@@ -8,8 +9,8 @@ use tracing::instrument;
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
 impl FlowEngine {
-	#[instrument(level = "debug", skip(self, txn), fields(origin = ?change.origin, version = change.version.0, diff_count = change.diffs.len()))]
-	pub fn process(&self, txn: &mut FlowTransaction, change: FlowChange) -> crate::Result<()> {
+	#[instrument(level = "debug", skip(self, txn), fields(flow_id = ?flow_id, origin = ?change.origin, version = change.version.0, diff_count = change.diffs.len()))]
+	pub fn process(&self, txn: &mut FlowTransaction, change: FlowChange, flow_id: FlowId) -> crate::Result<()> {
 		match change.origin {
 			FlowChangeOrigin::External(source) => {
 				let sources = self.inner.sources.read();
@@ -48,19 +49,17 @@ impl FlowEngine {
 			FlowChangeOrigin::Internal(node_id) => {
 				// Internal changes are already scoped to a specific node
 				// This path is used by the partition logic to directly process a node's changes
-				// Find which flow this node belongs to by checking all registered flows
+				// Use the flow_id parameter for direct lookup instead of iterating all flows
 				let flows = self.inner.flows.read();
-				for (_flow_id, flow) in flows.iter() {
+				if let Some(flow) = flows.get(&flow_id) {
 					if let Some(node) = flow.get_node(&node_id) {
 						let flow = flow.clone();
 						let node = node.clone();
 						drop(flows);
 
 						self.process_change(txn, &flow, &node, change)?;
-						return Ok(());
 					}
 				}
-				drop(flows);
 			}
 		}
 		Ok(())

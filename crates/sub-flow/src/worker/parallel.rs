@@ -145,8 +145,9 @@ fn process(flow_txn: &mut FlowTransaction, flow_units: Vec<UnitOfWork>, engine: 
 		}
 
 		// Process all source changes for this unit
+		let flow_id = unit.flow_id;
 		for change in unit.source_changes {
-			engine.process(flow_txn, change)?;
+			engine.process(flow_txn, change, flow_id)?;
 		}
 	}
 

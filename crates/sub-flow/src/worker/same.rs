@@ -42,8 +42,9 @@ impl WorkerPool for SameThreadedWorker {
 				flow_txn.update_version(unit_of_work.version)?;
 			}
 
+			let flow_id = unit_of_work.flow_id;
 			for change in unit_of_work.source_changes {
-				engine.process(&mut flow_txn, change)?;
+				engine.process(&mut flow_txn, change, flow_id)?;
 			}
 		}
 
