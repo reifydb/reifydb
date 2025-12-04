@@ -20,7 +20,7 @@ mod source;
 use bincode::{config::standard, serde::encode_to_vec};
 use reifydb_catalog::{
 	CatalogStore,
-	store::sequence::flow::{next_flow_edge_id, next_flow_id, next_flow_node_id},
+	store::sequence::flow::{next_flow_edge_id, next_flow_node_id},
 };
 use reifydb_core::interface::{CommandTransaction, FlowEdgeDef, FlowEdgeId, FlowId, FlowNodeDef, FlowNodeId, ViewDef};
 use reifydb_type::Blob;

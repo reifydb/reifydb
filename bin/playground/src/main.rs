@@ -1,9 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{thread::sleep, time::Duration};
-
-use reifydb::{Params, Session, WithInterceptorBuilder, WithSubsystem, embedded};
+use reifydb::{Params, Session, WithSubsystem, embedded};
 use tracing_subscriber::{EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
 
 fn main() {
@@ -13,27 +11,6 @@ fn main() {
 		.init();
 
 	let mut db = embedded::memory_optimistic()
-		// Table interceptors for users
-		.intercept_table("test.users")
-			.pre_insert(|ctx| {
-				println!("[TABLE] Pre-insert into: {}", ctx.table.name);
-				Ok(())
-			})
-			.post_insert(|ctx| {
-				println!("[TABLE] Post-insert into: {}", ctx.table.name);
-				Ok(())
-			})
-		// View interceptors for active_users deferred view
-		.intercept_view("test.active_users")
-			.pre_insert(|ctx| {
-				println!("[VIEW] Pre-insert into view: {}", ctx.view.name);
-				Ok(())
-			})
-			.post_insert(|ctx| {
-				println!("[VIEW] Post-insert into view: {}", ctx.view.name);
-				Ok(())
-			})
-		.done()
 		.with_tracing(|t| t.with_console(|c| c.color(true)).with_filter("debug"))
 		.with_worker(|w| w)
 		.with_flow(|f| f)
@@ -42,45 +19,62 @@ fn main() {
 
 	db.start().unwrap();
 
-	// Create namespace and table
-	println!("\n=== Creating namespace and table ===");
-	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
-	db.command_as_root(r#"create table test.users { id: int4, username: utf8, active: bool }"#, Params::None)
-		.unwrap();
+	// Create namespace
+	db.command_as_root(r#"create namespace test"#, Params::None).unwrap();
 
-	// Create deferred view with filter for active users only
-	println!("\n=== Creating deferred view ===");
+	// Create table
+	db.command_as_root(r#"create table test.users { id: int4, name: utf8, active: bool }"#, Params::None).unwrap();
+
+	// Create deferred view (filters active users)
 	db.command_as_root(
-		r#"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }"#,
+		r#"create deferred view test.active_users { id: int4, name: utf8 } as { from test.users filter active == true map { id: id, name: name } }"#,
 		Params::None,
-	)
-	.unwrap();
+	).unwrap();
 
-	// Insert into users - triggers table interceptors
-	// The deferred view will also be populated, triggering view interceptors
-	println!("\n=== Inserting users (triggers table + view interceptors) ===");
+	// Insert some data
 	db.command_as_root(
 		r#"from [
-            {id: 1, username: "alice", active: true},
-            {id: 2, username: "bob", active: false},
-            {id: 3, username: "charlie", active: true}
-        ] insert test.users"#,
+			{id: 1, name: "alice", active: true},
+			{id: 2, name: "bob", active: false},
+			{id: 3, name: "charlie", active: true}
+		] insert test.users"#,
 		Params::None,
 	)
 	.unwrap();
 
-	// Wait for deferred view to process
-	println!("\n=== Waiting for deferred view to process ===");
-	sleep(Duration::from_millis(10));
-
-	// Query tables and views
-	println!("\n=== All users ===");
+	// Query table
+	println!("\n=== test.users ===");
 	for frame in db.query_as_root(r#"from test.users"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	println!("\n=== Active users (from deferred view) ===");
+	// Query deferred view
+	println!("\n=== test.active_users (deferred view) ===");
 	for frame in db.query_as_root(r#"from test.active_users"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
+
+	// Query system.flow_nodes
+	println!("\n=== system.flow_nodes ===");
+	for frame in db.query_as_root(r#"from system.flow_nodes"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
+
+	// Query system.flow_node_types
+	println!("\n=== system.flow_node_types ===");
+	for frame in db.query_as_root(r#"from system.flow_node_types"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
+
+	// Left join flow_nodes with flow_node_types
+	println!("\n=== flow_nodes left join flow_node_types ===");
+	for frame in db
+		.query_as_root(
+			r#"from system.flow_nodes left join { from system.flow_node_types } t on t.id = node_type"#,
+			Params::None,
+		)
+		.unwrap()
+	{
 		println!("{}", frame);
 	}
 }
