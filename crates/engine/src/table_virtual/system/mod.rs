@@ -18,6 +18,7 @@ mod sequences;
 mod source_retention_policies;
 mod tables;
 mod tables_virtual;
+mod types;
 mod versions;
 mod views;
 
@@ -38,5 +39,6 @@ pub use sequences::*;
 pub use source_retention_policies::*;
 pub use tables::*;
 pub use tables_virtual::*;
+pub use types::*;
 pub use versions::*;
 pub use views::*;

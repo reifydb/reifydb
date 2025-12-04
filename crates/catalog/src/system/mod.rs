@@ -21,6 +21,7 @@ mod sequence;
 mod source_retention_policies;
 mod tables;
 mod tables_virtual;
+mod types;
 mod versions;
 mod views;
 
@@ -40,6 +41,7 @@ use sequence::sequences;
 use source_retention_policies::source_retention_policies;
 use tables::tables;
 use tables_virtual::virtual_tables;
+use types::types;
 use versions::versions;
 use views::views;
 
@@ -281,8 +283,9 @@ pub mod ids {
 		pub const FLOW_EDGES: TableVirtualId = TableVirtualId(16);
 		pub const DICTIONARIES: TableVirtualId = TableVirtualId(17);
 		pub const VIRTUAL_TABLES: TableVirtualId = TableVirtualId(18);
+		pub const TYPES: TableVirtualId = TableVirtualId(19);
 
-		pub const ALL: [TableVirtualId; 18] = [
+		pub const ALL: [TableVirtualId; 19] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -301,6 +304,7 @@ pub mod ids {
 			FLOW_EDGES,
 			DICTIONARIES,
 			VIRTUAL_TABLES,
+			TYPES,
 		];
 	}
 }
@@ -415,5 +419,10 @@ impl SystemCatalog {
 	/// Get the virtual_tables virtual table definition
 	pub fn get_system_virtual_tables_table_def() -> Arc<TableVirtualDef> {
 		virtual_tables()
+	}
+
+	/// Get the types virtual table definition
+	pub fn get_system_types_table_def() -> Arc<TableVirtualDef> {
+		types()
 	}
 }
