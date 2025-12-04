@@ -72,6 +72,9 @@ pub struct FFIOperatorDescriptor {
 	/// Operator name (null-terminated C string)
 	pub operator_name: *const c_char,
 
+	/// Operator semantic version (null-terminated C string, e.g., "1.0.0")
+	pub operator_version: *const c_char,
+
 	/// Virtual function table with all operator methods
 	pub vtable: FFIOperatorVTable,
 }

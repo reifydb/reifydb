@@ -92,6 +92,7 @@ impl FFIOperatorLoader {
 			Ok(FFIOperatorDescriptor {
 				api_version: (*descriptor_ptr).api_version,
 				operator_name: (*descriptor_ptr).operator_name,
+				operator_version: (*descriptor_ptr).operator_version,
 				vtable: (*descriptor_ptr).vtable,
 			})
 		}
@@ -260,7 +261,8 @@ impl FFIOperatorLoader {
 	/// - Operator name
 	/// - Library path
 	/// - API version
-	pub fn list_loaded_operators(&self) -> Vec<(String, PathBuf, u32)> {
+	/// - Semantic version
+	pub fn list_loaded_operators(&self) -> Vec<(String, PathBuf, u32, String)> {
 		let mut operators = Vec::new();
 
 		for (path, library) in &self.loaded_libraries {
@@ -280,7 +282,18 @@ impl FFIOperatorLoader {
 							.unwrap_or("<invalid UTF-8>")
 							.to_string();
 
-						operators.push((operator_name, path.clone(), descriptor.api_version));
+						// Extract operator version
+						let operator_version = CStr::from_ptr(descriptor.operator_version)
+							.to_str()
+							.unwrap_or("<invalid UTF-8>")
+							.to_string();
+
+						operators.push((
+							operator_name,
+							path.clone(),
+							descriptor.api_version,
+							operator_version,
+						));
 					}
 				}
 			}

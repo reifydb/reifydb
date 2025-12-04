@@ -247,8 +247,19 @@ impl TestMetadataHarness {
 		assert_eq!(T::NAME, expected, "Operator name mismatch. Expected: {}, Actual: {}", expected, T::NAME);
 	}
 
-	/// Assert an operator has the expected version
-	pub fn assert_version<T: FFIOperatorMetadata>(expected: u32) {
+	/// Assert an operator has the expected API version
+	pub fn assert_api_version<T: FFIOperatorMetadata>(expected: u32) {
+		assert_eq!(
+			T::API_VERSION,
+			expected,
+			"Operator API version mismatch. Expected: {}, Actual: {}",
+			expected,
+			T::API_VERSION
+		);
+	}
+
+	/// Assert an operator has the expected semantic version
+	pub fn assert_version<T: FFIOperatorMetadata>(expected: &str) {
 		assert_eq!(
 			T::VERSION,
 			expected,
@@ -275,7 +286,8 @@ mod tests {
 
 	impl FFIOperatorMetadata for TestOperator {
 		const NAME: &'static str = "test_operator";
-		const VERSION: u32 = 1;
+		const API_VERSION: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
 	}
 
 	impl FFIOperator for TestOperator {
@@ -305,7 +317,8 @@ mod tests {
 
 	impl FFIOperatorMetadata for StatefulTestOperator {
 		const NAME: &'static str = "stateful_test_operator";
-		const VERSION: u32 = 1;
+		const API_VERSION: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
 	}
 
 	impl FFIOperator for StatefulTestOperator {
@@ -359,7 +372,8 @@ mod tests {
 	#[test]
 	fn test_operator_metadata() {
 		TestMetadataHarness::assert_name::<TestOperator>("test_operator");
-		TestMetadataHarness::assert_version::<TestOperator>(1);
+		TestMetadataHarness::assert_api_version::<TestOperator>(1);
+		TestMetadataHarness::assert_version::<TestOperator>("1.0.0");
 	}
 
 	#[test]

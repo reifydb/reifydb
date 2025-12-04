@@ -188,7 +188,8 @@ mod tests {
 
 	impl FFIOperatorMetadata for RowNumberTestOperator {
 		const NAME: &'static str = "row_number_test";
-		const VERSION: u32 = 1;
+		const API_VERSION: u32 = 1;
+		const VERSION: &'static str = "1.0.0";
 	}
 
 	impl FFIOperator for RowNumberTestOperator {

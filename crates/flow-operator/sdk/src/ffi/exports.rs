@@ -20,9 +20,13 @@ pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor 
 	// Leak the CString and get a pointer to its internal C string data
 	let name_ptr = Box::leak(Box::new(name_cstring)).as_ptr();
 
+	let version_cstring = CString::new(O::VERSION).unwrap_or_else(|_| CString::new("0.0.0").unwrap());
+	let version_ptr = Box::leak(Box::new(version_cstring)).as_ptr();
+
 	FFIOperatorDescriptor {
 		api_version: CURRENT_API_VERSION,
 		operator_name: name_ptr,
+		operator_version: version_ptr,
 		vtable: create_vtable::<O>(),
 	}
 }
