@@ -22,7 +22,8 @@ pub use transaction::{
 	CatalogCommandTransaction, CatalogDictionaryCommandOperations, CatalogDictionaryQueryOperations,
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogQueryTransaction,
 	CatalogSourceQueryOperations, CatalogTableCommandOperations, CatalogTableQueryOperations,
-	CatalogTrackChangeOperations, CatalogViewCommandOperations, CatalogViewQueryOperations,
+	CatalogTableVirtualUserQueryOperations, CatalogTrackChangeOperations, CatalogViewCommandOperations,
+	CatalogViewQueryOperations,
 };
 
 pub struct CatalogStore;

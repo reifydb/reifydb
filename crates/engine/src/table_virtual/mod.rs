@@ -9,7 +9,18 @@ use reifydb_rql::expression::Expression;
 
 use crate::{execute::Batch, transaction::StandardTransaction};
 
+mod adapter;
+mod factory;
+mod registry;
 pub(crate) mod system;
+pub mod user;
+
+pub use factory::VirtualTableFactory;
+pub(crate) use factory::extend_virtual_table_lifetime;
+pub use registry::{IteratorVirtualTableFactory, SimpleVirtualTableFactory, TableVirtualUserRegistry};
+pub use user::{
+	TableVirtualUser, TableVirtualUserColumnDef, TableVirtualUserIterator, TableVirtualUserPushdownContext,
+};
 
 /// Context passed to virtual table queries
 pub enum TableVirtualContext<'a> {

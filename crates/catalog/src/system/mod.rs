@@ -20,6 +20,7 @@ mod primary_keys;
 mod sequence;
 mod source_retention_policies;
 mod tables;
+mod tables_virtual;
 mod versions;
 mod views;
 
@@ -38,6 +39,7 @@ use primary_keys::primary_keys;
 use sequence::sequences;
 use source_retention_policies::source_retention_policies;
 use tables::tables;
+use tables_virtual::virtual_tables;
 use versions::versions;
 use views::views;
 
@@ -229,6 +231,17 @@ pub mod ids {
 
 			pub const ALL: [ColumnId; 3] = [OPERATOR_NAME, LIBRARY_PATH, API_VERSION];
 		}
+
+		pub mod virtual_tables {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const KIND: ColumnId = ColumnId(4);
+
+			pub const ALL: [ColumnId; 4] = [ID, NAMESPACE_ID, NAME, KIND];
+		}
 	}
 
 	pub mod sequences {
@@ -267,8 +280,9 @@ pub mod ids {
 		pub const FLOW_NODES: TableVirtualId = TableVirtualId(15);
 		pub const FLOW_EDGES: TableVirtualId = TableVirtualId(16);
 		pub const DICTIONARIES: TableVirtualId = TableVirtualId(17);
+		pub const VIRTUAL_TABLES: TableVirtualId = TableVirtualId(18);
 
-		pub const ALL: [TableVirtualId; 17] = [
+		pub const ALL: [TableVirtualId; 18] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -286,6 +300,7 @@ pub mod ids {
 			FLOW_NODES,
 			FLOW_EDGES,
 			DICTIONARIES,
+			VIRTUAL_TABLES,
 		];
 	}
 }
@@ -395,5 +410,10 @@ impl SystemCatalog {
 	/// Get the dictionaries virtual table definition
 	pub fn get_system_dictionaries_table_def() -> Arc<TableVirtualDef> {
 		dictionaries()
+	}
+
+	/// Get the virtual_tables virtual table definition
+	pub fn get_system_virtual_tables_table_def() -> Arc<TableVirtualDef> {
+		virtual_tables()
 	}
 }
