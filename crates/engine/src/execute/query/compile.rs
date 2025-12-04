@@ -36,9 +36,9 @@ use crate::{
 	table_virtual::{
 		TableVirtual, TableVirtualContext,
 		system::{
-			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, FlowEdges, FlowNodes, FlowOperators,
-			Flows, Namespaces, OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, Sequences,
-			SourceRetentionPolicies, Tables, TablesVirtual, Types, Versions, Views,
+			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, FlowEdges, FlowNodeTypes, FlowNodes,
+			FlowOperators, Flows, Namespaces, OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys,
+			Sequences, SourceRetentionPolicies, Tables, TablesVirtual, Types, Versions, Views,
 		},
 	},
 };
@@ -213,6 +213,7 @@ pub(crate) fn compile<'a>(
 					"dictionaries" => Box::new(Dictionaries::new()),
 					"virtual_tables" => Box::new(TablesVirtual::new()),
 					"types" => Box::new(Types::new()),
+					"flow_node_types" => Box::new(FlowNodeTypes::new()),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

@@ -10,6 +10,7 @@ mod column_policies;
 mod columns;
 mod dictionaries;
 mod flow_edges;
+mod flow_node_types;
 mod flow_nodes;
 mod flow_operators;
 mod flows;
@@ -30,6 +31,7 @@ use column_policies::column_policies;
 use columns::columns;
 use dictionaries::dictionaries;
 use flow_edges::flow_edges;
+use flow_node_types::flow_node_types;
 use flow_nodes::flow_nodes;
 use flow_operators::flow_operators;
 use flows::flows;
@@ -284,8 +286,9 @@ pub mod ids {
 		pub const DICTIONARIES: TableVirtualId = TableVirtualId(17);
 		pub const VIRTUAL_TABLES: TableVirtualId = TableVirtualId(18);
 		pub const TYPES: TableVirtualId = TableVirtualId(19);
+		pub const FLOW_NODE_TYPES: TableVirtualId = TableVirtualId(20);
 
-		pub const ALL: [TableVirtualId; 19] = [
+		pub const ALL: [TableVirtualId; 20] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -305,6 +308,7 @@ pub mod ids {
 			DICTIONARIES,
 			VIRTUAL_TABLES,
 			TYPES,
+			FLOW_NODE_TYPES,
 		];
 	}
 }
@@ -424,5 +428,10 @@ impl SystemCatalog {
 	/// Get the types virtual table definition
 	pub fn get_system_types_table_def() -> Arc<TableVirtualDef> {
 		types()
+	}
+
+	/// Get the flow_node_types virtual table definition
+	pub fn get_system_flow_node_types_table_def() -> Arc<TableVirtualDef> {
+		flow_node_types()
 	}
 }
