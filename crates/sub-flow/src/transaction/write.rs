@@ -1,9 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::{EncodedKey, value::encoded::EncodedValues};
+use reifydb_core::{EncodedKey, interface::ViewDef, value::encoded::EncodedValues};
+use reifydb_type::RowNumber;
 
-use super::FlowTransaction;
+use super::{FlowTransaction, ViewPending};
 
 impl FlowTransaction {
 	/// Set a value, buffering it in pending writes
@@ -17,6 +18,68 @@ impl FlowTransaction {
 	pub fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		self.metrics.increment_removes();
 		self.pending.remove(key.clone());
+		Ok(())
+	}
+
+	/// Insert a row into a view, tracking the operation for interceptor calls at commit time.
+	///
+	/// This method buffers the write in pending (for storage) and also tracks the view
+	/// operation separately so that ViewInterceptor::pre_insert/post_insert can be called
+	/// on the parent transaction during commit().
+	pub fn insert_view(
+		&mut self,
+		key: &EncodedKey,
+		view: ViewDef,
+		row_number: RowNumber,
+		row: EncodedValues,
+	) -> crate::Result<()> {
+		self.metrics.increment_writes();
+		self.pending.insert(key.clone(), row.clone());
+		self.view_pending.push(ViewPending::Insert {
+			view,
+			row_number,
+			row,
+		});
+		Ok(())
+	}
+
+	/// Update a row in a view (remove old, insert new), tracking for interceptor calls.
+	///
+	/// This method buffers both the remove and set in pending (for storage) and tracks
+	/// the view operation for ViewInterceptor::pre_update/post_update calls during commit().
+	pub fn update_view(
+		&mut self,
+		old_key: &EncodedKey,
+		new_key: &EncodedKey,
+		view: ViewDef,
+		old_row_number: RowNumber,
+		new_row_number: RowNumber,
+		row: EncodedValues,
+	) -> crate::Result<()> {
+		self.metrics.increment_removes();
+		self.metrics.increment_writes();
+		self.pending.remove(old_key.clone());
+		self.pending.insert(new_key.clone(), row.clone());
+		self.view_pending.push(ViewPending::Update {
+			view,
+			old_row_number,
+			new_row_number,
+			row,
+		});
+		Ok(())
+	}
+
+	/// Remove a row from a view, tracking the operation for interceptor calls at commit time.
+	///
+	/// This method buffers the removal in pending (for storage) and tracks the view
+	/// operation for ViewInterceptor::pre_delete/post_delete calls during commit().
+	pub fn remove_view(&mut self, key: &EncodedKey, view: ViewDef, row_number: RowNumber) -> crate::Result<()> {
+		self.metrics.increment_removes();
+		self.pending.remove(key.clone());
+		self.view_pending.push(ViewPending::Remove {
+			view,
+			row_number,
+		});
 		Ok(())
 	}
 }

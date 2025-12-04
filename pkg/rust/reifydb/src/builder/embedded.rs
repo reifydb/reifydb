@@ -14,7 +14,7 @@ use reifydb_sub_tracing::TracingBuilder;
 use reifydb_sub_worker::WorkerBuilder;
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
-use super::{DatabaseBuilder, traits::WithSubsystem};
+use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
 
 pub struct EmbeddedBuilder {
@@ -136,5 +136,11 @@ impl WithSubsystem for EmbeddedBuilder {
 	fn with_subsystem(mut self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self {
 		self.subsystem_factories.push(factory);
 		self
+	}
+}
+
+impl WithInterceptorBuilder for EmbeddedBuilder {
+	fn interceptor_builder_mut(&mut self) -> &mut StandardInterceptorBuilder<StandardCommandTransaction> {
+		&mut self.interceptors
 	}
 }

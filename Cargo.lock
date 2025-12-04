@@ -165,6 +165,7 @@ version = "0.1.5"
 dependencies = [
  "reifydb",
  "tracing",
+ "tracing-subscriber",
 ]
 
 [[package]]

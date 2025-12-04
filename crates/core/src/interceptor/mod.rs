@@ -4,24 +4,32 @@
 mod builder;
 mod chain;
 mod factory;
+mod filter;
+mod filtered;
 mod interceptor;
 mod interceptors;
 mod namespace_def;
 mod ring_buffer;
+mod ring_buffer_def;
 mod table;
 mod table_def;
 mod transaction;
+mod view;
 mod view_def;
 
 pub use builder::*;
 pub use chain::InterceptorChain;
 pub use factory::{InterceptorFactory, StandardInterceptorFactory};
+pub use filter::InterceptFilter;
+pub use filtered::*;
 pub use interceptors::Interceptors;
 pub use namespace_def::*;
 pub use ring_buffer::*;
+pub use ring_buffer_def::*;
 pub use table::*;
 pub use table_def::*;
 pub use transaction::*;
+pub use view::*;
 pub use view_def::*;
 
 pub type Chain<T, I> = InterceptorChain<T, I>;

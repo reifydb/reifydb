@@ -1,131 +1,86 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{path::PathBuf, str::FromStr, thread::sleep, time::Duration};
+use std::{thread::sleep, time::Duration};
 
-use reifydb::{Params, Session, WithSubsystem, embedded, sub_tracing::TracingBuilder};
+use reifydb::{Params, Session, WithInterceptorBuilder, WithSubsystem, embedded};
 use tracing_subscriber::{EnvFilter, fmt, fmt::format::FmtSpan, layer::SubscriberExt, util::SubscriberInitExt};
-
-fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
-	tracing.with_console(|console| console.color(true).stderr_for_errors(true)).with_filter("debug")
-}
 
 fn main() {
 	tracing_subscriber::registry()
-		.with(fmt::layer()
-			.with_span_events(FmtSpan::CLOSE)
-		)
-		.with(EnvFilter::from_default_env()) // RUST_LOG=debug
+		.with(fmt::layer().with_span_events(FmtSpan::CLOSE))
+		.with(EnvFilter::from_default_env())
 		.init();
 
 	let mut db = embedded::memory_optimistic()
-		.with_tracing(tracing_configuration)
-		.with_worker(|wp| wp)
-		.with_flow(|f| {
-			f.operators_dir(
-				PathBuf::from_str("/home/ddymke/Workspace/red/testsuite/fixture/target/debug").unwrap(),
-			)
-		})
+		// Table interceptors for users
+		.intercept_table("test.users")
+			.pre_insert(|ctx| {
+				println!("[TABLE] Pre-insert into: {}", ctx.table.name);
+				Ok(())
+			})
+			.post_insert(|ctx| {
+				println!("[TABLE] Post-insert into: {}", ctx.table.name);
+				Ok(())
+			})
+		// View interceptors for active_users deferred view
+		.intercept_view("test.active_users")
+			.pre_insert(|ctx| {
+				println!("[VIEW] Pre-insert into view: {}", ctx.view.name);
+				Ok(())
+			})
+			.post_insert(|ctx| {
+				println!("[VIEW] Post-insert into view: {}", ctx.view.name);
+				Ok(())
+			})
+		.done()
+		.with_tracing(|t| t.with_console(|c| c.color(true)).with_filter("debug"))
+		.with_worker(|w| w)
+		.with_flow(|f| f)
 		.build()
 		.unwrap();
 
 	db.start().unwrap();
 
-	// Create namespace
-	println!("Creating namespace...");
+	// Create namespace and table
+	println!("\n=== Creating namespace and table ===");
 	db.command_as_root(r#"create namespace test;"#, Params::None).unwrap();
+	db.command_as_root(r#"create table test.users { id: int4, username: utf8, active: bool }"#, Params::None)
+		.unwrap();
 
-	// Create tables - messages with multiple lookups to same table
-	println!("Creating tables...");
+	// Create deferred view with filter for active users only
+	println!("\n=== Creating deferred view ===");
 	db.command_as_root(
-		r#"create table test.messages { id: int4, sender_id: int4, receiver_id: int4, channel_id: int4, content: utf8 }"#,
-		Params::None,
-	)
-	.unwrap();
-	db.command_as_root(r#"create table test.users { id: int4, username: utf8 }"#, Params::None).unwrap();
-	db.command_as_root(r#"create table test.channels { id: int4, channel_name: utf8 }"#, Params::None).unwrap();
-
-	// Insert all data BEFORE creating the view
-	println!("Inserting users...");
-	db.command_as_root(
-		r#"
-from [
-    {id: 1, username: "alice"},
-    {id: 2, username: "bob"},
-    {id: 3, username: "charlie"}
-] insert test.users
-"#,
+		r#"create deferred view test.active_users { id: int4, username: utf8 } as { from test.users filter active == true map { id: id, username: username } }"#,
 		Params::None,
 	)
 	.unwrap();
 
-	println!("Inserting channels...");
+	// Insert into users - triggers table interceptors
+	// The deferred view will also be populated, triggering view interceptors
+	println!("\n=== Inserting users (triggers table + view interceptors) ===");
 	db.command_as_root(
-		r#"
-from [
-    {id: 10, channel_name: "general"},
-    {id: 20, channel_name: "random"},
-    {id: 30, channel_name: "announcements"}
-] insert test.channels
-"#,
+		r#"from [
+            {id: 1, username: "alice", active: true},
+            {id: 2, username: "bob", active: false},
+            {id: 3, username: "charlie", active: true}
+        ] insert test.users"#,
 		Params::None,
 	)
 	.unwrap();
 
-	println!("Inserting messages...");
-	db.command_as_root(
-		r#"
-from [
-    {id: 1, sender_id: 1, receiver_id: 2, channel_id: 10, content: "Hello Bob"},
-    {id: 2, sender_id: 2, receiver_id: 1, channel_id: 10, content: "Hi Alice"},
-    {id: 3, sender_id: 3, receiver_id: 1, channel_id: 20, content: "Hey there"},
-    {id: 4, sender_id: 1, receiver_id: 3, channel_id: 30, content: "Announcement"},
-    {id: 5, sender_id: 4, receiver_id: 2, channel_id: 10, content: "Unknown user"}
-] insert test.messages
-"#,
-		Params::None,
-	)
-	.unwrap();
+	// Wait for deferred view to process
+	println!("\n=== Waiting for deferred view to process ===");
+	sleep(Duration::from_millis(10));
 
-	// Now create the view with multiple lookups (two to same table)
-	println!("\nCreating deferred view with multiple lookups to same table...");
-	db.command_as_root(
-		r#"
-create deferred view test.message_log {
-    msg_id: int4,
-    sender: utf8,
-    receiver: utf8,
-    channel: utf8,
-    content: utf8
-} as {
-    from test.messages
-    left join { from test.users } sender on sender_id == sender.id
-    left join { from test.users } receiver on receiver_id == receiver.id
-    left join { from test.channels } channels on channel_id == channels.id
-    map {
-        msg_id: id,
-        sender: username,
-        receiver: receiver_username,
-        channel: channel_name,
-        content: content
-    }
-}
-"#,
-		Params::None,
-	)
-	.unwrap();
-
-	println!("Created deferred view");
-
-	// Wait for view to process data
-	sleep(Duration::from_millis(500));
-
-	// Query the deferred view - should have complete info from all lookups
-	println!("\n=== Deferred view query (should show all 5 messages with joined data) ===");
-	for frame in db.query_as_root(r#"from test.message_log sort msg_id asc"#, Params::None).unwrap() {
+	// Query tables and views
+	println!("\n=== All users ===");
+	for frame in db.query_as_root(r#"from test.users"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
-	println!("\n=== Expected: msg_id, sender, receiver, channel, content for all 5 messages ===");
-	println!("Note: Message 5 should have Undefined sender (user 4 doesn't exist)");
+	println!("\n=== Active users (from deferred view) ===");
+	for frame in db.query_as_root(r#"from test.active_users"#, Params::None).unwrap() {
+		println!("{}", frame);
+	}
 }

@@ -18,7 +18,7 @@ use reifydb_sub_tracing::TracingBuilder;
 use reifydb_sub_worker::WorkerBuilder;
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
-use super::{DatabaseBuilder, traits::WithSubsystem};
+use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
 
 #[cfg(feature = "sub_server")]
@@ -157,5 +157,12 @@ impl WithSubsystem for ServerBuilder {
 	fn with_subsystem(mut self, factory: Box<dyn SubsystemFactory<StandardCommandTransaction>>) -> Self {
 		self.subsystem_factories.push(factory);
 		self
+	}
+}
+
+#[cfg(feature = "sub_server")]
+impl WithInterceptorBuilder for ServerBuilder {
+	fn interceptor_builder_mut(&mut self) -> &mut StandardInterceptorBuilder<StandardCommandTransaction> {
+		&mut self.interceptors
 	}
 }

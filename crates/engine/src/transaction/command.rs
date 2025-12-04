@@ -572,6 +572,92 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 	> {
 		&mut self.interceptors.view_def_pre_delete
 	}
+
+	// Ring buffer definition interceptors
+	fn ring_buffer_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::RingBufferDefPostCreateInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.ring_buffer_def_post_create
+	}
+
+	fn ring_buffer_def_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::RingBufferDefPreUpdateInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.ring_buffer_def_pre_update
+	}
+
+	fn ring_buffer_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::RingBufferDefPostUpdateInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.ring_buffer_def_post_update
+	}
+
+	fn ring_buffer_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::RingBufferDefPreDeleteInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.ring_buffer_def_pre_delete
+	}
+
+	// View data interceptors
+	fn view_pre_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<StandardCommandTransaction, dyn interceptor::ViewPreInsertInterceptor<StandardCommandTransaction>>
+	{
+		&mut self.interceptors.view_pre_insert
+	}
+
+	fn view_post_insert_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::ViewPostInsertInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.view_post_insert
+	}
+
+	fn view_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<StandardCommandTransaction, dyn interceptor::ViewPreUpdateInterceptor<StandardCommandTransaction>>
+	{
+		&mut self.interceptors.view_pre_update
+	}
+
+	fn view_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::ViewPostUpdateInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.view_post_update
+	}
+
+	fn view_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<StandardCommandTransaction, dyn interceptor::ViewPreDeleteInterceptor<StandardCommandTransaction>>
+	{
+		&mut self.interceptors.view_pre_delete
+	}
+
+	fn view_post_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn interceptor::ViewPostDeleteInterceptor<StandardCommandTransaction>,
+	> {
+		&mut self.interceptors.view_post_delete
+	}
 }
 
 impl TransactionalChanges for StandardCommandTransaction {}

@@ -42,6 +42,7 @@ impl Operator for SinkViewOperator {
 	) -> crate::Result<FlowChange> {
 		// Transform rows to match the view's schema before writing
 		let target_columns = self.view.columns();
+		let view_def = self.view.def().clone();
 
 		for diff in change.diffs.iter() {
 			match diff {
@@ -55,12 +56,13 @@ impl Operator for SinkViewOperator {
 					let row = transformed_row.encoded;
 
 					let key = RowKey {
-						source: SourceId::view(self.view.def().id),
+						source: SourceId::view(view_def.id),
 						row: row_id,
 					}
 					.encode();
 
-					txn.set(&key, row)?;
+					// Use insert_view to track the operation for interceptor calls
+					txn.insert_view(&key, view_def.clone(), row_id, row)?;
 				}
 				FlowDiff::Update {
 					pre,
@@ -70,31 +72,40 @@ impl Operator for SinkViewOperator {
 					// Transform the encoded to match the view schema
 					let transformed_row = evaluator.coerce(post, target_columns)?;
 
-					let key = RowKey {
-						source: SourceId::view(self.view.def().id),
+					let old_key = RowKey {
+						source: SourceId::view(view_def.id),
+						row: pre.number,
+					}
+					.encode();
+
+					let new_key = RowKey {
+						source: SourceId::view(view_def.id),
 						row: post.number,
 					}
 					.encode();
 
-					txn.remove(&RowKey {
-						source: SourceId::view(self.view.def().id),
-						row: pre.number,
-					}
-					.encode())?;
-
-					txn.set(&key, transformed_row.encoded)?;
+					// Use update_view to track the operation for interceptor calls
+					txn.update_view(
+						&old_key,
+						&new_key,
+						view_def.clone(),
+						pre.number,
+						post.number,
+						transformed_row.encoded,
+					)?;
 				}
 				FlowDiff::Remove {
 					pre,
 					..
 				} => {
 					let key = RowKey {
-						source: SourceId::view(self.view.def().id),
+						source: SourceId::view(view_def.id),
 						row: pre.number,
 					}
 					.encode();
 
-					txn.remove(&key)?;
+					// Use remove_view to track the operation for interceptor calls
+					txn.remove_view(&key, view_def.clone(), pre.number)?;
 				}
 			}
 		}

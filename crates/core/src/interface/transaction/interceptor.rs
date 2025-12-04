@@ -8,13 +8,17 @@ use crate::{
 	interceptor::{
 		Chain, NamespaceDefPostCreateInterceptor, NamespaceDefPostUpdateInterceptor,
 		NamespaceDefPreDeleteInterceptor, NamespaceDefPreUpdateInterceptor, PostCommitInterceptor,
-		PreCommitInterceptor, RingBufferPostDeleteInterceptor, RingBufferPostInsertInterceptor,
-		RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor, RingBufferPreInsertInterceptor,
-		RingBufferPreUpdateInterceptor, TableDefPostCreateInterceptor, TableDefPostUpdateInterceptor,
-		TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor, TablePostDeleteInterceptor,
-		TablePostInsertInterceptor, TablePostUpdateInterceptor, TablePreDeleteInterceptor,
-		TablePreInsertInterceptor, TablePreUpdateInterceptor, ViewDefPostCreateInterceptor,
-		ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor, ViewDefPreUpdateInterceptor,
+		PreCommitInterceptor, RingBufferDefPostCreateInterceptor, RingBufferDefPostUpdateInterceptor,
+		RingBufferDefPreDeleteInterceptor, RingBufferDefPreUpdateInterceptor, RingBufferPostDeleteInterceptor,
+		RingBufferPostInsertInterceptor, RingBufferPostUpdateInterceptor, RingBufferPreDeleteInterceptor,
+		RingBufferPreInsertInterceptor, RingBufferPreUpdateInterceptor, TableDefPostCreateInterceptor,
+		TableDefPostUpdateInterceptor, TableDefPreDeleteInterceptor, TableDefPreUpdateInterceptor,
+		TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
+		TablePreDeleteInterceptor, TablePreInsertInterceptor, TablePreUpdateInterceptor,
+		ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
+		ViewDefPreUpdateInterceptor, ViewPostDeleteInterceptor, ViewPostInsertInterceptor,
+		ViewPostUpdateInterceptor, ViewPreDeleteInterceptor, ViewPreInsertInterceptor,
+		ViewPreUpdateInterceptor,
 	},
 	interface::{
 		CommandTransaction, NamespaceDef, RingBufferDef, TableDef, ViewDef,
@@ -123,6 +127,46 @@ pub trait ViewDefInterceptor<CT: CommandTransaction> {
 	fn pre_delete(&mut self, pre: &ViewDef) -> crate::Result<()>;
 }
 
+pub trait RingBufferDefInterceptor<CT: CommandTransaction> {
+	/// Intercept ring buffer definition post-create operations
+	fn post_create(&mut self, post: &RingBufferDef) -> crate::Result<()>;
+
+	/// Intercept ring buffer definition pre-update operations
+	fn pre_update(&mut self, pre: &RingBufferDef) -> crate::Result<()>;
+
+	/// Intercept ring buffer definition post-update operations
+	fn post_update(&mut self, pre: &RingBufferDef, post: &RingBufferDef) -> crate::Result<()>;
+
+	/// Intercept ring buffer definition pre-delete operations
+	fn pre_delete(&mut self, pre: &RingBufferDef) -> crate::Result<()>;
+}
+
+pub trait ViewInterceptor<CT: CommandTransaction> {
+	/// Intercept view pre-insert operations
+	fn pre_insert(&mut self, view: &ViewDef, rn: RowNumber, row: &EncodedValues) -> crate::Result<()>;
+
+	/// Intercept view post-insert operations
+	fn post_insert(&mut self, view: &ViewDef, id: RowNumber, row: &EncodedValues) -> crate::Result<()>;
+
+	/// Intercept view pre-update operations
+	fn pre_update(&mut self, view: &ViewDef, id: RowNumber, row: &EncodedValues) -> crate::Result<()>;
+
+	/// Intercept view post-update operations
+	fn post_update(
+		&mut self,
+		view: &ViewDef,
+		id: RowNumber,
+		row: &EncodedValues,
+		old_row: &EncodedValues,
+	) -> crate::Result<()>;
+
+	/// Intercept view pre-delete operations
+	fn pre_delete(&mut self, view: &ViewDef, id: RowNumber) -> crate::Result<()>;
+
+	/// Intercept view post-delete operations
+	fn post_delete(&mut self, view: &ViewDef, id: RowNumber, deleted_row: &EncodedValues) -> crate::Result<()>;
+}
+
 pub trait TransactionInterceptor<CT: CommandTransaction> {
 	/// Intercept pre-commit operations
 	fn pre_commit(&mut self) -> crate::Result<()>;
@@ -224,4 +268,44 @@ pub trait WithInterceptors<CT: CommandTransaction> {
 
 	/// Access view pre-delete interceptor chain
 	fn view_def_pre_delete_interceptors(&mut self) -> &mut Chain<CT, dyn ViewDefPreDeleteInterceptor<CT>>;
+
+	// Ring buffer definition interceptor chains
+	/// Access ring buffer definition post-create interceptor chain
+	fn ring_buffer_def_post_create_interceptors(
+		&mut self,
+	) -> &mut Chain<CT, dyn RingBufferDefPostCreateInterceptor<CT>>;
+
+	/// Access ring buffer definition pre-update interceptor chain
+	fn ring_buffer_def_pre_update_interceptors(
+		&mut self,
+	) -> &mut Chain<CT, dyn RingBufferDefPreUpdateInterceptor<CT>>;
+
+	/// Access ring buffer definition post-update interceptor chain
+	fn ring_buffer_def_post_update_interceptors(
+		&mut self,
+	) -> &mut Chain<CT, dyn RingBufferDefPostUpdateInterceptor<CT>>;
+
+	/// Access ring buffer definition pre-delete interceptor chain
+	fn ring_buffer_def_pre_delete_interceptors(
+		&mut self,
+	) -> &mut Chain<CT, dyn RingBufferDefPreDeleteInterceptor<CT>>;
+
+	// View data interceptor chains
+	/// Access view pre-insert interceptor chain
+	fn view_pre_insert_interceptors(&mut self) -> &mut Chain<CT, dyn ViewPreInsertInterceptor<CT>>;
+
+	/// Access view post-insert interceptor chain
+	fn view_post_insert_interceptors(&mut self) -> &mut Chain<CT, dyn ViewPostInsertInterceptor<CT>>;
+
+	/// Access view pre-update interceptor chain
+	fn view_pre_update_interceptors(&mut self) -> &mut Chain<CT, dyn ViewPreUpdateInterceptor<CT>>;
+
+	/// Access view post-update interceptor chain
+	fn view_post_update_interceptors(&mut self) -> &mut Chain<CT, dyn ViewPostUpdateInterceptor<CT>>;
+
+	/// Access view pre-delete interceptor chain
+	fn view_pre_delete_interceptors(&mut self) -> &mut Chain<CT, dyn ViewPreDeleteInterceptor<CT>>;
+
+	/// Access view post-delete interceptor chain
+	fn view_post_delete_interceptors(&mut self) -> &mut Chain<CT, dyn ViewPostDeleteInterceptor<CT>>;
 }

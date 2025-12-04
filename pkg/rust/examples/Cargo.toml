@@ -12,8 +12,9 @@ name = "reifydb_examples"
 path = "src/lib.rs"
 
 [dependencies]
-reifydb = { path = "../reifydb", features = ["sub_tracing"] }
+reifydb = { path = "../reifydb", features = ["sub_tracing", "sub_flow"] }
 tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
 
 # Basic examples (no special features required)
 [[bin]]
@@ -76,4 +77,9 @@ path = "examples/storage/01_memory_storage.rs"
 [[bin]]
 name = "storage-sqlite"
 path = "examples/storage/02_sqlite_storage.rs"
+
+# Interceptor examples
+[[bin]]
+name = "intercept-table-view"
+path = "examples/intercept/01_table_view_interceptors.rs"
 

@@ -36,6 +36,12 @@ cargo run --bin basic-hello-world
 | `make rql-comparison` | Comparison operators (==, !=, <, >, <=, >=, between) | None |
 | `make rql-logical` | Logical operators (and, or, not, xor) | None |
 
+### Interceptor Examples
+
+| Make Command | Description | Required Features |
+|--------------|-------------|-------------------|
+| `make intercept-table-view` | Table and view interceptors (pre/post hooks) | sub_flow |
+
 ## Project Structure
 
 ```
@@ -60,6 +66,8 @@ bin/examples/
         ├── 08_arithmetic_expressions.rs # Arithmetic operations
         ├── 09_comparison_operators.rs  # Comparison operators
         └── 10_logical_operators.rs     # Logical operators
+    └── intercept/      # Interceptor examples
+        └── 01_table_view_interceptors.rs # Table and view hooks
 ```
 
 ## Running Examples

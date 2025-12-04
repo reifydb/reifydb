@@ -16,7 +16,7 @@ use std::time::Duration;
 pub use api::*;
 #[cfg(feature = "sub_server")]
 pub use builder::ServerBuilder;
-pub use builder::{DatabaseBuilder, EmbeddedBuilder, WithSubsystem};
+pub use builder::{DatabaseBuilder, EmbeddedBuilder, WithInterceptorBuilder, WithSubsystem};
 pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::{Database, DatabaseConfig};
 pub use event::{OnCreateContext, WithEventBus};
