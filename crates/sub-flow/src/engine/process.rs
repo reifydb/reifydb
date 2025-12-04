@@ -3,10 +3,12 @@
 
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin};
 use reifydb_rql::flow::{Flow, FlowNode, FlowNodeType::SourceInlineData};
+use tracing::instrument;
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
 impl FlowEngine {
+	#[instrument(level = "debug", skip(self, txn), fields(origin = ?change.origin, version = change.version.0, diff_count = change.diffs.len()))]
 	pub fn process(&self, txn: &mut FlowTransaction, change: FlowChange) -> crate::Result<()> {
 		match change.origin {
 			FlowChangeOrigin::External(source) => {
@@ -64,12 +66,14 @@ impl FlowEngine {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip(self, txn), fields(node_id = ?node.id))]
 	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: FlowChange) -> crate::Result<FlowChange> {
 		let operator = self.inner.operators.read().get(&node.id).unwrap().clone();
 		let result = operator.apply(txn, change, &self.inner.evaluator)?;
 		Ok(result)
 	}
 
+	#[instrument(level = "trace", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, input_diffs = change.diffs.len()))]
 	fn process_change(
 		&self,
 		txn: &mut FlowTransaction,

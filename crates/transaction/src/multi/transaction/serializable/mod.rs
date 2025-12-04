@@ -18,6 +18,8 @@ use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus};
 use reifydb_store_transaction::{
 	MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev, TransactionStore,
 };
+use reifydb_type::util::hex;
+use tracing::instrument;
 
 use crate::multi::transaction::version::StandardVersionProvider;
 
@@ -77,21 +79,26 @@ impl TransactionSerializable {
 }
 
 impl TransactionSerializable {
+	#[instrument(level = "debug", skip(store, single, event_bus))]
 	pub fn new(store: TransactionStore, single: TransactionSingleVersion, event_bus: EventBus) -> Self {
 		Self(Arc::new(Inner::new(store, single, event_bus)))
 	}
 }
 
 impl TransactionSerializable {
+	#[instrument(level = "trace", skip(self))]
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.0.version()
 	}
+
+	#[instrument(level = "debug", skip(self))]
 	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
 		QueryTransaction::new(self.clone(), None)
 	}
 }
 
 impl TransactionSerializable {
+	#[instrument(level = "debug", skip(self))]
 	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
 		CommandTransaction::new(self.clone())
 	}
@@ -103,14 +110,17 @@ pub enum Transaction {
 }
 
 impl TransactionSerializable {
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(self.store.get(key, version)?.map(|sv| sv.into()))
 	}
 
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
 	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
 		self.store.contains(key, version)
 	}
 
+	#[instrument(level = "trace", skip(self), fields(version = version.0, batch_size = batch_size))]
 	pub fn range_batched(
 		&self,
 		range: EncodedKeyRange,

@@ -14,6 +14,7 @@ reifydb-type = { workspace = true }
 
 indexmap = { workspace = true }
 parking_lot = { workspace = true }
+tracing = { workspace = true }
 
 rusqlite = { workspace = true, features = ["bundled"] }
 uuid = { workspace = true }

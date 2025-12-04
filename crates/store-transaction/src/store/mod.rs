@@ -3,6 +3,8 @@
 
 use std::{ops::Deref, sync::Arc, time::Duration};
 
+use tracing::instrument;
+
 use crate::{BackendConfig, backend::BackendStorage, config::TransactionStoreConfig};
 
 mod cdc;
@@ -24,6 +26,11 @@ pub struct StandardTransactionStoreInner {
 }
 
 impl StandardTransactionStore {
+	#[instrument(level = "info", skip(config), fields(
+		has_hot = config.hot.is_some(),
+		has_warm = config.warm.is_some(),
+		has_cold = config.cold.is_some()
+	))]
 	pub fn new(config: TransactionStoreConfig) -> crate::Result<Self> {
 		let hot = config.hot.map(|c| c.storage);
 		let warm = config.warm.map(|c| c.storage);

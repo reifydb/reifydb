@@ -15,6 +15,7 @@ use std::sync::Arc;
 pub use command::*;
 use oracle::*;
 use reifydb_core::{CommitVersion, interface::TransactionId};
+use tracing::instrument;
 use version::VersionProvider;
 
 pub use crate::multi::types::*;
@@ -54,6 +55,7 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(level = "debug", skip(self))]
 	pub fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
 		Ok(TransactionManagerCommand {
 			id: TransactionId::generate(),
@@ -75,6 +77,7 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(level = "debug", skip(clock))]
 	pub fn new(clock: L) -> crate::Result<Self> {
 		let version = clock.next()?;
 		Ok(Self {
@@ -87,6 +90,7 @@ where
 		})
 	}
 
+	#[instrument(level = "trace", skip(self))]
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.inner.version()
 	}
@@ -96,10 +100,12 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(level = "trace", skip(self))]
 	pub fn discard_hint(&self) -> CommitVersion {
 		self.inner.discard_at_or_below()
 	}
 
+	#[instrument(level = "debug", skip(self), fields(as_of_version = ?version))]
 	pub fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
 		Ok(if let Some(version) = version {
 			TransactionManagerQuery::new_time_travel(TransactionId::generate(), self.clone(), version)

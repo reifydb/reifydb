@@ -14,11 +14,12 @@ use reifydb_engine::StandardCommandTransaction;
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_rql::flow::{Flow, FlowNodeType};
 use reifydb_type::{DictionaryEntryId, Value, internal};
-use tracing::{info, trace};
+use tracing::{info, instrument, trace};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
 impl FlowEngine {
+	#[instrument(level = "info", skip(self, txn), fields(flow_id = ?flow.id, flow_creation_version = flow_creation_version.0))]
 	pub(crate) fn load_initial_data(
 		&self,
 		txn: &mut StandardCommandTransaction,
@@ -125,6 +126,7 @@ impl FlowEngine {
 	}
 
 	// FIXME this can be streamed without loading everything into memory first
+	#[instrument(level = "debug", skip(self, txn, flow_txn), fields(source_id = ?source.id()))]
 	fn scan_all_rows(
 		&self,
 		txn: &mut StandardCommandTransaction,
@@ -260,6 +262,7 @@ impl FlowEngine {
 		Ok(encoded)
 	}
 
+	#[instrument(level = "debug", skip(self, flow_txn, flow), fields(from_node = ?from_node_id, diff_count = change.diffs.len()))]
 	fn propagate_initial_change(
 		&self,
 		flow_txn: &mut FlowTransaction,

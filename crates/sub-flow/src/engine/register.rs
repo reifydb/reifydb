@@ -18,6 +18,7 @@ use reifydb_rql::flow::{
 	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union, Window},
 };
 use reifydb_type::internal;
+use tracing::instrument;
 
 use super::eval::evaluate_operator_config;
 use crate::{
@@ -30,10 +31,12 @@ use crate::{
 };
 
 impl FlowEngine {
+	#[instrument(level = "info", skip(self, txn), fields(flow_id = ?flow.id))]
 	pub fn register_without_backfill(&self, txn: &mut StandardCommandTransaction, flow: Flow) -> crate::Result<()> {
 		self.register(txn, flow, None)
 	}
 
+	#[instrument(level = "info", skip(self, txn), fields(flow_id = ?flow.id, backfill_version = flow_creation_version.0))]
 	pub fn register_with_backfill(
 		&self,
 		txn: &mut StandardCommandTransaction,
@@ -43,6 +46,7 @@ impl FlowEngine {
 		self.register(txn, flow, Some(flow_creation_version))
 	}
 
+	#[instrument(level = "debug", skip(self, txn), fields(flow_id = ?flow.id, has_backfill = flow_creation_version.is_some()))]
 	fn register(
 		&self,
 		txn: &mut StandardCommandTransaction,
@@ -72,6 +76,7 @@ impl FlowEngine {
 		Ok(())
 	}
 
+	#[instrument(level = "debug", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, node_type = ?std::mem::discriminant(&node.ty)))]
 	fn add(&self, txn: &mut StandardCommandTransaction, flow: &Flow, node: &FlowNode) -> crate::Result<()> {
 		debug_assert!(!self.inner.operators.read().contains_key(&node.id), "Operator already registered");
 		let node = node.clone();

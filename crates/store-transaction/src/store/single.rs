@@ -7,6 +7,8 @@ use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::SingleVersionValues,
 	value::encoded::EncodedValues,
 };
+use reifydb_type::util::hex;
+use tracing::instrument;
 
 use super::{StandardTransactionStore, single_iterator::SingleVersionMergingIterator};
 use crate::{
@@ -16,6 +18,7 @@ use crate::{
 };
 
 impl SingleVersionGet for StandardTransactionStore {
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		// Single-version storage uses TableId::Single for all keys
 		let table = TableId::Single;
@@ -55,6 +58,7 @@ impl SingleVersionGet for StandardTransactionStore {
 }
 
 impl SingleVersionContains for StandardTransactionStore {
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())), ret)]
 	fn contains(&self, key: &EncodedKey) -> crate::Result<bool> {
 		let table = TableId::Single;
 
@@ -81,6 +85,7 @@ impl SingleVersionContains for StandardTransactionStore {
 }
 
 impl SingleVersionCommit for StandardTransactionStore {
+	#[instrument(level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
 	fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()> {
 		let table = TableId::Single;
 
@@ -190,6 +195,7 @@ impl SingleVersionRange for StandardTransactionStore {
 	where
 		Self: 'a;
 
+	#[instrument(level = "debug", skip(self))]
 	fn range(&self, range: EncodedKeyRange) -> crate::Result<Self::Range<'_>> {
 		let table = TableId::Single;
 		let mut iters: Vec<Box<dyn Iterator<Item = SingleVersionIterResult> + Send + '_>> = Vec::new();
@@ -221,6 +227,7 @@ impl SingleVersionRangeRev for StandardTransactionStore {
 	where
 		Self: 'a;
 
+	#[instrument(level = "debug", skip(self))]
 	fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<Self::RangeRev<'_>> {
 		let table = TableId::Single;
 		let mut iters: Vec<Box<dyn Iterator<Item = SingleVersionIterResult> + Send + '_>> = Vec::new();

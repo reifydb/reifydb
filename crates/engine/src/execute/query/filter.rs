@@ -8,6 +8,7 @@ use reifydb_core::{
 	value::column::{ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::Expression;
+use tracing::{instrument, trace};
 
 use crate::{
 	StandardTransaction,
@@ -32,12 +33,14 @@ impl<'a> FilterNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for FilterNode<'a> {
+	#[instrument(level = "trace", skip_all, name = "FilterNode::initialize")]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "FilterNode::next")]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
@@ -95,11 +98,13 @@ impl<'a> QueryNode<'a> for FilterNode<'a> {
 			}
 
 			if row_count > 0 {
+				trace!(filtered_row_count = row_count, "filter produced batch");
 				return Ok(Some(Batch {
 					columns,
 				}));
 			}
 		}
+		trace!("filter exhausted");
 		Ok(None)
 	}
 

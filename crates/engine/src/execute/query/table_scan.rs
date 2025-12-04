@@ -15,6 +15,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{DictionaryEntryId, Fragment, Type};
+use tracing::{instrument, trace};
 
 use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
@@ -80,6 +81,7 @@ impl<'a> TableScanNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for TableScanNode<'a> {
+	#[instrument(level = "trace", skip_all, name = "TableScanNode::initialize")]
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
@@ -89,6 +91,7 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		Ok(())
 	}
 
+	#[instrument(level = "trace", skip_all, name = "TableScanNode::next")]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -121,9 +124,11 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		}
 		if batch_rows.is_empty() {
 			self.exhausted = true;
+			trace!("table scan exhausted");
 			return Ok(None);
 		}
 
+		trace!(row_count = batch_rows.len(), "table scan batch loaded");
 		self.last_key = new_last_key;
 
 		// Create columns with storage types (dictionary ID types for dictionary columns)

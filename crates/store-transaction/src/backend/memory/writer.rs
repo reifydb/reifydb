@@ -7,6 +7,7 @@ use std::sync::{Arc, mpsc};
 
 use parking_lot::RwLock;
 use reifydb_type::Result;
+use tracing::{debug, info, trace};
 
 use super::tables::Tables;
 use crate::backend::primitive::TableId;
@@ -27,6 +28,7 @@ pub(super) enum WriteCommand {
 
 /// Run the background writer thread.
 pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, tables: Arc<RwLock<Tables>>) {
+	debug!(name: "memory_writer", "background writer thread started");
 	while let Ok(cmd) = receiver.recv() {
 		match cmd {
 			WriteCommand::PutBatch {
@@ -34,6 +36,7 @@ pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, tables: Arc<RwL
 				entries,
 				respond_to,
 			} => {
+				trace!(table = ?table, entry_count = entries.len(), "received PutBatch command");
 				let mut guard = tables.write();
 				let table_data = guard.get_table_mut(table);
 				for (key, value) in entries {
@@ -45,12 +48,16 @@ pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, tables: Arc<RwL
 				table,
 				respond_to,
 			} => {
+				debug!(table = ?table, "received ClearTable command");
 				let mut guard = tables.write();
 				let table_data = guard.get_table_mut(table);
 				table_data.clear();
 				let _ = respond_to.send(Ok(()));
 			}
-			WriteCommand::Shutdown => break,
+			WriteCommand::Shutdown => {
+				info!(name: "memory_writer", "background writer thread shutting down");
+				break;
+			}
 		}
 	}
 }

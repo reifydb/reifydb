@@ -791,6 +791,7 @@ dependencies = [
  "reifydb-type",
  "rusqlite",
  "test_each_file",
+ "tracing",
  "uuid",
 ]
 

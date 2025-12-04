@@ -16,7 +16,8 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::MultiVersionCommit;
-use reifydb_type::Error;
+use reifydb_type::{Error, util::hex};
+use tracing::instrument;
 
 use super::*;
 use crate::multi::{
@@ -33,6 +34,7 @@ pub struct CommandTransaction {
 }
 
 impl CommandTransaction {
+	#[instrument(level = "debug", skip(engine))]
 	pub fn new(engine: TransactionSerializable) -> crate::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
@@ -43,6 +45,7 @@ impl CommandTransaction {
 }
 
 impl CommandTransaction {
+	#[instrument(level = "info", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
 	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
 		let mut version: Option<CommitVersion> = None;
 		let mut deltas = CowVec::with_capacity(8);
@@ -92,10 +95,12 @@ impl CommandTransaction {
 		Ok(())
 	}
 
+	#[instrument(level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> Result<(), Error> {
 		self.tm.rollback()
 	}
 
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, reifydb_type::Error> {
 		let version = self.tm.version();
 		match self.tm.contains_key(key)? {
@@ -105,6 +110,7 @@ impl CommandTransaction {
 		}
 	}
 
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, Error> {
 		let version = self.tm.version();
 		match self.tm.get(key)? {
@@ -119,10 +125,12 @@ impl CommandTransaction {
 		}
 	}
 
+	#[instrument(level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.as_ref().len()))]
 	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
 		self.tm.set(key, values)
 	}
 
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_type::Error> {
 		self.tm.remove(key)
 	}

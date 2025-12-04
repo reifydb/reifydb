@@ -3,6 +3,7 @@
 
 use reifydb_core::CommitVersion;
 use reifydb_engine::StandardCommandTransaction;
+use tracing::instrument;
 
 mod commit;
 mod iter_range;
@@ -128,6 +129,7 @@ impl FlowTransaction {
 	/// # Parameters
 	/// * `parent` - The parent command transaction to derive from
 	/// * `version` - The CDC event version for snapshot isolation (NOT parent.version())
+	#[instrument(level = "debug", skip(parent), fields(version = version.0))]
 	pub fn new(parent: &StandardCommandTransaction, version: CommitVersion) -> Self {
 		let mut source_query = parent.multi.begin_query().unwrap();
 		source_query.read_as_of_version_inclusive(version).unwrap();

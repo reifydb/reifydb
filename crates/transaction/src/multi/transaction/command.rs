@@ -13,6 +13,8 @@ use reifydb_core::{
 	CommitVersion, EncodedKey, delta::Delta, diagnostic::transaction, error, interface::TransactionId,
 	return_error, value::encoded::EncodedValues,
 };
+use reifydb_type::util::hex;
+use tracing::instrument;
 
 use super::*;
 use crate::multi::{
@@ -120,6 +122,11 @@ where
 	L: VersionProvider,
 {
 	/// Set a key-value pair to the transaction.
+	#[instrument(level = "debug", skip(self, values), fields(
+		txn_id = %self.id,
+		key_hex = %hex::encode(key.as_ref()),
+		value_len = values.as_ref().len()
+	))]
 	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -133,6 +140,10 @@ where
 	/// This is done by adding a delete marker for the key at commit
 	/// timestamp.  Any reads happening before this timestamp would be
 	/// unaffected. Any reads after this commit would see the deletion.
+	#[instrument(level = "debug", skip(self), fields(
+		txn_id = %self.id,
+		key_hex = %hex::encode(key.as_ref())
+	))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -146,6 +157,7 @@ where
 	}
 
 	/// Rolls back the transaction.
+	#[instrument(level = "debug", skip(self), fields(txn_id = %self.id))]
 	pub fn rollback(&mut self) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -157,6 +169,10 @@ where
 	}
 
 	/// Returns `true` if the pending writes contains the key.
+	#[instrument(level = "trace", skip(self), fields(
+		txn_id = %self.id,
+		key_hex = %hex::encode(key.as_ref())
+	))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<Option<bool>, reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -181,6 +197,10 @@ where
 
 	/// Looks for the key in the pending writes, if such key is not in the
 	/// pending writes, the end user can read the key from the database.
+	#[instrument(level = "trace", skip(self), fields(
+		txn_id = %self.id,
+		key_hex = %hex::encode(key.as_ref())
+	))]
 	pub fn get<'a, 'b: 'a>(&'a mut self, key: &'b EncodedKey) -> Result<Option<Pending>, reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -214,6 +234,11 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(level = "info", skip(self, apply), fields(
+		txn_id = %self.id,
+		pending_count = self.pending_writes.len(),
+		size_bytes = self.size
+	))]
 	pub fn commit<F>(&mut self, apply: F) -> Result<(), reifydb_type::Error>
 	where
 		F: FnOnce(Vec<Pending>) -> Result<(), Box<dyn std::error::Error>>,
@@ -256,6 +281,10 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(level = "trace", skip(self, values), fields(
+		txn_id = %self.id,
+		key_hex = %hex::encode(key.as_ref())
+	))]
 	fn set_internal(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -270,6 +299,11 @@ where
 		})
 	}
 
+	#[instrument(level = "trace", skip(self, pending), fields(
+		txn_id = %self.id,
+		key_hex = %hex::encode(pending.key().as_ref()),
+		is_remove = pending.was_removed()
+	))]
 	fn modify(&mut self, pending: Pending) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -324,6 +358,10 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
+	#[instrument(level = "debug", skip(self), fields(
+		txn_id = %self.id,
+		pending_count = self.pending_writes.len()
+	))]
 	fn commit_pending(&mut self) -> Result<(CommitVersion, Vec<Pending>), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -407,6 +445,7 @@ where
 	/// calling this multiple times doesn't cause any issues. So,
 	/// this can safely be called via a defer right when transaction is
 	/// created.
+	#[instrument(level = "trace", skip(self), fields(txn_id = %self.id))]
 	pub fn discard(&mut self) {
 		if self.discarded {
 			return;

@@ -5,6 +5,8 @@ use core::ops::{Bound, RangeBounds};
 use std::collections::HashSet;
 
 use reifydb_core::{EncodedKey, EncodedKeyRange};
+use reifydb_type::util::hex;
+use tracing::instrument;
 
 /// High-performance conflict manager using HashSet for O(1) lookups
 /// and optimized range handling
@@ -30,14 +32,17 @@ impl ConflictManager {
 		}
 	}
 
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn mark_read(&mut self, key: &EncodedKey) {
 		self.read_keys.insert(key.clone());
 	}
 
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn mark_conflict(&mut self, key: &EncodedKey) {
 		self.conflict_keys.insert(key.clone());
 	}
 
+	#[instrument(level = "trace", skip(self), fields(range_start = ?range.start_bound(), range_end = ?range.end_bound()))]
 	pub fn mark_range(&mut self, range: EncodedKeyRange) {
 		let start = match range.start_bound() {
 			Bound::Included(k) => Bound::Included(k.clone()),
@@ -62,6 +67,11 @@ impl ConflictManager {
 		self.mark_range(EncodedKeyRange::all());
 	}
 
+	#[instrument(level = "debug", skip(self, other), fields(
+		self_read_keys = self.read_keys.len(),
+		self_conflict_keys = self.conflict_keys.len(),
+		other_conflict_keys = other.conflict_keys.len()
+	), ret)]
 	pub fn has_conflict(&self, other: &Self) -> bool {
 		// Fast path: dirty write detection (write-write conflict)
 		// Use HashSet intersection for O(min(m,n)) performance
@@ -94,6 +104,7 @@ impl ConflictManager {
 		false
 	}
 
+	#[instrument(level = "trace", skip(self))]
 	pub fn rollback(&mut self) {
 		self.read_keys.clear();
 		self.read_ranges.clear();

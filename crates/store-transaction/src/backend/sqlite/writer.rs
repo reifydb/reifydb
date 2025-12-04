@@ -7,6 +7,7 @@ use std::sync::mpsc;
 
 use reifydb_type::{Result, diagnostic::internal::internal, error};
 use rusqlite::{Connection, params};
+use tracing::{debug, info, instrument, trace};
 
 /// Commands for the background writer thread.
 pub(super) enum WriteCommand {
@@ -28,6 +29,7 @@ pub(super) enum WriteCommand {
 
 /// Run the background writer thread.
 pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, conn: Connection) {
+	debug!(name: "sqlite_writer", "background writer thread started");
 	while let Ok(cmd) = receiver.recv() {
 		match cmd {
 			WriteCommand::PutBatch {
@@ -35,32 +37,44 @@ pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, conn: Connectio
 				entries,
 				respond_to,
 			} => {
+				trace!(table = %table_name, entry_count = entries.len(), "received PutBatch command");
 				let result = execute_put_batch(&conn, &table_name, &entries);
+				if let Err(ref e) = result {
+					tracing::error!(table = %table_name, err = %e, "PutBatch failed");
+				}
 				let _ = respond_to.send(result);
 			}
 			WriteCommand::ClearTable {
 				table_name,
 				respond_to,
 			} => {
+				debug!(table = %table_name, "received ClearTable command");
 				let result = conn
 					.execute(&format!("DELETE FROM \"{}\"", table_name), [])
 					.map(|_| ())
-					.map_err(|e| error!(internal(format!("Failed to clear table: {}", e))));
+					.map_err(|e| {
+						reifydb_type::error!(internal(format!("Failed to clear table: {}", e)))
+					});
 				let _ = respond_to.send(result);
 			}
 			WriteCommand::EnsureTable {
 				table_name,
 				respond_to,
 			} => {
+				trace!(table = %table_name, "received EnsureTable command");
 				let result = create_table_if_not_exists(&conn, &table_name);
 				let _ = respond_to.send(result);
 			}
-			WriteCommand::Shutdown => break,
+			WriteCommand::Shutdown => {
+				info!(name: "sqlite_writer", "background writer thread shutting down");
+				break;
+			}
 		}
 	}
 }
 
 /// Create a table if it doesn't exist.
+#[instrument(level = "trace", skip(conn), fields(table = %table_name))]
 pub(super) fn create_table_if_not_exists(conn: &Connection, table_name: &str) -> Result<()> {
 	conn.execute(
 		&format!(
@@ -77,6 +91,7 @@ pub(super) fn create_table_if_not_exists(conn: &Connection, table_name: &str) ->
 }
 
 /// Execute a batch of put operations in a transaction.
+#[instrument(level = "debug", skip(conn, entries), fields(table = %table_name, entry_count = entries.len()))]
 fn execute_put_batch(conn: &Connection, table_name: &str, entries: &[(Vec<u8>, Option<Vec<u8>>)]) -> Result<()> {
 	// Ensure table exists before writing
 	create_table_if_not_exists(conn, table_name)?;

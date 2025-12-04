@@ -23,7 +23,7 @@ use reifydb_core::{
 use reifydb_engine::{StandardRowEvaluator, execute::Executor};
 use reifydb_rql::flow::{Flow, FlowDependencyGraph, FlowGraphAnalyzer};
 use reifydb_type::{Value, internal};
-use tracing::{debug, error};
+use tracing::{debug, error, instrument};
 
 use crate::{
 	ffi::loader::ffi_operator_loader,
@@ -56,6 +56,7 @@ impl Clone for FlowEngine {
 }
 
 impl FlowEngine {
+	#[instrument(level = "info", skip(evaluator, executor, registry, event_bus), fields(operators_dir = ?operators_dir))]
 	pub fn new(
 		evaluator: StandardRowEvaluator,
 		executor: Executor,
@@ -87,6 +88,7 @@ impl FlowEngine {
 	}
 
 	/// Load FFI operators from a directory into the global loader
+	#[instrument(level = "debug", skip(event_bus), fields(dir = ?dir))]
 	fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_core::Result<()> {
 		let loader = ffi_operator_loader();
 
@@ -130,6 +132,7 @@ impl FlowEngine {
 	}
 
 	/// Create an FFI operator instance from the global singleton loader
+	#[instrument(level = "debug", skip(self, config), fields(operator_name = %operator_name, node_id = ?node_id))]
 	pub(crate) fn create_ffi_operator(
 		&self,
 		operator_name: &str,
