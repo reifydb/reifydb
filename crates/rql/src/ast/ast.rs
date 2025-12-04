@@ -1103,6 +1103,7 @@ pub enum InfixOperator<'a> {
 	Or(Token<'a>),
 	Xor(Token<'a>),
 	In(Token<'a>),
+	NotIn(Token<'a>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

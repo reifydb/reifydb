@@ -5,6 +5,7 @@ mod between;
 mod equal;
 mod greater_than;
 mod greater_than_equal;
+mod in_expr;
 mod less_than;
 mod less_than_equal;
 mod not_equal;

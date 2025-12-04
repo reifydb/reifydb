@@ -74,6 +74,7 @@ impl StandardColumnEvaluator {
 			Expression::Equal(expr) => self.equal(ctx, expr),
 			Expression::NotEqual(expr) => self.not_equal(ctx, expr),
 			Expression::Between(expr) => self.between(ctx, expr),
+			Expression::In(expr) => self.in_expr(ctx, expr),
 			Expression::And(expr) => self.and(ctx, expr),
 			Expression::Or(expr) => self.or(ctx, expr),
 			Expression::Xor(expr) => self.xor(ctx, expr),

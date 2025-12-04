@@ -422,6 +422,7 @@ impl<'a> XorExpression<'a> {
 pub struct InExpression<'a> {
 	pub value: Box<Expression<'a>>,
 	pub list: Box<Expression<'a>>,
+	pub negated: bool,
 	pub fragment: Fragment<'a>,
 }
 
@@ -594,9 +595,14 @@ impl<'a> Display for Expression<'a> {
 			Expression::In(InExpression {
 				value,
 				list,
+				negated,
 				..
 			}) => {
-				write!(f, "({} IN {})", value, list)
+				if *negated {
+					write!(f, "({} NOT IN {})", value, list)
+				} else {
+					write!(f, "({} IN {})", value, list)
+				}
 			}
 			Expression::Type(TypeExpression {
 				fragment,
@@ -1236,6 +1242,19 @@ impl ExpressionCompiler {
 				Ok(Expression::In(InExpression {
 					value: Box::new(value),
 					list: Box::new(list),
+					negated: false,
+					fragment: token.fragment,
+				}))
+			}
+
+			InfixOperator::NotIn(token) => {
+				let value = Self::compile(*ast.left)?;
+				let list = Self::compile(*ast.right)?;
+
+				Ok(Expression::In(InExpression {
+					value: Box::new(value),
+					list: Box::new(list),
+					negated: true,
 					fragment: token.fragment,
 				}))
 			}

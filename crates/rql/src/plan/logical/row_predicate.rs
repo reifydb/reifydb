@@ -210,6 +210,7 @@ mod tests {
 		let in_expr = InExpression {
 			value: Box::new(make_rownum_column()),
 			list: Box::new(Expression::Tuple(tuple)),
+			negated: false,
 			fragment: Fragment::owned_internal("in"),
 		};
 		let expr = Expression::In(in_expr);

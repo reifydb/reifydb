@@ -316,7 +316,8 @@ impl Compiler {
 					| InfixOperator::Call(_)
 					| InfixOperator::As(_)
 					| InfixOperator::TypeAscription(_)
-					| InfixOperator::In(_) => {
+					| InfixOperator::In(_)
+					| InfixOperator::NotIn(_) => {
 						let wrapped_map = Self::wrap_scalar_in_map(node);
 						Self::compile_map(wrapped_map, tx)
 					}

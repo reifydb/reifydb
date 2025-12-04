@@ -136,6 +136,7 @@ pub fn to_owned_expression(expr: Expression<'_>) -> Expression<'static> {
 		Expression::In(in_expr) => Expression::In(InExpression {
 			value: Box::new(to_owned_expression(*in_expr.value)),
 			list: Box::new(to_owned_expression(*in_expr.list)),
+			negated: in_expr.negated,
 			fragment: Fragment::Owned(in_expr.fragment.into_owned()),
 		}),
 	}

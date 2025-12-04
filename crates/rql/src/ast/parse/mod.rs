@@ -183,22 +183,40 @@ impl<'a> Parser<'a> {
 			}
 
 			// Check token type before consuming
-			let current_keyword = if let Ok(current) = self.current() {
-				match current.kind {
-					TokenKind::Keyword(Keyword::Between) => Some(Keyword::Between),
-					TokenKind::Keyword(Keyword::In) => Some(Keyword::In),
+			// Use an enum to track what we found
+			enum SpecialInfix {
+				Between,
+				In,
+				NotIn,
+			}
+
+			let special = if let Ok(current) = self.current() {
+				match &current.kind {
+					TokenKind::Keyword(Keyword::Between) => Some(SpecialInfix::Between),
+					TokenKind::Keyword(Keyword::In) => Some(SpecialInfix::In),
+					TokenKind::Operator(Operator::Not) => {
+						// Check if next token is IN for NOT IN
+						if self.is_next_keyword(Keyword::In) {
+							Some(SpecialInfix::NotIn)
+						} else {
+							None
+						}
+					}
 					_ => None,
 				}
 			} else {
 				break;
 			};
 
-			match current_keyword {
-				Some(Keyword::Between) => {
+			match special {
+				Some(SpecialInfix::Between) => {
 					left = Ast::Between(self.parse_between(left)?);
 				}
-				Some(Keyword::In) => {
-					left = Ast::Infix(self.parse_in(left)?);
+				Some(SpecialInfix::In) => {
+					left = Ast::Infix(self.parse_in(left, false)?);
+				}
+				Some(SpecialInfix::NotIn) => {
+					left = Ast::Infix(self.parse_in(left, true)?);
 				}
 				_ => {
 					left = Ast::Infix(self.parse_infix(left)?);
@@ -261,6 +279,14 @@ impl<'a> Parser<'a> {
 		Ok(&self.tokens[self.position])
 	}
 
+	/// Check if the next token (position + 1) is a specific keyword
+	pub(crate) fn is_next_keyword(&self, keyword: Keyword) -> bool {
+		if self.position + 1 >= self.tokens.len() {
+			return false;
+		}
+		matches!(self.tokens[self.position + 1].kind, TokenKind::Keyword(k) if k == keyword)
+	}
+
 	pub(crate) fn current_expect(&self, expected: TokenKind) -> crate::Result<()> {
 		let got = self.current()?;
 		if got.kind == expected {
@@ -297,8 +323,14 @@ impl<'a> Parser<'a> {
 		};
 
 		let current = self.current()?;
-		match current.kind {
-			TokenKind::Operator(operator) => Ok(get_precedence_for_operator(operator)),
+		match &current.kind {
+			TokenKind::Operator(operator) => {
+				// Check for NOT IN (NOT followed by IN keyword)
+				if *operator == Operator::Not && self.is_next_keyword(Keyword::In) {
+					return Ok(Precedence::Comparison);
+				}
+				Ok(get_precedence_for_operator(*operator))
+			}
 			TokenKind::Keyword(Keyword::Between) => Ok(Precedence::Comparison),
 			TokenKind::Keyword(Keyword::In) => Ok(Precedence::Comparison),
 			_ => Ok(Precedence::None),
@@ -347,15 +379,25 @@ impl<'a> Parser<'a> {
 		})
 	}
 
-	/// Parse an IN expression: `value IN [list]` or `value IN (list)`
-	pub(crate) fn parse_in(&mut self, value: Ast<'a>) -> crate::Result<AstInfix<'a>> {
+	/// Parse an IN expression: `value IN [list]` or `value NOT IN [list]`
+	pub(crate) fn parse_in(&mut self, value: Ast<'a>, negated: bool) -> crate::Result<AstInfix<'a>> {
+		// For NOT IN, consume NOT first
+		if negated {
+			self.consume_operator(Operator::Not)?;
+		}
 		let in_token = self.consume_keyword(Keyword::In)?;
-		let right = self.parse_node(Precedence::Comparison)?;
+		let right = Ast::List(self.parse_list()?);
+
+		let operator = if negated {
+			InfixOperator::NotIn(in_token)
+		} else {
+			InfixOperator::In(in_token)
+		};
 
 		Ok(AstInfix {
 			token: value.token().clone(),
 			left: Box::new(value),
-			operator: InfixOperator::In(in_token),
+			operator,
 			right: Box::new(right),
 		})
 	}
