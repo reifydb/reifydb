@@ -3,6 +3,7 @@
 
 mod fragment;
 mod join;
+pub mod json;
 mod name;
 
 pub use join::JoinConditionCompiler;

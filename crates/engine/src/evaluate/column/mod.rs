@@ -5,7 +5,7 @@ use reifydb_core::value::column::Column;
 use reifydb_rql::expression::Expression;
 
 pub(crate) use crate::evaluate::ColumnEvaluationContext;
-use crate::function::{Functions, blob, math, text};
+use crate::function::{Functions, blob, flow_node_type, math, text};
 
 mod access;
 mod alias;
@@ -43,6 +43,7 @@ impl Default for StandardColumnEvaluator {
 				.register_scalar("blob::b64", blob::BlobB64::new)
 				.register_scalar("blob::b64url", blob::BlobB64url::new)
 				.register_scalar("blob::utf8", blob::BlobUtf8::new)
+				.register_scalar("flow_node_type::to_json", flow_node_type::FlowNodeTypeToJson::new)
 				.register_scalar("text::trim", text::TextTrim::new)
 				.register_scalar("text::upper", text::TextUpper::new)
 				.register_scalar("text::substring", text::TextSubstring::new)
@@ -107,6 +108,7 @@ pub fn evaluate<'a>(ctx: &ColumnEvaluationContext<'a>, expr: &Expression<'a>) ->
 			.register_scalar("blob::b64", blob::BlobB64::new)
 			.register_scalar("blob::b64url", blob::BlobB64url::new)
 			.register_scalar("blob::utf8", blob::BlobUtf8::new)
+			.register_scalar("flow_node_type::to_json", flow_node_type::FlowNodeTypeToJson::new)
 			.register_scalar("text::trim", text::TextTrim::new)
 			.register_scalar("text::upper", text::TextUpper::new)
 			.register_scalar("text::substring", text::TextSubstring::new)
