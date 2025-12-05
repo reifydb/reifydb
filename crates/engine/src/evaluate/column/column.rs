@@ -33,7 +33,7 @@ impl StandardColumnEvaluator {
 			return self.extract_column_data(col, ctx);
 		}
 
-		Ok(Column::new(name.to_string(), ColumnData::undefined(0)))
+		Ok(Column::new(name.to_string(), ColumnData::undefined(ctx.row_count)))
 	}
 
 	fn extract_column_data<'a>(
@@ -642,5 +642,57 @@ impl StandardColumnEvaluator {
 			}
 			Type::Any => unreachable!("Any type not supported in column operations"),
 		}
+	}
+}
+
+#[cfg(test)]
+mod tests {
+	use reifydb_core::{
+		interface::identifier::{ColumnIdentifier, ColumnSource},
+		value::column::{Column, ColumnData, Columns},
+	};
+	use reifydb_rql::expression::ColumnExpression;
+	use reifydb_type::{Fragment, Params};
+
+	use crate::{
+		evaluate::{ColumnEvaluationContext, column::StandardColumnEvaluator},
+		stack::Stack,
+	};
+
+	#[test]
+	fn test_column_not_found_returns_correct_row_count() {
+		// Create context with 5 rows
+		let columns =
+			Columns::new(vec![Column::new("existing_col".to_string(), ColumnData::int4([1, 2, 3, 4, 5]))]);
+
+		let ctx = ColumnEvaluationContext {
+			target: None,
+			columns,
+			row_count: 5,
+			take: None,
+			params: &Params::None,
+			stack: &Stack::new(),
+			is_aggregate_context: false,
+		};
+
+		let evaluator = StandardColumnEvaluator::default();
+
+		// Try to access a column that doesn't exist
+		let result = evaluator
+			.column(
+				&ctx,
+				&ColumnExpression(ColumnIdentifier {
+					source: ColumnSource::Alias(Fragment::owned_internal("nonexistent_col")),
+					name: Fragment::owned_internal("nonexistent_col"),
+				}),
+			)
+			.unwrap();
+
+		// The column should have 5 rows (matching row_count), not 0
+		assert_eq!(
+			result.data().len(),
+			5,
+			"Column not found should return column with ctx.row_count rows, not 0"
+		);
 	}
 }
