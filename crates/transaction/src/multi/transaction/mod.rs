@@ -10,7 +10,7 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::mem;
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 pub use command::*;
 use oracle::*;
@@ -31,7 +31,10 @@ mod version;
 
 pub use oracle::MAX_COMMITTED_TXNS;
 
-use crate::multi::{conflict::ConflictManager, pending::PendingWrites, transaction::query::TransactionManagerQuery};
+use crate::multi::{
+	AwaitWatermarkError, conflict::ConflictManager, pending::PendingWrites,
+	transaction::query::TransactionManagerQuery,
+};
 
 pub struct TransactionManager<L>
 where
@@ -116,5 +119,40 @@ where
 				self.inner.version()?,
 			)
 		})
+	}
+
+	/// Wait for the command watermark to reach the specified version.
+	/// Returns Ok(()) if the watermark reaches the version within the timeout,
+	/// or Err(AwaitWatermarkError) if the timeout expires.
+	///
+	/// This is useful for CDC polling to ensure all in-flight commits have
+	/// completed their storage writes before querying for CDC events.
+	#[instrument(level = "debug", skip(self))]
+	pub fn try_wait_for_watermark(
+		&self,
+		version: CommitVersion,
+		timeout: Duration,
+	) -> Result<(), AwaitWatermarkError> {
+		if self.inner.command.wait_for_mark_timeout(version, timeout) {
+			Ok(())
+		} else {
+			Err(AwaitWatermarkError {
+				version,
+				timeout,
+			})
+		}
+	}
+
+	/// Returns the highest version where ALL prior versions have completed.
+	/// This is useful for CDC polling to know the safe upper bound for fetching
+	/// CDC events - all events up to this version are guaranteed to be in storage.
+	#[instrument(level = "trace", skip(self))]
+	pub fn done_until(&self) -> CommitVersion {
+		self.inner.command.done_until()
+	}
+
+	/// Returns (query_done_until, command_done_until) for debugging watermark state.
+	pub fn watermarks(&self) -> (CommitVersion, CommitVersion) {
+		(self.inner.query.done_until(), self.inner.command.done_until())
 	}
 }

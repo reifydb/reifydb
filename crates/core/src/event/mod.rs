@@ -10,7 +10,6 @@ use std::{
 use tracing::error;
 
 pub mod catalog;
-pub mod cdc;
 pub mod flow;
 pub mod lifecycle;
 pub mod transaction;

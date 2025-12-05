@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{ops::Deref, rc::Rc, sync::Arc};
+use std::{ops::Deref, rc::Rc, sync::Arc, time::Duration};
 
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
@@ -13,7 +13,11 @@ use reifydb_core::{
 		Identity, MultiVersionTransaction, Params, Query, TableVirtualDef, TableVirtualId, WithEventBus,
 	},
 };
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{
+	cdc::TransactionCdc,
+	multi::{AwaitWatermarkError, TransactionMultiVersion},
+	single::TransactionSingleVersion,
+};
 use reifydb_type::{OwnedFragment, TypeConstraint};
 use tracing::instrument;
 
@@ -230,6 +234,41 @@ impl StandardEngine {
 	#[inline]
 	pub fn flow_operator_store(&self) -> &FlowOperatorStore {
 		&self.flow_operator_store
+	}
+
+	/// Get the current version from the transaction manager
+	#[inline]
+	pub fn current_version(&self) -> crate::Result<CommitVersion> {
+		self.multi.current_version()
+	}
+
+	/// Wait for the watermark to reach the specified version.
+	/// Returns Ok(()) if the watermark reaches the version within the timeout,
+	/// or Err(AwaitWatermarkError) if the timeout expires.
+	///
+	/// This is useful for CDC polling to ensure all in-flight commits have
+	/// completed their storage writes before querying for CDC events.
+	#[inline]
+	pub fn try_wait_for_watermark(
+		&self,
+		version: CommitVersion,
+		timeout: Duration,
+	) -> Result<(), AwaitWatermarkError> {
+		self.multi.try_wait_for_watermark(version, timeout)
+	}
+
+	/// Returns the highest version where ALL prior versions have completed.
+	/// This is useful for CDC polling to know the safe upper bound for fetching
+	/// CDC events - all events up to this version are guaranteed to be in storage.
+	#[inline]
+	pub fn done_until(&self) -> CommitVersion {
+		self.multi.done_until()
+	}
+
+	/// Returns (query_done_until, command_done_until) for debugging watermark state.
+	#[inline]
+	pub fn watermarks(&self) -> (CommitVersion, CommitVersion) {
+		self.multi.watermarks()
 	}
 
 	#[inline]

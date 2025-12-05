@@ -13,10 +13,9 @@ use std::{
 
 use reifydb_core::{
 	CommitVersion, EncodedKey, Result,
-	event::cdc::CdcCheckpointAdvancedEvent,
 	interface::{
 		Cdc, CdcChange, CdcConsumerId, CdcQueryTransaction, CommandTransaction, Engine as EngineInterface, Key,
-		KeyKind, MultiVersionCommandTransaction, WithEventBus,
+		KeyKind, MultiVersionCommandTransaction,
 	},
 	key::{CdcConsumerKey, EncodableKey},
 };
@@ -91,14 +90,31 @@ impl<C: CdcConsume> PollConsumer<C> {
 		state: &ConsumerState,
 		engine: &StandardEngine,
 		consumer: &C,
-		consumer_id: &CdcConsumerId,
 		max_batch_size: Option<u64>,
 	) -> Result<Option<(CommitVersion, u64)>> {
+		// Get current version and wait briefly for in-flight commits to complete.
+		// This ensures done_until catches up to avoid missing CDC events.
+		let current_version = engine.current_version()?;
+		let target_version = CommitVersion(current_version.0.saturating_sub(1));
+
+		// Wait up to 50ms for done_until to catch up (best effort, not required)
+		let _ = engine.try_wait_for_watermark(target_version, Duration::from_millis(50));
+
+		// Get the safe version (might be higher after waiting)
+		let safe_version = engine.done_until();
+
 		let mut transaction = engine.begin_command()?;
 
 		let checkpoint = CdcCheckpoint::fetch(&mut transaction, &state.consumer_key)?;
 
-		let transactions = fetch_cdcs_since(&mut transaction, checkpoint, max_batch_size)?;
+		// If safe_version <= checkpoint, there's nothing safe to fetch yet
+		if safe_version <= checkpoint {
+			transaction.rollback()?;
+			return Ok(None);
+		}
+
+		// Only fetch CDC events up to safe_version to avoid race conditions
+		let transactions = fetch_cdcs_until(&mut transaction, checkpoint, safe_version, max_batch_size)?;
 		if transactions.is_empty() {
 			transaction.rollback()?;
 			return Ok(None);
@@ -147,11 +163,6 @@ impl<C: CdcConsume> PollConsumer<C> {
 		CdcCheckpoint::persist(&mut transaction, &state.consumer_key, latest_version)?;
 		let current_version = transaction.commit()?;
 
-		engine.event_bus().emit(CdcCheckpointAdvancedEvent {
-			consumer_id: consumer_id.clone(),
-			version: latest_version,
-		});
-
 		let lag = current_version.0.saturating_sub(latest_version.0);
 
 		Ok(Some((latest_version, lag)))
@@ -166,20 +177,19 @@ impl<C: CdcConsume> PollConsumer<C> {
 		debug!("[Consumer {:?}] Started polling with interval {:?}", config.consumer_id, config.poll_interval);
 
 		while state.running.load(Ordering::Acquire) {
-			match Self::consume_batch(
-				&state,
-				&engine,
-				&consumer,
-				&config.consumer_id,
-				config.max_batch_size,
-			) {
-				Ok(Some((_processed_version, _lag))) => {
-					// FIXME log this
-					println!("processed {} with lag {}", _processed_version, _lag)
+			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size) {
+				Ok(Some((processed_version, lag))) => {
+					debug!("processed {} with lag {}", processed_version, lag);
+					thread::sleep(config.poll_interval);
 				}
-				Ok(None) => {}
+				Ok(None) => {
+					// No events to process - sleep before retrying
+					thread::sleep(config.poll_interval);
+				}
 				Err(error) => {
 					error!("[Consumer {:?}] Error consuming events: {}", config.consumer_id, error);
+					// Sleep before retrying on error
+					thread::sleep(config.poll_interval);
 				}
 			}
 		}
@@ -227,14 +237,18 @@ impl<F: CdcConsume> CdcConsumer for PollConsumer<F> {
 	}
 }
 
-fn fetch_cdcs_since(
+fn fetch_cdcs_until(
 	txn: &mut impl CommandTransaction,
 	since_version: CommitVersion,
+	until_version: CommitVersion,
 	max_batch_size: Option<u64>,
 ) -> Result<Vec<Cdc>> {
 	let upper_bound = match max_batch_size {
-		Some(size) => Bound::Included(CommitVersion(since_version.0.saturating_add(size))),
-		None => Bound::Unbounded,
+		Some(size) => {
+			let batch_limit = CommitVersion(since_version.0.saturating_add(size));
+			Bound::Included(batch_limit.min(until_version))
+		}
+		None => Bound::Included(until_version),
 	};
 	txn.with_cdc_query(|cdc| Ok(cdc.range(Bound::Excluded(since_version), upper_bound)?.collect::<Vec<_>>()))
 }

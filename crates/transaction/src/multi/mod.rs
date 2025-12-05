@@ -1,6 +1,8 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use std::time::Duration;
+
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange, Error,
 	event::EventBus,
@@ -11,6 +13,21 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 use reifydb_store_transaction::TransactionStore;
+
+/// Error returned when waiting for watermark times out
+#[derive(Debug, Clone)]
+pub struct AwaitWatermarkError {
+	pub version: CommitVersion,
+	pub timeout: Duration,
+}
+
+impl std::fmt::Display for AwaitWatermarkError {
+	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+		write!(f, "Timeout waiting for watermark to reach version {} after {:?}", self.version.0, self.timeout)
+	}
+}
+
+impl std::error::Error for AwaitWatermarkError {}
 
 use crate::{
 	multi::{
@@ -52,6 +69,46 @@ impl TransactionMultiVersion {
 
 	pub fn serializable(store: TransactionStore, single: TransactionSingleVersion, bus: EventBus) -> Self {
 		Self::Serializable(TransactionSerializable::new(store, single, bus))
+	}
+
+	/// Wait for the watermark to reach the specified version.
+	/// Returns Ok(()) if the watermark reaches the version within the timeout,
+	/// or Err(AwaitWatermarkError) if the timeout expires.
+	pub fn try_wait_for_watermark(
+		&self,
+		version: CommitVersion,
+		timeout: Duration,
+	) -> Result<(), AwaitWatermarkError> {
+		match self {
+			Self::Optimistic(t) => t.tm.try_wait_for_watermark(version, timeout),
+			Self::Serializable(t) => t.tm.try_wait_for_watermark(version, timeout),
+		}
+	}
+
+	/// Get the current version from the transaction manager
+	pub fn current_version(&self) -> crate::Result<CommitVersion> {
+		match self {
+			Self::Optimistic(t) => t.tm.version(),
+			Self::Serializable(t) => t.tm.version(),
+		}
+	}
+
+	/// Returns the highest version where ALL prior versions have completed.
+	/// This is useful for CDC polling to know the safe upper bound for fetching
+	/// CDC events - all events up to this version are guaranteed to be in storage.
+	pub fn done_until(&self) -> CommitVersion {
+		match self {
+			Self::Optimistic(t) => t.tm.done_until(),
+			Self::Serializable(t) => t.tm.done_until(),
+		}
+	}
+
+	/// Returns (query_done_until, command_done_until) for debugging watermark state.
+	pub fn watermarks(&self) -> (CommitVersion, CommitVersion) {
+		match self {
+			Self::Optimistic(t) => t.tm.watermarks(),
+			Self::Serializable(t) => t.tm.watermarks(),
+		}
 	}
 }
 
