@@ -6,7 +6,7 @@ use reifydb_core::{
 	CommitVersion, Row,
 	interface::{FlowNodeId, SourceId},
 };
-use reifydb_type::{RowNumber, Value};
+use reifydb_type::{RowNumber, Type, Value};
 
 pub mod change;
 pub mod context;
@@ -90,6 +90,17 @@ impl FlowChange {
 	}
 }
 
+/// A single column definition in an operator's input/output
+#[derive(Debug, Clone, Copy)]
+pub struct OperatorColumnDef {
+	/// Column name
+	pub name: &'static str,
+	/// Column type
+	pub field_type: Type,
+	/// Human-readable description
+	pub description: &'static str,
+}
+
 /// Static metadata about an operator type
 /// This trait provides compile-time constant metadata
 pub trait FFIOperatorMetadata {
@@ -99,6 +110,12 @@ pub trait FFIOperatorMetadata {
 	const API_VERSION: u32;
 	/// Semantic version of the operator (e.g., "1.0.0")
 	const VERSION: &'static str;
+	/// Human-readable description of the operator
+	const DESCRIPTION: &'static str;
+	/// Input columns describing expected input row format
+	const INPUT_COLUMNS: &'static [OperatorColumnDef];
+	/// Output columns describing output row format
+	const OUTPUT_COLUMNS: &'static [OperatorColumnDef];
 }
 
 /// Runtime operator behavior
@@ -126,11 +143,11 @@ pub mod prelude {
 		key::EncodableKey,
 		value::encoded::{EncodedKey, EncodedValues},
 	};
-	pub use reifydb_type::{RowNumber, Value};
+	pub use reifydb_type::{RowNumber, Type, Value};
 
 	pub use crate::{
 		FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowChangeBuilder,
-		FlowChangeOrigin, FlowDiff,
+		FlowChangeOrigin, FlowDiff, OperatorColumnDef,
 		context::OperatorContext,
 		error::{FFIError, Result},
 		stateful::State,

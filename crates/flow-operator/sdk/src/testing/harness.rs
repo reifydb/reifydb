@@ -288,6 +288,9 @@ mod tests {
 		const NAME: &'static str = "test_operator";
 		const API_VERSION: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Simple pass-through test operator";
+		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
+		const OUTPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
 	}
 
 	impl FFIOperator for TestOperator {
@@ -319,6 +322,9 @@ mod tests {
 		const NAME: &'static str = "stateful_test_operator";
 		const API_VERSION: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
+		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
+		const OUTPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
 	}
 
 	impl FFIOperator for StatefulTestOperator {

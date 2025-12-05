@@ -190,6 +190,9 @@ mod tests {
 		const NAME: &'static str = "row_number_test";
 		const API_VERSION: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
+		const DESCRIPTION: &'static str = "Test operator for row number provider";
+		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
+		const OUTPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
 	}
 
 	impl FFIOperator for RowNumberTestOperator {

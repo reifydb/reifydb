@@ -246,3 +246,41 @@ pub struct StateIteratorFFI {
 pub struct StoreIteratorFFI {
 	_opaque: [u8; 0],
 }
+
+/// FFI-safe operator column definition
+///
+/// Describes a single column in an operator's input or output,
+/// including name, type, and description for documentation purposes.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FFIOperatorColumnDef {
+	/// Column name (UTF-8 encoded)
+	pub name: BufferFFI,
+	/// Type code (use reifydb_type::Type::to_u8/from_u8)
+	pub field_type: u8,
+	/// Human-readable description (UTF-8 encoded)
+	pub description: BufferFFI,
+}
+
+/// FFI-safe operator column definitions
+///
+/// Describes the input or output columns of an operator for documentation
+/// and discovery purposes.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct FFIOperatorColumnDefs {
+	/// Pointer to array of column definitions
+	pub columns: *const FFIOperatorColumnDef,
+	/// Number of columns
+	pub column_count: usize,
+}
+
+impl FFIOperatorColumnDefs {
+	/// Create empty column definitions (no columns)
+	pub const fn empty() -> Self {
+		Self {
+			columns: core::ptr::null(),
+			column_count: 0,
+		}
+	}
+}

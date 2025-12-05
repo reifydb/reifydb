@@ -1,32 +1,60 @@
 // Redesigned FFI exports that work with static metadata
 
-use std::{
-	collections::HashMap,
-	ffi::{CString, c_void},
-	ptr, slice,
-};
+use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
 use reifydb_core::interface::FlowNodeId;
-use reifydb_flow_operator_abi::{CURRENT_API_VERSION, FFIOperatorDescriptor, OPERATOR_MAGIC};
+use reifydb_flow_operator_abi::{
+	BufferFFI, CURRENT_API_VERSION, FFIOperatorColumnDef, FFIOperatorColumnDefs, FFIOperatorDescriptor,
+	OPERATOR_MAGIC,
+};
 use reifydb_type::Value;
 
 use crate::{
-	FFIOperatorWithMetadata,
+	FFIOperatorWithMetadata, OperatorColumnDef,
 	ffi::wrapper::{OperatorWrapper, create_vtable},
 };
 
+/// Convert a static string to a BufferFFI
+fn str_to_buffer(s: &'static str) -> BufferFFI {
+	BufferFFI {
+		ptr: s.as_ptr(),
+		len: s.len(),
+		cap: s.len(),
+	}
+}
+
+/// Convert operator column definitions to FFI representation
+fn columns_to_ffi(columns: &'static [OperatorColumnDef]) -> FFIOperatorColumnDefs {
+	if columns.is_empty() {
+		return FFIOperatorColumnDefs::empty();
+	}
+
+	let ffi_columns: Vec<FFIOperatorColumnDef> = columns
+		.iter()
+		.map(|c| FFIOperatorColumnDef {
+			name: str_to_buffer(c.name),
+			field_type: c.field_type.to_u8(),
+			description: str_to_buffer(c.description),
+		})
+		.collect();
+
+	let column_count = ffi_columns.len();
+	let columns_ptr = Box::leak(ffi_columns.into_boxed_slice()).as_ptr();
+
+	FFIOperatorColumnDefs {
+		columns: columns_ptr,
+		column_count,
+	}
+}
+
 pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor {
-	let name_cstring = CString::new(O::NAME).unwrap_or_else(|_| CString::new("unknown").unwrap());
-	// Leak the CString and get a pointer to its internal C string data
-	let name_ptr = Box::leak(Box::new(name_cstring)).as_ptr();
-
-	let version_cstring = CString::new(O::VERSION).unwrap_or_else(|_| CString::new("0.0.0").unwrap());
-	let version_ptr = Box::leak(Box::new(version_cstring)).as_ptr();
-
 	FFIOperatorDescriptor {
 		api_version: CURRENT_API_VERSION,
-		operator_name: name_ptr,
-		operator_version: version_ptr,
+		operator_name: str_to_buffer(O::NAME),
+		operator_version: str_to_buffer(O::VERSION),
+		operator_description: str_to_buffer(O::DESCRIPTION),
+		input_columns: columns_to_ffi(O::INPUT_COLUMNS),
+		output_columns: columns_to_ffi(O::OUTPUT_COLUMNS),
 		vtable: create_vtable::<O>(),
 	}
 }

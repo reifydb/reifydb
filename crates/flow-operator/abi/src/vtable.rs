@@ -1,6 +1,6 @@
 //! Virtual table definitions for FFI operators
 
-use core::ffi::{c_char, c_void};
+use core::ffi::c_void;
 
 use crate::types::*;
 
@@ -69,11 +69,20 @@ pub struct FFIOperatorDescriptor {
 	/// API version (must match CURRENT_API_VERSION)
 	pub api_version: u32,
 
-	/// Operator name (null-terminated C string)
-	pub operator_name: *const c_char,
+	/// Operator name (UTF-8 encoded)
+	pub operator_name: BufferFFI,
 
-	/// Operator semantic version (null-terminated C string, e.g., "1.0.0")
-	pub operator_version: *const c_char,
+	/// Operator semantic version (UTF-8 encoded, e.g., "1.0.0")
+	pub operator_version: BufferFFI,
+
+	/// Operator description (UTF-8 encoded)
+	pub operator_description: BufferFFI,
+
+	/// Input columns describing expected input row format (for documentation)
+	pub input_columns: FFIOperatorColumnDefs,
+
+	/// Output columns describing output row format (for documentation)
+	pub output_columns: FFIOperatorColumnDefs,
 
 	/// Virtual function table with all operator methods
 	pub vtable: FFIOperatorVTable,

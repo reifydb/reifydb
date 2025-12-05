@@ -2,7 +2,6 @@
 
 use std::{
 	collections::HashMap,
-	ffi::CStr,
 	path::{Path, PathBuf},
 	sync::OnceLock,
 };
@@ -11,11 +10,25 @@ use libloading::{Library, Symbol};
 use parking_lot::RwLock;
 use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{
-	CURRENT_API_VERSION, FFIOperatorCreateFn, FFIOperatorDescriptor, FFIOperatorMagicFn, OPERATOR_MAGIC,
+	BufferFFI, CURRENT_API_VERSION, FFIOperatorColumnDefs, FFIOperatorCreateFn, FFIOperatorDescriptor,
+	FFIOperatorMagicFn, OPERATOR_MAGIC,
 };
 use reifydb_flow_operator_sdk::{FFIError, Result as FFIResult};
 
 use crate::operator::FFIOperator;
+
+/// Extract a UTF-8 string from a BufferFFI
+///
+/// # Safety
+/// The buffer must contain valid UTF-8 data and the pointer must be valid for the given length
+unsafe fn buffer_to_string(buffer: &BufferFFI) -> String {
+	if buffer.ptr.is_null() || buffer.len == 0 {
+		return String::new();
+	}
+	// SAFETY: caller guarantees buffer.ptr is valid for buffer.len bytes
+	let slice = unsafe { std::slice::from_raw_parts(buffer.ptr, buffer.len) };
+	std::str::from_utf8(slice).unwrap_or("<invalid UTF-8>").to_string()
+}
 
 /// Global singleton FFI operator loader
 /// Ensures libraries stay loaded for the entire process lifetime
@@ -93,6 +106,9 @@ impl FFIOperatorLoader {
 				api_version: (*descriptor_ptr).api_version,
 				operator_name: (*descriptor_ptr).operator_name,
 				operator_version: (*descriptor_ptr).operator_version,
+				operator_description: (*descriptor_ptr).operator_description,
+				input_columns: (*descriptor_ptr).input_columns,
+				output_columns: (*descriptor_ptr).output_columns,
 				vtable: (*descriptor_ptr).vtable,
 			})
 		}
@@ -114,7 +130,7 @@ impl FFIOperatorLoader {
 		}
 
 		// Extract operator name
-		let operator_name = unsafe { CStr::from_ptr(descriptor.operator_name).to_str().unwrap().to_string() };
+		let operator_name = unsafe { buffer_to_string(&descriptor.operator_name) };
 
 		// Store operator name -> path mapping
 		self.operator_paths.insert(operator_name.clone(), path.to_path_buf());
@@ -131,10 +147,10 @@ impl FFIOperatorLoader {
 	/// * `path` - Path to the shared library file
 	///
 	/// # Returns
-	/// * `Ok(Some((name, api_version)))` - Successfully registered operator
+	/// * `Ok(Some(LoadedOperatorInfo))` - Successfully registered operator with full metadata
 	/// * `Ok(None)` - Library is not a valid FFI operator (silently skipped)
 	/// * `Err(FFIError)` - Loading or validation failed
-	pub fn register_operator(&mut self, path: &Path) -> FFIResult<Option<(String, u32)>> {
+	pub fn register_operator(&mut self, path: &Path) -> FFIResult<Option<LoadedOperatorInfo>> {
 		if !self.load_operator_library(path)? {
 			return Ok(None);
 		}
@@ -143,7 +159,20 @@ impl FFIOperatorLoader {
 		let descriptor = self.get_descriptor(library)?;
 		let (operator_name, api_version) = self.validate_and_register(&descriptor, path)?;
 
-		Ok(Some((operator_name, api_version)))
+		// Extract full operator info including column definitions
+		let info = unsafe {
+			LoadedOperatorInfo {
+				operator_name,
+				library_path: path.to_path_buf(),
+				api_version,
+				operator_version: buffer_to_string(&descriptor.operator_version),
+				description: buffer_to_string(&descriptor.operator_description),
+				input_columns: extract_column_defs(&descriptor.input_columns),
+				output_columns: extract_column_defs(&descriptor.output_columns),
+			}
+		};
+
+		Ok(Some(info))
 	}
 
 	/// Load an operator from a dynamic library
@@ -256,13 +285,7 @@ impl FFIOperatorLoader {
 	}
 
 	/// List all loaded operators with their metadata
-	///
-	/// Returns a vector of tuples containing:
-	/// - Operator name
-	/// - Library path
-	/// - API version
-	/// - Semantic version
-	pub fn list_loaded_operators(&self) -> Vec<(String, PathBuf, u32, String)> {
+	pub fn list_loaded_operators(&self) -> Vec<LoadedOperatorInfo> {
 		let mut operators = Vec::new();
 
 		for (path, library) in &self.loaded_libraries {
@@ -276,24 +299,17 @@ impl FFIOperatorLoader {
 					if !descriptor_ptr.is_null() {
 						let descriptor = &*descriptor_ptr;
 
-						// Extract operator name
-						let operator_name = CStr::from_ptr(descriptor.operator_name)
-							.to_str()
-							.unwrap_or("<invalid UTF-8>")
-							.to_string();
-
-						// Extract operator version
-						let operator_version = CStr::from_ptr(descriptor.operator_version)
-							.to_str()
-							.unwrap_or("<invalid UTF-8>")
-							.to_string();
-
-						operators.push((
-							operator_name,
-							path.clone(),
-							descriptor.api_version,
-							operator_version,
-						));
+						operators.push(LoadedOperatorInfo {
+							operator_name: buffer_to_string(&descriptor.operator_name),
+							library_path: path.clone(),
+							api_version: descriptor.api_version,
+							operator_version: buffer_to_string(
+								&descriptor.operator_version,
+							),
+							description: buffer_to_string(&descriptor.operator_description),
+							input_columns: extract_column_defs(&descriptor.input_columns),
+							output_columns: extract_column_defs(&descriptor.output_columns),
+						});
 					}
 				}
 			}
@@ -301,6 +317,50 @@ impl FFIOperatorLoader {
 
 		operators
 	}
+}
+
+/// Information about a loaded FFI operator
+#[derive(Debug, Clone)]
+pub struct LoadedOperatorInfo {
+	pub operator_name: String,
+	pub library_path: PathBuf,
+	pub api_version: u32,
+	pub operator_version: String,
+	pub description: String,
+	pub input_columns: Vec<ColumnDefInfo>,
+	pub output_columns: Vec<ColumnDefInfo>,
+}
+
+/// Information about a single column definition in an operator
+#[derive(Debug, Clone)]
+pub struct ColumnDefInfo {
+	pub name: String,
+	pub field_type: reifydb_type::Type,
+	pub description: String,
+}
+
+/// Extract column definitions from an FFIOperatorColumnDefs
+///
+/// # Safety
+/// The column_defs must have valid columns pointer for column_count elements
+unsafe fn extract_column_defs(column_defs: &FFIOperatorColumnDefs) -> Vec<ColumnDefInfo> {
+	if column_defs.columns.is_null() || column_defs.column_count == 0 {
+		return Vec::new();
+	}
+
+	let mut columns = Vec::with_capacity(column_defs.column_count);
+	for i in 0..column_defs.column_count {
+		// SAFETY: caller guarantees column_defs.columns is valid for column_count elements
+		let col = unsafe { &*column_defs.columns.add(i) };
+		columns.push(ColumnDefInfo {
+			// SAFETY: column buffers are valid UTF-8 strings from the operator
+			name: unsafe { buffer_to_string(&col.name) },
+			field_type: reifydb_type::Type::from_u8(col.field_type),
+			description: unsafe { buffer_to_string(&col.description) },
+		});
+	}
+
+	columns
 }
 
 impl Default for FFIOperatorLoader {

@@ -17,7 +17,10 @@ use std::{
 use parking_lot::RwLock;
 use reifydb_core::{
 	CommitVersion, Error,
-	event::{EventBus, flow::FlowOperatorLoadedEvent},
+	event::{
+		EventBus,
+		flow::{FlowOperatorLoadedEvent, OperatorColumnDef},
+	},
 	interface::{FlowId, FlowNodeId, SourceId, TableId, ViewId},
 };
 use reifydb_engine::{StandardRowEvaluator, execute::Executor};
@@ -26,7 +29,7 @@ use reifydb_type::{Value, internal};
 use tracing::{debug, error, instrument};
 
 use crate::{
-	ffi::loader::ffi_operator_loader,
+	ffi::loader::{ColumnDefInfo, ffi_operator_loader},
 	operator::{BoxedOperator, Operators, transform::registry::TransformOperatorRegistry},
 };
 
@@ -110,7 +113,7 @@ impl FlowEngine {
 
 			// Register the operator without instantiating it
 			let mut guard = loader.write();
-			let (operator_name, api_version) = match guard.register_operator(&path)? {
+			let info = match guard.register_operator(&path)? {
 				Some(info) => info,
 				None => {
 					// Not a valid FFI operator, skip silently
@@ -118,13 +121,28 @@ impl FlowEngine {
 				}
 			};
 
-			debug!("Registered FFI operator: {} from {:?}", operator_name, path);
+			debug!("Registered FFI operator: {} from {:?}", info.operator_name, path);
+
+			// Convert column definitions to event format
+			fn convert_column_defs(columns: &[ColumnDefInfo]) -> Vec<OperatorColumnDef> {
+				columns.iter()
+					.map(|c| OperatorColumnDef {
+						name: c.name.clone(),
+						field_type: c.field_type,
+						description: c.description.clone(),
+					})
+					.collect()
+			}
 
 			// Emit event for loaded operator
 			event_bus.emit(FlowOperatorLoadedEvent {
-				operator_name: operator_name.clone(),
-				library_path: path.clone(),
-				api_version,
+				operator_name: info.operator_name,
+				library_path: info.library_path,
+				api_version: info.api_version,
+				operator_version: info.operator_version,
+				description: info.description,
+				input: convert_column_defs(&info.input_columns),
+				output: convert_column_defs(&info.output_columns),
 			});
 		}
 
