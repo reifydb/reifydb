@@ -56,7 +56,7 @@ pub enum JsonFlowNodeType {
 		expressions: Vec<JsonExpression>,
 	},
 	Apply {
-		operator_name: String,
+		operator: String,
 		expressions: Vec<JsonExpression>,
 	},
 	SinkView {
@@ -157,7 +157,7 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				operator_name,
 				expressions,
 			} => JsonFlowNodeType::Apply {
-				operator_name: operator_name.clone(),
+				operator: operator_name.clone(),
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
 			FlowNodeType::SinkView {
