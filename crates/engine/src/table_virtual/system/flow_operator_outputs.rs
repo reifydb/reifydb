@@ -65,7 +65,7 @@ impl<'a> TableVirtual<'a> for FlowOperatorOutputs {
 				operator_names.push(operator_info.operator_name.as_str());
 				positions.push(position as u8);
 				names.push(col.name.as_str());
-				column_types.push(col.field_type.to_u8());
+				column_types.push(col.field_type.get_type().to_u8());
 				descriptions.push(col.description.as_str());
 			}
 		}

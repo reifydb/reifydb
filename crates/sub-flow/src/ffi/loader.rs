@@ -335,7 +335,7 @@ pub struct LoadedOperatorInfo {
 #[derive(Debug, Clone)]
 pub struct ColumnDefInfo {
 	pub name: String,
-	pub field_type: reifydb_type::Type,
+	pub field_type: reifydb_type::TypeConstraint,
 	pub description: String,
 }
 
@@ -344,6 +344,8 @@ pub struct ColumnDefInfo {
 /// # Safety
 /// The column_defs must have valid columns pointer for column_count elements
 unsafe fn extract_column_defs(column_defs: &FFIOperatorColumnDefs) -> Vec<ColumnDefInfo> {
+	use reifydb_type::{FFITypeConstraint, TypeConstraint};
+
 	if column_defs.columns.is_null() || column_defs.column_count == 0 {
 		return Vec::new();
 	}
@@ -352,10 +354,19 @@ unsafe fn extract_column_defs(column_defs: &FFIOperatorColumnDefs) -> Vec<Column
 	for i in 0..column_defs.column_count {
 		// SAFETY: caller guarantees column_defs.columns is valid for column_count elements
 		let col = unsafe { &*column_defs.columns.add(i) };
+
+		// Reconstruct TypeConstraint from FFI fields
+		let field_type = TypeConstraint::from_ffi(FFITypeConstraint {
+			base_type: col.base_type,
+			constraint_type: col.constraint_type,
+			constraint_param1: col.constraint_param1,
+			constraint_param2: col.constraint_param2,
+		});
+
 		columns.push(ColumnDefInfo {
 			// SAFETY: column buffers are valid UTF-8 strings from the operator
 			name: unsafe { buffer_to_string(&col.name) },
-			field_type: reifydb_type::Type::from_u8(col.field_type),
+			field_type,
 			description: unsafe { buffer_to_string(&col.description) },
 		});
 	}

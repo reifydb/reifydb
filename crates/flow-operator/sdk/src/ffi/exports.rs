@@ -31,10 +31,16 @@ fn columns_to_ffi(columns: &'static [OperatorColumnDef]) -> FFIOperatorColumnDef
 
 	let ffi_columns: Vec<FFIOperatorColumnDef> = columns
 		.iter()
-		.map(|c| FFIOperatorColumnDef {
-			name: str_to_buffer(c.name),
-			field_type: c.field_type.to_u8(),
-			description: str_to_buffer(c.description),
+		.map(|c| {
+			let ffi_type = c.field_type.to_ffi();
+			FFIOperatorColumnDef {
+				name: str_to_buffer(c.name),
+				base_type: ffi_type.base_type,
+				constraint_type: ffi_type.constraint_type,
+				constraint_param1: ffi_type.constraint_param1,
+				constraint_param2: ffi_type.constraint_param2,
+				description: str_to_buffer(c.description),
+			}
 		})
 		.collect();
 

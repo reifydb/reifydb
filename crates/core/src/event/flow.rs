@@ -3,7 +3,7 @@
 
 use std::path::PathBuf;
 
-use reifydb_type::Type;
+use reifydb_type::TypeConstraint;
 
 use crate::impl_event;
 
@@ -12,8 +12,8 @@ use crate::impl_event;
 pub struct OperatorColumnDef {
 	/// Column name
 	pub name: String,
-	/// Column type
-	pub field_type: Type,
+	/// Column type constraint
+	pub field_type: TypeConstraint,
 	/// Human-readable description
 	pub description: String,
 }

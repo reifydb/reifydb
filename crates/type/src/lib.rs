@@ -19,9 +19,9 @@ pub use fragment::{
 };
 pub use params::Params;
 pub use value::{
-	Blob, Constraint, Date, DateTime, Decimal, DictionaryEntryId, Duration, FromValueError, GetType, IdentityId,
-	Int, IntoValue, OrderedF32, OrderedF64, RowNumber, Time, TryFromValue, TryFromValueCoerce, Type,
-	TypeConstraint, Uint, Uuid4, Uuid7, Value, blob, boolean,
+	Blob, Constraint, Date, DateTime, Decimal, DictionaryEntryId, Duration, FFITypeConstraint, FromValueError,
+	GetType, IdentityId, Int, IntoValue, OrderedF32, OrderedF64, RowNumber, Time, TryFromValue, TryFromValueCoerce,
+	Type, TypeConstraint, Uint, Uuid4, Uuid7, Value, blob, boolean,
 	boolean::parse_bool,
 	decimal::parse_decimal,
 	frame::{Frame, FrameColumn, FrameColumnData, FrameError, FrameRow, FrameRows, FromFrame, FromFrameError},

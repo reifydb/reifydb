@@ -6,7 +6,7 @@ use reifydb_core::{
 	CommitVersion, Row,
 	interface::{FlowNodeId, SourceId},
 };
-use reifydb_type::{RowNumber, Type, Value};
+use reifydb_type::{RowNumber, TypeConstraint, Value};
 
 pub mod change;
 pub mod context;
@@ -95,8 +95,8 @@ impl FlowChange {
 pub struct OperatorColumnDef {
 	/// Column name
 	pub name: &'static str,
-	/// Column type
-	pub field_type: Type,
+	/// Column type constraint (use TypeConstraint::unconstrained(Type::X) for unconstrained types)
+	pub field_type: TypeConstraint,
 	/// Human-readable description
 	pub description: &'static str,
 }
@@ -143,7 +143,7 @@ pub mod prelude {
 		key::EncodableKey,
 		value::encoded::{EncodedKey, EncodedValues},
 	};
-	pub use reifydb_type::{RowNumber, Type, Value};
+	pub use reifydb_type::{RowNumber, Type, TypeConstraint, Value};
 
 	pub use crate::{
 		FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowChangeBuilder,

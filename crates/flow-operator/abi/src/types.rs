@@ -250,14 +250,20 @@ pub struct StoreIteratorFFI {
 /// FFI-safe operator column definition
 ///
 /// Describes a single column in an operator's input or output,
-/// including name, type, and description for documentation purposes.
+/// including name, type constraint, and description for documentation purposes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy)]
 pub struct FFIOperatorColumnDef {
 	/// Column name (UTF-8 encoded)
 	pub name: BufferFFI,
-	/// Type code (use reifydb_type::Type::to_u8/from_u8)
-	pub field_type: u8,
+	/// Base type code (use reifydb_type::Type::to_u8/from_u8)
+	pub base_type: u8,
+	/// Constraint type: 0=None, 1=MaxBytes, 2=PrecisionScale
+	pub constraint_type: u8,
+	/// First constraint parameter: MaxBytes value OR precision (as u32)
+	pub constraint_param1: u32,
+	/// Second constraint parameter: scale (only for PrecisionScale, 0 otherwise)
+	pub constraint_param2: u32,
 	/// Human-readable description (UTF-8 encoded)
 	pub description: BufferFFI,
 }

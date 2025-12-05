@@ -5,13 +5,13 @@ use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
 use parking_lot::RwLock;
 use reifydb_core::event::{EventListener, flow::FlowOperatorLoadedEvent};
-use reifydb_type::Type;
+use reifydb_type::TypeConstraint;
 
 /// Information about a single column definition in an operator
 #[derive(Clone, Debug)]
 pub struct OperatorColumnInfo {
 	pub name: String,
-	pub field_type: Type,
+	pub field_type: TypeConstraint,
 	pub description: String,
 }
 

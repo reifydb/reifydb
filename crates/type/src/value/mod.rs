@@ -35,7 +35,7 @@ pub mod uint;
 pub mod uuid;
 
 pub use blob::Blob;
-pub use constraint::{Constraint, TypeConstraint};
+pub use constraint::{Constraint, FFITypeConstraint, TypeConstraint};
 pub use date::Date;
 pub use datetime::DateTime;
 pub use decimal::Decimal;
