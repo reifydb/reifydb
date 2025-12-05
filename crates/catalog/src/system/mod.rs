@@ -12,6 +12,8 @@ mod dictionaries;
 mod flow_edges;
 mod flow_node_types;
 mod flow_nodes;
+mod flow_operator_inputs;
+mod flow_operator_outputs;
 mod flow_operators;
 mod flows;
 mod namespaces;
@@ -33,6 +35,8 @@ use dictionaries::dictionaries;
 use flow_edges::flow_edges;
 use flow_node_types::flow_node_types;
 use flow_nodes::flow_nodes;
+use flow_operator_inputs::flow_operator_inputs;
+use flow_operator_outputs::flow_operator_outputs;
 use flow_operators::flow_operators;
 use flows::flows;
 use namespaces::namespaces;
@@ -229,11 +233,35 @@ pub mod ids {
 		pub mod flow_operators {
 			use reifydb_core::interface::ColumnId;
 
-			pub const OPERATOR_NAME: ColumnId = ColumnId(1);
+			pub const OPERATOR: ColumnId = ColumnId(1);
 			pub const LIBRARY_PATH: ColumnId = ColumnId(2);
 			pub const API_VERSION: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 3] = [OPERATOR_NAME, LIBRARY_PATH, API_VERSION];
+			pub const ALL: [ColumnId; 3] = [OPERATOR, LIBRARY_PATH, API_VERSION];
+		}
+
+		pub mod flow_operator_inputs {
+			use reifydb_core::interface::ColumnId;
+
+			pub const OPERATOR: ColumnId = ColumnId(1);
+			pub const POSITION: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const TYPE: ColumnId = ColumnId(4);
+			pub const DESCRIPTION: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [OPERATOR, POSITION, NAME, TYPE, DESCRIPTION];
+		}
+
+		pub mod flow_operator_outputs {
+			use reifydb_core::interface::ColumnId;
+
+			pub const OPERATOR: ColumnId = ColumnId(1);
+			pub const POSITION: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const TYPE: ColumnId = ColumnId(4);
+			pub const DESCRIPTION: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [OPERATOR, POSITION, NAME, TYPE, DESCRIPTION];
 		}
 
 		pub mod virtual_tables {
@@ -287,8 +315,10 @@ pub mod ids {
 		pub const VIRTUAL_TABLES: TableVirtualId = TableVirtualId(18);
 		pub const TYPES: TableVirtualId = TableVirtualId(19);
 		pub const FLOW_NODE_TYPES: TableVirtualId = TableVirtualId(20);
+		pub const FLOW_OPERATOR_INPUTS: TableVirtualId = TableVirtualId(21);
+		pub const FLOW_OPERATOR_OUTPUTS: TableVirtualId = TableVirtualId(22);
 
-		pub const ALL: [TableVirtualId; 20] = [
+		pub const ALL: [TableVirtualId; 22] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -309,6 +339,8 @@ pub mod ids {
 			VIRTUAL_TABLES,
 			TYPES,
 			FLOW_NODE_TYPES,
+			FLOW_OPERATOR_INPUTS,
+			FLOW_OPERATOR_OUTPUTS,
 		];
 	}
 }
@@ -433,5 +465,15 @@ impl SystemCatalog {
 	/// Get the flow_node_types virtual table definition
 	pub fn get_system_flow_node_types_table_def() -> Arc<TableVirtualDef> {
 		flow_node_types()
+	}
+
+	/// Get the flow_operator_inputs virtual table definition
+	pub fn get_system_flow_operator_inputs_table_def() -> Arc<TableVirtualDef> {
+		flow_operator_inputs()
+	}
+
+	/// Get the flow_operator_outputs virtual table definition
+	pub fn get_system_flow_operator_outputs_table_def() -> Arc<TableVirtualDef> {
+		flow_operator_outputs()
 	}
 }

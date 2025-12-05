@@ -20,8 +20,8 @@ pub fn flow_operators() -> Arc<TableVirtualDef> {
 			name: "flow_operators".to_string(),
 			columns: vec![
 				ColumnDef {
-					id: OPERATOR_NAME,
-					name: "operator_name".to_string(),
+					id: OPERATOR,
+					name: "operator".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Utf8),
 					policies: vec![],
 					index: ColumnIndex(0),

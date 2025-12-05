@@ -534,7 +534,7 @@ mod tests {
 				operator_name: "my_operator".to_string(),
 				expressions: vec![],
 			},
-			r#"{"expressions":[],"operator_name":"my_operator"}"#,
+			r#"{"expressions":[],"operator":"my_operator"}"#,
 		);
 	}
 

@@ -18,24 +18,24 @@ use crate::{
 	table_virtual::{TableVirtual, TableVirtualContext},
 };
 
-/// Virtual table that exposes loaded FFI operators from shared libraries
-pub struct FlowOperators {
+/// Virtual table that exposes output column definitions for FFI operators
+pub struct FlowOperatorOutputs {
 	definition: Arc<TableVirtualDef>,
 	exhausted: bool,
 	flow_operator_store: FlowOperatorStore,
 }
 
-impl FlowOperators {
+impl FlowOperatorOutputs {
 	pub fn new(flow_operator_store: FlowOperatorStore) -> Self {
 		Self {
-			definition: SystemCatalog::get_system_flow_operators_table_def().clone(),
+			definition: SystemCatalog::get_system_flow_operator_outputs_table_def().clone(),
 			exhausted: false,
 			flow_operator_store,
 		}
 	}
 }
 
-impl<'a> TableVirtual<'a> for FlowOperators {
+impl<'a> TableVirtual<'a> for FlowOperatorOutputs {
 	fn initialize(&mut self, _txn: &mut StandardTransaction<'a>, _ctx: TableVirtualContext<'a>) -> Result<()> {
 		self.exhausted = false;
 		Ok(())
@@ -49,17 +49,25 @@ impl<'a> TableVirtual<'a> for FlowOperators {
 		// Access the flow operator store
 		let operators = self.flow_operator_store.list();
 
+		// Count total output columns across all operators for capacity
+		let capacity: usize = operators.iter().map(|op| op.output_columns.len()).sum();
+
 		// Pre-allocate vectors for column data
-		let capacity = operators.len();
 		let mut operator_names = ColumnData::utf8_with_capacity(capacity);
-		let mut library_paths = ColumnData::utf8_with_capacity(capacity);
-		let mut api_versions = ColumnData::uint4_with_capacity(capacity);
+		let mut positions = ColumnData::uint1_with_capacity(capacity);
+		let mut names = ColumnData::utf8_with_capacity(capacity);
+		let mut column_types = ColumnData::uint1_with_capacity(capacity);
+		let mut descriptions = ColumnData::utf8_with_capacity(capacity);
 
 		// Populate column data from loaded operators
 		for operator_info in operators {
-			operator_names.push(operator_info.operator_name.as_str());
-			library_paths.push(operator_info.library_path.to_str().unwrap_or("<invalid path>"));
-			api_versions.push(operator_info.api_version);
+			for (position, col) in operator_info.output_columns.iter().enumerate() {
+				operator_names.push(operator_info.operator_name.as_str());
+				positions.push(position as u8);
+				names.push(col.name.as_str());
+				column_types.push(col.field_type.to_u8());
+				descriptions.push(col.description.as_str());
+			}
 		}
 
 		let columns = vec![
@@ -68,12 +76,20 @@ impl<'a> TableVirtual<'a> for FlowOperators {
 				data: operator_names,
 			},
 			Column {
-				name: Fragment::owned_internal("library_path"),
-				data: library_paths,
+				name: Fragment::owned_internal("position"),
+				data: positions,
 			},
 			Column {
-				name: Fragment::owned_internal("api_version"),
-				data: api_versions,
+				name: Fragment::owned_internal("name"),
+				data: names,
+			},
+			Column {
+				name: Fragment::owned_internal("type"),
+				data: column_types,
+			},
+			Column {
+				name: Fragment::owned_internal("description"),
+				data: descriptions,
 			},
 		];
 
