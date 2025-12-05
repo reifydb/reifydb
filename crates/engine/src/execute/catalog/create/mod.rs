@@ -30,13 +30,11 @@ impl Executor {
 		use reifydb_catalog::{CatalogStore, store::flow::create::FlowToCreate};
 		use reifydb_core::interface::FlowStatus;
 
-		// Create the flow entry first to get a FlowId
-		// Use the view name with "_flow" suffix as the flow name
 		let flow_def = CatalogStore::create_flow(
 			txn,
 			FlowToCreate {
 				fragment: None,
-				name: format!("{}_flow", view.name),
+				name: view.name.to_string(),
 				namespace: view.namespace,
 				status: FlowStatus::Active,
 			},
@@ -44,7 +42,6 @@ impl Executor {
 
 		// Compile flow with the obtained FlowId - nodes and edges are persisted by the compiler
 		let _flow = compile_flow(txn, *plan, Some(view), flow_def.id)?;
-
 		Ok(())
 	}
 }
