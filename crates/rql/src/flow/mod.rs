@@ -30,7 +30,7 @@ use self::{
 	operator::{
 		aggregate::AggregateCompiler, apply::ApplyCompiler, distinct::DistinctCompiler, extend::ExtendCompiler,
 		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, sort::SortCompiler, take::TakeCompiler,
-		window::WindowCompiler,
+		union::UnionCompiler, window::WindowCompiler,
 	},
 	source::{
 		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
@@ -169,6 +169,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::JoinNatural(_) => {
 				unimplemented!()
 			}
+			PhysicalPlan::Union(union) => UnionCompiler::from(union).compile(self),
 
 			PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)

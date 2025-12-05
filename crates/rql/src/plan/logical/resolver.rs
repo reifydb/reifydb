@@ -81,19 +81,7 @@ pub fn resolve_unresolved_source(
 		return Ok(ResolvedSource::RingBuffer(ResolvedRingBuffer::new(name_fragment, namespace, ring_buffer)));
 	}
 
-	// Try flows
-	if let Some(flow) = tx.find_flow_by_name(ns_def.id, name_str)? {
-		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
-		// For now, just create without alias
-		return Ok(ResolvedSource::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));
-	}
-
-	// Try dictionaries
-	if let Some(dictionary) = tx.find_dictionary_by_name(ns_def.id, name_str)? {
-		return Ok(ResolvedSource::Dictionary(ResolvedDictionary::new(name_fragment, namespace, dictionary)));
-	}
-
-	// Try views
+	// Try views FIRST (deferred views share name with their flow)
 	if let Some(view) = tx.find_view_by_name(ns_def.id, name_str)? {
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
@@ -109,6 +97,18 @@ pub fn resolve_unresolved_source(
 			)),
 		};
 		return Ok(resolved_source);
+	}
+
+	// Try dictionaries
+	if let Some(dictionary) = tx.find_dictionary_by_name(ns_def.id, name_str)? {
+		return Ok(ResolvedSource::Dictionary(ResolvedDictionary::new(name_fragment, namespace, dictionary)));
+	}
+
+	// Try flows (after views, since deferred views take precedence)
+	if let Some(flow) = tx.find_flow_by_name(ns_def.id, name_str)? {
+		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
+		// For now, just create without alias
+		return Ok(ResolvedSource::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));
 	}
 
 	// Not found

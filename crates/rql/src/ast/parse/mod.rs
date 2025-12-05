@@ -33,6 +33,7 @@ mod sort;
 pub mod sub_query;
 mod take;
 mod tuple;
+mod union;
 mod update;
 mod window;
 

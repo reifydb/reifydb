@@ -463,6 +463,12 @@ impl Executor {
 					"Window operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 				)
 			}
+			PhysicalPlan::Union(_) => {
+				// Union operator requires flow engine
+				unimplemented!(
+					"Union operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+				)
+			}
 		}
 	}
 
@@ -528,6 +534,10 @@ impl Executor {
 				Ok(None)
 			}
 			PhysicalPlan::Window(_) => {
+				let mut std_txn = StandardTransaction::from(txn);
+				self.query(&mut std_txn, plan, params, stack)
+			}
+			PhysicalPlan::Union(_) => {
 				let mut std_txn = StandardTransaction::from(txn);
 				self.query(&mut std_txn, plan, params, stack)
 			}

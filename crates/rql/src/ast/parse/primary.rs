@@ -62,6 +62,7 @@ impl<'a> Parser<'a> {
 					Keyword::Join => Ok(Ast::Join(self.parse_join()?)),
 					Keyword::Left => Ok(Ast::Join(self.parse_left_join()?)),
 					Keyword::Natural => Ok(Ast::Join(self.parse_natural_join()?)),
+					Keyword::Union => Ok(Ast::Union(self.parse_union()?)),
 					Keyword::Take => Ok(Ast::Take(self.parse_take()?)),
 					Keyword::Sort => Ok(Ast::Sort(self.parse_sort()?)),
 					Keyword::Distinct => Ok(Ast::Distinct(self.parse_distinct()?)),

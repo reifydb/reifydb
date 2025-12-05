@@ -281,6 +281,17 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 			});
 		}
 
+		PhysicalPlan::Union(physical::UnionNode {
+			left,
+			right,
+		}) => {
+			write_node_header(output, prefix, is_last, "Union");
+			with_child_prefix(prefix, is_last, |child_prefix| {
+				render_physical_plan_inner(left, child_prefix, false, output);
+				render_physical_plan_inner(right, child_prefix, true, output);
+			});
+		}
+
 		PhysicalPlan::IndexScan(node) => {
 			let label = format!(
 				"IndexScan {}.{}::{}",

@@ -295,6 +295,11 @@ pub(crate) fn compile<'a>(
 				"Window operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
+		PhysicalPlan::Union(_) => {
+			unimplemented!(
+				"Union operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+			)
+		}
 
 		// Row-number optimized access nodes
 		PhysicalPlan::RowPointLookup(physical::RowPointLookupNode {

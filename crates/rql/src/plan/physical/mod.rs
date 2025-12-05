@@ -585,6 +585,15 @@ impl Compiler {
 					}));
 				}
 
+				LogicalPlan::Union(union) => {
+					let left = stack.pop().unwrap();
+					let right = Self::compile(rx, union.with)?.unwrap();
+					stack.push(PhysicalPlan::Union(UnionNode {
+						left: Box::new(left),
+						right: Box::new(right),
+					}));
+				}
+
 				LogicalPlan::Order(order) => {
 					let input = stack.pop().unwrap(); // FIXME
 					stack.push(PhysicalPlan::Sort(SortNode {
@@ -1010,6 +1019,7 @@ pub enum PhysicalPlan<'a> {
 	JoinInner(JoinInnerNode<'a>),
 	JoinLeft(JoinLeftNode<'a>),
 	JoinNatural(JoinNaturalNode<'a>),
+	Union(UnionNode<'a>),
 	Take(TakeNode<'a>),
 	Sort(SortNode<'a>),
 	Map(MapNode<'a>),
@@ -1247,6 +1257,12 @@ pub struct JoinNaturalNode<'a> {
 	pub right: Box<PhysicalPlan<'a>>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UnionNode<'a> {
+	pub left: Box<PhysicalPlan<'a>>,
+	pub right: Box<PhysicalPlan<'a>>,
 }
 
 #[derive(Debug, Clone)]

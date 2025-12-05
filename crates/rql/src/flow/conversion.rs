@@ -276,6 +276,10 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
 		}),
+		PhysicalPlan::Union(node) => PhysicalPlan::Union(crate::plan::physical::UnionNode {
+			left: Box::new(to_owned_physical_plan(*node.left)),
+			right: Box::new(to_owned_physical_plan(*node.right)),
+		}),
 		PhysicalPlan::Extend(node) => PhysicalPlan::Extend(crate::plan::physical::ExtendNode {
 			input: node.input.map(|input| Box::new(to_owned_physical_plan(*input))),
 			extend: to_owned_expressions(node.extend),

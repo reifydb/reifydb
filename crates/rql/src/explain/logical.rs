@@ -9,7 +9,7 @@ use crate::{
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
 		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
-		SourceScanNode, TakeNode, VariableSourceNode,
+		SourceScanNode, TakeNode, UnionNode, VariableSourceNode,
 		alter::{AlterTableNode, AlterViewNode},
 		compile_logical,
 	},
@@ -375,6 +375,16 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				"{}{}Join(Natural {}) [using common columns]\n",
 				prefix, branch, join_type_str
 			));
+
+			for (i, plan) in with.iter().enumerate() {
+				let last = i == with.len() - 1;
+				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
+			}
+		}
+		LogicalPlan::Union(UnionNode {
+			with,
+		}) => {
+			output.push_str(&format!("{}{}Union\n", prefix, branch));
 
 			for (i, plan) in with.iter().enumerate() {
 				let last = i == with.len() - 1;

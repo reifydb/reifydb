@@ -11,4 +11,5 @@ mod join;
 mod map;
 mod order;
 mod take;
+mod union;
 pub mod window;

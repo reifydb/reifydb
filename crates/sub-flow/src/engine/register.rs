@@ -26,7 +26,7 @@ use crate::{
 	operator::{
 		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, Operators,
 		SinkViewOperator, SortOperator, SourceFlowOperator, SourceTableOperator, SourceViewOperator,
-		TakeOperator, WindowOperator,
+		TakeOperator, UnionOperator, WindowOperator,
 	},
 };
 
@@ -279,8 +279,38 @@ impl FlowEngine {
 					))),
 				);
 			}
-			// Union {} => Ok(Operators::Union(UnionOperator::new())),
-			Union {} => unimplemented!(),
+			Union {} => {
+				// Union requires at least 2 inputs
+				if node.inputs.len() < 2 {
+					return Err(Error(internal!("Union node must have at least 2 inputs")));
+				}
+
+				let operators = self.inner.operators.read();
+				let mut parents = Vec::with_capacity(node.inputs.len());
+
+				for input_node_id in &node.inputs {
+					let parent = operators
+						.get(input_node_id)
+						.ok_or_else(|| {
+							Error(internal!(
+								"Parent operator not found for input {:?}",
+								input_node_id
+							))
+						})?
+						.clone();
+					parents.push(parent);
+				}
+				drop(operators);
+
+				self.inner.operators.write().insert(
+					node.id,
+					Arc::new(Operators::Union(UnionOperator::new(
+						node.id,
+						parents,
+						node.inputs.clone(),
+					))),
+				);
+			}
 			Apply {
 				operator_name,
 				expressions,

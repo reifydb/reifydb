@@ -332,6 +332,7 @@ impl Compiler {
 			Ast::Filter(node) => Self::compile_filter(node, tx),
 			Ast::From(node) => Self::compile_from(node, tx),
 			Ast::Join(node) => Self::compile_join(node, tx),
+			Ast::Union(node) => Self::compile_union(node, tx),
 			Ast::Take(node) => Self::compile_take(node, tx),
 			Ast::Sort(node) => Self::compile_sort(node, tx),
 			Ast::Distinct(node) => Self::compile_distinct(node, tx),
@@ -493,6 +494,7 @@ pub enum LogicalPlan<'a> {
 	JoinInner(JoinInnerNode<'a>),
 	JoinLeft(JoinLeftNode<'a>),
 	JoinNatural(JoinNaturalNode<'a>),
+	Union(UnionNode<'a>),
 	Take(TakeNode),
 	Order(OrderNode),
 	Map(MapNode<'a>),
@@ -732,6 +734,11 @@ pub struct JoinNaturalNode<'a> {
 	pub with: Vec<LogicalPlan<'a>>,
 	pub join_type: JoinType,
 	pub alias: Option<Fragment<'a>>,
+}
+
+#[derive(Debug)]
+pub struct UnionNode<'a> {
+	pub with: Vec<LogicalPlan<'a>>,
 }
 
 #[derive(Debug)]
