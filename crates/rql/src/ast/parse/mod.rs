@@ -121,7 +121,15 @@ impl<'a> Parser<'a> {
 			if self.is_eof() || self.consume_if(TokenKind::Separator(Separator::Semicolon))?.is_some() {
 				break;
 			}
-			nodes.push(self.parse_node(Precedence::None)?);
+
+			let node = self.parse_node(Precedence::None)?;
+
+			// Check if this is a DDL statement (CREATE, ALTER, DROP)
+			// These should stand alone and not have arbitrary expressions after them
+			let is_ddl = matches!(node, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_));
+
+			nodes.push(node);
+
 			if !self.is_eof() {
 				// Check for pipe operator or newline as
 				// separator
@@ -130,6 +138,18 @@ impl<'a> Parser<'a> {
 					has_pipes = true;
 				} else {
 					self.consume_if(TokenKind::Separator(NewLine))?;
+				}
+
+				// If we just parsed a DDL statement, check for unexpected trailing tokens
+				if is_ddl
+					&& !self.is_eof() && !matches!(
+					self.current()?.kind,
+					TokenKind::Separator(Separator::Semicolon) | TokenKind::Separator(NewLine)
+				) {
+					return Err(reifydb_type::Error(ast::unexpected_token_error(
+						"semicolon or end of statement after DDL command",
+						self.current()?.fragment.clone(),
+					)));
 				}
 			}
 		}
@@ -177,6 +197,12 @@ impl<'a> Parser<'a> {
 
 	pub(crate) fn parse_node(&mut self, precedence: Precedence) -> crate::Result<Ast<'a>> {
 		let mut left = self.parse_primary()?;
+
+		// DDL statements (CREATE, ALTER, DROP) cannot be used in infix expressions
+		// They must stand alone
+		if matches!(left, Ast::Create(_) | Ast::Alter(_) | Ast::Drop(_)) {
+			return Ok(left);
+		}
 
 		while !self.is_eof() {
 			if precedence >= self.current_precedence()? {

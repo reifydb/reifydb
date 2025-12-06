@@ -89,8 +89,8 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_namespace(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
-		let name_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
-		let namespace = MaybeQualifiedNamespaceIdentifier::new(name_token.fragment.clone());
+		let identifier = self.parse_identifier_with_hyphens()?;
+		let namespace = MaybeQualifiedNamespaceIdentifier::new(identifier.into_fragment());
 		Ok(AstCreate::Namespace(AstCreateNamespace {
 			token,
 			namespace,
@@ -98,13 +98,13 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_series(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
-		let schema_token = self.consume(TokenKind::Identifier)?;
+		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name = self.parse_identifier_with_hyphens()?;
 		let columns = self.parse_columns()?;
 
-		let sequence = MaybeQualifiedSequenceIdentifier::new(name_token.fragment.clone())
-			.with_namespace(schema_token.fragment.clone());
+		let sequence = MaybeQualifiedSequenceIdentifier::new(name.into_fragment())
+			.with_namespace(schema.into_fragment());
 
 		Ok(AstCreate::Series(AstCreateSeries {
 			token,
@@ -114,15 +114,15 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_deferred_view(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
-		let schema_token = self.consume(TokenKind::Identifier)?;
+		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name = self.parse_identifier_with_hyphens()?;
 		let columns = self.parse_columns()?;
 
 		use crate::ast::identifier::MaybeQualifiedDeferredViewIdentifier;
 
-		let view = MaybeQualifiedDeferredViewIdentifier::new(name_token.fragment.clone())
-			.with_namespace(schema_token.fragment.clone());
+		let view = MaybeQualifiedDeferredViewIdentifier::new(name.into_fragment())
+			.with_namespace(schema.into_fragment());
 
 		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -162,16 +162,16 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_transactional_view(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
-		let schema_token = self.consume(TokenKind::Identifier)?;
+		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
-		let name_token = self.consume(TokenKind::Identifier)?;
+		let name = self.parse_identifier_with_hyphens()?;
 		let columns = self.parse_columns()?;
 
 		// Create MaybeQualifiedSourceIdentifier for transactional view
 		use crate::ast::identifier::MaybeQualifiedTransactionalViewIdentifier;
 
-		let view = MaybeQualifiedTransactionalViewIdentifier::new(name_token.fragment.clone())
-			.with_namespace(schema_token.fragment.clone());
+		let view = MaybeQualifiedTransactionalViewIdentifier::new(name.into_fragment())
+			.with_namespace(schema.into_fragment());
 
 		// Parse optional AS clause
 		let as_clause = if self.consume_if(TokenKind::Operator(Operator::As))?.is_some() {
@@ -211,15 +211,15 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_table(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
-		let schema_token = self.consume(TokenKind::Identifier)?;
+		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
-		let name_token = self.advance()?;
+		let name = self.parse_identifier_with_hyphens()?;
 		let columns = self.parse_columns()?;
 
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
 
-		let table = MaybeQualifiedTableIdentifier::new(name_token.fragment.clone())
-			.with_namespace(schema_token.fragment.clone());
+		let table =
+			MaybeQualifiedTableIdentifier::new(name.into_fragment()).with_namespace(schema.into_fragment());
 
 		Ok(AstCreate::Table(AstCreateTable {
 			token,
@@ -229,9 +229,9 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_ring_buffer(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
-		let schema_token = self.consume(TokenKind::Identifier)?;
+		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
-		let name_token = self.advance()?;
+		let name = self.parse_identifier_with_hyphens()?;
 		let columns = self.parse_columns()?;
 
 		// Parse WITH clause for options: with { capacity: N }
@@ -267,8 +267,8 @@ impl<'a> Parser<'a> {
 
 		use crate::ast::identifier::MaybeQualifiedRingBufferIdentifier;
 
-		let ring_buffer = MaybeQualifiedRingBufferIdentifier::new(name_token.fragment.clone())
-			.with_namespace(schema_token.fragment.clone());
+		let ring_buffer = MaybeQualifiedRingBufferIdentifier::new(name.into_fragment())
+			.with_namespace(schema.into_fragment());
 
 		Ok(AstCreate::RingBuffer(AstCreateRingBuffer {
 			token,
@@ -289,16 +289,16 @@ impl<'a> Parser<'a> {
 		};
 
 		// Parse dictionary name: [namespace.]name
-		let first_token = self.consume(TokenKind::Identifier)?;
+		let first = self.parse_identifier_with_hyphens()?;
 
 		let dictionary = if (self.consume_if(TokenKind::Operator(Operator::Dot))?).is_some() {
 			// namespace.name format
-			let name_token = self.consume(TokenKind::Identifier)?;
-			MaybeQualifiedDictionaryIdentifier::new(name_token.fragment.clone())
-				.with_namespace(first_token.fragment.clone())
+			let name = self.parse_identifier_with_hyphens()?;
+			MaybeQualifiedDictionaryIdentifier::new(name.into_fragment())
+				.with_namespace(first.into_fragment())
 		} else {
 			// just name format
-			MaybeQualifiedDictionaryIdentifier::new(first_token.fragment.clone())
+			MaybeQualifiedDictionaryIdentifier::new(first.into_fragment())
 		};
 
 		// Parse FOR <value_type>
@@ -371,11 +371,11 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_column(&mut self) -> crate::Result<AstColumnToCreate<'a>> {
-		let name_token = self.advance()?;
+		let name_identifier = self.parse_identifier_with_hyphens_allow_keyword()?;
 		self.consume_operator(Colon)?;
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
-		let name = name_token.fragment;
+		let name = name_identifier.into_fragment();
 
 		// Parse type with optional parameters
 		let ty = if self.current()?.is_operator(Operator::OpenParen) {
@@ -542,8 +542,9 @@ impl<'a> Parser<'a> {
 #[cfg(test)]
 mod tests {
 	use crate::ast::{
-		AstCreate, AstCreateDeferredView, AstCreateNamespace, AstCreateSeries, AstCreateTable,
-		AstCreateTransactionalView, AstDataType, AstPolicyKind, parse::Parser, tokenize,
+		AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace, AstCreateRingBuffer,
+		AstCreateSeries, AstCreateTable, AstCreateTransactionalView, AstDataType, AstPolicyKind, parse::Parser,
+		tokenize,
 	};
 
 	#[test]
@@ -562,6 +563,140 @@ mod tests {
 				..
 			}) => {
 				assert_eq!(namespace.name.text(), "REIFYDB");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_namespace_with_hyphen() {
+		let tokens = tokenize("CREATE NAMESPACE my-namespace").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Namespace(AstCreateNamespace {
+				namespace,
+				..
+			}) => {
+				assert_eq!(namespace.name.text(), "my-namespace");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_table_with_hyphen() {
+		let tokens = tokenize("CREATE TABLE my-schema.my-table { id: Int4 }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Table(AstCreateTable {
+				table,
+				..
+			}) => {
+				assert_eq!(table.namespace.as_ref().unwrap().text(), "my-schema");
+				assert_eq!(table.name.text(), "my-table");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_ring_buffer_with_hyphen() {
+		let tokens = tokenize("CREATE RINGBUFFER my-ns.my-buffer { id: Int4 } WITH { capacity: 100 }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::RingBuffer(AstCreateRingBuffer {
+				ring_buffer,
+				capacity,
+				..
+			}) => {
+				assert_eq!(ring_buffer.namespace.as_ref().unwrap().text(), "my-ns");
+				assert_eq!(ring_buffer.name.text(), "my-buffer");
+				assert_eq!(*capacity, 100);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_dictionary_with_hyphen() {
+		let tokens = tokenize("CREATE DICTIONARY my-dict FOR Text AS Int4").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Dictionary(AstCreateDictionary {
+				dictionary,
+				..
+			}) => {
+				assert_eq!(dictionary.name.text(), "my-dict");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_table_with_hyphenated_columns() {
+		let tokens = tokenize("CREATE TABLE test.user-data { user-id: Int4, user-name: Text }").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Table(AstCreateTable {
+				table,
+				columns,
+				..
+			}) => {
+				assert_eq!(table.name.text(), "user-data");
+				assert_eq!(columns.len(), 2);
+				assert_eq!(columns[0].name.text(), "user-id");
+				assert_eq!(columns[1].name.text(), "user-name");
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_namespace_with_backtick() {
+		let tokens = tokenize("CREATE NAMESPACE `my-namespace`").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Namespace(AstCreateNamespace {
+				namespace,
+				..
+			}) => {
+				assert_eq!(namespace.name.text(), "my-namespace");
 			}
 			_ => unreachable!(),
 		}
