@@ -4,18 +4,18 @@
 use reifydb_catalog::CatalogQueryTransaction;
 
 use crate::{
-	ast::AstUnion,
-	plan::logical::{Compiler, LogicalPlan, UnionNode},
+	ast::AstMerge,
+	plan::logical::{Compiler, LogicalPlan, MergeNode},
 };
 
 impl Compiler {
-	pub(crate) fn compile_union<'a, T: CatalogQueryTransaction>(
-		ast: AstUnion<'a>,
+	pub(crate) fn compile_merge<'a, T: CatalogQueryTransaction>(
+		ast: AstMerge<'a>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		// Compile the subquery into logical plans
 		let with = Self::compile(ast.with.statement, tx)?;
-		Ok(LogicalPlan::Union(UnionNode {
+		Ok(LogicalPlan::Merge(MergeNode {
 			with,
 		}))
 	}

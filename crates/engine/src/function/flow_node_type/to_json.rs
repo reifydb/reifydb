@@ -45,7 +45,7 @@ pub enum JsonFlowNodeType {
 		by: Vec<JsonExpression>,
 		map: Vec<JsonExpression>,
 	},
-	Union,
+	Merge,
 	Sort {
 		by: Vec<SortKey>,
 	},
@@ -137,7 +137,7 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				by: by.iter().map(|e| e.into()).collect(),
 				map: map.iter().map(|e| e.into()).collect(),
 			},
-			FlowNodeType::Union => JsonFlowNodeType::Union,
+			FlowNodeType::Merge => JsonFlowNodeType::Merge,
 			FlowNodeType::Sort {
 				by,
 			} => JsonFlowNodeType::Sort {
@@ -490,8 +490,8 @@ mod tests {
 	}
 
 	#[test]
-	fn test_union() {
-		test_node_type(FlowNodeType::Union, r#"null"#);
+	fn test_merge() {
+		test_node_type(FlowNodeType::Merge, r#"null"#);
 	}
 
 	#[test]
@@ -575,7 +575,7 @@ mod tests {
 		let node_type2 = FlowNodeType::Take {
 			limit: 10,
 		};
-		let node_type3 = FlowNodeType::Union;
+		let node_type3 = FlowNodeType::Merge;
 
 		let blobs = vec![
 			create_blob_from_node_type(&node_type1),

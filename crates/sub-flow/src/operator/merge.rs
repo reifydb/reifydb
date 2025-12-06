@@ -13,9 +13,9 @@ use crate::{
 	transaction::FlowTransaction,
 };
 
-/// UNION ALL operator that merges N input flows (N >= 2) with identical schemas
+/// MERGE operator that merges N input flows (N >= 2) with identical schemas
 /// into a single output flow. Keeps all rows including duplicates.
-pub struct UnionOperator {
+pub struct MergeOperator {
 	node: FlowNodeId,
 	/// Parent operators indexed by their position (0..N)
 	parents: Vec<Arc<Operators>>,
@@ -25,10 +25,10 @@ pub struct UnionOperator {
 	row_number_provider: RowNumberProvider,
 }
 
-impl UnionOperator {
+impl MergeOperator {
 	pub fn new(node: FlowNodeId, parents: Vec<Arc<Operators>>, input_nodes: Vec<FlowNodeId>) -> Self {
 		debug_assert_eq!(parents.len(), input_nodes.len());
-		debug_assert!(parents.len() >= 2, "Union requires at least 2 inputs");
+		debug_assert!(parents.len() >= 2, "Merge requires at least 2 inputs");
 
 		Self {
 			node,
@@ -77,7 +77,7 @@ impl UnionOperator {
 	}
 }
 
-impl Operator for UnionOperator {
+impl Operator for MergeOperator {
 	fn id(&self) -> FlowNodeId {
 		self.node
 	}
@@ -90,7 +90,7 @@ impl Operator for UnionOperator {
 	) -> crate::Result<FlowChange> {
 		// Determine which parent this change came from
 		let parent_index = self.determine_parent_index(&change).ok_or_else(|| {
-			Error(internal!("Union received change from unknown node: {:?}", change.origin))
+			Error(internal!("Merge received change from unknown node: {:?}", change.origin))
 		})?;
 
 		let mut result_diffs = Vec::with_capacity(change.diffs.len());
@@ -185,7 +185,7 @@ impl Operator for UnionOperator {
 			let parent_rows = self.parents[parent_index].get_rows(txn, &[source_row_number])?;
 
 			if let Some(Some(mut row)) = parent_rows.into_iter().next() {
-				// Replace row number with union output row number
+				// Replace row number with merge output row number
 				row.number = row_number;
 				result.push(Some(row));
 			} else {

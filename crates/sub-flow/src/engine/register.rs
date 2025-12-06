@@ -15,7 +15,7 @@ use reifydb_core::{
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_rql::flow::{
 	Flow, FlowNode, FlowNodeType,
-	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Sort, Take, Union, Window},
+	FlowNodeType::{Apply, Distinct, Extend, Filter, Join, Map, Merge, Sort, Take, Window},
 };
 use reifydb_type::internal;
 use tracing::instrument;
@@ -24,9 +24,9 @@ use super::eval::evaluate_operator_config;
 use crate::{
 	engine::FlowEngine,
 	operator::{
-		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator, Operators,
-		SinkViewOperator, SortOperator, SourceFlowOperator, SourceTableOperator, SourceViewOperator,
-		TakeOperator, UnionOperator, WindowOperator,
+		ApplyOperator, DistinctOperator, ExtendOperator, FilterOperator, JoinOperator, MapOperator,
+		MergeOperator, Operators, SinkViewOperator, SortOperator, SourceFlowOperator, SourceTableOperator,
+		SourceViewOperator, TakeOperator, WindowOperator,
 	},
 };
 
@@ -279,10 +279,10 @@ impl FlowEngine {
 					))),
 				);
 			}
-			Union {} => {
-				// Union requires at least 2 inputs
+			Merge {} => {
+				// Merge requires at least 2 inputs
 				if node.inputs.len() < 2 {
-					return Err(Error(internal!("Union node must have at least 2 inputs")));
+					return Err(Error(internal!("Merge node must have at least 2 inputs")));
 				}
 
 				let operators = self.inner.operators.read();
@@ -304,7 +304,7 @@ impl FlowEngine {
 
 				self.inner.operators.write().insert(
 					node.id,
-					Arc::new(Operators::Union(UnionOperator::new(
+					Arc::new(Operators::Merge(MergeOperator::new(
 						node.id,
 						parents,
 						node.inputs.clone(),

@@ -8,8 +8,8 @@ use crate::{
 	ast::parse_str,
 	plan::logical::{
 		AggregateNode, AlterSequenceNode, CreateIndexNode, DistinctNode, ExtendNode, FilterNode, GeneratorNode,
-		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, OrderNode,
-		SourceScanNode, TakeNode, UnionNode, VariableSourceNode,
+		InlineDataNode, JoinInnerNode, JoinLeftNode, JoinNaturalNode, LogicalPlan, MapNode, MergeNode,
+		OrderNode, SourceScanNode, TakeNode, VariableSourceNode,
 		alter::{AlterTableNode, AlterViewNode},
 		compile_logical,
 	},
@@ -381,10 +381,10 @@ fn render_logical_plan_inner(plan: &LogicalPlan, prefix: &str, is_last: bool, ou
 				render_logical_plan_inner(plan, child_prefix.as_str(), last, output);
 			}
 		}
-		LogicalPlan::Union(UnionNode {
+		LogicalPlan::Merge(MergeNode {
 			with,
 		}) => {
-			output.push_str(&format!("{}{}Union\n", prefix, branch));
+			output.push_str(&format!("{}{}Merge\n", prefix, branch));
 
 			for (i, plan) in with.iter().enumerate() {
 				let last = i == with.len() - 1;

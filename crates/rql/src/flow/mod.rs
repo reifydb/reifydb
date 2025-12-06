@@ -29,8 +29,8 @@ use self::{
 	conversion::to_owned_physical_plan,
 	operator::{
 		aggregate::AggregateCompiler, apply::ApplyCompiler, distinct::DistinctCompiler, extend::ExtendCompiler,
-		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, sort::SortCompiler, take::TakeCompiler,
-		union::UnionCompiler, window::WindowCompiler,
+		filter::FilterCompiler, join::JoinCompiler, map::MapCompiler, merge::MergeCompiler, sort::SortCompiler,
+		take::TakeCompiler, window::WindowCompiler,
 	},
 	source::{
 		flow_scan::FlowScanCompiler, inline_data::InlineDataCompiler, table_scan::TableScanCompiler,
@@ -169,7 +169,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			PhysicalPlan::JoinNatural(_) => {
 				unimplemented!()
 			}
-			PhysicalPlan::Union(union) => UnionCompiler::from(union).compile(self),
+			PhysicalPlan::Merge(merge) => MergeCompiler::from(merge).compile(self),
 
 			PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)

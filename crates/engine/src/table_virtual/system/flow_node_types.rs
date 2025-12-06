@@ -43,7 +43,7 @@ const FLOW_NODE_TYPE_NAMES: [&str; 16] = [
 	"extend",
 	"join",
 	"aggregate",
-	"union",
+	"merge",
 	"sort",
 	"take",
 	"distinct",

@@ -11,13 +11,13 @@ mod ffi;
 mod filter;
 pub mod join;
 mod map;
+mod merge;
 mod sink;
 mod sort;
 mod source;
 pub mod stateful;
 mod take;
 pub mod transform;
-mod union;
 mod window;
 
 pub use apply::ApplyOperator;
@@ -27,13 +27,13 @@ pub use ffi::FFIOperator;
 pub use filter::FilterOperator;
 pub use join::JoinOperator;
 pub use map::MapOperator;
+pub use merge::MergeOperator;
 use reifydb_flow_operator_sdk::FlowChange;
 pub use sink::SinkViewOperator;
 pub use sort::SortOperator;
 pub use source::{SourceFlowOperator, SourceTableOperator, SourceViewOperator};
 pub use take::TakeOperator;
 pub use transform::registry::TransformOperatorRegistry;
-pub use union::UnionOperator;
 pub use window::WindowOperator;
 
 pub trait Operator: Send + Sync {
@@ -62,7 +62,7 @@ pub enum Operators {
 	Sort(SortOperator),
 	Take(TakeOperator),
 	Distinct(DistinctOperator),
-	Union(UnionOperator),
+	Merge(MergeOperator),
 	Apply(ApplyOperator),
 	SinkView(SinkViewOperator),
 	Window(WindowOperator),
@@ -83,7 +83,7 @@ impl Operators {
 			Operators::Sort(op) => op.apply(txn, change, evaluator),
 			Operators::Take(op) => op.apply(txn, change, evaluator),
 			Operators::Distinct(op) => op.apply(txn, change, evaluator),
-			Operators::Union(op) => op.apply(txn, change, evaluator),
+			Operators::Merge(op) => op.apply(txn, change, evaluator),
 			Operators::Apply(op) => op.apply(txn, change, evaluator),
 			Operators::SinkView(op) => op.apply(txn, change, evaluator),
 			Operators::Window(op) => op.apply(txn, change, evaluator),
@@ -102,7 +102,7 @@ impl Operators {
 			Operators::Sort(op) => op.get_rows(txn, rows),
 			Operators::Take(op) => op.get_rows(txn, rows),
 			Operators::Distinct(op) => op.get_rows(txn, rows),
-			Operators::Union(op) => op.get_rows(txn, rows),
+			Operators::Merge(op) => op.get_rows(txn, rows),
 			Operators::Apply(op) => op.get_rows(txn, rows),
 			Operators::SinkView(op) => op.get_rows(txn, rows),
 			Operators::Window(op) => op.get_rows(txn, rows),

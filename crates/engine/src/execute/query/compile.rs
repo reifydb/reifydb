@@ -295,9 +295,9 @@ pub(crate) fn compile<'a>(
 				"Window operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
-		PhysicalPlan::Union(_) => {
+		PhysicalPlan::Merge(_) => {
 			unimplemented!(
-				"Union operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
+				"Merge operator is only supported in deferred views and requires the flow engine. Use within a CREATE DEFERRED VIEW statement."
 			)
 		}
 

@@ -585,10 +585,10 @@ impl Compiler {
 					}));
 				}
 
-				LogicalPlan::Union(union) => {
+				LogicalPlan::Merge(merge) => {
 					let left = stack.pop().unwrap();
-					let right = Self::compile(rx, union.with)?.unwrap();
-					stack.push(PhysicalPlan::Union(UnionNode {
+					let right = Self::compile(rx, merge.with)?.unwrap();
+					stack.push(PhysicalPlan::Merge(MergeNode {
 						left: Box::new(left),
 						right: Box::new(right),
 					}));
@@ -1019,7 +1019,7 @@ pub enum PhysicalPlan<'a> {
 	JoinInner(JoinInnerNode<'a>),
 	JoinLeft(JoinLeftNode<'a>),
 	JoinNatural(JoinNaturalNode<'a>),
-	Union(UnionNode<'a>),
+	Merge(MergeNode<'a>),
 	Take(TakeNode<'a>),
 	Sort(SortNode<'a>),
 	Map(MapNode<'a>),
@@ -1260,7 +1260,7 @@ pub struct JoinNaturalNode<'a> {
 }
 
 #[derive(Debug, Clone)]
-pub struct UnionNode<'a> {
+pub struct MergeNode<'a> {
 	pub left: Box<PhysicalPlan<'a>>,
 	pub right: Box<PhysicalPlan<'a>>,
 }

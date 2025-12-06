@@ -276,7 +276,7 @@ pub fn to_owned_physical_plan(plan: PhysicalPlan<'_>) -> PhysicalPlan<'static> {
 			on: to_owned_expressions(node.on),
 			alias: node.alias.map(|a| Fragment::Owned(a.into_owned())),
 		}),
-		PhysicalPlan::Union(node) => PhysicalPlan::Union(crate::plan::physical::UnionNode {
+		PhysicalPlan::Merge(node) => PhysicalPlan::Merge(crate::plan::physical::MergeNode {
 			left: Box::new(to_owned_physical_plan(*node.left)),
 			right: Box::new(to_owned_physical_plan(*node.right)),
 		}),

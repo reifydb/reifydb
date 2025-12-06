@@ -78,7 +78,7 @@ pub enum Ast<'a> {
 	Insert(AstInsert<'a>),
 	Update(AstUpdate<'a>),
 	Join(AstJoin<'a>),
-	Union(AstUnion<'a>),
+	Merge(AstMerge<'a>),
 	Take(AstTake<'a>),
 	List(AstList<'a>),
 	Literal(AstLiteral<'a>),
@@ -158,7 +158,7 @@ impl<'a> Ast<'a> {
 					..
 				} => token,
 			},
-			Ast::Union(node) => &node.token,
+			Ast::Merge(node) => &node.token,
 			Ast::Nop => unreachable!(),
 			Ast::Variable(node) => &node.token,
 			Ast::Sort(node) => &node.token,
@@ -404,14 +404,14 @@ impl<'a> Ast<'a> {
 		}
 	}
 
-	pub fn is_union(&self) -> bool {
-		matches!(self, Ast::Union(_))
+	pub fn is_merge(&self) -> bool {
+		matches!(self, Ast::Merge(_))
 	}
-	pub fn as_union(&self) -> &AstUnion<'a> {
-		if let Ast::Union(result) = self {
+	pub fn as_merge(&self) -> &AstMerge<'a> {
+		if let Ast::Merge(result) = self {
 			result
 		} else {
-			panic!("not union")
+			panic!("not merge")
 		}
 	}
 
@@ -1182,7 +1182,7 @@ pub enum AstJoin<'a> {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct AstUnion<'a> {
+pub struct AstMerge<'a> {
 	pub token: Token<'a>,
 	pub with: AstSubQuery<'a>,
 }
