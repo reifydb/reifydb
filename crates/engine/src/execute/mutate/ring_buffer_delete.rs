@@ -59,7 +59,8 @@ impl Executor {
 
 		if let Some(input_plan) = plan.input {
 			// Delete specific rows based on input plan
-			let mut row_numbers_to_delete = Vec::new();
+			// Collect row numbers to delete from the filter
+			let mut row_numbers_to_delete = std::collections::HashSet::new();
 
 			{
 				let mut std_txn = StandardTransaction::from(&mut *txn);
@@ -103,62 +104,68 @@ impl Executor {
 				}
 			}
 
-			// Delete the collected encoded numbers
+			// With monotonically increasing row numbers, we only delete the specified rows
+			// and update head to the minimum remaining row number
 			use crate::transaction::operation::RingBufferOperations;
-			for row_number in row_numbers_to_delete {
+
+			// Delete the specified rows and track remaining items
+			let mut min_remaining_row: Option<u64> = None;
+
+			// Iterate from head to tail-1 (the range of row numbers in the buffer)
+			for row_num_value in metadata.head..metadata.tail {
+				let row_num = reifydb_type::RowNumber(row_num_value);
+				let key = RowKey {
+					source: ring_buffer.id.into(),
+					row: row_num,
+				};
+
+				if txn.contains_key(&key.encode())? {
+					if row_numbers_to_delete.contains(&row_num) {
+						// Delete this row
+						txn.remove_from_ring_buffer(ring_buffer.clone(), row_num)?;
+						deleted_count += 1;
+					} else {
+						// Track minimum remaining row number
+						min_remaining_row = Some(min_remaining_row
+							.map_or(row_num_value, |m| m.min(row_num_value)));
+					}
+				}
+			}
+
+			// Update metadata
+			let remaining_count = metadata.count.saturating_sub(deleted_count as u64);
+			if remaining_count == 0 {
+				metadata.count = 0;
+				// Empty buffer: set head = tail (RowSequence will provide next row number)
+				metadata.head = metadata.tail;
+			} else {
+				metadata.count = remaining_count;
+				metadata.head = min_remaining_row.unwrap();
+				// tail stays the same - next row number comes from RowSequence
+			}
+		} else {
+			// Delete all rows (clear the buffer)
+			use crate::transaction::operation::RingBufferOperations;
+
+			// Delete all entries in the row number range
+			for row_num_value in metadata.head..metadata.tail {
+				let row_number = reifydb_type::RowNumber(row_num_value);
 				let row_key = RowKey {
 					source: ring_buffer.id.into(),
 					row: row_number,
 				}
 				.encode();
 
-				// Remove the encoded if it exists
+				// Only delete if the entry exists
 				if txn.contains_key(&row_key)? {
 					txn.remove_from_ring_buffer(ring_buffer.clone(), row_number)?;
 					deleted_count += 1;
 				}
 			}
 
-			// Update metadata - we need to recalculate size
-			// This is complex for ring buffers as we need to handle gaps
-			// For simplicity, we'll just decrease the count
-			if deleted_count > 0 && metadata.count > 0 {
-				metadata.count = metadata.count.saturating_sub(deleted_count as u64);
-
-				// If all entries are deleted, reset the buffer
-				if metadata.count == 0 {
-					metadata.head = 0;
-					metadata.tail = 0;
-				}
-			}
-		} else {
-			// Delete all rows (clear the buffer)
-			// Scan from head to tail and delete all entries
-			use crate::transaction::operation::RingBufferOperations;
-			if !metadata.is_empty() {
-				let mut current = metadata.head;
-				for _ in 0..metadata.count {
-					let row_number = reifydb_type::RowNumber(current);
-					let row_key = RowKey {
-						source: ring_buffer.id.into(),
-						row: row_number,
-					}
-					.encode();
-
-					// Only delete if the encoded actually exists
-					if txn.contains_key(&row_key)? {
-						txn.remove_from_ring_buffer(ring_buffer.clone(), row_number)?;
-						deleted_count += 1;
-					}
-
-					current = (current + 1) % metadata.capacity;
-				}
-			}
-
-			// Reset metadata
+			// Reset metadata - empty buffer: head = tail
 			metadata.count = 0;
-			metadata.head = 0;
-			metadata.tail = 0;
+			metadata.head = metadata.tail;
 		}
 
 		// Save updated metadata

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, EncodableKey, RowSequenceKey, SourceId, TableId};
+use reifydb_core::interface::{CommandTransaction, EncodableKey, RingBufferId, RowSequenceKey, SourceId, TableId};
 use reifydb_type::RowNumber;
 
 use crate::store::sequence::generator::u64::GeneratorU64;
@@ -28,10 +28,45 @@ impl RowSequence {
 		table: TableId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
+		Self::next_row_number_batch_for_source(txn, SourceId::from(table), count)
+	}
+
+	/// Allocates the next row number for a ring buffer.
+	pub fn next_row_number_for_ring_buffer(
+		txn: &mut impl CommandTransaction,
+		ring_buffer: RingBufferId,
+	) -> crate::Result<RowNumber> {
+		GeneratorU64::next(
+			txn,
+			&RowSequenceKey {
+				source: SourceId::from(ring_buffer),
+			}
+			.encode(),
+			None,
+		)
+		.map(RowNumber)
+	}
+
+	/// Allocates a batch of contiguous row numbers for a ring buffer.
+	/// Returns a vector containing all allocated row numbers.
+	pub fn next_row_number_batch_for_ring_buffer(
+		txn: &mut impl CommandTransaction,
+		ring_buffer: RingBufferId,
+		count: u64,
+	) -> crate::Result<Vec<RowNumber>> {
+		Self::next_row_number_batch_for_source(txn, SourceId::from(ring_buffer), count)
+	}
+
+	/// Allocates a batch of contiguous row numbers for any source.
+	fn next_row_number_batch_for_source(
+		txn: &mut impl CommandTransaction,
+		source: SourceId,
+		count: u64,
+	) -> crate::Result<Vec<RowNumber>> {
 		let last_row_number = GeneratorU64::next_batched(
 			txn,
 			&RowSequenceKey {
-				source: SourceId::from(table),
+				source,
 			}
 			.encode(),
 			None,

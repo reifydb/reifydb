@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use reifydb_catalog::CatalogStore;
+use reifydb_catalog::{CatalogStore, sequence::RowSequence};
 use reifydb_core::{
 	interface::{Params, ResolvedColumn, ResolvedNamespace, ResolvedRingBuffer, ResolvedSource},
 	return_error,
@@ -186,22 +186,26 @@ impl Executor {
 				}
 
 				// TODO: Check for primary key and handle upsert logic if needed
-				// For now, just do simple circular buffer logic
 
-				// Determine insert position
-				let row_number = if metadata.is_empty() {
-					// First insert
-					RowNumber(1)
-				} else if !metadata.is_full() {
-					// Buffer not full, append at tail
-					RowNumber(metadata.tail)
-				} else {
-					// Buffer full, overwrite at head
-					RowNumber(metadata.head)
-				};
-
-				// Store the encoded using interceptors
 				use crate::transaction::operation::RingBufferOperations;
+
+				// If buffer is full, delete the oldest entry first
+				if metadata.is_full() {
+					let oldest_row = RowNumber(metadata.head);
+					std_txn.command_mut()
+						.remove_from_ring_buffer(ring_buffer.clone(), oldest_row)?;
+					// Advance head to next oldest item
+					metadata.head += 1;
+					metadata.count -= 1;
+				}
+
+				// Get next row number from sequence (monotonically increasing)
+				let row_number = RowSequence::next_row_number_for_ring_buffer(
+					std_txn.command_mut(),
+					ring_buffer.id,
+				)?;
+
+				// Store the row
 				std_txn.command_mut().insert_into_ring_buffer_at(
 					ring_buffer.clone(),
 					row_number,
@@ -210,30 +214,10 @@ impl Executor {
 
 				// Update metadata
 				if metadata.is_empty() {
-					metadata.count = 1;
-					metadata.head = 1;
-					metadata.tail = 2;
-				} else if !metadata.is_full() {
-					metadata.count += 1;
-					// For 1-based indexing: next position after capacity is 1
-					metadata.tail = if metadata.tail >= metadata.capacity {
-						1
-					} else {
-						metadata.tail + 1
-					};
-				} else {
-					// Buffer full, advance both head and tail
-					metadata.head = if metadata.head >= metadata.capacity {
-						1
-					} else {
-						metadata.head + 1
-					};
-					metadata.tail = if metadata.tail >= metadata.capacity {
-						1
-					} else {
-						metadata.tail + 1
-					};
+					metadata.head = row_number.0;
 				}
+				metadata.count += 1;
+				metadata.tail = row_number.0 + 1; // Next insert position
 
 				inserted_count += 1;
 			}

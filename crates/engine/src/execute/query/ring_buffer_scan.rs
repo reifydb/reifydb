@@ -100,12 +100,9 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 			self.metadata = metadata;
 
 			if let Some(ref metadata) = self.metadata {
-				// Start scanning from head (oldest entry) if buffer has data
-				self.current_position = if metadata.is_empty() {
-					1 // Start at position 1 for 1-based indexing
-				} else {
-					metadata.head
-				};
+				// Start scanning from head (oldest row number)
+				// For empty buffer, this value doesn't matter since no rows will be returned
+				self.current_position = metadata.head;
 			}
 
 			self.initialized = true;
@@ -138,8 +135,14 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 		let mut row_numbers = Vec::new();
 		let mut batch_count = 0;
 
-		// Read up to batch_size rows
-		while batch_count < batch_size && self.rows_returned < metadata.count {
+		// Scan row numbers starting from head (monotonically increasing)
+		// With monotonically increasing row numbers, we iterate from head to tail-1
+		// Row numbers may have gaps after DELETE operations
+		let max_row_num = metadata.tail; // tail is next row number to allocate
+		while batch_count < batch_size
+			&& self.rows_returned < metadata.count
+			&& self.current_position < max_row_num
+		{
 			let row_num = RowNumber(self.current_position);
 
 			// Create the encoded key
@@ -153,16 +156,12 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 				let row_data = multi.values;
 				batch_rows.push(row_data);
 				row_numbers.push(row_num);
+				self.rows_returned += 1;
+				batch_count += 1;
 			}
 
-			// Move to next position (circular) with 1-based indexing
-			self.current_position = if self.current_position >= metadata.capacity {
-				1
-			} else {
-				self.current_position + 1
-			};
-			self.rows_returned += 1;
-			batch_count += 1;
+			// Move to next row number (monotonically increasing)
+			self.current_position += 1;
 		}
 
 		if batch_rows.is_empty() {
