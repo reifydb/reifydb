@@ -24,7 +24,7 @@ use tracing::instrument;
 use crate::{
 	execute::Executor,
 	function::{Functions, generator, math},
-	interceptor::materialized_catalog::MaterializedCatalogInterceptor,
+	interceptor::{CatalogEventInterceptor, materialized_catalog::MaterializedCatalogInterceptor},
 	table_virtual::{
 		IteratorVirtualTableFactory, SimpleVirtualTableFactory, TableVirtualUser, TableVirtualUserColumnDef,
 		TableVirtualUserIterator,
@@ -50,6 +50,7 @@ impl EngineInterface for StandardEngine {
 		let mut interceptors = self.interceptors.create();
 
 		interceptors.post_commit.add(Rc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
+		interceptors.post_commit.add(Rc::new(CatalogEventInterceptor::new(self.event_bus.clone())));
 
 		StandardCommandTransaction::new(
 			self.multi.clone(),
