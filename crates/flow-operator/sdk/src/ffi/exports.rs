@@ -56,8 +56,8 @@ pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor 
 	FFIOperatorDescriptor {
 		api: CURRENT_API,
 		operator: str_to_buffer(O::NAME),
-		operator_version: str_to_buffer(O::VERSION),
-		operator_description: str_to_buffer(O::DESCRIPTION),
+		version: str_to_buffer(O::VERSION),
+		description: str_to_buffer(O::DESCRIPTION),
 		input_columns: columns_to_ffi(O::INPUT_COLUMNS),
 		output_columns: columns_to_ffi(O::OUTPUT_COLUMNS),
 		vtable: create_vtable::<O>(),

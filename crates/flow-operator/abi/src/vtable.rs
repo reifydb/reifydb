@@ -72,11 +72,11 @@ pub struct FFIOperatorDescriptor {
 	/// Operator name (UTF-8 encoded)
 	pub operator: BufferFFI,
 
-	/// Operator semantic version (UTF-8 encoded, e.g., "1.0.0")
-	pub operator_version: BufferFFI,
+	/// Semantic version (UTF-8 encoded, e.g., "1.0.0")
+	pub version: BufferFFI,
 
-	/// Operator description (UTF-8 encoded)
-	pub operator_description: BufferFFI,
+	/// Description (UTF-8 encoded)
+	pub description: BufferFFI,
 
 	/// Input columns describing expected input row format (for documentation)
 	pub input_columns: FFIOperatorColumnDefs,

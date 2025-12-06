@@ -105,8 +105,8 @@ impl FFIOperatorLoader {
 			Ok(FFIOperatorDescriptor {
 				api: (*descriptor_ptr).api,
 				operator: (*descriptor_ptr).operator,
-				operator_version: (*descriptor_ptr).operator_version,
-				operator_description: (*descriptor_ptr).operator_description,
+				version: (*descriptor_ptr).version,
+				description: (*descriptor_ptr).description,
 				input_columns: (*descriptor_ptr).input_columns,
 				output_columns: (*descriptor_ptr).output_columns,
 				vtable: (*descriptor_ptr).vtable,
@@ -165,8 +165,8 @@ impl FFIOperatorLoader {
 				operator,
 				library_path: path.to_path_buf(),
 				api,
-				version: buffer_to_string(&descriptor.operator_version),
-				description: buffer_to_string(&descriptor.operator_description),
+				version: buffer_to_string(&descriptor.version),
+				description: buffer_to_string(&descriptor.description),
 				input_columns: extract_column_defs(&descriptor.input_columns),
 				output_columns: extract_column_defs(&descriptor.output_columns),
 			}
@@ -303,8 +303,8 @@ impl FFIOperatorLoader {
 							operator: buffer_to_string(&descriptor.operator),
 							library_path: path.clone(),
 							api: descriptor.api,
-							version: buffer_to_string(&descriptor.operator_version),
-							description: buffer_to_string(&descriptor.operator_description),
+							version: buffer_to_string(&descriptor.version),
+							description: buffer_to_string(&descriptor.description),
 							input_columns: extract_column_defs(&descriptor.input_columns),
 							output_columns: extract_column_defs(&descriptor.output_columns),
 						});
