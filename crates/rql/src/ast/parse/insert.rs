@@ -12,19 +12,16 @@ impl<'a> Parser<'a> {
 		let token = self.consume_keyword(Keyword::Insert)?;
 
 		use crate::ast::identifier::UnresolvedSourceIdentifier;
-		let first_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+		let first = self.parse_identifier_with_hyphens()?;
 
 		let target = if self.current_expect_operator(Operator::Dot).is_ok() {
 			self.consume_operator(Operator::Dot)?;
-			let second_token = self.advance()?;
+			let second = self.parse_identifier_with_hyphens()?;
 			// namespace.source
-			Some(UnresolvedSourceIdentifier::new(
-				Some(first_token.fragment.clone()),
-				second_token.fragment.clone(),
-			))
+			Some(UnresolvedSourceIdentifier::new(Some(first.into_fragment()), second.into_fragment()))
 		} else {
 			// source only
-			Some(UnresolvedSourceIdentifier::new(None, first_token.fragment.clone()))
+			Some(UnresolvedSourceIdentifier::new(None, first.into_fragment()))
 		};
 
 		Ok(AstInsert {

@@ -54,7 +54,7 @@ impl<'a> Parser<'a> {
 						variable,
 					});
 				}
-				TokenKind::Identifier => {}
+				TokenKind::Identifier | TokenKind::Keyword(_) => {}
 				_ => {
 					return Err(Error(unexpected_token_error(
 						"expected identifier or variable",
@@ -63,8 +63,8 @@ impl<'a> Parser<'a> {
 				}
 			}
 
-			// Get the first identifier token
-			let first_token = self.consume(TokenKind::Identifier)?;
+			// Get the first identifier (with hyphen support)
+			let first_identifier = self.parse_identifier_with_hyphens()?;
 
 			// Check if this is a generator function call: identifier { ... }
 			let is_generatortion = if !self.is_eof() {
@@ -79,7 +79,7 @@ impl<'a> Parser<'a> {
 
 			if is_generatortion {
 				// Parse as generator function
-				let function_name = first_token.fragment.clone();
+				let function_name = first_identifier.into_fragment();
 				let (nodes, _has_braces) = self.parse_expressions(true)?; // Parse { ... } content
 
 				return Ok(AstFrom::Generator(AstGenerator {
@@ -102,13 +102,13 @@ impl<'a> Parser<'a> {
 
 			let source = if has_dot {
 				self.consume_operator(Operator::Dot)?;
-				let second_token = self.advance()?;
+				let second_identifier = self.parse_identifier_with_hyphens()?;
 
 				// namespace.table - create
 				// UnresolvedSourceIdentifier with namespace
 				let mut source = UnresolvedSourceIdentifier::new(
-					Some(first_token.fragment.clone()),
-					second_token.fragment.clone(),
+					Some(first_identifier.fragment().clone()),
+					second_identifier.into_fragment(),
 				);
 
 				// Check for alias after namespace.table
@@ -121,7 +121,8 @@ impl<'a> Parser<'a> {
 			} else {
 				// Just table - create
 				// UnresolvedSourceIdentifier without namespace
-				let mut source = UnresolvedSourceIdentifier::new(None, first_token.fragment.clone());
+				let mut source =
+					UnresolvedSourceIdentifier::new(None, first_identifier.into_fragment());
 
 				// Check for alias after table
 				if !self.is_eof() && self.current()?.is_identifier() {
@@ -512,6 +513,86 @@ mod tests {
 				assert_eq!(second_param.right.as_identifier().text(), "timeout");
 			}
 			_ => unreachable!("Expected Generator"),
+		}
+	}
+
+	#[test]
+	fn test_from_table_with_hyphens() {
+		// Test: FROM hyphenated-table
+		let tokens = tokenize("FROM my-table").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse_from().unwrap();
+
+		// Should parse as single table identifier "my-table"
+		if let AstFrom::Source {
+			source,
+			..
+		} = result
+		{
+			assert_eq!(source.namespace, None);
+			assert_eq!(source.name.text(), "my-table");
+		} else {
+			panic!("Expected AstFrom::Source");
+		}
+	}
+
+	#[test]
+	fn test_from_namespace_table_with_hyphens() {
+		// Test: FROM namespace.hyphenated-table
+		let tokens = tokenize("FROM test.even-numbers").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse_from().unwrap();
+
+		// Should parse namespace="test", table="even-numbers"
+		if let AstFrom::Source {
+			source,
+			..
+		} = result
+		{
+			assert_eq!(source.namespace.as_ref().map(|f| f.text()), Some("test"));
+			assert_eq!(source.name.text(), "even-numbers");
+		} else {
+			panic!("Expected AstFrom::Source");
+		}
+	}
+
+	#[test]
+	fn test_from_hyphenated_with_alias() {
+		// Test: FROM my-table AS t
+		let tokens = tokenize("FROM my-table t").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse_from().unwrap();
+
+		// Should parse table="my-table", alias="t"
+		if let AstFrom::Source {
+			source,
+			..
+		} = result
+		{
+			assert_eq!(source.name.text(), "my-table");
+			assert_eq!(source.alias.as_ref().map(|f| f.text()), Some("t"));
+		} else {
+			panic!("Expected AstFrom::Source");
+		}
+	}
+
+	#[test]
+	fn test_from_namespace_hyphens_with_alias() {
+		// Test: FROM test.even-numbers nums
+		let tokens = tokenize("FROM test.even-numbers nums").unwrap();
+		let mut parser = Parser::new(tokens);
+		let result = parser.parse_from().unwrap();
+
+		if let AstFrom::Source {
+			source,
+			..
+		} = result
+		{
+			assert_eq!(source.namespace.as_ref().map(|f| f.text()), Some("test"));
+			assert_eq!(source.name.text(), "even-numbers");
+			assert_eq!(source.alias.as_ref().map(|f| f.text()), Some("nums"));
+		} else {
+			panic!("Expected AstFrom::Source");
 		}
 	}
 }

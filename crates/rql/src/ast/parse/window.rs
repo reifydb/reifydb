@@ -102,7 +102,7 @@ impl<'a> Parser<'a> {
 				));
 			}
 
-			let key = self.parse_as_identifier()?;
+			let key = self.parse_identifier_with_hyphens()?;
 			self.consume_operator(Colon)?;
 			let value = self.parse_node(Precedence::None)?;
 

@@ -23,7 +23,7 @@ impl<'a> Parser<'a> {
 				break;
 			}
 
-			let key = self.parse_as_identifier()?;
+			let key = self.parse_identifier_with_hyphens()?;
 			self.consume_operator(Colon)?;
 			let value = Box::new(self.parse_node(Precedence::None)?);
 

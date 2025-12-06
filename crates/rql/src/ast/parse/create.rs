@@ -371,7 +371,7 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_column(&mut self) -> crate::Result<AstColumnToCreate<'a>> {
-		let name_identifier = self.parse_identifier_with_hyphens_allow_keyword()?;
+		let name_identifier = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Colon)?;
 		let ty_token = self.consume(TokenKind::Identifier)?;
 
@@ -415,15 +415,15 @@ impl<'a> Parser<'a> {
 		let dictionary = if self.current()?.is_keyword(Keyword::Dictionary) {
 			self.consume_keyword(Keyword::Dictionary)?;
 			// Parse dictionary identifier (may be qualified: namespace.dict_name)
-			let dict_name = self.consume(TokenKind::Identifier)?;
+			let dict_name = self.parse_identifier_with_hyphens()?;
 			let dict_ident = if self.consume_if(TokenKind::Operator(Dot))?.is_some() {
 				// Qualified: namespace.dict_name
-				let qualified_name = self.consume(TokenKind::Identifier)?;
-				MaybeQualifiedDictionaryIdentifier::new(qualified_name.fragment)
-					.with_namespace(dict_name.fragment)
+				let qualified_name = self.parse_identifier_with_hyphens()?;
+				MaybeQualifiedDictionaryIdentifier::new(qualified_name.into_fragment())
+					.with_namespace(dict_name.into_fragment())
 			} else {
 				// Unqualified: dict_name
-				MaybeQualifiedDictionaryIdentifier::new(dict_name.fragment)
+				MaybeQualifiedDictionaryIdentifier::new(dict_name.into_fragment())
 			};
 			Some(dict_ident)
 		} else {

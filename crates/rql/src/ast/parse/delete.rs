@@ -12,21 +12,26 @@ impl<'a> Parser<'a> {
 		let token = self.consume_keyword(Keyword::Delete)?;
 
 		// Check if there's a target specified (optional)
-		let target = if !self.is_eof() && self.current()?.is_identifier() {
+		let target = if !self.is_eof()
+			&& matches!(
+				self.current()?.kind,
+				crate::ast::tokenize::TokenKind::Identifier
+					| crate::ast::tokenize::TokenKind::Keyword(_)
+			) {
 			use crate::ast::identifier::UnresolvedSourceIdentifier;
-			let first_token = self.consume(crate::ast::tokenize::TokenKind::Identifier)?;
+			let first = self.parse_identifier_with_hyphens()?;
 
 			if !self.is_eof() && self.current_expect_operator(Operator::Dot).is_ok() {
 				self.consume_operator(Operator::Dot)?;
-				let second_token = self.advance()?;
+				let second = self.parse_identifier_with_hyphens()?;
 				// namespace.source
 				Some(UnresolvedSourceIdentifier::new(
-					Some(first_token.fragment.clone()),
-					second_token.fragment.clone(),
+					Some(first.into_fragment()),
+					second.into_fragment(),
 				))
 			} else {
 				// source only
-				Some(UnresolvedSourceIdentifier::new(None, first_token.fragment.clone()))
+				Some(UnresolvedSourceIdentifier::new(None, first.into_fragment()))
 			}
 		} else {
 			// No target specified - will be inferred from input

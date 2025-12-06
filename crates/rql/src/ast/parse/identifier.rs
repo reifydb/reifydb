@@ -15,6 +15,8 @@ impl<'a> Parser<'a> {
 		Ok(UnqualifiedIdentifier::new(token))
 	}
 
+	/// Parse an identifier or keyword as an identifier (simple, no hyphen handling)
+	/// Used in expression contexts where hyphens should remain as operators
 	pub(crate) fn parse_as_identifier(&mut self) -> crate::Result<UnqualifiedIdentifier<'a>> {
 		let token = self.advance()?;
 		debug_assert!(matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_)));
@@ -22,69 +24,11 @@ impl<'a> Parser<'a> {
 	}
 
 	/// Parse an identifier that may contain hyphens, allowing keywords as the first token
+	/// Used in DDL contexts where hyphenated identifiers are supported
 	/// Consumes: (identifier|keyword) [-(identifier|keyword)]*
 	/// Returns: UnqualifiedIdentifier with combined text
-	pub(crate) fn parse_identifier_with_hyphens_allow_keyword(
-		&mut self,
-	) -> crate::Result<UnqualifiedIdentifier<'a>> {
-		let first_token = self.advance()?;
-
-		// Helper to check if a token can be used as an identifier part
-		let is_identifier_like =
-			|token: &Token| matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_));
-
-		// Check if next token is hyphen followed by identifier or keyword
-		// If not, just return the first token
-		if self.is_eof()
-			|| self.current_expect_operator(Operator::Minus).is_err()
-			|| self.position + 1 >= self.tokens.len()
-			|| !is_identifier_like(&self.tokens[self.position + 1])
-		{
-			return Ok(UnqualifiedIdentifier::new(first_token));
-		}
-
-		// Build hyphenated identifier
-		let mut parts = vec![first_token.fragment.text().to_string()];
-		let start_line = first_token.fragment.line();
-		let start_column = first_token.fragment.column();
-
-		// Look for pattern: - (identifier | keyword)
-		while !self.is_eof()
-			&& self.current_expect_operator(Operator::Minus).is_ok()
-			&& self.position + 1 < self.tokens.len()
-			&& is_identifier_like(&self.tokens[self.position + 1])
-		{
-			self.consume_operator(Operator::Minus)?; // consume hyphen
-			let next_token = self.advance()?; // consume identifier or keyword
-			parts.push("-".to_string());
-			parts.push(next_token.fragment.text().to_string());
-		}
-
-		let combined_text = parts.join("");
-
-		// Validate: no consecutive hyphens
-		if combined_text.contains("--") {
-			return Err(Error(unexpected_token_error(
-				"identifier without consecutive hyphens",
-				first_token.fragment.clone(),
-			)));
-		}
-
-		// Create OwnedFragment with combined text
-		let fragment = Fragment::Owned(OwnedFragment::Statement {
-			text: combined_text,
-			line: start_line,
-			column: start_column,
-		});
-
-		Ok(UnqualifiedIdentifier::from_fragment(fragment))
-	}
-
-	/// Parse an identifier that may contain hyphens
-	/// Consumes: identifier [-(identifier|keyword)]*
-	/// Returns: UnqualifiedIdentifier with combined text
 	pub(crate) fn parse_identifier_with_hyphens(&mut self) -> crate::Result<UnqualifiedIdentifier<'a>> {
-		let first_token = self.consume(TokenKind::Identifier)?;
+		let first_token = self.advance()?;
 
 		// Helper to check if a token can be used as an identifier part
 		let is_identifier_like =

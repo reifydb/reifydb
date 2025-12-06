@@ -22,6 +22,7 @@ fn main() {
 	db.start().unwrap();
 
 	// Create namespace
+	db.command_as_root(r#"create namespace test-test"#, Params::None).unwrap();
 	db.command_as_root(r#"create namespace test"#, Params::None).unwrap();
 
 	// Create table
@@ -29,7 +30,7 @@ fn main() {
 
 	// Create deferred view (filters even numbers)
 	db.command_as_root(
-		r#"create deferred view test.even_numbers { id: int4, value: int4 } as {
+		r#"create deferred view test.even-numbers { id: int4, value: int4 } as {
   from test.source
   filter { (value / 2) * 2 == value }
 }"#,
@@ -95,15 +96,15 @@ fn main() {
 	eprintln!("[DEBUG] Await complete, current version: {}", post_version.0);
 
 	// Query even numbers (first 10)
-	println!("\n=== test.even_numbers (take 10) ===");
-	for frame in db.query_as_root(r#"from test.even_numbers take 10"#, Params::None).unwrap() {
+	println!("\n=== test.even-numbers (take 10) ===");
+	for frame in db.query_as_root(r#"from test.even-numbers take 10"#, Params::None).unwrap() {
 		println!("{}", frame);
 	}
 
 	// Count even numbers (should be 60)
 	println!("\n=== count of even numbers ===");
 	for frame in db
-		.query_as_root(r#"from test.even_numbers aggregate { count: math::count(value) }"#, Params::None)
+		.query_as_root(r#"from test.even-numbers aggregate { count: math::count(value) }"#, Params::None)
 		.unwrap()
 	{
 		println!("{}", frame);
