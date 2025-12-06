@@ -117,8 +117,10 @@ pub fn scan_number<'a>(cursor: &mut Cursor<'a>) -> Option<Token<'a>> {
 		return None;
 	}
 
-	// Check that next character isn't an identifier continuation
-	if cursor.peek().map_or(false, |c| is_identifier_char(c) && c != '.') {
+	// Special case: leading dot decimals followed by identifier chars should be rejected
+	// This allows ".5sec" to parse as Dot + Number("5") + Identifier("sec")
+	// instead of Number(".5") + Identifier("sec")
+	if has_leading_dot && cursor.peek().map_or(false, |c| is_identifier_char(c)) {
 		cursor.restore_state(state);
 		return None;
 	}
@@ -134,7 +136,7 @@ mod tests {
 	use Literal::Number;
 
 	use super::*;
-	use crate::ast::tokenize::tokenize;
+	use crate::ast::tokenize::{Operator, tokenize};
 
 	#[test]
 	fn test_decimal_integer() {
@@ -209,19 +211,43 @@ mod tests {
 	}
 
 	#[test]
-	fn test_number_with_trailing() {
-		// Numbers directly followed by letters are invalid tokens
-		// "42abc" cannot be tokenized as it's neither a number nor an
-		// identifier
-		let result = tokenize("42abc");
-		assert!(result.is_err(), "42abc should fail to tokenize");
+	fn test_leading_dot_decimal_with_identifier() {
+		// Leading dot followed by digit and then identifier tokenizes as separate tokens
+		// This allows qualified identifiers like "namespace.5sec-cache"
+		// The parser will reject "5sec" as an identifier prefix
+		let tokens = tokenize(".5sec").unwrap();
+		assert_eq!(tokens.len(), 3); // Dot, Number("5"), Identifier("sec")
+		assert_eq!(tokens[0].kind, TokenKind::Operator(Operator::Dot));
+		assert_eq!(tokens[1].kind, TokenKind::Literal(Number));
+		assert_eq!(tokens[1].fragment.text(), "5");
+		assert_eq!(tokens[2].kind, TokenKind::Identifier);
+		assert_eq!(tokens[2].fragment.text(), "sec");
+	}
 
-		// With proper spacing, it works
-		let tokens = tokenize("42 abc").unwrap();
+	#[test]
+	fn test_leading_dot_decimal_standalone() {
+		// Leading dot decimals should work when standalone or with spacing
+		let tokens = tokenize(".5").unwrap();
+		assert_eq!(tokens.len(), 1);
+		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
+		assert_eq!(tokens[0].fragment.text(), ".5");
+	}
+
+	#[test]
+	fn test_number_with_trailing() {
+		// Numbers directly followed by letters now tokenize as separate tokens
+		// This enables hyphenated identifiers like "twap-10min"
+		let tokens = tokenize("42abc").unwrap();
+		assert_eq!(tokens.len(), 2);
 		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
 		assert_eq!(tokens[0].fragment.text(), "42");
 		assert_eq!(tokens[1].kind, TokenKind::Identifier);
 		assert_eq!(tokens[1].fragment.text(), "abc");
+
+		// With proper spacing, it also works
+		let tokens = tokenize("42 abc").unwrap();
+		assert_eq!(tokens[0].kind, TokenKind::Literal(Number));
+		assert_eq!(tokens[0].fragment.text(), "42");
 	}
 
 	#[test]

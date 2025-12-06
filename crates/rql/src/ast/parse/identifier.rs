@@ -6,7 +6,7 @@ use reifydb_type::{Error, Fragment, OwnedFragment, diagnostic::ast::unexpected_t
 use crate::ast::{
 	identifier::{MaybeQualifiedColumnIdentifier, UnqualifiedIdentifier},
 	parse::Parser,
-	tokenize::{Operator, Token, TokenKind},
+	tokenize::{Literal, Operator, Token, TokenKind},
 };
 
 impl<'a> Parser<'a> {
@@ -31,34 +31,73 @@ impl<'a> Parser<'a> {
 		let first_token = self.advance()?;
 
 		// Helper to check if a token can be used as an identifier part
-		let is_identifier_like =
-			|token: &Token| matches!(token.kind, TokenKind::Identifier | TokenKind::Keyword(_));
+		let is_identifier_like = |token: &Token| {
+			matches!(
+				token.kind,
+				TokenKind::Identifier | TokenKind::Keyword(_) | TokenKind::Literal(Literal::Number)
+			)
+		};
+
+		// Helper to check if two tokens are adjacent (no space between them)
+		let is_adjacent = |prev: &Token, next: &Token| {
+			prev.fragment.line() == next.fragment.line()
+				&& *prev.fragment.column() + prev.fragment.text().len() as u32
+					== *next.fragment.column()
+		};
+
+		// Build hyphenated identifier - start with first token
+
+		// Reject identifiers that start with a number
+		if matches!(first_token.kind, TokenKind::Literal(Literal::Number)) {
+			return Err(Error(unexpected_token_error(
+				"identifier (identifiers cannot start with digits)",
+				first_token.fragment.clone(),
+			)));
+		}
+		let mut parts = vec![first_token.fragment.text().to_string()];
+		let start_line = first_token.fragment.line();
+		let start_column = first_token.fragment.column();
+		let first_fragment = first_token.fragment.clone();
 
 		// Check if next token is hyphen followed by identifier or keyword
-		// If not, just return the first token
+		// If not, return what we have so far
 		if self.is_eof()
 			|| self.current_expect_operator(Operator::Minus).is_err()
 			|| self.position + 1 >= self.tokens.len()
 			|| !is_identifier_like(&self.tokens[self.position + 1])
 		{
-			return Ok(UnqualifiedIdentifier::new(first_token));
+			let combined_text = parts.join("");
+			let fragment = Fragment::Owned(OwnedFragment::Statement {
+				text: combined_text,
+				line: start_line,
+				column: start_column,
+			});
+			return Ok(UnqualifiedIdentifier::from_fragment(fragment));
 		}
 
-		// Build hyphenated identifier
-		let mut parts = vec![first_token.fragment.text().to_string()];
-		let start_line = first_token.fragment.line();
-		let start_column = first_token.fragment.column();
-
-		// Look for pattern: - (identifier | keyword)
+		let mut last_token;
+		// Look for pattern: - (identifier | keyword | number)
+		// Also handle adjacent identifier after number (e.g., "10min" tokenizes as "10" + "min")
 		while !self.is_eof()
 			&& self.current_expect_operator(Operator::Minus).is_ok()
 			&& self.position + 1 < self.tokens.len()
 			&& is_identifier_like(&self.tokens[self.position + 1])
 		{
 			self.consume_operator(Operator::Minus)?; // consume hyphen
-			let next_token = self.advance()?; // consume identifier or keyword
+			let next_token = self.advance()?; // consume identifier or keyword or number
 			parts.push("-".to_string());
 			parts.push(next_token.fragment.text().to_string());
+			last_token = next_token;
+
+			// Special case: if we just consumed a number, check if next token is an identifier
+			// that's adjacent (no space), e.g., "10" followed by "min" in "10min"
+			if matches!(last_token.kind, TokenKind::Literal(Literal::Number))
+				&& !self.is_eof() && matches!(self.tokens[self.position].kind, TokenKind::Identifier)
+				&& is_adjacent(&last_token, &self.tokens[self.position])
+			{
+				let adjacent_identifier = self.advance()?;
+				parts.push(adjacent_identifier.fragment.text().to_string());
+			}
 		}
 
 		let combined_text = parts.join("");
@@ -67,7 +106,7 @@ impl<'a> Parser<'a> {
 		if combined_text.contains("--") {
 			return Err(Error(unexpected_token_error(
 				"identifier without consecutive hyphens",
-				first_token.fragment.clone(),
+				first_fragment.clone(),
 			)));
 		}
 
@@ -298,5 +337,58 @@ mod tests {
 			panic!()
 		};
 		assert_eq!(identifier.text(), "my_identifier");
+	}
+
+	#[test]
+	fn identifier_with_hyphen_and_number_suffix() {
+		// Number suffix is valid: twap-10min
+		let tokens = tokenize("CREATE NAMESPACE twap-10min").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!()
+		};
+
+		if let Namespace(ns) = create {
+			assert_eq!(ns.namespace.name.text(), "twap-10min");
+		} else {
+			panic!("Expected namespace creation");
+		}
+	}
+
+	#[test]
+	fn identifier_with_hyphen_and_number_middle() {
+		// Number in middle is valid: avg-10min-window
+		let tokens = tokenize("CREATE NAMESPACE avg-10min-window").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!()
+		};
+
+		if let Namespace(ns) = create {
+			assert_eq!(ns.namespace.name.text(), "avg-10min-window");
+		} else {
+			panic!("Expected namespace creation");
+		}
+	}
+
+	#[test]
+	fn identifier_with_keyword_and_number() {
+		let tokens = tokenize("CREATE NAMESPACE create-2024-table").unwrap();
+		let mut result = parse(tokens).unwrap();
+		assert_eq!(result.len(), 1);
+
+		let Create(create) = result.pop().unwrap().nodes.pop().unwrap() else {
+			panic!()
+		};
+
+		if let Namespace(ns) = create {
+			assert_eq!(ns.namespace.name.text(), "create-2024-table");
+		} else {
+			panic!("Expected namespace creation");
+		}
 	}
 }
