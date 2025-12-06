@@ -10,8 +10,8 @@ use libloading::{Library, Symbol};
 use parking_lot::RwLock;
 use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{
-	BufferFFI, CURRENT_API_VERSION, FFIOperatorColumnDefs, FFIOperatorCreateFn, FFIOperatorDescriptor,
-	FFIOperatorMagicFn, OPERATOR_MAGIC,
+	BufferFFI, CURRENT_API, FFIOperatorColumnDefs, FFIOperatorCreateFn, FFIOperatorDescriptor, FFIOperatorMagicFn,
+	OPERATOR_MAGIC,
 };
 use reifydb_flow_operator_sdk::{FFIError, Result as FFIResult};
 
@@ -103,8 +103,8 @@ impl FFIOperatorLoader {
 
 			// Copy the descriptor fields
 			Ok(FFIOperatorDescriptor {
-				api_version: (*descriptor_ptr).api_version,
-				operator_name: (*descriptor_ptr).operator_name,
+				api: (*descriptor_ptr).api,
+				operator: (*descriptor_ptr).operator,
 				operator_version: (*descriptor_ptr).operator_version,
 				operator_description: (*descriptor_ptr).operator_description,
 				input_columns: (*descriptor_ptr).input_columns,
@@ -122,20 +122,20 @@ impl FFIOperatorLoader {
 		path: &Path,
 	) -> FFIResult<(String, u32)> {
 		// Verify API version
-		if descriptor.api_version != CURRENT_API_VERSION {
+		if descriptor.api != CURRENT_API {
 			return Err(FFIError::Other(format!(
 				"API version mismatch: expected {}, got {}",
-				CURRENT_API_VERSION, descriptor.api_version
+				CURRENT_API, descriptor.api
 			)));
 		}
 
 		// Extract operator name
-		let operator_name = unsafe { buffer_to_string(&descriptor.operator_name) };
+		let operator = unsafe { buffer_to_string(&descriptor.operator) };
 
 		// Store operator name -> path mapping
-		self.operator_paths.insert(operator_name.clone(), path.to_path_buf());
+		self.operator_paths.insert(operator.clone(), path.to_path_buf());
 
-		Ok((operator_name, descriptor.api_version))
+		Ok((operator, descriptor.api))
 	}
 
 	/// Register an operator library without instantiating it
@@ -157,15 +157,15 @@ impl FFIOperatorLoader {
 
 		let library = self.loaded_libraries.get(path).unwrap();
 		let descriptor = self.get_descriptor(library)?;
-		let (operator_name, api_version) = self.validate_and_register(&descriptor, path)?;
+		let (operator, api) = self.validate_and_register(&descriptor, path)?;
 
 		// Extract full operator info including column definitions
 		let info = unsafe {
 			LoadedOperatorInfo {
-				operator_name,
+				operator,
 				library_path: path.to_path_buf(),
-				api_version,
-				operator_version: buffer_to_string(&descriptor.operator_version),
+				api,
+				version: buffer_to_string(&descriptor.operator_version),
 				description: buffer_to_string(&descriptor.operator_description),
 				input_columns: extract_column_defs(&descriptor.input_columns),
 				output_columns: extract_column_defs(&descriptor.output_columns),
@@ -228,7 +228,7 @@ impl FFIOperatorLoader {
 	/// Create an operator instance from an already loaded library by name
 	///
 	/// # Arguments
-	/// * `operator_name` - Name of the operator type
+	/// * `operator` - Name of the operator type
 	/// * `operator_id` - Node ID for this operator instance
 	/// * `config` - Configuration data for the operator
 	///
@@ -237,25 +237,25 @@ impl FFIOperatorLoader {
 	/// * `Err(FFIError)` - Creation failed
 	pub fn create_operator_by_name(
 		&mut self,
-		operator_name: &str,
+		operator: &str,
 		operator_id: FlowNodeId,
 		config: &[u8],
 	) -> FFIResult<FFIOperator> {
 		let path = self
 			.operator_paths
-			.get(operator_name)
-			.ok_or_else(|| FFIError::Other(format!("Operator not found: {}", operator_name)))?
+			.get(operator)
+			.ok_or_else(|| FFIError::Other(format!("Operator not found: {}", operator)))?
 			.clone();
 
 		// Load operator from the known path
 		// Since this operator was previously registered, it should always be valid
 		self.load_operator(&path, config, operator_id)?
-			.ok_or_else(|| FFIError::Other(format!("Operator library no longer valid: {}", operator_name)))
+			.ok_or_else(|| FFIError::Other(format!("Operator library no longer valid: {}", operator)))
 	}
 
 	/// Check if an operator name is registered
-	pub fn has_operator(&self, operator_name: &str) -> bool {
-		self.operator_paths.contains_key(operator_name)
+	pub fn has_operator(&self, operator: &str) -> bool {
+		self.operator_paths.contains_key(operator)
 	}
 
 	/// Unload a library
@@ -300,12 +300,10 @@ impl FFIOperatorLoader {
 						let descriptor = &*descriptor_ptr;
 
 						operators.push(LoadedOperatorInfo {
-							operator_name: buffer_to_string(&descriptor.operator_name),
+							operator: buffer_to_string(&descriptor.operator),
 							library_path: path.clone(),
-							api_version: descriptor.api_version,
-							operator_version: buffer_to_string(
-								&descriptor.operator_version,
-							),
+							api: descriptor.api,
+							version: buffer_to_string(&descriptor.operator_version),
 							description: buffer_to_string(&descriptor.operator_description),
 							input_columns: extract_column_defs(&descriptor.input_columns),
 							output_columns: extract_column_defs(&descriptor.output_columns),
@@ -322,10 +320,10 @@ impl FFIOperatorLoader {
 /// Information about a loaded FFI operator
 #[derive(Debug, Clone)]
 pub struct LoadedOperatorInfo {
-	pub operator_name: String,
+	pub operator: String,
 	pub library_path: PathBuf,
-	pub api_version: u32,
-	pub operator_version: String,
+	pub api: u32,
+	pub version: String,
 	pub description: String,
 	pub input_columns: Vec<ColumnDefInfo>,
 	pub output_columns: Vec<ColumnDefInfo>,

@@ -4,8 +4,7 @@ use std::{collections::HashMap, ffi::c_void, ptr, slice};
 
 use reifydb_core::interface::FlowNodeId;
 use reifydb_flow_operator_abi::{
-	BufferFFI, CURRENT_API_VERSION, FFIOperatorColumnDef, FFIOperatorColumnDefs, FFIOperatorDescriptor,
-	OPERATOR_MAGIC,
+	BufferFFI, CURRENT_API, FFIOperatorColumnDef, FFIOperatorColumnDefs, FFIOperatorDescriptor, OPERATOR_MAGIC,
 };
 use reifydb_type::Value;
 
@@ -55,8 +54,8 @@ fn columns_to_ffi(columns: &'static [OperatorColumnDef]) -> FFIOperatorColumnDef
 
 pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor {
 	FFIOperatorDescriptor {
-		api_version: CURRENT_API_VERSION,
-		operator_name: str_to_buffer(O::NAME),
+		api: CURRENT_API,
+		operator: str_to_buffer(O::NAME),
 		operator_version: str_to_buffer(O::VERSION),
 		operator_description: str_to_buffer(O::DESCRIPTION),
 		input_columns: columns_to_ffi(O::INPUT_COLUMNS),

@@ -47,22 +47,22 @@ impl<'a> TableVirtual<'a> for FlowOperatorInputs {
 		}
 
 		// Access the flow operator store
-		let operators = self.flow_operator_store.list();
+		let infos = self.flow_operator_store.list();
 
 		// Count total input columns across all operators for capacity
-		let capacity: usize = operators.iter().map(|op| op.input_columns.len()).sum();
+		let capacity: usize = infos.iter().map(|op| op.input_columns.len()).sum();
 
 		// Pre-allocate vectors for column data
-		let mut operator_names = ColumnData::utf8_with_capacity(capacity);
+		let mut operators = ColumnData::utf8_with_capacity(capacity);
 		let mut positions = ColumnData::uint1_with_capacity(capacity);
 		let mut names = ColumnData::utf8_with_capacity(capacity);
 		let mut column_types = ColumnData::uint1_with_capacity(capacity);
 		let mut descriptions = ColumnData::utf8_with_capacity(capacity);
 
 		// Populate column data from loaded operators
-		for operator_info in operators {
-			for (position, col) in operator_info.input_columns.iter().enumerate() {
-				operator_names.push(operator_info.operator_name.as_str());
+		for info in infos {
+			for (position, col) in info.input_columns.iter().enumerate() {
+				operators.push(info.operator.as_str());
 				positions.push(position as u8);
 				names.push(col.name.as_str());
 				column_types.push(col.field_type.get_type().to_u8());
@@ -73,7 +73,7 @@ impl<'a> TableVirtual<'a> for FlowOperatorInputs {
 		let columns = vec![
 			Column {
 				name: Fragment::owned_internal("operator"),
-				data: operator_names,
+				data: operators,
 			},
 			Column {
 				name: Fragment::owned_internal("position"),

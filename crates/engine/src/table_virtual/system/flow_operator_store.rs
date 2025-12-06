@@ -18,9 +18,9 @@ pub struct OperatorColumnInfo {
 /// Cached information about a loaded flow operator
 #[derive(Clone, Debug)]
 pub struct FlowOperatorInfo {
-	pub operator_name: String,
+	pub operator: String,
 	pub library_path: PathBuf,
-	pub api_version: u32,
+	pub api: u32,
 	pub input_columns: Vec<OperatorColumnInfo>,
 	pub output_columns: Vec<OperatorColumnInfo>,
 }
@@ -28,7 +28,7 @@ pub struct FlowOperatorInfo {
 /// Thread-safe in-memory store for flow operator information
 #[derive(Clone)]
 pub struct FlowOperatorStore {
-	// Key: operator_name
+	// Key: operator
 	operators: Arc<RwLock<HashMap<String, FlowOperatorInfo>>>,
 }
 
@@ -40,7 +40,7 @@ impl FlowOperatorStore {
 	}
 
 	pub fn add(&self, info: FlowOperatorInfo) {
-		self.operators.write().insert(info.operator_name.clone(), info);
+		self.operators.write().insert(info.operator.clone(), info);
 	}
 
 	pub fn list(&self) -> Vec<FlowOperatorInfo> {
@@ -64,9 +64,9 @@ impl FlowOperatorEventListener {
 impl EventListener<FlowOperatorLoadedEvent> for FlowOperatorEventListener {
 	fn on(&self, event: &FlowOperatorLoadedEvent) {
 		self.store.add(FlowOperatorInfo {
-			operator_name: event.operator_name.clone(),
+			operator: event.operator.clone(),
 			library_path: event.library_path.clone(),
-			api_version: event.api_version,
+			api: event.api,
 			input_columns: event
 				.input
 				.iter()

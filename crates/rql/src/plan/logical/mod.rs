@@ -763,7 +763,7 @@ pub struct ExtendNode<'a> {
 
 #[derive(Debug)]
 pub struct ApplyNode<'a> {
-	pub operator_name: Fragment<'a>,
+	pub operator: Fragment<'a>,
 	pub arguments: Vec<Expression<'a>>,
 }
 

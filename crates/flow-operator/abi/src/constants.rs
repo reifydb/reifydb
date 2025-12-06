@@ -4,7 +4,7 @@
 ///
 /// This version must be incremented when making breaking changes to the FFI interface.
 /// Operators compiled against different API versions will be rejected.
-pub const CURRENT_API_VERSION: u32 = 1;
+pub const CURRENT_API: u32 = 1;
 
 /// Magic number to identify valid FFI operator libraries
 ///

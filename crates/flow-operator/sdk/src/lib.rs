@@ -106,8 +106,8 @@ pub struct OperatorColumnDef {
 pub trait FFIOperatorMetadata {
 	/// Operator name (must be unique within a library)
 	const NAME: &'static str;
-	/// API version for FFI compatibility (must match host's CURRENT_API_VERSION)
-	const API_VERSION: u32;
+	/// API version for FFI compatibility (must match host's CURRENT_API)
+	const API: u32;
 	/// Semantic version of the operator (e.g., "1.0.0")
 	const VERSION: &'static str;
 	/// Human-readable description of the operator

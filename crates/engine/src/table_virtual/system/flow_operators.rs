@@ -46,34 +46,31 @@ impl<'a> TableVirtual<'a> for FlowOperators {
 			return Ok(None);
 		}
 
-		// Access the flow operator store
-		let operators = self.flow_operator_store.list();
+		let infos = self.flow_operator_store.list();
 
-		// Pre-allocate vectors for column data
-		let capacity = operators.len();
-		let mut operator_names = ColumnData::utf8_with_capacity(capacity);
+		let capacity = infos.len();
+		let mut operators = ColumnData::utf8_with_capacity(capacity);
 		let mut library_paths = ColumnData::utf8_with_capacity(capacity);
-		let mut api_versions = ColumnData::uint4_with_capacity(capacity);
+		let mut apis = ColumnData::uint4_with_capacity(capacity);
 
-		// Populate column data from loaded operators
-		for operator_info in operators {
-			operator_names.push(operator_info.operator_name.as_str());
-			library_paths.push(operator_info.library_path.to_str().unwrap_or("<invalid path>"));
-			api_versions.push(operator_info.api_version);
+		for info in infos {
+			operators.push(info.operator.as_str());
+			library_paths.push(info.library_path.to_str().unwrap_or("<invalid path>"));
+			apis.push(info.api);
 		}
 
 		let columns = vec![
 			Column {
 				name: Fragment::owned_internal("operator"),
-				data: operator_names,
+				data: operators,
 			},
 			Column {
 				name: Fragment::owned_internal("library_path"),
 				data: library_paths,
 			},
 			Column {
-				name: Fragment::owned_internal("api_version"),
-				data: api_versions,
+				name: Fragment::owned_internal("api"),
+				data: apis,
 			},
 		];
 

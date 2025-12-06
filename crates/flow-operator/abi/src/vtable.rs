@@ -66,11 +66,11 @@ pub struct FFIOperatorVTable {
 /// its virtual function table.
 #[repr(C)]
 pub struct FFIOperatorDescriptor {
-	/// API version (must match CURRENT_API_VERSION)
-	pub api_version: u32,
+	/// API version (must match CURRENT_API)
+	pub api: u32,
 
 	/// Operator name (UTF-8 encoded)
-	pub operator_name: BufferFFI,
+	pub operator: BufferFFI,
 
 	/// Operator semantic version (UTF-8 encoded, e.g., "1.0.0")
 	pub operator_version: BufferFFI,

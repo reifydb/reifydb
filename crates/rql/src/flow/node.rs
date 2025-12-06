@@ -48,7 +48,7 @@ pub enum FlowNodeType {
 		expressions: Vec<Expression<'static>>,
 	},
 	Apply {
-		operator_name: String,
+		operator: String,
 		expressions: Vec<Expression<'static>>,
 	},
 	SinkView {

@@ -327,13 +327,13 @@ fn render_physical_plan_inner(plan: &PhysicalPlan, prefix: &str, is_last: bool, 
 		}
 
 		PhysicalPlan::Apply(physical::ApplyNode {
-			operator: operator_name,
+			operator,
 			expressions: arguments,
 			input,
 		}) => {
 			let label = format!(
 				"Apply {} [{}]",
-				operator_name.text(),
+				operator.text(),
 				if arguments.is_empty() {
 					"no args".to_string()
 				} else {

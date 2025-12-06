@@ -15,7 +15,7 @@ impl<'a> Parser<'a> {
 		let token = self.consume_keyword(Keyword::Apply)?;
 
 		// Parse the operator name (identifier)
-		let operator_name = self.parse_identifier()?;
+		let operator = self.parse_identifier()?;
 
 		// Check if we have arguments
 		let expressions = if self.current()?.is_operator(Operator::OpenCurly) {
@@ -72,7 +72,7 @@ impl<'a> Parser<'a> {
 
 		Ok(AstApply {
 			token,
-			operator_name,
+			operator,
 			expressions,
 		})
 	}
@@ -92,7 +92,7 @@ mod tests {
 
 		let result = result.pop().unwrap();
 		let apply = result.first_unchecked().as_apply();
-		assert_eq!(apply.operator_name.token.value(), "counter");
+		assert_eq!(apply.operator.token.value(), "counter");
 		assert_eq!(apply.expressions.len(), 0);
 	}
 
@@ -105,7 +105,7 @@ mod tests {
 
 		let result = result.pop().unwrap();
 		let apply = result.first_unchecked().as_apply();
-		assert_eq!(apply.operator_name.text(), "running_sum");
+		assert_eq!(apply.operator.text(), "running_sum");
 		assert_eq!(apply.expressions.len(), 1);
 		assert_eq!(apply.expressions[0].as_identifier().text(), "value");
 	}
@@ -119,7 +119,7 @@ mod tests {
 
 		let result = result.pop().unwrap();
 		let apply = result.first_unchecked().as_apply();
-		assert_eq!(apply.operator_name.token.value(), "counter");
+		assert_eq!(apply.operator.token.value(), "counter");
 		assert_eq!(apply.expressions.len(), 2);
 	}
 

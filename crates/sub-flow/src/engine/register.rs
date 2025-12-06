@@ -312,7 +312,7 @@ impl FlowEngine {
 				);
 			}
 			Apply {
-				operator_name,
+				operator,
 				expressions,
 			} => {
 				let parent = self
@@ -324,16 +324,16 @@ impl FlowEngine {
 					.clone();
 
 				// Check if this is an FFI operator and use the appropriate creation method
-				let operator = if self.is_ffi_operator(operator_name.as_str()) {
+				let operator = if self.is_ffi_operator(operator.as_str()) {
 					let config = evaluate_operator_config(
 						expressions.as_slice(),
 						&self.inner.evaluator,
 					)?;
-					self.create_ffi_operator(operator_name.as_str(), node.id, &config)?
+					self.create_ffi_operator(operator.as_str(), node.id, &config)?
 				} else {
 					// Use registry for non-FFI operators
 					self.inner.registry.create_operator(
-						operator_name.as_str(),
+						operator.as_str(),
 						node.id,
 						expressions.as_slice(),
 					)?

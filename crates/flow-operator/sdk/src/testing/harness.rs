@@ -248,13 +248,13 @@ impl TestMetadataHarness {
 	}
 
 	/// Assert an operator has the expected API version
-	pub fn assert_api_version<T: FFIOperatorMetadata>(expected: u32) {
+	pub fn assert_api<T: FFIOperatorMetadata>(expected: u32) {
 		assert_eq!(
-			T::API_VERSION,
+			T::API,
 			expected,
 			"Operator API version mismatch. Expected: {}, Actual: {}",
 			expected,
-			T::API_VERSION
+			T::API
 		);
 	}
 
@@ -286,7 +286,7 @@ mod tests {
 
 	impl FFIOperatorMetadata for TestOperator {
 		const NAME: &'static str = "test_operator";
-		const API_VERSION: u32 = 1;
+		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Simple pass-through test operator";
 		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
@@ -320,7 +320,7 @@ mod tests {
 
 	impl FFIOperatorMetadata for StatefulTestOperator {
 		const NAME: &'static str = "stateful_test_operator";
-		const API_VERSION: u32 = 1;
+		const API: u32 = 1;
 		const VERSION: &'static str = "1.0.0";
 		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
 		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
@@ -378,7 +378,7 @@ mod tests {
 	#[test]
 	fn test_operator_metadata() {
 		TestMetadataHarness::assert_name::<TestOperator>("test_operator");
-		TestMetadataHarness::assert_api_version::<TestOperator>(1);
+		TestMetadataHarness::assert_api::<TestOperator>(1);
 		TestMetadataHarness::assert_version::<TestOperator>("1.0.0");
 	}
 

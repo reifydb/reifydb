@@ -661,14 +661,14 @@ pub struct AstCast<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstApply<'a> {
 	pub token: Token<'a>,
-	pub operator_name: UnqualifiedIdentifier<'a>,
+	pub operator: UnqualifiedIdentifier<'a>,
 	pub expressions: Vec<Ast<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCall<'a> {
 	pub token: Token<'a>,
-	pub operator_name: UnqualifiedIdentifier<'a>,
+	pub operator: UnqualifiedIdentifier<'a>,
 	pub arguments: AstTuple<'a>,
 }
 

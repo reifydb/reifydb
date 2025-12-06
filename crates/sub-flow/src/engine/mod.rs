@@ -121,7 +121,7 @@ impl FlowEngine {
 				}
 			};
 
-			debug!("Registered FFI operator: {} from {:?}", info.operator_name, path);
+			debug!("Registered FFI operator: {} from {:?}", info.operator, path);
 
 			// Convert column definitions to event format
 			fn convert_column_defs(columns: &[ColumnDefInfo]) -> Vec<OperatorColumnDef> {
@@ -136,10 +136,10 @@ impl FlowEngine {
 
 			// Emit event for loaded operator
 			event_bus.emit(FlowOperatorLoadedEvent {
-				operator_name: info.operator_name,
+				operator: info.operator,
 				library_path: info.library_path,
-				api_version: info.api_version,
-				operator_version: info.operator_version,
+				api: info.api,
+				version: info.version,
 				description: info.description,
 				input: convert_column_defs(&info.input_columns),
 				output: convert_column_defs(&info.output_columns),
@@ -150,10 +150,10 @@ impl FlowEngine {
 	}
 
 	/// Create an FFI operator instance from the global singleton loader
-	#[instrument(level = "debug", skip(self, config), fields(operator_name = %operator_name, node_id = ?node_id))]
+	#[instrument(level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
 	pub(crate) fn create_ffi_operator(
 		&self,
-		operator_name: &str,
+		operator: &str,
 		node_id: FlowNodeId,
 		config: &HashMap<String, Value>,
 	) -> crate::Result<BoxedOperator> {
@@ -165,17 +165,17 @@ impl FlowEngine {
 			.map_err(|e| Error(internal!("Failed to serialize operator config: {:?}", e)))?;
 
 		let operator = loader_write
-			.create_operator_by_name(operator_name, node_id, &config_bytes)
+			.create_operator_by_name(operator, node_id, &config_bytes)
 			.map_err(|e| Error(internal!("Failed to create FFI operator: {:?}", e)))?;
 
 		Ok(Box::new(operator))
 	}
 
 	/// Check if an operator name corresponds to an FFI operator
-	pub(crate) fn is_ffi_operator(&self, operator_name: &str) -> bool {
+	pub(crate) fn is_ffi_operator(&self, operator: &str) -> bool {
 		let loader = ffi_operator_loader();
 		let loader_read = loader.read();
-		loader_read.has_operator(operator_name)
+		loader_read.has_operator(operator)
 	}
 
 	pub fn has_registered_flows(&self) -> bool {

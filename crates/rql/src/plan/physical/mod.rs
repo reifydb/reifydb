@@ -675,7 +675,7 @@ impl Compiler {
 				LogicalPlan::Apply(apply) => {
 					let input = stack.pop().map(Box::new);
 					stack.push(PhysicalPlan::Apply(ApplyNode {
-						operator: apply.operator_name,
+						operator: apply.operator,
 						expressions: apply.arguments,
 						input,
 					}));

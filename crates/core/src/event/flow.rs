@@ -22,13 +22,13 @@ pub struct OperatorColumnDef {
 #[derive(Debug, Clone)]
 pub struct FlowOperatorLoadedEvent {
 	/// Name of the operator
-	pub operator_name: String,
+	pub operator: String,
 	/// Path to the shared library containing the operator
 	pub library_path: PathBuf,
 	/// API version of the operator
-	pub api_version: u32,
+	pub api: u32,
 	/// Semantic version of the operator
-	pub operator_version: String,
+	pub version: String,
 	/// Human-readable description of the operator
 	pub description: String,
 	/// Input column definitions

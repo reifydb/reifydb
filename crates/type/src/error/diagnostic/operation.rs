@@ -172,7 +172,7 @@ pub fn apply_multiple_arguments_without_braces<'a>(fragment: impl IntoFragment<'
 		column: None,
 		fragment,
 		label: Some("missing curly braces around arguments".to_string()),
-		help: Some("Wrap multiple APPLY arguments in curly braces, e.g., 'APPLY operator_name { arg1, arg2 }'"
+		help: Some("Wrap multiple APPLY arguments in curly braces, e.g., 'APPLY operator { arg1, arg2 }'"
 			.to_string()),
 		notes: vec![
 			"When applying operators with multiple arguments, use curly braces: APPLY operator { arg1, arg2, ... }".to_string(),

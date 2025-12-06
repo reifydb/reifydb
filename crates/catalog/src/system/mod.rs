@@ -235,9 +235,9 @@ pub mod ids {
 
 			pub const OPERATOR: ColumnId = ColumnId(1);
 			pub const LIBRARY_PATH: ColumnId = ColumnId(2);
-			pub const API_VERSION: ColumnId = ColumnId(3);
+			pub const API: ColumnId = ColumnId(3);
 
-			pub const ALL: [ColumnId; 3] = [OPERATOR, LIBRARY_PATH, API_VERSION];
+			pub const ALL: [ColumnId; 3] = [OPERATOR, LIBRARY_PATH, API];
 		}
 
 		pub mod flow_operator_inputs {

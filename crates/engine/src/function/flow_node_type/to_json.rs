@@ -154,10 +154,10 @@ impl From<&FlowNodeType> for JsonFlowNodeType {
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
 			FlowNodeType::Apply {
-				operator_name,
+				operator,
 				expressions,
 			} => JsonFlowNodeType::Apply {
-				operator: operator_name.clone(),
+				operator: operator.clone(),
 				expressions: expressions.iter().map(|e| e.into()).collect(),
 			},
 			FlowNodeType::SinkView {
@@ -531,7 +531,7 @@ mod tests {
 	fn test_apply() {
 		test_node_type(
 			FlowNodeType::Apply {
-				operator_name: "my_operator".to_string(),
+				operator: "my_operator".to_string(),
 				expressions: vec![],
 			},
 			r#"{"expressions":[],"operator":"my_operator"}"#,

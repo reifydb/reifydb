@@ -38,8 +38,8 @@ pub fn flow_operators() -> Arc<TableVirtualDef> {
 					dictionary_id: None,
 				},
 				ColumnDef {
-					id: API_VERSION,
-					name: "api_version".to_string(),
+					id: API,
+					name: "api".to_string(),
 					constraint: TypeConstraint::unconstrained(Type::Uint4),
 					policies: vec![],
 					index: ColumnIndex(2),
