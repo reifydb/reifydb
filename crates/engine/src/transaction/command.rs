@@ -18,7 +18,7 @@ use reifydb_core::{
 	},
 	interface::{
 		BoxedMultiVersionIter, CdcTransaction, CommandTransaction, MultiVersionCommandTransaction,
-		MultiVersionQueryTransaction, MultiVersionTransaction, MultiVersionValues, QueryTransaction,
+		MultiVersionQueryTransaction, MultiVersionTransaction, MultiVersionValues, QueryTransaction, RowChange,
 		SingleVersionTransaction, TransactionId, TransactionalChanges, TransactionalDefChanges, WithEventBus,
 		interceptor::{TransactionInterceptor, WithInterceptors},
 	},
@@ -48,6 +48,9 @@ pub struct StandardCommandTransaction {
 	pub(crate) event_bus: EventBus,
 	pub(crate) changes: TransactionalDefChanges,
 	pub(crate) catalog: MaterializedCatalog,
+
+	// Track row changes for post-commit events
+	pub(crate) row_changes: Vec<RowChange>,
 
 	pub(crate) interceptors: Interceptors<Self>,
 	// Marker to prevent Send and Sync
@@ -84,6 +87,7 @@ impl StandardCommandTransaction {
 			catalog,
 			interceptors,
 			changes: TransactionalDefChanges::new(txn_id),
+			row_changes: Vec::new(),
 			_not_send_sync: PhantomData,
 		})
 	}
@@ -121,9 +125,10 @@ impl StandardCommandTransaction {
 			self.state = TransactionState::Committed;
 
 			let changes = std::mem::take(&mut self.changes);
+			let row_changes = std::mem::take(&mut self.row_changes);
 
 			let version = multi.commit()?;
-			TransactionInterceptor::post_commit(self, id, version, changes)?;
+			TransactionInterceptor::post_commit(self, id, version, changes, row_changes)?;
 
 			Ok(version)
 		} else {

@@ -2,10 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	Row,
-	event::catalog::TableInsertedEvent,
 	interface::{
-		EncodableKey, GetEncodedRowNamedLayout, MultiVersionCommandTransaction, RowKey, TableDef,
+		EncodableKey, MultiVersionCommandTransaction, RowChange, RowKey, TableDef, TableRowInsertion,
 		interceptor::TableInterceptor,
 	},
 	value::encoded::EncodedValues,
@@ -47,16 +45,12 @@ impl TableOperations for StandardCommandTransaction {
 
 		TableInterceptor::post_insert(self, &table, row_number, &row)?;
 
-		let layout = table.get_named_layout();
-
-		self.event_bus().emit(TableInsertedEvent {
-			table,
-			row: Row {
-				number: row_number,
-				encoded: row,
-				layout,
-			},
-		});
+		// Track insertion for post-commit event emission
+		self.row_changes.push(RowChange::TableInsert(TableRowInsertion {
+			table_id: table.id,
+			row_number,
+			encoded: row,
+		}));
 
 		Ok(())
 	}

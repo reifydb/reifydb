@@ -21,7 +21,7 @@ use crate::{
 		ViewPreUpdateInterceptor,
 	},
 	interface::{
-		CommandTransaction, NamespaceDef, RingBufferDef, TableDef, ViewDef,
+		CommandTransaction, NamespaceDef, RingBufferDef, RowChange, TableDef, ViewDef,
 		transaction::change::TransactionalDefChanges,
 	},
 	value::encoded::EncodedValues,
@@ -177,6 +177,7 @@ pub trait TransactionInterceptor<CT: CommandTransaction> {
 		id: TransactionId,
 		version: CommitVersion,
 		changes: TransactionalDefChanges,
+		row_changes: Vec<RowChange>,
 	) -> crate::Result<()>;
 }
 

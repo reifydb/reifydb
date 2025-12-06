@@ -31,8 +31,8 @@ use crate::{
 		ViewPreUpdateInterceptor,
 	},
 	interface::{
-		CommandTransaction, NamespaceDef, RingBufferDef, TableDef, TransactionId, TransactionalDefChanges,
-		ViewDef,
+		CommandTransaction, NamespaceDef, RingBufferDef, RowChange, TableDef, TransactionId,
+		TransactionalDefChanges, ViewDef,
 		interceptor::{
 			NamespaceDefInterceptor, RingBufferDefInterceptor, RingBufferInterceptor, TableDefInterceptor,
 			TableInterceptor, TransactionInterceptor, ViewDefInterceptor, ViewInterceptor,
@@ -371,6 +371,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> f
 		id: TransactionId,
 		version: CommitVersion,
 		changes: TransactionalDefChanges,
+		row_changes: Vec<RowChange>,
 	) -> crate::Result<()> {
 		if self.post_commit_interceptors().is_empty() {
 			return Ok(());
@@ -383,7 +384,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TransactionInterceptor<CT> f
 		unsafe {
 			let chain_ptr: *mut InterceptorChain<CT, dyn PostCommitInterceptor<CT>> =
 				self.post_commit_interceptors() as *mut _;
-			let ctx = PostCommitContext::new(id, version, changes);
+			let ctx = PostCommitContext::new(id, version, changes, row_changes);
 			(*chain_ptr).execute(ctx)?
 		}
 		Ok(())

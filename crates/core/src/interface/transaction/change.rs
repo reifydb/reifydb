@@ -309,3 +309,23 @@ impl TransactionalDefChanges {
 		self.log.clear();
 	}
 }
+
+/// Tracks a table row insertion for post-commit event emission
+#[derive(Debug, Clone)]
+pub struct TableRowInsertion {
+	pub table_id: TableId,
+	pub row_number: reifydb_type::RowNumber,
+	pub encoded: crate::value::encoded::EncodedValues,
+}
+
+/// Tracks row changes across different entity types for post-commit event emission
+#[derive(Debug, Clone)]
+pub enum RowChange {
+	/// A row was inserted into a table
+	TableInsert(TableRowInsertion),
+	// Future variants:
+	// ViewInsert(ViewRowInsertion),
+	// RingBufferInsert(RingBufferRowInsertion),
+	// TableUpdate(TableRowUpdate),
+	// TableDelete(TableRowDelete),
+}

@@ -50,7 +50,9 @@ impl EngineInterface for StandardEngine {
 		let mut interceptors = self.interceptors.create();
 
 		interceptors.post_commit.add(Rc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
-		interceptors.post_commit.add(Rc::new(CatalogEventInterceptor::new(self.event_bus.clone())));
+		interceptors
+			.post_commit
+			.add(Rc::new(CatalogEventInterceptor::new(self.event_bus.clone(), self.catalog.clone())));
 
 		StandardCommandTransaction::new(
 			self.multi.clone(),

@@ -30,7 +30,8 @@ define_interceptor!(
 	fields: {
 		id: TransactionId,
 		version: CommitVersion,
-		changes: TransactionalDefChanges}
+		changes: TransactionalDefChanges,
+		row_changes: Vec<RowChange>}
 );
 
 define_closure_interceptor!(
@@ -42,7 +43,10 @@ define_closure_interceptor!(
 
 define_api_function!(post_commit, ClosurePostCommitInterceptor<F>, PostCommitContext);
 
-use crate::{impl_register_interceptor, interface::TransactionalDefChanges};
+use crate::{
+	impl_register_interceptor,
+	interface::{RowChange, TransactionalDefChanges},
+};
 
 impl_register_interceptor!(
 	ClosurePreCommitInterceptor<T, F>,
