@@ -9,7 +9,7 @@ use reifydb_core::{
 	CowVec,
 	value::encoded::{EncodedKey, EncodedValues},
 };
-use reifydb_flow_operator_abi::{BufferFFI, StoreIteratorFFI};
+use reifydb_flow_operator_abi::{BufferFFI, FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI};
 
 use crate::{
 	context::OperatorContext,
@@ -62,7 +62,7 @@ fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<Encod
 		let result =
 			((*ctx.ctx).callbacks.store.get)(ctx.ctx, key_bytes.as_ptr(), key_bytes.len(), &mut output);
 
-		if result == 0 {
+		if result == FFI_OK {
 			// Success - value found
 			if output.ptr.is_null() || output.len == 0 {
 				Ok(None)
@@ -72,7 +72,7 @@ fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<Encod
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
 				Ok(Some(EncodedValues(CowVec::new(value_bytes))))
 			}
-		} else if result == 1 {
+		} else if result == FFI_NOT_FOUND {
 			// Key not found
 			Ok(None)
 		} else {
@@ -94,7 +94,7 @@ fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) -> Result<boo
 			&mut result_byte,
 		);
 
-		if result == 0 {
+		if result == FFI_OK {
 			Ok(result_byte != 0)
 		} else {
 			Err(FFIError::Other(format!("host_store_contains_key failed with code {}", result)))
@@ -115,7 +115,7 @@ fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(E
 			&mut iterator,
 		);
 
-		if result != 0 {
+		if result < 0 {
 			return Err(FFIError::Other(format!("host_store_prefix failed with code {}", result)));
 		}
 
@@ -160,7 +160,7 @@ fn raw_store_range(
 			&mut iterator,
 		);
 
-		if result != 0 {
+		if result < 0 {
 			return Err(FFIError::Other(format!("host_store_range failed with code {}", result)));
 		}
 
@@ -198,10 +198,10 @@ unsafe fn collect_iterator_results(
 		let next_result =
 			unsafe { ((*ctx.ctx).callbacks.store.iterator_next)(iterator, &mut key_buf, &mut value_buf) };
 
-		if next_result == 1 {
+		if next_result == FFI_END_OF_ITERATION {
 			// End of iteration
 			break;
-		} else if next_result != 0 {
+		} else if next_result != FFI_OK {
 			unsafe { ((*ctx.ctx).callbacks.store.iterator_free)(iterator) };
 			return Err(FFIError::Other(format!(
 				"host_store_iterator_next failed with code {}",

@@ -41,6 +41,11 @@ impl OperatorContext {
 		Store::new(self)
 	}
 
+	/// Get read-only access to the catalog
+	pub fn catalog(&mut self) -> crate::Catalog<'_> {
+		crate::Catalog::new(self)
+	}
+
 	/// Get or create a row number for a given key
 	///
 	/// This is a convenience method that creates a RowNumberProvider and

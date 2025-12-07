@@ -11,7 +11,10 @@ use reifydb_core::{
 	util::CowVec,
 	value::encoded::{EncodedKey, EncodedValues},
 };
-use reifydb_flow_operator_abi::{BufferFFI, FFIContext, StateIteratorFFI};
+use reifydb_flow_operator_abi::{
+	BufferFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND,
+	FFI_OK, FFIContext, StateIteratorFFI,
+};
 
 use super::{
 	memory::{host_alloc, host_free},
@@ -35,7 +38,7 @@ pub(super) extern "C" fn host_state_get(
 	output: *mut BufferFFI,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -53,7 +56,7 @@ pub(super) extern "C" fn host_state_get(
 				let value_bytes = value.as_ref();
 				let value_ptr = host_alloc(value_bytes.len());
 				if value_ptr.is_null() {
-					return -2; // Allocation failed
+					return FFI_ERROR_ALLOC;
 				}
 
 				std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
@@ -62,10 +65,10 @@ pub(super) extern "C" fn host_state_get(
 				(*output).len = value_bytes.len();
 				(*output).cap = value_bytes.len();
 
-				0 // Success, value found
+				FFI_OK
 			}
-			Ok(None) => 1, // Key not found
-			Err(_) => -1,  // Error
+			Ok(None) => FFI_NOT_FOUND,
+			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
@@ -81,7 +84,7 @@ pub(super) extern "C" fn host_state_set(
 	value_len: usize,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || value_ptr.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -96,8 +99,8 @@ pub(super) extern "C" fn host_state_set(
 		let value = EncodedValues(CowVec::new(value_bytes.to_vec()));
 
 		match flow_txn.state_set(FlowNodeId(operator_id), &key, value) {
-			Ok(_) => 0,   // Success
-			Err(_) => -1, // Error
+			Ok(_) => FFI_OK,
+			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
@@ -111,7 +114,7 @@ pub(super) extern "C" fn host_state_remove(
 	key_len: usize,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -124,8 +127,8 @@ pub(super) extern "C" fn host_state_remove(
 
 		// Remove state from transaction
 		match flow_txn.state_remove(FlowNodeId(operator_id), &key) {
-			Ok(_) => 0,   // Success
-			Err(_) => -1, // Error
+			Ok(_) => FFI_OK,
+			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
@@ -134,7 +137,7 @@ pub(super) extern "C" fn host_state_remove(
 #[unsafe(no_mangle)]
 pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut FFIContext) -> i32 {
 	if ctx.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -143,8 +146,8 @@ pub(super) extern "C" fn host_state_clear(operator_id: u64, ctx: *mut FFIContext
 
 		// Clear all state for this operator
 		match flow_txn.state_clear(FlowNodeId(operator_id)) {
-			Ok(_) => 0,   // Success
-			Err(_) => -1, // Error
+			Ok(_) => FFI_OK,
+			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
@@ -159,7 +162,7 @@ pub(super) extern "C" fn host_state_prefix(
 	iterator_out: *mut *mut StateIteratorFFI,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -197,7 +200,7 @@ pub(super) extern "C" fn host_state_prefix(
 				let iter_ptr = host_alloc(std::mem::size_of::<StateIteratorInternal>())
 					as *mut StateIteratorInternal;
 				if iter_ptr.is_null() {
-					return -2; // Allocation failed
+					return FFI_ERROR_ALLOC;
 				}
 
 				// Initialize the iterator structure with the handle
@@ -210,9 +213,9 @@ pub(super) extern "C" fn host_state_prefix(
 
 				// Cast to opaque StateIteratorFFI pointer
 				*iterator_out = iter_ptr as *mut StateIteratorFFI;
-				0 // Success
+				FFI_OK
 			}
-			Err(_) => -1, // Error
+			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
@@ -225,7 +228,7 @@ pub(super) extern "C" fn host_state_iterator_next(
 	value_out: *mut BufferFFI,
 ) -> i32 {
 	if iterator.is_null() || key_out.is_null() || value_out.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -239,7 +242,7 @@ pub(super) extern "C" fn host_state_iterator_next(
 				// Allocate and copy key
 				let key_ptr = host_alloc(key.len());
 				if key_ptr.is_null() {
-					return -2; // Allocation failed
+					return FFI_ERROR_ALLOC;
 				}
 				std::ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
 				(*key_out).ptr = key_ptr;
@@ -251,16 +254,16 @@ pub(super) extern "C" fn host_state_iterator_next(
 				if value_ptr.is_null() {
 					// Free the key we just allocated
 					host_free(key_ptr, key.len());
-					return -2; // Allocation failed
+					return FFI_ERROR_ALLOC;
 				}
 				std::ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
 				(*value_out).ptr = value_ptr;
 				(*value_out).len = value.len();
 				(*value_out).cap = value.len();
 
-				0 // Success, has next
+				FFI_OK
 			}
-			None => 1, // End of iteration
+			None => FFI_END_OF_ITERATION,
 		}
 	}
 }

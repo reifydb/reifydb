@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use reifydb_catalog::transaction::MaterializedCatalogTransaction;
 use reifydb_core::{CommitVersion, interface::ViewDef, value::encoded::EncodedValues};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::RowNumber;
@@ -150,6 +151,9 @@ pub struct FlowTransaction {
 	/// (join tables, distinct values, counters) that must be visible across
 	/// all CDC versions to maintain continuity.
 	state_query: StandardQueryTransaction,
+
+	/// Catalog for metadata access (cloned from parent, Arc-based so cheap)
+	catalog: reifydb_catalog::MaterializedCatalog,
 }
 
 impl FlowTransaction {
@@ -174,6 +178,7 @@ impl FlowTransaction {
 			metrics: FlowTransactionMetrics::new(),
 			source_query,
 			state_query,
+			catalog: parent.catalog().clone(),
 		}
 	}
 
@@ -192,5 +197,10 @@ impl FlowTransaction {
 	/// Get immutable reference to the metrics
 	pub fn metrics(&self) -> &FlowTransactionMetrics {
 		&self.metrics
+	}
+
+	/// Get access to the catalog for reading metadata
+	pub(crate) fn catalog(&self) -> &reifydb_catalog::MaterializedCatalog {
+		&self.catalog
 	}
 }

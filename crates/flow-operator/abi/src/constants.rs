@@ -16,3 +16,31 @@ pub const OPERATOR_MAGIC: u32 = 231123;
 ///
 /// FFI operator libraries must export this function to be recognized as valid operators.
 pub type FFIOperatorMagicFn = extern "C" fn() -> u32;
+
+// =============================
+// FFI Return Codes
+// =============================
+
+/// FFI return code: Operation succeeded, value found, or iterator has next item
+pub const FFI_OK: i32 = 0;
+
+/// FFI return code: Query succeeded but entity doesn't exist
+pub const FFI_NOT_FOUND: i32 = 1;
+
+/// FFI return code: Iterator has no more items (alias for FFI_NOT_FOUND)
+pub const FFI_END_OF_ITERATION: i32 = 1;
+
+/// FFI error code: Null pointer passed as parameter
+pub const FFI_ERROR_NULL_PTR: i32 = -1;
+
+/// FFI error code: Internal error during operation (transaction error, etc.)
+pub const FFI_ERROR_INTERNAL: i32 = -2;
+
+/// FFI error code: Memory allocation failed
+pub const FFI_ERROR_ALLOC: i32 = -3;
+
+/// FFI error code: Invalid UTF-8 in string parameter
+pub const FFI_ERROR_INVALID_UTF8: i32 = -4;
+
+/// FFI error code: Failed to marshal Rust type to FFI struct
+pub const FFI_ERROR_MARSHAL: i32 = -5;

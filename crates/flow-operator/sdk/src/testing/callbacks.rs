@@ -19,8 +19,9 @@ use std::{
 
 use reifydb_core::{CowVec, value::encoded::EncodedKey};
 use reifydb_flow_operator_abi::{
-	BufferFFI, FFIContext, HostCallbacks, LogCallbacks, MemoryCallbacks, StateCallbacks, StateIteratorFFI,
-	StoreCallbacks, StoreIteratorFFI,
+	BufferFFI, CatalogCallbacks, FFI_END_OF_ITERATION, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND, FFI_OK, FFIContext,
+	HostCallbacks, LogCallbacks, MemoryCallbacks, StateCallbacks, StateIteratorFFI, StoreCallbacks,
+	StoreIteratorFFI,
 };
 
 use super::TestContext;
@@ -106,7 +107,7 @@ extern "C" fn test_state_get(
 	output: *mut BufferFFI,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -131,9 +132,9 @@ extern "C" fn test_state_get(
 				(*output).len = value_bytes.len();
 				(*output).cap = value_bytes.len();
 
-				0 // Success, value found
+				FFI_OK
 			}
-			None => 1, // Key not found
+			None => FFI_NOT_FOUND,
 		}
 	}
 }
@@ -149,7 +150,7 @@ extern "C" fn test_state_set(
 	value_len: usize,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || value_ptr.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -165,7 +166,7 @@ extern "C" fn test_state_set(
 		// Set in TestContext
 		test_ctx.set_state(key, value_bytes.to_vec());
 
-		0 // Success
+		FFI_OK
 	}
 }
 
@@ -173,7 +174,7 @@ extern "C" fn test_state_set(
 #[unsafe(no_mangle)]
 extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut FFIContext, key_ptr: *const u8, key_len: usize) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -186,7 +187,7 @@ extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut FFIContext, key_ptr
 		// Remove from TestContext
 		test_ctx.remove_state(&key);
 
-		0 // Success
+		FFI_OK
 	}
 }
 
@@ -194,13 +195,13 @@ extern "C" fn test_state_remove(_operator_id: u64, ctx: *mut FFIContext, key_ptr
 #[unsafe(no_mangle)]
 extern "C" fn test_state_clear(_operator_id: u64, ctx: *mut FFIContext) -> i32 {
 	if ctx.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
 		let test_ctx = get_test_context(ctx);
 		test_ctx.clear_state();
-		0 // Success
+		FFI_OK
 	}
 }
 
@@ -227,7 +228,7 @@ extern "C" fn test_state_prefix(
 	iterator_out: *mut *mut StateIteratorFFI,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -268,7 +269,7 @@ extern "C" fn test_state_prefix(
 		// Leak the box and cast to opaque pointer
 		*iterator_out = Box::into_raw(iter) as *mut StateIteratorFFI;
 
-		0 // Success
+		FFI_OK
 	}
 }
 
@@ -280,7 +281,7 @@ extern "C" fn test_state_iterator_next(
 	value_out: *mut BufferFFI,
 ) -> i32 {
 	if iterator.is_null() || key_out.is_null() || value_out.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -289,7 +290,7 @@ extern "C" fn test_state_iterator_next(
 
 		// Check if we have more items
 		if iter.position >= iter.items.len() {
-			return 1; // End of iteration
+			return FFI_END_OF_ITERATION;
 		}
 
 		let (key, value) = &iter.items[iter.position];
@@ -317,7 +318,7 @@ extern "C" fn test_state_iterator_next(
 		(*value_out).len = value.len();
 		(*value_out).cap = value.len();
 
-		0 // Success, has next
+		FFI_OK
 	}
 }
 
@@ -402,6 +403,65 @@ extern "C" fn test_store_iterator_free(_iterator: *mut StoreIteratorFFI) {
 }
 
 // ============================================================================
+// Catalog Callbacks (stub implementations for testing)
+// ============================================================================
+
+use reifydb_flow_operator_abi::{FFINamespaceDef, FFITableDef};
+
+/// Find namespace by ID - stub implementation
+extern "C" fn test_catalog_find_namespace(
+	_ctx: *mut FFIContext,
+	_namespace_id: u64,
+	_version: u64,
+	_output: *mut FFINamespaceDef,
+) -> i32 {
+	1 // Not found
+}
+
+/// Find namespace by name - stub implementation
+extern "C" fn test_catalog_find_namespace_by_name(
+	_ctx: *mut FFIContext,
+	_name_ptr: *const u8,
+	_name_len: usize,
+	_version: u64,
+	_output: *mut FFINamespaceDef,
+) -> i32 {
+	1 // Not found
+}
+
+/// Find table by ID - stub implementation
+extern "C" fn test_catalog_find_table(
+	_ctx: *mut FFIContext,
+	_table_id: u64,
+	_version: u64,
+	_output: *mut FFITableDef,
+) -> i32 {
+	1 // Not found
+}
+
+/// Find table by name - stub implementation
+extern "C" fn test_catalog_find_table_by_name(
+	_ctx: *mut FFIContext,
+	_namespace_id: u64,
+	_name_ptr: *const u8,
+	_name_len: usize,
+	_version: u64,
+	_output: *mut FFITableDef,
+) -> i32 {
+	1 // Not found
+}
+
+/// Free namespace - stub implementation
+extern "C" fn test_catalog_free_namespace(_namespace: *mut FFINamespaceDef) {
+	// No-op in test callbacks
+}
+
+/// Free table - stub implementation
+extern "C" fn test_catalog_free_table(_table: *mut FFITableDef) {
+	// No-op in test callbacks
+}
+
+// ============================================================================
 // Public API
 // ============================================================================
 
@@ -432,6 +492,14 @@ pub fn create_test_callbacks() -> HostCallbacks {
 			range: test_store_range,
 			iterator_next: test_store_iterator_next,
 			iterator_free: test_store_iterator_free,
+		},
+		catalog: CatalogCallbacks {
+			find_namespace: test_catalog_find_namespace,
+			find_namespace_by_name: test_catalog_find_namespace_by_name,
+			find_table: test_catalog_find_table,
+			find_table_by_name: test_catalog_find_table_by_name,
+			free_namespace: test_catalog_free_namespace,
+			free_table: test_catalog_free_table,
 		},
 	}
 }

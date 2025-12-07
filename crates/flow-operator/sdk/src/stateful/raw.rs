@@ -9,7 +9,7 @@ use reifydb_core::{
 	CowVec,
 	value::encoded::{EncodedKey, EncodedValues},
 };
-use reifydb_flow_operator_abi::{BufferFFI, StateIteratorFFI};
+use reifydb_flow_operator_abi::{BufferFFI, FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, StateIteratorFFI};
 
 use crate::{
 	context::OperatorContext,
@@ -34,7 +34,7 @@ pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 			&mut output,
 		);
 
-		if result == 0 {
+		if result == FFI_OK {
 			// Success - value found
 			if output.ptr.is_null() || output.len == 0 {
 				Ok(None)
@@ -44,7 +44,7 @@ pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
 				Ok(Some(EncodedValues(CowVec::new(value_bytes))))
 			}
-		} else if result == 1 {
+		} else if result == FFI_NOT_FOUND {
 			// Key not found
 			Ok(None)
 		} else {
@@ -68,7 +68,7 @@ pub(crate) fn raw_state_set(ctx: &mut OperatorContext, key: &EncodedKey, value: 
 			value_bytes.len(),
 		);
 
-		if result == 0 {
+		if result == FFI_OK {
 			Ok(())
 		} else {
 			Err(FFIError::Other(format!("host_state_set failed with code {}", result)))
@@ -88,7 +88,7 @@ pub(crate) fn raw_state_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> R
 			key_bytes.len(),
 		);
 
-		if result == 0 {
+		if result == FFI_OK {
 			Ok(())
 		} else {
 			Err(FFIError::Other(format!("host_state_remove failed with code {}", result)))
@@ -110,7 +110,7 @@ pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 			&mut iterator,
 		);
 
-		if result != 0 {
+		if result != FFI_OK {
 			return Err(FFIError::Other(format!("host_state_prefix failed with code {}", result)));
 		}
 
@@ -135,10 +135,10 @@ pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 			let next_result =
 				((*ctx.ctx).callbacks.state.iterator_next)(iterator, &mut key_buf, &mut value_buf);
 
-			if next_result == 1 {
+			if next_result == FFI_END_OF_ITERATION {
 				// End of iteration
 				break;
-			} else if next_result != 0 {
+			} else if next_result != FFI_OK {
 				((*ctx.ctx).callbacks.state.iterator_free)(iterator);
 				return Err(FFIError::Other(format!(
 					"host_state_iterator_next failed with code {}",
@@ -178,7 +178,7 @@ pub(crate) fn raw_state_clear(ctx: &mut OperatorContext) -> Result<()> {
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.clear)((*ctx.ctx).operator_id, ctx.ctx);
 
-		if result == 0 {
+		if result == FFI_OK {
 			Ok(())
 		} else {
 			Err(FFIError::Other(format!("host_state_clear failed with code {}", result)))

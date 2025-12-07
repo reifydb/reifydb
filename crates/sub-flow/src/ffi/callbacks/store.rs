@@ -6,7 +6,10 @@
 use std::{ops::Bound, slice::from_raw_parts};
 
 use reifydb_core::{EncodedKeyRange, util::CowVec, value::encoded::EncodedKey};
-use reifydb_flow_operator_abi::{BufferFFI, FFIContext, StoreIteratorFFI};
+use reifydb_flow_operator_abi::{
+	BufferFFI, FFI_END_OF_ITERATION, FFI_ERROR_ALLOC, FFI_ERROR_INTERNAL, FFI_ERROR_NULL_PTR, FFI_NOT_FOUND,
+	FFI_OK, FFIContext, StoreIteratorFFI,
+};
 
 use super::{
 	memory::{host_alloc, host_free},
@@ -29,7 +32,7 @@ pub(super) extern "C" fn host_store_get(
 	output: *mut BufferFFI,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || output.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -47,7 +50,7 @@ pub(super) extern "C" fn host_store_get(
 				let value_bytes = value.as_ref();
 				let value_ptr = host_alloc(value_bytes.len());
 				if value_ptr.is_null() {
-					return -2; // Allocation failed
+					return FFI_ERROR_ALLOC;
 				}
 
 				std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), value_ptr, value_bytes.len());
@@ -56,10 +59,10 @@ pub(super) extern "C" fn host_store_get(
 				(*output).len = value_bytes.len();
 				(*output).cap = value_bytes.len();
 
-				0 // Success, value found
+				FFI_OK
 			}
-			Ok(None) => 1, // Key not found
-			Err(_) => -1,  // Error
+			Ok(None) => FFI_NOT_FOUND,
+			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
@@ -73,7 +76,7 @@ pub(super) extern "C" fn host_store_contains_key(
 	result: *mut u8,
 ) -> i32 {
 	if ctx.is_null() || key_ptr.is_null() || result.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -92,9 +95,9 @@ pub(super) extern "C" fn host_store_contains_key(
 				} else {
 					0
 				};
-				0 // Success
+				FFI_OK
 			}
-			Err(_) => -1, // Error
+			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
@@ -108,7 +111,7 @@ pub(super) extern "C" fn host_store_prefix(
 	iterator_out: *mut *mut StoreIteratorFFI,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -136,7 +139,7 @@ pub(super) extern "C" fn host_store_prefix(
 				let iter_ptr = host_alloc(std::mem::size_of::<StoreIteratorInternal>())
 					as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
-					return -2; // Allocation failed
+					return FFI_ERROR_ALLOC;
 				}
 
 				// Initialize the iterator structure with the handle
@@ -149,9 +152,9 @@ pub(super) extern "C" fn host_store_prefix(
 
 				// Cast to opaque StoreIteratorFFI pointer
 				*iterator_out = iter_ptr as *mut StoreIteratorFFI;
-				0 // Success
+				FFI_OK
 			}
-			Err(_) => -1, // Error
+			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
@@ -174,7 +177,7 @@ pub(super) extern "C" fn host_store_range(
 	iterator_out: *mut *mut StoreIteratorFFI,
 ) -> i32 {
 	if ctx.is_null() || iterator_out.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -186,19 +189,19 @@ pub(super) extern "C" fn host_store_range(
 			BOUND_UNBOUNDED => Bound::Unbounded,
 			BOUND_INCLUDED => {
 				if start_ptr.is_null() {
-					return -1; // Invalid: Included bound requires key bytes
+					return FFI_ERROR_NULL_PTR; // Invalid: Included bound requires key bytes
 				}
 				let start_bytes = from_raw_parts(start_ptr, start_len).to_vec();
 				Bound::Included(EncodedKey(CowVec::new(start_bytes)))
 			}
 			BOUND_EXCLUDED => {
 				if start_ptr.is_null() {
-					return -1; // Invalid: Excluded bound requires key bytes
+					return FFI_ERROR_NULL_PTR; // Invalid: Excluded bound requires key bytes
 				}
 				let start_bytes = from_raw_parts(start_ptr, start_len).to_vec();
 				Bound::Excluded(EncodedKey(CowVec::new(start_bytes)))
 			}
-			_ => return -1, // Invalid bound type
+			_ => return FFI_ERROR_INTERNAL, // Invalid bound type
 		};
 
 		// Decode end bound from type and bytes
@@ -206,19 +209,19 @@ pub(super) extern "C" fn host_store_range(
 			BOUND_UNBOUNDED => Bound::Unbounded,
 			BOUND_INCLUDED => {
 				if end_ptr.is_null() {
-					return -1; // Invalid: Included bound requires key bytes
+					return FFI_ERROR_NULL_PTR; // Invalid: Included bound requires key bytes
 				}
 				let end_bytes = from_raw_parts(end_ptr, end_len).to_vec();
 				Bound::Included(EncodedKey(CowVec::new(end_bytes)))
 			}
 			BOUND_EXCLUDED => {
 				if end_ptr.is_null() {
-					return -1; // Invalid: Excluded bound requires key bytes
+					return FFI_ERROR_NULL_PTR; // Invalid: Excluded bound requires key bytes
 				}
 				let end_bytes = from_raw_parts(end_ptr, end_len).to_vec();
 				Bound::Excluded(EncodedKey(CowVec::new(end_bytes)))
 			}
-			_ => return -1, // Invalid bound type
+			_ => return FFI_ERROR_INTERNAL, // Invalid bound type
 		};
 
 		// Create range from decoded bounds
@@ -237,7 +240,7 @@ pub(super) extern "C" fn host_store_range(
 				let iter_ptr = host_alloc(std::mem::size_of::<StoreIteratorInternal>())
 					as *mut StoreIteratorInternal;
 				if iter_ptr.is_null() {
-					return -2; // Allocation failed
+					return FFI_ERROR_ALLOC;
 				}
 
 				// Initialize the iterator structure with the handle
@@ -250,9 +253,9 @@ pub(super) extern "C" fn host_store_range(
 
 				// Cast to opaque StoreIteratorFFI pointer
 				*iterator_out = iter_ptr as *mut StoreIteratorFFI;
-				0 // Success
+				FFI_OK
 			}
-			Err(_) => -1, // Error
+			Err(_) => FFI_ERROR_INTERNAL,
 		}
 	}
 }
@@ -265,7 +268,7 @@ pub(super) extern "C" fn host_store_iterator_next(
 	value_out: *mut BufferFFI,
 ) -> i32 {
 	if iterator.is_null() || key_out.is_null() || value_out.is_null() {
-		return -1;
+		return FFI_ERROR_NULL_PTR;
 	}
 
 	unsafe {
@@ -279,7 +282,7 @@ pub(super) extern "C" fn host_store_iterator_next(
 				// Allocate and copy key
 				let key_ptr = host_alloc(key.len());
 				if key_ptr.is_null() {
-					return -2; // Allocation failed
+					return FFI_ERROR_ALLOC;
 				}
 				std::ptr::copy_nonoverlapping(key.as_ptr(), key_ptr, key.len());
 				(*key_out).ptr = key_ptr;
@@ -291,16 +294,16 @@ pub(super) extern "C" fn host_store_iterator_next(
 				if value_ptr.is_null() {
 					// Free the key we just allocated
 					host_free(key_ptr, key.len());
-					return -2; // Allocation failed
+					return FFI_ERROR_ALLOC;
 				}
 				std::ptr::copy_nonoverlapping(value.as_ptr(), value_ptr, value.len());
 				(*value_out).ptr = value_ptr;
 				(*value_out).len = value.len();
 				(*value_out).cap = value.len();
 
-				0 // Success, has next
+				FFI_OK
 			}
-			None => 1, // End of iteration
+			None => FFI_END_OF_ITERATION,
 		}
 	}
 }

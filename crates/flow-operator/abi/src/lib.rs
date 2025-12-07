@@ -6,11 +6,13 @@
 
 pub mod callbacks;
 pub mod constants;
+pub mod ffi;
 pub mod types;
 pub mod vtable;
 
 // Re-export main types
 pub use callbacks::*;
 pub use constants::*;
+pub use ffi::*;
 pub use types::*;
 pub use vtable::*;

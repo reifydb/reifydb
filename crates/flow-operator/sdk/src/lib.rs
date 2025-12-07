@@ -8,6 +8,7 @@ use reifydb_core::{
 };
 use reifydb_type::{RowNumber, TypeConstraint, Value};
 
+pub mod catalog;
 pub mod change;
 pub mod context;
 pub mod error;
@@ -17,6 +18,7 @@ pub mod stateful;
 pub mod store;
 pub mod testing;
 
+pub use catalog::Catalog;
 pub use change::FlowChangeBuilder;
 pub use context::OperatorContext;
 pub use error::{FFIError, Result};
@@ -91,7 +93,7 @@ impl FlowChange {
 }
 
 /// A single column definition in an operator's input/output
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub struct OperatorColumnDef {
 	/// Column name
 	pub name: &'static str,
@@ -146,7 +148,7 @@ pub mod prelude {
 	pub use reifydb_type::{RowNumber, Type, TypeConstraint, Value};
 
 	pub use crate::{
-		FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowChangeBuilder,
+		Catalog, FFIOperator, FFIOperatorMetadata, FFIOperatorWithMetadata, FlowChange, FlowChangeBuilder,
 		FlowChangeOrigin, FlowDiff, OperatorColumnDef,
 		context::OperatorContext,
 		error::{FFIError, Result},
