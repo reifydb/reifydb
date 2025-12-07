@@ -49,19 +49,40 @@ impl<'a> From<JoinLeftNode<'a>> for JoinCompiler {
 	}
 }
 
+// Extract the source name from a physical plan if it's a scan node
+fn extract_source_name(plan: &PhysicalPlan) -> Option<String> {
+	match plan {
+		PhysicalPlan::TableScan(node) => Some(node.source.def().name.clone()),
+		PhysicalPlan::ViewScan(node) => Some(node.source.def().name.clone()),
+		PhysicalPlan::RingBufferScan(node) => Some(node.source.def().name.clone()),
+		PhysicalPlan::DictionaryScan(node) => Some(node.source.def().name.clone()),
+		// For other node types, try to recursively find the source
+		PhysicalPlan::Filter(node) => extract_source_name(&node.input),
+		PhysicalPlan::Map(node) => node.input.as_ref().and_then(|p| extract_source_name(p)),
+		PhysicalPlan::Take(node) => extract_source_name(&node.input),
+		_ => None,
+	}
+}
+
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+		// Extract source name from right plan for fallback alias
+		let source_name = extract_source_name(&self.right);
+
 		let left_node = compiler.compile_plan(*self.left)?;
 		let right_node = compiler.compile_plan(*self.right)?;
 
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
+
+		// Use explicit alias, or fall back to extracted source name, or use "other"
+		let effective_alias = self.alias.or(source_name).or_else(|| Some("other".to_string()));
 
 		let node = compiler
 			.build_node(FlowNodeType::Join {
 				join_type: self.join_type,
 				left: left_keys,
 				right: right_keys,
-				alias: self.alias,
+				alias: effective_alias,
 			})
 			.with_inputs([left_node, right_node])
 			.build()?;

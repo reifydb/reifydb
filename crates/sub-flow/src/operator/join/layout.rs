@@ -1,5 +1,3 @@
-use std::collections::HashSet;
-
 use reifydb_core::{Row, value::encoded::EncodedValuesNamedLayout};
 use reifydb_type::{RowNumber, Type, Value};
 
@@ -32,23 +30,30 @@ impl JoinedLayoutBuilder {
 			combined_types.push(left.layout.fields().fields[i].r#type);
 		}
 
-		// Collect left names for conflict detection
-		let left_name_set: HashSet<&str> = left_names.iter().map(|s| s.as_str()).collect();
-
-		// Add right side columns with conflict resolution
+		// Add right side columns with ALWAYS-prefix behavior
 		let right_names = right.layout.names();
 		for i in 0..right_field_count {
 			if i < right_names.len() {
 				let col_name = &right_names[i];
-				let final_name = if left_name_set.contains(col_name.as_str()) {
-					if let Some(alias) = alias {
-						format!("{}_{}", alias, col_name)
-					} else {
-						format!("__{}__", col_name)
+
+				// ALWAYS prefix right columns with alias (should always be Some now)
+				let alias_str = alias.as_deref().unwrap_or("other");
+				let prefixed_name = format!("{}_{}", alias_str, col_name);
+
+				// Check for secondary conflict (prefixed name already exists in combined_names)
+				let mut final_name = prefixed_name.clone();
+				if combined_names.contains(&final_name) {
+					let mut counter = 2;
+					loop {
+						let candidate = format!("{}_{}", prefixed_name, counter);
+						if !combined_names.contains(&candidate) {
+							final_name = candidate;
+							break;
+						}
+						counter += 1;
 					}
-				} else {
-					col_name.clone()
-				};
+				}
+
 				combined_names.push(final_name);
 			}
 			combined_types.push(right.layout.fields().fields[i].r#type);

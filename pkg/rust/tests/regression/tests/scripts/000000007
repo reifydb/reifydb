@@ -9,7 +9,7 @@
 command 'from test.a left join { from test.b } t on t.id = id'
 ---
 > +------+-------+-------------+-------------+
-> |  id  |  val  |    t_id     |    name     |
+> |  id  |  val  |    t_id     |   t_name    |
 > +------+-------+-------------+-------------+
 > |  2   |   y   |  Undefined  |  Undefined  |
 > |  1   |   x   |      1      |     one     |
@@ -19,7 +19,7 @@ command 'from test.a left join { from test.b } t on t.id = id'
 command 'from test.a left join { from test.b } t on t.id == id'
 ---
 > +------+-------+-------------+-------------+
-> |  id  |  val  |    t_id     |    name     |
+> |  id  |  val  |    t_id     |   t_name    |
 > +------+-------+-------------+-------------+
 > |  2   |   y   |  Undefined  |  Undefined  |
 > |  1   |   x   |      1      |     one     |

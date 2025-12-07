@@ -46,7 +46,6 @@ pub fn resolve_column_names(
 	alias: &Option<Fragment>,
 	excluded_right_indices: Option<&[usize]>,
 ) -> ResolvedColumnNames {
-	let left_names: Vec<String> = left_columns.iter().map(|col| col.name().text().to_string()).collect();
 	let mut qualified_names = Vec::new();
 
 	// Add left columns (never prefixed)
@@ -54,7 +53,7 @@ pub fn resolve_column_names(
 		qualified_names.push(col.name().text().to_string());
 	}
 
-	// Add right columns with conflict resolution
+	// Add right columns with ALWAYS-prefix behavior
 	for (idx, col) in right_columns.iter().enumerate() {
 		// Skip excluded columns (used in natural join)
 		if let Some(excluded) = excluded_right_indices {
@@ -64,20 +63,17 @@ pub fn resolve_column_names(
 		}
 
 		let col_name = col.name().text();
-		let mut final_name = if left_names.contains(&col_name.to_string()) {
-			match alias {
-				Some(alias) => format!("{}_{}", alias.text(), col_name),
-				None => format!("__{}__", col_name),
-			}
-		} else {
-			col_name.to_string()
-		};
 
-		// Check for secondary conflict and add numeric suffix if needed
+		// ALWAYS prefix right columns with alias (should always be Some now)
+		let alias_text = alias.as_ref().map(|a| a.text()).unwrap_or("other");
+		let prefixed_name = format!("{}_{}", alias_text, col_name);
+
+		// Check for secondary conflict (prefixed name already exists)
+		let mut final_name = prefixed_name.clone();
 		if qualified_names.contains(&final_name) {
 			let mut counter = 2;
 			loop {
-				let candidate = format!("{}_{}", final_name, counter);
+				let candidate = format!("{}_{}", prefixed_name, counter);
 				if !qualified_names.contains(&candidate) {
 					final_name = candidate;
 					break;

@@ -44,6 +44,29 @@ use crate::{
 	},
 };
 
+// Extract the source name from a physical plan if it's a scan node
+fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan<'a>) -> Option<reifydb_type::Fragment<'static>> {
+	match plan {
+		PhysicalPlan::TableScan(node) => {
+			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
+		}
+		PhysicalPlan::ViewScan(node) => {
+			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
+		}
+		PhysicalPlan::RingBufferScan(node) => {
+			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
+		}
+		PhysicalPlan::DictionaryScan(node) => {
+			Some(reifydb_type::Fragment::owned_internal(node.source.def().name.clone()))
+		}
+		// For other node types, try to recursively find the source
+		PhysicalPlan::Filter(node) => extract_source_name_from_physical(&node.input),
+		PhysicalPlan::Map(node) => node.input.as_ref().and_then(|p| extract_source_name_from_physical(p)),
+		PhysicalPlan::Take(node) => extract_source_name_from_physical(&node.input),
+		_ => None,
+	}
+}
+
 pub(crate) fn compile<'a>(
 	plan: PhysicalPlan<'a>,
 	rx: &mut StandardTransaction<'a>,
@@ -113,9 +136,16 @@ pub(crate) fn compile<'a>(
 			on,
 			alias,
 		}) => {
+			// Extract source name from right plan for fallback alias
+			let source_name = extract_source_name_from_physical(&right);
+			// Use explicit alias, or fall back to extracted source name, or use "other"
+			let effective_alias = alias
+				.or(source_name)
+				.or_else(|| Some(reifydb_type::Fragment::owned_internal("other".to_string())));
+
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on, alias))
+			ExecutionPlan::InnerJoin(InnerJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
 		PhysicalPlan::JoinLeft(physical::JoinLeftNode {
@@ -124,9 +154,16 @@ pub(crate) fn compile<'a>(
 			on,
 			alias,
 		}) => {
+			// Extract source name from right plan for fallback alias
+			let source_name = extract_source_name_from_physical(&right);
+			// Use explicit alias, or fall back to extracted source name, or use "other"
+			let effective_alias = alias
+				.or(source_name)
+				.or_else(|| Some(reifydb_type::Fragment::owned_internal("other".to_string())));
+
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on, alias))
+			ExecutionPlan::LeftJoin(LeftJoinNode::new(left_node, right_node, on, effective_alias))
 		}
 
 		PhysicalPlan::JoinNatural(physical::JoinNaturalNode {
@@ -135,9 +172,21 @@ pub(crate) fn compile<'a>(
 			join_type,
 			alias,
 		}) => {
+			// Extract source name from right plan for fallback alias
+			let source_name = extract_source_name_from_physical(&right);
+			// Use explicit alias, or fall back to extracted source name, or use "other"
+			let effective_alias = alias
+				.or(source_name)
+				.or_else(|| Some(reifydb_type::Fragment::owned_internal("other".to_string())));
+
 			let left_node = Box::new(compile(*left, rx, context.clone()));
 			let right_node = Box::new(compile(*right, rx, context.clone()));
-			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(left_node, right_node, join_type, alias))
+			ExecutionPlan::NaturalJoin(NaturalJoinNode::new(
+				left_node,
+				right_node,
+				join_type,
+				effective_alias,
+			))
 		}
 
 		PhysicalPlan::InlineData(physical::InlineDataNode {

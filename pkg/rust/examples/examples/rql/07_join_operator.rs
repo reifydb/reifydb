@@ -212,7 +212,7 @@ map { name, dept_name, salary }"#,
 			inner join {
 				from company.departments
 			} departments on dept_id == departments.dept_id
-			map { name, dept_name, salary }
+			map { name, departments_dept_name, salary }
 			"#,
 			Params::None,
 		)
@@ -268,7 +268,7 @@ aggregate { avg(salary), count(emp_id) }
 				from company.departments
 			} departments on dept_id == departments.dept_id
 			aggregate { math::avg(salary), math::count(emp_id) }
-				by dept_name
+				by departments_dept_name
 			"#,
 			Params::None,
 		)
