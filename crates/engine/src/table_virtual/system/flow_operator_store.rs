@@ -21,6 +21,7 @@ pub struct FlowOperatorInfo {
 	pub operator: String,
 	pub library_path: PathBuf,
 	pub api: u32,
+	pub capabilities: u32,
 	pub input_columns: Vec<OperatorColumnInfo>,
 	pub output_columns: Vec<OperatorColumnInfo>,
 }
@@ -67,6 +68,7 @@ impl EventListener<FlowOperatorLoadedEvent> for FlowOperatorEventListener {
 			operator: event.operator.clone(),
 			library_path: event.library_path.clone(),
 			api: event.api,
+			capabilities: event.capabilities,
 			input_columns: event
 				.input
 				.iter()

@@ -698,6 +698,7 @@ dependencies = [
  "reifydb-auth",
  "reifydb-catalog",
  "reifydb-core",
+ "reifydb-flow-operator-abi",
  "reifydb-hash",
  "reifydb-rql",
  "reifydb-store-transaction",

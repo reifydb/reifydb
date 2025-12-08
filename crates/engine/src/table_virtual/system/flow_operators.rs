@@ -9,6 +9,10 @@ use reifydb_core::{
 	interface::TableVirtualDef,
 	value::column::{Column, ColumnData, Columns},
 };
+use reifydb_flow_operator_abi::{
+	CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_GET_ROWS, CAPABILITY_INSERT, CAPABILITY_TICK, CAPABILITY_UPDATE,
+	has_capability,
+};
 use reifydb_type::Fragment;
 
 use super::FlowOperatorStore;
@@ -52,11 +56,25 @@ impl<'a> TableVirtual<'a> for FlowOperators {
 		let mut operators = ColumnData::utf8_with_capacity(capacity);
 		let mut library_paths = ColumnData::utf8_with_capacity(capacity);
 		let mut apis = ColumnData::uint4_with_capacity(capacity);
+		let mut cap_inserts = ColumnData::bool_with_capacity(capacity);
+		let mut cap_updates = ColumnData::bool_with_capacity(capacity);
+		let mut cap_deletes = ColumnData::bool_with_capacity(capacity);
+		let mut cap_get_rows_list = ColumnData::bool_with_capacity(capacity);
+		let mut cap_drops = ColumnData::bool_with_capacity(capacity);
+		let mut cap_ticks = ColumnData::bool_with_capacity(capacity);
 
 		for info in infos {
 			operators.push(info.operator.as_str());
 			library_paths.push(info.library_path.to_str().unwrap_or("<invalid path>"));
 			apis.push(info.api);
+
+			// Decode capabilities bitfield into separate boolean columns
+			cap_inserts.push(has_capability(info.capabilities, CAPABILITY_INSERT));
+			cap_updates.push(has_capability(info.capabilities, CAPABILITY_UPDATE));
+			cap_deletes.push(has_capability(info.capabilities, CAPABILITY_DELETE));
+			cap_get_rows_list.push(has_capability(info.capabilities, CAPABILITY_GET_ROWS));
+			cap_drops.push(has_capability(info.capabilities, CAPABILITY_DROP));
+			cap_ticks.push(has_capability(info.capabilities, CAPABILITY_TICK));
 		}
 
 		let columns = vec![
@@ -71,6 +89,30 @@ impl<'a> TableVirtual<'a> for FlowOperators {
 			Column {
 				name: Fragment::owned_internal("api"),
 				data: apis,
+			},
+			Column {
+				name: Fragment::owned_internal("cap_insert"),
+				data: cap_inserts,
+			},
+			Column {
+				name: Fragment::owned_internal("cap_update"),
+				data: cap_updates,
+			},
+			Column {
+				name: Fragment::owned_internal("cap_delete"),
+				data: cap_deletes,
+			},
+			Column {
+				name: Fragment::owned_internal("cap_get_rows"),
+				data: cap_get_rows_list,
+			},
+			Column {
+				name: Fragment::owned_internal("cap_drop"),
+				data: cap_drops,
+			},
+			Column {
+				name: Fragment::owned_internal("cap_tick"),
+				data: cap_ticks,
 			},
 		];
 

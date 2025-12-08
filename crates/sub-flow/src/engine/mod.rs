@@ -143,6 +143,7 @@ impl FlowEngine {
 				description: info.description,
 				input: convert_column_defs(&info.input_columns),
 				output: convert_column_defs(&info.output_columns),
+				capabilities: info.capabilities,
 			});
 		}
 

@@ -236,8 +236,24 @@ pub mod ids {
 			pub const OPERATOR: ColumnId = ColumnId(1);
 			pub const LIBRARY_PATH: ColumnId = ColumnId(2);
 			pub const API: ColumnId = ColumnId(3);
+			pub const CAP_INSERT: ColumnId = ColumnId(4);
+			pub const CAP_UPDATE: ColumnId = ColumnId(5);
+			pub const CAP_DELETE: ColumnId = ColumnId(6);
+			pub const CAP_DROP: ColumnId = ColumnId(7);
+			pub const CAP_GET_ROWS: ColumnId = ColumnId(8);
+			pub const CAP_TICK: ColumnId = ColumnId(9);
 
-			pub const ALL: [ColumnId; 3] = [OPERATOR, LIBRARY_PATH, API];
+			pub const ALL: [ColumnId; 9] = [
+				OPERATOR,
+				LIBRARY_PATH,
+				API,
+				CAP_INSERT,
+				CAP_UPDATE,
+				CAP_DELETE,
+				CAP_GET_ROWS,
+				CAP_DROP,
+				CAP_TICK,
+			];
 		}
 
 		pub mod flow_operator_inputs {

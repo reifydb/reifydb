@@ -35,6 +35,8 @@ pub struct FlowOperatorLoadedEvent {
 	pub input: Vec<OperatorColumnDef>,
 	/// Output column definitions
 	pub output: Vec<OperatorColumnDef>,
+	/// Capabilities bitflags
+	pub capabilities: u32,
 }
 
 impl_event!(FlowOperatorLoadedEvent);
