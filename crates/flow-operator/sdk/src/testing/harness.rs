@@ -291,6 +291,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "Simple pass-through test operator";
 		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
 		const OUTPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
+		const CAPABILITIES: u32 = crate::prelude::CAPABILITY_ALL_STANDARD;
 	}
 
 	impl FFIOperator for TestOperator {
@@ -325,6 +326,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "Stateful test operator that stores values";
 		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
 		const OUTPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
+		const CAPABILITIES: u32 = crate::prelude::CAPABILITY_ALL_STANDARD;
 	}
 
 	impl FFIOperator for StatefulTestOperator {

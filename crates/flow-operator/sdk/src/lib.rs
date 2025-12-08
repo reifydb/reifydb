@@ -118,6 +118,9 @@ pub trait FFIOperatorMetadata {
 	const INPUT_COLUMNS: &'static [OperatorColumnDef];
 	/// Output columns describing output row format
 	const OUTPUT_COLUMNS: &'static [OperatorColumnDef];
+	/// Capabilities bitflags describing supported operations
+	/// Use CAPABILITY_* constants from reifydb_flow_operator_abi
+	const CAPABILITIES: u32;
 }
 
 /// Runtime operator behavior
@@ -144,6 +147,10 @@ pub mod prelude {
 		CowVec, Row,
 		key::EncodableKey,
 		value::encoded::{EncodedKey, EncodedValues},
+	};
+	pub use reifydb_flow_operator_abi::{
+		CAPABILITY_ALL_STANDARD, CAPABILITY_DELETE, CAPABILITY_DROP, CAPABILITY_GET_ROWS, CAPABILITY_INSERT,
+		CAPABILITY_TICK, CAPABILITY_UPDATE, has_capability,
 	};
 	pub use reifydb_type::{RowNumber, Type, TypeConstraint, Value};
 

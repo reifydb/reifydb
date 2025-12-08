@@ -193,6 +193,7 @@ mod tests {
 		const DESCRIPTION: &'static str = "Test operator for row number provider";
 		const INPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
 		const OUTPUT_COLUMNS: &'static [crate::OperatorColumnDef] = &[];
+		const CAPABILITIES: u32 = crate::prelude::CAPABILITY_ALL_STANDARD;
 	}
 
 	impl FFIOperator for RowNumberTestOperator {

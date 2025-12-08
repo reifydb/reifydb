@@ -84,6 +84,9 @@ pub struct FFIOperatorDescriptor {
 	/// Output columns describing output row format (for documentation)
 	pub output_columns: FFIOperatorColumnDefs,
 
+	/// Capabilities bitflags (CAPABILITY_* constants)
+	pub capabilities: u32,
+
 	/// Virtual function table with all operator methods
 	pub vtable: FFIOperatorVTable,
 }

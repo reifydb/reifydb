@@ -109,6 +109,7 @@ impl FFIOperatorLoader {
 				description: (*descriptor_ptr).description,
 				input_columns: (*descriptor_ptr).input_columns,
 				output_columns: (*descriptor_ptr).output_columns,
+				capabilities: (*descriptor_ptr).capabilities,
 				vtable: (*descriptor_ptr).vtable,
 			})
 		}
@@ -169,6 +170,7 @@ impl FFIOperatorLoader {
 				description: buffer_to_string(&descriptor.description),
 				input_columns: extract_column_defs(&descriptor.input_columns),
 				output_columns: extract_column_defs(&descriptor.output_columns),
+				capabilities: descriptor.capabilities,
 			}
 		};
 
@@ -307,6 +309,7 @@ impl FFIOperatorLoader {
 							description: buffer_to_string(&descriptor.description),
 							input_columns: extract_column_defs(&descriptor.input_columns),
 							output_columns: extract_column_defs(&descriptor.output_columns),
+							capabilities: descriptor.capabilities,
 						});
 					}
 				}
@@ -327,6 +330,7 @@ pub struct LoadedOperatorInfo {
 	pub description: String,
 	pub input_columns: Vec<ColumnDefInfo>,
 	pub output_columns: Vec<ColumnDefInfo>,
+	pub capabilities: u32,
 }
 
 /// Information about a single column definition in an operator

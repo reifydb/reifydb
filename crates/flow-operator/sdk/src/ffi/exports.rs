@@ -60,6 +60,7 @@ pub fn create_descriptor<O: FFIOperatorWithMetadata>() -> FFIOperatorDescriptor 
 		description: str_to_buffer(O::DESCRIPTION),
 		input_columns: columns_to_ffi(O::INPUT_COLUMNS),
 		output_columns: columns_to_ffi(O::OUTPUT_COLUMNS),
+		capabilities: O::CAPABILITIES,
 		vtable: create_vtable::<O>(),
 	}
 }
