@@ -836,6 +836,7 @@ pub struct AstCreateFlow<'a> {
 pub struct AstCreateNamespace<'a> {
 	pub token: Token<'a>,
 	pub namespace: MaybeQualifiedNamespaceIdentifier<'a>,
+	pub if_not_exists: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]

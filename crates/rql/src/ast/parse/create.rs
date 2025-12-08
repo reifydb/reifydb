@@ -89,11 +89,29 @@ impl<'a> Parser<'a> {
 	}
 
 	fn parse_namespace(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+		// Check for IF NOT EXISTS BEFORE identifier
+		let mut if_not_exists = if (self.consume_if(TokenKind::Keyword(If))?).is_some() {
+			self.consume_operator(Not)?;
+			self.consume_keyword(Exists)?;
+			true
+		} else {
+			false
+		};
+
 		let identifier = self.parse_identifier_with_hyphens()?;
+
+		// Check for IF NOT EXISTS AFTER identifier (alternate syntax)
+		if !if_not_exists && (self.consume_if(TokenKind::Keyword(If))?).is_some() {
+			self.consume_operator(Not)?;
+			self.consume_keyword(Exists)?;
+			if_not_exists = true;
+		}
+
 		let namespace = MaybeQualifiedNamespaceIdentifier::new(identifier.into_fragment());
 		Ok(AstCreate::Namespace(AstCreateNamespace {
 			token,
 			namespace,
+			if_not_exists,
 		}))
 	}
 
@@ -560,9 +578,11 @@ mod tests {
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
 				namespace,
+				if_not_exists,
 				..
 			}) => {
 				assert_eq!(namespace.name.text(), "REIFYDB");
+				assert!(!if_not_exists);
 			}
 			_ => unreachable!(),
 		}
@@ -581,9 +601,149 @@ mod tests {
 		match create {
 			AstCreate::Namespace(AstCreateNamespace {
 				namespace,
+				if_not_exists,
 				..
 			}) => {
 				assert_eq!(namespace.name.text(), "my-namespace");
+				assert!(!if_not_exists);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_namespace_if_not_exists() {
+		let tokens = tokenize("CREATE NAMESPACE IF NOT EXISTS my_namespace").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Namespace(AstCreateNamespace {
+				namespace,
+				if_not_exists,
+				..
+			}) => {
+				assert_eq!(namespace.name.text(), "my_namespace");
+				assert!(if_not_exists);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_namespace_if_not_exists_with_hyphen() {
+		let tokens = tokenize("CREATE NAMESPACE IF NOT EXISTS my-test-namespace").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Namespace(AstCreateNamespace {
+				namespace,
+				if_not_exists,
+				..
+			}) => {
+				assert_eq!(namespace.name.text(), "my-test-namespace");
+				assert!(if_not_exists);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_namespace_if_not_exists_with_backtick() {
+		let tokens = tokenize("CREATE NAMESPACE IF NOT EXISTS `my-namespace`").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Namespace(AstCreateNamespace {
+				namespace,
+				if_not_exists,
+				..
+			}) => {
+				assert_eq!(namespace.name.text(), "my-namespace");
+				assert!(if_not_exists);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_namespace_name_if_not_exists() {
+		let tokens = tokenize("CREATE NAMESPACE my_namespace IF NOT EXISTS").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Namespace(AstCreateNamespace {
+				namespace,
+				if_not_exists,
+				..
+			}) => {
+				assert_eq!(namespace.name.text(), "my_namespace");
+				assert!(if_not_exists);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_namespace_name_if_not_exists_with_hyphen() {
+		let tokens = tokenize("CREATE NAMESPACE my-test-namespace IF NOT EXISTS").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Namespace(AstCreateNamespace {
+				namespace,
+				if_not_exists,
+				..
+			}) => {
+				assert_eq!(namespace.name.text(), "my-test-namespace");
+				assert!(if_not_exists);
+			}
+			_ => unreachable!(),
+		}
+	}
+
+	#[test]
+	fn test_create_namespace_name_if_not_exists_with_backtick() {
+		let tokens = tokenize("CREATE NAMESPACE `my-namespace` IF NOT EXISTS").unwrap();
+		let mut parser = Parser::new(tokens);
+		let mut result = parser.parse().unwrap();
+		assert_eq!(result.len(), 1);
+
+		let result = result.pop().unwrap();
+		let create = result.first_unchecked().as_create();
+
+		match create {
+			AstCreate::Namespace(AstCreateNamespace {
+				namespace,
+				if_not_exists,
+				..
+			}) => {
+				assert_eq!(namespace.name.text(), "my-namespace");
+				assert!(if_not_exists);
 			}
 			_ => unreachable!(),
 		}
