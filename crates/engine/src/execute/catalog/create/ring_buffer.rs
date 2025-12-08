@@ -76,6 +76,7 @@ mod tests {
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
+			primary_key: None,
 		};
 
 		// First creation should succeed
@@ -139,6 +140,7 @@ mod tests {
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
+			primary_key: None,
 		};
 
 		let mut stack = Stack::new();
@@ -162,6 +164,7 @@ mod tests {
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
+			primary_key: None,
 		};
 
 		let result = instance
@@ -195,6 +198,7 @@ mod tests {
 			if_not_exists: false,
 			columns: vec![],
 			capacity: 1000,
+			primary_key: None,
 		};
 
 		// With defensive fallback, this now succeeds even with

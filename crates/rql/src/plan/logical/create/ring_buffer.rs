@@ -103,11 +103,28 @@ impl Compiler {
 		// Use the ring buffer identifier directly from AST
 		let ring_buffer = ast.ring_buffer;
 
+		// Convert AST primary key to logical plan primary key
+		let primary_key = ast.primary_key.map(|pk| {
+			use crate::plan::logical::{PrimaryKeyColumn, PrimaryKeyDef};
+
+			PrimaryKeyDef {
+				columns: pk
+					.columns
+					.into_iter()
+					.map(|col| PrimaryKeyColumn {
+						column: col.column.name,
+						order: col.order,
+					})
+					.collect(),
+			}
+		});
+
 		Ok(LogicalPlan::CreateRingBuffer(CreateRingBufferNode {
 			ring_buffer,
 			if_not_exists: false,
 			columns,
 			capacity: ast.capacity,
+			primary_key,
 		}))
 	}
 }

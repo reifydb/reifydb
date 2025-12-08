@@ -3,10 +3,12 @@
 
 use Keyword::{Create, Dictionary, Exists, Flow, For, If, Namespace, Replace};
 use Operator::{Colon, Dot};
+use reifydb_core::SortDirection;
 
 use crate::ast::{
 	AstColumnToCreate, AstCreate, AstCreateDeferredView, AstCreateDictionary, AstCreateNamespace,
-	AstCreateRingBuffer, AstCreateSeries, AstCreateTable, AstCreateTransactionalView, AstDataType,
+	AstCreateRingBuffer, AstCreateSeries, AstCreateTable, AstCreateTransactionalView, AstDataType, AstIndexColumn,
+	AstPrimaryKeyDef,
 	identifier::{
 		MaybeQualifiedDictionaryIdentifier, MaybeQualifiedNamespaceIdentifier, MaybeQualifiedSequenceIdentifier,
 	},
@@ -14,13 +16,19 @@ use crate::ast::{
 	tokenize::{
 		Keyword,
 		Keyword::{Deferred, Ringbuffer, Series, Table, Transactional, View},
-		Operator,
+		Literal, Operator,
 		Operator::{Not, Or},
 		Separator,
 		Separator::Comma,
 		Token, TokenKind,
 	},
 };
+
+/// Structure to hold WITH block options
+struct WithOptions<'a> {
+	capacity: Option<u64>,
+	primary_key: Option<AstPrimaryKeyDef<'a>>,
+}
 
 impl<'a> Parser<'a> {
 	pub(crate) fn parse_create(&mut self) -> crate::Result<AstCreate<'a>> {
@@ -171,11 +179,22 @@ impl<'a> Parser<'a> {
 			None
 		};
 
+		// Parse optional WITH block (after AS clause if present)
+		let primary_key = if !self.is_eof()
+			&& self.current().ok().map(|t| t.is_keyword(Keyword::With)).unwrap_or(false)
+		{
+			let options = self.parse_with_block()?;
+			options.primary_key
+		} else {
+			None
+		};
+
 		Ok(AstCreate::DeferredView(AstCreateDeferredView {
 			token,
 			view,
 			columns,
 			as_clause,
+			primary_key,
 		}))
 	}
 
@@ -220,11 +239,22 @@ impl<'a> Parser<'a> {
 			None
 		};
 
+		// Parse optional WITH block (after AS clause if present)
+		let primary_key = if !self.is_eof()
+			&& self.current().ok().map(|t| t.is_keyword(Keyword::With)).unwrap_or(false)
+		{
+			let options = self.parse_with_block()?;
+			options.primary_key
+		} else {
+			None
+		};
+
 		Ok(AstCreate::TransactionalView(AstCreateTransactionalView {
 			token,
 			view,
 			columns,
 			as_clause,
+			primary_key,
 		}))
 	}
 
@@ -233,6 +263,16 @@ impl<'a> Parser<'a> {
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
 		let columns = self.parse_columns()?;
+
+		// Parse optional WITH block
+		let primary_key = if !self.is_eof()
+			&& self.current().ok().map(|t| t.is_keyword(Keyword::With)).unwrap_or(false)
+		{
+			let options = self.parse_with_block()?;
+			options.primary_key
+		} else {
+			None
+		};
 
 		use crate::ast::identifier::MaybeQualifiedTableIdentifier;
 
@@ -243,6 +283,7 @@ impl<'a> Parser<'a> {
 			token,
 			table,
 			columns,
+			primary_key,
 		}))
 	}
 
@@ -252,36 +293,18 @@ impl<'a> Parser<'a> {
 		let name = self.parse_identifier_with_hyphens()?;
 		let columns = self.parse_columns()?;
 
-		// Parse WITH clause for options: with { capacity: N }
-		self.consume_keyword(Keyword::With)?;
-		self.consume_operator(Operator::OpenCurly)?;
+		// Parse WITH block (required for ringbuffer - must have capacity)
+		let options = self.parse_with_block()?;
 
-		// Parse capacity option
-		let capacity_ident = self.consume(TokenKind::Identifier)?;
-		if capacity_ident.fragment.text() != "capacity" {
-			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
-				"capacity",
-				capacity_ident.fragment.clone(),
-			)));
-		}
-
-		self.consume_operator(Operator::Colon)?;
-		let capacity_token = self.consume(TokenKind::Literal(crate::ast::tokenize::Literal::Number))?;
-
-		self.consume_operator(Operator::CloseCurly)?;
-
-		// Parse capacity value
-		let capacity = match capacity_token.fragment.text().parse::<u64>() {
-			Ok(val) => val,
-			Err(_) => {
-				return Err(reifydb_type::Error(
-					reifydb_type::diagnostic::ast::unexpected_token_error(
-						"valid capacity number",
-						capacity_token.fragment.clone(),
-					),
-				));
-			}
-		};
+		let capacity = options.capacity.ok_or_else(|| {
+			reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
+				"'capacity' is required for RINGBUFFER",
+				self.current()
+					.ok()
+					.and_then(|t| Some(t.fragment.clone()))
+					.unwrap_or_else(|| reifydb_type::Fragment::owned_internal("end of input")),
+			))
+		})?;
 
 		use crate::ast::identifier::MaybeQualifiedRingBufferIdentifier;
 
@@ -293,7 +316,138 @@ impl<'a> Parser<'a> {
 			ring_buffer,
 			columns,
 			capacity,
+			primary_key: options.primary_key,
 		}))
+	}
+
+	/// Parse primary key definition: {col1: DESC, col2: ASC}
+	/// Defaults to DESC when sort order is not specified
+	fn parse_primary_key_definition(&mut self) -> crate::Result<AstPrimaryKeyDef<'a>> {
+		let mut columns = Vec::new();
+
+		self.consume_operator(Operator::OpenCurly)?;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			let column = self.parse_column_identifier()?;
+
+			// Check for optional sort direction (default is DESC)
+			let sort_direction = if self.current()?.is_operator(Operator::Colon) {
+				self.consume_operator(Operator::Colon)?;
+
+				if self.current()?.is_keyword(Keyword::Asc) {
+					self.consume_keyword(Keyword::Asc)?;
+					SortDirection::Asc
+				} else if self.current()?.is_keyword(Keyword::Desc) {
+					self.consume_keyword(Keyword::Desc)?;
+					SortDirection::Desc
+				} else {
+					// If colon present but invalid keyword, default to DESC
+					SortDirection::Desc
+				}
+			} else {
+				// No colon, default to DESC
+				SortDirection::Desc
+			};
+
+			columns.push(AstIndexColumn {
+				column,
+				order: Some(sort_direction),
+			});
+
+			self.skip_new_line()?;
+
+			if self.consume_if(TokenKind::Separator(Separator::Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		if columns.is_empty() {
+			return Err(reifydb_type::Error(reifydb_type::diagnostic::ast::unexpected_token_error(
+				"at least one column in primary key",
+				self.current()?.fragment.clone(),
+			)));
+		}
+
+		Ok(AstPrimaryKeyDef {
+			columns,
+		})
+	}
+
+	/// Parse WITH block: WITH { capacity: N, primary_key: {col1, col2} }
+	fn parse_with_block(&mut self) -> crate::Result<WithOptions<'a>> {
+		self.consume_keyword(Keyword::With)?;
+		self.consume_operator(Operator::OpenCurly)?;
+
+		let mut capacity: Option<u64> = None;
+		let mut primary_key: Option<AstPrimaryKeyDef<'a>> = None;
+
+		loop {
+			self.skip_new_line()?;
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+
+			// Parse option key
+			let key = self.consume(TokenKind::Identifier)?;
+			self.consume_operator(Operator::Colon)?;
+
+			match key.fragment.text() {
+				"capacity" => {
+					let capacity_token = self.consume(TokenKind::Literal(Literal::Number))?;
+					capacity =
+						Some(capacity_token.fragment.text().parse::<u64>().map_err(|_| {
+							reifydb_type::Error(
+								reifydb_type::diagnostic::ast::unexpected_token_error(
+									"valid capacity number",
+									capacity_token.fragment.clone(),
+								),
+							)
+						})?);
+				}
+				"primary_key" => {
+					primary_key = Some(self.parse_primary_key_definition()?);
+				}
+				_other => {
+					return Err(reifydb_type::Error(
+						reifydb_type::diagnostic::ast::unexpected_token_error(
+							"'capacity' or 'primary_key'",
+							key.fragment.clone(),
+						),
+					));
+				}
+			}
+
+			self.skip_new_line()?;
+
+			// Check for comma (optional trailing comma allowed)
+			if self.consume_if(TokenKind::Separator(Comma))?.is_some() {
+				continue;
+			}
+
+			if self.current()?.is_operator(Operator::CloseCurly) {
+				break;
+			}
+		}
+
+		self.consume_operator(Operator::CloseCurly)?;
+
+		Ok(WithOptions {
+			capacity,
+			primary_key,
+		})
 	}
 
 	fn parse_dictionary(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {

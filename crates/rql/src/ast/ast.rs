@@ -813,6 +813,7 @@ pub struct AstCreateDeferredView<'a> {
 	pub view: MaybeQualifiedDeferredViewIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
+	pub primary_key: Option<AstPrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -821,6 +822,7 @@ pub struct AstCreateTransactionalView<'a> {
 	pub view: MaybeQualifiedTransactionalViewIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub as_clause: Option<AstStatement<'a>>,
+	pub primary_key: Option<AstPrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -851,6 +853,7 @@ pub struct AstCreateTable<'a> {
 	pub token: Token<'a>,
 	pub table: MaybeQualifiedTableIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
+	pub primary_key: Option<AstPrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -859,6 +862,7 @@ pub struct AstCreateRingBuffer<'a> {
 	pub ring_buffer: crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub capacity: u64,
+	pub primary_key: Option<AstPrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -910,6 +914,11 @@ pub struct AstCreateIndex<'a> {
 pub struct AstIndexColumn<'a> {
 	pub column: MaybeQualifiedColumnIdentifier<'a>,
 	pub order: Option<SortDirection>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct AstPrimaryKeyDef<'a> {
+	pub columns: Vec<AstIndexColumn<'a>>,
 }
 
 impl<'a> AstCreate<'a> {

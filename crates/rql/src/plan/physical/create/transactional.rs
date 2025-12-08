@@ -32,6 +32,7 @@ impl Compiler {
 			if_not_exists: create.if_not_exists,
 			columns: create.columns,
 			as_clause: Self::compile(rx, create.as_clause)?.map(Box::new).unwrap(), // FIXME
+			primary_key: create.primary_key,
 		}))
 	}
 }

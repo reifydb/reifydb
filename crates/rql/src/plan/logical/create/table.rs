@@ -99,10 +99,27 @@ impl Compiler {
 		// Use the table identifier directly from AST
 		let table = ast.table;
 
+		// Convert AST primary key to logical plan primary key
+		let primary_key = ast.primary_key.map(|pk| {
+			use crate::plan::logical::{PrimaryKeyColumn, PrimaryKeyDef};
+
+			PrimaryKeyDef {
+				columns: pk
+					.columns
+					.into_iter()
+					.map(|col| PrimaryKeyColumn {
+						column: col.column.name,
+						order: col.order,
+					})
+					.collect(),
+			}
+		});
+
 		Ok(LogicalPlan::CreateTable(CreateTableNode {
 			table,
 			if_not_exists: false,
 			columns,
+			primary_key,
 		}))
 	}
 }

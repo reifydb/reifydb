@@ -580,12 +580,24 @@ pub struct ElseIfBranch<'a> {
 	pub then_branch: Box<LogicalPlan<'a>>,
 }
 
+#[derive(Debug, Clone)]
+pub struct PrimaryKeyDef<'a> {
+	pub columns: Vec<PrimaryKeyColumn<'a>>,
+}
+
+#[derive(Debug, Clone)]
+pub struct PrimaryKeyColumn<'a> {
+	pub column: Fragment<'a>,
+	pub order: Option<SortDirection>,
+}
+
 #[derive(Debug)]
 pub struct CreateDeferredViewNode<'a> {
 	pub view: MaybeQualifiedDeferredViewIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Vec<LogicalPlan<'a>>,
+	pub primary_key: Option<PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug)]
@@ -594,6 +606,7 @@ pub struct CreateTransactionalViewNode<'a> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Vec<LogicalPlan<'a>>,
+	pub primary_key: Option<PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug)]
@@ -613,6 +626,7 @@ pub struct CreateTableNode<'a> {
 	pub table: MaybeQualifiedTableIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+	pub primary_key: Option<PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug)]
@@ -621,6 +635,7 @@ pub struct CreateRingBufferNode<'a> {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub primary_key: Option<PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug)]

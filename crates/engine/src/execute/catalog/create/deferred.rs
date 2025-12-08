@@ -71,6 +71,7 @@ mod tests {
 			as_clause: Box::new(InlineData(InlineDataNode {
 				rows: vec![],
 			})),
+			primary_key: None,
 		};
 
 		// First creation should succeed
@@ -139,6 +140,7 @@ mod tests {
 			as_clause: Box::new(InlineData(InlineDataNode {
 				rows: vec![],
 			})),
+			primary_key: None,
 		};
 
 		let mut stack = Stack::new();
@@ -166,6 +168,7 @@ mod tests {
 			as_clause: Box::new(InlineData(InlineDataNode {
 				rows: vec![],
 			})),
+			primary_key: None,
 		};
 
 		let result = instance
@@ -198,6 +201,7 @@ mod tests {
 			as_clause: Box::new(InlineData(InlineDataNode {
 				rows: vec![],
 			})),
+			primary_key: None,
 		};
 
 		let mut stack = Stack::new();

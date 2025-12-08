@@ -1045,6 +1045,7 @@ pub struct CreateDeferredViewNode<'a> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<PhysicalPlan<'a>>,
+	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1062,6 +1063,7 @@ pub struct CreateTransactionalViewNode<'a> {
 	pub if_not_exists: bool,
 	pub columns: Vec<ViewColumnToCreate>,
 	pub as_clause: Box<PhysicalPlan<'a>>,
+	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1076,6 +1078,7 @@ pub struct CreateTableNode<'a> {
 	pub table: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<TableColumnToCreate>,
+	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone)]
@@ -1085,6 +1088,7 @@ pub struct CreateRingBufferNode<'a> {
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,
+	pub primary_key: Option<logical::PrimaryKeyDef<'a>>,
 }
 
 #[derive(Debug, Clone)]
