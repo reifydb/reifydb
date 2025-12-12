@@ -28,8 +28,10 @@ pub struct Listener {
 }
 
 impl Listener {
-	pub fn new(
-		config: ServerConfig,
+	/// Create a new listener for a specific bind address with protocol handlers
+	pub fn new_for_address(
+		bind_addr: &str,
+		config: &ServerConfig,
 		engine: StandardEngine,
 		scheduler: SchedulerService,
 		websocket_handler: Option<WebSocketHandler>,
@@ -39,7 +41,7 @@ impl Listener {
 		let shutdown = Arc::new(AtomicBool::new(false));
 		let mut listener_handles = Vec::with_capacity(listener_count);
 
-		let addrs: Vec<SocketAddr> = config.bind_addr.to_socket_addrs().expect("invalid bind addr").collect();
+		let addrs: Vec<SocketAddr> = bind_addr.to_socket_addrs().expect("invalid bind addr").collect();
 		let addr = *addrs.first().expect("no resolved addr");
 
 		let mut bound_port = addr.port();

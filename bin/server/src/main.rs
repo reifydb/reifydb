@@ -12,7 +12,8 @@ fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
 fn main() {
 	let mut db = server::memory_optimistic()
 		.with_config(ServerConfig {
-			bind_addr: "0.0.0.0:8090".to_string(),
+			http_bind_addr: Some("0.0.0.0:8090".to_string()),
+			ws_bind_addr: Some("0.0.0.0:8091".to_string()),
 			network: Default::default(),
 			protocols: Default::default(),
 		})

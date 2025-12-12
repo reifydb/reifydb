@@ -30,10 +30,16 @@ impl ServerSubsystem {
 		}
 	}
 
-	/// Get the actual bound port of the server
+	/// Get the actual bound port of the HTTP server
 	#[instrument(level = "trace", skip(self))]
-	pub fn port(&self) -> Option<u16> {
-		self.server.as_ref().and_then(|s| s.port())
+	pub fn http_port(&self) -> Option<u16> {
+		self.server.as_ref().and_then(|s| s.http_port())
+	}
+
+	/// Get the actual bound port of the WebSocket server
+	#[instrument(level = "trace", skip(self))]
+	pub fn ws_port(&self) -> Option<u16> {
+		self.server.as_ref().and_then(|s| s.ws_port())
 	}
 }
 
@@ -49,7 +55,6 @@ impl Subsystem for ServerSubsystem {
 		}
 
 		let mut server = ProtocolServer::new(self.config.clone(), self.engine.clone(), self.scheduler.clone());
-		server.with_websocket().with_http();
 		server.start().map_err(|e| error!(internal(format!("Failed to start server: {:?}", e))))?;
 
 		self.server = Some(server);

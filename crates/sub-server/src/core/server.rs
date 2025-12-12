@@ -7,15 +7,14 @@ use reifydb_sub_api::SchedulerService;
 use super::Listener;
 use crate::{
 	config::ServerConfig,
-	protocols::{HttpHandler, ProtocolError, ProtocolHandler, ProtocolResult, WebSocketHandler},
+	protocols::{HttpHandler, ProtocolError, ProtocolResult, WebSocketHandler},
 };
 
-/// Multi-protocol server that can handle WebSocket and HTTP protocols
+/// Multi-protocol server that can handle WebSocket and HTTP protocols on separate addresses
 pub struct ProtocolServer {
 	config: ServerConfig,
-	websocket: Option<WebSocketHandler>,
-	http: Option<HttpHandler>,
-	listener: Option<Listener>,
+	http_listener: Option<Listener>,
+	ws_listener: Option<Listener>,
 	engine: StandardEngine,
 	scheduler: SchedulerService,
 }
@@ -24,87 +23,69 @@ impl ProtocolServer {
 	pub fn new(config: ServerConfig, engine: StandardEngine, scheduler: SchedulerService) -> Self {
 		Self {
 			config,
-			websocket: None,
-			http: None,
-			listener: None,
+			http_listener: None,
+			ws_listener: None,
 			engine,
 			scheduler,
 		}
 	}
 
-	/// Add WebSocket protocol support
-	pub fn with_websocket(&mut self) -> &mut Self {
-		self.websocket = Some(WebSocketHandler::new());
-		self
-	}
-
-	/// Add HTTP protocol support
-	pub fn with_http(&mut self) -> &mut Self {
-		self.http = Some(HttpHandler::new());
-		self
-	}
-
-	/// Start the multi-protocol server
+	/// Start the server(s) based on configuration
 	pub fn start(&mut self) -> ProtocolResult<()> {
-		if self.listener.is_some() {
+		// Already started
+		if self.http_listener.is_some() || self.ws_listener.is_some() {
 			return Ok(());
 		}
 
-		let enabled_protocols = self.get_enabled_protocols();
-		if enabled_protocols.is_empty() {
+		let has_http = self.config.http_bind_addr.is_some();
+		let has_ws = self.config.ws_bind_addr.is_some();
+
+		if !has_http && !has_ws {
 			return Err(ProtocolError::Custom(
-				"No protocols configured. Use with_websocket() or with_http()".to_string(),
+				"No server configured. Set http_bind_addr or ws_bind_addr".to_string(),
 			));
 		}
 
-		self.listener = Some(Listener::new(
-			self.config.clone(),
-			self.engine.clone(),
-			self.scheduler.clone(),
-			self.websocket.clone(),
-			self.http.clone(),
-		));
+		// Start HTTP listener if configured
+		if let Some(ref http_addr) = self.config.http_bind_addr {
+			self.http_listener = Some(Listener::new_for_address(
+				http_addr,
+				&self.config,
+				self.engine.clone(),
+				self.scheduler.clone(),
+				None, // No WS handler for HTTP listener
+				Some(HttpHandler::new()),
+			));
+		}
+
+		// Start WS listener if configured
+		if let Some(ref ws_addr) = self.config.ws_bind_addr {
+			self.ws_listener = Some(Listener::new_for_address(
+				ws_addr,
+				&self.config,
+				self.engine.clone(),
+				self.scheduler.clone(),
+				Some(WebSocketHandler::new()),
+				None, // No HTTP handler for WS listener
+			));
+		}
+
 		Ok(())
 	}
 
-	/// Stop the server
+	/// Stop the server(s)
 	pub fn stop(&mut self) {
-		if let Some(worker_pool) = self.listener.take() {
-			worker_pool.stop();
+		if let Some(listener) = self.http_listener.take() {
+			listener.stop();
+		}
+		if let Some(listener) = self.ws_listener.take() {
+			listener.stop();
 		}
 	}
 
-	/// Detect which protocol should handle a connection
-	pub fn detect_protocol(&self, buffer: &[u8]) -> Option<&str> {
-		// Check protocols in order of likelihood/preference
-		if let Some(ref websocket) = self.websocket {
-			if <WebSocketHandler as ProtocolHandler>::can_handle(websocket, buffer) {
-				return Some("ws");
-			}
-		}
-
-		if let Some(ref http) = self.http {
-			if <HttpHandler as ProtocolHandler>::can_handle(http, buffer) {
-				return Some("http");
-			}
-		}
-
-		None
-	}
-
-	/// Get WebSocket handler if enabled
-	pub fn websocket_handler(&self) -> Option<&WebSocketHandler> {
-		self.websocket.as_ref()
-	}
-
-	/// Get HTTP handler if enabled
-	pub fn http_handler(&self) -> Option<&HttpHandler> {
-		self.http.as_ref()
-	}
-
-	/// Check if server is running
+	/// Check if any server is running
 	pub fn is_running(&self) -> bool {
-		self.listener.is_some()
+		self.http_listener.is_some() || self.ws_listener.is_some()
 	}
 
 	/// Get server configuration
@@ -116,10 +97,10 @@ impl ProtocolServer {
 	pub fn get_enabled_protocols(&self) -> Vec<String> {
 		let mut protocols = Vec::new();
 
-		if self.websocket.is_some() {
+		if self.config.ws_bind_addr.is_some() {
 			protocols.push("WebSocket".to_string());
 		}
-		if self.http.is_some() {
+		if self.config.http_bind_addr.is_some() {
 			protocols.push("HTTP".to_string());
 		}
 
@@ -130,18 +111,23 @@ impl ProtocolServer {
 	pub fn protocols(&self) -> Vec<&str> {
 		let mut protocols = Vec::new();
 
-		if self.websocket.is_some() {
+		if self.config.ws_bind_addr.is_some() {
 			protocols.push("ws");
 		}
-		if self.http.is_some() {
+		if self.config.http_bind_addr.is_some() {
 			protocols.push("http");
 		}
 
 		protocols
 	}
 
-	/// Get the actual bound port of the server
-	pub fn port(&self) -> Option<u16> {
-		self.listener.as_ref().map(|pool| pool.port())
+	/// Get the actual bound port of the HTTP server
+	pub fn http_port(&self) -> Option<u16> {
+		self.http_listener.as_ref().map(|l| l.port())
+	}
+
+	/// Get the actual bound port of the WebSocket server
+	pub fn ws_port(&self) -> Option<u16> {
+		self.ws_listener.as_ref().map(|l| l.port())
 	}
 }

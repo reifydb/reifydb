@@ -22,15 +22,26 @@ pub fn create_server_instance(
 		..Default::default()
 	};
 	ServerBuilder::new(multi, single, cdc, eventbus)
-		.with_config(ServerConfig::new().bind_addr("::1:0").network(network_config))
+		.with_config(ServerConfig::new()
+			.http_bind_addr(Some("::1:0"))
+			.ws_bind_addr(Some("::1:0"))
+			.network(network_config))
 		.build()
 		.unwrap()
 }
 
 /// Start server and return WebSocket port
-pub fn start_server_and_get_port(server: &mut Database) -> Result<u16, Box<dyn Error>> {
+#[allow(dead_code)]
+pub fn start_server_and_get_ws_port(server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
-	Ok(server.sub_server().unwrap().port().unwrap())
+	Ok(server.sub_server().unwrap().ws_port().unwrap())
+}
+
+/// Start server and return HTTP port
+#[allow(dead_code)]
+pub fn start_server_and_get_http_port(server: &mut Database) -> Result<u16, Box<dyn Error>> {
+	server.start()?;
+	Ok(server.sub_server().unwrap().http_port().unwrap())
 }
 
 #[allow(dead_code)]

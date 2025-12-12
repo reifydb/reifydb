@@ -223,7 +223,7 @@ impl testscript::Runner for ChannelRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = common::start_server_and_get_port(server)?;
+		let port = common::start_server_and_get_ws_port(server)?;
 
 		let client = common::connect_ws(("::1", port))?;
 		let (session, receiver) = client.channel_session(Some("mysecrettoken".to_string()))?;

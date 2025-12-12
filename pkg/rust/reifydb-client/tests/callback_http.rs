@@ -12,7 +12,7 @@ use std::{
 };
 
 use common::{
-	cleanup_server, parse_named_params, parse_positional_params, parse_rql, start_server_and_get_port, write_frames,
+	cleanup_server, parse_named_params, parse_positional_params, parse_rql, start_server_and_get_http_port, write_frames,
 };
 use reifydb::{
 	Database,
@@ -267,7 +267,7 @@ impl testscript::Runner for CallbackRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = start_server_and_get_port(server)?;
+		let port = start_server_and_get_http_port(server)?;
 
 		let client = connect_http(("::1", port))?;
 		let session = client.callback_session(Some("mysecrettoken".to_string()))?;

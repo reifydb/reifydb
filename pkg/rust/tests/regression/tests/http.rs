@@ -10,23 +10,23 @@ use reifydb::{
 	sub_server::ServerConfig,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
-use reifydb_client::{Client, WsBlockingSession, WsClient};
+use reifydb_client::{Client, HttpBlockingSession, HttpClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 
-pub struct WsRunner {
+pub struct HttpRunner {
 	instance: Option<Database>,
-	client: Option<WsClient>,
-	session: Option<WsBlockingSession>,
+	client: Option<HttpClient>,
+	session: Option<HttpBlockingSession>,
 }
 
-impl WsRunner {
+impl HttpRunner {
 	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
 			.with_config(ServerConfig::new()
-				.http_bind_addr(None::<&str>)
-				.ws_bind_addr(Some("::1:0")))
+				.http_bind_addr(Some("::1:0"))
+				.ws_bind_addr(None::<&str>))
 			.build()
 			.unwrap();
 
@@ -38,7 +38,7 @@ impl WsRunner {
 	}
 }
 
-impl testscript::Runner for WsRunner {
+impl testscript::Runner for HttpRunner {
 	fn run(&mut self, command: &Command) -> Result<String, Box<dyn Error>> {
 		let mut output = String::new();
 
@@ -78,9 +78,9 @@ impl testscript::Runner for WsRunner {
 		let server = self.instance.as_mut().unwrap();
 		server.start()?;
 
-		let port = server.sub_server().unwrap().ws_port().unwrap();
+		let port = server.sub_server().unwrap().http_port().unwrap();
 
-		let client = Client::ws_from_url(&format!("ws://::1:{}", port))?;
+		let client = Client::http_from_url(&format!("http://::1:{}", port))?;
 
 		let session = client.blocking_session(Some("mysecrettoken".to_string()))?;
 
@@ -111,8 +111,8 @@ impl testscript::Runner for WsRunner {
 	}
 }
 
-test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as ws => test_ws }
+test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as http => test_http }
 
-fn test_ws(path: &Path) {
-	retry(3, || testscript::run_path(&mut WsRunner::new(optimistic(memory())), path)).expect("test failed")
+fn test_http(path: &Path) {
+	retry(3, || testscript::run_path(&mut HttpRunner::new(optimistic(memory())), path)).expect("test failed")
 }

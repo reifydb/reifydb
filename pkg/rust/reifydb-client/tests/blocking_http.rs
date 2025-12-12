@@ -4,7 +4,7 @@ mod common;
 
 use std::{error::Error, path::Path};
 
-use common::{cleanup_http_client, cleanup_server, connect_http, create_server_instance, start_server_and_get_port};
+use common::{cleanup_http_client, cleanup_server, connect_http, create_server_instance, start_server_and_get_http_port};
 use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
@@ -92,7 +92,7 @@ impl testscript::Runner for BlockingRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = start_server_and_get_port(server)?;
+		let port = start_server_and_get_http_port(server)?;
 
 		let client = connect_http(("::1", port))?;
 		let session = client.blocking_session(Some("mysecrettoken".to_string()))?;

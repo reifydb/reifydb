@@ -6,8 +6,10 @@ use super::{NetworkConfig, ProtocolConfigs};
 /// Main server configuration supporting multiple protocols
 #[derive(Debug, Clone)]
 pub struct ServerConfig {
-	/// Bind address and port
-	pub bind_addr: String,
+	/// HTTP server bind address. None means HTTP is disabled.
+	pub http_bind_addr: Option<String>,
+	/// WebSocket server bind address. None means WS is disabled.
+	pub ws_bind_addr: Option<String>,
 	/// Network and performance configuration
 	pub network: NetworkConfig,
 	/// Protocol-specific configurations
@@ -20,9 +22,15 @@ impl ServerConfig {
 		Self::default()
 	}
 
-	/// Set the bind address
-	pub fn bind_addr<S: Into<String>>(mut self, addr: S) -> Self {
-		self.bind_addr = addr.into();
+	/// Set HTTP bind address. Pass None to disable HTTP server.
+	pub fn http_bind_addr<S: Into<String>>(mut self, addr: Option<S>) -> Self {
+		self.http_bind_addr = addr.map(|s| s.into());
+		self
+	}
+
+	/// Set WebSocket bind address. Pass None to disable WS server.
+	pub fn ws_bind_addr<S: Into<String>>(mut self, addr: Option<S>) -> Self {
+		self.ws_bind_addr = addr.map(|s| s.into());
 		self
 	}
 
@@ -59,7 +67,8 @@ impl ServerConfig {
 impl Default for ServerConfig {
 	fn default() -> Self {
 		Self {
-			bind_addr: "0.0.0.0:8090".to_string(),
+			http_bind_addr: Some("0.0.0.0:8090".to_string()),
+			ws_bind_addr: Some("0.0.0.0:8091".to_string()),
 			network: NetworkConfig::default(),
 			protocols: ProtocolConfigs::default(),
 		}
