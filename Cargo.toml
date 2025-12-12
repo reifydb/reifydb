@@ -182,6 +182,14 @@ core_affinity = { version = "0.8.3" }
 httparse = { version = "1.10.1" }
 urlencoding = { version = "2.1.3" }
 
+# Async runtime and networking (tokio stack)
+tokio = { version = "1.48.0", features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
+axum = { version = "0.8.7" }
+tower = { version = "0.5.2", features = ["limit", "timeout"] }
+tower-http = { version = "0.6.6", features = ["trace", "timeout"] }
+tokio-tungstenite = { version = "0.28.0" }
+futures-util = { version = "0.3.31", features = ["sink"] }
+
 # sqlite
 rusqlite = { version = "0.37.0", features = ["bundled"] }
 
