@@ -6,7 +6,8 @@ use std::{collections::HashMap, error::Error, fmt::Write, net::ToSocketAddrs};
 use reifydb::{
 	Database, ServerBuilder,
 	core::event::EventBus,
-	sub_server::{NetworkConfig, ServerConfig},
+	sub_server_http::HttpConfig,
+	sub_server_ws::WsConfig,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, Frame, HttpClient, Params, Value, WsClient};
@@ -17,15 +18,9 @@ pub fn create_server_instance(
 ) -> Database {
 	let (multi, single, cdc, eventbus) = input;
 
-	let network_config = NetworkConfig {
-		listeners: Some(1), // Limit to 1 worker for tests
-		..Default::default()
-	};
 	ServerBuilder::new(multi, single, cdc, eventbus)
-		.with_config(ServerConfig::new()
-			.http_bind_addr(Some("::1:0"))
-			.ws_bind_addr(Some("::1:0"))
-			.network(network_config))
+		.with_http(HttpConfig::default().bind_addr("::1:0"))
+		.with_ws(WsConfig::default().bind_addr("::1:0"))
 		.build()
 		.unwrap()
 }
@@ -34,14 +29,14 @@ pub fn create_server_instance(
 #[allow(dead_code)]
 pub fn start_server_and_get_ws_port(server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
-	Ok(server.sub_server().unwrap().ws_port().unwrap())
+	Ok(server.sub_server_ws().unwrap().port().unwrap())
 }
 
 /// Start server and return HTTP port
 #[allow(dead_code)]
 pub fn start_server_and_get_http_port(server: &mut Database) -> Result<u16, Box<dyn Error>> {
 	server.start()?;
-	Ok(server.sub_server().unwrap().http_port().unwrap())
+	Ok(server.sub_server_http().unwrap().port().unwrap())
 }
 
 #[allow(dead_code)]

@@ -43,11 +43,13 @@
 //! ```
 
 pub mod error;
+pub mod factory;
 pub mod handlers;
 pub mod routes;
 pub mod subsystem;
 
 pub use error::{AppError, ErrorResponse};
-pub use handlers::{QueryRequest, QueryResponse};
+pub use factory::{HttpConfig, HttpSubsystemFactory};
+pub use handlers::{QueryResponse, StatementRequest};
 pub use routes::router;
 pub use subsystem::HttpSubsystem;

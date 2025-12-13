@@ -13,9 +13,11 @@ use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::Identity;
 use reifydb_sub_server::{
 	convert_frames, execute_command, execute_query, extract_identity_from_ws_auth, AppState,
-	ExecuteError, Request, RequestPayload,
+	ExecuteError,
 };
 use reifydb_type::Params;
+
+use crate::protocol::{Request, RequestPayload};
 use serde_json::json;
 use tokio::net::TcpStream;
 use tokio::sync::watch;
@@ -242,8 +244,8 @@ mod tests {
 		let response = build_error("456", "AUTH_REQUIRED", "Please authenticate");
 		let parsed: serde_json::Value = serde_json::from_str(&response).unwrap();
 		assert_eq!(parsed["id"], "456");
-		assert_eq!(parsed["type"], "error");
-		assert_eq!(parsed["payload"]["code"], "AUTH_REQUIRED");
-		assert_eq!(parsed["payload"]["message"], "Please authenticate");
+		assert_eq!(parsed["type"], "Err");
+		assert_eq!(parsed["payload"]["diagnostic"]["code"], "AUTH_REQUIRED");
+		assert_eq!(parsed["payload"]["diagnostic"]["message"], "Please authenticate");
 	}
 }

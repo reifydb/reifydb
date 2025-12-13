@@ -48,12 +48,16 @@
 //! ws.start()?;
 //! ```
 
-pub mod convert;
+pub mod factory;
 pub mod handler;
-pub mod response;
+pub mod protocol;
 pub mod subsystem;
 
-pub use convert::convert_frames;
+// Re-export common types from sub-server
+pub use reifydb_sub_server::{convert_frames, ResponseColumn, ResponseFrame};
+
+// Local exports
+pub use factory::{WsConfig, WsSubsystemFactory};
 pub use handler::handle_connection;
-pub use response::{ResponseColumn, ResponseFrame};
+pub use protocol::{AuthRequest, CommandRequest, QueryRequest, Request, RequestPayload};
 pub use subsystem::WsSubsystem;

@@ -13,7 +13,7 @@ use std::sync::{Arc, RwLock};
 
 use reifydb_core::interface::version::{HasVersion, SystemVersion, ComponentType};
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::AppState;
+use reifydb_sub_server::{AppState, SharedRuntime};
 use tokio::runtime::Handle;
 use tokio::sync::oneshot;
 
@@ -49,6 +49,8 @@ pub struct HttpSubsystem {
 	actual_addr: RwLock<Option<SocketAddr>>,
 	/// Shared application state.
 	state: AppState,
+	/// The shared runtime (kept alive to prevent premature shutdown).
+	_runtime: Option<Arc<SharedRuntime>>,
 	/// Handle to the tokio runtime.
 	handle: Handle,
 	/// Flag indicating if the server is running.
@@ -72,6 +74,30 @@ impl HttpSubsystem {
 			bind_addr,
 			actual_addr: RwLock::new(None),
 			state,
+			_runtime: None,
+			handle,
+			running: Arc::new(AtomicBool::new(false)),
+			shutdown_tx: None,
+			shutdown_complete_rx: None,
+		}
+	}
+
+	/// Create a new HTTP subsystem with an owned runtime.
+	///
+	/// This variant keeps the runtime alive for the lifetime of the subsystem.
+	///
+	/// # Arguments
+	///
+	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8090")
+	/// * `state` - Shared application state with engine and config
+	/// * `runtime` - Shared runtime (will be kept alive)
+	pub fn with_runtime(bind_addr: String, state: AppState, runtime: Arc<SharedRuntime>) -> Self {
+		let handle = runtime.handle();
+		Self {
+			bind_addr,
+			actual_addr: RwLock::new(None),
+			state,
+			_runtime: Some(runtime),
 			handle,
 			running: Arc::new(AtomicBool::new(false)),
 			shutdown_tx: None,
@@ -120,17 +146,17 @@ impl Subsystem for HttpSubsystem {
 		// Bind synchronously using std::net, then convert to tokio
 		let addr = self.bind_addr.clone();
 		let std_listener = std::net::TcpListener::bind(&addr)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::network::bind_error(&addr, e)))?;
+			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to bind HTTP server to {}: {}", &addr, e))))?;
 		std_listener.set_nonblocking(true)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::network::bind_error(&addr, e)))?;
+			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to set non-blocking on {}: {}", &addr, e))))?;
 
 		let actual_addr = std_listener.local_addr()
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::network::local_addr_error(e)))?;
+			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to get local address: {}", e))))?;
 
 		// Enter the runtime context to convert std listener to tokio
 		let _guard = self.handle.enter();
 		let listener = tokio::net::TcpListener::from_std(std_listener)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::network::bind_error(&addr, e)))?;
+			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to convert listener: {}", e))))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("HTTP server bound to {}", actual_addr);
 

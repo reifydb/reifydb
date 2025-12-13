@@ -11,8 +11,10 @@ use reifydb_sub_admin::{AdminConfig, AdminSubsystemFactory};
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
-#[cfg(feature = "sub_server")]
-use reifydb_sub_server::{ServerConfig, ServerSubsystemFactory};
+#[cfg(feature = "sub_server_http")]
+use reifydb_sub_server_http::{HttpConfig, HttpSubsystemFactory};
+#[cfg(feature = "sub_server_ws")]
+use reifydb_sub_server_ws::{WsConfig, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
 use reifydb_sub_tracing::TracingBuilder;
 use reifydb_sub_worker::WorkerBuilder;
@@ -21,7 +23,6 @@ use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, s
 use super::{DatabaseBuilder, WithInterceptorBuilder, traits::WithSubsystem};
 use crate::Database;
 
-#[cfg(feature = "sub_server")]
 pub struct ServerBuilder {
 	multi: TransactionMultiVersion,
 	single: TransactionSingleVersion,
@@ -37,7 +38,6 @@ pub struct ServerBuilder {
 	flow_configurator: Option<Box<dyn FnOnce(FlowBuilder) -> FlowBuilder + Send + 'static>>,
 }
 
-#[cfg(feature = "sub_server")]
 impl ServerBuilder {
 	pub fn new(
 		multi: TransactionMultiVersion,
@@ -79,9 +79,18 @@ impl ServerBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_server")]
-	pub fn with_config(mut self, config: ServerConfig) -> Self {
-		let factory = ServerSubsystemFactory::new(config);
+	/// Configure and add an HTTP subsystem.
+	#[cfg(feature = "sub_server_http")]
+	pub fn with_http(mut self, config: HttpConfig) -> Self {
+		let factory = HttpSubsystemFactory::new(config);
+		self.subsystem_factories.push(Box::new(factory));
+		self
+	}
+
+	/// Configure and add a WebSocket subsystem.
+	#[cfg(feature = "sub_server_ws")]
+	pub fn with_ws(mut self, config: WsConfig) -> Self {
+		let factory = WsSubsystemFactory::new(config);
 		self.subsystem_factories.push(Box::new(factory));
 		self
 	}
@@ -126,7 +135,6 @@ impl ServerBuilder {
 	}
 }
 
-#[cfg(feature = "sub_server")]
 impl WithSubsystem for ServerBuilder {
 	#[cfg(feature = "sub_tracing")]
 	fn with_tracing<F>(mut self, configurator: F) -> Self
@@ -160,7 +168,6 @@ impl WithSubsystem for ServerBuilder {
 	}
 }
 
-#[cfg(feature = "sub_server")]
 impl WithInterceptorBuilder for ServerBuilder {
 	fn interceptor_builder_mut(&mut self) -> &mut StandardInterceptorBuilder<StandardCommandTransaction> {
 		&mut self.interceptors

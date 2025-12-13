@@ -157,17 +157,6 @@ name = "cli"
 version = "0.1.5"
 
 [[package]]
-name = "core_affinity"
-version = "0.8.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a034b3a7b624016c6e13f5df875747cc25f884156aad2abd12b6c46797971342"
-dependencies = [
- "libc",
- "num_cpus",
- "winapi",
-]
-
-[[package]]
 name = "cpufeatures"
 version = "0.2.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -864,6 +853,8 @@ dependencies = [
  "reifydb-sub-api",
  "reifydb-sub-flow",
  "reifydb-sub-server",
+ "reifydb-sub-server-http",
+ "reifydb-sub-server-ws",
  "reifydb-sub-tracing",
  "reifydb-sub-worker",
  "reifydb-transaction",
@@ -1137,26 +1128,49 @@ dependencies = [
 name = "reifydb-sub-server"
 version = "0.1.5"
 dependencies = [
- "axum",
- "core_affinity",
- "futures-util",
- "mio",
+ "num_cpus",
  "reifydb-core",
  "reifydb-engine",
- "reifydb-network",
- "reifydb-sub-api",
- "reifydb-sub-worker",
  "reifydb-type",
  "serde",
  "serde_json",
- "slab",
- "socket2",
  "tokio",
- "tokio-tungstenite",
+ "tracing",
+]
+
+[[package]]
+name = "reifydb-sub-server-http"
+version = "0.1.5"
+dependencies = [
+ "axum",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-sub-api",
+ "reifydb-sub-server",
+ "reifydb-type",
+ "serde",
+ "serde_json",
+ "tokio",
  "tower",
  "tower-http",
  "tracing",
- "urlencoding",
+]
+
+[[package]]
+name = "reifydb-sub-server-ws"
+version = "0.1.5"
+dependencies = [
+ "futures-util",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-sub-api",
+ "reifydb-sub-server",
+ "reifydb-type",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tokio-tungstenite",
+ "tracing",
 ]
 
 [[package]]
@@ -1735,12 +1749,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6d49784317cd0d1ee7ec5c716dd598ec5b4483ea832a2dced265471cc0f690ae"
 
 [[package]]
-name = "urlencoding"
-version = "2.1.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "daf8dba3b7eb870caf1ddeed7bc9d2a049f3cfdfae7cb521b087cc33ae4c49da"
-
-[[package]]
 name = "utf-8"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1855,28 +1863,6 @@ checksum = "255eb0aa4cc2eea3662a00c2bbd66e93911b7361d5e0fcd62385acfd7e15dcee"
 dependencies = [
  "unicode-ident",
 ]
-
-[[package]]
-name = "winapi"
-version = "0.3.9"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5c839a674fcd7a98952e593242ea400abe93992746761e38641405d28b00f419"
-dependencies = [
- "winapi-i686-pc-windows-gnu",
- "winapi-x86_64-pc-windows-gnu",
-]
-
-[[package]]
-name = "winapi-i686-pc-windows-gnu"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ac3b87c63620426dd9b991e5ce0329eff545bccbbb34f3be09ff6fb6ab51b7b6"
-
-[[package]]
-name = "winapi-x86_64-pc-windows-gnu"
-version = "0.4.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "712e227841d057c1ee1cd2fb22fa7e5a5461ae8e48fa2ca79ec42cfc1931183f"
 
 [[package]]
 name = "windows-link"

@@ -16,6 +16,7 @@ edition.workspace = true
 reifydb-sub-server = { workspace = true }
 reifydb-sub-api = { workspace = true }
 reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
 reifydb-type = { workspace = true }
 tokio = { workspace = true }
 tokio-tungstenite = { workspace = true }

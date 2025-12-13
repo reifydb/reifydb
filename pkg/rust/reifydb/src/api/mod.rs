@@ -10,8 +10,6 @@ use reifydb_store_transaction::{
 use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
 
 pub mod embedded;
-
-#[cfg(feature = "sub_server")]
 pub mod server;
 
 /// Convenience function to create in-memory storage

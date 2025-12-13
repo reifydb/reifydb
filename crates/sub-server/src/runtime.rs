@@ -40,7 +40,7 @@ impl SharedRuntime {
 	pub fn new(worker_threads: usize) -> Self {
 		let runtime = tokio::runtime::Builder::new_multi_thread()
 			.worker_threads(worker_threads)
-			.thread_name("reifydb-io")
+			.thread_name("server")
 			.enable_all()
 			.build()
 			.expect("Failed to create tokio runtime");

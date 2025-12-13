@@ -8,7 +8,7 @@ repository.workspace = true
 publish = false
 
 [dev-dependencies]
-reifydb = { path = "../../reifydb", features = ["sub_server"] }
+reifydb = { path = "../../reifydb", features = ["sub_server_http", "sub_server_ws"] }
 reifydb-client = { path = "../../reifydb-client" }
 reifydb-testing = { path = "../../../../crates/testing" }
 test_each_file = { version = "0.3.5" }

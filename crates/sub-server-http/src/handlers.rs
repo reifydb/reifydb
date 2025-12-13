@@ -23,7 +23,7 @@ use crate::error::AppError;
 
 /// Request body for query and command endpoints.
 #[derive(Debug, Deserialize)]
-pub struct QueryRequest {
+pub struct StatementRequest {
 	/// One or more RQL statements to execute.
 	pub statements: Vec<String>,
 	/// Optional query parameters.
@@ -85,7 +85,7 @@ pub async fn health() -> impl IntoResponse {
 pub async fn handle_query(
 	State(state): State<AppState>,
 	headers: HeaderMap,
-	Json(request): Json<QueryRequest>,
+	Json(request): Json<StatementRequest>,
 ) -> Result<Json<QueryResponse>, AppError> {
 	// Extract identity from headers
 	let identity = extract_identity(&headers)?;
@@ -140,7 +140,7 @@ pub async fn handle_query(
 pub async fn handle_command(
 	State(state): State<AppState>,
 	headers: HeaderMap,
-	Json(request): Json<QueryRequest>,
+	Json(request): Json<StatementRequest>,
 ) -> Result<Json<QueryResponse>, AppError> {
 	// Extract identity from headers
 	let identity = extract_identity(&headers)?;
@@ -192,9 +192,9 @@ mod tests {
 	use super::*;
 
 	#[test]
-	fn test_query_request_deserialization() {
+	fn test_statement_request_deserialization() {
 		let json = r#"{"statements": ["SELECT 1"]}"#;
-		let request: QueryRequest = serde_json::from_str(json).unwrap();
+		let request: StatementRequest = serde_json::from_str(json).unwrap();
 		assert_eq!(request.statements, vec!["SELECT 1"]);
 		assert!(request.params.is_none());
 	}

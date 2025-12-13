@@ -15,8 +15,10 @@ use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{HealthStatus, SchedulerService};
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowSubsystem;
-#[cfg(feature = "sub_server")]
-use reifydb_sub_server::ServerSubsystem;
+#[cfg(feature = "sub_server_http")]
+use reifydb_sub_server_http::HttpSubsystem;
+#[cfg(feature = "sub_server_ws")]
+use reifydb_sub_server_ws::WsSubsystem;
 use reifydb_sub_worker::WorkerSubsystem;
 use tracing::{debug, error, instrument, trace, warn};
 
@@ -86,9 +88,14 @@ impl Database {
 		self.subsystem::<FlowSubsystem>()
 	}
 
-	#[cfg(feature = "sub_server")]
-	pub fn sub_server(&self) -> Option<&ServerSubsystem> {
-		self.subsystems.get::<ServerSubsystem>()
+	#[cfg(feature = "sub_server_http")]
+	pub fn sub_server_http(&self) -> Option<&HttpSubsystem> {
+		self.subsystem::<HttpSubsystem>()
+	}
+
+	#[cfg(feature = "sub_server_ws")]
+	pub fn sub_server_ws(&self) -> Option<&WsSubsystem> {
+		self.subsystem::<WsSubsystem>()
 	}
 }
 

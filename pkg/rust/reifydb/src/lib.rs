@@ -14,9 +14,7 @@ pub mod subsystem;
 use std::time::Duration;
 
 pub use api::*;
-#[cfg(feature = "sub_server")]
-pub use builder::ServerBuilder;
-pub use builder::{DatabaseBuilder, EmbeddedBuilder, WithInterceptorBuilder, WithSubsystem};
+pub use builder::{DatabaseBuilder, EmbeddedBuilder, ServerBuilder, WithInterceptorBuilder, WithSubsystem};
 pub use context::{RuntimeProvider, SyncContext, SystemContext};
 pub use database::{Database, DatabaseConfig};
 pub use event::{OnCreateContext, WithEventBus};
@@ -44,6 +42,10 @@ pub use reifydb_sub_api as sub;
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
+#[cfg(feature = "sub_server_http")]
+pub use reifydb_sub_server_http as sub_server_http;
+#[cfg(feature = "sub_server_ws")]
+pub use reifydb_sub_server_ws as sub_server_ws;
 #[cfg(feature = "sub_tracing")]
 pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_sub_worker as sub_worker;

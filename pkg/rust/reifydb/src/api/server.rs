@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-#![cfg(feature = "sub_server")]
-
 use reifydb_store_transaction::backend::sqlite::SqliteConfig;
 
 use crate::{ServerBuilder, memory, optimistic, serializable, sqlite};

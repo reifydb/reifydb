@@ -27,6 +27,8 @@ members = [
     "crates/sub-flow",
     "crates/sub-tracing",
     "crates/sub-server",
+    "crates/sub-server-http",
+    "crates/sub-server-ws",
     "crates/sub-worker",
     # Binary projects
     "bin/cli",
@@ -69,6 +71,8 @@ default-members = [
     "crates/sub-flow",
     "crates/sub-tracing",
     "crates/sub-server",
+    "crates/sub-server-http",
+    "crates/sub-server-ws",
     "crates/sub-worker",
     # Binary projects
     "bin/cli",
@@ -147,6 +151,8 @@ reifydb-sub-flow = { version = "0.1.5", path = "crates/sub-flow" }
 reifydb-sub-tracing = { version = "0.1.5", path = "crates/sub-tracing" }
 reifydb-sub-worker = { version = "0.1.5", path = "crates/sub-worker" }
 reifydb-sub-server = { version = "0.1.5", path = "crates/sub-server" }
+reifydb-sub-server-http = { version = "0.1.5", path = "crates/sub-server-http" }
+reifydb-sub-server-ws = { version = "0.1.5", path = "crates/sub-server-ws" }
 
 # External dependencies
 

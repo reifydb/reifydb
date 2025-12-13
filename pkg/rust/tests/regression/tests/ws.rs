@@ -7,7 +7,7 @@ use reifydb::{
 	Database, ServerBuilder,
 	core::{event::EventBus, retry},
 	memory, optimistic,
-	sub_server::ServerConfig,
+	sub_server_ws::WsConfig,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, WsBlockingSession, WsClient};
@@ -24,9 +24,7 @@ impl WsRunner {
 	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
-			.with_config(ServerConfig::new()
-				.http_bind_addr(None::<&str>)
-				.ws_bind_addr(Some("::1:0")))
+			.with_ws(WsConfig::default().bind_addr("::1:0"))
 			.build()
 			.unwrap();
 
@@ -78,7 +76,7 @@ impl testscript::Runner for WsRunner {
 		let server = self.instance.as_mut().unwrap();
 		server.start()?;
 
-		let port = server.sub_server().unwrap().ws_port().unwrap();
+		let port = server.sub_server_ws().unwrap().port().unwrap();
 
 		let client = Client::ws_from_url(&format!("ws://::1:{}", port))?;
 

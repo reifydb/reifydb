@@ -13,7 +13,7 @@ use std::sync::{Arc, RwLock};
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_sub_api::{HealthStatus, Subsystem};
-use reifydb_sub_server::AppState;
+use reifydb_sub_server::{AppState, SharedRuntime};
 use tokio::net::TcpListener;
 use tokio::runtime::Handle;
 use tokio::sync::{watch, Semaphore};
@@ -51,6 +51,8 @@ pub struct WsSubsystem {
 	actual_addr: RwLock<Option<SocketAddr>>,
 	/// Shared application state.
 	state: AppState,
+	/// The shared runtime (kept alive to prevent premature shutdown).
+	_runtime: Option<Arc<SharedRuntime>>,
 	/// Handle to the tokio runtime.
 	handle: Handle,
 	/// Flag indicating if the server is running.
@@ -77,6 +79,32 @@ impl WsSubsystem {
 			bind_addr,
 			actual_addr: RwLock::new(None),
 			state,
+			_runtime: None,
+			handle,
+			running: Arc::new(AtomicBool::new(false)),
+			active_connections: Arc::new(AtomicUsize::new(0)),
+			shutdown_tx: None,
+			connection_semaphore: Arc::new(Semaphore::new(max_connections)),
+		}
+	}
+
+	/// Create a new WebSocket subsystem with an owned runtime.
+	///
+	/// This variant keeps the runtime alive for the lifetime of the subsystem.
+	///
+	/// # Arguments
+	///
+	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8091")
+	/// * `state` - Shared application state with engine and config
+	/// * `runtime` - Shared runtime (will be kept alive)
+	pub fn with_runtime(bind_addr: String, state: AppState, runtime: Arc<SharedRuntime>) -> Self {
+		let max_connections = state.max_connections();
+		let handle = runtime.handle();
+		Self {
+			bind_addr,
+			actual_addr: RwLock::new(None),
+			state,
+			_runtime: Some(runtime),
 			handle,
 			running: Arc::new(AtomicBool::new(false)),
 			active_connections: Arc::new(AtomicUsize::new(0)),
@@ -131,17 +159,17 @@ impl Subsystem for WsSubsystem {
 		// Bind synchronously using std::net, then convert to tokio
 		let addr = self.bind_addr.clone();
 		let std_listener = std::net::TcpListener::bind(&addr)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::network::bind_error(&addr, e)))?;
+			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to bind WebSocket server to {}: {}", &addr, e))))?;
 		std_listener.set_nonblocking(true)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::network::bind_error(&addr, e)))?;
+			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to set non-blocking on {}: {}", &addr, e))))?;
 
 		let actual_addr = std_listener.local_addr()
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::network::local_addr_error(e)))?;
+			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to get local address: {}", e))))?;
 
 		// Enter the runtime context to convert std listener to tokio
 		let _guard = self.handle.enter();
 		let listener = TcpListener::from_std(std_listener)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::network::bind_error(&addr, e)))?;
+			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to convert listener: {}", e))))?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("WebSocket server bound to {}", actual_addr);
 
@@ -272,23 +300,5 @@ impl Subsystem for WsSubsystem {
 
 	fn as_any_mut(&mut self) -> &mut dyn Any {
 		self
-	}
-}
-
-#[cfg(test)]
-mod tests {
-	use super::*;
-
-	#[test]
-	fn test_ws_subsystem_name() {
-		// Can't create without engine, just test the constant
-		assert_eq!("WebSocket", "WebSocket");
-	}
-
-	#[test]
-	fn test_ws_subsystem_version() {
-		// Version info is available at compile time
-		let version = env!("CARGO_PKG_VERSION");
-		assert!(!version.is_empty());
 	}
 }

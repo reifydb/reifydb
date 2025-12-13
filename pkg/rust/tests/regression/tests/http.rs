@@ -7,7 +7,7 @@ use reifydb::{
 	Database, ServerBuilder,
 	core::{event::EventBus, retry},
 	memory, optimistic,
-	sub_server::ServerConfig,
+	sub_server_http::HttpConfig,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, HttpBlockingSession, HttpClient};
@@ -24,9 +24,7 @@ impl HttpRunner {
 	pub fn new(input: (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus)) -> Self {
 		let (multi, single, cdc, eventbus) = input;
 		let instance = ServerBuilder::new(multi, single, cdc, eventbus)
-			.with_config(ServerConfig::new()
-				.http_bind_addr(Some("::1:0"))
-				.ws_bind_addr(None::<&str>))
+			.with_http(HttpConfig::default().bind_addr("::1:0"))
 			.build()
 			.unwrap();
 
@@ -78,7 +76,7 @@ impl testscript::Runner for HttpRunner {
 		let server = self.instance.as_mut().unwrap();
 		server.start()?;
 
-		let port = server.sub_server().unwrap().http_port().unwrap();
+		let port = server.sub_server_http().unwrap().port().unwrap();
 
 		let client = Client::http_from_url(&format!("http://::1:{}", port))?;
 

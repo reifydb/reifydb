@@ -1,7 +1,12 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb::{WithSubsystem, server, sub_server::ServerConfig, sub_tracing::TracingBuilder};
+use reifydb::{
+	WithSubsystem, server,
+	sub_server_http::HttpConfig,
+	sub_server_ws::WsConfig,
+	sub_tracing::TracingBuilder,
+};
 
 fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
 	tracing.with_console(|console| console.color(true).stderr_for_errors(true)).with_filter("trace")
@@ -9,7 +14,8 @@ fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
 
 fn main() {
 	let mut db = server::memory_optimistic()
-		.with_config(ServerConfig::default())
+		.with_http(HttpConfig::default())
+		.with_ws(WsConfig::default())
 		.with_tracing(tracing_configuration)
 		.with_flow(|flow| flow)
 		.build()
