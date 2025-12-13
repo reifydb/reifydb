@@ -9,8 +9,9 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	interface::{
-		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, Params, ResolvedColumn,
-		ResolvedNamespace, ResolvedSource, ResolvedTable,
+		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction,
+		MultiVersionQueryTransaction, Params, ResolvedColumn, ResolvedNamespace, ResolvedSource,
+		ResolvedTable,
 	},
 	return_error,
 	value::{
@@ -19,7 +20,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_rql::plan::physical::InsertTableNode;
-use reifydb_type::{Fragment, Type, Value, diagnostic::catalog::table_not_found, internal_error};
+use reifydb_type::{Fragment, Type, Value, diagnostic::{catalog::table_not_found, index::primary_key_violation}, internal_error};
 
 use super::primary_key;
 use crate::{
@@ -101,16 +102,21 @@ impl Executor {
 		}) = input_node.next(&mut std_txn, &mut mutable_context)?
 		{
 			let row_count = columns.row_count();
+			
+			use std::collections::HashMap;
+			let mut column_map: HashMap<&str, usize> = HashMap::new();
+			for (idx, col) in columns.iter().enumerate() {
+				column_map.insert(col.name().text(), idx);
+			}
 
 			for row_numberx in 0..row_count {
 				let mut row = layout.allocate();
 
 				// For each table column, find if it exists in the input columns
 				for (table_idx, table_column) in table.columns.iter().enumerate() {
-					let mut value = if let Some(input_column) =
-						columns.iter().find(|col| col.name() == table_column.name)
+					let mut value = if let Some(&input_idx) = column_map.get(table_column.name.as_str())
 					{
-						input_column.data().get_value(row_numberx)
+						columns[input_idx].data().get_value(row_numberx)
 					} else {
 						Value::Undefined
 					};
@@ -225,15 +231,24 @@ impl Executor {
 			if let Some(pk_def) = primary_key::get_primary_key(std_txn.command_mut(), &table)? {
 				let index_key = primary_key::encode_primary_key(&pk_def, row, &table, &layout)?;
 
+				// Check if primary key already exists
+				let index_entry_key =
+					IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key.clone());
+				if std_txn.command_mut().contains_key(&index_entry_key.encode())? {
+					let key_columns = pk_def.columns.iter().map(|c| c.name.clone()).collect();
+					return_error!(primary_key_violation(
+						plan.target.identifier().clone().into_owned(),
+						table.name.clone(),
+						key_columns,
+					));
+				}
+
 				// Store the index entry with the row number as value
 				let row_number_layout = EncodedValuesLayout::new(&[Type::Uint8]);
 				let mut row_number_encoded = row_number_layout.allocate();
 				row_number_layout.set_u64(&mut row_number_encoded, 0, u64::from(row_number));
 
-				std_txn.command_mut().set(
-					&IndexEntryKey::new(table.id, IndexId::primary(pk_def.id), index_key).encode(),
-					row_number_encoded,
-				)?;
+				std_txn.command_mut().set(&index_entry_key.encode(), row_number_encoded)?;
 			}
 		}
 

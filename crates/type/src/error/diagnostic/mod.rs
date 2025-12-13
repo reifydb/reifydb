@@ -17,6 +17,7 @@ pub mod dictionary;
 pub mod engine;
 pub mod flow;
 pub mod function;
+pub mod index;
 pub mod internal;
 pub use internal::{internal, internal_with_context, shutdown};
 

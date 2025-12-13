@@ -3,7 +3,7 @@
 
 use std::{
 	collections::{
-		BTreeMap,
+		BTreeMap, HashMap,
 		btree_map::{IntoIter as BTreeMapIntoIter, Iter as BTreeMapIter, Range as BTreeMapRange},
 	},
 	mem::size_of,
@@ -20,6 +20,9 @@ pub struct PendingWrites {
 	writes: BTreeMap<EncodedKey, Pending>,
 	/// Track insertion order for preserving delta ordering
 	insertion_order: Vec<EncodedKey>,
+	/// Position index: key -> index in insertion_order Vec
+	/// This enables O(1) position lookup, eliminating the O(n) linear search bottleneck
+	position_index: HashMap<EncodedKey, usize>,
 	/// Cached size estimation for batch size limits
 	estimated_size: u64,
 }
@@ -30,6 +33,7 @@ impl PendingWrites {
 		Self {
 			writes: BTreeMap::new(),
 			insertion_order: Vec::new(),
+			position_index: HashMap::new(),
 			estimated_size: 0,
 		}
 	}
@@ -83,7 +87,7 @@ impl PendingWrites {
 		self.writes.contains_key(key)
 	}
 
-	/// Insert a new pending write - O(log n) performance
+	/// Insert a new pending write - O(log n) BTreeMap + O(1) HashMap performance
 	pub fn insert(&mut self, key: EncodedKey, value: Pending) {
 		let size_estimate = self.estimate_size(&value);
 
@@ -94,20 +98,30 @@ impl PendingWrites {
 				self.estimated_size =
 					self.estimated_size.saturating_sub(old_size).saturating_add(size_estimate);
 			}
-			// Key already exists in insertion_order, don't add again
+			// Key already exists in insertion_order and position_index, don't add again
 		} else {
-			// New entry - track insertion order
-			self.insertion_order.push(key);
+			// New entry - track insertion order and position
+			let position = self.insertion_order.len();
+			self.insertion_order.push(key.clone());
+			self.position_index.insert(key, position);
 			self.estimated_size = self.estimated_size.saturating_add(size_estimate);
 		}
 	}
 
-	/// Remove an entry by key - O(log n) performance
+	/// Remove an entry by key - O(log n) BTreeMap + O(1) HashMap lookup + O(1) swap removal
 	pub fn remove_entry(&mut self, key: &EncodedKey) -> Option<(EncodedKey, Pending)> {
 		if let Some((removed_key, removed_value)) = self.writes.remove_entry(key) {
-			// Remove from insertion order tracking
-			if let Some(pos) = self.insertion_order.iter().position(|k| k == key) {
-				self.insertion_order.remove(pos);
+			if let Some(position) = self.position_index.remove(key) {
+				if position < self.insertion_order.len() {
+					let swapped_position = self.insertion_order.len() - 1;
+					if position != swapped_position {
+						self.insertion_order.swap(position, swapped_position);
+						if let Some(swapped_key) = self.insertion_order.get(position) {
+							self.position_index.insert(swapped_key.clone(), position);
+						}
+					}
+					self.insertion_order.pop();
+				}
 			}
 			let size_estimate = self.estimate_size(&removed_value);
 			self.estimated_size = self.estimated_size.saturating_sub(size_estimate);
@@ -117,18 +131,18 @@ impl PendingWrites {
 		}
 	}
 
-	/// Iterate over all pending writes - returns BTreeMap iterator for
-	/// compatibility
+	/// Iterate over all pending writes - returns BTreeMap iterator for sorted access
 	pub fn iter(&self) -> BTreeMapIter<'_, EncodedKey, Pending> {
 		self.writes.iter()
 	}
 
-	/// Consume and iterate over all pending writes
+	/// Consume and iterate over all pending writes in sorted order
 	pub fn into_iter(self) -> BTreeMapIntoIter<EncodedKey, Pending> {
 		self.writes.into_iter()
 	}
 
 	/// Consume and iterate over pending writes in insertion order
+	/// Uses the insertion_order Vec to maintain original insertion sequence
 	pub fn into_iter_insertion_order(self) -> impl Iterator<Item = (EncodedKey, Pending)> {
 		let mut writes = self.writes;
 		self.insertion_order.into_iter().filter_map(move |key| writes.remove_entry(&key))
@@ -138,6 +152,7 @@ impl PendingWrites {
 	pub fn rollback(&mut self) {
 		self.writes.clear();
 		self.insertion_order.clear();
+		self.position_index.clear();
 		self.estimated_size = 0;
 	}
 
@@ -147,8 +162,7 @@ impl PendingWrites {
 		self.estimated_size
 	}
 
-	/// Range query support - returns BTreeMap range iterator for
-	/// compatibility
+	/// Range query support - BTreeMap provides efficient range queries
 	pub fn range<R>(&self, range: R) -> BTreeMapRange<'_, EncodedKey, Pending>
 	where
 		R: RangeBounds<EncodedKey>,

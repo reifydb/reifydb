@@ -107,15 +107,20 @@ impl Executor {
 
 				let row_count = columns.row_count();
 
+				use std::collections::HashMap;
+				let mut column_map: HashMap<&str, usize> = HashMap::new();
+				for (idx, col) in columns.iter().enumerate() {
+					column_map.insert(col.name().text(), idx);
+				}
+
 				for row_idx in 0..row_count {
 					let mut row = layout.allocate();
 
 					// For each ring buffer column, find if it exists in the input columns
 					for (rb_idx, rb_column) in ring_buffer.columns.iter().enumerate() {
-						let mut value = if let Some(input_column) =
-							columns.iter().find(|col| col.name() == rb_column.name)
+						let mut value = if let Some(&input_idx) = column_map.get(rb_column.name.as_str())
 						{
-							input_column.data().get_value(row_idx)
+							columns[input_idx].data().get_value(row_idx)
 						} else {
 							Value::Undefined
 						};
