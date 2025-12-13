@@ -95,7 +95,7 @@ readme = "readme.md"
 license = "AGPL-3.0-or-later"
 
 version = "0.1.5"
-rust-version = "1.85.1"
+rust-version = "1.90.0"
 edition = "2024"
 
 [profile.dev]
