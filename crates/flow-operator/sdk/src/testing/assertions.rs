@@ -62,7 +62,7 @@ impl<'a> FlowChangeAssertion<'a> {
 	}
 
 	/// Assert a specific diff exists at the given index
-	pub fn diff_at(&self, index: usize) -> DiffAssertion {
+	pub fn diff_at(&self, index: usize) -> DiffAssertion<'_> {
 		assert!(
 			index < self.change.diffs.len(),
 			"Diff index {} out of range (total: {})",

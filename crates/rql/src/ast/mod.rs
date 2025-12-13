@@ -15,7 +15,7 @@ pub use parse::parse;
 pub use tokenize::tokenize;
 
 #[instrument(level = "trace", skip(str))]
-pub fn parse_str(str: &str) -> crate::Result<Vec<AstStatement>> {
+pub fn parse_str(str: &str) -> crate::Result<Vec<AstStatement<'_>>> {
 	let tokens = tokenize(str)?;
 	let statements = parse::parse(tokens)?;
 	Ok(statements)

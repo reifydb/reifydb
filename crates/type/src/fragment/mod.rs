@@ -90,7 +90,7 @@ impl Fragment<'_> {
 		Fragment::Owned(OwnedFragment::testing_empty())
 	}
 
-	pub fn borrowed_internal(text: &str) -> Fragment {
+	pub fn borrowed_internal(text: &str) -> Fragment<'_> {
 		Fragment::Borrowed(BorrowedFragment::Internal {
 			text,
 		})

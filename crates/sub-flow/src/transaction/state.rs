@@ -36,14 +36,14 @@ impl FlowTransaction {
 	}
 
 	/// Scan all state for a specific flow node
-	pub fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<BoxedMultiVersionIter> {
+	pub fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.metrics.increment_state_operations();
 		let range = FlowNodeStateKey::node_range(id);
 		self.range(range)
 	}
 
 	/// Range query on state for a specific flow node
-	pub fn state_range(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
+	pub fn state_range(&mut self, id: FlowNodeId, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.metrics.increment_state_operations();
 		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(id, vec![]).encode());
 		self.range(prefixed_range)

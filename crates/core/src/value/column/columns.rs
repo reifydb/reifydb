@@ -155,7 +155,7 @@ impl<'a> Columns<'a> {
 		self.iter().map(|c| c.data().get_value(i)).collect()
 	}
 
-	pub fn column(&self, name: &str) -> Option<&Column> {
+	pub fn column(&self, name: &str) -> Option<&Column<'_>> {
 		self.iter().find(|col| col.name().text() == name)
 	}
 

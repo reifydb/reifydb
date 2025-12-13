@@ -45,9 +45,9 @@ pub trait MultiVersionQueryTransaction {
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
-	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<BoxedMultiVersionIter>;
+	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<BoxedMultiVersionIter<'_>>;
 
-	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
+	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.range_batched(range, 1024)
 	}
 
@@ -55,15 +55,15 @@ pub trait MultiVersionQueryTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> crate::Result<BoxedMultiVersionIter>;
+	) -> crate::Result<BoxedMultiVersionIter<'_>>;
 
-	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
+	fn range_rev(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.range_rev_batched(range, 1024)
 	}
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter>;
+	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>>;
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter>;
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>>;
 
 	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()>;
 

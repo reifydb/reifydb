@@ -160,7 +160,7 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 		}
 	}
 
-	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter, Error> {
+	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardQueryTransaction::Optimistic(q) => {
 				let iter = q.range_batched(range, batch_size)?;
@@ -177,7 +177,7 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<BoxedMultiVersionIter, Error> {
+	) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardQueryTransaction::Optimistic(q) => {
 				let iter = q.range_rev_batched(range, batch_size)?;
@@ -190,7 +190,7 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 		}
 	}
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardQueryTransaction::Optimistic(q) => {
 				let iter = q.prefix(prefix)?;
@@ -203,7 +203,7 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 		}
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardQueryTransaction::Optimistic(q) => {
 				let iter = q.prefix_rev(prefix)?;
@@ -291,7 +291,7 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 		}
 	}
 
-	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter, Error> {
+	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardCommandTransaction::Optimistic(c) => {
 				let iter = c.range_batched(range, batch_size)?;
@@ -308,7 +308,7 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<BoxedMultiVersionIter, Error> {
+	) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardCommandTransaction::Optimistic(c) => {
 				let iter = c.range_rev_batched(range, batch_size)?;
@@ -321,7 +321,7 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 		}
 	}
 
-	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+	fn prefix(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardCommandTransaction::Optimistic(c) => {
 				let iter = c.prefix(prefix)?;
@@ -334,7 +334,7 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 		}
 	}
 
-	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter, Error> {
+	fn prefix_rev(&mut self, prefix: &EncodedKey) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardCommandTransaction::Optimistic(c) => {
 				let iter = c.prefix_rev(prefix)?;

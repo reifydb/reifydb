@@ -58,7 +58,7 @@ impl<'a> TargetColumn<'a> {
 
 	// FIXME remove this
 	/// Convert to NumberOfRangeColumnDescriptor for error reporting
-	pub fn to_number_descriptor(&self) -> Option<reifydb_type::diagnostic::number::NumberOfRangeColumnDescriptor> {
+	pub fn to_number_descriptor(&self) -> Option<reifydb_type::diagnostic::number::NumberOfRangeColumnDescriptor<'_>> {
 		use reifydb_core::interface::resolved::resolved_column_to_number_descriptor;
 		use reifydb_type::diagnostic::number::NumberOfRangeColumnDescriptor;
 

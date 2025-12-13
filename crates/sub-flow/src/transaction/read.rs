@@ -59,7 +59,7 @@ impl FlowTransaction {
 	}
 
 	/// Range query
-	pub fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter> {
+	pub fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.metrics.increment_reads();
 
 		let pending = self.pending.range((range.start.as_ref(), range.end.as_ref()));
@@ -84,7 +84,7 @@ impl FlowTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> crate::Result<BoxedMultiVersionIter> {
+	) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.metrics.increment_reads();
 
 		let pending = self.pending.range((range.start.as_ref(), range.end.as_ref()));
@@ -105,7 +105,7 @@ impl FlowTransaction {
 	}
 
 	/// Prefix scan
-	pub fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter> {
+	pub fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.metrics.increment_reads();
 
 		let range = EncodedKeyRange::prefix(prefix);
