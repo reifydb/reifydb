@@ -12,4 +12,6 @@ name = "testcontainer"
 path = "src/main.rs"
 
 [dependencies]
-reifydb = { workspace = true, features = ["sub_tracing", "sub_server_http", "sub_server_ws", "sub_flow"] }
+reifydb = { workspace = true, features = ["sub_tracing", "sub_server_http", "sub_server_ws", "sub_server_otel", "sub_flow"] }
+tokio = { workspace = true }
+tracing = { workspace = true }

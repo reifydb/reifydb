@@ -8,6 +8,8 @@ use tracing_subscriber::{
 	fmt::{self, format::FmtSpan},
 	layer::SubscriberExt,
 	util::SubscriberInitExt,
+	Layer,
+	Registry,
 };
 
 use crate::{backend::ConsoleBuilder, subsystem::TracingSubsystem};
@@ -17,6 +19,7 @@ pub struct TracingBuilder {
 	filter: Option<String>,
 	console_config: Option<ConsoleBuilder>,
 	with_spans: bool,
+	external_layer: Option<Box<dyn Layer<Registry> + Send + Sync>>,
 }
 
 impl Default for TracingBuilder {
@@ -32,6 +35,7 @@ impl TracingBuilder {
 			filter: None,
 			console_config: None,
 			with_spans: false,
+			external_layer: None,
 		}
 	}
 
@@ -79,6 +83,32 @@ impl TracingBuilder {
 		self
 	}
 
+	/// Add an external layer to the tracing subscriber
+	///
+	/// This allows other subsystems (like OpenTelemetry) to contribute
+	/// a layer to the tracing subscriber before it's initialized.
+	///
+	/// Note: Only one external layer can be added. If called multiple times,
+	/// the last layer will be used.
+	///
+	/// # Example
+	/// ```ignore
+	/// let tracer = opentelemetry::global::tracer("reifydb");
+	/// let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+	///
+	/// TracingBuilder::new()
+	///     .with_layer(otel_layer)
+	///     .with_filter("info")
+	///     .build()
+	/// ```
+	pub fn with_layer<L>(mut self, layer: L) -> Self
+	where
+		L: Layer<Registry> + Send + Sync + 'static,
+	{
+		self.external_layer = Some(Box::new(layer));
+		self
+	}
+
 	/// Build and initialize the tracing subsystem
 	///
 	/// This sets up the global tracing subscriber. It should only be called once.
@@ -111,8 +141,13 @@ impl TracingBuilder {
 			.with_line_number(true)
 			.with_span_events(span_events);
 
-		// Build and set the subscriber
-		let subscriber = tracing_subscriber::registry().with(filter).with(fmt_layer);
+		// Build the subscriber with all layers
+		// Note: External layer must be added first while we're still on bare Registry,
+		// because Box<dyn Layer<Registry>> only works with Registry, not Layered types
+		let subscriber = tracing_subscriber::registry()
+			.with(self.external_layer)
+			.with(filter)
+			.with(fmt_layer);
 
 		// Initialize the global subscriber
 		// Note: This will fail silently if a subscriber is already set

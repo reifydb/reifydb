@@ -13,6 +13,8 @@ use reifydb_sub_api::SubsystemFactory;
 use reifydb_sub_flow::FlowBuilder;
 #[cfg(feature = "sub_server_http")]
 use reifydb_sub_server_http::{HttpConfig, HttpSubsystemFactory};
+#[cfg(feature = "sub_server_otel")]
+use reifydb_sub_server_otel::{OtelConfig, OtelSubsystem, OtelSubsystemFactory};
 #[cfg(feature = "sub_server_ws")]
 use reifydb_sub_server_ws::{WsConfig, WsSubsystemFactory};
 #[cfg(feature = "sub_tracing")]
@@ -92,6 +94,65 @@ impl ServerBuilder {
 	pub fn with_ws(mut self, config: WsConfig) -> Self {
 		let factory = WsSubsystemFactory::new(config);
 		self.subsystem_factories.push(Box::new(factory));
+		self
+	}
+
+	/// Configure and add an OpenTelemetry subsystem.
+	#[cfg(feature = "sub_server_otel")]
+	pub fn with_otel(mut self, config: OtelConfig) -> Self {
+		let factory = OtelSubsystemFactory::new(config);
+		self.subsystem_factories.push(Box::new(factory));
+		self
+	}
+
+	/// Configure tracing with OpenTelemetry integration.
+	///
+	/// This method coordinates the initialization of both the tracing subsystem
+	/// and OpenTelemetry subsystem, ensuring the OpenTelemetry tracer is available
+	/// before the tracing subscriber is initialized.
+	///
+	/// # Arguments
+	///
+	/// * `otel_config` - OpenTelemetry configuration
+	/// * `tracing_configurator` - Function to configure the TracingBuilder
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// let db = server::memory_optimistic()
+	///     .with_tracing_otel(
+	///         OtelConfig::new()
+	///             .service_name("my-service")
+	///             .endpoint("http://localhost:4317"),
+	///         |t| t.with_filter("info")
+	///     )
+	///     .build()?;
+	/// ```
+	#[cfg(all(feature = "sub_tracing", feature = "sub_server_otel"))]
+	pub fn with_tracing_otel<F>(mut self, otel_config: OtelConfig, tracing_configurator: F) -> Self
+	where
+		F: FnOnce(TracingBuilder) -> TracingBuilder + Send + 'static,
+	{
+		use reifydb_sub_api::Subsystem;
+
+		// Step 1: Create and start the OtelSubsystem early
+		let mut otel_subsystem = OtelSubsystem::new(otel_config);
+		otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");
+
+		// Step 2: Get the concrete tracer from the initialized provider
+		let tracer = otel_subsystem.tracer().expect("Tracer not available after starting OtelSubsystem");
+
+		// Step 3: Configure tracing with the OpenTelemetry layer
+		self.tracing_configurator = Some(Box::new(move |builder| {
+			let otel_layer = tracing_opentelemetry::layer().with_tracer(tracer);
+			let builder_with_otel = builder.with_layer(otel_layer);
+			tracing_configurator(builder_with_otel)
+		}));
+
+		// Step 4: Store the pre-initialized subsystem to be added during build
+		let factory = OtelSubsystemFactory::with_subsystem(otel_subsystem);
+		self.subsystem_factories.push(Box::new(factory));
+
 		self
 	}
 

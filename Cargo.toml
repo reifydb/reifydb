@@ -28,6 +28,7 @@ members = [
     "crates/sub-tracing",
     "crates/sub-server",
     "crates/sub-server-http",
+    "crates/sub-server-otel",
     "crates/sub-server-ws",
     "crates/sub-worker",
     # Binary projects
@@ -72,6 +73,7 @@ default-members = [
     "crates/sub-tracing",
     "crates/sub-server",
     "crates/sub-server-http",
+    "crates/sub-server-otel",
     "crates/sub-server-ws",
     "crates/sub-worker",
     # Binary projects
@@ -152,6 +154,7 @@ reifydb-sub-tracing = { version = "0.1.5", path = "crates/sub-tracing" }
 reifydb-sub-worker = { version = "0.1.5", path = "crates/sub-worker" }
 reifydb-sub-server = { version = "0.1.5", path = "crates/sub-server" }
 reifydb-sub-server-http = { version = "0.1.5", path = "crates/sub-server-http" }
+reifydb-sub-server-otel = { version = "0.1.5", path = "crates/sub-server-otel" }
 reifydb-sub-server-ws = { version = "0.1.5", path = "crates/sub-server-ws" }
 
 # External dependencies
@@ -160,6 +163,12 @@ reifydb-sub-server-ws = { version = "0.1.5", path = "crates/sub-server-ws" }
 tracing = { version = "0.1.43" }
 tracing-subscriber = { version = "0.3.22", features = ["env-filter", "json", "fmt"] }
 tracing-appender = { version = "0.2.4" }
+
+# OpenTelemetry - compatible versions
+opentelemetry = "0.29"
+opentelemetry_sdk = "0.29"
+opentelemetry-otlp = { version = "0.29", features = ["grpc-tonic"] }
+tracing-opentelemetry = "0.30"
 
 libc = { version = "0.2.175" }
 libloading = { version = "0.8" }

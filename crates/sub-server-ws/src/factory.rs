@@ -43,7 +43,7 @@ impl std::fmt::Debug for WsConfig {
 impl Default for WsConfig {
 	fn default() -> Self {
 		Self {
-			bind_addr: "0.0.0.0:8091".to_string(),
+			bind_addr: "0.0.0.0:8090".to_string(),
 			max_connections: 10_000,
 			query_timeout: Duration::from_secs(30),
 			max_frame_size: 16 << 20, // 16MB
