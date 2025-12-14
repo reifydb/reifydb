@@ -222,7 +222,7 @@ if [ $SKIP_PNPM -eq 0 ]; then
         fi
 
         # Publish to pnpm (without any tag, just semantic version)
-        if run_cmd "pnpm publish --access public"; then
+        if run_cmd "pnpm publish --access public --no-git-checks"; then
             log_publish "pnpm:$PACKAGE_NAME" "SUCCESS"
             echo -e "${GREEN}    ✓ Published $PACKAGE_NAME${NC}"
         else
