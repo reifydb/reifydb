@@ -114,14 +114,13 @@ impl ConflictManager {
 
 	/// Get all keys that were read by this transaction for efficient
 	/// conflict detection
-	pub fn get_read_keys(&self) -> Vec<EncodedKey> {
-		// Only return specific keys, not ranges (handled in oracle)
-		self.read_keys.iter().cloned().collect()
+	pub fn get_read_keys(&self) -> &HashSet<EncodedKey> {
+		&self.read_keys
 	}
 
 	/// Get all keys that were written by this transaction
-	pub fn get_conflict_keys(&self) -> Vec<EncodedKey> {
-		self.conflict_keys.iter().cloned().collect()
+	pub fn get_conflict_keys(&self) -> &HashSet<EncodedKey> {
+		&self.conflict_keys
 	}
 
 	/// Check if this transaction has any range reads or full scans

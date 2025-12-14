@@ -164,7 +164,7 @@ where
 		let inner = self.inner.read();
 
 		// Get keys involved in this transaction for efficient filtering
-		// Avoid cloning by using references
+		// Use references to avoid cloning
 		let read_keys = conflicts.get_read_keys();
 		let conflict_keys = conflicts.get_conflict_keys();
 		let has_keys = !read_keys.is_empty() || !conflict_keys.is_empty();
@@ -179,7 +179,7 @@ where
 			let mut windows = BTreeSet::new();
 
 			// Check read keys
-			for key in &read_keys {
+			for key in read_keys {
 				if let Some(window_versions) = inner.key_to_windows.get(key) {
 					for &window_version in window_versions.iter() {
 						windows.insert(window_version);
@@ -188,7 +188,7 @@ where
 			}
 
 			// Check conflict keys
-			for key in &conflict_keys {
+			for key in conflict_keys {
 				if let Some(window_versions) = inner.key_to_windows.get(key) {
 					for &window_version in window_versions.iter() {
 						windows.insert(window_version);
@@ -196,11 +196,18 @@ where
 				}
 			}
 
-			// If no windows found via key index, check all windows
-			// as fallback This handles range queries and other
-			// operations that can't be indexed by specific keys
+			// If no windows found via key index, only fall back to full
+			// window scan if there are range operations. For point
+			// operations on new keys, no conflicts are possible since
+			// no other transaction could have written to those keys.
 			if windows.is_empty() {
-				inner.time_windows.keys().copied().collect()
+				if conflicts.has_range_operations() {
+					// Range operations require checking all windows
+					inner.time_windows.keys().copied().collect()
+				} else {
+					// New keys with no range ops = no possible conflicts
+					Vec::new()
+				}
 			} else {
 				windows.into_iter().collect()
 			}
