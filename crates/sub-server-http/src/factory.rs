@@ -15,7 +15,7 @@ use crate::HttpSubsystem;
 /// Configuration for the HTTP server subsystem.
 #[derive(Clone)]
 pub struct HttpConfig {
-	/// Address to bind the HTTP server to (e.g., "0.0.0.0:8090").
+	/// Address to bind the HTTP server to (e.g., "0.0.0.0:8091").
 	pub bind_addr: String,
 	/// Maximum number of concurrent connections.
 	pub max_connections: usize,

@@ -6,11 +6,11 @@ use reifydb_core::{
 	interceptor::{RegisterInterceptor, StandardInterceptorBuilder},
 };
 use reifydb_engine::{StandardCommandTransaction, function::FunctionsBuilder};
-#[cfg(feature = "sub_admin")]
-use reifydb_sub_admin::{AdminConfig, AdminSubsystemFactory};
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
+#[cfg(feature = "sub_server_admin")]
+use reifydb_sub_server_admin::{AdminConfig, AdminSubsystemFactory};
 #[cfg(feature = "sub_server_http")]
 use reifydb_sub_server_http::{HttpConfig, HttpSubsystemFactory};
 #[cfg(feature = "sub_server_otel")]
@@ -156,7 +156,7 @@ impl ServerBuilder {
 		self
 	}
 
-	#[cfg(feature = "sub_admin")]
+	#[cfg(feature = "sub_server_admin")]
 	pub fn with_admin(mut self, config: AdminConfig) -> Self {
 		let factory = AdminSubsystemFactory::new(config);
 		self.subsystem_factories.push(Box::new(factory));

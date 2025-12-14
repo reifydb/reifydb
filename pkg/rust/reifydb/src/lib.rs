@@ -35,13 +35,13 @@ pub use reifydb_network as network;
 pub use reifydb_rql as rql;
 pub use reifydb_store_transaction as storage;
 pub use reifydb_store_transaction::{backend::BackendStorage, sqlite::SqliteConfig};
-#[cfg(feature = "sub_admin")]
-pub use reifydb_sub_admin as sub_admin;
 pub use reifydb_sub_api as sub;
 #[cfg(feature = "sub_flow")]
 pub use reifydb_sub_flow as sub_flow;
 #[cfg(feature = "sub_server")]
 pub use reifydb_sub_server as sub_server;
+#[cfg(feature = "sub_server_admin")]
+pub use reifydb_sub_server_admin as sub_server_admin;
 #[cfg(feature = "sub_server_http")]
 pub use reifydb_sub_server_http as sub_server_http;
 #[cfg(feature = "sub_server_otel")]

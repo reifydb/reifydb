@@ -15,7 +15,7 @@ use crate::WsSubsystem;
 /// Configuration for the WebSocket server subsystem.
 #[derive(Clone)]
 pub struct WsConfig {
-	/// Address to bind the WebSocket server to (e.g., "0.0.0.0:8091").
+	/// Address to bind the WebSocket server to (e.g., "0.0.0.0:8090").
 	pub bind_addr: String,
 	/// Maximum number of concurrent connections.
 	pub max_connections: usize,

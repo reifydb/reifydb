@@ -60,7 +60,7 @@ RUST_CRATES=(
     "reifydb-store-column"
     "reifydb-store-transaction"
     "reifydb-storage"
-    "reifydb-sub-admin"
+    "reifydb-sub-server-admin"
     "reifydb-sub-api"
     "reifydb-sub-flow"
     "reifydb-sub-tracing"

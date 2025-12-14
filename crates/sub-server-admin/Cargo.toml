@@ -1,0 +1,30 @@
+[package]
+name = "reifydb-sub-server-admin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Admin web server subsystem for ReifyDB using Axum"
+
+[dependencies]
+reifydb-core = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-type = { workspace = true }
+reifydb-sub-api = { workspace = true }
+reifydb-sub-server = { workspace = true }
+
+# HTTP framework
+axum = { workspace = true }
+tokio = { workspace = true }
+tower = { workspace = true }
+tower-http = { workspace = true }
+
+# Serialization
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+# Logging
+tracing = { workspace = true }
+
+[build-dependencies]

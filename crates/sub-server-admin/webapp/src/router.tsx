@@ -1,7 +1,7 @@
 import { createRootRoute, createRoute, createRouter, redirect } from '@tanstack/react-router'
 import { MainLayout } from '@/components/layout/main-layout.tsx'
 import { DashboardPage } from '@/pages/dashboard'
-import { SchemaPage } from '@/pages/schema'
+import { SchemaPage } from '@/pages/namespace'
 import { QueryPage } from '@/pages/query'
 import { SettingsPage } from '@/pages/settings'
 import { UsersPage } from '@/pages/users'

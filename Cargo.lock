@@ -869,7 +869,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69d83b0086dc8ecf3ce9ae2874b2d1290252e2a30720bea58a5c6639b0092873"
 dependencies = [
  "libc",
- "log",
  "wasi",
  "windows-sys 0.61.2",
 ]
@@ -1278,10 +1277,10 @@ dependencies = [
  "reifydb-network",
  "reifydb-rql",
  "reifydb-store-transaction",
- "reifydb-sub-admin",
  "reifydb-sub-api",
  "reifydb-sub-flow",
  "reifydb-sub-server",
+ "reifydb-sub-server-admin",
  "reifydb-sub-server-http",
  "reifydb-sub-server-otel",
  "reifydb-sub-server-ws",
@@ -1453,7 +1452,6 @@ name = "reifydb-network"
 version = "0.1.5"
 dependencies = [
  "httparse",
- "mio",
  "reifydb-core",
  "reifydb-hash",
  "reifydb-type",
@@ -1498,22 +1496,6 @@ dependencies = [
  "test_each_file",
  "tracing",
  "uuid",
-]
-
-[[package]]
-name = "reifydb-sub-admin"
-version = "0.1.5"
-dependencies = [
- "mio",
- "reifydb-core",
- "reifydb-engine",
- "reifydb-network",
- "reifydb-sub-api",
- "reifydb-type",
- "serde",
- "serde_json",
- "slab",
- "socket2",
 ]
 
 [[package]]
@@ -1566,6 +1548,24 @@ dependencies = [
  "serde",
  "serde_json",
  "tokio",
+ "tracing",
+]
+
+[[package]]
+name = "reifydb-sub-server-admin"
+version = "0.1.5"
+dependencies = [
+ "axum",
+ "reifydb-core",
+ "reifydb-engine",
+ "reifydb-sub-api",
+ "reifydb-sub-server",
+ "reifydb-type",
+ "serde",
+ "serde_json",
+ "tokio",
+ "tower 0.5.2",
+ "tower-http",
  "tracing",
 ]
 

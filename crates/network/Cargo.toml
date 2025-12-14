@@ -13,4 +13,3 @@ reifydb-type = { workspace = true }
 reifydb-hash = { workspace = true }
 
 httparse = { workspace = true }
-mio = { workspace = true }

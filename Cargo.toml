@@ -23,7 +23,7 @@ members = [
     "crates/type",
     # Subsystem crates
     "crates/sub-api",
-    "crates/sub-admin",
+    "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-tracing",
     "crates/sub-server",
@@ -68,7 +68,7 @@ default-members = [
     "crates/type",
     # Subsystem crates
     "crates/sub-api",
-    "crates/sub-admin",
+    "crates/sub-server-admin",
     "crates/sub-flow",
     "crates/sub-tracing",
     "crates/sub-server",
@@ -148,7 +148,7 @@ reifydb-macro-impl = { version = "0.1.5", path = "crates/macro-impl" }
 
 # Subsystems
 reifydb-sub-api = { version = "0.1.5", path = "crates/sub-api" }
-reifydb-sub-admin = { version = "0.1.5", path = "crates/sub-admin" }
+reifydb-sub-server-admin = { version = "0.1.5", path = "crates/sub-server-admin" }
 reifydb-sub-flow = { version = "0.1.5", path = "crates/sub-flow" }
 reifydb-sub-tracing = { version = "0.1.5", path = "crates/sub-tracing" }
 reifydb-sub-worker = { version = "0.1.5", path = "crates/sub-worker" }
@@ -189,13 +189,8 @@ self_cell = { version = "1.1.0" }
 
 
 # Network and server
-mio = { version = "1.0.4", features = ["net", "os-poll"] }
-slab = { version = "0.4.11" }
-socket2 = { version = "0.6.0", features = ["all"] }
 num_cpus = { version = "1.17.0" }
-core_affinity = { version = "0.8.3" }
 httparse = { version = "1.10.1" }
-urlencoding = { version = "2.1.3" }
 
 # Async runtime and networking (tokio stack)
 tokio = { version = "1.48.0", features = ["rt-multi-thread", "net", "sync", "macros", "time"] }
