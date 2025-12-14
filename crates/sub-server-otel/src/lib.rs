@@ -75,6 +75,8 @@
 //! # Access Jaeger UI at http://localhost:16686
 //! ```
 
+#![cfg_attr(not(debug_assertions), deny(warnings))]
+
 pub mod config;
 pub mod factory;
 pub mod subsystem;

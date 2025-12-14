@@ -7,6 +7,8 @@
 //! It's not intended for direct use - use `reifydb-macro`, `reifydb-derive`,
 //! or `reifydb-client-derive` instead.
 
+#![cfg_attr(not(debug_assertions), deny(warnings))]
+
 pub mod from_frame;
 pub mod generate;
 pub mod parse;

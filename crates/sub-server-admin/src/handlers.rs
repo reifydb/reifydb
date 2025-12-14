@@ -132,35 +132,6 @@ pub async fn handle_execute(
 }
 
 // ============================================================================
-// Metrics
-// ============================================================================
-
-/// Metrics response.
-#[derive(Debug, Serialize)]
-pub struct MetricsResponse {
-	pub connections: u64,
-	pub queries_executed: u64,
-	pub uptime_seconds: u64,
-	pub memory_usage_bytes: u64,
-	pub database_size_bytes: u64,
-}
-
-/// Get system metrics.
-pub async fn handle_metrics(State(_state): State<AdminState>) -> impl IntoResponse {
-	// TODO: Collect actual metrics from the engine
-	(
-		StatusCode::OK,
-		Json(MetricsResponse {
-			connections: 0,
-			queries_executed: 0,
-			uptime_seconds: 0,
-			memory_usage_bytes: 0,
-			database_size_bytes: 0,
-		}),
-	)
-}
-
-// ============================================================================
 // Static Files
 // ============================================================================
 

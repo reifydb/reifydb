@@ -12,6 +12,8 @@
 //! - **Runtime**: Shared tokio runtime management
 //! - **State**: Application state for request handlers
 
+#![cfg_attr(not(debug_assertions), deny(warnings))]
+
 mod auth;
 mod execute;
 mod response;

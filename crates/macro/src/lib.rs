@@ -7,7 +7,8 @@
 //! deserialization of Frame data into Rust structs.
 //!
 //! # Example
-//!
+
+#![cfg_attr(not(debug_assertions), deny(warnings))]
 //! ```ignore
 //! use reifydb_type::FromFrame;
 //!
