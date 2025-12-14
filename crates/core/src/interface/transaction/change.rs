@@ -4,12 +4,13 @@
 use reifydb_type::IntoFragment;
 
 use crate::interface::{
-	DictionaryDef, DictionaryId, NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef, RingBufferId,
-	TableDef, TableId, TransactionId, ViewDef, ViewId,
+	DictionaryDef, DictionaryId, FlowDef, FlowId, NamespaceDef, NamespaceId, OperationType::Delete, RingBufferDef,
+	RingBufferId, TableDef, TableId, TransactionId, ViewDef, ViewId,
 };
 
 pub trait TransactionalChanges:
 	TransactionalDictionaryChanges
+	+ TransactionalFlowChanges
 	+ TransactionalNamespaceChanges
 	+ TransactionalRingBufferChanges
 	+ TransactionalTableChanges
@@ -39,6 +40,16 @@ pub trait TransactionalNamespaceChanges {
 	fn is_namespace_deleted(&self, id: NamespaceId) -> bool;
 
 	fn is_namespace_deleted_by_name<'a>(&self, name: impl IntoFragment<'a>) -> bool;
+}
+
+pub trait TransactionalFlowChanges {
+	fn find_flow(&self, id: FlowId) -> Option<&FlowDef>;
+
+	fn find_flow_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> Option<&FlowDef>;
+
+	fn is_flow_deleted(&self, id: FlowId) -> bool;
+
+	fn is_flow_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
 }
 
 pub trait TransactionalTableChanges {
@@ -81,6 +92,8 @@ pub struct TransactionalDefChanges {
 	pub txn_id: TransactionId,
 	/// All dictionary definition changes in order (no coalescing)
 	pub dictionary_def: Vec<Change<DictionaryDef>>,
+	/// All flow definition changes in order (no coalescing)
+	pub flow_def: Vec<Change<FlowDef>>,
 	/// All namespace definition changes in order (no coalescing)
 	pub namespace_def: Vec<Change<NamespaceDef>>,
 	/// All ring buffer definition changes in order (no coalescing)
@@ -104,6 +117,21 @@ impl TransactionalDefChanges {
 		let op = change.op;
 		self.dictionary_def.push(change);
 		self.log.push(Operation::Dictionary {
+			id,
+			op,
+		});
+	}
+
+	pub fn add_flow_def_change(&mut self, change: Change<FlowDef>) {
+		let id = change
+			.post
+			.as_ref()
+			.or(change.pre.as_ref())
+			.map(|f| f.id)
+			.expect("Change must have either pre or post state");
+		let op = change.op;
+		self.flow_def.push(change);
+		self.log.push(Operation::Flow {
 			id,
 			op,
 		});
@@ -197,6 +225,10 @@ pub enum Operation {
 		id: DictionaryId,
 		op: OperationType,
 	},
+	Flow {
+		id: FlowId,
+		op: OperationType,
+	},
 	Namespace {
 		id: NamespaceId,
 		op: OperationType,
@@ -220,6 +252,7 @@ impl TransactionalDefChanges {
 		Self {
 			txn_id,
 			dictionary_def: Vec::new(),
+			flow_def: Vec::new(),
 			namespace_def: Vec::new(),
 			ring_buffer_def: Vec::new(),
 			table_def: Vec::new(),
@@ -302,6 +335,7 @@ impl TransactionalDefChanges {
 	/// Clear all changes (for rollback)
 	pub fn clear(&mut self) {
 		self.dictionary_def.clear();
+		self.flow_def.clear();
 		self.namespace_def.clear();
 		self.ring_buffer_def.clear();
 		self.table_def.clear();

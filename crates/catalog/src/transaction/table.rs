@@ -28,7 +28,6 @@ pub trait CatalogTableCommandOperations {
 }
 
 pub trait CatalogTrackTableChangeOperations {
-	// Table tracking methods
 	fn track_table_def_created(&mut self, table: TableDef) -> crate::Result<()>;
 
 	fn track_table_def_updated(&mut self, pre: TableDef, post: TableDef) -> crate::Result<()>;

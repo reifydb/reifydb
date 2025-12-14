@@ -30,6 +30,7 @@ pub trait CatalogCommandTransaction:
 
 pub trait CatalogTrackChangeOperations:
 	CatalogTrackDictionaryChangeOperations
+	+ CatalogTrackFlowChangeOperations
 	+ CatalogTrackNamespaceChangeOperations
 	+ CatalogTrackRingBufferChangeOperations
 	+ CatalogTrackTableChangeOperations
@@ -64,7 +65,7 @@ impl<
 pub use dictionary::{
 	CatalogDictionaryCommandOperations, CatalogDictionaryQueryOperations, CatalogTrackDictionaryChangeOperations,
 };
-pub use flow::CatalogFlowQueryOperations;
+pub use flow::{CatalogFlowQueryOperations, CatalogTrackFlowChangeOperations};
 pub use namespace::{
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogTrackNamespaceChangeOperations,
 };

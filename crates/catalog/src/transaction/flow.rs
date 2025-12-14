@@ -67,3 +67,11 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction> CatalogFlowQueryOper
 		}
 	}
 }
+
+pub trait CatalogTrackFlowChangeOperations {
+	fn track_flow_def_created(&mut self, flow: FlowDef) -> crate::Result<()>;
+
+	fn track_flow_def_updated(&mut self, pre: FlowDef, post: FlowDef) -> crate::Result<()>;
+
+	fn track_flow_def_deleted(&mut self, flow: FlowDef) -> crate::Result<()>;
+}
