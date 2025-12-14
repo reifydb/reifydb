@@ -86,7 +86,10 @@ pub struct AppState {
 impl AppState {
 	/// Create a new AppState with the given engine and configuration.
 	pub fn new(engine: StandardEngine, config: QueryConfig) -> Self {
-		Self { engine, config }
+		Self {
+			engine,
+			config,
+		}
 	}
 
 	/// Get a reference to the database engine.

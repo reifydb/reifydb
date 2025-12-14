@@ -8,13 +8,15 @@
 //! - `/v1/query` - Execute read-only queries
 //! - `/v1/command` - Execute write commands
 
-use axum::extract::State;
-use axum::http::{HeaderMap, StatusCode};
-use axum::response::IntoResponse;
-use axum::Json;
+use axum::{
+	Json,
+	extract::State,
+	http::{HeaderMap, StatusCode},
+	response::IntoResponse,
+};
 use reifydb_sub_server::{
-	AppState, ResponseFrame, convert_frames, execute_command, execute_query,
-	extract_identity_from_api_key, extract_identity_from_auth_header,
+	AppState, ResponseFrame, convert_frames, execute_command, execute_query, extract_identity_from_api_key,
+	extract_identity_from_auth_header,
 };
 use reifydb_type::Params;
 use serde::{Deserialize, Serialize};
@@ -55,7 +57,12 @@ pub struct HealthResponse {
 /// {"status": "ok"}
 /// ```
 pub async fn health() -> impl IntoResponse {
-	(StatusCode::OK, Json(HealthResponse { status: "ok" }))
+	(
+		StatusCode::OK,
+		Json(HealthResponse {
+			status: "ok",
+		}),
+	)
 }
 
 /// Execute a read-only query.
@@ -97,14 +104,7 @@ pub async fn handle_query(
 	let params = request.params.unwrap_or(Params::None);
 
 	// Execute with timeout
-	let frames = execute_query(
-		state.engine_clone(),
-		query,
-		identity,
-		params,
-		state.query_timeout(),
-	)
-	.await?;
+	let frames = execute_query(state.engine_clone(), query, identity, params, state.query_timeout()).await?;
 
 	Ok(Json(QueryResponse {
 		frames: convert_frames(frames),
@@ -149,14 +149,8 @@ pub async fn handle_command(
 	let params = request.params.unwrap_or(Params::None);
 
 	// Execute with timeout
-	let frames = execute_command(
-		state.engine_clone(),
-		request.statements,
-		identity,
-		params,
-		state.query_timeout(),
-	)
-	.await?;
+	let frames = execute_command(state.engine_clone(), request.statements, identity, params, state.query_timeout())
+		.await?;
 
 	Ok(Json(QueryResponse {
 		frames: convert_frames(frames),
@@ -171,7 +165,9 @@ pub async fn handle_command(
 fn extract_identity(headers: &HeaderMap) -> Result<reifydb_core::interface::Identity, AppError> {
 	// Try Authorization header first
 	if let Some(auth_header) = headers.get("authorization") {
-		let auth_str = auth_header.to_str().map_err(|_| AppError::Auth(reifydb_sub_server::AuthError::InvalidHeader))?;
+		let auth_str = auth_header
+			.to_str()
+			.map_err(|_| AppError::Auth(reifydb_sub_server::AuthError::InvalidHeader))?;
 
 		return extract_identity_from_auth_header(auth_str).map_err(AppError::Auth);
 	}
@@ -201,14 +197,18 @@ mod tests {
 
 	#[test]
 	fn test_query_response_serialization() {
-		let response = QueryResponse { frames: Vec::new() };
+		let response = QueryResponse {
+			frames: Vec::new(),
+		};
 		let json = serde_json::to_string(&response).unwrap();
 		assert!(json.contains("frames"));
 	}
 
 	#[test]
 	fn test_health_response_serialization() {
-		let response = HealthResponse { status: "ok" };
+		let response = HealthResponse {
+			status: "ok",
+		};
 		let json = serde_json::to_string(&response).unwrap();
 		assert_eq!(json, r#"{"status":"ok"}"#);
 	}

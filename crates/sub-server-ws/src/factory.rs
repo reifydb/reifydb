@@ -3,8 +3,7 @@
 
 //! Factory for creating WebSocket subsystem instances.
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
@@ -97,7 +96,9 @@ pub struct WsSubsystemFactory {
 impl WsSubsystemFactory {
 	/// Create a new WebSocket subsystem factory with the given configuration.
 	pub fn new(config: WsConfig) -> Self {
-		Self { config }
+		Self {
+			config,
+		}
 	}
 }
 

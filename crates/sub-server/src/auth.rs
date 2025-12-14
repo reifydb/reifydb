@@ -257,7 +257,10 @@ mod tests {
 	fn test_root_identity() {
 		let identity = root_identity();
 		match identity {
-			Identity::System { id, name } => {
+			Identity::System {
+				id,
+				name,
+			} => {
 				assert_eq!(id, 0);
 				assert_eq!(name, "root");
 			}

@@ -11,8 +11,10 @@
 
 use std::time::Duration;
 
-use reifydb_core::Frame;
-use reifydb_core::interface::{Engine, Identity};
+use reifydb_core::{
+	Frame,
+	interface::{Engine, Identity},
+};
 use reifydb_engine::StandardEngine;
 use reifydb_type::Params;
 use tokio::task::spawn_blocking;
@@ -100,7 +102,8 @@ pub async fn execute_query(
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
 	let query_clone = query.clone();
-	let result = tokio::time::timeout(timeout, spawn_blocking(move || engine.query_as(&identity, &query, params))).await;
+	let result =
+		tokio::time::timeout(timeout, spawn_blocking(move || engine.query_as(&identity, &query, params))).await;
 
 	match result {
 		// Timeout expired
@@ -146,11 +149,9 @@ pub async fn execute_command(
 ) -> ExecuteResult<Vec<Frame>> {
 	let combined = statements.join("; ");
 	let combined_clone = combined.clone();
-	let result = tokio::time::timeout(
-		timeout,
-		spawn_blocking(move || engine.command_as(&identity, &combined, params)),
-	)
-	.await;
+	let result =
+		tokio::time::timeout(timeout, spawn_blocking(move || engine.command_as(&identity, &combined, params)))
+			.await;
 
 	match result {
 		// Timeout expired

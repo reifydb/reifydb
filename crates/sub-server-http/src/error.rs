@@ -6,9 +6,11 @@
 //! This module provides error types that implement Axum's `IntoResponse` trait
 //! for consistent error responses across all HTTP endpoints.
 
-use axum::http::StatusCode;
-use axum::response::{IntoResponse, Response};
-use axum::Json;
+use axum::{
+	Json,
+	http::StatusCode,
+	response::{IntoResponse, Response},
+};
 use reifydb_sub_server::{AuthError, ExecuteError};
 use reifydb_type::diagnostic::Diagnostic;
 use serde::Serialize;
@@ -79,11 +81,17 @@ impl std::error::Error for AppError {}
 impl IntoResponse for AppError {
 	fn into_response(self) -> Response {
 		// Handle engine errors specially - they need ownership of error for diagnostic()
-		if let AppError::Execute(ExecuteError::Engine { error, statement }) = self {
+		if let AppError::Execute(ExecuteError::Engine {
+			error,
+			statement,
+		}) = self
+		{
 			tracing::debug!("Engine error: {}", error);
 			let mut diagnostic = error.diagnostic();
 			diagnostic.with_statement(statement);
-			let body = Json(DiagnosticResponse { diagnostic });
+			let body = Json(DiagnosticResponse {
+				diagnostic,
+			});
 			return (StatusCode::BAD_REQUEST, body).into_response();
 		}
 
@@ -100,11 +108,9 @@ impl IntoResponse for AppError {
 			AppError::Auth(AuthError::InvalidHeader) => {
 				(StatusCode::BAD_REQUEST, "INVALID_HEADER", "Malformed authorization header")
 			}
-			AppError::Auth(AuthError::InsufficientPermissions) => (
-				StatusCode::FORBIDDEN,
-				"FORBIDDEN",
-				"Insufficient permissions for this operation",
-			),
+			AppError::Auth(AuthError::InsufficientPermissions) => {
+				(StatusCode::FORBIDDEN, "FORBIDDEN", "Insufficient permissions for this operation")
+			}
 			AppError::Execute(ExecuteError::Timeout) => {
 				(StatusCode::GATEWAY_TIMEOUT, "QUERY_TIMEOUT", "Query execution timed out")
 			}
@@ -112,7 +118,9 @@ impl IntoResponse for AppError {
 				tracing::error!("Query task panicked: {}", msg);
 				(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error")
 			}
-			AppError::Execute(ExecuteError::Engine { .. }) => {
+			AppError::Execute(ExecuteError::Engine {
+				..
+			}) => {
 				// Already handled above
 				unreachable!()
 			}

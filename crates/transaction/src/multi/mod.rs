@@ -160,7 +160,11 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 		}
 	}
 
-	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter<'_>, Error> {
+	fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardQueryTransaction::Optimistic(q) => {
 				let iter = q.range_batched(range, batch_size)?;
@@ -291,7 +295,11 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 		}
 	}
 
-	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> Result<BoxedMultiVersionIter<'_>, Error> {
+	fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> Result<BoxedMultiVersionIter<'_>, Error> {
 		match self {
 			StandardCommandTransaction::Optimistic(c) => {
 				let iter = c.range_batched(range, batch_size)?;

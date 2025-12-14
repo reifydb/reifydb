@@ -4,7 +4,9 @@ mod common;
 
 use std::{error::Error, path::Path};
 
-use common::{cleanup_http_client, cleanup_server, connect_http, create_server_instance, start_server_and_get_http_port};
+use common::{
+	cleanup_http_client, cleanup_server, connect_http, create_server_instance, start_server_and_get_http_port,
+};
 use reifydb::{
 	Database,
 	core::{event::EventBus, retry},

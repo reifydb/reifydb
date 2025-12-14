@@ -1,8 +1,11 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb::{server, sub_server_http::HttpConfig, sub_server_otel::OtelConfig, sub_server_ws::WsConfig, WithSubsystem};
 use std::time::Duration;
+
+use reifydb::{
+	WithSubsystem, server, sub_server_http::HttpConfig, sub_server_otel::OtelConfig, sub_server_ws::WsConfig,
+};
 use tracing::{info, info_span};
 
 #[tokio::main]

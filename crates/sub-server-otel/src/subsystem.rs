@@ -3,12 +3,15 @@
 
 //! OpenTelemetry server subsystem implementing the ReifyDB Subsystem trait.
 
-use std::any::Any;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use std::{
+	any::Any,
+	sync::{
+		Arc,
+		atomic::{AtomicBool, Ordering},
+	},
+};
 
-use opentelemetry::global;
-use opentelemetry::trace::TracerProvider;
+use opentelemetry::{global, trace::TracerProvider};
 use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer as SdkTracer};
 use parking_lot::Mutex;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
@@ -79,10 +82,7 @@ impl OtelSubsystem {
 	///
 	/// Returns None if the subsystem hasn't been started yet.
 	pub fn tracer(&self) -> Option<SdkTracer> {
-		self.tracer_provider
-			.lock()
-			.as_ref()
-			.map(|provider| provider.tracer("reifydb"))
+		self.tracer_provider.lock().as_ref().map(|provider| provider.tracer("reifydb"))
 	}
 
 	/// Build the OTLP tracer provider
@@ -91,8 +91,8 @@ impl OtelSubsystem {
 		use opentelemetry::KeyValue;
 		use opentelemetry_otlp::WithExportConfig;
 		use opentelemetry_sdk::{
-			trace::{BatchConfigBuilder, BatchSpanProcessor, RandomIdGenerator, Sampler},
 			Resource,
+			trace::{BatchConfigBuilder, BatchSpanProcessor, RandomIdGenerator, Sampler},
 		};
 
 		// Build resource with service name and version
@@ -115,9 +115,7 @@ impl OtelSubsystem {
 			.with_max_queue_size(self.config.max_queue_size)
 			.build();
 
-		let batch_processor = BatchSpanProcessor::builder(exporter)
-			.with_batch_config(batch_config)
-			.build();
+		let batch_processor = BatchSpanProcessor::builder(exporter).with_batch_config(batch_config).build();
 
 		// Build the tracer provider
 		let provider = SdkTracerProvider::builder()
@@ -215,7 +213,9 @@ impl Subsystem for OtelSubsystem {
 		if self.running.load(Ordering::SeqCst) {
 			HealthStatus::Healthy
 		} else {
-			HealthStatus::Failed { description: "Not running".to_string() }
+			HealthStatus::Failed {
+				description: "Not running".to_string(),
+			}
 		}
 	}
 

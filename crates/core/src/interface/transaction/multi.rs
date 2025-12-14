@@ -45,7 +45,11 @@ pub trait MultiVersionQueryTransaction {
 
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 
-	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<BoxedMultiVersionIter<'_>>;
+	fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<BoxedMultiVersionIter<'_>>;
 
 	fn range(&mut self, range: EncodedKeyRange) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.range_batched(range, 1024)

@@ -9,9 +9,8 @@ use reifydb_catalog::{
 };
 use reifydb_core::{
 	interface::{
-		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction,
-		MultiVersionQueryTransaction, Params, ResolvedColumn, ResolvedNamespace, ResolvedSource,
-		ResolvedTable,
+		EncodableKey, IndexEntryKey, IndexId, MultiVersionCommandTransaction, MultiVersionQueryTransaction,
+		Params, ResolvedColumn, ResolvedNamespace, ResolvedSource, ResolvedTable,
 	},
 	return_error,
 	value::{
@@ -20,7 +19,11 @@ use reifydb_core::{
 	},
 };
 use reifydb_rql::plan::physical::InsertTableNode;
-use reifydb_type::{Fragment, Type, Value, diagnostic::{catalog::table_not_found, index::primary_key_violation}, internal_error};
+use reifydb_type::{
+	Fragment, Type, Value,
+	diagnostic::{catalog::table_not_found, index::primary_key_violation},
+	internal_error,
+};
 
 use super::primary_key;
 use crate::{
@@ -102,7 +105,7 @@ impl Executor {
 		}) = input_node.next(&mut std_txn, &mut mutable_context)?
 		{
 			let row_count = columns.row_count();
-			
+
 			use std::collections::HashMap;
 			let mut column_map: HashMap<&str, usize> = HashMap::new();
 			for (idx, col) in columns.iter().enumerate() {
@@ -114,12 +117,12 @@ impl Executor {
 
 				// For each table column, find if it exists in the input columns
 				for (table_idx, table_column) in table.columns.iter().enumerate() {
-					let mut value = if let Some(&input_idx) = column_map.get(table_column.name.as_str())
-					{
-						columns[input_idx].data().get_value(row_numberx)
-					} else {
-						Value::Undefined
-					};
+					let mut value =
+						if let Some(&input_idx) = column_map.get(table_column.name.as_str()) {
+							columns[input_idx].data().get_value(row_numberx)
+						} else {
+							Value::Undefined
+						};
 
 					// Handle auto-increment columns
 					if table_column.auto_increment && matches!(value, Value::Undefined) {

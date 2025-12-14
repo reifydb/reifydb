@@ -118,7 +118,8 @@ impl Executor {
 
 					// For each ring buffer column, find if it exists in the input columns
 					for (rb_idx, rb_column) in ring_buffer.columns.iter().enumerate() {
-						let mut value = if let Some(&input_idx) = column_map.get(rb_column.name.as_str())
+						let mut value = if let Some(&input_idx) =
+							column_map.get(rb_column.name.as_str())
 						{
 							columns[input_idx].data().get_value(row_idx)
 						} else {

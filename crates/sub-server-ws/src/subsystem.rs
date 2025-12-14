@@ -6,17 +6,23 @@
 //! This module provides `WsSubsystem` which manages the lifecycle of the
 //! WebSocket server, including startup, connection tracking, and graceful shutdown.
 
-use std::any::Any;
-use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::{Arc, RwLock};
+use std::{
+	any::Any,
+	net::SocketAddr,
+	sync::{
+		Arc, RwLock,
+		atomic::{AtomicBool, AtomicUsize, Ordering},
+	},
+};
 
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::{AppState, SharedRuntime};
-use tokio::net::TcpListener;
-use tokio::runtime::Handle;
-use tokio::sync::{watch, Semaphore};
+use tokio::{
+	net::TcpListener,
+	runtime::Handle,
+	sync::{Semaphore, watch},
+};
 
 /// WebSocket server subsystem.
 ///
@@ -158,18 +164,34 @@ impl Subsystem for WsSubsystem {
 
 		// Bind synchronously using std::net, then convert to tokio
 		let addr = self.bind_addr.clone();
-		let std_listener = std::net::TcpListener::bind(&addr)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to bind WebSocket server to {}: {}", &addr, e))))?;
-		std_listener.set_nonblocking(true)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to set non-blocking on {}: {}", &addr, e))))?;
+		let std_listener = std::net::TcpListener::bind(&addr).map_err(|e| {
+			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+				"Failed to bind WebSocket server to {}: {}",
+				&addr, e
+			)))
+		})?;
+		std_listener.set_nonblocking(true).map_err(|e| {
+			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+				"Failed to set non-blocking on {}: {}",
+				&addr, e
+			)))
+		})?;
 
-		let actual_addr = std_listener.local_addr()
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to get local address: {}", e))))?;
+		let actual_addr = std_listener.local_addr().map_err(|e| {
+			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+				"Failed to get local address: {}",
+				e
+			)))
+		})?;
 
 		// Enter the runtime context to convert std listener to tokio
 		let _guard = self.handle.enter();
-		let listener = TcpListener::from_std(std_listener)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to convert listener: {}", e))))?;
+		let listener = TcpListener::from_std(std_listener).map_err(|e| {
+			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+				"Failed to convert listener: {}",
+				e
+			)))
+		})?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("WebSocket server bound to {}", actual_addr);
 

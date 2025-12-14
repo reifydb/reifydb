@@ -4,10 +4,7 @@
 use std::time::Duration;
 
 use reifydb::{
-	WithSubsystem, server,
-	sub_admin::AdminConfig,
-	sub_server_http::HttpConfig,
-	sub_server_ws::WsConfig,
+	WithSubsystem, server, sub_admin::AdminConfig, sub_server_http::HttpConfig, sub_server_ws::WsConfig,
 	sub_tracing::TracingBuilder,
 };
 

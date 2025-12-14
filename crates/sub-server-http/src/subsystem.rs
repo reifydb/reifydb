@@ -6,16 +6,19 @@
 //! This module provides `HttpSubsystem` which manages the lifecycle of the
 //! HTTP server, including startup, health monitoring, and graceful shutdown.
 
-use std::any::Any;
-use std::net::SocketAddr;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock};
+use std::{
+	any::Any,
+	net::SocketAddr,
+	sync::{
+		Arc, RwLock,
+		atomic::{AtomicBool, Ordering},
+	},
+};
 
-use reifydb_core::interface::version::{HasVersion, SystemVersion, ComponentType};
+use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_sub_api::{HealthStatus, Subsystem};
 use reifydb_sub_server::{AppState, SharedRuntime};
-use tokio::runtime::Handle;
-use tokio::sync::oneshot;
+use tokio::{runtime::Handle, sync::oneshot};
 
 /// HTTP server subsystem.
 ///
@@ -145,18 +148,34 @@ impl Subsystem for HttpSubsystem {
 
 		// Bind synchronously using std::net, then convert to tokio
 		let addr = self.bind_addr.clone();
-		let std_listener = std::net::TcpListener::bind(&addr)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to bind HTTP server to {}: {}", &addr, e))))?;
-		std_listener.set_nonblocking(true)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to set non-blocking on {}: {}", &addr, e))))?;
+		let std_listener = std::net::TcpListener::bind(&addr).map_err(|e| {
+			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+				"Failed to bind HTTP server to {}: {}",
+				&addr, e
+			)))
+		})?;
+		std_listener.set_nonblocking(true).map_err(|e| {
+			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+				"Failed to set non-blocking on {}: {}",
+				&addr, e
+			)))
+		})?;
 
-		let actual_addr = std_listener.local_addr()
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to get local address: {}", e))))?;
+		let actual_addr = std_listener.local_addr().map_err(|e| {
+			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+				"Failed to get local address: {}",
+				e
+			)))
+		})?;
 
 		// Enter the runtime context to convert std listener to tokio
 		let _guard = self.handle.enter();
-		let listener = tokio::net::TcpListener::from_std(std_listener)
-			.map_err(|e| reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!("Failed to convert listener: {}", e))))?;
+		let listener = tokio::net::TcpListener::from_std(std_listener).map_err(|e| {
+			reifydb_core::error!(reifydb_core::diagnostic::internal::internal(format!(
+				"Failed to convert listener: {}",
+				e
+			)))
+		})?;
 		*self.actual_addr.write().unwrap() = Some(actual_addr);
 		tracing::info!("HTTP server bound to {}", actual_addr);
 

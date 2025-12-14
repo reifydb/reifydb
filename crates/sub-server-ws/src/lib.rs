@@ -54,10 +54,9 @@ pub mod protocol;
 pub mod subsystem;
 
 // Re-export common types from sub-server
-pub use reifydb_sub_server::{convert_frames, ResponseColumn, ResponseFrame};
-
 // Local exports
 pub use factory::{WsConfig, WsSubsystemFactory};
 pub use handler::handle_connection;
 pub use protocol::{AuthRequest, CommandRequest, QueryRequest, Request, RequestPayload};
+pub use reifydb_sub_server::{ResponseColumn, ResponseFrame, convert_frames};
 pub use subsystem::WsSubsystem;

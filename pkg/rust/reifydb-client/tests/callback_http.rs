@@ -12,7 +12,8 @@ use std::{
 };
 
 use common::{
-	cleanup_server, parse_named_params, parse_positional_params, parse_rql, start_server_and_get_http_port, write_frames,
+	cleanup_server, parse_named_params, parse_positional_params, parse_rql, start_server_and_get_http_port,
+	write_frames,
 };
 use reifydb::{
 	Database,

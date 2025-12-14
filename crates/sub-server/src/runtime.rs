@@ -45,7 +45,9 @@ impl SharedRuntime {
 			.build()
 			.expect("Failed to create tokio runtime");
 
-		Self { runtime }
+		Self {
+			runtime,
+		}
 	}
 
 	/// Get a handle for spawning tasks on this runtime.
@@ -95,9 +97,7 @@ mod tests {
 		let handle = runtime.handle();
 
 		// Verify we can spawn and await a task
-		let result = runtime.block_on(async {
-			handle.spawn(async { 42 }).await.unwrap()
-		});
+		let result = runtime.block_on(async { handle.spawn(async { 42 }).await.unwrap() });
 
 		assert_eq!(result, 42);
 	}

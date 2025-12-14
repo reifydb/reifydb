@@ -26,7 +26,7 @@ impl TraceState {
             return false;
         }
 
-        let allowed_special = |b: u8| b == b'_' || b == b'-' || b == b'*' || b == b'/';
+        let allowed_special = |b: u8| (b == b'_' || b == b'-' || b == b'*' || b == b'/');
         let mut vendor_start = None;
         for (i, &b) in key.as_bytes().iter().enumerate() {
             if !(b.is_ascii_lowercase() || b.is_ascii_digit() || allowed_special(b) || b == b'@') {
@@ -134,7 +134,7 @@ impl TraceState {
             return Err(TraceStateError::Value(value));
         }
 
-        let mut trace_state = self.delete_from_deque(&key);
+        let mut trace_state = self.delete_from_deque(key.clone());
         let kvs = trace_state.0.get_or_insert(VecDeque::with_capacity(1));
 
         kvs.push_front((key, value));
@@ -155,14 +155,14 @@ impl TraceState {
             return Err(TraceStateError::Key(key));
         }
 
-        Ok(self.delete_from_deque(&key))
+        Ok(self.delete_from_deque(key))
     }
 
     /// Delete key from trace state's deque. The key MUST be valid
-    fn delete_from_deque(&self, key: &str) -> TraceState {
+    fn delete_from_deque(&self, key: String) -> TraceState {
         let mut owned = self.clone();
         if let Some(kvs) = owned.0.as_mut() {
-            if let Some(index) = kvs.iter().position(|x| x.0 == key) {
+            if let Some(index) = kvs.iter().position(|x| *x.0 == *key) {
                 kvs.remove(index);
             }
         }
@@ -181,7 +181,7 @@ impl TraceState {
             .as_ref()
             .map(|kvs| {
                 kvs.iter()
-                    .map(|(key, value)| format!("{key}{entry_delimiter}{value}"))
+                    .map(|(key, value)| format!("{}{}{}", key, entry_delimiter, value))
                     .collect::<Vec<String>>()
                     .join(list_delimiter)
             })
@@ -383,7 +383,7 @@ mod tests {
         ];
 
         for (key, expected) in test_data {
-            assert_eq!(TraceState::valid_key(key), expected, "test key: {key:?}");
+            assert_eq!(TraceState::valid_key(key), expected, "test key: {:?}", key);
         }
     }
 
@@ -399,12 +399,12 @@ mod tests {
     fn test_context_span_debug() {
         let cx = Context::current();
         assert_eq!(
-            format!("{cx:?}"),
-            "Context { span: \"None\", entries count: 0, suppress_telemetry: false }"
+            format!("{:?}", cx),
+            "Context { span: \"None\", entries count: 0 }"
         );
         let cx = Context::current().with_remote_span_context(SpanContext::NONE);
         assert_eq!(
-            format!("{cx:?}"),
+            format!("{:?}", cx),
             "Context { \
                span: SpanContext { \
                        trace_id: 00000000000000000000000000000000, \
@@ -413,7 +413,7 @@ mod tests {
                        is_remote: false, \
                        trace_state: TraceState(None) \
                      }, \
-               entries count: 1, suppress_telemetry: false \
+               entries count: 1 \
              }"
         );
     }

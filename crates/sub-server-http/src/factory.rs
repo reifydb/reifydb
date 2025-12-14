@@ -3,8 +3,7 @@
 
 //! Factory for creating HTTP subsystem instances.
 
-use std::sync::Arc;
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
@@ -97,7 +96,9 @@ pub struct HttpSubsystemFactory {
 impl HttpSubsystemFactory {
 	/// Create a new HTTP subsystem factory with the given configuration.
 	pub fn new(config: HttpConfig) -> Self {
-		Self { config }
+		Self {
+			config,
+		}
 	}
 }
 

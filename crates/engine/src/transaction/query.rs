@@ -94,7 +94,11 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 	}
 
 	#[inline]
-	fn range_batched(&mut self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<BoxedMultiVersionIter<'_>> {
+	fn range_batched(
+		&mut self,
+		range: EncodedKeyRange,
+		batch_size: u64,
+	) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.multi.range_batched(range, batch_size)
 	}
 

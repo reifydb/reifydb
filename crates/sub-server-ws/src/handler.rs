@@ -12,16 +12,14 @@
 use futures_util::{SinkExt, StreamExt};
 use reifydb_core::interface::Identity;
 use reifydb_sub_server::{
-	convert_frames, execute_command, execute_query, extract_identity_from_ws_auth, AppState,
-	ExecuteError,
+	AppState, ExecuteError, convert_frames, execute_command, execute_query, extract_identity_from_ws_auth,
 };
 use reifydb_type::Params;
+use serde_json::json;
+use tokio::{net::TcpStream, sync::watch};
+use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 use crate::protocol::{Request, RequestPayload};
-use serde_json::json;
-use tokio::net::TcpStream;
-use tokio::sync::watch;
-use tokio_tungstenite::{accept_async, tungstenite::Message};
 
 /// Handle a single WebSocket connection.
 ///
@@ -121,15 +119,13 @@ async fn process_message(text: &str, state: &AppState, identity: &mut Option<Ide
 	};
 
 	match request.payload {
-		RequestPayload::Auth(auth) => {
-			match extract_identity_from_ws_auth(auth.token.as_deref()) {
-				Ok(id) => {
-					*identity = Some(id);
-					build_response(&request.id, "Auth", json!({}))
-				}
-				Err(e) => build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e)),
+		RequestPayload::Auth(auth) => match extract_identity_from_ws_auth(auth.token.as_deref()) {
+			Ok(id) => {
+				*identity = Some(id);
+				build_response(&request.id, "Auth", json!({}))
 			}
-		}
+			Err(e) => build_error(&request.id, "AUTH_FAILED", &format!("{:?}", e)),
+		},
 
 		RequestPayload::Query(q) => {
 			let id = match identity.as_ref() {

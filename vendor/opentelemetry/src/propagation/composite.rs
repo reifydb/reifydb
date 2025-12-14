@@ -77,7 +77,9 @@ impl TextMapCompositePropagator {
     pub fn new(propagators: Vec<Box<dyn TextMapPropagator + Send + Sync>>) -> Self {
         let mut fields = HashSet::new();
         for propagator in &propagators {
-            fields.extend(propagator.fields().map(ToString::to_string));
+            for field in propagator.fields() {
+                fields.insert(field.to_string());
+            }
         }
 
         TextMapCompositePropagator {
@@ -154,8 +156,8 @@ mod tests {
         fn extract_with_context(&self, cx: &Context, extractor: &dyn Extractor) -> Context {
             match (self.header, extractor.get(self.header)) {
                 ("span-id", Some(val)) => cx.with_remote_span_context(SpanContext::new(
-                    TraceId::from(1),
-                    SpanId::from(u64::from_str_radix(val, 16).unwrap()),
+                    TraceId::from_u128(1),
+                    SpanId::from_u64(u64::from_str_radix(val, 16).unwrap()),
                     TraceFlags::default(),
                     false,
                     TraceState::default(),
@@ -173,8 +175,8 @@ mod tests {
     fn setup() -> Context {
         let mut cx = Context::default();
         cx = cx.with_span(TestSpan(SpanContext::new(
-            TraceId::from(1),
-            SpanId::from(11),
+            TraceId::from_u128(1),
+            SpanId::from_u64(11),
             TraceFlags::default(),
             true,
             TraceState::default(),
@@ -241,8 +243,8 @@ mod tests {
         assert_eq!(
             cx.span().span_context(),
             &SpanContext::new(
-                TraceId::from(1),
-                SpanId::from(11),
+                TraceId::from_u128(1),
+                SpanId::from_u64(11),
                 TraceFlags::default(),
                 false,
                 TraceState::default(),

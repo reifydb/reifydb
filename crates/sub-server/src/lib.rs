@@ -20,21 +20,16 @@ mod state;
 
 // Authentication exports
 pub use auth::{
-	anonymous_identity, extract_identity_from_api_key, extract_identity_from_auth_header,
-	extract_identity_from_ws_auth, root_identity, AuthError, AuthResult,
+	AuthError, AuthResult, anonymous_identity, extract_identity_from_api_key, extract_identity_from_auth_header,
+	extract_identity_from_ws_auth, root_identity,
 };
-
 // Query execution exports
 pub use execute::{
-	execute_command, execute_command_single, execute_query, execute_query_single, ExecuteError,
-	ExecuteResult,
+	ExecuteError, ExecuteResult, execute_command, execute_command_single, execute_query, execute_query_single,
 };
-
 // Response conversion exports
-pub use response::{convert_frames, ResponseColumn, ResponseFrame};
-
+pub use response::{ResponseColumn, ResponseFrame, convert_frames};
 // Runtime exports
-pub use runtime::{get_num_cpus, SharedRuntime};
-
+pub use runtime::{SharedRuntime, get_num_cpus};
 // State exports
 pub use state::{AppState, QueryConfig};

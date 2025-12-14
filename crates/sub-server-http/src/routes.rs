@@ -5,8 +5,10 @@
 //!
 //! This module sets up the Axum router with all endpoints and middleware layers.
 
-use axum::routing::{get, post};
-use axum::Router;
+use axum::{
+	Router,
+	routing::{get, post},
+};
 use reifydb_sub_server::AppState;
 use tower::limit::ConcurrencyLimitLayer;
 use tower_http::trace::TraceLayer;

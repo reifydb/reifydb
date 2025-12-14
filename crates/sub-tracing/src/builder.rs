@@ -4,12 +4,10 @@
 //! Builder pattern for configuring the tracing subsystem
 
 use tracing_subscriber::{
-	EnvFilter,
+	EnvFilter, Layer, Registry,
 	fmt::{self, format::FmtSpan},
 	layer::SubscriberExt,
 	util::SubscriberInitExt,
-	Layer,
-	Registry,
 };
 
 use crate::{backend::ConsoleBuilder, subsystem::TracingSubsystem};
@@ -144,10 +142,7 @@ impl TracingBuilder {
 		// Build the subscriber with all layers
 		// Note: External layer must be added first while we're still on bare Registry,
 		// because Box<dyn Layer<Registry>> only works with Registry, not Layered types
-		let subscriber = tracing_subscriber::registry()
-			.with(self.external_layer)
-			.with(filter)
-			.with(fmt_layer);
+		let subscriber = tracing_subscriber::registry().with(self.external_layer).with(filter).with(fmt_layer);
 
 		// Initialize the global subscriber
 		// Note: This will fail silently if a subscriber is already set
