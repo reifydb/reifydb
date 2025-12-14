@@ -7,19 +7,32 @@ use reifydb_core::{
 	key::{EncodableKey, FlowNodeStateKey},
 	value::encoded::{EncodedValues, EncodedValuesLayout},
 };
+use tracing::instrument;
 
 use super::FlowTransaction;
 
 impl FlowTransaction {
 	/// Get state for a specific flow node and key
+	#[instrument(level = "trace", skip(self), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len(),
+		found
+	))]
 	pub fn state_get(&mut self, id: FlowNodeId, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
 		self.metrics.increment_state_operations();
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
 		let encoded_key = state_key.encode();
-		self.get(&encoded_key)
+		let result = self.get(&encoded_key)?;
+		tracing::Span::current().record("found", result.is_some());
+		Ok(result)
 	}
 
 	/// Set state for a specific flow node and key
+	#[instrument(level = "trace", skip(self, value), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len(),
+		value_len = value.as_ref().len()
+	))]
 	pub fn state_set(&mut self, id: FlowNodeId, key: &EncodedKey, value: EncodedValues) -> crate::Result<()> {
 		self.metrics.increment_state_operations();
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
@@ -28,6 +41,10 @@ impl FlowTransaction {
 	}
 
 	/// Remove state for a specific flow node and key
+	#[instrument(level = "trace", skip(self), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len()
+	))]
 	pub fn state_remove(&mut self, id: FlowNodeId, key: &EncodedKey) -> crate::Result<()> {
 		self.metrics.increment_state_operations();
 		let state_key = FlowNodeStateKey::new(id, key.as_ref().to_vec());
@@ -36,6 +53,9 @@ impl FlowTransaction {
 	}
 
 	/// Scan all state for a specific flow node
+	#[instrument(level = "debug", skip(self), fields(
+		node_id = id.0
+	))]
 	pub fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.metrics.increment_state_operations();
 		let range = FlowNodeStateKey::node_range(id);
@@ -43,6 +63,9 @@ impl FlowTransaction {
 	}
 
 	/// Range query on state for a specific flow node
+	#[instrument(level = "debug", skip(self, range), fields(
+		node_id = id.0
+	))]
 	pub fn state_range(
 		&mut self,
 		id: FlowNodeId,
@@ -54,19 +77,30 @@ impl FlowTransaction {
 	}
 
 	/// Clear all state for a specific flow node
+	#[instrument(level = "debug", skip(self), fields(
+		node_id = id.0,
+		removed_count
+	))]
 	pub fn state_clear(&mut self, id: FlowNodeId) -> crate::Result<()> {
 		self.metrics.increment_state_operations();
 		let range = FlowNodeStateKey::node_range(id);
 		let keys_to_remove: Vec<_> = self.range(range)?.map(|multi| multi.key).collect();
 
+		let count = keys_to_remove.len();
 		for key in keys_to_remove {
 			self.remove(&key)?;
 		}
 
+		tracing::Span::current().record("removed_count", count);
 		Ok(())
 	}
 
 	/// Load state for a key, creating if not exists
+	#[instrument(level = "debug", skip(self, layout), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len(),
+		created
+	))]
 	pub fn load_or_create_row(
 		&mut self,
 		id: FlowNodeId,
@@ -74,12 +108,22 @@ impl FlowTransaction {
 		layout: &EncodedValuesLayout,
 	) -> crate::Result<EncodedValues> {
 		match self.state_get(id, key)? {
-			Some(row) => Ok(row),
-			None => Ok(layout.allocate()),
+			Some(row) => {
+				tracing::Span::current().record("created", false);
+				Ok(row)
+			}
+			None => {
+				tracing::Span::current().record("created", true);
+				Ok(layout.allocate())
+			}
 		}
 	}
 
 	/// Save state encoded
+	#[instrument(level = "trace", skip(self, row), fields(
+		node_id = id.0,
+		key_len = key.as_bytes().len()
+	))]
 	pub fn save_row(&mut self, id: FlowNodeId, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
 		self.state_set(id, key, row)
 	}

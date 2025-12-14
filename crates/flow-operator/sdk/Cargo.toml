@@ -12,5 +12,6 @@ reifydb-flow-operator-abi = { workspace = true }
 reifydb-core = { workspace = true}
 reifydb-type = { workspace = true }
 bincode = { workspace = true }
+tracing = { workspace = true }
 
 [dev-dependencies]

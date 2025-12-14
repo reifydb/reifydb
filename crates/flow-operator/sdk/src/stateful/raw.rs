@@ -10,6 +10,7 @@ use reifydb_core::{
 	value::encoded::{EncodedKey, EncodedValues},
 };
 use reifydb_flow_operator_abi::{BufferFFI, FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, StateIteratorFFI};
+use tracing::instrument;
 
 use crate::{
 	context::OperatorContext,
@@ -17,6 +18,11 @@ use crate::{
 };
 
 /// Get a value from state by key
+#[instrument(level = "trace", skip(ctx), fields(
+	operator_id = ctx.operator_id().0,
+	key_len = key.as_bytes().len(),
+	found
+))]
 pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
@@ -37,15 +43,18 @@ pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 		if result == FFI_OK {
 			// Success - value found
 			if output.ptr.is_null() || output.len == 0 {
+				tracing::Span::current().record("found", false);
 				Ok(None)
 			} else {
 				let value_bytes = from_raw_parts(output.ptr, output.len).to_vec();
 				// Free the buffer allocated by host
 				((*ctx.ctx).callbacks.memory.free)(output.ptr as *mut u8, output.len);
+				tracing::Span::current().record("found", true);
 				Ok(Some(EncodedValues(CowVec::new(value_bytes))))
 			}
 		} else if result == FFI_NOT_FOUND {
 			// Key not found
+			tracing::Span::current().record("found", false);
 			Ok(None)
 		} else {
 			Err(FFIError::Other(format!("host_state_get failed with code {}", result)))
@@ -54,6 +63,11 @@ pub(crate) fn raw_state_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<O
 }
 
 /// Set a value in state by key
+#[instrument(level = "trace", skip(ctx, value), fields(
+	operator_id = ctx.operator_id().0,
+	key_len = key.as_bytes().len(),
+	value_len = value.as_ref().len()
+))]
 pub(crate) fn raw_state_set(ctx: &mut OperatorContext, key: &EncodedKey, value: &EncodedValues) -> Result<()> {
 	let key_bytes = key.as_bytes();
 	let value_bytes = value.as_ref();
@@ -77,6 +91,10 @@ pub(crate) fn raw_state_set(ctx: &mut OperatorContext, key: &EncodedKey, value: 
 }
 
 /// Remove a value from state by key
+#[instrument(level = "trace", skip(ctx), fields(
+	operator_id = ctx.operator_id().0,
+	key_len = key.as_bytes().len()
+))]
 pub(crate) fn raw_state_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> Result<()> {
 	let key_bytes = key.as_bytes();
 
@@ -97,6 +115,11 @@ pub(crate) fn raw_state_remove(ctx: &mut OperatorContext, key: &EncodedKey) -> R
 }
 
 /// Scan all keys with a given prefix
+#[instrument(level = "trace", skip(ctx), fields(
+	operator_id = ctx.operator_id().0,
+	prefix_len = prefix.as_bytes().len(),
+	result_count
+))]
 pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StateIteratorFFI = null_mut();
@@ -115,6 +138,7 @@ pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 		}
 
 		if iterator.is_null() {
+			tracing::Span::current().record("result_count", 0);
 			return Ok(Vec::new());
 		}
 
@@ -169,11 +193,15 @@ pub(crate) fn raw_state_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Re
 		}
 
 		((*ctx.ctx).callbacks.state.iterator_free)(iterator);
+		tracing::Span::current().record("result_count", results.len());
 		Ok(results)
 	}
 }
 
 /// Clear all state for this operator
+#[instrument(level = "debug", skip(ctx), fields(
+	operator_id = ctx.operator_id().0
+))]
 pub(crate) fn raw_state_clear(ctx: &mut OperatorContext) -> Result<()> {
 	unsafe {
 		let result = ((*ctx.ctx).callbacks.state.clear)((*ctx.ctx).operator_id, ctx.ctx);

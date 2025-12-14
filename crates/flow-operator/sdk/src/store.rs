@@ -10,6 +10,7 @@ use reifydb_core::{
 	value::encoded::{EncodedKey, EncodedValues},
 };
 use reifydb_flow_operator_abi::{BufferFFI, FFI_END_OF_ITERATION, FFI_NOT_FOUND, FFI_OK, StoreIteratorFFI};
+use tracing::instrument;
 
 use crate::{
 	context::OperatorContext,
@@ -28,28 +29,49 @@ impl<'a> Store<'a> {
 		}
 	}
 
+	#[instrument(level = "trace", skip(self), fields(
+		key_len = key.as_bytes().len(),
+		found
+	))]
 	pub fn get(&self, key: &EncodedKey) -> Result<Option<EncodedValues>> {
-		raw_store_get(self.ctx, key)
+		let result = raw_store_get(self.ctx, key)?;
+		tracing::Span::current().record("found", result.is_some());
+		Ok(result)
 	}
 
+	#[instrument(level = "trace", skip(self), fields(
+		key_len = key.as_bytes().len()
+	))]
 	pub fn contains_key(&self, key: &EncodedKey) -> Result<bool> {
 		raw_store_contains_key(self.ctx, key)
 	}
 
+	#[instrument(level = "trace", skip(self), fields(
+		prefix_len = prefix.as_bytes().len(),
+		result_count
+	))]
 	pub fn prefix(&self, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
-		raw_store_prefix(self.ctx, prefix)
+		let results = raw_store_prefix(self.ctx, prefix)?;
+		tracing::Span::current().record("result_count", results.len());
+		Ok(results)
 	}
 
+	#[instrument(level = "trace", skip(self, start, end), fields(result_count))]
 	pub fn range(
 		&self,
 		start: Bound<&EncodedKey>,
 		end: Bound<&EncodedKey>,
 	) -> Result<Vec<(EncodedKey, EncodedValues)>> {
-		raw_store_range(self.ctx, start, end)
+		let results = raw_store_range(self.ctx, start, end)?;
+		tracing::Span::current().record("result_count", results.len());
+		Ok(results)
 	}
 }
 
 /// Get a value from store by key
+#[instrument(level = "trace", skip(ctx), fields(
+	key_len = key.as_bytes().len()
+))]
 fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {
 	let key_bytes = key.as_bytes();
 	let mut output = BufferFFI {
@@ -82,6 +104,9 @@ fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<Encod
 }
 
 /// Check if a key exists in store
+#[instrument(level = "trace", skip(ctx), fields(
+	key_len = key.as_bytes().len()
+))]
 fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) -> Result<bool> {
 	let key_bytes = key.as_bytes();
 	let mut result_byte: u8 = 0;
@@ -103,6 +128,9 @@ fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) -> Result<boo
 }
 
 /// Scan all keys with a given prefix
+#[instrument(level = "trace", skip(ctx), fields(
+	prefix_len = prefix.as_bytes().len()
+))]
 fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
 	let prefix_bytes = prefix.as_bytes();
 	let mut iterator: *mut StoreIteratorFFI = null_mut();
@@ -129,6 +157,7 @@ const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
 /// Scan all keys within a range
+#[instrument(level = "trace", skip(ctx, start, end))]
 fn raw_store_range(
 	ctx: &OperatorContext,
 	start: Bound<&EncodedKey>,
@@ -173,11 +202,13 @@ fn raw_store_range(
 /// # Safety
 /// - iterator must be a valid pointer returned by a store prefix/range call
 /// - ctx must have valid callbacks
+#[instrument(level = "trace", skip(ctx, iterator), fields(result_count))]
 unsafe fn collect_iterator_results(
 	ctx: &OperatorContext,
 	iterator: *mut StoreIteratorFFI,
 ) -> Result<Vec<(EncodedKey, EncodedValues)>> {
 	if iterator.is_null() {
+		tracing::Span::current().record("result_count", 0);
 		return Ok(Vec::new());
 	}
 
@@ -232,5 +263,6 @@ unsafe fn collect_iterator_results(
 	}
 
 	unsafe { ((*ctx.ctx).callbacks.store.iterator_free)(iterator) };
+	tracing::Span::current().record("result_count", results.len());
 	Ok(results)
 }

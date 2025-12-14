@@ -9,6 +9,7 @@ use std::{
 
 use reifydb_flow_operator_abi::*;
 use reifydb_type::RowNumber;
+use tracing::{debug_span, instrument, warn};
 
 use crate::{FFIOperator, context::OperatorContext, marshal::Marshaller};
 
@@ -38,6 +39,11 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	}
 }
 
+#[instrument(level = "debug", skip_all, fields(
+	operator_type = std::any::type_name::<O>(),
+	input_diffs,
+	output_diffs
+))]
 pub extern "C" fn ffi_apply<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut FFIContext,
@@ -49,33 +55,67 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 			let wrapper = OperatorWrapper::<O>::from_ptr(instance);
 			let mut operator = match wrapper.operator.lock() {
 				Ok(op) => op,
-				Err(_) => return -1,
+				Err(_) => {
+					warn!("Failed to lock operator");
+					return -1;
+				}
 			};
 
 			let mut marshaller = wrapper.marshaller.borrow_mut();
 			marshaller.clear();
 
 			// Unmarshal input using the marshaller
+			let unmarshal_span = debug_span!("unmarshal");
+			let _guard = unmarshal_span.enter();
 			let input_change = match marshaller.unmarshal_flow_change(&*input) {
-				Ok(change) => change,
-				Err(_) => return -3,
+				Ok(change) => {
+					tracing::Span::current().record("input_diffs", change.diffs.len());
+					change
+				}
+				Err(e) => {
+					warn!(?e, "Unmarshal failed");
+					return -3;
+				}
 			};
+			drop(_guard);
 
 			// Create context and apply operator
+			let apply_span = debug_span!("operator_apply");
+			let _guard = apply_span.enter();
 			let mut op_ctx = OperatorContext::new(ctx);
 			let output_change = match operator.apply(&mut op_ctx, input_change) {
-				Ok(change) => change,
-				Err(_) => return -2,
+				Ok(change) => {
+					tracing::Span::current().record("output_diffs", change.diffs.len());
+					change
+				}
+				Err(e) => {
+					warn!(?e, "Apply failed");
+					return -2;
+				}
 			};
+			drop(_guard);
 
+			// Marshal output
+			let marshal_span = debug_span!("marshal");
+			let _guard = marshal_span.enter();
 			*output = marshaller.marshal_flow_change(&output_change);
+			drop(_guard);
+
 			0 // Success
 		}
 	}));
 
-	result.unwrap_or(-99)
+	result.unwrap_or_else(|e| {
+		warn!(?e, "Panic in ffi_apply");
+		-99
+	})
 }
 
+#[instrument(level = "debug", skip_all, fields(
+	operator_type = std::any::type_name::<O>(),
+	row_count = count,
+	rows_returned
+))]
 pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 	instance: *mut c_void,
 	ctx: *mut FFIContext,
@@ -88,7 +128,10 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 			let wrapper = OperatorWrapper::<O>::from_ptr(instance);
 			let mut operator = match wrapper.operator.lock() {
 				Ok(op) => op,
-				Err(_) => return -1,
+				Err(_) => {
+					warn!("Failed to lock operator");
+					return -1;
+				}
 			};
 
 			let mut marshaller = wrapper.marshaller.borrow_mut();
@@ -109,8 +152,14 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 
 			// Call the operator
 			let rows = match operator.get_rows(&mut op_ctx, &numbers) {
-				Ok(rows) => rows,
-				Err(_) => return -2,
+				Ok(rows) => {
+					tracing::Span::current().record("rows_returned", rows.len());
+					rows
+				}
+				Err(e) => {
+					warn!(?e, "get_rows failed");
+					return -2;
+				}
 			};
 
 			*output = marshaller.marshal_rows(&rows);
@@ -119,7 +168,10 @@ pub extern "C" fn ffi_get_rows<O: FFIOperator>(
 		}
 	}));
 
-	result.unwrap_or(-99)
+	result.unwrap_or_else(|e| {
+		warn!(?e, "Panic in ffi_get_rows");
+		-99
+	})
 }
 
 pub extern "C" fn ffi_destroy<O: FFIOperator>(instance: *mut c_void) {

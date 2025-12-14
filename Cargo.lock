@@ -1422,6 +1422,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-flow-operator-abi",
  "reifydb-type",
+ "tracing",
 ]
 
 [[package]]

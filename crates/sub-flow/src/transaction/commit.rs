@@ -5,6 +5,7 @@ use diagnostic::flow::flow_transaction_keyspace_overlap;
 use reifydb_core::interface::{MultiVersionCommandTransaction, interceptor::ViewInterceptor};
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_type::{diagnostic, return_error, util::hex};
+use tracing::instrument;
 
 use super::{FlowTransaction, FlowTransactionMetrics, Pending, ViewPending};
 
@@ -22,6 +23,12 @@ impl FlowTransaction {
 	/// Returns an error if any key in this FlowTransaction overlaps with keys already
 	/// written by another FlowTransaction to the same parent. FlowTransactions must
 	/// operate on non-overlapping keyspaces.
+	#[instrument(level = "debug", skip(self, parent), fields(
+		pending_count = self.pending.len(),
+		view_ops_count = self.view_pending.len(),
+		writes,
+		removes
+	))]
 	pub fn commit(&mut self, parent: &mut StandardCommandTransaction) -> crate::Result<FlowTransactionMetrics> {
 		// Check for any overlapping keys with the parent's pending writes.
 		// This enforces that FlowTransactions operate on non-overlapping keyspaces.
@@ -80,16 +87,23 @@ impl FlowTransaction {
 		}
 
 		// Now apply all writes and removes to storage
+		let mut write_count = 0;
+		let mut remove_count = 0;
 		for (key, pending) in self.pending.iter_sorted() {
 			match pending {
 				Pending::Write(value) => {
 					parent.set(key, value.clone())?;
+					write_count += 1;
 				}
 				Pending::Remove => {
 					parent.remove(key)?;
+					remove_count += 1;
 				}
 			}
 		}
+
+		tracing::Span::current().record("writes", write_count);
+		tracing::Span::current().record("removes", remove_count);
 
 		self.pending.clear();
 		Ok(self.metrics.clone())

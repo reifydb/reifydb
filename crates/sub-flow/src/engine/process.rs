@@ -65,14 +65,15 @@ impl FlowEngine {
 		Ok(())
 	}
 
-	#[instrument(level = "trace", skip(self, txn), fields(node_id = ?node.id))]
+	#[instrument(level = "trace", skip(self, txn), fields(node_id = ?node.id, input_diffs = change.diffs.len(), output_diffs))]
 	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: FlowChange) -> crate::Result<FlowChange> {
 		let operator = self.inner.operators.read().get(&node.id).unwrap().clone();
 		let result = operator.apply(txn, change, &self.inner.evaluator)?;
+		tracing::Span::current().record("output_diffs", result.diffs.len());
 		Ok(result)
 	}
 
-	#[instrument(level = "trace", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, input_diffs = change.diffs.len()))]
+	#[instrument(level = "trace", skip(self, txn, flow), fields(flow_id = ?flow.id, node_id = ?node.id, input_diffs = change.diffs.len(), output_diffs))]
 	fn process_change(
 		&self,
 		txn: &mut FlowTransaction,
@@ -85,7 +86,11 @@ impl FlowEngine {
 
 		let change = match &node_type {
 			SourceInlineData {} => unimplemented!(),
-			_ => self.apply(txn, node, change)?,
+			_ => {
+				let result = self.apply(txn, node, change)?;
+				tracing::Span::current().record("output_diffs", result.diffs.len());
+				result
+			}
 		};
 
 		if changes.is_empty() {
