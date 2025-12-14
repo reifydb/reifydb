@@ -1,10 +1,12 @@
 # ReifyDB Release Process
 
-This document describes the release process for the ReifyDB monorepo. All packages (Rust crates and TypeScript packages) are versioned together using semantic versioning.
+This document describes the release process for the ReifyDB monorepo. All packages (Rust crates and TypeScript packages)
+are versioned together using semantic versioning.
 
 ## Overview
 
-ReifyDB uses a unified versioning strategy where all packages share the same version number. This ensures consistency across the entire ecosystem and simplifies dependency management for users.
+ReifyDB uses a unified versioning strategy where all packages share the same version number. This ensures consistency
+across the entire ecosystem and simplifies dependency management for users.
 
 ## Prerequisites
 
@@ -42,22 +44,26 @@ make release-dry-run VERSION=1.0.0
 The `make release` command orchestrates the entire release process:
 
 ### 1. Version Validation
+
 - Checks if the specified version already exists (git tag or published packages)
 - Prevents duplicate releases
 - Validates semantic version format (x.y.z)
 
 ### 2. Pre-release Checks
+
 - Ensures working directory is clean (no uncommitted changes)
 - Verifies you're on the main branch (warning if not)
 - Runs tests to ensure everything is working
 - Checks that all required tools are installed
 
 ### 3. Version Update
+
 - Updates Rust workspace version in `Cargo.toml`
 - Updates all TypeScript package versions
 - Ensures all internal dependencies use the new version
 
 ### 4. Git Operations
+
 - Creates a release commit: `chore: release vX.Y.Z`
 - Creates an annotated git tag: `vX.Y.Z`
 - Optionally pushes to remote repository
@@ -67,6 +73,7 @@ The `make release` command orchestrates the entire release process:
 Publishing happens automatically in topological dependency order using `cargo-workspaces`:
 
 #### Rust Crates (crates.io)
+
 - Automatically calculates dependency order from workspace graph
 - Publishes in topological order (dependencies before dependents)
 - Waits 10 seconds between publishes for crates.io indexing
@@ -74,11 +81,13 @@ Publishing happens automatically in topological dependency order using `cargo-wo
 - Typical order: Core libraries → Infrastructure → Subsystems → Client → Main library
 
 #### TypeScript Packages (npm)
+
 1. @reifydb/core
 2. @reifydb/client
 3. @reifydb/react
 
 ### 6. Push to Remote
+
 - Pushes the release commit and tag to the remote repository
 
 ## Configuration
@@ -119,6 +128,7 @@ scripts/publish-release.sh 1.0.0
 ### Release Fails Midway
 
 If publishing fails partway through:
+
 1. The script tracks what was successfully published
 2. Re-run `scripts/publish-release.sh VERSION` to continue
 3. Already-published packages will be skipped
@@ -126,6 +136,7 @@ If publishing fails partway through:
 ### Version Already Exists
 
 If you get an error about version existing:
+
 1. Check git tags: `git tag | grep vX.Y.Z`
 2. Check crates.io: `cargo search reifydb`
 3. Check npm: `npm view @reifydb/core versions`
@@ -134,6 +145,7 @@ If you get an error about version existing:
 ### Rollback a Release
 
 To rollback (best effort):
+
 ```bash
 # Remove git tag
 git tag -d vX.Y.Z
@@ -146,6 +158,7 @@ git push origin :refs/tags/vX.Y.Z
 ### Test Failures
 
 If tests fail during validation:
+
 ```bash
 # Skip tests temporarily (not recommended)
 SKIP_TESTS=1 make release VERSION=1.0.0
@@ -184,8 +197,8 @@ All packages in the monorepo share the same version to ensure compatibility.
 After a successful release:
 
 1. Verify packages are available:
-   - Check crates.io: https://crates.io/crates/reifydb
-   - Check npm: https://www.npmjs.com/package/@reifydb/core
+    - Check crates.io: https://crates.io/crates/reifydb
+    - Check npm: https://www.npmjs.com/package/@reifydb/core
 
 2. Update any example code or documentation with new version
 
@@ -245,6 +258,7 @@ cargo workspaces publish --help
 ```
 
 **Important Notes:**
+
 - Binary and test crates are automatically excluded via `publish = false` in their Cargo.toml files
 - When using vendored dependencies, you **must** include `--registry crates-io` to bypass the vendor source replacement
 - The publish script automatically includes this flag
@@ -260,7 +274,3 @@ scripts/git-release.sh 1.0.0  # Without --push flag
 # Sign this release tag
 scripts/git-release.sh 1.0.0 --sign --push
 ```
-
-## License
-
-Released packages use MIT license for maximum compatibility.
