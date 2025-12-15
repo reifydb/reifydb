@@ -367,10 +367,6 @@ where
 			return_error!(transaction::transaction_rolled_back());
 		}
 
-		// The new Oracle implementation handles synchronization
-		// internally with fine-grained locking, so we don't need a
-		// global lock here
-
 		let conflict_manager = mem::take(&mut self.conflicts);
 		let base_version = self.base_version();
 

@@ -23,6 +23,7 @@ pub use crate::multi::types::*;
 mod command;
 pub mod optimistic;
 mod oracle;
+mod oracle_cleanup;
 pub mod query;
 pub mod range;
 pub mod range_rev;
