@@ -310,20 +310,20 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 
 		// Populate the stack with parameters so they can be accessed as variables
 		match &cmd.params {
-			reifydb_core::interface::Params::Positional(values) => {
+			Params::Positional(values) => {
 				// For positional parameters, use $1, $2, $3, etc.
 				for (index, value) in values.iter().enumerate() {
 					let param_name = (index + 1).to_string(); // 1-based indexing
 					persistent_stack.set(param_name, Variable::Scalar(value.clone()), false)?;
 				}
 			}
-			reifydb_core::interface::Params::Named(map) => {
+			Params::Named(map) => {
 				// For named parameters, use the parameter name directly
 				for (name, value) in map {
 					persistent_stack.set(name.clone(), Variable::Scalar(value.clone()), false)?;
 				}
 			}
-			reifydb_core::interface::Params::None => {
+			Params::None => {
 				// No parameters to populate
 			}
 		}
@@ -353,20 +353,20 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 
 		// Populate the stack with parameters so they can be accessed as variables
 		match &qry.params {
-			reifydb_core::interface::Params::Positional(values) => {
+			Params::Positional(values) => {
 				// For positional parameters, use $1, $2, $3, etc.
 				for (index, value) in values.iter().enumerate() {
 					let param_name = (index + 1).to_string(); // 1-based indexing
 					persistent_stack.set(param_name, Variable::Scalar(value.clone()), false)?;
 				}
 			}
-			reifydb_core::interface::Params::Named(map) => {
+			Params::Named(map) => {
 				// For named parameters, use the parameter name directly
 				for (name, value) in map {
 					persistent_stack.set(name.clone(), Variable::Scalar(value.clone()), false)?;
 				}
 			}
-			reifydb_core::interface::Params::None => {
+			Params::None => {
 				// No parameters to populate
 			}
 		}
@@ -388,6 +388,7 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 impl Execute<StandardCommandTransaction, StandardQueryTransaction> for Executor {}
 
 impl Executor {
+	#[instrument(level = "debug", skip(self, rx, plan, params, stack))]
 	pub(crate) fn execute_query_plan<'a>(
 		&self,
 		rx: &'a mut StandardQueryTransaction,
@@ -472,6 +473,7 @@ impl Executor {
 		}
 	}
 
+	#[instrument(level = "debug", skip(self, txn, plan, params, stack))]
 	pub fn execute_command_plan<'a>(
 		&self,
 		txn: &'a mut StandardCommandTransaction,
@@ -548,6 +550,7 @@ impl Executor {
 		}
 	}
 
+	#[instrument(level = "debug", skip(self, rx, plan, params, stack))]
 	fn query<'a>(
 		&self,
 		rx: &mut StandardTransaction<'a>,

@@ -7,15 +7,17 @@ use reifydb_catalog::CatalogStore;
 use reifydb_core::{
 	EncodedKey,
 	interface::{
-		DictionaryDef, EncodableKey, MultiVersionQueryTransaction, RowKey, RowKeyRange, resolved::ResolvedTable,
+		DictionaryDef, EncodableKey, MultiVersionQueryTransaction, QueryTransaction, RowKey, RowKeyRange,
+		resolved::ResolvedTable,
 	},
+	util::CowVec,
 	value::{
 		column::{Column, ColumnData, Columns, headers::ColumnHeaders},
 		encoded::EncodedValuesLayout,
 	},
 };
 use reifydb_type::{DictionaryEntryId, Fragment, Type};
-use tracing::{instrument, trace};
+use tracing::{debug_span, instrument, trace};
 
 use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
@@ -36,7 +38,7 @@ pub(crate) struct TableScanNode<'a> {
 }
 
 impl<'a> TableScanNode<'a> {
-	pub fn new<Rx: MultiVersionQueryTransaction + reifydb_core::interface::QueryTransaction>(
+	pub fn new<Rx: MultiVersionQueryTransaction + QueryTransaction>(
 		table: ResolvedTable<'a>,
 		context: Arc<ExecutionContext<'a>>,
 		rx: &mut Rx,
@@ -112,14 +114,19 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		let mut row_numbers = Vec::new();
 		let mut new_last_key = None;
 
-		let multi_rows: Vec<_> =
-			rx.range_batched(range, batch_size)?.into_iter().take(batch_size as usize).collect();
+		let multi_rows: Vec<_> = {
+			let _span = debug_span!("range_batched", batch_size).entered();
+			rx.range_batched(range, batch_size)?.into_iter().take(batch_size as usize).collect()
+		};
 
-		for multi in multi_rows.into_iter() {
-			if let Some(key) = RowKey::decode(&multi.key) {
-				batch_rows.push(multi.values);
-				row_numbers.push(key.row);
-				new_last_key = Some(multi.key);
+		{
+			let _span = debug_span!("decode_row_keys").entered();
+			for multi in multi_rows.into_iter() {
+				if let Some(key) = RowKey::decode(&multi.key) {
+					batch_rows.push(multi.values);
+					row_numbers.push(key.row);
+					new_last_key = Some(multi.key);
+				}
 			}
 		}
 		if batch_rows.is_empty() {
@@ -132,25 +139,34 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		self.last_key = new_last_key;
 
 		// Create columns with storage types (dictionary ID types for dictionary columns)
-		let storage_columns: Vec<Column> = self
-			.table
-			.columns()
-			.iter()
-			.enumerate()
-			.map(|(idx, col)| Column {
-				name: Fragment::owned_internal(&col.name),
-				data: ColumnData::with_capacity(self.storage_types[idx], 0),
-			})
-			.collect();
+		let storage_columns: Vec<Column> = {
+			let _span = debug_span!("create_storage_columns").entered();
+			self.table
+				.columns()
+				.iter()
+				.enumerate()
+				.map(|(idx, col)| Column {
+					name: Fragment::owned_internal(&col.name),
+					data: ColumnData::with_capacity(self.storage_types[idx], 0),
+				})
+				.collect()
+		};
 
 		let mut columns = Columns::with_row_numbers(storage_columns, Vec::new());
-		columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
+		{
+			let _span = debug_span!("append_rows", row_count = row_numbers.len()).entered();
+			columns.append_rows(&self.row_layout, batch_rows.into_iter(), row_numbers.clone())?;
+		}
 
 		// Decode dictionary columns
-		self.decode_dictionary_columns(&mut columns, rx)?;
+		{
+			let dict_count = self.dictionaries.iter().filter(|d| d.is_some()).count();
+			let _span = debug_span!("decode_dictionary_columns", dict_count).entered();
+			self.decode_dictionary_columns(&mut columns, rx)?;
+		}
 
 		// Restore row numbers (they get cleared during column transformation)
-		columns.row_numbers = reifydb_core::util::CowVec::new(row_numbers);
+		columns.row_numbers = CowVec::new(row_numbers);
 
 		Ok(Some(Batch {
 			columns,
@@ -173,6 +189,7 @@ impl<'a> TableScanNode<'a> {
 			if let Some(dictionary) = dict_opt {
 				let col = &columns[col_idx];
 				let row_count = col.data().len();
+				let _span = debug_span!("decode_single_dict_column", col_idx, row_count).entered();
 
 				// Create new column data with the original value type
 				let mut new_data = ColumnData::with_capacity(dictionary.value_type, row_count);

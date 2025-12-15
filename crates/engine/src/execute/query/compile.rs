@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::interface::{IndexId, NamespaceId};
 use reifydb_rql::plan::{physical, physical::PhysicalPlan};
+use tracing::instrument;
 
 use crate::{
 	StandardTransaction,
@@ -67,6 +68,7 @@ fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan<'a>) -> Option<reif
 	}
 }
 
+#[instrument(level = "trace", skip(plan, rx, context))]
 pub(crate) fn compile<'a>(
 	plan: PhysicalPlan<'a>,
 	rx: &mut StandardTransaction<'a>,
