@@ -6,6 +6,7 @@
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
+use reifydb_sub_server::SharedRuntime;
 
 use crate::{config::OtelConfig, subsystem::OtelSubsystem};
 
@@ -41,7 +42,8 @@ impl SubsystemFactory<StandardCommandTransaction> for OtelSubsystemFactory {
 			Ok(Box::new(subsystem))
 		} else if let Some(config) = self.config {
 			// Normal path: create new subsystem
-			let subsystem = OtelSubsystem::new(config);
+			let runtime = config.runtime.clone().unwrap_or_else(SharedRuntime::default);
+			let subsystem = OtelSubsystem::new(config, runtime);
 			Ok(Box::new(subsystem))
 		} else {
 			unreachable!("OtelSubsystemFactory must have either subsystem or config")

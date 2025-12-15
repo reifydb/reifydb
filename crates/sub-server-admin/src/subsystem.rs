@@ -33,7 +33,7 @@ pub struct AdminSubsystem {
 	/// Shared application state.
 	state: AdminState,
 	/// The shared runtime (kept alive to prevent premature shutdown).
-	_runtime: Option<Arc<SharedRuntime>>,
+	_runtime: Option<SharedRuntime>,
 	/// Handle to the tokio runtime.
 	handle: Handle,
 	/// Flag indicating if the server is running.
@@ -45,26 +45,6 @@ pub struct AdminSubsystem {
 }
 
 impl AdminSubsystem {
-	/// Create a new admin subsystem.
-	///
-	/// # Arguments
-	///
-	/// * `bind_addr` - Address and port to bind to (e.g., "127.0.0.1:9090")
-	/// * `state` - Shared application state
-	/// * `handle` - Handle to the tokio runtime
-	pub fn new(bind_addr: String, state: AdminState, handle: Handle) -> Self {
-		Self {
-			bind_addr,
-			actual_addr: RwLock::new(None),
-			state,
-			_runtime: None,
-			handle,
-			running: Arc::new(AtomicBool::new(false)),
-			shutdown_tx: None,
-			shutdown_complete_rx: None,
-		}
-	}
-
 	/// Create a new admin subsystem with an owned runtime.
 	///
 	/// This variant keeps the runtime alive for the lifetime of the subsystem.
@@ -74,7 +54,7 @@ impl AdminSubsystem {
 	/// * `bind_addr` - Address and port to bind to (e.g., "127.0.0.1:9090")
 	/// * `state` - Shared application state
 	/// * `runtime` - Shared runtime (will be kept alive)
-	pub fn with_runtime(bind_addr: String, state: AdminState, runtime: Arc<SharedRuntime>) -> Self {
+	pub fn new(bind_addr: String, state: AdminState, runtime: SharedRuntime) -> Self {
 		let handle = runtime.handle();
 		Self {
 			bind_addr,

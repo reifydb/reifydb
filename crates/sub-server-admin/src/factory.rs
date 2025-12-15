@@ -3,8 +3,6 @@
 
 //! Factory for creating admin subsystem instances.
 
-use std::sync::Arc;
-
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
@@ -31,7 +29,7 @@ impl SubsystemFactory<StandardCommandTransaction> for AdminSubsystemFactory {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		// Use provided runtime or create a default one
-		let runtime = self.config.runtime.unwrap_or_else(|| Arc::new(SharedRuntime::default()));
+		let runtime = self.config.runtime.unwrap_or_else(SharedRuntime::default);
 
 		// Create admin state from config
 		let state = AdminState::new(
@@ -43,7 +41,7 @@ impl SubsystemFactory<StandardCommandTransaction> for AdminSubsystemFactory {
 		);
 
 		// Create subsystem with runtime ownership
-		let subsystem = AdminSubsystem::with_runtime(self.config.bind_addr.clone(), state, runtime);
+		let subsystem = AdminSubsystem::new(self.config.bind_addr.clone(), state, runtime);
 
 		Ok(Box::new(subsystem))
 	}

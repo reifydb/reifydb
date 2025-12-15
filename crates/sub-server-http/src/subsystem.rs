@@ -53,7 +53,7 @@ pub struct HttpSubsystem {
 	/// Shared application state.
 	state: AppState,
 	/// The shared runtime (kept alive to prevent premature shutdown).
-	_runtime: Option<Arc<SharedRuntime>>,
+	_runtime: Option<SharedRuntime>,
 	/// Handle to the tokio runtime.
 	handle: Handle,
 	/// Flag indicating if the server is running.
@@ -65,26 +65,6 @@ pub struct HttpSubsystem {
 }
 
 impl HttpSubsystem {
-	/// Create a new HTTP subsystem.
-	///
-	/// # Arguments
-	///
-	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8090")
-	/// * `state` - Shared application state with engine and config
-	/// * `handle` - Handle to the tokio runtime
-	pub fn new(bind_addr: String, state: AppState, handle: Handle) -> Self {
-		Self {
-			bind_addr,
-			actual_addr: RwLock::new(None),
-			state,
-			_runtime: None,
-			handle,
-			running: Arc::new(AtomicBool::new(false)),
-			shutdown_tx: None,
-			shutdown_complete_rx: None,
-		}
-	}
-
 	/// Create a new HTTP subsystem with an owned runtime.
 	///
 	/// This variant keeps the runtime alive for the lifetime of the subsystem.
@@ -94,7 +74,7 @@ impl HttpSubsystem {
 	/// * `bind_addr` - Address and port to bind to (e.g., "0.0.0.0:8090")
 	/// * `state` - Shared application state with engine and config
 	/// * `runtime` - Shared runtime (will be kept alive)
-	pub fn with_runtime(bind_addr: String, state: AppState, runtime: Arc<SharedRuntime>) -> Self {
+	pub fn new(bind_addr: String, state: AppState, runtime: SharedRuntime) -> Self {
 		let handle = runtime.handle();
 		Self {
 			bind_addr,

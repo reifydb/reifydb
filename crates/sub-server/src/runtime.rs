@@ -6,26 +6,30 @@
 //! This module provides a centralized tokio runtime that can be shared across
 //! HTTP, WebSocket, and admin subsystems for efficient resource utilization.
 
+use std::sync::Arc;
+
 use tokio::runtime::{Handle, Runtime};
+
+struct SharedRuntimeInner {
+	runtime: Runtime,
+}
 
 /// Shared tokio runtime for all network subsystems.
 ///
-/// Created once at server startup and passed to all subsystems via Handle clones.
+/// Created once at server startup and passed to all subsystems via cloning.
 /// This ensures efficient work-stealing across HTTP, WebSocket, and admin servers.
 ///
 /// # Example
 ///
 /// ```ignore
 /// let runtime = SharedRuntime::new(num_cpus::get());
-/// let handle = runtime.handle();
 ///
-/// // Pass handle to subsystems
-/// let http = HttpSubsystem::new(addr, state, handle.clone());
-/// let ws = WsSubsystem::new(addr, state, handle.clone());
+/// // Pass cloned runtime to subsystems
+/// let http = HttpSubsystem::new(addr, state, runtime.clone());
+/// let ws = WsSubsystem::new(addr, state, runtime.clone());
 /// ```
-pub struct SharedRuntime {
-	runtime: Runtime,
-}
+#[derive(Clone)]
+pub struct SharedRuntime(Arc<SharedRuntimeInner>);
 
 impl SharedRuntime {
 	/// Create a new shared runtime with the specified number of worker threads.
@@ -45,9 +49,9 @@ impl SharedRuntime {
 			.build()
 			.expect("Failed to create tokio runtime");
 
-		Self {
+		Self(Arc::new(SharedRuntimeInner {
 			runtime,
-		}
+		}))
 	}
 
 	/// Get a handle for spawning tasks on this runtime.
@@ -55,7 +59,7 @@ impl SharedRuntime {
 	/// The handle can be cloned and passed to multiple subsystems.
 	/// Tasks spawned via the handle run on the shared runtime's thread pool.
 	pub fn handle(&self) -> Handle {
-		self.runtime.handle().clone()
+		self.0.runtime.handle().clone()
 	}
 
 	/// Block the current thread until the future completes.
@@ -63,7 +67,7 @@ impl SharedRuntime {
 	/// Used during server startup/shutdown from synchronous context.
 	/// Should not be called from within an async context.
 	pub fn block_on<F: std::future::Future>(&self, future: F) -> F::Output {
-		self.runtime.block_on(future)
+		self.0.runtime.block_on(future)
 	}
 
 	/// Spawn a future on this runtime.
@@ -74,7 +78,7 @@ impl SharedRuntime {
 		F: std::future::Future + Send + 'static,
 		F::Output: Send + 'static,
 	{
-		self.runtime.spawn(future)
+		self.0.runtime.spawn(future)
 	}
 }
 

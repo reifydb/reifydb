@@ -3,7 +3,7 @@
 
 //! Factory for creating HTTP subsystem instances.
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
@@ -24,7 +24,7 @@ pub struct HttpConfig {
 	/// Timeout for entire request lifecycle.
 	pub request_timeout: Duration,
 	/// Optional shared runtime. If not provided, a default one will be created.
-	pub runtime: Option<Arc<SharedRuntime>>,
+	pub runtime: Option<SharedRuntime>,
 }
 
 impl std::fmt::Debug for HttpConfig {
@@ -82,7 +82,7 @@ impl HttpConfig {
 	}
 
 	/// Set the shared runtime.
-	pub fn runtime(mut self, runtime: Arc<SharedRuntime>) -> Self {
+	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
 		self.runtime = Some(runtime);
 		self
 	}
@@ -107,7 +107,7 @@ impl SubsystemFactory<StandardCommandTransaction> for HttpSubsystemFactory {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		// Use provided runtime or create a default one
-		let runtime = self.config.runtime.unwrap_or_else(|| Arc::new(SharedRuntime::default()));
+		let runtime = self.config.runtime.unwrap_or_else(SharedRuntime::default);
 
 		let query_config = QueryConfig::new()
 			.query_timeout(self.config.query_timeout)
@@ -115,7 +115,7 @@ impl SubsystemFactory<StandardCommandTransaction> for HttpSubsystemFactory {
 			.max_connections(self.config.max_connections);
 
 		let state = AppState::new(engine, query_config);
-		let subsystem = HttpSubsystem::with_runtime(self.config.bind_addr.clone(), state, runtime);
+		let subsystem = HttpSubsystem::new(self.config.bind_addr.clone(), state, runtime);
 
 		Ok(Box::new(subsystem))
 	}

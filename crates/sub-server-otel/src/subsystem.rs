@@ -16,6 +16,7 @@ use opentelemetry_sdk::trace::{SdkTracerProvider, Tracer as SdkTracer};
 use parking_lot::Mutex;
 use reifydb_core::interface::version::{ComponentType, HasVersion, SystemVersion};
 use reifydb_sub_api::{HealthStatus, Subsystem};
+use reifydb_sub_server::SharedRuntime;
 
 use crate::config::OtelConfig;
 
@@ -53,6 +54,8 @@ use crate::config::OtelConfig;
 pub struct OtelSubsystem {
 	/// Configuration
 	config: OtelConfig,
+	/// The shared runtime (kept alive to prevent premature shutdown).
+	_runtime: Option<SharedRuntime>,
 	/// Flag indicating if the subsystem is running
 	running: Arc<AtomicBool>,
 	/// The tracer provider (held to prevent premature drop)
@@ -65,9 +68,11 @@ impl OtelSubsystem {
 	/// # Arguments
 	///
 	/// * `config` - OpenTelemetry configuration
-	pub fn new(config: OtelConfig) -> Self {
+	/// * `runtime` - Shared runtime (will be kept alive)
+	pub fn new(config: OtelConfig, runtime: SharedRuntime) -> Self {
 		Self {
 			config,
+			_runtime: Some(runtime),
 			running: Arc::new(AtomicBool::new(false)),
 			tracer_provider: Arc::new(Mutex::new(None)),
 		}

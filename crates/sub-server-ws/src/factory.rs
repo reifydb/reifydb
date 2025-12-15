@@ -3,7 +3,7 @@
 
 //! Factory for creating WebSocket subsystem instances.
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use reifydb_core::ioc::IocContainer;
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
@@ -24,7 +24,7 @@ pub struct WsConfig {
 	/// Maximum WebSocket frame size in bytes.
 	pub max_frame_size: usize,
 	/// Optional shared runtime. If not provided, a default one will be created.
-	pub runtime: Option<Arc<SharedRuntime>>,
+	pub runtime: Option<SharedRuntime>,
 }
 
 impl std::fmt::Debug for WsConfig {
@@ -82,7 +82,7 @@ impl WsConfig {
 	}
 
 	/// Set the shared runtime.
-	pub fn runtime(mut self, runtime: Arc<SharedRuntime>) -> Self {
+	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
 		self.runtime = Some(runtime);
 		self
 	}
@@ -107,14 +107,14 @@ impl SubsystemFactory<StandardCommandTransaction> for WsSubsystemFactory {
 		let engine = ioc.resolve::<StandardEngine>()?;
 
 		// Use provided runtime or create a default one
-		let runtime = self.config.runtime.unwrap_or_else(|| Arc::new(SharedRuntime::default()));
+		let runtime = self.config.runtime.unwrap_or_else(SharedRuntime::default);
 
 		let query_config = QueryConfig::new()
 			.query_timeout(self.config.query_timeout)
 			.max_connections(self.config.max_connections);
 
 		let state = AppState::new(engine, query_config);
-		let subsystem = WsSubsystem::with_runtime(self.config.bind_addr.clone(), state, runtime);
+		let subsystem = WsSubsystem::new(self.config.bind_addr.clone(), state, runtime);
 
 		Ok(Box::new(subsystem))
 	}

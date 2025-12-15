@@ -5,6 +5,8 @@
 
 use std::time::Duration;
 
+use reifydb_sub_server::SharedRuntime;
+
 /// OpenTelemetry exporter backend type
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExporterType {
@@ -43,6 +45,9 @@ pub struct OtelConfig {
 
 	/// Export timeout
 	pub export_timeout: Duration,
+
+	/// Optional shared runtime. If not provided, a default one will be created.
+	pub runtime: Option<SharedRuntime>,
 }
 
 impl std::fmt::Debug for OtelConfig {
@@ -57,6 +62,7 @@ impl std::fmt::Debug for OtelConfig {
 			.field("scheduled_delay", &self.scheduled_delay)
 			.field("max_queue_size", &self.max_queue_size)
 			.field("export_timeout", &self.export_timeout)
+			.field("runtime", &self.runtime.as_ref().map(|_| "SharedRuntime"))
 			.finish()
 	}
 }
@@ -73,6 +79,7 @@ impl Default for OtelConfig {
 			scheduled_delay: Duration::from_millis(5000),
 			max_queue_size: 2048,
 			export_timeout: Duration::from_secs(30),
+			runtime: None,
 		}
 	}
 }
@@ -137,8 +144,9 @@ impl OtelConfig {
 		self
 	}
 
-	/// Helper for common OTLP setup (works with Jaeger, Collector, etc.)
-	pub fn for_otlp(endpoint: impl Into<String>) -> Self {
-		Self::default().endpoint(endpoint)
+	/// Set the shared runtime.
+	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
+		self.runtime = Some(runtime);
+		self
 	}
 }

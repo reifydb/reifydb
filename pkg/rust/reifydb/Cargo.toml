@@ -41,10 +41,10 @@ libc = { workspace = true }
 default = []
 
 # Subsystem features
-sub_server_admin = ["dep:reifydb-sub-server-admin", "sub_server"]
 sub_flow = ["dep:reifydb-sub-flow"]
 sub_tracing = ["dep:reifydb-sub-tracing"]
 sub_server = ["dep:reifydb-sub-server"]
+sub_server_admin = ["dep:reifydb-sub-server-admin", "sub_server"]
 sub_server_http = ["dep:reifydb-sub-server-http", "sub_server"]
 sub_server_otel = ["dep:reifydb-sub-server-otel", "dep:opentelemetry", "dep:tracing-opentelemetry", "sub_server"]
 sub_server_ws = ["dep:reifydb-sub-server-ws", "sub_server"]

@@ -1599,6 +1599,7 @@ dependencies = [
  "reifydb-core",
  "reifydb-engine",
  "reifydb-sub-api",
+ "reifydb-sub-server",
  "reifydb-type",
  "tokio",
  "tracing",

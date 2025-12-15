@@ -9,6 +9,8 @@ use reifydb_engine::{StandardCommandTransaction, function::FunctionsBuilder};
 use reifydb_sub_api::SubsystemFactory;
 #[cfg(feature = "sub_flow")]
 use reifydb_sub_flow::FlowBuilder;
+#[cfg(feature = "sub_server_otel")]
+use reifydb_sub_server::SharedRuntime;
 #[cfg(feature = "sub_server_admin")]
 use reifydb_sub_server_admin::{AdminConfig, AdminSubsystemFactory};
 #[cfg(feature = "sub_server_http")]
@@ -136,7 +138,8 @@ impl ServerBuilder {
 		use reifydb_sub_api::Subsystem;
 
 		// Step 1: Create and start the OtelSubsystem early
-		let mut otel_subsystem = OtelSubsystem::new(otel_config);
+		let runtime = otel_config.runtime.clone().unwrap_or_else(SharedRuntime::default);
+		let mut otel_subsystem = OtelSubsystem::new(otel_config, runtime);
 		otel_subsystem.start().expect("Failed to start OpenTelemetry subsystem");
 
 		// Step 2: Get the concrete tracer from the initialized provider

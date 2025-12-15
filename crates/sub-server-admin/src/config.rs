@@ -3,7 +3,7 @@
 
 //! Configuration for the admin server subsystem.
 
-use std::{sync::Arc, time::Duration};
+use std::time::Duration;
 
 use reifydb_sub_server::SharedRuntime;
 
@@ -21,7 +21,7 @@ pub struct AdminConfig {
 	/// Authentication token (if auth is required).
 	pub auth_token: Option<String>,
 	/// Optional shared runtime. If not provided, a default one will be created.
-	pub runtime: Option<Arc<SharedRuntime>>,
+	pub runtime: Option<SharedRuntime>,
 }
 
 impl std::fmt::Debug for AdminConfig {
@@ -82,7 +82,7 @@ impl AdminConfig {
 	}
 
 	/// Set the shared runtime.
-	pub fn runtime(mut self, runtime: Arc<SharedRuntime>) -> Self {
+	pub fn runtime(mut self, runtime: SharedRuntime) -> Self {
 		self.runtime = Some(runtime);
 		self
 	}
