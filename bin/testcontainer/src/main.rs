@@ -9,8 +9,7 @@ use reifydb::{
 };
 use tracing::{info, info_span};
 
-#[tokio::main]
-async fn main() {
+fn main() {
 	// Build database with integrated OpenTelemetry
 	let mut db = server::memory_optimistic()
 		.with_http(HttpConfig::default())
@@ -44,10 +43,4 @@ async fn main() {
 	println!("Press Ctrl+C to stop...");
 
 	db.start_and_await_signal().unwrap();
-
-	// Give time for batch export to flush
-	println!("\nShutting down, flushing traces...");
-	tokio::time::sleep(Duration::from_secs(2)).await;
-
-	println!("Database stopped successfully!");
 }
