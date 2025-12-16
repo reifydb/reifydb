@@ -28,6 +28,7 @@ use reifydb_type::{
 	},
 	return_error,
 };
+use tracing::instrument;
 
 use crate::{
 	expression::{AliasExpression, Expression, VariableExpression},
@@ -43,6 +44,7 @@ use crate::{
 
 struct Compiler {}
 
+#[instrument(level = "trace", skip(rx, logical))]
 pub fn compile_physical<'a>(
 	rx: &mut impl QueryTransaction,
 	logical: Vec<LogicalPlan<'a>>,

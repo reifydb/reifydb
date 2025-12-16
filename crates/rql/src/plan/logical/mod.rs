@@ -23,6 +23,7 @@ use reifydb_core::{
 	return_error,
 };
 use reifydb_type::{Fragment, diagnostic::ast::unsupported_ast_node};
+use tracing::instrument;
 
 use crate::{
 	ast::{
@@ -43,6 +44,7 @@ use crate::{
 
 struct Compiler {}
 
+#[instrument(level = "trace", skip(tx, ast))]
 pub fn compile_logical<'a, 't, T: CatalogQueryTransaction>(
 	tx: &'t mut T,
 	ast: AstStatement<'a>,

@@ -197,7 +197,10 @@ impl<T: Clone + PartialEq> IntoIterator for CowVec<T> {
 	type IntoIter = std::vec::IntoIter<T>;
 
 	fn into_iter(self) -> Self::IntoIter {
-		(*self.inner).clone().into_iter()
+		match Arc::try_unwrap(self.inner) {
+			Ok(vec) => vec.into_iter(),
+			Err(arc) => (*arc).clone().into_iter(),
+		}
 	}
 }
 

@@ -13,6 +13,7 @@ use reifydb_rql::plan::physical::InsertRingBufferNode;
 use reifydb_type::{
 	Fragment, IntoFragment, RowNumber, Type, Value, diagnostic::catalog::ring_buffer_not_found, internal_error,
 };
+use tracing::{debug_span, instrument};
 
 use super::coerce::coerce_value_to_column_type;
 use crate::{
@@ -23,6 +24,7 @@ use crate::{
 };
 
 impl Executor {
+	#[instrument(name = "insert_ring_buffer", level = "trace", skip_all)]
 	pub(crate) fn insert_ring_buffer<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,
@@ -89,11 +91,13 @@ impl Executor {
 
 		// Process all input batches
 		let mut mutable_context = (*execution_context).clone();
+		let _batch_loop_span = debug_span!("insert_batch_loop").entered();
 		while let Some(Batch {
 			columns,
 		}) = input_node.next(&mut std_txn, &mut mutable_context)?
 		{
 			let row_count = columns.row_count();
+			let _rows_span = debug_span!("process_rows", row_count).entered();
 
 			for row_idx in 0..row_count {
 				let mut row = layout.allocate();
@@ -133,6 +137,7 @@ impl Executor {
 
 					// Dictionary encoding: if column has a dictionary binding, encode the value
 					let value = if let Some(dict_id) = rb_column.dictionary_id {
+						let _dict_span = debug_span!("dictionary_encode").entered();
 						let dictionary =
 							CatalogStore::find_dictionary(std_txn.command_mut(), dict_id)?
 								.ok_or_else(|| {
@@ -200,17 +205,23 @@ impl Executor {
 				}
 
 				// Get next row number from sequence (monotonically increasing)
-				let row_number = RowSequence::next_row_number_for_ring_buffer(
-					std_txn.command_mut(),
-					ring_buffer.id,
-				)?;
+				let row_number = {
+					let _seq_span = debug_span!("allocate_row_number").entered();
+					RowSequence::next_row_number_for_ring_buffer(
+						std_txn.command_mut(),
+						ring_buffer.id,
+					)?
+				};
 
 				// Store the row
-				std_txn.command_mut().insert_into_ring_buffer_at(
-					ring_buffer.clone(),
-					row_number,
-					row,
-				)?;
+				{
+					let _store_span = debug_span!("store_row").entered();
+					std_txn.command_mut().insert_into_ring_buffer_at(
+						ring_buffer.clone(),
+						row_number,
+						row,
+					)?;
+				}
 
 				// Update metadata
 				if metadata.is_empty() {
