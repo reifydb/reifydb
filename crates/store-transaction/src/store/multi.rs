@@ -1,7 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::ops::{Bound, RangeBounds};
+use std::{
+	collections::HashMap,
+	ops::{Bound, RangeBounds},
+};
 
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
@@ -13,9 +16,7 @@ use tracing::instrument;
 use super::{
 	StandardTransactionStore,
 	router::classify_key,
-	version_manager::{
-		VersionedGetResult, encode_versioned_key, get_at_version, get_latest_version, put_at_version,
-	},
+	version_manager::{VersionedGetResult, encode_versioned_key, get_at_version, get_latest_version},
 };
 use crate::{
 	MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionIter, MultiVersionRange,
@@ -155,23 +156,31 @@ impl MultiVersionCommit for StandardTransactionStore {
 			None
 		})?;
 
-		// Process each optimized delta and store in primitive storage
+		// Batch deltas by table for efficient storage writes
+		let mut batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();
+
 		for delta in optimized_deltas.iter() {
 			let table = classify_key(delta.key());
+			let versioned_key = encode_versioned_key(delta.key().as_ref(), version);
 
-			match delta {
+			let entry = match delta {
 				Delta::Set {
-					key,
 					values,
-				} => {
-					put_at_version(storage, table, key.as_ref(), version, Some(values.as_ref()))?;
-				}
+					..
+				} => (versioned_key, Some(values.as_ref().to_vec())),
 				Delta::Remove {
-					key,
-				} => {
-					put_at_version(storage, table, key.as_ref(), version, None)?;
-				}
-			}
+					..
+				} => (versioned_key, None),
+			};
+
+			batches.entry(table).or_default().push(entry);
+		}
+
+		// Write each batch to storage
+		for (table, entries) in batches {
+			let refs: Vec<(&[u8], Option<&[u8]>)> =
+				entries.iter().map(|(k, v)| (k.as_slice(), v.as_deref())).collect();
+			storage.put(table, &refs)?;
 		}
 
 		// Store CDC if there are any changes
@@ -184,7 +193,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 
 			let encoded = encode_internal_cdc(&internal_cdc)?;
 			let cdc_key = version.0.to_be_bytes();
-			storage.put(TableId::Cdc, &cdc_key, Some(encoded.as_ref()))?;
+			storage.put(TableId::Cdc, &[(&cdc_key[..], Some(encoded.as_ref()))])?;
 		}
 
 		Ok(())
