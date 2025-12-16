@@ -14,7 +14,6 @@ use reifydb_core::{
 	key::Key,
 };
 use reifydb_type::diagnostic::internal::internal;
-use tracing::instrument;
 
 pub trait CdcStore: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
 
@@ -79,7 +78,6 @@ pub(crate) struct InternalCdcSequencedChange {
 }
 
 /// Generate an internal CDC change from a Delta
-#[instrument(level = "trace", skip(delta), fields(has_pre_version = pre_version.is_some()))]
 fn generate_internal_cdc_change(
 	delta: Delta,
 	pre_version: Option<CommitVersion>,
@@ -139,7 +137,6 @@ fn generate_internal_cdc_change(
 /// All cancellation (Insert+Delete) and coalescing (Update+Update) has already been done.
 /// This function converts each optimized delta to the appropriate CDC change, with one
 /// exception: it collapses Delete→Insert patterns in the same transaction into just Insert.
-#[instrument(level = "debug", skip(deltas, get_storage_version), fields(change_count))]
 pub(crate) fn process_deltas_for_cdc<F>(
 	deltas: impl IntoIterator<Item = Delta>,
 	version: CommitVersion,
@@ -205,6 +202,5 @@ where
 		}
 	}
 
-	tracing::Span::current().record("change_count", cdc_changes.len());
 	Ok(cdc_changes)
 }
