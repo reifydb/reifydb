@@ -20,6 +20,7 @@ mod namespaces;
 mod operator_retention_policies;
 mod primary_key_columns;
 mod primary_keys;
+mod ring_buffers;
 mod sequence;
 mod source_retention_policies;
 mod tables;
@@ -43,6 +44,7 @@ use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
+use ring_buffers::ring_buffers;
 use sequence::sequences;
 use source_retention_policies::source_retention_policies;
 use tables::tables;
@@ -173,6 +175,18 @@ pub mod ids {
 			pub const SOURCE_ID: ColumnId = ColumnId(2);
 
 			pub const ALL: [ColumnId; 2] = [ID, SOURCE_ID];
+		}
+
+		pub mod ring_buffers {
+			use reifydb_core::interface::ColumnId;
+
+			pub const ID: ColumnId = ColumnId(1);
+			pub const NAMESPACE_ID: ColumnId = ColumnId(2);
+			pub const NAME: ColumnId = ColumnId(3);
+			pub const CAPACITY: ColumnId = ColumnId(4);
+			pub const PRIMARY_KEY_ID: ColumnId = ColumnId(5);
+
+			pub const ALL: [ColumnId; 5] = [ID, NAMESPACE_ID, NAME, CAPACITY, PRIMARY_KEY_ID];
 		}
 
 		pub mod primary_key_columns {
@@ -333,8 +347,9 @@ pub mod ids {
 		pub const FLOW_NODE_TYPES: TableVirtualId = TableVirtualId(20);
 		pub const FLOW_OPERATOR_INPUTS: TableVirtualId = TableVirtualId(21);
 		pub const FLOW_OPERATOR_OUTPUTS: TableVirtualId = TableVirtualId(22);
+		pub const RING_BUFFERS: TableVirtualId = TableVirtualId(23);
 
-		pub const ALL: [TableVirtualId; 22] = [
+		pub const ALL: [TableVirtualId; 23] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -357,6 +372,7 @@ pub mod ids {
 			FLOW_NODE_TYPES,
 			FLOW_OPERATOR_INPUTS,
 			FLOW_OPERATOR_OUTPUTS,
+			RING_BUFFERS,
 		];
 	}
 }
@@ -491,5 +507,10 @@ impl SystemCatalog {
 	/// Get the flow_operator_outputs virtual table definition
 	pub fn get_system_flow_operator_outputs_table_def() -> Arc<TableVirtualDef> {
 		flow_operator_outputs()
+	}
+
+	/// Get the ring_buffers virtual table definition
+	pub fn get_system_ring_buffers_table_def() -> Arc<TableVirtualDef> {
+		ring_buffers()
 	}
 }

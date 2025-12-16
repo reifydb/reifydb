@@ -39,8 +39,8 @@ use crate::{
 		system::{
 			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, FlowEdges, FlowNodeTypes, FlowNodes,
 			FlowOperatorInputs, FlowOperatorOutputs, FlowOperators, Flows, Namespaces,
-			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, Sequences, SourceRetentionPolicies,
-			Tables, TablesVirtual, Types, Versions, Views,
+			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, RingBuffers, Sequences,
+			SourceRetentionPolicies, Tables, TablesVirtual, Types, Versions, Views,
 		},
 	},
 };
@@ -272,6 +272,7 @@ pub(crate) fn compile<'a>(
 					"flow_operator_outputs" => Box::new(FlowOperatorOutputs::new(
 						context.executor.flow_operator_store.clone(),
 					)),
+					"ringbuffers" => Box::new(RingBuffers::new()),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {
