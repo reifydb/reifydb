@@ -3,13 +3,11 @@
 
 use reifydb_core::{CommitVersion, CowVec, EncodedKey, return_internal_error, value::encoded::EncodedValues};
 use reifydb_type::Blob;
-use tracing::instrument;
 
 use super::{InternalCdc, InternalCdcChange, InternalCdcSequencedChange, layout::*};
 
 /// Encode an internal CdcTransaction to a more memory-efficient format
 /// This stores shared metadata once and then encodes all changes compactly
-#[instrument(level = "trace", skip(transaction), fields(change_count = transaction.changes.len()))]
 pub(crate) fn encode_internal_cdc(transaction: &InternalCdc) -> crate::Result<EncodedValues> {
 	let mut values = CDC_TRANSACTION_LAYOUT.allocate();
 
