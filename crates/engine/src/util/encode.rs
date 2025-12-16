@@ -27,9 +27,6 @@ pub fn encode_value(layout: &EncodedValuesLayout, row: &mut EncodedValues, idx: 
 		Value::DateTime(v) => layout.set_datetime(row, idx, *v),
 		Value::Time(v) => layout.set_time(row, idx, *v),
 		Value::Duration(v) => layout.set_duration(row, idx, *v),
-		Value::RowNumber(_) => {
-			// Row numbers are not stored in the encoded row - they are managed separately
-		}
 		Value::IdentityId(v) => layout.set_identity_id(row, idx, *v),
 		Value::Uuid4(v) => layout.set_uuid4(row, idx, *v),
 		Value::Uuid7(v) => layout.set_uuid7(row, idx, *v),

@@ -6,8 +6,8 @@ use reifydb_type::{
 	Time, Uuid7, err, parse_datetime, parse_uuid4, parse_uuid7,
 	util::hex,
 	value::container::{
-		BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, RowNumberContainer,
-		TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
+		BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer, TemporalContainer,
+		UndefinedContainer, Utf8Container, UuidContainer,
 	},
 };
 
@@ -386,19 +386,6 @@ fn convert_column_to_data(target: Type, data: Vec<String>) -> FrameColumnData {
 				})
 				.unzip();
 			FrameColumnData::Utf8(Utf8Container::new(values, BitVec::from_slice(&defined)))
-		}
-		Type::RowNumber => {
-			let (values, defined): (Vec<_>, Vec<_>) = data
-				.into_iter()
-				.map(|s| {
-					if s == "⟪undefined⟫" {
-						(RowNumber::new(0), false)
-					} else {
-						(RowNumber::new(s.parse::<u64>().unwrap_or(0)), true)
-					}
-				})
-				.unzip();
-			FrameColumnData::RowNumber(RowNumberContainer::new(values, BitVec::from_slice(&defined)))
 		}
 		Type::Uuid4 => {
 			let (values, defined): (Vec<_>, Vec<_>) = data

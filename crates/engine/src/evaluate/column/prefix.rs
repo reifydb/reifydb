@@ -318,12 +318,6 @@ impl StandardColumnEvaluator {
 				}
 				_ => unimplemented!(),
 			},
-			ColumnData::RowNumber(_) => match prefix.operator {
-				PrefixOperator::Not(_) => {
-					err!(not_can_not_applied_to_number(prefix.full_fragment_owned()))
-				}
-				_ => unimplemented!(),
-			},
 			ColumnData::IdentityId(_) => match prefix.operator {
 				PrefixOperator::Not(_) => {
 					err!(not_can_not_applied_to_uuid(prefix.full_fragment_owned()))

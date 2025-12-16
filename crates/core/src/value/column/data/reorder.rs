@@ -28,7 +28,6 @@ impl ColumnData {
 			ColumnData::Time(container) => container.reorder(indices),
 			ColumnData::Duration(container) => container.reorder(indices),
 			ColumnData::Undefined(container) => container.reorder(indices),
-			ColumnData::RowNumber(container) => container.reorder(indices),
 			ColumnData::IdentityId(container) => container.reorder(indices),
 			ColumnData::Uuid4(container) => container.reorder(indices),
 			ColumnData::Uuid7(container) => container.reorder(indices),

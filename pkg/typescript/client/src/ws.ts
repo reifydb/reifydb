@@ -237,12 +237,7 @@ export class WsClient {
                     // Check if it's a Value instance by checking for valueOf method
                     if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
                         const rawValue = (value as any).valueOf();
-                        // Special handling for RowNumber - ensure it's returned as bigint
-                        if (propertySchema.type === 'RowNumber' && typeof rawValue === 'number') {
-                            transformedRow[key] = BigInt(rawValue);
-                        } else {
-                            transformedRow[key] = rawValue;
-                        }
+                        transformedRow[key] = rawValue;
                     } else {
                         transformedRow[key] = value;
                     }
@@ -262,12 +257,7 @@ export class WsClient {
             // Single primitive value - extract from Value object if needed
             // Check if it's a Value instance by checking for valueOf method
             if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                const rawValue = row.valueOf();
-                // Special handling for RowNumber - ensure it's returned as bigint
-                if (resultSchema.type === 'RowNumber' && typeof rawValue === 'number') {
-                    return BigInt(rawValue);
-                }
-                return rawValue;
+                return row.valueOf();
             }
             return row;
         }

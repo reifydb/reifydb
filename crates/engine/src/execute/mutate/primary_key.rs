@@ -133,10 +133,6 @@ pub fn encode_primary_key(
 				let val = layout.get_identity_id(row, table_idx);
 				index_layout.set_identity_id(&mut index_key, pk_idx, val);
 			}
-			Type::RowNumber => {
-				// RowNumber shouldn't be in a primary key
-				panic!("RowNumber columns cannot be used in primary keys");
-			}
 			Type::Int => {
 				// Int columns in primary keys not yet
 				// supported

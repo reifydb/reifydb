@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, RowNumber, Time, Uint, Uuid4, Uuid7};
+use reifydb_type::{Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, Time, Uint, Uuid4, Uuid7};
 
 use crate::{
 	BitVec,
@@ -9,7 +9,7 @@ use crate::{
 		column::ColumnData,
 		container::{
 			AnyContainer, BlobContainer, BoolContainer, IdentityIdContainer, NumberContainer,
-			RowNumberContainer, TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
+			TemporalContainer, UndefinedContainer, Utf8Container, UuidContainer,
 		},
 	},
 };
@@ -804,45 +804,6 @@ impl ColumnData {
 			container: BlobContainer::new(data, bitvec),
 			max_bytes: MaxBytes::MAX,
 		}
-	}
-
-	pub fn row_number(row_numbers: impl IntoIterator<Item = RowNumber>) -> Self {
-		let data = row_numbers.into_iter().collect::<Vec<_>>();
-		ColumnData::RowNumber(RowNumberContainer::from_vec(data))
-	}
-
-	pub fn row_number_optional(row_numbers: impl IntoIterator<Item = Option<RowNumber>>) -> Self {
-		let mut values = Vec::new();
-		let mut bitvec = Vec::new();
-
-		for opt in row_numbers {
-			match opt {
-				Some(value) => {
-					values.push(value);
-					bitvec.push(true);
-				}
-				None => {
-					values.push(RowNumber::default());
-					bitvec.push(false);
-				}
-			}
-		}
-
-		ColumnData::RowNumber(RowNumberContainer::new(values, BitVec::from(bitvec)))
-	}
-
-	pub fn row_number_with_capacity(capacity: usize) -> Self {
-		ColumnData::RowNumber(RowNumberContainer::with_capacity(capacity))
-	}
-
-	pub fn row_number_with_bitvec(
-		row_numbers: impl IntoIterator<Item = RowNumber>,
-		bitvec: impl Into<BitVec>,
-	) -> Self {
-		let data = row_numbers.into_iter().collect::<Vec<_>>();
-		let bitvec = bitvec.into();
-		assert_eq!(bitvec.len(), data.len());
-		ColumnData::RowNumber(RowNumberContainer::new(data, bitvec))
 	}
 
 	pub fn identity_id(identity_ids: impl IntoIterator<Item = IdentityId>) -> Self {

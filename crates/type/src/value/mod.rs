@@ -94,8 +94,6 @@ pub enum Value {
 	Time(Time),
 	/// A duration representing a duration
 	Duration(Duration),
-	/// A encoded number (8-byte unsigned integer)
-	RowNumber(RowNumber),
 	/// An identity identifier (UUID v7)
 	IdentityId(IdentityId),
 	/// A UUID version 4 (random)
@@ -191,10 +189,6 @@ impl Value {
 		Value::Duration(v.into())
 	}
 
-	pub fn row_number(v: impl Into<RowNumber>) -> Self {
-		Value::RowNumber(v.into())
-	}
-
 	pub fn identity_id(v: impl Into<IdentityId>) -> Self {
 		Value::IdentityId(v.into())
 	}
@@ -237,7 +231,6 @@ impl PartialOrd for Value {
 			(Value::DateTime(l), Value::DateTime(r)) => l.partial_cmp(r),
 			(Value::Time(l), Value::Time(r)) => l.partial_cmp(r),
 			(Value::Duration(l), Value::Duration(r)) => l.partial_cmp(r),
-			(Value::RowNumber(l), Value::RowNumber(r)) => l.partial_cmp(r),
 			(Value::IdentityId(l), Value::IdentityId(r)) => l.partial_cmp(r),
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.partial_cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.partial_cmp(r),
@@ -278,7 +271,6 @@ impl Ord for Value {
 			(Value::DateTime(l), Value::DateTime(r)) => l.cmp(r),
 			(Value::Time(l), Value::Time(r)) => l.cmp(r),
 			(Value::Duration(l), Value::Duration(r)) => l.cmp(r),
-			(Value::RowNumber(l), Value::RowNumber(r)) => l.cmp(r),
 			(Value::IdentityId(l), Value::IdentityId(r)) => l.cmp(r),
 			(Value::Uuid4(l), Value::Uuid4(r)) => l.cmp(r),
 			(Value::Uuid7(l), Value::Uuid7(r)) => l.cmp(r),
@@ -314,7 +306,6 @@ impl Display for Value {
 			Value::DateTime(value) => Display::fmt(value, f),
 			Value::Time(value) => Display::fmt(value, f),
 			Value::Duration(value) => Display::fmt(value, f),
-			Value::RowNumber(value) => Display::fmt(value, f),
 			Value::IdentityId(value) => Display::fmt(value, f),
 			Value::Uuid4(value) => Display::fmt(value, f),
 			Value::Uuid7(value) => Display::fmt(value, f),
@@ -350,7 +341,6 @@ impl Value {
 			Value::DateTime(_) => Type::DateTime,
 			Value::Time(_) => Type::Time,
 			Value::Duration(_) => Type::Duration,
-			Value::RowNumber(_) => Type::RowNumber,
 			Value::IdentityId(_) => Type::IdentityId,
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,

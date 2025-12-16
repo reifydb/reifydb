@@ -58,7 +58,6 @@ impl StandardColumnEvaluator {
 			Value::Uuid4(u) => ColumnData::uuid4(vec![*u; ctx.row_count]),
 			Value::Uuid7(u) => ColumnData::uuid7(vec![*u; ctx.row_count]),
 			Value::Blob(b) => ColumnData::blob(vec![b.clone(); ctx.row_count]),
-			Value::RowNumber(id) => ColumnData::row_number(vec![*id; ctx.row_count]),
 			Value::IdentityId(id) => ColumnData::identity_id(vec![*id; ctx.row_count]),
 			Value::Int(bi) => ColumnData::int(vec![bi.clone(); ctx.row_count]),
 			Value::Uint(bu) => ColumnData::uint(vec![bu.clone(); ctx.row_count]),

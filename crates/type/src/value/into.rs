@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the MIT, see license.md file
 
-use crate::{Blob, Date, DateTime, Duration, IdentityId, OrderedF32, OrderedF64, RowNumber, Time, Uuid4, Uuid7, Value};
+use crate::{Blob, Date, DateTime, Duration, IdentityId, OrderedF32, OrderedF64, Time, Uuid4, Uuid7, Value};
 
 pub trait IntoValue {
 	fn into_value(self) -> Value;
@@ -154,12 +154,6 @@ impl IntoValue for Time {
 impl IntoValue for Duration {
 	fn into_value(self) -> Value {
 		Value::Duration(self)
-	}
-}
-
-impl IntoValue for RowNumber {
-	fn into_value(self) -> Value {
-		Value::RowNumber(self)
 	}
 }
 

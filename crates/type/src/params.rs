@@ -9,7 +9,7 @@ use serde::{
 };
 
 use crate::{
-	Blob, BorrowedFragment, OrderedF32, OrderedF64, RowNumber, Type, Value, parse_bool, parse_date, parse_datetime,
+	Blob, BorrowedFragment, OrderedF32, OrderedF64, Type, Value, parse_bool, parse_date, parse_datetime,
 	parse_decimal, parse_duration, parse_float, parse_time, parse_uuid4, parse_uuid7,
 	value::{
 		IdentityId,
@@ -125,9 +125,6 @@ fn parse_typed_value(type_str: &str, value_val: &serde_json::Value) -> Result<Va
 		Type::DateTime => parse_datetime(fragment).map(Value::DateTime).unwrap_or(Value::Undefined),
 		Type::Time => parse_time(fragment).map(Value::Time).unwrap_or(Value::Undefined),
 		Type::Duration => parse_duration(fragment).map(Value::Duration).unwrap_or(Value::Undefined),
-		Type::RowNumber => parse_primitive_uint::<u64>(fragment)
-			.map(|id| Value::RowNumber(RowNumber::from(id)))
-			.unwrap_or(Value::Undefined),
 		Type::Uuid4 => parse_uuid4(fragment).map(Value::Uuid4).unwrap_or(Value::Undefined),
 		Type::Uuid7 => parse_uuid7(fragment).map(Value::Uuid7).unwrap_or(Value::Undefined),
 		Type::IdentityId => parse_uuid7(fragment)

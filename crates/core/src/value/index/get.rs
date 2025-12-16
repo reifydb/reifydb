@@ -267,7 +267,7 @@ impl EncodedIndexLayout {
 
 	pub fn get_row_number(&self, key: &EncodedIndexKey, index: usize) -> u64 {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::RowNumber);
+		debug_assert_eq!(field.value, Type::Uint8);
 
 		let mut bytes = [0u8; 8];
 		unsafe {
@@ -886,7 +886,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::RowNumber], &[SortDirection::Asc]).unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -904,7 +904,7 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::RowNumber], &[SortDirection::Desc]).unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Desc]).unwrap();
 			let mut key1 = layout.allocate_key();
 			let mut key2 = layout.allocate_key();
 			let mut key3 = layout.allocate_key();
@@ -990,7 +990,7 @@ mod tests {
 		#[test]
 		fn test_mixed_directions() {
 			let layout = EncodedIndexLayout::new(
-				&[Type::Int4, Type::Uint8, Type::RowNumber],
+				&[Type::Int4, Type::Uint8, Type::Uint8],
 				&[SortDirection::Desc, SortDirection::Asc, SortDirection::Asc],
 			)
 			.unwrap();

@@ -28,7 +28,6 @@ impl ColumnData {
 			ColumnData::Time(container) => container.push_undefined(),
 			ColumnData::Duration(container) => container.push_undefined(),
 			ColumnData::Undefined(container) => container.push_undefined(),
-			ColumnData::RowNumber(container) => container.push_undefined(),
 			ColumnData::IdentityId(container) => container.push_undefined(),
 			ColumnData::Uuid4(container) => container.push_undefined(),
 			ColumnData::Uuid7(container) => container.push_undefined(),

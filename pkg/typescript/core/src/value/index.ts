@@ -23,7 +23,6 @@ export {Uint2Value} from './uint2';
 export {Uint4Value} from './uint4';
 export {Uint8Value} from './uint8';
 export {Uint16Value} from './uint16';
-export {RowNumberValue} from './rownumber';
 export {UndefinedValue} from './undefined';
 export {Utf8Value} from './utf8';
 export {Uuid4Value} from './uuid4';
@@ -41,7 +40,6 @@ export type Type =
     | "Date" | "DateTime" | "Time" | "Duration"
     | "Uuid4" | "Uuid7"
     | "Undefined"
-    | "RowNumber"
     | "IdentityId";
 
 export interface TypeValuePair {

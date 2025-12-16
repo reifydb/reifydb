@@ -155,10 +155,6 @@ impl<'a> Columns<'a> {
 						BitVec::repeat(size, false),
 					),
 					Type::Undefined => column.data().clone(),
-					Type::RowNumber => ColumnData::row_number_with_bitvec(
-						vec![Default::default(); size],
-						BitVec::repeat(size, false),
-					),
 					Type::IdentityId => ColumnData::identity_id_with_bitvec(
 						vec![Default::default(); size],
 						BitVec::repeat(size, false),
@@ -475,7 +471,7 @@ impl<'a> Columns<'a> {
 #[cfg(test)]
 mod tests {
 	mod columns {
-		use reifydb_type::{RowNumber, Uuid4, Uuid7};
+		use reifydb_type::{Uuid4, Uuid7};
 		use uuid::{Timestamp, Uuid};
 
 		use crate::value::column::{Column, ColumnData, Columns};
@@ -729,26 +725,6 @@ mod tests {
 			assert_eq!(
 				test_instance1[0].data(),
 				&ColumnData::uuid7_with_bitvec([uuid1, uuid2, uuid3, uuid4], [true, true, true, false])
-			);
-		}
-
-		#[test]
-		fn test_row_number() {
-			let mut test_instance1 = Columns::new(vec![Column::row_number([RowNumber(1), RowNumber(2)])]);
-
-			let test_instance2 = Columns::new(vec![Column::row_number_with_bitvec(
-				[RowNumber(3), RowNumber(4)],
-				[true, false],
-			)]);
-
-			test_instance1.append_columns(test_instance2).unwrap();
-
-			assert_eq!(
-				test_instance1[0].data(),
-				&ColumnData::row_number_with_bitvec(
-					[RowNumber(1), RowNumber(2), RowNumber(3), RowNumber(4)],
-					[true, true, true, false]
-				)
 			);
 		}
 

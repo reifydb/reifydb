@@ -43,8 +43,7 @@ impl<'a> TableVirtual<'a> for Types {
 			return Ok(None);
 		}
 
-		// There are 28 types (0..=27)
-		const TYPE_COUNT: usize = 28;
+		const TYPE_COUNT: usize = 27;
 
 		let mut ids = ColumnData::uint1_with_capacity(TYPE_COUNT);
 		let mut names = ColumnData::utf8_with_capacity(TYPE_COUNT);
