@@ -66,12 +66,7 @@ pub trait PrimitiveStorage: Send + Sync + Clone + 'static {
 	///
 	/// Each entry is (key, optional_value). None value = tombstone/deletion.
 	/// All entries go to the specified table.
-	fn put_batch(&self, table: TableId, entries: &[(&[u8], Option<&[u8]>)]) -> Result<()>;
-
-	/// Convenience method to put a single entry.
-	fn put(&self, table: TableId, key: &[u8], value: Option<&[u8]>) -> Result<()> {
-		self.put_batch(table, &[(key, value)])
-	}
+	fn put(&self, table: TableId, entries: &[(&[u8], Option<&[u8]>)]) -> Result<()>;
 
 	/// Iterate entries in key order (ascending).
 	fn range(

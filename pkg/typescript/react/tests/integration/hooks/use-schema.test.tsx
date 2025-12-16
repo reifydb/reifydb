@@ -276,7 +276,6 @@ describe('useSchema Hook', () => {
         expect(columnTypeMap.get('col_uuid4')).toBe('Uuid4');
         expect(columnTypeMap.get('col_uuid7')).toBe('Uuid7');
         // col_identity_id: IDENTITY_ID - not yet supported
-        // col_rownumber: ROWNUMBER - not yet supported
     });
 
     it('should correctly map boolean column type', async () => {

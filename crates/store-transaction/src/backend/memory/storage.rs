@@ -99,7 +99,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(level = "debug", skip(self, entries), fields(table = ?table, entry_count = entries.len()))]
-	fn put_batch(&self, table: TableId, entries: &[(&[u8], Option<&[u8]>)]) -> Result<()> {
+	fn put(&self, table: TableId, entries: &[(&[u8], Option<&[u8]>)]) -> Result<()> {
 		let (respond_to, receiver) = mpsc::channel();
 
 		let owned_entries: Vec<(Vec<u8>, Option<Vec<u8>>)> =
@@ -216,7 +216,7 @@ mod tests {
 		let storage = MemoryPrimitiveStorage::new();
 
 		// Put and get
-		storage.put(TableId::Multi, b"key1", Some(b"value1")).unwrap();
+		storage.put(TableId::Multi, &[(b"key1".as_slice(), Some(b"value1".as_slice()))]).unwrap();
 		let value = storage.get(TableId::Multi, b"key1").unwrap();
 		assert_eq!(value, Some(b"value1".to_vec()));
 
@@ -225,7 +225,7 @@ mod tests {
 		assert!(!storage.contains(TableId::Multi, b"nonexistent").unwrap());
 
 		// Delete (tombstone)
-		storage.put(TableId::Multi, b"key1", None).unwrap();
+		storage.put(TableId::Multi, &[(b"key1".as_slice(), None)]).unwrap();
 		assert!(!storage.contains(TableId::Multi, b"key1").unwrap());
 	}
 
@@ -233,8 +233,8 @@ mod tests {
 	fn test_separate_tables() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		storage.put(TableId::Multi, b"key", Some(b"multi")).unwrap();
-		storage.put(TableId::Single, b"key", Some(b"single")).unwrap();
+		storage.put(TableId::Multi, &[(b"key".as_slice(), Some(b"multi".as_slice()))]).unwrap();
+		storage.put(TableId::Single, &[(b"key".as_slice(), Some(b"single".as_slice()))]).unwrap();
 
 		assert_eq!(storage.get(TableId::Multi, b"key").unwrap(), Some(b"multi".to_vec()));
 		assert_eq!(storage.get(TableId::Single, b"key").unwrap(), Some(b"single".to_vec()));
@@ -249,8 +249,8 @@ mod tests {
 		let source1 = SourceId::Table(CoreTableId(1));
 		let source2 = SourceId::Table(CoreTableId(2));
 
-		storage.put(TableId::Source(source1), b"key", Some(b"table1")).unwrap();
-		storage.put(TableId::Source(source2), b"key", Some(b"table2")).unwrap();
+		storage.put(TableId::Source(source1), &[(b"key".as_slice(), Some(b"table1".as_slice()))]).unwrap();
+		storage.put(TableId::Source(source2), &[(b"key".as_slice(), Some(b"table2".as_slice()))]).unwrap();
 
 		assert_eq!(storage.get(TableId::Source(source1), b"key").unwrap(), Some(b"table1".to_vec()));
 		assert_eq!(storage.get(TableId::Source(source2), b"key").unwrap(), Some(b"table2".to_vec()));
@@ -260,9 +260,9 @@ mod tests {
 	fn test_range_iteration() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		storage.put(TableId::Multi, b"a", Some(b"1")).unwrap();
-		storage.put(TableId::Multi, b"b", Some(b"2")).unwrap();
-		storage.put(TableId::Multi, b"c", Some(b"3")).unwrap();
+		storage.put(TableId::Multi, &[(b"a".as_slice(), Some(b"1".as_slice()))]).unwrap();
+		storage.put(TableId::Multi, &[(b"b".as_slice(), Some(b"2".as_slice()))]).unwrap();
+		storage.put(TableId::Multi, &[(b"c".as_slice(), Some(b"3".as_slice()))]).unwrap();
 
 		let entries: Vec<_> = storage
 			.range(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100)
@@ -280,9 +280,9 @@ mod tests {
 	fn test_range_reverse_iteration() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		storage.put(TableId::Multi, b"a", Some(b"1")).unwrap();
-		storage.put(TableId::Multi, b"b", Some(b"2")).unwrap();
-		storage.put(TableId::Multi, b"c", Some(b"3")).unwrap();
+		storage.put(TableId::Multi, &[(b"a".as_slice(), Some(b"1".as_slice()))]).unwrap();
+		storage.put(TableId::Multi, &[(b"b".as_slice(), Some(b"2".as_slice()))]).unwrap();
+		storage.put(TableId::Multi, &[(b"c".as_slice(), Some(b"3".as_slice()))]).unwrap();
 
 		let entries: Vec<_> = storage
 			.range_rev(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100)
@@ -302,7 +302,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.put(TableId::Multi, &[i], Some(&[i * 10])).unwrap();
+			storage.put(TableId::Multi, &[(&[i][..], Some(&[i * 10][..]))]).unwrap();
 		}
 
 		// Use batch_size of 3, which should require 4 batches (3+3+3+1)
@@ -325,7 +325,7 @@ mod tests {
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.put(TableId::Multi, &[i], Some(&[i * 10])).unwrap();
+			storage.put(TableId::Multi, &[(&[i][..], Some(&[i * 10][..]))]).unwrap();
 		}
 
 		// Use batch_size of 3, which should require 4 batches (3+3+3+1)

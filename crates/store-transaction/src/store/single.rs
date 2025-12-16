@@ -114,7 +114,7 @@ impl SingleVersionCommit for StandardTransactionStore {
 			})
 			.collect();
 
-		storage.put_batch(table, &entries)?;
+		storage.put(table, &entries)?;
 
 		Ok(())
 	}
