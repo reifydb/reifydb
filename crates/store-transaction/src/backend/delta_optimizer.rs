@@ -3,6 +3,7 @@
 
 use indexmap::IndexMap;
 use reifydb_core::{EncodedKey, delta::Delta, value::encoded::EncodedValues};
+use tracing::instrument;
 
 /// Represents the optimized state of a key after all operations in a transaction
 #[derive(Debug, Clone)]
@@ -29,10 +30,15 @@ enum OptimizedDeltaState {
 /// - Only the final state for each key is returned
 ///
 /// This optimization happens BEFORE database writes, reducing unnecessary I/O operations.
+#[instrument(level = "debug", skip(deltas, key_exists_in_storage), fields(input_count, output_count))]
 pub(crate) fn optimize_deltas<F>(deltas: impl IntoIterator<Item = Delta>, mut key_exists_in_storage: F) -> Vec<Delta>
 where
 	F: FnMut(&EncodedKey) -> bool,
 {
+	// Collect deltas to get count for instrumentation
+	let deltas: Vec<Delta> = deltas.into_iter().collect();
+	tracing::Span::current().record("input_count", deltas.len());
+
 	// Track the optimized state for each key
 	// Using IndexMap to preserve insertion order for deterministic CDC sequencing
 	let mut key_states: IndexMap<EncodedKey, (OptimizedDeltaState, usize)> = IndexMap::new();
@@ -202,7 +208,9 @@ where
 	result.sort_by_key(|(idx, _)| *idx);
 
 	// Extract just the deltas
-	result.into_iter().map(|(_, delta)| delta).collect()
+	let output: Vec<Delta> = result.into_iter().map(|(_, delta)| delta).collect();
+	tracing::Span::current().record("output_count", output.len());
+	output
 }
 
 #[cfg(test)]

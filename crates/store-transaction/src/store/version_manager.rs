@@ -13,6 +13,7 @@ use std::ops::Bound;
 
 use reifydb_core::CommitVersion;
 use reifydb_type::Result;
+use tracing::instrument;
 
 use crate::backend::{PrimitiveStorage, TableId};
 
@@ -155,6 +156,7 @@ pub fn contains_at_version<S: PrimitiveStorage>(
 }
 
 /// Store a value at a specific version.
+#[instrument(level = "trace", skip(storage, value), fields(table = ?table, key_len = key.len(), has_value = value.is_some()))]
 pub fn put_at_version<S: PrimitiveStorage>(
 	storage: &S,
 	table: TableId,
@@ -167,6 +169,7 @@ pub fn put_at_version<S: PrimitiveStorage>(
 }
 
 /// Get the latest version number for a key (if any exists).
+#[instrument(level = "trace", skip(storage), fields(table = ?table, key_len = key.len()))]
 pub fn get_latest_version<S: PrimitiveStorage>(
 	storage: &S,
 	table: TableId,
@@ -175,8 +178,7 @@ pub fn get_latest_version<S: PrimitiveStorage>(
 	let (start, end) = key_version_range(key);
 
 	// Scan in reverse to find the latest version
-	let mut iter =
-		storage.range_rev(table, Bound::Included(start.as_slice()), Bound::Included(end.as_slice()), 1)?;
+	let mut iter = storage.range(table, Bound::Included(start.as_slice()), Bound::Included(end.as_slice()), 1)?;
 
 	if let Some(entry_result) = iter.next() {
 		let entry = entry_result?;

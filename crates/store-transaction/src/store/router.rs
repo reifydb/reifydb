@@ -9,10 +9,12 @@ use reifydb_core::{
 	EncodedKey, EncodedKeyRange,
 	interface::{EncodableKeyRange, FlowNodeStateKeyRange, Key, RowKeyRange},
 };
+use tracing::instrument;
 
 use crate::backend::TableId;
 
 /// Classify a key to determine which table it belongs to.
+#[instrument(level = "trace", skip(key), fields(key_len = key.as_ref().len()))]
 pub fn classify_key(key: &EncodedKey) -> TableId {
 	match Key::decode(key) {
 		Some(Key::Row(row_key)) => TableId::Source(row_key.source),
