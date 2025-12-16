@@ -111,9 +111,9 @@ where
 		self.conflicts.mark_read(k);
 	}
 
-	/// Marks a key is conflict.
-	pub fn mark_conflict(&mut self, k: &EncodedKey) {
-		self.conflicts.mark_conflict(k);
+	/// Marks a key as written.
+	pub fn mark_write(&mut self, k: &EncodedKey) {
+		self.conflicts.mark_write(k);
 	}
 }
 
@@ -321,7 +321,7 @@ where
 		self.count = cnt;
 		self.size = size;
 
-		self.conflicts.mark_conflict(pending.key());
+		self.conflicts.mark_write(pending.key());
 
 		// If a duplicate entry was inserted in managed mode, move it to
 		// the duplicate writes slice. Add the entry to

@@ -53,7 +53,7 @@ impl CommittedWindow {
 		// Add all conflict keys to our modified keys set and bloom
 		// filter
 		if let Some(ref conflicts) = txn.conflict_manager {
-			for key in conflicts.get_conflict_keys() {
+			for key in conflicts.get_write_keys() {
 				self.modified_keys.insert(key.clone());
 				self.bloom.add(&key);
 			}
@@ -171,15 +171,15 @@ where
 		// Get keys involved in this transaction for efficient filtering
 		// Use references to avoid cloning
 		let read_keys = conflicts.get_read_keys();
-		let conflict_keys = conflicts.get_conflict_keys();
-		let has_keys = !read_keys.is_empty() || !conflict_keys.is_empty();
+		let write_keys = conflicts.get_write_keys();
+		let has_keys = !read_keys.is_empty() || !write_keys.is_empty();
 
 		// Only check conflicts in windows that contain relevant keys
 		let relevant_windows: Vec<CommitVersion> = {
 			let _span = debug_span!(
 				"find_relevant_windows",
 				read_key_count = read_keys.len(),
-				conflict_key_count = conflict_keys.len(),
+				conflict_key_count = write_keys.len(),
 				has_range_ops = conflicts.has_range_operations()
 			)
 			.entered();
@@ -192,7 +192,7 @@ where
 				let mut windows = HashSet::new();
 
 				// Iterate over combined keys once instead of twice
-				for key in read_keys.iter().chain(conflict_keys.iter()) {
+				for key in read_keys.iter().chain(write_keys.iter()) {
 					if let Some(window_versions) = inner.key_to_windows.get(key) {
 						windows.extend(window_versions.iter().copied());
 					}
@@ -239,7 +239,7 @@ where
 						//    conflict)
 						let needs_detailed_check = read_keys
 							.iter()
-							.chain(conflict_keys.iter())
+							.chain(write_keys.iter())
 							.any(|key| window.might_have_key(key));
 
 						if !needs_detailed_check {
@@ -352,8 +352,8 @@ where
 			self.time_windows.entry(window_start).or_insert_with(|| CommittedWindow::new(window_start));
 
 		// Update key index for all conflict keys
-		let conflict_keys = conflicts.get_conflict_keys();
-		for key in conflict_keys {
+		let write_keys = conflicts.get_write_keys();
+		for key in write_keys {
 			self.key_to_windows.entry(key.clone()).or_insert_with(BTreeSet::new).insert(window_start);
 		}
 
@@ -433,8 +433,8 @@ mod tests {
 		let mut conflicts = ConflictManager::new();
 		let key1 = create_test_key("key1");
 		let key2 = create_test_key("key2");
-		conflicts.mark_conflict(&key1);
-		conflicts.mark_conflict(&key2);
+		conflicts.mark_write(&key1);
+		conflicts.mark_write(&key2);
 
 		// Simulate committing a transaction
 		let mut done_read = false;
@@ -467,7 +467,7 @@ mod tests {
 		// reading at version 1
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_read(&shared_key);
-		conflicts1.mark_conflict(&shared_key);
+		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
 		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
@@ -481,7 +481,7 @@ mod tests {
 		// committed)
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_read(&shared_key);
-		conflicts2.mark_conflict(&shared_key);
+		conflicts2.mark_write(&shared_key);
 
 		let mut done_read2 = false;
 		// txn2 also started reading at version 1, but txn1 committed at
@@ -504,7 +504,7 @@ mod tests {
 		// First transaction: reads and writes key1
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_read(&key1);
-		conflicts1.mark_conflict(&key1);
+		conflicts1.mark_write(&key1);
 
 		let mut done_read1 = false;
 		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
@@ -514,7 +514,7 @@ mod tests {
 		// conflict)
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_read(&key2);
-		conflicts2.mark_conflict(&key2);
+		conflicts2.mark_write(&key2);
 
 		let mut done_read2 = false;
 		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
@@ -536,9 +536,9 @@ mod tests {
 		for i in 0..3 {
 			let mut conflicts = ConflictManager::new();
 			if i % 2 == 0 {
-				conflicts.mark_conflict(&key1);
+				conflicts.mark_write(&key1);
 			} else {
-				conflicts.mark_conflict(&key2);
+				conflicts.mark_write(&key2);
 			}
 
 			let mut done_read = false;
@@ -568,7 +568,7 @@ mod tests {
 
 		// First transaction at version 5
 		let mut conflicts1 = ConflictManager::new();
-		conflicts1.mark_conflict(&shared_key);
+		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
 		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(5), conflicts1).unwrap();
@@ -582,7 +582,7 @@ mod tests {
 		// after txn2 started reading
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_read(&shared_key);
-		conflicts2.mark_conflict(&shared_key);
+		conflicts2.mark_write(&shared_key);
 
 		let mut done_read2 = false;
 		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(3), conflicts2).unwrap();
@@ -593,7 +593,7 @@ mod tests {
 		// started reading
 		let mut conflicts3 = ConflictManager::new();
 		conflicts3.mark_read(&shared_key);
-		conflicts3.mark_conflict(&shared_key);
+		conflicts3.mark_write(&shared_key);
 
 		let mut done_read3 = false;
 		let read_version = CommitVersion(commit_v1.0 - 1); // Started reading before txn1 committed
@@ -610,7 +610,7 @@ mod tests {
 
 		// First transaction: writes to a specific key
 		let mut conflicts1 = ConflictManager::new();
-		conflicts1.mark_conflict(&key1);
+		conflicts1.mark_write(&key1);
 
 		let mut done_read1 = false;
 		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
@@ -623,7 +623,7 @@ mod tests {
 		use reifydb_core::EncodedKeyRange;
 		let range = EncodedKeyRange::parse("a..z");
 		conflicts2.mark_range(range);
-		conflicts2.mark_conflict(&create_test_key("other_key"));
+		conflicts2.mark_write(&create_test_key("other_key"));
 
 		// This should use the fallback mechanism to check all windows
 		let mut done_read2 = false;
@@ -645,7 +645,7 @@ mod tests {
 			keys.push(key.clone());
 
 			let mut conflicts = ConflictManager::new();
-			conflicts.mark_conflict(&key);
+			conflicts.mark_write(&key);
 
 			let mut done_read = false;
 			let version_start = CommitVersion(i as u64 * DEFAULT_WINDOW_SIZE + 1);
@@ -701,7 +701,7 @@ mod tests {
 
 		// First transaction: writes to shared_key (no read)
 		let mut conflicts1 = ConflictManager::new();
-		conflicts1.mark_conflict(&shared_key);
+		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
 		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
@@ -710,7 +710,7 @@ mod tests {
 		// Second transaction: also writes to shared_key (write-write
 		// conflict)
 		let mut conflicts2 = ConflictManager::new();
-		conflicts2.mark_conflict(&shared_key);
+		conflicts2.mark_write(&shared_key);
 
 		let mut done_read2 = false;
 		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
@@ -729,7 +729,7 @@ mod tests {
 
 		// First transaction: writes to shared_key
 		let mut conflicts1 = ConflictManager::new();
-		conflicts1.mark_conflict(&shared_key);
+		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
 		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
@@ -758,7 +758,7 @@ mod tests {
 		// First transaction
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_read(&shared_key);
-		conflicts1.mark_conflict(&shared_key);
+		conflicts1.mark_write(&shared_key);
 
 		let mut done_read1 = false;
 		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
@@ -770,7 +770,7 @@ mod tests {
 		// Second transaction starts AFTER first transaction committed
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_read(&shared_key);
-		conflicts2.mark_conflict(&shared_key);
+		conflicts2.mark_write(&shared_key);
 
 		let mut done_read2 = false;
 		let read_version = CommitVersion(commit_v1.0 + 1); // Started after first committed
@@ -792,7 +792,7 @@ mod tests {
 		// Transaction 1: reads A, writes B
 		let mut conflicts1 = ConflictManager::new();
 		conflicts1.mark_read(&key_a);
-		conflicts1.mark_conflict(&key_b);
+		conflicts1.mark_write(&key_b);
 
 		let mut done_read1 = false;
 		let result1 = oracle.new_commit(&mut done_read1, CommitVersion(1), conflicts1).unwrap();
@@ -802,7 +802,7 @@ mod tests {
 		// txn1 wrote B)
 		let mut conflicts2 = ConflictManager::new();
 		conflicts2.mark_read(&key_b);
-		conflicts2.mark_conflict(&key_c);
+		conflicts2.mark_write(&key_c);
 
 		let mut done_read2 = false;
 		let result2 = oracle.new_commit(&mut done_read2, CommitVersion(1), conflicts2).unwrap();
@@ -811,7 +811,7 @@ mod tests {
 		// Transaction 3: reads C, writes A (should not conflict)
 		let mut conflicts3 = ConflictManager::new();
 		conflicts3.mark_read(&key_c);
-		conflicts3.mark_conflict(&key_a);
+		conflicts3.mark_write(&key_a);
 
 		let mut done_read3 = false;
 		let result3 = oracle.new_commit(&mut done_read3, CommitVersion(1), conflicts3).unwrap();
