@@ -15,9 +15,7 @@ pub mod test {
 	use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
 	use reifydb_flow_operator_sdk::FlowChange;
 	use reifydb_store_transaction::TransactionStore;
-	use reifydb_transaction::{
-		cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion,
-	};
+	use reifydb_transaction::{cdc::TransactionCdc, multi::Transaction, single::TransactionSingleVersion};
 	use reifydb_type::{RowNumber, Type, Value};
 
 	use crate::{
@@ -25,13 +23,13 @@ pub mod test {
 		transaction::FlowTransaction,
 	};
 
-	/// Create a test engine with memory storage and optimistic transactions
+	/// Create a test engine with memory storage
 	pub fn create_test_engine() -> StandardEngine {
 		let store = TransactionStore::testing_memory();
 		let eventbus = EventBus::new();
 		let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
 		let cdc = TransactionCdc::new(store.clone());
-		let multi = TransactionMultiVersion::optimistic(store, single.clone(), eventbus.clone());
+		let multi = Transaction::new(store, single.clone(), eventbus.clone());
 
 		StandardEngine::new(
 			multi,

@@ -1,8 +1,14 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-mod optimistic;
-mod serializable;
+mod begin;
+mod get;
+mod iter;
+mod range;
+mod rollback;
+mod version;
+mod write;
+mod write_skew;
 
 use reifydb_core::{CowVec, value::encoded::EncodedValues};
 pub use reifydb_core::{EncodedKey, util::encoding::keycode};

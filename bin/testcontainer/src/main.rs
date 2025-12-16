@@ -11,7 +11,7 @@ use tracing::{info, info_span};
 
 fn main() {
 	// Build database with integrated OpenTelemetry
-	let mut db = server::memory_optimistic()
+	let mut db = server::memory()
 		.with_http(HttpConfig::default())
 		.with_ws(WsConfig::default())
 		.with_tracing_otel(

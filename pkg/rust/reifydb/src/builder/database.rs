@@ -10,10 +10,7 @@ use reifydb_core::{
 	CoreVersion,
 	event::EventBus,
 	interceptor::StandardInterceptorBuilder,
-	interface::{
-		MultiVersionTransaction,
-		version::{ComponentType, HasVersion, SystemVersion},
-	},
+	interface::version::{ComponentType, HasVersion, SystemVersion},
 	ioc::IocContainer,
 };
 use reifydb_engine::{

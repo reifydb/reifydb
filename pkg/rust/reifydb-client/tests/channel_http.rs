@@ -12,7 +12,7 @@ use common::{
 use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
-	memory, optimistic,
+	memory, transaction,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{HttpChannelSession, HttpClient, HttpResponseMessage, http::HttpChannelResponse};
@@ -277,5 +277,5 @@ impl testscript::Runner for ChannelRunner {
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as channel_http => test_channel }
 
 fn test_channel(path: &Path) {
-	retry(3, || testscript::run_path(&mut ChannelRunner::new(optimistic(memory())), path)).expect("test failed")
+	retry(3, || testscript::run_path(&mut ChannelRunner::new(transaction(memory())), path)).expect("test failed")
 }

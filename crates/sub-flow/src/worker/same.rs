@@ -39,7 +39,7 @@ impl WorkerPool for SameThreadedWorker {
 
 		while let Some(unit_of_work) = queue.pop_front() {
 			if flow_txn.version() != unit_of_work.version {
-				flow_txn.update_version(unit_of_work.version)?;
+				flow_txn.update_version(unit_of_work.version);
 			}
 
 			let flow_id = unit_of_work.flow_id;

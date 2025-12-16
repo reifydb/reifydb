@@ -6,8 +6,9 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	Database, ServerBuilder,
 	core::{event::EventBus, retry},
-	memory, optimistic,
+	memory,
 	sub_server_http::HttpConfig,
+	transaction,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, HttpBlockingSession, HttpClient};
@@ -112,5 +113,5 @@ impl testscript::Runner for HttpRunner {
 test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as http => test_http }
 
 fn test_http(path: &Path) {
-	retry(3, || testscript::run_path(&mut HttpRunner::new(optimistic(memory())), path)).expect("test failed")
+	retry(3, || testscript::run_path(&mut HttpRunner::new(transaction(memory())), path)).expect("test failed")
 }

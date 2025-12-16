@@ -30,7 +30,7 @@ fn main() {
 	// The fluent API allows chaining interceptor registrations
 	info!("Creating database with interceptors...");
 
-	let mut db = embedded::memory_optimistic()
+	let mut db = embedded::memory()
 		// Register interceptors for the users table
 		// These will fire ONLY for operations on test.users
 		.intercept_table("test.users")

@@ -255,24 +255,24 @@ impl MaterializedCatalogTransaction for StandardCommandTransaction {
 impl MultiVersionQueryTransaction for StandardCommandTransaction {
 	#[inline]
 	fn version(&self) -> CommitVersion {
-		self.cmd.as_ref().unwrap().version()
+		MultiVersionQueryTransaction::version(self.cmd.as_ref().unwrap())
 	}
 
 	#[inline]
 	fn id(&self) -> TransactionId {
-		self.cmd.as_ref().unwrap().id()
+		MultiVersionQueryTransaction::id(self.cmd.as_ref().unwrap())
 	}
 
 	#[inline]
 	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().get(key)
+		MultiVersionQueryTransaction::get(self.cmd.as_mut().unwrap(), key)
 	}
 
 	#[inline]
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().contains_key(key)
+		MultiVersionQueryTransaction::contains_key(self.cmd.as_mut().unwrap(), key)
 	}
 
 	#[inline]
@@ -282,7 +282,7 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 		batch_size: u64,
 	) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().range_batched(range, batch_size)
+		MultiVersionQueryTransaction::range_batched(self.cmd.as_mut().unwrap(), range, batch_size)
 	}
 
 	#[inline]
@@ -292,25 +292,25 @@ impl MultiVersionQueryTransaction for StandardCommandTransaction {
 		batch_size: u64,
 	) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().range_rev_batched(range, batch_size)
+		MultiVersionQueryTransaction::range_rev_batched(self.cmd.as_mut().unwrap(), range, batch_size)
 	}
 
 	#[inline]
 	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().prefix(prefix)
+		MultiVersionQueryTransaction::prefix(self.cmd.as_mut().unwrap(), prefix)
 	}
 
 	#[inline]
 	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().prefix_rev(prefix)
+		MultiVersionQueryTransaction::prefix_rev(self.cmd.as_mut().unwrap(), prefix)
 	}
 
 	#[inline]
 	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().read_as_of_version_exclusive(version)
+		MultiVersionQueryTransaction::read_as_of_version_exclusive(self.cmd.as_mut().unwrap(), version)
 	}
 }
 
@@ -318,27 +318,27 @@ impl MultiVersionCommandTransaction for StandardCommandTransaction {
 	#[inline]
 	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().set(key, row)
+		MultiVersionCommandTransaction::set(self.cmd.as_mut().unwrap(), key, row)
 	}
 
 	#[inline]
 	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()> {
 		self.check_active()?;
-		self.cmd.as_mut().unwrap().remove(key)
+		MultiVersionCommandTransaction::remove(self.cmd.as_mut().unwrap(), key)
 	}
 
 	#[inline]
 	fn commit(mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 		self.state = TransactionState::Committed;
-		self.cmd.take().unwrap().commit()
+		MultiVersionCommandTransaction::commit(self.cmd.take().unwrap())
 	}
 
 	#[inline]
 	fn rollback(mut self) -> crate::Result<()> {
 		self.check_active()?;
 		self.state = TransactionState::RolledBack;
-		self.cmd.take().unwrap().rollback()
+		MultiVersionCommandTransaction::rollback(self.cmd.take().unwrap())
 	}
 }
 

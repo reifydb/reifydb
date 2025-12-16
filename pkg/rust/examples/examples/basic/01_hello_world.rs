@@ -14,11 +14,10 @@ use tracing::info;
 
 fn main() {
 	// Step 1: Create and start a synchronous in-memory database
-	// The sync::memory_optimistic() builder creates a database that:
+	// The sync::memory() builder creates a database that:
 	// - Stores all data in memory (no persistence)
-	// - Uses optimistic concurrency control
 	// - Operates synchronously (blocking operations)
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 
 	// Start the database engine - this initializes internal structures
 	// and makes the database ready to accept commands and queries

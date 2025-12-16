@@ -3,28 +3,16 @@
 
 use reifydb_store_transaction::backend::sqlite::SqliteConfig;
 
-use crate::{EmbeddedBuilder, memory, optimistic, serializable, sqlite};
+use crate::{EmbeddedBuilder, memory as memory_store, sqlite as sqlite_store, transaction};
 
-pub fn memory_optimistic() -> EmbeddedBuilder {
-	let (store, single, cdc, bus) = memory();
-	let (multi, single, cdc, bus) = optimistic((store, single, cdc, bus));
+pub fn memory() -> EmbeddedBuilder {
+	let (store, single, cdc, bus) = memory_store();
+	let (multi, single, cdc, bus) = transaction((store, single, cdc, bus));
 	EmbeddedBuilder::new(multi, single, cdc, bus)
 }
 
-pub fn memory_serializable() -> EmbeddedBuilder {
-	let (store, single, cdc, bus) = memory();
-	let (multi, single, cdc, bus) = serializable((store, single, cdc, bus));
-	EmbeddedBuilder::new(multi, single, cdc, bus)
-}
-
-pub fn sqlite_optimistic(config: SqliteConfig) -> EmbeddedBuilder {
-	let (store, single, cdc, bus) = sqlite(config);
-	let (multi, single, cdc, bus) = optimistic((store, single, cdc, bus));
-	EmbeddedBuilder::new(multi, single, cdc, bus)
-}
-
-pub fn sqlite_serializable(config: SqliteConfig) -> EmbeddedBuilder {
-	let (store, single, cdc, bus) = sqlite(config);
-	let (multi, single, cdc, bus) = serializable((store, single, cdc, bus));
+pub fn sqlite(config: SqliteConfig) -> EmbeddedBuilder {
+	let (store, single, cdc, bus) = sqlite_store(config);
+	let (multi, single, cdc, bus) = transaction((store, single, cdc, bus));
 	EmbeddedBuilder::new(multi, single, cdc, bus)
 }

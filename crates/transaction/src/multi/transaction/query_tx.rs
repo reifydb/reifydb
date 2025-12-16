@@ -12,20 +12,16 @@
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange};
 use reifydb_store_transaction::{MultiVersionRange, MultiVersionRangeRev, TransactionStore};
 
-use crate::multi::{
-	transaction::{
-		query::TransactionManagerQuery, serializable::TransactionSerializable, version::StandardVersionProvider,
-	},
-	types::TransactionValue,
-};
+use super::{Transaction, query::TransactionManagerQuery, version::StandardVersionProvider};
+use crate::multi::types::TransactionValue;
 
 pub struct QueryTransaction {
-	pub(crate) engine: TransactionSerializable,
+	pub(crate) engine: Transaction,
 	pub(crate) tm: TransactionManagerQuery<StandardVersionProvider>,
 }
 
 impl QueryTransaction {
-	pub fn new(engine: TransactionSerializable, version: Option<CommitVersion>) -> crate::Result<Self> {
+	pub fn new(engine: Transaction, version: Option<CommitVersion>) -> crate::Result<Self> {
 		let tm = engine.tm.query(version)?;
 		Ok(Self {
 			engine,

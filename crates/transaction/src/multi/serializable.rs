@@ -11,24 +11,24 @@ use reifydb_core::{
 	value::encoded::EncodedValues,
 };
 
-use crate::multi::transaction::serializable::{CommandTransaction, QueryTransaction, TransactionSerializable};
+use crate::multi::transaction::{CommandTransaction, QueryTransaction, Transaction};
 
-impl WithEventBus for TransactionSerializable {
+impl WithEventBus for Transaction {
 	fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
 }
 
-impl MultiVersionTransaction for TransactionSerializable {
+impl MultiVersionTransaction for Transaction {
 	type Query = QueryTransaction;
 	type Command = CommandTransaction;
 
 	fn begin_query(&self) -> Result<Self::Query, Error> {
-		self.begin_query()
+		Transaction::begin_query(self)
 	}
 
 	fn begin_command(&self) -> Result<Self::Command, Error> {
-		self.begin_command()
+		Transaction::begin_command(self)
 	}
 }
 

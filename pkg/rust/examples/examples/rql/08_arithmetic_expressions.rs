@@ -13,7 +13,7 @@ use reifydb_examples::log_query;
 use tracing::info;
 
 fn main() {
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: Basic arithmetic operations

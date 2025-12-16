@@ -22,13 +22,18 @@ use reifydb_store_transaction::TransactionStore;
 use reifydb_testing::testscript;
 use reifydb_transaction::{
 	multi::{
-		transaction::serializable::{
-			CommandTransaction, QueryTransaction, Transaction, TransactionSerializable,
-		},
+		Transaction,
+		transaction::{CommandTransaction, QueryTransaction},
 		types::TransactionValue,
 	},
 	single::{TransactionSingleVersion, TransactionSvl},
 };
+
+/// A handle to either a query or command transaction for test tracking
+enum TransactionHandle {
+	Query(QueryTransaction),
+	Command(CommandTransaction),
+}
 use test_each_file::test_each_path;
 
 test_each_path! { in "crates/transaction/tests/scripts/multi" as serializable_multi => test_serializable }
@@ -39,7 +44,7 @@ fn test_serializable(path: &Path) {
 	let bus = EventBus::default();
 
 	testscript::run_path(
-		&mut MvccRunner::new(TransactionSerializable::new(
+		&mut MvccRunner::new(Transaction::new(
 			store.clone(),
 			TransactionSingleVersion::SingleVersionLock(TransactionSvl::new(store.clone(), bus.clone())),
 			bus,
@@ -50,20 +55,20 @@ fn test_serializable(path: &Path) {
 }
 
 pub struct MvccRunner {
-	engine: TransactionSerializable,
-	transactions: HashMap<String, Transaction>,
+	engine: Transaction,
+	transactions: HashMap<String, TransactionHandle>,
 }
 
 impl MvccRunner {
-	fn new(serializable: TransactionSerializable) -> Self {
+	fn new(engine: Transaction) -> Self {
 		Self {
-			engine: serializable,
+			engine,
 			transactions: HashMap::new(),
 		}
 	}
 
 	/// Fetches the named transaction from a command prefix.
-	fn get_transaction(&mut self, prefix: &Option<String>) -> Result<&'_ mut Transaction, Box<dyn StdError>> {
+	fn get_transaction(&mut self, prefix: &Option<String>) -> Result<&'_ mut TransactionHandle, Box<dyn StdError>> {
 		let name = Self::tx_name(prefix)?;
 		self.transactions.get_mut(name).ok_or(format!("unknown transaction {name}").into())
 	}
@@ -106,10 +111,10 @@ impl<'a> testscript::Runner for MvccRunner {
 				let version = args.lookup_parse("version")?;
 				args.reject_rest()?;
 				let t = match readonly {
-					true => Transaction::Query(
+					true => TransactionHandle::Query(
 						QueryTransaction::new(self.engine.clone(), version).unwrap(),
 					),
-					false => Transaction::Command(
+					false => TransactionHandle::Command(
 						CommandTransaction::new(self.engine.clone()).unwrap(),
 					),
 				};
@@ -124,10 +129,10 @@ impl<'a> testscript::Runner for MvccRunner {
 				command.consume_args().reject_rest()?;
 
 				match t {
-					Transaction::Query(_) => {
+					TransactionHandle::Query(_) => {
 						unreachable!("can not call commit on rx")
 					}
-					Transaction::Command(tx) => {
+					TransactionHandle::Command(tx) => {
 						tx.commit()?;
 					}
 				}
@@ -141,10 +146,10 @@ impl<'a> testscript::Runner for MvccRunner {
 					let key = EncodedKey(decode_binary(&arg.value));
 
 					match t {
-						Transaction::Query(_) => {
+						TransactionHandle::Query(_) => {
 							unreachable!("can not call remove on rx")
 						}
-						Transaction::Command(tx) => {
+						TransactionHandle::Command(tx) => {
 							tx.remove(&key).unwrap();
 						}
 					}
@@ -156,8 +161,8 @@ impl<'a> testscript::Runner for MvccRunner {
 				command.consume_args().reject_rest()?;
 				let t = self.get_transaction(&command.prefix)?;
 				let version = match t {
-					Transaction::Query(rx) => rx.version(),
-					Transaction::Command(tx) => tx.version(),
+					TransactionHandle::Query(rx) => rx.version(),
+					TransactionHandle::Command(tx) => tx.version(),
 				};
 				writeln!(output, "{}", version)?;
 			}
@@ -170,10 +175,10 @@ impl<'a> testscript::Runner for MvccRunner {
 					let t = self.get_transaction(&command.prefix)?;
 
 					let value = match t {
-						Transaction::Query(rx) => {
+						TransactionHandle::Query(rx) => {
 							rx.get(&key).map(|r| r.and_then(|tv| Some(tv.values.to_vec())))
 						}
-						Transaction::Command(tx) => tx
+						TransactionHandle::Command(tx) => tx
 							.get(&key)
 							.map(|r| r.and_then(|tv| Some(tv.values().to_vec()))),
 					}
@@ -212,10 +217,10 @@ impl<'a> testscript::Runner for MvccRunner {
 				command.consume_args().reject_rest()?;
 
 				match t {
-					Transaction::Query(_) => {
+					TransactionHandle::Query(_) => {
 						unreachable!("can not call rollback on rx")
 					}
-					Transaction::Command(tx) => {
+					TransactionHandle::Command(tx) => {
 						tx.rollback()?;
 					}
 				}
@@ -229,13 +234,13 @@ impl<'a> testscript::Runner for MvccRunner {
 
 				let mut kvs = Vec::new();
 				match t {
-					Transaction::Query(rx) => {
+					TransactionHandle::Query(rx) => {
 						let iter = rx.range(EncodedKeyRange::all()).unwrap();
 						for multi in iter {
 							kvs.push((multi.key.clone(), multi.values.to_vec()));
 						}
 					}
-					Transaction::Command(tx) => {
+					TransactionHandle::Command(tx) => {
 						for item in tx.range(EncodedKeyRange::all()).unwrap().into_iter() {
 							kvs.push((item.key().clone(), item.values().to_vec()));
 						}
@@ -259,14 +264,14 @@ impl<'a> testscript::Runner for MvccRunner {
 				args.reject_rest()?;
 
 				match t {
-					Transaction::Query(rx) => {
+					TransactionHandle::Query(rx) => {
 						if !reverse {
 							print_rx(&mut output, rx.range(range).unwrap())
 						} else {
 							print_rx(&mut output, rx.range_rev(range).unwrap())
 						}
 					}
-					Transaction::Command(tx) => {
+					TransactionHandle::Command(tx) => {
 						if !reverse {
 							print_tx(&mut output, tx.range(range).unwrap())
 						} else {
@@ -287,14 +292,14 @@ impl<'a> testscript::Runner for MvccRunner {
 				args.reject_rest()?;
 
 				match t {
-					Transaction::Query(rx) => {
+					TransactionHandle::Query(rx) => {
 						if !reverse {
 							print_rx(&mut output, rx.prefix(&prefix).unwrap())
 						} else {
 							print_rx(&mut output, rx.prefix_rev(&prefix).unwrap())
 						}
 					}
-					Transaction::Command(tx) => {
+					TransactionHandle::Command(tx) => {
 						if !reverse {
 							print_tx(&mut output, tx.prefix(&prefix).unwrap())
 						} else {
@@ -312,10 +317,10 @@ impl<'a> testscript::Runner for MvccRunner {
 					let key = EncodedKey(decode_binary(kv.key.as_ref().unwrap()));
 					let values = EncodedValues(decode_binary(&kv.value));
 					match t {
-						Transaction::Query(_) => {
+						TransactionHandle::Query(_) => {
 							unreachable!("can not call set on rx")
 						}
-						Transaction::Command(tx) => {
+						TransactionHandle::Command(tx) => {
 							tx.set(&key, values).unwrap();
 						}
 					}
@@ -337,10 +342,10 @@ impl<'a> testscript::Runner for MvccRunner {
 				args.reject_rest()?;
 
 				match t {
-					Transaction::Query(rx) => {
+					TransactionHandle::Query(rx) => {
 						rx.read_as_of_version_inclusive(version);
 					}
-					Transaction::Command(tx) => {
+					TransactionHandle::Command(tx) => {
 						tx.read_as_of_version_inclusive(version)?;
 					}
 				}
@@ -360,10 +365,10 @@ impl<'a> testscript::Runner for MvccRunner {
 				args.reject_rest()?;
 
 				match t {
-					Transaction::Query(rx) => {
+					TransactionHandle::Query(rx) => {
 						rx.read_as_of_version_exclusive(version);
 					}
-					Transaction::Command(tx) => {
+					TransactionHandle::Command(tx) => {
 						tx.read_as_of_version_exclusive(version);
 					}
 				}

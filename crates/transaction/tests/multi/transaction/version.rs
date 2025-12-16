@@ -10,15 +10,16 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use reifydb_core::{CommitVersion, EncodedKeyRange};
-use reifydb_transaction::multi::transaction::{
-	range::TransactionRangeIter, range_rev::TransactionRangeRevIter, serializable::TransactionSerializable,
+use reifydb_transaction::multi::{
+	Transaction,
+	transaction::{range::TransactionRangeIter, range_rev::TransactionRangeRevIter},
 };
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
 #[test]
 fn test_versions() {
-	let engine = TransactionSerializable::testing();
+	let engine = Transaction::testing();
 
 	let k0 = as_key!(0);
 

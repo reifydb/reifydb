@@ -52,10 +52,7 @@ pub use reifydb_sub_server_ws as sub_server_ws;
 pub use reifydb_sub_tracing as sub_tracing;
 pub use reifydb_sub_worker as sub_worker;
 pub use reifydb_transaction as transaction;
-pub use reifydb_transaction::{
-	multi::transaction::{optimistic::TransactionOptimistic, serializable::TransactionSerializable},
-	single::TransactionSvl,
-};
+pub use reifydb_transaction::{multi::Transaction, single::TransactionSvl};
 pub use reifydb_type as r#type;
 pub use reifydb_type::{
 	Frame, FrameColumn, FrameColumnData, FrameError, FrameRow, FrameRows, FromFrame, FromFrameError,

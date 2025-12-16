@@ -15,27 +15,26 @@ use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, event::transaction::PostCommitEvent,
 	value::encoded::EncodedValues,
 };
-use reifydb_store_transaction::MultiVersionCommit;
+use reifydb_store_transaction::{
+	MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
+};
 use reifydb_type::{Error, util::hex};
 use tracing::instrument;
 
-use super::*;
-use crate::multi::{
-	transaction::{
-		TransactionManagerCommand, range::TransactionRangeIter, range_rev::TransactionRangeRevIter,
-		version::StandardVersionProvider,
-	},
-	types::TransactionValue,
+use super::{
+	Transaction, TransactionManagerCommand, range::TransactionRangeIter, range_rev::TransactionRangeRevIter,
+	version::StandardVersionProvider,
 };
+use crate::multi::types::TransactionValue;
 
 pub struct CommandTransaction {
-	engine: TransactionOptimistic,
+	engine: Transaction,
 	pub(crate) tm: TransactionManagerCommand<StandardVersionProvider>,
 }
 
 impl CommandTransaction {
 	#[instrument(level = "debug", skip(engine))]
-	pub fn new(engine: TransactionOptimistic) -> crate::Result<Self> {
+	pub fn new(engine: Transaction) -> crate::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
 			engine,
@@ -101,7 +100,7 @@ impl CommandTransaction {
 	}
 
 	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, Error> {
+	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, reifydb_type::Error> {
 		let version = self.tm.version();
 		match self.tm.contains_key(key)? {
 			Some(true) => Ok(true),
@@ -121,17 +120,17 @@ impl CommandTransaction {
 					Ok(None)
 				}
 			}
-			None => Ok(self.engine.store.get(key, version)?.map(TransactionValue::from)),
+			None => Ok(self.engine.store.get(key, version)?.map(Into::into)),
 		}
 	}
 
 	#[instrument(level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.as_ref().len()))]
-	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), Error> {
+	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
 		self.tm.set(key, values)
 	}
 
 	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), Error> {
+	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_type::Error> {
 		self.tm.remove(key)
 	}
 
@@ -139,18 +138,23 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<TransactionRangeIter<'_, TransactionStore>, Error> {
+	) -> Result<TransactionRangeIter<'_, TransactionStore>, reifydb_type::Error> {
 		let version = self.tm.version();
-		let (marker, pw) = self.tm.marker_with_pending_writes();
+		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
 		let end = range.end_bound();
+
+		marker.mark_range(range.clone());
 		let pending = pw.range((start, end));
 		let commited = self.engine.store.range_batched(range, version, batch_size)?;
 
 		Ok(TransactionRangeIter::new(pending, commited, Some(marker)))
 	}
 
-	pub fn range(&mut self, range: EncodedKeyRange) -> Result<TransactionRangeIter<'_, TransactionStore>, Error> {
+	pub fn range(
+		&mut self,
+		range: EncodedKeyRange,
+	) -> Result<TransactionRangeIter<'_, TransactionStore>, reifydb_type::Error> {
 		self.range_batched(range, 1024)
 	}
 
@@ -158,11 +162,13 @@ impl CommandTransaction {
 		&mut self,
 		range: EncodedKeyRange,
 		batch_size: u64,
-	) -> Result<TransactionRangeRevIter<'_, TransactionStore>, Error> {
+	) -> Result<TransactionRangeRevIter<'_, TransactionStore>, reifydb_type::Error> {
 		let version = self.tm.version();
-		let (marker, pw) = self.tm.marker_with_pending_writes();
+		let (mut marker, pw) = self.tm.marker_with_pending_writes();
 		let start = range.start_bound();
 		let end = range.end_bound();
+
+		marker.mark_range(range.clone());
 		let pending = pw.range((start, end));
 		let commited = self.engine.store.range_rev_batched(range, version, batch_size)?;
 
@@ -172,21 +178,23 @@ impl CommandTransaction {
 	pub fn range_rev(
 		&mut self,
 		range: EncodedKeyRange,
-	) -> Result<TransactionRangeRevIter<'_, TransactionStore>, Error> {
+	) -> Result<TransactionRangeRevIter<'_, TransactionStore>, reifydb_type::Error> {
 		self.range_rev_batched(range, 1024)
 	}
 
 	pub fn prefix<'a>(
 		&'a mut self,
 		prefix: &EncodedKey,
-	) -> Result<TransactionRangeIter<'a, TransactionStore>, Error> {
+	) -> Result<TransactionRangeIter<'a, TransactionStore>, reifydb_type::Error> {
 		self.range(EncodedKeyRange::prefix(prefix))
 	}
 
 	pub fn prefix_rev<'a>(
 		&'a mut self,
 		prefix: &EncodedKey,
-	) -> Result<TransactionRangeRevIter<'a, TransactionStore>, Error> {
+	) -> Result<TransactionRangeRevIter<'a, TransactionStore>, reifydb_type::Error> {
 		self.range_rev(EncodedKeyRange::prefix(prefix))
 	}
 }
+
+use reifydb_store_transaction::TransactionStore;

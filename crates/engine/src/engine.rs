@@ -10,7 +10,7 @@ use reifydb_core::{
 	interceptor::InterceptorFactory,
 	interface::{
 		ColumnDef, ColumnId, ColumnIndex, Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
-		Identity, MultiVersionTransaction, Params, Query, TableVirtualDef, TableVirtualId, WithEventBus,
+		Identity, Params, Query, TableVirtualDef, TableVirtualId, WithEventBus,
 	},
 };
 use reifydb_transaction::{

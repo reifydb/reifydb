@@ -10,7 +10,7 @@ fn main() {
 		.with(EnvFilter::from_default_env())
 		.init();
 
-	let mut db = embedded::memory_optimistic()
+	let mut db = embedded::memory()
 		.with_tracing(|t| t.with_console(|c| c.color(true)).with_filter("debug"))
 		// .with_worker(|w| w)  // Disabled to use single-threaded worker
 		.with_flow(|f| f)

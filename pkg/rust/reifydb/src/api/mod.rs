@@ -57,18 +57,17 @@ pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingleVersi
 	)
 }
 
-/// Convenience function to create an optimistic transaction layer
-pub fn optimistic(
+/// Convenience function to create a transaction layer
+pub fn transaction(
 	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
 ) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
-	let multi = TransactionMultiVersion::optimistic(input.0, input.1.clone(), input.3.clone());
+	let multi = TransactionMultiVersion::new(input.0, input.1.clone(), input.3.clone());
 	(multi, input.1, input.2, input.3)
 }
 
-/// Convenience function to create a serializable transaction layer
+/// Backwards-compat alias for transaction()
 pub fn serializable(
 	input: (TransactionStore, TransactionSingleVersion, TransactionCdc, EventBus),
 ) -> (TransactionMultiVersion, TransactionSingleVersion, TransactionCdc, EventBus) {
-	let multi = TransactionMultiVersion::serializable(input.0, input.1.clone(), input.3.clone());
-	(multi, input.1, input.2, input.3)
+	transaction(input)
 }

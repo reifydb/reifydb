@@ -121,7 +121,7 @@ impl ServerBuilder {
 	/// # Example
 	///
 	/// ```ignore
-	/// let db = server::memory_optimistic()
+	/// let db = server::memory()
 	///     .with_tracing_otel(
 	///         OtelConfig::new()
 	///             .service_name("my-service")

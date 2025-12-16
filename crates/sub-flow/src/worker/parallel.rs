@@ -141,7 +141,7 @@ fn process(flow_txn: &mut FlowTransaction, flow_units: Vec<UnitOfWork>, engine: 
 	for unit in flow_units {
 		// Update version if needed
 		if flow_txn.version() != unit.version {
-			flow_txn.update_version(unit.version)?;
+			flow_txn.update_version(unit.version);
 		}
 
 		// Process all source changes for this unit

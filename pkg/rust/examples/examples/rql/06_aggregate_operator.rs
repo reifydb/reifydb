@@ -14,7 +14,7 @@ use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Set up sample sales data

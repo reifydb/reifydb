@@ -75,22 +75,22 @@ impl StandardQueryTransaction {
 impl MultiVersionQueryTransaction for StandardQueryTransaction {
 	#[inline]
 	fn version(&self) -> CommitVersion {
-		self.multi.version()
+		MultiVersionQueryTransaction::version(&self.multi)
 	}
 
 	#[inline]
 	fn id(&self) -> TransactionId {
-		self.multi.id()
+		MultiVersionQueryTransaction::id(&self.multi)
 	}
 
 	#[inline]
 	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<MultiVersionValues>> {
-		self.multi.get(key)
+		MultiVersionQueryTransaction::get(&mut self.multi, key)
 	}
 
 	#[inline]
 	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool> {
-		self.multi.contains_key(key)
+		MultiVersionQueryTransaction::contains_key(&mut self.multi, key)
 	}
 
 	#[inline]
@@ -99,7 +99,7 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 		range: EncodedKeyRange,
 		batch_size: u64,
 	) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		self.multi.range_batched(range, batch_size)
+		MultiVersionQueryTransaction::range_batched(&mut self.multi, range, batch_size)
 	}
 
 	#[inline]
@@ -108,22 +108,22 @@ impl MultiVersionQueryTransaction for StandardQueryTransaction {
 		range: EncodedKeyRange,
 		batch_size: u64,
 	) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		self.multi.range_rev_batched(range, batch_size)
+		MultiVersionQueryTransaction::range_rev_batched(&mut self.multi, range, batch_size)
 	}
 
 	#[inline]
 	fn prefix(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		self.multi.prefix(prefix)
+		MultiVersionQueryTransaction::prefix(&mut self.multi, prefix)
 	}
 
 	#[inline]
 	fn prefix_rev(&mut self, prefix: &EncodedKey) -> crate::Result<BoxedMultiVersionIter<'_>> {
-		self.multi.prefix_rev(prefix)
+		MultiVersionQueryTransaction::prefix_rev(&mut self.multi, prefix)
 	}
 
 	#[inline]
 	fn read_as_of_version_exclusive(&mut self, version: CommitVersion) -> crate::Result<()> {
-		self.multi.read_as_of_version_exclusive(version)
+		MultiVersionQueryTransaction::read_as_of_version_exclusive(&mut self.multi, version)
 	}
 }
 

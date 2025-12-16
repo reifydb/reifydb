@@ -19,7 +19,6 @@ mod write;
 
 pub use metrics::FlowTransactionMetrics;
 pub use pending::{Pending, PendingWrites};
-use reifydb_core::interface::{MultiVersionQueryTransaction, MultiVersionTransaction};
 use reifydb_transaction::multi::StandardQueryTransaction;
 
 /// Represents a pending view operation that needs interceptor calls at commit time.
@@ -168,7 +167,7 @@ impl FlowTransaction {
 	#[instrument(level = "debug", skip(parent), fields(version = version.0))]
 	pub fn new(parent: &StandardCommandTransaction, version: CommitVersion) -> Self {
 		let mut source_query = parent.multi.begin_query().unwrap();
-		source_query.read_as_of_version_inclusive(version).unwrap();
+		source_query.read_as_of_version_inclusive(version);
 
 		let state_query = parent.multi.begin_query().unwrap();
 		Self {
@@ -188,10 +187,9 @@ impl FlowTransaction {
 	}
 
 	/// Update the transaction to read at a new version
-	pub fn update_version(&mut self, new_version: CommitVersion) -> crate::Result<()> {
+	pub fn update_version(&mut self, new_version: CommitVersion) {
 		self.version = new_version;
-		self.source_query.read_as_of_version_inclusive(new_version)?;
-		Ok(())
+		self.source_query.read_as_of_version_inclusive(new_version);
 	}
 
 	/// Get immutable reference to the metrics

@@ -10,7 +10,7 @@ use common::{
 use reifydb::{
 	Database,
 	core::{event::EventBus, retry},
-	memory, optimistic,
+	memory, transaction,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{HttpBlockingSession, HttpClient};
@@ -119,5 +119,5 @@ impl testscript::Runner for BlockingRunner {
 test_each_path! { in "pkg/rust/reifydb-client/tests/scripts" as blocking_http => test_blocking }
 
 fn test_blocking(path: &Path) {
-	retry(3, || testscript::run_path(&mut BlockingRunner::new(optimistic(memory())), path)).expect("test failed")
+	retry(3, || testscript::run_path(&mut BlockingRunner::new(transaction(memory())), path)).expect("test failed")
 }

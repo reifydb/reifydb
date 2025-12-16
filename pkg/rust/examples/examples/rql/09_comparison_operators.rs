@@ -15,7 +15,7 @@ use tracing::info;
 
 fn main() {
 	// Create and start an in-memory database
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 
 	// Example 1: Basic comparisons with numbers

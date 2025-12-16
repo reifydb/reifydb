@@ -10,27 +10,34 @@
 //   http://www.apache.org/licenses/LICENSE-2.0
 
 use core::mem;
-use std::{sync::Arc, time::Duration};
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 pub use command::*;
 use oracle::*;
-use reifydb_core::{CommitVersion, interface::TransactionId};
+use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus, interface::TransactionId};
+use reifydb_store_transaction::{
+	MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev, TransactionStore,
+};
+use reifydb_type::util::hex;
 use tracing::instrument;
-use version::VersionProvider;
+use version::{StandardVersionProvider, VersionProvider};
 
 pub use crate::multi::types::*;
+use crate::single::{TransactionSingleVersion, TransactionSvl};
 
 mod command;
-pub mod optimistic;
+mod command_tx;
 mod oracle;
 mod oracle_cleanup;
 pub mod query;
+mod query_tx;
 pub mod range;
 pub mod range_rev;
-pub mod serializable;
 mod version;
 
+pub use command_tx::CommandTransaction;
 pub use oracle::MAX_COMMITTED_TXNS;
+pub use query_tx::QueryTransaction;
 
 use crate::multi::{
 	AwaitWatermarkError, conflict::ConflictManager, pending::PendingWrites,
@@ -155,5 +162,137 @@ where
 	/// Returns (query_done_until, command_done_until) for debugging watermark state.
 	pub fn watermarks(&self) -> (CommitVersion, CommitVersion) {
 		(self.inner.query.done_until(), self.inner.command.done_until())
+	}
+}
+
+// ============================================================================
+// Transaction - The main multi-version transaction type
+// ============================================================================
+
+pub struct Transaction(Arc<Inner>);
+
+pub struct Inner {
+	pub(crate) tm: TransactionManager<StandardVersionProvider>,
+	pub(crate) store: TransactionStore,
+	pub(crate) event_bus: EventBus,
+}
+
+impl Deref for Transaction {
+	type Target = Inner;
+
+	fn deref(&self) -> &Self::Target {
+		&self.0
+	}
+}
+
+impl Clone for Transaction {
+	fn clone(&self) -> Self {
+		Self(self.0.clone())
+	}
+}
+
+impl Inner {
+	fn new(store: TransactionStore, single: TransactionSingleVersion, event_bus: EventBus) -> Self {
+		let tm = TransactionManager::new(StandardVersionProvider::new(single).unwrap()).unwrap();
+
+		Self {
+			tm,
+			store,
+			event_bus,
+		}
+	}
+
+	fn version(&self) -> crate::Result<CommitVersion> {
+		self.tm.version()
+	}
+}
+
+impl Transaction {
+	pub fn testing() -> Self {
+		let store = TransactionStore::testing_memory();
+		let event_bus = EventBus::new();
+		Self::new(
+			store.clone(),
+			TransactionSingleVersion::SingleVersionLock(TransactionSvl::new(store, event_bus.clone())),
+			event_bus,
+		)
+	}
+}
+
+impl Transaction {
+	#[instrument(level = "debug", skip(store, single, event_bus))]
+	pub fn new(store: TransactionStore, single: TransactionSingleVersion, event_bus: EventBus) -> Self {
+		Self(Arc::new(Inner::new(store, single, event_bus)))
+	}
+}
+
+impl Transaction {
+	#[instrument(level = "trace", skip(self))]
+	pub fn version(&self) -> crate::Result<CommitVersion> {
+		self.0.version()
+	}
+
+	#[instrument(level = "debug", skip(self))]
+	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
+		QueryTransaction::new(self.clone(), None)
+	}
+}
+
+impl Transaction {
+	#[instrument(level = "debug", skip(self))]
+	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
+		CommandTransaction::new(self.clone())
+	}
+}
+
+pub enum TransactionType {
+	Query(QueryTransaction),
+	Command(CommandTransaction),
+}
+
+impl Transaction {
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
+	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
+		Ok(self.store.get(key, version)?.map(|sv| sv.into()))
+	}
+
+	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
+	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
+		self.store.contains(key, version)
+	}
+
+	#[instrument(level = "trace", skip(self), fields(version = version.0, batch_size = batch_size))]
+	pub fn range_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
+		self.store.range_batched(range, version, batch_size)
+	}
+
+	pub fn range(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
+		self.range_batched(range, version, 1024)
+	}
+
+	pub fn range_rev_batched(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+		batch_size: u64,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
+		self.store.range_rev_batched(range, version, batch_size)
+	}
+
+	pub fn range_rev(
+		&self,
+		range: EncodedKeyRange,
+		version: CommitVersion,
+	) -> reifydb_type::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
+		self.range_rev_batched(range, version, 1024)
 	}
 }

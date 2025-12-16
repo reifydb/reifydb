@@ -6,8 +6,9 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	Database, ServerBuilder,
 	core::{event::EventBus, retry},
-	memory, optimistic,
+	memory,
 	sub_server_ws::WsConfig,
+	transaction,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_client::{Client, WsBlockingSession, WsClient};
@@ -112,5 +113,5 @@ impl testscript::Runner for WsRunner {
 test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as ws => test_ws }
 
 fn test_ws(path: &Path) {
-	retry(3, || testscript::run_path(&mut WsRunner::new(optimistic(memory())), path)).expect("test failed")
+	retry(3, || testscript::run_path(&mut WsRunner::new(transaction(memory())), path)).expect("test failed")
 }

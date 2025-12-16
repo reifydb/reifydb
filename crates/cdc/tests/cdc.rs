@@ -28,7 +28,7 @@ use reifydb_core::{
 };
 use reifydb_engine::{StandardCommandTransaction, StandardEngine};
 use reifydb_store_transaction::TransactionStore;
-use reifydb_transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion};
+use reifydb_transaction::{cdc::TransactionCdc, multi::Transaction, single::TransactionSingleVersion};
 use reifydb_type::{OwnedFragment, RowNumber};
 
 #[test]
@@ -601,7 +601,7 @@ fn create_test_engine() -> StandardEngine {
 	let eventbus = EventBus::new();
 	let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = TransactionMultiVersion::optimistic(store, single.clone(), eventbus.clone());
+	let multi = Transaction::new(store, single.clone(), eventbus.clone());
 
 	StandardEngine::new(
 		multi,

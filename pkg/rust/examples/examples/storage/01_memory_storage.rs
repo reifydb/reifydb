@@ -16,7 +16,7 @@ fn main() {
 
 	// Create an in-memory database
 	info!("Creating in-memory database...");
-	let mut db = embedded::memory_optimistic().build().unwrap();
+	let mut db = embedded::memory().build().unwrap();
 	db.start().unwrap();
 	info!("✓ Database created and started\n");
 

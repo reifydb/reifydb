@@ -6,7 +6,7 @@ use std::{error::Error, fmt::Write, path::Path};
 use reifydb::{
 	Database, EmbeddedBuilder, Session,
 	core::{event::EventBus, interface::Params},
-	memory, optimistic,
+	memory, transaction,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_testing::{testscript, testscript::Command};
@@ -71,5 +71,5 @@ impl testscript::Runner for Runner {
 test_each_path! { in "pkg/rust/tests/regression/tests/scripts" as embedded => test_embedded }
 
 fn test_embedded(path: &Path) {
-	testscript::run_path(&mut Runner::new(optimistic(memory())), path).expect("test failed")
+	testscript::run_path(&mut Runner::new(transaction(memory())), path).expect("test failed")
 }

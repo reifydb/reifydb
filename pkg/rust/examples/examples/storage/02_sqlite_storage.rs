@@ -30,7 +30,7 @@ fn main() {
 	{
 		// Create database (will be saved to disk)
 		info!("Creating SQLite database...");
-		let mut db = embedded::sqlite_serializable(SqliteConfig::new(db_path)).build().unwrap();
+		let mut db = embedded::sqlite(SqliteConfig::new(db_path)).build().unwrap();
 		db.start().unwrap();
 		info!("✓ Database created and started\n");
 
@@ -111,7 +111,7 @@ insert store.products"#,
 	{
 		// Open existing database
 		info!("Opening existing database at: {}", db_path);
-		let mut db = embedded::sqlite_serializable(SqliteConfig::new(db_path)).build().unwrap();
+		let mut db = embedded::sqlite(SqliteConfig::new(db_path)).build().unwrap();
 		db.start().unwrap();
 		info!("✓ Database reopened successfully\n");
 
