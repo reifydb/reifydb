@@ -4,6 +4,7 @@
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, Value};
+use tracing::instrument;
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
@@ -40,6 +41,7 @@ impl<'a> LeftJoinNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for LeftJoinNode<'a> {
+	#[instrument(name = "LeftJoinNode::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
@@ -47,6 +49,7 @@ impl<'a> QueryNode<'a> for LeftJoinNode<'a> {
 		Ok(())
 	}
 
+	#[instrument(name = "LeftJoinNode::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,

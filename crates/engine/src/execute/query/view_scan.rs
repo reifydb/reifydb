@@ -12,6 +12,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::Fragment;
+use tracing::instrument;
 
 use crate::execute::{Batch, ExecutionContext, QueryNode};
 
@@ -45,6 +46,7 @@ impl<'a> ViewScanNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for ViewScanNode<'a> {
+	#[instrument(name = "ViewScanNode::initialize", level = "trace", skip_all)]
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
@@ -54,6 +56,7 @@ impl<'a> QueryNode<'a> for ViewScanNode<'a> {
 		Ok(())
 	}
 
+	#[instrument(name = "ViewScanNode::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,

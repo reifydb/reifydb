@@ -8,6 +8,7 @@ use reifydb_core::{
 	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_type::{Fragment, Value};
+use tracing::instrument;
 
 use super::common::{JoinContext, load_and_merge_all, resolve_column_names};
 use crate::{
@@ -57,6 +58,7 @@ impl<'a> NaturalJoinNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for NaturalJoinNode<'a> {
+	#[instrument(name = "NaturalJoinNode::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
@@ -64,6 +66,7 @@ impl<'a> QueryNode<'a> for NaturalJoinNode<'a> {
 		Ok(())
 	}
 
+	#[instrument(name = "NaturalJoinNode::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,

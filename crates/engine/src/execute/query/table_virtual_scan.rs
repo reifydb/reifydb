@@ -5,6 +5,7 @@ use std::sync::Arc;
 
 use reifydb_core::value::column::headers::ColumnHeaders;
 use reifydb_type::Fragment;
+use tracing::instrument;
 
 use crate::{
 	StandardTransaction,
@@ -41,6 +42,7 @@ impl<'a> VirtualScanNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for VirtualScanNode<'a> {
+	#[instrument(name = "VirtualScanNode::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		let ctx = self.table_context.take().unwrap_or_else(|| TableVirtualContext::Basic {
 			params: self.context.as_ref().unwrap().params.clone(),
@@ -49,6 +51,7 @@ impl<'a> QueryNode<'a> for VirtualScanNode<'a> {
 		Ok(())
 	}
 
+	#[instrument(name = "VirtualScanNode::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
