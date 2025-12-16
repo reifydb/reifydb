@@ -49,7 +49,7 @@ impl SourceId {
 		Self::TableVirtual(id.into())
 	}
 
-	pub fn ring_buffer(id: impl Into<RingBufferId>) -> Self {
+	pub fn ringbuffer(id: impl Into<RingBufferId>) -> Self {
 		Self::RingBuffer(id.into())
 	}
 
@@ -199,7 +199,7 @@ impl SourceId {
 			SourceId::View(view) => SourceId::view(view.0 + 1),
 			SourceId::Flow(flow) => SourceId::flow(flow.0 + 1),
 			SourceId::TableVirtual(table_virtual) => SourceId::table_virtual(table_virtual.0 + 1),
-			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0 + 1),
+			SourceId::RingBuffer(ringbuffer) => SourceId::ringbuffer(ringbuffer.0 + 1),
 			SourceId::Dictionary(dictionary) => SourceId::dictionary(dictionary.0 + 1),
 		}
 	}
@@ -216,7 +216,7 @@ impl SourceId {
 			SourceId::TableVirtual(table_virtual) => {
 				SourceId::table_virtual(table_virtual.0.wrapping_sub(1))
 			}
-			SourceId::RingBuffer(ring_buffer) => SourceId::ring_buffer(ring_buffer.0.wrapping_sub(1)),
+			SourceId::RingBuffer(ringbuffer) => SourceId::ringbuffer(ringbuffer.0.wrapping_sub(1)),
 			SourceId::Dictionary(dictionary) => SourceId::dictionary(dictionary.0.wrapping_sub(1)),
 		}
 	}
@@ -273,9 +273,9 @@ impl SourceId {
 		}
 	}
 
-	pub fn to_ring_buffer_id(self) -> crate::Result<RingBufferId> {
-		if let SourceId::RingBuffer(ring_buffer) = self {
-			Ok(ring_buffer)
+	pub fn to_ringbuffer_id(self) -> crate::Result<RingBufferId> {
+		if let SourceId::RingBuffer(ringbuffer) = self {
+			Ok(ringbuffer)
 		} else {
 			return_internal_error!(
 				"Data inconsistency: Expected SourceId::RingBuffer but found {:?}. \

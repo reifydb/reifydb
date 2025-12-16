@@ -75,10 +75,10 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Try ring buffer
-	if let Some(ring_buffer) = tx.find_ring_buffer_by_name(ns_def.id, name_str)? {
+	if let Some(ringbuffer) = tx.find_ringbuffer_by_name(ns_def.id, name_str)? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
-		return Ok(ResolvedSource::RingBuffer(ResolvedRingBuffer::new(name_fragment, namespace, ring_buffer)));
+		return Ok(ResolvedSource::RingBuffer(ResolvedRingBuffer::new(name_fragment, namespace, ringbuffer)));
 	}
 
 	// Try views FIRST (deferred views share name with their flow)

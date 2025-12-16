@@ -9,7 +9,7 @@ use crate::{
 
 const VERSION: u8 = 1;
 
-/// Key for storing retention policy for a data source (table, view, ring_buffer)
+/// Key for storing retention policy for a data source (table, view, ringbuffer)
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SourceRetentionPolicyKey {
 	pub source: SourceId,

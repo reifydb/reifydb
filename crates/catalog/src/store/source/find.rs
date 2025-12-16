@@ -50,8 +50,8 @@ impl CatalogStore {
 					Ok(None)
 				}
 			}
-			SourceId::RingBuffer(_ring_buffer_id) => {
-				// TODO: Implement find_ring_buffer when ring
+			SourceId::RingBuffer(_ringbuffer_id) => {
+				// TODO: Implement find_ringbuffer when ring
 				// buffer catalog is ready For now, ring
 				// buffers are not yet queryable
 				Ok(None)

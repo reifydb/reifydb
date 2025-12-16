@@ -4,7 +4,7 @@
 mod dictionary;
 mod flow;
 mod namespace;
-mod ring_buffer;
+mod ringbuffer;
 mod source;
 mod table;
 mod view;

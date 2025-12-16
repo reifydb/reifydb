@@ -98,7 +98,7 @@ impl SystemSequence {
 		GeneratorU64::next(txn, &PRIMARY_KEY_KEY, None).map(PrimaryKeyId)
 	}
 
-	pub(crate) fn next_ring_buffer_id(txn: &mut impl CommandTransaction) -> crate::Result<RingBufferId> {
+	pub(crate) fn next_ringbuffer_id(txn: &mut impl CommandTransaction) -> crate::Result<RingBufferId> {
 		GeneratorU64::next(txn, &SOURCE_KEY, Some(1025)).map(RingBufferId)
 	}
 

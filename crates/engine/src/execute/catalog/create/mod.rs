@@ -11,7 +11,7 @@ mod deferred;
 mod dictionary;
 mod flow;
 mod namespace;
-mod ring_buffer;
+mod ringbuffer;
 mod table;
 #[allow(dead_code)] // FIXME
 mod transactional;

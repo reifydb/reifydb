@@ -20,7 +20,7 @@ pub use kind::KeyKind;
 pub use namespace::NamespaceKey;
 pub use namespace_dictionary::NamespaceDictionaryKey;
 pub use namespace_flow::NamespaceFlowKey;
-pub use namespace_ring_buffer::NamespaceRingBufferKey;
+pub use namespace_ringbuffer::NamespaceRingBufferKey;
 pub use namespace_table::NamespaceTableKey;
 pub use namespace_view::NamespaceViewKey;
 pub use primary_key::PrimaryKeyKey;
@@ -28,7 +28,7 @@ pub use retention_policy::{
 	OperatorRetentionPolicyKey, OperatorRetentionPolicyKeyRange, SourceRetentionPolicyKey,
 	SourceRetentionPolicyKeyRange,
 };
-pub use ring_buffer::{RingBufferKey, RingBufferMetadataKey};
+pub use ringbuffer::{RingBufferKey, RingBufferMetadataKey};
 pub use row::{RowKey, RowKeyRange};
 pub use row_sequence::RowSequenceKey;
 pub use system_sequence::SystemSequenceKey;
@@ -56,12 +56,12 @@ mod kind;
 mod namespace;
 mod namespace_dictionary;
 mod namespace_flow;
-mod namespace_ring_buffer;
+mod namespace_ringbuffer;
 mod namespace_table;
 mod namespace_view;
 mod primary_key;
 mod retention_policy;
-mod ring_buffer;
+mod ringbuffer;
 mod row;
 mod row_sequence;
 mod system_sequence;

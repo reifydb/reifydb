@@ -6,7 +6,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 use indexmap::IndexMap;
 use reifydb_catalog::{
 	CatalogStore,
-	resolve::{resolve_ring_buffer, resolve_table, resolve_view},
+	resolve::{resolve_ringbuffer, resolve_table, resolve_view},
 };
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
@@ -104,9 +104,9 @@ impl FlowConsumer {
 			SourceId::TableVirtual(_) => {
 				unimplemented!("Virtual table sources not supported in flows")
 			}
-			SourceId::RingBuffer(ring_buffer_id) => {
-				let resolved_ring_buffer = resolve_ring_buffer(txn, ring_buffer_id)?;
-				resolved_ring_buffer.def().columns.clone()
+			SourceId::RingBuffer(ringbuffer_id) => {
+				let resolved_ringbuffer = resolve_ringbuffer(txn, ringbuffer_id)?;
+				resolved_ringbuffer.def().columns.clone()
 			}
 			SourceId::Dictionary(_) => {
 				unimplemented!("Dictionary sources not supported in flows")

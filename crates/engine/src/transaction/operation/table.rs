@@ -13,12 +13,7 @@ use reifydb_type::RowNumber;
 use crate::StandardCommandTransaction;
 
 pub(crate) trait TableOperations {
-	fn insert_into_table(
-		&mut self,
-		table: TableDef,
-		row: EncodedValues,
-		row_number: RowNumber,
-	) -> crate::Result<()>;
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()>;
 
 	fn update_table(&mut self, table: TableDef, id: RowNumber, row: EncodedValues) -> crate::Result<()>;
 
@@ -26,12 +21,7 @@ pub(crate) trait TableOperations {
 }
 
 impl TableOperations for StandardCommandTransaction {
-	fn insert_into_table(
-		&mut self,
-		table: TableDef,
-		row: EncodedValues,
-		row_number: RowNumber,
-	) -> crate::Result<()> {
+	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
 		TableInterceptor::pre_insert(self, &table, row_number, &row)?;
 
 		self.set(

@@ -70,13 +70,13 @@ impl CatalogStore {
 		}
 
 		// Get all ring buffers
-		let ring_buffers = CatalogStore::list_ring_buffers_all(rx)?;
-		for ring_buffer in ring_buffers {
-			let columns = CatalogStore::list_columns(rx, ring_buffer.id)?;
+		let ringbuffers = CatalogStore::list_ringbuffers_all(rx)?;
+		for ringbuffer in ringbuffers {
+			let columns = CatalogStore::list_columns(rx, ringbuffer.id)?;
 			for column in columns {
 				result.push(ColumnInfo {
 					column,
-					source_id: ring_buffer.id.into(),
+					source_id: ringbuffer.id.into(),
 					is_view: false,
 				});
 			}

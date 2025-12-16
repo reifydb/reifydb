@@ -38,12 +38,10 @@ impl CatalogStore {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
-			SourceId::RingBuffer(ring_buffer_id) => {
-				match Self::get_ring_buffer_pk_id(rx, ring_buffer_id)? {
-					Some(pk_id) => pk_id,
-					None => return Ok(None),
-				}
-			}
+			SourceId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
+				Some(pk_id) => pk_id,
+				None => return Ok(None),
+			},
 			SourceId::Dictionary(_) => {
 				// Dictionaries don't have traditional primary keys
 				return Ok(None);

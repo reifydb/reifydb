@@ -30,7 +30,7 @@ impl RetentionPolicyManager {
         }
     }
 
-    /// Apply retention policy for a source (table/view/ring_buffer)
+    /// Apply retention policy for a source (table/view/ringbuffer)
     /// TODO: This needs to be integrated with the actual store implementation
     pub  fn apply_source_retention(
         &mut self,

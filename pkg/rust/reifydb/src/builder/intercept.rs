@@ -45,7 +45,7 @@ pub trait WithInterceptorBuilder: Sized {
 	}
 
 	/// Start building interceptors for a specific ring buffer.
-	fn intercept_ring_buffer(self, spec: &str) -> RingBufferInterceptBuilder<Self> {
+	fn intercept_ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<Self> {
 		RingBufferInterceptBuilder::new(self, InterceptFilter::parse(spec))
 	}
 
@@ -212,7 +212,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a ring buffer.
-	pub fn intercept_ring_buffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
+	pub fn intercept_ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
@@ -259,7 +259,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ring_buffer_pre_insert.add(Rc::new(
+				interceptors.ringbuffer_pre_insert.add(Rc::new(
 					FilteredRingBufferPreInsertInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -280,7 +280,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ring_buffer_post_insert.add(Rc::new(
+				interceptors.ringbuffer_post_insert.add(Rc::new(
 					FilteredRingBufferPostInsertInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -301,7 +301,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ring_buffer_pre_update.add(Rc::new(
+				interceptors.ringbuffer_pre_update.add(Rc::new(
 					FilteredRingBufferPreUpdateInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -322,7 +322,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ring_buffer_post_update.add(Rc::new(
+				interceptors.ringbuffer_post_update.add(Rc::new(
 					FilteredRingBufferPostUpdateInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -343,7 +343,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ring_buffer_pre_delete.add(Rc::new(
+				interceptors.ringbuffer_pre_delete.add(Rc::new(
 					FilteredRingBufferPreDeleteInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -364,7 +364,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ring_buffer_post_delete.add(Rc::new(
+				interceptors.ringbuffer_post_delete.add(Rc::new(
 					FilteredRingBufferPostDeleteInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -378,7 +378,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a different ring buffer.
-	pub fn intercept_ring_buffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
+	pub fn intercept_ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
@@ -547,7 +547,7 @@ impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
 	}
 
 	/// Switch to intercepting a ring buffer.
-	pub fn intercept_ring_buffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
+	pub fn intercept_ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 

@@ -423,40 +423,40 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self.interceptors.table_post_delete
 	}
 
-	fn ring_buffer_pre_insert_interceptors(
+	fn ringbuffer_pre_insert_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreInsertInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_pre_insert
+		&mut self.interceptors.ringbuffer_pre_insert
 	}
 
-	fn ring_buffer_post_insert_interceptors(
+	fn ringbuffer_post_insert_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostInsertInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_post_insert
+		&mut self.interceptors.ringbuffer_post_insert
 	}
 
-	fn ring_buffer_pre_update_interceptors(
+	fn ringbuffer_pre_update_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreUpdateInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_pre_update
+		&mut self.interceptors.ringbuffer_pre_update
 	}
 
-	fn ring_buffer_post_update_interceptors(
+	fn ringbuffer_post_update_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostUpdateInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_post_update
+		&mut self.interceptors.ringbuffer_post_update
 	}
 
-	fn ring_buffer_pre_delete_interceptors(
+	fn ringbuffer_pre_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreDeleteInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_pre_delete
+		&mut self.interceptors.ringbuffer_pre_delete
 	}
 
-	fn ring_buffer_post_delete_interceptors(
+	fn ringbuffer_post_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostDeleteInterceptor<StandardCommandTransaction>> {
-		&mut self.interceptors.ring_buffer_post_delete
+		&mut self.interceptors.ringbuffer_post_delete
 	}
 
 	fn pre_commit_interceptors(
@@ -583,40 +583,40 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 	}
 
 	// Ring buffer definition interceptors
-	fn ring_buffer_def_post_create_interceptors(
+	fn ringbuffer_def_post_create_interceptors(
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
 		dyn interceptor::RingBufferDefPostCreateInterceptor<StandardCommandTransaction>,
 	> {
-		&mut self.interceptors.ring_buffer_def_post_create
+		&mut self.interceptors.ringbuffer_def_post_create
 	}
 
-	fn ring_buffer_def_pre_update_interceptors(
+	fn ringbuffer_def_pre_update_interceptors(
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
 		dyn interceptor::RingBufferDefPreUpdateInterceptor<StandardCommandTransaction>,
 	> {
-		&mut self.interceptors.ring_buffer_def_pre_update
+		&mut self.interceptors.ringbuffer_def_pre_update
 	}
 
-	fn ring_buffer_def_post_update_interceptors(
+	fn ringbuffer_def_post_update_interceptors(
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
 		dyn interceptor::RingBufferDefPostUpdateInterceptor<StandardCommandTransaction>,
 	> {
-		&mut self.interceptors.ring_buffer_def_post_update
+		&mut self.interceptors.ringbuffer_def_post_update
 	}
 
-	fn ring_buffer_def_pre_delete_interceptors(
+	fn ringbuffer_def_pre_delete_interceptors(
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
 		dyn interceptor::RingBufferDefPreDeleteInterceptor<StandardCommandTransaction>,
 	> {
-		&mut self.interceptors.ring_buffer_def_pre_delete
+		&mut self.interceptors.ringbuffer_def_pre_delete
 	}
 
 	// View data interceptors

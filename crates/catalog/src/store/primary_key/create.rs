@@ -82,8 +82,8 @@ impl CatalogStore {
 					"Cannot create primary key for virtual table. Virtual tables do not support primary keys."
 				);
 			}
-			SourceId::RingBuffer(ring_buffer_id) => {
-				Self::set_ring_buffer_primary_key(txn, ring_buffer_id, id)?;
+			SourceId::RingBuffer(ringbuffer_id) => {
+				Self::set_ringbuffer_primary_key(txn, ringbuffer_id, id)?;
 			}
 			SourceId::Dictionary(_) => {
 				// Dictionaries don't support traditional primary keys

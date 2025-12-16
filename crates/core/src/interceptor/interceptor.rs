@@ -130,50 +130,50 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> TableInterceptor<CT> for CT 
 impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferInterceptor<CT> for CT {
 	impl_interceptor_method!(
 		pre_insert,
-		ring_buffer_pre_insert_interceptors,
+		ringbuffer_pre_insert_interceptors,
 		RingBufferPreInsertInterceptor,
 		RingBufferPreInsertContext,
-		(ring_buffer: &RingBufferDef, row: &EncodedValues)
+		(ringbuffer: &RingBufferDef, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
 		post_insert,
-		ring_buffer_post_insert_interceptors,
+		ringbuffer_post_insert_interceptors,
 		RingBufferPostInsertInterceptor,
 		RingBufferPostInsertContext,
-		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedValues)
+		(ringbuffer: &RingBufferDef, id: RowNumber, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
 		pre_update,
-		ring_buffer_pre_update_interceptors,
+		ringbuffer_pre_update_interceptors,
 		RingBufferPreUpdateInterceptor,
 		RingBufferPreUpdateContext,
-		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedValues)
+		(ringbuffer: &RingBufferDef, id: RowNumber, row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
 		post_update,
-		ring_buffer_post_update_interceptors,
+		ringbuffer_post_update_interceptors,
 		RingBufferPostUpdateInterceptor,
 		RingBufferPostUpdateContext,
-		(ring_buffer: &RingBufferDef, id: RowNumber, row: &EncodedValues, old_row: &EncodedValues)
+		(ringbuffer: &RingBufferDef, id: RowNumber, row: &EncodedValues, old_row: &EncodedValues)
 	);
 
 	impl_interceptor_method!(
 		pre_delete,
-		ring_buffer_pre_delete_interceptors,
+		ringbuffer_pre_delete_interceptors,
 		RingBufferPreDeleteInterceptor,
 		RingBufferPreDeleteContext,
-		(ring_buffer: &RingBufferDef, id: RowNumber)
+		(ringbuffer: &RingBufferDef, id: RowNumber)
 	);
 
 	impl_interceptor_method!(
 		post_delete,
-		ring_buffer_post_delete_interceptors,
+		ringbuffer_post_delete_interceptors,
 		RingBufferPostDeleteInterceptor,
 		RingBufferPostDeleteContext,
-		(ring_buffer: &RingBufferDef, id: RowNumber, deleted_row: &EncodedValues)
+		(ringbuffer: &RingBufferDef, id: RowNumber, deleted_row: &EncodedValues)
 	);
 }
 
@@ -282,7 +282,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> ViewDefInterceptor<CT> for C
 impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferDefInterceptor<CT> for CT {
 	impl_interceptor_method!(
 		post_create,
-		ring_buffer_def_post_create_interceptors,
+		ringbuffer_def_post_create_interceptors,
 		RingBufferDefPostCreateInterceptor,
 		RingBufferDefPostCreateContext,
 		(post: &RingBufferDef)
@@ -290,7 +290,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferDefInterceptor<CT>
 
 	impl_interceptor_method!(
 		pre_update,
-		ring_buffer_def_pre_update_interceptors,
+		ringbuffer_def_pre_update_interceptors,
 		RingBufferDefPreUpdateInterceptor,
 		RingBufferDefPreUpdateContext,
 		(pre: &RingBufferDef)
@@ -298,7 +298,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferDefInterceptor<CT>
 
 	impl_interceptor_method!(
 		post_update,
-		ring_buffer_def_post_update_interceptors,
+		ringbuffer_def_post_update_interceptors,
 		RingBufferDefPostUpdateInterceptor,
 		RingBufferDefPostUpdateContext,
 		(pre: &RingBufferDef, post: &RingBufferDef)
@@ -306,7 +306,7 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferDefInterceptor<CT>
 
 	impl_interceptor_method!(
 		pre_delete,
-		ring_buffer_def_pre_delete_interceptors,
+		ringbuffer_def_pre_delete_interceptors,
 		RingBufferDefPreDeleteInterceptor,
 		RingBufferDefPreDeleteContext,
 		(pre: &RingBufferDef)

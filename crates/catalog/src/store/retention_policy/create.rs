@@ -90,10 +90,10 @@ mod tests {
 	}
 
 	#[test]
-	fn test_create_source_retention_policy_for_ring_buffer() {
+	fn test_create_source_retention_policy_for_ringbuffer() {
 		let mut txn = create_test_command_transaction();
-		let ring_buffer_id = RingBufferId(200);
-		let source = SourceId::RingBuffer(ring_buffer_id);
+		let ringbuffer_id = RingBufferId(200);
+		let source = SourceId::RingBuffer(ringbuffer_id);
 
 		let policy = RetentionPolicy::KeepVersions {
 			count: 50,

@@ -145,42 +145,42 @@ define_filtered_interceptor!(
 	FilteredRingBufferPreInsertInterceptor,
 	RingBufferPreInsertInterceptor,
 	RingBufferPreInsertContext,
-	ring_buffer
+	ringbuffer
 );
 
 define_filtered_interceptor!(
 	FilteredRingBufferPostInsertInterceptor,
 	RingBufferPostInsertInterceptor,
 	RingBufferPostInsertContext,
-	ring_buffer
+	ringbuffer
 );
 
 define_filtered_interceptor!(
 	FilteredRingBufferPreUpdateInterceptor,
 	RingBufferPreUpdateInterceptor,
 	RingBufferPreUpdateContext,
-	ring_buffer
+	ringbuffer
 );
 
 define_filtered_interceptor!(
 	FilteredRingBufferPostUpdateInterceptor,
 	RingBufferPostUpdateInterceptor,
 	RingBufferPostUpdateContext,
-	ring_buffer
+	ringbuffer
 );
 
 define_filtered_interceptor!(
 	FilteredRingBufferPreDeleteInterceptor,
 	RingBufferPreDeleteInterceptor,
 	RingBufferPreDeleteContext,
-	ring_buffer
+	ringbuffer
 );
 
 define_filtered_interceptor!(
 	FilteredRingBufferPostDeleteInterceptor,
 	RingBufferPostDeleteInterceptor,
 	RingBufferPostDeleteContext,
-	ring_buffer
+	ringbuffer
 );
 
 // View filtered interceptors

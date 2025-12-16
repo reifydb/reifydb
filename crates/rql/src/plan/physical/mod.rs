@@ -7,7 +7,7 @@ mod create;
 pub use alter::{AlterFlowAction, AlterFlowNode, AlterTableNode, AlterViewNode};
 use reifydb_catalog::{
 	CatalogStore,
-	store::{ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
+	store::{ringbuffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
 };
 use reifydb_core::{
 	JoinType, SortKey, WindowSize, WindowSlide, WindowType,
@@ -23,7 +23,7 @@ use reifydb_core::{
 use reifydb_type::{
 	Fragment, Type, TypeConstraint,
 	diagnostic::{
-		catalog::{dictionary_not_found, ring_buffer_not_found, table_not_found},
+		catalog::{dictionary_not_found, ringbuffer_not_found, table_not_found},
 		function::internal_error,
 	},
 	return_error,
@@ -82,7 +82,7 @@ impl Compiler {
 				}
 
 				LogicalPlan::CreateRingBuffer(create) => {
-					stack.push(Self::compile_create_ring_buffer(rx, create)?);
+					stack.push(Self::compile_create_ringbuffer(rx, create)?);
 				}
 
 				LogicalPlan::CreateFlow(create) => {
@@ -271,36 +271,33 @@ impl Compiler {
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
-					let ring_buffer_id = delete.target.clone();
-					let namespace_name = ring_buffer_id
-						.namespace
-						.as_ref()
-						.map(|n| n.text())
-						.unwrap_or("default");
+					let ringbuffer_id = delete.target.clone();
+					let namespace_name =
+						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
 						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
-					let Some(ring_buffer_def) = CatalogStore::find_ring_buffer_by_name(
+					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
-						ring_buffer_id.name.text(),
+						ringbuffer_id.name.text(),
 					)?
 					else {
-						return_error!(ring_buffer_not_found(
-							ring_buffer_id.name.clone().into_owned(),
+						return_error!(ringbuffer_not_found(
+							ringbuffer_id.name.clone().into_owned(),
 							&namespace_def.name,
-							ring_buffer_id.name.text()
+							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ring_buffer_id.namespace.clone().unwrap_or_else(|| {
+					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
 						Fragment::owned_internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ring_buffer_id.name.clone(),
+						ringbuffer_id.name.clone(),
 						resolved_namespace,
-						ring_buffer_def,
+						ringbuffer_def,
 					);
 
 					stack.push(PhysicalPlan::DeleteRingBuffer(DeleteRingBufferNode {
@@ -358,36 +355,33 @@ impl Compiler {
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
-					let ring_buffer_id = insert_rb.target.clone();
-					let namespace_name = ring_buffer_id
-						.namespace
-						.as_ref()
-						.map(|n| n.text())
-						.unwrap_or("default");
+					let ringbuffer_id = insert_rb.target.clone();
+					let namespace_name =
+						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
 						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
-					let Some(ring_buffer_def) = CatalogStore::find_ring_buffer_by_name(
+					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
-						ring_buffer_id.name.text(),
+						ringbuffer_id.name.text(),
 					)?
 					else {
-						return_error!(ring_buffer_not_found(
-							ring_buffer_id.name.clone().into_owned(),
+						return_error!(ringbuffer_not_found(
+							ringbuffer_id.name.clone().into_owned(),
 							&namespace_def.name,
-							ring_buffer_id.name.text()
+							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ring_buffer_id.namespace.clone().unwrap_or_else(|| {
+					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
 						Fragment::owned_internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ring_buffer_id.name.clone(),
+						ringbuffer_id.name.clone(),
 						resolved_namespace,
-						ring_buffer_def,
+						ringbuffer_def,
 					);
 
 					stack.push(PhysicalPlan::InsertRingBuffer(InsertRingBufferNode {
@@ -516,36 +510,33 @@ impl Compiler {
 						ResolvedNamespace, ResolvedRingBuffer,
 					};
 
-					let ring_buffer_id = update_rb.target.clone();
-					let namespace_name = ring_buffer_id
-						.namespace
-						.as_ref()
-						.map(|n| n.text())
-						.unwrap_or("default");
+					let ringbuffer_id = update_rb.target.clone();
+					let namespace_name =
+						ringbuffer_id.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
 					let namespace_def =
 						CatalogStore::find_namespace_by_name(rx, namespace_name)?.unwrap();
-					let Some(ring_buffer_def) = CatalogStore::find_ring_buffer_by_name(
+					let Some(ringbuffer_def) = CatalogStore::find_ringbuffer_by_name(
 						rx,
 						namespace_def.id,
-						ring_buffer_id.name.text(),
+						ringbuffer_id.name.text(),
 					)?
 					else {
-						return_error!(ring_buffer_not_found(
-							ring_buffer_id.name.clone().into_owned(),
+						return_error!(ringbuffer_not_found(
+							ringbuffer_id.name.clone().into_owned(),
 							&namespace_def.name,
-							ring_buffer_id.name.text()
+							ringbuffer_id.name.text()
 						));
 					};
 
-					let namespace_id = ring_buffer_id.namespace.clone().unwrap_or_else(|| {
+					let namespace_id = ringbuffer_id.namespace.clone().unwrap_or_else(|| {
 						use reifydb_type::Fragment;
 						Fragment::owned_internal(namespace_def.name.clone())
 					});
 					let resolved_namespace = ResolvedNamespace::new(namespace_id, namespace_def);
 					let target = ResolvedRingBuffer::new(
-						ring_buffer_id.name.clone(),
+						ringbuffer_id.name.clone(),
 						resolved_namespace,
-						ring_buffer_def,
+						ringbuffer_def,
 					);
 
 					stack.push(PhysicalPlan::UpdateRingBuffer(UpdateRingBufferNode {
@@ -762,7 +753,7 @@ impl Compiler {
 								},
 							));
 						}
-						ResolvedSource::RingBuffer(resolved_ring_buffer) => {
+						ResolvedSource::RingBuffer(resolved_ringbuffer) => {
 							// Ring buffers cannot use index directives
 							if scan.index.is_some() {
 								unimplemented!(
@@ -770,7 +761,7 @@ impl Compiler {
 								);
 							}
 							stack.push(PhysicalPlan::RingBufferScan(RingBufferScanNode {
-								source: resolved_ring_buffer.clone(),
+								source: resolved_ringbuffer.clone(),
 							}));
 						}
 						ResolvedSource::Flow(resolved_flow) => {
@@ -1086,7 +1077,7 @@ pub struct CreateTableNode<'a> {
 #[derive(Debug, Clone)]
 pub struct CreateRingBufferNode<'a> {
 	pub namespace: ResolvedNamespace<'a>,
-	pub ring_buffer: Fragment<'a>,
+	pub ringbuffer: Fragment<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,

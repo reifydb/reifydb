@@ -111,12 +111,12 @@ mod tests {
 		let view_policy = RetentionPolicy::KeepForever;
 		create_source_retention_policy(&mut txn, view_source, &view_policy).unwrap();
 
-		let ring_buffer_source = SourceId::RingBuffer(RingBufferId(3));
-		let ring_buffer_policy = RetentionPolicy::KeepVersions {
+		let ringbuffer_source = SourceId::RingBuffer(RingBufferId(3));
+		let ringbuffer_policy = RetentionPolicy::KeepVersions {
 			count: 50,
 			cleanup_mode: CleanupMode::Drop,
 		};
-		create_source_retention_policy(&mut txn, ring_buffer_source, &ring_buffer_policy).unwrap();
+		create_source_retention_policy(&mut txn, ringbuffer_source, &ringbuffer_policy).unwrap();
 
 		// List all policies
 		let policies = CatalogStore::list_source_retention_policies(&mut txn).unwrap();
@@ -126,7 +126,7 @@ mod tests {
 		// Verify each policy
 		assert!(policies.iter().any(|p| p.source == table_source && p.policy == table_policy));
 		assert!(policies.iter().any(|p| p.source == view_source && p.policy == view_policy));
-		assert!(policies.iter().any(|p| p.source == ring_buffer_source && p.policy == ring_buffer_policy));
+		assert!(policies.iter().any(|p| p.source == ringbuffer_source && p.policy == ringbuffer_policy));
 	}
 
 	#[test]

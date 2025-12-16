@@ -342,7 +342,7 @@ fn columns_from_source<'a>(source: &ResolvedSource<'a>) -> Columns<'a> {
 	match source {
 		ResolvedSource::Table(table) => Columns::from_table(table),
 		ResolvedSource::View(view) => Columns::from_view(view),
-		ResolvedSource::RingBuffer(rb) => Columns::from_ring_buffer(rb),
+		ResolvedSource::RingBuffer(rb) => Columns::from_ringbuffer(rb),
 		_ => Columns::empty(),
 	}
 }

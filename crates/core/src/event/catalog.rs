@@ -33,7 +33,7 @@ pub struct ViewCreatedEvent {
 impl_event!(ViewCreatedEvent);
 
 pub struct RingBufferCreatedEvent {
-	pub ring_buffer: RingBufferDef,
+	pub ringbuffer: RingBufferDef,
 }
 
 impl_event!(RingBufferCreatedEvent);

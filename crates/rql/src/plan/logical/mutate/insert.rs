@@ -44,7 +44,7 @@ impl Compiler {
 		};
 
 		// Check if it's a ring buffer first
-		if tx.find_ring_buffer_by_name(namespace_id, target_name)?.is_some() {
+		if tx.find_ringbuffer_by_name(namespace_id, target_name)?.is_some() {
 			let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved_target.name.clone());
 			if let Some(ns) = unresolved_target.namespace.clone() {
 				target = target.with_namespace(ns);

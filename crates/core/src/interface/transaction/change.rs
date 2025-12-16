@@ -63,17 +63,17 @@ pub trait TransactionalTableChanges {
 }
 
 pub trait TransactionalRingBufferChanges {
-	fn find_ring_buffer(&self, id: RingBufferId) -> Option<&RingBufferDef>;
+	fn find_ringbuffer(&self, id: RingBufferId) -> Option<&RingBufferDef>;
 
-	fn find_ring_buffer_by_name<'a>(
+	fn find_ringbuffer_by_name<'a>(
 		&self,
 		namespace: NamespaceId,
 		name: impl IntoFragment<'a>,
 	) -> Option<&RingBufferDef>;
 
-	fn is_ring_buffer_deleted(&self, id: RingBufferId) -> bool;
+	fn is_ringbuffer_deleted(&self, id: RingBufferId) -> bool;
 
-	fn is_ring_buffer_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
+	fn is_ringbuffer_deleted_by_name<'a>(&self, namespace: NamespaceId, name: impl IntoFragment<'a>) -> bool;
 }
 
 pub trait TransactionalViewChanges {
@@ -97,7 +97,7 @@ pub struct TransactionalDefChanges {
 	/// All namespace definition changes in order (no coalescing)
 	pub namespace_def: Vec<Change<NamespaceDef>>,
 	/// All ring buffer definition changes in order (no coalescing)
-	pub ring_buffer_def: Vec<Change<RingBufferDef>>,
+	pub ringbuffer_def: Vec<Change<RingBufferDef>>,
 	/// All table definition changes in order (no coalescing)
 	pub table_def: Vec<Change<TableDef>>,
 	/// All view definition changes in order (no coalescing)
@@ -152,7 +152,7 @@ impl TransactionalDefChanges {
 		});
 	}
 
-	pub fn add_ring_buffer_def_change(&mut self, change: Change<RingBufferDef>) {
+	pub fn add_ringbuffer_def_change(&mut self, change: Change<RingBufferDef>) {
 		let id = change
 			.post
 			.as_ref()
@@ -160,7 +160,7 @@ impl TransactionalDefChanges {
 			.map(|rb| rb.id)
 			.expect("Change must have either pre or post state");
 		let op = change.op;
-		self.ring_buffer_def.push(change);
+		self.ringbuffer_def.push(change);
 		self.log.push(Operation::RingBuffer {
 			id,
 			op,
@@ -254,7 +254,7 @@ impl TransactionalDefChanges {
 			dictionary_def: Vec::new(),
 			flow_def: Vec::new(),
 			namespace_def: Vec::new(),
-			ring_buffer_def: Vec::new(),
+			ringbuffer_def: Vec::new(),
 			table_def: Vec::new(),
 			view_def: Vec::new(),
 			log: Vec::new(),
@@ -337,7 +337,7 @@ impl TransactionalDefChanges {
 		self.dictionary_def.clear();
 		self.flow_def.clear();
 		self.namespace_def.clear();
-		self.ring_buffer_def.clear();
+		self.ringbuffer_def.clear();
 		self.table_def.clear();
 		self.view_def.clear();
 		self.log.clear();

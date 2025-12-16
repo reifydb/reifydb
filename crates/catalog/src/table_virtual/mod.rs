@@ -38,7 +38,7 @@ impl VirtualTableRegistry {
 			CDC_CONSUMERS => Some(SystemCatalog::get_system_cdc_consumers_table_def()),
 			FLOW_OPERATORS => Some(SystemCatalog::get_system_flow_operators_table_def()),
 			DICTIONARIES => Some(SystemCatalog::get_system_dictionaries_table_def()),
-			RING_BUFFERS => Some(SystemCatalog::get_system_ring_buffers_table_def()),
+			RINGBUFFERS => Some(SystemCatalog::get_system_ringbuffers_table_def()),
 			_ => None,
 		})
 	}
@@ -61,7 +61,7 @@ impl VirtualTableRegistry {
 			SystemCatalog::get_system_cdc_consumers_table_def(),
 			SystemCatalog::get_system_flow_operators_table_def(),
 			SystemCatalog::get_system_dictionaries_table_def(),
-			SystemCatalog::get_system_ring_buffers_table_def(),
+			SystemCatalog::get_system_ringbuffers_table_def(),
 		])
 	}
 }

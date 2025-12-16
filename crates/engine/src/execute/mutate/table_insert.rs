@@ -35,6 +35,7 @@ use crate::{
 	},
 	stack::Stack,
 	transaction::operation::{DictionaryOperations, TableOperations},
+	util::encode_value,
 };
 
 impl Executor {
@@ -176,36 +177,7 @@ impl Executor {
 						value
 					};
 
-					match value {
-						Value::Boolean(v) => layout.set_bool(&mut row, table_idx, v),
-						Value::Float4(v) => layout.set_f32(&mut row, table_idx, *v),
-						Value::Float8(v) => layout.set_f64(&mut row, table_idx, *v),
-						Value::Int1(v) => layout.set_i8(&mut row, table_idx, v),
-						Value::Int2(v) => layout.set_i16(&mut row, table_idx, v),
-						Value::Int4(v) => layout.set_i32(&mut row, table_idx, v),
-						Value::Int8(v) => layout.set_i64(&mut row, table_idx, v),
-						Value::Int16(v) => layout.set_i128(&mut row, table_idx, v),
-						Value::Utf8(v) => layout.set_utf8(&mut row, table_idx, v),
-						Value::Uint1(v) => layout.set_u8(&mut row, table_idx, v),
-						Value::Uint2(v) => layout.set_u16(&mut row, table_idx, v),
-						Value::Uint4(v) => layout.set_u32(&mut row, table_idx, v),
-						Value::Uint8(v) => layout.set_u64(&mut row, table_idx, v),
-						Value::Uint16(v) => layout.set_u128(&mut row, table_idx, v),
-						Value::Date(v) => layout.set_date(&mut row, table_idx, v),
-						Value::DateTime(v) => layout.set_datetime(&mut row, table_idx, v),
-						Value::Time(v) => layout.set_time(&mut row, table_idx, v),
-						Value::Duration(v) => layout.set_duration(&mut row, table_idx, v),
-						Value::RowNumber(_v) => {}
-						Value::IdentityId(v) => layout.set_identity_id(&mut row, table_idx, v),
-						Value::Uuid4(v) => layout.set_uuid4(&mut row, table_idx, v),
-						Value::Uuid7(v) => layout.set_uuid7(&mut row, table_idx, v),
-						Value::Blob(v) => layout.set_blob(&mut row, table_idx, &v),
-						Value::Int(v) => layout.set_int(&mut row, table_idx, &v),
-						Value::Uint(v) => layout.set_uint(&mut row, table_idx, &v),
-						Value::Decimal(v) => layout.set_decimal(&mut row, table_idx, &v),
-						Value::Undefined => layout.set_undefined(&mut row, table_idx),
-						Value::Any(_) => unreachable!("Any type cannot be stored in table"),
-					}
+					encode_value(&layout, &mut row, table_idx, &value);
 				}
 
 				// Store the validated and encoded row for later insertion
@@ -235,7 +207,7 @@ impl Executor {
 		let _insert_span = debug_span!("insert_rows", count = total_rows).entered();
 		for (row, &row_number) in validated_rows.iter().zip(row_numbers.iter()) {
 			// Insert the row directly into storage
-			std_txn.command_mut().insert_into_table(table.clone(), row.clone(), row_number)?;
+			std_txn.command_mut().insert_table(table.clone(), row.clone(), row_number)?;
 
 			// Store primary key index entry if table has one
 			if let Some(pk_def) = primary_key::get_primary_key(std_txn.command_mut(), &table)? {

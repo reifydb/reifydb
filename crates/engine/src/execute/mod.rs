@@ -17,7 +17,7 @@ use query::{
 	inline::InlineDataNode,
 	join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 	map::{MapNode, MapWithoutInputNode},
-	ring_buffer_scan::RingBufferScan,
+	ringbuffer_scan::RingBufferScan,
 	row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 	scalarize::ScalarizeNode,
 	sort::SortNode,
@@ -46,7 +46,7 @@ use crate::{
 };
 
 mod catalog;
-mod mutate;
+pub(crate) mod mutate;
 mod query;
 
 /// Unified trait for query execution nodes following the volcano iterator
@@ -489,16 +489,16 @@ impl Executor {
 			}
 			PhysicalPlan::CreateNamespace(plan) => Ok(Some(self.create_namespace(txn, plan)?)),
 			PhysicalPlan::CreateTable(plan) => Ok(Some(self.create_table(txn, plan)?)),
-			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ring_buffer(txn, plan)?)),
+			PhysicalPlan::CreateRingBuffer(plan) => Ok(Some(self.create_ringbuffer(txn, plan)?)),
 			PhysicalPlan::CreateFlow(plan) => Ok(Some(self.create_flow(txn, plan)?)),
 			PhysicalPlan::CreateDictionary(plan) => Ok(Some(self.create_dictionary(txn, plan)?)),
 			PhysicalPlan::Delete(plan) => Ok(Some(self.delete(txn, plan, params)?)),
-			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ring_buffer(txn, plan, params)?)),
+			PhysicalPlan::DeleteRingBuffer(plan) => Ok(Some(self.delete_ringbuffer(txn, plan, params)?)),
 			PhysicalPlan::InsertTable(plan) => Ok(Some(self.insert_table(txn, plan, stack)?)),
-			PhysicalPlan::InsertRingBuffer(plan) => Ok(Some(self.insert_ring_buffer(txn, plan, params)?)),
+			PhysicalPlan::InsertRingBuffer(plan) => Ok(Some(self.insert_ringbuffer(txn, plan, params)?)),
 			PhysicalPlan::InsertDictionary(plan) => Ok(Some(self.insert_dictionary(txn, plan, stack)?)),
 			PhysicalPlan::Update(plan) => Ok(Some(self.update_table(txn, plan, params)?)),
-			PhysicalPlan::UpdateRingBuffer(plan) => Ok(Some(self.update_ring_buffer(txn, plan, params)?)),
+			PhysicalPlan::UpdateRingBuffer(plan) => Ok(Some(self.update_ringbuffer(txn, plan, params)?)),
 
 			PhysicalPlan::Aggregate(_)
 			| PhysicalPlan::DictionaryScan(_)

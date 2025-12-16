@@ -20,7 +20,7 @@ mod namespaces;
 mod operator_retention_policies;
 mod primary_key_columns;
 mod primary_keys;
-mod ring_buffers;
+mod ringbuffers;
 mod sequence;
 mod source_retention_policies;
 mod tables;
@@ -44,7 +44,6 @@ use namespaces::namespaces;
 use operator_retention_policies::operator_retention_policies;
 use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
-use ring_buffers::ring_buffers;
 use sequence::sequences;
 use source_retention_policies::source_retention_policies;
 use tables::tables;
@@ -52,6 +51,8 @@ use tables_virtual::virtual_tables;
 use types::types;
 use versions::versions;
 use views::views;
+
+use crate::system::ringbuffers::ringbuffers;
 
 pub mod ids {
 	pub mod columns {
@@ -177,7 +178,7 @@ pub mod ids {
 			pub const ALL: [ColumnId; 2] = [ID, SOURCE_ID];
 		}
 
-		pub mod ring_buffers {
+		pub mod ringbuffers {
 			use reifydb_core::interface::ColumnId;
 
 			pub const ID: ColumnId = ColumnId(1);
@@ -347,7 +348,7 @@ pub mod ids {
 		pub const FLOW_NODE_TYPES: TableVirtualId = TableVirtualId(20);
 		pub const FLOW_OPERATOR_INPUTS: TableVirtualId = TableVirtualId(21);
 		pub const FLOW_OPERATOR_OUTPUTS: TableVirtualId = TableVirtualId(22);
-		pub const RING_BUFFERS: TableVirtualId = TableVirtualId(23);
+		pub const RINGBUFFERS: TableVirtualId = TableVirtualId(23);
 
 		pub const ALL: [TableVirtualId; 23] = [
 			SEQUENCES,
@@ -372,7 +373,7 @@ pub mod ids {
 			FLOW_NODE_TYPES,
 			FLOW_OPERATOR_INPUTS,
 			FLOW_OPERATOR_OUTPUTS,
-			RING_BUFFERS,
+			RINGBUFFERS,
 		];
 	}
 }
@@ -509,8 +510,8 @@ impl SystemCatalog {
 		flow_operator_outputs()
 	}
 
-	/// Get the ring_buffers virtual table definition
-	pub fn get_system_ring_buffers_table_def() -> Arc<TableVirtualDef> {
-		ring_buffers()
+	/// Get the ringbuffers virtual table definition
+	pub fn get_system_ringbuffers_table_def() -> Arc<TableVirtualDef> {
+		ringbuffers()
 	}
 }

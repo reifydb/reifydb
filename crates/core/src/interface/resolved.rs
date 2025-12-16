@@ -706,7 +706,7 @@ impl<'a> ResolvedSource<'a> {
 	}
 
 	/// Convert to a ring buffer if this is a ring buffer source
-	pub fn as_ring_buffer(&self) -> Option<&ResolvedRingBuffer<'a>> {
+	pub fn as_ringbuffer(&self) -> Option<&ResolvedRingBuffer<'a>> {
 		match self {
 			Self::RingBuffer(r) => Some(r),
 			_ => None,

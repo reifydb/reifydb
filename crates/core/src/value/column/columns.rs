@@ -230,10 +230,10 @@ impl<'a> Columns<'a> {
 		}
 	}
 
-	pub fn from_ring_buffer(ring_buffer: &ResolvedRingBuffer<'a>) -> Self {
-		let _source = ring_buffer.clone();
+	pub fn from_ringbuffer(ringbuffer: &ResolvedRingBuffer<'a>) -> Self {
+		let _source = ringbuffer.clone();
 
-		let columns: Vec<Column> = ring_buffer
+		let columns: Vec<Column> = ringbuffer
 			.columns()
 			.iter()
 			.map(|col| {

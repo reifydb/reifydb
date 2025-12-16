@@ -8,7 +8,7 @@ use reifydb_core::interface::{
 mod dictionary;
 mod flow;
 mod namespace;
-mod ring_buffer;
+mod ringbuffer;
 mod source;
 mod table;
 mod table_virtual_user;
@@ -69,7 +69,7 @@ pub use flow::{CatalogFlowQueryOperations, CatalogTrackFlowChangeOperations};
 pub use namespace::{
 	CatalogNamespaceCommandOperations, CatalogNamespaceQueryOperations, CatalogTrackNamespaceChangeOperations,
 };
-pub use ring_buffer::{
+pub use ringbuffer::{
 	CatalogRingBufferCommandOperations, CatalogRingBufferQueryOperations, CatalogTrackRingBufferChangeOperations,
 };
 pub use source::CatalogSourceQueryOperations;

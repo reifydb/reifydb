@@ -437,6 +437,46 @@ impl StandardEngine {
 
 		Ok(table_id)
 	}
+
+	/// Start a bulk insert operation with full validation.
+	///
+	/// This provides a fluent API for fast bulk inserts that bypasses RQL parsing.
+	/// All inserts within a single builder execute in one transaction.
+	///
+	/// # Example
+	///
+	/// ```ignore
+	/// use reifydb_type::params;
+	///
+	/// engine.bulk_insert(&identity)
+	///     .table("namespace.users")
+	///         .row(params!{ id: 1, name: "Alice" })
+	///         .row(params!{ id: 2, name: "Bob" })
+	///         .done()
+	///     .execute()?;
+	/// ```
+	pub fn bulk_insert<'e>(
+		&'e self,
+		identity: &'e Identity,
+	) -> crate::bulk_insert::BulkInsertBuilder<'e, crate::bulk_insert::Validated> {
+		crate::bulk_insert::BulkInsertBuilder::new(self, identity)
+	}
+
+	/// Start a bulk insert operation with validation disabled (trusted mode).
+	///
+	/// Use this for pre-validated internal data where constraint validation
+	/// can be skipped for maximum performance.
+	///
+	/// # Safety
+	///
+	/// The caller is responsible for ensuring the data conforms to the
+	/// schema constraints. Invalid data may cause undefined behavior.
+	pub fn bulk_insert_trusted<'e>(
+		&'e self,
+		identity: &'e Identity,
+	) -> crate::bulk_insert::BulkInsertBuilder<'e, crate::bulk_insert::Trusted> {
+		crate::bulk_insert::BulkInsertBuilder::new_trusted(self, identity)
+	}
 }
 
 /// Convert user column definitions to internal ColumnDef format.

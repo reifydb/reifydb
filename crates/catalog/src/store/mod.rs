@@ -10,7 +10,7 @@ pub mod flow_node;
 pub mod namespace;
 pub mod primary_key;
 pub mod retention_policy;
-pub mod ring_buffer;
+pub mod ringbuffer;
 pub mod sequence;
 pub mod source;
 pub mod table;

@@ -67,11 +67,11 @@ impl PostCommitInterceptor<StandardCommandTransaction> for CatalogEventIntercept
 		}
 
 		// Emit events for ring buffer changes
-		for change in &ctx.changes.ring_buffer_def {
+		for change in &ctx.changes.ringbuffer_def {
 			if change.op == OperationType::Create {
-				if let Some(ring_buffer) = &change.post {
+				if let Some(ringbuffer) = &change.post {
 					self.event_bus.emit(RingBufferCreatedEvent {
-						ring_buffer: ring_buffer.clone(),
+						ringbuffer: ringbuffer.clone(),
 					});
 				}
 			}

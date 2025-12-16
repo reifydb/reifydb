@@ -58,7 +58,7 @@ impl<'a> TableVirtual<'a> for SourceRetentionPolicies {
 				SourceId::Table(id) => (id.0, "table"),
 				SourceId::View(id) => (id.0, "view"),
 				SourceId::TableVirtual(id) => (id.0, "table_virtual"),
-				SourceId::RingBuffer(id) => (id.0, "ring_buffer"),
+				SourceId::RingBuffer(id) => (id.0, "ringbuffer"),
 				SourceId::Flow(id) => (id.0, "flow"),
 				SourceId::Dictionary(id) => (id.0, "dictionary"),
 			};

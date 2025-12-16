@@ -32,14 +32,14 @@ impl RowSequence {
 	}
 
 	/// Allocates the next row number for a ring buffer.
-	pub fn next_row_number_for_ring_buffer(
+	pub fn next_row_number_for_ringbuffer(
 		txn: &mut impl CommandTransaction,
-		ring_buffer: RingBufferId,
+		ringbuffer: RingBufferId,
 	) -> crate::Result<RowNumber> {
 		GeneratorU64::next(
 			txn,
 			&RowSequenceKey {
-				source: SourceId::from(ring_buffer),
+				source: SourceId::from(ringbuffer),
 			}
 			.encode(),
 			None,
@@ -49,12 +49,12 @@ impl RowSequence {
 
 	/// Allocates a batch of contiguous row numbers for a ring buffer.
 	/// Returns a vector containing all allocated row numbers.
-	pub fn next_row_number_batch_for_ring_buffer(
+	pub fn next_row_number_batch_for_ringbuffer(
 		txn: &mut impl CommandTransaction,
-		ring_buffer: RingBufferId,
+		ringbuffer: RingBufferId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
-		Self::next_row_number_batch_for_source(txn, SourceId::from(ring_buffer), count)
+		Self::next_row_number_batch_for_source(txn, SourceId::from(ringbuffer), count)
 	}
 
 	/// Allocates a batch of contiguous row numbers for any source.

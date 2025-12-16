@@ -78,7 +78,7 @@ impl<'a> Parser<'a> {
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Ringbuffer))?).is_some() {
-			return self.parse_ring_buffer(token);
+			return self.parse_ringbuffer(token);
 		}
 
 		if (self.consume_if(TokenKind::Keyword(Dictionary))?).is_some() {
@@ -287,7 +287,7 @@ impl<'a> Parser<'a> {
 		}))
 	}
 
-	fn parse_ring_buffer(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
+	fn parse_ringbuffer(&mut self, token: Token<'a>) -> crate::Result<AstCreate<'a>> {
 		let schema = self.parse_identifier_with_hyphens()?;
 		self.consume_operator(Operator::Dot)?;
 		let name = self.parse_identifier_with_hyphens()?;
@@ -308,12 +308,12 @@ impl<'a> Parser<'a> {
 
 		use crate::ast::identifier::MaybeQualifiedRingBufferIdentifier;
 
-		let ring_buffer = MaybeQualifiedRingBufferIdentifier::new(name.into_fragment())
+		let ringbuffer = MaybeQualifiedRingBufferIdentifier::new(name.into_fragment())
 			.with_namespace(schema.into_fragment());
 
 		Ok(AstCreate::RingBuffer(AstCreateRingBuffer {
 			token,
-			ring_buffer,
+			ringbuffer,
 			columns,
 			capacity,
 			primary_key: options.primary_key,
@@ -926,7 +926,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_create_ring_buffer_with_hyphen() {
+	fn test_create_ringbuffer_with_hyphen() {
 		let tokens = tokenize("CREATE RINGBUFFER my-ns.my-buffer { id: Int4 } WITH { capacity: 100 }").unwrap();
 		let mut parser = Parser::new(tokens);
 		let mut result = parser.parse().unwrap();
@@ -937,12 +937,12 @@ mod tests {
 
 		match create {
 			AstCreate::RingBuffer(AstCreateRingBuffer {
-				ring_buffer,
+				ringbuffer,
 				capacity,
 				..
 			}) => {
-				assert_eq!(ring_buffer.namespace.as_ref().unwrap().text(), "my-ns");
-				assert_eq!(ring_buffer.name.text(), "my-buffer");
+				assert_eq!(ringbuffer.namespace.as_ref().unwrap().text(), "my-ns");
+				assert_eq!(ringbuffer.name.text(), "my-buffer");
 				assert_eq!(*capacity, 100);
 			}
 			_ => unreachable!(),
@@ -1324,7 +1324,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_create_ring_buffer() {
+	fn test_create_ringbuffer() {
 		let tokens = tokenize(
 			r#"
         create ringbuffer test.events { id: int4, data: utf8 } with { capacity: 10 }
@@ -1342,13 +1342,13 @@ mod tests {
 
 		match create {
 			AstCreate::RingBuffer(AstCreateRingBuffer {
-				ring_buffer,
+				ringbuffer,
 				columns,
 				capacity,
 				..
 			}) => {
-				assert_eq!(ring_buffer.namespace.as_ref().unwrap().text(), "test");
-				assert_eq!(ring_buffer.name.text(), "events");
+				assert_eq!(ringbuffer.namespace.as_ref().unwrap().text(), "test");
+				assert_eq!(ringbuffer.name.text(), "events");
 				assert_eq!(*capacity, 10);
 				assert_eq!(columns.len(), 2);
 

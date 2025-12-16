@@ -24,7 +24,7 @@ use crate::{
 			inline::InlineDataNode,
 			join::{InnerJoinNode, LeftJoinNode, NaturalJoinNode},
 			map::{MapNode, MapWithoutInputNode},
-			ring_buffer_scan::RingBufferScan,
+			ringbuffer_scan::RingBufferScan,
 			row_lookup::{RowListLookupNode, RowPointLookupNode, RowRangeScanNode},
 			scalarize::ScalarizeNode,
 			sort::SortNode,

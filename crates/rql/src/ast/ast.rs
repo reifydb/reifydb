@@ -859,7 +859,7 @@ pub struct AstCreateTable<'a> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct AstCreateRingBuffer<'a> {
 	pub token: Token<'a>,
-	pub ring_buffer: crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'a>,
+	pub ringbuffer: crate::ast::identifier::MaybeQualifiedRingBufferIdentifier<'a>,
 	pub columns: Vec<AstColumnToCreate<'a>>,
 	pub capacity: u64,
 	pub primary_key: Option<AstPrimaryKeyDef<'a>>,

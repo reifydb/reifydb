@@ -12,7 +12,7 @@ mod variable;
 use query::window::WindowNode;
 use reifydb_catalog::{
 	CatalogQueryTransaction,
-	store::{ring_buffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
+	store::{ringbuffer::create::RingBufferColumnToCreate, table::TableColumnToCreate, view::ViewColumnToCreate},
 };
 use reifydb_core::{
 	IndexType, JoinType, SortDirection, SortKey,
@@ -117,7 +117,7 @@ impl Compiler {
 								let namespace_id = ns.id;
 
 								// Check if it's a ring buffer first
-								if tx.find_ring_buffer_by_name(
+								if tx.find_ringbuffer_by_name(
 									namespace_id,
 									target_name,
 								)?
@@ -185,7 +185,7 @@ impl Compiler {
 									let namespace_id = ns.id;
 
 									// Check if it's a ring buffer first
-									if tx.find_ring_buffer_by_name(
+									if tx.find_ringbuffer_by_name(
 										namespace_id,
 										target_name,
 									)?
@@ -633,7 +633,7 @@ pub struct CreateTableNode<'a> {
 
 #[derive(Debug)]
 pub struct CreateRingBufferNode<'a> {
-	pub ring_buffer: MaybeQualifiedRingBufferIdentifier<'a>,
+	pub ringbuffer: MaybeQualifiedRingBufferIdentifier<'a>,
 	pub if_not_exists: bool,
 	pub columns: Vec<RingBufferColumnToCreate>,
 	pub capacity: u64,

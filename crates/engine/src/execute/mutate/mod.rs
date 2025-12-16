@@ -3,10 +3,10 @@
 
 mod coerce;
 mod dictionary_insert;
-mod primary_key;
-mod ring_buffer_delete;
-mod ring_buffer_insert;
-mod ring_buffer_update;
+pub(crate) mod primary_key;
+mod ringbuffer_delete;
+mod ringbuffer_insert;
+mod ringbuffer_update;
 mod table_delete;
 mod table_insert;
 mod table_update;
