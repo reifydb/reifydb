@@ -2,16 +2,19 @@
 //!
 //! Manages store iterators across the FFI boundary using a handle-based approach.
 //! Unlike state iterators, store iterators return raw keys without any namespace decoding.
+//! Each thread maintains its own registry to eliminate contention.
 
-use std::{collections::HashMap, sync::Mutex};
+use std::{cell::RefCell, collections::HashMap};
 
 use reifydb_core::interface::BoxedMultiVersionIter;
 
 /// Handle to a store iterator
 pub type StoreIteratorHandle = u64;
 
-/// Global registry of active store iterators
-static ITERATOR_REGISTRY: Mutex<Option<StoreIteratorRegistry>> = Mutex::new(None);
+// Thread-local registry of active store iterators
+thread_local! {
+	static ITERATOR_REGISTRY: RefCell<StoreIteratorRegistry> = RefCell::new(StoreIteratorRegistry::new());
+}
 
 /// Registry for managing store iterators
 struct StoreIteratorRegistry {
@@ -43,18 +46,9 @@ impl StoreIteratorRegistry {
 	}
 }
 
-/// Initialize the iterator registry
-fn get_registry() -> &'static Mutex<Option<StoreIteratorRegistry>> {
-	&ITERATOR_REGISTRY
-}
-
 /// Create a new iterator and return its handle
 pub(crate) fn create_iterator(iter: BoxedMultiVersionIter<'static>) -> StoreIteratorHandle {
-	let mut guard = get_registry().lock().unwrap();
-	if guard.is_none() {
-		*guard = Some(StoreIteratorRegistry::new());
-	}
-	guard.as_mut().unwrap().insert(iter)
+	ITERATOR_REGISTRY.with(|r| r.borrow_mut().insert(iter))
 }
 
 /// Get the next key-value pair from an iterator
@@ -63,20 +57,16 @@ pub(crate) fn create_iterator(iter: BoxedMultiVersionIter<'static>) -> StoreIter
 /// - Some((key, value)) if there's a next item
 /// - None if iterator is exhausted or handle is invalid
 pub(crate) fn next_iterator(handle: StoreIteratorHandle) -> Option<(Vec<u8>, Vec<u8>)> {
-	let mut guard = get_registry().lock().unwrap();
-	let registry = guard.as_mut()?;
-	let iter = registry.get_mut(handle)?;
+	ITERATOR_REGISTRY.with(|r| {
+		let mut registry = r.borrow_mut();
+		let iter = registry.get_mut(handle)?;
 
-	// Get next item from iterator - return raw key without decoding
-	iter.next().map(|multi| (multi.key.as_ref().to_vec(), multi.values.as_ref().to_vec()))
+		// Get next item from iterator - return raw key without decoding
+		iter.next().map(|multi| (multi.key.as_ref().to_vec(), multi.values.as_ref().to_vec()))
+	})
 }
 
 /// Free an iterator by its handle
 pub(crate) fn free_iterator(handle: StoreIteratorHandle) -> bool {
-	let mut guard = get_registry().lock().unwrap();
-	if let Some(registry) = guard.as_mut() {
-		registry.remove(handle).is_some()
-	} else {
-		false
-	}
+	ITERATOR_REGISTRY.with(|r| r.borrow_mut().remove(handle).is_some())
 }
