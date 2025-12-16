@@ -9,6 +9,7 @@ use reifydb_core::interface::{SingleVersionCommandTransaction, SingleVersionQuer
 use reifydb_store_transaction::{SingleVersionCommit, SingleVersionContains, SingleVersionGet};
 use reifydb_type::{diagnostic::transaction::key_out_of_scope, error, util::hex};
 use self_cell::self_cell;
+use tracing::debug_span;
 
 use super::*;
 
@@ -71,7 +72,11 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 			};
 		}
 
-		let store = self.inner.store.read().unwrap();
+		let _span = debug_span!("svl_get_from_store").entered();
+		let store = {
+			let _lock_span = debug_span!("svl_acquire_store_read_lock").entered();
+			self.inner.store.read().unwrap()
+		};
 		store.get(key)
 	}
 
@@ -120,11 +125,19 @@ impl<'a> SingleVersionCommandTransaction for SvlCommandTransaction<'a> {
 	}
 
 	fn commit(mut self) -> crate::Result<()> {
+		let _span = debug_span!("svl_commit").entered();
+
 		let deltas: Vec<Delta> = take(&mut self.pending).into_iter().map(|(_, delta)| delta).collect();
 
 		if !deltas.is_empty() {
-			let mut store = self.inner.store.write().unwrap();
-			store.commit(CowVec::new(deltas))?;
+			let mut store = {
+				let _lock_span = debug_span!("svl_acquire_store_write_lock").entered();
+				self.inner.store.write().unwrap()
+			};
+			{
+				let _commit_span = debug_span!("svl_store_commit").entered();
+				store.commit(CowVec::new(deltas))?;
+			}
 		}
 
 		self.completed = true;

@@ -103,7 +103,7 @@ impl Executor {
 		let mut validated_rows: Vec<EncodedValues> = Vec::new();
 		let mut mutable_context = (*execution_context).clone();
 
-		let _validate_span = debug_span!("validate_and_encode_rows").entered();
+		let validate_span = debug_span!("validate_and_encode_rows").entered();
 		while let Some(Batch {
 			columns,
 		}) = input_node.next(&mut std_txn, &mut mutable_context)?
@@ -184,6 +184,8 @@ impl Executor {
 				validated_rows.push(row);
 			}
 		}
+
+		validate_span.exit();
 
 		// BATCH ALLOCATION: Now that all rows are validated, allocate row numbers in one batch
 		let total_rows = validated_rows.len();

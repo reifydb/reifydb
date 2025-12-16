@@ -121,7 +121,6 @@ impl WaterMark {
 
 	/// Returns the maximum index that has the property that all indices
 	/// less than or equal to it are done.
-	#[instrument(level = "trace", skip(self), ret)]
 	pub fn done_until(&self) -> CommitVersion {
 		CommitVersion(self.done_until.load(Ordering::SeqCst))
 	}
@@ -134,10 +133,6 @@ impl WaterMark {
 
 	/// Waits until the given index is marked as done with a specified
 	/// timeout.
-	#[instrument(level = "debug", skip(self), fields(
-		wait_for = index.0,
-		timeout_ms = timeout.as_millis() as u64
-	), ret)]
 	pub fn wait_for_mark_timeout(&self, index: CommitVersion, timeout: Duration) -> bool {
 		if self.done_until.load(Ordering::SeqCst) >= index.0 {
 			return true;

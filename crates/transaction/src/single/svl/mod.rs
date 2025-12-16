@@ -14,7 +14,7 @@ use reifydb_core::{
 };
 use reifydb_store_transaction::TransactionStore;
 use reifydb_type::util::hex;
-use tracing::trace;
+use tracing::{debug_span, trace};
 
 mod read;
 mod write;
@@ -104,6 +104,8 @@ impl SingleVersionTransaction for TransactionSvl {
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
+		let _span = debug_span!("svl_begin_command").entered();
+
 		let mut keys_vec: Vec<EncodedKey> = keys.into_iter().cloned().collect();
 		assert!(
 			!keys_vec.is_empty(),
@@ -119,7 +121,10 @@ impl SingleVersionTransaction for TransactionSvl {
 			let arc = self.inner.get_or_create_lock(key);
 			let key_hex = hex::encode(&key);
 			trace!("SVL write lock acquisition for key {key_hex}");
-			let lock = KeyWriteLock::new(arc, |arc_ref| arc_ref.write());
+			let lock = {
+				let _lock_span = debug_span!("svl_acquire_write_lock").entered();
+				KeyWriteLock::new(arc, |arc_ref| arc_ref.write())
+			};
 			locks.push(lock);
 		}
 

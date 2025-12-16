@@ -129,14 +129,19 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 				}
 			}
 		}
-		if batch_rows.is_empty() {
-			self.exhausted = true;
-			trace!("table scan exhausted");
-			return Ok(None);
-		}
 
-		trace!(row_count = batch_rows.len(), "table scan batch loaded");
-		self.last_key = new_last_key;
+		// Instrumentation: identify the 60ms gap between decode_row_keys and create_storage_columns
+		{
+			let _span = debug_span!("post_decode_checks", row_count = batch_rows.len()).entered();
+			if batch_rows.is_empty() {
+				self.exhausted = true;
+				trace!("table scan exhausted");
+				return Ok(None);
+			}
+
+			trace!(row_count = batch_rows.len(), "table scan batch loaded");
+			self.last_key = new_last_key;
+		}
 
 		// Create columns with storage types (dictionary ID types for dictionary columns)
 		let storage_columns: Vec<Column> = {
