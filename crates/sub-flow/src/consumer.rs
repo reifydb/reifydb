@@ -23,7 +23,7 @@ use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_rql::flow::{Flow, load_flow};
 use reifydb_sub_api::SchedulerService;
 use reifydb_type::{DictionaryEntryId, RowNumber, Value, internal};
-use tracing::trace;
+use tracing::{instrument, trace};
 
 use crate::{
 	builder::OperatorFactory,
@@ -82,6 +82,16 @@ impl FlowConsumer {
 	}
 
 	/// Helper method to convert encoded bytes to Row format with dictionary decoding
+	#[instrument(
+		name = "flow::create_row",
+		level = "trace",
+		skip(txn, row_bytes),
+		fields(
+			source = ?source,
+			row_number = row_number.0,
+			row_bytes_len = row_bytes.len(),
+		)
+	)]
 	fn create_row(
 		txn: &mut StandardCommandTransaction,
 		source: SourceId,
@@ -227,6 +237,14 @@ impl FlowConsumer {
 }
 
 impl CdcConsume for FlowConsumer {
+	#[instrument(
+		name = "flow::consume",
+		level = "trace",
+		skip(self, txn, cdcs),
+		fields(
+			cdc_count = cdcs.len(),
+		)
+	)]
 	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
 		if cdcs.is_empty() {
 			return Ok(());
