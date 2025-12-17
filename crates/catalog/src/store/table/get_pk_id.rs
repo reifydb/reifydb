@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{Key, PrimaryKeyId, QueryTransaction, TableId, TableKey};
+use reifydb_core::interface::{PrimaryKeyId, QueryTransaction, TableId, TableKey};
 
 use crate::{CatalogStore, store::table::layout::table};
 
@@ -12,11 +12,7 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&Key::Table(TableKey {
-			table: table_id,
-		})
-		.encode())?
-		{
+		let multi = match rx.get(&TableKey::encoded(table_id))? {
 			Some(v) => v,
 			None => return Ok(None),
 		};

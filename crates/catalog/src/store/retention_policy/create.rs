@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{CommandTransaction, FlowNodeId, SourceId},
-	key::{EncodableKey, OperatorRetentionPolicyKey, SourceRetentionPolicyKey},
+	key::{OperatorRetentionPolicyKey, SourceRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
 
@@ -15,12 +15,9 @@ pub(crate) fn create_source_retention_policy(
 	source: SourceId,
 	retention_policy: &RetentionPolicy,
 ) -> crate::Result<()> {
-	let key = SourceRetentionPolicyKey {
-		source,
-	};
 	let value = encode_retention_policy(retention_policy);
 
-	txn.set(&key.encode(), value)?;
+	txn.set(&SourceRetentionPolicyKey::encoded(source), value)?;
 	Ok(())
 }
 
@@ -30,12 +27,9 @@ pub(crate) fn _create_operator_retention_policy(
 	operator: FlowNodeId,
 	retention_policy: &RetentionPolicy,
 ) -> crate::Result<()> {
-	let key = OperatorRetentionPolicyKey {
-		operator,
-	};
 	let value = encode_retention_policy(retention_policy);
 
-	txn.set(&key.encode(), value)?;
+	txn.set(&OperatorRetentionPolicyKey::encoded(operator), value)?;
 	Ok(())
 }
 

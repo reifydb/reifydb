@@ -4,16 +4,11 @@
 use std::{collections::BTreeMap, path::PathBuf};
 
 use indexmap::IndexMap;
-use reifydb_catalog::{
-	CatalogStore,
-	resolve::{resolve_ringbuffer, resolve_table, resolve_view},
-};
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
 	CommitVersion, CowVec, Error, Result, Row,
 	interface::{
-		Cdc, CdcChange, ColumnDef, DictionaryDef, EncodableKey, Engine, KeyKind, MultiVersionQueryTransaction,
-		SourceId, WithEventBus,
+		Cdc, CdcChange, EncodableKey, Engine, KeyKind, MultiVersionQueryTransaction, SourceId, WithEventBus,
 	},
 	key::{DictionaryEntryIndexKey, Key},
 	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
@@ -27,6 +22,7 @@ use tracing::{instrument, trace};
 
 use crate::{
 	builder::OperatorFactory,
+	catalog::FlowCatalog,
 	engine::FlowEngine,
 	operator::TransformOperatorRegistry,
 	subsystem::intercept::Change,
@@ -38,6 +34,7 @@ pub struct FlowConsumer {
 	engine: StandardEngine,
 	flow_engine: FlowEngine,
 	scheduler: Option<SchedulerService>,
+	catalog_cache: FlowCatalog,
 }
 
 impl FlowConsumer {
@@ -67,6 +64,7 @@ impl FlowConsumer {
 			engine: engine.clone(),
 			flow_engine,
 			scheduler,
+			catalog_cache: FlowCatalog::new(),
 		};
 
 		if let Ok(mut txn) = engine.begin_command() {
@@ -81,11 +79,15 @@ impl FlowConsumer {
 		result
 	}
 
-	/// Helper method to convert encoded bytes to Row format with dictionary decoding
+	/// Helper method to convert encoded bytes to Row format with dictionary decoding.
+	///
+	/// Uses `CatalogCache` to avoid repeated catalog lookups for the same source.
+	/// The cache is populated on first access and invalidated when schema changes
+	/// are observed via CDC.
 	#[instrument(
 		name = "flow::create_row",
 		level = "trace",
-		skip(txn, row_bytes),
+		skip(self, txn, row_bytes),
 		fields(
 			source = ?source,
 			row_number = row_number.0,
@@ -93,67 +95,20 @@ impl FlowConsumer {
 		)
 	)]
 	fn create_row(
+		&self,
 		txn: &mut StandardCommandTransaction,
 		source: SourceId,
 		row_number: RowNumber,
 		row_bytes: Vec<u8>,
 	) -> Result<Row> {
-		// Get source metadata and columns from catalog
-		let columns: Vec<ColumnDef> = match source {
-			SourceId::Table(table_id) => {
-				let resolved_table = resolve_table(txn, table_id)?;
-				resolved_table.def().columns.clone()
-			}
-			SourceId::View(view_id) => {
-				let resolved_view = resolve_view(txn, view_id)?;
-				resolved_view.def().columns.clone()
-			}
-			SourceId::Flow(_flow_id) => {
-				unimplemented!("Flow sources not supported in flows")
-			}
-			SourceId::TableVirtual(_) => {
-				unimplemented!("Virtual table sources not supported in flows")
-			}
-			SourceId::RingBuffer(ringbuffer_id) => {
-				let resolved_ringbuffer = resolve_ringbuffer(txn, ringbuffer_id)?;
-				resolved_ringbuffer.def().columns.clone()
-			}
-			SourceId::Dictionary(_) => {
-				unimplemented!("Dictionary sources not supported in flows")
-			}
-		};
-
-		// Build storage types and dictionary info for each column
-		let mut storage_types = Vec::with_capacity(columns.len());
-		let mut value_types = Vec::with_capacity(columns.len());
-		let mut dictionaries: Vec<Option<DictionaryDef>> = Vec::with_capacity(columns.len());
-		let mut has_dictionary_columns = false;
-
-		for col in &columns {
-			if let Some(dict_id) = col.dictionary_id {
-				if let Some(dict) = CatalogStore::find_dictionary(txn, dict_id)? {
-					storage_types.push(dict.id_type);
-					value_types.push((col.name.clone(), dict.value_type));
-					dictionaries.push(Some(dict));
-					has_dictionary_columns = true;
-				} else {
-					// Dictionary not found, fall back to constraint type
-					storage_types.push(col.constraint.get_type());
-					value_types.push((col.name.clone(), col.constraint.get_type()));
-					dictionaries.push(None);
-				}
-			} else {
-				storage_types.push(col.constraint.get_type());
-				value_types.push((col.name.clone(), col.constraint.get_type()));
-				dictionaries.push(None);
-			}
-		}
+		// Get cached source metadata (loads from catalog on cache miss)
+		let metadata = self.catalog_cache.get_or_load(txn, source)?;
 
 		let raw_encoded = EncodedValues(CowVec::new(row_bytes));
 
 		// If no dictionary columns, return directly with value layout
-		if !has_dictionary_columns {
-			let layout = EncodedValuesNamedLayout::new(value_types);
+		if !metadata.has_dictionary_columns {
+			let layout = EncodedValuesNamedLayout::new(metadata.value_types.clone());
 			return Ok(Row {
 				number: row_number,
 				encoded: raw_encoded,
@@ -162,11 +117,11 @@ impl FlowConsumer {
 		}
 
 		// Decode dictionary columns
-		let storage_layout = EncodedValuesLayout::new(&storage_types);
-		let value_layout = EncodedValuesNamedLayout::new(value_types);
+		let storage_layout = EncodedValuesLayout::new(&metadata.storage_types);
+		let value_layout = EncodedValuesNamedLayout::new(metadata.value_types.clone());
 
-		let mut values: Vec<Value> = Vec::with_capacity(dictionaries.len());
-		for (idx, dict_opt) in dictionaries.iter().enumerate() {
+		let mut values: Vec<Value> = Vec::with_capacity(metadata.dictionaries.len());
+		for (idx, dict_opt) in metadata.dictionaries.iter().enumerate() {
 			let raw_value = storage_layout.get_value(&raw_encoded, idx);
 
 			if let Some(dictionary) = dict_opt {
@@ -248,6 +203,13 @@ impl CdcConsume for FlowConsumer {
 	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
 		if cdcs.is_empty() {
 			return Ok(());
+		}
+
+		// Invalidate cache for any schema changes before processing
+		for cdc in &cdcs {
+			for change in &cdc.changes {
+				self.catalog_cache.invalidate_from_cdc(change.key());
+			}
 		}
 
 		// Collect all changes grouped by version
@@ -402,7 +364,7 @@ impl CdcConsume for FlowConsumer {
 						post,
 						..
 					} => {
-						let row = Self::create_row(txn, source_id, row_number, post)?;
+						let row = self.create_row(txn, source_id, row_number, post)?;
 						FlowDiff::Insert {
 							post: row,
 						}
@@ -413,8 +375,8 @@ impl CdcConsume for FlowConsumer {
 						post,
 						..
 					} => {
-						let pre_row = Self::create_row(txn, source_id, row_number, pre)?;
-						let post_row = Self::create_row(txn, source_id, row_number, post)?;
+						let pre_row = self.create_row(txn, source_id, row_number, pre)?;
+						let post_row = self.create_row(txn, source_id, row_number, post)?;
 						FlowDiff::Update {
 							pre: pre_row,
 							post: post_row,
@@ -425,7 +387,7 @@ impl CdcConsume for FlowConsumer {
 						pre,
 						..
 					} => {
-						let row = Self::create_row(txn, source_id, row_number, pre)?;
+						let row = self.create_row(txn, source_id, row_number, pre)?;
 						FlowDiff::Remove {
 							pre: row,
 						}

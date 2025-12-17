@@ -46,6 +46,13 @@ impl EncodableKey for FlowKey {
 }
 
 impl FlowKey {
+	pub fn encoded(flow: impl Into<FlowId>) -> EncodedKey {
+		Self {
+			flow: flow.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::flow_start()), Some(Self::flow_end()))
 	}

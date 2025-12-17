@@ -2,7 +2,10 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use flow_node::LAYOUT;
-use reifydb_core::interface::{EncodableKey, FlowId, FlowNodeDef, FlowNodeId, QueryTransaction};
+use reifydb_core::{
+	interface::{FlowId, FlowNodeDef, FlowNodeId, QueryTransaction},
+	key::FlowNodeKey,
+};
 
 use crate::{CatalogStore, store::flow_node::layout::flow_node};
 
@@ -11,11 +14,7 @@ impl CatalogStore {
 		txn: &mut impl QueryTransaction,
 		node_id: FlowNodeId,
 	) -> crate::Result<Option<FlowNodeDef>> {
-		let Some(multi) = txn.get(&reifydb_core::key::FlowNodeKey {
-			node: node_id,
-		}
-		.encode())?
-		else {
+		let Some(multi) = txn.get(&FlowNodeKey::encoded(node_id))? else {
 			return Ok(None);
 		};
 

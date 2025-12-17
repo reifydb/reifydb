@@ -22,6 +22,10 @@ impl RingBufferKey {
 		}
 	}
 
+	pub fn encoded(ringbuffer: impl Into<RingBufferId>) -> EncodedKey {
+		Self::new(ringbuffer.into()).encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::ringbuffer_start()), Some(Self::ringbuffer_end()))
 	}
@@ -80,6 +84,10 @@ impl RingBufferMetadataKey {
 		Self {
 			ringbuffer,
 		}
+	}
+
+	pub fn encoded(ringbuffer: impl Into<RingBufferId>) -> EncodedKey {
+		Self::new(ringbuffer.into()).encode()
 	}
 }
 

@@ -46,6 +46,13 @@ impl EncodableKey for SystemSequenceKey {
 }
 
 impl SystemSequenceKey {
+	pub fn encoded(sequence: impl Into<SequenceId>) -> EncodedKey {
+		Self {
+			sequence: sequence.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::sequence_start()), Some(Self::sequence_end()))
 	}

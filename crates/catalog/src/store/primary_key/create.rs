@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::{primary_key_column_not_found, primary_key_empty},
-	interface::{ColumnId, CommandTransaction, Key, PrimaryKeyId, PrimaryKeyKey, SourceId},
+	interface::{ColumnId, CommandTransaction, PrimaryKeyId, PrimaryKeyKey, SourceId},
 	return_error, return_internal_error,
 };
 
@@ -54,13 +54,7 @@ impl CatalogStore {
 		LAYOUT.set_blob(&mut row, primary_key::COLUMN_IDS, &serialize_column_ids(&to_create.column_ids));
 
 		// Store the primary key
-		txn.set(
-			&Key::PrimaryKey(PrimaryKeyKey {
-				primary_key: id,
-			})
-			.encode(),
-			row,
-		)?;
+		txn.set(&PrimaryKeyKey::encoded(id), row)?;
 
 		// Update the table or view to reference this primary key
 		match to_create.source {

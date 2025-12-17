@@ -53,7 +53,7 @@ impl DictionaryOperations for StandardCommandTransaction {
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
 		// 2. Check if value already exists (lookup by hash)
-		let entry_key = DictionaryEntryKey::new(dictionary.id, hash).encode();
+		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		if let Some(existing) = self.get(&entry_key)? {
 			// Value exists, return existing ID
 			let id = u128::from_be_bytes(existing.values[..16].try_into().unwrap());
@@ -61,7 +61,7 @@ impl DictionaryOperations for StandardCommandTransaction {
 		}
 
 		// 3. Value doesn't exist - get next ID from sequence
-		let seq_key = DictionarySequenceKey::new(dictionary.id).encode();
+		let seq_key = DictionarySequenceKey::encoded(dictionary.id);
 		let next_id = match self.get(&seq_key)? {
 			Some(v) => u128::from_be_bytes(v.values[..16].try_into().unwrap()) + 1,
 			None => 1, // First entry
@@ -79,7 +79,7 @@ impl DictionaryOperations for StandardCommandTransaction {
 		// 6. Store reverse index (id -> value_bytes)
 		// Note: DictionaryEntryIndexKey currently uses u64, so we truncate
 		// This limits practical dictionary size to u64::MAX entries
-		let index_key = DictionaryEntryIndexKey::new(dictionary.id, next_id as u64).encode();
+		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, next_id as u64);
 		self.set(&index_key, EncodedValues(CowVec::new(value_bytes)))?;
 
 		// 7. Update sequence
@@ -115,7 +115,7 @@ impl DictionaryOperations for StandardCommandTransaction {
 			.map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
-		let entry_key = DictionaryEntryKey::new(dictionary.id, hash).encode();
+		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match self.get(&entry_key)? {
 			Some(v) => {
 				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());
@@ -150,8 +150,8 @@ impl DictionaryOperations for crate::StandardTransaction<'_> {
 		id: DictionaryEntryId,
 	) -> crate::Result<Option<Value>> {
 		// Both command and query transactions can read
-		use reifydb_core::interface::{EncodableKey, MultiVersionQueryTransaction};
-		let index_key = DictionaryEntryIndexKey::new(dictionary.id, id.to_u128() as u64).encode();
+		use reifydb_core::interface::MultiVersionQueryTransaction;
+		let index_key = DictionaryEntryIndexKey::encoded(dictionary.id, id.to_u128() as u64);
 		match MultiVersionQueryTransaction::get(self, &index_key)? {
 			Some(v) => {
 				let (value, _): (Value, _) =
@@ -169,12 +169,12 @@ impl DictionaryOperations for crate::StandardTransaction<'_> {
 		value: &Value,
 	) -> crate::Result<Option<DictionaryEntryId>> {
 		// Both command and query transactions can read
-		use reifydb_core::interface::{EncodableKey, MultiVersionQueryTransaction};
+		use reifydb_core::interface::MultiVersionQueryTransaction;
 		let value_bytes = bincode::serde::encode_to_vec(value, bincode::config::standard())
 			.map_err(|e| internal_error!("Failed to serialize value: {}", e))?;
 		let hash = xxh3_128(&value_bytes).0.to_be_bytes();
 
-		let entry_key = DictionaryEntryKey::new(dictionary.id, hash).encode();
+		let entry_key = DictionaryEntryKey::encoded(dictionary.id, hash);
 		match MultiVersionQueryTransaction::get(self, &entry_key)? {
 			Some(v) => {
 				let id = u128::from_be_bytes(v.values[..16].try_into().unwrap());

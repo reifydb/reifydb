@@ -118,6 +118,14 @@ impl EncodableKeyRange for SourceIndexKeyRange {
 }
 
 impl IndexKey {
+	pub fn encoded(source: impl Into<SourceId>, index: impl Into<IndexId>) -> EncodedKey {
+		Self {
+			source: source.into(),
+			index: index.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(source: impl Into<SourceId>) -> EncodedKeyRange {
 		let source = source.into();
 		EncodedKeyRange::start_end(Some(Self::source_start(source)), Some(Self::source_end(source)))

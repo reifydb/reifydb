@@ -46,6 +46,13 @@ impl EncodableKey for FlowEdgeKey {
 }
 
 impl FlowEdgeKey {
+	pub fn encoded(edge: impl Into<FlowEdgeId>) -> EncodedKey {
+		Self {
+			edge: edge.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
@@ -102,6 +109,14 @@ impl EncodableKey for FlowEdgeByFlowKey {
 }
 
 impl FlowEdgeByFlowKey {
+	pub fn encoded(flow: impl Into<FlowId>, edge: impl Into<FlowEdgeId>) -> EncodedKey {
+		Self {
+			flow: flow.into(),
+			edge: edge.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(flow: FlowId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start(flow)), Some(Self::end(flow)))
 	}

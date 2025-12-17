@@ -23,6 +23,10 @@ impl DictionaryKey {
 		}
 	}
 
+	pub fn encoded(dictionary: impl Into<DictionaryId>) -> EncodedKey {
+		Self::new(dictionary.into()).encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::dictionary_start()), Some(Self::dictionary_end()))
 	}
@@ -85,6 +89,10 @@ impl DictionaryEntryKey {
 			dictionary,
 			hash,
 		}
+	}
+
+	pub fn encoded(dictionary: impl Into<DictionaryId>, hash: [u8; 16]) -> EncodedKey {
+		Self::new(dictionary.into(), hash).encode()
 	}
 
 	pub fn full_scan(dictionary: DictionaryId) -> EncodedKeyRange {
@@ -157,6 +165,10 @@ impl DictionaryEntryIndexKey {
 		}
 	}
 
+	pub fn encoded(dictionary: impl Into<DictionaryId>, id: u64) -> EncodedKey {
+		Self::new(dictionary.into(), id).encode()
+	}
+
 	pub fn full_scan(dictionary: DictionaryId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::index_start(dictionary)), Some(Self::index_end(dictionary)))
 	}
@@ -221,6 +233,10 @@ impl DictionarySequenceKey {
 		Self {
 			dictionary,
 		}
+	}
+
+	pub fn encoded(dictionary: impl Into<DictionaryId>) -> EncodedKey {
+		Self::new(dictionary.into()).encode()
 	}
 }
 

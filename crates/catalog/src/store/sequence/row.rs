@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, EncodableKey, RingBufferId, RowSequenceKey, SourceId, TableId};
+use reifydb_core::interface::{CommandTransaction, RingBufferId, RowSequenceKey, SourceId, TableId};
 use reifydb_type::RowNumber;
 
 use crate::store::sequence::generator::u64::GeneratorU64;
@@ -10,15 +10,7 @@ pub struct RowSequence {}
 
 impl RowSequence {
 	pub fn next_row_number(txn: &mut impl CommandTransaction, table: TableId) -> crate::Result<RowNumber> {
-		GeneratorU64::next(
-			txn,
-			&RowSequenceKey {
-				source: SourceId::from(table),
-			}
-			.encode(),
-			None,
-		)
-		.map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(SourceId::from(table)), None).map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a table.
@@ -36,15 +28,7 @@ impl RowSequence {
 		txn: &mut impl CommandTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<RowNumber> {
-		GeneratorU64::next(
-			txn,
-			&RowSequenceKey {
-				source: SourceId::from(ringbuffer),
-			}
-			.encode(),
-			None,
-		)
-		.map(RowNumber)
+		GeneratorU64::next(txn, &RowSequenceKey::encoded(SourceId::from(ringbuffer)), None).map(RowNumber)
 	}
 
 	/// Allocates a batch of contiguous row numbers for a ring buffer.
@@ -63,15 +47,7 @@ impl RowSequence {
 		source: SourceId,
 		count: u64,
 	) -> crate::Result<Vec<RowNumber>> {
-		let last_row_number = GeneratorU64::next_batched(
-			txn,
-			&RowSequenceKey {
-				source,
-			}
-			.encode(),
-			None,
-			count,
-		)?;
+		let last_row_number = GeneratorU64::next_batched(txn, &RowSequenceKey::encoded(source), None, count)?;
 
 		// Calculate the first row number in the batch
 		// next_batched returns the last allocated ID

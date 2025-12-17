@@ -95,7 +95,7 @@ pub fn state_range<'a>(
 	range: EncodedKeyRange,
 ) -> crate::Result<super::StateIterator<'a>> {
 	Ok(super::StateIterator {
-		inner: txn.range(range.with_prefix(FlowNodeStateKey::new(id, vec![]).encode()))?,
+		inner: txn.range(range.with_prefix(FlowNodeStateKey::encoded(id, vec![])))?,
 	})
 }
 
@@ -267,13 +267,13 @@ mod tests {
 		}
 
 		let range = EncodedKeyRange::new(Unbounded, Excluded(test_key("range_3")));
-		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(node_id, vec![]).encode());
+		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
 		let entries: Vec<_> = txn.range(prefixed_range).unwrap().collect();
 		assert_eq!(entries.len(), 3); // range_0, range_1, range_2
 
 		// Test with no end (to end)
 		let range = EncodedKeyRange::new(Included(test_key("range_3")), Unbounded);
-		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(node_id, vec![]).encode());
+		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(node_id, vec![]));
 		let entries: Vec<_> = txn.range(prefixed_range).unwrap().collect();
 		assert_eq!(entries.len(), 2); // range_3, range_4
 	}

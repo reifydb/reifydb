@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, MultiVersionValues, NamespaceId, NamespaceRingBufferKey, QueryTransaction, RingBufferDef,
-	RingBufferId, RingBufferKey, RingBufferMetadata, RingBufferMetadataKey,
+	MultiVersionValues, NamespaceId, NamespaceRingBufferKey, QueryTransaction, RingBufferDef, RingBufferId,
+	RingBufferKey, RingBufferMetadata, RingBufferMetadataKey,
 };
 
 use crate::{
@@ -16,7 +16,7 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let Some(multi) = rx.get(&RingBufferKey::new(ringbuffer).encode())? else {
+		let Some(multi) = rx.get(&RingBufferKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
 
@@ -40,7 +40,7 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferMetadata>> {
-		let Some(multi) = rx.get(&RingBufferMetadataKey::new(ringbuffer).encode())? else {
+		let Some(multi) = rx.get(&RingBufferMetadataKey::encoded(ringbuffer))? else {
 			return Ok(None);
 		};
 

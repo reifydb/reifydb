@@ -46,6 +46,13 @@ impl EncodableKey for FlowNodeKey {
 }
 
 impl FlowNodeKey {
+	pub fn encoded(node: impl Into<FlowNodeId>) -> EncodedKey {
+		Self {
+			node: node.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start()), Some(Self::end()))
 	}
@@ -102,6 +109,14 @@ impl EncodableKey for FlowNodeByFlowKey {
 }
 
 impl FlowNodeByFlowKey {
+	pub fn encoded(flow: impl Into<FlowId>, node: impl Into<FlowNodeId>) -> EncodedKey {
+		Self {
+			flow: flow.into(),
+			node: node.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(flow: FlowId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::start(flow)), Some(Self::end(flow)))
 	}

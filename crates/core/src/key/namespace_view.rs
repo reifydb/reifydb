@@ -53,6 +53,14 @@ impl EncodableKey for NamespaceViewKey {
 }
 
 impl NamespaceViewKey {
+	pub fn encoded(namespace: impl Into<NamespaceId>, view: impl Into<ViewId>) -> EncodedKey {
+		Self {
+			namespace: namespace.into(),
+			view: view.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
 	}

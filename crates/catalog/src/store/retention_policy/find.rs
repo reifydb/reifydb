@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{FlowNodeId, QueryTransaction, SourceId},
-	key::{EncodableKey, OperatorRetentionPolicyKey, SourceRetentionPolicyKey},
+	key::{OperatorRetentionPolicyKey, SourceRetentionPolicyKey},
 	retention::RetentionPolicy,
 };
 
@@ -17,10 +17,7 @@ impl CatalogStore {
 		txn: &mut impl QueryTransaction,
 		source: SourceId,
 	) -> crate::Result<Option<RetentionPolicy>> {
-		let key = SourceRetentionPolicyKey {
-			source,
-		};
-		let value = txn.get(&key.encode())?;
+		let value = txn.get(&SourceRetentionPolicyKey::encoded(source))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
 
@@ -30,10 +27,7 @@ impl CatalogStore {
 		txn: &mut impl QueryTransaction,
 		operator: FlowNodeId,
 	) -> crate::Result<Option<RetentionPolicy>> {
-		let key = OperatorRetentionPolicyKey {
-			operator,
-		};
-		let value = txn.get(&key.encode())?;
+		let value = txn.get(&OperatorRetentionPolicyKey::encoded(operator))?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
 }

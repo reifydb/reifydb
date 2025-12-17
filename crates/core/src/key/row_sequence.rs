@@ -46,6 +46,13 @@ impl EncodableKey for RowSequenceKey {
 }
 
 impl RowSequenceKey {
+	pub fn encoded(source: impl Into<SourceId>) -> EncodedKey {
+		Self {
+			source: source.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::sequence_start()), Some(Self::sequence_end()))
 	}

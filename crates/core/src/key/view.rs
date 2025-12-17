@@ -46,6 +46,13 @@ impl EncodableKey for ViewKey {
 }
 
 impl ViewKey {
+	pub fn encoded(view: impl Into<ViewId>) -> EncodedKey {
+		Self {
+			view: view.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::view_start()), Some(Self::view_end()))
 	}

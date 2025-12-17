@@ -72,7 +72,7 @@ impl FlowTransaction {
 		range: EncodedKeyRange,
 	) -> crate::Result<BoxedMultiVersionIter<'_>> {
 		self.metrics.increment_state_operations();
-		let prefixed_range = range.with_prefix(FlowNodeStateKey::new(id, vec![]).encode());
+		let prefixed_range = range.with_prefix(FlowNodeStateKey::encoded(id, vec![]));
 		self.range(prefixed_range)
 	}
 

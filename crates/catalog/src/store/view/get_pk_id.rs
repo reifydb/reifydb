@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{Key, PrimaryKeyId, QueryTransaction, ViewId, ViewKey};
+use reifydb_core::interface::{PrimaryKeyId, QueryTransaction, ViewId, ViewKey};
 
 use crate::{CatalogStore, store::view::layout::view};
 
@@ -9,11 +9,7 @@ impl CatalogStore {
 	/// Get the primary key ID for a view
 	/// Returns None if the view doesn't exist or has no primary key
 	pub fn get_view_pk_id(rx: &mut impl QueryTransaction, view_id: ViewId) -> crate::Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&Key::View(ViewKey {
-			view: view_id,
-		})
-		.encode())?
-		{
+		let multi = match rx.get(&ViewKey::encoded(view_id))? {
 			Some(v) => v,
 			None => return Ok(None),
 		};

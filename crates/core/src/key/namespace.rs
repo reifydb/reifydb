@@ -46,6 +46,13 @@ impl EncodableKey for NamespaceKey {
 }
 
 impl NamespaceKey {
+	pub fn encoded(namespace: impl Into<NamespaceId>) -> EncodedKey {
+		Self {
+			namespace: namespace.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::namespace_start()), Some(Self::namespace_end()))
 	}

@@ -2,8 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::interface::{
-	EncodableKey, FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionValues, NamespaceFlowKey, NamespaceId,
-	QueryTransaction,
+	FlowDef, FlowId, FlowKey, FlowStatus, MultiVersionValues, NamespaceFlowKey, NamespaceId, QueryTransaction,
 };
 
 use crate::{
@@ -13,11 +12,7 @@ use crate::{
 
 impl CatalogStore {
 	pub fn find_flow(rx: &mut impl QueryTransaction, id: FlowId) -> crate::Result<Option<FlowDef>> {
-		let Some(multi) = rx.get(&FlowKey {
-			flow: id,
-		}
-		.encode())?
-		else {
+		let Some(multi) = rx.get(&FlowKey::encoded(id))? else {
 			return Ok(None);
 		};
 

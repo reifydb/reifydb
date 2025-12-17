@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	interface::{DictionaryDef, DictionaryId, MultiVersionValues, NamespaceId, QueryTransaction},
-	key::{DictionaryKey, EncodableKey, NamespaceDictionaryKey},
+	key::{DictionaryKey, NamespaceDictionaryKey},
 };
 use reifydb_type::Type;
 
@@ -17,7 +17,7 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		dictionary_id: DictionaryId,
 	) -> crate::Result<Option<DictionaryDef>> {
-		let Some(multi) = rx.get(&DictionaryKey::new(dictionary_id).encode())? else {
+		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id))? else {
 			return Ok(None);
 		};
 

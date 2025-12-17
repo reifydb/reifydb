@@ -33,6 +33,15 @@ pub struct CdcConsumerKey {
 	pub consumer: CdcConsumerId,
 }
 
+impl CdcConsumerKey {
+	pub fn encoded(consumer: impl Into<CdcConsumerId>) -> EncodedKey {
+		Self {
+			consumer: consumer.into(),
+		}
+		.encode()
+	}
+}
+
 pub const VERSION_BYTE: u8 = 1;
 
 impl EncodableKey for CdcConsumerKey {

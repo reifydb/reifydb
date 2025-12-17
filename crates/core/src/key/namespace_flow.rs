@@ -53,6 +53,14 @@ impl EncodableKey for NamespaceFlowKey {
 }
 
 impl NamespaceFlowKey {
+	pub fn encoded(namespace: impl Into<NamespaceId>, flow: impl Into<FlowId>) -> EncodedKey {
+		Self {
+			namespace: namespace.into(),
+			flow: flow.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(namespace_id: NamespaceId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::link_start(namespace_id)), Some(Self::link_end(namespace_id)))
 	}

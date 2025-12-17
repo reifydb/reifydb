@@ -37,6 +37,15 @@ impl TryFrom<u8> for SystemVersion {
 	}
 }
 
+impl SystemVersionKey {
+	pub fn encoded(version: SystemVersion) -> EncodedKey {
+		Self {
+			version,
+		}
+		.encode()
+	}
+}
+
 const VERSION: u8 = 1;
 
 impl EncodableKey for SystemVersionKey {

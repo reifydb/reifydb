@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, EncodableKey, FlowNodeId},
+	interface::{CommandTransaction, FlowNodeId},
 	key::{FlowNodeByFlowKey, FlowNodeKey},
 };
 
@@ -15,17 +15,10 @@ impl CatalogStore {
 
 		if let Some(node_def) = node {
 			// Delete from main flow_node table
-			txn.remove(&FlowNodeKey {
-				node: node_id,
-			}
-			.encode())?;
+			txn.remove(&FlowNodeKey::encoded(node_id))?;
 
 			// Delete from flow_node_by_flow index
-			txn.remove(&FlowNodeByFlowKey {
-				flow: node_def.flow,
-				node: node_id,
-			}
-			.encode())?;
+			txn.remove(&FlowNodeByFlowKey::encoded(node_def.flow, node_id))?;
 		}
 
 		Ok(())

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, EncodableKey, NamespaceDef, NamespaceKey};
+use reifydb_core::interface::{CommandTransaction, NamespaceDef, NamespaceKey};
 use reifydb_type::{OwnedFragment, diagnostic::catalog::namespace_already_exists, return_error};
 
 use crate::{
@@ -33,13 +33,7 @@ impl CatalogStore {
 		LAYOUT.set_u64(&mut row, ID, namespace_id);
 		LAYOUT.set_utf8(&mut row, NAME, &to_create.name);
 
-		txn.set(
-			&NamespaceKey {
-				namespace: namespace_id,
-			}
-			.encode(),
-			row,
-		)?;
+		txn.set(&NamespaceKey::encoded(namespace_id), row)?;
 
 		Ok(Self::get_namespace(txn, namespace_id)?)
 	}

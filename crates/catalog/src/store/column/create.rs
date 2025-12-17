@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::{auto_increment_invalid_type, table_column_already_exists},
-	interface::{
-		ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, DictionaryId, EncodableKey, Key, SourceId,
-		TableId,
-	},
+	interface::{ColumnKey, ColumnPolicyKind, ColumnsKey, CommandTransaction, DictionaryId, SourceId, TableId},
 	return_error,
 };
 use reifydb_type::{Constraint, OwnedFragment, Type, TypeConstraint};
@@ -113,26 +110,13 @@ impl CatalogStore {
 		let dict_id_value = column_to_create.dictionary_id.map(|id| u64::from(id)).unwrap_or(0);
 		column::LAYOUT.set_u64(&mut row, DICTIONARY_ID, dict_id_value);
 
-		txn.set(
-			&Key::Columns(ColumnsKey {
-				column: id,
-			})
-			.encode(),
-			row,
-		)?;
+		txn.set(&ColumnsKey::encoded(id), row)?;
 
 		let mut row = source_column::LAYOUT.allocate();
 		source_column::LAYOUT.set_u64(&mut row, source_column::ID, id);
 		source_column::LAYOUT.set_utf8(&mut row, source_column::NAME, &column_to_create.column);
 		source_column::LAYOUT.set_u8(&mut row, source_column::INDEX, column_to_create.index);
-		txn.set(
-			&ColumnKey {
-				source,
-				column: id,
-			}
-			.encode(),
-			row,
-		)?;
+		txn.set(&ColumnKey::encoded(source, id), row)?;
 
 		for policy in column_to_create.policies {
 			Self::create_column_policy(txn, id, policy)?;

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, EncodableKey, RingBufferMetadata, RingBufferMetadataKey};
+use reifydb_core::interface::{CommandTransaction, RingBufferMetadata, RingBufferMetadataKey};
 
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer_metadata};
 
@@ -17,8 +17,7 @@ impl CatalogStore {
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::TAIL, metadata.tail);
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::COUNT, metadata.count);
 
-		let key = RingBufferMetadataKey::new(metadata.id);
-		txn.set(&key.encode(), row)?;
+		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row)?;
 
 		Ok(())
 	}

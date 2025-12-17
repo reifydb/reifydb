@@ -52,7 +52,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &DictionaryToCreate,
 	) -> crate::Result<()> {
-		use reifydb_core::key::{DictionaryKey, EncodableKey};
+		use reifydb_core::key::DictionaryKey;
 
 		use crate::store::dictionary::layout::dictionary;
 
@@ -63,8 +63,7 @@ impl CatalogStore {
 		dictionary::LAYOUT.set_u8(&mut row, dictionary::VALUE_TYPE, to_create.value_type.to_u8());
 		dictionary::LAYOUT.set_u8(&mut row, dictionary::ID_TYPE, to_create.id_type.to_u8());
 
-		let key = DictionaryKey::new(dictionary);
-		txn.set(&key.encode(), row)?;
+		txn.set(&DictionaryKey::encoded(dictionary), row)?;
 
 		Ok(())
 	}
@@ -75,7 +74,7 @@ impl CatalogStore {
 		dictionary: DictionaryId,
 		name: &str,
 	) -> crate::Result<()> {
-		use reifydb_core::key::{EncodableKey, NamespaceDictionaryKey};
+		use reifydb_core::key::NamespaceDictionaryKey;
 
 		use crate::store::dictionary::layout::dictionary_namespace;
 
@@ -83,8 +82,7 @@ impl CatalogStore {
 		dictionary_namespace::LAYOUT.set_u64(&mut row, dictionary_namespace::ID, dictionary);
 		dictionary_namespace::LAYOUT.set_utf8(&mut row, dictionary_namespace::NAME, name);
 
-		let key = NamespaceDictionaryKey::new(namespace, dictionary);
-		txn.set(&key.encode(), row)?;
+		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row)?;
 
 		Ok(())
 	}

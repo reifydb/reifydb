@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, EncodableKey, FlowId, FlowKey, FlowStatus};
+use reifydb_core::interface::{CommandTransaction, FlowId, FlowKey, FlowStatus};
 
 use crate::{CatalogStore, store::flow::layout::flow};
 
@@ -22,10 +22,7 @@ impl CatalogStore {
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &new_name);
 		flow::LAYOUT.set_u8(&mut row, flow::STATUS, flow.status as u8);
 
-		let key = FlowKey {
-			flow: flow_id,
-		};
-		txn.set(&key.encode(), row)?;
+		txn.set(&FlowKey::encoded(flow_id), row)?;
 
 		Ok(())
 	}
@@ -46,10 +43,7 @@ impl CatalogStore {
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &flow.name);
 		flow::LAYOUT.set_u8(&mut row, flow::STATUS, status as u8);
 
-		let key = FlowKey {
-			flow: flow_id,
-		};
-		txn.set(&key.encode(), row)?;
+		txn.set(&FlowKey::encoded(flow_id), row)?;
 
 		Ok(())
 	}

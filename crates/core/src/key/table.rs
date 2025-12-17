@@ -46,6 +46,13 @@ impl EncodableKey for TableKey {
 }
 
 impl TableKey {
+	pub fn encoded(table: impl Into<TableId>) -> EncodedKey {
+		Self {
+			table: table.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::table_start()), Some(Self::table_end()))
 	}

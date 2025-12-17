@@ -3,10 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::flow_already_exists,
-	interface::{
-		CommandTransaction, EncodableKey, FlowDef, FlowId, FlowKey, FlowStatus, Key, NamespaceFlowKey,
-		NamespaceId,
-	},
+	interface::{CommandTransaction, FlowDef, FlowId, FlowKey, FlowStatus, NamespaceFlowKey, NamespaceId},
 	return_error,
 };
 use reifydb_type::OwnedFragment;
@@ -56,13 +53,7 @@ impl CatalogStore {
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &to_create.name);
 		flow::LAYOUT.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
 
-		txn.set(
-			&FlowKey {
-				flow,
-			}
-			.encode(),
-			row,
-		)?;
+		txn.set(&FlowKey::encoded(flow), row)?;
 
 		Ok(())
 	}
@@ -76,14 +67,7 @@ impl CatalogStore {
 		let mut row = flow_namespace::LAYOUT.allocate();
 		flow_namespace::LAYOUT.set_u64(&mut row, flow_namespace::ID, flow);
 		flow_namespace::LAYOUT.set_utf8(&mut row, flow_namespace::NAME, name);
-		txn.set(
-			&Key::NamespaceFlow(NamespaceFlowKey {
-				namespace,
-				flow,
-			})
-			.encode(),
-			row,
-		)?;
+		txn.set(&NamespaceFlowKey::encoded(namespace, flow), row)?;
 		Ok(())
 	}
 }

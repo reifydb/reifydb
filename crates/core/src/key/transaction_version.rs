@@ -10,6 +10,12 @@ use crate::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct TransactionVersionKey {}
 
+impl TransactionVersionKey {
+	pub fn encoded() -> EncodedKey {
+		Self {}.encode()
+	}
+}
+
 const VERSION: u8 = 1;
 
 impl EncodableKey for TransactionVersionKey {

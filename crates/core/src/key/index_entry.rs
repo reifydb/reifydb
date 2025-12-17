@@ -26,12 +26,15 @@ pub struct IndexEntryKey {
 
 impl IndexEntryKey {
 	pub fn new(source: impl Into<SourceId>, index: IndexId, key: EncodedIndexKey) -> Self {
-		let source = source.into();
 		Self {
-			source,
+			source: source.into(),
 			index,
 			key,
 		}
+	}
+
+	pub fn encoded(source: impl Into<SourceId>, index: IndexId, key: EncodedIndexKey) -> EncodedKey {
+		Self::new(source, index, key).encode()
 	}
 }
 

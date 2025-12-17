@@ -89,7 +89,7 @@ impl RetentionPolicyManager {
         }
 
         // Query from store
-        let key = SourceRetentionPolicyKey { source_id }.encode();
+        let key = SourceRetentionPolicyKey::encoded(source_id);
 
         if let Some(values) = store.get(&key, CommitVersion(u64::MAX))? {
             // Decode the policy from values
@@ -113,7 +113,7 @@ impl RetentionPolicyManager {
         }
 
         // Query from store
-        let key = OperatorRetentionPolicyKey { flow_node_id: node_id.0 }.encode();
+        let key = OperatorRetentionPolicyKey::encoded(node_id);
 
         if let Some(values) = store.get(&key, CommitVersion(u64::MAX))? {
             // Decode the policy from values
@@ -131,7 +131,7 @@ impl RetentionPolicyManager {
         policy: RetentionPolicy,
         version: CommitVersion,
     ) -> Result<()> {
-        let key = SourceRetentionPolicyKey { source_id }.encode();
+        let key = SourceRetentionPolicyKey::encoded(source_id);
         let value = serde_json::to_vec(&policy)?;
 
         // Store in the transaction store
@@ -150,7 +150,7 @@ impl RetentionPolicyManager {
         policy: RetentionPolicy,
         version: CommitVersion,
     ) -> Result<()> {
-        let key = OperatorRetentionPolicyKey { flow_node_id: node_id.0 }.encode();
+        let key = OperatorRetentionPolicyKey::encoded(node_id);
         let value = serde_json::to_vec(&policy)?;
 
         // Store in the transaction store

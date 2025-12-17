@@ -4,6 +4,7 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub mod builder;
+mod catalog;
 mod consumer;
 #[allow(dead_code, unused_variables)]
 mod engine;

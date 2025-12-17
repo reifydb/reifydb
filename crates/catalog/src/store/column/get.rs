@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	Error,
-	interface::{ColumnsKey, DictionaryId, EncodableKey, QueryTransaction},
+	interface::{ColumnsKey, DictionaryId, QueryTransaction},
 };
 use reifydb_type::{Constraint, Type, TypeConstraint, internal};
 
@@ -42,17 +42,12 @@ use crate::{
 
 impl CatalogStore {
 	pub fn get_column(rx: &mut impl QueryTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
-		let multi = rx
-			.get(&ColumnsKey {
-				column,
-			}
-			.encode())?
-			.ok_or_else(|| {
-				Error(internal!(
-					"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
-					column
-				))
-			})?;
+		let multi = rx.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
+			Error(internal!(
+				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
+				column
+			))
+		})?;
 
 		let row = multi.values;
 

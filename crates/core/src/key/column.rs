@@ -52,6 +52,14 @@ impl EncodableKey for ColumnKey {
 }
 
 impl ColumnKey {
+	pub fn encoded(source: impl Into<SourceId>, column: impl Into<ColumnId>) -> EncodedKey {
+		Self {
+			source: source.into(),
+			column: column.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(source: impl Into<SourceId>) -> EncodedKeyRange {
 		let source = source.into();
 		EncodedKeyRange::start_end(Some(Self::start(source)), Some(Self::end(source)))

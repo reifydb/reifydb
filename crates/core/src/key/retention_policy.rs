@@ -15,6 +15,15 @@ pub struct SourceRetentionPolicyKey {
 	pub source: SourceId,
 }
 
+impl SourceRetentionPolicyKey {
+	pub fn encoded(source: impl Into<SourceId>) -> EncodedKey {
+		Self {
+			source: source.into(),
+		}
+		.encode()
+	}
+}
+
 impl EncodableKey for SourceRetentionPolicyKey {
 	const KIND: KeyKind = KeyKind::SourceRetentionPolicy;
 
@@ -83,6 +92,15 @@ impl EncodableKey for SourceRetentionPolicyKey {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OperatorRetentionPolicyKey {
 	pub operator: FlowNodeId,
+}
+
+impl OperatorRetentionPolicyKey {
+	pub fn encoded(operator: impl Into<FlowNodeId>) -> EncodedKey {
+		Self {
+			operator: operator.into(),
+		}
+		.encode()
+	}
 }
 
 impl EncodableKey for OperatorRetentionPolicyKey {

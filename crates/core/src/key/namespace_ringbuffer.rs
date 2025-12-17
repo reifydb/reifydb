@@ -24,6 +24,10 @@ impl NamespaceRingBufferKey {
 		}
 	}
 
+	pub fn encoded(namespace: impl Into<NamespaceId>, ringbuffer: impl Into<RingBufferId>) -> EncodedKey {
+		Self::new(namespace.into(), ringbuffer.into()).encode()
+	}
+
 	pub fn full_scan(namespace: NamespaceId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::link_start(namespace)), Some(Self::link_end(namespace)))
 	}

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{Key, PrimaryKeyId, QueryTransaction, RingBufferId, RingBufferKey};
+use reifydb_core::interface::{PrimaryKeyId, QueryTransaction, RingBufferId, RingBufferKey};
 
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
 
@@ -12,7 +12,7 @@ impl CatalogStore {
 		rx: &mut impl QueryTransaction,
 		ringbuffer_id: RingBufferId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&Key::RingBuffer(RingBufferKey::new(ringbuffer_id)).encode())? {
+		let multi = match rx.get(&RingBufferKey::encoded(ringbuffer_id))? {
 			Some(v) => v,
 			None => return Ok(None),
 		};

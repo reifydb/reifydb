@@ -53,6 +53,14 @@ impl EncodableKey for ColumnPolicyKey {
 }
 
 impl ColumnPolicyKey {
+	pub fn encoded(column: impl Into<ColumnId>, policy: impl Into<ColumnPolicyId>) -> EncodedKey {
+		Self {
+			column: column.into(),
+			policy: policy.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(column: ColumnId) -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::link_start(column)), Some(Self::link_end(column)))
 	}

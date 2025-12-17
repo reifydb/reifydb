@@ -52,6 +52,16 @@ impl EncodableKey for ColumnSequenceKey {
 	}
 }
 
+impl ColumnSequenceKey {
+	pub fn encoded(source: impl Into<SourceId>, column: impl Into<ColumnId>) -> EncodedKey {
+		Self {
+			source: source.into(),
+			column: column.into(),
+		}
+		.encode()
+	}
+}
+
 #[cfg(test)]
 mod tests {
 	use super::{ColumnSequenceKey, EncodableKey};

@@ -3,7 +3,7 @@
 
 use reifydb_core::{
 	diagnostic::catalog::table_column_policy_already_exists,
-	interface::{ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind, CommandTransaction, EncodableKey},
+	interface::{ColumnPolicy, ColumnPolicyKey, ColumnPolicyKind, CommandTransaction},
 	return_error,
 };
 
@@ -40,14 +40,7 @@ impl CatalogStore {
 			column_policy::LAYOUT.set_u8(&mut row, column_policy::VALUE, value);
 		}
 
-		txn.set(
-			&ColumnPolicyKey {
-				column,
-				policy: id,
-			}
-			.encode(),
-			row,
-		)?;
+		txn.set(&ColumnPolicyKey::encoded(column, id), row)?;
 
 		Ok(ColumnPolicy {
 			id,

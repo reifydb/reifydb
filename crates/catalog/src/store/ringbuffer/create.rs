@@ -74,7 +74,7 @@ impl CatalogStore {
 		namespace: NamespaceId,
 		to_create: &RingBufferToCreate,
 	) -> crate::Result<()> {
-		use reifydb_core::interface::{EncodableKey, RingBufferKey};
+		use reifydb_core::interface::RingBufferKey;
 
 		use crate::store::ringbuffer::layout::ringbuffer;
 
@@ -86,8 +86,7 @@ impl CatalogStore {
 		// Initialize with no primary key
 		ringbuffer::LAYOUT.set_u64(&mut row, ringbuffer::PRIMARY_KEY, 0u64);
 
-		let key = RingBufferKey::new(ringbuffer);
-		txn.set(&key.encode(), row)?;
+		txn.set(&RingBufferKey::encoded(ringbuffer), row)?;
 
 		Ok(())
 	}
@@ -98,7 +97,7 @@ impl CatalogStore {
 		ringbuffer: RingBufferId,
 		name: &str,
 	) -> crate::Result<()> {
-		use reifydb_core::interface::{EncodableKey, NamespaceRingBufferKey};
+		use reifydb_core::interface::NamespaceRingBufferKey;
 
 		use crate::store::ringbuffer::layout::ringbuffer_namespace;
 
@@ -106,8 +105,7 @@ impl CatalogStore {
 		ringbuffer_namespace::LAYOUT.set_u64(&mut row, ringbuffer_namespace::ID, ringbuffer);
 		ringbuffer_namespace::LAYOUT.set_utf8(&mut row, ringbuffer_namespace::NAME, name);
 
-		let key = NamespaceRingBufferKey::new(namespace, ringbuffer);
-		txn.set(&key.encode(), row)?;
+		txn.set(&NamespaceRingBufferKey::encoded(namespace, ringbuffer), row)?;
 
 		Ok(())
 	}
@@ -152,7 +150,7 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		capacity: u64,
 	) -> crate::Result<()> {
-		use reifydb_core::interface::{EncodableKey, RingBufferMetadataKey};
+		use reifydb_core::interface::RingBufferMetadataKey;
 
 		use crate::store::ringbuffer::layout::ringbuffer_metadata;
 
@@ -163,8 +161,7 @@ impl CatalogStore {
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::TAIL, 0u64);
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::COUNT, 0u64);
 
-		let key = RingBufferMetadataKey::new(ringbuffer_id);
-		txn.set(&key.encode(), row)?;
+		txn.set(&RingBufferMetadataKey::encoded(ringbuffer_id), row)?;
 
 		Ok(())
 	}

@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, Key, PrimaryKeyId, RingBufferId, RingBufferKey},
+	interface::{CommandTransaction, PrimaryKeyId, RingBufferId, RingBufferKey},
 	return_internal_error,
 };
 
@@ -16,7 +16,7 @@ impl CatalogStore {
 		ringbuffer_id: RingBufferId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let multi = match txn.get(&Key::RingBuffer(RingBufferKey::new(ringbuffer_id)).encode())? {
+		let multi = match txn.get(&RingBufferKey::encoded(ringbuffer_id))? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"Ring buffer with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -27,7 +27,7 @@ impl CatalogStore {
 		let mut updated_row = multi.values.clone();
 		ringbuffer::LAYOUT.set_u64(&mut updated_row, ringbuffer::PRIMARY_KEY, primary_key_id.0);
 
-		txn.set(&Key::RingBuffer(RingBufferKey::new(ringbuffer_id)).encode(), updated_row)?;
+		txn.set(&RingBufferKey::encoded(ringbuffer_id), updated_row)?;
 
 		Ok(())
 	}

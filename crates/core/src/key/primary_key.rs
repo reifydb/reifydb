@@ -46,6 +46,13 @@ impl EncodableKey for PrimaryKeyKey {
 }
 
 impl PrimaryKeyKey {
+	pub fn encoded(primary_key: impl Into<PrimaryKeyId>) -> EncodedKey {
+		Self {
+			primary_key: primary_key.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan() -> EncodedKeyRange {
 		EncodedKeyRange::start_end(Some(Self::primary_key_start()), Some(Self::primary_key_end()))
 	}

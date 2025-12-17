@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, EncodableKey, FlowEdgeId},
+	interface::{CommandTransaction, FlowEdgeId},
 	key::{FlowEdgeByFlowKey, FlowEdgeKey},
 };
 
@@ -15,17 +15,10 @@ impl CatalogStore {
 
 		if let Some(edge_def) = edge {
 			// Delete from main flow_edge table
-			txn.remove(&FlowEdgeKey {
-				edge: edge_id,
-			}
-			.encode())?;
+			txn.remove(&FlowEdgeKey::encoded(edge_id))?;
 
 			// Delete from flow_edge_by_flow index
-			txn.remove(&FlowEdgeByFlowKey {
-				flow: edge_def.flow,
-				edge: edge_id,
-			}
-			.encode())?;
+			txn.remove(&FlowEdgeByFlowKey::encoded(edge_def.flow, edge_id))?;
 		}
 
 		Ok(())

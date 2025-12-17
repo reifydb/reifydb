@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{EncodableKey, NamespaceDef, NamespaceId, NamespaceKey, QueryTransaction},
+	interface::{NamespaceDef, NamespaceId, NamespaceKey, QueryTransaction},
 	value::encoded::EncodedValues,
 };
 
@@ -40,11 +40,7 @@ impl CatalogStore {
 			return Ok(Some(NamespaceDef::system()));
 		}
 
-		Ok(rx.get(&NamespaceKey {
-			namespace: id,
-		}
-		.encode())?
-			.map(convert_namespace))
+		Ok(rx.get(&NamespaceKey::encoded(id))?.map(convert_namespace))
 	}
 }
 

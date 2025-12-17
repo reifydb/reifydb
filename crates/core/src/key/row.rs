@@ -138,6 +138,14 @@ impl EncodableKeyRange for RowKeyRange {
 }
 
 impl RowKey {
+	pub fn encoded(source: impl Into<SourceId>, row: impl Into<RowNumber>) -> EncodedKey {
+		Self {
+			source: source.into(),
+			row: row.into(),
+		}
+		.encode()
+	}
+
 	pub fn full_scan(source: impl Into<SourceId>) -> EncodedKeyRange {
 		let source = source.into();
 		EncodedKeyRange::start_end(Some(Self::source_start(source)), Some(Self::source_end(source)))

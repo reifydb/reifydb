@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{ColumnDef, Key, PrimaryKeyDef, PrimaryKeyKey, QueryTransaction, SourceId, TableId, ViewId},
+	interface::{ColumnDef, PrimaryKeyDef, PrimaryKeyKey, QueryTransaction, SourceId, TableId, ViewId},
 	return_internal_error,
 };
 
@@ -49,11 +49,7 @@ impl CatalogStore {
 		};
 
 		// Fetch the primary key details
-		let primary_key_multi = match rx.get(&Key::PrimaryKey(PrimaryKeyKey {
-			primary_key: primary_key_id,
-		})
-		.encode())?
-		{
+		let primary_key_multi = match rx.get(&PrimaryKeyKey::encoded(primary_key_id))? {
 			Some(multi) => multi,
 			None => return_internal_error!(format!(
 				"Primary key with ID {:?} referenced but not found",

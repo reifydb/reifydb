@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_core::interface::{CommandTransaction, EncodableKey, FlowId, FlowKey, NamespaceFlowKey};
+use reifydb_core::interface::{CommandTransaction, FlowId, FlowKey, NamespaceFlowKey};
 
 use crate::CatalogStore;
 
@@ -24,17 +24,10 @@ impl CatalogStore {
 			}
 
 			// Step 3: Delete from namespace index
-			txn.remove(&NamespaceFlowKey {
-				namespace: flow.namespace,
-				flow: flow_id,
-			}
-			.encode())?;
+			txn.remove(&NamespaceFlowKey::encoded(flow.namespace, flow_id))?;
 
 			// Step 4: Delete from main flow table
-			txn.remove(&FlowKey {
-				flow: flow_id,
-			}
-			.encode())?;
+			txn.remove(&FlowKey::encoded(flow_id))?;
 		}
 
 		Ok(())

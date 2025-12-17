@@ -4,8 +4,8 @@
 use reifydb_core::{
 	diagnostic::catalog::table_already_exists,
 	interface::{
-		ColumnPolicyKind, CommandTransaction, DictionaryId, EncodableKey, Key, NamespaceId, NamespaceTableKey,
-		SourceId, TableDef, TableId, TableKey,
+		ColumnPolicyKind, CommandTransaction, DictionaryId, NamespaceId, NamespaceTableKey, SourceId, TableDef,
+		TableId, TableKey,
 	},
 	retention::RetentionPolicy,
 	return_error,
@@ -77,13 +77,7 @@ impl CatalogStore {
 		// Initialize with no primary key
 		table::LAYOUT.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
 
-		txn.set(
-			&TableKey {
-				table,
-			}
-			.encode(),
-			row,
-		)?;
+		txn.set(&TableKey::encoded(table), row)?;
 
 		Ok(())
 	}
@@ -97,14 +91,7 @@ impl CatalogStore {
 		let mut row = table_namespace::LAYOUT.allocate();
 		table_namespace::LAYOUT.set_u64(&mut row, table_namespace::ID, table);
 		table_namespace::LAYOUT.set_utf8(&mut row, table_namespace::NAME, name);
-		txn.set(
-			&Key::NamespaceTable(NamespaceTableKey {
-				namespace,
-				table,
-			})
-			.encode(),
-			row,
-		)?;
+		txn.set(&NamespaceTableKey::encoded(namespace, table), row)?;
 		Ok(())
 	}
 

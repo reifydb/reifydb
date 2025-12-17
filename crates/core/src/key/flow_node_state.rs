@@ -63,6 +63,10 @@ impl FlowNodeStateKey {
 		}
 	}
 
+	pub fn encoded(node: impl Into<FlowNodeId>, key: impl Into<Vec<u8>>) -> EncodedKey {
+		Self::new(node.into(), key.into()).encode()
+	}
+
 	/// Create a range for scanning all entries of a specific operator
 	pub fn node_range(node: FlowNodeId) -> EncodedKeyRange {
 		let range = FlowNodeStateKeyRange::new(node);

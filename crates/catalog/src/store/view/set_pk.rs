@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, Key, PrimaryKeyId, ViewId, ViewKey},
+	interface::{CommandTransaction, PrimaryKeyId, ViewId, ViewKey},
 	return_internal_error,
 };
 
@@ -16,11 +16,7 @@ impl CatalogStore {
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let multi = match txn.get(&Key::View(ViewKey {
-			view: view_id,
-		})
-		.encode())?
-		{
+		let multi = match txn.get(&ViewKey::encoded(view_id))? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"View with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -31,13 +27,7 @@ impl CatalogStore {
 		let mut updated_row = multi.values.clone();
 		view::LAYOUT.set_u64(&mut updated_row, view::PRIMARY_KEY, primary_key_id.0);
 
-		txn.set(
-			&Key::View(ViewKey {
-				view: view_id,
-			})
-			.encode(),
-			updated_row,
-		)?;
+		txn.set(&ViewKey::encoded(view_id), updated_row)?;
 
 		Ok(())
 	}

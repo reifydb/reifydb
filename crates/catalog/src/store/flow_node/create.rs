@@ -2,8 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_core::{
-	interface::{CommandTransaction, EncodableKey, FlowNodeDef},
-	key::FlowNodeKey,
+	interface::{CommandTransaction, FlowNodeDef},
+	key::{FlowNodeByFlowKey, FlowNodeKey},
 };
 
 use crate::store::flow_node::layout::{flow_node, flow_node_by_flow};
@@ -17,27 +17,14 @@ impl crate::CatalogStore {
 		flow_node::LAYOUT.set_u8(&mut row, flow_node::TYPE, node_def.node_type);
 		flow_node::LAYOUT.set_blob(&mut row, flow_node::DATA, &node_def.data);
 
-		txn.set(
-			&FlowNodeKey {
-				node: node_def.id,
-			}
-			.encode(),
-			row,
-		)?;
+		txn.set(&FlowNodeKey::encoded(node_def.id), row)?;
 
 		// Write to flow_node_by_flow index
 		let mut index_row = flow_node_by_flow::LAYOUT.allocate();
 		flow_node_by_flow::LAYOUT.set_u64(&mut index_row, flow_node_by_flow::FLOW, node_def.flow);
 		flow_node_by_flow::LAYOUT.set_u64(&mut index_row, flow_node_by_flow::ID, node_def.id);
 
-		txn.set(
-			&reifydb_core::key::FlowNodeByFlowKey {
-				flow: node_def.flow,
-				node: node_def.id,
-			}
-			.encode(),
-			index_row,
-		)?;
+		txn.set(&FlowNodeByFlowKey::encoded(node_def.flow, node_def.id), index_row)?;
 
 		Ok(())
 	}
