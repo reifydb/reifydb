@@ -7,7 +7,7 @@ use std::sync::mpsc;
 
 use reifydb_type::{Result, diagnostic::internal::internal, error};
 use rusqlite::{Connection, params};
-use tracing::{debug, info, instrument, trace};
+use tracing::{debug, info, instrument};
 
 /// Commands for the background writer thread.
 pub(super) enum WriteCommand {
@@ -37,7 +37,6 @@ pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, conn: Connectio
 				entries,
 				respond_to,
 			} => {
-				trace!(table = %table_name, entry_count = entries.len(), "received PutBatch command");
 				let result = execute_put_batch(&conn, &table_name, &entries);
 				if let Err(ref e) = result {
 					tracing::error!(table = %table_name, err = %e, "PutBatch failed");
@@ -61,7 +60,6 @@ pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, conn: Connectio
 				table_name,
 				respond_to,
 			} => {
-				trace!(table = %table_name, "received EnsureTable command");
 				let result = create_table_if_not_exists(&conn, &table_name);
 				let _ = respond_to.send(result);
 			}

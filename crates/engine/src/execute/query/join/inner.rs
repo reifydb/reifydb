@@ -4,7 +4,7 @@
 use reifydb_core::value::column::{Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, Value};
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 use super::common::{JoinContext, build_eval_columns, load_and_merge_all, resolve_column_names};
 use crate::{
@@ -115,12 +115,6 @@ impl<'a> QueryNode<'a> for InnerJoinNode<'a> {
 		let names_refs: Vec<&str> = resolved.qualified_names.iter().map(|s| s.as_str()).collect();
 		let columns = Columns::from_rows(&names_refs, &result_rows);
 
-		trace!(
-			left_rows = left_rows,
-			right_rows = right_rows,
-			result_rows = result_rows.len(),
-			"inner join completed"
-		);
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 		Ok(Some(Batch {
 			columns,

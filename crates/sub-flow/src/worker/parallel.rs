@@ -5,7 +5,7 @@ use crossbeam_channel::bounded;
 use reifydb_core::interface::FlowId;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{SchedulerService, TaskContext, task_once};
-use tracing::{Span, trace, trace_span};
+use tracing::{Span, trace_span};
 
 use super::{UnitOfWork, UnitsOfWork, WorkerPool};
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -83,15 +83,12 @@ impl WorkerPool for ParallelWorkerPool {
 
 		let _submit_span = trace_span!("flow::submit_tasks", task_count = txns.len()).entered();
 
-		for (seq, (flow_units, mut flow_txn)) in txns.into_iter().enumerate() {
+		for (_seq, (flow_units, mut flow_txn)) in txns.into_iter().enumerate() {
 			let result_tx = result_tx.clone();
 			let engine = engine.clone();
 			let flow_id = flow_units[0].flow_id;
-			let versions: Vec<_> = flow_units.iter().map(|u| u.version.0).collect();
 			let unit_count = flow_units.len();
 			let change_count: usize = flow_units.iter().map(|u| u.source_changes.len()).sum();
-
-			trace!("[PARALLEL] SUBMIT seq={} flow={:?} versions={:?}", seq, flow_id, versions);
 
 			// Capture parent span for context propagation to worker thread
 			let parent_span = Span::current();
@@ -126,12 +123,9 @@ impl WorkerPool for ParallelWorkerPool {
 		let _await_span = trace_span!("flow::await_results").entered();
 
 		let mut completed: Vec<(FlowId, FlowTransaction)> = Vec::new();
-		let mut recv_seq = 0;
 		while let Ok(result) = result_rx.recv() {
 			match result {
 				Ok((flow_id, flow_txn)) => {
-					trace!("[PARALLEL] RECV seq={} flow={:?}", recv_seq, flow_id);
-					recv_seq += 1;
 					completed.push((flow_id, flow_txn));
 				}
 				Err(e) => return e,
@@ -144,8 +138,7 @@ impl WorkerPool for ParallelWorkerPool {
 		completed.sort_by_key(|(flow_id, _)| *flow_id);
 
 		// Commit all FlowTransactions sequentially back to parent
-		for (seq, (flow_id, mut flow)) in completed.into_iter().enumerate() {
-			trace!("[PARALLEL] COMMIT seq={} flow={:?}", seq, flow_id);
+		for (_seq, (_flow_id, mut flow)) in completed.into_iter().enumerate() {
 			flow.commit(txn)?;
 		}
 

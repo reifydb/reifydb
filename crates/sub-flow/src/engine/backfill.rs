@@ -14,7 +14,7 @@ use reifydb_engine::StandardCommandTransaction;
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin, FlowDiff};
 use reifydb_rql::flow::{Flow, FlowNodeType};
 use reifydb_type::{DictionaryEntryId, Value, internal};
-use tracing::{info, instrument, trace};
+use tracing::{info, instrument};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
@@ -26,8 +26,6 @@ impl FlowEngine {
 		flow: &Flow,
 		flow_creation_version: CommitVersion,
 	) -> crate::Result<()> {
-		trace!("[Backfill] Starting initial data load for flow {:?}", flow.id);
-
 		// Collect all source nodes in topological order
 		let mut source_nodes = Vec::new();
 		for node_id in flow.topological_order()? {
@@ -46,17 +44,7 @@ impl FlowEngine {
 			}
 		}
 
-		trace!(
-			"[Backfill] Found {} source nodes: {:?}",
-			source_nodes.len(),
-			source_nodes.iter().map(|n| n.id).collect::<Vec<_>>()
-		);
-
 		let backfill_version = CommitVersion(flow_creation_version.0.saturating_sub(1));
-		trace!(
-			"[Backfill] Using snapshot_version={:?} (creation_version={:?})",
-			backfill_version, flow_creation_version
-		);
 		let mut flow_txn = FlowTransaction::new(txn, backfill_version);
 		let mut source_changes: Vec<(FlowNodeId, FlowChange)> = Vec::new();
 
@@ -115,13 +103,11 @@ impl FlowEngine {
 		// Phase 2: Propagate all source changes through downstream operators
 		// Now all JOIN sides have their data in state
 		for (source_node_id, change) in source_changes {
-			trace!("[Backfill] Propagating {} diffs from source {:?}", change.diffs.len(), source_node_id);
 			self.propagate_initial_change(&mut flow_txn, flow, source_node_id, change)?;
 		}
 
 		flow_txn.commit(txn)?;
 
-		trace!("[Backfill] Initial data load complete for flow {:?}", flow.id);
 		Ok(())
 	}
 
@@ -277,32 +263,13 @@ impl FlowEngine {
 			.map(|(id, _)| *id)
 			.collect::<Vec<_>>();
 
-		trace!(
-			"[Backfill] Propagating from {:?} to {} downstream nodes: {:?}",
-			from_node_id,
-			downstream_nodes.len(),
-			downstream_nodes
-		);
-
 		for downstream_node_id in downstream_nodes {
 			let operators = self.inner.operators.read();
 			if let Some(operator) = operators.get(&downstream_node_id) {
 				let operator = operator.clone();
 				drop(operators);
 
-				trace!(
-					"[Backfill] Applying change to downstream node {:?} (from {:?}), diffs={}",
-					downstream_node_id,
-					from_node_id,
-					change.diffs.len()
-				);
-
 				let result = operator.apply(flow_txn, change.clone(), &self.inner.evaluator)?;
-				trace!(
-					"[Backfill] Downstream node {:?} produced {} result diffs",
-					downstream_node_id,
-					result.diffs.len()
-				);
 				if !result.diffs.is_empty() {
 					self.propagate_initial_change(flow_txn, flow, downstream_node_id, result)?;
 				}

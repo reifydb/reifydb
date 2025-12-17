@@ -19,7 +19,6 @@ use reifydb_hash::{Hash128, xxh3_128};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Blob, Params, RowNumber, Type, internal};
 use serde::{Deserialize, Serialize};
-use tracing::trace;
 
 use crate::{
 	operator::{
@@ -231,29 +230,6 @@ impl Operator for DistinctOperator {
 		let mut state = self.load_distinct_state(txn)?;
 		let mut result = Vec::new();
 
-		let input_rows: Vec<_> = change
-			.diffs
-			.iter()
-			.map(|d| match d {
-				FlowDiff::Insert {
-					post,
-				} => format!("I{}", post.number.0),
-				FlowDiff::Update {
-					pre,
-					post,
-				} => format!("U{}>{}", pre.number.0, post.number.0),
-				FlowDiff::Remove {
-					pre,
-				} => format!("R{}", pre.number.0),
-			})
-			.collect();
-		trace!(
-			"[DISTINCT] node={:?} version={} IN rows=[{}]",
-			self.node,
-			change.version.0,
-			input_rows.join(",")
-		);
-
 		for diff in change.diffs {
 			match diff {
 				FlowDiff::Insert {
@@ -363,28 +339,6 @@ impl Operator for DistinctOperator {
 		}
 
 		self.save_distinct_state(txn, &state)?;
-
-		let output_rows: Vec<_> = result
-			.iter()
-			.map(|d| match d {
-				FlowDiff::Insert {
-					post,
-				} => format!("I{}", post.number.0),
-				FlowDiff::Update {
-					pre,
-					post,
-				} => format!("U{}>{}", pre.number.0, post.number.0),
-				FlowDiff::Remove {
-					pre,
-				} => format!("R{}", pre.number.0),
-			})
-			.collect();
-		trace!(
-			"[DISTINCT] node={:?} version={} OUT rows=[{}]",
-			self.node,
-			change.version.0,
-			output_rows.join(",")
-		);
 
 		Ok(FlowChange::internal(self.node, change.version, result))
 	}

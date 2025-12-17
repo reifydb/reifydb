@@ -9,7 +9,7 @@ use std::{
 use reifydb_core::value::column::{Column, ColumnData, Columns, headers::ColumnHeaders};
 use reifydb_rql::expression::Expression;
 use reifydb_type::{Fragment, OwnedFragment, Value, diagnostic};
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 use crate::{
 	execute::{Batch, ExecutionContext, ExecutionPlan, QueryNode},
@@ -151,7 +151,6 @@ impl<'a> QueryNode<'a> for AggregateNode<'a> {
 		let columns = Columns::new(result_columns);
 		self.headers = Some(ColumnHeaders::from_columns(&columns));
 
-		trace!(group_count = group_key_order.len(), "aggregate completed");
 		Ok(Some(Batch {
 			columns,
 		}))

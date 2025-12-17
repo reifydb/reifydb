@@ -8,7 +8,7 @@ use reifydb_core::{
 	value::column::{ColumnData, headers::ColumnHeaders},
 };
 use reifydb_rql::expression::Expression;
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 use crate::{
 	StandardTransaction,
@@ -98,13 +98,11 @@ impl<'a> QueryNode<'a> for FilterNode<'a> {
 			}
 
 			if row_count > 0 {
-				trace!(filtered_row_count = row_count, "filter produced batch");
 				return Ok(Some(Batch {
 					columns,
 				}));
 			}
 		}
-		trace!("filter exhausted");
 		Ok(None)
 	}
 

@@ -20,7 +20,7 @@ use reifydb_sub_server_http::HttpSubsystem;
 #[cfg(feature = "sub_server_ws")]
 use reifydb_sub_server_ws::WsSubsystem;
 use reifydb_sub_worker::WorkerSubsystem;
-use tracing::{debug, error, instrument, trace, warn};
+use tracing::{debug, error, instrument, warn};
 
 use crate::{
 	boot::Bootloader,
@@ -140,16 +140,13 @@ impl Database {
 			return Ok(()); // Already running
 		}
 
-		trace!("Bootloader setup");
 		self.bootloader.load()?;
 
 		debug!("Starting system with {} subsystems", self.subsystem_count());
 
-		trace!("Database initialization");
 		self.engine.event_bus().emit(OnStartEvent {});
 
 		// Start all subsystems
-		trace!("Starting all subsystems");
 		match self.subsystems.start_all(self.config.max_startup_time) {
 			Ok(()) => {
 				self.running = true;

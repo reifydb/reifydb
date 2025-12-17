@@ -178,8 +178,7 @@ impl<C: CdcConsume> PollConsumer<C> {
 
 		while state.running.load(Ordering::Acquire) {
 			match Self::consume_batch(&state, &engine, &consumer, config.max_batch_size) {
-				Ok(Some((processed_version, lag))) => {
-					debug!("processed {} with lag {}", processed_version, lag);
+				Ok(Some((_processed_version, _lag))) => {
 					thread::sleep(config.poll_interval);
 				}
 				Ok(None) => {

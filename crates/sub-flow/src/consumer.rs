@@ -18,7 +18,7 @@ use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_rql::flow::{Flow, load_flow};
 use reifydb_sub_api::SchedulerService;
 use reifydb_type::{DictionaryEntryId, RowNumber, Value, internal};
-use tracing::{instrument, trace, trace_span};
+use tracing::{instrument, trace_span};
 
 use crate::{
 	builder::OperatorFactory,
@@ -218,7 +218,6 @@ impl CdcConsume for FlowConsumer {
 
 		for cdc in cdcs {
 			let version = cdc.version;
-			trace!("[CONSUMER] Processing CDC version={} with {} changes", version.0, cdc.changes.len());
 
 			for sequenced_change in cdc.changes {
 				// Check key kind first to detect flow-related changes
@@ -231,10 +230,6 @@ impl CdcConsume for FlowConsumer {
 							| KeyKind::FlowEdgeByFlow | KeyKind::NamespaceFlow
 					) {
 						if flows_changed_at_version.is_none() {
-							trace!(
-								"[CONSUMER] Flow-related change (kind={:?}) at version={}, will reload flows",
-								kind, version.0
-							);
 							flows_changed_at_version = Some(version);
 						}
 						continue;
@@ -286,57 +281,17 @@ impl CdcConsume for FlowConsumer {
 			}
 		}
 
-		// Log CDC changes collected
-		for (version, changes) in &changes_by_version {
-			let rows: Vec<_> = changes
-				.iter()
-				.map(|(src, ch)| {
-					let row = match ch {
-						Change::Insert {
-							row_number,
-							..
-						} => format!("I{}", row_number.0),
-						Change::Update {
-							row_number,
-							..
-						} => format!("U{}", row_number.0),
-						Change::Delete {
-							row_number,
-							..
-						} => format!("R{}", row_number.0),
-					};
-					format!("{}:{}", src.as_u64(), row)
-				})
-				.collect();
-			trace!("[CONSUMER] CDC_IN version={} changes=[{}]", version.0, rows.join(","));
-		}
-
 		// Reload flows if needed (before processing any changes)
 		// Only skip backfill for flows that already existed (they already have data)
 		// New flows need backfill to get initial data from source tables
 		if let Some(flow_creation_version) = flows_changed_at_version {
 			let existing_flow_ids = self.flow_engine.flow_ids();
-			trace!(
-				"[Consumer] Reloading flows at version {:?}, existing_flow_ids={:?}",
-				flow_creation_version, existing_flow_ids
-			);
 			self.flow_engine.clear();
 			let flows = self.load_flows()?;
-			trace!("[Consumer] Loaded {} flows from catalog", flows.len());
 			for flow in flows {
 				// For new flows: do backfill at this version
 				// For existing flows: skip backfill (data already present)
 				let is_existing = existing_flow_ids.contains(&flow.id);
-				trace!(
-					"[Consumer] Registering flow {:?}, is_existing={}, backfill_version={:?}",
-					flow.id,
-					is_existing,
-					if is_existing {
-						None
-					} else {
-						Some(flow_creation_version)
-					}
-				);
 				if is_existing {
 					self.flow_engine.register_without_backfill(txn, flow)?;
 				} else {

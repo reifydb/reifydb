@@ -10,7 +10,7 @@ use reifydb_core::{
 	value::column::{Columns, headers::ColumnHeaders},
 };
 use reifydb_type::diagnostic::query;
-use tracing::{instrument, trace};
+use tracing::instrument;
 
 use crate::{
 	StandardTransaction,
@@ -112,7 +112,6 @@ impl<'a> QueryNode<'a> for SortNode<'a> {
 			col.data_mut().reorder(&indices);
 		}
 
-		trace!(sorted_row_count = row_count, "sort completed");
 		Ok(Some(Batch {
 			columns,
 		}))

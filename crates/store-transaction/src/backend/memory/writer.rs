@@ -7,7 +7,7 @@ use std::sync::{Arc, mpsc};
 
 use parking_lot::RwLock;
 use reifydb_type::Result;
-use tracing::{debug, info, trace};
+use tracing::{debug, info};
 
 use super::tables::Tables;
 use crate::backend::primitive::TableId;
@@ -36,7 +36,6 @@ pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, tables: Arc<RwL
 				entries,
 				respond_to,
 			} => {
-				trace!(table = ?table, entry_count = entries.len(), "received PutBatch command");
 				let mut guard = tables.write();
 				let table_data = guard.get_table_mut(table);
 				for (key, value) in entries {

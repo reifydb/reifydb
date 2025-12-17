@@ -9,7 +9,6 @@ use reifydb_core::{
 	interface::{FlowId, SourceId},
 };
 use reifydb_flow_operator_sdk::{FlowChange, FlowDiff};
-use tracing::trace;
 
 use crate::worker::{UnitOfWork, UnitsOfWork};
 
@@ -57,15 +56,6 @@ impl crate::engine::FlowEngine {
 
 		// Convert the HashMap to UnitsOfWork for the worker
 		let units_vec: Vec<Vec<UnitOfWork>> = all_units_by_flow.into_iter().map(|(_, units)| units).collect();
-
-		// Log partition output
-		for (seq, flow_units) in units_vec.iter().enumerate() {
-			if !flow_units.is_empty() {
-				let flow_id = flow_units[0].flow_id;
-				let versions: Vec<_> = flow_units.iter().map(|u| u.version.0).collect();
-				trace!("[PARTITION] OUT seq={} flow={:?} versions={:?}", seq, flow_id, versions);
-			}
-		}
 
 		// INVARIANT: Validate that each flow_id appears exactly once in the output
 		// and that each inner Vec contains units for only one flow

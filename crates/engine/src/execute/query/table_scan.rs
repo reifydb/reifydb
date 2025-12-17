@@ -17,7 +17,7 @@ use reifydb_core::{
 	},
 };
 use reifydb_type::{DictionaryEntryId, Fragment, Type};
-use tracing::{debug_span, instrument, trace};
+use tracing::{debug_span, instrument};
 
 use crate::{
 	execute::{Batch, ExecutionContext, QueryNode},
@@ -135,11 +135,9 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 			let _span = debug_span!("post_decode_checks", row_count = batch_rows.len()).entered();
 			if batch_rows.is_empty() {
 				self.exhausted = true;
-				trace!("table scan exhausted");
 				return Ok(None);
 			}
 
-			trace!(row_count = batch_rows.len(), "table scan batch loaded");
 			self.last_key = new_last_key;
 		}
 
