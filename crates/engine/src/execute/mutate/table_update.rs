@@ -190,7 +190,6 @@ impl Executor {
 							Value::Duration(v) => {
 								layout.set_duration(&mut row, table_idx, v)
 							}
-							Value::RowNumber(_v) => {}
 							Value::IdentityId(v) => {
 								layout.set_identity_id(&mut row, table_idx, v)
 							}

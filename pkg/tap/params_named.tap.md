@@ -433,24 +433,6 @@ expected:
     +----------------------------------------+
 ```
 
-### rownumber_param
-```yaml
-operation: command
-statement: "MAP $row_val as result"
-params:
-  type: named
-  values:
-    row_val: "123456789"
-expected:
-  status: success
-  output: |
-    +------------+
-    |   result   |
-    +------------+
-    | 123456789  |
-    +------------+
-```
-
 ## Query Tests
 
 The same test cases should be executed using `query` operation instead of `command` to ensure both paths work correctly with named parameters.

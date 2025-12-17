@@ -2,9 +2,8 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use reifydb_catalog::transaction::MaterializedCatalogTransaction;
-use reifydb_core::{CommitVersion, interface::ViewDef, value::encoded::EncodedValues};
+use reifydb_core::CommitVersion;
 use reifydb_engine::StandardCommandTransaction;
-use reifydb_type::RowNumber;
 use tracing::instrument;
 
 mod commit;
@@ -20,29 +19,6 @@ mod write;
 pub use metrics::FlowTransactionMetrics;
 pub use pending::{Pending, PendingWrites};
 use reifydb_transaction::multi::StandardQueryTransaction;
-
-/// Represents a pending view operation that needs interceptor calls at commit time.
-#[derive(Debug, Clone)]
-pub enum ViewPending {
-	/// Insert a new row into the view
-	Insert {
-		view: ViewDef,
-		row_number: RowNumber,
-		row: EncodedValues,
-	},
-	/// Update an existing row in the view (remove old, insert new)
-	Update {
-		view: ViewDef,
-		old_row_number: RowNumber,
-		new_row_number: RowNumber,
-		row: EncodedValues,
-	},
-	/// Remove a row from the view
-	Remove {
-		view: ViewDef,
-		row_number: RowNumber,
-	},
-}
 
 /// A transaction wrapper for parallel flow processing with snapshot isolation.
 ///
@@ -127,14 +103,6 @@ pub struct FlowTransaction {
 	/// NOT shared with other FlowTransactions. Changes are invisible until commit().
 	pending: PendingWrites,
 
-	/// Pending view operations that require interceptor calls at commit time.
-	///
-	/// View operations are tracked separately because they need to invoke
-	/// ViewInterceptor::pre_insert/post_insert etc. on the parent transaction
-	/// when committing. The parent transaction has access to the interceptor chains,
-	/// while FlowTransaction does not.
-	view_pending: Vec<ViewPending>,
-
 	/// Performance metrics tracking reads, writes, and other operations.
 	metrics: FlowTransactionMetrics,
 
@@ -173,7 +141,6 @@ impl FlowTransaction {
 		Self {
 			version,
 			pending: PendingWrites::new(),
-			view_pending: Vec::new(),
 			metrics: FlowTransactionMetrics::new(),
 			source_query,
 			state_query,

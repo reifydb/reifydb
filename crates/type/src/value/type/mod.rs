@@ -54,8 +54,6 @@ pub enum Type {
 	Time,
 	/// A duration representing a duration
 	Duration,
-	/// A encoded identifier (8-byte unsigned integer)
-	RowNumber,
 	/// An identity identifier (UUID v7)
 	IdentityId,
 	/// A UUID version 4 (random)
@@ -148,17 +146,16 @@ impl Type {
 			Type::DateTime => 16,
 			Type::Time => 17,
 			Type::Duration => 18,
-			Type::RowNumber => 19,
+			Type::IdentityId => 19,
 			Type::Uuid4 => 20,
 			Type::Uuid7 => 21,
 			Type::Blob => 22,
-			Type::IdentityId => 23,
-			Type::Int => 24,
+			Type::Int => 23,
 			Type::Decimal {
 				..
-			} => 25,
-			Type::Uint => 26,
-			Type::Any => 27,
+			} => 24,
+			Type::Uint => 25,
+			Type::Any => 26,
 		}
 	}
 }
@@ -185,15 +182,14 @@ impl Type {
 			16 => Type::DateTime,
 			17 => Type::Time,
 			18 => Type::Duration,
-			19 => Type::RowNumber,
+			19 => Type::IdentityId,
 			20 => Type::Uuid4,
 			21 => Type::Uuid7,
 			22 => Type::Blob,
-			23 => Type::IdentityId,
-			24 => Type::Int,
-			25 => Type::Decimal,
-			26 => Type::Uint,
-			27 => Type::Any,
+			23 => Type::Int,
+			24 => Type::Decimal,
+			25 => Type::Uint,
+			26 => Type::Any,
 			_ => unreachable!(),
 		}
 	}
@@ -221,7 +217,6 @@ impl Type {
 			Type::Time => 8,
 			Type::Duration => 16, // months: i32 + days: i32 +
 			// nanos: i64
-			Type::RowNumber => 8,
 			Type::IdentityId => 16, // UUID v7 is 16 bytes
 			Type::Uuid4 => 16,
 			Type::Uuid7 => 16,
@@ -259,7 +254,6 @@ impl Type {
 			Type::DateTime => 8,
 			Type::Time => 8,
 			Type::Duration => 8,
-			Type::RowNumber => 8,
 			Type::IdentityId => 8, // Same alignment as UUID
 			Type::Uuid4 => 8,
 			Type::Uuid7 => 8,
@@ -299,7 +293,6 @@ impl Display for Type {
 			Type::DateTime => f.write_str("DateTime"),
 			Type::Time => f.write_str("Time"),
 			Type::Duration => f.write_str("Duration"),
-			Type::RowNumber => f.write_str("RowNumber"),
 			Type::IdentityId => f.write_str("IdentityId"),
 			Type::Uuid4 => f.write_str("Uuid4"),
 			Type::Uuid7 => f.write_str("Uuid7"),
@@ -335,7 +328,6 @@ impl From<&Value> for Type {
 			Value::DateTime(_) => Type::DateTime,
 			Value::Time(_) => Type::Time,
 			Value::Duration(_) => Type::Duration,
-			Value::RowNumber(_) => Type::RowNumber,
 			Value::IdentityId(_) => Type::IdentityId,
 			Value::Uuid4(_) => Type::Uuid4,
 			Value::Uuid7(_) => Type::Uuid7,
@@ -371,7 +363,6 @@ impl FromStr for Type {
 			"DATETIME" => Ok(Type::DateTime),
 			"TIME" => Ok(Type::Time),
 			"DURATION" | "INTERVAL" => Ok(Type::Duration),
-			"ROWNUMBER" | "ROWID" => Ok(Type::RowNumber),
 			"IDENTITYID" | "IDENTITY_ID" => Ok(Type::IdentityId),
 			"UUID4" => Ok(Type::Uuid4),
 			"UUID7" => Ok(Type::Uuid7),

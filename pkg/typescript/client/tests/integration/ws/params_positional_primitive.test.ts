@@ -209,16 +209,6 @@ describe('Positional Parameters', () => {
             expectSingleBlobResult(frames, data);
         }, 1000);
 
-        it('RowNumber', async () => {
-            const frames = await wsClient.command(
-                'MAP $1 as result',
-                [BigInt("123456789")],
-                [Schema.object({result: Schema.rownumber()})]
-            );
-
-            expectSingleBigIntResult(frames, BigInt(123456789));
-        }, 1000);
-
         it('Date', async () => {
             const date = new Date('2024-03-15');
             const frames = await wsClient.command(
@@ -460,16 +450,6 @@ describe('Positional Parameters', () => {
             );
 
             expectSingleBlobResult(frames, data);
-        }, 1000);
-
-        it('RowNumber', async () => {
-            const frames = await wsClient.query(
-                'MAP $1 as result',
-                [BigInt("123456789")],
-                [Schema.object({result: Schema.rownumber()})]
-            );
-
-            expectSingleBigIntResult(frames, BigInt(123456789));
         }, 1000);
 
         it('Date', async () => {

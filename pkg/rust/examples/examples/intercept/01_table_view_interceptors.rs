@@ -1,8 +1,7 @@
-//! # Table and View Interceptors
+//! # Table Interceptors
 //!
 //! Demonstrates the fluent interceptor API for ReifyDB:
 //! - Registering pre/post insert hooks on tables
-//! - Registering pre/post insert hooks on deferred views
 //! - Filtering interceptors by namespace.table pattern
 //! - Using closures for lightweight interceptor logic
 //!
@@ -40,17 +39,6 @@ fn main() {
 		})
 		.post_insert(|ctx| {
 			info!("[TABLE INTERCEPTOR] Post-insert into: {}", ctx.table.name);
-			Ok(())
-		})
-		// Register interceptors for the deferred view
-		// These will fire when data flows into the view
-		.intercept_view("test.active_users")
-		.pre_insert(|ctx| {
-			info!("[VIEW INTERCEPTOR] Pre-insert into view: {}", ctx.view.name);
-			Ok(())
-		})
-		.post_insert(|ctx| {
-			info!("[VIEW INTERCEPTOR] Post-insert into view: {}", ctx.view.name);
 			Ok(())
 		})
 		.done()

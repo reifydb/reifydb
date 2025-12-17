@@ -4,8 +4,8 @@
 use std::fmt::{Display, Formatter};
 
 use crate::{
-	Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, OrderedF32, OrderedF64, RowNumber, Time, Type, Uint,
-	Uuid4, Uuid7, Value,
+	Blob, Date, DateTime, Decimal, Duration, IdentityId, Int, OrderedF32, OrderedF64, Time, Type, Uint, Uuid4,
+	Uuid7, Value,
 };
 
 /// Error type for Value extraction failures
@@ -365,18 +365,6 @@ impl TryFromValue for Duration {
 			Value::Duration(v) => Ok(v.clone()),
 			_ => Err(FromValueError::TypeMismatch {
 				expected: Type::Duration,
-				found: value.get_type(),
-			}),
-		}
-	}
-}
-
-impl TryFromValue for RowNumber {
-	fn try_from_value(value: &Value) -> Result<Self, FromValueError> {
-		match value {
-			Value::RowNumber(v) => Ok(*v),
-			_ => Err(FromValueError::TypeMismatch {
-				expected: Type::RowNumber,
 				found: value.get_type(),
 			}),
 		}

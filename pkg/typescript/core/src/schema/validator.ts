@@ -37,7 +37,6 @@ export function validateSchema(schema: SchemaNode, value: any): boolean {
             case 'Duration':
             case 'Uuid4':
             case 'Uuid7':
-            case 'RowNumber':
                 return typeof value === 'string';
             case 'Date':
             case 'DateTime':

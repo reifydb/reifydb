@@ -16,7 +16,6 @@ import {
     Int2Value,
     Int4Value, Int8Value,
     DurationValue,
-    RowNumberValue,
     TimeValue,
     Uint16Value, Uint1Value, Uint2Value, Uint4Value, Uint8Value,
     UndefinedValue,
@@ -42,11 +41,6 @@ describe('UNDEFINED_VALUE parsing', () => {
     it('should parse UNDEFINED_VALUE as undefined for Utf8', () => {
         const utf8 = Utf8Value.parse(undefinedString);
         expect(utf8.value).toBeUndefined();
-    });
-
-    it('should parse UNDEFINED_VALUE as undefined for RowNumber', () => {
-        const rowId = RowNumberValue.parse(undefinedString);
-        expect(rowId.value).toBeUndefined();
     });
 
     it('should parse UNDEFINED_VALUE as undefined for Float4', () => {

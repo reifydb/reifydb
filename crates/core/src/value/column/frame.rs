@@ -30,7 +30,6 @@ impl From<ColumnData> for FrameColumnData {
 			ColumnData::DateTime(container) => FrameColumnData::DateTime(container),
 			ColumnData::Time(container) => FrameColumnData::Time(container),
 			ColumnData::Duration(container) => FrameColumnData::Duration(container),
-			ColumnData::RowNumber(container) => FrameColumnData::RowNumber(container),
 			ColumnData::IdentityId(container) => FrameColumnData::IdentityId(container),
 			ColumnData::Uuid4(container) => FrameColumnData::Uuid4(container),
 			ColumnData::Uuid7(container) => FrameColumnData::Uuid7(container),

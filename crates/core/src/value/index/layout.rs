@@ -170,7 +170,7 @@ mod tests {
 	#[test]
 	fn test_multiple_fields_mixed_directions() {
 		let layout = EncodedIndexLayout::new(
-			&[Type::Int4, Type::Int8, Type::RowNumber],
+			&[Type::Int4, Type::Int8, Type::Uint8],
 			&[SortDirection::Desc, SortDirection::Asc, SortDirection::Asc],
 		)
 		.unwrap();
@@ -184,7 +184,7 @@ mod tests {
 		assert_eq!(layout.fields[1].value, Type::Int8);
 		assert_eq!(layout.fields[1].direction, SortDirection::Asc);
 
-		assert_eq!(layout.fields[2].value, Type::RowNumber);
+		assert_eq!(layout.fields[2].value, Type::Uint8);
 		assert_eq!(layout.fields[2].direction, SortDirection::Asc);
 
 		assert_eq!(layout.alignment, 8);

@@ -25,18 +25,14 @@ use crate::{
 		TablePreUpdateContext, TablePreUpdateInterceptor, ViewDefPostCreateContext,
 		ViewDefPostCreateInterceptor, ViewDefPostUpdateContext, ViewDefPostUpdateInterceptor,
 		ViewDefPreDeleteContext, ViewDefPreDeleteInterceptor, ViewDefPreUpdateContext,
-		ViewDefPreUpdateInterceptor, ViewPostDeleteContext, ViewPostDeleteInterceptor, ViewPostInsertContext,
-		ViewPostInsertInterceptor, ViewPostUpdateContext, ViewPostUpdateInterceptor, ViewPreDeleteContext,
-		ViewPreDeleteInterceptor, ViewPreInsertContext, ViewPreInsertInterceptor, ViewPreUpdateContext,
-		ViewPreUpdateInterceptor,
+		ViewDefPreUpdateInterceptor,
 	},
 	interface::{
 		CommandTransaction, NamespaceDef, RingBufferDef, RowChange, TableDef, TransactionId,
 		TransactionalDefChanges, ViewDef,
 		interceptor::{
 			NamespaceDefInterceptor, RingBufferDefInterceptor, RingBufferInterceptor, TableDefInterceptor,
-			TableInterceptor, TransactionInterceptor, ViewDefInterceptor, ViewInterceptor,
-			WithInterceptors,
+			TableInterceptor, TransactionInterceptor, ViewDefInterceptor, WithInterceptors,
 		},
 	},
 	value::encoded::EncodedValues,
@@ -310,56 +306,6 @@ impl<CT: CommandTransaction + WithInterceptors<CT>> RingBufferDefInterceptor<CT>
 		RingBufferDefPreDeleteInterceptor,
 		RingBufferDefPreDeleteContext,
 		(pre: &RingBufferDef)
-	);
-}
-
-impl<CT: CommandTransaction + WithInterceptors<CT>> ViewInterceptor<CT> for CT {
-	impl_interceptor_method!(
-		pre_insert,
-		view_pre_insert_interceptors,
-		ViewPreInsertInterceptor,
-		ViewPreInsertContext,
-		(view: &ViewDef, rn: RowNumber, row: &EncodedValues)
-	);
-
-	impl_interceptor_method!(
-		post_insert,
-		view_post_insert_interceptors,
-		ViewPostInsertInterceptor,
-		ViewPostInsertContext,
-		(view: &ViewDef, id: RowNumber, row: &EncodedValues)
-	);
-
-	impl_interceptor_method!(
-		pre_update,
-		view_pre_update_interceptors,
-		ViewPreUpdateInterceptor,
-		ViewPreUpdateContext,
-		(view: &ViewDef, id: RowNumber, row: &EncodedValues)
-	);
-
-	impl_interceptor_method!(
-		post_update,
-		view_post_update_interceptors,
-		ViewPostUpdateInterceptor,
-		ViewPostUpdateContext,
-		(view: &ViewDef, id: RowNumber, row: &EncodedValues, old_row: &EncodedValues)
-	);
-
-	impl_interceptor_method!(
-		pre_delete,
-		view_pre_delete_interceptors,
-		ViewPreDeleteInterceptor,
-		ViewPreDeleteContext,
-		(view: &ViewDef, id: RowNumber)
-	);
-
-	impl_interceptor_method!(
-		post_delete,
-		view_post_delete_interceptors,
-		ViewPostDeleteInterceptor,
-		ViewPostDeleteContext,
-		(view: &ViewDef, id: RowNumber, deleted_row: &EncodedValues)
 	);
 }
 

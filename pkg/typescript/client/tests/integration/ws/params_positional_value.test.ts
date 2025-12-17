@@ -10,7 +10,7 @@ import {waitForDatabase} from "../setup";
 import {
     BooleanValue, Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
-    Float4Value, Float8Value, DecimalValue, Utf8Value, BlobValue, RowNumberValue,
+    Float4Value, Float8Value, DecimalValue, Utf8Value, BlobValue,
     DateValue, TimeValue, DateTimeValue, DurationValue,
     Uuid4Value, Uuid7Value, UndefinedValue, IdentityIdValue,
     Schema
@@ -208,16 +208,6 @@ describe('Positional Parameters', () => {
             );
 
             expectSingleValueResult(frames, new BlobValue(data));
-        }, 1000);
-
-        it('RowNumber', async () => {
-            const frames = await wsClient.command(
-                'MAP $1 as result',
-                [new RowNumberValue(BigInt("123456789"))],
-                [Schema.object({result: Schema.rowIdValue()})]
-            );
-
-            expectSingleValueResult(frames, new RowNumberValue(BigInt("123456789")));
         }, 1000);
 
         it('Date', async () => {
@@ -467,16 +457,6 @@ describe('Positional Parameters', () => {
             );
 
             expectSingleValueResult(frames, new BlobValue(data));
-        }, 1000);
-
-        it('RowNumber', async () => {
-            const frames = await wsClient.query(
-                'MAP $1 as result',
-                [new RowNumberValue(BigInt("123456789"))],
-                [Schema.object({result: Schema.rowIdValue()})]
-            );
-
-            expectSingleValueResult(frames, new RowNumberValue(BigInt("123456789")));
         }, 1000);
 
         it('Date', async () => {

@@ -107,7 +107,7 @@ impl RowNumberContainer {
 
 	pub fn get_value(&self, index: usize) -> Value {
 		if index < self.len() && self.is_defined(index) {
-			Value::RowNumber(self.data[index])
+			Value::Uint8(self.data[index].value())
 		} else {
 			Value::Undefined
 		}

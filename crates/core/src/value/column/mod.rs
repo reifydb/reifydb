@@ -362,21 +362,4 @@ impl<'a> Column<'a> {
 			data: ColumnData::uuid7_with_bitvec(data, bitvec),
 		}
 	}
-
-	pub fn row_number(data: impl IntoIterator<Item = reifydb_type::RowNumber>) -> Self {
-		Column {
-			name: Fragment::borrowed_internal("__row_number"),
-			data: ColumnData::row_number(data),
-		}
-	}
-
-	pub fn row_number_with_bitvec(
-		data: impl IntoIterator<Item = reifydb_type::RowNumber>,
-		bitvec: impl Into<crate::BitVec>,
-	) -> Self {
-		Column {
-			name: Fragment::borrowed_internal("__row_number"),
-			data: ColumnData::row_number_with_bitvec(data, bitvec),
-		}
-	}
 }

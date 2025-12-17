@@ -279,11 +279,9 @@ mod tests {
 	#[test]
 	fn test_encode_decode() {
 		// Create a simple index key
-		let layout = EncodedIndexLayout::new(
-			&[Type::Uint8, Type::RowNumber],
-			&[SortDirection::Asc, SortDirection::Asc],
-		)
-		.unwrap();
+		let layout =
+			EncodedIndexLayout::new(&[Type::Uint8, Type::Uint8], &[SortDirection::Asc, SortDirection::Asc])
+				.unwrap();
 
 		let mut index_key = layout.allocate_key();
 		layout.set_u64(&mut index_key, 0, 100u64);
@@ -380,11 +378,9 @@ mod tests {
 
 	#[test]
 	fn test_key_prefix_range() {
-		let layout = EncodedIndexLayout::new(
-			&[Type::Uint8, Type::RowNumber],
-			&[SortDirection::Asc, SortDirection::Asc],
-		)
-		.unwrap();
+		let layout =
+			EncodedIndexLayout::new(&[Type::Uint8, Type::Uint8], &[SortDirection::Asc, SortDirection::Asc])
+				.unwrap();
 
 		let mut key = layout.allocate_key();
 		layout.set_u64(&mut key, 0, 100u64);

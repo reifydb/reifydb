@@ -6,7 +6,7 @@ use std::cmp::min;
 use reifydb_core::value::column::{Column, ColumnData};
 use reifydb_rql::expression::ColumnExpression;
 use reifydb_type::{
-	Date, DateTime, Decimal, Duration, ROW_NUMBER_COLUMN_NAME, RowNumber, Time, Type, Uint, Value,
+	Date, DateTime, Decimal, Duration, ROW_NUMBER_COLUMN_NAME, Time, Type, Uint, Value,
 	value::{Blob, IdentityId, Uuid4, Uuid7},
 };
 
@@ -22,11 +22,8 @@ impl StandardColumnEvaluator {
 
 		// Check for rownum pseudo-column first
 		if name == ROW_NUMBER_COLUMN_NAME && !ctx.columns.row_numbers.is_empty() {
-			let row_numbers: Vec<RowNumber> = ctx.columns.row_numbers.iter().copied().collect();
-			return Ok(Column::new(
-				ROW_NUMBER_COLUMN_NAME.to_string(),
-				ColumnData::row_number(row_numbers),
-			));
+			let row_numbers: Vec<u64> = ctx.columns.row_numbers.iter().map(|r| r.value()).collect();
+			return Ok(Column::new(ROW_NUMBER_COLUMN_NAME.to_string(), ColumnData::uint8(row_numbers)));
 		}
 
 		if let Some(col) = ctx.columns.iter().find(|c| c.name() == name) {
@@ -459,28 +456,6 @@ impl StandardColumnEvaluator {
 					count += 1;
 				}
 				Ok(col.with_new_data(ColumnData::duration_with_bitvec(data, bitvec)))
-			}
-			Type::RowNumber => {
-				let mut data = Vec::new();
-				let mut bitvec = Vec::new();
-				let mut count = 0;
-				for v in col.data().iter() {
-					if count >= take {
-						break;
-					}
-					match v {
-						Value::RowNumber(i) => {
-							data.push(i.clone());
-							bitvec.push(true);
-						}
-						_ => {
-							data.push(RowNumber::default());
-							bitvec.push(false);
-						}
-					}
-					count += 1;
-				}
-				Ok(col.with_new_data(ColumnData::row_number_with_bitvec(data, bitvec)))
 			}
 			Type::IdentityId => {
 				let mut data = Vec::new();

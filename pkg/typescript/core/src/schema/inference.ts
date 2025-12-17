@@ -10,7 +10,7 @@ import {
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     DurationValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
-    RowNumberValue, UndefinedValue, Utf8Value,
+    UndefinedValue, Utf8Value,
     Uuid4Value, Uuid7Value, IdentityIdValue,
     Type
 } from '../value';
@@ -43,9 +43,8 @@ export type PrimitiveToTS<T extends Type> =
                                                                                     T extends 'Uuid4' ? string :
                                                                                         T extends 'Uuid7' ? string :
                                                                                             T extends 'Undefined' ? undefined :
-                                                                                                T extends 'RowNumber' ? bigint :
-                                                                                                    T extends 'IdentityId' ? string :
-                                                                                                        never;
+                                                                                                T extends 'IdentityId' ? string :
+                                                                                                    never;
 
 export type PrimitiveToValue<T extends Type> =
     T extends 'Blob' ? BlobValue :
@@ -71,9 +70,8 @@ export type PrimitiveToValue<T extends Type> =
                                                                                     T extends 'Uuid4' ? Uuid4Value :
                                                                                         T extends 'Uuid7' ? Uuid7Value :
                                                                                             T extends 'Undefined' ? UndefinedValue :
-                                                                                                T extends 'RowNumber' ? RowNumberValue :
-                                                                                                    T extends 'IdentityId' ? IdentityIdValue :
-                                                                                                        never;
+                                                                                                T extends 'IdentityId' ? IdentityIdValue :
+                                                                                                    never;
 
 export type InferSchema<S> =
     S extends PrimitiveSchemaNode<infer T> ? T extends Type ? PrimitiveToTS<T> : never :

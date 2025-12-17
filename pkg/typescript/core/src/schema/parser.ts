@@ -10,7 +10,7 @@ import {
     Int1Value, Int2Value, Int4Value, Int8Value, Int16Value,
     DurationValue, TimeValue,
     Uint1Value, Uint2Value, Uint4Value, Uint8Value, Uint16Value,
-    RowNumberValue, UndefinedValue, Utf8Value,
+    UndefinedValue, Utf8Value,
     Uuid4Value, Uuid7Value,
     Type
 } from '../value';
@@ -63,8 +63,6 @@ function createValueInstance<T extends Type>(type: T, value: any): PrimitiveToVa
             return new Uuid7Value(value) as PrimitiveToValue<T>;
         case 'Undefined':
             return new UndefinedValue() as PrimitiveToValue<T>;
-        case 'RowNumber':
-            return new RowNumberValue(value) as PrimitiveToValue<T>;
         default:
             throw new Error(`Unknown type: ${type}`);
     }

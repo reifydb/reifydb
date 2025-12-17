@@ -17,10 +17,7 @@ use crate::{
 		RingBufferPreUpdateInterceptor, TablePostDeleteContext, TablePostDeleteInterceptor,
 		TablePostInsertContext, TablePostInsertInterceptor, TablePostUpdateContext, TablePostUpdateInterceptor,
 		TablePreDeleteContext, TablePreDeleteInterceptor, TablePreInsertContext, TablePreInsertInterceptor,
-		TablePreUpdateContext, TablePreUpdateInterceptor, ViewPostDeleteContext, ViewPostDeleteInterceptor,
-		ViewPostInsertContext, ViewPostInsertInterceptor, ViewPostUpdateContext, ViewPostUpdateInterceptor,
-		ViewPreDeleteContext, ViewPreDeleteInterceptor, ViewPreInsertContext, ViewPreInsertInterceptor,
-		ViewPreUpdateContext, ViewPreUpdateInterceptor,
+		TablePreUpdateContext, TablePreUpdateInterceptor,
 	},
 	interface::CommandTransaction,
 };
@@ -182,16 +179,3 @@ define_filtered_interceptor!(
 	RingBufferPostDeleteContext,
 	ringbuffer
 );
-
-// View filtered interceptors
-define_filtered_interceptor!(FilteredViewPreInsertInterceptor, ViewPreInsertInterceptor, ViewPreInsertContext, view);
-
-define_filtered_interceptor!(FilteredViewPostInsertInterceptor, ViewPostInsertInterceptor, ViewPostInsertContext, view);
-
-define_filtered_interceptor!(FilteredViewPreUpdateInterceptor, ViewPreUpdateInterceptor, ViewPreUpdateContext, view);
-
-define_filtered_interceptor!(FilteredViewPostUpdateInterceptor, ViewPostUpdateInterceptor, ViewPostUpdateContext, view);
-
-define_filtered_interceptor!(FilteredViewPreDeleteInterceptor, ViewPreDeleteInterceptor, ViewPreDeleteContext, view);
-
-define_filtered_interceptor!(FilteredViewPostDeleteInterceptor, ViewPostDeleteInterceptor, ViewPostDeleteContext, view);

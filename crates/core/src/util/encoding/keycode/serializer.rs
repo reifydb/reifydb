@@ -304,9 +304,6 @@ impl KeySerializer {
 			Value::Duration(i) => {
 				self.extend_duration(i);
 			}
-			Value::RowNumber(r) => {
-				self.extend_row_number(r);
-			}
 			Value::IdentityId(id) => {
 				self.extend_identity_id(id);
 			}

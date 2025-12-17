@@ -92,7 +92,6 @@ impl<'a> Columns<'a> {
 				Value::DateTime(v) => ColumnData::datetime([v.clone()]),
 				Value::Time(v) => ColumnData::time([v.clone()]),
 				Value::Duration(v) => ColumnData::duration([v.clone()]),
-				Value::RowNumber(v) => ColumnData::row_number([v]),
 				Value::IdentityId(v) => ColumnData::identity_id([v]),
 				Value::Uuid4(v) => ColumnData::uuid4([v]),
 				Value::Uuid7(v) => ColumnData::uuid7([v]),

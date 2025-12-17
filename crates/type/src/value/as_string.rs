@@ -29,7 +29,6 @@ impl AsString for Value {
 			Value::DateTime(dt) => dt.to_string(),
 			Value::Time(t) => t.to_string(),
 			Value::Duration(i) => i.to_string(),
-			Value::RowNumber(r) => r.to_string(),
 			Value::IdentityId(id) => id.to_string(),
 			Value::Uuid4(u) => u.to_string(),
 			Value::Uuid7(u) => u.to_string(),

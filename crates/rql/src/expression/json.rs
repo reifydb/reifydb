@@ -763,7 +763,6 @@ fn parse_type(s: &str) -> reifydb_core::Result<reifydb_type::Type> {
 		"time" => Type::Time,
 		"datetime" => Type::DateTime,
 		"duration" => Type::Duration,
-		"rownumber" => Type::RowNumber,
 		"identityid" => Type::IdentityId,
 		"int" => Type::Int,
 		"uint" => Type::Uint,

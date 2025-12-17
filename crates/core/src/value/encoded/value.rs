@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use reifydb_type::{IdentityId, OrderedF32, OrderedF64, RowNumber, Type, Uuid4, Uuid7, Value};
+use reifydb_type::{IdentityId, OrderedF32, OrderedF64, Type, Uuid4, Uuid7, Value};
 
 use crate::value::encoded::{EncodedValues, EncodedValuesLayout};
 
@@ -134,7 +134,6 @@ impl EncodedValuesLayout {
 			Type::DateTime => Value::DateTime(self.get_datetime(row, index)),
 			Type::Time => Value::Time(self.get_time(row, index)),
 			Type::Duration => Value::Duration(self.get_duration(row, index)),
-			Type::RowNumber => Value::RowNumber(RowNumber::new(self.get_u64(row, index))),
 			Type::IdentityId => {
 				Value::IdentityId(IdentityId::from(Uuid7::from(self.get_uuid7(row, index))))
 			}

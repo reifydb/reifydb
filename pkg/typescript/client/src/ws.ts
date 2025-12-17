@@ -237,14 +237,9 @@ export class WsClient {
                     // Check if it's a Value instance by checking for valueOf method
                     if (value && typeof value === 'object' && typeof (value as any).valueOf === 'function') {
                         const rawValue = (value as any).valueOf();
-                        // Special handling for RowNumber - ensure it's returned as bigint
-                        if (propertySchema.type === 'RowNumber' && typeof rawValue === 'number') {
-                            transformedRow[key] = BigInt(rawValue);
-                        } else {
-                            transformedRow[key] = rawValue;
-                        }
+                        transformedRow[key] = this.coerceToPrimitiveType(rawValue, propertySchema.type);
                     } else {
-                        transformedRow[key] = value;
+                        transformedRow[key] = this.coerceToPrimitiveType(value, propertySchema.type);
                     }
                 } else if (propertySchema && propertySchema.kind === 'value') {
                     // Keep Value objects as-is for value schema properties
@@ -262,14 +257,9 @@ export class WsClient {
             // Single primitive value - extract from Value object if needed
             // Check if it's a Value instance by checking for valueOf method
             if (row && typeof row === 'object' && typeof row.valueOf === 'function') {
-                const rawValue = row.valueOf();
-                // Special handling for RowNumber - ensure it's returned as bigint
-                if (resultSchema.type === 'RowNumber' && typeof rawValue === 'number') {
-                    return BigInt(rawValue);
-                }
-                return rawValue;
+                return this.coerceToPrimitiveType(row.valueOf(), resultSchema.type);
             }
-            return row;
+            return this.coerceToPrimitiveType(row, resultSchema.type);
         }
 
         // Handle value schema transformation - keep Value objects as-is
@@ -295,6 +285,33 @@ export class WsClient {
 
         // Default: return as-is
         return row;
+    }
+
+    /**
+     * Coerce a value to the expected primitive type based on schema.
+     * This handles cases where the server returns a smaller integer type
+     * but the schema expects a bigint type (Int8, Int16, Uint8, Uint16).
+     */
+    private coerceToPrimitiveType(value: any, schemaType: string): any {
+        if (value === undefined || value === null) {
+            return value;
+        }
+
+        // Bigint types: Int8, Int16, Uint8, Uint16
+        const bigintTypes = ['Int8', 'Int16', 'Uint8', 'Uint16'];
+        if (bigintTypes.includes(schemaType)) {
+            if (typeof value === 'bigint') {
+                return value;
+            }
+            if (typeof value === 'number') {
+                return BigInt(Math.trunc(value));
+            }
+            if (typeof value === 'string') {
+                return BigInt(value);
+            }
+        }
+
+        return value;
     }
 
     disconnect() {

@@ -26,7 +26,6 @@ impl ColumnData {
 			Value::DateTime(v) => ColumnData::datetime(vec![v; row_count]),
 			Value::Time(v) => ColumnData::time(vec![v; row_count]),
 			Value::Duration(v) => ColumnData::duration(vec![v; row_count]),
-			Value::RowNumber(v) => ColumnData::row_number(vec![v; row_count]),
 			Value::IdentityId(v) => ColumnData::identity_id(vec![v; row_count]),
 			Value::Uuid4(v) => ColumnData::uuid4(vec![v; row_count]),
 			Value::Uuid7(v) => ColumnData::uuid7(vec![v; row_count]),

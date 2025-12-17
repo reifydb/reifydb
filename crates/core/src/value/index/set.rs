@@ -288,7 +288,7 @@ impl EncodedIndexLayout {
 
 	pub fn set_row_number(&self, key: &mut EncodedIndexKey, index: usize, value: impl Into<u64>) {
 		let field = &self.fields[index];
-		debug_assert_eq!(field.value, Type::RowNumber);
+		debug_assert_eq!(field.value, Type::Uint8);
 		key.set_valid(index, true);
 
 		let bytes = match field.direction {
@@ -885,7 +885,7 @@ mod tests {
 
 		#[test]
 		fn test_asc() {
-			let layout = EncodedIndexLayout::new(&[Type::RowNumber], &[SortDirection::Asc]).unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Asc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_row_number(&mut key, 0, 0x123456789ABCDEFu64);
@@ -896,7 +896,7 @@ mod tests {
 
 		#[test]
 		fn test_desc() {
-			let layout = EncodedIndexLayout::new(&[Type::RowNumber], &[SortDirection::Desc]).unwrap();
+			let layout = EncodedIndexLayout::new(&[Type::Uint8], &[SortDirection::Desc]).unwrap();
 			let mut key = layout.allocate_key();
 
 			layout.set_row_number(&mut key, 0, 0x123456789ABCDEFu64);

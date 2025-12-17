@@ -14,7 +14,7 @@ use reifydb_core::{EncodedKey, value::encoded::EncodedValues};
 /// Represents a pending operation on a key
 #[derive(Debug, Clone)]
 pub enum Pending {
-	Write(EncodedValues),
+	Set(EncodedValues),
 	Remove,
 }
 
@@ -47,7 +47,7 @@ impl PendingWrites {
 		if let Some(existing) = self.writes.get(&key) {
 			// Key exists - replace old size estimate with new one
 			let old_size = match existing {
-				Pending::Write(v) => key.len() as u64 + v.len() as u64,
+				Pending::Set(v) => key.len() as u64 + v.len() as u64,
 				Pending::Remove => key.len() as u64,
 			};
 			self.estimated_size = self.estimated_size.saturating_sub(old_size).saturating_add(new_size);
@@ -57,7 +57,7 @@ impl PendingWrites {
 			self.estimated_size = self.estimated_size.saturating_add(new_size);
 		}
 
-		self.writes.insert(key, Pending::Write(value));
+		self.writes.insert(key, Pending::Set(value));
 	}
 
 	/// Insert a remove operation
@@ -68,7 +68,7 @@ impl PendingWrites {
 		if let Some(existing) = self.writes.get(&key) {
 			// Key exists - update size estimate
 			let old_size = match existing {
-				Pending::Write(v) => key.len() as u64 + v.len() as u64,
+				Pending::Set(v) => key.len() as u64 + v.len() as u64,
 				Pending::Remove => key.len() as u64,
 			};
 			self.estimated_size = self.estimated_size.saturating_sub(old_size).saturating_add(remove_size);
@@ -84,7 +84,7 @@ impl PendingWrites {
 	/// Get a value if it exists and is a write (not a remove)
 	pub fn get(&self, key: &EncodedKey) -> Option<&EncodedValues> {
 		match self.writes.get(key) {
-			Some(Pending::Write(value)) => Some(value),
+			Some(Pending::Set(value)) => Some(value),
 			_ => None,
 		}
 	}
@@ -465,10 +465,10 @@ mod tests {
 		assert!(matches!(items[0].1, Pending::Remove));
 
 		assert_eq!(items[1].0, &make_key("b"));
-		assert!(matches!(items[1].1, Pending::Write(_)));
+		assert!(matches!(items[1].1, Pending::Set(_)));
 
 		assert_eq!(items[2].0, &make_key("c"));
-		assert!(matches!(items[2].1, Pending::Write(_)));
+		assert!(matches!(items[2].1, Pending::Set(_)));
 	}
 
 	#[test]

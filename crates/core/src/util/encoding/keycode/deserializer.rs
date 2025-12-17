@@ -370,10 +370,8 @@ impl<'a> KeyDeserializer<'a> {
 				let i = self.read_duration()?;
 				Ok(Value::Duration(i))
 			}
-			0x13 => {
-				let r = self.read_row_number()?;
-				Ok(Value::RowNumber(r))
-			}
+			// 0x13 was RowNumber, now reserved
+			0x13 => panic!("Type code 0x13 (RowNumber) is no longer supported"),
 			0x14 => {
 				let id = self.read_identity_id()?;
 				Ok(Value::IdentityId(id))

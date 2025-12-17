@@ -120,26 +120,26 @@ describe('Schema Type Conversion', () => {
         it('should handle bigint types correctly', async () => {
             const schema = Schema.object({
                 big_val: Schema.int8(),
-                row_num: Schema.rownumber()
+                another_val: Schema.int8()
             });
 
             const result = await wsClient.command(
-                "MAP { 9223372036854775807 as big_val, 1 as row_num }",
+                "MAP { 9223372036854775807 as big_val, 1 as another_val }",
                 null,
                 [schema]
             );
 
             expect(result).toHaveLength(1);
             expect(result[0]).toHaveLength(1);
-            
+
             const row = result[0][0];
-            
+
             // Verify bigint types
             expect(typeof row.big_val).toBe('bigint');
             expect(row.big_val).toBe(BigInt("9223372036854775807"));
-            
-            expect(typeof row.row_num).toBe('bigint');
-            expect(row.row_num).toBe(BigInt(1));
+
+            expect(typeof row.another_val).toBe('bigint');
+            expect(row.another_val).toBe(BigInt(1));
         }, 5000);
     });
 

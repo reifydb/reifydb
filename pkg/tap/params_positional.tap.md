@@ -434,24 +434,6 @@ expected:
     +----------------------------------------+
 ```
 
-### rownumber_param
-```yaml
-operation: command
-statement: "MAP $1 as result"
-params:
-  type: positional
-  values:
-    - "123456789"
-expected:
-  status: success
-  output: |
-    +------------+
-    |   result   |
-    +------------+
-    | 123456789  |
-    +------------+
-```
-
 ### multiple_params
 ```yaml
 operation: command

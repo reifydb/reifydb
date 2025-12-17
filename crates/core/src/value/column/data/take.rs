@@ -31,7 +31,6 @@ impl ColumnData {
 			ColumnData::Time(container) => ColumnData::Time(container.take(num)),
 			ColumnData::Duration(container) => ColumnData::Duration(container.take(num)),
 			ColumnData::Undefined(container) => ColumnData::Undefined(container.take(num)),
-			ColumnData::RowNumber(container) => ColumnData::RowNumber(container.take(num)),
 			ColumnData::IdentityId(container) => ColumnData::IdentityId(container.take(num)),
 			ColumnData::Uuid4(container) => ColumnData::Uuid4(container.take(num)),
 			ColumnData::Uuid7(container) => ColumnData::Uuid7(container.take(num)),

@@ -158,15 +158,14 @@ export function useSchema(): [boolean, TableInfo[], string | undefined] {
             16: 'DateTime',
             17: 'Time',
             18: 'Duration',
-            19: 'RowNumber',
+            19: 'IdentityId',
             20: 'Uuid4',
             21: 'Uuid7',
             22: 'Blob',
-            23: 'IdentityId',
-            24: 'Int',
-            25: 'Decimal',
-            26: 'Uint',
-            27: 'Any',
+            23: 'Int',
+            24: 'Decimal',
+            25: 'Uint',
+            26: 'Any',
         };
 
         // Create a map to collect columns with their positions
