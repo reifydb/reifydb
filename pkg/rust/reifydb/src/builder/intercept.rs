@@ -23,14 +23,10 @@ use reifydb_core::interceptor::{
 	FilteredRingBufferPreInsertInterceptor, FilteredRingBufferPreUpdateInterceptor,
 	FilteredTablePostDeleteInterceptor, FilteredTablePostInsertInterceptor, FilteredTablePostUpdateInterceptor,
 	FilteredTablePreDeleteInterceptor, FilteredTablePreInsertInterceptor, FilteredTablePreUpdateInterceptor,
-	FilteredViewPostDeleteInterceptor, FilteredViewPostInsertInterceptor, FilteredViewPostUpdateInterceptor,
-	FilteredViewPreDeleteInterceptor, FilteredViewPreInsertInterceptor, FilteredViewPreUpdateInterceptor,
 	InterceptFilter, Interceptors, RingBufferPostDeleteContext, RingBufferPostInsertContext,
 	RingBufferPostUpdateContext, RingBufferPreDeleteContext, RingBufferPreInsertContext,
 	RingBufferPreUpdateContext, StandardInterceptorBuilder, TablePostDeleteContext, TablePostInsertContext,
 	TablePostUpdateContext, TablePreDeleteContext, TablePreInsertContext, TablePreUpdateContext,
-	ViewPostDeleteContext, ViewPostInsertContext, ViewPostUpdateContext, ViewPreDeleteContext,
-	ViewPreInsertContext, ViewPreUpdateContext,
 };
 use reifydb_engine::StandardCommandTransaction;
 
@@ -47,11 +43,6 @@ pub trait WithInterceptorBuilder: Sized {
 	/// Start building interceptors for a specific ring buffer.
 	fn intercept_ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<Self> {
 		RingBufferInterceptBuilder::new(self, InterceptFilter::parse(spec))
-	}
-
-	/// Start building interceptors for a specific view.
-	fn intercept_view(self, spec: &str) -> ViewInterceptBuilder<Self> {
-		ViewInterceptBuilder::new(self, InterceptFilter::parse(spec))
 	}
 }
 
@@ -216,11 +207,6 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
-	/// Switch to intercepting a view.
-	pub fn intercept_view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
 	/// Finish and return the underlying builder.
 	pub fn done(self) -> B {
 		self.builder
@@ -380,180 +366,6 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 	/// Switch to intercepting a different ring buffer.
 	pub fn intercept_ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
 		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
-	/// Switch to intercepting a view.
-	pub fn intercept_view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
-	/// Finish and return the underlying builder.
-	pub fn done(self) -> B {
-		self.builder
-	}
-}
-
-// =============================================================================
-// View Intercept Builder
-// =============================================================================
-
-/// Fluent builder for view interceptors.
-pub struct ViewInterceptBuilder<B: WithInterceptorBuilder> {
-	builder: B,
-	filter: InterceptFilter,
-}
-
-impl<B: WithInterceptorBuilder> ViewInterceptBuilder<B> {
-	/// Create a new view intercept builder.
-	pub fn new(builder: B, filter: InterceptFilter) -> Self {
-		Self {
-			builder,
-			filter,
-		}
-	}
-
-	/// Register a pre-insert interceptor.
-	pub fn pre_insert<F>(mut self, f: F) -> Self
-	where
-		F: Fn(&mut ViewPreInsertContext<StandardCommandTransaction>) -> reifydb_core::Result<()>
-			+ Send
-			+ Sync
-			+ Clone
-			+ 'static,
-	{
-		let filter = self.filter.clone();
-		let builder = self.builder.interceptor_builder_mut();
-		*builder = std::mem::take(builder).add_factory(
-			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors
-					.view_pre_insert
-					.add(Rc::new(FilteredViewPreInsertInterceptor::new(filter.clone(), f.clone())));
-			},
-		);
-		self
-	}
-
-	/// Register a post-insert interceptor.
-	pub fn post_insert<F>(mut self, f: F) -> Self
-	where
-		F: Fn(&mut ViewPostInsertContext<StandardCommandTransaction>) -> reifydb_core::Result<()>
-			+ Send
-			+ Sync
-			+ Clone
-			+ 'static,
-	{
-		let filter = self.filter.clone();
-		let builder = self.builder.interceptor_builder_mut();
-		*builder = std::mem::take(builder).add_factory(
-			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.view_post_insert.add(Rc::new(FilteredViewPostInsertInterceptor::new(
-					filter.clone(),
-					f.clone(),
-				)));
-			},
-		);
-		self
-	}
-
-	/// Register a pre-update interceptor.
-	pub fn pre_update<F>(mut self, f: F) -> Self
-	where
-		F: Fn(&mut ViewPreUpdateContext<StandardCommandTransaction>) -> reifydb_core::Result<()>
-			+ Send
-			+ Sync
-			+ Clone
-			+ 'static,
-	{
-		let filter = self.filter.clone();
-		let builder = self.builder.interceptor_builder_mut();
-		*builder = std::mem::take(builder).add_factory(
-			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors
-					.view_pre_update
-					.add(Rc::new(FilteredViewPreUpdateInterceptor::new(filter.clone(), f.clone())));
-			},
-		);
-		self
-	}
-
-	/// Register a post-update interceptor.
-	pub fn post_update<F>(mut self, f: F) -> Self
-	where
-		F: Fn(&mut ViewPostUpdateContext<StandardCommandTransaction>) -> reifydb_core::Result<()>
-			+ Send
-			+ Sync
-			+ Clone
-			+ 'static,
-	{
-		let filter = self.filter.clone();
-		let builder = self.builder.interceptor_builder_mut();
-		*builder = std::mem::take(builder).add_factory(
-			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.view_post_update.add(Rc::new(FilteredViewPostUpdateInterceptor::new(
-					filter.clone(),
-					f.clone(),
-				)));
-			},
-		);
-		self
-	}
-
-	/// Register a pre-delete interceptor.
-	pub fn pre_delete<F>(mut self, f: F) -> Self
-	where
-		F: Fn(&mut ViewPreDeleteContext<StandardCommandTransaction>) -> reifydb_core::Result<()>
-			+ Send
-			+ Sync
-			+ Clone
-			+ 'static,
-	{
-		let filter = self.filter.clone();
-		let builder = self.builder.interceptor_builder_mut();
-		*builder = std::mem::take(builder).add_factory(
-			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors
-					.view_pre_delete
-					.add(Rc::new(FilteredViewPreDeleteInterceptor::new(filter.clone(), f.clone())));
-			},
-		);
-		self
-	}
-
-	/// Register a post-delete interceptor.
-	pub fn post_delete<F>(mut self, f: F) -> Self
-	where
-		F: Fn(&mut ViewPostDeleteContext<StandardCommandTransaction>) -> reifydb_core::Result<()>
-			+ Send
-			+ Sync
-			+ Clone
-			+ 'static,
-	{
-		let filter = self.filter.clone();
-		let builder = self.builder.interceptor_builder_mut();
-		*builder = std::mem::take(builder).add_factory(
-			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.view_post_delete.add(Rc::new(FilteredViewPostDeleteInterceptor::new(
-					filter.clone(),
-					f.clone(),
-				)));
-			},
-		);
-		self
-	}
-
-	/// Switch to intercepting a table.
-	pub fn intercept_table(self, spec: &str) -> TableInterceptBuilder<B> {
-		TableInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
-	/// Switch to intercepting a ring buffer.
-	pub fn intercept_ringbuffer(self, spec: &str) -> RingBufferInterceptBuilder<B> {
-		RingBufferInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
-	}
-
-	/// Switch to intercepting a different view.
-	pub fn intercept_view(self, spec: &str) -> ViewInterceptBuilder<B> {
-		ViewInterceptBuilder::new(self.builder, InterceptFilter::parse(spec))
 	}
 
 	/// Finish and return the underlying builder.

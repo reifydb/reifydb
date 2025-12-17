@@ -15,9 +15,7 @@ use crate::{
 		TablePostDeleteInterceptor, TablePostInsertInterceptor, TablePostUpdateInterceptor,
 		TablePreDeleteInterceptor, TablePreInsertInterceptor, TablePreUpdateInterceptor,
 		ViewDefPostCreateInterceptor, ViewDefPostUpdateInterceptor, ViewDefPreDeleteInterceptor,
-		ViewDefPreUpdateInterceptor, ViewPostDeleteInterceptor, ViewPostInsertInterceptor,
-		ViewPostUpdateInterceptor, ViewPreDeleteInterceptor, ViewPreInsertInterceptor,
-		ViewPreUpdateInterceptor,
+		ViewDefPreUpdateInterceptor,
 	},
 	interface::CommandTransaction,
 };
@@ -61,13 +59,6 @@ pub struct Interceptors<CT: CommandTransaction> {
 	pub ringbuffer_def_pre_update: Chain<CT, dyn RingBufferDefPreUpdateInterceptor<CT>>,
 	pub ringbuffer_def_post_update: Chain<CT, dyn RingBufferDefPostUpdateInterceptor<CT>>,
 	pub ringbuffer_def_pre_delete: Chain<CT, dyn RingBufferDefPreDeleteInterceptor<CT>>,
-	// View data interceptors
-	pub view_pre_insert: Chain<CT, dyn ViewPreInsertInterceptor<CT>>,
-	pub view_post_insert: Chain<CT, dyn ViewPostInsertInterceptor<CT>>,
-	pub view_pre_update: Chain<CT, dyn ViewPreUpdateInterceptor<CT>>,
-	pub view_post_update: Chain<CT, dyn ViewPostUpdateInterceptor<CT>>,
-	pub view_pre_delete: Chain<CT, dyn ViewPreDeleteInterceptor<CT>>,
-	pub view_post_delete: Chain<CT, dyn ViewPostDeleteInterceptor<CT>>,
 	// Marker to prevent Send and Sync
 	_not_send_sync: PhantomData<*const ()>,
 }
@@ -111,12 +102,6 @@ impl<CT: CommandTransaction> Interceptors<CT> {
 			ringbuffer_def_pre_update: InterceptorChain::new(),
 			ringbuffer_def_post_update: InterceptorChain::new(),
 			ringbuffer_def_pre_delete: InterceptorChain::new(),
-			view_pre_insert: InterceptorChain::new(),
-			view_post_insert: InterceptorChain::new(),
-			view_pre_update: InterceptorChain::new(),
-			view_post_update: InterceptorChain::new(),
-			view_pre_delete: InterceptorChain::new(),
-			view_post_delete: InterceptorChain::new(),
 			_not_send_sync: PhantomData,
 		}
 	}
@@ -155,12 +140,6 @@ impl<CT: CommandTransaction> Clone for Interceptors<CT> {
 			ringbuffer_def_pre_update: self.ringbuffer_def_pre_update.clone(),
 			ringbuffer_def_post_update: self.ringbuffer_def_post_update.clone(),
 			ringbuffer_def_pre_delete: self.ringbuffer_def_pre_delete.clone(),
-			view_pre_insert: self.view_pre_insert.clone(),
-			view_post_insert: self.view_post_insert.clone(),
-			view_pre_update: self.view_pre_update.clone(),
-			view_post_update: self.view_post_update.clone(),
-			view_pre_delete: self.view_pre_delete.clone(),
-			view_post_delete: self.view_post_delete.clone(),
 			_not_send_sync: PhantomData,
 		}
 	}

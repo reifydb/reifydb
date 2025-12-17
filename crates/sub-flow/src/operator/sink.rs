@@ -61,8 +61,7 @@ impl Operator for SinkViewOperator {
 					}
 					.encode();
 
-					// Use insert_view to track the operation for interceptor calls
-					txn.insert_view(&key, view_def.clone(), row_id, row)?;
+					txn.set(&key, row)?;
 				}
 				FlowDiff::Update {
 					pre,
@@ -84,15 +83,8 @@ impl Operator for SinkViewOperator {
 					}
 					.encode();
 
-					// Use update_view to track the operation for interceptor calls
-					txn.update_view(
-						&old_key,
-						&new_key,
-						view_def.clone(),
-						pre.number,
-						post.number,
-						transformed_row.encoded,
-					)?;
+					txn.remove(&old_key)?;
+					txn.set(&new_key, transformed_row.encoded)?;
 				}
 				FlowDiff::Remove {
 					pre,
@@ -104,8 +96,7 @@ impl Operator for SinkViewOperator {
 					}
 					.encode();
 
-					// Use remove_view to track the operation for interceptor calls
-					txn.remove_view(&key, view_def.clone(), pre.number)?;
+					txn.remove(&key)?;
 				}
 			}
 		}

@@ -14,7 +14,6 @@ mod ringbuffer_def;
 mod table;
 mod table_def;
 mod transaction;
-mod view;
 mod view_def;
 
 pub use builder::*;
@@ -29,7 +28,6 @@ pub use ringbuffer_def::*;
 pub use table::*;
 pub use table_def::*;
 pub use transaction::*;
-pub use view::*;
 pub use view_def::*;
 
 pub type Chain<T, I> = InterceptorChain<T, I>;
