@@ -27,7 +27,7 @@ use crate::{
 };
 
 impl MultiVersionGet for StandardTransactionStore {
-	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
+	#[instrument(name = "store::multi::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
 	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>> {
 		let table = classify_key(key);
 
@@ -90,14 +90,14 @@ impl MultiVersionGet for StandardTransactionStore {
 }
 
 impl MultiVersionContains for StandardTransactionStore {
-	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0), ret)]
+	#[instrument(name = "store::multi::contains", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0), ret)]
 	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool> {
 		Ok(MultiVersionGet::get(self, key, version)?.is_some())
 	}
 }
 
 impl MultiVersionCommit for StandardTransactionStore {
-	#[instrument(level = "info", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
+	#[instrument(name = "store::multi::commit", level = "info", skip(self, deltas), fields(delta_count = deltas.len(), version = version.0))]
 	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()> {
 		// Get the first available storage tier
 		let storage = if let Some(hot) = &self.hot {
@@ -294,7 +294,7 @@ impl MultiVersionRange for StandardTransactionStore {
 	where
 		Self: 'a;
 
-	#[instrument(level = "debug", skip(self), fields(version = version.0, batch_size = batch_size))]
+	#[instrument(name = "store::multi::range", level = "debug", skip(self), fields(version = version.0, batch_size = batch_size))]
 	fn range_batched(
 		&self,
 		range: EncodedKeyRange,

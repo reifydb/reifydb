@@ -13,7 +13,7 @@ use super::FlowTransaction;
 
 impl FlowTransaction {
 	/// Get state for a specific flow node and key
-	#[instrument(level = "trace", skip(self), fields(
+	#[instrument(name = "flow::state::get", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
 		found
@@ -28,7 +28,7 @@ impl FlowTransaction {
 	}
 
 	/// Set state for a specific flow node and key
-	#[instrument(level = "trace", skip(self, value), fields(
+	#[instrument(name = "flow::state::set", level = "trace", skip(self, value), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
 		value_len = value.as_ref().len()
@@ -41,7 +41,7 @@ impl FlowTransaction {
 	}
 
 	/// Remove state for a specific flow node and key
-	#[instrument(level = "trace", skip(self), fields(
+	#[instrument(name = "flow::state::remove", level = "trace", skip(self), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len()
 	))]
@@ -53,7 +53,7 @@ impl FlowTransaction {
 	}
 
 	/// Scan all state for a specific flow node
-	#[instrument(level = "debug", skip(self), fields(
+	#[instrument(name = "flow::state::scan", level = "debug", skip(self), fields(
 		node_id = id.0
 	))]
 	pub fn state_scan(&mut self, id: FlowNodeId) -> crate::Result<BoxedMultiVersionIter<'_>> {
@@ -63,7 +63,7 @@ impl FlowTransaction {
 	}
 
 	/// Range query on state for a specific flow node
-	#[instrument(level = "debug", skip(self, range), fields(
+	#[instrument(name = "flow::state::range", level = "debug", skip(self, range), fields(
 		node_id = id.0
 	))]
 	pub fn state_range(
@@ -77,7 +77,7 @@ impl FlowTransaction {
 	}
 
 	/// Clear all state for a specific flow node
-	#[instrument(level = "debug", skip(self), fields(
+	#[instrument(name = "flow::state::clear", level = "debug", skip(self), fields(
 		node_id = id.0,
 		removed_count
 	))]
@@ -96,7 +96,7 @@ impl FlowTransaction {
 	}
 
 	/// Load state for a key, creating if not exists
-	#[instrument(level = "debug", skip(self, layout), fields(
+	#[instrument(name = "flow::state::load_or_create", level = "debug", skip(self, layout), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len(),
 		created
@@ -120,7 +120,7 @@ impl FlowTransaction {
 	}
 
 	/// Save state encoded
-	#[instrument(level = "trace", skip(self, row), fields(
+	#[instrument(name = "flow::state::save", level = "trace", skip(self, row), fields(
 		node_id = id.0,
 		key_len = key.as_bytes().len()
 	))]

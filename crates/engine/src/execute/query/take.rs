@@ -23,7 +23,7 @@ impl<'a> TakeNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for TakeNode<'a> {
-	#[instrument(name = "TakeNode::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::take::initialize", level = "trace", skip_all)]
 	fn initialize(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -34,7 +34,7 @@ impl<'a> QueryNode<'a> for TakeNode<'a> {
 		Ok(())
 	}
 
-	#[instrument(name = "TakeNode::next", level = "trace", skip_all)]
+	#[instrument(name = "query::take::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,

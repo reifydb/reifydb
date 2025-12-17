@@ -40,7 +40,7 @@ pub trait Session {
 }
 
 impl CommandSession {
-	#[instrument(level = "debug", skip_all)]
+	#[instrument(name = "api::session::command::new", level = "debug", skip_all)]
 	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
 		Self {
 			engine,
@@ -48,7 +48,7 @@ impl CommandSession {
 		}
 	}
 
-	#[instrument(level = "info", skip(self, params), fields(rql = %rql))]
+	#[instrument(name = "api::session::command", level = "info", skip(self, params), fields(rql = %rql))]
 	pub fn command(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let rql = rql.to_string();
 		let params = params.into();
@@ -60,7 +60,7 @@ impl CommandSession {
 }
 
 impl QuerySession {
-	#[instrument(level = "debug", skip_all)]
+	#[instrument(name = "api::session::query::new", level = "debug", skip_all)]
 	pub(crate) fn new(engine: StandardEngine, identity: Identity) -> Self {
 		Self {
 			engine,
@@ -68,7 +68,7 @@ impl QuerySession {
 		}
 	}
 
-	#[instrument(level = "info", skip(self, params), fields(rql = %rql))]
+	#[instrument(name = "api::session::query", level = "info", skip(self, params), fields(rql = %rql))]
 	pub fn query(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
 		let rql = rql.to_string();
 		let params = params.into();

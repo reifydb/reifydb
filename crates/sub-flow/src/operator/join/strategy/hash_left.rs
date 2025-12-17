@@ -1,7 +1,7 @@
 use reifydb_core::{CommitVersion, Row};
 use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
-use tracing::{trace, trace_span};
+use tracing::trace_span;
 
 use super::hash::{
 	add_to_state_entry, emit_joined_rows_batch_left, emit_joined_rows_batch_right, emit_joined_rows_left_to_right,
@@ -115,13 +115,10 @@ impl LeftHashJoin {
 		operator: &JoinOperator,
 		version: CommitVersion,
 	) -> crate::Result<Vec<FlowDiff>> {
-		trace!("[LEFT_JOIN] handle_remove: side={:?}, key_hash={:?}, pre_row={}", side, key_hash, pre.number.0);
-
 		let mut result = Vec::new();
 
 		match side {
 			JoinSide::Left => {
-				trace!("[LEFT_JOIN] handle_remove: processing Left side");
 				if let Some(key_hash) = key_hash {
 					// Check if left entry exists
 					if state.left.contains_key(txn, &key_hash)? {
@@ -137,18 +134,10 @@ impl LeftHashJoin {
 							&operator.right_parent,
 						)?;
 
-						trace!(
-							"[LEFT_JOIN] handle_remove: Left removed_joins count={}",
-							removed_joins.len()
-						);
-
 						if !removed_joins.is_empty() {
 							result.extend(removed_joins);
 						} else {
 							// Remove the unmatched left join encoded
-							trace!(
-								"[LEFT_JOIN] handle_remove: Left no joins, removing unmatched"
-							);
 							let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 							result.push(FlowDiff::Remove {
 								pre: unmatched_row,
@@ -160,7 +149,6 @@ impl LeftHashJoin {
 					}
 				} else {
 					// Undefined key - remove the unmatched encoded
-					trace!("[LEFT_JOIN] handle_remove: Left undefined key, removing unmatched");
 					let unmatched_row = operator.unmatched_left_row(txn, pre)?;
 					result.push(FlowDiff::Remove {
 						pre: unmatched_row,
@@ -170,7 +158,6 @@ impl LeftHashJoin {
 				}
 			}
 			JoinSide::Right => {
-				trace!("[LEFT_JOIN] handle_remove: processing Right side");
 				if let Some(key_hash) = key_hash {
 					// Check if right entry exists
 					if state.right.contains_key(txn, &key_hash)? {
@@ -183,26 +170,14 @@ impl LeftHashJoin {
 							operator,
 							&operator.left_parent,
 						)?;
-						trace!(
-							"[LEFT_JOIN] handle_remove: Right removed_joins count={}",
-							removed_joins.len()
-						);
 						result.extend(removed_joins);
 
 						// Remove from right entries
 						let became_empty =
 							remove_from_state_entry(txn, &mut state.right, &key_hash, pre)?;
 
-						trace!(
-							"[LEFT_JOIN] handle_remove: Right became_empty={}",
-							became_empty
-						);
-
 						// If this was the last right encoded, re-emit left rows as unmatched
 						if became_empty {
-							trace!(
-								"[LEFT_JOIN] handle_remove: Right last row removed, re-emitting unmatched lefts"
-							);
 							let left_rows = get_left_rows(
 								txn,
 								&state.left,
@@ -213,10 +188,6 @@ impl LeftHashJoin {
 							for left_row in &left_rows {
 								let unmatched_row =
 									operator.unmatched_left_row(txn, &left_row)?;
-								trace!(
-									"[LEFT_JOIN] handle_remove: Re-emitting unmatched left row={}",
-									unmatched_row.number.0
-								);
 								result.push(FlowDiff::Insert {
 									post: unmatched_row,
 								});
@@ -227,7 +198,6 @@ impl LeftHashJoin {
 			}
 		}
 
-		trace!("[LEFT_JOIN] handle_remove: returning {} diffs", result.len());
 		Ok(result)
 	}
 

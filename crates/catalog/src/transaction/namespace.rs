@@ -51,7 +51,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogNamespaceCommandOperations for CT
 {
-	#[instrument(level = "debug", skip(self, to_create))]
+	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, to_create))]
 	fn create_namespace(&mut self, to_create: NamespaceToCreate) -> reifydb_core::Result<NamespaceDef> {
 		if let Some(namespace) = self.find_namespace_by_name(&to_create.name)? {
 			return_error!(namespace_already_exists(to_create.namespace_fragment, &namespace.name));
@@ -66,7 +66,7 @@ impl<
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogNamespaceQueryOperations
 	for QT
 {
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::namespace::find", level = "trace", skip(self))]
 	fn find_namespace(&mut self, id: NamespaceId) -> reifydb_core::Result<Option<NamespaceDef>> {
 		// 1. Check transactional changes first
 		if let Some(namespace) = TransactionalNamespaceChanges::find_namespace(self, id) {
@@ -93,7 +93,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::namespace::find_by_name", level = "trace", skip(self, name))]
 	fn find_namespace_by_name<'a>(
 		&mut self,
 		name: impl IntoFragment<'a>,
@@ -127,7 +127,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::namespace::get", level = "trace", skip(self))]
 	fn get_namespace(&mut self, id: NamespaceId) -> reifydb_core::Result<NamespaceDef> {
 		self.find_namespace(id)?.ok_or_else(|| {
 			error!(internal!(
@@ -137,7 +137,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		})
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::namespace::get_by_name", level = "trace", skip(self, name))]
 	fn get_namespace_by_name<'a>(&mut self, name: impl IntoFragment<'a>) -> reifydb_core::Result<NamespaceDef> {
 		let name = name.into_fragment();
 		self.find_namespace_by_name(name.as_borrowed())?

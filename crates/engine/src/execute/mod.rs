@@ -300,7 +300,7 @@ impl Executor {
 }
 
 impl ExecuteCommand<StandardCommandTransaction> for Executor {
-	#[instrument(level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
+	#[instrument(name = "executor::execute_command", level = "debug", skip(self, txn, cmd), fields(rql = %cmd.rql))]
 	fn execute_command(&self, txn: &mut StandardCommandTransaction, cmd: Command<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(cmd.rql)?;
@@ -343,7 +343,7 @@ impl ExecuteCommand<StandardCommandTransaction> for Executor {
 }
 
 impl ExecuteQuery<StandardQueryTransaction> for Executor {
-	#[instrument(level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
+	#[instrument(name = "executor::execute_query", level = "debug", skip(self, txn, qry), fields(rql = %qry.rql))]
 	fn execute_query(&self, txn: &mut StandardQueryTransaction, qry: Query<'_>) -> crate::Result<Vec<Frame>> {
 		let mut result = vec![];
 		let statements = ast::parse_str(qry.rql)?;
@@ -388,7 +388,7 @@ impl ExecuteQuery<StandardQueryTransaction> for Executor {
 impl Execute<StandardCommandTransaction, StandardQueryTransaction> for Executor {}
 
 impl Executor {
-	#[instrument(level = "debug", skip(self, rx, plan, params, stack))]
+	#[instrument(name = "executor::plan::query", level = "debug", skip(self, rx, plan, params, stack))]
 	pub(crate) fn execute_query_plan<'a>(
 		&self,
 		rx: &'a mut StandardQueryTransaction,
@@ -473,7 +473,7 @@ impl Executor {
 		}
 	}
 
-	#[instrument(level = "debug", skip(self, txn, plan, params, stack))]
+	#[instrument(name = "executor::plan::command", level = "debug", skip(self, txn, plan, params, stack))]
 	pub fn execute_command_plan<'a>(
 		&self,
 		txn: &'a mut StandardCommandTransaction,
@@ -550,7 +550,7 @@ impl Executor {
 		}
 	}
 
-	#[instrument(level = "debug", skip(self, rx, plan, params, stack))]
+	#[instrument(name = "executor::query", level = "debug", skip(self, rx, plan, params, stack))]
 	fn query<'a>(
 		&self,
 		rx: &mut StandardTransaction<'a>,

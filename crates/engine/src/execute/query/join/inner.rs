@@ -41,7 +41,7 @@ impl<'a> InnerJoinNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for InnerJoinNode<'a> {
-	#[instrument(level = "trace", skip_all, name = "InnerJoinNode::initialize")]
+	#[instrument(level = "trace", skip_all, name = "query::join::inner::initialize")]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
@@ -49,7 +49,7 @@ impl<'a> QueryNode<'a> for InnerJoinNode<'a> {
 		Ok(())
 	}
 
-	#[instrument(level = "trace", skip_all, name = "InnerJoinNode::next")]
+	#[instrument(level = "trace", skip_all, name = "query::join::inner::next")]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,

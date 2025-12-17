@@ -41,7 +41,7 @@ impl<'a> LeftJoinNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for LeftJoinNode<'a> {
-	#[instrument(name = "LeftJoinNode::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::join::left::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
@@ -49,7 +49,7 @@ impl<'a> QueryNode<'a> for LeftJoinNode<'a> {
 		Ok(())
 	}
 
-	#[instrument(name = "LeftJoinNode::next", level = "trace", skip_all)]
+	#[instrument(name = "query::join::left::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,

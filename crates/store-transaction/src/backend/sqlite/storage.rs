@@ -73,7 +73,7 @@ impl Drop for SqlitePrimitiveStorageInner {
 
 impl SqlitePrimitiveStorage {
 	/// Create a new SQLite primitive storage with the given configuration.
-	#[instrument(level = "info", skip(config), fields(
+	#[instrument(name = "store::sqlite::new", level = "info", skip(config), fields(
 		db_path = ?config.path,
 		page_size = config.page_size,
 		journal_mode = %config.journal_mode.as_str()
@@ -125,7 +125,7 @@ impl PrimitiveStorage for SqlitePrimitiveStorage {
 	type RangeIter<'a> = SqliteRangeIter;
 	type RangeRevIter<'a> = SqliteRangeRevIter;
 
-	#[instrument(level = "trace", skip(self), fields(table = ?table, key_len = key.len()))]
+	#[instrument(name = "store::sqlite::get", level = "trace", skip(self), fields(table = ?table, key_len = key.len()))]
 	fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		let table_name = table_id_to_name(table);
 
@@ -151,7 +151,7 @@ impl PrimitiveStorage for SqlitePrimitiveStorage {
 		}
 	}
 
-	#[instrument(level = "trace", skip(self), fields(table = ?table, key_len = key.len()), ret)]
+	#[instrument(name = "store::sqlite::contains", level = "trace", skip(self), fields(table = ?table, key_len = key.len()), ret)]
 	fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
 		let table_name = table_id_to_name(table);
 
@@ -177,7 +177,7 @@ impl PrimitiveStorage for SqlitePrimitiveStorage {
 		}
 	}
 
-	#[instrument(level = "debug", skip(self, entries), fields(table = ?table, entry_count = entries.len()))]
+	#[instrument(name = "store::sqlite::put", level = "debug", skip(self, entries), fields(table = ?table, entry_count = entries.len()))]
 	fn put(&self, table: TableId, entries: &[(&[u8], Option<&[u8]>)]) -> Result<()> {
 		let table_name = table_id_to_name(table);
 

@@ -23,14 +23,11 @@ impl FlowTransaction {
 	/// Returns an error if any key in this FlowTransaction overlaps with keys already
 	/// written by another FlowTransaction to the same parent. FlowTransactions must
 	/// operate on non-overlapping keyspaces.
-	#[instrument(
-		name="flow::commit",
-		level = "trace",
-		skip(self, parent),
-		fields(
-			pending_count = self.pending.len(),
-			writes,
-			removes
+
+	#[instrument(name = "flow::transaction::commit", level = "debug", skip(self, parent), fields(
+		pending_count = self.pending.len(),
+		writes,
+		removes
 	))]
 	pub fn commit(&mut self, parent: &mut StandardCommandTransaction) -> crate::Result<FlowTransactionMetrics> {
 		// Check for any overlapping keys with the parent's pending writes.

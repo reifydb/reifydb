@@ -44,7 +44,7 @@ use crate::{
 
 struct Compiler {}
 
-#[instrument(level = "trace", skip(tx, ast))]
+#[instrument(name = "rql::compile::logical", level = "trace", skip(tx, ast))]
 pub fn compile_logical<'a, 't, T: CatalogQueryTransaction>(
 	tx: &'t mut T,
 	ast: AstStatement<'a>,

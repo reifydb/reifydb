@@ -53,7 +53,7 @@ impl<'a> RowPointLookupNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for RowPointLookupNode<'a> {
-	#[instrument(name = "RowPointLookupNode::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::lookup::point::initialize", level = "trace", skip_all)]
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
@@ -62,7 +62,7 @@ impl<'a> QueryNode<'a> for RowPointLookupNode<'a> {
 		Ok(())
 	}
 
-	#[instrument(name = "RowPointLookupNode::next", level = "trace", skip_all)]
+	#[instrument(name = "query::lookup::point::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -133,7 +133,7 @@ impl<'a> RowListLookupNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for RowListLookupNode<'a> {
-	#[instrument(name = "RowListLookupNode::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::lookup::list::initialize", level = "trace", skip_all)]
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
@@ -142,7 +142,7 @@ impl<'a> QueryNode<'a> for RowListLookupNode<'a> {
 		Ok(())
 	}
 
-	#[instrument(name = "RowListLookupNode::next", level = "trace", skip_all)]
+	#[instrument(name = "query::lookup::list::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -236,7 +236,7 @@ impl<'a> RowRangeScanNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for RowRangeScanNode<'a> {
-	#[instrument(name = "RowRangeScanNode::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::scan::range::initialize", level = "trace", skip_all)]
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
@@ -245,7 +245,7 @@ impl<'a> QueryNode<'a> for RowRangeScanNode<'a> {
 		Ok(())
 	}
 
-	#[instrument(name = "RowRangeScanNode::next", level = "trace", skip_all)]
+	#[instrument(name = "query::scan::range::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,

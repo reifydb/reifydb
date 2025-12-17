@@ -68,7 +68,7 @@ fn extract_source_name_from_physical<'a>(plan: &PhysicalPlan<'a>) -> Option<reif
 	}
 }
 
-#[instrument(level = "trace", skip(plan, rx, context))]
+#[instrument(name = "query::compile", level = "trace", skip(plan, rx, context))]
 pub(crate) fn compile<'a>(
 	plan: PhysicalPlan<'a>,
 	rx: &mut StandardTransaction<'a>,

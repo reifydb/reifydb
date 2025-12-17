@@ -58,7 +58,7 @@ impl<'a> NaturalJoinNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for NaturalJoinNode<'a> {
-	#[instrument(name = "NaturalJoinNode::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::join::natural::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context.set(ctx);
 		self.left.initialize(rx, ctx)?;
@@ -66,7 +66,7 @@ impl<'a> QueryNode<'a> for NaturalJoinNode<'a> {
 		Ok(())
 	}
 
-	#[instrument(name = "NaturalJoinNode::next", level = "trace", skip_all)]
+	#[instrument(name = "query::join::natural::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,

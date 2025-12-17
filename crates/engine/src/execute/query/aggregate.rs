@@ -54,7 +54,7 @@ impl<'a> AggregateNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for AggregateNode<'a> {
-	#[instrument(level = "trace", skip_all, name = "AggregateNode::initialize")]
+	#[instrument(level = "trace", skip_all, name = "query::aggregate::initialize")]
 	fn initialize(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,
@@ -65,7 +65,7 @@ impl<'a> QueryNode<'a> for AggregateNode<'a> {
 		Ok(())
 	}
 
-	#[instrument(level = "trace", skip_all, name = "AggregateNode::next")]
+	#[instrument(level = "trace", skip_all, name = "query::aggregate::next")]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,

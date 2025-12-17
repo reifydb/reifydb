@@ -33,14 +33,14 @@ impl<'a> FilterNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for FilterNode<'a> {
-	#[instrument(level = "trace", skip_all, name = "FilterNode::initialize")]
+	#[instrument(level = "trace", skip_all, name = "query::filter::initialize")]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
-	#[instrument(level = "trace", skip_all, name = "FilterNode::next")]
+	#[instrument(level = "trace", skip_all, name = "query::filter::next")]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,

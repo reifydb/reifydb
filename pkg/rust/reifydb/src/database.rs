@@ -134,7 +134,7 @@ impl Database {
 		self.subsystems.subsystem_count()
 	}
 
-	#[instrument(level = "info", skip(self))]
+	#[instrument(name = "api::database::start", level = "info", skip(self))]
 	pub fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(()); // Already running
@@ -172,7 +172,7 @@ impl Database {
 		}
 	}
 
-	#[instrument(level = "info", skip(self))]
+	#[instrument(name = "api::database::stop", level = "info", skip(self))]
 	pub fn stop(&mut self) -> Result<()> {
 		if !self.running {
 			return Ok(()); // Already stopped

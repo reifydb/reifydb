@@ -31,7 +31,7 @@ pub trait CatalogSourceQueryOperations {
 impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperations> CatalogSourceQueryOperations
 	for T
 {
-	#[instrument(level = "trace", skip(self, _source))]
+	#[instrument(name = "catalog::source::find_by_name", level = "trace", skip(self, _source))]
 	fn find_source_by_name<'a>(
 		&mut self,
 		_namespace: NamespaceId,
@@ -40,7 +40,7 @@ impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperati
 		todo!()
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::source::find", level = "trace", skip(self))]
 	fn find_source(&mut self, id: SourceId) -> reifydb_core::Result<Option<SourceDef>> {
 		match id {
 			SourceId::Table(table_id) => {
@@ -54,7 +54,7 @@ impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperati
 		}
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::source::get", level = "trace", skip(self))]
 	fn get_source(&mut self, id: SourceId) -> reifydb_core::Result<SourceDef> {
 		self.find_source(id)?.ok_or_else(|| {
 			error!(internal!(
@@ -64,7 +64,7 @@ impl<T: QueryTransaction + CatalogTableQueryOperations + CatalogViewQueryOperati
 		})
 	}
 
-	#[instrument(level = "trace", skip(self, _name))]
+	#[instrument(name = "catalog::source::get_by_name", level = "trace", skip(self, _name))]
 	fn get_source_by_name<'a>(
 		&mut self,
 		_namespace: NamespaceId,

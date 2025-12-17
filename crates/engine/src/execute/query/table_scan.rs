@@ -83,7 +83,7 @@ impl<'a> TableScanNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for TableScanNode<'a> {
-	#[instrument(level = "trace", skip_all, name = "TableScanNode::initialize")]
+	#[instrument(level = "trace", skip_all, name = "query::scan::table::initialize")]
 	fn initialize(
 		&mut self,
 		_rx: &mut crate::StandardTransaction<'a>,
@@ -93,7 +93,7 @@ impl<'a> QueryNode<'a> for TableScanNode<'a> {
 		Ok(())
 	}
 
-	#[instrument(level = "trace", skip_all, name = "TableScanNode::next")]
+	#[instrument(level = "trace", skip_all, name = "query::scan::table::next")]
 	fn next(
 		&mut self,
 		rx: &mut crate::StandardTransaction<'a>,

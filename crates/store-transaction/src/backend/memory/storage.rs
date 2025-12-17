@@ -51,7 +51,7 @@ impl Default for MemoryPrimitiveStorage {
 }
 
 impl MemoryPrimitiveStorage {
-	#[instrument(level = "debug", name = "MemoryPrimitiveStorage::new")]
+	#[instrument(name = "store::memory::new", level = "debug")]
 	pub fn new() -> Self {
 		let tables = Arc::new(RwLock::new(Tables::default()));
 
@@ -77,7 +77,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 	type RangeIter<'a> = MemoryRangeIter;
 	type RangeRevIter<'a> = MemoryRangeRevIter;
 
-	#[instrument(level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
+	#[instrument(name = "store::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
 	fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		let tables = self.inner.tables.read();
 		if let Some(table_data) = tables.get_table(table) {
@@ -87,7 +87,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 		}
 	}
 
-	#[instrument(level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
+	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
 	fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
 		let tables = self.inner.tables.read();
 		if let Some(table_data) = tables.get_table(table) {
@@ -98,7 +98,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 		}
 	}
 
-	#[instrument(level = "debug", skip(self, entries), fields(table = ?table, entry_count = entries.len()))]
+	#[instrument(name = "store::memory::put", level = "debug", skip(self, entries), fields(table = ?table, entry_count = entries.len()))]
 	fn put(&self, table: TableId, entries: &[(&[u8], Option<&[u8]>)]) -> Result<()> {
 		let (respond_to, receiver) = mpsc::channel();
 
@@ -117,7 +117,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 		receiver.recv().map_err(|_| error!(internal("Writer thread died")))?
 	}
 
-	#[instrument(level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
+	#[instrument(name = "store::memory::range", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
 	fn range(
 		&self,
 		table: TableId,
@@ -148,7 +148,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 		Ok(iter)
 	}
 
-	#[instrument(level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
+	#[instrument(name = "store::memory::range_rev", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
 	fn range_rev(
 		&self,
 		table: TableId,
@@ -179,7 +179,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 		Ok(iter)
 	}
 
-	#[instrument(level = "trace", skip(self), fields(table = ?table))]
+	#[instrument(name = "store::memory::ensure_table", level = "trace", skip(self), fields(table = ?table))]
 	fn ensure_table(&self, table: TableId) -> Result<()> {
 		// For memory backend, tables are created on-demand, so this is a no-op
 		let mut tables = self.inner.tables.write();
@@ -187,7 +187,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 		Ok(())
 	}
 
-	#[instrument(level = "debug", skip(self), fields(table = ?table))]
+	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
 	fn clear_table(&self, table: TableId) -> Result<()> {
 		let (respond_to, receiver) = mpsc::channel();
 

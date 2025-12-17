@@ -43,13 +43,13 @@ impl<'a> DictionaryScan<'a> {
 }
 
 impl<'a> QueryNode<'a> for DictionaryScan<'a> {
-	#[instrument(name = "DictionaryScan::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::scan::dictionary::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		// Already has context from constructor
 		Ok(())
 	}
 
-	#[instrument(name = "DictionaryScan::next", level = "trace", skip_all)]
+	#[instrument(name = "query::scan::dictionary::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,

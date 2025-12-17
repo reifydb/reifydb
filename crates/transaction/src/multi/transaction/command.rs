@@ -122,7 +122,7 @@ where
 	L: VersionProvider,
 {
 	/// Set a key-value pair to the transaction.
-	#[instrument(level = "debug", skip(self, values), fields(
+	#[instrument(name = "transaction::command::set", level = "debug", skip(self, values), fields(
 		txn_id = %self.id,
 		key_hex = %hex::encode(key.as_ref()),
 		value_len = values.as_ref().len()
@@ -140,7 +140,7 @@ where
 	/// This is done by adding a delete marker for the key at commit
 	/// timestamp.  Any reads happening before this timestamp would be
 	/// unaffected. Any reads after this commit would see the deletion.
-	#[instrument(level = "debug", skip(self), fields(
+	#[instrument(name = "transaction::command::remove", level = "debug", skip(self), fields(
 		txn_id = %self.id,
 		key_hex = %hex::encode(key.as_ref())
 	))]
@@ -157,7 +157,7 @@ where
 	}
 
 	/// Rolls back the transaction.
-	#[instrument(level = "debug", skip(self), fields(txn_id = %self.id))]
+	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self), fields(txn_id = %self.id))]
 	pub fn rollback(&mut self) -> Result<(), reifydb_type::Error> {
 		if self.discarded {
 			return_error!(transaction::transaction_rolled_back());
@@ -169,7 +169,7 @@ where
 	}
 
 	/// Returns `true` if the pending writes contains the key.
-	#[instrument(level = "trace", skip(self), fields(
+	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(
 		txn_id = %self.id,
 		key_hex = %hex::encode(key.as_ref())
 	))]
@@ -197,7 +197,7 @@ where
 
 	/// Looks for the key in the pending writes, if such key is not in the
 	/// pending writes, the end user can read the key from the database.
-	#[instrument(level = "trace", skip(self), fields(
+	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(
 		txn_id = %self.id,
 		key_hex = %hex::encode(key.as_ref())
 	))]
@@ -234,7 +234,7 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(level = "info", skip(self, apply), fields(
+	#[instrument(name = "transaction::command::commit", level = "info", skip(self, apply), fields(
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len(),
 		size_bytes = self.size
@@ -281,7 +281,7 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(level = "trace", skip(self, values), fields(
+	#[instrument(name = "transaction::command::set_internal", level = "trace", skip(self, values), fields(
 		txn_id = %self.id,
 		key_hex = %hex::encode(key.as_ref())
 	))]
@@ -299,7 +299,7 @@ where
 		})
 	}
 
-	#[instrument(level = "trace", skip(self, pending), fields(
+	#[instrument(name = "transaction::command::modify", level = "trace", skip(self, pending), fields(
 		txn_id = %self.id,
 		key_hex = %hex::encode(pending.key().as_ref()),
 		is_remove = pending.was_removed()
@@ -358,7 +358,7 @@ impl<L> TransactionManagerCommand<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(level = "debug", skip(self), fields(
+	#[instrument(name = "transaction::command::commit_pending", level = "debug", skip(self), fields(
 		txn_id = %self.id,
 		pending_count = self.pending_writes.len()
 	))]
@@ -441,7 +441,7 @@ where
 	/// calling this multiple times doesn't cause any issues. So,
 	/// this can safely be called via a defer right when transaction is
 	/// created.
-	#[instrument(level = "trace", skip(self), fields(txn_id = %self.id))]
+	#[instrument(name = "transaction::command::discard", level = "trace", skip(self), fields(txn_id = %self.id))]
 	pub fn discard(&mut self) {
 		if self.discarded {
 			return;

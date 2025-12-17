@@ -39,7 +39,7 @@ use crate::{
 };
 
 impl Executor {
-	#[instrument(name = "insert_table", level = "trace", skip_all)]
+	#[instrument(name = "mutate::table::insert", level = "trace", skip_all)]
 	pub(crate) fn insert_table<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,

@@ -19,7 +19,7 @@ const MAX_WINDOWS: usize = 50;
 /// This function removes old time windows that exceed the maximum count,
 /// keeping only the most recent windows. It also updates the key-to-windows
 /// index accordingly.
-#[instrument(level = "debug", skip(time_windows, key_to_windows), fields(window_count = time_windows.len()))]
+#[instrument(name = "transaction::oracle::cleanup", level = "debug", skip(time_windows, key_to_windows), fields(window_count = time_windows.len()))]
 pub(super) fn cleanup_old_windows(
 	time_windows: &mut BTreeMap<CommitVersion, super::CommittedWindow>,
 	key_to_windows: &mut HashMap<EncodedKey, BTreeSet<CommitVersion>>,

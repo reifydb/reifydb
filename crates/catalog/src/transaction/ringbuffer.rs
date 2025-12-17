@@ -35,12 +35,12 @@ pub trait CatalogRingBufferQueryOperations {
 }
 
 impl<QT: QueryTransaction + MaterializedCatalogTransaction> CatalogRingBufferQueryOperations for QT {
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::ringbuffer::find", level = "trace", skip(self))]
 	fn find_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<Option<RingBufferDef>> {
 		CatalogStore::find_ringbuffer(self, id)
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::ringbuffer::find_by_name", level = "trace", skip(self, name))]
 	fn find_ringbuffer_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -50,12 +50,12 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction> CatalogRingBufferQue
 		CatalogStore::find_ringbuffer_by_name(self, namespace, name.text())
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::ringbuffer::get", level = "trace", skip(self))]
 	fn get_ringbuffer(&mut self, id: RingBufferId) -> crate::Result<RingBufferDef> {
 		CatalogStore::get_ringbuffer(self, id)
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::ringbuffer::get_by_name", level = "trace", skip(self, name))]
 	fn get_ringbuffer_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -95,7 +95,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogRingBufferCommandOperations for CT
 {
-	#[instrument(level = "debug", skip(self, to_create))]
+	#[instrument(name = "catalog::ringbuffer::create", level = "debug", skip(self, to_create))]
 	fn create_ringbuffer(&mut self, to_create: RingBufferToCreate) -> crate::Result<RingBufferDef> {
 		if let Some(_ringbuffer) = self.find_ringbuffer_by_name(to_create.namespace, &to_create.ringbuffer)? {
 			let namespace = CatalogStore::get_namespace(self, to_create.namespace)?;

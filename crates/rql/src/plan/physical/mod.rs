@@ -44,7 +44,7 @@ use crate::{
 
 struct Compiler {}
 
-#[instrument(level = "trace", skip(rx, logical))]
+#[instrument(name = "rql::compile::physical", level = "trace", skip(rx, logical))]
 pub fn compile_physical<'a>(
 	rx: &mut impl QueryTransaction,
 	logical: Vec<LogicalPlan<'a>>,
