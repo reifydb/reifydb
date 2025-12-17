@@ -39,14 +39,14 @@ impl<'a> MapNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for MapNode<'a> {
-	#[instrument(name = "MapNode::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::map::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		self.input.initialize(rx, ctx)?;
 		Ok(())
 	}
 
-	#[instrument(name = "MapNode::next", level = "trace", skip_all)]
+	#[instrument(name = "query::map::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		rx: &mut StandardTransaction<'a>,
@@ -150,13 +150,13 @@ impl<'a> MapWithoutInputNode<'a> {
 }
 
 impl<'a> QueryNode<'a> for MapWithoutInputNode<'a> {
-	#[instrument(name = "MapWithoutInputNode::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::map::noinput::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, _rx: &mut StandardTransaction<'a>, ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		self.context = Some(Arc::new(ctx.clone()));
 		Ok(())
 	}
 
-	#[instrument(name = "MapWithoutInputNode::next", level = "trace", skip_all)]
+	#[instrument(name = "query::map::noinput::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		_rx: &mut StandardTransaction<'a>,

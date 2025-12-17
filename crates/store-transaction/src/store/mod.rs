@@ -26,7 +26,7 @@ pub struct StandardTransactionStoreInner {
 }
 
 impl StandardTransactionStore {
-	#[instrument(level = "info", skip(config), fields(
+	#[instrument(name = "store::new", level = "info", skip(config), fields(
 		has_hot = config.hot.is_some(),
 		has_warm = config.warm.is_some(),
 		has_cold = config.cold.is_some()

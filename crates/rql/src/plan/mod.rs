@@ -19,7 +19,7 @@ pub mod physical;
 
 pub type RowToInsert = Vec<Expression<'static>>;
 
-#[instrument(level = "trace", skip(rx, statement))]
+#[instrument(name = "rql::plan", level = "trace", skip(rx, statement))]
 pub fn plan<'a, T>(rx: &mut T, statement: AstStatement<'a>) -> crate::Result<Option<PhysicalPlan<'a>>>
 where
 	T: QueryTransaction + CatalogQueryTransaction,

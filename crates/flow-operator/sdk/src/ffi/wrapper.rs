@@ -39,7 +39,7 @@ impl<O: FFIOperator> OperatorWrapper<O> {
 	}
 }
 
-#[instrument(level = "debug", skip_all, fields(
+#[instrument(name = "flow::operator::ffi::apply", level = "debug", skip_all, fields(
 	operator_type = std::any::type_name::<O>(),
 	input_diffs,
 	output_diffs
@@ -111,7 +111,7 @@ pub extern "C" fn ffi_apply<O: FFIOperator>(
 	})
 }
 
-#[instrument(level = "debug", skip_all, fields(
+#[instrument(name = "flow::operator::ffi::get_rows", level = "debug", skip_all, fields(
 	operator_type = std::any::type_name::<O>(),
 	row_count = count,
 	rows_returned

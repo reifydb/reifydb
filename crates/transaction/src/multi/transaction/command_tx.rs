@@ -33,7 +33,7 @@ pub struct CommandTransaction {
 }
 
 impl CommandTransaction {
-	#[instrument(level = "debug", skip(engine))]
+	#[instrument(name = "transaction::command::new", level = "debug", skip(engine))]
 	pub fn new(engine: Transaction) -> crate::Result<Self> {
 		let tm = engine.tm.write()?;
 		Ok(Self {
@@ -44,7 +44,7 @@ impl CommandTransaction {
 }
 
 impl CommandTransaction {
-	#[instrument(level = "info", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
+	#[instrument(name = "transaction::command::commit", level = "info", skip(self), fields(pending_count = self.tm.pending_writes().len()))]
 	pub fn commit(&mut self) -> Result<CommitVersion, Error> {
 		let mut version: Option<CommitVersion> = None;
 		let mut deltas = CowVec::with_capacity(8);
@@ -94,12 +94,12 @@ impl CommandTransaction {
 		Ok(())
 	}
 
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "transaction::command::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> Result<(), Error> {
 		self.tm.rollback()
 	}
 
-	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::command::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn contains_key(&mut self, key: &EncodedKey) -> Result<bool, reifydb_type::Error> {
 		let version = self.tm.version();
 		match self.tm.contains_key(key)? {
@@ -109,7 +109,7 @@ impl CommandTransaction {
 		}
 	}
 
-	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::command::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn get(&mut self, key: &EncodedKey) -> Result<Option<TransactionValue>, Error> {
 		let version = self.tm.version();
 		match self.tm.get(key)? {
@@ -124,12 +124,12 @@ impl CommandTransaction {
 		}
 	}
 
-	#[instrument(level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.as_ref().len()))]
+	#[instrument(name = "transaction::command::set", level = "trace", skip(self, values), fields(key_hex = %hex::encode(key.as_ref()), value_len = values.as_ref().len()))]
 	pub fn set(&mut self, key: &EncodedKey, values: EncodedValues) -> Result<(), reifydb_type::Error> {
 		self.tm.set(key, values)
 	}
 
-	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::command::remove", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn remove(&mut self, key: &EncodedKey) -> Result<(), reifydb_type::Error> {
 		self.tm.remove(key)
 	}

@@ -29,7 +29,7 @@ impl<'a> Store<'a> {
 		}
 	}
 
-	#[instrument(level = "trace", skip(self), fields(
+	#[instrument(name = "flow::operator::store::get", level = "trace", skip(self), fields(
 		key_len = key.as_bytes().len(),
 		found
 	))]
@@ -39,14 +39,14 @@ impl<'a> Store<'a> {
 		Ok(result)
 	}
 
-	#[instrument(level = "trace", skip(self), fields(
+	#[instrument(name = "flow::operator::store::contains_key", level = "trace", skip(self), fields(
 		key_len = key.as_bytes().len()
 	))]
 	pub fn contains_key(&self, key: &EncodedKey) -> Result<bool> {
 		raw_store_contains_key(self.ctx, key)
 	}
 
-	#[instrument(level = "trace", skip(self), fields(
+	#[instrument(name = "flow::operator::store::prefix", level = "trace", skip(self), fields(
 		prefix_len = prefix.as_bytes().len(),
 		result_count
 	))]
@@ -56,7 +56,12 @@ impl<'a> Store<'a> {
 		Ok(results)
 	}
 
-	#[instrument(level = "trace", skip(self, start, end), fields(result_count))]
+	#[instrument(
+		name = "flow::operator::store::range",
+		level = "trace",
+		skip(self, start, end),
+		fields(result_count)
+	)]
 	pub fn range(
 		&self,
 		start: Bound<&EncodedKey>,
@@ -69,7 +74,7 @@ impl<'a> Store<'a> {
 }
 
 /// Get a value from store by key
-#[instrument(level = "trace", skip(ctx), fields(
+#[instrument(name = "flow::operator::store::raw::get", level = "trace", skip(ctx), fields(
 	key_len = key.as_bytes().len()
 ))]
 fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<EncodedValues>> {
@@ -104,7 +109,7 @@ fn raw_store_get(ctx: &OperatorContext, key: &EncodedKey) -> Result<Option<Encod
 }
 
 /// Check if a key exists in store
-#[instrument(level = "trace", skip(ctx), fields(
+#[instrument(name = "flow::operator::store::raw::contains_key", level = "trace", skip(ctx), fields(
 	key_len = key.as_bytes().len()
 ))]
 fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) -> Result<bool> {
@@ -128,7 +133,7 @@ fn raw_store_contains_key(ctx: &OperatorContext, key: &EncodedKey) -> Result<boo
 }
 
 /// Scan all keys with a given prefix
-#[instrument(level = "trace", skip(ctx), fields(
+#[instrument(name = "flow::operator::store::raw::prefix", level = "trace", skip(ctx), fields(
 	prefix_len = prefix.as_bytes().len()
 ))]
 fn raw_store_prefix(ctx: &OperatorContext, prefix: &EncodedKey) -> Result<Vec<(EncodedKey, EncodedValues)>> {
@@ -157,7 +162,7 @@ const BOUND_INCLUDED: u8 = 1;
 const BOUND_EXCLUDED: u8 = 2;
 
 /// Scan all keys within a range
-#[instrument(level = "trace", skip(ctx, start, end))]
+#[instrument(name = "flow::operator::store::raw::range", level = "trace", skip(ctx, start, end))]
 fn raw_store_range(
 	ctx: &OperatorContext,
 	start: Bound<&EncodedKey>,
@@ -202,7 +207,12 @@ fn raw_store_range(
 /// # Safety
 /// - iterator must be a valid pointer returned by a store prefix/range call
 /// - ctx must have valid callbacks
-#[instrument(level = "trace", skip(ctx, iterator), fields(result_count))]
+#[instrument(
+	name = "flow::operator::store::collect_iterator",
+	level = "trace",
+	skip(ctx, iterator),
+	fields(result_count)
+)]
 unsafe fn collect_iterator_results(
 	ctx: &OperatorContext,
 	iterator: *mut StoreIteratorFFI,

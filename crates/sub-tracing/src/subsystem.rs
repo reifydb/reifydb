@@ -33,7 +33,7 @@ impl TracingSubsystem {
 	///
 	/// Note: The tracing subscriber should already be initialized before
 	/// calling this. This is typically done in TracingBuilder::build().
-	#[instrument(level = "debug")]
+	#[instrument(name = "tracing::subsystem::new", level = "debug")]
 	pub fn new() -> Self {
 		Self {
 			running: AtomicBool::new(false),
@@ -52,7 +52,7 @@ impl Subsystem for TracingSubsystem {
 		"sub-tracing"
 	}
 
-	#[instrument(level = "info", skip(self))]
+	#[instrument(name = "tracing::subsystem::start", level = "info", skip(self))]
 	fn start(&mut self) -> Result<()> {
 		// Set running flag - tracing_subscriber is already initialized
 		// by the builder
@@ -63,7 +63,7 @@ impl Subsystem for TracingSubsystem {
 		Ok(())
 	}
 
-	#[instrument(level = "info", skip(self))]
+	#[instrument(name = "tracing::subsystem::shutdown", level = "info", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if self.running.compare_exchange(true, false, Ordering::AcqRel, Ordering::Acquire).is_err() {
 			// Already shutdown
@@ -78,12 +78,12 @@ impl Subsystem for TracingSubsystem {
 		Ok(())
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "tracing::subsystem::is_running", level = "trace", skip(self))]
 	fn is_running(&self) -> bool {
 		self.running.load(Ordering::Acquire)
 	}
 
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "tracing::subsystem::health_status", level = "debug", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if self.is_running() {
 			HealthStatus::Healthy

@@ -59,7 +59,7 @@ impl Clone for FlowEngine {
 }
 
 impl FlowEngine {
-	#[instrument(level = "info", skip(evaluator, executor, registry, event_bus), fields(operators_dir = ?operators_dir))]
+	#[instrument(name = "flow::engine::new", level = "info", skip(evaluator, executor, registry, event_bus), fields(operators_dir = ?operators_dir))]
 	pub fn new(
 		evaluator: StandardRowEvaluator,
 		executor: Executor,
@@ -91,7 +91,7 @@ impl FlowEngine {
 	}
 
 	/// Load FFI operators from a directory into the global loader
-	#[instrument(level = "debug", skip(event_bus), fields(dir = ?dir))]
+	#[instrument(name = "flow::engine::load_ffi_operators", level = "debug", skip(event_bus), fields(dir = ?dir))]
 	fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_core::Result<()> {
 		let loader = ffi_operator_loader();
 
@@ -151,7 +151,7 @@ impl FlowEngine {
 	}
 
 	/// Create an FFI operator instance from the global singleton loader
-	#[instrument(level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
+	#[instrument(name = "flow::engine::create_ffi_operator", level = "debug", skip(self, config), fields(operator = %operator, node_id = ?node_id))]
 	pub(crate) fn create_ffi_operator(
 		&self,
 		operator: &str,

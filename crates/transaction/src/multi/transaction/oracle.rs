@@ -157,7 +157,7 @@ where
 	}
 
 	/// Efficient conflict detection using time windows and key indexing
-	#[instrument(level = "debug", skip(self, done_read, conflicts), fields(%version))]
+	#[instrument(name = "transaction::oracle::new_commit", level = "debug", skip(self, done_read, conflicts), fields(%version))]
 	pub(super) fn new_commit(
 		&self,
 		done_read: &mut bool,

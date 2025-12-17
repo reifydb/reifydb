@@ -108,7 +108,7 @@ pub struct WorkerSubsystem {
 }
 
 impl WorkerSubsystem {
-	#[instrument(level = "debug", skip(engine))]
+	#[instrument(name = "worker::subsystem::new", level = "debug", skip(engine))]
 	pub fn new(config: WorkerConfig, engine: StandardEngine) -> Self {
 		let pending_requests = Arc::new(Mutex::new(VecDeque::new()));
 		let next_handle = Arc::new(AtomicU64::new(1));
@@ -145,13 +145,13 @@ impl WorkerSubsystem {
 	}
 
 	/// Get the scheduler client
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "worker::scheduler::get", level = "trace", skip(self))]
 	pub fn get_scheduler(&self) -> SchedulerService {
 		SchedulerService(self.scheduler_client.clone())
 	}
 
 	/// Submit a one-time task to the pool
-	#[instrument(level = "debug", skip(self, task))]
+	#[instrument(name = "worker::submit", level = "debug", skip(self, task))]
 	pub fn submit(&self, task: Box<dyn PoolTask>) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			panic!("Worker pool is not running");
@@ -194,7 +194,7 @@ impl WorkerSubsystem {
 	}
 
 	/// Cancel a scheduled task
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "worker::cancel", level = "debug", skip(self))]
 	pub fn cancel_task(&self, handle: TaskHandle) -> Result<()> {
 		let mut scheduler = self.scheduler.lock().unwrap();
 		scheduler.cancel(handle);
@@ -202,19 +202,19 @@ impl WorkerSubsystem {
 	}
 
 	/// Get current pool statistics
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "worker::stats", level = "trace", skip(self))]
 	pub fn stats(&self) -> &PoolStats {
 		&self.stats
 	}
 
 	/// Get number of active workers
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "worker::active_workers", level = "trace", skip(self))]
 	pub fn active_workers(&self) -> usize {
 		self.stats.active_workers.load(Ordering::Relaxed)
 	}
 
 	/// Get number of queued tasks
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "worker::queued_tasks", level = "trace", skip(self))]
 	pub fn queued_tasks(&self) -> usize {
 		self.task_queue.lock().unwrap().len()
 	}
@@ -581,7 +581,7 @@ impl Subsystem for WorkerSubsystem {
 		"sub-worker"
 	}
 
-	#[instrument(level = "info", skip(self))]
+	#[instrument(name = "worker::subsystem::start", level = "info", skip(self))]
 	fn start(&mut self) -> Result<()> {
 		if self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already running
@@ -640,7 +640,7 @@ impl Subsystem for WorkerSubsystem {
 		Ok(())
 	}
 
-	#[instrument(level = "info", skip(self))]
+	#[instrument(name = "worker::subsystem::shutdown", level = "info", skip(self))]
 	fn shutdown(&mut self) -> Result<()> {
 		if !self.running.load(Ordering::Relaxed) {
 			return Ok(()); // Already stopped
@@ -700,12 +700,12 @@ impl Subsystem for WorkerSubsystem {
 		Ok(())
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "worker::subsystem::is_running", level = "trace", skip(self))]
 	fn is_running(&self) -> bool {
 		self.running.load(Ordering::Relaxed)
 	}
 
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "worker::subsystem::health_status", level = "debug", skip(self))]
 	fn health_status(&self) -> HealthStatus {
 		if !self.is_running() {
 			return HealthStatus::Unknown;

@@ -40,17 +40,17 @@ impl ConflictManager {
 		}
 	}
 
-	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::conflict::mark_read", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn mark_read(&mut self, key: &EncodedKey) {
 		self.read_keys.insert(key.clone());
 	}
 
-	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
+	#[instrument(name = "transaction::conflict::mark_write", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
 	pub fn mark_write(&mut self, key: &EncodedKey) {
 		self.write_keys.insert(key.clone());
 	}
 
-	#[instrument(level = "trace", skip(self), fields(range_start = ?range.start_bound(), range_end = ?range.end_bound()))]
+	#[instrument(name = "transaction::conflict::mark_range", level = "trace", skip(self), fields(range_start = ?range.start_bound(), range_end = ?range.end_bound()))]
 	pub fn mark_range(&mut self, range: EncodedKeyRange) {
 		// Already tracking all - nothing more to do
 		if self.read_all {
@@ -216,7 +216,7 @@ impl ConflictManager {
 		self.mark_range(EncodedKeyRange::all());
 	}
 
-	#[instrument(level = "debug", skip(self, other), fields(
+	#[instrument(name = "transaction::conflict::has_conflict", level = "debug", skip(self, other), fields(
 		self_read_keys = self.read_keys.len(),
 		self_write_keys = self.write_keys.len(),
 		other_write_keys = other.write_keys.len()
@@ -325,7 +325,7 @@ impl ConflictManager {
 		false
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "transaction::conflict::rollback", level = "trace", skip(self))]
 	pub fn rollback(&mut self) {
 		self.read_keys.clear();
 		self.read_ranges.clear();

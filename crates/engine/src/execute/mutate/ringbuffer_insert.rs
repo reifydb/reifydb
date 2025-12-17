@@ -25,7 +25,7 @@ use crate::{
 };
 
 impl Executor {
-	#[instrument(name = "insert_ringbuffer", level = "trace", skip_all)]
+	#[instrument(name = "mutate::ringbuffer::insert", level = "trace", skip_all)]
 	pub(crate) fn insert_ringbuffer<'a>(
 		&self,
 		txn: &mut StandardCommandTransaction,

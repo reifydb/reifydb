@@ -55,7 +55,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogDictionaryCommandOperations for CT
 {
-	#[instrument(level = "debug", skip(self, to_create))]
+	#[instrument(name = "catalog::dictionary::create", level = "debug", skip(self, to_create))]
 	fn create_dictionary(&mut self, to_create: DictionaryToCreate) -> reifydb_core::Result<DictionaryDef> {
 		if let Some(dictionary) = self.find_dictionary_by_name(to_create.namespace, &to_create.dictionary)? {
 			let namespace = self.get_namespace(to_create.namespace)?;
@@ -70,7 +70,7 @@ impl<
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogDictionaryQueryOperations
 	for QT
 {
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self))]
 	fn find_dictionary(&mut self, id: DictionaryId) -> reifydb_core::Result<Option<DictionaryDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
@@ -98,7 +98,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::dictionary::find_by_name", level = "trace", skip(self, name))]
 	fn find_dictionary_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -139,7 +139,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::dictionary::get", level = "trace", skip(self))]
 	fn get_dictionary(&mut self, id: DictionaryId) -> reifydb_core::Result<DictionaryDef> {
 		self.find_dictionary(id)?.ok_or_else(|| {
 			error!(internal!(
@@ -149,7 +149,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		})
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::dictionary::get_by_name", level = "trace", skip(self, name))]
 	fn get_dictionary_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,

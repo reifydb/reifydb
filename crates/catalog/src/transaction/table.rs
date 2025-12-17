@@ -61,7 +61,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogTableCommandOperations for CT
 {
-	#[instrument(level = "debug", skip(self, to_create))]
+	#[instrument(name = "catalog::table::create", level = "debug", skip(self, to_create))]
 	fn create_table(&mut self, to_create: TableToCreate) -> reifydb_core::Result<TableDef> {
 		if let Some(table) = self.find_table_by_name(to_create.namespace, &to_create.table)? {
 			let namespace = self.get_namespace(to_create.namespace)?;
@@ -75,7 +75,7 @@ impl<
 }
 
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogTableQueryOperations for QT {
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::table::find", level = "trace", skip(self))]
 	fn find_table(&mut self, id: TableId) -> reifydb_core::Result<Option<TableDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
@@ -103,7 +103,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::table::find_by_name", level = "trace", skip(self, name))]
 	fn find_table_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -142,7 +142,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::table::get", level = "trace", skip(self))]
 	fn get_table(&mut self, id: TableId) -> reifydb_core::Result<TableDef> {
 		self.find_table(id)?.ok_or_else(|| {
 			error!(internal!(
@@ -152,7 +152,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		})
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::table::get_by_name", level = "trace", skip(self, name))]
 	fn get_table_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,

@@ -87,7 +87,7 @@ impl<'a> RingBufferScan<'a> {
 }
 
 impl<'a> QueryNode<'a> for RingBufferScan<'a> {
-	#[instrument(name = "RingBufferScan::initialize", level = "trace", skip_all)]
+	#[instrument(name = "query::scan::ringbuffer::initialize", level = "trace", skip_all)]
 	fn initialize(&mut self, txn: &mut StandardTransaction<'a>, _ctx: &ExecutionContext<'a>) -> crate::Result<()> {
 		if !self.initialized {
 			// Get ring buffer metadata from the appropriate transaction type
@@ -112,7 +112,7 @@ impl<'a> QueryNode<'a> for RingBufferScan<'a> {
 		Ok(())
 	}
 
-	#[instrument(name = "RingBufferScan::next", level = "trace", skip_all)]
+	#[instrument(name = "query::scan::ringbuffer::next", level = "trace", skip_all)]
 	fn next(
 		&mut self,
 		txn: &mut StandardTransaction<'a>,

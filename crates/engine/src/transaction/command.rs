@@ -66,7 +66,7 @@ enum TransactionState {
 
 impl StandardCommandTransaction {
 	/// Creates a new active command transaction with a pre-commit callback
-	#[instrument(level = "debug", skip_all)]
+	#[instrument(name = "engine::transaction::command::new", level = "debug", skip_all)]
 	pub fn new(
 		multi: TransactionMultiVersion,
 		single: TransactionSingleVersion,
@@ -92,7 +92,7 @@ impl StandardCommandTransaction {
 		})
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "engine::transaction::command::event_bus", level = "trace", skip(self))]
 	pub fn event_bus(&self) -> &EventBus {
 		&self.event_bus
 	}
@@ -114,7 +114,7 @@ impl StandardCommandTransaction {
 	/// Commit the transaction.
 	/// Since single transactions are short-lived and auto-commit,
 	/// this only commits the multi transaction.
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "engine::transaction::command::commit", level = "debug", skip(self))]
 	pub fn commit(&mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 
@@ -138,7 +138,7 @@ impl StandardCommandTransaction {
 	}
 
 	/// Rollback the transaction.
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "engine::transaction::command::rollback", level = "debug", skip(self))]
 	pub fn rollback(&mut self) -> crate::Result<()> {
 		self.check_active()?;
 		if let Some(multi) = self.cmd.take() {
@@ -151,7 +151,7 @@ impl StandardCommandTransaction {
 	}
 
 	/// Get access to the CDC transaction interface
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "engine::transaction::command::cdc", level = "trace", skip(self))]
 	pub fn cdc(&self) -> &TransactionCdc {
 		&self.cdc
 	}
@@ -160,13 +160,13 @@ impl StandardCommandTransaction {
 	///
 	/// This allows checking for key conflicts when committing FlowTransactions
 	/// to ensure they operate on non-overlapping keyspaces.
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "engine::transaction::command::pending_writes", level = "trace", skip(self))]
 	pub fn pending_writes(&self) -> &PendingWrites {
 		self.cmd.as_ref().unwrap().pending_writes()
 	}
 
 	/// Execute a function with query access to the single transaction.
-	#[instrument(level = "trace", skip(self, keys, f))]
+	#[instrument(name = "engine::transaction::command::with_single_query", level = "trace", skip(self, keys, f))]
 	pub fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -177,7 +177,7 @@ impl StandardCommandTransaction {
 	}
 
 	/// Execute a function with query access to the single transaction.
-	#[instrument(level = "trace", skip(self, keys, f))]
+	#[instrument(name = "engine::transaction::command::with_single_command", level = "trace", skip(self, keys, f))]
 	pub fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
@@ -190,7 +190,7 @@ impl StandardCommandTransaction {
 	/// Execute a function with a query transaction view.
 	/// This creates a new query transaction using the stored multi-version storage.
 	/// The query transaction will operate independently but share the same single/CDC storage.
-	#[instrument(level = "trace", skip(self, f))]
+	#[instrument(name = "engine::transaction::command::with_multi_query", level = "trace", skip(self, f))]
 	pub fn with_multi_query<F, R>(&self, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> crate::Result<R>,
@@ -207,7 +207,11 @@ impl StandardCommandTransaction {
 		f(&mut query_txn)
 	}
 
-	#[instrument(level = "trace", skip(self, f))]
+	#[instrument(
+		name = "engine::transaction::command::with_multi_query_as_of_exclusive",
+		level = "trace",
+		skip(self, f)
+	)]
 	pub fn with_multi_query_as_of_exclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> crate::Result<R>,
@@ -226,7 +230,11 @@ impl StandardCommandTransaction {
 		f(&mut query_txn)
 	}
 
-	#[instrument(level = "trace", skip(self, f))]
+	#[instrument(
+		name = "engine::transaction::command::with_multi_query_as_of_inclusive",
+		level = "trace",
+		skip(self, f)
+	)]
 	pub fn with_multi_query_as_of_inclusive<F, R>(&self, version: CommitVersion, f: F) -> crate::Result<R>
 	where
 		F: FnOnce(&mut StandardQueryTransaction) -> crate::Result<R>,

@@ -74,7 +74,7 @@ pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, conn: Connectio
 }
 
 /// Create a table if it doesn't exist.
-#[instrument(level = "trace", skip(conn), fields(table = %table_name))]
+#[instrument(name = "store::sqlite::ensure_table", level = "trace", skip(conn), fields(table = %table_name))]
 pub(super) fn create_table_if_not_exists(conn: &Connection, table_name: &str) -> Result<()> {
 	conn.execute(
 		&format!(
@@ -91,7 +91,7 @@ pub(super) fn create_table_if_not_exists(conn: &Connection, table_name: &str) ->
 }
 
 /// Execute a batch of put operations in a transaction.
-#[instrument(level = "debug", skip(conn, entries), fields(table = %table_name, entry_count = entries.len()))]
+#[instrument(name = "store::sqlite::put_batch", level = "debug", skip(conn, entries), fields(table = %table_name, entry_count = entries.len()))]
 fn execute_put_batch(conn: &Connection, table_name: &str, entries: &[(Vec<u8>, Option<Vec<u8>>)]) -> Result<()> {
 	// Ensure table exists before writing
 	create_table_if_not_exists(conn, table_name)?;

@@ -61,7 +61,7 @@ impl<
 		+ TransactionalChanges,
 > CatalogViewCommandOperations for CT
 {
-	#[instrument(level = "debug", skip(self, to_create))]
+	#[instrument(name = "catalog::view::create", level = "debug", skip(self, to_create))]
 	fn create_view(&mut self, to_create: ViewToCreate) -> reifydb_core::Result<ViewDef> {
 		if let Some(view) = self.find_view_by_name(to_create.namespace, &to_create.name)? {
 			let namespace = self.get_namespace(to_create.namespace)?;
@@ -75,7 +75,7 @@ impl<
 }
 
 impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogViewQueryOperations for QT {
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::view::find", level = "trace", skip(self))]
 	fn find_view(&mut self, id: ViewId) -> reifydb_core::Result<Option<ViewDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
@@ -103,7 +103,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::view::find_by_name", level = "trace", skip(self, name))]
 	fn find_view_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
@@ -141,7 +141,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		Ok(None)
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "catalog::view::get", level = "trace", skip(self))]
 	fn get_view(&mut self, id: ViewId) -> reifydb_core::Result<ViewDef> {
 		self.find_view(id)?.ok_or_else(|| {
 			error!(internal!(
@@ -151,7 +151,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		})
 	}
 
-	#[instrument(level = "trace", skip(self, name))]
+	#[instrument(name = "catalog::view::get_by_name", level = "trace", skip(self, name))]
 	fn get_view_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,

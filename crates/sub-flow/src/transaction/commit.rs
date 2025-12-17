@@ -23,7 +23,7 @@ impl FlowTransaction {
 	/// Returns an error if any key in this FlowTransaction overlaps with keys already
 	/// written by another FlowTransaction to the same parent. FlowTransactions must
 	/// operate on non-overlapping keyspaces.
-	#[instrument(level = "debug", skip(self, parent), fields(
+	#[instrument(name = "flow::transaction::commit", level = "debug", skip(self, parent), fields(
 		pending_count = self.pending.len(),
 		writes,
 		removes

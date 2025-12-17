@@ -66,7 +66,7 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "transaction::manager::write", level = "debug", skip(self))]
 	pub fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
 		Ok(TransactionManagerCommand {
 			id: TransactionId::generate(),
@@ -88,7 +88,7 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(level = "debug", skip(clock))]
+	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock))]
 	pub fn new(clock: L) -> crate::Result<Self> {
 		let version = clock.next()?;
 		Ok(Self {
@@ -101,7 +101,7 @@ where
 		})
 	}
 
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.inner.version()
 	}
@@ -111,12 +111,12 @@ impl<L> TransactionManager<L>
 where
 	L: VersionProvider,
 {
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "transaction::manager::discard_hint", level = "trace", skip(self))]
 	pub fn discard_hint(&self) -> CommitVersion {
 		self.inner.discard_at_or_below()
 	}
 
-	#[instrument(level = "debug", skip(self), fields(as_of_version = ?version))]
+	#[instrument(name = "transaction::manager::query", level = "debug", skip(self), fields(as_of_version = ?version))]
 	pub fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
 		Ok(if let Some(version) = version {
 			TransactionManagerQuery::new_time_travel(TransactionId::generate(), self.clone(), version)
@@ -135,7 +135,7 @@ where
 	///
 	/// This is useful for CDC polling to ensure all in-flight commits have
 	/// completed their storage writes before querying for CDC events.
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "transaction::manager::wait_for_watermark", level = "debug", skip(self))]
 	pub fn try_wait_for_watermark(
 		&self,
 		version: CommitVersion,
@@ -154,7 +154,7 @@ where
 	/// Returns the highest version where ALL prior versions have completed.
 	/// This is useful for CDC polling to know the safe upper bound for fetching
 	/// CDC events - all events up to this version are guaranteed to be in storage.
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "transaction::manager::done_until", level = "trace", skip(self))]
 	pub fn done_until(&self) -> CommitVersion {
 		self.inner.command.done_until()
 	}
@@ -220,26 +220,26 @@ impl Transaction {
 }
 
 impl Transaction {
-	#[instrument(level = "debug", skip(store, single, event_bus))]
+	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus))]
 	pub fn new(store: TransactionStore, single: TransactionSingleVersion, event_bus: EventBus) -> Self {
 		Self(Arc::new(Inner::new(store, single, event_bus)))
 	}
 }
 
 impl Transaction {
-	#[instrument(level = "trace", skip(self))]
+	#[instrument(name = "transaction::version", level = "trace", skip(self))]
 	pub fn version(&self) -> crate::Result<CommitVersion> {
 		self.0.version()
 	}
 
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "transaction::begin_query", level = "debug", skip(self))]
 	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
 		QueryTransaction::new(self.clone(), None)
 	}
 }
 
 impl Transaction {
-	#[instrument(level = "debug", skip(self))]
+	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
 	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
 		CommandTransaction::new(self.clone())
 	}
@@ -251,17 +251,17 @@ pub enum TransactionType {
 }
 
 impl Transaction {
-	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
+	#[instrument(name = "transaction::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
 	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
 		Ok(self.store.get(key, version)?.map(|sv| sv.into()))
 	}
 
-	#[instrument(level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
+	#[instrument(name = "transaction::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
 	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
 		self.store.contains(key, version)
 	}
 
-	#[instrument(level = "trace", skip(self), fields(version = version.0, batch_size = batch_size))]
+	#[instrument(name = "transaction::range_batched", level = "trace", skip(self), fields(version = version.0, batch_size = batch_size))]
 	pub fn range_batched(
 		&self,
 		range: EncodedKeyRange,
