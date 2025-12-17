@@ -4,6 +4,7 @@
 use std::collections::VecDeque;
 
 use reifydb_engine::StandardCommandTransaction;
+use tracing::trace_span;
 
 use super::{UnitOfWork, UnitsOfWork, WorkerPool};
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -37,7 +38,17 @@ impl WorkerPool for SameThreadedWorker {
 		let first_unit = queue.front().unwrap();
 		let mut flow_txn = FlowTransaction::new(txn, first_unit.version);
 
+		let _loop_span = trace_span!("flow::process_all_units", unit_count = queue.len()).entered();
+
 		while let Some(unit_of_work) = queue.pop_front() {
+			let _unit_span = trace_span!(
+				"flow::process_unit",
+				flow_id = ?unit_of_work.flow_id,
+				version = unit_of_work.version.0,
+				change_count = unit_of_work.source_changes.len()
+			)
+			.entered();
+
 			if flow_txn.version() != unit_of_work.version {
 				flow_txn.update_version(unit_of_work.version);
 			}
@@ -48,6 +59,7 @@ impl WorkerPool for SameThreadedWorker {
 			}
 		}
 
+		drop(_loop_span);
 		flow_txn.commit(txn)?;
 
 		Ok(())

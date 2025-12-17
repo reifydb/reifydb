@@ -18,7 +18,7 @@ use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_rql::flow::{Flow, load_flow};
 use reifydb_sub_api::SchedulerService;
 use reifydb_type::{DictionaryEntryId, RowNumber, Value, internal};
-use tracing::{instrument, trace};
+use tracing::{instrument, trace, trace_span};
 
 use crate::{
 	builder::OperatorFactory,
@@ -402,7 +402,8 @@ impl CdcConsume for FlowConsumer {
 		}
 
 		// Partition all changes across all versions into units of work
-		let units = self.flow_engine.create_partition(diffs_by_version);
+		let units = trace_span!("flow::partition", version_count = diffs_by_version.len())
+			.in_scope(|| self.flow_engine.create_partition(diffs_by_version));
 		if units.is_empty() {
 			return Ok(());
 		}
@@ -415,6 +416,12 @@ impl CdcConsume for FlowConsumer {
 			Box::new(SameThreadedWorker::new())
 		};
 		// let worker = Box::new(SameThreadedWorker::new());
-		worker.process(txn, units, &self.flow_engine)
+		trace_span!(
+			"flow::worker_process",
+			worker = worker.name(),
+			flow_count = units.flow_count(),
+			total_units = units.total_units()
+		)
+		.in_scope(|| worker.process(txn, units, &self.flow_engine))
 	}
 }

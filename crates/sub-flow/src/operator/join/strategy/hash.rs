@@ -3,6 +3,7 @@ use std::sync::Arc;
 use reifydb_core::{CommitVersion, Row};
 use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
+use tracing::trace_span;
 
 use crate::{
 	operator::{
@@ -329,16 +330,27 @@ pub(crate) fn emit_joined_rows_batch(
 		return Ok(Vec::new());
 	}
 
+	let _get_span = trace_span!("join::get_opposite_rows").entered();
 	let opposite_rows = get_rows_from_store(txn, opposite_store, key_hash, opposite_parent)?;
+	drop(_get_span);
+
 	if opposite_rows.is_empty() {
 		return Ok(Vec::new());
 	}
 
 	// join_rows_batch_full always takes (left_rows, right_rows) in that order
+	let _join_span = trace_span!(
+		"join::join_rows_batch_full",
+		primary_count = primary_rows.len(),
+		opposite_count = opposite_rows.len(),
+		result_count = primary_rows.len() * opposite_rows.len()
+	)
+	.entered();
 	let joined_rows = match primary_side {
 		JoinSide::Left => operator.join_rows_batch_full(txn, primary_rows, &opposite_rows)?,
 		JoinSide::Right => operator.join_rows_batch_full(txn, &opposite_rows, primary_rows)?,
 	};
+	drop(_join_span);
 
 	Ok(joined_rows
 		.into_iter()

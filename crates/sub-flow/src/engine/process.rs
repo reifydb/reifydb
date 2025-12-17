@@ -4,7 +4,7 @@
 use reifydb_core::interface::FlowId;
 use reifydb_flow_operator_sdk::{FlowChange, FlowChangeOrigin};
 use reifydb_rql::flow::{Flow, FlowNode, FlowNodeType::SourceInlineData};
-use tracing::instrument;
+use tracing::{instrument, trace_span};
 
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
 
@@ -68,7 +68,8 @@ impl FlowEngine {
 	#[instrument(level = "trace", skip(self, txn), fields(node_id = ?node.id, input_diffs = change.diffs.len(), output_diffs))]
 	fn apply(&self, txn: &mut FlowTransaction, node: &FlowNode, change: FlowChange) -> crate::Result<FlowChange> {
 		let operator = self.inner.operators.read().get(&node.id).unwrap().clone();
-		let result = operator.apply(txn, change, &self.inner.evaluator)?;
+		let result = trace_span!("flow::operator_apply", node_id = ?node.id, operator_type = ?node.ty)
+			.in_scope(|| operator.apply(txn, change, &self.inner.evaluator))?;
 		tracing::Span::current().record("output_diffs", result.diffs.len());
 		Ok(result)
 	}

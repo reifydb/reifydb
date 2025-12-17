@@ -5,7 +5,7 @@ use crossbeam_channel::bounded;
 use reifydb_core::interface::FlowId;
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{SchedulerService, TaskContext, task_once};
-use tracing::trace;
+use tracing::{Span, trace, trace_span};
 
 use super::{UnitOfWork, UnitsOfWork, WorkerPool};
 use crate::{engine::FlowEngine, transaction::FlowTransaction};
@@ -81,18 +81,35 @@ impl WorkerPool for ParallelWorkerPool {
 
 		let (result_tx, result_rx) = bounded(txns.len());
 
+		let _submit_span = trace_span!("flow::submit_tasks", task_count = txns.len()).entered();
+
 		for (seq, (flow_units, mut flow_txn)) in txns.into_iter().enumerate() {
 			let result_tx = result_tx.clone();
 			let engine = engine.clone();
 			let flow_id = flow_units[0].flow_id;
 			let versions: Vec<_> = flow_units.iter().map(|u| u.version.0).collect();
+			let unit_count = flow_units.len();
+			let change_count: usize = flow_units.iter().map(|u| u.source_changes.len()).sum();
 
 			trace!("[PARALLEL] SUBMIT seq={} flow={:?} versions={:?}", seq, flow_id, versions);
+
+			// Capture parent span for context propagation to worker thread
+			let parent_span = Span::current();
 
 			let task = task_once!(
 				"flow-processing",
 				High,
 				move |_ctx: &TaskContext| -> reifydb_core::Result<()> {
+					// Create child span linked to parent for distributed tracing
+					let _guard = trace_span!(
+						parent: parent_span,
+						"flow::worker_task",
+						flow_id = ?flow_id,
+						unit_count = unit_count,
+						change_count = change_count
+					)
+					.entered();
+
 					process(&mut flow_txn, flow_units, &engine)?;
 					let _ = result_tx.send(Ok((flow_id, flow_txn)));
 					Ok(())
@@ -104,6 +121,9 @@ impl WorkerPool for ParallelWorkerPool {
 
 		// Drop our copy of sender so channel closes when all tasks complete
 		drop(result_tx);
+		drop(_submit_span);
+
+		let _await_span = trace_span!("flow::await_results").entered();
 
 		let mut completed: Vec<(FlowId, FlowTransaction)> = Vec::new();
 		let mut recv_seq = 0;
@@ -117,6 +137,8 @@ impl WorkerPool for ParallelWorkerPool {
 				Err(e) => return e,
 			}
 		}
+
+		drop(_await_span);
 
 		// Sort by flow_id for deterministic commit order regardless of task completion order
 		completed.sort_by_key(|(flow_id, _)| *flow_id);
@@ -139,6 +161,14 @@ impl WorkerPool for ParallelWorkerPool {
 fn process(flow_txn: &mut FlowTransaction, flow_units: Vec<UnitOfWork>, engine: &FlowEngine) -> crate::Result<()> {
 	// Process all units for this flow sequentially
 	for unit in flow_units {
+		let _unit_span = trace_span!(
+			"flow::process_unit",
+			flow_id = ?unit.flow_id,
+			version = unit.version.0,
+			change_count = unit.source_changes.len()
+		)
+		.entered();
+
 		// Update version if needed
 		if flow_txn.version() != unit.version {
 			flow_txn.update_version(unit.version);

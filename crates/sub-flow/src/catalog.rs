@@ -205,13 +205,17 @@ impl Default for FlowCatalog {
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_catalog::test_utils::{
-		create_view, ensure_test_namespace, ensure_test_ringbuffer, ensure_test_table,
+	use reifydb_catalog::{
+		store::table::TableColumnToCreate,
+		test_utils::{
+			create_table, create_view, ensure_test_namespace, ensure_test_ringbuffer, ensure_test_table,
+		},
 	};
 	use reifydb_core::{
 		interface::ColumnId,
 		key::{ColumnKey, DictionaryKey, EncodableKey, RingBufferKey, TableKey, ViewKey},
 	};
+	use reifydb_type::{Type, TypeConstraint};
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;
@@ -294,20 +298,67 @@ mod tests {
 	#[test]
 	fn test_invalidate_from_cdc_table_key() {
 		let mut txn = create_test_transaction();
-		let table = ensure_test_table(&mut txn);
+		ensure_test_namespace(&mut txn);
+
+		// Create a table with realistic columns
+		let table = create_table(
+			&mut txn,
+			"test_namespace",
+			"cdc_test_table",
+			&[
+				TableColumnToCreate {
+					name: "id".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::Int8),
+					policies: vec![],
+					auto_increment: false,
+					fragment: None,
+					dictionary_id: None,
+				},
+				TableColumnToCreate {
+					name: "name".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::Utf8),
+					policies: vec![],
+					auto_increment: false,
+					fragment: None,
+					dictionary_id: None,
+				},
+				TableColumnToCreate {
+					name: "active".to_string(),
+					constraint: TypeConstraint::unconstrained(Type::Boolean),
+					policies: vec![],
+					auto_increment: false,
+					fragment: None,
+					dictionary_id: None,
+				},
+			],
+		);
 
 		let catalog = FlowCatalog::new();
 		let source = SourceId::Table(table.id);
 
 		// Load into cache
-		let _ = catalog.get_or_load(&mut txn, source).unwrap();
-		assert!(!catalog.sources.read().is_empty());
+		let metadata = catalog.get_or_load(&mut txn, source).unwrap();
+
+		// Verify cached metadata matches expected column types
+		assert_eq!(metadata.storage_types.len(), 3);
+		assert_eq!(metadata.storage_types[0], Type::Int8);
+		assert_eq!(metadata.storage_types[1], Type::Utf8);
+		assert_eq!(metadata.storage_types[2], Type::Boolean);
+
+		assert_eq!(metadata.value_types.len(), 3);
+		assert_eq!(metadata.value_types[0], ("id".to_string(), Type::Int8));
+		assert_eq!(metadata.value_types[1], ("name".to_string(), Type::Utf8));
+		assert_eq!(metadata.value_types[2], ("active".to_string(), Type::Boolean));
+
+		assert_eq!(metadata.dictionaries.len(), 3);
+		assert!(metadata.dictionaries.iter().all(|d| d.is_none()));
+		assert!(!metadata.has_dictionary_columns);
+
+		// Verify source is in cache
+		assert!(catalog.sources.read().get(&source).is_some());
 
 		// Invalidate via CDC key
-		let key = TableKey {
-			table: table.id,
-		}
-		.encode();
+		let key = TableKey::encoded(table.id);
 		catalog.invalidate_from_cdc(&key);
 
 		// Cache should be empty for this source

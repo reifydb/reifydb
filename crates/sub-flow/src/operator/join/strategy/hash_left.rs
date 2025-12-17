@@ -1,7 +1,7 @@
 use reifydb_core::{CommitVersion, Row};
 use reifydb_flow_operator_sdk::FlowDiff;
 use reifydb_hash::Hash128;
-use tracing::trace;
+use tracing::{trace, trace_span};
 
 use super::hash::{
 	add_to_state_entry, emit_joined_rows_batch_left, emit_joined_rows_batch_right, emit_joined_rows_left_to_right,
@@ -26,16 +26,10 @@ impl LeftHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
-		trace!(
-			"[LEFT_JOIN] handle_insert: side={:?}, key_hash={:?}, post_row={}",
-			side, key_hash, post.number.0
-		);
-
 		let mut result = Vec::new();
 
 		match side {
 			JoinSide::Left => {
-				trace!("[LEFT_JOIN] handle_insert: processing Left side");
 				if let Some(key_hash) = key_hash {
 					// Add to left entries
 					add_to_state_entry(txn, &mut state.left, &key_hash, post)?;
@@ -50,32 +44,17 @@ impl LeftHashJoin {
 						&operator.right_parent,
 					)?;
 
-					trace!(
-						"[LEFT_JOIN] handle_insert: Left joined_rows count={}",
-						joined_rows.len()
-					);
-
 					if !joined_rows.is_empty() {
 						result.extend(joined_rows);
 					} else {
 						// Left join: emit left encoded even without match
-						trace!(
-							"[LEFT_JOIN] handle_insert: Left no matches, emitting unmatched_left_row"
-						);
 						let unmatched_row = operator.unmatched_left_row(txn, post)?;
-						trace!(
-							"[LEFT_JOIN] handle_insert: unmatched_row layout={:?}",
-							unmatched_row.layout.names()
-						);
 						result.push(FlowDiff::Insert {
 							post: unmatched_row,
 						});
 					}
 				} else {
 					// Undefined key in left join still emits the encoded
-					trace!(
-						"[LEFT_JOIN] handle_insert: Left undefined key, emitting unmatched_left_row"
-					);
 					let unmatched_row = operator.unmatched_left_row(txn, post)?;
 					result.push(FlowDiff::Insert {
 						post: unmatched_row,
@@ -83,26 +62,16 @@ impl LeftHashJoin {
 				}
 			}
 			JoinSide::Right => {
-				trace!("[LEFT_JOIN] handle_insert: processing Right side");
 				if let Some(key_hash) = key_hash {
 					let is_first = is_first_right_row(txn, &state.right, &key_hash)?;
-					trace!("[LEFT_JOIN] handle_insert: Right is_first={}", is_first);
 
 					// Add to right entries
 					add_to_state_entry(txn, &mut state.right, &key_hash, post)?;
 
 					// Join with matching left rows
 					if let Some(left_entry) = state.left.get(txn, &key_hash)? {
-						trace!(
-							"[LEFT_JOIN] handle_insert: Right found {} left rows to join",
-							left_entry.rows.len()
-						);
-
 						// If first right encoded, remove previously emitted unmatched left rows
 						if is_first {
-							trace!(
-								"[LEFT_JOIN] handle_insert: Right first match, removing unmatched lefts"
-							);
 							let left_rows =
 								operator.left_parent.get_rows(txn, &left_entry.rows)?;
 
@@ -110,10 +79,6 @@ impl LeftHashJoin {
 								if let Some(left_row) = left_row_opt {
 									let unmatched_row = operator
 										.unmatched_left_row(txn, &left_row)?;
-									trace!(
-										"[LEFT_JOIN] handle_insert: Removing unmatched left row={}",
-										unmatched_row.number.0
-									);
 									result.push(FlowDiff::Remove {
 										pre: unmatched_row,
 									});
@@ -130,20 +95,13 @@ impl LeftHashJoin {
 							operator,
 							&operator.left_parent,
 						)?;
-						trace!(
-							"[LEFT_JOIN] handle_insert: Right emitting {} joined rows",
-							joined_rows.len()
-						);
 						result.extend(joined_rows);
-					} else {
-						trace!("[LEFT_JOIN] handle_insert: Right no matching left entries");
 					}
 				}
 				// Right side inserts with undefined keys don't produce output
 			}
 		}
 
-		trace!("[LEFT_JOIN] handle_insert: returning {} diffs", result.len());
 		Ok(result)
 	}
 
@@ -372,6 +330,8 @@ impl LeftHashJoin {
 		state: &mut JoinState,
 		operator: &JoinOperator,
 	) -> crate::Result<Vec<FlowDiff>> {
+		let _span = trace_span!("join::handle_insert_batch", side = ?side, row_count = rows.len()).entered();
+
 		if rows.is_empty() {
 			return Ok(Vec::new());
 		}
@@ -381,11 +341,14 @@ impl LeftHashJoin {
 		match side {
 			JoinSide::Left => {
 				// Add all rows to state first
+				let _add_span = trace_span!("join::add_to_state", count = rows.len()).entered();
 				for row in rows {
 					add_to_state_entry(txn, &mut state.left, key_hash, row)?;
 				}
+				drop(_add_span);
 
 				// Check if there are matching right rows
+				let _emit_span = trace_span!("join::emit_joined_batch").entered();
 				let joined_rows = emit_joined_rows_batch_left(
 					txn,
 					rows,
@@ -394,31 +357,44 @@ impl LeftHashJoin {
 					operator,
 					&operator.right_parent,
 				)?;
+				drop(_emit_span);
 
 				if !joined_rows.is_empty() {
 					result.extend(joined_rows);
 				} else {
 					// No matches - emit unmatched left rows for all
+					let _unmatched_span =
+						trace_span!("join::emit_unmatched_left", count = rows.len()).entered();
 					for row in rows {
 						let unmatched_row = operator.unmatched_left_row(txn, row)?;
 						result.push(FlowDiff::Insert {
 							post: unmatched_row,
 						});
 					}
+					drop(_unmatched_span);
 				}
 			}
 			JoinSide::Right => {
 				let is_first = is_first_right_row(txn, &state.right, key_hash)?;
 
 				// Add all rows to state first
+				let _add_span = trace_span!("join::add_to_state_right", count = rows.len()).entered();
 				for row in rows {
 					add_to_state_entry(txn, &mut state.right, key_hash, row)?;
 				}
+				drop(_add_span);
 
 				// If first right row(s), remove previously emitted unmatched left rows
 				if is_first {
+					let _first_span = trace_span!("join::first_right_remove_unmatched").entered();
 					if let Some(left_entry) = state.left.get(txn, key_hash)? {
+						let _get_rows_span = trace_span!(
+							"join::get_left_parent_rows",
+							count = left_entry.rows.len()
+						)
+						.entered();
 						let left_rows = operator.left_parent.get_rows(txn, &left_entry.rows)?;
+						drop(_get_rows_span);
 						for left_row_opt in left_rows {
 							if let Some(left_row) = left_row_opt {
 								let unmatched_row =
@@ -429,9 +405,11 @@ impl LeftHashJoin {
 							}
 						}
 					}
+					drop(_first_span);
 				}
 
 				// Emit all joined rows in one batch
+				let _emit_span = trace_span!("join::emit_joined_batch_right").entered();
 				let joined_rows = emit_joined_rows_batch_right(
 					txn,
 					rows,
@@ -440,6 +418,7 @@ impl LeftHashJoin {
 					operator,
 					&operator.left_parent,
 				)?;
+				drop(_emit_span);
 				result.extend(joined_rows);
 			}
 		}
