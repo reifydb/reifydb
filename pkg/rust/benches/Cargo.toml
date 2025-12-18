@@ -1,0 +1,26 @@
+[package]
+name = "reifydb-benches"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+publish = false
+
+[dependencies]
+reifydb-store-transaction = { workspace = true }
+reifydb-engine = { workspace = true }
+reifydb-transaction = { workspace = true }
+reifydb-catalog = { workspace = true }
+reifydb-core = { workspace = true }
+reifydb-testing = { workspace = true }
+criterion = { workspace = true }
+rand = { workspace = true }
+
+[[bench]]
+name = "store"
+harness = false
+
+[[bench]]
+name = "transaction"
+harness = false

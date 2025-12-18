@@ -44,6 +44,7 @@ members = [
     "pkg/rust/examples",
     "pkg/rust/tests/limit",
     "pkg/rust/tests/regression",
+    "pkg/rust/benches",
 ]
 
 default-members = [
@@ -211,6 +212,9 @@ bincode = { version = "2.0.1", features = ["serde"] }
 
 # testing
 test_each_file = { version = "0.3.5" }
+
+# benchmarking
+criterion = { version = "0.8.1", features = ["html_reports"] }
 
 # proc-macro
 proc-macro2 = { version = "1.0" }
