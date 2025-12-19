@@ -1,15 +1,15 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::sync::Arc;
+use std::{collections::HashMap, sync::Arc};
 
 use reifydb_catalog::{CatalogStore, system::SystemCatalog};
 use reifydb_core::{
 	Result,
-	interface::{SourceId, TableVirtualDef},
+	interface::{FlowId, TableVirtualDef},
 	value::column::{Column, ColumnData, Columns},
 };
-use reifydb_transaction::{ObjectId, StorageTracker, Tier};
+use reifydb_transaction::{ObjectId, StorageStats, StorageTracker, Tier};
 use reifydb_type::Fragment;
 
 use crate::{
@@ -54,40 +54,49 @@ impl<'a> TableVirtual<'a> for FlowStorageStats {
 			return Ok(None);
 		}
 
-		// Collect all flow stats across all tiers
-		#[allow(clippy::type_complexity)]
-		let mut rows: Vec<(u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64)> = Vec::new();
+		// Aggregate node stats by (flow_id, tier)
+		let mut aggregated: HashMap<(FlowId, Tier), StorageStats> = HashMap::new();
 
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
 			for (obj_id, stats) in self.stats_tracker.objects_by_tier(tier) {
-				// Filter for flow sources only
-				if let ObjectId::Source(SourceId::Flow(flow_id)) = obj_id {
-					// Look up namespace_id from catalog
-					let namespace_id = match CatalogStore::find_flow(txn, flow_id)? {
-						Some(flow_def) => flow_def.namespace.0,
-						None => 0,
-					};
-
-					rows.push((
-						flow_id.0,
-						namespace_id,
-						tier,
-						stats.current_key_bytes,
-						stats.current_value_bytes,
-						stats.current_bytes(),
-						stats.current_count,
-						stats.historical_key_bytes,
-						stats.historical_value_bytes,
-						stats.historical_bytes(),
-						stats.historical_count,
-						stats.total_bytes(),
-						stats.cdc_key_bytes,
-						stats.cdc_value_bytes,
-						stats.cdc_total_bytes(),
-						stats.cdc_count,
-					));
+				if let ObjectId::FlowNode(flow_node_id) = obj_id {
+					if let Some(node_def) = CatalogStore::find_flow_node(txn, flow_node_id)? {
+						let key = (node_def.flow, tier);
+						*aggregated.entry(key).or_default() += stats;
+					}
 				}
 			}
+		}
+
+		// Convert aggregated stats to rows
+		let mut rows: Vec<(u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64)> =
+			Vec::new();
+
+		for ((flow_id, tier), stats) in aggregated {
+			// Look up namespace_id from catalog
+			let namespace_id = match CatalogStore::find_flow(txn, flow_id)? {
+				Some(flow_def) => flow_def.namespace.0,
+				None => 0,
+			};
+
+			rows.push((
+				flow_id.0,
+				namespace_id,
+				tier,
+				stats.current_key_bytes,
+				stats.current_value_bytes,
+				stats.current_bytes(),
+				stats.current_count,
+				stats.historical_key_bytes,
+				stats.historical_value_bytes,
+				stats.historical_bytes(),
+				stats.historical_count,
+				stats.total_bytes(),
+				stats.cdc_key_bytes,
+				stats.cdc_value_bytes,
+				stats.cdc_total_bytes(),
+				stats.cdc_count,
+			));
 		}
 
 		let capacity = rows.len();
