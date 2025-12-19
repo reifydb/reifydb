@@ -295,4 +295,9 @@ impl Transaction {
 	) -> reifydb_type::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
 		self.range_rev_batched(range, version, 1024)
 	}
+
+	/// Get a reference to the underlying transaction store.
+	pub fn store(&self) -> &TransactionStore {
+		&self.store
+	}
 }

@@ -12,6 +12,22 @@ pub struct TransactionStoreConfig {
 	pub cold: Option<BackendConfig>,
 	pub retention: RetentionConfig,
 	pub merge_config: MergeConfig,
+	pub stats: StorageStatsConfig,
+}
+
+/// Configuration for storage statistics tracking.
+#[derive(Clone, Debug)]
+pub struct StorageStatsConfig {
+	/// Time between checkpoint persists.
+	pub checkpoint_interval: Duration,
+}
+
+impl Default for StorageStatsConfig {
+	fn default() -> Self {
+		Self {
+			checkpoint_interval: Duration::from_secs(10),
+		}
+	}
 }
 
 #[derive(Clone)]
@@ -49,6 +65,7 @@ impl Default for TransactionStoreConfig {
 				merge_batch_size: 10_000,
 				enable_auto_eviction: true,
 			},
+			stats: StorageStatsConfig::default(),
 		}
 	}
 }

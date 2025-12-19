@@ -54,6 +54,7 @@ impl Runner {
 				cold: None,
 				retention: Default::default(),
 				merge_config: Default::default(),
+				stats: Default::default(),
 			})
 			.unwrap(),
 		}

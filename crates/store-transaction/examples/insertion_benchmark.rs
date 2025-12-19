@@ -46,6 +46,7 @@ fn run_benchmark(value_size: usize, batch_size: usize, total_rows: usize, warmup
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
+		stats: Default::default(),
 	})
 	.unwrap();
 

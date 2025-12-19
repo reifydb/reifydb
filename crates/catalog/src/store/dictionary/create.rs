@@ -43,6 +43,9 @@ impl CatalogStore {
 		// Link dictionary to namespace
 		Self::link_dictionary_to_namespace(txn, namespace_id, dictionary_id, &to_create.dictionary)?;
 
+		// Initialize dictionary sequence counter to 0
+		Self::initialize_dictionary_sequence(txn, dictionary_id)?;
+
 		Ok(Self::get_dictionary(txn, dictionary_id)?)
 	}
 
@@ -83,6 +86,22 @@ impl CatalogStore {
 		dictionary_namespace::LAYOUT.set_utf8(&mut row, dictionary_namespace::NAME, name);
 
 		txn.set(&NamespaceDictionaryKey::encoded(namespace, dictionary), row)?;
+
+		Ok(())
+	}
+
+	fn initialize_dictionary_sequence(
+		txn: &mut impl CommandTransaction,
+		dictionary: DictionaryId,
+	) -> crate::Result<()> {
+		use reifydb_core::{key::DictionarySequenceKey, util::CowVec, value::encoded::EncodedValues};
+
+		// Initialize sequence counter to 0
+		// This ensures StorageTracker begins tracking the dictionary immediately
+		let seq_key = DictionarySequenceKey::encoded(dictionary);
+		let initial_value = 0u128.to_be_bytes().to_vec();
+
+		txn.set(&seq_key, EncodedValues(CowVec::new(initial_value)))?;
 
 		Ok(())
 	}

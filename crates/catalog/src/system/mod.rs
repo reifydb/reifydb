@@ -23,6 +23,13 @@ mod primary_keys;
 mod ringbuffers;
 mod sequence;
 mod source_retention_policies;
+mod storage_stats_dictionary;
+mod storage_stats_flow;
+mod storage_stats_flow_node;
+mod storage_stats_index;
+mod storage_stats_ringbuffer;
+mod storage_stats_table;
+mod storage_stats_view;
 mod tables;
 mod tables_virtual;
 mod types;
@@ -46,6 +53,13 @@ use primary_key_columns::primary_key_columns;
 use primary_keys::primary_keys;
 use sequence::sequences;
 use source_retention_policies::source_retention_policies;
+use storage_stats_dictionary::dictionary_storage_stats;
+use storage_stats_flow::flow_storage_stats;
+use storage_stats_flow_node::flow_node_storage_stats;
+use storage_stats_index::index_storage_stats;
+use storage_stats_ringbuffer::ringbuffer_storage_stats;
+use storage_stats_table::table_storage_stats;
+use storage_stats_view::view_storage_stats;
 use tables::tables;
 use tables_virtual::virtual_tables;
 use types::types;
@@ -349,8 +363,15 @@ pub mod ids {
 		pub const FLOW_OPERATOR_INPUTS: TableVirtualId = TableVirtualId(21);
 		pub const FLOW_OPERATOR_OUTPUTS: TableVirtualId = TableVirtualId(22);
 		pub const RINGBUFFERS: TableVirtualId = TableVirtualId(23);
+		pub const TABLE_STORAGE_STATS: TableVirtualId = TableVirtualId(24);
+		pub const VIEW_STORAGE_STATS: TableVirtualId = TableVirtualId(25);
+		pub const FLOW_STORAGE_STATS: TableVirtualId = TableVirtualId(26);
+		pub const FLOW_NODE_STORAGE_STATS: TableVirtualId = TableVirtualId(27);
+		pub const INDEX_STORAGE_STATS: TableVirtualId = TableVirtualId(28);
+		pub const RINGBUFFER_STORAGE_STATS: TableVirtualId = TableVirtualId(29);
+		pub const DICTIONARY_STORAGE_STATS: TableVirtualId = TableVirtualId(30);
 
-		pub const ALL: [TableVirtualId; 23] = [
+		pub const ALL: [TableVirtualId; 30] = [
 			SEQUENCES,
 			NAMESPACES,
 			TABLES,
@@ -374,6 +395,13 @@ pub mod ids {
 			FLOW_OPERATOR_INPUTS,
 			FLOW_OPERATOR_OUTPUTS,
 			RINGBUFFERS,
+			TABLE_STORAGE_STATS,
+			VIEW_STORAGE_STATS,
+			FLOW_STORAGE_STATS,
+			FLOW_NODE_STORAGE_STATS,
+			INDEX_STORAGE_STATS,
+			RINGBUFFER_STORAGE_STATS,
+			DICTIONARY_STORAGE_STATS,
 		];
 	}
 }
@@ -513,5 +541,40 @@ impl SystemCatalog {
 	/// Get the ringbuffers virtual table definition
 	pub fn get_system_ringbuffers_table_def() -> Arc<TableVirtualDef> {
 		ringbuffers()
+	}
+
+	/// Get the table_storage_stats virtual table definition
+	pub fn get_system_table_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		table_storage_stats()
+	}
+
+	/// Get the view_storage_stats virtual table definition
+	pub fn get_system_view_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		view_storage_stats()
+	}
+
+	/// Get the flow_storage_stats virtual table definition
+	pub fn get_system_flow_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		flow_storage_stats()
+	}
+
+	/// Get the flow_node_storage_stats virtual table definition
+	pub fn get_system_flow_node_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		flow_node_storage_stats()
+	}
+
+	/// Get the index_storage_stats virtual table definition
+	pub fn get_system_index_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		index_storage_stats()
+	}
+
+	/// Get the ringbuffer_storage_stats virtual table definition
+	pub fn get_system_ringbuffer_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		ringbuffer_storage_stats()
+	}
+
+	/// Get the dictionary_storage_stats virtual table definition
+	pub fn get_system_dictionary_storage_stats_table_def() -> Arc<TableVirtualDef> {
+		dictionary_storage_stats()
 	}
 }
