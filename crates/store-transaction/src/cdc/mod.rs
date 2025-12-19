@@ -3,16 +3,14 @@
 
 pub(crate) mod codec;
 pub(crate) mod converter;
+mod exclude;
 mod layout;
 
 use std::collections::Bound;
 
+use exclude::should_exclude_from_cdc;
 pub(crate) use reifydb_core::delta::Delta;
-use reifydb_core::{
-	CommitVersion, EncodedKey,
-	interface::{Cdc, KeyKind},
-	key::Key,
-};
+use reifydb_core::{CommitVersion, EncodedKey, interface::Cdc, key::Key};
 use reifydb_type::diagnostic::internal::internal;
 
 pub trait CdcStore: Send + Sync + Clone + 'static + CdcGet + CdcRange + CdcScan + CdcCount {}
@@ -108,9 +106,9 @@ fn generate_internal_cdc_change(
 			key,
 			values: _,
 		} => {
-			// operators do not generate cdc events
+			// operators and internal state do not generate cdc events
 			if let Some(kind) = Key::kind(&key) {
-				if kind == KeyKind::FlowNodeState || kind == KeyKind::CdcConsumer {
+				if should_exclude_from_cdc(kind) {
 					return None;
 				}
 			}
@@ -132,9 +130,9 @@ fn generate_internal_cdc_change(
 		Delta::Remove {
 			key,
 		} => {
-			// operators do not produce cdc events
+			// operators and internal state do not produce cdc events
 			if let Some(kind) = Key::kind(&key) {
-				if kind == KeyKind::FlowNodeState || kind == KeyKind::CdcConsumer {
+				if should_exclude_from_cdc(kind) {
 					return None;
 				}
 			}
