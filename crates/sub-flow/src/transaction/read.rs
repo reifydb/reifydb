@@ -13,10 +13,15 @@ use reifydb_core::{
 use super::{FlowTransaction, iter_range::FlowRangeIter};
 
 impl FlowTransaction {
-	/// Get a value by key, checking pending writes first, then querying multi-version store
+	/// Get a value by key, checking pending writes first, then querying multi-version store.
+	///
+	/// Uses dual-version routing:
+	/// - Flow state keys (FlowNodeState, FlowNodeInternalState) → state_query (latest version)
+	/// - All other keys (source tables, views) → source_query (CDC version)
 	pub fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<EncodedValues>> {
 		self.metrics.increment_reads();
 
+		// Check pending writes first
 		if self.pending.is_removed(key) {
 			return Ok(None);
 		}
@@ -25,10 +30,11 @@ impl FlowTransaction {
 			return Ok(Some(value.clone()));
 		}
 
+		// Route to correct query transaction based on key type
 		let query = if Self::is_flow_state_key(key) {
-			&mut self.state_query
+			&mut self.state_query // Latest version for flow state
 		} else {
-			&mut self.source_query
+			&mut self.source_query // CDC version for source data
 		};
 
 		match query.get(key)? {
@@ -121,6 +127,11 @@ impl FlowTransaction {
 		Ok(Box::new(FlowRangeIter::new(pending, committed, self.version)))
 	}
 
+	/// Determine if a key represents flow state that should be read at latest version.
+	///
+	/// Flow state keys (FlowNodeState, FlowNodeInternalState) contain stateful operator
+	/// state that must be read at the latest version to maintain continuity across CDC events.
+	/// All other keys represent source data that should be read at the CDC snapshot version.
 	fn is_flow_state_key(key: &EncodedKey) -> bool {
 		match Key::kind(&key) {
 			None => false,

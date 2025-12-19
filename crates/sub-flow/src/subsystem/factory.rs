@@ -5,7 +5,7 @@ use reifydb_core::{Result, interceptor::StandardInterceptorBuilder, util::ioc::I
 use reifydb_engine::StandardCommandTransaction;
 use reifydb_sub_api::{Subsystem, SubsystemFactory};
 
-use super::{FlowSubsystem, intercept::TransactionalFlowInterceptor};
+use super::FlowSubsystem;
 use crate::builder::FlowBuilder;
 
 /// Configuration function for the flow subsystem
@@ -43,12 +43,10 @@ impl SubsystemFactory<StandardCommandTransaction> for FlowSubsystemFactory {
 	fn provide_interceptors(
 		&self,
 		builder: StandardInterceptorBuilder<StandardCommandTransaction>,
-		ioc: &IocContainer,
+		_ioc: &IocContainer,
 	) -> StandardInterceptorBuilder<StandardCommandTransaction> {
-		let ioc = ioc.clone();
-		builder.add_factory(move |interceptors| {
-			interceptors.register(TransactionalFlowInterceptor::new(ioc.clone()));
-		})
+		// Independent flow consumer doesn't need interceptors
+		builder
 	}
 
 	fn create(self: Box<Self>, ioc: &IocContainer) -> Result<Box<dyn Subsystem>> {

@@ -4,18 +4,24 @@
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
 pub mod builder;
-mod catalog;
-mod consumer;
+pub(crate) mod catalog;
+pub(crate) mod config;
+pub(crate) mod consumer;
+pub(crate) mod coordinator;
+pub(crate) mod dispatcher;
 #[allow(dead_code, unused_variables)]
 mod engine;
 pub mod ffi;
 #[allow(dead_code, unused_variables)]
-mod operator;
+pub(crate) mod operator;
+pub(crate) mod registry;
+pub(crate) mod routing;
 pub mod subsystem;
 pub mod transaction;
-pub mod worker;
 
 pub use builder::FlowBuilder;
+pub use config::FlowRuntimeConfig;
+pub use consumer::IndependentFlowConsumer;
 pub use engine::*;
 pub use operator::{
 	Operator, stateful,

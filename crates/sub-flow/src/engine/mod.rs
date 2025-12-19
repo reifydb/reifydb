@@ -3,7 +3,6 @@
 
 mod backfill;
 mod eval;
-mod partition;
 mod process;
 mod register;
 
@@ -90,9 +89,11 @@ impl FlowEngine {
 		}
 	}
 
-	/// Load FFI operators from a directory into the global loader
+	/// Load FFI operators from a directory into the global loader.
+	///
+	/// This can be called at startup to eagerly load operators before any flows exist.
 	#[instrument(name = "flow::engine::load_ffi_operators", level = "debug", skip(event_bus), fields(dir = ?dir))]
-	fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_core::Result<()> {
+	pub fn load_ffi_operators(dir: &PathBuf, event_bus: &EventBus) -> reifydb_core::Result<()> {
 		let loader = ffi_operator_loader();
 
 		// Scan directory for shared libraries

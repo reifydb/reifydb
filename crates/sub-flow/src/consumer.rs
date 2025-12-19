@@ -1,382 +1,226 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{collections::BTreeMap, path::PathBuf};
+//! Independent flow consumer implementing CdcConsume.
 
-use indexmap::IndexMap;
+use std::{collections::HashSet, path::PathBuf, sync::Arc, time::Duration};
+
+use crossbeam_channel::Sender;
+use reifydb_catalog::CatalogStore;
 use reifydb_cdc::CdcConsume;
 use reifydb_core::{
-	CommitVersion, CowVec, Error, Result, Row,
-	interface::{
-		Cdc, CdcChange, EncodableKey, Engine, KeyKind, MultiVersionQueryTransaction, SourceId, WithEventBus,
-	},
-	key::{DictionaryEntryIndexKey, Key},
-	value::encoded::{EncodedValues, EncodedValuesLayout, EncodedValuesNamedLayout},
+	CommitVersion, Result,
+	interface::{Cdc, Engine, SourceId, WithEventBus},
 };
-use reifydb_engine::{StandardCommandTransaction, StandardEngine, StandardRowEvaluator};
-use reifydb_flow_operator_sdk::FlowDiff;
-use reifydb_rql::flow::{Flow, load_flow};
-use reifydb_sub_api::SchedulerService;
-use reifydb_type::{DictionaryEntryId, RowNumber, Value, internal};
-use tracing::{instrument, trace_span};
+use reifydb_engine::{StandardCommandTransaction, StandardEngine};
+use reifydb_rql::flow::{Flow, FlowNodeType, load_flow};
+use tokio::{
+	runtime::Runtime,
+	task::JoinHandle,
+	time::{Instant, timeout},
+};
+use tokio_util::sync::CancellationToken;
+use tracing::{debug, info, trace, warn};
 
 use crate::{
-	builder::OperatorFactory,
-	catalog::FlowCatalog,
-	engine::FlowEngine,
-	operator::TransformOperatorRegistry,
-	subsystem::intercept::Change,
-	worker::{ParallelWorkerPool, SameThreadedWorker, WorkerPool},
+	FlowEngine, builder::OperatorFactory, config::FlowRuntimeConfig, coordinator::get_flow_version,
+	dispatcher::dispatcher, registry::FlowRegistry,
 };
 
-/// Consumer that processes CDC events for Flow subsystem
-pub struct FlowConsumer {
-	engine: StandardEngine,
-	flow_engine: FlowEngine,
-	scheduler: Option<SchedulerService>,
-	catalog_cache: FlowCatalog,
+/// Independent flow consumer with per-flow task architecture.
+///
+/// Each flow runs as an independent task with its own channel and version tracking.
+/// This allows flows to process at their own pace without blocking each other.
+///
+/// IMPORTANT: Field order matters for drop order!
+/// - `shutdown` must be dropped (cancelled) before `runtime`
+/// - `cdc_tx` must be dropped (closed) before `runtime`
+/// This ensures the dispatcher task can exit before runtime shutdown waits for it.
+pub struct IndependentFlowConsumer {
+	/// Shutdown signal - dropped first to signal dispatcher to exit.
+	shutdown: CancellationToken,
+
+	/// Channel sender for CDC events - dropped second to unblock dispatcher.
+	cdc_tx: Sender<Cdc>,
+
+	/// Registry of active flows.
+	registry: Arc<FlowRegistry>,
+
+	/// Dispatcher task handle.
+	#[allow(dead_code)]
+	dispatcher_handle: JoinHandle<()>,
+
+	/// Tokio runtime (owned, separate from main runtime) - dropped last.
+	runtime: Runtime,
 }
 
-impl FlowConsumer {
+impl IndependentFlowConsumer {
+	/// Create a new independent flow consumer.
 	pub fn new(
 		engine: StandardEngine,
+		config: FlowRuntimeConfig,
 		operators: Vec<(String, OperatorFactory)>,
 		operators_dir: Option<PathBuf>,
-		scheduler: Option<SchedulerService>,
-	) -> Self {
-		let mut registry = TransformOperatorRegistry::new();
+	) -> Result<Self> {
+		// Create tokio runtime
+		let runtime = config
+			.build_runtime()
+			.map_err(|e| reifydb_core::Error(reifydb_type::internal!("failed to create runtime: {}", e)))?;
 
-		for (name, factory) in operators.iter() {
-			let factory = factory.clone();
-			let name = name.clone();
-			registry.register(name, move |node, exprs| factory(node, exprs));
+		// Load FFI operators eagerly so they're available in system.flow_operators
+		// before any flows are created
+		if let Some(ref dir) = operators_dir {
+			if let Err(e) = FlowEngine::load_ffi_operators(dir, &engine.event_bus()) {
+				warn!(error = %e, "failed to load FFI operators from {:?}", dir);
+			}
 		}
 
-		let flow_engine = FlowEngine::new(
-			StandardRowEvaluator::default(),
-			engine.executor(),
+		let registry = Arc::new(FlowRegistry::new(engine.clone(), operators, operators_dir));
+		let (cdc_tx, cdc_rx) = crossbeam_channel::unbounded();
+		let shutdown = CancellationToken::new();
+
+		// Load existing flows from catalog and register them
+		let existing_flows = load_all_flows(&engine)?;
+		info!(flow_count = existing_flows.len(), "loading existing flows");
+
+		for (flow, sources) in existing_flows {
+			let flow_id = flow.id;
+			let persisted_version = get_flow_version(&engine, flow_id)?.unwrap_or(CommitVersion(0));
+			runtime.block_on(async { registry.register(flow, sources, persisted_version).await })?;
+			debug!(flow_id = flow_id.0, version = persisted_version.0, "registered existing flow");
+		}
+
+		// Spawn dispatcher task
+		let dispatcher_handle = runtime.spawn(dispatcher(cdc_rx, registry.clone(), engine, shutdown.clone()));
+
+		info!("independent flow consumer started");
+
+		Ok(Self {
+			shutdown,
+			cdc_tx,
 			registry,
-			engine.event_bus().clone(),
-			operators_dir,
-		);
-
-		let result = Self {
-			engine: engine.clone(),
-			flow_engine,
-			scheduler,
-			catalog_cache: FlowCatalog::new(),
-		};
-
-		if let Ok(mut txn) = engine.begin_command() {
-			if let Ok(flows) = result.load_flows() {
-				for flow in flows {
-					result.flow_engine.register_without_backfill(&mut txn, flow).unwrap();
-				}
-				txn.commit().unwrap();
-			}
-		}
-
-		result
-	}
-
-	/// Helper method to convert encoded bytes to Row format with dictionary decoding.
-	///
-	/// Uses `CatalogCache` to avoid repeated catalog lookups for the same source.
-	/// The cache is populated on first access and invalidated when schema changes
-	/// are observed via CDC.
-	#[instrument(
-		name = "flow::create_row",
-		level = "trace",
-		skip(self, txn, row_bytes),
-		fields(
-			source = ?source,
-			row_number = row_number.0,
-			row_bytes_len = row_bytes.len(),
-		)
-	)]
-	fn create_row(
-		&self,
-		txn: &mut StandardCommandTransaction,
-		source: SourceId,
-		row_number: RowNumber,
-		row_bytes: Vec<u8>,
-	) -> Result<Row> {
-		// Get cached source metadata (loads from catalog on cache miss)
-		let metadata = self.catalog_cache.get_or_load(txn, source)?;
-
-		let raw_encoded = EncodedValues(CowVec::new(row_bytes));
-
-		// If no dictionary columns, return directly with value layout
-		if !metadata.has_dictionary_columns {
-			let layout = EncodedValuesNamedLayout::new(metadata.value_types.clone());
-			return Ok(Row {
-				number: row_number,
-				encoded: raw_encoded,
-				layout,
-			});
-		}
-
-		// Decode dictionary columns
-		let storage_layout = EncodedValuesLayout::new(&metadata.storage_types);
-		let value_layout = EncodedValuesNamedLayout::new(metadata.value_types.clone());
-
-		let mut values: Vec<Value> = Vec::with_capacity(metadata.dictionaries.len());
-		for (idx, dict_opt) in metadata.dictionaries.iter().enumerate() {
-			let raw_value = storage_layout.get_value(&raw_encoded, idx);
-
-			if let Some(dictionary) = dict_opt {
-				// Decode dictionary ID to actual value
-				if let Some(entry_id) = DictionaryEntryId::from_value(&raw_value) {
-					let index_key =
-						DictionaryEntryIndexKey::new(dictionary.id, entry_id.to_u128() as u64)
-							.encode();
-					match txn.get(&index_key)? {
-						Some(v) => {
-							let (decoded_value, _): (Value, _) =
-								bincode::serde::decode_from_slice(
-									&v.values,
-									bincode::config::standard(),
-								)
-								.map_err(|e| {
-									Error(internal!(
-										"Failed to deserialize dictionary value: {}",
-										e
-									))
-								})?;
-							values.push(decoded_value);
-						}
-						None => {
-							values.push(Value::Undefined);
-						}
-					}
-				} else {
-					values.push(raw_value);
-				}
-			} else {
-				values.push(raw_value);
-			}
-		}
-
-		// Re-encode with value layout
-		let mut encoded = value_layout.allocate();
-		value_layout.set_values(&mut encoded, &values);
-
-		Ok(Row {
-			number: row_number,
-			encoded,
-			layout: value_layout,
+			dispatcher_handle,
+			runtime,
 		})
 	}
 
-	/// Load flows from the catalog
-	fn load_flows(&self) -> Result<Vec<Flow>> {
-		let mut flows = Vec::new();
-		let mut txn = self.engine.begin_query()?;
+	/// Graceful shutdown with drain timeout.
+	pub fn shutdown(self, drain_timeout: Duration) {
+		info!("initiating graceful shutdown");
 
-		// Get all flows from the catalog
-		let flow_defs = reifydb_catalog::CatalogStore::list_flows_all(&mut txn)?;
+		// Signal shutdown
+		self.shutdown.cancel();
 
-		// Load each flow by reconstructing from nodes and edges
-		for flow_def in flow_defs {
-			match load_flow(&mut txn, flow_def.id) {
-				Ok(flow) => flows.push(flow),
-				Err(e) => {
-					// Log error but continue loading other flows
-					eprintln!("Failed to load flow {}: {}", flow_def.name, e);
+		// Get all flow IDs and deregister them
+		self.runtime.block_on(async {
+			let drain_deadline = Instant::now() + drain_timeout;
+
+			let flow_ids = self.registry.flow_ids().await;
+			info!(flow_count = flow_ids.len(), "draining flow tasks");
+
+			for flow_id in flow_ids {
+				if let Some(task) = self.registry.deregister(flow_id).await {
+					let remaining = drain_deadline.saturating_duration_since(Instant::now());
+					match timeout(remaining, task).await {
+						Ok(Ok(())) => {
+							debug!(flow_id = flow_id.0, "flow drained successfully");
+						}
+						Ok(Err(e)) => {
+							warn!(flow_id = flow_id.0, error = ?e, "flow task panicked");
+						}
+						Err(_) => {
+							warn!(flow_id = flow_id.0, "flow drain timed out");
+						}
+					}
 				}
 			}
-		}
+		});
 
-		Ok(flows)
+		info!("shutdown complete");
 	}
 }
 
-impl CdcConsume for FlowConsumer {
-	#[instrument(
-		name = "flow::consume",
-		level = "trace",
-		skip(self, txn, cdcs),
-		fields(
-			cdc_count = cdcs.len(),
-		)
-	)]
-	fn consume(&self, txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
+impl Drop for IndependentFlowConsumer {
+	fn drop(&mut self) {
+		// Cancel the shutdown token to signal dispatcher to exit.
+		// This must happen before the runtime is dropped to avoid deadlock.
+		self.shutdown.cancel();
+		debug!("IndependentFlowConsumer shutdown signal sent");
+	}
+}
+
+impl CdcConsume for IndependentFlowConsumer {
+	fn consume(&self, _txn: &mut StandardCommandTransaction, cdcs: Vec<Cdc>) -> Result<()> {
 		if cdcs.is_empty() {
 			return Ok(());
 		}
 
-		// Invalidate cache for any schema changes before processing
-		for cdc in &cdcs {
-			for change in &cdc.changes {
-				self.catalog_cache.invalidate_from_cdc(change.key());
-			}
-		}
+		// Track the max version we're sending
+		let max_version = cdcs.iter().map(|c| c.version).max().unwrap();
+		let batch_count = cdcs.len();
 
-		// Collect all changes grouped by version
-		let mut changes_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Change)>> = BTreeMap::new();
-		let mut flows_changed_at_version: Option<CommitVersion> = None;
+		trace!(max_version = max_version.0, batch_count = batch_count, "forwarding CDC batches to dispatcher");
 
+		// Forward to the dispatcher channel
+		// Don't wait for completion - flows process asynchronously
+		// The checkpoint is persisted by PollConsumer after this returns
 		for cdc in cdcs {
-			let version = cdc.version;
-
-			for sequenced_change in cdc.changes {
-				// Check key kind first to detect flow-related changes
-				if let Some(kind) = Key::kind(sequenced_change.key()) {
-					// Detect any flow definition changes - trigger reload
-					if matches!(
-						kind,
-						KeyKind::Flow
-							| KeyKind::FlowNode | KeyKind::FlowNodeByFlow | KeyKind::FlowEdge
-							| KeyKind::FlowEdgeByFlow | KeyKind::NamespaceFlow
-					) {
-						if flows_changed_at_version.is_none() {
-							flows_changed_at_version = Some(version);
-						}
-						continue;
-					}
-				}
-
-				// Then try to decode as Key::Row for data changes
-				if let Some(decoded_key) = Key::decode(sequenced_change.key()) {
-					if let Key::Row(table_row) = decoded_key {
-						let source_id = table_row.source;
-
-						// CDC now returns resolved values directly
-						let change = match &sequenced_change.change {
-							CdcChange::Insert {
-								key: _,
-								post,
-							} => Change::Insert {
-								_source_id: source_id,
-								row_number: table_row.row,
-								post: post.to_vec(),
-							},
-							CdcChange::Update {
-								key: _,
-								pre,
-								post,
-							} => Change::Update {
-								_source_id: source_id,
-								row_number: table_row.row,
-								pre: pre.to_vec(),
-								post: post.to_vec(),
-							},
-							CdcChange::Delete {
-								key: _,
-								pre,
-							} => Change::Delete {
-								_source_id: source_id,
-								row_number: table_row.row,
-								pre: pre.as_ref()
-									.map(|v| v.to_vec())
-									.unwrap_or_default(),
-							},
-						};
-						changes_by_version
-							.entry(version)
-							.or_insert_with(Vec::new)
-							.push((source_id, change));
-					}
-				}
-			}
+			self.cdc_tx.send(cdc).map_err(|_| {
+				reifydb_core::Error(reifydb_type::internal!("dispatcher channel closed"))
+			})?;
 		}
 
-		// Reload flows if needed (before processing any changes)
-		// Only skip backfill for flows that already existed (they already have data)
-		// New flows need backfill to get initial data from source tables
-		if let Some(flow_creation_version) = flows_changed_at_version {
-			let existing_flow_ids = self.flow_engine.flow_ids();
-			self.flow_engine.clear();
-			let flows = self.load_flows()?;
-			for flow in flows {
-				// For new flows: do backfill at this version
-				// For existing flows: skip backfill (data already present)
-				let is_existing = existing_flow_ids.contains(&flow.id);
-				if is_existing {
-					self.flow_engine.register_without_backfill(txn, flow)?;
-				} else {
-					self.flow_engine.register_with_backfill(txn, flow, flow_creation_version)?;
-				};
-			}
-		}
-
-		// If no changes to process, we're done
-		if changes_by_version.is_empty() {
-			return Ok(());
-		}
-
-		let mut diffs_by_version: BTreeMap<CommitVersion, Vec<(SourceId, Vec<FlowDiff>)>> = BTreeMap::new();
-
-		for (version, changes) in changes_by_version {
-			// Group changes by source for this version
-			// Using IndexMap to preserve CDC insertion order within the version
-			let mut changes_by_source: IndexMap<SourceId, Vec<FlowDiff>> = IndexMap::new();
-
-			for (source_id, change) in changes {
-				let diff = match change {
-					Change::Insert {
-						row_number,
-						post,
-						..
-					} => {
-						let row = self.create_row(txn, source_id, row_number, post)?;
-						FlowDiff::Insert {
-							post: row,
-						}
-					}
-					Change::Update {
-						row_number,
-						pre,
-						post,
-						..
-					} => {
-						let pre_row = self.create_row(txn, source_id, row_number, pre)?;
-						let post_row = self.create_row(txn, source_id, row_number, post)?;
-						FlowDiff::Update {
-							pre: pre_row,
-							post: post_row,
-						}
-					}
-					Change::Delete {
-						row_number,
-						pre,
-						..
-					} => {
-						let row = self.create_row(txn, source_id, row_number, pre)?;
-						FlowDiff::Remove {
-							pre: row,
-						}
-					}
-				};
-				changes_by_source.entry(source_id).or_insert_with(Vec::new).push(diff);
-			}
-
-			// Convert to Vec format expected by create_partition
-			let source_diffs: Vec<(SourceId, Vec<FlowDiff>)> = changes_by_source.into_iter().collect();
-			diffs_by_version.insert(version, source_diffs);
-		}
-
-		// Partition all changes across all versions into units of work
-		let units = trace_span!("flow::partition", version_count = diffs_by_version.len())
-			.in_scope(|| self.flow_engine.create_partition(diffs_by_version));
-		if units.is_empty() {
-			return Ok(());
-		}
-
-		// Process all flow units through the worker
-		// Use parallel worker pool if scheduler is available, otherwise fall back to single-threaded
-		let worker: Box<dyn WorkerPool> = if let Some(scheduler) = &self.scheduler {
-			Box::new(ParallelWorkerPool::new(scheduler.clone()))
-		} else {
-			Box::new(SameThreadedWorker::new())
-		};
-		// let worker = Box::new(SameThreadedWorker::new());
-		trace_span!(
-			"flow::worker_process",
-			worker = worker.name(),
-			flow_count = units.flow_count(),
-			total_units = units.total_units()
-		)
-		.in_scope(|| worker.process(txn, units, &self.flow_engine))
+		trace!(max_version = max_version.0, "CDC batches forwarded to dispatcher");
+		Ok(())
 	}
+}
+
+/// Load all flows from catalog at startup.
+fn load_all_flows(engine: &StandardEngine) -> Result<Vec<(Flow, HashSet<reifydb_core::interface::SourceId>)>> {
+	let mut txn = engine.begin_query()?;
+
+	let flow_defs = CatalogStore::list_flows_all(&mut txn)?;
+	let mut result = Vec::with_capacity(flow_defs.len());
+
+	for flow_def in flow_defs {
+		match load_flow(&mut txn, flow_def.id) {
+			Ok(flow) => {
+				let sources = get_flow_sources(&flow);
+				result.push((flow, sources));
+			}
+			Err(e) => {
+				warn!(flow_id = flow_def.id.0, error = %e, "failed to load flow");
+			}
+		}
+	}
+
+	Ok(result)
+}
+
+/// Get the source tables/views this flow subscribes to.
+fn get_flow_sources(flow: &Flow) -> HashSet<SourceId> {
+	let mut sources = HashSet::new();
+
+	for (_node_id, node) in flow.graph.nodes() {
+		match &node.ty {
+			FlowNodeType::SourceTable {
+				table,
+			} => {
+				sources.insert(SourceId::Table(*table));
+			}
+			FlowNodeType::SourceView {
+				view,
+			} => {
+				sources.insert(SourceId::View(*view));
+			}
+			FlowNodeType::SourceFlow {
+				flow,
+			} => {
+				sources.insert(SourceId::Flow(*flow));
+			}
+			_ => {}
+		}
+	}
+
+	sources
 }

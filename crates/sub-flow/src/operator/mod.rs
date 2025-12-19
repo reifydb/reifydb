@@ -33,7 +33,6 @@ pub use sink::SinkViewOperator;
 pub use sort::SortOperator;
 pub use source::{SourceFlowOperator, SourceTableOperator, SourceViewOperator};
 pub use take::TakeOperator;
-pub use transform::registry::TransformOperatorRegistry;
 pub use window::WindowOperator;
 
 pub trait Operator: Send + Sync {

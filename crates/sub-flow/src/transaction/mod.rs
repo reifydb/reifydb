@@ -20,74 +20,101 @@ pub use metrics::FlowTransactionMetrics;
 pub use pending::{Pending, PendingWrites};
 use reifydb_transaction::multi::StandardQueryTransaction;
 
-/// A transaction wrapper for parallel flow processing with snapshot isolation.
+/// A transaction wrapper for flow processing with dual-version read semantics.
 ///
 /// # Architecture
 ///
-/// FlowTransaction enables parallel processing of independent data flows by providing:
-/// 1. **Snapshot reads** - via a wrapped StandardQueryTransaction reading at a fixed version
-/// 2. **Isolated writes** - via a local PendingWrites buffer unique to this transaction
-/// 3. **Sequential merge** - buffered writes are applied back to parent at commit time
+/// FlowTransaction provides **dual-version reads** critical for stateful flow processing:
+/// 1. **Source data** - Read at CDC event version (snapshot isolation)
+/// 2. **Flow state** - Read at latest version (state continuity across CDC events)
+/// 3. **Isolated writes** - Local PendingWrites buffer merged back to parent at commit
 ///
-/// # Read Path
+/// This dual-version approach allows stateful operators (joins, aggregates, distinct) to:
+/// - Process source data at a consistent snapshot (the CDC event version)
+/// - Access their own state at the latest version to maintain continuity
 ///
-/// All reads go through the wrapped `query` transaction, which provides a consistent
-/// snapshot view of the database at `version`. The query transaction is read-only and
-/// cannot modify the underlying storage.
+/// # Dual-Version Read Routing
 ///
-/// For keys that have been modified locally:
-/// - Reads check the `pending` buffer first
-/// - If found there (or marked for removal), return the local value
-/// - Otherwise, delegate to the `query` transaction for the snapshot value
+/// Reads are automatically routed to the correct query transaction based on key type:
+///
+/// ```text
+/// ┌─────────────────┐
+/// │  FlowTransaction│
+/// └────────┬────────┘
+///          │
+///          ├──► source_query (at CDC version)
+///          │    - Source tables
+///          │    - Source views
+///          │    - Regular data
+///          │
+///          └──► state_query (at latest version)
+///               - FlowNodeState
+///               - FlowNodeInternalState
+///               - Stateful operator state
+/// ```
+///
+/// # Why Dual Versions Matter
+///
+/// ## Example: Join Operator
+/// ```ignore
+/// // CDC event arrives at version 100
+/// let mut flow_txn = FlowTransaction::new(&parent, CommitVersion(100));
+///
+/// // Join operator processes the event:
+/// // 1. Reads source table at version 100 (snapshot)
+/// let source_row = flow_txn.get(&source_key)?;
+///
+/// // 2. Reads join state at LATEST version (e.g., 150)
+/// //    This state contains results from ALL previous CDC events
+/// let join_state = flow_txn.state_get(node_id, &state_key)?;
+///
+/// // Without dual versions, join state would be stale at version 100
+/// ```
+///
+/// ## Example: Distinct Operator
+/// ```ignore
+/// // Maintains a set of seen values across ALL CDC events
+/// let seen = flow_txn.state_get(node_id, &value_key)?;
+///
+/// // If read at CDC version, would "forget" values seen in later events
+/// // Dual-version ensures we see ALL distinct values accumulated so far
+/// ```
+///
+/// # Current Usage Pattern
+///
+/// FlowTransaction is used in the task-based flow architecture where each flow
+/// processes CDC batches sequentially:
+///
+/// ```ignore
+/// // In flow coordinator task (one transaction per batch)
+/// let mut txn = engine.begin_command()?;
+/// let mut flow_txn = FlowTransaction::new(&txn, batch.version);
+///
+/// for change in batch.changes {
+///     // Operators use dual-version reads internally
+///     flow_engine.process(&mut flow_txn, change, flow_id)?;
+/// }
+///
+/// // Merge pending writes back to parent
+/// flow_txn.commit(&mut txn)?;
+/// txn.commit()?;
+/// ```
 ///
 /// # Write Path
 ///
-/// All writes (`set`, `remove`) go to the local `pending` buffer only:
-/// - Writes are NOT visible to the parent transaction
-/// - Writes are NOT visible to other FlowTransactions
-/// - Writes are NOT persisted to storage
-///
-/// The pending buffer is committed back to the parent transaction via `commit()`.
-///
-/// # Parallel Processing Pattern
-///
-/// ```ignore
-/// let mut parent = engine.begin_command()?;
-///
-/// // Create multiple FlowTransactions from shared parent reference
-/// // Each uses the CDC event version for proper snapshot isolation
-/// let flow_txns: Vec<FlowTransaction> = cdc_events
-///     .iter()
-///     .map(|cdc| FlowTransaction::new(&parent, cdc.version))
-///     .collect();
-///
-/// // Process in parallel (e.g., using rayon)
-/// let results: Vec<FlowTransaction> = flow_txns
-///     .into_par_iter()
-///     .map(|mut txn| {
-///         // Process flow, making reads and writes
-///         process_flow(&mut txn)?;
-///         Ok(txn)
-///     })
-///     .collect()?;
-///
-/// // Sequential merge back to parent
-/// for flow_txn in results {
-///     flow_txn.commit(&mut parent)?;
-/// }
-///
-/// // Atomic commit of all changes
-/// parent.commit()?;
-/// ```
+/// All writes (`set`, `remove`) go to the local `pending` buffer:
+/// - Writes are NOT visible to the parent transaction until commit
+/// - Reads check pending buffer first, then delegate to query transactions
+/// - Buffered writes are merged to parent via `commit()`
 ///
 /// # Thread Safety
 ///
 /// FlowTransaction implements `Send` because:
 /// - `version` is Copy
-/// - `query` wraps Arc-based multi-version transaction (Send + Sync)
+/// - `source_query` and `state_query` wrap Arc-based transactions (Send + Sync)
 /// - `pending` and `metrics` are owned and not shared
 ///
-/// This allows FlowTransactions to be moved to worker threads for parallel processing.
+/// This allows FlowTransactions to be moved to blocking threads for CPU-bound processing.
 pub struct FlowTransaction {
 	/// CDC event version for snapshot isolation.
 	///
@@ -124,10 +151,11 @@ pub struct FlowTransaction {
 }
 
 impl FlowTransaction {
-	/// Create a new FlowTransaction from a parent transaction at a specific CDC version
+	/// Create a new FlowTransaction from a parent transaction at a specific CDC version.
 	///
-	/// Takes a shared reference to the parent, allowing multiple FlowTransactions
-	/// to be created for parallel processing.
+	/// Creates dual query transactions:
+	/// - `source_query`: Reads at the specified CDC version (snapshot isolation)
+	/// - `state_query`: Reads at the latest version (state continuity)
 	///
 	/// # Parameters
 	/// * `parent` - The parent command transaction to derive from

@@ -14,6 +14,7 @@ pub use flow_edge::{FlowEdgeByFlowKey, FlowEdgeKey};
 pub use flow_node::{FlowNodeByFlowKey, FlowNodeKey};
 pub use flow_node_internal_state::{FlowNodeInternalStateKey, FlowNodeInternalStateKeyRange};
 pub use flow_node_state::{FlowNodeStateKey, FlowNodeStateKeyRange};
+pub use flow_version::FlowVersionKey;
 pub use index::{IndexKey, SourceIndexKeyRange};
 pub use index_entry::IndexEntryKey;
 pub use kind::KeyKind;
@@ -50,6 +51,7 @@ mod flow_edge;
 mod flow_node;
 mod flow_node_internal_state;
 mod flow_node_state;
+mod flow_version;
 mod index;
 mod index_entry;
 mod kind;
@@ -222,7 +224,11 @@ impl Key {
 			KeyKind::OperatorRetentionPolicy => {
 				OperatorRetentionPolicyKey::decode(&key).map(Self::OperatorRetentionPolicy)
 			}
-			KeyKind::FlowNode | KeyKind::FlowNodeByFlow | KeyKind::FlowEdge | KeyKind::FlowEdgeByFlow => {
+			KeyKind::FlowNode
+			| KeyKind::FlowNodeByFlow
+			| KeyKind::FlowEdge
+			| KeyKind::FlowEdgeByFlow
+			| KeyKind::FlowVersion => {
 				// These keys are used directly via EncodableKey trait, not through Key enum
 				None
 			}

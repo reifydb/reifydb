@@ -28,7 +28,10 @@ libloading = { workspace = true }
 
 crossbeam-channel = { workspace = true }
 indexmap = { workspace = true }
+num_cpus = { workspace = true }
 parking_lot = { workspace = true}
+tokio = { workspace = true }
+tokio-util = "0.7"
 tracing = { workspace = true }
 
 [dev-dependencies]

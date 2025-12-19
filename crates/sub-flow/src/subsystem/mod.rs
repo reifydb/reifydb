@@ -2,7 +2,6 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 mod factory;
-pub mod intercept;
 
 use std::{any::Any, path::PathBuf, time::Duration};
 
@@ -17,10 +16,10 @@ use reifydb_core::{
 	ioc::IocContainer,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_sub_api::{HealthStatus, Priority, SchedulerService, Subsystem};
+use reifydb_sub_api::{HealthStatus, Priority, Subsystem};
 use tracing::instrument;
 
-use crate::{builder::OperatorFactory, consumer::FlowConsumer};
+use crate::{builder::OperatorFactory, config::FlowRuntimeConfig, consumer::IndependentFlowConsumer};
 
 pub struct FlowSubsystemConfig {
 	/// Unique identifier for this consumer
@@ -38,7 +37,7 @@ pub struct FlowSubsystemConfig {
 }
 
 pub struct FlowSubsystem {
-	consumer: PollConsumer<FlowConsumer>,
+	consumer: PollConsumer<IndependentFlowConsumer>,
 	running: bool,
 }
 
@@ -46,9 +45,16 @@ impl FlowSubsystem {
 	#[instrument(name = "flow::subsystem::new", level = "debug", skip(cfg, ioc))]
 	pub fn new(cfg: FlowSubsystemConfig, ioc: &IocContainer) -> Result<Self> {
 		let engine = ioc.resolve::<StandardEngine>()?;
-		let scheduler = ioc.resolve::<SchedulerService>().ok();
 
-		let consumer = FlowConsumer::new(engine.clone(), cfg.operators.clone(), cfg.operators_dir, scheduler);
+		// Use default runtime config for now
+		// TODO: Make this configurable via FlowSubsystemConfig
+		let runtime_config = FlowRuntimeConfig::default();
+		let consumer = IndependentFlowConsumer::new(
+			engine.clone(),
+			runtime_config,
+			cfg.operators.clone(),
+			cfg.operators_dir,
+		)?;
 
 		Ok(Self {
 			consumer: PollConsumer::new(

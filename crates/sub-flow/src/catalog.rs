@@ -15,9 +15,8 @@ use reifydb_catalog::{
 	transaction::{CatalogNamespaceQueryOperations, CatalogRingBufferQueryOperations, CatalogTableQueryOperations},
 };
 use reifydb_core::{
-	EncodedKey, Result,
-	interface::{ColumnDef, DictionaryDef, KeyKind, QueryTransaction, SourceId},
-	key::Key,
+	Result,
+	interface::{ColumnDef, DictionaryDef, QueryTransaction, SourceId},
 };
 use reifydb_type::Type;
 
@@ -89,59 +88,6 @@ impl FlowCatalog {
 		Ok(Arc::clone(cache.entry(source).or_insert(metadata)))
 	}
 
-	/// Invalidate cache entries based on observed CDC changes.
-	///
-	/// Call this before processing CDC changes to ensure cache consistency.
-	/// This method checks the key kind and invalidates the appropriate cache entry.
-	pub fn invalidate_from_cdc(&self, key: &EncodedKey) {
-		let Some(kind) = Key::kind(key) else {
-			return;
-		};
-
-		match kind {
-			// Table definition changed - invalidate that table
-			KeyKind::Table => {
-				if let Some(Key::Table(table_key)) = Key::decode(key) {
-					self.invalidate(SourceId::Table(table_key.table));
-				}
-			}
-			// View definition changed - invalidate that view
-			KeyKind::View => {
-				if let Some(Key::View(view_key)) = Key::decode(key) {
-					self.invalidate(SourceId::View(view_key.view));
-				}
-			}
-			// RingBuffer definition changed - invalidate that ringbuffer
-			KeyKind::RingBuffer => {
-				if let Some(Key::RingBuffer(rb_key)) = Key::decode(key) {
-					self.invalidate(SourceId::RingBuffer(rb_key.ringbuffer));
-				}
-			}
-			// Column changed - invalidate the source it belongs to
-			KeyKind::Column => {
-				if let Some(Key::Column(col_key)) = Key::decode(key) {
-					self.invalidate(col_key.source);
-				}
-			}
-			// Dictionary changed - clear entire cache since we can't easily
-			// determine which sources use this dictionary without a reverse lookup
-			KeyKind::Dictionary => {
-				self.clear();
-			}
-			_ => {}
-		}
-	}
-
-	/// Invalidate a specific source from the cache.
-	pub fn invalidate(&self, source: SourceId) {
-		self.sources.write().remove(&source);
-	}
-
-	/// Clear all cached entries.
-	pub fn clear(&self) {
-		self.sources.write().clear();
-	}
-
 	fn load_source_metadata<T>(&self, txn: &mut T, source: SourceId) -> Result<SourceMetadata>
 	where
 		T: CatalogTableQueryOperations
@@ -205,17 +151,9 @@ impl Default for FlowCatalog {
 mod tests {
 	use std::sync::Arc;
 
-	use reifydb_catalog::{
-		store::table::TableColumnToCreate,
-		test_utils::{
-			create_table, create_view, ensure_test_namespace, ensure_test_ringbuffer, ensure_test_table,
-		},
+	use reifydb_catalog::test_utils::{
+		create_view, ensure_test_namespace, ensure_test_ringbuffer, ensure_test_table,
 	};
-	use reifydb_core::{
-		interface::ColumnId,
-		key::{ColumnKey, DictionaryKey, EncodableKey, RingBufferKey, TableKey, ViewKey},
-	};
-	use reifydb_type::{Type, TypeConstraint};
 
 	use super::*;
 	use crate::operator::stateful::test_utils::test::create_test_transaction;
@@ -291,212 +229,5 @@ mod tests {
 		assert!(metadata.storage_types.is_empty());
 		assert!(metadata.value_types.is_empty());
 		assert!(!metadata.has_dictionary_columns);
-	}
-
-	// CDC invalidation tests
-
-	#[test]
-	fn test_invalidate_from_cdc_table_key() {
-		let mut txn = create_test_transaction();
-		ensure_test_namespace(&mut txn);
-
-		// Create a table with realistic columns
-		let table = create_table(
-			&mut txn,
-			"test_namespace",
-			"cdc_test_table",
-			&[
-				TableColumnToCreate {
-					name: "id".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Int8),
-					policies: vec![],
-					auto_increment: false,
-					fragment: None,
-					dictionary_id: None,
-				},
-				TableColumnToCreate {
-					name: "name".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Utf8),
-					policies: vec![],
-					auto_increment: false,
-					fragment: None,
-					dictionary_id: None,
-				},
-				TableColumnToCreate {
-					name: "active".to_string(),
-					constraint: TypeConstraint::unconstrained(Type::Boolean),
-					policies: vec![],
-					auto_increment: false,
-					fragment: None,
-					dictionary_id: None,
-				},
-			],
-		);
-
-		let catalog = FlowCatalog::new();
-		let source = SourceId::Table(table.id);
-
-		// Load into cache
-		let metadata = catalog.get_or_load(&mut txn, source).unwrap();
-
-		// Verify cached metadata matches expected column types
-		assert_eq!(metadata.storage_types.len(), 3);
-		assert_eq!(metadata.storage_types[0], Type::Int8);
-		assert_eq!(metadata.storage_types[1], Type::Utf8);
-		assert_eq!(metadata.storage_types[2], Type::Boolean);
-
-		assert_eq!(metadata.value_types.len(), 3);
-		assert_eq!(metadata.value_types[0], ("id".to_string(), Type::Int8));
-		assert_eq!(metadata.value_types[1], ("name".to_string(), Type::Utf8));
-		assert_eq!(metadata.value_types[2], ("active".to_string(), Type::Boolean));
-
-		assert_eq!(metadata.dictionaries.len(), 3);
-		assert!(metadata.dictionaries.iter().all(|d| d.is_none()));
-		assert!(!metadata.has_dictionary_columns);
-
-		// Verify source is in cache
-		assert!(catalog.sources.read().get(&source).is_some());
-
-		// Invalidate via CDC key
-		let key = TableKey::encoded(table.id);
-		catalog.invalidate_from_cdc(&key);
-
-		// Cache should be empty for this source
-		assert!(catalog.sources.read().get(&source).is_none());
-	}
-
-	#[test]
-	fn test_invalidate_from_cdc_view_key() {
-		let mut txn = create_test_transaction();
-		ensure_test_namespace(&mut txn);
-		let view = create_view(&mut txn, "test_namespace", "test_view_cdc", &[]);
-
-		let catalog = FlowCatalog::new();
-		let source = SourceId::View(view.id);
-
-		// Load into cache
-		let _ = catalog.get_or_load(&mut txn, source).unwrap();
-		assert!(catalog.sources.read().get(&source).is_some());
-
-		// Invalidate via CDC key
-		let key = ViewKey {
-			view: view.id,
-		}
-		.encode();
-		catalog.invalidate_from_cdc(&key);
-
-		assert!(catalog.sources.read().get(&source).is_none());
-	}
-
-	#[test]
-	fn test_invalidate_from_cdc_ringbuffer_key() {
-		let mut txn = create_test_transaction();
-		let rb = ensure_test_ringbuffer(&mut txn);
-
-		let catalog = FlowCatalog::new();
-		let source = SourceId::RingBuffer(rb.id);
-
-		// Load into cache
-		let _ = catalog.get_or_load(&mut txn, source).unwrap();
-		assert!(catalog.sources.read().get(&source).is_some());
-
-		// Invalidate via CDC key
-		let key = RingBufferKey::encoded(rb.id);
-		catalog.invalidate_from_cdc(&key);
-
-		assert!(catalog.sources.read().get(&source).is_none());
-	}
-
-	#[test]
-	fn test_invalidate_from_cdc_column_key() {
-		let mut txn = create_test_transaction();
-		let table = ensure_test_table(&mut txn);
-
-		let catalog = FlowCatalog::new();
-		let source = SourceId::Table(table.id);
-
-		// Load into cache
-		let _ = catalog.get_or_load(&mut txn, source).unwrap();
-		assert!(catalog.sources.read().get(&source).is_some());
-
-		// Invalidate via column key (should invalidate the source the column belongs to)
-		let key = ColumnKey {
-			source,
-			column: ColumnId(1),
-		}
-		.encode();
-		catalog.invalidate_from_cdc(&key);
-
-		assert!(catalog.sources.read().get(&source).is_none());
-	}
-
-	#[test]
-	fn test_invalidate_from_cdc_dictionary_key() {
-		let mut txn = create_test_transaction();
-		let table = ensure_test_table(&mut txn);
-		let rb = ensure_test_ringbuffer(&mut txn);
-
-		let catalog = FlowCatalog::new();
-
-		// Load multiple sources into cache
-		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).unwrap();
-		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).unwrap();
-		assert_eq!(catalog.sources.read().len(), 2);
-
-		// Invalidate via dictionary key (should clear entire cache)
-		let key = DictionaryKey {
-			dictionary: reifydb_core::interface::DictionaryId(1),
-		}
-		.encode();
-		catalog.invalidate_from_cdc(&key);
-
-		assert!(catalog.sources.read().is_empty());
-	}
-
-	// Direct invalidation tests
-
-	#[test]
-	fn test_invalidate_removes_entry() {
-		let mut txn = create_test_transaction();
-		let table = ensure_test_table(&mut txn);
-
-		let catalog = FlowCatalog::new();
-		let source = SourceId::Table(table.id);
-
-		// Load into cache
-		let _ = catalog.get_or_load(&mut txn, source).unwrap();
-		assert!(catalog.sources.read().get(&source).is_some());
-
-		// Direct invalidation
-		catalog.invalidate(source);
-
-		assert!(catalog.sources.read().get(&source).is_none());
-	}
-
-	#[test]
-	fn test_invalidate_nonexistent() {
-		let catalog = FlowCatalog::new();
-
-		// Should not panic when invalidating non-existent entry
-		catalog.invalidate(SourceId::Table(reifydb_core::interface::TableId(999)));
-	}
-
-	#[test]
-	fn test_clear() {
-		let mut txn = create_test_transaction();
-		let table = ensure_test_table(&mut txn);
-		let rb = ensure_test_ringbuffer(&mut txn);
-
-		let catalog = FlowCatalog::new();
-
-		// Load multiple sources
-		let _ = catalog.get_or_load(&mut txn, SourceId::Table(table.id)).unwrap();
-		let _ = catalog.get_or_load(&mut txn, SourceId::RingBuffer(rb.id)).unwrap();
-		assert_eq!(catalog.sources.read().len(), 2);
-
-		// Clear all
-		catalog.clear();
-
-		assert!(catalog.sources.read().is_empty());
 	}
 }
