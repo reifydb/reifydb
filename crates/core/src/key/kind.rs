@@ -56,7 +56,7 @@ impl From<KeyKind> for u8 {
 impl TryFrom<u8> for KeyKind {
 	type Error = Error;
 
-	fn try_from(value: u8) -> std::result::Result<Self, Self::Error> {
+	fn try_from(value: u8) -> Result<Self, Self::Error> {
 		match value {
 			0x01 => Ok(Self::Namespace),
 			0x02 => Ok(Self::Table),

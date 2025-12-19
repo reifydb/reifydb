@@ -92,8 +92,8 @@ pub fn decode_object_stats_key(key: &[u8]) -> Option<(Tier, ObjectId)> {
 // Value encoding/decoding (StorageStats)
 // ============================================================================
 
-/// StorageStats is 48 bytes (6 x u64).
-pub const STORAGE_STATS_SIZE: usize = 48;
+/// StorageStats is 72 bytes (9 x u64).
+pub const STORAGE_STATS_SIZE: usize = 72;
 
 /// Encode StorageStats to bytes.
 pub fn encode_stats(stats: &StorageStats) -> Vec<u8> {
@@ -102,8 +102,11 @@ pub fn encode_stats(stats: &StorageStats) -> Vec<u8> {
 	buf.extend_from_slice(&stats.current_value_bytes.to_le_bytes());
 	buf.extend_from_slice(&stats.historical_key_bytes.to_le_bytes());
 	buf.extend_from_slice(&stats.historical_value_bytes.to_le_bytes());
-	buf.extend_from_slice(&stats.current_entry_count.to_le_bytes());
-	buf.extend_from_slice(&stats.historical_entry_count.to_le_bytes());
+	buf.extend_from_slice(&stats.current_count.to_le_bytes());
+	buf.extend_from_slice(&stats.historical_count.to_le_bytes());
+	buf.extend_from_slice(&stats.cdc_key_bytes.to_le_bytes());
+	buf.extend_from_slice(&stats.cdc_value_bytes.to_le_bytes());
+	buf.extend_from_slice(&stats.cdc_count.to_le_bytes());
 	buf
 }
 
@@ -117,8 +120,11 @@ pub fn decode_stats(bytes: &[u8]) -> Option<StorageStats> {
 		current_value_bytes: u64::from_le_bytes(bytes[8..16].try_into().ok()?),
 		historical_key_bytes: u64::from_le_bytes(bytes[16..24].try_into().ok()?),
 		historical_value_bytes: u64::from_le_bytes(bytes[24..32].try_into().ok()?),
-		current_entry_count: u64::from_le_bytes(bytes[32..40].try_into().ok()?),
-		historical_entry_count: u64::from_le_bytes(bytes[40..48].try_into().ok()?),
+		current_count: u64::from_le_bytes(bytes[32..40].try_into().ok()?),
+		historical_count: u64::from_le_bytes(bytes[40..48].try_into().ok()?),
+		cdc_key_bytes: u64::from_le_bytes(bytes[48..56].try_into().ok()?),
+		cdc_value_bytes: u64::from_le_bytes(bytes[56..64].try_into().ok()?),
+		cdc_count: u64::from_le_bytes(bytes[64..72].try_into().ok()?),
 	})
 }
 
@@ -273,8 +279,11 @@ mod tests {
 			current_value_bytes: 200,
 			historical_key_bytes: 50,
 			historical_value_bytes: 150,
-			current_entry_count: 10,
-			historical_entry_count: 5,
+			current_count: 10,
+			historical_count: 5,
+			cdc_key_bytes: 25,
+			cdc_value_bytes: 75,
+			cdc_count: 3,
 		};
 
 		let encoded = encode_stats(&stats);

@@ -30,9 +30,15 @@ pub struct StorageStats {
 	/// Total bytes used by values for older MVCC versions
 	pub historical_value_bytes: u64,
 	/// Number of current (latest version) entries
-	pub current_entry_count: u64,
+	pub current_count: u64,
 	/// Number of historical (older version) entries
-	pub historical_entry_count: u64,
+	pub historical_count: u64,
+	/// Total CDC key bytes attributed to this object
+	pub cdc_key_bytes: u64,
+	/// Total CDC value bytes attributed to this object
+	pub cdc_value_bytes: u64,
+	/// Number of CDC entries attributed to this object
+	pub cdc_count: u64,
 }
 
 impl StorageStats {
@@ -59,16 +65,28 @@ impl StorageStats {
 		self.historical_key_bytes + self.historical_value_bytes
 	}
 
+	/// Total CDC bytes for this object.
+	pub fn cdc_total_bytes(&self) -> u64 {
+		self.cdc_key_bytes + self.cdc_value_bytes
+	}
+
 	/// Total entry count across current and historical.
-	pub fn total_entry_count(&self) -> u64 {
-		self.current_entry_count + self.historical_entry_count
+	pub fn total_count(&self) -> u64 {
+		self.current_count + self.historical_count
+	}
+
+	/// Record CDC bytes for a change attributed to this object.
+	pub fn record_cdc(&mut self, key_bytes: u64, value_bytes: u64, count: u64) {
+		self.cdc_key_bytes += key_bytes;
+		self.cdc_value_bytes += value_bytes;
+		self.cdc_count += count;
 	}
 
 	/// Record a new entry (insert of a key that didn't exist).
 	pub fn record_insert(&mut self, key_bytes: u64, value_bytes: u64) {
 		self.current_key_bytes += key_bytes;
 		self.current_value_bytes += value_bytes;
-		self.current_entry_count += 1;
+		self.current_count += 1;
 	}
 
 	/// Record an update (new version of existing key).
@@ -84,16 +102,16 @@ impl StorageStats {
 		// Move old version from current to historical
 		self.current_key_bytes = self.current_key_bytes.saturating_sub(old_key_bytes);
 		self.current_value_bytes = self.current_value_bytes.saturating_sub(old_value_bytes);
-		self.current_entry_count = self.current_entry_count.saturating_sub(1);
+		self.current_count = self.current_count.saturating_sub(1);
 
 		self.historical_key_bytes += old_key_bytes;
 		self.historical_value_bytes += old_value_bytes;
-		self.historical_entry_count += 1;
+		self.historical_count += 1;
 
 		// Add new version to current
 		self.current_key_bytes += new_key_bytes;
 		self.current_value_bytes += new_value_bytes;
-		self.current_entry_count += 1;
+		self.current_count += 1;
 	}
 
 	/// Record a delete (tombstone for existing key).
@@ -103,15 +121,15 @@ impl StorageStats {
 		// Move old version from current to historical
 		self.current_key_bytes = self.current_key_bytes.saturating_sub(old_key_bytes);
 		self.current_value_bytes = self.current_value_bytes.saturating_sub(old_value_bytes);
-		self.current_entry_count = self.current_entry_count.saturating_sub(1);
+		self.current_count = self.current_count.saturating_sub(1);
 
 		self.historical_key_bytes += old_key_bytes;
 		self.historical_value_bytes += old_value_bytes;
-		self.historical_entry_count += 1;
+		self.historical_count += 1;
 
 		// Tombstone goes to historical (key only, no value)
 		self.historical_key_bytes += tombstone_key_bytes;
-		self.historical_entry_count += 1;
+		self.historical_count += 1;
 	}
 }
 
@@ -121,8 +139,11 @@ impl AddAssign for StorageStats {
 		self.current_value_bytes += rhs.current_value_bytes;
 		self.historical_key_bytes += rhs.historical_key_bytes;
 		self.historical_value_bytes += rhs.historical_value_bytes;
-		self.current_entry_count += rhs.current_entry_count;
-		self.historical_entry_count += rhs.historical_entry_count;
+		self.current_count += rhs.current_count;
+		self.historical_count += rhs.historical_count;
+		self.cdc_key_bytes += rhs.cdc_key_bytes;
+		self.cdc_value_bytes += rhs.cdc_value_bytes;
+		self.cdc_count += rhs.cdc_count;
 	}
 }
 
@@ -204,9 +225,9 @@ mod tests {
 
 		assert_eq!(stats.current_key_bytes, 10);
 		assert_eq!(stats.current_value_bytes, 100);
-		assert_eq!(stats.current_entry_count, 1);
+		assert_eq!(stats.current_count, 1);
 		assert_eq!(stats.historical_key_bytes, 0);
-		assert_eq!(stats.historical_entry_count, 0);
+		assert_eq!(stats.historical_count, 0);
 		assert_eq!(stats.total_bytes(), 110);
 	}
 
@@ -219,12 +240,12 @@ mod tests {
 		// Current should have new value
 		assert_eq!(stats.current_key_bytes, 10);
 		assert_eq!(stats.current_value_bytes, 150);
-		assert_eq!(stats.current_entry_count, 1);
+		assert_eq!(stats.current_count, 1);
 
 		// Historical should have old value
 		assert_eq!(stats.historical_key_bytes, 10);
 		assert_eq!(stats.historical_value_bytes, 100);
-		assert_eq!(stats.historical_entry_count, 1);
+		assert_eq!(stats.historical_count, 1);
 
 		assert_eq!(stats.total_bytes(), 270); // 10+150 + 10+100
 	}
@@ -238,12 +259,12 @@ mod tests {
 		// Current should be empty
 		assert_eq!(stats.current_key_bytes, 0);
 		assert_eq!(stats.current_value_bytes, 0);
-		assert_eq!(stats.current_entry_count, 0);
+		assert_eq!(stats.current_count, 0);
 
 		// Historical should have old value + tombstone key
 		assert_eq!(stats.historical_key_bytes, 20); // old key + tombstone key
 		assert_eq!(stats.historical_value_bytes, 100);
-		assert_eq!(stats.historical_entry_count, 2); // old entry + tombstone
+		assert_eq!(stats.historical_count, 2); // old entry + tombstone
 	}
 
 	#[test]

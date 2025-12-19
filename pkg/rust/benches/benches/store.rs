@@ -27,6 +27,7 @@ fn create_store(backend: BackendStorage) -> StandardTransactionStore {
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
+		stats: Default::default(),
 	})
 	.expect("failed to create store")
 }

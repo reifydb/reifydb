@@ -48,6 +48,8 @@ impl Default for StandardColumnEvaluator {
 				.register_scalar("text::upper", text::TextUpper::new)
 				.register_scalar("text::substring", text::TextSubstring::new)
 				.register_scalar("text::length", text::TextLength::new)
+				.register_scalar("text::format_bytes", text::FormatBytes::new)
+				.register_scalar("text::format_bytes_si", text::FormatBytesSi::new)
 				.build(),
 		}
 	}
@@ -113,6 +115,8 @@ pub fn evaluate<'a>(ctx: &ColumnEvaluationContext<'a>, expr: &Expression<'a>) ->
 			.register_scalar("text::upper", text::TextUpper::new)
 			.register_scalar("text::substring", text::TextSubstring::new)
 			.register_scalar("text::length", text::TextLength::new)
+			.register_scalar("text::format_bytes", text::FormatBytes::new)
+			.register_scalar("text::format_bytes_si", text::FormatBytesSi::new)
 			.build(),
 	};
 
