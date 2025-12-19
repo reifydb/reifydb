@@ -36,6 +36,7 @@ use reifydb_rql::{
 	ast,
 	plan::{physical::PhysicalPlan, plan},
 };
+use reifydb_transaction::StorageTracker;
 use tracing::instrument;
 
 use crate::{
@@ -244,6 +245,7 @@ pub struct ExecutorInner {
 	pub functions: Functions,
 	pub flow_operator_store: FlowOperatorStore,
 	pub virtual_table_registry: TableVirtualUserRegistry,
+	pub stats_tracker: StorageTracker,
 }
 
 impl Clone for Executor {
@@ -261,11 +263,16 @@ impl std::ops::Deref for Executor {
 }
 
 impl Executor {
-	pub fn new(functions: Functions, flow_operator_store: FlowOperatorStore) -> Self {
+	pub fn new(
+		functions: Functions,
+		flow_operator_store: FlowOperatorStore,
+		stats_tracker: StorageTracker,
+	) -> Self {
 		Self(Arc::new(ExecutorInner {
 			functions,
 			flow_operator_store,
 			virtual_table_registry: TableVirtualUserRegistry::new(),
+			stats_tracker,
 		}))
 	}
 
@@ -273,11 +280,13 @@ impl Executor {
 		functions: Functions,
 		flow_operator_store: FlowOperatorStore,
 		virtual_table_registry: TableVirtualUserRegistry,
+		stats_tracker: StorageTracker,
 	) -> Self {
 		Self(Arc::new(ExecutorInner {
 			functions,
 			flow_operator_store,
 			virtual_table_registry,
+			stats_tracker,
 		}))
 	}
 
@@ -295,6 +304,7 @@ impl Executor {
 				.register_generator("generate_series", generator::GenerateSeries::new)
 				.build(),
 			FlowOperatorStore::new(),
+			StorageTracker::with_defaults(),
 		)
 	}
 }

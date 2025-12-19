@@ -33,6 +33,12 @@ impl Deref for EncodedKey {
 	}
 }
 
+impl AsRef<[u8]> for EncodedKey {
+	fn as_ref(&self) -> &[u8] {
+		self.0.as_ref()
+	}
+}
+
 impl EncodedKey {
 	pub fn new(key: impl Into<Vec<u8>>) -> Self {
 		Self(CowVec::new(key.into()))

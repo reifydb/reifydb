@@ -5,7 +5,7 @@ use reifydb_type::Error;
 use serde::{Deserialize, Serialize};
 
 #[repr(u8)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(try_from = "u8", into = "u8")]
 pub enum KeyKind {
 	Namespace = 0x01,
@@ -44,7 +44,8 @@ pub enum KeyKind {
 	DictionaryEntryIndex = 0x22,
 	NamespaceDictionary = 0x23,
 	DictionarySequence = 0x24,
-	FlowVersion = 0x25,
+	StorageTracker = 0x25,
+	FlowVersion = 0x26,
 }
 
 impl From<KeyKind> for u8 {
@@ -93,7 +94,8 @@ impl TryFrom<u8> for KeyKind {
 			0x22 => Ok(Self::DictionaryEntryIndex),
 			0x23 => Ok(Self::NamespaceDictionary),
 			0x24 => Ok(Self::DictionarySequence),
-			0x25 => Ok(Self::FlowVersion),
+			0x25 => Ok(Self::StorageTracker),
+			0x26 => Ok(Self::FlowVersion),
 			_ => Err(serde::de::Error::custom(format!("Invalid KeyKind value: {value:#04x}"))),
 		}
 	}

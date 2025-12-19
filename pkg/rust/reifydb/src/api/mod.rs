@@ -24,6 +24,7 @@ pub fn memory() -> (TransactionStore, TransactionSingleVersion, TransactionCdc, 
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
+		stats: Default::default(),
 	});
 
 	(
@@ -47,6 +48,7 @@ pub fn sqlite(config: SqliteConfig) -> (TransactionStore, TransactionSingleVersi
 		cold: None,
 		retention: Default::default(),
 		merge_config: Default::default(),
+		stats: Default::default(),
 	});
 
 	(

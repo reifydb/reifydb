@@ -37,10 +37,12 @@ use crate::{
 	table_virtual::{
 		TableVirtual, TableVirtualContext,
 		system::{
-			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, FlowEdges, FlowNodeTypes, FlowNodes,
-			FlowOperatorInputs, FlowOperatorOutputs, FlowOperators, Flows, Namespaces,
-			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, RingBuffers, Sequences,
-			SourceRetentionPolicies, Tables, TablesVirtual, Types, Versions, Views,
+			CdcConsumers, ColumnPolicies, ColumnsTable, Dictionaries, DictionaryStorageStats, FlowEdges,
+			FlowNodeStorageStats, FlowNodeTypes, FlowNodes, FlowOperatorInputs, FlowOperatorOutputs,
+			FlowOperators, FlowStorageStats, Flows, IndexStorageStats, Namespaces,
+			OperatorRetentionPolicies, PrimaryKeyColumns, PrimaryKeys, RingBufferStorageStats, RingBuffers,
+			Sequences, SourceRetentionPolicies, TableStorageStats, Tables, TablesVirtual, Types, Versions,
+			ViewStorageStats, Views,
 		},
 	},
 };
@@ -273,6 +275,27 @@ pub(crate) fn compile<'a>(
 						context.executor.flow_operator_store.clone(),
 					)),
 					"ringbuffers" => Box::new(RingBuffers::new()),
+					"table_storage_stats" => {
+						Box::new(TableStorageStats::new(context.executor.stats_tracker.clone()))
+					}
+					"view_storage_stats" => {
+						Box::new(ViewStorageStats::new(context.executor.stats_tracker.clone()))
+					}
+					"flow_storage_stats" => {
+						Box::new(FlowStorageStats::new(context.executor.stats_tracker.clone()))
+					}
+					"flow_node_storage_stats" => Box::new(FlowNodeStorageStats::new(
+						context.executor.stats_tracker.clone(),
+					)),
+					"index_storage_stats" => {
+						Box::new(IndexStorageStats::new(context.executor.stats_tracker.clone()))
+					}
+					"ringbuffer_storage_stats" => Box::new(RingBufferStorageStats::new(
+						context.executor.stats_tracker.clone(),
+					)),
+					"dictionary_storage_stats" => Box::new(DictionaryStorageStats::new(
+						context.executor.stats_tracker.clone(),
+					)),
 					_ => panic!("Unknown virtual table type: {}", table.name),
 				}
 			} else {

@@ -12,12 +12,13 @@ pub mod config;
 mod multi;
 // pub mod retention;
 mod single;
+pub mod stats;
 mod store;
 
 use std::collections::Bound;
 
 pub use cdc::{CdcCount, CdcGet, CdcRange, CdcScan, CdcStore};
-pub use config::{BackendConfig, MergeConfig, RetentionConfig, TransactionStoreConfig};
+pub use config::{BackendConfig, MergeConfig, RetentionConfig, StorageStatsConfig, TransactionStoreConfig};
 pub use multi::*;
 use reifydb_core::{
 	CommitVersion, CowVec, EncodedKey, EncodedKeyRange,
@@ -25,6 +26,7 @@ use reifydb_core::{
 	interface::{Cdc, MultiVersionValues, SingleVersionValues},
 };
 pub use single::*;
+pub use stats::{ObjectId, StorageStats, StorageTracker, Tier, TierStats};
 pub use store::StandardTransactionStore;
 
 pub mod memory {
@@ -63,6 +65,13 @@ impl TransactionStore {
 impl TransactionStore {
 	pub fn testing_memory() -> Self {
 		TransactionStore::Standard(StandardTransactionStore::testing_memory())
+	}
+
+	/// Get access to the storage tracker.
+	pub fn stats_tracker(&self) -> &StorageTracker {
+		match self {
+			TransactionStore::Standard(store) => store.stats_tracker(),
+		}
 	}
 }
 

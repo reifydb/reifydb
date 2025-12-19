@@ -23,6 +23,7 @@ use crate::{
 	MultiVersionRangeRev, MultiVersionStore,
 	backend::{PrimitiveStorage, TableId, delta_optimizer::optimize_deltas, result::MultiVersionIterResult},
 	cdc::{InternalCdc, codec::encode_internal_cdc, process_deltas_for_cdc},
+	stats::{PreVersionInfo, Tier},
 	store::multi_iterator::{MultiVersionMergingIterator, MultiVersionMergingRevIterator},
 };
 
@@ -156,6 +157,35 @@ impl MultiVersionCommit for StandardTransactionStore {
 			None
 		})?;
 
+		// Track storage statistics
+		for delta in optimized_deltas.iter() {
+			let key = delta.key();
+			let key_bytes = key.as_ref();
+			let table = classify_key(key);
+
+			// Look up previous value to calculate size delta
+			let pre_version_info = self.get_previous_value_info(table, key_bytes);
+
+			match delta {
+				Delta::Set {
+					values,
+					..
+				} => {
+					self.stats_tracker.record_write(
+						Tier::Hot,
+						key_bytes,
+						values.len() as u64,
+						pre_version_info,
+					);
+				}
+				Delta::Remove {
+					..
+				} => {
+					self.stats_tracker.record_delete(Tier::Hot, key_bytes, pre_version_info);
+				}
+			}
+		}
+
 		// Batch deltas by table for efficient storage writes
 		let mut batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();
 
@@ -196,7 +226,58 @@ impl MultiVersionCommit for StandardTransactionStore {
 			storage.put(TableId::Cdc, &[(&cdc_key[..], Some(encoded.as_ref()))])?;
 		}
 
+		// Checkpoint stats if needed
+		if self.stats_tracker.should_checkpoint() {
+			self.stats_tracker.checkpoint(storage)?;
+		}
+
 		Ok(())
+	}
+}
+
+impl StandardTransactionStore {
+	/// Get information about the previous value of a key for stats tracking.
+	///
+	/// Returns the key and value sizes of the latest version if the key exists.
+	fn get_previous_value_info(&self, table: TableId, key: &[u8]) -> Option<PreVersionInfo> {
+		// Try to get the latest version from any tier
+		let get_value = |storage: &crate::backend::BackendStorage| -> Option<(u64, u64)> {
+			match get_at_version(storage, table, key, CommitVersion(u64::MAX)) {
+				Ok(VersionedGetResult::Value {
+					value,
+					..
+				}) => Some((key.len() as u64, value.len() as u64)),
+				_ => None,
+			}
+		};
+
+		// Check tiers in order
+		if let Some(hot) = &self.hot {
+			if let Some((key_bytes, value_bytes)) = get_value(hot) {
+				return Some(PreVersionInfo {
+					key_bytes,
+					value_bytes,
+				});
+			}
+		}
+		if let Some(warm) = &self.warm {
+			if let Some((key_bytes, value_bytes)) = get_value(warm) {
+				return Some(PreVersionInfo {
+					key_bytes,
+					value_bytes,
+				});
+			}
+		}
+		if let Some(cold) = &self.cold {
+			if let Some((key_bytes, value_bytes)) = get_value(cold) {
+				return Some(PreVersionInfo {
+					key_bytes,
+					value_bytes,
+				});
+			}
+		}
+
+		None
 	}
 }
 

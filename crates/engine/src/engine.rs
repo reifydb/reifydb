@@ -182,12 +182,14 @@ impl StandardEngine {
 		let listener = FlowOperatorEventListener::new(flow_operator_store.clone());
 		event_bus.register(listener);
 
+		let stats_tracker = multi.store().stats_tracker().clone();
+
 		Self(Arc::new(EngineInner {
 			multi,
 			single,
 			cdc,
 			event_bus,
-			executor: Executor::new(functions, flow_operator_store.clone()),
+			executor: Executor::new(functions, flow_operator_store.clone(), stats_tracker),
 			interceptors,
 			catalog,
 			flow_operator_store,

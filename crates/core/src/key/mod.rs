@@ -170,7 +170,8 @@ pub trait EncodableKeyRange {
 }
 
 impl Key {
-	pub fn kind(key: &EncodedKey) -> Option<KeyKind> {
+	pub fn kind(key: impl AsRef<[u8]>) -> Option<KeyKind> {
+		let key = key.as_ref();
 		if key.len() < 2 {
 			return None;
 		}
@@ -242,6 +243,10 @@ impl Key {
 			}
 			KeyKind::NamespaceDictionary => {
 				NamespaceDictionaryKey::decode(&key).map(Self::NamespaceDictionary)
+			}
+			KeyKind::StorageTracker => {
+				// Storage tracker keys are used for internal persistence, not through Key enum
+				None
 			}
 		}
 	}
