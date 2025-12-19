@@ -84,7 +84,7 @@ impl<'a> TableVirtual<'a> for IndexStorageStats {
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("current_entry_count"),
+				name: Fragment::owned_internal("current_count"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
@@ -100,11 +100,27 @@ impl<'a> TableVirtual<'a> for IndexStorageStats {
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
-				name: Fragment::owned_internal("historical_entry_count"),
+				name: Fragment::owned_internal("historical_count"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 			Column {
 				name: Fragment::owned_internal("total_bytes"),
+				data: ColumnData::uint8_with_capacity(0),
+			},
+			Column {
+				name: Fragment::owned_internal("cdc_key_bytes"),
+				data: ColumnData::uint8_with_capacity(0),
+			},
+			Column {
+				name: Fragment::owned_internal("cdc_value_bytes"),
+				data: ColumnData::uint8_with_capacity(0),
+			},
+			Column {
+				name: Fragment::owned_internal("cdc_total_bytes"),
+				data: ColumnData::uint8_with_capacity(0),
+			},
+			Column {
+				name: Fragment::owned_internal("cdc_count"),
 				data: ColumnData::uint8_with_capacity(0),
 			},
 		];

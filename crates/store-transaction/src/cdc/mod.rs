@@ -63,6 +63,26 @@ pub(crate) enum InternalCdcChange {
 	},
 }
 
+impl InternalCdcChange {
+	/// Get the key for this change.
+	pub fn key(&self) -> &EncodedKey {
+		match self {
+			InternalCdcChange::Insert {
+				key,
+				..
+			} => key,
+			InternalCdcChange::Update {
+				key,
+				..
+			} => key,
+			InternalCdcChange::Delete {
+				key,
+				..
+			} => key,
+		}
+	}
+}
+
 /// Internal representation of CDC with version references
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) struct InternalCdc {

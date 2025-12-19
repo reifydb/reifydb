@@ -55,7 +55,8 @@ impl<'a> TableVirtual<'a> for FlowStorageStats {
 		}
 
 		// Collect all flow stats across all tiers
-		let mut rows: Vec<(u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64)> = Vec::new();
+		#[allow(clippy::type_complexity)]
+		let mut rows: Vec<(u64, u64, Tier, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64, u64)> = Vec::new();
 
 		for tier in [Tier::Hot, Tier::Warm, Tier::Cold] {
 			for (obj_id, stats) in self.stats_tracker.objects_by_tier(tier) {
@@ -74,12 +75,16 @@ impl<'a> TableVirtual<'a> for FlowStorageStats {
 						stats.current_key_bytes,
 						stats.current_value_bytes,
 						stats.current_bytes(),
-						stats.current_entry_count,
+						stats.current_count,
 						stats.historical_key_bytes,
 						stats.historical_value_bytes,
 						stats.historical_bytes(),
-						stats.historical_entry_count,
+						stats.historical_count,
 						stats.total_bytes(),
+						stats.cdc_key_bytes,
+						stats.cdc_value_bytes,
+						stats.cdc_total_bytes(),
+						stats.cdc_count,
 					));
 				}
 			}
@@ -92,12 +97,16 @@ impl<'a> TableVirtual<'a> for FlowStorageStats {
 		let mut current_key_bytes = ColumnData::uint8_with_capacity(capacity);
 		let mut current_value_bytes = ColumnData::uint8_with_capacity(capacity);
 		let mut current_total_bytes = ColumnData::uint8_with_capacity(capacity);
-		let mut current_entry_counts = ColumnData::uint8_with_capacity(capacity);
+		let mut current_counts = ColumnData::uint8_with_capacity(capacity);
 		let mut historical_key_bytes = ColumnData::uint8_with_capacity(capacity);
 		let mut historical_value_bytes = ColumnData::uint8_with_capacity(capacity);
 		let mut historical_total_bytes = ColumnData::uint8_with_capacity(capacity);
-		let mut historical_entry_counts = ColumnData::uint8_with_capacity(capacity);
+		let mut historical_counts = ColumnData::uint8_with_capacity(capacity);
 		let mut total_bytes = ColumnData::uint8_with_capacity(capacity);
+		let mut cdc_key_bytes = ColumnData::uint8_with_capacity(capacity);
+		let mut cdc_value_bytes = ColumnData::uint8_with_capacity(capacity);
+		let mut cdc_total_bytes = ColumnData::uint8_with_capacity(capacity);
+		let mut cdc_counts = ColumnData::uint8_with_capacity(capacity);
 
 		for row in rows {
 			ids.push(row.0);
@@ -106,12 +115,16 @@ impl<'a> TableVirtual<'a> for FlowStorageStats {
 			current_key_bytes.push(row.3);
 			current_value_bytes.push(row.4);
 			current_total_bytes.push(row.5);
-			current_entry_counts.push(row.6);
+			current_counts.push(row.6);
 			historical_key_bytes.push(row.7);
 			historical_value_bytes.push(row.8);
 			historical_total_bytes.push(row.9);
-			historical_entry_counts.push(row.10);
+			historical_counts.push(row.10);
 			total_bytes.push(row.11);
+			cdc_key_bytes.push(row.12);
+			cdc_value_bytes.push(row.13);
+			cdc_total_bytes.push(row.14);
+			cdc_counts.push(row.15);
 		}
 
 		let columns = vec![
@@ -140,8 +153,8 @@ impl<'a> TableVirtual<'a> for FlowStorageStats {
 				data: current_total_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("current_entry_count"),
-				data: current_entry_counts,
+				name: Fragment::owned_internal("current_count"),
+				data: current_counts,
 			},
 			Column {
 				name: Fragment::owned_internal("historical_key_bytes"),
@@ -156,12 +169,28 @@ impl<'a> TableVirtual<'a> for FlowStorageStats {
 				data: historical_total_bytes,
 			},
 			Column {
-				name: Fragment::owned_internal("historical_entry_count"),
-				data: historical_entry_counts,
+				name: Fragment::owned_internal("historical_count"),
+				data: historical_counts,
 			},
 			Column {
 				name: Fragment::owned_internal("total_bytes"),
 				data: total_bytes,
+			},
+			Column {
+				name: Fragment::owned_internal("cdc_key_bytes"),
+				data: cdc_key_bytes,
+			},
+			Column {
+				name: Fragment::owned_internal("cdc_value_bytes"),
+				data: cdc_value_bytes,
+			},
+			Column {
+				name: Fragment::owned_internal("cdc_total_bytes"),
+				data: cdc_total_bytes,
+			},
+			Column {
+				name: Fragment::owned_internal("cdc_count"),
+				data: cdc_counts,
 			},
 		];
 

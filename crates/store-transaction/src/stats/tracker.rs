@@ -157,6 +157,34 @@ impl StorageTracker {
 		}
 	}
 
+	/// Record CDC bytes for a specific change.
+	///
+	/// Called for each change in a CDC entry to attribute bytes to the source object.
+	/// - `tier`: Which storage tier the CDC entry was written to
+	/// - `key`: The change key (identifies the source object)
+	/// - `value_bytes`: Bytes attributed to this change (distributed overhead)
+	/// - `count`: Number of CDC entries to record (typically 1)
+	pub fn record_cdc_for_change(&self, tier: Tier, key: &[u8], value_bytes: u64, count: u64) {
+		let key_bytes = key.len() as u64;
+
+		let kind = Key::kind(key);
+		let object_id = kind.map(|k| extract_object_id(key, k));
+
+		let mut inner = self.inner.write().unwrap();
+
+		// Update per-type stats
+		if let Some(kind) = kind {
+			let stats = inner.by_type.entry((tier, kind)).or_insert_with(StorageStats::new);
+			stats.record_cdc(key_bytes, value_bytes, count);
+		}
+
+		// Update per-object stats
+		if let Some(object_id) = object_id {
+			let stats = inner.by_object.entry((tier, object_id)).or_insert_with(StorageStats::new);
+			stats.record_cdc(key_bytes, value_bytes, count);
+		}
+	}
+
 	/// Record data migration between tiers.
 	///
 	/// When data moves from one tier to another (e.g., hot -> warm),
@@ -184,13 +212,13 @@ impl StorageTracker {
 					stats.current_key_bytes = stats.current_key_bytes.saturating_sub(key_bytes);
 					stats.current_value_bytes =
 						stats.current_value_bytes.saturating_sub(value_bytes);
-					stats.current_entry_count = stats.current_entry_count.saturating_sub(1);
+					stats.current_count = stats.current_count.saturating_sub(1);
 				} else {
 					stats.historical_key_bytes =
 						stats.historical_key_bytes.saturating_sub(key_bytes);
 					stats.historical_value_bytes =
 						stats.historical_value_bytes.saturating_sub(value_bytes);
-					stats.historical_entry_count = stats.historical_entry_count.saturating_sub(1);
+					stats.historical_count = stats.historical_count.saturating_sub(1);
 				}
 			}
 
@@ -199,11 +227,11 @@ impl StorageTracker {
 			if is_current {
 				stats.current_key_bytes += key_bytes;
 				stats.current_value_bytes += value_bytes;
-				stats.current_entry_count += 1;
+				stats.current_count += 1;
 			} else {
 				stats.historical_key_bytes += key_bytes;
 				stats.historical_value_bytes += value_bytes;
-				stats.historical_entry_count += 1;
+				stats.historical_count += 1;
 			}
 		}
 
@@ -215,13 +243,13 @@ impl StorageTracker {
 					stats.current_key_bytes = stats.current_key_bytes.saturating_sub(key_bytes);
 					stats.current_value_bytes =
 						stats.current_value_bytes.saturating_sub(value_bytes);
-					stats.current_entry_count = stats.current_entry_count.saturating_sub(1);
+					stats.current_count = stats.current_count.saturating_sub(1);
 				} else {
 					stats.historical_key_bytes =
 						stats.historical_key_bytes.saturating_sub(key_bytes);
 					stats.historical_value_bytes =
 						stats.historical_value_bytes.saturating_sub(value_bytes);
-					stats.historical_entry_count = stats.historical_entry_count.saturating_sub(1);
+					stats.historical_count = stats.historical_count.saturating_sub(1);
 				}
 			}
 
@@ -230,11 +258,11 @@ impl StorageTracker {
 			if is_current {
 				stats.current_key_bytes += key_bytes;
 				stats.current_value_bytes += value_bytes;
-				stats.current_entry_count += 1;
+				stats.current_count += 1;
 			} else {
 				stats.historical_key_bytes += key_bytes;
 				stats.historical_value_bytes += value_bytes;
-				stats.historical_entry_count += 1;
+				stats.historical_count += 1;
 			}
 		}
 	}
@@ -373,8 +401,8 @@ mod tests {
 		let stats = tracker.total_stats();
 		assert_eq!(stats.hot.current_key_bytes, key.len() as u64);
 		assert_eq!(stats.hot.current_value_bytes, 50);
-		assert_eq!(stats.hot.current_entry_count, 1);
-		assert_eq!(stats.hot.historical_entry_count, 0);
+		assert_eq!(stats.hot.current_count, 1);
+		assert_eq!(stats.hot.historical_count, 0);
 	}
 
 	#[test]
@@ -397,12 +425,12 @@ mod tests {
 		// Current should have new value
 		assert_eq!(stats.hot.current_key_bytes, key_bytes);
 		assert_eq!(stats.hot.current_value_bytes, 75);
-		assert_eq!(stats.hot.current_entry_count, 1);
+		assert_eq!(stats.hot.current_count, 1);
 
 		// Historical should have old value
 		assert_eq!(stats.hot.historical_key_bytes, key_bytes);
 		assert_eq!(stats.hot.historical_value_bytes, 50);
-		assert_eq!(stats.hot.historical_entry_count, 1);
+		assert_eq!(stats.hot.historical_count, 1);
 	}
 
 	#[test]
@@ -423,10 +451,10 @@ mod tests {
 
 		let stats = tracker.total_stats();
 		// Current should be empty
-		assert_eq!(stats.hot.current_entry_count, 0);
+		assert_eq!(stats.hot.current_count, 0);
 
 		// Historical should have old value + tombstone
-		assert_eq!(stats.hot.historical_entry_count, 2);
+		assert_eq!(stats.hot.historical_count, 2);
 	}
 
 	#[test]
@@ -441,7 +469,7 @@ mod tests {
 		let by_type = tracker.stats_by_type(Tier::Hot);
 		let row_stats = by_type.get(&KeyKind::Row).unwrap();
 
-		assert_eq!(row_stats.current_entry_count, 2);
+		assert_eq!(row_stats.current_count, 2);
 		assert_eq!(row_stats.current_value_bytes, 110);
 	}
 
@@ -459,13 +487,13 @@ mod tests {
 		// Object 1 (SourceId::table(1)) should have 2 entries
 		let source1 = ObjectId::Source(SourceId::table(1));
 		let stats1 = tracker.stats_for_object(source1).unwrap();
-		assert_eq!(stats1.hot.current_entry_count, 2);
+		assert_eq!(stats1.hot.current_count, 2);
 		assert_eq!(stats1.hot.current_value_bytes, 110);
 
 		// Object 2 (SourceId::table(2)) should have 1 entry
 		let source2 = ObjectId::Source(SourceId::table(2));
 		let stats2 = tracker.stats_for_object(source2).unwrap();
-		assert_eq!(stats2.hot.current_entry_count, 1);
+		assert_eq!(stats2.hot.current_count, 1);
 		assert_eq!(stats2.hot.current_value_bytes, 70);
 	}
 
@@ -483,11 +511,11 @@ mod tests {
 
 		let stats = tracker.total_stats();
 		// Hot should be empty
-		assert_eq!(stats.hot.current_entry_count, 0);
+		assert_eq!(stats.hot.current_count, 0);
 		assert_eq!(stats.hot.current_bytes(), 0);
 
 		// Warm should have the data
-		assert_eq!(stats.warm.current_entry_count, 1);
+		assert_eq!(stats.warm.current_count, 1);
 		assert_eq!(stats.warm.current_key_bytes, key_bytes);
 		assert_eq!(stats.warm.current_value_bytes, 50);
 	}
@@ -567,7 +595,7 @@ mod tests {
 
 		assert_eq!(original_stats.hot.current_key_bytes, restored_stats.hot.current_key_bytes);
 		assert_eq!(original_stats.hot.current_value_bytes, restored_stats.hot.current_value_bytes);
-		assert_eq!(original_stats.hot.current_entry_count, restored_stats.hot.current_entry_count);
+		assert_eq!(original_stats.hot.current_count, restored_stats.hot.current_count);
 		assert_eq!(original_stats.warm.current_key_bytes, restored_stats.warm.current_key_bytes);
 		assert_eq!(original_stats.warm.current_value_bytes, restored_stats.warm.current_value_bytes);
 
@@ -575,8 +603,8 @@ mod tests {
 		let original_by_type = tracker.stats_by_type(Tier::Hot);
 		let restored_by_type = restored.stats_by_type(Tier::Hot);
 		assert_eq!(
-			original_by_type.get(&KeyKind::Row).unwrap().current_entry_count,
-			restored_by_type.get(&KeyKind::Row).unwrap().current_entry_count
+			original_by_type.get(&KeyKind::Row).unwrap().current_count,
+			restored_by_type.get(&KeyKind::Row).unwrap().current_count
 		);
 
 		// Verify per-object stats
@@ -628,8 +656,8 @@ mod tests {
 		let tracker = StorageTracker::restore(&storage, config).unwrap();
 		let stats = tracker.total_stats();
 
-		assert_eq!(stats.hot.current_entry_count, 0);
-		assert_eq!(stats.warm.current_entry_count, 0);
-		assert_eq!(stats.cold.current_entry_count, 0);
+		assert_eq!(stats.hot.current_count, 0);
+		assert_eq!(stats.warm.current_count, 0);
+		assert_eq!(stats.cold.current_count, 0);
 	}
 }

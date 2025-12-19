@@ -224,6 +224,19 @@ impl MultiVersionCommit for StandardTransactionStore {
 			let encoded = encode_internal_cdc(&internal_cdc)?;
 			let cdc_key = version.0.to_be_bytes();
 			storage.put(TableId::Cdc, &[(&cdc_key[..], Some(encoded.as_ref()))])?;
+
+			// Track CDC bytes per source object
+			// Distribute the encoded size proportionally among changes
+			let num_changes = internal_cdc.changes.len() as u64;
+			let total_key_bytes: u64 =
+				internal_cdc.changes.iter().map(|c| c.change.key().len() as u64).sum();
+			let overhead_bytes = (encoded.len() as u64).saturating_sub(total_key_bytes);
+			let per_change_overhead = overhead_bytes / num_changes.max(1);
+
+			for change in &internal_cdc.changes {
+				let change_key = change.change.key();
+				self.stats_tracker.record_cdc_for_change(Tier::Hot, change_key, per_change_overhead, 1);
+			}
 		}
 
 		// Checkpoint stats if needed
