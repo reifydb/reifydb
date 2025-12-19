@@ -58,7 +58,7 @@ pub use reifydb_type::{
 	Frame, FrameColumn, FrameColumnData, FrameError, FrameRow, FrameRows, FromFrame, FromFrameError,
 	FromValueError, OrderedF32, OrderedF64, TryFromValue, TryFromValueCoerce, Type, Value,
 };
-pub use session::{CommandSession, QuerySession, Session};
+pub use session::{CommandSession, IntoCommandSession, QuerySession, Session};
 
 /// Default configuration values
 pub mod defaults {
