@@ -1,0 +1,26 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests basic drop in single-version storage.
+
+set a=1
+set b=2
+---
+ok
+
+get a
+get b
+---
+"a" => "1"
+"b" => "2"
+
+# Drop 'a'
+drop a
+---
+ok
+
+get a
+get b
+---
+"a" => None
+"b" => "2"

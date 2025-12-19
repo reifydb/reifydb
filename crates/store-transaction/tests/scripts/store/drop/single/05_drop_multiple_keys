@@ -1,0 +1,22 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that drop only affects specified key.
+
+set a=1
+set b=2
+set c=3
+---
+ok
+
+drop b
+---
+ok
+
+get a
+get b
+get c
+---
+"a" => "1"
+"b" => None
+"c" => "3"

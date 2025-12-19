@@ -129,6 +129,14 @@ impl TransactionValue {
 					values: EncodedValues(CowVec::default()),
 					version: item.version,
 				},
+				Delta::Drop {
+					key,
+					..
+				} => MultiVersionValues {
+					key,
+					values: EncodedValues(CowVec::default()),
+					version: item.version,
+				},
 			},
 			Self::Committed(item) => MultiVersionValues {
 				key: item.key,

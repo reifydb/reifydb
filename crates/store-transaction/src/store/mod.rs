@@ -14,6 +14,7 @@ use crate::{
 
 mod cdc;
 mod cdc_iterator;
+mod drop;
 mod multi;
 mod multi_iterator;
 pub mod router;

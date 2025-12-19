@@ -146,6 +146,11 @@ fn generate_internal_cdc_change(
 				None
 			}
 		}
+
+		// Drop operations never generate CDC events - they are for internal cleanup
+		Delta::Drop {
+			..
+		} => None,
 	}
 }
 

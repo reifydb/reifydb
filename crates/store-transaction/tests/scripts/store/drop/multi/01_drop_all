@@ -1,0 +1,34 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests basic drop that removes all versions of a key.
+
+# Insert multiple versions
+set a=1 version=1
+set a=2 version=2
+set a=3 version=3
+---
+ok
+
+# Verify all versions exist
+get a version=1
+get a version=2
+get a version=3
+---
+"a" => "1"
+"a" => "2"
+"a" => "3"
+
+# Drop all versions
+drop a
+---
+ok
+
+# All versions should be gone
+get a version=1
+get a version=2
+get a version=3
+---
+"a" => None
+"a" => None
+"a" => None

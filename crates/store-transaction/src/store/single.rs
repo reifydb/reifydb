@@ -107,10 +107,14 @@ impl SingleVersionCommit for StandardTransactionStore {
 				Delta::Set {
 					key,
 					values,
-				} => (key.as_ref() as &[u8], Some(values.as_ref() as &[u8])),
+				} => (key.as_ref(), Some(values.as_ref())),
 				Delta::Remove {
 					key,
-				} => (key.as_ref() as &[u8], None),
+				} => (key.as_ref(), None),
+				Delta::Drop {
+					key,
+					..
+				} => (key.as_ref(), None),
 			})
 			.collect();
 

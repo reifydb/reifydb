@@ -1,0 +1,31 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests drop with keep_last_versions constraint.
+
+# Insert 5 versions
+set a=1 version=1
+set a=2 version=2
+set a=3 version=3
+set a=4 version=4
+set a=5 version=5
+---
+ok
+
+# Keep only 2 most recent (v4, v5)
+drop a keep_last_versions=2
+---
+ok
+
+# v1,2,3 dropped; v4,5 remain
+get a version=1
+get a version=2
+get a version=3
+get a version=4
+get a version=5
+---
+"a" => None
+"a" => None
+"a" => None
+"a" => "4"
+"a" => "5"

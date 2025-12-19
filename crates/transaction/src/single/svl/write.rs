@@ -69,6 +69,9 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 				Delta::Remove {
 					..
 				} => Ok(None),
+				Delta::Drop {
+					..
+				} => Ok(None),
 			};
 		}
 
@@ -89,6 +92,9 @@ impl SingleVersionQueryTransaction for SvlCommandTransaction<'_> {
 					..
 				} => Ok(true),
 				Delta::Remove {
+					..
+				} => Ok(false),
+				Delta::Drop {
 					..
 				} => Ok(false),
 			};

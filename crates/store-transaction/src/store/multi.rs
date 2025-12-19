@@ -14,7 +14,7 @@ use reifydb_type::util::hex;
 use tracing::instrument;
 
 use super::{
-	StandardTransactionStore,
+	StandardTransactionStore, drop,
 	router::classify_key,
 	version_manager::{VersionedGetResult, encode_versioned_key, get_at_version, get_latest_version},
 };
@@ -183,6 +183,12 @@ impl MultiVersionCommit for StandardTransactionStore {
 				} => {
 					self.stats_tracker.record_delete(Tier::Hot, key_bytes, pre_version_info);
 				}
+				Delta::Drop {
+					..
+				} => {
+					// Drop operations are internal cleanup - stats tracked per deleted version
+					// below
+				}
 			}
 		}
 
@@ -191,19 +197,41 @@ impl MultiVersionCommit for StandardTransactionStore {
 
 		for delta in optimized_deltas.iter() {
 			let table = classify_key(delta.key());
-			let versioned_key = encode_versioned_key(delta.key().as_ref(), version);
 
-			let entry = match delta {
+			match delta {
 				Delta::Set {
+					key,
 					values,
-					..
-				} => (versioned_key, Some(values.as_ref().to_vec())),
+				} => {
+					let versioned_key = encode_versioned_key(key.as_ref(), version);
+					batches.entry(table)
+						.or_default()
+						.push((versioned_key, Some(values.as_ref().to_vec())));
+				}
 				Delta::Remove {
-					..
-				} => (versioned_key, None),
-			};
-
-			batches.entry(table).or_default().push(entry);
+					key,
+				} => {
+					let versioned_key = encode_versioned_key(key.as_ref(), version);
+					batches.entry(table).or_default().push((versioned_key, None));
+				}
+				Delta::Drop {
+					key,
+					up_to_version,
+					keep_last_versions,
+				} => {
+					// Drop scans for versioned entries and deletes them based on constraints
+					let keys_to_drop = find_keys_to_drop(
+						storage,
+						table,
+						key.as_ref(),
+						*up_to_version,
+						*keep_last_versions,
+					)?;
+					for versioned_key in keys_to_drop {
+						batches.entry(table).or_default().push((versioned_key, None));
+					}
+				}
+			}
 		}
 
 		// Write each batch to storage
@@ -295,6 +323,8 @@ impl StandardTransactionStore {
 }
 
 use std::collections::BTreeMap;
+
+use drop::find_keys_to_drop;
 
 use crate::backend::BackendStorage;
 

@@ -1,0 +1,28 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests interleaved operations.
+
+set a=1
+---
+ok
+
+get a
+---
+"a" => "1"
+
+drop a
+---
+ok
+
+get a
+---
+"a" => None
+
+set a=new
+---
+ok
+
+get a
+---
+"a" => "new"

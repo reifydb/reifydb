@@ -1,0 +1,25 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that scan doesn't show dropped keys.
+
+set a=1
+set b=2
+set c=3
+---
+ok
+
+scan
+---
+"a" => "1"
+"b" => "2"
+"c" => "3"
+
+drop b
+---
+ok
+
+scan
+---
+"a" => "1"
+"c" => "3"

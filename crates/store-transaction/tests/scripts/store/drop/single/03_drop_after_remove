@@ -1,0 +1,22 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests drop after remove (should be same effect).
+
+set a=1
+remove a
+---
+ok
+
+get a
+---
+"a" => None
+
+# Drop should also work on already-removed key
+drop a
+---
+ok
+
+get a
+---
+"a" => None
