@@ -262,15 +262,32 @@ impl MultiVersionCommit for StandardTransactionStore {
 						*up_to_version,
 						*keep_last_versions,
 					)?;
-					for entry in entries_to_drop {
-						// Track storage reduction for each dropped entry
+
+					if !entries_to_drop.is_empty() {
+						// Aggregate all bytes for this logical key's dropped versions
+						let total_key_bytes: u64 = entries_to_drop
+							.iter()
+							.map(|e| e.versioned_key.len() as u64)
+							.sum();
+						let total_value_bytes: u64 =
+							entries_to_drop.iter().map(|e| e.value_bytes).sum();
+						let count = entries_to_drop.len() as u64;
+
+						// Single accounting update for all dropped versions
 						self.stats_tracker.record_drop(
 							Tier::Hot,
 							key.as_ref(),
-							entry.versioned_key.len() as u64,
-							entry.value_bytes,
+							total_key_bytes,
+							total_value_bytes,
+							count,
 						);
-						batches.entry(table).or_default().push((entry.versioned_key, None));
+
+						// Queue deletions
+						for entry in entries_to_drop {
+							batches.entry(table)
+								.or_default()
+								.push((entry.versioned_key, None));
+						}
 					}
 				}
 			}

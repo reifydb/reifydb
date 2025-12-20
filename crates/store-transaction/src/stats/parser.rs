@@ -19,7 +19,6 @@ use super::types::ObjectId;
 /// - Other keys are classified as System
 pub(crate) fn extract_object_id(key: &[u8], kind: KeyKind) -> ObjectId {
 	match kind {
-		// Keys that contain SourceId at bytes 2..11
 		KeyKind::Row
 		| KeyKind::RowSequence
 		| KeyKind::Column
@@ -30,19 +29,15 @@ pub(crate) fn extract_object_id(key: &[u8], kind: KeyKind) -> ObjectId {
 		| KeyKind::IndexEntry
 		| KeyKind::PrimaryKey => extract_source_id(key).map(ObjectId::Source).unwrap_or(ObjectId::System),
 
-		// Keys that contain DictionaryId at bytes 2..10
 		KeyKind::DictionaryEntry | KeyKind::DictionaryEntryIndex | KeyKind::DictionarySequence => {
 			extract_dictionary_id(key)
 				.map(|id| ObjectId::Source(SourceId::Dictionary(DictionaryId(id))))
 				.unwrap_or(ObjectId::System)
 		}
 
-		// Keys that contain FlowNodeId at bytes 2..10
 		KeyKind::FlowNodeState | KeyKind::FlowNodeInternalState => {
 			extract_flow_node_id(key).map(ObjectId::FlowNode).unwrap_or(ObjectId::System)
 		}
-
-		// All other key types are system metadata
 		_ => ObjectId::System,
 	}
 }

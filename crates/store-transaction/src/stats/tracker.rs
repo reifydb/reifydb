@@ -181,16 +181,17 @@ impl StorageTracker {
 		}
 	}
 
-	/// Record a drop operation (physical removal of historical version entry).
+	/// Record a batch drop operation for multiple versions of the same logical key.
 	///
-	/// Unlike delete, drop doesn't create tombstones - it physically removes
-	/// entries from storage. Used for MVCC cleanup of old versions.
+	/// This method aggregates the accounting for all versions being dropped together,
+	/// ensuring that count, key_bytes, and value_bytes remain synchronized.
 	///
 	/// - `tier`: Which storage tier the drop occurred in
 	/// - `key`: The original (unversioned) encoded key bytes
-	/// - `versioned_key_bytes`: Size of the versioned key being dropped
-	/// - `value_bytes`: Size of the value being dropped
-	pub fn record_drop(&self, tier: Tier, key: &[u8], versioned_key_bytes: u64, value_bytes: u64) {
+	/// - `total_key_bytes`: Sum of all versioned key sizes being dropped
+	/// - `total_value_bytes`: Sum of all value sizes being dropped
+	/// - `count`: Number of versions being dropped
+	pub fn record_drop(&self, tier: Tier, key: &[u8], total_key_bytes: u64, total_value_bytes: u64, count: u64) {
 		let kind = Key::kind(key);
 		let object_id = kind.map(|k| extract_object_id(key, k));
 
@@ -198,20 +199,28 @@ impl StorageTracker {
 
 		// Update per-tier totals (always, regardless of KeyKind)
 		if let Some(stats) = inner.by_tier.get_mut(&tier) {
-			stats.record_drop(versioned_key_bytes, value_bytes);
+			stats.historical_count = stats.historical_count.saturating_sub(count);
+			stats.historical_key_bytes = stats.historical_key_bytes.saturating_sub(total_key_bytes);
+			stats.historical_value_bytes = stats.historical_value_bytes.saturating_sub(total_value_bytes);
 		}
 
 		// Update per-type stats
 		if let Some(kind) = kind {
 			if let Some(stats) = inner.by_type.get_mut(&(tier, kind)) {
-				stats.record_drop(versioned_key_bytes, value_bytes);
+				stats.historical_count = stats.historical_count.saturating_sub(count);
+				stats.historical_key_bytes = stats.historical_key_bytes.saturating_sub(total_key_bytes);
+				stats.historical_value_bytes =
+					stats.historical_value_bytes.saturating_sub(total_value_bytes);
 			}
 		}
 
 		// Update per-object stats
 		if let Some(object_id) = object_id {
 			if let Some(stats) = inner.by_object.get_mut(&(tier, object_id)) {
-				stats.record_drop(versioned_key_bytes, value_bytes);
+				stats.historical_count = stats.historical_count.saturating_sub(count);
+				stats.historical_key_bytes = stats.historical_key_bytes.saturating_sub(total_key_bytes);
+				stats.historical_value_bytes =
+					stats.historical_value_bytes.saturating_sub(total_value_bytes);
 			}
 		}
 	}
@@ -480,6 +489,8 @@ impl StorageTracker {
 
 #[cfg(test)]
 mod tests {
+	use std::thread::sleep;
+
 	use reifydb_core::interface::SourceId;
 
 	use super::*;
@@ -670,7 +681,7 @@ mod tests {
 		assert!(!tracker.should_checkpoint());
 
 		// Wait for checkpoint interval to elapse
-		std::thread::sleep(Duration::from_millis(60));
+		sleep(Duration::from_millis(60));
 
 		// Now should need checkpoint
 		assert!(tracker.should_checkpoint());
@@ -740,7 +751,7 @@ mod tests {
 		let tracker = StorageTracker::new(config);
 
 		// Wait for checkpoint interval
-		std::thread::sleep(Duration::from_millis(60));
+		sleep(Duration::from_millis(60));
 		assert!(tracker.should_checkpoint());
 
 		// Checkpoint should reset the timer
@@ -750,7 +761,7 @@ mod tests {
 		assert!(!tracker.should_checkpoint());
 
 		// Wait again
-		std::thread::sleep(Duration::from_millis(60));
+		sleep(Duration::from_millis(60));
 
 		// Should need checkpoint again
 		assert!(tracker.should_checkpoint());
@@ -774,5 +785,200 @@ mod tests {
 		assert_eq!(stats.hot.current_count, 0);
 		assert_eq!(stats.warm.current_count, 0);
 		assert_eq!(stats.cold.current_count, 0);
+	}
+
+	#[test]
+	fn test_batch_drop_maintains_invariant() {
+		let tracker = StorageTracker::with_defaults();
+		let key = make_row_key(1, 100);
+		let key_bytes = key.len() as u64;
+
+		// Insert initial version
+		tracker.record_write(Tier::Hot, &key, key_bytes, 100, None);
+
+		// Update multiple times to create historical versions
+		tracker.record_write(
+			Tier::Hot,
+			&key,
+			key_bytes,
+			200,
+			Some(PreVersionInfo {
+				key_bytes,
+				value_bytes: 100,
+			}),
+		);
+		tracker.record_write(
+			Tier::Hot,
+			&key,
+			key_bytes,
+			150,
+			Some(PreVersionInfo {
+				key_bytes,
+				value_bytes: 200,
+			}),
+		);
+		tracker.record_write(
+			Tier::Hot,
+			&key,
+			key_bytes,
+			250,
+			Some(PreVersionInfo {
+				key_bytes,
+				value_bytes: 150,
+			}),
+		);
+
+		// At this point: historical has 3 entries (100, 200, 150 bytes)
+		let stats_before = tracker.total_stats();
+		assert_eq!(stats_before.hot.historical_count, 3);
+		assert_eq!(stats_before.hot.historical_key_bytes, key_bytes * 3);
+		assert_eq!(stats_before.hot.historical_value_bytes, 450); // 100 + 200 + 150
+
+		// Simulate dropping all historical versions in batch
+		tracker.record_drop(
+			Tier::Hot,
+			&key,
+			key_bytes * 3, // total key bytes
+			450,           // total value bytes (100 + 200 + 150)
+			3,             // count
+		);
+
+		// CRITICAL: All three fields must reach zero together
+		let stats_after = tracker.total_stats();
+		assert_eq!(stats_after.hot.historical_count, 0);
+		assert_eq!(stats_after.hot.historical_key_bytes, 0);
+		assert_eq!(stats_after.hot.historical_value_bytes, 0);
+	}
+
+	#[test]
+	fn test_batch_drop_partial() {
+		let tracker = StorageTracker::with_defaults();
+		let key = make_row_key(1, 100);
+		let key_bytes = key.len() as u64;
+
+		// Create 5 historical versions
+		tracker.record_write(Tier::Hot, &key, key_bytes, 100, None);
+		for i in 1..=5 {
+			tracker.record_write(
+				Tier::Hot,
+				&key,
+				key_bytes,
+				100 + i * 10,
+				Some(PreVersionInfo {
+					key_bytes,
+					value_bytes: 100 + (i - 1) * 10,
+				}),
+			);
+		}
+
+		// Historical: 100, 110, 120, 130, 140 = 600 bytes total, 5 entries
+		let stats_before = tracker.total_stats();
+		assert_eq!(stats_before.hot.historical_count, 5);
+		assert_eq!(stats_before.hot.historical_value_bytes, 600);
+
+		// Drop oldest 3 versions (100, 110, 120 = 330 bytes)
+		tracker.record_drop(Tier::Hot, &key, key_bytes * 3, 330, 3);
+
+		// Should have 2 versions left (130, 140 = 270 bytes)
+		let stats_after = tracker.total_stats();
+		assert_eq!(stats_after.hot.historical_count, 2);
+		assert_eq!(stats_after.hot.historical_key_bytes, key_bytes * 2);
+		assert_eq!(stats_after.hot.historical_value_bytes, 270);
+	}
+
+	#[test]
+	fn test_batch_drop_varying_sizes() {
+		let tracker = StorageTracker::with_defaults();
+		let key = make_row_key(1, 100);
+		let key_bytes = key.len() as u64;
+
+		// Insert with varying value sizes
+		let sizes = vec![50, 500, 150, 1000, 200];
+		tracker.record_write(Tier::Hot, &key, key_bytes, sizes[0], None);
+
+		for i in 1..sizes.len() {
+			tracker.record_write(
+				Tier::Hot,
+				&key,
+				key_bytes,
+				sizes[i],
+				Some(PreVersionInfo {
+					key_bytes,
+					value_bytes: sizes[i - 1],
+				}),
+			);
+		}
+
+		// Historical: 50, 500, 150, 1000 = 1700 bytes, 4 entries
+		let total_historical_bytes: u64 = sizes[..sizes.len() - 1].iter().sum();
+		assert_eq!(total_historical_bytes, 1700);
+
+		let stats_before = tracker.total_stats();
+		assert_eq!(stats_before.hot.historical_count, 4);
+		assert_eq!(stats_before.hot.historical_value_bytes, 1700);
+
+		// Drop all historical
+		tracker.record_drop(Tier::Hot, &key, key_bytes * 4, 1700, 4);
+
+		let stats_after = tracker.total_stats();
+		assert_eq!(stats_after.hot.historical_count, 0);
+		assert_eq!(stats_after.hot.historical_key_bytes, 0);
+		assert_eq!(stats_after.hot.historical_value_bytes, 0);
+	}
+
+	#[test]
+	fn test_batch_drop_prevents_desync_bug() {
+		// This test simulates the original bug scenario where calling
+		// record_drop() per entry caused count/key_bytes/value_bytes desync
+
+		let tracker = StorageTracker::with_defaults();
+		let key = make_row_key(1, 100);
+		let key_bytes = key.len() as u64;
+
+		// Create scenario: 3 versions with sizes 100, 200, 150
+		tracker.record_write(Tier::Hot, &key, key_bytes, 100, None);
+		tracker.record_write(
+			Tier::Hot,
+			&key,
+			key_bytes,
+			200,
+			Some(PreVersionInfo {
+				key_bytes,
+				value_bytes: 100,
+			}),
+		);
+		tracker.record_write(
+			Tier::Hot,
+			&key,
+			key_bytes,
+			150,
+			Some(PreVersionInfo {
+				key_bytes,
+				value_bytes: 200,
+			}),
+		);
+
+		// Verify historical setup
+		let stats = tracker.total_stats();
+		assert_eq!(stats.hot.historical_count, 2);
+		assert_eq!(stats.hot.historical_key_bytes, key_bytes * 2);
+		assert_eq!(stats.hot.historical_value_bytes, 300); // 100 + 200
+
+		tracker.record_drop(
+			Tier::Hot,
+			&key,
+			key_bytes * 2, // BOTH keys
+			300,           // BOTH values (100 + 200)
+			2,             // BOTH entries
+		);
+
+		// The bug caused:
+		// - historical_count: 0 (correct)
+		// - historical_key_bytes: 0 (correct)
+		// - historical_value_bytes: NON-ZERO (BUG!)
+		let stats = tracker.total_stats();
+		assert_eq!(stats.hot.historical_count, 0, "Count must be zero");
+		assert_eq!(stats.hot.historical_key_bytes, 0, "Key bytes must be zero");
+		assert_eq!(stats.hot.historical_value_bytes, 0, "Value bytes must be zero - THIS WAS THE BUG");
 	}
 }
