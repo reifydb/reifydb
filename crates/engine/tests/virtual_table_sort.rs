@@ -252,10 +252,10 @@ fn test_sort_table_storage_stats_by_total_bytes() {
 		r#"
 		FROM [
 			{ id: 1, name: "abcdefghij", description: "This is a longer description with more text" },
-			{ id: 2, name: "opqrstuvwx", description: "Fifth and final row with more text data" }
+			{ id: 2, name: "opqrstuvwx", description: "Fifth and final row with more text data" },
 			{ id: 3, name: "klmnopqrst", description: "Another long description with lots of data" },
 			{ id: 4, name: "uvwxyzabcd", description: "Yet another description to increase size" },
-			{ id: 5t, name: "efghijklmn", description: "Fourth row with substantial content here" },
+			{ id: 5, name: "efghijklmn", description: "Fourth row with substantial content here" }
 		]
 		INSERT test.large
 	"#,
