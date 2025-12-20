@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::marker::PhantomData;
-
 use reifydb_catalog::{MaterializedCatalog, transaction::MaterializedCatalogTransaction};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
@@ -32,7 +30,7 @@ use reifydb_transaction::{
 };
 use tracing::instrument;
 
-use crate::transaction::query::StandardQueryTransaction;
+use crate::{transaction::query::StandardQueryTransaction, util::block_on};
 
 /// An active command transaction that holds a multi command transaction
 /// and provides query/command access to single storage.
@@ -53,8 +51,6 @@ pub struct StandardCommandTransaction {
 	pub(crate) row_changes: Vec<RowChange>,
 
 	pub(crate) interceptors: Interceptors<Self>,
-	// Marker to prevent Send and Sync
-	_not_send_sync: PhantomData<*const ()>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -88,7 +84,6 @@ impl StandardCommandTransaction {
 			interceptors,
 			changes: TransactionalDefChanges::new(txn_id),
 			row_changes: Vec::new(),
-			_not_send_sync: PhantomData,
 		})
 	}
 
@@ -118,7 +113,7 @@ impl StandardCommandTransaction {
 	pub fn commit(&mut self) -> crate::Result<CommitVersion> {
 		self.check_active()?;
 
-		TransactionInterceptor::pre_commit(self)?;
+		block_on(TransactionInterceptor::pre_commit(self))?;
 
 		if let Some(multi) = self.cmd.take() {
 			let id = multi.id();
@@ -128,7 +123,7 @@ impl StandardCommandTransaction {
 			let row_changes = std::mem::take(&mut self.row_changes);
 
 			let version = multi.commit()?;
-			TransactionInterceptor::post_commit(self, id, version, changes, row_changes)?;
+			block_on(TransactionInterceptor::post_commit(self, id, version, changes, row_changes))?;
 
 			Ok(version)
 		} else {
@@ -394,19 +389,28 @@ impl CommandTransaction for StandardCommandTransaction {
 impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction {
 	fn table_pre_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePreInsertInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePreInsertInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_pre_insert
 	}
 
 	fn table_post_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePostInsertInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePostInsertInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_post_insert
 	}
 
 	fn table_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePreUpdateInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_pre_update
 	}
 
@@ -414,68 +418,94 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TablePostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TablePostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_post_update
 	}
 
 	fn table_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePreDeleteInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_pre_delete
 	}
 
 	fn table_post_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn TablePostDeleteInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn TablePostDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.table_post_delete
 	}
 
 	fn ringbuffer_pre_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreInsertInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPreInsertInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_pre_insert
 	}
 
 	fn ringbuffer_post_insert_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostInsertInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPostInsertInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_post_insert
 	}
 
 	fn ringbuffer_pre_update_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreUpdateInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_pre_update
 	}
 
 	fn ringbuffer_post_update_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostUpdateInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_post_update
 	}
 
 	fn ringbuffer_pre_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPreDeleteInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_pre_delete
 	}
 
 	fn ringbuffer_post_delete_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn RingBufferPostDeleteInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<
+		StandardCommandTransaction,
+		dyn RingBufferPostDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
+	> {
 		&mut self.interceptors.ringbuffer_post_delete
 	}
 
 	fn pre_commit_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn PreCommitInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<StandardCommandTransaction, dyn PreCommitInterceptor<StandardCommandTransaction> + Send + Sync>
+	{
 		&mut self.interceptors.pre_commit
 	}
 
 	fn post_commit_interceptors(
 		&mut self,
-	) -> &mut Chain<StandardCommandTransaction, dyn PostCommitInterceptor<StandardCommandTransaction>> {
+	) -> &mut Chain<StandardCommandTransaction, dyn PostCommitInterceptor<StandardCommandTransaction> + Send + Sync>
+	{
 		&mut self.interceptors.post_commit
 	}
 
@@ -484,7 +514,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPostCreateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::NamespaceDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.namespace_def_post_create
 	}
@@ -493,7 +523,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPreUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::NamespaceDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.namespace_def_pre_update
 	}
@@ -502,7 +532,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::NamespaceDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.namespace_def_post_update
 	}
@@ -511,7 +541,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::NamespaceDefPreDeleteInterceptor<StandardCommandTransaction>,
+		dyn interceptor::NamespaceDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.namespace_def_pre_delete
 	}
@@ -521,7 +551,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TableDefPostCreateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TableDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_def_post_create
 	}
@@ -530,7 +560,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TableDefPreUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TableDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_def_pre_update
 	}
@@ -539,7 +569,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TableDefPostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TableDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_def_post_update
 	}
@@ -548,7 +578,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::TableDefPreDeleteInterceptor<StandardCommandTransaction>,
+		dyn interceptor::TableDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.table_def_pre_delete
 	}
@@ -558,7 +588,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::ViewDefPostCreateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::ViewDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.view_def_post_create
 	}
@@ -567,7 +597,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::ViewDefPreUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::ViewDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.view_def_pre_update
 	}
@@ -576,7 +606,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::ViewDefPostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::ViewDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.view_def_post_update
 	}
@@ -585,7 +615,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::ViewDefPreDeleteInterceptor<StandardCommandTransaction>,
+		dyn interceptor::ViewDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.view_def_pre_delete
 	}
@@ -595,7 +625,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPostCreateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::RingBufferDefPostCreateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.ringbuffer_def_post_create
 	}
@@ -604,7 +634,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPreUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::RingBufferDefPreUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.ringbuffer_def_pre_update
 	}
@@ -613,7 +643,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPostUpdateInterceptor<StandardCommandTransaction>,
+		dyn interceptor::RingBufferDefPostUpdateInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.ringbuffer_def_post_update
 	}
@@ -622,7 +652,7 @@ impl WithInterceptors<StandardCommandTransaction> for StandardCommandTransaction
 		&mut self,
 	) -> &mut Chain<
 		StandardCommandTransaction,
-		dyn interceptor::RingBufferDefPreDeleteInterceptor<StandardCommandTransaction>,
+		dyn interceptor::RingBufferDefPreDeleteInterceptor<StandardCommandTransaction> + Send + Sync,
 	> {
 		&mut self.interceptors.ringbuffer_def_pre_delete
 	}

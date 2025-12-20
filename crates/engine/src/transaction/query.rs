@@ -1,8 +1,6 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::marker::PhantomData;
-
 use reifydb_catalog::{MaterializedCatalog, transaction::MaterializedCatalogTransaction};
 use reifydb_core::{
 	CommitVersion, EncodedKey, EncodedKeyRange,
@@ -23,8 +21,6 @@ pub struct StandardQueryTransaction {
 	pub(crate) single: TransactionSingleVersion,
 	pub(crate) cdc: TransactionCdc,
 	pub(crate) catalog: MaterializedCatalog,
-	// Marker to prevent Send and Sync
-	_not_send_sync: PhantomData<*const ()>,
 }
 
 impl StandardQueryTransaction {
@@ -41,7 +37,6 @@ impl StandardQueryTransaction {
 			single,
 			cdc,
 			catalog,
-			_not_send_sync: PhantomData,
 		}
 	}
 

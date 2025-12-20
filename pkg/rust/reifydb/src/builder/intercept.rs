@@ -15,7 +15,7 @@
 //!     .build()
 //! ```
 
-use std::rc::Rc;
+use std::sync::Arc;
 
 use reifydb_core::interceptor::{
 	FilteredRingBufferPostDeleteInterceptor, FilteredRingBufferPostInsertInterceptor,
@@ -78,7 +78,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.table_pre_insert.add(Rc::new(FilteredTablePreInsertInterceptor::new(
+				interceptors.table_pre_insert.add(Arc::new(FilteredTablePreInsertInterceptor::new(
 					filter.clone(),
 					f.clone(),
 				)));
@@ -100,7 +100,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.table_post_insert.add(Rc::new(FilteredTablePostInsertInterceptor::new(
+				interceptors.table_post_insert.add(Arc::new(FilteredTablePostInsertInterceptor::new(
 					filter.clone(),
 					f.clone(),
 				)));
@@ -122,7 +122,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.table_pre_update.add(Rc::new(FilteredTablePreUpdateInterceptor::new(
+				interceptors.table_pre_update.add(Arc::new(FilteredTablePreUpdateInterceptor::new(
 					filter.clone(),
 					f.clone(),
 				)));
@@ -144,7 +144,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.table_post_update.add(Rc::new(FilteredTablePostUpdateInterceptor::new(
+				interceptors.table_post_update.add(Arc::new(FilteredTablePostUpdateInterceptor::new(
 					filter.clone(),
 					f.clone(),
 				)));
@@ -166,7 +166,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.table_pre_delete.add(Rc::new(FilteredTablePreDeleteInterceptor::new(
+				interceptors.table_pre_delete.add(Arc::new(FilteredTablePreDeleteInterceptor::new(
 					filter.clone(),
 					f.clone(),
 				)));
@@ -188,7 +188,7 @@ impl<B: WithInterceptorBuilder> TableInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.table_post_delete.add(Rc::new(FilteredTablePostDeleteInterceptor::new(
+				interceptors.table_post_delete.add(Arc::new(FilteredTablePostDeleteInterceptor::new(
 					filter.clone(),
 					f.clone(),
 				)));
@@ -245,7 +245,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ringbuffer_pre_insert.add(Rc::new(
+				interceptors.ringbuffer_pre_insert.add(Arc::new(
 					FilteredRingBufferPreInsertInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -266,7 +266,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ringbuffer_post_insert.add(Rc::new(
+				interceptors.ringbuffer_post_insert.add(Arc::new(
 					FilteredRingBufferPostInsertInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -287,7 +287,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ringbuffer_pre_update.add(Rc::new(
+				interceptors.ringbuffer_pre_update.add(Arc::new(
 					FilteredRingBufferPreUpdateInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -308,7 +308,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ringbuffer_post_update.add(Rc::new(
+				interceptors.ringbuffer_post_update.add(Arc::new(
 					FilteredRingBufferPostUpdateInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -329,7 +329,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ringbuffer_pre_delete.add(Rc::new(
+				interceptors.ringbuffer_pre_delete.add(Arc::new(
 					FilteredRingBufferPreDeleteInterceptor::new(filter.clone(), f.clone()),
 				));
 			},
@@ -350,7 +350,7 @@ impl<B: WithInterceptorBuilder> RingBufferInterceptBuilder<B> {
 		let builder = self.builder.interceptor_builder_mut();
 		*builder = std::mem::take(builder).add_factory(
 			move |interceptors: &mut Interceptors<StandardCommandTransaction>| {
-				interceptors.ringbuffer_post_delete.add(Rc::new(
+				interceptors.ringbuffer_post_delete.add(Arc::new(
 					FilteredRingBufferPostDeleteInterceptor::new(filter.clone(), f.clone()),
 				));
 			},

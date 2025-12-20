@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_type::RowNumber;
 
-use crate::StandardCommandTransaction;
+use crate::{StandardCommandTransaction, util::block_on};
 
 pub(crate) trait RingBufferOperations {
 	fn insert_ringbuffer(&mut self, ringbuffer: RingBufferDef, row: EncodedValues) -> crate::Result<RowNumber>;
@@ -59,16 +59,16 @@ impl RingBufferOperations for StandardCommandTransaction {
 
 		// If there's an existing encoded, we need to delete it first with interceptors
 		if let Some(ref existing) = old_row {
-			RingBufferInterceptor::pre_delete(self, &ringbuffer, row_number)?;
+			block_on(RingBufferInterceptor::pre_delete(self, &ringbuffer, row_number))?;
 			// Don't actually remove, we'll overwrite
-			RingBufferInterceptor::post_delete(self, &ringbuffer, row_number, existing)?;
+			block_on(RingBufferInterceptor::post_delete(self, &ringbuffer, row_number, existing))?;
 		}
 
-		RingBufferInterceptor::pre_insert(self, &ringbuffer, &row)?;
+		block_on(RingBufferInterceptor::pre_insert(self, &ringbuffer, &row))?;
 
 		self.set(&key, row.clone())?;
 
-		RingBufferInterceptor::post_insert(self, &ringbuffer, row_number, &row)?;
+		block_on(RingBufferInterceptor::post_insert(self, &ringbuffer, row_number, &row))?;
 
 		Ok(())
 	}
@@ -88,12 +88,12 @@ impl RingBufferOperations for StandardCommandTransaction {
 		// Get the current encoded before updating (for post-update interceptor)
 		let old_row = self.get(&key)?.map(|v| v.values);
 
-		RingBufferInterceptor::pre_update(self, &ringbuffer, id, &row)?;
+		block_on(RingBufferInterceptor::pre_update(self, &ringbuffer, id, &row))?;
 
 		self.set(&key, row.clone())?;
 
 		if let Some(ref old) = old_row {
-			RingBufferInterceptor::post_update(self, &ringbuffer, id, &row, old)?;
+			block_on(RingBufferInterceptor::post_update(self, &ringbuffer, id, &row, old))?;
 		}
 
 		Ok(())
@@ -113,12 +113,12 @@ impl RingBufferOperations for StandardCommandTransaction {
 		};
 
 		// Execute pre-delete interceptors
-		RingBufferInterceptor::pre_delete(self, &ringbuffer, id)?;
+		block_on(RingBufferInterceptor::pre_delete(self, &ringbuffer, id))?;
 
 		// Remove the encoded from the database
 		self.remove(&key)?;
 
-		RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row)?;
+		block_on(RingBufferInterceptor::post_delete(self, &ringbuffer, id, &deleted_row))?;
 
 		Ok(())
 	}

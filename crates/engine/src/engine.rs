@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{ops::Deref, rc::Rc, sync::Arc, time::Duration};
+use std::{ops::Deref, sync::Arc, time::Duration};
 
 use reifydb_catalog::MaterializedCatalog;
 use reifydb_core::{
@@ -53,10 +53,10 @@ impl EngineInterface for StandardEngine {
 	fn begin_command(&self) -> crate::Result<Self::Command> {
 		let mut interceptors = self.interceptors.create();
 
-		interceptors.post_commit.add(Rc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
+		interceptors.post_commit.add(Arc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
 		interceptors
 			.post_commit
-			.add(Rc::new(CatalogEventInterceptor::new(self.event_bus.clone(), self.catalog.clone())));
+			.add(Arc::new(CatalogEventInterceptor::new(self.event_bus.clone(), self.catalog.clone())));
 
 		StandardCommandTransaction::new(
 			self.multi.clone(),

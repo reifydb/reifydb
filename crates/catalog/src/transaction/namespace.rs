@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::interface::{
 	CommandTransaction, NamespaceDef, NamespaceId, QueryTransaction, TransactionalChanges,
 	TransactionalNamespaceChanges,
@@ -15,12 +16,13 @@ use tracing::{instrument, warn};
 
 use crate::{CatalogStore, store::namespace::NamespaceToCreate, transaction::MaterializedCatalogTransaction};
 
-pub trait CatalogNamespaceCommandOperations {
-	fn create_namespace(&mut self, to_create: NamespaceToCreate) -> crate::Result<NamespaceDef>;
+#[async_trait]
+pub trait CatalogNamespaceCommandOperations: Send {
+	async fn create_namespace(&mut self, to_create: NamespaceToCreate) -> crate::Result<NamespaceDef>;
 
 	// TODO: Implement when update/delete are ready
-	// fn update_namespace(&mut self, namespace_id: NamespaceId, updates:
-	// NamespaceUpdates) -> crate::Result<NamespaceDef>; fn
+	// async fn update_namespace(&mut self, namespace_id: NamespaceId, updates:
+	// NamespaceUpdates) -> crate::Result<NamespaceDef>; async fn
 	// delete_namespace(&mut self, namespace_id: NamespaceId) ->
 	// crate::Result<()>;
 }
@@ -43,22 +45,24 @@ pub trait CatalogNamespaceQueryOperations {
 	fn get_namespace_by_name<'a>(&mut self, name: impl IntoFragment<'a>) -> crate::Result<NamespaceDef>;
 }
 
+#[async_trait]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
 		+ CatalogTrackNamespaceChangeOperations
 		+ WithInterceptors<CT>
-		+ TransactionalChanges,
+		+ TransactionalChanges
+		+ Send,
 > CatalogNamespaceCommandOperations for CT
 {
 	#[instrument(name = "catalog::namespace::create", level = "debug", skip(self, to_create))]
-	fn create_namespace(&mut self, to_create: NamespaceToCreate) -> reifydb_core::Result<NamespaceDef> {
+	async fn create_namespace(&mut self, to_create: NamespaceToCreate) -> reifydb_core::Result<NamespaceDef> {
 		if let Some(namespace) = self.find_namespace_by_name(&to_create.name)? {
 			return_error!(namespace_already_exists(to_create.namespace_fragment, &namespace.name));
 		}
 		let result = CatalogStore::create_namespace(self, to_create)?;
 		self.track_namespace_def_created(result.clone())?;
-		NamespaceDefInterceptor::post_create(self, &result)?;
+		NamespaceDefInterceptor::post_create(self, &result).await?;
 		Ok(result)
 	}
 }

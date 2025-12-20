@@ -57,7 +57,8 @@ impl<
 		+ MaterializedCatalogTransaction
 		+ CatalogTrackChangeOperations
 		+ WithInterceptors<CT>
-		+ TransactionalChanges,
+		+ TransactionalChanges
+		+ Send,
 > CatalogCommandTransaction for CT
 {
 }

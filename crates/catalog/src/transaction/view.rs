@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::interface::{
 	CommandTransaction, NamespaceId, QueryTransaction, TransactionalChanges, TransactionalViewChanges, ViewDef,
 	ViewId,
@@ -18,12 +19,13 @@ use crate::{
 	transaction::MaterializedCatalogTransaction,
 };
 
-pub trait CatalogViewCommandOperations {
-	fn create_view(&mut self, view: ViewToCreate) -> crate::Result<ViewDef>;
+#[async_trait]
+pub trait CatalogViewCommandOperations: Send {
+	async fn create_view(&mut self, view: ViewToCreate) -> crate::Result<ViewDef>;
 
 	// TODO: Implement when update/delete are ready
-	// fn update_view(&mut self, view_id: ViewId, updates: ViewUpdates) ->
-	// crate::Result<ViewDef>; fn delete_view(&mut self, view_id: ViewId)
+	// async fn update_view(&mut self, view_id: ViewId, updates: ViewUpdates) ->
+	// crate::Result<ViewDef>; async fn delete_view(&mut self, view_id: ViewId)
 	// -> crate::Result<()>;
 }
 
@@ -53,23 +55,25 @@ pub trait CatalogViewQueryOperations: CatalogNamespaceQueryOperations {
 	) -> crate::Result<ViewDef>;
 }
 
+#[async_trait]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
 		+ CatalogTrackViewChangeOperations
 		+ WithInterceptors<CT>
-		+ TransactionalChanges,
+		+ TransactionalChanges
+		+ Send,
 > CatalogViewCommandOperations for CT
 {
 	#[instrument(name = "catalog::view::create", level = "debug", skip(self, to_create))]
-	fn create_view(&mut self, to_create: ViewToCreate) -> reifydb_core::Result<ViewDef> {
+	async fn create_view(&mut self, to_create: ViewToCreate) -> reifydb_core::Result<ViewDef> {
 		if let Some(view) = self.find_view_by_name(to_create.namespace, &to_create.name)? {
 			let namespace = self.get_namespace(to_create.namespace)?;
 			return_error!(view_already_exists(to_create.fragment, &namespace.name, &view.name));
 		}
 		let result = CatalogStore::create_deferred_view(self, to_create)?;
 		self.track_view_def_created(result.clone())?;
-		ViewDefInterceptor::post_create(self, &result)?;
+		ViewDefInterceptor::post_create(self, &result).await?;
 		Ok(result)
 	}
 }

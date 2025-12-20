@@ -6,7 +6,7 @@ use reifydb_core::value::column::Columns;
 use reifydb_rql::plan::physical::CreateDeferredViewNode;
 use reifydb_type::Value;
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::{StandardCommandTransaction, execute::Executor, util::block_on};
 
 impl Executor {
 	pub(crate) fn create_deferred_view<'a>(
@@ -24,12 +24,12 @@ impl Executor {
 			}
 		}
 
-		let result = txn.create_view(ViewToCreate {
+		let result = block_on(txn.create_view(ViewToCreate {
 			fragment: Some(plan.view.clone().into_owned()),
 			name: plan.view.text().to_string(),
 			namespace: plan.namespace.id,
 			columns: plan.columns,
-		})?;
+		}))?;
 
 		self.create_deferred_view_flow(txn, &result, plan.as_clause)?;
 

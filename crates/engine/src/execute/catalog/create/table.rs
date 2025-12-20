@@ -9,7 +9,7 @@ use reifydb_core::{interface::SourceId, value::column::Columns};
 use reifydb_rql::plan::physical::CreateTableNode;
 use reifydb_type::{Value, diagnostic::query::column_not_found, return_error};
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::{StandardCommandTransaction, execute::Executor, util::block_on};
 
 impl Executor {
 	pub(crate) fn create_table<'a>(
@@ -31,13 +31,13 @@ impl Executor {
 			// table exists
 		}
 
-		txn.create_table(TableToCreate {
+		block_on(txn.create_table(TableToCreate {
 			fragment: Some(plan.table.clone().into_owned()),
 			table: plan.table.text().to_string(),
 			namespace: plan.namespace.def().id,
 			columns: plan.columns,
 			retention_policy: None,
-		})?;
+		}))?;
 
 		// If primary key is specified, create it immediately
 		if let Some(pk_def) = plan.primary_key {

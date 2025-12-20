@@ -10,7 +10,7 @@ use reifydb_core::{
 };
 use reifydb_type::RowNumber;
 
-use crate::StandardCommandTransaction;
+use crate::{StandardCommandTransaction, util::block_on};
 
 pub(crate) trait TableOperations {
 	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()>;
@@ -22,7 +22,7 @@ pub(crate) trait TableOperations {
 
 impl TableOperations for StandardCommandTransaction {
 	fn insert_table(&mut self, table: TableDef, row: EncodedValues, row_number: RowNumber) -> crate::Result<()> {
-		TableInterceptor::pre_insert(self, &table, row_number, &row)?;
+		block_on(TableInterceptor::pre_insert(self, &table, row_number, &row))?;
 
 		self.set(
 			&RowKey {
@@ -33,7 +33,7 @@ impl TableOperations for StandardCommandTransaction {
 			row.clone(),
 		)?;
 
-		TableInterceptor::post_insert(self, &table, row_number, &row)?;
+		block_on(TableInterceptor::post_insert(self, &table, row_number, &row))?;
 
 		// Track insertion for post-commit event emission
 		self.row_changes.push(RowChange::TableInsert(TableRowInsertion {
@@ -56,7 +56,7 @@ impl TableOperations for StandardCommandTransaction {
 		// interceptor) let old_row = self.get(&key)?.map(|v|
 		// v.into());
 
-		TableInterceptor::pre_update(self, &table, id, &row)?;
+		block_on(TableInterceptor::pre_update(self, &table, id, &row))?;
 
 		self.set(&key, row.clone())?;
 
@@ -84,7 +84,7 @@ impl TableOperations for StandardCommandTransaction {
 		// let deleted_row = self.get(&key)?.map(|v| v.into_row());
 
 		// Execute pre-delete interceptors
-		TableInterceptor::pre_delete(self, &table, id)?;
+		block_on(TableInterceptor::pre_delete(self, &table, id))?;
 
 		// Remove the encoded from the database
 		self.remove(&key)?;

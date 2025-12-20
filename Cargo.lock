@@ -1518,6 +1518,7 @@ dependencies = [
 name = "reifydb-catalog"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "crossbeam-skiplist",
  "once_cell",
  "reifydb-core",
@@ -1740,6 +1741,7 @@ dependencies = [
 name = "reifydb-sub-flow"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "bincode",
  "crossbeam-channel",
  "indexmap 2.12.0",

@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{cell::RefCell, rc::Rc};
+use std::sync::{Arc, Mutex};
 
+use async_trait::async_trait;
 use reifydb_core::{
 	Result,
 	interceptor::{
@@ -13,7 +14,7 @@ use reifydb_core::{
 		TablePostUpdateInterceptor,
 	},
 	interface::{CommandTransaction, SourceId},
-	ioc::{IocContainer, LazyResolveRc},
+	ioc::{IocContainer, LazyResolveArc},
 };
 use reifydb_engine::StandardEngine;
 use reifydb_type::RowNumber;
@@ -40,18 +41,18 @@ pub(crate) enum Change {
 }
 
 pub struct TransactionalFlowInterceptor {
-	engine: LazyResolveRc<StandardEngine>,
+	engine: LazyResolveArc<StandardEngine>,
 	ioc: IocContainer,
 	// Transaction-scoped change buffer
-	changes: Rc<RefCell<Vec<Change>>>,
+	changes: Arc<Mutex<Vec<Change>>>,
 }
 
 impl TransactionalFlowInterceptor {
 	pub fn new(ioc: IocContainer) -> Self {
 		Self {
-			engine: LazyResolveRc::new(),
+			engine: LazyResolveArc::new(),
 			ioc,
-			changes: Rc::new(RefCell::new(Vec::new())),
+			changes: Arc::new(Mutex::new(Vec::new())),
 		}
 	}
 }
@@ -61,14 +62,15 @@ impl Clone for TransactionalFlowInterceptor {
 		Self {
 			engine: self.engine.clone(),
 			ioc: self.ioc.clone(),
-			changes: Rc::clone(&self.changes),
+			changes: Arc::clone(&self.changes),
 		}
 	}
 }
 
-impl<CT: CommandTransaction> TablePostInsertInterceptor<CT> for TransactionalFlowInterceptor {
-	fn intercept(&self, ctx: &mut TablePostInsertContext<CT>) -> Result<()> {
-		self.changes.borrow_mut().push(Change::Insert {
+#[async_trait]
+impl<CT: CommandTransaction + Send> TablePostInsertInterceptor<CT> for TransactionalFlowInterceptor {
+	async fn intercept<'a>(&self, ctx: &mut TablePostInsertContext<'a, CT>) -> Result<()> {
+		self.changes.lock().unwrap().push(Change::Insert {
 			_source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
 			post: ctx.row.to_vec(),
@@ -78,9 +80,10 @@ impl<CT: CommandTransaction> TablePostInsertInterceptor<CT> for TransactionalFlo
 	}
 }
 
-impl<CT: CommandTransaction> TablePostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
-	fn intercept(&self, ctx: &mut TablePostUpdateContext<CT>) -> Result<()> {
-		self.changes.borrow_mut().push(Change::Update {
+#[async_trait]
+impl<CT: CommandTransaction + Send> TablePostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
+	async fn intercept<'a>(&self, ctx: &mut TablePostUpdateContext<'a, CT>) -> Result<()> {
+		self.changes.lock().unwrap().push(Change::Update {
 			_source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
 			pre: ctx.old_row.to_vec(),
@@ -90,9 +93,10 @@ impl<CT: CommandTransaction> TablePostUpdateInterceptor<CT> for TransactionalFlo
 	}
 }
 
-impl<CT: CommandTransaction> TablePostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
-	fn intercept(&self, ctx: &mut TablePostDeleteContext<CT>) -> Result<()> {
-		self.changes.borrow_mut().push(Change::Delete {
+#[async_trait]
+impl<CT: CommandTransaction + Send> TablePostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
+	async fn intercept<'a>(&self, ctx: &mut TablePostDeleteContext<'a, CT>) -> Result<()> {
+		self.changes.lock().unwrap().push(Change::Delete {
 			_source_id: SourceId::from(ctx.table.id),
 			row_number: ctx.id,
 			pre: ctx.deleted_row.to_vec(),
@@ -101,9 +105,10 @@ impl<CT: CommandTransaction> TablePostDeleteInterceptor<CT> for TransactionalFlo
 	}
 }
 
-impl<CT: CommandTransaction> RingBufferPostInsertInterceptor<CT> for TransactionalFlowInterceptor {
-	fn intercept(&self, ctx: &mut RingBufferPostInsertContext<CT>) -> Result<()> {
-		self.changes.borrow_mut().push(Change::Insert {
+#[async_trait]
+impl<CT: CommandTransaction + Send> RingBufferPostInsertInterceptor<CT> for TransactionalFlowInterceptor {
+	async fn intercept<'a>(&self, ctx: &mut RingBufferPostInsertContext<'a, CT>) -> Result<()> {
+		self.changes.lock().unwrap().push(Change::Insert {
 			_source_id: SourceId::from(ctx.ringbuffer.id),
 			row_number: ctx.id,
 			post: ctx.row.to_vec(),
@@ -113,9 +118,10 @@ impl<CT: CommandTransaction> RingBufferPostInsertInterceptor<CT> for Transaction
 	}
 }
 
-impl<CT: CommandTransaction> RingBufferPostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
-	fn intercept(&self, ctx: &mut RingBufferPostUpdateContext<CT>) -> Result<()> {
-		self.changes.borrow_mut().push(Change::Update {
+#[async_trait]
+impl<CT: CommandTransaction + Send> RingBufferPostUpdateInterceptor<CT> for TransactionalFlowInterceptor {
+	async fn intercept<'a>(&self, ctx: &mut RingBufferPostUpdateContext<'a, CT>) -> Result<()> {
+		self.changes.lock().unwrap().push(Change::Update {
 			_source_id: SourceId::from(ctx.ringbuffer.id),
 			row_number: ctx.id,
 			pre: ctx.old_row.to_vec(),
@@ -125,9 +131,10 @@ impl<CT: CommandTransaction> RingBufferPostUpdateInterceptor<CT> for Transaction
 	}
 }
 
-impl<CT: CommandTransaction> RingBufferPostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
-	fn intercept(&self, ctx: &mut RingBufferPostDeleteContext<CT>) -> Result<()> {
-		self.changes.borrow_mut().push(Change::Delete {
+#[async_trait]
+impl<CT: CommandTransaction + Send> RingBufferPostDeleteInterceptor<CT> for TransactionalFlowInterceptor {
+	async fn intercept<'a>(&self, ctx: &mut RingBufferPostDeleteContext<'a, CT>) -> Result<()> {
+		self.changes.lock().unwrap().push(Change::Delete {
 			_source_id: SourceId::from(ctx.ringbuffer.id),
 			row_number: ctx.id,
 			pre: ctx.deleted_row.to_vec(),
@@ -136,12 +143,13 @@ impl<CT: CommandTransaction> RingBufferPostDeleteInterceptor<CT> for Transaction
 	}
 }
 
-impl<CT: CommandTransaction> PreCommitInterceptor<CT> for TransactionalFlowInterceptor {
-	fn intercept(&self, _ctx: &mut PreCommitContext<CT>) -> Result<()> {
+#[async_trait]
+impl<CT: CommandTransaction + Send> PreCommitInterceptor<CT> for TransactionalFlowInterceptor {
+	async fn intercept<'a>(&self, _ctx: &mut PreCommitContext<'a, CT>) -> Result<()> {
 		let _engine = self.engine.get_or_resolve(&self.ioc)?;
 
 		// Process all collected changes through flow engine
-		let changes = self.changes.borrow_mut();
+		let changes = self.changes.lock().unwrap();
 		if !changes.is_empty() {
 			// TODO: Convert FlowChange to flow engine Change format
 			// and process through flow engine
@@ -156,8 +164,8 @@ impl<CT: CommandTransaction> PreCommitInterceptor<CT> for TransactionalFlowInter
 	}
 }
 
-impl<CT: CommandTransaction> RegisterInterceptor<CT> for TransactionalFlowInterceptor {
-	fn register(self: Rc<Self>, interceptors: &mut Interceptors<CT>) {
+impl<CT: CommandTransaction + Send + 'static> RegisterInterceptor<CT> for TransactionalFlowInterceptor {
+	fn register(self: Arc<Self>, interceptors: &mut Interceptors<CT>) {
 		interceptors.table_post_insert.add(self.clone());
 		interceptors.table_post_update.add(self.clone());
 		interceptors.table_post_delete.add(self.clone());

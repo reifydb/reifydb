@@ -8,7 +8,7 @@ use reifydb_core::value::column::Columns;
 use reifydb_rql::plan::physical::CreateNamespaceNode;
 use reifydb_type::Value;
 
-use crate::{StandardCommandTransaction, execute::Executor};
+use crate::{StandardCommandTransaction, execute::Executor, util::block_on};
 
 impl Executor {
 	pub(crate) fn create_namespace<'a>(
@@ -29,10 +29,10 @@ impl Executor {
 			// namespace exists
 		}
 
-		let result = txn.create_namespace(NamespaceToCreate {
+		let result = block_on(txn.create_namespace(NamespaceToCreate {
 			namespace_fragment: Some(plan.namespace.clone().into_owned()),
 			name: plan.namespace.text().to_string(),
-		})?;
+		}))?;
 
 		Ok(Columns::single_row([("namespace", Value::Utf8(result.name)), ("created", Value::Boolean(true))]))
 	}

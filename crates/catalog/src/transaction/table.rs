@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::interface::{
 	CommandTransaction, NamespaceId, QueryTransaction, TableDef, TableId, TransactionalChanges,
 	TransactionalTableChanges,
@@ -18,12 +19,13 @@ use crate::{
 	transaction::MaterializedCatalogTransaction,
 };
 
-pub trait CatalogTableCommandOperations {
-	fn create_table(&mut self, table: TableToCreate) -> crate::Result<TableDef>;
+#[async_trait]
+pub trait CatalogTableCommandOperations: Send {
+	async fn create_table(&mut self, table: TableToCreate) -> crate::Result<TableDef>;
 
 	// TODO: Implement when update/delete are ready
-	// fn update_table(&mut self, table_id: TableId, updates: TableUpdates)
-	// -> crate::Result<TableDef>; fn delete_table(&mut self, table_id:
+	// async fn update_table(&mut self, table_id: TableId, updates: TableUpdates)
+	// -> crate::Result<TableDef>; async fn delete_table(&mut self, table_id:
 	// TableId) -> crate::Result<()>;
 }
 
@@ -53,23 +55,25 @@ pub trait CatalogTableQueryOperations: CatalogNamespaceQueryOperations {
 	) -> crate::Result<TableDef>;
 }
 
+#[async_trait]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
 		+ CatalogTrackTableChangeOperations
 		+ WithInterceptors<CT>
-		+ TransactionalChanges,
+		+ TransactionalChanges
+		+ Send,
 > CatalogTableCommandOperations for CT
 {
 	#[instrument(name = "catalog::table::create", level = "debug", skip(self, to_create))]
-	fn create_table(&mut self, to_create: TableToCreate) -> reifydb_core::Result<TableDef> {
+	async fn create_table(&mut self, to_create: TableToCreate) -> reifydb_core::Result<TableDef> {
 		if let Some(table) = self.find_table_by_name(to_create.namespace, &to_create.table)? {
 			let namespace = self.get_namespace(to_create.namespace)?;
 			return_error!(table_already_exists(to_create.fragment, &namespace.name, &table.name));
 		}
 		let result = CatalogStore::create_table(self, to_create)?;
 		self.track_table_def_created(result.clone())?;
-		TableDefInterceptor::post_create(self, &result)?;
+		TableDefInterceptor::post_create(self, &result).await?;
 		Ok(result)
 	}
 }

@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{marker::PhantomData, rc::Rc};
+use std::sync::Arc;
 
 use crate::{
 	interceptor::{
@@ -23,44 +23,42 @@ use crate::{
 /// Container for all interceptor chains
 pub struct Interceptors<CT: CommandTransaction> {
 	// Table data interceptors
-	pub table_pre_insert: Chain<CT, dyn TablePreInsertInterceptor<CT>>,
-	pub table_post_insert: Chain<CT, dyn TablePostInsertInterceptor<CT>>,
-	pub table_pre_update: Chain<CT, dyn TablePreUpdateInterceptor<CT>>,
-	pub table_post_update: Chain<CT, dyn TablePostUpdateInterceptor<CT>>,
-	pub table_pre_delete: Chain<CT, dyn TablePreDeleteInterceptor<CT>>,
-	pub table_post_delete: Chain<CT, dyn TablePostDeleteInterceptor<CT>>,
+	pub table_pre_insert: Chain<CT, dyn TablePreInsertInterceptor<CT> + Send + Sync>,
+	pub table_post_insert: Chain<CT, dyn TablePostInsertInterceptor<CT> + Send + Sync>,
+	pub table_pre_update: Chain<CT, dyn TablePreUpdateInterceptor<CT> + Send + Sync>,
+	pub table_post_update: Chain<CT, dyn TablePostUpdateInterceptor<CT> + Send + Sync>,
+	pub table_pre_delete: Chain<CT, dyn TablePreDeleteInterceptor<CT> + Send + Sync>,
+	pub table_post_delete: Chain<CT, dyn TablePostDeleteInterceptor<CT> + Send + Sync>,
 	// Ring buffer data interceptors
-	pub ringbuffer_pre_insert: Chain<CT, dyn RingBufferPreInsertInterceptor<CT>>,
-	pub ringbuffer_post_insert: Chain<CT, dyn RingBufferPostInsertInterceptor<CT>>,
-	pub ringbuffer_pre_update: Chain<CT, dyn RingBufferPreUpdateInterceptor<CT>>,
-	pub ringbuffer_post_update: Chain<CT, dyn RingBufferPostUpdateInterceptor<CT>>,
-	pub ringbuffer_pre_delete: Chain<CT, dyn RingBufferPreDeleteInterceptor<CT>>,
-	pub ringbuffer_post_delete: Chain<CT, dyn RingBufferPostDeleteInterceptor<CT>>,
+	pub ringbuffer_pre_insert: Chain<CT, dyn RingBufferPreInsertInterceptor<CT> + Send + Sync>,
+	pub ringbuffer_post_insert: Chain<CT, dyn RingBufferPostInsertInterceptor<CT> + Send + Sync>,
+	pub ringbuffer_pre_update: Chain<CT, dyn RingBufferPreUpdateInterceptor<CT> + Send + Sync>,
+	pub ringbuffer_post_update: Chain<CT, dyn RingBufferPostUpdateInterceptor<CT> + Send + Sync>,
+	pub ringbuffer_pre_delete: Chain<CT, dyn RingBufferPreDeleteInterceptor<CT> + Send + Sync>,
+	pub ringbuffer_post_delete: Chain<CT, dyn RingBufferPostDeleteInterceptor<CT> + Send + Sync>,
 	// Transaction interceptors
-	pub pre_commit: Chain<CT, dyn PreCommitInterceptor<CT>>,
-	pub post_commit: Chain<CT, dyn PostCommitInterceptor<CT>>,
+	pub pre_commit: Chain<CT, dyn PreCommitInterceptor<CT> + Send + Sync>,
+	pub post_commit: Chain<CT, dyn PostCommitInterceptor<CT> + Send + Sync>,
 	// Namespace definition interceptors
-	pub namespace_def_post_create: Chain<CT, dyn NamespaceDefPostCreateInterceptor<CT>>,
-	pub namespace_def_pre_update: Chain<CT, dyn NamespaceDefPreUpdateInterceptor<CT>>,
-	pub namespace_def_post_update: Chain<CT, dyn NamespaceDefPostUpdateInterceptor<CT>>,
-	pub namespace_def_pre_delete: Chain<CT, dyn NamespaceDefPreDeleteInterceptor<CT>>,
+	pub namespace_def_post_create: Chain<CT, dyn NamespaceDefPostCreateInterceptor<CT> + Send + Sync>,
+	pub namespace_def_pre_update: Chain<CT, dyn NamespaceDefPreUpdateInterceptor<CT> + Send + Sync>,
+	pub namespace_def_post_update: Chain<CT, dyn NamespaceDefPostUpdateInterceptor<CT> + Send + Sync>,
+	pub namespace_def_pre_delete: Chain<CT, dyn NamespaceDefPreDeleteInterceptor<CT> + Send + Sync>,
 	// Table definition interceptors
-	pub table_def_post_create: Chain<CT, dyn TableDefPostCreateInterceptor<CT>>,
-	pub table_def_pre_update: Chain<CT, dyn TableDefPreUpdateInterceptor<CT>>,
-	pub table_def_post_update: Chain<CT, dyn TableDefPostUpdateInterceptor<CT>>,
-	pub table_def_pre_delete: Chain<CT, dyn TableDefPreDeleteInterceptor<CT>>,
+	pub table_def_post_create: Chain<CT, dyn TableDefPostCreateInterceptor<CT> + Send + Sync>,
+	pub table_def_pre_update: Chain<CT, dyn TableDefPreUpdateInterceptor<CT> + Send + Sync>,
+	pub table_def_post_update: Chain<CT, dyn TableDefPostUpdateInterceptor<CT> + Send + Sync>,
+	pub table_def_pre_delete: Chain<CT, dyn TableDefPreDeleteInterceptor<CT> + Send + Sync>,
 	// View definition interceptors
-	pub view_def_post_create: Chain<CT, dyn ViewDefPostCreateInterceptor<CT>>,
-	pub view_def_pre_update: Chain<CT, dyn ViewDefPreUpdateInterceptor<CT>>,
-	pub view_def_post_update: Chain<CT, dyn ViewDefPostUpdateInterceptor<CT>>,
-	pub view_def_pre_delete: Chain<CT, dyn ViewDefPreDeleteInterceptor<CT>>,
+	pub view_def_post_create: Chain<CT, dyn ViewDefPostCreateInterceptor<CT> + Send + Sync>,
+	pub view_def_pre_update: Chain<CT, dyn ViewDefPreUpdateInterceptor<CT> + Send + Sync>,
+	pub view_def_post_update: Chain<CT, dyn ViewDefPostUpdateInterceptor<CT> + Send + Sync>,
+	pub view_def_pre_delete: Chain<CT, dyn ViewDefPreDeleteInterceptor<CT> + Send + Sync>,
 	// Ring buffer definition interceptors
-	pub ringbuffer_def_post_create: Chain<CT, dyn RingBufferDefPostCreateInterceptor<CT>>,
-	pub ringbuffer_def_pre_update: Chain<CT, dyn RingBufferDefPreUpdateInterceptor<CT>>,
-	pub ringbuffer_def_post_update: Chain<CT, dyn RingBufferDefPostUpdateInterceptor<CT>>,
-	pub ringbuffer_def_pre_delete: Chain<CT, dyn RingBufferDefPreDeleteInterceptor<CT>>,
-	// Marker to prevent Send and Sync
-	_not_send_sync: PhantomData<*const ()>,
+	pub ringbuffer_def_post_create: Chain<CT, dyn RingBufferDefPostCreateInterceptor<CT> + Send + Sync>,
+	pub ringbuffer_def_pre_update: Chain<CT, dyn RingBufferDefPreUpdateInterceptor<CT> + Send + Sync>,
+	pub ringbuffer_def_post_update: Chain<CT, dyn RingBufferDefPostUpdateInterceptor<CT> + Send + Sync>,
+	pub ringbuffer_def_pre_delete: Chain<CT, dyn RingBufferDefPreDeleteInterceptor<CT> + Send + Sync>,
 }
 
 impl<CT: CommandTransaction> Default for Interceptors<CT> {
@@ -102,7 +100,6 @@ impl<CT: CommandTransaction> Interceptors<CT> {
 			ringbuffer_def_pre_update: InterceptorChain::new(),
 			ringbuffer_def_post_update: InterceptorChain::new(),
 			ringbuffer_def_pre_delete: InterceptorChain::new(),
-			_not_send_sync: PhantomData,
 		}
 	}
 }
@@ -140,7 +137,6 @@ impl<CT: CommandTransaction> Clone for Interceptors<CT> {
 			ringbuffer_def_pre_update: self.ringbuffer_def_pre_update.clone(),
 			ringbuffer_def_post_update: self.ringbuffer_def_post_update.clone(),
 			ringbuffer_def_pre_delete: self.ringbuffer_def_pre_delete.clone(),
-			_not_send_sync: PhantomData,
 		}
 	}
 }
@@ -150,8 +146,8 @@ impl<CT: CommandTransaction> Interceptors<CT> {
 	/// chains based on which traits it implements
 	pub fn register<I>(&mut self, interceptor: I)
 	where
-		I: super::RegisterInterceptor<CT> + 'static,
+		I: super::RegisterInterceptor<CT> + Send + Sync + 'static,
 	{
-		Rc::new(interceptor).register(self);
+		Arc::new(interceptor).register(self);
 	}
 }

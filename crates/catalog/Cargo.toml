@@ -13,6 +13,7 @@ reifydb-store-transaction = { workspace = true }
 reifydb-transaction = { workspace = true }
 reifydb-type = { workspace = true }
 
+async-trait = { workspace = true }
 crossbeam-skiplist = {workspace = true}
 once_cell = {workspace = true}
 serde = { workspace = true }

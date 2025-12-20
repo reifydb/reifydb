@@ -33,16 +33,16 @@ macro_rules! define_filtered_interceptor {
 		/// Filtered interceptor wrapper that checks entity name before executing.
 		pub struct $wrapper_name<T: CommandTransaction, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync,
 		{
 			filter: InterceptFilter,
 			handler: F,
-			_phantom: PhantomData<T>,
+			_phantom: PhantomData<fn() -> T>,
 		}
 
 		impl<T: CommandTransaction, F> $wrapper_name<T, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync,
 		{
 			/// Create a new filtered interceptor.
 			pub fn new(filter: InterceptFilter, handler: F) -> Self {
@@ -56,7 +56,7 @@ macro_rules! define_filtered_interceptor {
 
 		impl<T: CommandTransaction, F> Clone for $wrapper_name<T, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()> + Clone,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync + Clone,
 		{
 			fn clone(&self) -> Self {
 				Self {
@@ -67,11 +67,12 @@ macro_rules! define_filtered_interceptor {
 			}
 		}
 
-		impl<T: CommandTransaction, F> $trait_name<T> for $wrapper_name<T, F>
+		#[async_trait::async_trait]
+		impl<T: CommandTransaction + Send, F> $trait_name<T> for $wrapper_name<T, F>
 		where
-			F: Fn(&mut $context_type<T>) -> crate::Result<()>,
+			F: for<'a> Fn(&mut $context_type<'a, T>) -> crate::Result<()> + Send + Sync,
 		{
-			fn intercept(&self, ctx: &mut $context_type<T>) -> crate::Result<()> {
+			async fn intercept<'a>(&self, ctx: &mut $context_type<'a, T>) -> crate::Result<()> {
 				// TODO: Add namespace matching once we have namespace name resolution.
 				// For now, we only match by entity name if namespace is not specified in filter,
 				// or skip namespace check entirely.
