@@ -12,10 +12,13 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Get a source (table or view) by its SourceId
 	/// Returns an error if the source doesn't exist
-	pub fn get_source(rx: &mut impl QueryTransaction, source: impl Into<SourceId>) -> crate::Result<SourceDef> {
+	pub async fn get_source(
+		rx: &mut impl QueryTransaction,
+		source: impl Into<SourceId>,
+	) -> crate::Result<SourceDef> {
 		let source_id = source.into();
 
-		CatalogStore::find_source(rx, source_id)?.ok_or_else(|| {
+		CatalogStore::find_source(rx, source_id).await?.ok_or_else(|| {
 			let source_type = match source_id {
 				SourceId::Table(_) => "Table",
 				SourceId::View(_) => "View",

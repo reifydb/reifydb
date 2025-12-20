@@ -1902,6 +1902,7 @@ dependencies = [
  "async-trait",
  "crossbeam-channel",
  "crossbeam-skiplist",
+ "futures-executor",
  "futures-util",
  "indexmap 2.12.0",
  "parking_lot",

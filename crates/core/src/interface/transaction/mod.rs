@@ -13,7 +13,7 @@ use std::{
 	ops::Deref,
 };
 
-pub use cdc::{CdcQueryTransaction, CdcTransaction};
+pub use cdc::{CdcBatch, CdcQueryTransaction, CdcTransaction};
 pub use change::*;
 pub use multi::*;
 use reifydb_type::{Error, Uuid7, return_internal_error};

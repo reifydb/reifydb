@@ -13,11 +13,11 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_dictionary(
+	pub async fn find_dictionary(
 		rx: &mut impl QueryTransaction,
 		dictionary_id: DictionaryId,
 	) -> crate::Result<Option<DictionaryDef>> {
-		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id))? else {
+		let Some(multi) = rx.get(&DictionaryKey::encoded(dictionary_id)).await? else {
 			return Ok(None);
 		};
 
@@ -37,30 +37,26 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_dictionary_by_name(
+	pub async fn find_dictionary_by_name(
 		rx: &mut impl QueryTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<DictionaryDef>> {
 		let name = name.as_ref();
-		let Some(dictionary_id) = rx.range(NamespaceDictionaryKey::full_scan(namespace))?.find_map(
-			|multi: MultiVersionValues| {
-				let row = &multi.values;
-				let dictionary_name =
-					dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME);
-				if name == dictionary_name {
-					Some(DictionaryId(
-						dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID),
-					))
-				} else {
-					None
-				}
-			},
-		) else {
+		let batch = rx.range(NamespaceDictionaryKey::full_scan(namespace)).await?;
+		let Some(dictionary_id) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+			let row = &multi.values;
+			let dictionary_name = dictionary_namespace::LAYOUT.get_utf8(row, dictionary_namespace::NAME);
+			if name == dictionary_name {
+				Some(DictionaryId(dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID)))
+			} else {
+				None
+			}
+		}) else {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_dictionary(rx, dictionary_id)?))
+		Ok(Some(Self::get_dictionary(rx, dictionary_id).await?))
 	}
 }
 

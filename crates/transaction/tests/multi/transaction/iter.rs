@@ -17,16 +17,16 @@ use reifydb_transaction::multi::{
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
-#[test]
-fn test_iter() {
-	let engine = Transaction::testing();
-	let mut txn = engine.begin_command().unwrap();
+#[tokio::test]
+async fn test_iter() {
+	let engine = Transaction::testing().await;
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
 	txn.commit().unwrap();
 
-	let txn = engine.begin_query().unwrap();
+	let txn = engine.begin_query().await.unwrap();
 	let iter = txn.range(EncodedKeyRange::all()).unwrap();
 
 	for (expected, tv) in (1..=3).rev().zip(iter) {
@@ -41,10 +41,10 @@ fn test_iter() {
 	}
 }
 
-#[test]
-fn test_iter2() {
-	let engine = Transaction::testing();
-	let mut txn = engine.begin_command().unwrap();
+#[tokio::test]
+async fn test_iter2() {
+	let engine = Transaction::testing().await;
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
@@ -64,7 +64,7 @@ fn test_iter2() {
 	}
 	txn.commit().unwrap();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
@@ -84,10 +84,10 @@ fn test_iter2() {
 	}
 }
 
-#[test]
-fn test_iter3() {
-	let engine = Transaction::testing();
-	let mut txn = engine.begin_command().unwrap();
+#[tokio::test]
+async fn test_iter3() {
+	let engine = Transaction::testing().await;
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
@@ -108,7 +108,7 @@ fn test_iter3() {
 
 	txn.commit().unwrap();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
@@ -134,13 +134,13 @@ fn test_iter3() {
 /// Read at ts=3 -> a3, b3, c2
 /// Read at ts=2 -> a2, c2
 /// Read at ts=1 -> c1
-#[test]
-fn test_iter_edge_case() {
-	let engine = Transaction::testing();
+#[tokio::test]
+async fn test_iter_edge_case() {
+	let engine = Transaction::testing().await;
 
 	// c1
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(2, engine.version().unwrap());
@@ -148,7 +148,7 @@ fn test_iter_edge_case() {
 
 	// a2, c2
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
 		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
 		txn.commit().unwrap();
@@ -157,7 +157,7 @@ fn test_iter_edge_case() {
 
 	// b3
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
 		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
 		txn.commit().unwrap();
@@ -165,14 +165,14 @@ fn test_iter_edge_case() {
 	}
 
 	// b4, c4(remove) (uncommitted)
-	let mut txn4 = engine.begin_command().unwrap();
+	let mut txn4 = engine.begin_command().await.unwrap();
 	txn4.set(&as_key!(2), as_values!(24u64)).unwrap();
 	txn4.remove(&as_key!(3)).unwrap();
 	assert_eq!(4, engine.version().unwrap());
 
 	// b4 (remove)
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.remove(&as_key!(2)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(5, engine.version().unwrap());
@@ -196,7 +196,7 @@ fn test_iter_edge_case() {
 		assert_eq!(expected.len(), i);
 	};
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command().await.unwrap();
 	let itr = txn.range(EncodedKeyRange::all()).unwrap();
 	let itr5 = txn4.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[32, 13]);
@@ -231,13 +231,13 @@ fn test_iter_edge_case() {
 /// Read at ts=3 -> a3, b3, c2
 /// Read at ts=2 -> a2, c2
 /// Read at ts=1 -> c1
-#[test]
-fn test_iter_edge_case2() {
-	let engine = Transaction::testing();
+#[tokio::test]
+async fn test_iter_edge_case2() {
+	let engine = Transaction::testing().await;
 
 	// c1
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.set(&as_key!(3), as_values!(31u64)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(2, engine.version().unwrap());
@@ -245,7 +245,7 @@ fn test_iter_edge_case2() {
 
 	// a2, c2
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
 		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
 		txn.commit().unwrap();
@@ -254,7 +254,7 @@ fn test_iter_edge_case2() {
 
 	// b3
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
 		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
 		txn.commit().unwrap();
@@ -263,7 +263,7 @@ fn test_iter_edge_case2() {
 
 	// b4 (remove)
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.remove(&as_key!(2)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(5, engine.version().unwrap());
@@ -287,7 +287,7 @@ fn test_iter_edge_case2() {
 		assert_eq!(expected.len(), i);
 	};
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command().await.unwrap();
 	let itr = txn.range(EncodedKeyRange::all()).unwrap();
 	check_iter(itr, &[32, 13]);
 	let itr = txn.range_rev(EncodedKeyRange::all()).unwrap();

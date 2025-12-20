@@ -32,12 +32,12 @@ use reifydb_store_transaction::TransactionStore;
 use reifydb_transaction::{cdc::TransactionCdc, multi::Transaction, single::TransactionSingleVersion};
 
 /// Create a test engine with in-memory storage.
-pub fn create_test_engine() -> StandardEngine {
+pub async fn create_test_engine() -> StandardEngine {
 	let store = TransactionStore::testing_memory();
 	let eventbus = EventBus::new();
 	let single = TransactionSingleVersion::svl(store.clone(), eventbus.clone());
 	let cdc = TransactionCdc::new(store.clone());
-	let multi = Transaction::new(store, single.clone(), eventbus.clone());
+	let multi = Transaction::new(store, single.clone(), eventbus.clone()).await;
 
 	StandardEngine::new(
 		multi,

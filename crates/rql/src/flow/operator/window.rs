@@ -46,10 +46,10 @@ impl<'a> From<WindowNode<'a>> for WindowCompiler {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for WindowCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		// Compile input first if present
 		let input_node = if let Some(input) = self.input {
-			Some(compiler.compile_plan(*input)?)
+			Some(compiler.compile_plan(*input).await?)
 		} else {
 			None
 		};
@@ -71,6 +71,6 @@ impl<T: CommandTransaction> CompileOperator<T> for WindowCompiler {
 			builder = builder.with_input(input_node);
 		}
 
-		builder.build()
+		builder.build().await
 	}
 }

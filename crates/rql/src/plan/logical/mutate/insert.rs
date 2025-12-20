@@ -15,7 +15,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_insert<'a, T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_insert<'a, T: CatalogQueryTransaction>(
 		ast: AstInsert<'a>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
@@ -30,7 +30,7 @@ impl Compiler {
 		let target_name = unresolved_target.name.text();
 
 		// Try to find namespace
-		let namespace_id = if let Some(ns) = tx.find_namespace_by_name(namespace_name)? {
+		let namespace_id = if let Some(ns) = tx.find_namespace_by_name(namespace_name).await? {
 			ns.id
 		} else {
 			// If namespace doesn't exist, default to table (will error during physical plan)
@@ -44,7 +44,7 @@ impl Compiler {
 		};
 
 		// Check if it's a ring buffer first
-		if tx.find_ringbuffer_by_name(namespace_id, target_name)?.is_some() {
+		if tx.find_ringbuffer_by_name(namespace_id, target_name).await?.is_some() {
 			let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved_target.name.clone());
 			if let Some(ns) = unresolved_target.namespace.clone() {
 				target = target.with_namespace(ns);
@@ -55,7 +55,7 @@ impl Compiler {
 		}
 
 		// Check if it's a dictionary
-		if tx.find_dictionary_by_name(namespace_id, target_name)?.is_some() {
+		if tx.find_dictionary_by_name(namespace_id, target_name).await?.is_some() {
 			let mut target = MaybeQualifiedDictionaryIdentifier::new(unresolved_target.name.clone());
 			if let Some(ns) = unresolved_target.namespace.clone() {
 				target = target.with_namespace(ns);

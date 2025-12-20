@@ -44,13 +44,13 @@ where
 	}
 
 	/// Builds the operator and creates all edges
-	pub fn build(self) -> Result<FlowNodeId> {
+	pub async fn build(self) -> Result<FlowNodeId> {
 		// Create the operator
-		let node_id = self.compiler.add_node(self.node_type)?;
+		let node_id = self.compiler.add_node(self.node_type).await?;
 
 		// Add edges from all input nodes to this operator
 		for input in self.input_nodes {
-			self.compiler.add_edge(&input, &node_id)?;
+			self.compiler.add_edge(&input, &node_id).await?;
 		}
 
 		Ok(node_id)

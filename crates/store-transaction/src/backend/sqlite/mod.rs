@@ -3,12 +3,10 @@
 
 mod config;
 mod connection;
-mod iterator;
 mod query;
 mod storage;
 mod tables;
 mod writer;
 
 pub use config::*;
-pub use iterator::{SqliteRangeIter, SqliteRangeRevIter};
 pub use storage::SqlitePrimitiveStorage;

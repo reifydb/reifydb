@@ -106,10 +106,10 @@ impl<'e, V: ValidationMode> BulkInsertBuilder<'e, V> {
 	///
 	/// Returns a summary of what was inserted. On error, the entire
 	/// transaction is rolled back (no partial inserts).
-	pub fn execute(self) -> crate::Result<BulkInsertResult> {
+	pub async fn execute(self) -> crate::Result<BulkInsertResult> {
 		use reifydb_core::interface::Engine;
 
-		let mut txn = self.engine.begin_command()?;
+		let mut txn = self.engine.begin_command().await?;
 		let mut result = BulkInsertResult::default();
 
 		// Process all pending table inserts

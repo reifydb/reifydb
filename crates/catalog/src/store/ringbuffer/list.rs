@@ -6,12 +6,12 @@ use reifydb_core::interface::{Key, NamespaceId, QueryTransaction, RingBufferDef,
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
 
 impl CatalogStore {
-	pub fn list_ringbuffers_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<RingBufferDef>> {
+	pub async fn list_ringbuffers_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<RingBufferDef>> {
 		let mut result = Vec::new();
 
-		let entries: Vec<_> = rx.range(RingBufferKey::full_scan())?.into_iter().collect();
+		let batch = rx.range(RingBufferKey::full_scan()).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::RingBuffer(ringbuffer_key) = key {
 					let ringbuffer_id = ringbuffer_key.ringbuffer;
@@ -26,8 +26,8 @@ impl CatalogStore {
 
 					let capacity = ringbuffer::LAYOUT.get_u64(&entry.values, ringbuffer::CAPACITY);
 
-					let primary_key = Self::find_primary_key(rx, ringbuffer_id)?;
-					let columns = Self::list_columns(rx, ringbuffer_id)?;
+					let primary_key = Self::find_primary_key(rx, ringbuffer_id).await?;
+					let columns = Self::list_columns(rx, ringbuffer_id).await?;
 
 					let ringbuffer_def = RingBufferDef {
 						id: ringbuffer_id,

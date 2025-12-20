@@ -45,15 +45,15 @@ use crate::{
 struct Compiler {}
 
 #[instrument(name = "rql::compile::logical", level = "trace", skip(tx, ast))]
-pub fn compile_logical<'a, 't, T: CatalogQueryTransaction>(
+pub async fn compile_logical<'a, 't, T: CatalogQueryTransaction>(
 	tx: &'t mut T,
 	ast: AstStatement<'a>,
 ) -> crate::Result<Vec<LogicalPlan<'a>>> {
-	Compiler::compile(ast, tx)
+	Compiler::compile(ast, tx).await
 }
 
 impl Compiler {
-	fn compile<'a, 't, T: CatalogQueryTransaction>(
+	async fn compile<'a, 't, T: CatalogQueryTransaction>(
 		ast: AstStatement<'a>,
 		tx: &mut T,
 	) -> crate::Result<Vec<LogicalPlan<'a>>> {
@@ -113,15 +113,15 @@ impl Compiler {
 							let target_name = unresolved.name.text();
 
 							// Try to find namespace
-							if let Some(ns) = tx.find_namespace_by_name(namespace_name)? {
+							if let Some(ns) =
+								tx.find_namespace_by_name(namespace_name).await?
+							{
 								let namespace_id = ns.id;
 
 								// Check if it's a ring buffer first
-								if tx.find_ringbuffer_by_name(
-									namespace_id,
-									target_name,
-								)?
-								.is_some()
+								if tx.find_ringbuffer_by_name(namespace_id, target_name)
+									.await?
+									.is_some()
 								{
 									let mut target =
 										MaybeQualifiedRingBufferIdentifier::new(
@@ -179,8 +179,9 @@ impl Compiler {
 								let target_name = unresolved.name.text();
 
 								// Try to find namespace
-								if let Some(ns) =
-									tx.find_namespace_by_name(namespace_name)?
+								if let Some(ns) = tx
+									.find_namespace_by_name(namespace_name)
+									.await?
 								{
 									let namespace_id = ns.id;
 
@@ -188,7 +189,8 @@ impl Compiler {
 									if tx.find_ringbuffer_by_name(
 										namespace_id,
 										target_name,
-									)?
+									)
+									.await?
 									.is_some()
 									{
 										let mut target = MaybeQualifiedRingBufferIdentifier::new(unresolved.name.clone());
@@ -236,7 +238,7 @@ impl Compiler {
 					}
 				} else {
 					// Add to pipeline
-					pipeline_nodes.push(Compiler::compile_single(node, tx)?);
+					pipeline_nodes.push(Compiler::compile_single(node, tx).await?);
 				}
 			}
 			unreachable!("Pipeline should have been handled above");
@@ -248,7 +250,7 @@ impl Compiler {
 			// This uses pipe operators - create a Pipeline operator
 			let mut pipeline_nodes = Vec::new();
 			for node in ast_vec {
-				pipeline_nodes.push(Self::compile_single(node, tx)?);
+				pipeline_nodes.push(Self::compile_single(node, tx).await?);
 			}
 			return Ok(vec![LogicalPlan::Pipeline(PipelineNode {
 				steps: pipeline_nodes,
@@ -258,24 +260,24 @@ impl Compiler {
 		// Normal compilation (not piped)
 		let mut result = Vec::with_capacity(ast_len);
 		for node in ast_vec {
-			result.push(Self::compile_single(node, tx)?);
+			result.push(Self::compile_single(node, tx).await?);
 		}
 		Ok(result)
 	}
 
 	// Helper to compile a single AST operator
-	fn compile_single<'a, 't, T: CatalogQueryTransaction>(
+	async fn compile_single<'a, 't, T: CatalogQueryTransaction>(
 		node: Ast<'a>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		match node {
-			Ast::Create(node) => Self::compile_create(node, tx),
-			Ast::Alter(node) => Self::compile_alter(node, tx),
-			Ast::Delete(node) => Self::compile_delete(node, tx),
-			Ast::Insert(node) => Self::compile_insert(node, tx),
-			Ast::Update(node) => Self::compile_update(node, tx),
-			Ast::If(node) => Self::compile_if(node, tx),
-			Ast::Let(node) => Self::compile_let(node, tx),
+			Ast::Create(node) => Self::compile_create(node, tx).await,
+			Ast::Alter(node) => Self::compile_alter(node, tx).await,
+			Ast::Delete(node) => Self::compile_delete(node, tx).await,
+			Ast::Insert(node) => Self::compile_insert(node, tx).await,
+			Ast::Update(node) => Self::compile_update(node, tx).await,
+			Ast::If(node) => Self::compile_if(node, tx).await,
+			Ast::Let(node) => Self::compile_let(node, tx).await,
 			Ast::StatementExpression(node) => {
 				// Compile the inner expression and wrap it in a MAP
 				let map_node = Self::wrap_scalar_in_map(*node.expression.clone());
@@ -334,7 +336,7 @@ impl Compiler {
 			Ast::Filter(node) => Self::compile_filter(node, tx),
 			Ast::From(node) => Self::compile_from(node, tx),
 			Ast::Join(node) => Self::compile_join(node, tx),
-			Ast::Merge(node) => Self::compile_merge(node, tx),
+			Ast::Merge(node) => Self::compile_merge(node, tx).await,
 			Ast::Take(node) => Self::compile_take(node, tx),
 			Ast::Sort(node) => Self::compile_sort(node, tx),
 			Ast::Distinct(node) => Self::compile_distinct(node, tx),

@@ -14,7 +14,7 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_alter_sequence<'a>(
+	pub(crate) async fn compile_alter_sequence<'a>(
 		rx: &mut impl QueryTransaction,
 		alter: logical::AlterSequenceNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
@@ -22,12 +22,13 @@ impl Compiler {
 		let namespace_name = alter.sequence.namespace.as_ref().map(|f| f.text()).unwrap_or(DEFAULT_NAMESPACE);
 
 		// Query the catalog for the actual namespace
-		let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)?
+		let namespace_def = CatalogStore::find_namespace_by_name(rx, namespace_name)
+			.await?
 			.unwrap_or_else(|| panic!("Namespace '{}' not found", namespace_name));
 
 		// Query the catalog for the actual table
 		let table_name = alter.sequence.name.text();
-		let Some(table_def) = CatalogStore::find_table_by_name(rx, namespace_def.id, table_name)? else {
+		let Some(table_def) = CatalogStore::find_table_by_name(rx, namespace_def.id, table_name).await? else {
 			return_error!(table_not_found(
 				alter.sequence.name.clone().into_owned(),
 				&namespace_def.name,

@@ -25,23 +25,23 @@ pub struct FlowToCreate {
 }
 
 impl CatalogStore {
-	pub fn create_flow(txn: &mut impl CommandTransaction, to_create: FlowToCreate) -> crate::Result<FlowDef> {
+	pub async fn create_flow(txn: &mut impl CommandTransaction, to_create: FlowToCreate) -> crate::Result<FlowDef> {
 		let namespace_id = to_create.namespace;
 
 		// Check if flow already exists
-		if let Some(_flow) = CatalogStore::find_flow_by_name(txn, namespace_id, &to_create.name)? {
-			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
+		if let Some(_flow) = CatalogStore::find_flow_by_name(txn, namespace_id, &to_create.name).await? {
+			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
 			return_error!(flow_already_exists(to_create.fragment, &namespace.name, &to_create.name));
 		}
 
-		let flow_id = next_flow_id(txn)?;
-		Self::store_flow(txn, flow_id, namespace_id, &to_create)?;
-		Self::link_flow_to_namespace(txn, namespace_id, flow_id, &to_create.name)?;
+		let flow_id = next_flow_id(txn).await?;
+		Self::store_flow(txn, flow_id, namespace_id, &to_create).await?;
+		Self::link_flow_to_namespace(txn, namespace_id, flow_id, &to_create.name).await?;
 
-		Ok(Self::get_flow(txn, flow_id)?)
+		Ok(Self::get_flow(txn, flow_id).await?)
 	}
 
-	fn store_flow(
+	async fn store_flow(
 		txn: &mut impl CommandTransaction,
 		flow: FlowId,
 		namespace: NamespaceId,
@@ -53,12 +53,12 @@ impl CatalogStore {
 		flow::LAYOUT.set_utf8(&mut row, flow::NAME, &to_create.name);
 		flow::LAYOUT.set_u8(&mut row, flow::STATUS, to_create.status.to_u8());
 
-		txn.set(&FlowKey::encoded(flow), row)?;
+		txn.set(&FlowKey::encoded(flow), row).await?;
 
 		Ok(())
 	}
 
-	fn link_flow_to_namespace(
+	async fn link_flow_to_namespace(
 		txn: &mut impl CommandTransaction,
 		namespace: NamespaceId,
 		flow: FlowId,
@@ -67,7 +67,7 @@ impl CatalogStore {
 		let mut row = flow_namespace::LAYOUT.allocate();
 		flow_namespace::LAYOUT.set_u64(&mut row, flow_namespace::ID, flow);
 		flow_namespace::LAYOUT.set_utf8(&mut row, flow_namespace::NAME, name);
-		txn.set(&NamespaceFlowKey::encoded(namespace, flow), row)?;
+		txn.set(&NamespaceFlowKey::encoded(namespace, flow), row).await?;
 		Ok(())
 	}
 }
@@ -85,10 +85,10 @@ mod tests {
 		test_utils::{create_namespace, ensure_test_namespace},
 	};
 
-	#[test]
-	fn test_create_flow() {
+	#[tokio::test]
+	async fn test_create_flow() {
 		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = FlowToCreate {
 			fragment: None,
@@ -98,21 +98,21 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = CatalogStore::create_flow(&mut txn, to_create.clone()).unwrap();
+		let result = CatalogStore::create_flow(&mut txn, to_create.clone()).await.unwrap();
 		assert_eq!(result.id, FlowId(1));
 		assert_eq!(result.namespace, NamespaceId(1025));
 		assert_eq!(result.name, "test_flow");
 		assert_eq!(result.status, FlowStatus::Active);
 
 		// Second creation should fail with duplicate error
-		let err = CatalogStore::create_flow(&mut txn, to_create).unwrap_err();
+		let err = CatalogStore::create_flow(&mut txn, to_create).await.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_030");
 	}
 
-	#[test]
-	fn test_flow_linked_to_namespace() {
+	#[tokio::test]
+	async fn test_flow_linked_to_namespace() {
 		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		// Create two flows
 		let to_create = FlowToCreate {
@@ -121,7 +121,7 @@ mod tests {
 			namespace: test_namespace.id,
 			status: FlowStatus::Active,
 		};
-		CatalogStore::create_flow(&mut txn, to_create).unwrap();
+		CatalogStore::create_flow(&mut txn, to_create).await.unwrap();
 
 		let to_create = FlowToCreate {
 			fragment: None,
@@ -129,10 +129,11 @@ mod tests {
 			namespace: test_namespace.id,
 			status: FlowStatus::Paused,
 		};
-		CatalogStore::create_flow(&mut txn, to_create).unwrap();
+		CatalogStore::create_flow(&mut txn, to_create).await.unwrap();
 
 		// Verify both are linked to namespace
-		let links = txn.range(NamespaceFlowKey::full_scan(test_namespace.id)).unwrap().collect::<Vec<_>>();
+		let links =
+			txn.range(NamespaceFlowKey::full_scan(test_namespace.id)).await.unwrap().collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);
 
 		// Verify link metadata (order may vary)
@@ -161,11 +162,11 @@ mod tests {
 		assert!(found_flow_two, "flow_two not found in namespace links");
 	}
 
-	#[test]
-	fn test_create_flow_multiple_namespaces() {
+	#[tokio::test]
+	async fn test_create_flow_multiple_namespaces() {
 		let mut txn = create_test_command_transaction();
-		let namespace_one = create_namespace(&mut txn, "namespace_one");
-		let namespace_two = create_namespace(&mut txn, "namespace_two");
+		let namespace_one = create_namespace(&mut txn, "namespace_one").await;
+		let namespace_two = create_namespace(&mut txn, "namespace_two").await;
 
 		// Create flow in first namespace
 		let to_create = FlowToCreate {
@@ -174,7 +175,7 @@ mod tests {
 			namespace: namespace_one.id,
 			status: FlowStatus::Active,
 		};
-		CatalogStore::create_flow(&mut txn, to_create).unwrap();
+		CatalogStore::create_flow(&mut txn, to_create).await.unwrap();
 
 		// Should be able to create flow with same name in different namespace
 		let to_create = FlowToCreate {
@@ -183,7 +184,7 @@ mod tests {
 			namespace: namespace_two.id,
 			status: FlowStatus::Active,
 		};
-		let result = CatalogStore::create_flow(&mut txn, to_create).unwrap();
+		let result = CatalogStore::create_flow(&mut txn, to_create).await.unwrap();
 		assert_eq!(result.name, "shared_name");
 		assert_eq!(result.namespace, namespace_two.id);
 	}

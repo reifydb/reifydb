@@ -8,11 +8,11 @@ use crate::{CatalogStore, store::table::layout::table};
 impl CatalogStore {
 	/// Get the primary key ID for a table
 	/// Returns None if the table doesn't exist or has no primary key
-	pub fn get_table_pk_id(
+	pub async fn get_table_pk_id(
 		rx: &mut impl QueryTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&TableKey::encoded(table_id))? {
+		let multi = match rx.get(&TableKey::encoded(table_id)).await? {
 			Some(v) => v,
 			None => return Ok(None),
 		};

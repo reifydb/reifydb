@@ -12,7 +12,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_namespace_by_name(
+	pub async fn find_namespace_by_name(
 		rx: &mut impl QueryTransaction,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<NamespaceDef>> {
@@ -23,24 +23,28 @@ impl CatalogStore {
 			return Ok(Some(NamespaceDef::system()));
 		}
 
-		Ok(rx.range(NamespaceKey::full_scan())?.find_map(|multi| {
+		let batch = rx.range(NamespaceKey::full_scan()).await?;
+		Ok(batch.items.iter().find_map(|multi| {
 			let row: &EncodedValues = &multi.values;
 			let namespace_name = namespace::LAYOUT.get_utf8(row, namespace::NAME);
 			if name == namespace_name {
-				Some(convert_namespace(multi))
+				Some(convert_namespace(multi.clone()))
 			} else {
 				None
 			}
 		}))
 	}
 
-	pub fn find_namespace(rx: &mut impl QueryTransaction, id: NamespaceId) -> crate::Result<Option<NamespaceDef>> {
+	pub async fn find_namespace(
+		rx: &mut impl QueryTransaction,
+		id: NamespaceId,
+	) -> crate::Result<Option<NamespaceDef>> {
 		// Special case for system namespace - hardcoded with fixed ID
 		if id == NamespaceId(1) {
 			return Ok(Some(NamespaceDef::system()));
 		}
 
-		Ok(rx.get(&NamespaceKey::encoded(id))?.map(convert_namespace))
+		Ok(rx.get(&NamespaceKey::encoded(id)).await?.map(convert_namespace))
 	}
 }
 

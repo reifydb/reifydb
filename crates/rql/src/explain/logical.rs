@@ -15,7 +15,7 @@ use crate::{
 	},
 };
 
-pub fn explain_logical_plan<T>(rx: &mut T, query: &str) -> crate::Result<String>
+pub async fn explain_logical_plan<T>(rx: &mut T, query: &str) -> crate::Result<String>
 where
 	T: QueryTransaction + CatalogQueryTransaction,
 {
@@ -23,7 +23,7 @@ where
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		plans.extend(compile_logical(rx, statement)?);
+		plans.extend(compile_logical(rx, statement).await?);
 	}
 
 	explain_logical_plans(&plans)

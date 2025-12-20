@@ -16,7 +16,8 @@ pub use command::*;
 use oracle::*;
 use reifydb_core::{CommitVersion, EncodedKey, EncodedKeyRange, event::EventBus, interface::TransactionId};
 use reifydb_store_transaction::{
-	MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev, TransactionStore,
+	MultiVersionBatch, MultiVersionContains, MultiVersionGet, MultiVersionRange, MultiVersionRangeRev,
+	TransactionStore,
 };
 use reifydb_type::util::hex;
 use tracing::instrument;
@@ -31,8 +32,6 @@ mod oracle;
 mod oracle_cleanup;
 pub mod query;
 mod query_tx;
-pub mod range;
-pub mod range_rev;
 mod version;
 
 pub use command_tx::CommandTransaction;
@@ -67,11 +66,11 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::write", level = "debug", skip(self))]
-	pub fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
+	pub async fn write(&self) -> Result<TransactionManagerCommand<L>, reifydb_type::Error> {
 		Ok(TransactionManagerCommand {
 			id: TransactionId::generate(),
 			oracle: self.inner.clone(),
-			version: self.inner.version()?,
+			version: self.inner.version().await?,
 			read_version: None,
 			size: 0,
 			count: 0,
@@ -89,8 +88,8 @@ where
 	L: VersionProvider,
 {
 	#[instrument(name = "transaction::manager::new", level = "debug", skip(clock))]
-	pub fn new(clock: L) -> crate::Result<Self> {
-		let version = clock.next()?;
+	pub async fn new(clock: L) -> crate::Result<Self> {
+		let version = clock.next().await?;
 		Ok(Self {
 			inner: Arc::new({
 				let oracle = Oracle::new(clock);
@@ -102,8 +101,8 @@ where
 	}
 
 	#[instrument(name = "transaction::manager::version", level = "trace", skip(self))]
-	pub fn version(&self) -> crate::Result<CommitVersion> {
-		self.inner.version()
+	pub async fn version(&self) -> crate::Result<CommitVersion> {
+		self.inner.version().await
 	}
 }
 
@@ -117,14 +116,14 @@ where
 	}
 
 	#[instrument(name = "transaction::manager::query", level = "debug", skip(self), fields(as_of_version = ?version))]
-	pub fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
+	pub async fn query(&self, version: Option<CommitVersion>) -> crate::Result<TransactionManagerQuery<L>> {
 		Ok(if let Some(version) = version {
 			TransactionManagerQuery::new_time_travel(TransactionId::generate(), self.clone(), version)
 		} else {
 			TransactionManagerQuery::new_current(
 				TransactionId::generate(),
 				self.clone(),
-				self.inner.version()?,
+				self.inner.version().await?,
 			)
 		})
 	}
@@ -192,23 +191,28 @@ impl Clone for Transaction {
 }
 
 impl Inner {
-	fn new(store: TransactionStore, single: TransactionSingleVersion, event_bus: EventBus) -> Self {
-		let tm = TransactionManager::new(StandardVersionProvider::new(single).unwrap()).unwrap();
+	async fn new(
+		store: TransactionStore,
+		single: TransactionSingleVersion,
+		event_bus: EventBus,
+	) -> crate::Result<Self> {
+		let version_provider = StandardVersionProvider::new(single).await?;
+		let tm = TransactionManager::new(version_provider).await?;
 
-		Self {
+		Ok(Self {
 			tm,
 			store,
 			event_bus,
-		}
+		})
 	}
 
-	fn version(&self) -> crate::Result<CommitVersion> {
-		self.tm.version()
+	async fn version(&self) -> crate::Result<CommitVersion> {
+		self.tm.version().await
 	}
 }
 
 impl Transaction {
-	pub fn testing() -> Self {
+	pub async fn testing() -> Self {
 		let store = TransactionStore::testing_memory();
 		let event_bus = EventBus::new();
 		Self::new(
@@ -216,32 +220,38 @@ impl Transaction {
 			TransactionSingleVersion::SingleVersionLock(TransactionSvl::new(store, event_bus.clone())),
 			event_bus,
 		)
+		.await
+		.unwrap()
 	}
 }
 
 impl Transaction {
 	#[instrument(name = "transaction::new", level = "debug", skip(store, single, event_bus))]
-	pub fn new(store: TransactionStore, single: TransactionSingleVersion, event_bus: EventBus) -> Self {
-		Self(Arc::new(Inner::new(store, single, event_bus)))
+	pub async fn new(
+		store: TransactionStore,
+		single: TransactionSingleVersion,
+		event_bus: EventBus,
+	) -> crate::Result<Self> {
+		Ok(Self(Arc::new(Inner::new(store, single, event_bus).await?)))
 	}
 }
 
 impl Transaction {
 	#[instrument(name = "transaction::version", level = "trace", skip(self))]
-	pub fn version(&self) -> crate::Result<CommitVersion> {
-		self.0.version()
+	pub async fn version(&self) -> crate::Result<CommitVersion> {
+		self.0.version().await
 	}
 
 	#[instrument(name = "transaction::begin_query", level = "debug", skip(self))]
-	pub fn begin_query(&self) -> crate::Result<QueryTransaction> {
-		QueryTransaction::new(self.clone(), None)
+	pub async fn begin_query(&self) -> crate::Result<QueryTransaction> {
+		QueryTransaction::new(self.clone(), None).await
 	}
 }
 
 impl Transaction {
 	#[instrument(name = "transaction::begin_command", level = "debug", skip(self))]
-	pub fn begin_command(&self) -> crate::Result<CommandTransaction> {
-		CommandTransaction::new(self.clone())
+	pub async fn begin_command(&self) -> crate::Result<CommandTransaction> {
+		CommandTransaction::new(self.clone()).await
 	}
 }
 
@@ -252,48 +262,56 @@ pub enum TransactionType {
 
 impl Transaction {
 	#[instrument(name = "transaction::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	pub fn get(&self, key: &EncodedKey, version: CommitVersion) -> Result<Option<Committed>, reifydb_type::Error> {
-		Ok(self.store.get(key, version)?.map(|sv| sv.into()))
+	pub async fn get(
+		&self,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Result<Option<Committed>, reifydb_type::Error> {
+		Ok(MultiVersionGet::get(&self.store, key, version).await?.map(|sv| sv.into()))
 	}
 
 	#[instrument(name = "transaction::contains_key", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref()), version = version.0))]
-	pub fn contains_key(&self, key: &EncodedKey, version: CommitVersion) -> Result<bool, reifydb_type::Error> {
-		self.store.contains(key, version)
+	pub async fn contains_key(
+		&self,
+		key: &EncodedKey,
+		version: CommitVersion,
+	) -> Result<bool, reifydb_type::Error> {
+		MultiVersionContains::contains(&self.store, key, version).await
 	}
 
-	#[instrument(name = "transaction::range_batched", level = "trace", skip(self), fields(version = version.0, batch_size = batch_size))]
-	pub fn range_batched(
+	#[instrument(name = "transaction::range_batch", level = "trace", skip(self), fields(version = version.0, batch_size = batch_size))]
+	pub async fn range_batch(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: u64,
-	) -> reifydb_type::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
-		self.store.range_batched(range, version, batch_size)
+	) -> reifydb_type::Result<MultiVersionBatch> {
+		MultiVersionRange::range_batch(&self.store, range, version, batch_size).await
 	}
 
-	pub fn range(
+	pub async fn range(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
-	) -> reifydb_type::Result<<TransactionStore as MultiVersionRange>::RangeIter<'_>> {
-		self.range_batched(range, version, 1024)
+	) -> reifydb_type::Result<MultiVersionBatch> {
+		self.range_batch(range, version, 1024).await
 	}
 
-	pub fn range_rev_batched(
+	pub async fn range_rev_batch(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: u64,
-	) -> reifydb_type::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
-		self.store.range_rev_batched(range, version, batch_size)
+	) -> reifydb_type::Result<MultiVersionBatch> {
+		MultiVersionRangeRev::range_rev_batch(&self.store, range, version, batch_size).await
 	}
 
-	pub fn range_rev(
+	pub async fn range_rev(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
-	) -> reifydb_type::Result<<TransactionStore as MultiVersionRangeRev>::RangeIterRev<'_>> {
-		self.range_rev_batched(range, version, 1024)
+	) -> reifydb_type::Result<MultiVersionBatch> {
+		self.range_rev_batch(range, version, 1024).await
 	}
 
 	/// Get a reference to the underlying transaction store.

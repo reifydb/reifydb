@@ -16,29 +16,37 @@ use reifydb_store_transaction::{
 };
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
 
 test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_memory => test_memory }
 test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
-	testscript::run_path(&mut Runner::new(BackendStorage::memory()), path).expect("test failed")
+	let runtime = Runtime::new().unwrap();
+	let storage = runtime.block_on(async { BackendStorage::memory() });
+	testscript::run_path(&mut Runner::new_with_runtime(storage, runtime), path).expect("test failed")
 }
 
 fn test_sqlite(path: &Path) {
-	temp_dir(|_db_path| testscript::run_path(&mut Runner::new(BackendStorage::sqlite_in_memory()), path))
-		.expect("test failed")
+	temp_dir(|_db_path| {
+		let runtime = Runtime::new().unwrap();
+		let storage = runtime.block_on(async { BackendStorage::sqlite_in_memory() });
+		testscript::run_path(&mut Runner::new_with_runtime(storage, runtime), path)
+	})
+	.expect("test failed")
 }
 
 /// Runs drop tests for multi-version store.
 pub struct Runner {
 	store: StandardTransactionStore,
 	version: CommitVersion,
+	runtime: Runtime,
 }
 
 impl Runner {
-	fn new(storage: BackendStorage) -> Self {
-		Self {
-			store: StandardTransactionStore::new(TransactionStoreConfig {
+	fn new_with_runtime(storage: BackendStorage, runtime: Runtime) -> Self {
+		let store = runtime.block_on(async {
+			StandardTransactionStore::new(TransactionStoreConfig {
 				hot: Some(BackendConfig {
 					storage,
 					retention_period: Duration::from_millis(200),
@@ -49,8 +57,12 @@ impl Runner {
 				merge_config: Default::default(),
 				stats: Default::default(),
 			})
-			.unwrap(),
+			.unwrap()
+		});
+		Self {
+			store,
 			version: CommitVersion(0),
+			runtime,
 		}
 	}
 }
@@ -66,8 +78,10 @@ impl testscript::Runner for Runner {
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
 
-				let value =
-					self.store.get(&key, version)?.map(|sv: MultiVersionValues| sv.values.to_vec());
+				let value = self
+					.runtime
+					.block_on(async { self.store.get(&key, version).await })?
+					.map(|sv: MultiVersionValues| sv.values.to_vec());
 
 				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
 			}
@@ -77,7 +91,8 @@ impl testscript::Runner for Runner {
 				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
 				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
 				args.reject_rest()?;
-				let contains = self.store.contains(&key, version)?;
+				let contains =
+					self.runtime.block_on(async { self.store.contains(&key, version).await })?;
 				writeln!(output, "{} => {}", format::Raw::key(&key), contains)?;
 			}
 
@@ -89,12 +104,15 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.range(EncodedKeyRange::all(), version).unwrap())
+					let batch = self.runtime.block_on(async {
+						self.store.range(EncodedKeyRange::all(), version).await
+					})?;
+					print(&mut output, batch.items.into_iter())
 				} else {
-					print(
-						&mut output,
-						self.store.range_rev(EncodedKeyRange::all(), version).unwrap(),
-					)
+					let batch = self.runtime.block_on(async {
+						self.store.range_rev(EncodedKeyRange::all(), version).await
+					})?;
+					print(&mut output, batch.items.into_iter())
 				};
 			}
 			// range RANGE [reverse=BOOL] [version=VERSION]
@@ -108,9 +126,15 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.range(range, version)?)
+					let batch = self
+						.runtime
+						.block_on(async { self.store.range(range, version).await })?;
+					print(&mut output, batch.items.into_iter())
 				} else {
-					print(&mut output, self.store.range_rev(range, version)?)
+					let batch = self
+						.runtime
+						.block_on(async { self.store.range_rev(range, version).await })?;
+					print(&mut output, batch.items.into_iter())
 				};
 			}
 
@@ -124,9 +148,15 @@ impl testscript::Runner for Runner {
 				args.reject_rest()?;
 
 				if !reverse {
-					print(&mut output, self.store.prefix(&prefix, version)?)
+					let batch = self
+						.runtime
+						.block_on(async { self.store.prefix(&prefix, version).await })?;
+					print(&mut output, batch.items.into_iter())
 				} else {
-					print(&mut output, self.store.prefix_rev(&prefix, version)?)
+					let batch = self
+						.runtime
+						.block_on(async { self.store.prefix_rev(&prefix, version).await })?;
+					print(&mut output, batch.items.into_iter())
 				};
 			}
 
@@ -144,15 +174,19 @@ impl testscript::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
-					async_cow_vec![
-						(Delta::Set {
-							key,
-							values
-						})
-					],
-					version,
-				)?;
+				self.runtime.block_on(async {
+					self.store
+						.commit(
+							async_cow_vec![
+								(Delta::Set {
+									key,
+									values
+								})
+							],
+							version,
+						)
+						.await
+				})?;
 			}
 
 			// remove KEY [version=VERSION]
@@ -167,14 +201,18 @@ impl testscript::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
-					async_cow_vec![
-						(Delta::Remove {
-							key
-						})
-					],
-					version,
-				)?
+				self.runtime.block_on(async {
+					self.store
+						.commit(
+							async_cow_vec![
+								(Delta::Remove {
+									key
+								})
+							],
+							version,
+						)
+						.await
+				})?
 			}
 
 			// drop KEY [up_to_version=V] [keep_last_versions=N] [version=VERSION]
@@ -191,16 +229,20 @@ impl testscript::Runner for Runner {
 				};
 				args.reject_rest()?;
 
-				self.store.commit(
-					async_cow_vec![
-						(Delta::Drop {
-							key,
-							up_to_version,
-							keep_last_versions,
-						})
-					],
-					version,
-				)?;
+				self.runtime.block_on(async {
+					self.store
+						.commit(
+							async_cow_vec![
+								(Delta::Drop {
+									key,
+									up_to_version,
+									keep_last_versions,
+								})
+							],
+							version,
+						)
+						.await
+				})?;
 			}
 
 			// count_versions KEY - counts how many versions of a key exist
@@ -214,8 +256,10 @@ impl testscript::Runner for Runner {
 				let mut count = 0;
 				let mut prev_value: Option<Vec<u8>> = None;
 				for v in 1..=1000 {
-					let current =
-						self.store.get(&key, CommitVersion(v))?.map(|sv| sv.values.to_vec());
+					let current = self
+						.runtime
+						.block_on(async { self.store.get(&key, CommitVersion(v)).await })?
+						.map(|sv| sv.values.to_vec());
 					if current.is_some() && current != prev_value {
 						count += 1;
 					}

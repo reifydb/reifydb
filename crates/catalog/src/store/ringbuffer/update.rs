@@ -6,7 +6,7 @@ use reifydb_core::interface::{CommandTransaction, RingBufferMetadata, RingBuffer
 use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer_metadata};
 
 impl CatalogStore {
-	pub fn update_ringbuffer_metadata(
+	pub async fn update_ringbuffer_metadata(
 		txn: &mut impl CommandTransaction,
 		metadata: RingBufferMetadata,
 	) -> crate::Result<()> {
@@ -17,7 +17,7 @@ impl CatalogStore {
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::TAIL, metadata.tail);
 		ringbuffer_metadata::LAYOUT.set_u64(&mut row, ringbuffer_metadata::COUNT, metadata.count);
 
-		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row)?;
+		txn.set(&RingBufferMetadataKey::encoded(metadata.id), row).await?;
 
 		Ok(())
 	}
@@ -30,13 +30,14 @@ mod tests {
 	use super::*;
 	use crate::test_utils::ensure_test_ringbuffer;
 
-	#[test]
-	fn test_update_ringbuffer_metadata() {
+	#[tokio::test]
+	async fn test_update_ringbuffer_metadata() {
 		let mut txn = create_test_command_transaction();
-		let ringbuffer = ensure_test_ringbuffer(&mut txn);
+		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
 		// Get initial metadata
 		let mut metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
+			.await
 			.unwrap()
 			.expect("Metadata should exist");
 
@@ -49,10 +50,11 @@ mod tests {
 		metadata.head = 2;
 		metadata.tail = 7;
 
-		CatalogStore::update_ringbuffer_metadata(&mut txn, metadata.clone()).unwrap();
+		CatalogStore::update_ringbuffer_metadata(&mut txn, metadata.clone()).await.unwrap();
 
 		// Verify update
 		let updated = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
+			.await
 			.unwrap()
 			.expect("Metadata should exist");
 
@@ -62,12 +64,13 @@ mod tests {
 		assert_eq!(updated.capacity, metadata.capacity);
 	}
 
-	#[test]
-	fn test_update_ringbuffer_metadata_wrap_around() {
+	#[tokio::test]
+	async fn test_update_ringbuffer_metadata_wrap_around() {
 		let mut txn = create_test_command_transaction();
-		let ringbuffer = ensure_test_ringbuffer(&mut txn);
+		let ringbuffer = ensure_test_ringbuffer(&mut txn).await;
 
 		let mut metadata = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
+			.await
 			.unwrap()
 			.expect("Metadata should exist");
 
@@ -76,9 +79,10 @@ mod tests {
 		metadata.head = metadata.capacity - 1;
 		metadata.tail = 0;
 
-		CatalogStore::update_ringbuffer_metadata(&mut txn, metadata.clone()).unwrap();
+		CatalogStore::update_ringbuffer_metadata(&mut txn, metadata.clone()).await.unwrap();
 
 		let updated = CatalogStore::find_ringbuffer_metadata(&mut txn, ringbuffer.id)
+			.await
 			.unwrap()
 			.expect("Metadata should exist");
 

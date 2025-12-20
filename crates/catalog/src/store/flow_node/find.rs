@@ -10,11 +10,11 @@ use reifydb_core::{
 use crate::{CatalogStore, store::flow_node::layout::flow_node};
 
 impl CatalogStore {
-	pub fn find_flow_node(
+	pub async fn find_flow_node(
 		txn: &mut impl QueryTransaction,
 		node_id: FlowNodeId,
 	) -> crate::Result<Option<FlowNodeDef>> {
-		let Some(multi) = txn.get(&FlowNodeKey::encoded(node_id))? else {
+		let Some(multi) = txn.get(&FlowNodeKey::encoded(node_id)).await? else {
 			return Ok(None);
 		};
 

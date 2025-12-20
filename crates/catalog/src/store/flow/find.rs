@@ -11,8 +11,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_flow(rx: &mut impl QueryTransaction, id: FlowId) -> crate::Result<Option<FlowDef>> {
-		let Some(multi) = rx.get(&FlowKey::encoded(id))? else {
+	pub async fn find_flow(rx: &mut impl QueryTransaction, id: FlowId) -> crate::Result<Option<FlowDef>> {
+		let Some(multi) = rx.get(&FlowKey::encoded(id)).await? else {
 			return Ok(None);
 		};
 
@@ -31,27 +31,26 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_flow_by_name(
+	pub async fn find_flow_by_name(
 		rx: &mut impl QueryTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<FlowDef>> {
 		let name = name.as_ref();
-		let Some(flow) =
-			rx.range(NamespaceFlowKey::full_scan(namespace))?.find_map(|multi: MultiVersionValues| {
-				let row = &multi.values;
-				let flow_name = flow_namespace::LAYOUT.get_utf8(row, flow_namespace::NAME);
-				if name == flow_name {
-					Some(FlowId(flow_namespace::LAYOUT.get_u64(row, flow_namespace::ID)))
-				} else {
-					None
-				}
-			})
-		else {
+		let batch = rx.range(NamespaceFlowKey::full_scan(namespace)).await?;
+		let Some(flow) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+			let row = &multi.values;
+			let flow_name = flow_namespace::LAYOUT.get_utf8(row, flow_namespace::NAME);
+			if name == flow_name {
+				Some(FlowId(flow_namespace::LAYOUT.get_u64(row, flow_namespace::ID)))
+			} else {
+				None
+			}
+		}) else {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_flow(rx, flow)?))
+		Ok(Some(Self::get_flow(rx, flow).await?))
 	}
 }
 

@@ -14,7 +14,7 @@ pub struct PrimaryKeyInfo {
 }
 
 impl CatalogStore {
-	pub fn list_primary_keys(rx: &mut impl QueryTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
+	pub async fn list_primary_keys(rx: &mut impl QueryTransaction) -> crate::Result<Vec<PrimaryKeyInfo>> {
 		use std::ops::Bound;
 
 		use reifydb_core::{
@@ -35,9 +35,9 @@ impl CatalogStore {
 		};
 
 		// Collect entries first to avoid borrow checker issues
-		let entries: Vec<_> = rx.range(primary_key_range)?.into_iter().collect();
+		let batch = rx.range(primary_key_range).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			// Decode the primary key ID from the key
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::PrimaryKey(pk_key) = key {
@@ -54,7 +54,7 @@ impl CatalogStore {
 					// ID
 					let mut columns = Vec::new();
 					for column_id in column_ids {
-						let column_def = Self::get_column(rx, column_id)?;
+						let column_def = Self::get_column(rx, column_id).await?;
 						columns.push(reifydb_core::interface::ColumnDef {
 							id: column_def.id,
 							name: column_def.name,
@@ -82,7 +82,7 @@ impl CatalogStore {
 		Ok(result)
 	}
 
-	pub fn list_primary_key_columns(rx: &mut impl QueryTransaction) -> crate::Result<Vec<(u64, u64, usize)>> {
+	pub async fn list_primary_key_columns(rx: &mut impl QueryTransaction) -> crate::Result<Vec<(u64, u64, usize)>> {
 		use std::ops::Bound;
 
 		use reifydb_core::{
@@ -102,9 +102,9 @@ impl CatalogStore {
 		};
 
 		// Collect entries first to avoid borrow checker issues
-		let entries: Vec<_> = rx.range(primary_key_range)?.into_iter().collect();
+		let batch = rx.range(primary_key_range).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			// Decode the primary key ID from the key
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::PrimaryKey(pk_key) = key {

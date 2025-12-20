@@ -14,7 +14,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_from<'a, T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_from<'a, T: CatalogQueryTransaction>(
 		ast: AstFrom<'a>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
@@ -23,7 +23,7 @@ impl Compiler {
 				source,
 				..
 			} => {
-				let resolved_source = resolver::resolve_unresolved_source(tx, &source)?;
+				let resolved_source = resolver::resolve_unresolved_source(tx, &source).await?;
 
 				Ok(LogicalPlan::SourceScan(SourceScanNode {
 					source: resolved_source,

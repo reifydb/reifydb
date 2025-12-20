@@ -40,16 +40,16 @@ use self::{
 use crate::plan::physical::PhysicalPlan;
 
 /// Public API for compiling logical plans to Flows with an existing flow ID.
-pub fn compile_flow(
+pub async fn compile_flow(
 	txn: &mut impl CommandTransaction,
-	plan: PhysicalPlan,
+	plan: PhysicalPlan<'_>,
 	sink: Option<&ViewDef>,
 	flow_id: FlowId,
 ) -> crate::Result<Flow> {
 	// Convert PhysicalPlan<'_> to PhysicalPlan<'static> at the boundary
 	let owned_plan = to_owned_physical_plan(plan);
 	let compiler = FlowCompiler::new(txn, flow_id);
-	compiler.compile(owned_plan, sink)
+	compiler.compile(owned_plan, sink).await
 }
 
 /// Compiler for converting RQL plans into executable Flows
@@ -73,18 +73,18 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	}
 
 	/// Gets the next available operator ID
-	fn next_node_id(&mut self) -> crate::Result<FlowNodeId> {
-		unsafe { next_flow_node_id(&mut *self.txn) }
+	async fn next_node_id(&mut self) -> crate::Result<FlowNodeId> {
+		unsafe { next_flow_node_id(&mut *self.txn).await }
 	}
 
 	/// Gets the next available edge ID
-	fn next_edge_id(&mut self) -> crate::Result<FlowEdgeId> {
-		unsafe { next_flow_edge_id(&mut *self.txn) }
+	async fn next_edge_id(&mut self) -> crate::Result<FlowEdgeId> {
+		unsafe { next_flow_edge_id(&mut *self.txn).await }
 	}
 
 	/// Adds an edge between two nodes
-	fn add_edge(&mut self, from: &FlowNodeId, to: &FlowNodeId) -> crate::Result<()> {
-		let edge_id = self.next_edge_id()?;
+	async fn add_edge(&mut self, from: &FlowNodeId, to: &FlowNodeId) -> crate::Result<()> {
+		let edge_id = self.next_edge_id().await?;
 		let flow_id = self.builder.id();
 
 		// Create the catalog entry
@@ -96,15 +96,15 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		};
 
 		// Persist to catalog
-		unsafe { CatalogStore::create_flow_edge(&mut *self.txn, &edge_def)? };
+		unsafe { CatalogStore::create_flow_edge(&mut *self.txn, &edge_def).await? };
 
 		// Add to in-memory builder
 		self.builder.add_edge(FlowEdge::new(edge_id, from, to))
 	}
 
 	/// Adds a operator to the flow graph
-	fn add_node(&mut self, node_type: FlowNodeType) -> crate::Result<FlowNodeId> {
-		let node_id = self.next_node_id()?;
+	async fn add_node(&mut self, node_type: FlowNodeType) -> crate::Result<FlowNodeId> {
+		let node_id = self.next_node_id().await?;
 		let flow_id = self.builder.id();
 
 		// Serialize the node type to blob
@@ -121,7 +121,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 		};
 
 		// Persist to catalog
-		unsafe { CatalogStore::create_flow_node(&mut *self.txn, &node_def)? };
+		unsafe { CatalogStore::create_flow_node(&mut *self.txn, &node_def).await? };
 
 		// Add to in-memory builder
 		let flow_node_id = self.builder.add_node(FlowNode::new(node_id, node_type));
@@ -129,47 +129,51 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 	}
 
 	/// Compiles a physical plan into a FlowGraph
-	pub(crate) fn compile(mut self, plan: PhysicalPlan, sink: Option<&ViewDef>) -> crate::Result<Flow> {
+	pub(crate) async fn compile(mut self, plan: PhysicalPlan<'_>, sink: Option<&ViewDef>) -> crate::Result<Flow> {
 		// Store sink view for terminal nodes (if provided)
 		self.sink = sink.cloned();
-		let root_node_id = self.compile_plan(plan)?;
+		let root_node_id = self.compile_plan(plan).await?;
 
 		// Only add SinkView node if sink is provided
 		if let Some(sink_view) = sink {
-			let result_node = self.add_node(FlowNodeType::SinkView {
-				view: sink_view.id,
-			})?;
+			let result_node = self
+				.add_node(FlowNodeType::SinkView {
+					view: sink_view.id,
+				})
+				.await?;
 
-			self.add_edge(&root_node_id, &result_node)?;
+			self.add_edge(&root_node_id, &result_node).await?;
 		}
 
 		Ok(self.builder.build())
 	}
 
 	/// Compiles a physical plan operator into the FlowGraph
-	pub(crate) fn compile_plan(&mut self, plan: PhysicalPlan) -> crate::Result<FlowNodeId> {
+	pub(crate) async fn compile_plan(&mut self, plan: PhysicalPlan<'_>) -> crate::Result<FlowNodeId> {
 		match plan {
 			PhysicalPlan::IndexScan(_index_scan) => {
 				// TODO: Implement IndexScanCompiler for flow
 				unimplemented!("IndexScan compilation not yet implemented for flow")
 			}
-			PhysicalPlan::TableScan(table_scan) => TableScanCompiler::from(table_scan).compile(self),
-			PhysicalPlan::ViewScan(view_scan) => ViewScanCompiler::from(view_scan).compile(self),
-			PhysicalPlan::InlineData(inline_data) => InlineDataCompiler::from(inline_data).compile(self),
-			PhysicalPlan::Filter(filter) => FilterCompiler::from(filter).compile(self),
-			PhysicalPlan::Map(map) => MapCompiler::from(map).compile(self),
-			PhysicalPlan::Extend(extend) => ExtendCompiler::from(extend).compile(self),
-			PhysicalPlan::Apply(apply) => ApplyCompiler::from(apply).compile(self),
-			PhysicalPlan::Aggregate(aggregate) => AggregateCompiler::from(aggregate).compile(self),
-			PhysicalPlan::Distinct(distinct) => DistinctCompiler::from(distinct).compile(self),
-			PhysicalPlan::Take(take) => TakeCompiler::from(take).compile(self),
-			PhysicalPlan::Sort(sort) => SortCompiler::from(sort).compile(self),
-			PhysicalPlan::JoinInner(join) => JoinCompiler::from(join).compile(self),
-			PhysicalPlan::JoinLeft(join) => JoinCompiler::from(join).compile(self),
+			PhysicalPlan::TableScan(table_scan) => TableScanCompiler::from(table_scan).compile(self).await,
+			PhysicalPlan::ViewScan(view_scan) => ViewScanCompiler::from(view_scan).compile(self).await,
+			PhysicalPlan::InlineData(inline_data) => {
+				InlineDataCompiler::from(inline_data).compile(self).await
+			}
+			PhysicalPlan::Filter(filter) => FilterCompiler::from(filter).compile(self).await,
+			PhysicalPlan::Map(map) => MapCompiler::from(map).compile(self).await,
+			PhysicalPlan::Extend(extend) => ExtendCompiler::from(extend).compile(self).await,
+			PhysicalPlan::Apply(apply) => ApplyCompiler::from(apply).compile(self).await,
+			PhysicalPlan::Aggregate(aggregate) => AggregateCompiler::from(aggregate).compile(self).await,
+			PhysicalPlan::Distinct(distinct) => DistinctCompiler::from(distinct).compile(self).await,
+			PhysicalPlan::Take(take) => TakeCompiler::from(take).compile(self).await,
+			PhysicalPlan::Sort(sort) => SortCompiler::from(sort).compile(self).await,
+			PhysicalPlan::JoinInner(join) => JoinCompiler::from(join).compile(self).await,
+			PhysicalPlan::JoinLeft(join) => JoinCompiler::from(join).compile(self).await,
 			PhysicalPlan::JoinNatural(_) => {
 				unimplemented!()
 			}
-			PhysicalPlan::Merge(merge) => MergeCompiler::from(merge).compile(self),
+			PhysicalPlan::Merge(merge) => MergeCompiler::from(merge).compile(self).await,
 
 			PhysicalPlan::CreateNamespace(_)
 			| PhysicalPlan::CreateTable(_)
@@ -191,7 +195,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 			| PhysicalPlan::DeleteRingBuffer(_) => {
 				unreachable!()
 			}
-			PhysicalPlan::FlowScan(flow_scan) => FlowScanCompiler::from(flow_scan).compile(self),
+			PhysicalPlan::FlowScan(flow_scan) => FlowScanCompiler::from(flow_scan).compile(self).await,
 			PhysicalPlan::TableVirtualScan(_scan) => {
 				// TODO: Implement VirtualScanCompiler
 				// For now, return a placeholder
@@ -205,7 +209,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 				// TODO: Implement GeneratorCompiler for flow
 				unimplemented!("Generator compilation not yet implemented for flow")
 			}
-			PhysicalPlan::Window(window) => WindowCompiler::from(window).compile(self),
+			PhysicalPlan::Window(window) => WindowCompiler::from(window).compile(self).await,
 			PhysicalPlan::Declare(_) => {
 				panic!("Declare statements are not supported in flow graphs");
 			}
@@ -256,7 +260,7 @@ impl<T: CommandTransaction> FlowCompiler<T> {
 /// Trait for compiling operator from physical plans to flow nodes
 pub(crate) trait CompileOperator<T: CommandTransaction> {
 	/// Compiles this operator into a flow operator
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> crate::Result<FlowNodeId>;
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> crate::Result<FlowNodeId>;
 }
 
 // Re-export the flow types for external use

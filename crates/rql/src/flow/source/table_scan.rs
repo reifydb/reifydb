@@ -22,10 +22,11 @@ impl<'a> From<TableScanNode<'a>> for TableScanCompiler<'a> {
 }
 
 impl<'a, T: CommandTransaction> CompileOperator<T> for TableScanCompiler<'a> {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		compiler.build_node(SourceTable {
 			table: self.table_scan.source.def().id,
 		})
 		.build()
+		.await
 	}
 }

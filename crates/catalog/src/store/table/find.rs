@@ -11,8 +11,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_table(rx: &mut impl QueryTransaction, table: TableId) -> crate::Result<Option<TableDef>> {
-		let Some(multi) = rx.get(&TableKey::encoded(table))? else {
+	pub async fn find_table(rx: &mut impl QueryTransaction, table: TableId) -> crate::Result<Option<TableDef>> {
+		let Some(multi) = rx.get(&TableKey::encoded(table)).await? else {
 			return Ok(None);
 		};
 
@@ -25,32 +25,31 @@ impl CatalogStore {
 			id,
 			name,
 			namespace,
-			columns: Self::list_columns(rx, id)?,
-			primary_key: Self::find_primary_key(rx, id)?,
+			columns: Self::list_columns(rx, id).await?,
+			primary_key: Self::find_primary_key(rx, id).await?,
 		}))
 	}
 
-	pub fn find_table_by_name(
+	pub async fn find_table_by_name(
 		rx: &mut impl QueryTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<TableDef>> {
 		let name = name.as_ref();
-		let Some(table) =
-			rx.range(NamespaceTableKey::full_scan(namespace))?.find_map(|multi: MultiVersionValues| {
-				let row = &multi.values;
-				let table_name = table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME);
-				if name == table_name {
-					Some(TableId(table_namespace::LAYOUT.get_u64(row, table_namespace::ID)))
-				} else {
-					None
-				}
-			})
-		else {
+		let batch = rx.range(NamespaceTableKey::full_scan(namespace)).await?;
+		let Some(table) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+			let row = &multi.values;
+			let table_name = table_namespace::LAYOUT.get_utf8(row, table_namespace::NAME);
+			if name == table_name {
+				Some(TableId(table_namespace::LAYOUT.get_u64(row, table_namespace::ID)))
+			} else {
+				None
+			}
+		}) else {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_table(rx, table)?))
+		Ok(Some(Self::get_table(rx, table).await?))
 	}
 }
 

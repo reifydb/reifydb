@@ -13,19 +13,21 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn list_flow_edges_by_flow(
+	pub async fn list_flow_edges_by_flow(
 		txn: &mut impl QueryTransaction,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowEdgeDef>> {
-		let edge_ids: Vec<FlowEdgeId> = txn
-			.range(FlowEdgeByFlowKey::full_scan(flow_id))?
+		let batch = txn.range(FlowEdgeByFlowKey::full_scan(flow_id)).await?;
+		let edge_ids: Vec<FlowEdgeId> = batch
+			.items
+			.iter()
 			.map(|multi| FlowEdgeId(LAYOUT.get_u64(&multi.values, flow_edge_by_flow::ID)))
 			.collect();
 
 		// Then fetch each edge
 		let mut edges = Vec::new();
 		for edge_id in edge_ids {
-			if let Some(edge) = Self::find_flow_edge(txn, edge_id)? {
+			if let Some(edge) = Self::find_flow_edge(txn, edge_id).await? {
 				edges.push(edge);
 			}
 		}
@@ -36,10 +38,11 @@ impl CatalogStore {
 		Ok(edges)
 	}
 
-	pub fn list_flow_edges_all(txn: &mut impl QueryTransaction) -> crate::Result<Vec<FlowEdgeDef>> {
+	pub async fn list_flow_edges_all(txn: &mut impl QueryTransaction) -> crate::Result<Vec<FlowEdgeDef>> {
 		let mut result = Vec::new();
 
-		let entries: Vec<_> = txn.range(FlowEdgeKey::full_scan())?.into_iter().collect();
+		let batch = txn.range(FlowEdgeKey::full_scan()).await?;
+		let entries: Vec<_> = batch.items.into_iter().collect();
 
 		for entry in entries {
 			if let Some(flow_edge_key) = FlowEdgeKey::decode(&entry.key) {

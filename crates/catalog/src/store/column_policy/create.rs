@@ -13,22 +13,22 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub(crate) fn create_column_policy(
+	pub(crate) async fn create_column_policy(
 		txn: &mut impl CommandTransaction,
 		column: ColumnId,
 		policy: ColumnPolicyKind,
 	) -> crate::Result<ColumnPolicy> {
 		let (policy_kind, _value_kind) = policy.to_u8();
-		for existing in Self::list_column_policies(txn, column)? {
+		for existing in Self::list_column_policies(txn, column).await? {
 			let (existing_kind, _) = existing.policy.to_u8();
 			if existing_kind == policy_kind {
-				let column = Self::get_column(txn, column)?;
+				let column = Self::get_column(txn, column).await?;
 
 				return_error!(table_column_policy_already_exists(&policy.to_string(), &column.name));
 			}
 		}
 
-		let id = SystemSequence::next_column_policy_id(txn)?;
+		let id = SystemSequence::next_column_policy_id(txn).await?;
 
 		let mut row = column_policy::LAYOUT.allocate();
 		column_policy::LAYOUT.set_u64(&mut row, column_policy::ID, id);
@@ -40,7 +40,7 @@ impl CatalogStore {
 			column_policy::LAYOUT.set_u8(&mut row, column_policy::VALUE, value);
 		}
 
-		txn.set(&ColumnPolicyKey::encoded(column, id), row)?;
+		txn.set(&ColumnPolicyKey::encoded(column, id), row).await?;
 
 		Ok(ColumnPolicy {
 			id,
@@ -64,23 +64,24 @@ mod tests {
 		test_utils::{create_test_column, ensure_test_table},
 	};
 
-	#[test]
-	fn test_ok() {
+	#[tokio::test]
+	async fn test_ok() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_table(&mut txn);
-		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int2), vec![]);
+		ensure_test_table(&mut txn).await;
+		create_test_column(&mut txn, "col_1", TypeConstraint::unconstrained(Type::Int2), vec![]).await;
 
 		let policy = Saturation(Error);
 
-		let result = CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap();
+		let result =
+			CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).await.unwrap();
 		assert_eq!(result.column, ColumnId(8193));
 		assert_eq!(result.policy, policy);
 	}
 
-	#[test]
-	fn test_create_column_policy_duplicate_error() {
+	#[tokio::test]
+	async fn test_create_column_policy_duplicate_error() {
 		let mut txn = create_test_command_transaction();
-		ensure_test_table(&mut txn);
+		ensure_test_table(&mut txn).await;
 
 		CatalogStore::create_column(
 			&mut txn,
@@ -99,12 +100,14 @@ mod tests {
 				dictionary_id: None,
 			},
 		)
+		.await
 		.unwrap();
 
 		let policy = Saturation(ColumnSaturationPolicy::Undefined);
-		CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap();
+		CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).await.unwrap();
 
-		let err = CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).unwrap_err();
+		let err =
+			CatalogStore::create_column_policy(&mut txn, ColumnId(8193), policy.clone()).await.unwrap_err();
 		let diagnostic = err.diagnostic();
 		assert_eq!(diagnostic.code, "CA_008");
 	}

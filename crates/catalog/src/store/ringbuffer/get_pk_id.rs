@@ -8,11 +8,11 @@ use crate::{CatalogStore, store::ringbuffer::layout::ringbuffer};
 impl CatalogStore {
 	/// Get the primary key ID for a ring buffer
 	/// Returns None if the ring buffer doesn't exist or has no primary key
-	pub fn get_ringbuffer_pk_id(
+	pub async fn get_ringbuffer_pk_id(
 		rx: &mut impl QueryTransaction,
 		ringbuffer_id: RingBufferId,
 	) -> crate::Result<Option<PrimaryKeyId>> {
-		let multi = match rx.get(&RingBufferKey::encoded(ringbuffer_id))? {
+		let multi = match rx.get(&RingBufferKey::encoded(ringbuffer_id)).await? {
 			Some(v) => v,
 			None => return Ok(None),
 		};

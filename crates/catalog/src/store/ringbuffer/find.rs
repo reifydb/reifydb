@@ -12,11 +12,11 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_ringbuffer(
+	pub async fn find_ringbuffer(
 		rx: &mut impl QueryTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferDef>> {
-		let Some(multi) = rx.get(&RingBufferKey::encoded(ringbuffer))? else {
+		let Some(multi) = rx.get(&RingBufferKey::encoded(ringbuffer)).await? else {
 			return Ok(None);
 		};
 
@@ -31,16 +31,16 @@ impl CatalogStore {
 			namespace,
 			name,
 			capacity,
-			columns: Self::list_columns(rx, id)?,
-			primary_key: Self::find_primary_key(rx, id)?,
+			columns: Self::list_columns(rx, id).await?,
+			primary_key: Self::find_primary_key(rx, id).await?,
 		}))
 	}
 
-	pub fn find_ringbuffer_metadata(
+	pub async fn find_ringbuffer_metadata(
 		rx: &mut impl QueryTransaction,
 		ringbuffer: RingBufferId,
 	) -> crate::Result<Option<RingBufferMetadata>> {
-		let Some(multi) = rx.get(&RingBufferMetadataKey::encoded(ringbuffer))? else {
+		let Some(multi) = rx.get(&RingBufferMetadataKey::encoded(ringbuffer)).await? else {
 			return Ok(None);
 		};
 
@@ -60,30 +60,26 @@ impl CatalogStore {
 		}))
 	}
 
-	pub fn find_ringbuffer_by_name(
+	pub async fn find_ringbuffer_by_name(
 		rx: &mut impl QueryTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<RingBufferDef>> {
 		let name = name.as_ref();
-		let Some(ringbuffer) = rx.range(NamespaceRingBufferKey::full_scan(namespace))?.find_map(
-			|multi: MultiVersionValues| {
-				let row = &multi.values;
-				let ringbuffer_name =
-					ringbuffer_namespace::LAYOUT.get_utf8(row, ringbuffer_namespace::NAME);
-				if name == ringbuffer_name {
-					Some(RingBufferId(
-						ringbuffer_namespace::LAYOUT.get_u64(row, ringbuffer_namespace::ID),
-					))
-				} else {
-					None
-				}
-			},
-		) else {
+		let batch = rx.range(NamespaceRingBufferKey::full_scan(namespace)).await?;
+		let Some(ringbuffer) = batch.items.into_iter().find_map(|multi: MultiVersionValues| {
+			let row = &multi.values;
+			let ringbuffer_name = ringbuffer_namespace::LAYOUT.get_utf8(row, ringbuffer_namespace::NAME);
+			if name == ringbuffer_name {
+				Some(RingBufferId(ringbuffer_namespace::LAYOUT.get_u64(row, ringbuffer_namespace::ID)))
+			} else {
+				None
+			}
+		}) else {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_ringbuffer(rx, ringbuffer)?))
+		Ok(Some(Self::get_ringbuffer(rx, ringbuffer).await?))
 	}
 }
 

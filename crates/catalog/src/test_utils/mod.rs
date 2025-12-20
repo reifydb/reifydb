@@ -19,7 +19,7 @@ use crate::{
 	},
 };
 
-pub fn create_namespace(txn: &mut impl CommandTransaction, namespace: &str) -> NamespaceDef {
+pub async fn create_namespace(txn: &mut impl CommandTransaction, namespace: &str) -> NamespaceDef {
 	CatalogStore::create_namespace(
 		txn,
 		NamespaceToCreate {
@@ -27,33 +27,35 @@ pub fn create_namespace(txn: &mut impl CommandTransaction, namespace: &str) -> N
 			name: namespace.to_string(),
 		},
 	)
+	.await
 	.unwrap()
 }
 
-pub fn ensure_test_namespace(txn: &mut impl CommandTransaction) -> NamespaceDef {
-	if let Some(result) = CatalogStore::find_namespace_by_name(txn, "test_namespace").unwrap() {
+pub async fn ensure_test_namespace(txn: &mut impl CommandTransaction) -> NamespaceDef {
+	if let Some(result) = CatalogStore::find_namespace_by_name(txn, "test_namespace").await.unwrap() {
 		return result;
 	}
-	create_namespace(txn, "test_namespace")
+	create_namespace(txn, "test_namespace").await
 }
 
-pub fn ensure_test_table(txn: &mut impl CommandTransaction) -> TableDef {
-	let namespace = ensure_test_namespace(txn);
+pub async fn ensure_test_table(txn: &mut impl CommandTransaction) -> TableDef {
+	let namespace = ensure_test_namespace(txn).await;
 
-	if let Some(result) = CatalogStore::find_table_by_name(txn, namespace.id, "test_table").unwrap() {
+	if let Some(result) = CatalogStore::find_table_by_name(txn, namespace.id, "test_table").await.unwrap() {
 		return result;
 	}
-	create_table(txn, "test_namespace", "test_table", &[])
+	create_table(txn, "test_namespace", "test_table", &[]).await
 }
 
-pub fn create_table(
+pub async fn create_table(
 	txn: &mut impl CommandTransaction,
 	namespace: &str,
 	table: &str,
 	columns: &[crate::store::table::TableColumnToCreate],
 ) -> TableDef {
 	// First look up the namespace to get its ID
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+	let namespace_def =
+		CatalogStore::find_namespace_by_name(txn, namespace).await.unwrap().expect("Namespace not found");
 
 	CatalogStore::create_table(
 		txn,
@@ -65,27 +67,28 @@ pub fn create_table(
 			retention_policy: None,
 		},
 	)
+	.await
 	.unwrap()
 }
 
-pub fn create_test_column(
+pub async fn create_test_column(
 	txn: &mut impl CommandTransaction,
 	name: &str,
 	constraint: TypeConstraint,
 	policies: Vec<ColumnPolicyKind>,
 ) {
-	ensure_test_table(txn);
+	ensure_test_table(txn).await;
 
-	let columns = CatalogStore::list_columns(txn, TableId(1)).unwrap();
+	let columns = CatalogStore::list_columns(txn, TableId(1)).await.unwrap();
 
 	CatalogStore::create_column(
 		txn,
 		TableId(1),
 		ColumnToCreate {
 			fragment: None,
-			namespace_name: "test_namespace",
+			namespace_name: "test_namespace".to_string(),
 			table: TableId(1025),
-			table_name: "test_table",
+			table_name: "test_table".to_string(),
 			column: name.to_string(),
 			constraint,
 			if_not_exists: false,
@@ -95,17 +98,19 @@ pub fn create_test_column(
 			dictionary_id: None,
 		},
 	)
+	.await
 	.unwrap();
 }
 
-pub fn create_view(
+pub async fn create_view(
 	txn: &mut impl CommandTransaction,
 	namespace: &str,
 	view: &str,
 	columns: &[crate::store::view::ViewColumnToCreate],
 ) -> ViewDef {
 	// First look up the namespace to get its ID
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+	let namespace_def =
+		CatalogStore::find_namespace_by_name(txn, namespace).await.unwrap().expect("Namespace not found");
 
 	CatalogStore::create_deferred_view(
 		txn,
@@ -116,19 +121,21 @@ pub fn create_view(
 			columns: columns.to_vec(),
 		},
 	)
+	.await
 	.unwrap()
 }
 
-pub fn ensure_test_ringbuffer(txn: &mut impl CommandTransaction) -> RingBufferDef {
-	let namespace = ensure_test_namespace(txn);
+pub async fn ensure_test_ringbuffer(txn: &mut impl CommandTransaction) -> RingBufferDef {
+	let namespace = ensure_test_namespace(txn).await;
 
-	if let Some(result) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, "test_ringbuffer").unwrap() {
+	if let Some(result) = CatalogStore::find_ringbuffer_by_name(txn, namespace.id, "test_ringbuffer").await.unwrap()
+	{
 		return result;
 	}
-	create_ringbuffer(txn, "test_namespace", "test_ringbuffer", 100, &[])
+	create_ringbuffer(txn, "test_namespace", "test_ringbuffer", 100, &[]).await
 }
 
-pub fn create_ringbuffer(
+pub async fn create_ringbuffer(
 	txn: &mut impl CommandTransaction,
 	namespace: &str,
 	ringbuffer: &str,
@@ -136,7 +143,8 @@ pub fn create_ringbuffer(
 	columns: &[RingBufferColumnToCreate],
 ) -> RingBufferDef {
 	// First look up the namespace to get its ID
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+	let namespace_def =
+		CatalogStore::find_namespace_by_name(txn, namespace).await.unwrap().expect("Namespace not found");
 
 	CatalogStore::create_ringbuffer(
 		txn,
@@ -148,26 +156,27 @@ pub fn create_ringbuffer(
 			columns: columns.to_vec(),
 		},
 	)
+	.await
 	.unwrap()
 }
 
-pub fn create_test_ringbuffer_column(
+pub async fn create_test_ringbuffer_column(
 	txn: &mut impl CommandTransaction,
 	ringbuffer_id: RingBufferId,
 	name: &str,
 	constraint: TypeConstraint,
 	policies: Vec<ColumnPolicyKind>,
 ) {
-	let columns = CatalogStore::list_columns(txn, ringbuffer_id).unwrap();
+	let columns = CatalogStore::list_columns(txn, ringbuffer_id).await.unwrap();
 
 	CatalogStore::create_column(
 		txn,
 		ringbuffer_id,
 		ColumnToCreate {
 			fragment: None,
-			namespace_name: "test_namespace",
+			namespace_name: "test_namespace".to_string(),
 			table: TableId(0),
-			table_name: "test_ringbuffer",
+			table_name: "test_ringbuffer".to_string(),
 			column: name.to_string(),
 			constraint,
 			if_not_exists: false,
@@ -177,12 +186,14 @@ pub fn create_test_ringbuffer_column(
 			dictionary_id: None,
 		},
 	)
+	.await
 	.unwrap();
 }
 
-pub fn create_flow(txn: &mut impl CommandTransaction, namespace: &str, flow: &str) -> FlowDef {
+pub async fn create_flow(txn: &mut impl CommandTransaction, namespace: &str, flow: &str) -> FlowDef {
 	// First look up the namespace to get its ID
-	let namespace_def = CatalogStore::find_namespace_by_name(txn, namespace).unwrap().expect("Namespace not found");
+	let namespace_def =
+		CatalogStore::find_namespace_by_name(txn, namespace).await.unwrap().expect("Namespace not found");
 
 	CatalogStore::create_flow(
 		txn,
@@ -193,22 +204,28 @@ pub fn create_flow(txn: &mut impl CommandTransaction, namespace: &str, flow: &st
 			status: FlowStatus::Active,
 		},
 	)
+	.await
 	.unwrap()
 }
 
-pub fn ensure_test_flow(txn: &mut impl CommandTransaction) -> FlowDef {
-	let namespace = ensure_test_namespace(txn);
+pub async fn ensure_test_flow(txn: &mut impl CommandTransaction) -> FlowDef {
+	let namespace = ensure_test_namespace(txn).await;
 
-	if let Some(result) = CatalogStore::find_flow_by_name(txn, namespace.id, "test_flow").unwrap() {
+	if let Some(result) = CatalogStore::find_flow_by_name(txn, namespace.id, "test_flow").await.unwrap() {
 		return result;
 	}
-	create_flow(txn, "test_namespace", "test_flow")
+	create_flow(txn, "test_namespace", "test_flow").await
 }
 
-pub fn create_flow_node(txn: &mut impl CommandTransaction, flow_id: FlowId, node_type: u8, data: &[u8]) -> FlowNodeDef {
+pub async fn create_flow_node(
+	txn: &mut impl CommandTransaction,
+	flow_id: FlowId,
+	node_type: u8,
+	data: &[u8],
+) -> FlowNodeDef {
 	use crate::store::sequence::flow::next_flow_node_id;
 
-	let node_id = next_flow_node_id(txn).unwrap();
+	let node_id = next_flow_node_id(txn).await.unwrap();
 	let node_def = FlowNodeDef {
 		id: node_id,
 		flow: flow_id,
@@ -216,11 +233,11 @@ pub fn create_flow_node(txn: &mut impl CommandTransaction, flow_id: FlowId, node
 		data: Blob::from(data),
 	};
 
-	CatalogStore::create_flow_node(txn, &node_def).unwrap();
+	CatalogStore::create_flow_node(txn, &node_def).await.unwrap();
 	node_def
 }
 
-pub fn create_flow_edge(
+pub async fn create_flow_edge(
 	txn: &mut impl CommandTransaction,
 	flow_id: FlowId,
 	source: FlowNodeId,
@@ -228,7 +245,7 @@ pub fn create_flow_edge(
 ) -> FlowEdgeDef {
 	use crate::store::sequence::flow::next_flow_edge_id;
 
-	let edge_id = next_flow_edge_id(txn).unwrap();
+	let edge_id = next_flow_edge_id(txn).await.unwrap();
 	let edge_def = FlowEdgeDef {
 		id: edge_id,
 		flow: flow_id,
@@ -236,6 +253,6 @@ pub fn create_flow_edge(
 		target,
 	};
 
-	CatalogStore::create_flow_edge(txn, &edge_def).unwrap();
+	CatalogStore::create_flow_edge(txn, &edge_def).await.unwrap();
 	edge_def
 }

@@ -129,15 +129,15 @@ impl QueryTransaction for StandardQueryTransaction {
 	where
 		Self: 'a;
 
-	fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
+	async fn begin_single_query<'a, I>(&self, keys: I) -> crate::Result<Self::SingleVersionQuery<'_>>
 	where
 		I: IntoIterator<Item = &'a EncodedKey>,
 	{
-		self.single.begin_query(keys)
+		self.single.begin_query(keys).await
 	}
 
-	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
-		self.cdc.begin_query()
+	async fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>> {
+		self.cdc.begin_query().await
 	}
 }
 

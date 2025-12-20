@@ -14,13 +14,15 @@ use crate::{
 
 impl CatalogStore {
 	/// List all dictionaries in a namespace
-	pub fn list_dictionaries(
+	pub async fn list_dictionaries(
 		rx: &mut impl QueryTransaction,
 		namespace: NamespaceId,
 	) -> crate::Result<Vec<DictionaryDef>> {
 		// Collect dictionary IDs first to avoid borrow conflict
-		let dictionary_ids: Vec<DictionaryId> = rx
-			.range(NamespaceDictionaryKey::full_scan(namespace))?
+		let batch = rx.range(NamespaceDictionaryKey::full_scan(namespace)).await?;
+		let dictionary_ids: Vec<DictionaryId> = batch
+			.items
+			.iter()
 			.map(|multi| {
 				let row = &multi.values;
 				DictionaryId(dictionary_namespace::LAYOUT.get_u64(row, dictionary_namespace::ID))
@@ -29,7 +31,7 @@ impl CatalogStore {
 
 		let mut dictionaries = Vec::new();
 		for dictionary_id in dictionary_ids {
-			if let Some(dictionary) = Self::find_dictionary(rx, dictionary_id)? {
+			if let Some(dictionary) = Self::find_dictionary(rx, dictionary_id).await? {
 				dictionaries.push(dictionary);
 			}
 		}
@@ -38,10 +40,11 @@ impl CatalogStore {
 	}
 
 	/// List all dictionaries in the database
-	pub fn list_all_dictionaries(rx: &mut impl QueryTransaction) -> crate::Result<Vec<DictionaryDef>> {
+	pub async fn list_all_dictionaries(rx: &mut impl QueryTransaction) -> crate::Result<Vec<DictionaryDef>> {
 		let mut dictionaries = Vec::new();
 
-		for multi in rx.range(DictionaryKey::full_scan())? {
+		let batch = rx.range(DictionaryKey::full_scan()).await?;
+		for multi in batch.items {
 			let row = &multi.values;
 			let id = DictionaryId(dictionary::LAYOUT.get_u64(&row, dictionary::ID));
 			let namespace = NamespaceId(dictionary::LAYOUT.get_u64(&row, dictionary::NAMESPACE));

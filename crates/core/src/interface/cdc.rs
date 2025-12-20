@@ -4,7 +4,7 @@
 use reifydb_type::internal_error;
 use serde::{Deserialize, Serialize};
 
-use super::{CdcConsumerKeyRange, EncodableKey, QueryTransaction};
+use super::{CdcConsumerKeyRange, EncodableKey, MultiVersionQueryTransaction as QueryTransaction};
 use crate::{CommitVersion, EncodedKey, key::CdcConsumerKey, value::encoded::EncodedValues};
 
 #[repr(transparent)]
@@ -98,10 +98,11 @@ pub struct ConsumerState {
 }
 
 /// Retrieves the state of all CDC consumers
-pub fn get_all_consumer_states<T: QueryTransaction>(txn: &mut T) -> reifydb_type::Result<Vec<ConsumerState>> {
+pub async fn get_all_consumer_states<T: QueryTransaction>(txn: &mut T) -> reifydb_type::Result<Vec<ConsumerState>> {
 	let mut states = Vec::new();
 
-	for multi in txn.range(CdcConsumerKeyRange::full_scan())? {
+	let batch = txn.range(CdcConsumerKeyRange::full_scan()).await?;
+	for multi in batch.items {
 		let key = CdcConsumerKey::decode(&multi.key)
 			.ok_or_else(|| internal_error!("Unable to decode CdConsumerKey"))?;
 

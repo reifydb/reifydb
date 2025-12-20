@@ -15,7 +15,7 @@ use crate::{
 	},
 };
 
-pub fn explain_physical_plan<T>(rx: &mut T, query: &str) -> crate::Result<String>
+pub async fn explain_physical_plan<T>(rx: &mut T, query: &str) -> crate::Result<String>
 where
 	T: QueryTransaction + CatalogQueryTransaction,
 {
@@ -23,8 +23,8 @@ where
 
 	let mut plans = Vec::new();
 	for statement in statements {
-		let logical = compile_logical(rx, statement)?;
-		plans.extend(compile_physical(rx, logical));
+		let logical = compile_logical(rx, statement).await?;
+		plans.push(compile_physical(rx, logical).await?);
 	}
 
 	let mut result = String::new();

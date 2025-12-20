@@ -15,13 +15,13 @@ use crate::plan::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_table<'a>(
+	pub(crate) async fn compile_create_table<'a>(
 		rx: &mut impl QueryTransaction,
 		create: logical::CreateTableNode<'a>,
 	) -> crate::Result<PhysicalPlan<'a>> {
 		// Get namespace name from the MaybeQualified type
 		let namespace_name = create.table.namespace.as_ref().map(|n| n.text()).unwrap_or("default");
-		let Some(namespace_def) = CatalogStore::find_namespace_by_name(rx, namespace_name)? else {
+		let Some(namespace_def) = CatalogStore::find_namespace_by_name(rx, namespace_name).await? else {
 			let ns_fragment = create.table.namespace.clone().unwrap_or_else(|| {
 				use reifydb_type::Fragment;
 				Fragment::owned_internal("default".to_string())

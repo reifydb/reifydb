@@ -17,10 +17,10 @@ use reifydb_transaction::multi::{
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
-#[test]
-fn test_range() {
-	let engine = Transaction::testing();
-	let mut txn = engine.begin_command().unwrap();
+#[tokio::test]
+async fn test_range() {
+	let engine = Transaction::testing().await;
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
@@ -28,7 +28,7 @@ fn test_range() {
 
 	let four_to_one = EncodedKeyRange::start_end(Some(as_key!(4)), Some(as_key!(1)));
 
-	let txn = engine.begin_query().unwrap();
+	let txn = engine.begin_query().await.unwrap();
 	let iter = txn.range(four_to_one.clone()).unwrap();
 	for (expected, v) in (1..=3).rev().zip(iter) {
 		assert_eq!(v.key, as_key!(expected));
@@ -44,10 +44,10 @@ fn test_range() {
 	}
 }
 
-#[test]
-fn test_range2() {
-	let engine = Transaction::testing();
-	let mut txn = engine.begin_command().unwrap();
+#[tokio::test]
+async fn test_range2() {
+	let engine = Transaction::testing().await;
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
@@ -70,7 +70,7 @@ fn test_range2() {
 
 	txn.commit().unwrap();
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
@@ -92,10 +92,10 @@ fn test_range2() {
 	}
 }
 
-#[test]
-fn test_range3() {
-	let engine = Transaction::testing();
-	let mut txn = engine.begin_command().unwrap();
+#[tokio::test]
+async fn test_range3() {
+	let engine = Transaction::testing().await;
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(4), as_values!(4)).unwrap();
 	txn.set(&as_key!(5), as_values!(5)).unwrap();
 	txn.set(&as_key!(6), as_values!(6)).unwrap();
@@ -120,7 +120,7 @@ fn test_range3() {
 
 	let five_to_one = EncodedKeyRange::start_end(Some(as_key!(5)), Some(as_key!(1)));
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command().await.unwrap();
 	txn.set(&as_key!(1), as_values!(1)).unwrap();
 	txn.set(&as_key!(2), as_values!(2)).unwrap();
 	txn.set(&as_key!(3), as_values!(3)).unwrap();
@@ -145,13 +145,13 @@ fn test_range3() {
 /// Read at ts=3 -> a3, b3, c2
 /// Read at ts=2 -> a2, c2
 /// Read at ts=1 -> c1
-#[test]
-fn test_range_edge() {
-	let engine = Transaction::testing();
+#[tokio::test]
+async fn test_range_edge() {
+	let engine = Transaction::testing().await;
 
 	// c1
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 
 		txn.set(&as_key!(0), as_values!(0u64)).unwrap();
 		txn.set(&as_key!(u64::MAX), as_values!(u64::MAX)).unwrap();
@@ -163,7 +163,7 @@ fn test_range_edge() {
 
 	// a2, c2
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.set(&as_key!(1), as_values!(12u64)).unwrap();
 		txn.set(&as_key!(3), as_values!(32u64)).unwrap();
 		txn.commit().unwrap();
@@ -172,7 +172,7 @@ fn test_range_edge() {
 
 	// b3
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.set(&as_key!(1), as_values!(13u64)).unwrap();
 		txn.set(&as_key!(2), as_values!(23u64)).unwrap();
 		txn.commit().unwrap();
@@ -181,7 +181,7 @@ fn test_range_edge() {
 
 	// b4 (remove)
 	{
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.remove(&as_key!(2)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(5, engine.version().unwrap());
@@ -207,7 +207,7 @@ fn test_range_edge() {
 
 	let ten_to_one = EncodedKeyRange::start_end(Some(as_key!(10)), Some(as_key!(1)));
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command().await.unwrap();
 	let itr = txn.range(ten_to_one.clone()).unwrap();
 	check_iter(itr, &[32, 13]);
 	let itr = txn.range_rev(ten_to_one.clone()).unwrap();

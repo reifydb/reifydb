@@ -9,8 +9,8 @@ pub use crate::multi::transaction::{CommandTransaction, QueryTransaction, Transa
 
 pub mod conflict;
 pub mod marker;
+pub mod multi;
 pub mod pending;
-pub mod serializable;
 pub mod transaction;
 pub mod types;
 pub mod watermark;
@@ -52,8 +52,8 @@ impl Transaction {
 	}
 
 	/// Get the current version from the transaction manager
-	pub fn current_version(&self) -> crate::Result<CommitVersion> {
-		self.tm.version()
+	pub async fn current_version(&self) -> crate::Result<CommitVersion> {
+		self.tm.version().await
 	}
 
 	/// Returns the highest version where ALL prior versions have completed.

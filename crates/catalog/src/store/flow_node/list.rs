@@ -12,13 +12,15 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn list_flow_nodes_by_flow(
+	pub async fn list_flow_nodes_by_flow(
 		txn: &mut impl QueryTransaction,
 		flow_id: FlowId,
 	) -> crate::Result<Vec<FlowNodeDef>> {
 		// First collect all node IDs
-		let node_ids: Vec<FlowNodeId> = txn
-			.range(reifydb_core::key::FlowNodeByFlowKey::full_scan(flow_id))?
+		let batch = txn.range(reifydb_core::key::FlowNodeByFlowKey::full_scan(flow_id)).await?;
+		let node_ids: Vec<FlowNodeId> = batch
+			.items
+			.iter()
 			.map(|multi| {
 				FlowNodeId(flow_node_by_flow::LAYOUT.get_u64(&multi.values, flow_node_by_flow::ID))
 			})
@@ -27,7 +29,7 @@ impl CatalogStore {
 		// Then fetch each node
 		let mut nodes = Vec::new();
 		for node_id in node_ids {
-			if let Some(node) = Self::find_flow_node(txn, node_id)? {
+			if let Some(node) = Self::find_flow_node(txn, node_id).await? {
 				nodes.push(node);
 			}
 		}
@@ -35,10 +37,11 @@ impl CatalogStore {
 		Ok(nodes)
 	}
 
-	pub fn list_flow_nodes_all(txn: &mut impl QueryTransaction) -> crate::Result<Vec<FlowNodeDef>> {
+	pub async fn list_flow_nodes_all(txn: &mut impl QueryTransaction) -> crate::Result<Vec<FlowNodeDef>> {
 		let mut result = Vec::new();
 
-		let entries: Vec<_> = txn.range(FlowNodeKey::full_scan())?.into_iter().collect();
+		let batch = txn.range(FlowNodeKey::full_scan()).await?;
+		let entries: Vec<_> = batch.items.into_iter().collect();
 
 		for entry in entries {
 			if let Some(flow_node_key) = FlowNodeKey::decode(&entry.key) {

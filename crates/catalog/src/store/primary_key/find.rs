@@ -12,7 +12,7 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_primary_key(
+	pub async fn find_primary_key(
 		rx: &mut impl QueryTransaction,
 		source: impl Into<SourceId>,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
@@ -22,11 +22,11 @@ impl CatalogStore {
 		// Virtual tables and ring buffers don't have primary keys
 		// stored separately
 		let primary_key_id = match source_id {
-			SourceId::Table(table_id) => match Self::get_table_pk_id(rx, table_id)? {
+			SourceId::Table(table_id) => match Self::get_table_pk_id(rx, table_id).await? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
-			SourceId::View(view_id) => match Self::get_view_pk_id(rx, view_id)? {
+			SourceId::View(view_id) => match Self::get_view_pk_id(rx, view_id).await? {
 				Some(pk_id) => pk_id,
 				None => return Ok(None),
 			},
@@ -38,10 +38,12 @@ impl CatalogStore {
 				// Virtual tables don't have primary keys
 				return Ok(None);
 			}
-			SourceId::RingBuffer(ringbuffer_id) => match Self::get_ringbuffer_pk_id(rx, ringbuffer_id)? {
-				Some(pk_id) => pk_id,
-				None => return Ok(None),
-			},
+			SourceId::RingBuffer(ringbuffer_id) => {
+				match Self::get_ringbuffer_pk_id(rx, ringbuffer_id).await? {
+					Some(pk_id) => pk_id,
+					None => return Ok(None),
+				}
+			}
 			SourceId::Dictionary(_) => {
 				// Dictionaries don't have traditional primary keys
 				return Ok(None);
@@ -49,7 +51,7 @@ impl CatalogStore {
 		};
 
 		// Fetch the primary key details
-		let primary_key_multi = match rx.get(&PrimaryKeyKey::encoded(primary_key_id))? {
+		let primary_key_multi = match rx.get(&PrimaryKeyKey::encoded(primary_key_id)).await? {
 			Some(multi) => multi,
 			None => return_internal_error!(format!(
 				"Primary key with ID {:?} referenced but not found",
@@ -64,7 +66,7 @@ impl CatalogStore {
 		// Fetch full ColumnDef for each column ID
 		let mut columns = Vec::new();
 		for column_id in column_ids {
-			let column_def = Self::get_column(rx, column_id)?;
+			let column_def = Self::get_column(rx, column_id).await?;
 			columns.push(ColumnDef {
 				id: column_def.id,
 				name: column_def.name,
@@ -83,18 +85,18 @@ impl CatalogStore {
 	}
 
 	#[inline]
-	pub fn find_table_primary_key(
+	pub async fn find_table_primary_key(
 		rx: &mut impl QueryTransaction,
 		table_id: TableId,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
-		Self::find_primary_key(rx, table_id)
+		Self::find_primary_key(rx, table_id).await
 	}
 
 	#[inline]
-	pub fn find_view_primary_key(
+	pub async fn find_view_primary_key(
 		rx: &mut impl QueryTransaction,
 		view_id: ViewId,
 	) -> crate::Result<Option<PrimaryKeyDef>> {
-		Self::find_primary_key(rx, view_id)
+		Self::find_primary_key(rx, view_id).await
 	}
 }

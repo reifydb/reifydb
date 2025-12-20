@@ -1,59 +1,46 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
+
 use crate::{
 	EncodedKey,
 	interface::{SingleVersionValues, WithEventBus},
 	value::encoded::EncodedValues,
 };
 
-pub type BoxedSingleVersionIter<'a> = Box<dyn Iterator<Item = SingleVersionValues> + Send + 'a>;
-
+#[async_trait]
 pub trait SingleVersionTransaction: WithEventBus + Send + Sync + Clone + 'static {
-	type Query<'a>: SingleVersionQueryTransaction;
-	type Command<'a>: SingleVersionCommandTransaction;
+	type Query<'a>: SingleVersionQueryTransaction + Send;
+	type Command<'a>: SingleVersionCommandTransaction + Send;
 
-	fn begin_query<'a, I>(&self, keys: I) -> crate::Result<Self::Query<'_>>
+	async fn begin_query<'a, I>(&self, keys: I) -> crate::Result<Self::Query<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>;
+		I: IntoIterator<Item = &'a EncodedKey> + Send;
 
-	fn begin_command<'a, I>(&self, keys: I) -> crate::Result<Self::Command<'_>>
+	async fn begin_command<'a, I>(&self, keys: I) -> crate::Result<Self::Command<'_>>
 	where
-		I: IntoIterator<Item = &'a EncodedKey>;
-
-	fn with_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
-	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut Self::Query<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_query(keys)?;
-		f(&mut tx)
-	}
-
-	fn with_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
-	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut Self::Command<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_command(keys)?;
-		let result = f(&mut tx)?;
-		tx.commit()?;
-		Ok(result)
-	}
+		I: IntoIterator<Item = &'a EncodedKey> + Send;
 }
 
-pub trait SingleVersionQueryTransaction {
-	fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>>;
+/// Single-version query transaction trait.
+/// Uses tokio::sync locks which are Send-safe with owned guards.
+#[async_trait]
+pub trait SingleVersionQueryTransaction: Send {
+	async fn get(&mut self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>>;
 
-	fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
+	async fn contains_key(&mut self, key: &EncodedKey) -> crate::Result<bool>;
 }
 
-pub trait SingleVersionCommandTransaction: SingleVersionQueryTransaction {
+/// Single-version command transaction trait.
+/// Uses tokio::sync locks which are Send-safe with owned guards.
+#[async_trait]
+pub trait SingleVersionCommandTransaction: SingleVersionQueryTransaction + Send {
 	fn set(&mut self, key: &EncodedKey, row: EncodedValues) -> crate::Result<()>;
 
-	fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
+	async fn remove(&mut self, key: &EncodedKey) -> crate::Result<()>;
 
-	fn commit(self) -> crate::Result<()>;
+	async fn commit(&mut self) -> crate::Result<()>;
 
-	fn rollback(self) -> crate::Result<()>;
+	async fn rollback(&mut self) -> crate::Result<()>;
 }

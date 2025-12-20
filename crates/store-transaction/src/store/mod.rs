@@ -13,13 +13,10 @@ use crate::{
 };
 
 mod cdc;
-mod cdc_iterator;
 mod drop;
 mod multi;
-mod multi_iterator;
 pub mod router;
 mod single;
-mod single_iterator;
 pub mod version_manager;
 
 #[derive(Clone)]
@@ -47,13 +44,9 @@ impl StandardTransactionStore {
 			checkpoint_interval: config.stats.checkpoint_interval,
 		};
 
-		// Try to restore stats from storage, fallback to new tracker if restore fails
-		let storage = hot.as_ref().or(warm.as_ref()).or(cold.as_ref());
-		let stats_tracker = match storage {
-			Some(s) => StorageTracker::restore(s, tracker_config.clone())
-				.unwrap_or_else(|_| StorageTracker::new(tracker_config)),
-			None => StorageTracker::new(tracker_config),
-		};
+		// Create a new stats tracker. Use `new_async` or `restore_async`
+		// to restore from storage if needed.
+		let stats_tracker = StorageTracker::new(tracker_config);
 
 		Ok(Self(Arc::new(StandardTransactionStoreInner {
 			hot,

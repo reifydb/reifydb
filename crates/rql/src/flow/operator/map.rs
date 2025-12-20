@@ -29,9 +29,9 @@ impl<'a> From<MapNode<'a>> for MapCompiler {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for MapCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		let input_node = if let Some(input) = self.input {
-			Some(compiler.compile_plan(*input)?)
+			Some(compiler.compile_plan(*input).await?)
 		} else {
 			None
 		};
@@ -44,6 +44,6 @@ impl<T: CommandTransaction> CompileOperator<T> for MapCompiler {
 			builder = builder.with_input(input);
 		}
 
-		builder.build()
+		builder.build().await
 	}
 }

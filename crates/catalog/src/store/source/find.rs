@@ -10,7 +10,7 @@ use crate::{CatalogStore, table_virtual::VirtualTableRegistry};
 impl CatalogStore {
 	/// Find a source (table, store::view, or virtual table) by its SourceId
 	/// Returns None if the source doesn't exist
-	pub fn find_source(
+	pub async fn find_source(
 		rx: &mut impl QueryTransaction,
 		source: impl Into<SourceId>,
 	) -> crate::Result<Option<SourceDef>> {
@@ -18,21 +18,21 @@ impl CatalogStore {
 
 		match source_id {
 			SourceId::Table(table_id) => {
-				if let Some(table) = Self::find_table(rx, table_id)? {
+				if let Some(table) = Self::find_table(rx, table_id).await? {
 					Ok(Some(SourceDef::Table(table)))
 				} else {
 					Ok(None)
 				}
 			}
 			SourceId::View(view_id) => {
-				if let Some(view) = Self::find_view(rx, view_id)? {
+				if let Some(view) = Self::find_view(rx, view_id).await? {
 					Ok(Some(SourceDef::View(view)))
 				} else {
 					Ok(None)
 				}
 			}
 			SourceId::Flow(flow_id) => {
-				if let Some(flow) = Self::find_flow(rx, flow_id)? {
+				if let Some(flow) = Self::find_flow(rx, flow_id).await? {
 					Ok(Some(SourceDef::Flow(flow)))
 				} else {
 					Ok(None)

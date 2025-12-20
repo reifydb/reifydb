@@ -1,6 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::interface::{
 	CommandTransaction, DictionaryDef, DictionaryId, NamespaceId, QueryTransaction, TransactionalChanges,
 	TransactionalDictionaryChanges, interceptor::WithInterceptors,
@@ -17,8 +18,9 @@ use crate::{
 	transaction::MaterializedCatalogTransaction,
 };
 
-pub trait CatalogDictionaryCommandOperations {
-	fn create_dictionary(&mut self, to_create: DictionaryToCreate) -> crate::Result<DictionaryDef>;
+#[async_trait(?Send)]
+pub trait CatalogDictionaryCommandOperations: Send {
+	async fn create_dictionary(&mut self, to_create: DictionaryToCreate) -> crate::Result<DictionaryDef>;
 }
 
 pub trait CatalogTrackDictionaryChangeOperations {
@@ -29,49 +31,55 @@ pub trait CatalogTrackDictionaryChangeOperations {
 	fn track_dictionary_def_deleted(&mut self, dictionary: DictionaryDef) -> crate::Result<()>;
 }
 
-pub trait CatalogDictionaryQueryOperations: CatalogNamespaceQueryOperations {
-	fn find_dictionary(&mut self, id: DictionaryId) -> crate::Result<Option<DictionaryDef>>;
+#[async_trait(?Send)]
+pub trait CatalogDictionaryQueryOperations: CatalogNamespaceQueryOperations + Send {
+	async fn find_dictionary(&mut self, id: DictionaryId) -> crate::Result<Option<DictionaryDef>>;
 
-	fn find_dictionary_by_name<'a>(
+	async fn find_dictionary_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> crate::Result<Option<DictionaryDef>>;
 
-	fn get_dictionary(&mut self, id: DictionaryId) -> crate::Result<DictionaryDef>;
+	async fn get_dictionary(&mut self, id: DictionaryId) -> crate::Result<DictionaryDef>;
 
-	fn get_dictionary_by_name<'a>(
+	async fn get_dictionary_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> crate::Result<DictionaryDef>;
 }
 
+#[async_trait(?Send)]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
 		+ CatalogTrackDictionaryChangeOperations
 		+ WithInterceptors<CT>
-		+ TransactionalChanges,
+		+ TransactionalChanges
+		+ Send,
 > CatalogDictionaryCommandOperations for CT
 {
 	#[instrument(name = "catalog::dictionary::create", level = "debug", skip(self, to_create))]
-	fn create_dictionary(&mut self, to_create: DictionaryToCreate) -> reifydb_core::Result<DictionaryDef> {
-		if let Some(dictionary) = self.find_dictionary_by_name(to_create.namespace, &to_create.dictionary)? {
-			let namespace = self.get_namespace(to_create.namespace)?;
+	async fn create_dictionary(&mut self, to_create: DictionaryToCreate) -> reifydb_core::Result<DictionaryDef> {
+		if let Some(dictionary) =
+			self.find_dictionary_by_name(to_create.namespace, &to_create.dictionary).await?
+		{
+			let namespace = self.get_namespace(to_create.namespace).await?;
 			return_error!(dictionary_already_exists(to_create.fragment, &namespace.name, &dictionary.name));
 		}
-		let result = CatalogStore::create_dictionary(self, to_create)?;
+		let result = CatalogStore::create_dictionary(self, to_create).await?;
 		self.track_dictionary_def_created(result.clone())?;
 		Ok(result)
 	}
 }
 
-impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogDictionaryQueryOperations
-	for QT
+#[async_trait(?Send)]
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send>
+	CatalogDictionaryQueryOperations for QT
 {
 	#[instrument(name = "catalog::dictionary::find", level = "trace", skip(self))]
-	fn find_dictionary(&mut self, id: DictionaryId) -> reifydb_core::Result<Option<DictionaryDef>> {
+	async fn find_dictionary(&mut self, id: DictionaryId) -> reifydb_core::Result<Option<DictionaryDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
 		if let Some(dictionary) = TransactionalDictionaryChanges::find_dictionary(self, id) {
@@ -90,7 +98,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(dictionary) = CatalogStore::find_dictionary(self, id)? {
+		if let Some(dictionary) = CatalogStore::find_dictionary(self, id).await? {
 			warn!("Dictionary with ID {:?} found in storage but not in MaterializedCatalog", id);
 			return Ok(Some(dictionary));
 		}
@@ -99,10 +107,10 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::dictionary::find_by_name", level = "trace", skip(self, name))]
-	fn find_dictionary_by_name<'a>(
+	async fn find_dictionary_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> reifydb_core::Result<Option<DictionaryDef>> {
 		let name = name.into_fragment();
 
@@ -127,7 +135,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(dictionary) = CatalogStore::find_dictionary_by_name(self, namespace, name.text())? {
+		if let Some(dictionary) = CatalogStore::find_dictionary_by_name(self, namespace, name.text()).await? {
 			warn!(
 				"Dictionary '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 				name.text(),
@@ -140,8 +148,8 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::dictionary::get", level = "trace", skip(self))]
-	fn get_dictionary(&mut self, id: DictionaryId) -> reifydb_core::Result<DictionaryDef> {
-		self.find_dictionary(id)?.ok_or_else(|| {
+	async fn get_dictionary(&mut self, id: DictionaryId) -> reifydb_core::Result<DictionaryDef> {
+		self.find_dictionary(id).await?.ok_or_else(|| {
 			error!(internal!(
 				"Dictionary with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
@@ -150,20 +158,22 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::dictionary::get_by_name", level = "trace", skip(self, name))]
-	fn get_dictionary_by_name<'a>(
+	async fn get_dictionary_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> reifydb_core::Result<DictionaryDef> {
 		let name = name.into_fragment();
 
 		// Try to get the namespace name for the error message
 		let namespace_name = self
-			.find_namespace(namespace)?
+			.find_namespace(namespace)
+			.await?
 			.map(|ns| ns.name)
 			.unwrap_or_else(|| format!("namespace_{}", namespace));
 
-		self.find_dictionary_by_name(namespace, name.as_borrowed())?
+		self.find_dictionary_by_name(namespace, name.as_borrowed())
+			.await?
 			.ok_or_else(|| error!(dictionary_not_found(name.as_borrowed(), &namespace_name, name.text())))
 	}
 }

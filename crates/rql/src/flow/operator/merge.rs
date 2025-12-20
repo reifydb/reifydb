@@ -24,10 +24,11 @@ impl<'a> From<MergeNode<'a>> for MergeCompiler {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for MergeCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let left_node = compiler.compile_plan(*self.left)?;
-		let right_node = compiler.compile_plan(*self.right)?;
-		let node = compiler.build_node(FlowNodeType::Merge).with_inputs([left_node, right_node]).build()?;
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+		let left_node = compiler.compile_plan(*self.left).await?;
+		let right_node = compiler.compile_plan(*self.right).await?;
+		let node =
+			compiler.build_node(FlowNodeType::Merge).with_inputs([left_node, right_node]).build().await?;
 		Ok(node)
 	}
 }

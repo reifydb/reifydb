@@ -13,14 +13,14 @@ use crate::{
 	},
 };
 
-pub(crate) fn load_flows(
+pub(crate) async fn load_flows(
 	qt: &mut impl MultiVersionQueryTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
 	let range = FlowKey::full_scan();
-	let flows = qt.range(range)?;
+	let batch = qt.range(range).await?;
 
-	for multi in flows {
+	for multi in batch.items {
 		let version = multi.version;
 		let flow_def = convert_flow(multi);
 		catalog.set_flow(flow_def.id, version, Some(flow_def));

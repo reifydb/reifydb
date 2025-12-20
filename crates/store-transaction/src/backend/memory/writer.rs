@@ -1,35 +1,36 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Background writer thread for memory backend.
+//! Background writer task for memory backend using tokio.
 
-use std::sync::{Arc, mpsc};
+use std::sync::Arc;
 
 use parking_lot::RwLock;
 use reifydb_type::Result;
+use tokio::sync::{mpsc, oneshot};
 use tracing::{debug, info};
 
 use super::tables::Tables;
 use crate::backend::primitive::TableId;
 
-/// Commands for the background writer thread.
+/// Commands for the background writer task.
 pub(super) enum WriteCommand {
 	PutBatch {
 		table: TableId,
 		entries: Vec<(Vec<u8>, Option<Vec<u8>>)>,
-		respond_to: mpsc::Sender<Result<()>>,
+		respond_to: oneshot::Sender<Result<()>>,
 	},
 	ClearTable {
 		table: TableId,
-		respond_to: mpsc::Sender<Result<()>>,
+		respond_to: oneshot::Sender<Result<()>>,
 	},
 	Shutdown,
 }
 
-/// Run the background writer thread.
-pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, tables: Arc<RwLock<Tables>>) {
-	debug!(name: "memory_writer", "background writer thread started");
-	while let Ok(cmd) = receiver.recv() {
+/// Run the background writer task (async).
+pub(super) async fn run_writer(mut receiver: mpsc::Receiver<WriteCommand>, tables: Arc<RwLock<Tables>>) {
+	debug!(name: "memory_writer", "background writer task started");
+	while let Some(cmd) = receiver.recv().await {
 		match cmd {
 			WriteCommand::PutBatch {
 				table,
@@ -54,7 +55,7 @@ pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, tables: Arc<RwL
 				let _ = respond_to.send(Ok(()));
 			}
 			WriteCommand::Shutdown => {
-				info!(name: "memory_writer", "background writer thread shutting down");
+				info!(name: "memory_writer", "background writer task shutting down");
 				break;
 			}
 		}

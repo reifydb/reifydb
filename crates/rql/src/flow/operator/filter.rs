@@ -29,13 +29,14 @@ impl<'a> From<FilterNode<'a>> for FilterCompiler {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for FilterCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let input_node = compiler.compile_plan(*self.input)?;
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+		let input_node = compiler.compile_plan(*self.input).await?;
 
 		compiler.build_node(Filter {
 			conditions: self.conditions,
 		})
 		.with_input(input_node)
 		.build()
+		.await
 	}
 }

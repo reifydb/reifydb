@@ -31,21 +31,22 @@ macro_rules! impl_generator {
 			pub(crate) struct $generator {}
 
 			impl $generator {
-				pub(crate) fn next(
+				pub(crate) async fn next(
 					txn: &mut impl CommandTransaction,
 					key: &EncodedKey,
 					default: Option<$prim>,
 				) -> crate::Result<$prim> {
-					Self::next_batched(txn, key, default, 1)
+					Self::next_batched(txn, key, default, 1).await
 				}
 
-				pub(crate) fn next_batched(
+				pub(crate) async fn next_batched(
 					txn: &mut impl CommandTransaction,
 					key: &EncodedKey,
 					default: Option<$prim>,
 					incr: $prim,
 				) -> crate::Result<$prim> {
-					txn.with_single_command([key], |tx| match tx.get(key)? {
+					let mut tx = txn.begin_single_command([key])?;
+					let result = match tx.get(key).await? {
 						Some(row) => {
 							let mut row = row.values;
 							let current_value = LAYOUT.$getter(&row, 0);
@@ -57,7 +58,7 @@ macro_rules! impl_generator {
 
 							LAYOUT.$setter(&mut row, 0, next_value);
 							tx.set(key, row)?;
-							Ok(next_value)
+							next_value
 						}
 						None => match default {
 							Some(value) => {
@@ -67,7 +68,7 @@ macro_rules! impl_generator {
 								let mut new_row = LAYOUT.allocate();
 								LAYOUT.$setter(&mut new_row, 0, value);
 								tx.set(key, new_row)?;
-								Ok(value)
+								value
 							}
 							None => {
 								// When no default, allocate 'incr' contiguous IDs
@@ -82,26 +83,28 @@ macro_rules! impl_generator {
 								let mut new_row = LAYOUT.allocate();
 								LAYOUT.$setter(&mut new_row, 0, last);
 								tx.set(key, new_row)?;
-								Ok(last)
+								last
 							}
 						},
-					})
+					};
+					tx.commit().await?;
+					Ok(result)
 				}
 
-				pub(crate) fn set(
+				pub(crate) async fn set(
 					txn: &mut impl CommandTransaction,
 					key: &EncodedKey,
 					value: $prim,
 				) -> crate::Result<()> {
-					txn.with_single_command([key], |tx| {
-						let mut row = match tx.get(key)? {
-							Some(row) => row.values,
-							None => LAYOUT.allocate(),
-						};
-						LAYOUT.$setter(&mut row, 0, value);
-						tx.set(key, row)?;
-						Ok(())
-					})
+					let mut tx = txn.begin_single_command([key])?;
+					let mut row = match tx.get(key).await? {
+						Some(row) => row.values,
+						None => LAYOUT.allocate(),
+					};
+					LAYOUT.$setter(&mut row, 0, value);
+					tx.set(key, row)?;
+					tx.commit().await?;
+					Ok(())
 				}
 			}
 
@@ -117,8 +120,8 @@ macro_rules! impl_generator {
 
 				use super::{LAYOUT, $generator};
 
-				#[test]
-				fn test_ok() {
+				#[tokio::test]
+				async fn test_ok() {
 					let mut txn = create_test_command_transaction();
 					let iterations =
 						999u32.min(($max as u128).saturating_sub($start as u128) as u32);
@@ -126,24 +129,22 @@ macro_rules! impl_generator {
 					for expected in $start..count {
 						let got =
 							$generator::next(&mut txn, &EncodedKey::new("sequence"), None)
+								.await
 								.unwrap();
 						assert_eq!(got, expected);
 					}
 
 					let key = EncodedKey::new("sequence");
-					txn.with_single_query([&key], |tx| {
-						let single = tx.get(&key)?.unwrap();
-						let final_val = ($start as u128)
-							.saturating_add((iterations.saturating_sub(1)) as u128)
-							as $prim;
-						assert_eq!(LAYOUT.$getter(&single.values, 0), final_val);
-						Ok(())
-					})
-					.unwrap();
+					let tx = txn.begin_single_query([&key]).unwrap();
+					let single = tx.get(&key).await.unwrap().unwrap();
+					let final_val = ($start as u128)
+						.saturating_add((iterations.saturating_sub(1)) as u128)
+						as $prim;
+					assert_eq!(LAYOUT.$getter(&single.values, 0), final_val);
 				}
 
-				#[test]
-				fn test_exhaustion() {
+				#[tokio::test]
+				async fn test_exhaustion() {
 					let mut txn = create_test_command_transaction();
 
 					let mut row = LAYOUT.allocate();
@@ -153,12 +154,13 @@ macro_rules! impl_generator {
 					txn.with_single_command([&key], |tx| tx.set(&key, row)).unwrap();
 
 					let err = $generator::next(&mut txn, &EncodedKey::new("sequence"), None)
+						.await
 						.unwrap_err();
 					assert_eq!(err.diagnostic(), sequence_exhausted($type_enum));
 				}
 
-				#[test]
-				fn test_default() {
+				#[tokio::test]
+				async fn test_default() {
 					let mut txn = create_test_command_transaction();
 
 					let default_val = ($start as u32).saturating_add(99).min($max as u32) as $prim;
@@ -167,6 +169,7 @@ macro_rules! impl_generator {
 						&EncodedKey::new("sequence_with_default"),
 						Some(default_val),
 					)
+					.await
 					.unwrap();
 					assert_eq!(got, default_val);
 
@@ -177,6 +180,7 @@ macro_rules! impl_generator {
 						&EncodedKey::new("sequence_with_default"),
 						Some(next_default),
 					)
+					.await
 					.unwrap();
 					assert_eq!(
 						got,
@@ -184,8 +188,8 @@ macro_rules! impl_generator {
 					);
 				}
 
-				#[test]
-				fn test_batched_ok() {
+				#[tokio::test]
+				async fn test_batched_ok() {
 					let mut txn = create_test_command_transaction();
 
 					// Determine appropriate batch size and iteration count based on type range
@@ -219,20 +223,18 @@ macro_rules! impl_generator {
 							None,
 							batch_size_1,
 						)
+						.await
 						.unwrap();
 						assert_eq!(got, expected, "Call {} should return {}", i + 1, expected);
 					}
 
 					let key = EncodedKey::new("sequence_by_5000");
-					txn.with_single_query([&key], |tx| {
-						let single = tx.get(&key)?.unwrap();
-						let final_val = ($start as u128)
-							.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
-							.saturating_sub(1) as $prim;
-						assert_eq!(LAYOUT.$getter(&single.values, 0), final_val);
-						Ok(())
-					})
-					.unwrap();
+					let tx = txn.begin_single_query([&key]).unwrap();
+					let single = tx.get(&key).await.unwrap().unwrap();
+					let final_val = ($start as u128)
+						.saturating_add((batch_size_1 as u128) * (iterations_1 as u128))
+						.saturating_sub(1) as $prim;
+					assert_eq!(LAYOUT.$getter(&single.values, 0), final_val);
 
 					// Test batch allocation by batch_size_2
 					for i in 0..iterations_2 {
@@ -245,13 +247,14 @@ macro_rules! impl_generator {
 							None,
 							batch_size_2,
 						)
+						.await
 						.unwrap();
 						assert_eq!(got, expected, "Call {} should return {}", i + 1, expected);
 					}
 				}
 
-				#[test]
-				fn test_batched_exhaustion() {
+				#[tokio::test]
+				async fn test_batched_exhaustion() {
 					let mut txn = create_test_command_transaction();
 
 					let mut row = LAYOUT.allocate();
@@ -274,6 +277,7 @@ macro_rules! impl_generator {
 						None,
 						batch_size,
 					)
+					.await
 					.unwrap();
 					// For some types this might not reach MAX yet, so we just check it increased
 					assert!(result > initial_val);
@@ -285,7 +289,9 @@ macro_rules! impl_generator {
 							&EncodedKey::new("sequence"),
 							None,
 							batch_size,
-						) {
+						)
+						.await
+						{
 							Ok(val) => {
 								if val == $max {
 									break;
@@ -302,12 +308,13 @@ macro_rules! impl_generator {
 						None,
 						batch_size,
 					)
+					.await
 					.unwrap_err();
 					assert_eq!(err.diagnostic(), sequence_exhausted($type_enum));
 				}
 
-				#[test]
-				fn test_batched_default() {
+				#[tokio::test]
+				async fn test_batched_default() {
 					let mut txn = create_test_command_transaction();
 
 					let type_range = ($max as u128).saturating_sub($start as u128);
@@ -320,6 +327,7 @@ macro_rules! impl_generator {
 						Some(default_val),
 						batch_size,
 					)
+					.await
 					.unwrap();
 					assert_eq!(got, default_val);
 
@@ -331,6 +339,7 @@ macro_rules! impl_generator {
 						Some(next_default),
 						batch_size,
 					)
+					.await
 					.unwrap();
 					assert_eq!(
 						got,

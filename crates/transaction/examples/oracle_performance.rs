@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{sync::Arc, thread, time::Instant};
+use std::{sync::Arc, time::Instant};
 
 use encoding::keycode;
 use reifydb_core::{EncodedKey, util::encoding, value::encoded::EncodedValues};
@@ -17,7 +17,7 @@ macro_rules! as_values {
 
 /// Benchmark showing the performance improvement of the new oracle
 /// implementation
-pub fn oracle_performance_benchmark() {
+pub async fn oracle_performance_benchmark() {
 	println!("=== Oracle Performance Benchmark ===\n");
 
 	// Test different transaction counts to show scaling behavior
@@ -26,14 +26,14 @@ pub fn oracle_performance_benchmark() {
 	for &num_txns in &test_sizes {
 		println!("Testing with {} transactions...", num_txns);
 
-		let engine = Transaction::testing();
+		let engine = Transaction::testing().await;
 
 		let start = Instant::now();
 
 		// Create transactions sequentially (worst case for O(N²)
 		// algorithm)
 		for i in 0..num_txns {
-			let mut tx = engine.begin_command().unwrap();
+			let mut tx = engine.begin_command().await.unwrap();
 
 			let key = as_key!(format!("key_{}", i));
 			let value = as_values!(format!("value_{}", i));
@@ -52,7 +52,7 @@ pub fn oracle_performance_benchmark() {
 }
 
 /// Benchmark concurrent performance
-pub fn concurrent_oracle_benchmark() {
+pub async fn concurrent_oracle_benchmark() {
 	println!("=== Concurrent Oracle Performance Benchmark ===\n");
 
 	let test_configs = vec![
@@ -68,17 +68,17 @@ pub fn concurrent_oracle_benchmark() {
 			num_threads, txns_per_thread, total_txns
 		);
 
-		let engine = Arc::new(Transaction::testing());
+		let engine = Arc::new(Transaction::testing().await);
 		let start = Instant::now();
 
 		let mut handles = vec![];
 
 		for thread_id in 0..num_threads {
 			let engine_clone = engine.clone();
-			let handle = thread::spawn(move || {
+			let handle = tokio::spawn(async move {
 				let base_key = thread_id * txns_per_thread;
 				for i in 0..txns_per_thread {
-					let mut tx = engine_clone.begin_command().unwrap();
+					let mut tx = engine_clone.begin_command().await.unwrap();
 
 					let key = as_key!(base_key + i);
 					let value = as_values!(i);
@@ -91,7 +91,7 @@ pub fn concurrent_oracle_benchmark() {
 		}
 
 		for handle in handles {
-			handle.join().expect("Thread panicked");
+			handle.await.expect("Task panicked");
 		}
 
 		let duration = start.elapsed();
@@ -104,14 +104,14 @@ pub fn concurrent_oracle_benchmark() {
 }
 
 /// Benchmark with actual conflicts to test conflict detection performance
-pub fn conflict_detection_benchmark() {
+pub async fn conflict_detection_benchmark() {
 	println!("=== Conflict Detection Performance Benchmark ===\n");
 
-	let engine = Transaction::testing();
+	let engine = Transaction::testing().await;
 
 	// Pre-populate with some data to create realistic conflict scenarios
 	for i in 0..1000 {
-		let mut tx = engine.begin_command().unwrap();
+		let mut tx = engine.begin_command().await.unwrap();
 		let key = as_key!(format!("shared_key_{}", i % 100)); // 100 different keys
 		let value = as_values!(i);
 		tx.set(&key, value).unwrap();
@@ -126,7 +126,7 @@ pub fn conflict_detection_benchmark() {
 	let mut conflicts = 0;
 
 	for i in 0..num_conflict_txns {
-		let mut tx = engine.begin_command().unwrap();
+		let mut tx = engine.begin_command().await.unwrap();
 
 		// Try to modify keys that might conflict
 		let key = as_key!(format!("shared_key_{}", i % 100));
@@ -156,16 +156,17 @@ pub fn conflict_detection_benchmark() {
 	println!("  {:.2} μs per transaction", duration.as_micros() as f64 / num_conflict_txns as f64);
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	println!("🚀 ReifyDB Oracle Performance Benchmarks\n");
 
-	oracle_performance_benchmark();
+	oracle_performance_benchmark().await;
 	println!("\n{}\n", "=".repeat(60));
 
-	concurrent_oracle_benchmark();
+	concurrent_oracle_benchmark().await;
 	println!("\n{}\n", "=".repeat(60));
 
-	conflict_detection_benchmark();
+	conflict_detection_benchmark().await;
 
 	println!("\n✅ All benchmarks completed!");
 }

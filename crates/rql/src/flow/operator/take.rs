@@ -25,13 +25,14 @@ impl<'a> From<TakeNode<'a>> for TakeCompiler {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for TakeCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let input_node = compiler.compile_plan(*self.input)?;
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+		let input_node = compiler.compile_plan(*self.input).await?;
 
 		compiler.build_node(Take {
 			limit: self.limit,
 		})
 		.with_input(input_node)
 		.build()
+		.await
 	}
 }

@@ -10,12 +10,12 @@ use crate::{
 };
 
 /// Resolve a flow ID to a fully resolved flow with namespace and identifiers
-pub fn resolve_flow<'a, T>(txn: &mut T, flow_id: FlowId) -> crate::Result<ResolvedFlow<'a>>
+pub async fn resolve_flow<'a, T>(txn: &mut T, flow_id: FlowId) -> crate::Result<ResolvedFlow<'a>>
 where
 	T: CatalogFlowQueryOperations + CatalogNamespaceQueryOperations,
 {
-	let flow_def = txn.get_flow(flow_id)?;
-	let resolved_namespace = resolve_namespace(txn, flow_def.namespace)?;
+	let flow_def = txn.get_flow(flow_id).await?;
+	let resolved_namespace = resolve_namespace(txn, flow_def.namespace).await?;
 	let flow_ident = Fragment::owned_internal(flow_def.name.clone());
 
 	Ok(ResolvedFlow::new(flow_ident, resolved_namespace, flow_def))

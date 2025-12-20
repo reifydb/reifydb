@@ -8,14 +8,14 @@ use reifydb_core::{
 
 use crate::{MaterializedCatalog, store::retention_policy::decode_retention_policy};
 
-pub(crate) fn load_operator_retention_policies(
+pub(crate) async fn load_operator_retention_policies(
 	qt: &mut impl MultiVersionQueryTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
 	let range = OperatorRetentionPolicyKeyRange::full_scan();
-	let policies = qt.range(range)?;
+	let batch = qt.range(range).await?;
 
-	for multi in policies {
+	for multi in batch.items {
 		let version = multi.version;
 
 		if let Some(key) = OperatorRetentionPolicyKey::decode(&multi.key) {

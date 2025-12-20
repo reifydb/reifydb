@@ -11,8 +11,8 @@ use reifydb_type::{OwnedFragment, internal};
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_flow(rx: &mut impl QueryTransaction, flow: FlowId) -> crate::Result<FlowDef> {
-		CatalogStore::find_flow(rx, flow)?.ok_or_else(|| {
+	pub async fn get_flow(rx: &mut impl QueryTransaction, flow: FlowId) -> crate::Result<FlowDef> {
+		CatalogStore::find_flow(rx, flow).await?.ok_or_else(|| {
 			Error(internal!(
 				"Flow with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				flow
@@ -20,7 +20,7 @@ impl CatalogStore {
 		})
 	}
 
-	pub fn get_flow_by_name(
+	pub async fn get_flow_by_name(
 		rx: &mut impl QueryTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
@@ -28,11 +28,13 @@ impl CatalogStore {
 		let name_ref = name.as_ref();
 
 		// Look up namespace name for error message
-		let namespace_name = Self::find_namespace(rx, namespace)?
+		let namespace_name = Self::find_namespace(rx, namespace)
+			.await?
 			.map(|s| s.name)
 			.unwrap_or_else(|| format!("namespace_{}", namespace));
 
-		CatalogStore::find_flow_by_name(rx, namespace, name_ref)?
+		CatalogStore::find_flow_by_name(rx, namespace, name_ref)
+			.await?
 			.ok_or_else(|| Error(flow_not_found(OwnedFragment::None, &namespace_name, name_ref)))
 	}
 }

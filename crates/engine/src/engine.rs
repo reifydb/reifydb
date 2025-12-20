@@ -20,7 +20,6 @@ use reifydb_transaction::{
 	single::TransactionSingleVersion,
 };
 use reifydb_type::{OwnedFragment, TypeConstraint};
-use tokio::task::spawn_blocking;
 use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
@@ -50,7 +49,7 @@ impl EngineInterface for StandardEngine {
 	type Query = StandardQueryTransaction;
 
 	#[instrument(name = "engine::transaction::begin_command", level = "debug", skip(self))]
-	fn begin_command(&self) -> crate::Result<Self::Command> {
+	async fn begin_command(&self) -> crate::Result<Self::Command> {
 		let mut interceptors = self.interceptors.create();
 
 		interceptors.post_commit.add(Arc::new(MaterializedCatalogInterceptor::new(self.catalog.clone())));
@@ -66,12 +65,13 @@ impl EngineInterface for StandardEngine {
 			self.catalog.clone(),
 			interceptors,
 		)
+		.await
 	}
 
 	#[instrument(name = "engine::transaction::begin_query", level = "debug", skip(self))]
-	fn begin_query(&self) -> crate::Result<Self::Query> {
+	async fn begin_query(&self) -> crate::Result<Self::Query> {
 		Ok(StandardQueryTransaction::new(
-			self.multi.begin_query()?,
+			self.multi.begin_query().await?,
 			self.single.clone(),
 			self.cdc.clone(),
 			self.catalog.clone(),
@@ -89,21 +89,7 @@ impl EngineInterface for StandardEngine {
 		let error_sender = sender.clone();
 
 		tokio::spawn(async move {
-			let result = spawn_blocking(move || {
-				execute_command_sync(&engine, &identity, &rql, params, &sender, &cancel_token)
-			})
-			.await;
-
-			// Handle join error (task panicked)
-			if let Err(join_err) = result {
-				let _ = error_sender.try_send(Err(StreamError::Query {
-					diagnostic: Arc::new(reifydb_type::diagnostic::Diagnostic {
-						message: format!("Query task panicked: {}", join_err),
-						..Default::default()
-					}),
-					statement: None,
-				}));
-			}
+			execute_command_sync(&engine, &identity, &rql, params, &sender, &cancel_token).await;
 		});
 
 		Box::pin(stream)
@@ -120,21 +106,7 @@ impl EngineInterface for StandardEngine {
 		let error_sender = sender.clone();
 
 		tokio::spawn(async move {
-			let result = spawn_blocking(move || {
-				execute_query_sync(&engine, &identity, &rql, params, &sender, &cancel_token)
-			})
-			.await;
-
-			// Handle join error (task panicked)
-			if let Err(join_err) = result {
-				let _ = error_sender.try_send(Err(StreamError::Query {
-					diagnostic: Arc::new(reifydb_type::diagnostic::Diagnostic {
-						message: format!("Query task panicked: {}", join_err),
-						..Default::default()
-					}),
-					statement: None,
-				}));
-			}
+			execute_query_sync(&engine, &identity, &rql, params, &sender, &cancel_token).await;
 		});
 
 		Box::pin(stream)
@@ -142,7 +114,7 @@ impl EngineInterface for StandardEngine {
 }
 
 /// Execute a command synchronously and send results to the stream.
-fn execute_command_sync(
+async fn execute_command_sync(
 	engine: &StandardEngine,
 	identity: &Identity,
 	rql: &str,
@@ -156,7 +128,7 @@ fn execute_command_sync(
 	}
 
 	// Begin transaction
-	let txn_result = engine.begin_command();
+	let txn_result = engine.begin_command().await;
 	let mut txn = match txn_result {
 		Ok(txn) => txn,
 		Err(e) => {
@@ -201,7 +173,7 @@ fn execute_command_sync(
 }
 
 /// Execute a query synchronously and send results to the stream.
-fn execute_query_sync(
+async fn execute_query_sync(
 	engine: &StandardEngine,
 	identity: &Identity,
 	rql: &str,
@@ -215,7 +187,7 @@ fn execute_query_sync(
 	}
 
 	// Begin transaction
-	let txn_result = engine.begin_query();
+	let txn_result = engine.begin_query().await;
 	let mut txn = match txn_result {
 		Ok(txn) => txn,
 		Err(e) => {

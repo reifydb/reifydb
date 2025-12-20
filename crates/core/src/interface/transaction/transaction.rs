@@ -19,17 +19,6 @@ pub trait CommandTransaction: MultiVersionCommandTransaction + QueryTransaction 
 	where
 		I: IntoIterator<Item = &'a EncodedKey>;
 
-	fn with_single_command<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
-	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut Self::SingleVersionCommand<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_single_command(keys)?;
-		let result = f(&mut tx)?;
-		tx.commit()?;
-		Ok(result)
-	}
-
 	/// Get reference to catalog changes for this transaction
 	fn get_changes(&self) -> &TransactionalDefChanges;
 }
@@ -48,23 +37,4 @@ pub trait QueryTransaction: MultiVersionQueryTransaction {
 		I: IntoIterator<Item = &'a EncodedKey>;
 
 	fn begin_cdc_query(&self) -> crate::Result<Self::CdcQuery<'_>>;
-
-	fn with_single_query<'a, I, F, R>(&self, keys: I, f: F) -> crate::Result<R>
-	where
-		I: IntoIterator<Item = &'a EncodedKey>,
-		F: FnOnce(&mut Self::SingleVersionQuery<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_single_query(keys)?;
-		let result = f(&mut tx)?;
-		Ok(result)
-	}
-
-	fn with_cdc_query<F, R>(&self, f: F) -> crate::Result<R>
-	where
-		F: FnOnce(&mut Self::CdcQuery<'_>) -> crate::Result<R>,
-	{
-		let mut tx = self.begin_cdc_query()?;
-		let result = f(&mut tx)?;
-		Ok(result)
-	}
 }

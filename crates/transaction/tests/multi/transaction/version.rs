@@ -17,14 +17,14 @@ use reifydb_transaction::multi::{
 
 use crate::{as_key, as_values, from_values, multi::transaction::FromValues};
 
-#[test]
-fn test_versions() {
-	let engine = Transaction::testing();
+#[tokio::test]
+async fn test_versions() {
+	let engine = Transaction::testing().await;
 
 	let k0 = as_key!(0);
 
 	for i in 1..10 {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.set(&k0, as_values!(i)).unwrap();
 		txn.commit().unwrap();
 		assert_eq!(i + 1, engine.version().unwrap());
@@ -52,7 +52,7 @@ fn test_versions() {
 	};
 
 	for idx in 1i32..10 {
-		let mut txn = engine.begin_command().unwrap();
+		let mut txn = engine.begin_command().await.unwrap();
 		txn.read_as_of_version_exclusive(CommitVersion(idx as u64 + 1)); // Read version at idx.
 
 		let v = idx;
@@ -69,7 +69,7 @@ fn test_versions() {
 		check_rev_iter(itr, idx);
 	}
 
-	let mut txn = engine.begin_command().unwrap();
+	let mut txn = engine.begin_command().await.unwrap();
 	let sv = txn.get(&k0).unwrap().unwrap();
 	let val = from_values!(i32, *sv.values());
 	assert_eq!(9, val)

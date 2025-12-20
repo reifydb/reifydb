@@ -19,18 +19,18 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create<'a, T: CatalogQueryTransaction>(
-		ast: AstCreate<'a>,
-		tx: &mut T,
-	) -> crate::Result<LogicalPlan<'a>> {
+	pub(crate) async fn compile_create<'a, T>(ast: AstCreate<'a>, tx: &'a mut T) -> crate::Result<LogicalPlan<'a>>
+	where
+		T: CatalogQueryTransaction,
+	{
 		match ast {
-			AstCreate::DeferredView(node) => Self::compile_deferred_view(node, tx),
-			AstCreate::TransactionalView(node) => Self::compile_transactional_view(node, tx),
-			AstCreate::Flow(node) => Self::compile_create_flow(node, tx),
+			AstCreate::DeferredView(node) => Self::compile_deferred_view(node, tx).await,
+			AstCreate::TransactionalView(node) => Self::compile_transactional_view(node, tx).await,
+			AstCreate::Flow(node) => Self::compile_create_flow(node, tx).await,
 			AstCreate::Namespace(node) => Self::compile_create_namespace(node, tx),
 			AstCreate::Series(node) => Self::compile_create_series(node, tx),
-			AstCreate::Table(node) => Self::compile_create_table(node, tx),
-			AstCreate::RingBuffer(node) => Self::compile_create_ringbuffer(node, tx),
+			AstCreate::Table(node) => Self::compile_create_table(node, tx).await,
+			AstCreate::RingBuffer(node) => Self::compile_create_ringbuffer(node, tx).await,
 			AstCreate::Dictionary(node) => Self::compile_create_dictionary(node, tx),
 			AstCreate::Index(node) => Self::compile_create_index(node, tx),
 		}

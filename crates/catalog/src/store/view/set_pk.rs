@@ -11,12 +11,12 @@ use crate::{CatalogStore, store::view::layout::view};
 impl CatalogStore {
 	/// Set the primary key ID for a view
 	/// Returns an internal error if the view doesn't exist
-	pub fn set_view_primary_key(
+	pub async fn set_view_primary_key(
 		txn: &mut impl CommandTransaction,
 		view_id: ViewId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let multi = match txn.get(&ViewKey::encoded(view_id))? {
+		let multi = match txn.get(&ViewKey::encoded(view_id)).await? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"View with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -27,7 +27,7 @@ impl CatalogStore {
 		let mut updated_row = multi.values.clone();
 		view::LAYOUT.set_u64(&mut updated_row, view::PRIMARY_KEY, primary_key_id.0);
 
-		txn.set(&ViewKey::encoded(view_id), updated_row)?;
+		txn.set(&ViewKey::encoded(view_id), updated_row).await?;
 
 		Ok(())
 	}
@@ -45,10 +45,10 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	#[test]
-	fn test_set_view_primary_key() {
+	#[tokio::test]
+	async fn test_set_view_primary_key() {
 		let mut txn = create_test_command_transaction();
-		let namespace = ensure_test_namespace(&mut txn);
+		let namespace = ensure_test_namespace(&mut txn).await;
 
 		let view = CatalogStore::create_deferred_view(
 			&mut txn,
@@ -63,10 +63,11 @@ mod tests {
 				}],
 			},
 		)
+		.await
 		.unwrap();
 
 		// Set primary key
-		CatalogStore::set_view_primary_key(&mut txn, view.id, PrimaryKeyId(42)).unwrap();
+		CatalogStore::set_view_primary_key(&mut txn, view.id, PrimaryKeyId(42)).await.unwrap();
 
 		// The test succeeds if no error is thrown.
 		// In real usage, create_primary_key would create both the
@@ -74,12 +75,12 @@ mod tests {
 		// would find it.
 	}
 
-	#[test]
-	fn test_set_view_primary_key_nonexistent() {
+	#[tokio::test]
+	async fn test_set_view_primary_key_nonexistent() {
 		let mut txn = create_test_command_transaction();
 
 		// Try to set primary key on non-existent view
-		let result = CatalogStore::set_view_primary_key(&mut txn, ViewId(999), PrimaryKeyId(1));
+		let result = CatalogStore::set_view_primary_key(&mut txn, ViewId(999), PrimaryKeyId(1)).await;
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();

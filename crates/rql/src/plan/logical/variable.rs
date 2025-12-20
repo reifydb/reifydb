@@ -16,14 +16,14 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_let<'a, T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_let<'a, T: CatalogQueryTransaction>(
 		ast: AstLet<'a>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
 		let value = match ast.value {
 			AstLetValue::Expression(expr) => LetValue::Expression(ExpressionCompiler::compile(*expr)?),
 			AstLetValue::Statement(statement) => {
-				let plan = Self::compile(statement, tx)?;
+				let plan = Self::compile(statement, tx).await?;
 				LetValue::Statement(plan)
 			}
 		};
@@ -35,7 +35,7 @@ impl Compiler {
 		}))
 	}
 
-	pub(crate) fn compile_if<'a, T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_if<'a, T: CatalogQueryTransaction>(
 		ast: AstIf<'a>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
@@ -43,13 +43,13 @@ impl Compiler {
 		let condition = ExpressionCompiler::compile(*ast.condition)?;
 
 		// Compile the then branch - should be a single expression
-		let then_branch = Box::new(Self::compile_single(*ast.then_block, tx)?);
+		let then_branch = Box::new(Self::compile_single(*ast.then_block, tx).await?);
 
 		// Compile else if branches
 		let mut else_ifs = Vec::new();
 		for else_if in ast.else_ifs {
 			let condition = ExpressionCompiler::compile(*else_if.condition)?;
-			let then_branch = Box::new(Self::compile_single(*else_if.then_block, tx)?);
+			let then_branch = Box::new(Self::compile_single(*else_if.then_block, tx).await?);
 
 			else_ifs.push(ElseIfBranch {
 				condition,
@@ -59,7 +59,7 @@ impl Compiler {
 
 		// Compile optional else branch
 		let else_branch = if let Some(else_block) = ast.else_block {
-			Some(Box::new(Self::compile_single(*else_block, tx)?))
+			Some(Box::new(Self::compile_single(*else_block, tx).await?))
 		} else {
 			let undefined_literal = Ast::Literal(AstLiteral::Undefined(AstLiteralUndefined(Token {
 				kind: TokenKind::Literal(Literal::Undefined),

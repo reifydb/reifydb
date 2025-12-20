@@ -9,12 +9,13 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_column_by_name(
+	pub async fn find_column_by_name(
 		rx: &mut impl QueryTransaction,
 		source: impl Into<SourceId>,
 		column_name: &str,
 	) -> crate::Result<Option<ColumnDef>> {
-		let maybe_id = rx.range(ColumnKey::full_scan(source))?.find_map(|multi| {
+		let batch = rx.range(ColumnKey::full_scan(source)).await?;
+		let maybe_id = batch.items.into_iter().find_map(|multi| {
 			let row = multi.values;
 			let column = ColumnId(source_column::LAYOUT.get_u64(&row, source_column::ID));
 			let name = source_column::LAYOUT.get_utf8(&row, source_column::NAME);
@@ -27,7 +28,7 @@ impl CatalogStore {
 		});
 
 		if let Some(id) = maybe_id {
-			Ok(Some(Self::get_column(rx, id)?))
+			Ok(Some(Self::get_column(rx, id).await?))
 		} else {
 			Ok(None)
 		}

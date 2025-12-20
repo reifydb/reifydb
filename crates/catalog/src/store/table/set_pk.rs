@@ -11,12 +11,12 @@ use crate::{CatalogStore, store::table::layout::table};
 impl CatalogStore {
 	/// Set the primary key ID for a table
 	/// Returns an internal error if the table doesn't exist
-	pub fn set_table_primary_key(
+	pub async fn set_table_primary_key(
 		txn: &mut impl CommandTransaction,
 		table_id: TableId,
 		primary_key_id: PrimaryKeyId,
 	) -> crate::Result<()> {
-		let multi = match txn.get(&TableKey::encoded(table_id))? {
+		let multi = match txn.get(&TableKey::encoded(table_id)).await? {
 			Some(v) => v,
 			None => return_internal_error!(format!(
 				"Table with ID {} not found when setting primary key. This indicates a critical catalog inconsistency.",
@@ -27,7 +27,7 @@ impl CatalogStore {
 		let mut updated_row = multi.values.clone();
 		table::LAYOUT.set_u64(&mut updated_row, table::PRIMARY_KEY, primary_key_id.0);
 
-		txn.set(&TableKey::encoded(table_id), updated_row)?;
+		txn.set(&TableKey::encoded(table_id), updated_row).await?;
 
 		Ok(())
 	}
@@ -40,13 +40,13 @@ mod tests {
 
 	use crate::{CatalogStore, test_utils::ensure_test_table};
 
-	#[test]
-	fn test_set_table_primary_key() {
+	#[tokio::test]
+	async fn test_set_table_primary_key() {
 		let mut txn = create_test_command_transaction();
-		let table = ensure_test_table(&mut txn);
+		let table = ensure_test_table(&mut txn).await;
 
 		// Set primary key
-		CatalogStore::set_table_primary_key(&mut txn, table.id, PrimaryKeyId(42)).unwrap();
+		CatalogStore::set_table_primary_key(&mut txn, table.id, PrimaryKeyId(42)).await.unwrap();
 
 		// The test succeeds if no error is thrown.
 		// In real usage, create_primary_key would create both the
@@ -54,12 +54,12 @@ mod tests {
 		// find_primary_key would find it.
 	}
 
-	#[test]
-	fn test_set_table_primary_key_nonexistent() {
+	#[tokio::test]
+	async fn test_set_table_primary_key_nonexistent() {
 		let mut txn = create_test_command_transaction();
 
 		// Try to set primary key on non-existent table
-		let result = CatalogStore::set_table_primary_key(&mut txn, TableId(999), PrimaryKeyId(1));
+		let result = CatalogStore::set_table_primary_key(&mut txn, TableId(999), PrimaryKeyId(1)).await;
 
 		assert!(result.is_err());
 		let err = result.unwrap_err();

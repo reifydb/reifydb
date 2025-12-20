@@ -15,7 +15,7 @@ use crate::{
 };
 
 impl Compiler {
-	pub(crate) fn compile_create_ringbuffer<'a, T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_create_ringbuffer<'a, T: CatalogQueryTransaction>(
 		ast: AstCreateRingBuffer<'a>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
@@ -57,7 +57,7 @@ impl Compiler {
 				let dict_name = dict_ident.name.text();
 
 				// Find the namespace
-				let Some(namespace) = tx.find_namespace_by_name(dict_namespace_name)? else {
+				let Some(namespace) = tx.find_namespace_by_name(dict_namespace_name).await? else {
 					return_error!(dictionary_not_found(
 						dict_ident.name.clone(),
 						dict_namespace_name,
@@ -66,7 +66,8 @@ impl Compiler {
 				};
 
 				// Find the dictionary
-				let Some(dictionary) = tx.find_dictionary_by_name(namespace.id, dict_name)? else {
+				let Some(dictionary) = tx.find_dictionary_by_name(namespace.id, dict_name).await?
+				else {
 					return_error!(dictionary_not_found(
 						dict_ident.name.clone(),
 						dict_namespace_name,

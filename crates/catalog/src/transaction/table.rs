@@ -19,7 +19,7 @@ use crate::{
 	transaction::MaterializedCatalogTransaction,
 };
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait CatalogTableCommandOperations: Send {
 	async fn create_table(&mut self, table: TableToCreate) -> crate::Result<TableDef>;
 
@@ -37,25 +37,26 @@ pub trait CatalogTrackTableChangeOperations {
 	fn track_table_def_deleted(&mut self, table: TableDef) -> crate::Result<()>;
 }
 
+#[async_trait(?Send)]
 pub trait CatalogTableQueryOperations: CatalogNamespaceQueryOperations {
-	fn find_table(&mut self, id: TableId) -> crate::Result<Option<TableDef>>;
+	async fn find_table(&mut self, id: TableId) -> crate::Result<Option<TableDef>>;
 
-	fn find_table_by_name<'a>(
+	async fn find_table_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> crate::Result<Option<TableDef>>;
 
-	fn get_table(&mut self, id: TableId) -> crate::Result<TableDef>;
+	async fn get_table(&mut self, id: TableId) -> crate::Result<TableDef>;
 
-	fn get_table_by_name<'a>(
+	async fn get_table_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> crate::Result<TableDef>;
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
@@ -67,20 +68,23 @@ impl<
 {
 	#[instrument(name = "catalog::table::create", level = "debug", skip(self, to_create))]
 	async fn create_table(&mut self, to_create: TableToCreate) -> reifydb_core::Result<TableDef> {
-		if let Some(table) = self.find_table_by_name(to_create.namespace, &to_create.table)? {
-			let namespace = self.get_namespace(to_create.namespace)?;
+		if let Some(table) = self.find_table_by_name(to_create.namespace, &to_create.table).await? {
+			let namespace = self.get_namespace(to_create.namespace).await?;
 			return_error!(table_already_exists(to_create.fragment, &namespace.name, &table.name));
 		}
-		let result = CatalogStore::create_table(self, to_create)?;
+		let result = CatalogStore::create_table(self, to_create).await?;
 		self.track_table_def_created(result.clone())?;
 		TableDefInterceptor::post_create(self, &result).await?;
 		Ok(result)
 	}
 }
 
-impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogTableQueryOperations for QT {
+#[async_trait(?Send)]
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send> CatalogTableQueryOperations
+	for QT
+{
 	#[instrument(name = "catalog::table::find", level = "trace", skip(self))]
-	fn find_table(&mut self, id: TableId) -> reifydb_core::Result<Option<TableDef>> {
+	async fn find_table(&mut self, id: TableId) -> reifydb_core::Result<Option<TableDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
 		if let Some(table) = TransactionalTableChanges::find_table(self, id) {
@@ -99,7 +103,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(table) = CatalogStore::find_table(self, id)? {
+		if let Some(table) = CatalogStore::find_table(self, id).await? {
 			warn!("Table with ID {:?} found in storage but not in MaterializedCatalog", id);
 			return Ok(Some(table));
 		}
@@ -108,10 +112,10 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::table::find_by_name", level = "trace", skip(self, name))]
-	fn find_table_by_name<'a>(
+	async fn find_table_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> reifydb_core::Result<Option<TableDef>> {
 		let name = name.into_fragment();
 
@@ -134,7 +138,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(table) = CatalogStore::find_table_by_name(self, namespace, name.text())? {
+		if let Some(table) = CatalogStore::find_table_by_name(self, namespace, name.text()).await? {
 			warn!(
 				"Table '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 				name.text(),
@@ -147,8 +151,8 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::table::get", level = "trace", skip(self))]
-	fn get_table(&mut self, id: TableId) -> reifydb_core::Result<TableDef> {
-		self.find_table(id)?.ok_or_else(|| {
+	async fn get_table(&mut self, id: TableId) -> reifydb_core::Result<TableDef> {
+		self.find_table(id).await?.ok_or_else(|| {
 			error!(internal!(
 				"Table with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
@@ -157,20 +161,22 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::table::get_by_name", level = "trace", skip(self, name))]
-	fn get_table_by_name<'a>(
+	async fn get_table_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> reifydb_core::Result<TableDef> {
 		let name = name.into_fragment();
 
 		// Try to get the namespace name for the error message
 		let namespace_name = self
-			.find_namespace(namespace)?
+			.find_namespace(namespace)
+			.await?
 			.map(|ns| ns.name)
 			.unwrap_or_else(|| format!("namespace_{}", namespace));
 
-		self.find_table_by_name(namespace, name.as_borrowed())?
+		self.find_table_by_name(namespace, name.as_borrowed())
+			.await?
 			.ok_or_else(|| error!(table_not_found(name.as_borrowed(), &namespace_name, name.text())))
 	}
 }

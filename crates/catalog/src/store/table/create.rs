@@ -42,28 +42,31 @@ pub struct TableToCreate {
 }
 
 impl CatalogStore {
-	pub fn create_table(txn: &mut impl CommandTransaction, to_create: TableToCreate) -> crate::Result<TableDef> {
+	pub async fn create_table(
+		txn: &mut impl CommandTransaction,
+		to_create: TableToCreate,
+	) -> crate::Result<TableDef> {
 		let namespace_id = to_create.namespace;
 
-		if let Some(table) = CatalogStore::find_table_by_name(txn, namespace_id, &to_create.table)? {
-			let namespace = CatalogStore::get_namespace(txn, namespace_id)?;
+		if let Some(table) = CatalogStore::find_table_by_name(txn, namespace_id, &to_create.table).await? {
+			let namespace = CatalogStore::get_namespace(txn, namespace_id).await?;
 			return_error!(table_already_exists(to_create.fragment, &namespace.name, &table.name));
 		}
 
-		let table_id = SystemSequence::next_table_id(txn)?;
-		Self::store_table(txn, table_id, namespace_id, &to_create)?;
-		Self::link_table_to_namespace(txn, namespace_id, table_id, &to_create.table)?;
+		let table_id = SystemSequence::next_table_id(txn).await?;
+		Self::store_table(txn, table_id, namespace_id, &to_create).await?;
+		Self::link_table_to_namespace(txn, namespace_id, table_id, &to_create.table).await?;
 
 		if let Some(retention_policy) = &to_create.retention_policy {
-			create_source_retention_policy(txn, SourceId::Table(table_id), retention_policy)?;
+			create_source_retention_policy(txn, SourceId::Table(table_id), retention_policy).await?;
 		}
 
-		Self::insert_columns(txn, table_id, to_create)?;
+		Self::insert_columns(txn, table_id, to_create).await?;
 
-		Ok(Self::get_table(txn, table_id)?)
+		Ok(Self::get_table(txn, table_id).await?)
 	}
 
-	fn store_table(
+	async fn store_table(
 		txn: &mut impl CommandTransaction,
 		table: TableId,
 		namespace: NamespaceId,
@@ -77,12 +80,12 @@ impl CatalogStore {
 		// Initialize with no primary key
 		table::LAYOUT.set_u64(&mut row, table::PRIMARY_KEY, 0u64);
 
-		txn.set(&TableKey::encoded(table), row)?;
+		txn.set(&TableKey::encoded(table), row).await?;
 
 		Ok(())
 	}
 
-	fn link_table_to_namespace(
+	async fn link_table_to_namespace(
 		txn: &mut impl CommandTransaction,
 		namespace: NamespaceId,
 		table: TableId,
@@ -91,17 +94,18 @@ impl CatalogStore {
 		let mut row = table_namespace::LAYOUT.allocate();
 		table_namespace::LAYOUT.set_u64(&mut row, table_namespace::ID, table);
 		table_namespace::LAYOUT.set_utf8(&mut row, table_namespace::NAME, name);
-		txn.set(&NamespaceTableKey::encoded(namespace, table), row)?;
+		txn.set(&NamespaceTableKey::encoded(namespace, table), row).await?;
 		Ok(())
 	}
 
-	fn insert_columns(
+	async fn insert_columns(
 		txn: &mut impl CommandTransaction,
 		table: TableId,
 		to_create: TableToCreate,
 	) -> crate::Result<()> {
 		// Look up namespace name for error messages
-		let namespace_name = Self::find_namespace(txn, to_create.namespace)?
+		let namespace_name = Self::find_namespace(txn, to_create.namespace)
+			.await?
 			.map(|s| s.name)
 			.unwrap_or_else(|| format!("namespace_{}", to_create.namespace));
 
@@ -111,9 +115,9 @@ impl CatalogStore {
 				table,
 				ColumnToCreate {
 					fragment: column_to_create.fragment.clone(),
-					namespace_name: &namespace_name,
+					namespace_name: namespace_name.clone(),
 					table,
-					table_name: &to_create.table,
+					table_name: to_create.table.clone(),
 					column: column_to_create.name,
 					constraint: column_to_create.constraint.clone(),
 					if_not_exists: false,
@@ -122,7 +126,8 @@ impl CatalogStore {
 					auto_increment: column_to_create.auto_increment,
 					dictionary_id: column_to_create.dictionary_id,
 				},
-			)?;
+			)
+			.await?;
 		}
 		Ok(())
 	}
@@ -139,11 +144,11 @@ mod tests {
 		test_utils::ensure_test_namespace,
 	};
 
-	#[test]
-	fn test_create_table() {
+	#[tokio::test]
+	async fn test_create_table() {
 		let mut txn = create_test_command_transaction();
 
-		let test_namespace = ensure_test_namespace(&mut txn);
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = TableToCreate {
 			namespace: test_namespace.id,
@@ -154,19 +159,19 @@ mod tests {
 		};
 
 		// First creation should succeed
-		let result = CatalogStore::create_table(&mut txn, to_create.clone()).unwrap();
+		let result = CatalogStore::create_table(&mut txn, to_create.clone()).await.unwrap();
 		assert_eq!(result.id, TableId(1025));
 		assert_eq!(result.namespace, NamespaceId(1025));
 		assert_eq!(result.name, "test_table");
 
-		let err = CatalogStore::create_table(&mut txn, to_create).unwrap_err();
+		let err = CatalogStore::create_table(&mut txn, to_create).await.unwrap_err();
 		assert_eq!(err.diagnostic().code, "CA_003");
 	}
 
-	#[test]
-	fn test_table_linked_to_namespace() {
+	#[tokio::test]
+	async fn test_table_linked_to_namespace() {
 		let mut txn = create_test_command_transaction();
-		let test_namespace = ensure_test_namespace(&mut txn);
+		let test_namespace = ensure_test_namespace(&mut txn).await;
 
 		let to_create = TableToCreate {
 			namespace: test_namespace.id,
@@ -176,7 +181,7 @@ mod tests {
 			retention_policy: None,
 		};
 
-		CatalogStore::create_table(&mut txn, to_create).unwrap();
+		CatalogStore::create_table(&mut txn, to_create).await.unwrap();
 
 		let to_create = TableToCreate {
 			namespace: test_namespace.id,
@@ -186,7 +191,7 @@ mod tests {
 			retention_policy: None,
 		};
 
-		CatalogStore::create_table(&mut txn, to_create).unwrap();
+		CatalogStore::create_table(&mut txn, to_create).await.unwrap();
 
 		let links = txn.range(NamespaceTableKey::full_scan(test_namespace.id)).unwrap().collect::<Vec<_>>();
 		assert_eq!(links.len(), 2);

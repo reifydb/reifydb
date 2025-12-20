@@ -1,8 +1,10 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+use async_trait::async_trait;
 use reifydb_core::{CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues};
 
+/// Composite trait for multi-version storage capabilities.
 pub trait MultiVersionStore:
 	Send
 	+ Sync
@@ -16,59 +18,97 @@ pub trait MultiVersionStore:
 {
 }
 
-pub trait MultiVersionCommit {
-	fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()>;
+/// A batch of multi-version range results with continuation info.
+#[derive(Debug, Clone)]
+pub struct MultiVersionBatch {
+	/// The values in this batch.
+	pub items: Vec<MultiVersionValues>,
+	/// Whether there are more items after this batch.
+	pub has_more: bool,
 }
 
-pub trait MultiVersionGet {
-	fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>>;
+impl MultiVersionBatch {
+	/// Creates an empty batch with no more results.
+	pub fn empty() -> Self {
+		Self {
+			items: Vec::new(),
+			has_more: false,
+		}
+	}
+
+	/// Returns true if this batch contains no items.
+	pub fn is_empty(&self) -> bool {
+		self.items.is_empty()
+	}
 }
 
-pub trait MultiVersionContains {
-	fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool>;
+/// Trait for committing deltas to multi-version storage.
+#[async_trait]
+pub trait MultiVersionCommit: Send + Sync {
+	/// Commit a batch of deltas at the given version.
+	async fn commit(&self, deltas: CowVec<Delta>, version: CommitVersion) -> crate::Result<()>;
 }
 
-pub trait MultiVersionIter: Iterator<Item = MultiVersionValues> + Send {}
-impl<T: Send> MultiVersionIter for T where T: Iterator<Item = MultiVersionValues> {}
+/// Trait for getting values from multi-version storage.
+#[async_trait]
+pub trait MultiVersionGet: Send + Sync {
+	/// Get the value for a key at a specific version.
+	async fn get(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<Option<MultiVersionValues>>;
+}
 
-pub trait MultiVersionRange {
-	type RangeIter<'a>: MultiVersionIter
-	where
-		Self: 'a;
+/// Trait for checking key existence in multi-version storage.
+#[async_trait]
+pub trait MultiVersionContains: Send + Sync {
+	/// Check if a key exists at a specific version.
+	async fn contains(&self, key: &EncodedKey, version: CommitVersion) -> crate::Result<bool>;
+}
 
-	fn range_batched(
+/// Trait for forward range queries with batch-fetch pattern.
+#[async_trait]
+pub trait MultiVersionRange: Send + Sync {
+	/// Fetch a batch of values in key order (ascending).
+	///
+	/// Returns up to `batch_size` values. The `has_more` field indicates
+	/// whether there are more values after this batch.
+	async fn range_batch(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: u64,
-	) -> crate::Result<Self::RangeIter<'_>>;
+	) -> crate::Result<MultiVersionBatch>;
 
-	fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIter<'_>> {
-		self.range_batched(range, version, 1024)
+	/// Convenience method with default batch size.
+	async fn range(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<MultiVersionBatch> {
+		self.range_batch(range, version, 1024).await
 	}
 
-	fn prefix(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<Self::RangeIter<'_>> {
-		self.range(EncodedKeyRange::prefix(prefix), version)
+	/// Range query with prefix.
+	async fn prefix(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<MultiVersionBatch> {
+		self.range(EncodedKeyRange::prefix(prefix), version).await
 	}
 }
 
-pub trait MultiVersionRangeRev {
-	type RangeIterRev<'a>: MultiVersionIter
-	where
-		Self: 'a;
-
-	fn range_rev_batched(
+/// Trait for reverse range queries with batch-fetch pattern.
+#[async_trait]
+pub trait MultiVersionRangeRev: Send + Sync {
+	/// Fetch a batch of values in reverse key order (descending).
+	///
+	/// Returns up to `batch_size` values. The `has_more` field indicates
+	/// whether there are more values after this batch.
+	async fn range_rev_batch(
 		&self,
 		range: EncodedKeyRange,
 		version: CommitVersion,
 		batch_size: u64,
-	) -> crate::Result<Self::RangeIterRev<'_>>;
+	) -> crate::Result<MultiVersionBatch>;
 
-	fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>> {
-		self.range_rev_batched(range, version, 1024)
+	/// Convenience method with default batch size.
+	async fn range_rev(&self, range: EncodedKeyRange, version: CommitVersion) -> crate::Result<MultiVersionBatch> {
+		self.range_rev_batch(range, version, 1024).await
 	}
 
-	fn prefix_rev(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<Self::RangeIterRev<'_>> {
-		self.range_rev(EncodedKeyRange::prefix(prefix), version)
+	/// Reverse range query with prefix.
+	async fn prefix_rev(&self, prefix: &EncodedKey, version: CommitVersion) -> crate::Result<MultiVersionBatch> {
+		self.range_rev(EncodedKeyRange::prefix(prefix), version).await
 	}
 }

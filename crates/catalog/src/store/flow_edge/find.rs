@@ -10,8 +10,11 @@ use reifydb_core::{
 use crate::{CatalogStore, store::flow_edge::layout::flow_edge};
 
 impl CatalogStore {
-	pub fn find_flow_edge(txn: &mut impl QueryTransaction, edge: FlowEdgeId) -> crate::Result<Option<FlowEdgeDef>> {
-		let Some(multi) = txn.get(&FlowEdgeKey::encoded(edge))? else {
+	pub async fn find_flow_edge(
+		txn: &mut impl QueryTransaction,
+		edge: FlowEdgeId,
+	) -> crate::Result<Option<FlowEdgeDef>> {
+		let Some(multi) = txn.get(&FlowEdgeKey::encoded(edge)).await? else {
 			return Ok(None);
 		};
 

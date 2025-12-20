@@ -5,27 +5,21 @@
 //!
 //! Uses BTreeMap for ordered key-value storage with RwLock for thread safety.
 
-use std::{
-	ops::Bound,
-	sync::{Arc, mpsc},
-	thread,
-};
+use std::{ops::Bound, sync::Arc};
 
+use async_trait::async_trait;
 use parking_lot::RwLock;
 use reifydb_type::{Result, diagnostic::internal::internal, error};
+use tokio::sync::{mpsc, oneshot};
 use tracing::instrument;
 
-use super::{
-	iterator::{MemoryRangeIter, MemoryRangeRevIter},
-	tables::Tables,
-	writer::{WriteCommand, run_writer},
-};
-use crate::backend::primitive::{PrimitiveBackend, PrimitiveStorage, TableId};
+use super::{tables::Tables, writer::WriteCommand};
+use crate::backend::primitive::{PrimitiveBackend, PrimitiveStorage, RangeBatch, RawEntry, TableId};
 
 /// Memory-based primitive storage implementation.
 ///
 /// Stores data in BTreeMaps with RwLock for concurrent access.
-/// Uses a background writer thread for batched writes.
+/// Uses a background tokio task for batched writes.
 #[derive(Clone)]
 pub struct MemoryPrimitiveStorage {
 	inner: Arc<MemoryPrimitiveStorageInner>,
@@ -40,7 +34,8 @@ struct MemoryPrimitiveStorageInner {
 
 impl Drop for MemoryPrimitiveStorageInner {
 	fn drop(&mut self) {
-		let _ = self.writer.send(WriteCommand::Shutdown);
+		// Try to send shutdown - if it fails, the receiver is already gone
+		let _ = self.writer.try_send(WriteCommand::Shutdown);
 	}
 }
 
@@ -55,13 +50,13 @@ impl MemoryPrimitiveStorage {
 	pub fn new() -> Self {
 		let tables = Arc::new(RwLock::new(Tables::default()));
 
-		let (sender, receiver) = mpsc::channel();
+		let (sender, receiver) = mpsc::channel(1024);
 
-		// Clone for the writer thread
+		// Clone for the writer task
 		let writer_tables = tables.clone();
 
-		thread::spawn(move || {
-			run_writer(receiver, writer_tables);
+		tokio::spawn(async move {
+			super::writer::run_writer(receiver, writer_tables).await;
 		});
 
 		Self {
@@ -73,12 +68,10 @@ impl MemoryPrimitiveStorage {
 	}
 }
 
+#[async_trait]
 impl PrimitiveStorage for MemoryPrimitiveStorage {
-	type RangeIter<'a> = MemoryRangeIter;
-	type RangeRevIter<'a> = MemoryRangeRevIter;
-
 	#[instrument(name = "store::memory::get", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()))]
-	fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
+	async fn get(&self, table: TableId, key: &[u8]) -> Result<Option<Vec<u8>>> {
 		let tables = self.inner.tables.read();
 		if let Some(table_data) = tables.get_table(table) {
 			Ok(table_data.get(key).cloned().flatten())
@@ -88,7 +81,7 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::contains", level = "trace", skip(self, key), fields(table = ?table, key_len = key.len()), ret)]
-	fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
+	async fn contains(&self, table: TableId, key: &[u8]) -> Result<bool> {
 		let tables = self.inner.tables.read();
 		if let Some(table_data) = tables.get_table(table) {
 			// Key exists and is not a tombstone
@@ -99,88 +92,101 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::put", level = "debug", skip(self, entries), fields(table = ?table, entry_count = entries.len()))]
-	fn put(&self, table: TableId, entries: &[(&[u8], Option<&[u8]>)]) -> Result<()> {
-		let (respond_to, receiver) = mpsc::channel();
-
-		let owned_entries: Vec<(Vec<u8>, Option<Vec<u8>>)> =
-			entries.iter().map(|(k, v)| (k.to_vec(), v.map(|v| v.to_vec()))).collect();
+	async fn put(&self, table: TableId, entries: Vec<(Vec<u8>, Option<Vec<u8>>)>) -> Result<()> {
+		let (respond_to, receiver) = oneshot::channel();
 
 		self.inner
 			.writer
 			.send(WriteCommand::PutBatch {
 				table,
-				entries: owned_entries,
+				entries,
 				respond_to,
 			})
-			.map_err(|_| error!(internal("Writer thread died")))?;
+			.await
+			.map_err(|_| error!(internal("Writer task died")))?;
 
-		receiver.recv().map_err(|_| error!(internal("Writer thread died")))?
+		receiver.await.map_err(|_| error!(internal("Writer task died")))?
 	}
 
-	#[instrument(name = "store::memory::range", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
-	fn range(
+	#[instrument(name = "store::memory::range_batch", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
+	async fn range_batch(
 		&self,
 		table: TableId,
-		start: Bound<&[u8]>,
-		end: Bound<&[u8]>,
+		start: Bound<Vec<u8>>,
+		end: Bound<Vec<u8>>,
 		batch_size: usize,
-	) -> Result<Self::RangeIter<'_>> {
-		// Convert end bound to owned
-		let end_owned = match end {
-			Bound::Included(v) => Bound::Included(v.to_vec()),
-			Bound::Excluded(v) => Bound::Excluded(v.to_vec()),
-			Bound::Unbounded => Bound::Unbounded,
-		};
+	) -> Result<RangeBatch> {
+		let tables = self.inner.tables.read();
+		if let Some(table_data) = tables.get_table(table) {
+			let range_bounds = make_range_bounds(&start, &end);
 
-		let mut iter = MemoryRangeIter {
-			tables: self.inner.tables.clone(),
-			table,
-			end: end_owned,
-			batch_size,
-			buffer: Vec::new(),
-			pos: 0,
-			exhausted: false,
-		};
+			// Fetch batch_size + 1 to determine if there are more entries
+			let entries: Vec<RawEntry> = table_data
+				.range::<Vec<u8>, _>(range_bounds)
+				.take(batch_size + 1)
+				.map(|(k, v)| RawEntry {
+					key: k.clone(),
+					value: v.clone(),
+				})
+				.collect();
 
-		// Load initial batch
-		iter.load_initial(start);
+			let has_more = entries.len() > batch_size;
+			let entries = if has_more {
+				entries.into_iter().take(batch_size).collect()
+			} else {
+				entries
+			};
 
-		Ok(iter)
+			Ok(RangeBatch {
+				entries,
+				has_more,
+			})
+		} else {
+			Ok(RangeBatch::empty())
+		}
 	}
 
-	#[instrument(name = "store::memory::range_rev", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
-	fn range_rev(
+	#[instrument(name = "store::memory::range_rev_batch", level = "trace", skip(self, start, end), fields(table = ?table, batch_size = batch_size))]
+	async fn range_rev_batch(
 		&self,
 		table: TableId,
-		start: Bound<&[u8]>,
-		end: Bound<&[u8]>,
+		start: Bound<Vec<u8>>,
+		end: Bound<Vec<u8>>,
 		batch_size: usize,
-	) -> Result<Self::RangeRevIter<'_>> {
-		// Convert start bound to owned
-		let start_owned = match start {
-			Bound::Included(v) => Bound::Included(v.to_vec()),
-			Bound::Excluded(v) => Bound::Excluded(v.to_vec()),
-			Bound::Unbounded => Bound::Unbounded,
-		};
+	) -> Result<RangeBatch> {
+		let tables = self.inner.tables.read();
+		if let Some(table_data) = tables.get_table(table) {
+			let range_bounds = make_range_bounds(&start, &end);
 
-		let mut iter = MemoryRangeRevIter {
-			tables: self.inner.tables.clone(),
-			table,
-			start: start_owned,
-			batch_size,
-			buffer: Vec::new(),
-			pos: 0,
-			exhausted: false,
-		};
+			// Fetch batch_size + 1 to determine if there are more entries
+			let entries: Vec<RawEntry> = table_data
+				.range::<Vec<u8>, _>(range_bounds)
+				.rev()
+				.take(batch_size + 1)
+				.map(|(k, v)| RawEntry {
+					key: k.clone(),
+					value: v.clone(),
+				})
+				.collect();
 
-		// Load initial batch
-		iter.load_initial(end);
+			let has_more = entries.len() > batch_size;
+			let entries = if has_more {
+				entries.into_iter().take(batch_size).collect()
+			} else {
+				entries
+			};
 
-		Ok(iter)
+			Ok(RangeBatch {
+				entries,
+				has_more,
+			})
+		} else {
+			Ok(RangeBatch::empty())
+		}
 	}
 
 	#[instrument(name = "store::memory::ensure_table", level = "trace", skip(self), fields(table = ?table))]
-	fn ensure_table(&self, table: TableId) -> Result<()> {
+	async fn ensure_table(&self, table: TableId) -> Result<()> {
 		// For memory backend, tables are created on-demand, so this is a no-op
 		let mut tables = self.inner.tables.write();
 		let _ = tables.get_table_mut(table);
@@ -188,8 +194,8 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 	}
 
 	#[instrument(name = "store::memory::clear_table", level = "debug", skip(self), fields(table = ?table))]
-	fn clear_table(&self, table: TableId) -> Result<()> {
-		let (respond_to, receiver) = mpsc::channel();
+	async fn clear_table(&self, table: TableId) -> Result<()> {
+		let (respond_to, receiver) = oneshot::channel();
 
 		self.inner
 			.writer
@@ -197,13 +203,32 @@ impl PrimitiveStorage for MemoryPrimitiveStorage {
 				table,
 				respond_to,
 			})
-			.map_err(|_| error!(internal("Writer thread died")))?;
+			.await
+			.map_err(|_| error!(internal("Writer task died")))?;
 
-		receiver.recv().map_err(|_| error!(internal("Writer thread died")))?
+		receiver.await.map_err(|_| error!(internal("Writer task died")))?
 	}
 }
 
 impl PrimitiveBackend for MemoryPrimitiveStorage {}
+
+/// Convert Bound references to a tuple for BTreeMap range queries.
+fn make_range_bounds<'a>(
+	start: &'a Bound<Vec<u8>>,
+	end: &'a Bound<Vec<u8>>,
+) -> (Bound<&'a Vec<u8>>, Bound<&'a Vec<u8>>) {
+	let start_bound = match start {
+		Bound::Included(v) => Bound::Included(v),
+		Bound::Excluded(v) => Bound::Excluded(v),
+		Bound::Unbounded => Bound::Unbounded,
+	};
+	let end_bound = match end {
+		Bound::Included(v) => Bound::Included(v),
+		Bound::Excluded(v) => Bound::Excluded(v),
+		Bound::Unbounded => Bound::Unbounded,
+	};
+	(start_bound, end_bound)
+}
 
 #[cfg(test)]
 mod tests {
@@ -211,37 +236,37 @@ mod tests {
 
 	use super::*;
 
-	#[test]
-	fn test_basic_operations() {
+	#[tokio::test]
+	async fn test_basic_operations() {
 		let storage = MemoryPrimitiveStorage::new();
 
 		// Put and get
-		storage.put(TableId::Multi, &[(b"key1".as_slice(), Some(b"value1".as_slice()))]).unwrap();
-		let value = storage.get(TableId::Multi, b"key1").unwrap();
+		storage.put(TableId::Multi, vec![(b"key1".to_vec(), Some(b"value1".to_vec()))]).await.unwrap();
+		let value = storage.get(TableId::Multi, b"key1").await.unwrap();
 		assert_eq!(value, Some(b"value1".to_vec()));
 
 		// Contains
-		assert!(storage.contains(TableId::Multi, b"key1").unwrap());
-		assert!(!storage.contains(TableId::Multi, b"nonexistent").unwrap());
+		assert!(storage.contains(TableId::Multi, b"key1").await.unwrap());
+		assert!(!storage.contains(TableId::Multi, b"nonexistent").await.unwrap());
 
 		// Delete (tombstone)
-		storage.put(TableId::Multi, &[(b"key1".as_slice(), None)]).unwrap();
-		assert!(!storage.contains(TableId::Multi, b"key1").unwrap());
+		storage.put(TableId::Multi, vec![(b"key1".to_vec(), None)]).await.unwrap();
+		assert!(!storage.contains(TableId::Multi, b"key1").await.unwrap());
 	}
 
-	#[test]
-	fn test_separate_tables() {
+	#[tokio::test]
+	async fn test_separate_tables() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		storage.put(TableId::Multi, &[(b"key".as_slice(), Some(b"multi".as_slice()))]).unwrap();
-		storage.put(TableId::Single, &[(b"key".as_slice(), Some(b"single".as_slice()))]).unwrap();
+		storage.put(TableId::Multi, vec![(b"key".to_vec(), Some(b"multi".to_vec()))]).await.unwrap();
+		storage.put(TableId::Single, vec![(b"key".to_vec(), Some(b"single".to_vec()))]).await.unwrap();
 
-		assert_eq!(storage.get(TableId::Multi, b"key").unwrap(), Some(b"multi".to_vec()));
-		assert_eq!(storage.get(TableId::Single, b"key").unwrap(), Some(b"single".to_vec()));
+		assert_eq!(storage.get(TableId::Multi, b"key").await.unwrap(), Some(b"multi".to_vec()));
+		assert_eq!(storage.get(TableId::Single, b"key").await.unwrap(), Some(b"single".to_vec()));
 	}
 
-	#[test]
-	fn test_source_tables() {
+	#[tokio::test]
+	async fn test_source_tables() {
 		use reifydb_core::interface::SourceId;
 
 		let storage = MemoryPrimitiveStorage::new();
@@ -249,98 +274,102 @@ mod tests {
 		let source1 = SourceId::Table(CoreTableId(1));
 		let source2 = SourceId::Table(CoreTableId(2));
 
-		storage.put(TableId::Source(source1), &[(b"key".as_slice(), Some(b"table1".as_slice()))]).unwrap();
-		storage.put(TableId::Source(source2), &[(b"key".as_slice(), Some(b"table2".as_slice()))]).unwrap();
+		storage.put(TableId::Source(source1), vec![(b"key".to_vec(), Some(b"table1".to_vec()))]).await.unwrap();
+		storage.put(TableId::Source(source2), vec![(b"key".to_vec(), Some(b"table2".to_vec()))]).await.unwrap();
 
-		assert_eq!(storage.get(TableId::Source(source1), b"key").unwrap(), Some(b"table1".to_vec()));
-		assert_eq!(storage.get(TableId::Source(source2), b"key").unwrap(), Some(b"table2".to_vec()));
+		assert_eq!(storage.get(TableId::Source(source1), b"key").await.unwrap(), Some(b"table1".to_vec()));
+		assert_eq!(storage.get(TableId::Source(source2), b"key").await.unwrap(), Some(b"table2".to_vec()));
 	}
 
-	#[test]
-	fn test_range_iteration() {
+	#[tokio::test]
+	async fn test_range_batch() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		storage.put(TableId::Multi, &[(b"a".as_slice(), Some(b"1".as_slice()))]).unwrap();
-		storage.put(TableId::Multi, &[(b"b".as_slice(), Some(b"2".as_slice()))]).unwrap();
-		storage.put(TableId::Multi, &[(b"c".as_slice(), Some(b"3".as_slice()))]).unwrap();
+		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
+		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
+		storage.put(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))]).await.unwrap();
 
-		let entries: Vec<_> = storage
-			.range(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100)
-			.unwrap()
-			.collect::<Result<Vec<_>>>()
-			.unwrap();
+		let batch = storage.range_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
 
-		assert_eq!(entries.len(), 3);
-		assert_eq!(entries[0].key, b"a".to_vec());
-		assert_eq!(entries[1].key, b"b".to_vec());
-		assert_eq!(entries[2].key, b"c".to_vec());
+		assert_eq!(batch.entries.len(), 3);
+		assert!(!batch.has_more);
+		assert_eq!(batch.entries[0].key, b"a".to_vec());
+		assert_eq!(batch.entries[1].key, b"b".to_vec());
+		assert_eq!(batch.entries[2].key, b"c".to_vec());
 	}
 
-	#[test]
-	fn test_range_reverse_iteration() {
+	#[tokio::test]
+	async fn test_range_rev_batch() {
 		let storage = MemoryPrimitiveStorage::new();
 
-		storage.put(TableId::Multi, &[(b"a".as_slice(), Some(b"1".as_slice()))]).unwrap();
-		storage.put(TableId::Multi, &[(b"b".as_slice(), Some(b"2".as_slice()))]).unwrap();
-		storage.put(TableId::Multi, &[(b"c".as_slice(), Some(b"3".as_slice()))]).unwrap();
+		storage.put(TableId::Multi, vec![(b"a".to_vec(), Some(b"1".to_vec()))]).await.unwrap();
+		storage.put(TableId::Multi, vec![(b"b".to_vec(), Some(b"2".to_vec()))]).await.unwrap();
+		storage.put(TableId::Multi, vec![(b"c".to_vec(), Some(b"3".to_vec()))]).await.unwrap();
 
-		let entries: Vec<_> = storage
-			.range_rev(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100)
-			.unwrap()
-			.collect::<Result<Vec<_>>>()
-			.unwrap();
+		let batch =
+			storage.range_rev_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 100).await.unwrap();
 
-		assert_eq!(entries.len(), 3);
-		assert_eq!(entries[0].key, b"c".to_vec());
-		assert_eq!(entries[1].key, b"b".to_vec());
-		assert_eq!(entries[2].key, b"a".to_vec());
+		assert_eq!(batch.entries.len(), 3);
+		assert!(!batch.has_more);
+		assert_eq!(batch.entries[0].key, b"c".to_vec());
+		assert_eq!(batch.entries[1].key, b"b".to_vec());
+		assert_eq!(batch.entries[2].key, b"a".to_vec());
 	}
 
-	#[test]
-	fn test_range_lazy_pagination() {
+	#[tokio::test]
+	async fn test_range_batch_pagination() {
 		let storage = MemoryPrimitiveStorage::new();
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.put(TableId::Multi, &[(&[i][..], Some(&[i * 10][..]))]).unwrap();
+			storage.put(TableId::Multi, vec![(vec![i], Some(vec![i * 10]))]).await.unwrap();
 		}
 
-		// Use batch_size of 3, which should require 4 batches (3+3+3+1)
-		let entries: Vec<_> = storage
-			.range(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 3)
-			.unwrap()
-			.collect::<Result<Vec<_>>>()
+		// First batch of 3
+		let batch1 = storage.range_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 3).await.unwrap();
+		assert_eq!(batch1.entries.len(), 3);
+		assert!(batch1.has_more);
+		assert_eq!(batch1.entries[0].key, vec![0]);
+		assert_eq!(batch1.entries[2].key, vec![2]);
+
+		// Next batch using last key
+		let last_key = batch1.entries.last().unwrap().key.clone();
+		let batch2 = storage
+			.range_batch(TableId::Multi, Bound::Excluded(last_key), Bound::Unbounded, 3)
+			.await
 			.unwrap();
-
-		assert_eq!(entries.len(), 10);
-		for (i, entry) in entries.iter().enumerate() {
-			assert_eq!(entry.key, vec![i as u8]);
-			assert_eq!(entry.value, Some(vec![(i * 10) as u8]));
-		}
+		assert_eq!(batch2.entries.len(), 3);
+		assert!(batch2.has_more);
+		assert_eq!(batch2.entries[0].key, vec![3]);
+		assert_eq!(batch2.entries[2].key, vec![5]);
 	}
 
-	#[test]
-	fn test_range_rev_lazy_pagination() {
+	#[tokio::test]
+	async fn test_range_rev_batch_pagination() {
 		let storage = MemoryPrimitiveStorage::new();
 
 		// Insert 10 entries
 		for i in 0..10u8 {
-			storage.put(TableId::Multi, &[(&[i][..], Some(&[i * 10][..]))]).unwrap();
+			storage.put(TableId::Multi, vec![(vec![i], Some(vec![i * 10]))]).await.unwrap();
 		}
 
-		// Use batch_size of 3, which should require 4 batches (3+3+3+1)
-		let entries: Vec<_> = storage
-			.range_rev(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 3)
-			.unwrap()
-			.collect::<Result<Vec<_>>>()
+		// First batch of 3 (reverse)
+		let batch1 =
+			storage.range_rev_batch(TableId::Multi, Bound::Unbounded, Bound::Unbounded, 3).await.unwrap();
+		assert_eq!(batch1.entries.len(), 3);
+		assert!(batch1.has_more);
+		assert_eq!(batch1.entries[0].key, vec![9]);
+		assert_eq!(batch1.entries[2].key, vec![7]);
+
+		// Next batch using last key (reverse continues from before last key)
+		let last_key = batch1.entries.last().unwrap().key.clone();
+		let batch2 = storage
+			.range_rev_batch(TableId::Multi, Bound::Unbounded, Bound::Excluded(last_key), 3)
+			.await
 			.unwrap();
-
-		assert_eq!(entries.len(), 10);
-		for (i, entry) in entries.iter().enumerate() {
-			// Reverse order: 9, 8, 7, ...
-			let expected_key = (9 - i) as u8;
-			assert_eq!(entry.key, vec![expected_key]);
-			assert_eq!(entry.value, Some(vec![expected_key * 10]));
-		}
+		assert_eq!(batch2.entries.len(), 3);
+		assert!(batch2.has_more);
+		assert_eq!(batch2.entries[0].key, vec![6]);
+		assert_eq!(batch2.entries[2].key, vec![4]);
 	}
 }

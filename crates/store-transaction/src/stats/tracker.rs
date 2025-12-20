@@ -376,35 +376,40 @@ impl StorageTracker {
 	/// Persist current stats to storage.
 	///
 	/// Writes all tracked stats to the storage using `KeyKind::StorageTracker` keys.
-	pub fn checkpoint<S: PrimitiveStorage>(&self, storage: &S) -> Result<()> {
-		let mut inner = self.inner.write().unwrap();
-
+	pub async fn checkpoint_async<S: PrimitiveStorage>(&self, storage: &S) -> Result<()> {
 		// Ensure the single-version table exists
-		storage.ensure_table(TableId::Single)?;
+		storage.ensure_table(TableId::Single).await?;
 
-		let mut entries: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+		let entries: Vec<(Vec<u8>, Option<Vec<u8>>)> = {
+			let inner = self.inner.read().unwrap();
 
-		// Write per-type stats
-		for ((tier, kind), stats) in &inner.by_type {
-			let key = encode_type_stats_key(*tier, *kind);
-			let value = encode_stats(stats);
-			entries.push((key, value));
-		}
+			let mut entries = Vec::new();
 
-		// Write per-object stats
-		for ((tier, object_id), stats) in &inner.by_object {
-			let key = encode_object_stats_key(*tier, *object_id);
-			let value = encode_stats(stats);
-			entries.push((key, value));
-		}
+			// Write per-type stats
+			for ((tier, kind), stats) in &inner.by_type {
+				let key = encode_type_stats_key(*tier, *kind);
+				let value = encode_stats(stats);
+				entries.push((key, Some(value)));
+			}
+
+			// Write per-object stats
+			for ((tier, object_id), stats) in &inner.by_object {
+				let key = encode_object_stats_key(*tier, *object_id);
+				let value = encode_stats(stats);
+				entries.push((key, Some(value)));
+			}
+
+			entries
+		};
 
 		// Batch write all entries
-		let batch: Vec<(&[u8], Option<&[u8]>)> =
-			entries.iter().map(|(k, v)| (k.as_slice(), Some(v.as_slice()))).collect();
-		storage.put(TableId::Single, &batch)?;
+		storage.put(TableId::Single, entries).await?;
 
 		// Reset checkpoint timer
-		inner.last_checkpoint = Instant::now();
+		{
+			let mut inner = self.inner.write().unwrap();
+			inner.last_checkpoint = Instant::now();
+		}
 
 		Ok(())
 	}
@@ -412,24 +417,22 @@ impl StorageTracker {
 	/// Restore stats from storage on startup.
 	///
 	/// Loads previously persisted stats from storage using `KeyKind::StorageTracker` keys.
-	pub fn restore<S: PrimitiveStorage>(storage: &S, config: StorageTrackerConfig) -> Result<Self> {
+	pub async fn restore_async<S: PrimitiveStorage>(storage: &S, config: StorageTrackerConfig) -> Result<Self> {
 		let mut by_type: HashMap<(Tier, KeyKind), StorageStats> = HashMap::new();
 		let mut by_object: HashMap<(Tier, ObjectId), StorageStats> = HashMap::new();
 
 		// Read per-type stats
 		let type_prefix = type_stats_key_prefix();
-		// We need to find all keys that start with this prefix
-		// Use range scan with prefix bounds
-		let start_bound = Bound::Included(type_prefix.as_slice());
 		let mut end_prefix = type_prefix.clone();
-		// Increment last byte to create exclusive end bound
 		if let Some(last) = end_prefix.last_mut() {
 			*last = last.saturating_add(1);
 		}
-		let end_bound = Bound::Excluded(end_prefix.as_slice());
 
-		for entry in storage.range(TableId::Single, start_bound, end_bound, 1000)? {
-			let entry = entry?;
+		let batch = storage
+			.range_batch(TableId::Single, Bound::Included(type_prefix), Bound::Excluded(end_prefix), 1000)
+			.await?;
+
+		for entry in batch.entries {
 			if let Some((tier, kind)) = decode_type_stats_key(&entry.key) {
 				if let Some(value) = entry.value {
 					if let Some(stats) = decode_stats(&value) {
@@ -441,15 +444,16 @@ impl StorageTracker {
 
 		// Read per-object stats
 		let object_prefix = object_stats_key_prefix();
-		let start_bound = Bound::Included(object_prefix.as_slice());
 		let mut end_prefix = object_prefix.clone();
 		if let Some(last) = end_prefix.last_mut() {
 			*last = last.saturating_add(1);
 		}
-		let end_bound = Bound::Excluded(end_prefix.as_slice());
 
-		for entry in storage.range(TableId::Single, start_bound, end_bound, 1000)? {
-			let entry = entry?;
+		let batch = storage
+			.range_batch(TableId::Single, Bound::Included(object_prefix), Bound::Excluded(end_prefix), 1000)
+			.await?;
+
+		for entry in batch.entries {
 			if let Some((tier, object_id)) = decode_object_stats_key(&entry.key) {
 				if let Some(value) = entry.value {
 					if let Some(stats) = decode_stats(&value) {
@@ -676,8 +680,8 @@ mod tests {
 		assert!(tracker.should_checkpoint());
 	}
 
-	#[test]
-	fn test_checkpoint_and_restore_roundtrip() {
+	#[tokio::test]
+	async fn test_checkpoint_and_restore_roundtrip() {
 		use crate::backend::BackendStorage;
 
 		// Create a memory storage backend
@@ -699,10 +703,10 @@ mod tests {
 		tracker.record_write(Tier::Warm, &key1, key1_bytes, 75, None);
 
 		// Checkpoint
-		tracker.checkpoint(&storage).unwrap();
+		tracker.checkpoint_async(&storage).await.unwrap();
 
 		// Create a new tracker by restoring from storage
-		let restored = StorageTracker::restore(&storage, config).unwrap();
+		let restored = StorageTracker::restore_async(&storage, config).await.unwrap();
 
 		// Verify stats were restored correctly
 		let original_stats = tracker.total_stats();
@@ -729,8 +733,8 @@ mod tests {
 		assert_eq!(original_obj.hot.current_value_bytes, restored_obj.hot.current_value_bytes);
 	}
 
-	#[test]
-	fn test_checkpoint_resets_timer() {
+	#[tokio::test]
+	async fn test_checkpoint_resets_timer() {
 		use crate::backend::BackendStorage;
 
 		let storage = BackendStorage::memory();
@@ -740,24 +744,24 @@ mod tests {
 		let tracker = StorageTracker::new(config);
 
 		// Wait for checkpoint interval
-		std::thread::sleep(Duration::from_millis(60));
+		tokio::time::sleep(Duration::from_millis(60)).await;
 		assert!(tracker.should_checkpoint());
 
 		// Checkpoint should reset the timer
-		tracker.checkpoint(&storage).unwrap();
+		tracker.checkpoint_async(&storage).await.unwrap();
 
 		// Immediately after checkpoint, should not need another one
 		assert!(!tracker.should_checkpoint());
 
 		// Wait again
-		std::thread::sleep(Duration::from_millis(60));
+		tokio::time::sleep(Duration::from_millis(60)).await;
 
 		// Should need checkpoint again
 		assert!(tracker.should_checkpoint());
 	}
 
-	#[test]
-	fn test_restore_empty_storage() {
+	#[tokio::test]
+	async fn test_restore_empty_storage() {
 		use crate::backend::BackendStorage;
 
 		// Create empty storage
@@ -768,7 +772,7 @@ mod tests {
 		};
 
 		// Restore should succeed with empty stats
-		let tracker = StorageTracker::restore(&storage, config).unwrap();
+		let tracker = StorageTracker::restore_async(&storage, config).await.unwrap();
 		let stats = tracker.total_stats();
 
 		assert_eq!(stats.hot.current_count, 0);

@@ -53,8 +53,8 @@ fn resolved_to_column_identifier(resolved: ResolvedColumn<'static>) -> ColumnIde
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let input_node = compiler.compile_plan(*self.input)?;
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+		let input_node = compiler.compile_plan(*self.input).await?;
 
 		// Convert resolved columns to column expressions via ColumnIdentifier
 		let expressions: Vec<Expression<'static>> = self
@@ -68,5 +68,6 @@ impl<T: CommandTransaction> CompileOperator<T> for DistinctCompiler {
 		})
 		.with_input(input_node)
 		.build()
+		.await
 	}
 }

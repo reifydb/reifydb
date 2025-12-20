@@ -1,7 +1,7 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::{sync::Arc, thread};
+use std::sync::Arc;
 
 use reifydb_transaction::multi::{Transaction, transaction::MAX_COMMITTED_TXNS};
 
@@ -9,16 +9,16 @@ use crate::{as_key, as_values};
 
 /// Test that Oracle properly cleans up committed transactions when limit is
 /// exceeded
-#[test]
-fn test_oracle_committed_txns_cleanup() {
-	let engine = Transaction::testing();
+#[tokio::test]
+async fn test_oracle_committed_txns_cleanup() {
+	let engine = Transaction::testing().await;
 
 	// Number of transactions to create (exceeds MAX_COMMITTED_TXNS)
 	const NUM_TXNS: usize = 2 * MAX_COMMITTED_TXNS;
 
 	// Create many transactions with conflicts to ensure they're tracked
 	for i in 0..NUM_TXNS {
-		let mut tx = engine.begin_command().unwrap();
+		let mut tx = engine.begin_command().await.unwrap();
 
 		// Each transaction writes to a unique key to avoid actual
 		// conflicts
@@ -41,7 +41,7 @@ fn test_oracle_committed_txns_cleanup() {
 	}
 
 	// Create one more transaction to verify system is still functional
-	let mut final_tx = engine.begin_command().unwrap();
+	let mut final_tx = engine.begin_command().await.unwrap();
 	let final_key = as_key!("final");
 	let final_value = as_values!("test".to_string());
 	final_tx.set(&final_key, final_value).unwrap();
@@ -49,9 +49,9 @@ fn test_oracle_committed_txns_cleanup() {
 }
 
 /// Test high concurrency with many simultaneous transactions
-#[test]
-fn test_oracle_high_concurrency() {
-	let engine = Arc::new(Transaction::testing());
+#[tokio::test]
+async fn test_oracle_high_concurrency() {
+	let engine = Arc::new(Transaction::testing().await);
 
 	const NUM_THREADS: usize = 100;
 	const TXN_PER_THREAD: usize = 50;
@@ -60,9 +60,9 @@ fn test_oracle_high_concurrency() {
 
 	for thread_id in 0..NUM_THREADS {
 		let engine_clone = engine.clone();
-		let handle = thread::spawn(move || {
+		let handle = tokio::spawn(async move {
 			for i in 0..TXN_PER_THREAD {
-				let mut tx = engine_clone.begin_command().unwrap();
+				let mut tx = engine_clone.begin_command().await.unwrap();
 
 				let key = as_key!(format!("t{}_{}", thread_id, i));
 				let value = as_values!(format!("v{}_{}", thread_id, i));
@@ -79,10 +79,10 @@ fn test_oracle_high_concurrency() {
 	}
 
 	for handle in handles {
-		handle.join().expect("Thread panicked");
+		handle.await.expect("Task panicked");
 	}
 
-	let mut final_tx = engine.begin_command().unwrap();
+	let mut final_tx = engine.begin_command().await.unwrap();
 	let final_key = as_key!("concurrent_test");
 	let final_value = as_values!("passed".to_string());
 	final_tx.set(&final_key, final_value).unwrap();
@@ -90,13 +90,13 @@ fn test_oracle_high_concurrency() {
 }
 
 /// Test that Oracle handles version overflow gracefully
-#[test]
-fn test_oracle_version_boundaries() {
-	let engine = Transaction::testing();
+#[tokio::test]
+async fn test_oracle_version_boundaries() {
+	let engine = Transaction::testing().await;
 
 	// Create transactions to test version boundaries
 	for i in 0..10_000 {
-		let mut tx = engine.begin_command().unwrap();
+		let mut tx = engine.begin_command().await.unwrap();
 		let key = as_key!(format!("boundary_{}", i));
 		let value = as_values!("test".to_string());
 		tx.set(&key, value).unwrap();

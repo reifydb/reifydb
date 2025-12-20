@@ -1,8 +1,9 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::ops::Bound;
+use std::{collections::BTreeMap, ops::Bound};
 
+use async_trait::async_trait;
 use reifydb_core::{
 	CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::SingleVersionValues,
 	value::encoded::EncodedValues,
@@ -10,22 +11,23 @@ use reifydb_core::{
 use reifydb_type::util::hex;
 use tracing::instrument;
 
-use super::{StandardTransactionStore, single_iterator::SingleVersionMergingIterator};
+use super::StandardTransactionStore;
 use crate::{
-	SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionIter, SingleVersionRange,
+	SingleVersionBatch, SingleVersionCommit, SingleVersionContains, SingleVersionGet, SingleVersionRange,
 	SingleVersionRangeRev, SingleVersionRemove, SingleVersionSet, SingleVersionStore,
-	backend::{PrimitiveStorage, TableId, result::SingleVersionIterResult},
+	backend::{BackendStorage, PrimitiveStorage, TableId},
 };
 
+#[async_trait]
 impl SingleVersionGet for StandardTransactionStore {
 	#[instrument(name = "store::single::get", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())))]
-	fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
+	async fn get(&self, key: &EncodedKey) -> crate::Result<Option<SingleVersionValues>> {
 		// Single-version storage uses TableId::Single for all keys
 		let table = TableId::Single;
 
 		// Try hot tier first
 		if let Some(hot) = &self.hot {
-			if let Some(value) = hot.get(table, key.as_ref())? {
+			if let Some(value) = hot.get(table, key.as_ref()).await? {
 				return Ok(Some(SingleVersionValues {
 					key: key.clone(),
 					values: EncodedValues(CowVec::new(value)),
@@ -35,7 +37,7 @@ impl SingleVersionGet for StandardTransactionStore {
 
 		// Try warm tier
 		if let Some(warm) = &self.warm {
-			if let Some(value) = warm.get(table, key.as_ref())? {
+			if let Some(value) = warm.get(table, key.as_ref()).await? {
 				return Ok(Some(SingleVersionValues {
 					key: key.clone(),
 					values: EncodedValues(CowVec::new(value)),
@@ -45,7 +47,7 @@ impl SingleVersionGet for StandardTransactionStore {
 
 		// Try cold tier
 		if let Some(cold) = &self.cold {
-			if let Some(value) = cold.get(table, key.as_ref())? {
+			if let Some(value) = cold.get(table, key.as_ref()).await? {
 				return Ok(Some(SingleVersionValues {
 					key: key.clone(),
 					values: EncodedValues(CowVec::new(value)),
@@ -57,25 +59,26 @@ impl SingleVersionGet for StandardTransactionStore {
 	}
 }
 
+#[async_trait]
 impl SingleVersionContains for StandardTransactionStore {
 	#[instrument(name = "store::single::contains", level = "trace", skip(self), fields(key_hex = %hex::encode(key.as_ref())), ret)]
-	fn contains(&self, key: &EncodedKey) -> crate::Result<bool> {
+	async fn contains(&self, key: &EncodedKey) -> crate::Result<bool> {
 		let table = TableId::Single;
 
 		if let Some(hot) = &self.hot {
-			if hot.contains(table, key.as_ref())? {
+			if hot.contains(table, key.as_ref()).await? {
 				return Ok(true);
 			}
 		}
 
 		if let Some(warm) = &self.warm {
-			if warm.contains(table, key.as_ref())? {
+			if warm.contains(table, key.as_ref()).await? {
 				return Ok(true);
 			}
 		}
 
 		if let Some(cold) = &self.cold {
-			if cold.contains(table, key.as_ref())? {
+			if cold.contains(table, key.as_ref()).await? {
 				return Ok(true);
 			}
 		}
@@ -84,9 +87,10 @@ impl SingleVersionContains for StandardTransactionStore {
 	}
 }
 
+#[async_trait]
 impl SingleVersionCommit for StandardTransactionStore {
 	#[instrument(name = "store::single::commit", level = "debug", skip(self, deltas), fields(delta_count = deltas.len()))]
-	fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()> {
+	async fn commit(&mut self, deltas: CowVec<Delta>) -> crate::Result<()> {
 		let table = TableId::Single;
 
 		// Get the first available storage tier
@@ -107,18 +111,18 @@ impl SingleVersionCommit for StandardTransactionStore {
 				Delta::Set {
 					key,
 					values,
-				} => (key.as_ref(), Some(values.as_ref())),
+				} => (key.as_ref().to_vec(), Some(values.as_ref().to_vec())),
 				Delta::Remove {
 					key,
-				} => (key.as_ref(), None),
+				} => (key.as_ref().to_vec(), None),
 				Delta::Drop {
 					key,
 					..
-				} => (key.as_ref(), None),
+				} => (key.as_ref().to_vec(), None),
 			})
 			.collect();
 
-		storage.put(table, &entries)?;
+		storage.put(table, entries).await?;
 
 		Ok(())
 	}
@@ -127,149 +131,144 @@ impl SingleVersionCommit for StandardTransactionStore {
 impl SingleVersionSet for StandardTransactionStore {}
 impl SingleVersionRemove for StandardTransactionStore {}
 
-use crate::backend::BackendStorage;
-
-/// Iterator over single-version range results from primitive storage
-pub struct PrimitiveSingleVersionRangeIter<'a> {
-	iter: <BackendStorage as PrimitiveStorage>::RangeIter<'a>,
-}
-
-impl<'a> PrimitiveSingleVersionRangeIter<'a> {
-	fn new(iter: <BackendStorage as PrimitiveStorage>::RangeIter<'a>) -> Self {
-		Self {
-			iter,
-		}
-	}
-}
-
-impl<'a> Iterator for PrimitiveSingleVersionRangeIter<'a> {
-	type Item = SingleVersionIterResult;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let entry = self.iter.next()?.ok()?;
-		let key = EncodedKey(CowVec::new(entry.key));
-
-		Some(match entry.value {
-			Some(value) => SingleVersionIterResult::Value(SingleVersionValues {
-				key,
-				values: EncodedValues(CowVec::new(value)),
-			}),
-			None => SingleVersionIterResult::Tombstone {
-				key,
-			},
-		})
-	}
-}
-
-/// Reverse iterator over single-version range results from primitive storage
-pub struct PrimitiveSingleVersionRangeRevIter<'a> {
-	iter: <BackendStorage as PrimitiveStorage>::RangeRevIter<'a>,
-}
-
-impl<'a> PrimitiveSingleVersionRangeRevIter<'a> {
-	fn new(iter: <BackendStorage as PrimitiveStorage>::RangeRevIter<'a>) -> Self {
-		Self {
-			iter,
-		}
-	}
-}
-
-impl<'a> Iterator for PrimitiveSingleVersionRangeRevIter<'a> {
-	type Item = SingleVersionIterResult;
-
-	fn next(&mut self) -> Option<Self::Item> {
-		let entry = self.iter.next()?.ok()?;
-		let key = EncodedKey(CowVec::new(entry.key));
-
-		Some(match entry.value {
-			Some(value) => SingleVersionIterResult::Value(SingleVersionValues {
-				key,
-				values: EncodedValues(CowVec::new(value)),
-			}),
-			None => SingleVersionIterResult::Tombstone {
-				key,
-			},
-		})
-	}
-}
-
+#[async_trait]
 impl SingleVersionRange for StandardTransactionStore {
-	type Range<'a>
-		= Box<dyn SingleVersionIter + 'a>
-	where
-		Self: 'a;
-
-	#[instrument(name = "store::single::range", level = "debug", skip(self))]
-	fn range(&self, range: EncodedKeyRange) -> crate::Result<Self::Range<'_>> {
+	#[instrument(name = "store::single::range_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
+	async fn range_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
 		let table = TableId::Single;
-		let mut iters: Vec<Box<dyn Iterator<Item = SingleVersionIterResult> + Send + '_>> = Vec::new();
+		let mut all_entries: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
 
+		// Helper to process a batch from a tier
+		async fn process_tier_batch(
+			storage: &BackendStorage,
+			table: TableId,
+			start: Bound<Vec<u8>>,
+			end: Bound<Vec<u8>>,
+			batch_size: u64,
+			all_entries: &mut BTreeMap<Vec<u8>, Option<Vec<u8>>>,
+		) -> crate::Result<()> {
+			let batch = storage.range_batch(table, start, end, batch_size as usize).await?;
+
+			for entry in batch.entries {
+				// Only insert if not already present (first tier wins)
+				all_entries.entry(entry.key).or_insert(entry.value);
+			}
+
+			Ok(())
+		}
+
+		// Process each tier (first one with a value for a key wins)
 		if let Some(hot) = &self.hot {
-			let iter = hot.range(table, start.clone(), end.clone(), 1024)?;
-			iters.push(Box::new(PrimitiveSingleVersionRangeIter::new(iter)));
+			process_tier_batch(hot, table, start.clone(), end.clone(), batch_size, &mut all_entries)
+				.await?;
 		}
-
 		if let Some(warm) = &self.warm {
-			let iter = warm.range(table, start.clone(), end.clone(), 1024)?;
-			iters.push(Box::new(PrimitiveSingleVersionRangeIter::new(iter)));
+			process_tier_batch(warm, table, start.clone(), end.clone(), batch_size, &mut all_entries)
+				.await?;
 		}
-
 		if let Some(cold) = &self.cold {
-			let iter = cold.range(table, start, end, 1024)?;
-			iters.push(Box::new(PrimitiveSingleVersionRangeIter::new(iter)));
+			process_tier_batch(cold, table, start, end, batch_size, &mut all_entries).await?;
 		}
 
-		Ok(Box::new(SingleVersionMergingIterator::new(iters)))
+		// Convert to SingleVersionValues, filtering out tombstones
+		let items: Vec<SingleVersionValues> = all_entries
+			.into_iter()
+			.filter_map(|(key_bytes, value)| {
+				value.map(|val| SingleVersionValues {
+					key: EncodedKey(CowVec::new(key_bytes)),
+					values: EncodedValues(CowVec::new(val)),
+				})
+			})
+			.take(batch_size as usize)
+			.collect();
+
+		let has_more = items.len() >= batch_size as usize;
+
+		Ok(SingleVersionBatch {
+			items,
+			has_more,
+		})
 	}
 }
 
+#[async_trait]
 impl SingleVersionRangeRev for StandardTransactionStore {
-	type RangeRev<'a>
-		= Box<dyn SingleVersionIter + 'a>
-	where
-		Self: 'a;
-
-	#[instrument(name = "store::single::range_rev", level = "debug", skip(self))]
-	fn range_rev(&self, range: EncodedKeyRange) -> crate::Result<Self::RangeRev<'_>> {
+	#[instrument(name = "store::single::range_rev_batch", level = "debug", skip(self), fields(batch_size = batch_size))]
+	async fn range_rev_batch(&self, range: EncodedKeyRange, batch_size: u64) -> crate::Result<SingleVersionBatch> {
 		let table = TableId::Single;
-		let mut iters: Vec<Box<dyn Iterator<Item = SingleVersionIterResult> + Send + '_>> = Vec::new();
+		let mut all_entries: BTreeMap<Vec<u8>, Option<Vec<u8>>> = BTreeMap::new();
 
 		let (start, end) = make_range_bounds(&range);
 
+		// Helper to process a reverse batch from a tier
+		async fn process_tier_batch_rev(
+			storage: &BackendStorage,
+			table: TableId,
+			start: Bound<Vec<u8>>,
+			end: Bound<Vec<u8>>,
+			batch_size: u64,
+			all_entries: &mut BTreeMap<Vec<u8>, Option<Vec<u8>>>,
+		) -> crate::Result<()> {
+			let batch = storage.range_rev_batch(table, start, end, batch_size as usize).await?;
+
+			for entry in batch.entries {
+				// Only insert if not already present (first tier wins)
+				all_entries.entry(entry.key).or_insert(entry.value);
+			}
+
+			Ok(())
+		}
+
+		// Process each tier (first one with a value for a key wins)
 		if let Some(hot) = &self.hot {
-			let iter = hot.range_rev(table, start.clone(), end.clone(), 1024)?;
-			iters.push(Box::new(PrimitiveSingleVersionRangeRevIter::new(iter)));
+			process_tier_batch_rev(hot, table, start.clone(), end.clone(), batch_size, &mut all_entries)
+				.await?;
 		}
-
 		if let Some(warm) = &self.warm {
-			let iter = warm.range_rev(table, start.clone(), end.clone(), 1024)?;
-			iters.push(Box::new(PrimitiveSingleVersionRangeRevIter::new(iter)));
+			process_tier_batch_rev(warm, table, start.clone(), end.clone(), batch_size, &mut all_entries)
+				.await?;
 		}
-
 		if let Some(cold) = &self.cold {
-			let iter = cold.range_rev(table, start, end, 1024)?;
-			iters.push(Box::new(PrimitiveSingleVersionRangeRevIter::new(iter)));
+			process_tier_batch_rev(cold, table, start, end, batch_size, &mut all_entries).await?;
 		}
 
-		Ok(Box::new(SingleVersionMergingIterator::new(iters)))
+		// Convert to SingleVersionValues in reverse order, filtering out tombstones
+		let items: Vec<SingleVersionValues> = all_entries
+			.into_iter()
+			.rev() // Reverse for descending order
+			.filter_map(|(key_bytes, value)| {
+				value.map(|val| SingleVersionValues {
+					key: EncodedKey(CowVec::new(key_bytes)),
+					values: EncodedValues(CowVec::new(val)),
+				})
+			})
+			.take(batch_size as usize)
+			.collect();
+
+		let has_more = items.len() >= batch_size as usize;
+
+		Ok(SingleVersionBatch {
+			items,
+			has_more,
+		})
 	}
 }
 
 impl SingleVersionStore for StandardTransactionStore {}
 
-/// Convert EncodedKeyRange to primitive storage bounds
-fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<&[u8]>, Bound<&[u8]>) {
+/// Convert EncodedKeyRange to primitive storage bounds (owned for async)
+fn make_range_bounds(range: &EncodedKeyRange) -> (Bound<Vec<u8>>, Bound<Vec<u8>>) {
 	let start = match &range.start {
-		Bound::Included(key) => Bound::Included(key.as_ref() as &[u8]),
-		Bound::Excluded(key) => Bound::Excluded(key.as_ref() as &[u8]),
+		Bound::Included(key) => Bound::Included(key.as_ref().to_vec()),
+		Bound::Excluded(key) => Bound::Excluded(key.as_ref().to_vec()),
 		Bound::Unbounded => Bound::Unbounded,
 	};
 
 	let end = match &range.end {
-		Bound::Included(key) => Bound::Included(key.as_ref() as &[u8]),
-		Bound::Excluded(key) => Bound::Excluded(key.as_ref() as &[u8]),
+		Bound::Included(key) => Bound::Included(key.as_ref().to_vec()),
+		Bound::Excluded(key) => Bound::Excluded(key.as_ref().to_vec()),
 		Bound::Unbounded => Bound::Unbounded,
 	};
 

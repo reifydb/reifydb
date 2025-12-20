@@ -80,10 +80,7 @@ pub enum VersionedGetResult {
 }
 
 /// Get the latest version of a key at or before the given version.
-///
-/// This performs a range scan to find all versions of the key,
-/// then returns the latest one that's <= the requested version.
-pub fn get_at_version<S: PrimitiveStorage>(
+pub async fn get_at_version<S: PrimitiveStorage>(
 	storage: &S,
 	table: TableId,
 	key: &[u8],
@@ -93,24 +90,17 @@ pub fn get_at_version<S: PrimitiveStorage>(
 	let start = encode_versioned_key(key, CommitVersion(0));
 	let end = encode_versioned_key(key, version);
 
-	// Scan in reverse to find the latest version first
-	let mut iter = storage.range_rev(
-		table,
-		Bound::Included(start.as_slice()),
-		Bound::Included(end.as_slice()),
-		1, // Just need one entry
-	)?;
+	// Scan in reverse to find the latest version first (just need 1 entry)
+	let batch = storage.range_rev_batch(table, Bound::Included(start), Bound::Included(end), 1).await?;
 
-	if let Some(entry_result) = iter.next() {
-		let entry = entry_result?;
-
+	if let Some(entry) = batch.entries.first() {
 		// Verify this entry is for our key
 		if let Some(entry_key) = extract_key(&entry.key) {
 			if entry_key == key {
 				let entry_version = extract_version(&entry.key).unwrap_or(CommitVersion(0));
-				return Ok(match entry.value {
+				return Ok(match &entry.value {
 					Some(value) => VersionedGetResult::Value {
-						value,
+						value: value.clone(),
 						version: entry_version,
 					},
 					None => VersionedGetResult::Tombstone,
@@ -122,20 +112,19 @@ pub fn get_at_version<S: PrimitiveStorage>(
 	Ok(VersionedGetResult::NotFound)
 }
 
-/// Get the latest version number for a key (if any exists).
-pub fn get_latest_version<S: PrimitiveStorage>(
+/// Async version of get_latest_version - get the latest version number for a key (if any exists).
+#[allow(dead_code)]
+pub async fn get_latest_version<S: PrimitiveStorage>(
 	storage: &S,
 	table: TableId,
 	key: &[u8],
 ) -> Result<Option<CommitVersion>> {
 	let (start, end) = key_version_range(key);
 
-	// Scan in reverse to find the latest version
-	let mut iter =
-		storage.range_rev(table, Bound::Included(start.as_slice()), Bound::Included(end.as_slice()), 1)?;
+	// Scan in reverse to find the latest version (just need 1 entry)
+	let batch = storage.range_rev_batch(table, Bound::Included(start), Bound::Included(end), 1).await?;
 
-	if let Some(entry_result) = iter.next() {
-		let entry = entry_result?;
+	if let Some(entry) = batch.entries.first() {
 		if let Some(entry_key) = extract_key(&entry.key) {
 			if entry_key == key {
 				return Ok(extract_version(&entry.key));

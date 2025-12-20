@@ -19,7 +19,7 @@ use crate::{
 	transaction::MaterializedCatalogTransaction,
 };
 
-#[async_trait]
+#[async_trait(?Send)]
 pub trait CatalogViewCommandOperations: Send {
 	async fn create_view(&mut self, view: ViewToCreate) -> crate::Result<ViewDef>;
 
@@ -37,25 +37,26 @@ pub trait CatalogTrackViewChangeOperations {
 	fn track_view_def_deleted(&mut self, view: ViewDef) -> crate::Result<()>;
 }
 
+#[async_trait(?Send)]
 pub trait CatalogViewQueryOperations: CatalogNamespaceQueryOperations {
-	fn find_view(&mut self, id: ViewId) -> crate::Result<Option<ViewDef>>;
+	async fn find_view(&mut self, id: ViewId) -> crate::Result<Option<ViewDef>>;
 
-	fn find_view_by_name<'a>(
+	async fn find_view_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> crate::Result<Option<ViewDef>>;
 
-	fn get_view(&mut self, id: ViewId) -> crate::Result<ViewDef>;
+	async fn get_view(&mut self, id: ViewId) -> crate::Result<ViewDef>;
 
-	fn get_view_by_name<'a>(
+	async fn get_view_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> crate::Result<ViewDef>;
 }
 
-#[async_trait]
+#[async_trait(?Send)]
 impl<
 	CT: CommandTransaction
 		+ MaterializedCatalogTransaction
@@ -67,20 +68,23 @@ impl<
 {
 	#[instrument(name = "catalog::view::create", level = "debug", skip(self, to_create))]
 	async fn create_view(&mut self, to_create: ViewToCreate) -> reifydb_core::Result<ViewDef> {
-		if let Some(view) = self.find_view_by_name(to_create.namespace, &to_create.name)? {
-			let namespace = self.get_namespace(to_create.namespace)?;
+		if let Some(view) = self.find_view_by_name(to_create.namespace, &to_create.name).await? {
+			let namespace = self.get_namespace(to_create.namespace).await?;
 			return_error!(view_already_exists(to_create.fragment, &namespace.name, &view.name));
 		}
-		let result = CatalogStore::create_deferred_view(self, to_create)?;
+		let result = CatalogStore::create_deferred_view(self, to_create).await?;
 		self.track_view_def_created(result.clone())?;
 		ViewDefInterceptor::post_create(self, &result).await?;
 		Ok(result)
 	}
 }
 
-impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges> CatalogViewQueryOperations for QT {
+#[async_trait(?Send)]
+impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChanges + Send> CatalogViewQueryOperations
+	for QT
+{
 	#[instrument(name = "catalog::view::find", level = "trace", skip(self))]
-	fn find_view(&mut self, id: ViewId) -> reifydb_core::Result<Option<ViewDef>> {
+	async fn find_view(&mut self, id: ViewId) -> reifydb_core::Result<Option<ViewDef>> {
 		// 1. Check transactional changes first
 		// nop for QueryTransaction
 		if let Some(view) = TransactionalViewChanges::find_view(self, id) {
@@ -99,7 +103,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(view) = CatalogStore::find_view(self, id)? {
+		if let Some(view) = CatalogStore::find_view(self, id).await? {
 			warn!("View with ID {:?} found in storage but not in MaterializedCatalog", id);
 			return Ok(Some(view));
 		}
@@ -108,10 +112,10 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::view::find_by_name", level = "trace", skip(self, name))]
-	fn find_view_by_name<'a>(
+	async fn find_view_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> reifydb_core::Result<Option<ViewDef>> {
 		let name = name.into_fragment();
 
@@ -133,7 +137,7 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 		}
 
 		// 4. Fall back to storage as defensive measure
-		if let Some(view) = CatalogStore::find_view_by_name(self, namespace, name.text())? {
+		if let Some(view) = CatalogStore::find_view_by_name(self, namespace, name.text()).await? {
 			warn!(
 				"View '{}' in namespace {:?} found in storage but not in MaterializedCatalog",
 				name.text(),
@@ -146,8 +150,8 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::view::get", level = "trace", skip(self))]
-	fn get_view(&mut self, id: ViewId) -> reifydb_core::Result<ViewDef> {
-		self.find_view(id)?.ok_or_else(|| {
+	async fn get_view(&mut self, id: ViewId) -> reifydb_core::Result<ViewDef> {
+		self.find_view(id).await?.ok_or_else(|| {
 			error!(internal!(
 				"View with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				id
@@ -156,16 +160,17 @@ impl<QT: QueryTransaction + MaterializedCatalogTransaction + TransactionalChange
 	}
 
 	#[instrument(name = "catalog::view::get_by_name", level = "trace", skip(self, name))]
-	fn get_view_by_name<'a>(
+	async fn get_view_by_name<'a>(
 		&mut self,
 		namespace: NamespaceId,
-		name: impl IntoFragment<'a>,
+		name: impl IntoFragment<'a> + Send,
 	) -> reifydb_core::Result<ViewDef> {
 		let name = name.into_fragment();
 
-		let namespace_name = self.get_namespace(namespace)?.name;
+		let namespace_name = self.get_namespace(namespace).await?.name;
 
-		self.find_view_by_name(namespace, name.as_borrowed())?
+		self.find_view_by_name(namespace, name.as_borrowed())
+			.await?
 			.ok_or_else(|| error!(view_not_found(name.as_borrowed(), &namespace_name, name.text())))
 	}
 }

@@ -14,14 +14,14 @@ use crate::{
 	},
 };
 
-pub(crate) fn load_views(
+pub(crate) async fn load_views(
 	qt: &mut impl MultiVersionQueryTransaction,
 	catalog: &MaterializedCatalog,
 ) -> crate::Result<()> {
 	let range = ViewKey::full_scan();
-	let views = qt.range(range)?;
+	let batch = qt.range(range).await?;
 
-	for multi in views {
+	for multi in batch.items {
 		let version = multi.version;
 
 		let pk_id = get_view_primary_key_id(&multi);

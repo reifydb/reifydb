@@ -21,9 +21,9 @@ pub const DEFAULT_NAMESPACE: &str = "default";
 
 /// Resolve an unresolved source identifier to a ResolvedSource
 /// This is used when processing From clauses and joins
-pub fn resolve_unresolved_source(
+pub async fn resolve_unresolved_source<'a>(
 	tx: &mut impl CatalogQueryTransaction,
-	unresolved: &UnresolvedSourceIdentifier,
+	unresolved: &UnresolvedSourceIdentifier<'a>,
 ) -> Result<ResolvedSource<'static>> {
 	let namespace_str = if let Some(ref ns) = unresolved.namespace {
 		ns.text()
@@ -34,9 +34,9 @@ pub fn resolve_unresolved_source(
 
 	// Get namespace
 	let ns_def = if let Some(ref ns_fragment) = unresolved.namespace {
-		tx.get_namespace_by_name(ns_fragment.clone())?
+		tx.get_namespace_by_name(ns_fragment.clone()).await?
 	} else {
-		tx.get_namespace_by_name(DEFAULT_NAMESPACE)?
+		tx.get_namespace_by_name(DEFAULT_NAMESPACE).await?
 	};
 
 	let namespace_fragment = Fragment::owned_internal(ns_def.name.clone());
@@ -68,21 +68,21 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Try table first
-	if let Some(table) = tx.find_table_by_name(ns_def.id, name_str)? {
+	if let Some(table) = tx.find_table_by_name(ns_def.id, name_str).await? {
 		// ResolvedTable doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedSource::Table(ResolvedTable::new(name_fragment, namespace, table)));
 	}
 
 	// Try ring buffer
-	if let Some(ringbuffer) = tx.find_ringbuffer_by_name(ns_def.id, name_str)? {
+	if let Some(ringbuffer) = tx.find_ringbuffer_by_name(ns_def.id, name_str).await? {
 		// ResolvedRingBuffer doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedSource::RingBuffer(ResolvedRingBuffer::new(name_fragment, namespace, ringbuffer)));
 	}
 
 	// Try views FIRST (deferred views share name with their flow)
-	if let Some(view) = tx.find_view_by_name(ns_def.id, name_str)? {
+	if let Some(view) = tx.find_view_by_name(ns_def.id, name_str).await? {
 		// Check view type to create appropriate resolved view
 		// ResolvedView types don't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
@@ -100,12 +100,12 @@ pub fn resolve_unresolved_source(
 	}
 
 	// Try dictionaries
-	if let Some(dictionary) = tx.find_dictionary_by_name(ns_def.id, name_str)? {
+	if let Some(dictionary) = tx.find_dictionary_by_name(ns_def.id, name_str).await? {
 		return Ok(ResolvedSource::Dictionary(ResolvedDictionary::new(name_fragment, namespace, dictionary)));
 	}
 
 	// Try flows (after views, since deferred views take precedence)
-	if let Some(flow) = tx.find_flow_by_name(ns_def.id, name_str)? {
+	if let Some(flow) = tx.find_flow_by_name(ns_def.id, name_str).await? {
 		// ResolvedFlow doesn't support aliases, so we'll need to handle this differently
 		// For now, just create without alias
 		return Ok(ResolvedSource::Flow(ResolvedFlow::new(name_fragment, namespace, flow)));

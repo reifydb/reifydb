@@ -28,13 +28,14 @@ impl<'a> From<SortNode<'a>> for SortCompiler {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for SortCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		let input_node = compiler.compile_plan(*self.input)?;
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+		let input_node = compiler.compile_plan(*self.input).await?;
 
 		compiler.build_node(Sort {
 			by: self.by,
 		})
 		.with_input(input_node)
 		.build()
+		.await
 	}
 }

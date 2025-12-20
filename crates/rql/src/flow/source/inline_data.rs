@@ -45,7 +45,7 @@ impl<'a> From<InlineDataNode<'a>> for InlineDataCompiler {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for InlineDataCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
-		compiler.build_node(FlowNodeType::SourceInlineData {}).build()
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+		compiler.build_node(FlowNodeType::SourceInlineData {}).build().await
 	}
 }

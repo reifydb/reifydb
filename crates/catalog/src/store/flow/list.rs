@@ -6,12 +6,12 @@ use reifydb_core::interface::{FlowDef, FlowKey, FlowStatus, Key, NamespaceId, Qu
 use crate::{CatalogStore, store::flow::layout::flow};
 
 impl CatalogStore {
-	pub fn list_flows_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<FlowDef>> {
+	pub async fn list_flows_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<FlowDef>> {
 		let mut result = Vec::new();
 
-		let entries: Vec<_> = rx.range(FlowKey::full_scan())?.into_iter().collect();
+		let batch = rx.range(FlowKey::full_scan()).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			if let Some(key) = Key::decode(&entry.key) {
 				if let Key::Flow(flow_key) = key {
 					let flow_id = flow_key.flow;

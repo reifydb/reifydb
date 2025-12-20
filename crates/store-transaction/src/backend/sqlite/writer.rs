@@ -1,34 +1,55 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-//! Background writer thread for SQLite backend.
+//! Background writer for SQLite backend using tokio channels.
+//!
+//! The actual rusqlite work runs in a dedicated thread since rusqlite
+//! is not async, but we use tokio channels for async communication.
 
-use std::sync::mpsc;
+use std::{sync::mpsc as std_mpsc, thread};
 
 use reifydb_type::{Result, diagnostic::internal::internal, error};
 use rusqlite::{Connection, params};
+use tokio::sync::oneshot;
 use tracing::{debug, info, instrument};
 
-/// Commands for the background writer thread.
+/// Commands for the background writer.
 pub(super) enum WriteCommand {
 	PutBatch {
 		table_name: String,
 		entries: Vec<(Vec<u8>, Option<Vec<u8>>)>,
-		respond_to: mpsc::Sender<Result<()>>,
+		respond_to: oneshot::Sender<Result<()>>,
 	},
 	ClearTable {
 		table_name: String,
-		respond_to: mpsc::Sender<Result<()>>,
+		respond_to: oneshot::Sender<Result<()>>,
 	},
 	EnsureTable {
 		table_name: String,
-		respond_to: mpsc::Sender<Result<()>>,
+		respond_to: oneshot::Sender<Result<()>>,
 	},
 	Shutdown,
 }
 
-/// Run the background writer thread.
-pub(super) fn run_writer(receiver: mpsc::Receiver<WriteCommand>, conn: Connection) {
+/// Sender type for write commands.
+pub(super) type WriterSender = std_mpsc::Sender<WriteCommand>;
+
+/// Spawn the background writer thread.
+///
+/// Returns a sender that can be used to send commands to the writer.
+/// The thread owns the rusqlite Connection since it's not Send.
+pub(super) fn spawn_writer(conn: Connection) -> WriterSender {
+	let (sender, receiver) = std_mpsc::channel();
+
+	thread::spawn(move || {
+		run_writer(receiver, conn);
+	});
+
+	sender
+}
+
+/// Run the background writer (blocking, runs in dedicated thread).
+fn run_writer(receiver: std_mpsc::Receiver<WriteCommand>, conn: Connection) {
 	debug!(name: "sqlite_writer", "background writer thread started");
 	while let Ok(cmd) = receiver.recv() {
 		match cmd {

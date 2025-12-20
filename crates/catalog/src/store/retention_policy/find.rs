@@ -13,21 +13,21 @@ use crate::CatalogStore;
 impl CatalogStore {
 	/// Find a retention policy for a source (table, view, or ring buffer)
 	/// Returns None if no retention policy is set
-	pub fn find_source_retention_policy(
+	pub async fn find_source_retention_policy(
 		txn: &mut impl QueryTransaction,
 		source: SourceId,
 	) -> crate::Result<Option<RetentionPolicy>> {
-		let value = txn.get(&SourceRetentionPolicyKey::encoded(source))?;
+		let value = txn.get(&SourceRetentionPolicyKey::encoded(source)).await?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
 
 	/// Find a retention policy for an operator
 	/// Returns None if no retention policy is set
-	pub fn find_operator_retention_policy(
+	pub async fn find_operator_retention_policy(
 		txn: &mut impl QueryTransaction,
 		operator: FlowNodeId,
 	) -> crate::Result<Option<RetentionPolicy>> {
-		let value = txn.get(&OperatorRetentionPolicyKey::encoded(operator))?;
+		let value = txn.get(&OperatorRetentionPolicyKey::encoded(operator)).await?;
 		Ok(value.and_then(|v| decode_retention_policy(&v.values)))
 	}
 }

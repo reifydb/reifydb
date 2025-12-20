@@ -9,11 +9,11 @@ use reifydb_core::{
 use crate::CatalogStore;
 
 impl CatalogStore {
-	pub fn get_dictionary(
+	pub async fn get_dictionary(
 		rx: &mut impl QueryTransaction,
 		dictionary: DictionaryId,
 	) -> crate::Result<DictionaryDef> {
-		match Self::find_dictionary(rx, dictionary)? {
+		match Self::find_dictionary(rx, dictionary).await? {
 			Some(dict) => Ok(dict),
 			None => return_internal_error!(
 				"Dictionary with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",

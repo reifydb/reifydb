@@ -29,14 +29,14 @@ pub struct OperatorRetentionPolicyEntry {
 
 impl CatalogStore {
 	/// List all retention policies for sources (tables, views, ring buffers)
-	pub fn list_source_retention_policies(
+	pub async fn list_source_retention_policies(
 		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Vec<SourceRetentionPolicyEntry>> {
 		let mut result = Vec::new();
 
-		let entries: Vec<_> = rx.range(SourceRetentionPolicyKeyRange::full_scan())?.into_iter().collect();
+		let batch = rx.range(SourceRetentionPolicyKeyRange::full_scan()).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			if let Some(key) = SourceRetentionPolicyKey::decode(&entry.key) {
 				if let Some(policy) = decode_retention_policy(&entry.values) {
 					result.push(SourceRetentionPolicyEntry {
@@ -51,14 +51,14 @@ impl CatalogStore {
 	}
 
 	/// List all retention policies for operators
-	pub fn list_operator_retention_policies(
+	pub async fn list_operator_retention_policies(
 		rx: &mut impl QueryTransaction,
 	) -> crate::Result<Vec<OperatorRetentionPolicyEntry>> {
 		let mut result = Vec::new();
 
-		let entries: Vec<_> = rx.range(OperatorRetentionPolicyKeyRange::full_scan())?.into_iter().collect();
+		let batch = rx.range(OperatorRetentionPolicyKeyRange::full_scan()).await?;
 
-		for entry in entries {
+		for entry in batch.items {
 			if let Some(key) = OperatorRetentionPolicyKey::decode(&entry.key) {
 				if let Some(policy) = decode_retention_policy(&entry.values) {
 					result.push(OperatorRetentionPolicyEntry {

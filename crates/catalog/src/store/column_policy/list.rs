@@ -9,11 +9,13 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn list_column_policies(
+	pub async fn list_column_policies(
 		rx: &mut impl QueryTransaction,
 		column: ColumnId,
 	) -> crate::Result<Vec<ColumnPolicy>> {
-		Ok(rx.range(ColumnPolicyKey::full_scan(column))?
+		let batch = rx.range(ColumnPolicyKey::full_scan(column)).await?;
+		Ok(batch.items
+			.into_iter()
 			.map(|multi| {
 				let row = multi.values;
 				let id = ColumnPolicyId(column_policy::LAYOUT.get_u64(&row, column_policy::ID));
@@ -33,15 +35,15 @@ impl CatalogStore {
 			.collect::<Vec<_>>())
 	}
 
-	pub fn list_column_policies_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ColumnPolicy>> {
+	pub async fn list_column_policies_all(rx: &mut impl QueryTransaction) -> crate::Result<Vec<ColumnPolicy>> {
 		let mut result = Vec::new();
 
 		// Get all columns from tables and views
-		let columns = CatalogStore::list_columns_all(rx)?;
+		let columns = CatalogStore::list_columns_all(rx).await?;
 
 		// For each column, get its policies
 		for info in columns {
-			let policies = CatalogStore::list_column_policies(rx, info.column.id)?;
+			let policies = CatalogStore::list_column_policies(rx, info.column.id).await?;
 			result.extend(policies);
 		}
 

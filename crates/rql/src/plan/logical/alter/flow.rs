@@ -28,7 +28,7 @@ pub enum AlterFlowAction<'a> {
 }
 
 impl Compiler {
-	pub(crate) fn compile_alter_flow<'a, T: CatalogQueryTransaction>(
+	pub(crate) async fn compile_alter_flow<'a, T: CatalogQueryTransaction>(
 		ast: AstAlterFlow<'a>,
 		tx: &mut T,
 	) -> crate::Result<LogicalPlan<'a>> {
@@ -44,7 +44,7 @@ impl Compiler {
 				query,
 			} => {
 				// Compile the query statement to logical plan
-				let compiled_query = Compiler::compile(query, tx)?;
+				let compiled_query = Compiler::compile(query, tx).await?;
 				AlterFlowAction::SetQuery {
 					query: compiled_query,
 				}

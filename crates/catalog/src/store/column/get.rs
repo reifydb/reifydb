@@ -41,8 +41,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn get_column(rx: &mut impl QueryTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
-		let multi = rx.get(&ColumnsKey::encoded(column))?.ok_or_else(|| {
+	pub async fn get_column(rx: &mut impl QueryTransaction, column: ColumnId) -> crate::Result<ColumnDef> {
+		let multi = rx.get(&ColumnsKey::encoded(column)).await?.ok_or_else(|| {
 			Error(internal!(
 				"Table column with ID {:?} not found in catalog. This indicates a critical catalog inconsistency.",
 				column
@@ -72,7 +72,7 @@ impl CatalogStore {
 			Some(DictionaryId(dict_id_raw))
 		};
 
-		let policies = Self::list_column_policies(rx, id)?;
+		let policies = Self::list_column_policies(rx, id).await?;
 
 		Ok(ColumnDef {
 			id,

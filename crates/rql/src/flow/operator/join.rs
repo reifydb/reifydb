@@ -65,12 +65,12 @@ fn extract_source_name(plan: &PhysicalPlan) -> Option<String> {
 }
 
 impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
-	fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
+	async fn compile(self, compiler: &mut FlowCompiler<T>) -> Result<FlowNodeId> {
 		// Extract source name from right plan for fallback alias
 		let source_name = extract_source_name(&self.right);
 
-		let left_node = compiler.compile_plan(*self.left)?;
-		let right_node = compiler.compile_plan(*self.right)?;
+		let left_node = compiler.compile_plan(*self.left).await?;
+		let right_node = compiler.compile_plan(*self.right).await?;
 
 		let (left_keys, right_keys) = extract_join_keys(&self.on);
 
@@ -85,7 +85,8 @@ impl<T: CommandTransaction> CompileOperator<T> for JoinCompiler {
 				alias: effective_alias,
 			})
 			.with_inputs([left_node, right_node])
-			.build()?;
+			.build()
+			.await?;
 
 		Ok(node)
 	}

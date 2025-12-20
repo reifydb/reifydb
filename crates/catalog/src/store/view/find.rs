@@ -11,8 +11,8 @@ use crate::{
 };
 
 impl CatalogStore {
-	pub fn find_view(rx: &mut impl QueryTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
-		let Some(multi) = rx.get(&ViewKey::encoded(id))? else {
+	pub async fn find_view(rx: &mut impl QueryTransaction, id: ViewId) -> crate::Result<Option<ViewDef>> {
+		let Some(multi) = rx.get(&ViewKey::encoded(id)).await? else {
 			return Ok(None);
 		};
 
@@ -32,32 +32,31 @@ impl CatalogStore {
 			name,
 			namespace,
 			kind,
-			columns: Self::list_columns(rx, id)?,
-			primary_key: Self::find_view_primary_key(rx, id)?,
+			columns: Self::list_columns(rx, id).await?,
+			primary_key: Self::find_view_primary_key(rx, id).await?,
 		}))
 	}
 
-	pub fn find_view_by_name(
+	pub async fn find_view_by_name(
 		rx: &mut impl QueryTransaction,
 		namespace: NamespaceId,
 		name: impl AsRef<str>,
 	) -> crate::Result<Option<ViewDef>> {
 		let name = name.as_ref();
-		let Some(view) =
-			rx.range(NamespaceViewKey::full_scan(namespace))?.find_map(|multi: MultiVersionValues| {
-				let row = &multi.values;
-				let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
-				if name == view_name {
-					Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)))
-				} else {
-					None
-				}
-			})
-		else {
+		let batch = rx.range(NamespaceViewKey::full_scan(namespace)).await?;
+		let Some(view) = batch.items.iter().find_map(|multi: &MultiVersionValues| {
+			let row = &multi.values;
+			let view_name = view_namespace::LAYOUT.get_utf8(row, view_namespace::NAME);
+			if name == view_name {
+				Some(ViewId(view_namespace::LAYOUT.get_u64(row, view_namespace::ID)))
+			} else {
+				None
+			}
+		}) else {
 			return Ok(None);
 		};
 
-		Ok(Some(Self::get_view(rx, view)?))
+		Ok(Some(Self::get_view(rx, view).await?))
 	}
 }
 
