@@ -17,7 +17,7 @@ use super::types::ObjectId;
 /// - Row, Index, IndexEntry, etc. contain SourceId
 /// - FlowNodeState, FlowNodeInternalState contain FlowNodeId
 /// - Other keys are classified as System
-pub(crate) fn extract_object_id(key: &[u8], kind: KeyKind) -> ObjectId {
+pub fn extract_object_id(key: &[u8], kind: KeyKind) -> ObjectId {
 	match kind {
 		KeyKind::Row
 		| KeyKind::RowSequence

@@ -7,7 +7,7 @@ use std::{
 };
 
 use reifydb_core::{
-	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues,
+	CommitVersion, CowVec, EncodedKey, EncodedKeyRange, delta::Delta, interface::MultiVersionValues, key::Key,
 	util::clock::now_millis, value::encoded::EncodedValues,
 };
 use reifydb_type::util::hex;
@@ -111,6 +111,9 @@ impl MultiVersionCommit for StandardTransactionStore {
 			return Ok(());
 		};
 
+		// Create accumulator for collecting stats changes atomically
+		let mut stats_accumulator = crate::stats::StatsAccumulator::new();
+
 		// Helper to check if key exists in storage
 		let key_exists = |key: &EncodedKey| -> bool {
 			let table = classify_key(key);
@@ -182,7 +185,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 			None
 		})?;
 
-		// Track storage statistics
+		// Track storage statistics in accumulator
 		for delta in optimized_deltas.iter() {
 			let key = delta.key();
 			let key_bytes = key.as_ref();
@@ -194,27 +197,35 @@ impl MultiVersionCommit for StandardTransactionStore {
 			// Versioned key size = original key + VERSION_SIZE
 			let versioned_key_bytes = (key_bytes.len() + VERSION_SIZE) as u64;
 
+			// Extract kind and object_id for stats tracking
+			let kind = Key::kind(key_bytes);
+			let object_id = kind.map(|k| extract_object_id(key_bytes, k));
+
 			match delta {
 				Delta::Set {
 					values,
 					..
 				} => {
-					self.stats_tracker.record_write(
+					let pre_version = pre_version_info.map(|p| (p.key_bytes, p.value_bytes));
+					stats_accumulator.record_write(
 						Tier::Hot,
-						key_bytes,
+						kind,
+						object_id,
 						versioned_key_bytes,
 						values.len() as u64,
-						pre_version_info,
+						pre_version,
 					);
 				}
 				Delta::Remove {
 					..
 				} => {
-					self.stats_tracker.record_delete(
+					let pre_version = pre_version_info.map(|p| (p.key_bytes, p.value_bytes));
+					stats_accumulator.record_delete(
 						Tier::Hot,
-						key_bytes,
+						kind,
+						object_id,
 						versioned_key_bytes,
-						pre_version_info,
+						pre_version,
 					);
 				}
 				Delta::Drop {
@@ -300,10 +311,15 @@ impl MultiVersionCommit for StandardTransactionStore {
 							entries_to_drop.iter().map(|e| e.value_bytes).sum();
 						let count = entries_to_drop.len() as u64;
 
-						// Single accounting update for all dropped versions
-						self.stats_tracker.record_drop(
+						// Extract kind and object_id for stats tracking
+						let kind = Key::kind(key.as_ref());
+						let object_id = kind.map(|k| extract_object_id(key.as_ref(), k));
+
+						// Record drop in accumulator
+						stats_accumulator.record_drop(
 							Tier::Hot,
-							key.as_ref(),
+							kind,
+							object_id,
 							total_key_bytes,
 							total_value_bytes,
 							count,
@@ -320,27 +336,20 @@ impl MultiVersionCommit for StandardTransactionStore {
 			}
 		}
 
-		// Write each batch to storage
-		for (table, entries) in batches {
-			let refs: Vec<(&[u8], Option<&[u8]>)> =
-				entries.iter().map(|(k, v)| (k.as_slice(), v.as_deref())).collect();
-			storage.put(table, &refs)?;
-		}
-
-		// Store CDC if there are any changes
-		if !cdc_changes.is_empty() {
+		// Prepare CDC encoding before stats to get accurate overhead (write happens later)
+		let cdc_encoded = if !cdc_changes.is_empty() {
 			let internal_cdc = InternalCdc {
 				version,
 				timestamp: now_millis(),
-				changes: cdc_changes,
+				changes: cdc_changes.clone(),
 			};
+			Some((encode_internal_cdc(&internal_cdc)?, internal_cdc))
+		} else {
+			None
+		};
 
-			let encoded = encode_internal_cdc(&internal_cdc)?;
-			let cdc_key = version.0.to_be_bytes();
-			storage.put(TableId::Cdc, &[(&cdc_key[..], Some(encoded.as_ref()))])?;
-
-			// Track CDC bytes per source object
-			// Distribute the encoded size proportionally among changes
+		// Track CDC stats in accumulator using actual encoded size
+		if let Some((ref encoded, ref internal_cdc)) = cdc_encoded {
 			let num_changes = internal_cdc.changes.len() as u64;
 			let total_key_bytes: u64 =
 				internal_cdc.changes.iter().map(|c| c.change.key().len() as u64).sum();
@@ -349,8 +358,34 @@ impl MultiVersionCommit for StandardTransactionStore {
 
 			for change in &internal_cdc.changes {
 				let change_key = change.change.key();
-				self.stats_tracker.record_cdc_for_change(Tier::Hot, change_key, per_change_overhead, 1);
+				let kind = Key::kind(change_key);
+				let object_id = kind.map(|k| crate::stats::extract_object_id(change_key, k));
+
+				stats_accumulator.record_cdc(
+					Tier::Hot,
+					kind,
+					object_id,
+					change_key.len() as u64,
+					per_change_overhead,
+					1,
+				);
 			}
+		}
+
+		// Apply all stats changes atomically before writing to storage
+		self.stats_tracker.apply_deltas(&stats_accumulator);
+
+		// Write each batch to storage
+		for (table, entries) in batches {
+			let refs: Vec<(&[u8], Option<&[u8]>)> =
+				entries.iter().map(|(k, v)| (k.as_slice(), v.as_deref())).collect();
+			storage.put(table, &refs)?;
+		}
+
+		// Store CDC if there are any changes (already encoded above for stats)
+		if let Some((encoded, _)) = cdc_encoded {
+			let cdc_key = version.0.to_be_bytes();
+			storage.put(TableId::Cdc, &[(&cdc_key[..], Some(encoded.as_ref()))])?;
 		}
 
 		// Checkpoint stats if needed
@@ -417,7 +452,7 @@ use std::{collections::BTreeMap, marker::PhantomData, vec::IntoIter};
 
 use drop::find_keys_to_drop;
 
-use crate::backend::BackendStorage;
+use crate::{backend::BackendStorage, stats::extract_object_id};
 
 /// Iterator over multi-version range results from primitive storage.
 /// Collects all entries, deduplicates by key (keeping latest version per key),

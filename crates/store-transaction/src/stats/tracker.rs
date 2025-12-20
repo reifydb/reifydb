@@ -14,6 +14,7 @@ use reifydb_core::key::{Key, KeyKind};
 use reifydb_type::Result;
 
 use super::{
+	accumulator::StatsAccumulator,
 	persistence::{
 		decode_object_stats_key, decode_stats, decode_type_stats_key, encode_object_stats_key, encode_stats,
 		encode_type_stats_key, object_stats_key_prefix, type_stats_key_prefix,
@@ -91,171 +92,29 @@ impl StorageTracker {
 		Self::new(StorageTrackerConfig::default())
 	}
 
-	/// Record a write operation (insert or update).
+	/// Apply all deltas from a StatsAccumulator atomically.
 	///
-	/// - `tier`: Which storage tier this write goes to
-	/// - `key`: The encoded key bytes (unversioned, used for KeyKind lookup)
-	/// - `key_bytes`: Size of the key as stored (typically versioned key size)
-	/// - `value_bytes`: Size of the value being written
-	/// - `pre_version`: Information about the previous version, if the key already existed
-	pub fn record_write(
-		&self,
-		tier: Tier,
-		key: &[u8],
-		key_bytes: u64,
-		value_bytes: u64,
-		pre_version: Option<PreVersionInfo>,
-	) {
-		let kind = Key::kind(key);
-		let object_id = kind.map(|k| extract_object_id(key, k));
-
+	/// Takes a write lock once and applies all collected deltas in a single atomic operation.
+	/// This ensures no intermediate state is visible to stats queries.
+	pub fn apply_deltas(&self, accumulator: &StatsAccumulator) {
 		let mut inner = self.inner.write().unwrap();
 
-		// Update per-tier totals (always, regardless of KeyKind)
-		{
-			let stats = inner.by_tier.entry(tier).or_insert_with(StorageStats::new);
-			if let Some(pre) = &pre_version {
-				stats.record_update(key_bytes, value_bytes, pre.key_bytes, pre.value_bytes);
-			} else {
-				stats.record_insert(key_bytes, value_bytes);
-			}
+		// Apply by_tier deltas
+		for (tier, delta) in &accumulator.by_tier {
+			let stats = inner.by_tier.entry(*tier).or_insert_with(StorageStats::new);
+			stats.apply_delta(delta);
 		}
 
-		// Update per-type stats
-		if let Some(kind) = kind {
-			let stats = inner.by_type.entry((tier, kind)).or_insert_with(StorageStats::new);
-
-			if let Some(pre) = &pre_version {
-				stats.record_update(key_bytes, value_bytes, pre.key_bytes, pre.value_bytes);
-			} else {
-				stats.record_insert(key_bytes, value_bytes);
-			}
+		// Apply by_type deltas
+		for ((tier, kind), delta) in &accumulator.by_type {
+			let stats = inner.by_type.entry((*tier, *kind)).or_insert_with(StorageStats::new);
+			stats.apply_delta(delta);
 		}
 
-		// Update per-object stats
-		if let Some(object_id) = object_id {
-			let stats = inner.by_object.entry((tier, object_id)).or_insert_with(StorageStats::new);
-
-			if let Some(pre) = &pre_version {
-				stats.record_update(key_bytes, value_bytes, pre.key_bytes, pre.value_bytes);
-			} else {
-				stats.record_insert(key_bytes, value_bytes);
-			}
-		}
-	}
-
-	/// Record a delete operation (tombstone).
-	///
-	/// - `tier`: Which storage tier this delete goes to
-	/// - `key`: The encoded key bytes (unversioned, used for KeyKind lookup)
-	/// - `key_bytes`: Size of the tombstone key as stored (typically versioned key size)
-	/// - `pre_version`: Information about the previous version being deleted
-	pub fn record_delete(&self, tier: Tier, key: &[u8], key_bytes: u64, pre_version: Option<PreVersionInfo>) {
-		// If there was no previous version, nothing to track
-		let Some(pre) = pre_version else {
-			return;
-		};
-
-		let kind = Key::kind(key);
-		let object_id = kind.map(|k| extract_object_id(key, k));
-
-		let mut inner = self.inner.write().unwrap();
-
-		// Update per-tier totals (always, regardless of KeyKind)
-		{
-			let stats = inner.by_tier.entry(tier).or_insert_with(StorageStats::new);
-			stats.record_delete(key_bytes, pre.key_bytes, pre.value_bytes);
-		}
-
-		// Update per-type stats
-		if let Some(kind) = kind {
-			let stats = inner.by_type.entry((tier, kind)).or_insert_with(StorageStats::new);
-			stats.record_delete(key_bytes, pre.key_bytes, pre.value_bytes);
-		}
-
-		// Update per-object stats
-		if let Some(object_id) = object_id {
-			if let Some(stats) = inner.by_object.get_mut(&(tier, object_id)) {
-				stats.record_delete(key_bytes, pre.key_bytes, pre.value_bytes);
-			}
-		}
-	}
-
-	/// Record a batch drop operation for multiple versions of the same logical key.
-	///
-	/// This method aggregates the accounting for all versions being dropped together,
-	/// ensuring that count, key_bytes, and value_bytes remain synchronized.
-	///
-	/// - `tier`: Which storage tier the drop occurred in
-	/// - `key`: The original (unversioned) encoded key bytes
-	/// - `total_key_bytes`: Sum of all versioned key sizes being dropped
-	/// - `total_value_bytes`: Sum of all value sizes being dropped
-	/// - `count`: Number of versions being dropped
-	pub fn record_drop(&self, tier: Tier, key: &[u8], total_key_bytes: u64, total_value_bytes: u64, count: u64) {
-		let kind = Key::kind(key);
-		let object_id = kind.map(|k| extract_object_id(key, k));
-
-		let mut inner = self.inner.write().unwrap();
-
-		// Update per-tier totals (always, regardless of KeyKind)
-		if let Some(stats) = inner.by_tier.get_mut(&tier) {
-			stats.historical_count = stats.historical_count.saturating_sub(count);
-			stats.historical_key_bytes = stats.historical_key_bytes.saturating_sub(total_key_bytes);
-			stats.historical_value_bytes = stats.historical_value_bytes.saturating_sub(total_value_bytes);
-		}
-
-		// Update per-type stats
-		if let Some(kind) = kind {
-			if let Some(stats) = inner.by_type.get_mut(&(tier, kind)) {
-				stats.historical_count = stats.historical_count.saturating_sub(count);
-				stats.historical_key_bytes = stats.historical_key_bytes.saturating_sub(total_key_bytes);
-				stats.historical_value_bytes =
-					stats.historical_value_bytes.saturating_sub(total_value_bytes);
-			}
-		}
-
-		// Update per-object stats
-		if let Some(object_id) = object_id {
-			if let Some(stats) = inner.by_object.get_mut(&(tier, object_id)) {
-				stats.historical_count = stats.historical_count.saturating_sub(count);
-				stats.historical_key_bytes = stats.historical_key_bytes.saturating_sub(total_key_bytes);
-				stats.historical_value_bytes =
-					stats.historical_value_bytes.saturating_sub(total_value_bytes);
-			}
-		}
-	}
-
-	/// Record CDC bytes for a specific change.
-	///
-	/// Called for each change in a CDC entry to attribute bytes to the source object.
-	/// - `tier`: Which storage tier the CDC entry was written to
-	/// - `key`: The change key (identifies the source object)
-	/// - `value_bytes`: Bytes attributed to this change (distributed overhead)
-	/// - `count`: Number of CDC entries to record (typically 1)
-	pub fn record_cdc_for_change(&self, tier: Tier, key: &[u8], value_bytes: u64, count: u64) {
-		let key_bytes = key.len() as u64;
-
-		let kind = Key::kind(key);
-		let object_id = kind.map(|k| extract_object_id(key, k));
-
-		let mut inner = self.inner.write().unwrap();
-
-		// Update per-tier totals (always, regardless of KeyKind)
-		{
-			let stats = inner.by_tier.entry(tier).or_insert_with(StorageStats::new);
-			stats.record_cdc(key_bytes, value_bytes, count);
-		}
-
-		// Update per-type stats
-		if let Some(kind) = kind {
-			let stats = inner.by_type.entry((tier, kind)).or_insert_with(StorageStats::new);
-			stats.record_cdc(key_bytes, value_bytes, count);
-		}
-
-		// Update per-object stats
-		if let Some(object_id) = object_id {
-			let stats = inner.by_object.entry((tier, object_id)).or_insert_with(StorageStats::new);
-			stats.record_cdc(key_bytes, value_bytes, count);
+		// Apply by_object deltas
+		for ((tier, object_id), delta) in &accumulator.by_object {
+			let stats = inner.by_object.entry((*tier, *object_id)).or_insert_with(StorageStats::new);
+			stats.apply_delta(delta);
 		}
 	}
 
@@ -491,9 +350,10 @@ impl StorageTracker {
 mod tests {
 	use std::thread::sleep;
 
-	use reifydb_core::interface::SourceId;
+	use reifydb_core::{interface::SourceId, key::Key};
 
 	use super::*;
+	use crate::stats::{accumulator::StatsAccumulator, extract_object_id};
 
 	fn make_row_key(source_id: u64, row: u64) -> Vec<u8> {
 		use reifydb_core::{interface::EncodableKey, key::RowKey};
@@ -506,13 +366,21 @@ mod tests {
 		key.encode().to_vec()
 	}
 
+	fn get_object_id_from_key(key: &[u8]) -> Option<ObjectId> {
+		Key::kind(key).map(|k| extract_object_id(key, k))
+	}
+
 	#[test]
 	fn test_tracker_insert() {
 		let tracker = StorageTracker::with_defaults();
 		let key = make_row_key(1, 100);
 		let key_bytes = key.len() as u64;
 
-		tracker.record_write(Tier::Hot, &key, key_bytes, 50, None);
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 50, None);
+		tracker.apply_deltas(&acc);
 
 		let stats = tracker.total_stats();
 		assert_eq!(stats.hot.current_key_bytes, key_bytes);
@@ -528,14 +396,23 @@ mod tests {
 		let key_bytes = key.len() as u64;
 
 		// Insert first
-		tracker.record_write(Tier::Hot, &key, key_bytes, 50, None);
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 50, None);
+		tracker.apply_deltas(&acc);
 
 		// Update with new value
 		let pre_info = PreVersionInfo {
 			key_bytes,
 			value_bytes: 50,
 		};
-		tracker.record_write(Tier::Hot, &key, key_bytes, 75, Some(pre_info));
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		let pre_version = Some((pre_info.key_bytes, pre_info.value_bytes));
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 75, pre_version);
+		tracker.apply_deltas(&acc);
 
 		let stats = tracker.total_stats();
 		// Current should have new value
@@ -556,14 +433,23 @@ mod tests {
 		let key_bytes = key.len() as u64;
 
 		// Insert first
-		tracker.record_write(Tier::Hot, &key, key_bytes, 50, None);
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 50, None);
+		tracker.apply_deltas(&acc);
 
 		// Delete
 		let pre_info = PreVersionInfo {
 			key_bytes,
 			value_bytes: 50,
 		};
-		tracker.record_delete(Tier::Hot, &key, key_bytes, Some(pre_info));
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		let pre_version = Some((pre_info.key_bytes, pre_info.value_bytes));
+		acc.record_delete(Tier::Hot, kind, object_id, key_bytes, pre_version);
+		tracker.apply_deltas(&acc);
 
 		let stats = tracker.total_stats();
 		// Current should be empty
@@ -581,8 +467,14 @@ mod tests {
 		let key1_bytes = key1.len() as u64;
 		let key2_bytes = key2.len() as u64;
 
-		tracker.record_write(Tier::Hot, &key1, key1_bytes, 50, None);
-		tracker.record_write(Tier::Hot, &key2, key2_bytes, 60, None);
+		let mut acc = StatsAccumulator::new();
+		let kind1 = Key::kind(&key1);
+		let object_id1 = get_object_id_from_key(&key1);
+		acc.record_write(Tier::Hot, kind1, object_id1, key1_bytes, 50, None);
+		let kind2 = Key::kind(&key2);
+		let object_id2 = get_object_id_from_key(&key2);
+		acc.record_write(Tier::Hot, kind2, object_id2, key2_bytes, 60, None);
+		tracker.apply_deltas(&acc);
 
 		let by_type = tracker.stats_by_type(Tier::Hot);
 		let row_stats = by_type.get(&KeyKind::Row).unwrap();
@@ -601,9 +493,17 @@ mod tests {
 		let key2_bytes = key2.len() as u64;
 		let key3_bytes = key3.len() as u64;
 
-		tracker.record_write(Tier::Hot, &key1, key1_bytes, 50, None);
-		tracker.record_write(Tier::Hot, &key2, key2_bytes, 60, None);
-		tracker.record_write(Tier::Hot, &key3, key3_bytes, 70, None);
+		let mut acc = StatsAccumulator::new();
+		let kind1 = Key::kind(&key1);
+		let object_id1 = get_object_id_from_key(&key1);
+		acc.record_write(Tier::Hot, kind1, object_id1, key1_bytes, 50, None);
+		let kind2 = Key::kind(&key2);
+		let object_id2 = get_object_id_from_key(&key2);
+		acc.record_write(Tier::Hot, kind2, object_id2, key2_bytes, 60, None);
+		let kind3 = Key::kind(&key3);
+		let object_id3 = get_object_id_from_key(&key3);
+		acc.record_write(Tier::Hot, kind3, object_id3, key3_bytes, 70, None);
+		tracker.apply_deltas(&acc);
 
 		// Object 1 (SourceId::table(1)) should have 2 entries
 		let source1 = ObjectId::Source(SourceId::table(1));
@@ -625,7 +525,11 @@ mod tests {
 		let key_bytes = key.len() as u64;
 
 		// Insert into hot tier
-		tracker.record_write(Tier::Hot, &key, key_bytes, 50, None);
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 50, None);
+		tracker.apply_deltas(&acc);
 
 		// Migrate to warm tier
 		tracker.record_tier_migration(Tier::Hot, Tier::Warm, &key, 50, true);
@@ -653,9 +557,17 @@ mod tests {
 		let key2_bytes = key2.len() as u64;
 		let key3_bytes = key3.len() as u64;
 
-		tracker.record_write(Tier::Hot, &key1, key1_bytes, 100, None);
-		tracker.record_write(Tier::Hot, &key2, key2_bytes, 200, None);
-		tracker.record_write(Tier::Hot, &key3, key3_bytes, 50, None);
+		let mut acc = StatsAccumulator::new();
+		let kind1 = Key::kind(&key1);
+		let object_id1 = get_object_id_from_key(&key1);
+		acc.record_write(Tier::Hot, kind1, object_id1, key1_bytes, 100, None);
+		let kind2 = Key::kind(&key2);
+		let object_id2 = get_object_id_from_key(&key2);
+		acc.record_write(Tier::Hot, kind2, object_id2, key2_bytes, 200, None);
+		let kind3 = Key::kind(&key3);
+		let object_id3 = get_object_id_from_key(&key3);
+		acc.record_write(Tier::Hot, kind3, object_id3, key3_bytes, 50, None);
+		tracker.apply_deltas(&acc);
 
 		let top = tracker.top_objects_by_size(2);
 		assert_eq!(top.len(), 2);
@@ -705,9 +617,15 @@ mod tests {
 		let key2 = make_row_key(2, 200);
 		let key1_bytes = key1.len() as u64;
 		let key2_bytes = key2.len() as u64;
-		tracker.record_write(Tier::Hot, &key1, key1_bytes, 50, None);
-		tracker.record_write(Tier::Hot, &key2, key2_bytes, 100, None);
-		tracker.record_write(Tier::Warm, &key1, key1_bytes, 75, None);
+		let mut acc = StatsAccumulator::new();
+		let kind1 = Key::kind(&key1);
+		let object_id1 = get_object_id_from_key(&key1);
+		acc.record_write(Tier::Hot, kind1, object_id1, key1_bytes, 50, None);
+		let kind2 = Key::kind(&key2);
+		let object_id2 = get_object_id_from_key(&key2);
+		acc.record_write(Tier::Hot, kind2, object_id2, key2_bytes, 100, None);
+		acc.record_write(Tier::Warm, kind1, object_id1, key1_bytes, 75, None);
+		tracker.apply_deltas(&acc);
 
 		// Checkpoint
 		tracker.checkpoint(&storage).unwrap();
@@ -794,39 +712,24 @@ mod tests {
 		let key_bytes = key.len() as u64;
 
 		// Insert initial version
-		tracker.record_write(Tier::Hot, &key, key_bytes, 100, None);
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 100, None);
+		tracker.apply_deltas(&acc);
 
 		// Update multiple times to create historical versions
-		tracker.record_write(
-			Tier::Hot,
-			&key,
-			key_bytes,
-			200,
-			Some(PreVersionInfo {
-				key_bytes,
-				value_bytes: 100,
-			}),
-		);
-		tracker.record_write(
-			Tier::Hot,
-			&key,
-			key_bytes,
-			150,
-			Some(PreVersionInfo {
-				key_bytes,
-				value_bytes: 200,
-			}),
-		);
-		tracker.record_write(
-			Tier::Hot,
-			&key,
-			key_bytes,
-			250,
-			Some(PreVersionInfo {
-				key_bytes,
-				value_bytes: 150,
-			}),
-		);
+		let mut acc = StatsAccumulator::new();
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 200, Some((key_bytes, 100)));
+		tracker.apply_deltas(&acc);
+
+		let mut acc = StatsAccumulator::new();
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 150, Some((key_bytes, 200)));
+		tracker.apply_deltas(&acc);
+
+		let mut acc = StatsAccumulator::new();
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 250, Some((key_bytes, 150)));
+		tracker.apply_deltas(&acc);
 
 		// At this point: historical has 3 entries (100, 200, 150 bytes)
 		let stats_before = tracker.total_stats();
@@ -835,13 +738,16 @@ mod tests {
 		assert_eq!(stats_before.hot.historical_value_bytes, 450); // 100 + 200 + 150
 
 		// Simulate dropping all historical versions in batch
-		tracker.record_drop(
+		let mut acc = StatsAccumulator::new();
+		acc.record_drop(
 			Tier::Hot,
-			&key,
+			kind,
+			object_id,
 			key_bytes * 3, // total key bytes
 			450,           // total value bytes (100 + 200 + 150)
 			3,             // count
 		);
+		tracker.apply_deltas(&acc);
 
 		// CRITICAL: All three fields must reach zero together
 		let stats_after = tracker.total_stats();
@@ -857,18 +763,23 @@ mod tests {
 		let key_bytes = key.len() as u64;
 
 		// Create 5 historical versions
-		tracker.record_write(Tier::Hot, &key, key_bytes, 100, None);
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 100, None);
+		tracker.apply_deltas(&acc);
+
 		for i in 1..=5 {
-			tracker.record_write(
+			let mut acc = StatsAccumulator::new();
+			acc.record_write(
 				Tier::Hot,
-				&key,
+				kind,
+				object_id,
 				key_bytes,
 				100 + i * 10,
-				Some(PreVersionInfo {
-					key_bytes,
-					value_bytes: 100 + (i - 1) * 10,
-				}),
+				Some((key_bytes, 100 + (i - 1) * 10)),
 			);
+			tracker.apply_deltas(&acc);
 		}
 
 		// Historical: 100, 110, 120, 130, 140 = 600 bytes total, 5 entries
@@ -877,7 +788,9 @@ mod tests {
 		assert_eq!(stats_before.hot.historical_value_bytes, 600);
 
 		// Drop oldest 3 versions (100, 110, 120 = 330 bytes)
-		tracker.record_drop(Tier::Hot, &key, key_bytes * 3, 330, 3);
+		let mut acc = StatsAccumulator::new();
+		acc.record_drop(Tier::Hot, kind, object_id, key_bytes * 3, 330, 3);
+		tracker.apply_deltas(&acc);
 
 		// Should have 2 versions left (130, 140 = 270 bytes)
 		let stats_after = tracker.total_stats();
@@ -894,19 +807,23 @@ mod tests {
 
 		// Insert with varying value sizes
 		let sizes = vec![50, 500, 150, 1000, 200];
-		tracker.record_write(Tier::Hot, &key, key_bytes, sizes[0], None);
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, sizes[0], None);
+		tracker.apply_deltas(&acc);
 
 		for i in 1..sizes.len() {
-			tracker.record_write(
+			let mut acc = StatsAccumulator::new();
+			acc.record_write(
 				Tier::Hot,
-				&key,
+				kind,
+				object_id,
 				key_bytes,
 				sizes[i],
-				Some(PreVersionInfo {
-					key_bytes,
-					value_bytes: sizes[i - 1],
-				}),
+				Some((key_bytes, sizes[i - 1])),
 			);
+			tracker.apply_deltas(&acc);
 		}
 
 		// Historical: 50, 500, 150, 1000 = 1700 bytes, 4 entries
@@ -918,7 +835,9 @@ mod tests {
 		assert_eq!(stats_before.hot.historical_value_bytes, 1700);
 
 		// Drop all historical
-		tracker.record_drop(Tier::Hot, &key, key_bytes * 4, 1700, 4);
+		let mut acc = StatsAccumulator::new();
+		acc.record_drop(Tier::Hot, kind, object_id, key_bytes * 4, 1700, 4);
+		tracker.apply_deltas(&acc);
 
 		let stats_after = tracker.total_stats();
 		assert_eq!(stats_after.hot.historical_count, 0);
@@ -936,27 +855,19 @@ mod tests {
 		let key_bytes = key.len() as u64;
 
 		// Create scenario: 3 versions with sizes 100, 200, 150
-		tracker.record_write(Tier::Hot, &key, key_bytes, 100, None);
-		tracker.record_write(
-			Tier::Hot,
-			&key,
-			key_bytes,
-			200,
-			Some(PreVersionInfo {
-				key_bytes,
-				value_bytes: 100,
-			}),
-		);
-		tracker.record_write(
-			Tier::Hot,
-			&key,
-			key_bytes,
-			150,
-			Some(PreVersionInfo {
-				key_bytes,
-				value_bytes: 200,
-			}),
-		);
+		let mut acc = StatsAccumulator::new();
+		let kind = Key::kind(&key);
+		let object_id = get_object_id_from_key(&key);
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 100, None);
+		tracker.apply_deltas(&acc);
+
+		let mut acc = StatsAccumulator::new();
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 200, Some((key_bytes, 100)));
+		tracker.apply_deltas(&acc);
+
+		let mut acc = StatsAccumulator::new();
+		acc.record_write(Tier::Hot, kind, object_id, key_bytes, 150, Some((key_bytes, 200)));
+		tracker.apply_deltas(&acc);
 
 		// Verify historical setup
 		let stats = tracker.total_stats();
@@ -964,13 +875,16 @@ mod tests {
 		assert_eq!(stats.hot.historical_key_bytes, key_bytes * 2);
 		assert_eq!(stats.hot.historical_value_bytes, 300); // 100 + 200
 
-		tracker.record_drop(
+		let mut acc = StatsAccumulator::new();
+		acc.record_drop(
 			Tier::Hot,
-			&key,
+			kind,
+			object_id,
 			key_bytes * 2, // BOTH keys
 			300,           // BOTH values (100 + 200)
 			2,             // BOTH entries
 		);
+		tracker.apply_deltas(&acc);
 
 		// The bug caused:
 		// - historical_count: 0 (correct)

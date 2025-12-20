@@ -7,6 +7,8 @@ use std::ops::AddAssign;
 
 use reifydb_core::interface::{FlowNodeId, SourceId};
 
+use super::accumulator::StorageStatsDelta;
+
 /// Identifies which storage tier data resides in.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Tier {
@@ -75,71 +77,64 @@ impl StorageStats {
 		self.current_count + self.historical_count
 	}
 
-	/// Record CDC bytes for a change attributed to this object.
-	pub fn record_cdc(&mut self, key_bytes: u64, value_bytes: u64, count: u64) {
-		self.cdc_key_bytes += key_bytes;
-		self.cdc_value_bytes += value_bytes;
-		self.cdc_count += count;
-	}
-
-	/// Record a new entry (insert of a key that didn't exist).
-	pub fn record_insert(&mut self, key_bytes: u64, value_bytes: u64) {
-		self.current_key_bytes += key_bytes;
-		self.current_value_bytes += value_bytes;
-		self.current_count += 1;
-	}
-
-	/// Record an update (new version of existing key).
+	/// Apply a delta to this stats object atomically.
 	///
-	/// The old version moves from current to historical.
-	pub fn record_update(
-		&mut self,
-		new_key_bytes: u64,
-		new_value_bytes: u64,
-		old_key_bytes: u64,
-		old_value_bytes: u64,
-	) {
-		// Move old version from current to historical
-		self.current_key_bytes = self.current_key_bytes.saturating_sub(old_key_bytes);
-		self.current_value_bytes = self.current_value_bytes.saturating_sub(old_value_bytes);
-		self.current_count = self.current_count.saturating_sub(1);
+	/// Used by StatsAccumulator to apply collected changes in one operation.
+	/// Uses saturating arithmetic to prevent underflow.
+	pub fn apply_delta(&mut self, delta: &StorageStatsDelta) {
+		self.current_count = if delta.current_count_delta >= 0 {
+			self.current_count.saturating_add(delta.current_count_delta as u64)
+		} else {
+			self.current_count.saturating_sub((-delta.current_count_delta) as u64)
+		};
 
-		self.historical_key_bytes += old_key_bytes;
-		self.historical_value_bytes += old_value_bytes;
-		self.historical_count += 1;
+		self.current_key_bytes = if delta.current_key_bytes_delta >= 0 {
+			self.current_key_bytes.saturating_add(delta.current_key_bytes_delta as u64)
+		} else {
+			self.current_key_bytes.saturating_sub((-delta.current_key_bytes_delta) as u64)
+		};
 
-		// Add new version to current
-		self.current_key_bytes += new_key_bytes;
-		self.current_value_bytes += new_value_bytes;
-		self.current_count += 1;
-	}
+		self.current_value_bytes = if delta.current_value_bytes_delta >= 0 {
+			self.current_value_bytes.saturating_add(delta.current_value_bytes_delta as u64)
+		} else {
+			self.current_value_bytes.saturating_sub((-delta.current_value_bytes_delta) as u64)
+		};
 
-	/// Record a delete (tombstone for existing key).
-	///
-	/// The old version moves to historical, tombstone key added to historical.
-	pub fn record_delete(&mut self, tombstone_key_bytes: u64, old_key_bytes: u64, old_value_bytes: u64) {
-		// Move old version from current to historical
-		self.current_key_bytes = self.current_key_bytes.saturating_sub(old_key_bytes);
-		self.current_value_bytes = self.current_value_bytes.saturating_sub(old_value_bytes);
-		self.current_count = self.current_count.saturating_sub(1);
+		self.historical_count = if delta.historical_count_delta >= 0 {
+			self.historical_count.saturating_add(delta.historical_count_delta as u64)
+		} else {
+			self.historical_count.saturating_sub((-delta.historical_count_delta) as u64)
+		};
 
-		self.historical_key_bytes += old_key_bytes;
-		self.historical_value_bytes += old_value_bytes;
-		self.historical_count += 1;
+		self.historical_key_bytes = if delta.historical_key_bytes_delta >= 0 {
+			self.historical_key_bytes.saturating_add(delta.historical_key_bytes_delta as u64)
+		} else {
+			self.historical_key_bytes.saturating_sub((-delta.historical_key_bytes_delta) as u64)
+		};
 
-		// Tombstone goes to historical (key only, no value)
-		self.historical_key_bytes += tombstone_key_bytes;
-		self.historical_count += 1;
-	}
+		self.historical_value_bytes = if delta.historical_value_bytes_delta >= 0 {
+			self.historical_value_bytes.saturating_add(delta.historical_value_bytes_delta as u64)
+		} else {
+			self.historical_value_bytes.saturating_sub((-delta.historical_value_bytes_delta) as u64)
+		};
 
-	/// Record a drop (physical removal of a historical version entry).
-	///
-	/// Unlike delete, drop doesn't create tombstones - it physically removes
-	/// entries from storage. Used for MVCC cleanup of old versions.
-	pub fn record_drop(&mut self, key_bytes: u64, value_bytes: u64) {
-		self.historical_key_bytes = self.historical_key_bytes.saturating_sub(key_bytes);
-		self.historical_value_bytes = self.historical_value_bytes.saturating_sub(value_bytes);
-		self.historical_count = self.historical_count.saturating_sub(1);
+		self.cdc_count = if delta.cdc_count_delta >= 0 {
+			self.cdc_count.saturating_add(delta.cdc_count_delta as u64)
+		} else {
+			self.cdc_count.saturating_sub((-delta.cdc_count_delta) as u64)
+		};
+
+		self.cdc_key_bytes = if delta.cdc_key_bytes_delta >= 0 {
+			self.cdc_key_bytes.saturating_add(delta.cdc_key_bytes_delta as u64)
+		} else {
+			self.cdc_key_bytes.saturating_sub((-delta.cdc_key_bytes_delta) as u64)
+		};
+
+		self.cdc_value_bytes = if delta.cdc_value_bytes_delta >= 0 {
+			self.cdc_value_bytes.saturating_add(delta.cdc_value_bytes_delta as u64)
+		} else {
+			self.cdc_value_bytes.saturating_sub((-delta.cdc_value_bytes_delta) as u64)
+		};
 	}
 }
 
@@ -226,12 +221,15 @@ pub enum ObjectId {
 
 #[cfg(test)]
 mod tests {
-	use super::*;
+	use super::{super::accumulator::StorageStatsDelta, *};
 
 	#[test]
-	fn test_storage_stats_insert() {
+	fn test_apply_delta_insert() {
 		let mut stats = StorageStats::new();
-		stats.record_insert(10, 100);
+		let mut delta = StorageStatsDelta::default();
+		delta.add_insert(10, 100);
+
+		stats.apply_delta(&delta);
 
 		assert_eq!(stats.current_key_bytes, 10);
 		assert_eq!(stats.current_value_bytes, 100);
@@ -242,10 +240,16 @@ mod tests {
 	}
 
 	#[test]
-	fn test_storage_stats_update() {
+	fn test_apply_delta_update() {
 		let mut stats = StorageStats::new();
-		stats.record_insert(10, 100);
-		stats.record_update(10, 150, 10, 100);
+		stats.current_key_bytes = 10;
+		stats.current_value_bytes = 100;
+		stats.current_count = 1;
+
+		let mut delta = StorageStatsDelta::default();
+		delta.add_update(10, 150, 10, 100);
+
+		stats.apply_delta(&delta);
 
 		// Current should have new value
 		assert_eq!(stats.current_key_bytes, 10);
@@ -261,10 +265,16 @@ mod tests {
 	}
 
 	#[test]
-	fn test_storage_stats_delete() {
+	fn test_apply_delta_delete() {
 		let mut stats = StorageStats::new();
-		stats.record_insert(10, 100);
-		stats.record_delete(10, 10, 100);
+		stats.current_key_bytes = 10;
+		stats.current_value_bytes = 100;
+		stats.current_count = 1;
+
+		let mut delta = StorageStatsDelta::default();
+		delta.add_delete(10, 10, 100);
+
+		stats.apply_delta(&delta);
 
 		// Current should be empty
 		assert_eq!(stats.current_key_bytes, 0);
@@ -278,11 +288,53 @@ mod tests {
 	}
 
 	#[test]
+	fn test_apply_delta_drop() {
+		let mut stats = StorageStats::new();
+		stats.historical_key_bytes = 10;
+		stats.historical_value_bytes = 100;
+		stats.historical_count = 1;
+
+		let mut delta = StorageStatsDelta::default();
+		delta.add_drop(10, 100);
+
+		stats.apply_delta(&delta);
+
+		assert_eq!(stats.historical_key_bytes, 0);
+		assert_eq!(stats.historical_value_bytes, 0);
+		assert_eq!(stats.historical_count, 0);
+	}
+
+	#[test]
+	fn test_apply_delta_cdc() {
+		let mut stats = StorageStats::new();
+		let mut delta = StorageStatsDelta::default();
+		delta.add_cdc(100, 500, 5);
+
+		stats.apply_delta(&delta);
+
+		assert_eq!(stats.cdc_key_bytes, 100);
+		assert_eq!(stats.cdc_value_bytes, 500);
+		assert_eq!(stats.cdc_count, 5);
+		// CDC shouldn't affect current or historical
+		assert_eq!(stats.current_count, 0);
+		assert_eq!(stats.historical_count, 0);
+	}
+
+	#[test]
 	fn test_tier_stats() {
 		let mut tier_stats = TierStats::new();
-		tier_stats.get_mut(Tier::Hot).record_insert(10, 100);
-		tier_stats.get_mut(Tier::Warm).record_insert(20, 200);
-		tier_stats.get_mut(Tier::Cold).record_insert(30, 300);
+
+		let mut delta = StorageStatsDelta::default();
+		delta.add_insert(10, 100);
+		tier_stats.get_mut(Tier::Hot).apply_delta(&delta);
+
+		let mut delta = StorageStatsDelta::default();
+		delta.add_insert(20, 200);
+		tier_stats.get_mut(Tier::Warm).apply_delta(&delta);
+
+		let mut delta = StorageStatsDelta::default();
+		delta.add_insert(30, 300);
+		tier_stats.get_mut(Tier::Cold).apply_delta(&delta);
 
 		assert_eq!(tier_stats.hot.total_bytes(), 110);
 		assert_eq!(tier_stats.warm.total_bytes(), 220);

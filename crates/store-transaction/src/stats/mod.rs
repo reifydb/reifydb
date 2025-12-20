@@ -9,11 +9,14 @@
 //! - MVCC-aware breakdown (current vs historical versions)
 //! - Per-tier tracking (hot/warm/cold)
 
+pub mod accumulator;
 mod parser;
 pub mod persistence;
 mod query;
 mod tracker;
 mod types;
 
+pub use accumulator::StatsAccumulator;
+pub use parser::extract_object_id;
 pub use tracker::{PreVersionInfo, StorageTracker, StorageTrackerConfig};
 pub use types::{ObjectId, StorageStats, Tier, TierStats};
