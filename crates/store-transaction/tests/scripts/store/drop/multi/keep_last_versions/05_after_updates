@@ -1,0 +1,41 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests keep_last_versions after multiple updates to the same key.
+
+set a=initial version=1
+set a=update1 version=2
+set a=update2 version=3
+set a=update3 version=4
+set a=latest version=5
+---
+ok
+
+count_versions a
+---
+"a" => 5 versions
+
+# Keep only the latest
+drop a keep_last_versions=1
+---
+ok
+
+count_versions a
+---
+"a" => 1 versions
+
+# Only latest value remains
+get a version=5
+---
+"a" => "latest"
+
+# Previous updates are gone
+contains a version=1
+contains a version=2
+contains a version=3
+contains a version=4
+---
+"a" => false
+"a" => false
+"a" => false
+"a" => false

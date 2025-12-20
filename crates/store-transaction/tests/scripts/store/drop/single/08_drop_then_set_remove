@@ -5,9 +5,20 @@
 
 # Insert and drop
 set a=1
+---
+ok
+
+contains a
+---
+"a" => true
+
 drop a
 ---
 ok
+
+contains a
+---
+"a" => false
 
 get a
 ---
@@ -18,6 +29,10 @@ set a=new
 ---
 ok
 
+contains a
+---
+"a" => true
+
 get a
 ---
 "a" => "new"
@@ -26,6 +41,10 @@ get a
 remove a
 ---
 ok
+
+contains a
+---
+"a" => false
 
 get a
 ---
@@ -36,6 +55,10 @@ set a=final
 ---
 ok
 
+contains a
+---
+"a" => true
+
 get a
 ---
 "a" => "final"
@@ -45,6 +68,10 @@ drop a
 ---
 ok
 
+contains a
+---
+"a" => false
+
 get a
 ---
 "a" => None
@@ -53,6 +80,10 @@ get a
 set a=resurrected
 ---
 ok
+
+contains a
+---
+"a" => true
 
 get a
 ---

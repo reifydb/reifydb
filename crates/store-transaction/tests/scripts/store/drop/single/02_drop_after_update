@@ -1,12 +1,27 @@
 # Copyright (c) reifydb.com 2025
 # This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-# Tests drop after update.
+# Tests drop after updating a key.
 
 set a=initial
+---
+ok
+
+contains a
+---
+"a" => true
+
+get a
+---
+"a" => "initial"
+
 set a=updated
 ---
 ok
+
+contains a
+---
+"a" => true
 
 get a
 ---
@@ -15,6 +30,10 @@ get a
 drop a
 ---
 ok
+
+contains a
+---
+"a" => false
 
 get a
 ---

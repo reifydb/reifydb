@@ -15,10 +15,21 @@ scan
 "b" => "2"
 "c" => "3"
 
+# Verify 'b' exists
+contains b
+---
+"b" => true
+
 drop b
 ---
 ok
 
+# 'b' no longer exists
+contains b
+---
+"b" => false
+
+# Scan should not show 'b'
 scan
 ---
 "a" => "1"

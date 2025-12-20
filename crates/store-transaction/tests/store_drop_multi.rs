@@ -17,8 +17,8 @@ use reifydb_store_transaction::{
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-transaction/tests/scripts/store/drop/multi" as store_drop_multi_memory => test_memory }
-test_each_path! { in "crates/store-transaction/tests/scripts/store/drop/multi" as store_drop_multi_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/store/drop/multi" as store_drop_multi_all_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/store/drop/multi" as store_drop_multi_all_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	testscript::run_path(&mut Runner::new(BackendStorage::memory()), path).expect("test failed")
@@ -201,6 +201,27 @@ impl testscript::Runner for Runner {
 					],
 					version,
 				)?;
+			}
+
+			// count_versions KEY - counts how many versions of a key exist
+			"count_versions" => {
+				let mut args = command.consume_args();
+				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+				args.reject_rest()?;
+
+				// Count version boundaries: where value changes and is Some
+				// This detects actual stored version entries, not MVCC forward propagation
+				let mut count = 0;
+				let mut prev_value: Option<Vec<u8>> = None;
+				for v in 1..=1000 {
+					let current =
+						self.store.get(&key, CommitVersion(v))?.map(|sv| sv.values.to_vec());
+					if current.is_some() && current != prev_value {
+						count += 1;
+					}
+					prev_value = current;
+				}
+				writeln!(output, "{} => {} versions", format::Raw::key(&key), count)?;
 			}
 
 			name => {

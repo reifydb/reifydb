@@ -8,6 +8,13 @@ set b=2
 ---
 ok
 
+# Verify both keys exist
+contains a
+contains b
+---
+"a" => true
+"b" => true
+
 get a
 get b
 ---
@@ -18,6 +25,13 @@ get b
 drop a
 ---
 ok
+
+# 'a' no longer exists, 'b' still exists
+contains a
+contains b
+---
+"a" => false
+"b" => true
 
 get a
 get b

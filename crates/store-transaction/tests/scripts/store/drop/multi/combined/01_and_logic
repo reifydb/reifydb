@@ -1,0 +1,57 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests combined constraints use AND logic.
+# Drop only if BOTH: version < up_to_version AND index >= keep_last_versions
+
+# Insert versions: 1, 5, 10, 20, 100
+set a=v1 version=1
+set a=v5 version=5
+set a=v10 version=10
+set a=v20 version=20
+set a=v100 version=100
+---
+ok
+
+count_versions a
+---
+"a" => 5 versions
+
+# up_to_version=15 would drop v1, v5, v10 (all < 15)
+# keep_last_versions=3 protects v100, v20, v10 (top 3 by version)
+# Combined (AND): only drop v1, v5 because:
+#   - v1: version < 15 AND not in top 3 -> DROP
+#   - v5: version < 15 AND not in top 3 -> DROP
+#   - v10: version < 15 BUT in top 3 -> KEEP (protected)
+#   - v20: version >= 15 -> KEEP
+#   - v100: version >= 15 -> KEEP
+drop a up_to_version=15 keep_last_versions=3
+---
+ok
+
+# 3 versions remain (v10, v20, v100)
+count_versions a
+---
+"a" => 3 versions
+
+contains a version=1
+contains a version=5
+---
+"a" => false
+"a" => false
+
+contains a version=10
+contains a version=20
+contains a version=100
+---
+"a" => true
+"a" => true
+"a" => true
+
+get a version=10
+get a version=20
+get a version=100
+---
+"a" => "v10"
+"a" => "v20"
+"a" => "v100"

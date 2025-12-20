@@ -4,7 +4,11 @@
 # Tests that dropping a nonexistent key is a no-op.
 
 # Key doesn't exist
-contains nonexistent
+count_versions nonexistent
+---
+"nonexistent" => 0 versions
+
+contains nonexistent version=1
 ---
 "nonexistent" => false
 
@@ -14,10 +18,10 @@ drop nonexistent
 ok
 
 # Still doesn't exist
-contains nonexistent
+count_versions nonexistent
+---
+"nonexistent" => 0 versions
+
+contains nonexistent version=1
 ---
 "nonexistent" => false
-
-get nonexistent
----
-"nonexistent" => None

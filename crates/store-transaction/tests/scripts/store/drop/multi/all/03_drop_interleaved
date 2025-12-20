@@ -8,33 +8,61 @@ set a=1 version=1
 ---
 ok
 
-get a version=1
+count_versions a
 ---
-"a" => "1"
+"a" => 1 versions
+
+contains a version=1
+---
+"a" => true
 
 # Drop it
 drop a
 ---
 ok
 
-get a version=1
+count_versions a
 ---
-"a" => None
+"a" => 0 versions
 
-# Re-insert at new version
+contains a version=1
+---
+"a" => false
+
+# Re-insert after drop
 set a=new version=2
 ---
 ok
+
+count_versions a
+---
+"a" => 1 versions
+
+contains a version=2
+---
+"a" => true
 
 get a version=2
 ---
 "a" => "new"
 
-# Drop and re-insert again in same batch
+# Drop again
 drop a
+---
+ok
+
+count_versions a
+---
+"a" => 0 versions
+
+# Set final value
 set a=final version=3
 ---
 ok
+
+count_versions a
+---
+"a" => 1 versions
 
 get a version=3
 ---
