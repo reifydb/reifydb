@@ -15,7 +15,7 @@ use tracing::instrument;
 
 use super::{
 	StandardTransactionStore, drop,
-	router::classify_key,
+	router::{classify_key, is_single_version_semantics_key},
 	version_manager::{VersionedGetResult, encode_versioned_key, get_at_version, get_latest_version},
 };
 use crate::{
@@ -135,6 +135,31 @@ impl MultiVersionCommit for StandardTransactionStore {
 		// Optimize deltas first (cancel insert+delete pairs, coalesce updates)
 		let optimized_deltas = optimize_deltas(deltas.iter().cloned(), key_exists);
 
+		// For flow state keys (single-version semantics), inject Drop deltas to clean up old versions.
+		// This is done after optimization but before CDC processing since:
+		// - Flow state keys are excluded from CDC anyway
+		// - We want atomic cleanup in the same commit batch
+		let all_deltas: Vec<Delta> = {
+			let mut result = Vec::with_capacity(optimized_deltas.len() * 2);
+			for delta in optimized_deltas.iter() {
+				result.push(delta.clone());
+				if let Delta::Set {
+					key,
+					..
+				} = delta
+				{
+					if is_single_version_semantics_key(key) {
+						result.push(Delta::Drop {
+							key: key.clone(),
+							up_to_version: None,
+							keep_last_versions: Some(1),
+						});
+					}
+				}
+			}
+			result
+		};
+
 		// Generate CDC changes from optimized deltas
 		let cdc_changes = process_deltas_for_cdc(optimized_deltas.iter().cloned(), version, |key| {
 			let table = classify_key(key);
@@ -193,9 +218,10 @@ impl MultiVersionCommit for StandardTransactionStore {
 		}
 
 		// Batch deltas by table for efficient storage writes
+		// Use all_deltas (includes injected Drop ops for single-version-semantics keys)
 		let mut batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();
 
-		for delta in optimized_deltas.iter() {
+		for delta in all_deltas.iter() {
 			let table = classify_key(delta.key());
 
 			match delta {
