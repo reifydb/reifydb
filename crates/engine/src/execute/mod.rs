@@ -50,6 +50,121 @@ mod catalog;
 pub(crate) mod mutate;
 mod query;
 
+const MAX_BATCH_SIZE: u64 = 1024;
+
+/// Compute adaptive batch size based on the query plan.
+/// Only uses a smaller batch size when it's safe to do so - i.e., when there
+/// are no materializing operators (Sort, Aggregate, Join) between the Take
+/// and the data source.
+fn compute_batch_size(plan: &PhysicalPlan) -> u64 {
+	if let Some(limit) = extract_safe_take_limit(plan) {
+		if limit == 0 {
+			return 1; // Avoid zero-size batches
+		}
+		if (limit as u64) < MAX_BATCH_SIZE {
+			return limit as u64;
+		}
+	}
+	MAX_BATCH_SIZE
+}
+
+/// Recursively check if we can safely use a Take limit as the batch size.
+/// Returns Some(limit) only if the path from Take to scan contains only
+/// non-materializing operators (Filter, Map, Extend).
+fn extract_safe_take_limit(plan: &PhysicalPlan) -> Option<usize> {
+	match plan {
+		PhysicalPlan::Take(take_node) => {
+			// Check if the input chain is safe for early limiting
+			if is_safe_for_early_limit(&take_node.input) {
+				Some(take_node.take)
+			} else {
+				None
+			}
+		}
+		_ => None,
+	}
+}
+
+/// Check if the plan subtree only contains operators that don't require
+/// seeing all rows before producing output. Safe operators are:
+/// - Scans (TableScan, ViewScan, etc.)
+/// - Filter, Map, Extend (streaming operators)
+/// - Take (nested takes)
+/// - Row lookups
+///
+/// Unsafe operators that require all input:
+/// - Sort (needs all rows to sort)
+/// - Aggregate (needs all rows to aggregate)
+/// - Joins (may need full materialization)
+fn is_safe_for_early_limit(plan: &PhysicalPlan) -> bool {
+	match plan {
+		// Scans are always safe - they're the data source
+		PhysicalPlan::TableScan(_)
+		| PhysicalPlan::ViewScan(_)
+		| PhysicalPlan::FlowScan(_)
+		| PhysicalPlan::RingBufferScan(_)
+		| PhysicalPlan::DictionaryScan(_)
+		| PhysicalPlan::TableVirtualScan(_)
+		| PhysicalPlan::IndexScan(_)
+		| PhysicalPlan::InlineData(_)
+		| PhysicalPlan::Generator(_)
+		| PhysicalPlan::Variable(_)
+		| PhysicalPlan::Environment(_) => true,
+
+		// Row lookups are safe
+		PhysicalPlan::RowPointLookup(_) | PhysicalPlan::RowListLookup(_) | PhysicalPlan::RowRangeScan(_) => {
+			true
+		}
+
+		// Streaming operators - check their input
+		PhysicalPlan::Filter(node) => is_safe_for_early_limit(&node.input),
+		PhysicalPlan::Map(node) => node.input.as_ref().map_or(true, |input| is_safe_for_early_limit(input)),
+		PhysicalPlan::Extend(node) => node.input.as_ref().map_or(true, |input| is_safe_for_early_limit(input)),
+		PhysicalPlan::Take(node) => is_safe_for_early_limit(&node.input),
+		PhysicalPlan::Scalarize(node) => is_safe_for_early_limit(&node.input),
+		PhysicalPlan::Conditional(node) => {
+			is_safe_for_early_limit(&node.then_branch)
+				&& node.else_branch.as_ref().map_or(true, |b| is_safe_for_early_limit(b))
+		}
+
+		// Materializing operators - NOT safe
+		PhysicalPlan::Sort(_)
+		| PhysicalPlan::Aggregate(_)
+		| PhysicalPlan::Distinct(_)
+		| PhysicalPlan::JoinInner(_)
+		| PhysicalPlan::JoinLeft(_)
+		| PhysicalPlan::JoinNatural(_)
+		| PhysicalPlan::Merge(_)
+		| PhysicalPlan::Window(_)
+		| PhysicalPlan::Apply(_) => false,
+
+		// Mutations - not relevant for query batch sizing
+		PhysicalPlan::Delete(_)
+		| PhysicalPlan::DeleteRingBuffer(_)
+		| PhysicalPlan::InsertTable(_)
+		| PhysicalPlan::InsertRingBuffer(_)
+		| PhysicalPlan::InsertDictionary(_)
+		| PhysicalPlan::Update(_)
+		| PhysicalPlan::UpdateRingBuffer(_) => false,
+
+		// DDL - not relevant
+		PhysicalPlan::AlterSequence(_)
+		| PhysicalPlan::AlterTable(_)
+		| PhysicalPlan::AlterView(_)
+		| PhysicalPlan::AlterFlow(_)
+		| PhysicalPlan::CreateDeferredView(_)
+		| PhysicalPlan::CreateTransactionalView(_)
+		| PhysicalPlan::CreateNamespace(_)
+		| PhysicalPlan::CreateTable(_)
+		| PhysicalPlan::CreateRingBuffer(_)
+		| PhysicalPlan::CreateFlow(_)
+		| PhysicalPlan::CreateDictionary(_) => false,
+
+		// Variable operations - safe
+		PhysicalPlan::Declare(_) | PhysicalPlan::Assign(_) => true,
+	}
+}
+
 /// Unified trait for query execution nodes following the volcano iterator
 /// pattern
 pub(crate) trait QueryNode<'a> {
@@ -568,10 +683,11 @@ impl Executor {
 		params: Params,
 		stack: &mut Stack,
 	) -> crate::Result<Option<Columns<'a>>> {
+		let batch_size = compute_batch_size(&plan);
 		let context = Arc::new(ExecutionContext {
 			executor: self.clone(),
 			source: None,
-			batch_size: 1024,
+			batch_size,
 			params: params.clone(),
 			stack: stack.clone(),
 		});
