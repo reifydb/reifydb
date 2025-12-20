@@ -1576,6 +1576,7 @@ dependencies = [
  "bigdecimal",
  "crossbeam-channel",
  "crossbeam-skiplist",
+ "indexmap 2.12.0",
  "num-bigint",
  "num-traits",
  "once_cell",
@@ -1603,6 +1604,7 @@ name = "reifydb-engine"
 version = "0.1.6"
 dependencies = [
  "bincode",
+ "indexmap 2.12.0",
  "once_cell",
  "parking_lot",
  "reifydb-auth",

@@ -1,23 +1,22 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
-
+use indexmap::IndexMap;
 use reifydb_core::value::column::ColumnData;
 use reifydb_type::Value;
 
 use crate::function::{AggregateFunction, AggregateFunctionContext};
 
 pub struct Avg {
-	pub sums: HashMap<Vec<Value>, f64>,
-	pub counts: HashMap<Vec<Value>, u64>,
+	pub sums: IndexMap<Vec<Value>, f64>,
+	pub counts: IndexMap<Vec<Value>, u64>,
 }
 
 impl Avg {
 	pub fn new() -> Self {
 		Self {
-			sums: HashMap::new(),
-			counts: HashMap::new(),
+			sums: IndexMap::new(),
+			counts: IndexMap::new(),
 		}
 	}
 }
@@ -152,11 +151,13 @@ impl AggregateFunction for Avg {
 		let mut data = ColumnData::float8_with_capacity(self.sums.len());
 
 		for (key, sum) in std::mem::take(&mut self.sums) {
-			let count = self.counts.remove(&key).unwrap_or(0);
+			let count = self.counts.swap_remove(&key).unwrap_or(0);
 			let avg = if count > 0 {
 				sum / count as f64
 			} else {
-				f64::NAN // or return Value::Undefined if preferred
+				keys.push(key);
+				data.push_value(Value::undefined());
+				return Ok((keys, data));
 			};
 
 			keys.push(key);

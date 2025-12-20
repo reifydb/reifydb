@@ -1,14 +1,13 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
-use std::collections::HashMap;
-
+use indexmap::IndexMap;
 use reifydb_type::{Value, diagnostic::engine, error};
 
 use crate::value::column::{ColumnData, Columns};
 
 pub type GroupKey = Vec<Value>;
-pub type GroupByView = HashMap<GroupKey, Vec<usize>>;
+pub type GroupByView = IndexMap<GroupKey, Vec<usize>>;
 
 impl<'a> Columns<'a> {
 	pub fn group_by_view(&self, keys: &[&str]) -> crate::Result<GroupByView> {
