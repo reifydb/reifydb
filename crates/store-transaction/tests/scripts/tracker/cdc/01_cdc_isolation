@@ -1,0 +1,42 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that CDC counters are isolated from current/historical.
+
+# Insert keys
+set a=1
+---
+ok
+
+set b=2
+---
+ok
+
+# Update a key
+set a=3
+---
+ok
+
+# Delete a key
+remove b
+---
+ok
+
+stats_cdc
+---
+cdc_count: 4
+cdc_key_bytes: 4
+cdc_value_bytes: 304
+
+# Current and historical should have normal values
+stats_current
+---
+current_count: 1
+current_key_bytes: 9
+current_value_bytes: 1
+
+stats_historical
+---
+historical_count: 3
+historical_key_bytes: 27
+historical_value_bytes: 2

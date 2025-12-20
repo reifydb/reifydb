@@ -25,8 +25,8 @@ use reifydb_store_transaction::{
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-transaction/tests/scripts/store/single" as store_single_memory => test_memory }
-test_each_path! { in "crates/store-transaction/tests/scripts/store/single" as store_single_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/single" as store_single_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/single" as store_single_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	testscript::run_path(&mut Runner::new(BackendStorage::memory()), path).expect("test failed")

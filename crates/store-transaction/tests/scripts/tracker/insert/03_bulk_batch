@@ -1,0 +1,69 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests bulk insert tracking with many keys.
+
+# Initial stats should be zero
+stats_current
+---
+current_count: 0
+current_key_bytes: 0
+current_value_bytes: 0
+
+# Insert 10 keys with single-byte values
+set k1=a
+---
+ok
+
+set k2=b
+---
+ok
+
+set k3=c
+---
+ok
+
+set k4=d
+---
+ok
+
+set k5=e
+---
+ok
+
+set k6=f
+---
+ok
+
+set k7=g
+---
+ok
+
+set k8=h
+---
+ok
+
+set k9=i
+---
+ok
+
+set k10=j
+---
+ok
+
+# 10 keys: k1-k9 = 2 bytes each (versioned = 10 bytes), k10 = 3 bytes (versioned = 11 bytes)
+# Total key bytes: 9 * 10 + 11 = 101 bytes
+# 10 values, each 1 byte
+stats_current
+---
+current_count: 10
+current_key_bytes: 101
+current_value_bytes: 10
+
+# Verify totals
+stats_totals
+---
+total_count: 10
+current_bytes: 111
+historical_bytes: 0
+total_bytes: 111

@@ -1,6 +1,17 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
+//! Comprehensive test suite for storage tracker functionality.
+//!
+//! Tests verify that the StorageTracker correctly tracks:
+//! - Insert operations (new keys)
+//! - Update operations (existing keys, historical accumulation)
+//! - Delete operations (tombstone tracking)
+//! - Drop operations (physical removal, historical reduction)
+//! - CDC tracking (change attribution)
+//! - Persistence (checkpoint/restore round-trip)
+//! - Invariants (byte totals, count totals, no negative counts)
+
 use std::{error::Error as StdError, fmt::Write, path::Path, time::Duration};
 
 use reifydb_core::{
@@ -17,8 +28,8 @@ use reifydb_store_transaction::{
 use reifydb_testing::{tempdir::temp_dir, testscript};
 use test_each_file::test_each_path;
 
-test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_memory => test_memory }
-test_each_path! { in "crates/store-transaction/tests/scripts/drop/multi" as store_drop_multi_all_sqlite => test_sqlite }
+test_each_path! { in "crates/store-transaction/tests/scripts/tracker" as store_tracker_memory => test_memory }
+test_each_path! { in "crates/store-transaction/tests/scripts/tracker" as store_tracker_sqlite => test_sqlite }
 
 fn test_memory(path: &Path) {
 	testscript::run_path(&mut Runner::new(BackendStorage::memory()), path).expect("test failed")
@@ -29,7 +40,7 @@ fn test_sqlite(path: &Path) {
 		.expect("test failed")
 }
 
-/// Runs drop tests for multi-version store.
+/// Test runner for storage tracker tests.
 pub struct Runner {
 	store: StandardTransactionStore,
 	version: CommitVersion,
@@ -59,6 +70,8 @@ impl testscript::Runner for Runner {
 	fn run(&mut self, command: &testscript::Command) -> Result<String, Box<dyn StdError>> {
 		let mut output = String::new();
 		match command.name.as_str() {
+			// ==================== Data Operations ====================
+
 			// get KEY [version=VERSION]
 			"get" => {
 				let mut args = command.consume_args();
@@ -71,6 +84,7 @@ impl testscript::Runner for Runner {
 
 				writeln!(output, "{}", format::Raw::key_maybe_value(&key, value))?;
 			}
+
 			// contains KEY [version=VERSION]
 			"contains" => {
 				let mut args = command.consume_args();
@@ -95,38 +109,6 @@ impl testscript::Runner for Runner {
 						&mut output,
 						self.store.range_rev(EncodedKeyRange::all(), version).unwrap(),
 					)
-				};
-			}
-			// range RANGE [reverse=BOOL] [version=VERSION]
-			"range" => {
-				let mut args = command.consume_args();
-				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let range = EncodedKeyRange::parse(
-					args.next_pos().map(|a| a.value.as_str()).unwrap_or(".."),
-				);
-				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
-				args.reject_rest()?;
-
-				if !reverse {
-					print(&mut output, self.store.range(range, version)?)
-				} else {
-					print(&mut output, self.store.range_rev(range, version)?)
-				};
-			}
-
-			// prefix PREFIX [reverse=BOOL] [version=VERSION]
-			"prefix" => {
-				let mut args = command.consume_args();
-				let reverse = args.lookup_parse("reverse")?.unwrap_or(false);
-				let version = CommitVersion(args.lookup_parse("version")?.unwrap_or(self.version.0));
-				let prefix =
-					EncodedKey(decode_binary(&args.next_pos().ok_or("prefix not given")?.value));
-				args.reject_rest()?;
-
-				if !reverse {
-					print(&mut output, self.store.prefix(&prefix, version)?)
-				} else {
-					print(&mut output, self.store.prefix_rev(&prefix, version)?)
 				};
 			}
 
@@ -203,25 +185,79 @@ impl testscript::Runner for Runner {
 				)?;
 			}
 
-			// count_versions KEY - counts how many versions of a key exist
-			"count_versions" => {
-				let mut args = command.consume_args();
-				let key = EncodedKey(decode_binary(&args.next_pos().ok_or("key not given")?.value));
+			// ==================== Stats Query Commands ====================
+
+			// stats - outputs all tracker stats for hot tier
+			"stats" => {
+				let args = command.consume_args();
 				args.reject_rest()?;
 
-				// Count version boundaries: where value changes and is Some
-				// This detects actual stored version entries, not MVCC forward propagation
-				let mut count = 0;
-				let mut prev_value: Option<Vec<u8>> = None;
-				for v in 1..=1000 {
-					let current =
-						self.store.get(&key, CommitVersion(v))?.map(|sv| sv.values.to_vec());
-					if current.is_some() && current != prev_value {
-						count += 1;
-					}
-					prev_value = current;
-				}
-				writeln!(output, "{} => {} versions", format::Raw::key(&key), count)?;
+				let stats = self.store.stats_tracker().total_stats();
+				let hot = &stats.hot;
+
+				writeln!(output, "current_count: {}", hot.current_count)?;
+				writeln!(output, "current_key_bytes: {}", hot.current_key_bytes)?;
+				writeln!(output, "current_value_bytes: {}", hot.current_value_bytes)?;
+				writeln!(output, "historical_count: {}", hot.historical_count)?;
+				writeln!(output, "historical_key_bytes: {}", hot.historical_key_bytes)?;
+				writeln!(output, "historical_value_bytes: {}", hot.historical_value_bytes)?;
+				writeln!(output, "cdc_count: {}", hot.cdc_count)?;
+				writeln!(output, "cdc_key_bytes: {}", hot.cdc_key_bytes)?;
+				writeln!(output, "cdc_value_bytes: {}", hot.cdc_value_bytes)?;
+				writeln!(output, "total_bytes: {}", hot.total_bytes())?;
+			}
+
+			// stats_current - outputs only current stats (for brevity)
+			"stats_current" => {
+				let args = command.consume_args();
+				args.reject_rest()?;
+
+				let stats = self.store.stats_tracker().total_stats();
+				let hot = &stats.hot;
+
+				writeln!(output, "current_count: {}", hot.current_count)?;
+				writeln!(output, "current_key_bytes: {}", hot.current_key_bytes)?;
+				writeln!(output, "current_value_bytes: {}", hot.current_value_bytes)?;
+			}
+
+			// stats_historical - outputs only historical stats
+			"stats_historical" => {
+				let args = command.consume_args();
+				args.reject_rest()?;
+
+				let stats = self.store.stats_tracker().total_stats();
+				let hot = &stats.hot;
+
+				writeln!(output, "historical_count: {}", hot.historical_count)?;
+				writeln!(output, "historical_key_bytes: {}", hot.historical_key_bytes)?;
+				writeln!(output, "historical_value_bytes: {}", hot.historical_value_bytes)?;
+			}
+
+			// stats_cdc - outputs only CDC stats
+			"stats_cdc" => {
+				let args = command.consume_args();
+				args.reject_rest()?;
+
+				let stats = self.store.stats_tracker().total_stats();
+				let hot = &stats.hot;
+
+				writeln!(output, "cdc_count: {}", hot.cdc_count)?;
+				writeln!(output, "cdc_key_bytes: {}", hot.cdc_key_bytes)?;
+				writeln!(output, "cdc_value_bytes: {}", hot.cdc_value_bytes)?;
+			}
+
+			// stats_totals - outputs computed totals for invariant checks
+			"stats_totals" => {
+				let args = command.consume_args();
+				args.reject_rest()?;
+
+				let stats = self.store.stats_tracker().total_stats();
+				let hot = &stats.hot;
+
+				writeln!(output, "total_count: {}", hot.total_count())?;
+				writeln!(output, "current_bytes: {}", hot.current_bytes())?;
+				writeln!(output, "historical_bytes: {}", hot.historical_bytes())?;
+				writeln!(output, "total_bytes: {}", hot.total_bytes())?;
 			}
 
 			name => {

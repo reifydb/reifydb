@@ -16,7 +16,7 @@ use tracing::instrument;
 use super::{
 	StandardTransactionStore, drop,
 	router::{classify_key, is_single_version_semantics_key},
-	version_manager::{VersionedGetResult, encode_versioned_key, get_at_version, get_latest_version},
+	version_manager::{VERSION_SIZE, VersionedGetResult, encode_versioned_key, get_at_version, get_latest_version},
 };
 use crate::{
 	MultiVersionCommit, MultiVersionContains, MultiVersionGet, MultiVersionIter, MultiVersionRange,
@@ -191,6 +191,9 @@ impl MultiVersionCommit for StandardTransactionStore {
 			// Look up previous value to calculate size delta
 			let pre_version_info = self.get_previous_value_info(table, key_bytes);
 
+			// Versioned key size = original key + VERSION_SIZE
+			let versioned_key_bytes = (key_bytes.len() + VERSION_SIZE) as u64;
+
 			match delta {
 				Delta::Set {
 					values,
@@ -199,6 +202,7 @@ impl MultiVersionCommit for StandardTransactionStore {
 					self.stats_tracker.record_write(
 						Tier::Hot,
 						key_bytes,
+						versioned_key_bytes,
 						values.len() as u64,
 						pre_version_info,
 					);
@@ -206,7 +210,12 @@ impl MultiVersionCommit for StandardTransactionStore {
 				Delta::Remove {
 					..
 				} => {
-					self.stats_tracker.record_delete(Tier::Hot, key_bytes, pre_version_info);
+					self.stats_tracker.record_delete(
+						Tier::Hot,
+						key_bytes,
+						versioned_key_bytes,
+						pre_version_info,
+					);
 				}
 				Delta::Drop {
 					..
@@ -246,15 +255,22 @@ impl MultiVersionCommit for StandardTransactionStore {
 					keep_last_versions,
 				} => {
 					// Drop scans for versioned entries and deletes them based on constraints
-					let keys_to_drop = find_keys_to_drop(
+					let entries_to_drop = find_keys_to_drop(
 						storage,
 						table,
 						key.as_ref(),
 						*up_to_version,
 						*keep_last_versions,
 					)?;
-					for versioned_key in keys_to_drop {
-						batches.entry(table).or_default().push((versioned_key, None));
+					for entry in entries_to_drop {
+						// Track storage reduction for each dropped entry
+						self.stats_tracker.record_drop(
+							Tier::Hot,
+							key.as_ref(),
+							entry.versioned_key.len() as u64,
+							entry.value_bytes,
+						);
+						batches.entry(table).or_default().push((entry.versioned_key, None));
 					}
 				}
 			}
@@ -306,14 +322,19 @@ impl StandardTransactionStore {
 	/// Get information about the previous value of a key for stats tracking.
 	///
 	/// Returns the key and value sizes of the latest version if the key exists.
+	/// Key size includes the VERSION_SIZE suffix for versioned keys.
 	fn get_previous_value_info(&self, table: TableId, key: &[u8]) -> Option<PreVersionInfo> {
 		// Try to get the latest version from any tier
-		let get_value = |storage: &crate::backend::BackendStorage| -> Option<(u64, u64)> {
+		let get_value = |storage: &BackendStorage| -> Option<(u64, u64)> {
 			match get_at_version(storage, table, key, CommitVersion(u64::MAX)) {
 				Ok(VersionedGetResult::Value {
 					value,
 					..
-				}) => Some((key.len() as u64, value.len() as u64)),
+				}) => {
+					// Return versioned key size (key + VERSION_SIZE)
+					let versioned_key_bytes = (key.len() + VERSION_SIZE) as u64;
+					Some((versioned_key_bytes, value.len() as u64))
+				}
 				_ => None,
 			}
 		};
@@ -348,7 +369,7 @@ impl StandardTransactionStore {
 	}
 }
 
-use std::collections::BTreeMap;
+use std::{collections::BTreeMap, marker::PhantomData, vec::IntoIter};
 
 use drop::find_keys_to_drop;
 
@@ -360,8 +381,8 @@ use crate::backend::BackendStorage;
 /// Also filters keys to ensure they fall within the requested range.
 pub struct PrimitiveMultiVersionRangeIter<'a> {
 	/// Collected and sorted entries (original key -> (version, value))
-	entries: std::vec::IntoIter<(Vec<u8>, CommitVersion, Option<Vec<u8>>)>,
-	_phantom: std::marker::PhantomData<&'a ()>,
+	entries: IntoIter<(Vec<u8>, CommitVersion, Option<Vec<u8>>)>,
+	_phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> PrimitiveMultiVersionRangeIter<'a> {
@@ -412,7 +433,7 @@ impl<'a> PrimitiveMultiVersionRangeIter<'a> {
 
 		Self {
 			entries: entries.into_iter(),
-			_phantom: std::marker::PhantomData,
+			_phantom: PhantomData,
 		}
 	}
 }
@@ -501,8 +522,8 @@ impl MultiVersionRange for StandardTransactionStore {
 /// then sorts by original key in reverse order.
 pub struct PrimitiveMultiVersionRangeRevIter<'a> {
 	/// Collected and reverse-sorted entries
-	entries: std::vec::IntoIter<(Vec<u8>, CommitVersion, Option<Vec<u8>>)>,
-	_phantom: std::marker::PhantomData<&'a ()>,
+	entries: IntoIter<(Vec<u8>, CommitVersion, Option<Vec<u8>>)>,
+	_phantom: PhantomData<&'a ()>,
 }
 
 impl<'a> PrimitiveMultiVersionRangeRevIter<'a> {
@@ -551,7 +572,7 @@ impl<'a> PrimitiveMultiVersionRangeRevIter<'a> {
 
 		Self {
 			entries: entries.into_iter(),
-			_phantom: std::marker::PhantomData,
+			_phantom: PhantomData,
 		}
 	}
 }

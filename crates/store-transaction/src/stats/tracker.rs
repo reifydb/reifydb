@@ -64,6 +64,8 @@ pub(super) struct StorageTrackerInner {
 	pub(super) by_type: HashMap<(Tier, KeyKind), StorageStats>,
 	/// Per-tier, per-object stats
 	pub(super) by_object: HashMap<(Tier, ObjectId), StorageStats>,
+	/// Per-tier totals (includes all keys, even those without recognized KeyKind)
+	pub(super) by_tier: HashMap<Tier, StorageStats>,
 	/// Configuration
 	pub(super) config: StorageTrackerConfig,
 	/// Last checkpoint time
@@ -77,6 +79,7 @@ impl StorageTracker {
 			inner: Arc::new(RwLock::new(StorageTrackerInner {
 				by_type: HashMap::new(),
 				by_object: HashMap::new(),
+				by_tier: HashMap::new(),
 				config,
 				last_checkpoint: Instant::now(),
 			})),
@@ -91,16 +94,32 @@ impl StorageTracker {
 	/// Record a write operation (insert or update).
 	///
 	/// - `tier`: Which storage tier this write goes to
-	/// - `key`: The encoded key bytes
+	/// - `key`: The encoded key bytes (unversioned, used for KeyKind lookup)
+	/// - `key_bytes`: Size of the key as stored (typically versioned key size)
 	/// - `value_bytes`: Size of the value being written
 	/// - `pre_version`: Information about the previous version, if the key already existed
-	pub fn record_write(&self, tier: Tier, key: &[u8], value_bytes: u64, pre_version: Option<PreVersionInfo>) {
-		let key_bytes = key.len() as u64;
-
+	pub fn record_write(
+		&self,
+		tier: Tier,
+		key: &[u8],
+		key_bytes: u64,
+		value_bytes: u64,
+		pre_version: Option<PreVersionInfo>,
+	) {
 		let kind = Key::kind(key);
 		let object_id = kind.map(|k| extract_object_id(key, k));
 
 		let mut inner = self.inner.write().unwrap();
+
+		// Update per-tier totals (always, regardless of KeyKind)
+		{
+			let stats = inner.by_tier.entry(tier).or_insert_with(StorageStats::new);
+			if let Some(pre) = &pre_version {
+				stats.record_update(key_bytes, value_bytes, pre.key_bytes, pre.value_bytes);
+			} else {
+				stats.record_insert(key_bytes, value_bytes);
+			}
+		}
 
 		// Update per-type stats
 		if let Some(kind) = kind {
@@ -128,20 +147,25 @@ impl StorageTracker {
 	/// Record a delete operation (tombstone).
 	///
 	/// - `tier`: Which storage tier this delete goes to
-	/// - `key`: The encoded key bytes
+	/// - `key`: The encoded key bytes (unversioned, used for KeyKind lookup)
+	/// - `key_bytes`: Size of the tombstone key as stored (typically versioned key size)
 	/// - `pre_version`: Information about the previous version being deleted
-	pub fn record_delete(&self, tier: Tier, key: &[u8], pre_version: Option<PreVersionInfo>) {
+	pub fn record_delete(&self, tier: Tier, key: &[u8], key_bytes: u64, pre_version: Option<PreVersionInfo>) {
 		// If there was no previous version, nothing to track
 		let Some(pre) = pre_version else {
 			return;
 		};
 
-		let key_bytes = key.len() as u64;
-
 		let kind = Key::kind(key);
 		let object_id = kind.map(|k| extract_object_id(key, k));
 
 		let mut inner = self.inner.write().unwrap();
+
+		// Update per-tier totals (always, regardless of KeyKind)
+		{
+			let stats = inner.by_tier.entry(tier).or_insert_with(StorageStats::new);
+			stats.record_delete(key_bytes, pre.key_bytes, pre.value_bytes);
+		}
 
 		// Update per-type stats
 		if let Some(kind) = kind {
@@ -153,6 +177,41 @@ impl StorageTracker {
 		if let Some(object_id) = object_id {
 			if let Some(stats) = inner.by_object.get_mut(&(tier, object_id)) {
 				stats.record_delete(key_bytes, pre.key_bytes, pre.value_bytes);
+			}
+		}
+	}
+
+	/// Record a drop operation (physical removal of historical version entry).
+	///
+	/// Unlike delete, drop doesn't create tombstones - it physically removes
+	/// entries from storage. Used for MVCC cleanup of old versions.
+	///
+	/// - `tier`: Which storage tier the drop occurred in
+	/// - `key`: The original (unversioned) encoded key bytes
+	/// - `versioned_key_bytes`: Size of the versioned key being dropped
+	/// - `value_bytes`: Size of the value being dropped
+	pub fn record_drop(&self, tier: Tier, key: &[u8], versioned_key_bytes: u64, value_bytes: u64) {
+		let kind = Key::kind(key);
+		let object_id = kind.map(|k| extract_object_id(key, k));
+
+		let mut inner = self.inner.write().unwrap();
+
+		// Update per-tier totals (always, regardless of KeyKind)
+		if let Some(stats) = inner.by_tier.get_mut(&tier) {
+			stats.record_drop(versioned_key_bytes, value_bytes);
+		}
+
+		// Update per-type stats
+		if let Some(kind) = kind {
+			if let Some(stats) = inner.by_type.get_mut(&(tier, kind)) {
+				stats.record_drop(versioned_key_bytes, value_bytes);
+			}
+		}
+
+		// Update per-object stats
+		if let Some(object_id) = object_id {
+			if let Some(stats) = inner.by_object.get_mut(&(tier, object_id)) {
+				stats.record_drop(versioned_key_bytes, value_bytes);
 			}
 		}
 	}
@@ -171,6 +230,12 @@ impl StorageTracker {
 		let object_id = kind.map(|k| extract_object_id(key, k));
 
 		let mut inner = self.inner.write().unwrap();
+
+		// Update per-tier totals (always, regardless of KeyKind)
+		{
+			let stats = inner.by_tier.entry(tier).or_insert_with(StorageStats::new);
+			stats.record_cdc(key_bytes, value_bytes, count);
+		}
 
 		// Update per-type stats
 		if let Some(kind) = kind {
@@ -203,6 +268,37 @@ impl StorageTracker {
 		let object_id = kind.map(|k| extract_object_id(key, k));
 
 		let mut inner = self.inner.write().unwrap();
+
+		// Update per-tier totals (always, regardless of KeyKind)
+		{
+			// Subtract from source tier
+			if let Some(stats) = inner.by_tier.get_mut(&from_tier) {
+				if is_current {
+					stats.current_key_bytes = stats.current_key_bytes.saturating_sub(key_bytes);
+					stats.current_value_bytes =
+						stats.current_value_bytes.saturating_sub(value_bytes);
+					stats.current_count = stats.current_count.saturating_sub(1);
+				} else {
+					stats.historical_key_bytes =
+						stats.historical_key_bytes.saturating_sub(key_bytes);
+					stats.historical_value_bytes =
+						stats.historical_value_bytes.saturating_sub(value_bytes);
+					stats.historical_count = stats.historical_count.saturating_sub(1);
+				}
+			}
+
+			// Add to destination tier
+			let stats = inner.by_tier.entry(to_tier).or_insert_with(StorageStats::new);
+			if is_current {
+				stats.current_key_bytes += key_bytes;
+				stats.current_value_bytes += value_bytes;
+				stats.current_count += 1;
+			} else {
+				stats.historical_key_bytes += key_bytes;
+				stats.historical_value_bytes += value_bytes;
+				stats.historical_count += 1;
+			}
+		}
 
 		// Update per-type stats
 		if let Some(kind) = kind {
@@ -363,10 +459,18 @@ impl StorageTracker {
 			}
 		}
 
+		// Compute by_tier from by_type
+		let mut by_tier: HashMap<Tier, StorageStats> = HashMap::new();
+		for ((tier, _kind), stats) in &by_type {
+			let tier_stats = by_tier.entry(*tier).or_insert_with(StorageStats::new);
+			*tier_stats += stats.clone();
+		}
+
 		Ok(Self {
 			inner: Arc::new(RwLock::new(StorageTrackerInner {
 				by_type,
 				by_object,
+				by_tier,
 				config,
 				last_checkpoint: Instant::now(),
 			})),
@@ -395,11 +499,12 @@ mod tests {
 	fn test_tracker_insert() {
 		let tracker = StorageTracker::with_defaults();
 		let key = make_row_key(1, 100);
+		let key_bytes = key.len() as u64;
 
-		tracker.record_write(Tier::Hot, &key, 50, None);
+		tracker.record_write(Tier::Hot, &key, key_bytes, 50, None);
 
 		let stats = tracker.total_stats();
-		assert_eq!(stats.hot.current_key_bytes, key.len() as u64);
+		assert_eq!(stats.hot.current_key_bytes, key_bytes);
 		assert_eq!(stats.hot.current_value_bytes, 50);
 		assert_eq!(stats.hot.current_count, 1);
 		assert_eq!(stats.hot.historical_count, 0);
@@ -412,14 +517,14 @@ mod tests {
 		let key_bytes = key.len() as u64;
 
 		// Insert first
-		tracker.record_write(Tier::Hot, &key, 50, None);
+		tracker.record_write(Tier::Hot, &key, key_bytes, 50, None);
 
 		// Update with new value
 		let pre_info = PreVersionInfo {
 			key_bytes,
 			value_bytes: 50,
 		};
-		tracker.record_write(Tier::Hot, &key, 75, Some(pre_info));
+		tracker.record_write(Tier::Hot, &key, key_bytes, 75, Some(pre_info));
 
 		let stats = tracker.total_stats();
 		// Current should have new value
@@ -440,14 +545,14 @@ mod tests {
 		let key_bytes = key.len() as u64;
 
 		// Insert first
-		tracker.record_write(Tier::Hot, &key, 50, None);
+		tracker.record_write(Tier::Hot, &key, key_bytes, 50, None);
 
 		// Delete
 		let pre_info = PreVersionInfo {
 			key_bytes,
 			value_bytes: 50,
 		};
-		tracker.record_delete(Tier::Hot, &key, Some(pre_info));
+		tracker.record_delete(Tier::Hot, &key, key_bytes, Some(pre_info));
 
 		let stats = tracker.total_stats();
 		// Current should be empty
@@ -462,9 +567,11 @@ mod tests {
 		let tracker = StorageTracker::with_defaults();
 		let key1 = make_row_key(1, 100);
 		let key2 = make_row_key(2, 200);
+		let key1_bytes = key1.len() as u64;
+		let key2_bytes = key2.len() as u64;
 
-		tracker.record_write(Tier::Hot, &key1, 50, None);
-		tracker.record_write(Tier::Hot, &key2, 60, None);
+		tracker.record_write(Tier::Hot, &key1, key1_bytes, 50, None);
+		tracker.record_write(Tier::Hot, &key2, key2_bytes, 60, None);
 
 		let by_type = tracker.stats_by_type(Tier::Hot);
 		let row_stats = by_type.get(&KeyKind::Row).unwrap();
@@ -479,10 +586,13 @@ mod tests {
 		let key1 = make_row_key(1, 100);
 		let key2 = make_row_key(1, 200);
 		let key3 = make_row_key(2, 100);
+		let key1_bytes = key1.len() as u64;
+		let key2_bytes = key2.len() as u64;
+		let key3_bytes = key3.len() as u64;
 
-		tracker.record_write(Tier::Hot, &key1, 50, None);
-		tracker.record_write(Tier::Hot, &key2, 60, None);
-		tracker.record_write(Tier::Hot, &key3, 70, None);
+		tracker.record_write(Tier::Hot, &key1, key1_bytes, 50, None);
+		tracker.record_write(Tier::Hot, &key2, key2_bytes, 60, None);
+		tracker.record_write(Tier::Hot, &key3, key3_bytes, 70, None);
 
 		// Object 1 (SourceId::table(1)) should have 2 entries
 		let source1 = ObjectId::Source(SourceId::table(1));
@@ -504,7 +614,7 @@ mod tests {
 		let key_bytes = key.len() as u64;
 
 		// Insert into hot tier
-		tracker.record_write(Tier::Hot, &key, 50, None);
+		tracker.record_write(Tier::Hot, &key, key_bytes, 50, None);
 
 		// Migrate to warm tier
 		tracker.record_tier_migration(Tier::Hot, Tier::Warm, &key, 50, true);
@@ -528,10 +638,13 @@ mod tests {
 		let key1 = make_row_key(1, 100);
 		let key2 = make_row_key(2, 100);
 		let key3 = make_row_key(3, 100);
+		let key1_bytes = key1.len() as u64;
+		let key2_bytes = key2.len() as u64;
+		let key3_bytes = key3.len() as u64;
 
-		tracker.record_write(Tier::Hot, &key1, 100, None);
-		tracker.record_write(Tier::Hot, &key2, 200, None);
-		tracker.record_write(Tier::Hot, &key3, 50, None);
+		tracker.record_write(Tier::Hot, &key1, key1_bytes, 100, None);
+		tracker.record_write(Tier::Hot, &key2, key2_bytes, 200, None);
+		tracker.record_write(Tier::Hot, &key3, key3_bytes, 50, None);
 
 		let top = tracker.top_objects_by_size(2);
 		assert_eq!(top.len(), 2);
@@ -579,9 +692,11 @@ mod tests {
 		// Record some stats
 		let key1 = make_row_key(1, 100);
 		let key2 = make_row_key(2, 200);
-		tracker.record_write(Tier::Hot, &key1, 50, None);
-		tracker.record_write(Tier::Hot, &key2, 100, None);
-		tracker.record_write(Tier::Warm, &key1, 75, None);
+		let key1_bytes = key1.len() as u64;
+		let key2_bytes = key2.len() as u64;
+		tracker.record_write(Tier::Hot, &key1, key1_bytes, 50, None);
+		tracker.record_write(Tier::Hot, &key2, key2_bytes, 100, None);
+		tracker.record_write(Tier::Warm, &key1, key1_bytes, 75, None);
 
 		// Checkpoint
 		tracker.checkpoint(&storage).unwrap();

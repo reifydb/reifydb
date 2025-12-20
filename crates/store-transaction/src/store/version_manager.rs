@@ -17,7 +17,7 @@ use reifydb_type::Result;
 use crate::backend::{PrimitiveStorage, TableId};
 
 /// Size of version suffix in bytes (u64 big-endian)
-const VERSION_SIZE: usize = 8;
+pub(crate) const VERSION_SIZE: usize = 8;
 
 /// Encode a versioned key: `[key_bytes][version_be]`
 ///

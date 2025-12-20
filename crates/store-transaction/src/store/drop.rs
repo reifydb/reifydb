@@ -14,6 +14,15 @@ use reifydb_core::CommitVersion;
 use super::version_manager::{extract_version, key_version_range};
 use crate::backend::{BackendStorage, PrimitiveStorage, TableId};
 
+/// Information about an entry to be dropped.
+#[derive(Debug, Clone)]
+pub struct DropEntry {
+	/// The versioned key to delete
+	pub versioned_key: Vec<u8>,
+	/// Size of the value being dropped (0 if tombstone)
+	pub value_bytes: u64,
+}
+
 /// Find versioned keys to drop based on constraints.
 ///
 /// # Arguments
@@ -29,24 +38,28 @@ use crate::backend::{BackendStorage, PrimitiveStorage, TableId};
 /// - `(None, Some(n))`: Keep n most recent, drop older ones
 /// - `(Some(v), Some(n))`: Drop only if BOTH (version < v) AND (not in top n) This ensures keep_last_versions always
 ///   protects at least n versions
+///
+/// # Returns
+/// A vector of `DropEntry` containing the versioned key and value size for each entry to drop.
 pub(crate) fn find_keys_to_drop(
 	storage: &BackendStorage,
 	table: TableId,
 	key: &[u8],
 	up_to_version: Option<CommitVersion>,
 	keep_last_versions: Option<usize>,
-) -> crate::Result<Vec<Vec<u8>>> {
+) -> crate::Result<Vec<DropEntry>> {
 	let (start, end) = key_version_range(key);
 
-	// Collect all versioned keys for this logical key
-	let mut versioned_entries: Vec<(Vec<u8>, CommitVersion)> = Vec::new();
+	// Collect all versioned keys for this logical key, including value sizes
+	let mut versioned_entries: Vec<(Vec<u8>, CommitVersion, u64)> = Vec::new();
 
 	let iter = storage.range(table, Bound::Included(start.as_slice()), Bound::Included(end.as_slice()), 1024)?;
 
 	for entry_result in iter {
 		let entry = entry_result?;
 		if let Some(entry_version) = extract_version(&entry.key) {
-			versioned_entries.push((entry.key, entry_version));
+			let value_bytes = entry.value.as_ref().map(|v| v.len() as u64).unwrap_or(0);
+			versioned_entries.push((entry.key, entry_version, value_bytes));
 		}
 	}
 
@@ -54,9 +67,9 @@ pub(crate) fn find_keys_to_drop(
 	versioned_entries.sort_by(|a, b| b.1.cmp(&a.1));
 
 	// Determine which entries to drop
-	let mut keys_to_drop = Vec::new();
+	let mut entries_to_drop = Vec::new();
 
-	for (idx, (versioned_key, entry_version)) in versioned_entries.into_iter().enumerate() {
+	for (idx, (versioned_key, entry_version, value_bytes)) in versioned_entries.into_iter().enumerate() {
 		// Use AND logic for combined constraints:
 		// - keep_last_versions protects the N most recent versions
 		// - up_to_version only drops versions < threshold IF not protected
@@ -73,11 +86,14 @@ pub(crate) fn find_keys_to_drop(
 		};
 
 		if should_drop {
-			keys_to_drop.push(versioned_key);
+			entries_to_drop.push(DropEntry {
+				versioned_key,
+				value_bytes,
+			});
 		}
 	}
 
-	Ok(keys_to_drop)
+	Ok(entries_to_drop)
 }
 
 #[cfg(test)]
@@ -104,9 +120,9 @@ mod tests {
 		storage.put(table, &refs).unwrap();
 	}
 
-	/// Extract version numbers from the result keys
-	fn extract_dropped_versions(keys: &[Vec<u8>]) -> Vec<u64> {
-		keys.iter().filter_map(|k| extract_version(k).map(|v| v.0)).collect()
+	/// Extract version numbers from the drop entries
+	fn extract_dropped_versions(entries: &[DropEntry]) -> Vec<u64> {
+		entries.iter().filter_map(|e| extract_version(&e.versioned_key).map(|v| v.0)).collect()
 	}
 
 	#[test]
@@ -363,8 +379,8 @@ mod tests {
 
 		assert_eq!(to_drop.len(), 3);
 		// Verify all dropped keys are for key_a, not key_b
-		for key in &to_drop {
-			let original = extract_key(key).unwrap();
+		for entry in &to_drop {
+			let original = extract_key(&entry.versioned_key).unwrap();
 			assert_eq!(original, b"key_a");
 		}
 	}

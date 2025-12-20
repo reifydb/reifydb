@@ -1,0 +1,78 @@
+# Copyright (c) reifydb.com 2025
+# This file is licensed under the AGPL-3.0-or-later, see license.md file
+
+# Tests that historical entries accumulate across multiple keys.
+# Each key's updates should add to the total historical count.
+
+# Insert two keys
+set a=1
+---
+ok
+
+set b=1
+---
+ok
+
+stats
+---
+current_count: 2
+current_key_bytes: 18
+current_value_bytes: 2
+historical_count: 0
+historical_key_bytes: 0
+historical_value_bytes: 0
+cdc_count: 2
+cdc_key_bytes: 2
+cdc_value_bytes: 152
+total_bytes: 20
+
+# Update key a
+set a=2
+---
+ok
+
+stats_historical
+---
+historical_count: 1
+historical_key_bytes: 9
+historical_value_bytes: 1
+
+# Update key b
+set b=2
+---
+ok
+
+stats_historical
+---
+historical_count: 2
+historical_key_bytes: 18
+historical_value_bytes: 2
+
+# Update key a again
+set a=3
+---
+ok
+
+stats_historical
+---
+historical_count: 3
+historical_key_bytes: 27
+historical_value_bytes: 3
+
+# Update key b again
+set b=3
+---
+ok
+
+stats_historical
+---
+historical_count: 4
+historical_key_bytes: 36
+historical_value_bytes: 4
+
+# Current should still have 2 entries
+stats_current
+---
+current_count: 2
+current_key_bytes: 18
+current_value_bytes: 2
