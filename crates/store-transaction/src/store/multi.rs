@@ -2,7 +2,7 @@
 // This file is licensed under the AGPL-3.0-or-later, see license.md file
 
 use std::{
-	collections::HashMap,
+	collections::{HashMap, HashSet},
 	ops::{Bound, RangeBounds},
 };
 
@@ -230,6 +230,24 @@ impl MultiVersionCommit for StandardTransactionStore {
 		// Use all_deltas (includes injected Drop ops for single-version-semantics keys)
 		let mut batches: HashMap<TableId, Vec<(Vec<u8>, Option<Vec<u8>>)>> = HashMap::new();
 
+		// Track which keys have Set/Remove deltas in this batch
+		// Drop deltas for these keys should consider the pending version
+		let keys_with_writes: HashSet<&EncodedKey> = all_deltas
+			.iter()
+			.filter_map(|delta| match delta {
+				Delta::Set {
+					key,
+					..
+				}
+				| Delta::Remove {
+					key,
+				} => Some(key),
+				Delta::Drop {
+					..
+				} => None,
+			})
+			.collect();
+
 		for delta in all_deltas.iter() {
 			let table = classify_key(delta.key());
 
@@ -255,12 +273,21 @@ impl MultiVersionCommit for StandardTransactionStore {
 					keep_last_versions,
 				} => {
 					// Drop scans for versioned entries and deletes them based on constraints
+					// Pass current version as pending only if this key has a Set/Remove in this
+					// batch This prevents race where Drop scans storage before Set is written
+					let pending_version = if keys_with_writes.contains(key) {
+						Some(version)
+					} else {
+						None
+					};
+
 					let entries_to_drop = find_keys_to_drop(
 						storage,
 						table,
 						key.as_ref(),
 						*up_to_version,
 						*keep_last_versions,
+						pending_version,
 					)?;
 
 					if !entries_to_drop.is_empty() {
