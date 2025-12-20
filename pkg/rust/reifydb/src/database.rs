@@ -10,7 +10,13 @@ use std::{
 	time::Duration,
 };
 
-use reifydb_core::{Result, event::lifecycle::OnStartEvent, interface::WithEventBus};
+use futures_util::TryStreamExt;
+use reifydb_core::{
+	Frame, Result,
+	event::lifecycle::OnStartEvent,
+	interface::{Engine as EngineInterface, Identity, Params, WithEventBus},
+	stream::StreamError,
+};
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::{HealthStatus, SchedulerService};
 #[cfg(feature = "sub_flow")]
@@ -135,7 +141,7 @@ impl Database {
 	}
 
 	#[instrument(name = "api::database::start", level = "info", skip(self))]
-	pub fn start(&mut self) -> Result<()> {
+	pub async fn start(&mut self) -> Result<()> {
 		if self.running {
 			return Ok(()); // Already running
 		}
@@ -144,7 +150,7 @@ impl Database {
 
 		debug!("Starting system with {} subsystems", self.subsystem_count());
 
-		self.engine.event_bus().emit(OnStartEvent {});
+		self.engine.event_bus().emit(OnStartEvent {}).await;
 
 		// Start all subsystems
 		match self.subsystems.start_all(self.config.max_startup_time) {
@@ -244,6 +250,26 @@ impl Database {
 		self.scheduler.clone()
 	}
 
+	/// Execute a transactional command as root user.
+	pub async fn command_as_root(
+		&self,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> std::result::Result<Vec<Frame>, StreamError> {
+		let identity = Identity::root();
+		self.engine.command_as(&identity, rql, params.into()).try_collect().await
+	}
+
+	/// Execute a read-only query as root user.
+	pub async fn query_as_root(
+		&self,
+		rql: &str,
+		params: impl Into<Params>,
+	) -> std::result::Result<Vec<Frame>, StreamError> {
+		let identity = Identity::root();
+		self.engine.query_as(&identity, rql, params.into()).try_collect().await
+	}
+
 	pub fn await_signal(&self) -> Result<()> {
 		self.await_signal_with_shutdown(|| Ok(()))
 	}
@@ -285,15 +311,15 @@ impl Database {
 		Ok(())
 	}
 
-	pub fn start_and_await_signal(&mut self) -> Result<()> {
-		self.start_and_await_signal_with_shutdown(|| Ok(()))
+	pub async fn start_and_await_signal(&mut self) -> Result<()> {
+		self.start_and_await_signal_with_shutdown(|| Ok(())).await
 	}
 
-	pub fn start_and_await_signal_with_shutdown<F>(&mut self, on_shutdown: F) -> Result<()>
+	pub async fn start_and_await_signal_with_shutdown<F>(&mut self, on_shutdown: F) -> Result<()>
 	where
 		F: FnOnce() -> Result<()>,
 	{
-		self.start()?;
+		self.start().await?;
 		debug!("Database started, waiting for termination signal...");
 
 		self.await_signal()?;

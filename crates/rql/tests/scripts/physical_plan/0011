@@ -4,4 +4,4 @@
 physical 'window { sum(amount) } with { count: 100, slide: 20 }'
 ---
 > └── Window: Count, Size: Count(100)
-> 
+>

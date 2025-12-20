@@ -14,6 +14,7 @@ use reifydb::{
 use reifydb_client::{WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
 
 use crate::common::{parse_named_params, parse_positional_params, parse_rql, write_frames};
 
@@ -21,6 +22,7 @@ pub struct BlockingRunner {
 	instance: Option<Database>,
 	client: Option<WsClient>,
 	session: Option<WsBlockingSession>,
+	runtime: Runtime,
 }
 
 impl BlockingRunner {
@@ -29,6 +31,7 @@ impl BlockingRunner {
 			instance: Some(create_server_instance(input)),
 			client: None,
 			session: None,
+			runtime: Runtime::new().unwrap(),
 		}
 	}
 }
@@ -92,7 +95,7 @@ impl testscript::Runner for BlockingRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = common::start_server_and_get_ws_port(server)?;
+		let port = common::start_server_and_get_ws_port(&self.runtime, server)?;
 
 		let client = common::connect_ws(("::1", port))?;
 		let session = client.blocking_session(Some("mysecrettoken".to_string()))?;

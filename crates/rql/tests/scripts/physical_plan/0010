@@ -4,4 +4,4 @@
 physical 'window { count(items) } with { interval: "5s" }'
 ---
 > └── Window: Time(Processing), Size: Duration(5s)
-> 
+>

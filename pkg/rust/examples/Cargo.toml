@@ -13,6 +13,7 @@ path = "src/lib.rs"
 
 [dependencies]
 reifydb = { path = "../reifydb", features = ["sub_tracing", "sub_flow"] }
+tokio = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 

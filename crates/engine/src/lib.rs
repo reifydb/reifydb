@@ -15,6 +15,7 @@ pub mod execute;
 pub mod function;
 pub(crate) mod interceptor;
 pub mod stack;
+pub mod stream;
 pub mod table_virtual;
 pub mod test_utils;
 pub mod transaction;

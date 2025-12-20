@@ -12,8 +12,8 @@ tokenize 'aggregate { count(value) }'
 >   [  4] Keyword(Value)
 >   [  5] Operator(CloseParen)
 >   [  6] Operator(CloseCurly)
-> 
-> 
+>
+>
 
 # Test tokenization of global aggregate with empty BY clause
 tokenize 'aggregate { sum(amount), avg(price) } by {}'
@@ -34,5 +34,5 @@ tokenize 'aggregate { sum(amount), avg(price) } by {}'
 >   [ 12] Keyword(By)
 >   [ 13] Operator(OpenCurly)
 >   [ 14] Operator(CloseCurly)
-> 
-> 
+>
+>

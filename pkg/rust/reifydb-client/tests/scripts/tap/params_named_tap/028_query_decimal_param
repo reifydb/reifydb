@@ -8,4 +8,4 @@ query_named 'MAP $decimal_val as result' 'decimal_val=123.456789'
 > +--------------+
 > |  123.456789  |
 > +--------------+
-> 
+>

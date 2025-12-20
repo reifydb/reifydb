@@ -4,16 +4,18 @@
 use std::{error::Error, fmt::Write, path::Path};
 
 use reifydb::{
-	Database, EmbeddedBuilder, Session,
+	Database, EmbeddedBuilder,
 	core::{event::EventBus, interface::Params},
 	memory, serializable,
 	transaction::{cdc::TransactionCdc, multi::TransactionMultiVersion, single::TransactionSingleVersion},
 };
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
 
 pub struct Runner {
 	instance: Database,
+	runtime: Runtime,
 }
 
 impl Runner {
@@ -21,6 +23,7 @@ impl Runner {
 		let (multi, single, cdc, eventbus) = input;
 		Self {
 			instance: EmbeddedBuilder::new(multi, single, cdc, eventbus).build().unwrap(),
+			runtime: Runtime::new().unwrap(),
 		}
 	}
 }
@@ -34,7 +37,10 @@ impl testscript::Runner for Runner {
 
 				println!("command: {query}");
 
-				for frame in self.instance.command_as_root(query.as_str(), Params::None)? {
+				for frame in self
+					.runtime
+					.block_on(self.instance.command_as_root(query.as_str(), Params::None))?
+				{
 					writeln!(output, "{}", frame)?;
 				}
 			}
@@ -43,7 +49,10 @@ impl testscript::Runner for Runner {
 
 				println!("query: {query}");
 
-				for frame in self.instance.query_as_root(query.as_str(), Params::None)? {
+				for frame in self
+					.runtime
+					.block_on(self.instance.query_as_root(query.as_str(), Params::None))?
+				{
 					writeln!(output, "{}", frame)?;
 				}
 			}
@@ -56,7 +65,7 @@ impl testscript::Runner for Runner {
 	}
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
-		self.instance.start()?;
+		self.runtime.block_on(self.instance.start())?;
 		Ok(())
 	}
 

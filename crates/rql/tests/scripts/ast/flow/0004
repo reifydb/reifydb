@@ -4,4 +4,4 @@
 ast 'ALTER FLOW my_flow RENAME TO new_flow'
 ---
 > └── ALTER FLOW my_flow @ line 1, column 1 — "ALTER"
-> 
+>

@@ -135,7 +135,8 @@ impl FlowEngine {
 			}
 
 			// Emit event for loaded operator
-			event_bus.emit(FlowOperatorLoadedEvent {
+			let event_bus = event_bus.clone();
+			let event = FlowOperatorLoadedEvent {
 				operator: info.operator,
 				library_path: info.library_path,
 				api: info.api,
@@ -144,7 +145,13 @@ impl FlowEngine {
 				input: convert_column_defs(&info.input_columns),
 				output: convert_column_defs(&info.output_columns),
 				capabilities: info.capabilities,
-			});
+			};
+			// Only spawn if there's a tokio runtime available
+			if let Ok(handle) = tokio::runtime::Handle::try_current() {
+				handle.spawn(async move {
+					event_bus.emit(event).await;
+				});
+			}
 		}
 
 		Ok(())

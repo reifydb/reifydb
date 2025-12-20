@@ -12,10 +12,12 @@ mod command;
 mod query;
 
 pub use command::CommandSession;
+use futures_util::TryStreamExt;
 pub use query::QuerySession;
 use reifydb_core::{
 	Frame,
 	interface::{Engine as EngineInterface, Identity, Params},
+	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;
 use reifydb_sub_api::SchedulerService;
@@ -27,16 +29,6 @@ pub trait Session {
 	fn query_session(&self, session: impl IntoQuerySession) -> crate::Result<QuerySession>;
 
 	fn scheduler(&self) -> Option<SchedulerService>;
-
-	fn command_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
-		let session = self.command_session(Identity::root())?;
-		session.command(rql, params)
-	}
-
-	fn query_as_root(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
-		let session = self.query_session(Identity::root())?;
-		session.query(rql, params)
-	}
 }
 
 impl CommandSession {
@@ -49,13 +41,10 @@ impl CommandSession {
 	}
 
 	#[instrument(name = "api::session::command", level = "info", skip(self, params), fields(rql = %rql))]
-	pub fn command(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
+	pub async fn command(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, StreamError> {
 		let rql = rql.to_string();
 		let params = params.into();
-		self.engine.command_as(&self.identity, &rql, params).map_err(|mut err| {
-			err.with_statement(rql);
-			err
-		})
+		self.engine.command_as(&self.identity, &rql, params).try_collect().await
 	}
 }
 
@@ -69,13 +58,10 @@ impl QuerySession {
 	}
 
 	#[instrument(name = "api::session::query", level = "info", skip(self, params), fields(rql = %rql))]
-	pub fn query(&self, rql: &str, params: impl Into<Params>) -> crate::Result<Vec<Frame>> {
+	pub async fn query(&self, rql: &str, params: impl Into<Params>) -> Result<Vec<Frame>, StreamError> {
 		let rql = rql.to_string();
 		let params = params.into();
-		self.engine.query_as(&self.identity, &rql, params).map_err(|mut err| {
-			err.with_statement(rql);
-			err
-		})
+		self.engine.query_as(&self.identity, &rql, params).try_collect().await
 	}
 }
 

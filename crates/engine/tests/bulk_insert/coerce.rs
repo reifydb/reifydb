@@ -9,14 +9,14 @@ use reifydb_type::params;
 
 use crate::{create_namespace, create_table, create_test_engine, query_table, row_count, test_identity};
 
-#[test]
-fn test_type_coercion_int_to_larger_int() {
+#[tokio::test]
+async fn test_type_coercion_int_to_larger_int() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
+	create_namespace(&engine, "test").await;
 	// int8 (i64) column, insert int4 (i32) values
-	create_table(&engine, "test", "coerce", "val: int8");
+	create_table(&engine, "test", "coerce", "val: int8").await;
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
@@ -24,7 +24,7 @@ fn test_type_coercion_int_to_larger_int() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.coerce");
+	let frames = query_table(&engine, "test.coerce").await;
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify values were coerced correctly
@@ -33,14 +33,14 @@ fn test_type_coercion_int_to_larger_int() {
 	assert_eq!(values, vec![-100i64, 42i64]);
 }
 
-#[test]
-fn test_type_coercion_int_to_float() {
+#[tokio::test]
+async fn test_type_coercion_int_to_float() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
+	create_namespace(&engine, "test").await;
 	// float8 (f64) column, insert int4 (i32) values
-	create_table(&engine, "test", "coerce", "val: float8");
+	create_table(&engine, "test", "coerce", "val: float8").await;
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.coerce").row(params! { val: 42i32 }).row(params! { val: -100i32 }).done();
@@ -48,7 +48,7 @@ fn test_type_coercion_int_to_float() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.coerce");
+	let frames = query_table(&engine, "test.coerce").await;
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify values were coerced correctly
@@ -57,14 +57,14 @@ fn test_type_coercion_int_to_float() {
 	assert_eq!(values, vec![-100.0f64, 42.0f64]);
 }
 
-#[test]
-fn test_missing_column_uses_undefined() {
+#[tokio::test]
+async fn test_missing_column_uses_undefined() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
+	create_namespace(&engine, "test").await;
 	// Two columns, but we only insert into one
-	create_table(&engine, "test", "partial", "a: int4, b: int4");
+	create_table(&engine, "test", "partial", "a: int4, b: int4").await;
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder
@@ -76,7 +76,7 @@ fn test_missing_column_uses_undefined() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.partial");
+	let frames = query_table(&engine, "test.partial").await;
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify column 'a' has values and column 'b' is undefined (None)
@@ -88,13 +88,13 @@ fn test_missing_column_uses_undefined() {
 	}
 }
 
-#[test]
-fn test_mixed_defined_undefined_values() {
+#[tokio::test]
+async fn test_mixed_defined_undefined_values() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_table(&engine, "test", "mixed", "a: int4, b: int4");
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "mixed", "a: int4, b: int4").await;
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder
@@ -107,18 +107,18 @@ fn test_mixed_defined_undefined_values() {
 
 	assert_eq!(result.tables[0].inserted, 3);
 
-	let frames = query_table(&engine, "test.mixed");
+	let frames = query_table(&engine, "test.mixed").await;
 	assert_eq!(row_count(&frames), 3);
 }
 
-#[test]
-fn test_coercion_batch_multiple_rows() {
+#[tokio::test]
+async fn test_coercion_batch_multiple_rows() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
+	create_namespace(&engine, "test").await;
 	// int8 column, batch of int4 values
-	create_table(&engine, "test", "batch", "val: int8");
+	create_table(&engine, "test", "batch", "val: int8").await;
 
 	// Insert many rows to test batch coercion
 	let rows: Vec<_> = (1..=100).map(|n| params! { val: n as i32 }).collect();
@@ -129,7 +129,7 @@ fn test_coercion_batch_multiple_rows() {
 
 	assert_eq!(result.tables[0].inserted, 100);
 
-	let frames = query_table(&engine, "test.batch");
+	let frames = query_table(&engine, "test.batch").await;
 	assert_eq!(row_count(&frames), 100);
 
 	// Verify all values were coerced correctly
@@ -139,14 +139,14 @@ fn test_coercion_batch_multiple_rows() {
 	assert_eq!(values, expected);
 }
 
-#[test]
-fn test_coercion_float4_to_float8() {
+#[tokio::test]
+async fn test_coercion_float4_to_float8() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
+	create_namespace(&engine, "test").await;
 	// float8 (f64) column, insert float4 (f32) values
-	create_table(&engine, "test", "floats", "val: float8");
+	create_table(&engine, "test", "floats", "val: float8").await;
 
 	let mut builder = engine.bulk_insert(&identity);
 	builder.table("test.floats").row(params! { val: 3.14f32 }).row(params! { val: 2.71f32 }).done();
@@ -154,7 +154,7 @@ fn test_coercion_float4_to_float8() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.floats");
+	let frames = query_table(&engine, "test.floats").await;
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify values were coerced (allowing for f32->f64 precision)

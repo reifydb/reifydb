@@ -14,11 +14,13 @@ use reifydb::{
 use reifydb_client::{Client, WsBlockingSession, WsClient};
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
+use tokio::runtime::Runtime;
 
 pub struct WsRunner {
 	instance: Option<Database>,
 	client: Option<WsClient>,
 	session: Option<WsBlockingSession>,
+	runtime: Runtime,
 }
 
 impl WsRunner {
@@ -33,6 +35,7 @@ impl WsRunner {
 			instance: Some(instance),
 			client: None,
 			session: None,
+			runtime: Runtime::new().unwrap(),
 		}
 	}
 }
@@ -75,7 +78,7 @@ impl testscript::Runner for WsRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		server.start()?;
+		self.runtime.block_on(server.start())?;
 
 		let port = server.sub_server_ws().unwrap().port().unwrap();
 

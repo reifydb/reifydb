@@ -9,4 +9,4 @@ query_named 'SELECT { a: $first, b: $second }' 'first=true' 'second=false'
 > +--------+---------+
 > |  true  |  false  |
 > +--------+---------+
-> 
+>

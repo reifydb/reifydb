@@ -4,4 +4,4 @@
 ast 'create index idx_status on test.users {created_at desc, status asc}'
 ---
 > └── Create @ line 1, column 1 — "create"
-> 
+>

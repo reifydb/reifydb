@@ -296,6 +296,8 @@ pub fn generate<R: Runner>(runner: &mut R, input: &str) -> std::io::Result<Strin
 			|| block_output.contains("\n\r\n")
 		{
 			block_output = format!("> {}", block_output.replace('\n', "\n> "));
+			// Remove trailing space from blank lines ("> \n" -> ">\n")
+			block_output = block_output.replace("> \n", ">\n");
 			// We guarantee above that block output ends with a
 			// newline, so we remove the "> " at the end of the
 			// output.

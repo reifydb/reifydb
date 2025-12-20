@@ -15,5 +15,5 @@ tokenize 'create primary key pk_users on test.users {id}'
 >   [  8] Operator(OpenCurly)
 >   [  9] Identifier("id")
 >   [ 10] Operator(CloseCurly)
-> 
-> 
+>
+>

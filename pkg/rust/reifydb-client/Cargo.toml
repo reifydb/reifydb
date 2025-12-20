@@ -35,4 +35,5 @@ serde_json = { version = "1.0.143" }
 reifydb = { workspace = true, features = ["sub_server_http", "sub_server_ws"] }
 reifydb-testing = { workspace = true }
 test_each_file = { version = "0.3.5" }
+tokio = { workspace = true }
 

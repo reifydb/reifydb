@@ -7,7 +7,7 @@ ast 'aggregate { count(value) }'
 > └── Aggregate @ line 1, column 1 — "aggregate"
 >     ├── Aggregate Map
 >     │   └── CallFunction @ line 1, column 13 — "count"
-> 
+>
 
 # Test AST for global aggregate with empty BY clause
 ast 'aggregate { sum(amount), avg(price) } by {}'
@@ -16,7 +16,7 @@ ast 'aggregate { sum(amount), avg(price) } by {}'
 >     ├── Aggregate Map
 >     │   ├── CallFunction @ line 1, column 13 — "sum"
 >     │   └── CallFunction @ line 1, column 26 — "avg"
-> 
+>
 
 # Test AST for global aggregate with aliases
 ast 'from users aggregate { total: count(id), average: avg(age) } by {}'
@@ -31,4 +31,4 @@ ast 'from users aggregate { total: count(id), average: avg(age) } by {}'
 >     │   └── Infix @ line 1, column 42 — "average"
 >     │       ├── Identifier @ line 1, column 42 — "average"
 >     │       └── CallFunction @ line 1, column 51 — "avg"
-> 
+>

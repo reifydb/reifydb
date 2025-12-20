@@ -7,4 +7,4 @@ physical 'from users map {id, name} filter id == 10 sort id asc'
 >     └── Filter [(id == Constant(10))]
 >         └── Map [id, name]
 >             └── TableScan default.users
-> 
+>

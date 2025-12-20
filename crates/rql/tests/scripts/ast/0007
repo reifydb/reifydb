@@ -4,4 +4,4 @@
 ast 'create index idx_filtered on test.users {email} filter active == true filter age > 18'
 ---
 > └── Create @ line 1, column 1 — "create"
-> 
+>

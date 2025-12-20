@@ -6,4 +6,4 @@ logical 'from users sort id asc'
 > └── TableScan default.users
 > └── Order
 >     └── by: id ASC
-> 
+>

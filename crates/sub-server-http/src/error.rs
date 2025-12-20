@@ -80,17 +80,20 @@ impl std::error::Error for AppError {}
 
 impl IntoResponse for AppError {
 	fn into_response(self) -> Response {
-		// Handle engine errors specially - they need ownership of error for diagnostic()
+		// Handle engine errors specially - they have full diagnostic info
 		if let AppError::Execute(ExecuteError::Engine {
-			error,
+			diagnostic,
 			statement,
 		}) = self
 		{
-			tracing::debug!("Engine error: {}", error);
-			let mut diagnostic = error.diagnostic();
-			diagnostic.with_statement(statement);
+			tracing::debug!("Engine error: {}", diagnostic.message);
+			// Clone the diagnostic and attach the statement
+			let mut diag = (*diagnostic).clone();
+			if diag.statement.is_none() && !statement.is_empty() {
+				diag.with_statement(statement);
+			}
 			let body = Json(DiagnosticResponse {
-				diagnostic,
+				diagnostic: diag,
 			});
 			return (StatusCode::BAD_REQUEST, body).into_response();
 		}
@@ -114,8 +117,11 @@ impl IntoResponse for AppError {
 			AppError::Execute(ExecuteError::Timeout) => {
 				(StatusCode::GATEWAY_TIMEOUT, "QUERY_TIMEOUT", "Query execution timed out")
 			}
-			AppError::Execute(ExecuteError::TaskPanic(msg)) => {
-				tracing::error!("Query task panicked: {}", msg);
+			AppError::Execute(ExecuteError::Cancelled) => {
+				(StatusCode::BAD_REQUEST, "QUERY_CANCELLED", "Query was cancelled")
+			}
+			AppError::Execute(ExecuteError::Disconnected) => {
+				tracing::error!("Query stream disconnected unexpectedly");
 				(StatusCode::INTERNAL_SERVER_ERROR, "INTERNAL_ERROR", "Internal server error")
 			}
 			AppError::Execute(ExecuteError::Engine {

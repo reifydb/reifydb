@@ -13,7 +13,7 @@ tokenize 'from [
 > Line 1:
 >   [  0] Keyword(From)
 >   [  1] Operator(OpenBracket)
-> 
+>
 > Line 2:
 >   [  2] Operator(OpenCurly)
 >   [  3] Identifier("id")
@@ -25,7 +25,7 @@ tokenize 'from [
 >   [  9] Literal(Text)
 >   [ 10] Operator(CloseCurly)
 >   [ 11] Separator(Comma)
-> 
+>
 > Line 3:
 >   [ 12] Operator(OpenCurly)
 >   [ 13] Identifier("id")
@@ -37,7 +37,7 @@ tokenize 'from [
 >   [ 19] Literal(Text)
 >   [ 20] Operator(CloseCurly)
 >   [ 21] Separator(Comma)
-> 
+>
 > Line 4:
 >   [ 22] Operator(OpenCurly)
 >   [ 23] Identifier("id")
@@ -49,7 +49,7 @@ tokenize 'from [
 >   [ 29] Literal(Text)
 >   [ 30] Operator(CloseCurly)
 >   [ 31] Separator(Comma)
-> 
+>
 > Line 5:
 >   [ 32] Operator(OpenCurly)
 >   [ 33] Identifier("id")
@@ -61,7 +61,7 @@ tokenize 'from [
 >   [ 39] Literal(Text)
 >   [ 40] Operator(CloseCurly)
 >   [ 41] Separator(Comma)
-> 
+>
 > Line 6:
 >   [ 42] Operator(OpenCurly)
 >   [ 43] Identifier("id")
@@ -72,12 +72,12 @@ tokenize 'from [
 >   [ 48] Operator(Colon)
 >   [ 49] Literal(Text)
 >   [ 50] Operator(CloseCurly)
-> 
+>
 > Line 7:
 >   [ 51] Operator(CloseBracket)
 >   [ 52] Keyword(Insert)
 >   [ 53] Identifier("test")
 >   [ 54] Operator(Dot)
 >   [ 55] Identifier("unicode_names")
-> 
-> 
+>
+>

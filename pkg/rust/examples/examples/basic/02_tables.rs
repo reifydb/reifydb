@@ -8,14 +8,15 @@
 //!
 //! Run with: `make basic-tables` or `cargo run --bin basic-tables`
 
-use reifydb::{Params, Session, embedded};
+use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	// Create and start an in-memory database with logging
 	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	db.start().await.unwrap();
 
 	// Create a namespace to organize our tables
 	info!("Creating namespace...");
@@ -26,6 +27,7 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Create a table with various data types
@@ -53,6 +55,7 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Insert some initial data
@@ -80,6 +83,7 @@ insert company.employees"#,
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Query all employees
@@ -91,6 +95,7 @@ insert company.employees"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap();
 
 	for frame in results {
@@ -107,6 +112,7 @@ insert company.employees"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap();
 
 	for frame in results {
@@ -132,7 +138,7 @@ update company.employees"#,
 		r#"
 		from company.employees
 		filter { department = "Engineering" }
-		map { 
+		map {
 			id: id,
 			name: name,
 			age: age,
@@ -144,6 +150,7 @@ update company.employees"#,
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Query to see the updated salaries
@@ -156,6 +163,7 @@ update company.employees"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap();
 
 	for frame in results {
@@ -177,6 +185,7 @@ delete company.employees"#,
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Final query - show remaining employees
@@ -188,6 +197,7 @@ delete company.employees"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap();
 
 	for frame in results {
@@ -204,6 +214,7 @@ delete company.employees"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap();
 
 	for frame in results {

@@ -12,5 +12,5 @@ tokenize 'ALTER FLOW my_flow SET QUERY AS from orders'
 >   [  5] Operator(As)
 >   [  6] Keyword(From)
 >   [  7] Identifier("orders")
-> 
-> 
+>
+>

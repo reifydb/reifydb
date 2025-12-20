@@ -3,14 +3,15 @@
 
 #![cfg_attr(not(debug_assertions), deny(warnings))]
 
-use std::{thread::sleep, time::Duration};
+use std::time::Duration;
 
-use reifydb::{Params, Session, WithSubsystem, embedded};
+use reifydb::{Params, WithSubsystem, embedded};
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	let mut db = embedded::memory().with_worker(|wp| wp).build().unwrap();
 
-	db.start().unwrap();
+	db.start().await.unwrap();
 
 	// Test EXTEND expressions in scalar contexts
 	println!("=== Testing: EXTEND expressions ===");
@@ -21,10 +22,11 @@ FROM $env | FILTER key == 'answer' | MAP {answer: cast(value,int1) / 2 }
 	"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		println!("{}", frame);
 	}
 
-	sleep(Duration::from_millis(100));
+	tokio::time::sleep(Duration::from_millis(100)).await;
 }

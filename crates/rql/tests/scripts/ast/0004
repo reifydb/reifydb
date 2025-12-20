@@ -4,4 +4,4 @@
 ast 'create unique index idx_email on test.users {email}'
 ---
 > └── Create @ line 1, column 1 — "create"
-> 
+>

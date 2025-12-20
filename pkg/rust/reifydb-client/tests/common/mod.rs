@@ -27,15 +27,21 @@ pub fn create_server_instance(
 
 /// Start server and return WebSocket port
 #[allow(dead_code)]
-pub fn start_server_and_get_ws_port(server: &mut Database) -> Result<u16, Box<dyn Error>> {
-	server.start()?;
+pub fn start_server_and_get_ws_port(
+	runtime: &tokio::runtime::Runtime,
+	server: &mut Database,
+) -> Result<u16, Box<dyn Error>> {
+	runtime.block_on(server.start())?;
 	Ok(server.sub_server_ws().unwrap().port().unwrap())
 }
 
 /// Start server and return HTTP port
 #[allow(dead_code)]
-pub fn start_server_and_get_http_port(server: &mut Database) -> Result<u16, Box<dyn Error>> {
-	server.start()?;
+pub fn start_server_and_get_http_port(
+	runtime: &tokio::runtime::Runtime,
+	server: &mut Database,
+) -> Result<u16, Box<dyn Error>> {
+	runtime.block_on(server.start())?;
 	Ok(server.sub_server_http().unwrap().port().unwrap())
 }
 

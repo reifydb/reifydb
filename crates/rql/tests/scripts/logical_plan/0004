@@ -5,4 +5,4 @@ logical 'from users take 23'
 ---
 > └── TableScan default.users
 > └── Take 23
-> 
+>

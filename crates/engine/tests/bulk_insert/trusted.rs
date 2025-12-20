@@ -9,13 +9,13 @@ use reifydb_type::params;
 
 use crate::{create_namespace, create_table, create_test_engine, query_table, row_count, test_identity};
 
-#[test]
-fn test_trusted_mode_basic_insert() {
+#[tokio::test]
+async fn test_trusted_mode_basic_insert() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_table(&engine, "test", "trusted_tbl", "id: int4, name: utf8");
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "trusted_tbl", "id: int4, name: utf8").await;
 
 	// Use bulk_insert_trusted instead of bulk_insert
 	let mut builder = engine.bulk_insert_trusted(&identity);
@@ -27,7 +27,7 @@ fn test_trusted_mode_basic_insert() {
 
 	assert_eq!(result.tables[0].inserted, 2);
 
-	let frames = query_table(&engine, "test.trusted_tbl");
+	let frames = query_table(&engine, "test.trusted_tbl").await;
 	assert_eq!(row_count(&frames), 2);
 
 	let mut values: Vec<_> = frames[0]
@@ -38,13 +38,13 @@ fn test_trusted_mode_basic_insert() {
 	assert_eq!(values, vec![(1, "Alice".to_string()), (2, "Bob".to_string())]);
 }
 
-#[test]
-fn test_trusted_mode_ringbuffer() {
+#[tokio::test]
+async fn test_trusted_mode_ringbuffer() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	crate::create_ringbuffer(&engine, "test", "trusted_rb", 100, "seq: int4, data: utf8");
+	create_namespace(&engine, "test").await;
+	crate::create_ringbuffer(&engine, "test", "trusted_rb", 100, "seq: int4, data: utf8").await;
 
 	let mut builder = engine.bulk_insert_trusted(&identity);
 	builder.ringbuffer("test.trusted_rb")
@@ -55,7 +55,7 @@ fn test_trusted_mode_ringbuffer() {
 
 	assert_eq!(result.ringbuffers[0].inserted, 2);
 
-	let frames = crate::query_ringbuffer(&engine, "test.trusted_rb");
+	let frames = crate::query_ringbuffer(&engine, "test.trusted_rb").await;
 	assert_eq!(row_count(&frames), 2);
 
 	// Verify values
@@ -67,15 +67,15 @@ fn test_trusted_mode_ringbuffer() {
 	assert_eq!(values, vec![(1, "first".to_string()), (2, "second".to_string())]);
 }
 
-#[test]
-fn test_trusted_mode_mixed_batch() {
+#[tokio::test]
+async fn test_trusted_mode_mixed_batch() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_table(&engine, "test", "t1", "a: int4");
-	create_table(&engine, "test", "t2", "b: int4");
-	crate::create_ringbuffer(&engine, "test", "rb1", 50, "c: int4");
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "t1", "a: int4").await;
+	create_table(&engine, "test", "t2", "b: int4").await;
+	crate::create_ringbuffer(&engine, "test", "rb1", 50, "c: int4").await;
 
 	let mut builder = engine.bulk_insert_trusted(&identity);
 	builder.table("test.t1").row(params! { a: 10i32 }).done();
@@ -90,13 +90,13 @@ fn test_trusted_mode_mixed_batch() {
 	assert_eq!(result.ringbuffers[0].inserted, 1);
 }
 
-#[test]
-fn test_trusted_mode_large_batch() {
+#[tokio::test]
+async fn test_trusted_mode_large_batch() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_table(&engine, "test", "large", "n: int4");
+	create_namespace(&engine, "test").await;
+	create_table(&engine, "test", "large", "n: int4").await;
 
 	// Insert 1000 rows in trusted mode for performance
 	let rows: Vec<_> = (1..=1000).map(|n| params! { n: n as i32 }).collect();
@@ -107,6 +107,6 @@ fn test_trusted_mode_large_batch() {
 
 	assert_eq!(result.tables[0].inserted, 1000);
 
-	let frames = query_table(&engine, "test.large");
+	let frames = query_table(&engine, "test.large").await;
 	assert_eq!(row_count(&frames), 1000);
 }

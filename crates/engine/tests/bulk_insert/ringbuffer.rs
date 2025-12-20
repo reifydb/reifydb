@@ -10,13 +10,13 @@ use reifydb_type::params;
 
 use crate::{create_namespace, create_ringbuffer, create_test_engine, query_ringbuffer, row_count, test_identity};
 
-#[test]
-fn test_ringbuffer_below_capacity() {
+#[tokio::test]
+async fn test_ringbuffer_below_capacity() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_ringbuffer(&engine, "test", "events", 10, "id: int4"); // capacity 10
+	create_namespace(&engine, "test").await;
+	create_ringbuffer(&engine, "test", "events", 10, "id: int4").await; // capacity 10
 
 	// Insert fewer rows than capacity
 	let mut builder = engine.bulk_insert(&identity);
@@ -25,7 +25,7 @@ fn test_ringbuffer_below_capacity() {
 
 	assert_eq!(result.ringbuffers[0].inserted, 3);
 
-	let frames = query_ringbuffer(&engine, "test.events");
+	let frames = query_ringbuffer(&engine, "test.events").await;
 	assert_eq!(row_count(&frames), 3);
 
 	let mut values: Vec<_> = frames[0].rows().map(|r| r.get::<i32>("id").unwrap().unwrap()).collect();
@@ -33,13 +33,13 @@ fn test_ringbuffer_below_capacity() {
 	assert_eq!(values, vec![1, 2, 3]);
 }
 
-#[test]
-fn test_ringbuffer_at_capacity() {
+#[tokio::test]
+async fn test_ringbuffer_at_capacity() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_ringbuffer(&engine, "test", "events", 5, "id: int4"); // capacity 5
+	create_namespace(&engine, "test").await;
+	create_ringbuffer(&engine, "test", "events", 5, "id: int4").await; // capacity 5
 
 	// Insert exactly capacity rows
 	let rows: Vec<_> = (1..=5).map(|n| params! { id: n }).collect();
@@ -49,7 +49,7 @@ fn test_ringbuffer_at_capacity() {
 
 	assert_eq!(result.ringbuffers[0].inserted, 5);
 
-	let frames = query_ringbuffer(&engine, "test.events");
+	let frames = query_ringbuffer(&engine, "test.events").await;
 	assert_eq!(row_count(&frames), 5);
 
 	// Verify all values are present
@@ -58,13 +58,13 @@ fn test_ringbuffer_at_capacity() {
 	assert_eq!(values, vec![1, 2, 3, 4, 5]);
 }
 
-#[test]
-fn test_ringbuffer_overflow_single() {
+#[tokio::test]
+async fn test_ringbuffer_overflow_single() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_ringbuffer(&engine, "test", "events", 3, "id: int4"); // capacity 3
+	create_namespace(&engine, "test").await;
+	create_ringbuffer(&engine, "test", "events", 3, "id: int4").await; // capacity 3
 
 	// First: fill to capacity
 	let rows: Vec<_> = (1..=3).map(|n| params! { id: n }).collect();
@@ -80,7 +80,7 @@ fn test_ringbuffer_overflow_single() {
 	assert_eq!(result.ringbuffers[0].inserted, 1);
 
 	// Should still have 3 rows, but oldest (1) should be removed
-	let frames = query_ringbuffer(&engine, "test.events");
+	let frames = query_ringbuffer(&engine, "test.events").await;
 	assert_eq!(row_count(&frames), 3);
 
 	let mut values: Vec<_> = frames[0].rows().map(|r| r.get::<i32>("id").unwrap().unwrap()).collect();
@@ -89,13 +89,13 @@ fn test_ringbuffer_overflow_single() {
 	assert_eq!(values, vec![2, 3, 4]);
 }
 
-#[test]
-fn test_ringbuffer_overflow_batch() {
+#[tokio::test]
+async fn test_ringbuffer_overflow_batch() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_ringbuffer(&engine, "test", "events", 5, "id: int4"); // capacity 5
+	create_namespace(&engine, "test").await;
+	create_ringbuffer(&engine, "test", "events", 5, "id: int4").await; // capacity 5
 
 	// Insert more than capacity in one batch
 	let rows: Vec<_> = (1..=8).map(|n| params! { id: n }).collect();
@@ -106,7 +106,7 @@ fn test_ringbuffer_overflow_batch() {
 	assert_eq!(result.ringbuffers[0].inserted, 8);
 
 	// Should have exactly capacity rows
-	let frames = query_ringbuffer(&engine, "test.events");
+	let frames = query_ringbuffer(&engine, "test.events").await;
 	assert_eq!(row_count(&frames), 5);
 
 	// Only the most recent 5 entries should remain (4, 5, 6, 7, 8)
@@ -115,13 +115,13 @@ fn test_ringbuffer_overflow_batch() {
 	assert_eq!(values, vec![4, 5, 6, 7, 8]);
 }
 
-#[test]
-fn test_ringbuffer_circular_overwrite() {
+#[tokio::test]
+async fn test_ringbuffer_circular_overwrite() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_ringbuffer(&engine, "test", "circular", 3, "val: int4"); // capacity 3
+	create_namespace(&engine, "test").await;
+	create_ringbuffer(&engine, "test", "circular", 3, "val: int4").await; // capacity 3
 
 	// Insert multiple batches, cycling through the buffer
 	for batch in 0..3 {
@@ -133,7 +133,7 @@ fn test_ringbuffer_circular_overwrite() {
 	}
 
 	// After 3 batches of 3 each (9 total), only last 3 should remain
-	let frames = query_ringbuffer(&engine, "test.circular");
+	let frames = query_ringbuffer(&engine, "test.circular").await;
 	assert_eq!(row_count(&frames), 3);
 
 	let mut values: Vec<_> = frames[0].rows().map(|r| r.get::<i32>("val").unwrap().unwrap()).collect();
@@ -142,13 +142,13 @@ fn test_ringbuffer_circular_overwrite() {
 	assert_eq!(values, vec![7, 8, 9]);
 }
 
-#[test]
-fn test_ringbuffer_incremental_fill_and_overflow() {
+#[tokio::test]
+async fn test_ringbuffer_incremental_fill_and_overflow() {
 	let engine = create_test_engine();
 	let identity = test_identity();
 
-	create_namespace(&engine, "test");
-	create_ringbuffer(&engine, "test", "incr", 4, "n: int4"); // capacity 4
+	create_namespace(&engine, "test").await;
+	create_ringbuffer(&engine, "test", "incr", 4, "n: int4").await; // capacity 4
 
 	// Insert one at a time
 	for n in 1..=6 {
@@ -158,7 +158,7 @@ fn test_ringbuffer_incremental_fill_and_overflow() {
 	}
 
 	// After inserting 6 into capacity 4, should have 3, 4, 5, 6
-	let frames = query_ringbuffer(&engine, "test.incr");
+	let frames = query_ringbuffer(&engine, "test.incr").await;
 	assert_eq!(row_count(&frames), 4);
 
 	let mut values: Vec<_> = frames[0].rows().map(|r| r.get::<i32>("n").unwrap().unwrap()).collect();

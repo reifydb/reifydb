@@ -10,4 +10,4 @@ logical 'from users aggregate count(age) by { name, age }'
 >     └── By
 >         ├── name
 >         └── age
-> 
+>

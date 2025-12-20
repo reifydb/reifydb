@@ -12,6 +12,7 @@ use reifydb_core::{
 		ColumnDef, ColumnId, ColumnIndex, Command, Engine as EngineInterface, ExecuteCommand, ExecuteQuery,
 		Identity, Params, Query, TableVirtualDef, TableVirtualId, WithEventBus,
 	},
+	stream::{SendableFrameStream, StreamError},
 };
 use reifydb_transaction::{
 	cdc::TransactionCdc,
@@ -19,12 +20,15 @@ use reifydb_transaction::{
 	single::TransactionSingleVersion,
 };
 use reifydb_type::{OwnedFragment, TypeConstraint};
+use tokio::task::spawn_blocking;
+use tokio_util::sync::CancellationToken;
 use tracing::instrument;
 
 use crate::{
 	execute::Executor,
 	function::{Functions, generator, math},
 	interceptor::{CatalogEventInterceptor, materialized_catalog::MaterializedCatalogInterceptor},
+	stream::{ChannelFrameStream, FrameSender},
 	table_virtual::{
 		IteratorVirtualTableFactory, SimpleVirtualTableFactory, TableVirtualUser, TableVirtualUserColumnDef,
 		TableVirtualUserIterator,
@@ -75,32 +79,176 @@ impl EngineInterface for StandardEngine {
 	}
 
 	#[instrument(name = "engine::command", level = "info", skip(self, params), fields(rql = %rql))]
-	fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
-		let mut txn = self.begin_command()?;
-		let result = self.execute_command(
-			&mut txn,
-			Command {
-				rql,
-				params,
-				identity,
-			},
-		)?;
-		txn.commit()?;
-		Ok(result)
+	fn command_as(&self, identity: &Identity, rql: &str, params: Params) -> SendableFrameStream {
+		let engine = self.clone();
+		let identity = identity.clone();
+		let rql = rql.to_string();
+		let cancel_token = CancellationToken::new();
+
+		let (sender, stream) = ChannelFrameStream::new(8, cancel_token.clone());
+		let error_sender = sender.clone();
+
+		tokio::spawn(async move {
+			let result = spawn_blocking(move || {
+				execute_command_sync(&engine, &identity, &rql, params, &sender, &cancel_token)
+			})
+			.await;
+
+			// Handle join error (task panicked)
+			if let Err(join_err) = result {
+				let _ = error_sender.try_send(Err(StreamError::Query {
+					diagnostic: Arc::new(reifydb_type::diagnostic::Diagnostic {
+						message: format!("Query task panicked: {}", join_err),
+						..Default::default()
+					}),
+					statement: None,
+				}));
+			}
+		});
+
+		Box::pin(stream)
 	}
 
 	#[instrument(name = "engine::query", level = "info", skip(self, params), fields(rql = %rql))]
-	fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> crate::Result<Vec<Frame>> {
-		let mut txn = self.begin_query()?;
-		let result = self.execute_query(
-			&mut txn,
-			Query {
-				rql,
-				params,
-				identity,
-			},
-		)?;
-		Ok(result)
+	fn query_as(&self, identity: &Identity, rql: &str, params: Params) -> SendableFrameStream {
+		let engine = self.clone();
+		let identity = identity.clone();
+		let rql = rql.to_string();
+		let cancel_token = CancellationToken::new();
+
+		let (sender, stream) = ChannelFrameStream::new(8, cancel_token.clone());
+		let error_sender = sender.clone();
+
+		tokio::spawn(async move {
+			let result = spawn_blocking(move || {
+				execute_query_sync(&engine, &identity, &rql, params, &sender, &cancel_token)
+			})
+			.await;
+
+			// Handle join error (task panicked)
+			if let Err(join_err) = result {
+				let _ = error_sender.try_send(Err(StreamError::Query {
+					diagnostic: Arc::new(reifydb_type::diagnostic::Diagnostic {
+						message: format!("Query task panicked: {}", join_err),
+						..Default::default()
+					}),
+					statement: None,
+				}));
+			}
+		});
+
+		Box::pin(stream)
+	}
+}
+
+/// Execute a command synchronously and send results to the stream.
+fn execute_command_sync(
+	engine: &StandardEngine,
+	identity: &Identity,
+	rql: &str,
+	params: Params,
+	sender: &FrameSender,
+	cancel_token: &CancellationToken,
+) {
+	// Check for cancellation before starting
+	if cancel_token.is_cancelled() {
+		return;
+	}
+
+	// Begin transaction
+	let txn_result = engine.begin_command();
+	let mut txn = match txn_result {
+		Ok(txn) => txn,
+		Err(e) => {
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+			return;
+		}
+	};
+
+	// Execute command
+	let result = engine.execute_command(
+		&mut txn,
+		Command {
+			rql,
+			params,
+			identity,
+		},
+	);
+
+	match result {
+		Ok(frames) => {
+			// Commit transaction
+			if let Err(e) = txn.commit() {
+				let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+				return;
+			}
+
+			// Send each frame through the channel
+			for frame in frames {
+				if cancel_token.is_cancelled() {
+					return;
+				}
+				if sender.blocking_send(Ok(frame)).is_err() {
+					return; // Receiver dropped
+				}
+			}
+		}
+		Err(e) => {
+			// Rollback on error (drop will handle it)
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+		}
+	}
+}
+
+/// Execute a query synchronously and send results to the stream.
+fn execute_query_sync(
+	engine: &StandardEngine,
+	identity: &Identity,
+	rql: &str,
+	params: Params,
+	sender: &FrameSender,
+	cancel_token: &CancellationToken,
+) {
+	// Check for cancellation before starting
+	if cancel_token.is_cancelled() {
+		return;
+	}
+
+	// Begin transaction
+	let txn_result = engine.begin_query();
+	let mut txn = match txn_result {
+		Ok(txn) => txn,
+		Err(e) => {
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+			return;
+		}
+	};
+
+	// Execute query
+	let result = engine.execute_query(
+		&mut txn,
+		Query {
+			rql,
+			params,
+			identity,
+		},
+	);
+
+	match result {
+		Ok(frames) => {
+			// Send each frame through the channel
+			for frame in frames {
+				if cancel_token.is_cancelled() {
+					return;
+				}
+				if sender.blocking_send(Ok(frame)).is_err() {
+					return; // Receiver dropped
+				}
+			}
+		}
+		Err(e) => {
+			let _ = sender.try_send(Err(StreamError::query_with_statement(e, rql.to_string())));
+		}
 	}
 }
 
@@ -227,8 +375,8 @@ impl StandardEngine {
 	}
 
 	#[inline]
-	pub fn emit<E: Event>(&self, event: E) {
-		self.event_bus.emit(event)
+	pub async fn emit<E: Event>(&self, event: E) {
+		self.event_bus.emit(event).await
 	}
 
 	#[inline]

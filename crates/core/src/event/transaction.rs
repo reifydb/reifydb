@@ -3,7 +3,7 @@
 
 use crate::{CommitVersion, CowVec, delta::Delta, impl_event};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PostCommitEvent {
 	pub deltas: CowVec<Delta>,
 	pub version: CommitVersion,

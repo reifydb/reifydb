@@ -66,10 +66,18 @@ impl CommandTransaction {
 		})?;
 
 		if let Some(version) = version {
-			self.engine.event_bus.emit(PostCommitEvent {
-				deltas,
-				version,
-			});
+			let event_bus = self.engine.event_bus.clone();
+			// Only spawn if there's a tokio runtime available
+			if let Ok(handle) = tokio::runtime::Handle::try_current() {
+				handle.spawn(async move {
+					event_bus
+						.emit(PostCommitEvent {
+							deltas,
+							version,
+						})
+						.await;
+				});
+			}
 		}
 
 		Ok(version.unwrap_or(CommitVersion(0)))

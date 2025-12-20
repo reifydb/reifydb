@@ -10,5 +10,5 @@ tokenize 'ALTER FLOW my_flow RENAME TO new_flow'
 >   [  3] Keyword(Rename)
 >   [  4] Keyword(To)
 >   [  5] Identifier("new_flow")
-> 
-> 
+>
+>

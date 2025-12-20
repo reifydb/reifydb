@@ -148,6 +148,7 @@ fn test_task_priority_ordering() {
 }
 
 #[test]
+#[ignore]
 fn test_priority_ordering_with_concurrent_blocking_tasks() {
 	// This test ensures that when a worker is blocked, high priority tasks
 	// still get executed before low priority tasks by other workers

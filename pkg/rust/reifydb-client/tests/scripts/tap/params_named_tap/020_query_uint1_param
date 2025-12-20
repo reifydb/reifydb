@@ -8,4 +8,4 @@ query_named 'MAP $uint1_val as result' 'uint1_val=255'
 > +----------+
 > |   255    |
 > +----------+
-> 
+>

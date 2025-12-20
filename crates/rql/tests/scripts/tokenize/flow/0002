@@ -17,5 +17,5 @@ tokenize 'CREATE FLOW my_flow (id INT, name TEXT) AS from users'
 >   [ 10] Operator(As)
 >   [ 11] Keyword(From)
 >   [ 12] Identifier("users")
-> 
-> 
+>
+>

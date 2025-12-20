@@ -7,4 +7,4 @@ logical 'from users map {id, name}'
 > └── Map
 >     ├── id
 >     └── name
-> 
+>

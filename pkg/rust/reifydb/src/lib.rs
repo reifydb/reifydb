@@ -10,6 +10,7 @@ pub mod event;
 mod health;
 mod session;
 pub mod subsystem;
+pub mod vendor;
 
 use std::time::Duration;
 

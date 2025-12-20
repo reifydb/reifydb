@@ -1,34 +1,37 @@
 // Copyright (c) reifydb.com 2025
 // This file is licensed under the AGPL-3.0-or-later
 
-//! Query and command execution with async/sync bridging.
+//! Query and command execution with async streaming.
 //!
-//! This module provides async wrappers around the synchronous database engine
-//! operations using `spawn_blocking` to avoid blocking tokio worker threads.
-//!
-//! All database operations are executed on tokio's blocking thread pool with
-//! configurable timeouts.
+//! This module provides async wrappers around the database engine operations.
+//! The engine internally uses spawn_blocking for sync execution, streaming
+//! results back through async channels.
 
-use std::time::Duration;
+use std::{sync::Arc, time::Duration};
 
+use futures_util::TryStreamExt;
 use reifydb_core::{
 	Frame,
 	interface::{Engine, Identity},
+	stream::StreamError,
 };
 use reifydb_engine::StandardEngine;
-use reifydb_type::Params;
-use tokio::task::spawn_blocking;
+use reifydb_type::{Params, diagnostic::Diagnostic};
 
 /// Error types for query/command execution.
 #[derive(Debug)]
 pub enum ExecuteError {
 	/// Query exceeded the configured timeout.
 	Timeout,
-	/// The blocking task panicked during execution.
-	TaskPanic(String),
-	/// Database engine returned an error, with the statement that caused it.
+	/// Query was cancelled.
+	Cancelled,
+	/// Stream disconnected unexpectedly.
+	Disconnected,
+	/// Database engine returned an error with full diagnostic info.
 	Engine {
-		error: reifydb_type::Error,
+		/// The full diagnostic with error code, source location, help text, etc.
+		diagnostic: Arc<Diagnostic>,
+		/// The statement that caused the error.
 		statement: String,
 	},
 }
@@ -37,23 +40,31 @@ impl std::fmt::Display for ExecuteError {
 	fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
 		match self {
 			ExecuteError::Timeout => write!(f, "Query execution timed out"),
-			ExecuteError::TaskPanic(msg) => write!(f, "Query task panicked: {}", msg),
+			ExecuteError::Cancelled => write!(f, "Query was cancelled"),
+			ExecuteError::Disconnected => write!(f, "Query stream disconnected unexpectedly"),
 			ExecuteError::Engine {
-				error,
+				diagnostic,
 				..
-			} => write!(f, "Engine error: {}", error),
+			} => write!(f, "Engine error: {}", diagnostic.message),
 		}
 	}
 }
 
-impl std::error::Error for ExecuteError {
-	fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-		match self {
-			ExecuteError::Engine {
-				error,
-				..
-			} => Some(error),
-			_ => None,
+impl std::error::Error for ExecuteError {}
+
+impl From<StreamError> for ExecuteError {
+	fn from(err: StreamError) -> Self {
+		match err {
+			StreamError::Query {
+				diagnostic,
+				statement,
+			} => ExecuteError::Engine {
+				diagnostic, // Preserve full diagnostic
+				statement: statement.unwrap_or_default(),
+			},
+			StreamError::Cancelled => ExecuteError::Cancelled,
+			StreamError::Timeout => ExecuteError::Timeout,
+			StreamError::Disconnected => ExecuteError::Disconnected,
 		}
 	}
 }
@@ -61,11 +72,11 @@ impl std::error::Error for ExecuteError {
 /// Result type for execute operations.
 pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
 
-/// Execute a query on the blocking thread pool with timeout.
+/// Execute a query with timeout.
 ///
 /// This function:
-/// 1. Spawns the query execution on tokio's blocking thread pool
-/// 2. Applies a timeout to prevent stuck queries from hanging indefinitely
+/// 1. Starts the async query execution (internally uses spawn_blocking)
+/// 2. Collects the stream with a timeout
 /// 3. Returns the query results or an appropriate error
 ///
 /// # Arguments
@@ -80,7 +91,7 @@ pub type ExecuteResult<T> = std::result::Result<T, ExecuteError>;
 ///
 /// * `Ok(Vec<Frame>)` - Query results on success
 /// * `Err(ExecuteError::Timeout)` - If the query exceeds the timeout
-/// * `Err(ExecuteError::TaskPanic)` - If the blocking task panics
+/// * `Err(ExecuteError::Cancelled)` - If the query was cancelled
 /// * `Err(ExecuteError::Engine)` - If the engine returns an error
 ///
 /// # Example
@@ -101,27 +112,18 @@ pub async fn execute_query(
 	params: Params,
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
-	let query_clone = query.clone();
-	let result =
-		tokio::time::timeout(timeout, spawn_blocking(move || engine.query_as(&identity, &query, params))).await;
+	let stream = engine.query_as(&identity, &query, params);
+
+	// Collect the stream with a timeout
+	let result = tokio::time::timeout(timeout, stream.try_collect::<Vec<Frame>>()).await;
 
 	match result {
-		// Timeout expired
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		// spawn_blocking returned
-		Ok(join_result) => match join_result {
-			// Task panicked
-			Err(join_err) => Err(ExecuteError::TaskPanic(join_err.to_string())),
-			// Task completed
-			Ok(engine_result) => engine_result.map_err(|e| ExecuteError::Engine {
-				error: e,
-				statement: query_clone,
-			}),
-		},
+		Ok(stream_result) => stream_result.map_err(ExecuteError::from),
 	}
 }
 
-/// Execute a command on the blocking thread pool with timeout.
+/// Execute a command with timeout.
 ///
 /// Commands are write operations (INSERT, UPDATE, DELETE, DDL) that modify
 /// the database state.
@@ -138,7 +140,7 @@ pub async fn execute_query(
 ///
 /// * `Ok(Vec<Frame>)` - Command results on success
 /// * `Err(ExecuteError::Timeout)` - If the command exceeds the timeout
-/// * `Err(ExecuteError::TaskPanic)` - If the blocking task panics
+/// * `Err(ExecuteError::Cancelled)` - If the command was cancelled
 /// * `Err(ExecuteError::Engine)` - If the engine returns an error
 pub async fn execute_command(
 	engine: StandardEngine,
@@ -148,28 +150,18 @@ pub async fn execute_command(
 	timeout: Duration,
 ) -> ExecuteResult<Vec<Frame>> {
 	let combined = statements.join("; ");
-	let combined_clone = combined.clone();
-	let result =
-		tokio::time::timeout(timeout, spawn_blocking(move || engine.command_as(&identity, &combined, params)))
-			.await;
+	let stream = engine.command_as(&identity, &combined, params);
+
+	// Collect the stream with a timeout
+	let result = tokio::time::timeout(timeout, stream.try_collect::<Vec<Frame>>()).await;
 
 	match result {
-		// Timeout expired
 		Err(_elapsed) => Err(ExecuteError::Timeout),
-		// spawn_blocking returned
-		Ok(join_result) => match join_result {
-			// Task panicked
-			Err(join_err) => Err(ExecuteError::TaskPanic(join_err.to_string())),
-			// Task completed
-			Ok(engine_result) => engine_result.map_err(|e| ExecuteError::Engine {
-				error: e,
-				statement: combined_clone,
-			}),
-		},
+		Ok(stream_result) => stream_result.map_err(ExecuteError::from),
 	}
 }
 
-/// Execute a single query statement on the blocking thread pool with timeout.
+/// Execute a single query statement with timeout.
 ///
 /// This is a convenience wrapper around `execute_query` for single statements.
 pub async fn execute_query_single(
@@ -182,7 +174,7 @@ pub async fn execute_query_single(
 	execute_query(engine, query.to_string(), identity, params, timeout).await
 }
 
-/// Execute a single command statement on the blocking thread pool with timeout.
+/// Execute a single command statement with timeout.
 ///
 /// This is a convenience wrapper around `execute_command` for single statements.
 pub async fn execute_command_single(
@@ -204,7 +196,10 @@ mod tests {
 		let timeout_err = ExecuteError::Timeout;
 		assert_eq!(timeout_err.to_string(), "Query execution timed out");
 
-		let panic_err = ExecuteError::TaskPanic("test panic".to_string());
-		assert_eq!(panic_err.to_string(), "Query task panicked: test panic");
+		let cancelled_err = ExecuteError::Cancelled;
+		assert_eq!(cancelled_err.to_string(), "Query was cancelled");
+
+		let disconnected_err = ExecuteError::Disconnected;
+		assert_eq!(disconnected_err.to_string(), "Query stream disconnected unexpectedly");
 	}
 }

@@ -12,7 +12,8 @@ fn tracing_configuration(tracing: TracingBuilder) -> TracingBuilder {
 	tracing.with_console(|console| console.color(true).stderr_for_errors(true)).with_filter("debug,reifydb=trace")
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	let mut db = server::memory()
 		.with_http(HttpConfig::default().bind_addr("0.0.0.0:8090"))
 		.with_ws(WsConfig::default().bind_addr("0.0.0.0:8091"))
@@ -22,12 +23,12 @@ fn main() {
 		.unwrap();
 
 	// Start the database
-	db.start().unwrap();
+	db.start().await.unwrap();
 	println!("Database started successfully!");
 	println!("Admin console available at http://127.0.0.1:9092/");
 
 	// Run for a short time to test logging
-	std::thread::sleep(Duration::from_secs(2000));
+	tokio::time::sleep(Duration::from_secs(2000)).await;
 
 	// Stop the database
 	println!("Shutting down database...");

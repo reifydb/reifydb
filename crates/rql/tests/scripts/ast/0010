@@ -8,4 +8,4 @@ ast 'alter table test.users { create primary key {id, email, created_at} }'
 >          ├──Column: id
 >          ├──Column: email
 >          └──Column: created_at
-> 
+>

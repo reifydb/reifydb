@@ -32,20 +32,20 @@ command
 > start
 > Command { name: "command", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 30 }
 > end
-> 
+>
 
 _set end_block="end"
 command
 ---
 > start
-> 
+>
 > Command { name: "command", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 38 }
 > end
 
 _set start_block="" end_block=""
 ---
 > start
-> 
+>
 
 # Command hooks should be called before/after each command. It should be affected
 # by command prefixes and silencing.
@@ -80,7 +80,7 @@ end
 command
 ---
 > start
-> 
+>
 > Command { name: "command", args: [], prefix: None, tags: {}, silent: false, fail: false, line_number: 80 }
 > end
-> 
+>

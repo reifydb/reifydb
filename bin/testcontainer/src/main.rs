@@ -9,7 +9,8 @@ use reifydb::{
 };
 use tracing::{info, info_span};
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	// Build database with integrated OpenTelemetry
 	let mut db = server::memory()
 		.with_http(HttpConfig::default())
@@ -42,5 +43,5 @@ fn main() {
 	println!();
 	println!("Press Ctrl+C to stop...");
 
-	db.start_and_await_signal().unwrap();
+	db.start_and_await_signal().await.unwrap();
 }

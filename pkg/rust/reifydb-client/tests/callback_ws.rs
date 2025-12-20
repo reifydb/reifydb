@@ -28,6 +28,7 @@ use reifydb_client::{
 use reifydb_testing::{testscript, testscript::Command};
 use test_each_file::test_each_path;
 use thread::sleep;
+use tokio::runtime::Runtime;
 
 use crate::common::create_server_instance;
 
@@ -37,6 +38,7 @@ pub struct CallbackRunner {
 	session: Option<WsCallbackSession>,
 	last_command_result: Arc<Mutex<Option<Result<CommandResult, String>>>>,
 	last_query_result: Arc<Mutex<Option<Result<QueryResult, String>>>>,
+	runtime: Runtime,
 }
 
 impl CallbackRunner {
@@ -47,6 +49,7 @@ impl CallbackRunner {
 			session: None,
 			last_command_result: Arc::new(Mutex::new(None)),
 			last_query_result: Arc::new(Mutex::new(None)),
+			runtime: Runtime::new().unwrap(),
 		}
 	}
 }
@@ -268,7 +271,7 @@ impl testscript::Runner for CallbackRunner {
 
 	fn start_script(&mut self) -> Result<(), Box<dyn Error>> {
 		let server = self.instance.as_mut().unwrap();
-		let port = start_server_and_get_ws_port(server)?;
+		let port = start_server_and_get_ws_port(&self.runtime, server)?;
 
 		let client = connect_ws(("::1", port))?;
 		let session = client.callback_session(Some("mysecrettoken".to_string()))?;

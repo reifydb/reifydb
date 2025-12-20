@@ -16,6 +16,16 @@ use crate::{
 	http::{message::HttpInternalMessage, worker::http_worker_thread},
 };
 
+/// HTTP-specific error response matching the server's format
+#[derive(Debug, serde::Deserialize)]
+struct HttpErrorResponse {
+	code: String,
+	error: String,
+	/// Full diagnostic info for rich error display (when available)
+	#[serde(default)]
+	diagnostic: Option<reifydb_type::diagnostic::Diagnostic>,
+}
+
 /// HTTP client implementation with worker thread
 #[derive(Clone)]
 pub struct HttpClient {
@@ -206,7 +216,19 @@ impl HttpClientConfig {
 		match serde_json::from_str::<CommandResponse>(&response_body) {
 			Ok(response) => Ok(response),
 			Err(_) => {
-				// Try parsing as error response
+				// Try parsing as HTTP error response format (with optional diagnostic)
+				if let Ok(http_err) = serde_json::from_str::<HttpErrorResponse>(&response_body) {
+					// Use full diagnostic if available, otherwise construct from code+message
+					let diagnostic = http_err.diagnostic.unwrap_or_else(|| {
+						reifydb_type::diagnostic::Diagnostic {
+							code: http_err.code,
+							message: http_err.error,
+							..Default::default()
+						}
+					});
+					return Err(reifydb_type::Error(diagnostic));
+				}
+				// Try parsing as diagnostic error response
 				match serde_json::from_str::<ErrResponse>(&response_body) {
 					Ok(err_response) => Err(reifydb_type::Error(err_response.diagnostic)),
 					Err(_) => Err(reifydb_type::Error(reifydb_type::diagnostic::internal(
@@ -233,7 +255,19 @@ impl HttpClientConfig {
 		match serde_json::from_str::<QueryResponse>(&response_body) {
 			Ok(response) => Ok(response),
 			Err(_) => {
-				// Try parsing as error response
+				// Try parsing as HTTP error response format (with optional diagnostic)
+				if let Ok(http_err) = serde_json::from_str::<HttpErrorResponse>(&response_body) {
+					// Use full diagnostic if available, otherwise construct from code+message
+					let diagnostic = http_err.diagnostic.unwrap_or_else(|| {
+						reifydb_type::diagnostic::Diagnostic {
+							code: http_err.code,
+							message: http_err.error,
+							..Default::default()
+						}
+					});
+					return Err(reifydb_type::Error(diagnostic));
+				}
+				// Try parsing as diagnostic error response
 				match serde_json::from_str::<ErrResponse>(&response_body) {
 					Ok(err_response) => Err(reifydb_type::Error(err_response.diagnostic)),
 					Err(_) => Err(reifydb_type::Error(reifydb_type::diagnostic::internal(

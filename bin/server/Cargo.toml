@@ -13,3 +13,4 @@ path = "src/main.rs"
 
 [dependencies]
 reifydb = { path = "../../pkg/rust/reifydb", features = ["sub_server_admin", "sub_tracing", "sub_server_http", "sub_server_ws"] }
+tokio = { workspace = true }

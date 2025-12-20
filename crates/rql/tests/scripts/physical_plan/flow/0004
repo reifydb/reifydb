@@ -4,4 +4,4 @@
 physical 'ALTER FLOW my_flow RENAME TO new_flow'
 ---
 > └── AlterFlow my_flow (RENAME TO new_flow)
-> 
+>

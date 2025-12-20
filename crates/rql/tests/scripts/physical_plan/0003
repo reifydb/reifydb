@@ -7,4 +7,4 @@ physical 'from users left join { from orders } orders on id == orders.user_id fi
 >     └── Join(Left) on: [(id == orders.user_id)]
 >         ├── TableScan default.users
 >         └── TableScan default.orders
-> 
+>

@@ -12,7 +12,7 @@ command 'from test.conversion map cast(col, float4)'
 > +----------+-------+
 > |    1     |   0   |
 > +----------+-------+
-> 
+>
 
 
 (command 'from [{ col: 16777216 }] insert test.conversion')
@@ -24,25 +24,25 @@ command 'from test.conversion map cast(col, float4)'
 > |    2     |  16777216  |
 > |    1     |     0      |
 > +----------+------------+
-> 
+>
 
 (command 'from [{ col: 16777217 }] insert test.conversion')
 !command 'from test.conversion map cast(col, float4)'
 ---
 >  Error CAST_002: failed to cast to Float4
 >   at "(colfloat4" (line 1, column 30)
-> 
+>
 >   1 │ from test.conversion map cast(col, float4)
 >     │                               ~~~~~~~~~~
 >     │                        failed to cast to Float4
-> 
+>
 >   ↳  Error NUMBER_004: too large for precise float conversion
 >     at "col" (line 1, column 31)
-> 
+>
 >     1 │ from test.conversion map cast(col, float4)
 >       │                               ~~~
 >       │   converting 'col' from Uint8 to Float4 would lose precision
-> 
+>
 >     note: Float4 can only represent from 0 to 16_777_216 (2^24) precisely
 >     note: consider using a different numeric type if exact precision is required
-> 
+>

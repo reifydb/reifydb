@@ -9,7 +9,7 @@ logical 'from users map {id, name} filter id > 10'
 >     └── name
 > └── Filter
 >     └── condition: (id > Constant(10))
-> 
+>
 
 logical 'from users filter id > 10 map {id, name}'
 ---
@@ -19,4 +19,4 @@ logical 'from users filter id > 10 map {id, name}'
 > └── Map
 >     ├── id
 >     └── name
-> 
+>

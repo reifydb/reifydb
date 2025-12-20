@@ -8,13 +8,14 @@
 //!
 //! Run with: `make rql-arithmetic` or `cargo run --bin rql-arithmetic`
 
-use reifydb::{Params, Session, embedded};
+use reifydb::{Params, embedded};
 use reifydb_examples::log_query;
 use tracing::info;
 
-fn main() {
+#[tokio::main]
+async fn main() {
 	let mut db = embedded::memory().build().unwrap();
-	db.start().unwrap();
+	db.start().await.unwrap();
 
 	// Example 1: Basic arithmetic operations
 	info!("Example 1: Basic arithmetic operations");
@@ -40,6 +41,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -63,6 +65,7 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -88,13 +91,14 @@ fn main() {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
 	}
 
 	// Set up sample data for more comptokenize examples
-	db.command_as_root("create namespace shop", Params::None).unwrap();
+	db.command_as_root("create namespace shop", Params::None).await.unwrap();
 	db.command_as_root(
 		r#"
 		create table shop.products {
@@ -108,6 +112,7 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	db.command_as_root(
@@ -122,6 +127,7 @@ fn main() {
 		"#,
 		Params::None,
 	)
+	.await
 	.unwrap();
 
 	// Example 4: Arithmetic on table columns
@@ -138,6 +144,7 @@ map { name, price, quantity, price * quantity as total }"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -169,6 +176,7 @@ map {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -200,6 +208,7 @@ map {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -219,6 +228,7 @@ filter price * quantity > 100"#,
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);
@@ -254,6 +264,7 @@ map {
 			"#,
 			Params::None,
 		)
+		.await
 		.unwrap()
 	{
 		info!("{}", frame);

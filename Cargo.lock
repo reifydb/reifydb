@@ -415,6 +415,7 @@ name = "examples"
 version = "0.1.6"
 dependencies = [
  "reifydb",
+ "tokio",
  "tracing",
  "tracing-subscriber",
 ]
@@ -1238,6 +1239,7 @@ name = "playground"
 version = "0.1.6"
 dependencies = [
  "reifydb",
+ "tokio",
  "tracing-subscriber",
 ]
 
@@ -1461,6 +1463,8 @@ checksum = "7a2d987857b319362043e95f5353c0535c1f58eec5336fdfcf626430af7def58"
 name = "reifydb"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
+ "futures-util",
  "libc",
  "opentelemetry",
  "reifydb-auth",
@@ -1483,6 +1487,7 @@ dependencies = [
  "reifydb-sub-worker",
  "reifydb-transaction",
  "reifydb-type",
+ "tokio",
  "tracing",
  "tracing-opentelemetry",
 ]
@@ -1551,6 +1556,7 @@ dependencies = [
  "serde",
  "serde_json",
  "test_each_file",
+ "tokio",
 ]
 
 [[package]]
@@ -1573,9 +1579,11 @@ dependencies = [
 name = "reifydb-core"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "bigdecimal",
  "crossbeam-channel",
  "crossbeam-skiplist",
+ "futures-util",
  "num-bigint",
  "num-traits",
  "once_cell",
@@ -1587,6 +1595,7 @@ dependencies = [
  "reifydb-type",
  "serde",
  "serde_bytes",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -1602,7 +1611,9 @@ dependencies = [
 name = "reifydb-engine"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "bincode",
+ "futures-util",
  "once_cell",
  "parking_lot",
  "reifydb-auth",
@@ -1616,6 +1627,9 @@ dependencies = [
  "reifydb-type",
  "serde",
  "serde_json",
+ "tokio",
+ "tokio-stream",
+ "tokio-util",
  "tracing",
 ]
 
@@ -1697,6 +1711,8 @@ dependencies = [
 name = "reifydb-store-transaction"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
+ "futures-util",
  "indexmap 2.12.0",
  "parking_lot",
  "reifydb-core",
@@ -1704,6 +1720,7 @@ dependencies = [
  "reifydb-type",
  "rusqlite",
  "test_each_file",
+ "tokio",
  "tracing",
  "uuid",
 ]
@@ -1744,6 +1761,7 @@ dependencies = [
  "serde",
  "serde_bytes",
  "serde_json",
+ "tokio",
  "tracing",
 ]
 
@@ -1751,6 +1769,7 @@ dependencies = [
 name = "reifydb-sub-server"
 version = "0.1.6"
 dependencies = [
+ "futures-util",
  "num_cpus",
  "reifydb-core",
  "reifydb-engine",
@@ -1878,8 +1897,10 @@ dependencies = [
 name = "reifydb-transaction"
 version = "0.1.6"
 dependencies = [
+ "async-trait",
  "crossbeam-channel",
  "crossbeam-skiplist",
+ "futures-util",
  "indexmap 2.12.0",
  "parking_lot",
  "reifydb-core",
@@ -1889,6 +1910,7 @@ dependencies = [
  "reifydb-type",
  "self_cell",
  "test_each_file",
+ "tokio",
  "tracing",
 ]
 
@@ -2067,6 +2089,7 @@ name = "server"
 version = "0.1.6"
 dependencies = [
  "reifydb",
+ "tokio",
 ]
 
 [[package]]
@@ -2182,6 +2205,7 @@ dependencies = [
  "reifydb",
  "reifydb-testing",
  "test_each_file",
+ "tokio",
 ]
 
 [[package]]
@@ -2192,6 +2216,7 @@ dependencies = [
  "reifydb-client",
  "reifydb-testing",
  "test_each_file",
+ "tokio",
 ]
 
 [[package]]

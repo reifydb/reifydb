@@ -3,6 +3,7 @@
 
 use std::{collections::HashMap, path::PathBuf, sync::Arc};
 
+use async_trait::async_trait;
 use parking_lot::RwLock;
 use reifydb_core::event::{EventListener, flow::FlowOperatorLoadedEvent};
 use reifydb_type::TypeConstraint;
@@ -62,8 +63,9 @@ impl FlowOperatorEventListener {
 	}
 }
 
+#[async_trait]
 impl EventListener<FlowOperatorLoadedEvent> for FlowOperatorEventListener {
-	fn on(&self, event: &FlowOperatorLoadedEvent) {
+	async fn on(&self, event: &FlowOperatorLoadedEvent) {
 		self.store.add(FlowOperatorInfo {
 			operator: event.operator.clone(),
 			library_path: event.library_path.clone(),

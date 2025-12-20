@@ -19,6 +19,9 @@ uuid = { workspace = true }
 num-bigint = { workspace = true }
 bigdecimal = { workspace = true }
 num-traits = { workspace = true }
+async-trait = { workspace = true }
+futures-util = { workspace = true }
+tokio = { workspace = true }
 
 [dev-dependencies]
 reifydb-catalog = {workspace = true}
@@ -26,3 +29,4 @@ reifydb-cdc = {workspace = true}
 reifydb-engine = {workspace = true}
 reifydb-store-transaction = {workspace = true}
 reifydb-transaction = {workspace = true}
+tokio = { workspace = true }

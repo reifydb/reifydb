@@ -8,4 +8,4 @@ query_positional 'MAP { $1 + $2 as sum, $3 as name }' '10' '20' 'test'
 > +-------+--------+
 > |  30   |  test  |
 > +-------+--------+
-> 
+>
